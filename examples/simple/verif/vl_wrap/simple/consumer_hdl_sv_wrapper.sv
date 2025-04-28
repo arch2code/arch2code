@@ -1,0 +1,8 @@
+`ifndef _CONSUMER_HDL_SV_WRAPPER_SV_GUARD_
+`define _CONSUMER_HDL_SV_WRAPPER_SV_GUARD_
+
+// GENERATED_CODE_PARAM --block=consumer
+// GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
+// GENERATED_CODE_END
+
+`endif // _CONSUMER_HDL_SV_WRAPPER_SV_GUARD_

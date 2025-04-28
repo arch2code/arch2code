@@ -1,0 +1,92 @@
+= How to build SystemVerilog
+
+**Note:** this has not been updated in some time and may contain stale information; see https://arch2code.atlassian.net/browse/A2C-72[A2C-72], and https://arch2code.atlassian.net/browse/A2C-80[A2C-80].
+
+Arch2Code can generate a lot of the syntehsizable SystemVerilog in a project. The most obvious items that get generated are constants *(constants in yaml turn into localparam in SystemVerilog)*, types, enums, structures, interfaces, and the connectivity between blocks.
+
+Registers, for System on Chip projects with a Firmware operated CPU, and memories are still to come.
+
+Let's focus on building SystemVerilog from the Architectural definitions in our yaml files. There are two types of output for SystemVerilog `.sv` files and `.svh` files. The `.svh` files are from a yaml context and contain yaml constants, types, enums, ans structures. In SystemVerilog these are localparams, types, enums and structures.
+
+**Note:** that in the exampleArchitecture we will only be including two pakcages. One package is interfaces which is not defined by the architectural definitions in yaml, but purley in SystemVerilog. Second is the context which is defined in the architectural definition but there is only one. More is possible if say top included blockB as it's own context with it's own set of constants, types, enums, or structures. It could even be a single structure.
+
+**Note:** all of the output files generated in the steps below are committed to the repository. If desired they could be deleted prior to these steps and after each step a `git diff` could be run to quickly illustrate the changes are generation is underway. To remove prior to start from the root of the repository simply `rm systemVerilog/exampleArchitecture/*`.
+
+== First, Generate the instancesList.yaml
+
+. `cd systemVerilog` make sure to be in the repo_root/systemVerilog directory
+. `../arch2code.py --yaml ../exampleArchitecture/exampleArchitectureProject.yaml` builds database
+. `../arch2code.py -r -ibt | awk '{print $2}' > exampleArchitecture/instancesList.yaml_tmp`
+   - puts all instances defined in a file, tmp file needed for awk command
+// for some reason the {print} below is seen as an undefined attribute by asciidoc, needs a fix eventually
+. `awk -v n=1 -v s="instances:" 'NR == n {print s} {print}' exampleArchitecture/instancesList.yaml_tmp > exampleArchitecture/instancesList.yaml`
+   - puts `instances:` on line one of `exampleArchitecture/instancesList.yaml`
+. `sed '2,$s/^/  - /' exampleArchitecture/instancesList.yaml > exampleArchitecture/instancesList.yaml_tmp`
+   - indents instance names and makes them a list in yaml
+. `mv exampleArchitecture/instancesList.yaml_tmp exampleArchitecture/instancesList.yaml`
+
+Now we have generated our instancesList which in this case is all defined instances. Next we want to create our `.sv` files for the blocks that make up those instances. We only have one context to import as a package. We will put this in the context (constants, types, enums, and structures) in the file top.svh to match the top most block name. Then we will include  `top.svh` in the package `topPackage.sv` to be imported by each module in each `.sv` files.
+
+The context, `.svh`, files are intended to be included in block`Package.sv` files. Those package files are then imported into each `.sv` file at each level of context.
+
+To see what contexts are available use this command: `../arch2code.py -r -ibt | awk '{print $9}' | awk '!seen[$0]++'`. Let's go ahead and make this `.svh` file first.
+
+== Second, Generate the context include file, `top.svh`
+
+. `cp template.svh exampleArchitecture/top.svh`
+. `context=$(../arch2code.py -r -ibt | awk '{print $9}' | awk '!seen[$0]++')`
+. `sed "1s/$/$context/" exampleArchitecture/top.svh > tmp && mv tmp exampleArchitecture/top.svh`
+. `../arch2code.py -r -sv --instances exampleArchitecture/instancesList.yaml --file exampleArchitecture/top.svh`
+
+== Third, Generate the block`Package.sv` files for each context
+
+For example `topPackage.sv`.
+
+. `cp templatePackage.sv exampleArchitecture/topPackage.sv`
+. `sed "1s/$/top/" exampleArchitecture/topPackage.sv > tmp`
+. `sed "1s/$/ --includeFiles top.svh/" tmp > exampleArchitecture/topPackage.sv`
+    - **Note:** this could be a list of files e.g. `:w
+    top.svh blockB.svh`, etc.
+. `rm tmp`
+. `../arch2code.py -r -sv --instances exampleArchitecture/instancesList.yaml --file exampleArchitecture/topPackage.sv`
+
+== Fourth, Generate the `.sv` files for each block
+
+These steps create the `.sv` files defined by *exampleArchitecture*.
+
+. `for i in $(../arch2code.py -r -ibt | awk '{print $6}' | awk '!seen[$0]++'); do cp template.sv exampleArchitecture/$i.sv && sed "1s/$/$i --importPackages topPackage/" exampleArchitecture/$i.sv > tmp && mv tmp exampleArchitecture/$i.sv && ../arch2code.py -r -sv --instances exampleArchitecture/instancesList.yaml --file exampleArchitecture/$i.sv; done`
+    - It is a long command; one loop with three commands after. Create each `.sv` file. Edit each file to put in the *blockName*, and each *package* to import. Generate each file's contents.
+
+== Fifth, We need to determine which modules are parentModules and which are leafModules
+
+In this example let us assume that blocks; blockA, blockB, blockD, blockF, memoryContainer, and top are parents. And blockE and blockC are leafs. The leaf modules will have space for human written code and the parents will not.
+
+. `sed "1s/$/ --parentModule/" exampleArchitecture/top.sv > tmp && mv tmp exampleArchitecture/top.sv`
+. Repeast step 1 for blockA.sv, blockB.sv, blockD.sv, blockF.sv and memoryContainer.sv
+. `echo "\nendmodule\n" >> exampleArchitecture/blockE.sv`
+. Repeast setp 3 for blockC.sv or run `echo "\nendmodule\n" >> exampleArchitecture/block[CE].sv`
+. `for i in $(../arch2code.py -r -ibt | awk '{print $6}' | awk '!seen[$0]++'); do ../arch2code.py -r -sv --instances exampleArchitecture/instancesList.yaml --file exampleArchitecture/$i.sv; done`
+
+== Sixth, Lint the design as a smoke test
+
+. `verilator --lint-only -sv ./exampleArchitecture/top.svh -sv ./interfaces.sv -sv ./exampleArchitecture/top.sv --top-module top -sv ./exampleArchitecture/blockA.sv -sv ./exampleArchitecture/blockB.sv -sv ./exampleArchitecture/blockC.sv -sv ./exampleArchitecture/blockD.sv -sv ./exampleArchitecture/blockE.sv -sv ./exampleArchitecture/blockF.sv -sv ./exampleArchitecture/memoryContainer.sv`
+
+== Details on arch2code.py -ibt option and awk command usage
+
+The `-ibt` option prints instances, of which block type and from what context. This information is used to aide in file generation. The `awk` command that does prints defaults to seperate lines on spaces and the `'{print $2}'` will print the second string after a space, or secone column space seperated. So `$2` prints instances, `$6` blocks, and `$9` contexts. The secondary awk command that uses `'!seen[$0]++'` simply prints output as it is seen only once.
+
+Below is the -ibt output used in the commands above.
+[source,bash]
+----
+Instance: uBlockA of block type blockA from context: exampleArchitecture.yaml
+Instance: uBlockB of block type blockB from context: exampleArchitecture.yaml
+Instance: uBlockC of block type blockC from context: exampleArchitecture.yaml
+Instance: uBlockC0 of block type blockC from context: exampleArchitecture.yaml
+Instance: uBlockC1 of block type blockC from context: exampleArchitecture.yaml
+Instance: uBlockC2 of block type blockC from context: exampleArchitecture.yaml
+Instance: uBlockD of block type blockD from context: exampleArchitecture.yaml
+Instance: uBlockE of block type blockE from context: exampleArchitecture.yaml
+Instance: uBlockF of block type blockF from context: exampleArchitecture.yaml
+Instance: uMemoryContainer of block type memoryContainer from context: exampleArchitecture.yaml
+Instance: uTop of block type top from context: exampleArchitecture.yaml
+----

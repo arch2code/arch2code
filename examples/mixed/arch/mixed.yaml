@@ -1,0 +1,344 @@
+# This example which is being used for requirements building shows 8 dictionaries
+#                                                                     constants
+#                                                                     variables
+#                                                                     structures
+#                                                                     interfaces
+#                                                                     objects
+#                                                                     connections
+#                                                                     instances
+#                                                                     flows
+include:
+  - mixedInclude.yaml
+  - mixedBlockC.yaml
+blockDir: .
+# constants / parameters are architectural level variables that can be used to control the size of structures,
+# variables, number of instances, etc.
+## constantname: is the constant's name and key for usage by any other dictionary doing a lookup, required
+## for any other key in any other dictionary
+### value: followed by a number to indicate the value for this constant, required if eval is not used
+### desc: followed by a string is a description of this constant, required
+### eval: optional in place of value, this is a math function that can be used to make a constant from other constant
+###       supports +, -, *, and / math.
+### to reference another constant use $CONSTNAME
+constants:
+  ASIZE : {value: 1, desc: "The size of A"}
+  ASIZE2: {eval: "$ASIZE+1", desc: "The size of A+1"}
+  BIGE33: {value: 0x1FFFFFFFF, desc: "Test constant for numbers slightly bigger than 32 bits"}
+  BIGE53: {value: 0x3FFFFFFFFFFFFF, desc: "Test constant for numbers slightly bigger than 32 bits"}
+# Test constant for https://arch2code.atlassian.net/browse/A2C-89
+ #YUGE  : {value: 0xFFFFFFFFFFFFFFFF, desc: "Test constant for numbers of 64 bits"}
+  YUGE  : {value: 0x7FFFFFFFFFFFFFFF, desc: "Test constant for numbers of 63 bits"}
+  DWORD : {value: 32, desc: size of a double word}
+  DWORD_LOG2 : {eval: "($DWORD).bit_length()", desc: "size of a double word log2"}
+  BOB0  : {value: 16, desc: "Memory size for instance 0"}
+  BOB1  : {value: 15, desc: "Memory size for instance 1"}
+
+encoders:
+  opcodeEnA:
+    desc: "Opcode Encoder A"
+    encoderType: opcodeTagT
+    encoderTypeDesc: opcode tag
+    encoderTypeWidth: 9
+    enumType: opcodeEnumT
+    enumPrefix: OPCODEATYPE_
+    baseConstPrefix: OPCODEABASE_
+    zeroBased: true
+    logarithmic: true
+    items:
+      read:     { numBits: DWORD_LOG2,     desc: Read command,   varName: read }
+      write:    { numBits: DWORD_LOG2,     desc: Write command,  varName: write }
+      wait:     { numBits: DWORD_LOG2,     desc: Wait command,   varName: wait }
+      evict:    { numBits: DWORD_LOG2,     desc: Evict command,  varName: evict }
+      trim:     { numBits: 1,              desc: Trim command,   varName: trim }
+
+
+types:
+  twoBitT:
+    width: 2
+    desc: this is a 2 bit type
+  threeBitT:
+    width: 3
+    desc: this is a 3 bit type
+  fourBitT:
+    width: 4
+    desc: this is a 4 bit type
+  sevenBitT:
+    width: 7
+    desc: Used as a threeBitT plus a fourBitT for the register structure dRegSt
+  aSizeT:
+    width: ASIZE
+    desc: type of width ASIZE
+  aBiggerT:
+    width: ASIZE2
+    desc: yet another type
+  bSizeT:
+    width: BSIZE_LOG2
+    desc: for addressing memory
+  readyT:
+    desc: either ready or not ready
+    enum:
+      - {enumName: READY_NO,  desc: Not ready, value: 0}
+      - {enumName: READY_YES, desc: Ready,     value: 1}
+  opcodeT:
+    desc: opcode with fixed width
+    width: 8
+    enum:
+      - {enumName: ADD,     desc: Add,      value: 0}
+      - {enumName: SUB,     desc: Subtract, value: 5}
+  apbAddrT:
+    width: DWORD
+    desc: for addressing register via APB
+  apbDataT:
+    width: DWORD
+    desc: for the data sent or recieved via APB
+
+
+# variables used as members of structures, only structures are attached to interfaces
+## variablename: is the variable's name and key for usage by any other dictionary doing a lookup, required
+### width: followed by a number or a constant's key (constantname), required
+### desc: followed by a string is a description of this variable, required
+variables:
+  variablea:
+    type: aSizeT
+    desc: One bit of A
+  variablea2:
+    type: aBiggerT
+    desc: Two bits of A
+  variabled:
+    type: threeBitT
+    desc: Three bits of D
+  variabled2:
+    type: fourBitT
+    desc: Four bits of D
+
+# structures are collections of variables, or other structures, structures are the main communication tool from block to block on any interface
+## structureName: is the structure's name and key for usage by any other dictionary doing a lookup, required
+### - variablename
+### - strcuturename
+### dash (-) followed by a variablename or a structureName, the dash is making a list of variables or structures at least one is required to create a valid structure
+### if no type is specified the variable must exist in the variables section
+structures:
+  aSt:
+    variablea: {arraySize: ASIZE2}
+    variablea2: {varType: twoBitT}
+  aASt:
+    variablea: {}
+  aRegSt:
+    a: {varType: sevenBitT, generator: register}
+  dRegSt:
+    d: {varType: sevenBitT, generator: register}
+  dSt:
+    variabled: {}
+    variabled2: {}
+  nestedSt:
+    variablea: {}
+    bob: {subStruct: dSt}
+    joe: {subStruct: seeSt, arraySize: 2, desc: Need two of these}
+    #generator: register
+# after https://arch2code.atlassian.net/browse/A2C-123
+  bSizeRegSt:
+    index: {varType: bSizeT, generator: register}
+  bSizeSt:
+    index: {varType: bSizeT}
+  apbAddrSt:
+    address: {varType: apbAddrT, generator: address}
+  apbDataSt:
+    data: {varType: apbDataT, generator: data}
+
+# interfaces are needed to make any connection from one instance of a block to another block's instance
+## interfacename: is the interface's name and key for usage by any other dictionary doing a lookup, required
+### interfaceType: followed by a string that links to a valid interface type
+####        i.e. rdy_vld could be defined as a ready valid interface
+####             staticIf could be defined as a single port interface with a structure and no protocol
+####             req_ack could be defined as a request acknowledge interface with a structure in both directions
+####             req_ack
+### structures: is a list of dictionaries, each dictionary has two keys, each item in the list is one per structure on this interface
+###                 some interfaces can have more than one structure but all interfaces must have at least one
+#### dash (-) followed by a dictionary
+#### structureName: followed by a string is a key reference to the structures dictionary
+#### structureType: followed by a string, the structureType is what the structureName gets bound to during generation
+####                    a System Verilog interface may have more than one structureType defined and that is what each
+####                    structureName gets bound to during generation, similar for System C
+### desc: followed by a string is a description of this interface, required
+interfaces:
+  aStuffIf:
+    interfaceType: req_ack
+    desc: "An interface for A"
+    structures:
+      - {structure: aSt, structureType: data_t}
+      - {structure: aASt, structureType: rdata_t}
+  dStuffIf:
+    desc: "An interface for D"
+    interfaceType: rdy_vld
+    structures:
+      - {structure: dSt, structureType: data_t}
+  apbReg:
+    desc: "CPU access to SoC registers in the design"
+    interfaceType: apb
+    structures:
+      - {structure: apbAddrSt, structureType: addr_t}
+      - {structure: apbDataSt, structureType: data_t}
+  startDone:
+    desc: "A start done interface"
+    interfaceType: notify_ack
+
+# blocks these are subsystems or blocks that can be instanced one or more times
+## blockname: followed by a name that gives this object (block) a unique key
+### portname: followed by a name that gives this port a unique key for this block, this is used when a block is instanced
+###           more than once or if a port is instanced more than once to connect to multiple blocks with the same interface, optional
+#### count: number that indicates how many of these portname exist and can be connected, optional
+####          numbered from 0 upto count - 1
+blocks:
+  top:
+    desc: The top most block
+    blockGroup: blocks
+    hasVl: false
+  cpu:
+    desc: A RISC-V CPU
+    blockGroup: blocks
+    hasVl: false
+  blockA:
+    desc: The block named A
+    blockGroup: blocks
+    hasVl: true
+  blockB:
+    desc: The block named B
+    blockGroup: blocks
+    hasVl: false
+  apbDecode:
+    desc: The block to decode apb addresses
+    blockGroup: blocks
+    hasVl: false
+  blockBRegs:
+    desc: The register block inside block B
+    blockGroup: blocks
+    hasVl: false
+  blockD:
+    desc: The block named D
+    blockGroup: blocks
+    hasVl: false
+  blockARegs:
+    desc: The register block inside block A
+    blockGroup: blocks
+    hasVl: false
+  blockE:
+    desc: The block named E
+    blockGroup: blocks
+    hasVl: false
+  blockF:
+    desc: The block named F
+    blockGroup: blocks
+    params: [bob, fred]
+    hasVl: true
+  threeCs:
+    desc: A block that contains three copies of blockC
+    blockGroup: blocks
+    hasVl: false
+
+
+# instances, these are instantiations of objects
+#   implies a top level of some kind that is instancing objects, an instance can instance other objects, optional nesting
+## instancename: is the instance name being instanced, required
+### instanceType: followed by a string which is the key to finding which object is being instanced (objectname), required
+### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
+###          for this instance, optional (currently does not work in diagram generation code)
+# The highest level container must match topContainer defined in project file
+instances:
+  uTop:
+    container:  top # self reference
+    instanceType: top
+    addressMap: False
+    instGroup: top
+  uCPU:        {container: top,     instanceType: cpu,        addressMap: False,  instGroup: top,                             color: pink}
+  uBlockA:     {container: top,     instanceType: blockA,     addressGroup: top,  instGroup: top}
+  uAPBDecode:  {container: top,     instanceType: apbDecode,  addressMap: False,  instGroup: top,                             color: pink}
+  uBlockC:     {container: top,     instanceType: blockC,     addressMap: False,  instGroup: top,                             color: orange}
+  uBlockB:     {container: top,     instanceType: blockB,     addressGroup: top,  instGroup: top,                             color: lightslateblue}
+  uBlockARegs: {container: blockA,  instanceType: blockARegs, addressMap: False,  instGroup: top, registerLeafInstance: True, color: grey}
+  uBlockBRegs: {container: blockB,  instanceType: blockBRegs, addressMap: False,  instGroup: top, registerLeafInstance: True, color: grey}
+  uBlockD:     {container: blockB,  instanceType: blockD,     addressGroup: ip1,  instGroup: top, addressMultiples: 2 } #get 2x the number of addresses
+  uBlockF0:    {container: blockB,  instanceType: blockF,     addressMap: False,  instGroup: top, variant: variant0   }
+  uBlockF1:    {container: blockB,  instanceType: blockF,     addressMap: False,  instGroup: top, variant: variant1   }
+  uThreeCs:    {container: blockB,  instanceType: threeCs,    addressMap: False,  instGroup: top,                             color: green}
+  uBlockC0:    {container: threeCs, instanceType: blockC,     addressMap: False,  instGroup: top,                             color: orange}
+  uBlockC1:    {container: threeCs, instanceType: blockC,     addressMap: False,  instGroup: top,                             color: orange}
+  uBlockC2:    {container: threeCs, instanceType: blockC,     addressMap: False,  instGroup: top,                             color: orange}
+
+# connections are specify interface connections between different instaces of objects
+## - {}, dash followed by a dictionary, connections is a list of dictionaries
+### interface: followed by string that is a key to this interface, an interface can be connected 1 or more times
+### src: followed by a name of the source / master instance for this conneciton
+### dst: followed by a name of the destination / slave instance for this conneciton
+###
+### ports are optional, and are implied in most use cases. The exception is where disambiguation is needed, mainly in array use cases
+### srcport: used if there is more than one objectname instance of the source / master, declares the port of source objectname to connect to
+### dstport: used if there is more than one objectname instance of destination / slave, declares the port of destination objectname to connect to
+### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
+###          for this connection, optional (currently does not work in diagram generation code)
+connections:
+  - {interface: aStuffIf, src: uBlockA,                  dst: uBlockB,    dstport: btod} # struct defined as part of class / instance
+  - {interface: cStuffIf, src: uBlockA,                  dst: uBlockC,    dstport: see}
+  - {interface: cStuffIf, src: uBlockD,                  dst: uThreeCs,   dstport: see0}
+  - {interface: cStuffIf, src: uBlockF0,                 dst: uThreeCs,   dstport: see1}
+  - {interface: cStuffIf, src: uBlockF1,                 dst: uThreeCs,   dstport: see2}
+  - {interface: dStuffIf, src: uBlockD, srcport: dee0,   dst: uBlockF0}
+  - {interface: dStuffIf, src: uBlockD, srcport: dee1,   dst: uBlockF1}
+  - {interface: apbReg,   src: uCPU,                     dst: uAPBDecode}
+  - {interface: startDone, src: uBlockA,                 dst: uBlockB}
+
+# in connection maps the direction field should match the instance port direction
+connectionMaps:
+  - {interface: aStuffIf, block: blockB,  port: btod, direction: dst, instance: uBlockD,     instancePort: btod}
+  - {interface: apbReg,   block: blockA,              direction: dst, instance: uBlockARegs}
+  - {interface: apbReg,   block: blockB,              direction: dst, instance: uBlockBRegs}
+  - {interface: cStuffIf, block: threeCs, port: see0, direction: dst, instance: uBlockC0,    instancePort: see}
+  - {interface: cStuffIf, block: threeCs, port: see1, direction: dst, instance: uBlockC1,    instancePort: see}
+  - {interface: cStuffIf, block: threeCs, port: see2, direction: dst, instance: uBlockC2,    instancePort: see}
+
+memories:
+  - {memory: blockBTable0,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, local: true, desc: "Dual Port with no connections, local mem array"}
+  - {memory: blockBTable1,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Dual Port with one connection"}
+  - {memory: blockBTable2,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Dual Port with two connections native to blockB"}
+  - {memory: blockBTable3,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Dual Port with two connections native to blockB, explicitly connected"}
+  - {memory: blockBTableSP0, block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Single Port with no connections", memoryType: singlePort}
+  - {memory: blockBTableSP,  block: blockB, structure: nestedSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Single Port with connection",     memoryType: singlePort, count: ASIZE}
+  - {memory: test,           block: blockF, structure: seeSt, wordLines: bob, addressStruct: bSizeSt, desc: "Dual Port with one connection"}
+
+parameters:
+  blockF:
+    - {variant: variant0, param: bob,  value: BOB0 }
+    - {variant: variant0, param: fred, value: 0    }
+    - {variant: variant1, param: bob,  value: BOB1 }
+    - {variant: variant1, param: fred, value: 1    }
+
+memoryConnections:
+  - {memory: blockBTable1,  block: blockB, instance: uBlockD}
+  - {memory: blockBTable2,  block: blockB, portSuffix: Port2}
+  - {memory: blockBTable3,  block: blockB, portSuffix: Write}
+  - {memory: blockBTable3,  block: blockB, portSuffix: Read}
+  - {memory: blockBTableSP, block: blockB, instance: uBlockD}
+
+registers:
+# after https://arch2code.atlassian.net/browse/A2C-123
+#  uncommnet rwNestsed and roD once fixed, this works for SystemVerilog but no SystemC currently
+# - {register: rwNested, regType: rw,  block: blockB,   structure: nestedSt,   desc: A Read Write register with a nested structure}
+  - {register: rwD,      regType: rw,  block: blockB,   structure: dRegSt,     desc: A Read Write register}
+  - {register: roBsize,  regType: ro,  block: blockB,   structure: bSizeRegSt, desc: A Read Only register with a structure that has a definition from an included context}
+  - {register: roA,      regType: ro,  block: blockA,   structure: aRegSt,     desc: A Read Only register}
+
+
+# flows, are very similar to a plantuml sequence diagram, a filename is taken and optionally
+#   consistency checks can be made for connections the flow
+## filenames:
+### - , dash followed by a string indicates the filename for each flow
+####    inside each flow a connection can be indicated and checked for consistency
+####    the format for consistency check and connection replacement in a flow must follow the below format
+####    instance operator instance : connectionKey '''process'''
+####    For example
+####    blockA -> blockC : cs_stuff '''process'''
+#####     spaces are recuired between each item in the string, the word proccess inside triple ticks
+#####     is also needed without spaces to aid in processing
+flows:
+  filenames:
+    - pu_input/is_data_still_valid.pu # this example flow contains an example of a processed connection
+    - pu_input/from_plantuml.pu

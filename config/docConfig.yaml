@@ -1,0 +1,11 @@
+
+mode: asciidoctor
+# path relative to this file
+
+templates:
+  blockHeader: $a2c/templates/doc/blockHeader.j2
+  block: $a2c/templates/doc/block.j2
+  connectionHeader: $a2c/templates/doc/connectionHeader.py
+  structure: $a2c/templates/doc/structure.j2
+  memories: $a2c/templates/doc/memories.py
+  blockSpecification: $a2c/templates/doc/blockSpecification.py

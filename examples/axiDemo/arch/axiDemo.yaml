@@ -1,0 +1,79 @@
+include:
+
+  - axiStd.yaml
+  
+blockDir: .
+constants:
+  AXI_ADDRESS_WIDTH: {value: 32, desc: "The width of the AXI address busses"}
+  AXI_DATA_WIDTH: {value: 32, desc: "The width of the AXI data busses"}
+  AXI_STROBE_WIDTH: {value: 4, desc: "The width of the AXI strobe signals"}
+
+types:
+  axiAddrT:
+    width: AXI_ADDRESS_WIDTH
+    desc: "Address Width"
+  axiDataT:
+    width: AXI_DATA_WIDTH
+    desc: "Width of the data bus."
+  axiStrobeT:
+    width: AXI_STROBE_WIDTH
+    desc: "Width of the strobe bus."
+
+structures:
+  axiAddrSt:
+    addr: {varType: axiAddrT}
+  axiDataSt:
+    data: {varType: axiDataT}
+  axiStrobeSt:
+    strobe: {varType: axiStrobeT}
+
+interfaces:
+  axiRdIf:
+    desc: "AXI Read channels; Address and Data"
+    interfaceType: axi_read
+    multiCycleMode: api_list_size
+    maxTransferSize: 256
+    structures:
+      - {structure: axiAddrSt, structureType: addr_t}
+      - {structure: axiDataSt, structureType: data_t}
+  axiWrIf:
+    desc: "AXI Write channels; Address, Data, and Response"
+    interfaceType: axi_write
+    multiCycleMode: api_list_size
+    maxTransferSize: 256
+    structures:
+      - {structure: axiAddrSt, structureType: addr_t}
+      - {structure: axiDataSt, structureType: data_t}
+      - {structure: axiStrobeSt, structureType: strb_t }
+
+blocks:
+  top:
+    desc: "The top most block, not really used in this project"
+    blockGroup: blocks
+  producer:
+    desc: "The block that initiates AXI transactions, the one reading or writting."
+    blockGroup: blocks
+  consumer:
+    desc: "The block that recieves AXI transactions, the one returns read data or stores write data."
+    blockGroup: blocks
+
+instances:
+  uTop:
+    container:  top # self reference
+    instanceType: top
+    addressMap: False
+    instGroup: top
+  uProducer:  {container: top, instanceType: producer, addressMap: False, instGroup: top, color: green}
+  uConsumer:  {container: top, instanceType: consumer, addressGroup: top, instGroup: top, color: orange}
+  
+connections:
+  - {interface: axiRdIf, src: uProducer, dst: uConsumer, name: axiRd0}
+  - {interface: axiRdIf, src: uProducer, dst: uConsumer, name: axiRd1}
+  - {interface: axiRdIf, src: uProducer, dst: uConsumer, name: axiRd2}
+  - {interface: axiRdIf, src: uProducer, dst: uConsumer, name: axiRd3}
+  - {interface: axiWrIf, src: uProducer, dst: uConsumer, name: axiWr0}
+  - {interface: axiWrIf, src: uProducer, dst: uConsumer, name: axiWr1}
+  - {interface: axiWrIf, src: uProducer, dst: uConsumer, name: axiWr2}
+  - {interface: axiWrIf, src: uProducer, dst: uConsumer, name: axiWr3}
+
+  

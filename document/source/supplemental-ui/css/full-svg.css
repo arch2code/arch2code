@@ -1,0 +1,8 @@
+.doc {
+    max-width: none;
+}
+@media screen and (min-width: 1024px) {
+    .doc {
+        max-width: none;
+    }
+}

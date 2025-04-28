@@ -1,0 +1,52 @@
+// GENERATED_CODE_PARAM --block=blockB
+// GENERATED_CODE_BEGIN --template=blockSpecification
+## Block Diagram for blockB
+
+jira issue: https://arch2code.atlassian.net/browse/A2C-288[A2C-288], _todo_.
+
+## Interfaces for blockB
+
+[cols="1, 1, 1, 1, 1, 1"]
+|===
+|Interface Name |Interface Type |Direction |Structure Type |Structure Name |Description
+
+|btod |reqAckIf |blockB is Destination| reqDataSt |xref:#aSt[aSt]| An interface for A
+|||| ackDataSt |xref:#aASt[aASt]|
+|startDone |startDoneIf |blockB is Destination| None| None| A start done interface
+|apbReg |apbIf |blockB is Destination| apbAddrSt |xref:#apbAddrSt[apbAddrSt]| CPU access to SoC registers in the design
+|||| apbDataSt |xref:#apbDataSt[apbDataSt]|
+|===
+
+
+## Memories Instances in blockB
+
+jira issue: https://arch2code.atlassian.net/browse/A2C-289[A2C-289], _todo_.
+
+## Registers Delcared in blockB
+
+jira issue: https://arch2code.atlassian.net/browse/A2C-290[A2C-290], _todo_.
+
+## Module Instances in blockB
+
+jira issue: https://arch2code.atlassian.net/browse/A2C-291[A2C-291], _todo_.
+
+## Packages included in blockB
+
+jira issue: https://arch2code.atlassian.net/browse/A2C-292[A2C-292], _todo_.
+
+## Structures througout blockB
+
+.aSt
+[#aSt]
+image::aSt.svg[width=auto,opts=interactive]
+.aASt
+[#aASt]
+image::aASt.svg[width=auto,opts=interactive]
+.apbAddrSt
+[#apbAddrSt]
+image::apbAddrSt.svg[width=auto,opts=interactive]
+.apbDataSt
+[#apbDataSt]
+image::apbDataSt.svg[width=auto,opts=interactive]
+
+// GENERATED_CODE_END

@@ -1,0 +1,3 @@
+:builddate:
+:revhash:
+:revnumber:

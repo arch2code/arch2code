@@ -1,0 +1,57 @@
+# This example which is being used for requirements building shows 8 dictionaries
+#                                                                     constants
+#                                                                     variables
+#                                                                     structures
+#                                                                     interfaces
+#                                                                     objects
+#                                                                     connections
+#                                                                     instances
+#                                                                     flows
+include:
+  - hierIncludeCInclude.yaml
+  - ../hierInclude.yaml
+
+types:
+  cSizeT:
+    width: C_ANOTHER_SIZE
+    desc: A type from an include
+  # This will test the more than on nested context; hierInclude.yaml, and hierIncludeTop.yaml
+  #   are part of this context but hierIncludeNestedTop does not make it in https://arch2code.atlassian.net/browse/A2C-191
+  #cUnusedT:
+  #  width: YET_ANOTHER_SIZE
+  #  desc: Test of includes
+
+structures:
+  cSt:
+    cAnother: {varType: cSizeT}
+
+interfaces:
+  cnInterface:
+    interfaceType: rdy_vld
+    desc: "An interface running inside C"
+    structures:
+      - {structure: cSt, structureType: data_t}
+
+blocks:
+  blockCX:
+    desc: The block named CX
+    blockGroup: blocks
+  blockCY:
+    desc: The block named CY
+    blockGroup: blocks
+  blockCZ:
+    desc: The block named CZ
+    blockGroup: blocks
+
+instances:
+  uBlockCX:     {container: blockC,  instanceType: blockCX,  addressMap: False, instGroup: blocks}
+  uBlockCY:     {container: blockC,  instanceType: blockCY,  addressMap: False, instGroup: blocks}
+  uBlockCZ:     {container: blockC,  instanceType: blockCZ,  addressMap: False, instGroup: blocks}
+
+connections:
+  - {interface: cnInterface, src: uBlockCX, dst: uBlockCY, dstport: x, name: cx2y}
+  - {interface: cnInterface, src: uBlockCX, dst: uBlockCZ, dstport: x, name: cx2z}
+
+connectionMaps:
+  - {interface: anInterface, block: blockC,  port: eh2c, direction: dst, instance: uBlockCX}
+  - {interface: b2C,         block: blockC,              direction: dst, instance: uBlockCX}

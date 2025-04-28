@@ -1,0 +1,7 @@
+
+include:
+  - hierIncludeNestedTop.yaml
+
+constants:
+  ANOTHER_SIZE: {value: 4, desc: "The size for another size"}
+

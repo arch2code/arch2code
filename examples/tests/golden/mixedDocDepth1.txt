@@ -1,0 +1,126 @@
+instance uTop is of type top
+instance uCPU is of type cpu
+instance uBlockA is of type blockA
+instance uAPBDecode is of type apbDecode
+instance uBlockC is of type blockC
+instance uBlockB is of type blockB
+instance uBlockARegs is of type blockARegs
+instance uBlockBRegs is of type blockBRegs
+instance uBlockD is of type blockD
+instance uBlockF0 is of type blockF
+instance uBlockF1 is of type blockF
+instance uThreeCs is of type threeCs
+instance uBlockC0 is of type blockC
+instance uBlockC1 is of type blockC
+instance uBlockC2 is of type blockC
+Block: cpu
+Connection: uCPU -> uAPBDecode
+Interface: apbReg
+CPU access to SoC registers in the design
+
+Structure: apbAddrSt
+Var:  address  for addressing register via APB
+
+Structure: apbDataSt
+Var:  data  for the data sent or recieved via APB
+
+Block: blockA
+Connection: uBlockA -> uBlockB
+Interface: aStuffIf
+An interface for A
+
+Structure: aSt
+Var:  variablea One bit of A One bit of A
+Var:  variablea2  this is a 2 bit type
+
+Structure: aASt
+Var:  variablea One bit of A One bit of A
+
+Connection: uBlockA -> uBlockC
+Interface: cStuffIf
+An interface for C
+
+Structure: seeSt
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
+
+Connection: uBlockA -> uBlockB
+Interface: startDone
+A start done interface
+
+Connection: uAPBDecode -> uBlockA
+Interface: apbReg
+CPU access to SoC registers in the design
+
+Structure: apbAddrSt
+Var:  address  for addressing register via APB
+
+Structure: apbDataSt
+Var:  data  for the data sent or recieved via APB
+
+Block: apbDecode
+Connection: uCPU -> uAPBDecode
+Interface: apbReg
+CPU access to SoC registers in the design
+
+Structure: apbAddrSt
+Var:  address  for addressing register via APB
+
+Structure: apbDataSt
+Var:  data  for the data sent or recieved via APB
+
+Connection: uAPBDecode -> uBlockA
+Interface: apbReg
+CPU access to SoC registers in the design
+
+Structure: apbAddrSt
+Var:  address  for addressing register via APB
+
+Structure: apbDataSt
+Var:  data  for the data sent or recieved via APB
+
+Connection: uAPBDecode -> uBlockB
+Interface: apbReg
+CPU access to SoC registers in the design
+
+Structure: apbAddrSt
+Var:  address  for addressing register via APB
+
+Structure: apbDataSt
+Var:  data  for the data sent or recieved via APB
+
+Block: blockC
+Connection: uBlockA -> uBlockC
+Interface: cStuffIf
+An interface for C
+
+Structure: seeSt
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
+
+Block: blockB
+Connection: uBlockA -> uBlockB
+Interface: aStuffIf
+An interface for A
+
+Structure: aSt
+Var:  variablea One bit of A One bit of A
+Var:  variablea2  this is a 2 bit type
+
+Structure: aASt
+Var:  variablea One bit of A One bit of A
+
+Connection: uBlockA -> uBlockB
+Interface: startDone
+A start done interface
+
+Connection: uAPBDecode -> uBlockB
+Interface: apbReg
+CPU access to SoC registers in the design
+
+Structure: apbAddrSt
+Var:  address  for addressing register via APB
+
+Structure: apbDataSt
+Var:  data  for the data sent or recieved via APB
+

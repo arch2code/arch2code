@@ -1,0 +1,45 @@
+{{!-- old code commented out
+<header class"header">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="{{{or site.url (or siteRootUrl siteRootPath)}}}">{{site.title}}</a>
+            <button class="navbar-burger" data-target="topbar-nav">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+</header>
+--}}
+
+<header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="{{{or site.url siteRootPath}}}">{{site.title}}</a>
+      {{#if env.SITE_SEARCH_PROVIDER}}
+      <div class="navbar-item search hide-for-print">
+        <div id="search-field" class="field">
+          <input id="search-input" type="text" placeholder="Search the docs"{{#if page.home}} autofocus{{/if}}>
+        </div>
+      </div>
+      {{/if}}
+      <button class="navbar-burger" data-target="topbar-nav">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+        <a class="navbar-item" href="https://arch2code.org">Home</a>
+        <a class="navbar-item" href="https://arch2code.org/index.php/blog/">Arch2Code blog</a>
+        <div class="navbar-item">
+          <span class="control">
+            <a class="button is-primary" href="https://bitbucket.org/arch2code/arch2code/src/main/">Goto Repository</a>
+          </span>
+        </div>
+      </div>
+    </div>
+  </nav>
+</header>

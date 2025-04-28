@@ -1,0 +1,72 @@
+# Example Address control file that manages how addresses are generated, and ID's are generated
+# for addresses, it is assumed that there could be multiple levels of decode. For this purpose 
+# address groups enable addresses to be generated in overlapping range offsets
+
+#eg assume a design is made up of multiple IP's. Each ip can have a range of addresses at top level
+# within the ip different blocks have an assigned set of addresses
+
+# top
+#   ip1      0x00000000
+#     block1 0x00100000
+#     block2 0x00200000
+#     block3 0x00300000     
+#   ip2      0x01000000
+#     block1 0x01100000
+#   ip3      0x02000000
+#     block1 0x02100000
+#     block2 0x02200000
+# to achieve this style of address map ip1, ip2, ip3 would all be part of addressGroup top
+# block1,2,3 of ip1 would be in addressGroup ip1
+# block1 of ip2 would be in addressGroup ip2
+# block1,2 of ip3 would be in addressGroup ip3
+#
+# a var and enum is automatically generated for each address group eg
+# var:  address_group_top_id
+# enum: ADDRESS_GROUP_TOP_IP1=0x0, ADDRESS_GROUP_TOP_IP2=0x1, ADDRESS_GROUP_TOP_IP2=0x2
+#
+# instances definition have a couple of fields to allow control. 
+#  AddressMap: True|False to define if they are included in the address map (defaults to True)
+#  AddressGroup: this field needs to be one of the valid AddressGroups defined in the addressControl file
+#  AddressID: this is the same as the value in the address group enum above
+#  AddressMultiples: this is used to get multiple address increments, if omitted, assumed to be 1
+# the schema is used to indicate which fields are used for what
+
+
+AddressGroups:
+  top:
+    addressIncrement: 0x01000000
+    maxAddressSpaces: 16
+    varType: addr_id_top
+    enumPrefix: ADDR_ID_TOP_
+    varTypeContext: apbDecode.yaml  # which file context should be used for generated type. If omitted then same as file that declares the container block for the decoder
+    decoderInstance: uAPBDecode # what instance is used to decode and route the address bus for this address group
+    primaryDecode: True         # this is the primary address group for this design
+
+# instanceId's are simlar to addressID, with the exception that address space is not tied to them
+# typical use cases might include error reporting to FW where an id is needed to be assigned
+# a var and enum is automatically generated for each address group eg
+# var:  instance_group_top_id
+# enum: INSTANCE_GROUP_TOP_IP1=0x0, INSTANCE_GROUP_TOP_IP2=0x1, INSTANCE_GROUP_TOP_IP2=0x2
+#
+# instances definition have a couple of fields to allow control. 
+#  InstanceGroup: this field needs to be one of the valid AddressGroups defined in the addressControl file
+#  InstanceID: this is the same as the value in the address group enum above
+
+# in the example below all instances will have a unique id across entire design
+
+InstanceGroups:
+  top:
+    varType: inst_top
+    enumPrefix: INST_TOP_
+  blocks:
+    varType: blockID
+    enumPrefix: BLOCK_TOP_
+
+AddressObjects:
+  memories: # note order is important as it controls address generation. Memories first as they are typically bigger and have alignment restrictions
+    alignment: memsize    #options are memsize or number of bytes memsize means always aligned to memory size ie internally can decode the lower bits directly
+    sizeRoundUpPowerOf2: True
+    sortDescending: True  
+  registers:
+    alignment: 8          
+    sortDescending: True  

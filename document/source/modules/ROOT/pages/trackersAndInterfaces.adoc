@@ -1,0 +1,105 @@
+= Trackers and Interfaces
+
+== Transactional vs Non-transactional domains
+The arch2code tool is intended to allow rapid generation of headers for multiple platforms including System Verilog and SystemC. 
+It is also intended to support hybrid cross plaform integration. For example verification test benches and stimuli may come from 
+the SystemC model and used to test System Verilog.
+While it is possible to write SystemC with detailed timing, it is important to support the usecase of transactional (zero timed) 
+systemC (TLM 2.0 not currently supported). The transactional use case is useful for high level architecture and design
+exploration, and also for verification. The transactional model is also higher performance due to its higher level of abstraction.
+However a System Verilog implementation for a HW design is not transactional, and is cycle by cycle.
+To allow the mix and match of different implementation types - especially useful for verification it is neccessary
+for the interfaces to provide capability to translate between transactional and non-transactional domains.
+
+== Trackers
+Trackers are part of the debug infrastructure. For more complex designs there are typically critical resources used across the 
+design that are used a reference. For example, a system that handle commands, may have a command id resource used to reference 
+a command during execution. In such an example the command id may be allocated on receipt of command and remain until the 
+completion of the command. A tracker is a debug tool, allowing for the context associated with such a design reference to be 
+output in the log based on the design reference. It also provides an easily searchable unique reference for each allocation of 
+the resource. The additional information may be beyond what a specific interface itself utilizes, and while it should not be 
+used in internal design logic, it is highly beneficial for debug and verification. 
+
+Some examples of trackers may be found in the example projects.
+
+The trackers are particularly useful when interfaces are communicating between transactional and non-transactional domains. 
+In particular can solve the issue of debug context getting lost between the two domains. For example an interface may require 
+many cycles to complete a transaction, and the debug context may be lost in the process. The tracker can be used to maintain 
+the debug context across the interface. In a transactional model, it assumes that data transfers are not actually occuring, 
+cycle by cycle across the interface. Instead, data is handled via pointers using mechanism described below. 
+This mode of operation has two main benefits - debuggability and transactional model performance.
+
+=== Tracker usage
+
+As stated above trackers are used to follow design critical resources that flow through the interfaces. As such there are
+two API's used to record the allocation and deallocation of those resources. alloc() and dealloc() should be called in 
+model code at the time of allocation and deallocation. This functionality is useful for the various types of modelling 
+as well as verification, and HW debug. However for the HW use cases these API's are not directly available. For
+this reason, interfaces may be used to trigger allocation and deallocation of tracker tags. In the 
+`connection:` section of the yaml definition an connection can be identified as the first or last interface using the 
+`tracker:` key with either `alloc` or `dealloc`. If a connection is specified as `tracker: alloc`, then if the resource
+is not already allocated, it will be automatically added to the tracker. Similarly `tracker: dealloc` will trigger 
+deallocation of the resource. For complex scenarios it may be necessary to create debug interfaces to use
+just for the purpose of alloc/dealloc.
+
+== Multicycle Interfaces
+Currently multicyle interfaces are only supported for ready-valid interfaces, and ready-valid-burst interfaces which 
+have a header interface separate to the data interface. More interface types may be added later. However, the current 
+implementation is intended to be flexible enough to allow various transactional modes to be supported.
+
+== Transactional Interface Modes
+
+For the different modes of operation, the information necessary for transaction context may be available in the interface 
+itself (eg header). The header may contain indirect information - via tracker, or directly via a length field. 
+The identification of the field to use is done via the generator: tracker(xxx) or generator: tracker(length) flags 
+associated with a field in the data structure section of the definition. In other use cases, the information may be 
+know already as a function of the design to sender and reciever.
+
+=== Transactional data Transfers
+
+Transactional data transfer are handled via 'backdoor' buffers. Where the interace is based around trackers the 
+data resides in a tracker specific buffer. The advantage of this mode of operation is that it may allow the passing of 
+data through multiple interfaces without need to perform a memcpy. If there is no tracker associated with the interface, 
+a memcpy will be required either side of the interface. However in both cases the interface provides the same API to the memory. 
+`getWritePtr()` in the source and `getReadPtr()` in the destination give access to the data being transferred.
+
+=== Fixed Size Mode (`fixed_size`)
+
+For transactions that are always the same size, this can be specified in the interface definition using the maxTransferSize: 
+field. The value can be a number of a constant from the constants: section.
+
+=== Variable Size based on tracker context in header (rdyVldBurst only) (`header_tracker`)
+
+The data transfer size based on the tracker context. The field in the header should be specified with generator: tracker(xxx). 
+The interface will then query the context to establish the size of the transfer.
+
+=== Variable Size based on Header (rdyVldBurst only) (`header_size`)
+
+The size may be variable, based on a field in the header with generator: tracker(length). The maxTransferSize: field should 
+contain the largest size supported by the design, and ram will be allocated based on this.
+
+=== Variable Size based on tracker provided via API (`api_list_tracker`)
+
+For use case where tracker context is not included in the interface, it may be neccesary to provide that context via API. 
+In the write direction, the API allows to provide that context directly in the API call `write([data], [tracker_context])`. 
+In the read direction, it is a bit more complicated as the API call may not be made at the time of the sender initiating a transaction. 
+To this end the `push_context([tracker_context])` API call is provided to allow queuing of contexts for the interface prior 
+to the sender initiating a transaction. It should be noted that implementations in transactional model of both sender (source) 
+and responder (destination) should provide the information in their respective methods as either side may be replaced with a 
+non-transactional implementation
+
+=== Variable Size based on size information via API (`api_list_size`)
+
+For use case where size context is not included in the interface, it may be neceesary to provide that context via API. 
+In the write direction, the API allows to provide that context directly in the API call `write([data], [transfer_size])`. 
+In the read direction, it is a bit more complicated as the API call may not be made at the time of the sender initiating 
+a transaction. To this end the `push_context([transfer_size])` API call is provided to allow priming of the interface prior 
+to the sender initiating a transaction. It should be noted that both implementation in transactional model of both sender 
+(source) and responder (destination) should provide the information in there respective methods as either side may be 
+replaced with a non-transactional implementation
+
+== Transactional vs Non-transactional API
+
+There are separate API calls for transactional vs non-transactional usage. Non-Transactional implementations should use the 
+`clocked` varients of API's where appropriate. The clocked API varients are intended to allow cycle by cycle transfer of data. 
+The internals of the interface take care of the backdoor buffering transformations.

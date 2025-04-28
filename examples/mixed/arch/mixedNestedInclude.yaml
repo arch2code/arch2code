@@ -1,0 +1,6 @@
+
+
+constants:
+  DSIZE : {value: 1, desc: "The size of D"}
+  DSIZE2: {eval: "$DSIZE+1", desc: "The size of D2"}
+

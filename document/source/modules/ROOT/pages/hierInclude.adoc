@@ -1,0 +1,4 @@
+= Block Diagram of an example architecture with Hierarchical Inclusion
+
+.Diagram of the hierInclude example
+image::uTopHierInclude.svg[width=3072,opts=interactive,id=TopHierInclude]

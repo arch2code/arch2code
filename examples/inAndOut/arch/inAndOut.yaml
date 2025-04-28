@@ -1,0 +1,210 @@
+# This example which is being used for requirements building shows 8 dictionaries
+#                                                                     constants
+#                                                                     variables
+#                                                                     structures
+#                                                                     interfaces
+#                                                                     objects
+#                                                                     connections
+#                                                                     instances
+#                                                                     flows
+  
+# constants / parameters are architectural level variables that can be used to control the size of structures,
+# variables, number of instances, etc.
+## constantname: is the constant's name and key for usage by any other dictionary doing a lookup, required
+## for any other key in any other dictionary
+### value: followed by a number to indicate the value for this constant, required if eval is not used
+### desc: followed by a string is a description of this constant, required
+### eval: optional in place of value, this is a math function that can be used to make a constant from other constant
+###       supports +, -, *, and / math.
+### to reference another constant use $CONSTNAME
+constants:
+  ASIZE : {value: 1, desc: "The size of A"}
+  ASIZE2: {eval: "$ASIZE+1", desc: "The size of A+1"}
+  BIGE33: {value: 0x1FFFFFFFF, desc: "Test constant for numbers slightly bigger than 32 bits"}
+  BIGE53: {value: 0x3FFFFFFFFFFFFF, desc: "Test constant for numbers slightly bigger than 32 bits"}
+
+types:
+  twoBitT:
+    width: 2
+    desc: this is a 2 bit type
+  threeBitT:
+    width: 3
+    desc: this is a 3 bit type
+  fourBitT:
+    width: 4
+    desc: this is a 4 bit type
+  aSizeT:
+    width: ASIZE
+    desc: type of width ASIZE
+  aBiggerT:
+    width: ASIZE2
+    desc: yet another type
+  bSizeT:
+    width: 5
+    desc: for addressing memory, temp, unused
+  readyT:
+    desc: either ready or not ready
+    enum:
+      - {enumName: READY_NO,  desc: Not ready, value: 0}
+      - {enumName: READY_YES, desc: Ready,     value: 1}
+
+# variables used as members of structures, only structures are attached to interfaces
+## variablename: is the variable's name and key for usage by any other dictionary doing a lookup, required
+### width: followed by a number or a constant's key (constantname), required
+### desc: followed by a string is a description of this variable, required
+variables:
+  variablea:
+    type: aSizeT
+    desc: One bit of A
+  variablea2:
+    type: aBiggerT
+    desc: Two bits of A
+  variableb:
+    type: bSizeT
+    desc: Variable of B
+  variablec:
+    type: twoBitT
+    desc: Two bits of C
+  variablec2:
+    type: threeBitT
+    desc: Three bits of C
+  variabled:
+    type: threeBitT
+    desc: Three bits of D
+  variabled2:
+    type: fourBitT
+    desc: Four bits of D
+
+# structures are collections of variables, or other structures, structures are the main communication tool from block to block on any interface
+## structureName: is the structure's name and key for usage by any other dictionary doing a lookup, required
+### - variablename
+### - strcuturename
+### dash (-) followed by a variablename or a structureName, the dash is making a list of variables or structures at least one is required to create a valid structure
+### if no type is specified the variable must exist in the variables section
+structures:
+  aSt:
+    variablea: {arraySize: ASIZE2}
+  bSt:
+    variableb: {}
+  bBSt:
+    ready: {varType: readyT}
+  seeSt:
+    variablec: {}
+    variablec2: {}
+  dSt:
+    variabled: {}
+    variabled2: {}
+  eNestedSt:
+    variablea: {}
+    bob: {subStruct: dSt}
+    joe: {subStruct: seeSt, arraySize: 2, desc: Need two of these}
+  bSizeSt:
+    index: {varType: bSizeT}
+  eHeaderSt:
+    hdr: {varType: aBiggerT}
+
+# interfaces are needed to make any connection from one instance of a block to another block's instance
+## interfacename: is the interface's name and key for usage by any other dictionary doing a lookup, required
+### interfaceType: followed by a string that links to a valid interface type
+####        i.e. rdy_vld could be defined as a ready valid interface
+####             staticIf could be defined as a single port interface with a structure and no protocol
+####             req_ack could be defined as a request acknowledge interface with a structure in both directions
+####             req_ack 
+### structures: is a list of dictionaries, each dictionary has two keys, each item in the list is one per structure on this interface
+###                 some interfaces can have more than one structure but all interfaces must have at least one
+#### dash (-) followed by a dictionary
+#### structureName: followed by a string is a key reference to the structures dictionary
+#### structureType: followed by a string, the structureType is what the structureName gets bound to during generation
+####                    a System Verilog interface may have more than one structureType defined and that is what each 
+####                    structureName gets bound to during generation, similar for System C
+### desc: followed by a string is a description of this interface, required
+interfaces:
+# Order rdyVld, reqAck, status, rdyAck, memory?, rdyVldBurst, In then Out
+  aStuffIf:
+    interfaceType: rdy_vld
+    desc: "An interface of type rdyVld"
+    structures:
+      - {structure: aSt, structureType: data_t}
+  bStuffIf:
+    interfaceType: req_ack
+    desc: "An interface of type reqAck"
+    structures:
+      - {structure: bSt, structureType: data_t}
+      - {structure: bBSt, structureType: rdata_t}
+  dStuffIf:
+    desc: "An interface of type rdyAck"
+    interfaceType: pop_ack
+    structures:
+      - {structure: dSt, structureType: rdata_t}
+
+
+# blocks these are subsystems or blocks that can be instanced one or more times
+## blockname: followed by a name that gives this object (block) a unique key
+### portname: followed by a name that gives this port a unique key for this block, this is used when a block is instanced
+###           more than once or if a port is instanced more than once to connect to multiple blocks with the same interface, optional
+#### count: number that indicates how many of these portname exist and can be connected, optional
+####          numbered from 0 upto count - 1
+blocks:
+  top:
+    desc: The top most block, the only block
+    blockGroup: blocks
+  inAndOut:
+    desc: The block that has each interface type in and out to show both directions
+    blockGroup: blocks
+
+# instances, these are instantiations of objects
+#   implies a top level of some kind that is instancing objects, an instance can instance other objects, optional nesting
+## instancename: is the instance name being instanced, required
+### instanceType: followed by a string which is the key to finding which object is being instanced (objectname), required
+### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
+###          for this instance, optional (currently does not work in diagram generation code)
+# The highest level container must match topContainer defined in project file
+instances:
+  uTop:
+    container:  top # self reference
+    instanceType: top
+    addressMap: False
+    instGroup: inAndOut
+  uInAndOut0:
+    container:  top
+    instanceType: inAndOut
+    color: orange
+    addressGroup: inAndOut
+    instGroup: inAndOut
+  uInAndOut1:
+    container:  top
+    instanceType: inAndOut
+    color: green
+    addressGroup: inAndOut
+    instGroup: inAndOut
+
+# connections are specify interface connections between different instaces of objects
+## - {}, dash followed by a dictionary, connections is a list of dictionaries
+### interface: followed by string that is a key to this interface, an interface can be connected 1 or more times
+### src: followed by a name of the source / master instance for this conneciton
+### dst: followed by a name of the destination / slave instance for this conneciton
+###
+### ports are optional, and are implied in most use cases. The exception is where disambiguation is needed, mainly in array use cases
+### srcport: used if there is more than one objectname instance of the source / master, declares the port of source objectname to connect to
+### dstport: used if there is more than one objectname instance of destination / slave, declares the port of destination objectname to connect to
+### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
+###          for this connection, optional (currently does not work in diagram generation code)
+connections:
+  - {interface: aStuffIf, src: uInAndOut0, srcport: aOut, dst: uInAndOut1, dstport: aIn}
+  - {interface: aStuffIf, src: uInAndOut1, srcport: aOut, dst: uInAndOut0, dstport: aIn}
+  - {interface: bStuffIf, src: uInAndOut0, srcport: bOut, dst: uInAndOut1, dstport: bIn}
+  - {interface: bStuffIf, src: uInAndOut1, srcport: bOut, dst: uInAndOut0, dstport: bIn}
+  - {interface: dStuffIf, src: uInAndOut0, srcport: dOut, dst: uInAndOut1, dstport: dIn}
+  - {interface: dStuffIf, src: uInAndOut1, srcport: dOut, dst: uInAndOut0, dstport: dIn}
+
+# in connection maps the direction field should match the instance port direction
+#connectionMaps:
+#  - {interface: aStuffIf, block: inAndOut,         port: a, direction: dst, instance: uInAndOut} #,  instancePort: btod}
+
+#memories:
+#  table:
+#    block: inAndOut
+#    desc: "Table for test"
+#    structure: seeSt
+#    wordLines: BSIZE
+#    addressStruct: bSizeSt

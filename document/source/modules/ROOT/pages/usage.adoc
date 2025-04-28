@@ -1,0 +1,138 @@
+= How To Use
+
+Since Arch2Code uses several languages, several tools, and several libaries it is best to simply run it from an already supplies docker `container. The container has all tools and libaries already needed to run and develop with Arch2Code.
+
+== Prerequisites
+
+* A proper shell; bash from ubuntu, bash from WSL (Windows System for Linux), zsh Mac OS.
+
+== Install docker
+
+You can get it https://www.docker.com/[here].
+
+== Create a Dockerfile
+
+Create the following `Dockerfile`.
+[[dockerfile,A Dockerfile]]
+[source,docker]
+----
+FROM qistor/qi-dev:v2.022
+
+ARG USERNAME=
+ARG USER_UID=
+ARG USER_GID=
+
+# Create the user
+# if the group does not exist you need to add it
+#RUN groupadd --gid $USER_GID $USERNAME
+RUN useradd --uid $USER_UID --gid $USER_GID -m $USERNAME
+
+# To enable sudoer access on this container for $USERNAME, uncomment the lines below
+#RUN apt update && apt install sudo -y
+#RUN usermod -aG sudo $USERNAME
+#RUN passwd -de $USERNAME
+
+USER $USERNAME
+
+RUN echo "source $NVM_DIR/nvm.sh" >> ~/.bashrc
+# Uncomment below to underline and highlight Hostname on command line
+#  default color green user@hostname
+#  uncomment below for color green user purple @ white underlined hostname
+#RUN echo 'PS1="\[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u\[\033[01;35m\]@\[\033[04;37m\]\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> ~/.bashrc
+----
+
+== Figure out who you are
+
+Run the following commands in your bash or zsh.
+[source,bash]
+----
+whoami && id -u && id -g
+----
+
+The outputs might look something like.
+[source,bash]
+----
+jjones
+501
+20
+----
+
+Now take those and put them in the xref:dockerfile[Dockerfile]. Just these three lines. The xref:dockerfile[Dockerfile] has some hint you might want to do at the end for coloring your prompt. The other one is an alternate command if your groupid is not in the container already.
+[source,docker]
+----
+ARG USERNAME=jjones
+ARG USER_UID=501
+ARG USER_GID=20
+----
+
+== Build your container
+
+Build a new docker container based off the qistor:qi-dev container with your newly created Dockerfile.
+[source,bash]
+----
+docker build -t a2c:v2.022 .
+----
+
+The tag used, `v2.022` matches the base container for added clarity.
+
+== Clone the A2C repo
+
+[source,bash]
+----
+git clone git@bitbucket.org:arch2code/arch2code.git
+cd arch2code
+----
+
+== Run your container
+
+Run your new A2C container.
+[source,bash]
+----
+docker run --rm --workdir /work --hostname A2C:v2_022 -ti -v ${PWD}:/work --user $(id -u):$(id -g) --entrypoint /bin/bash a2c:v2.022
+----
+
+The container starts with a hostname that tells you the type and version of container to reduce confusion; `A2C:v2.022`. Unfortunatly you can't use a literal `.` in the hostname.
+
+== Install python libs
+
+[source,bash]
+----
+pip3 install -r requirements.txt
+----
+
+== Explore
+
+Last, explore the commands used in the `Makefile` to build different example architectures with different output generations.
+
+== Critical MacOs Performance
+
+Follow the below two steps otherwise performance will be 10 to 20x slower.
+
+=== Enable VirtioFS
+
+Open Docker Desktop and goto `Settings -> General` and ensure the file sharing impelmentation is using `VirtioFS` not `gRPC FUSE` or `osxfs`.
+
+=== Use Volume & Bind
+
+
+Make a volume.
+[source,bash]
+----
+docker volume create a2c
+----
+
+If needed you can check to see if you already created this volume or any volume.
+[source,bash]
+----
+docker volume ls
+----
+
+Now when you run your container mount the volume `a2c` which you created ablove.
+[source,bash]
+----
+docker run --rm --mount source=a2c,destination=${PWD} --workdir /work --hostname A2C:v2_022 -ti -v ${PWD}:/work --user $(id -u):$(id -g) --entrypoint /bin/bash a2c:v2.022
+----
+
+==== Source
+
+https://www.paolomainardi.com/posts/docker-performance-macos/

@@ -1,0 +1,38 @@
+# ignore __pycache__
+__pycache__
+
+# hide Microsoft Visual Studo workspaces
+*.code-workspace
+.vscode/
+
+# hide .DS_Store, OSX image preview / cache files
+**/.DS_Store
+
+# ignore .gv, .svg, and .gv.svg files since they are output from graphviz usage
+gv_out/*.gv
+gv_out/*.svg
+
+# ignore .pu, .png, and .svg files since they are output from plantuml usage
+pu_out/*.pu
+pu_out/*.png
+pu_out/*.svg
+
+# ignore document/build
+document/build/*
+
+# ignore output package.f file
+systemVerilog/mixed/package.f
+systemVerilog/apbDecode/package.f
+systemVerilog/axiDemo/package.f
+
+# ignore the test output directory
+tests/out/*
+
+# database files
+*.db
+
+# cpp files
+**/build/*
+*.log
+*.o
+*.d

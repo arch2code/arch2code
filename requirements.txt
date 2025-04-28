@@ -1,0 +1,7 @@
+graphviz>=0.16
+ruamel.base>=1.0.0
+ruamel.yaml 
+colorama==0.4.4
+jira>=3.5.0
+jinja2
+junit-xml

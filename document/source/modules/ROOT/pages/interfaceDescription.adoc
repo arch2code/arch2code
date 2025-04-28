@@ -1,0 +1,78 @@
+= Description of Common Interfaces
+
+== General Notes
+
+In hardware design, the terms *source* and *destination* are used to describe the origin and endpoint of a communication channel or transaction. The *source* module is the module that initiates a transaction, while the *destination* module is the module that typically responds to the transaction. Note: the terms are not related to data flow, but to transaction flow.
+
+For `modports` these are abreviated to `src` and `dst`.
+
+A valid `vld` signal is used to assert that a data item is correct and will flow in the same direction as the data, typically from *source* to *destination*.
+
+A ready `rdy` signal indicates readiness to receive data.
+
+A request `req` signal indicates a request to start a transaction and may also indicate that a request data item is valid.
+
+An acknowlege `ack` signal indicates completion of a transaction. For a transaction that has completion data, then `ack` also indicates the completion data is valid.
+
+
+== Ready/Valid Interface (rdyVldIf)
+
+- The *source* module is the module that generates data `vldData` and sends it to the *destination* module.
+- The *source* module also asserts the *valid* signal `vld` to indicate that the data is valid.
+- The *destination* module is the module that receives the data from the *source* module and asserts the *ready* `rdy` signal when it is ready to receive more data.
+- The *source* should always assert `vld` when it has valid data, the *destination* should always assert `rdy` when it is ready to receive data. A data transfer happens when `vld` and `rdy` are asserted in the same cycle.
+- The *source* and *destination* work independantly and should not generate output signals in response to the input signal. The data should not be used at the *destination* when ready is de-asserted.
+- Data transfers can occur on any number of consecutive clock cycles, allowing for maximum speed on datapath interfaces.
+
+image::https://svg.wavedrom.com/github/BrewKris/testWavedrom/main/rdyVld.json5[width=3072]
+
+
+== Valid/Acknowledge Interface (vldAckIf)
+
+- The *source* module is the module that generates data `vldData` and sends it to the *destination* module. The *source* asserts valid `vld` when it has valid data, the data is then able to be used in the *destination* module.
+- The *destination* module is the module that receives the data and sends an *acknowledge* `ack` signal back to the *source* module to indicate that the data has been successfully received/used.
+- The intent is that data can be read and used at the *destination* without necessarily being stored, this can lead to more efficient implementations when continuous data transfer is not required.
+
+image::https://svg.wavedrom.com/github/BrewKris/testWavedrom/main/vldAck.json5[width=3072]
+
+
+== Request/Acknowledge Interface (reqAckIf)
+
+- The *source* module is the module that sends requests using the `req` signal to the *destination* module to return data. The request also has associated request data `reqData`. `req` and `reqData` will be asserted throughout the single transaction and will only be deasserted in response to `ack`.
+- The *destination* module is the module that receives requests from the *source* module and transmits data when it is ready to do so. The *destination* module also sends an acknowledge `ack` signal back to the *source* module to indicate that the data has been successfully transmitted.
+
+image::https://svg.wavedrom.com/github/BrewKris/testWavedrom/main/reqAck.json5[width=3072]
+
+
+== Ready/Acknowlege Interface (rdyAckIf)
+
+- The *source* module is the module that sends requests using the `rdy` signal to the *destination* module to transmit data. `rdy` will be asserted throughout the single transaction and will only be deasserted in response to `ack`.
+- The *destination* module is the module that receives requests from the *source* module and sends data when it is ready to do so. The *destination* module also sends an acknowledge `ack` signal back to the *source* module to indicate that the data has been successfully transmitted.
+
+image::https://svg.wavedrom.com/github/BrewKris/testWavedrom/main/rdyAck.json5[width=3072]
+
+
+== Ready/Valid Burst Interface (rdyVldBurstIF)
+
+- The ready/valid burst interface is a variation of the ready/valid interface that allows for framing of a data set and a data header. The `headerVld` signal is asserted for the first data item in the burst and `header` contains the header data. The `burstDataVld` signal is asserted for each data item in the burst and `burstData` contains the data item. 
+- The *source* module is the module that generates data `burstData` and sends it to the *destination* module. The *destination* module is the module that receives the data from the *source* module and asserts the *ready* `rdy` signal when it is ready to receive data.
+- `header` and `headerVld` are asserted for the first data item in the burst and `burstData` and `burstDataVld` are asserted for each data item in the burst. It is not valid to assert `headerVld` without `burstDataVld` .
+- Pauses are possible in the data transfer at the *source* or *destination* module. The *source* module should not assert `burstDataVld` when it is not ready to send data. The *destination* module should not assert `rdy` when it is not ready to receive data.
+
+image::https://svg.wavedrom.com/github/BrewKris/testWavedrom/main/rdyVldBurst.json5[width=3072]
+
+
+== Status Interface (statusIf)
+
+- The status interface is used to provide status information from a *source* module to *destination* module. The `status` data is continuously valid.
+
+image::https://svg.wavedrom.com/github/BrewKris/testWavedrom/main/status.json5[width=3072]
+
+
+== Memory Interface (memoryIf)
+
+- The memory interface is used to provide a memory interface to a *source* module to access a memory with a single cycle read delay.
+- A write transaction is initiated by asserting `enable` and `wrEn` in the same cycle with `addr` and `writeData` valid. A write transaction occurs on each cycle that `enable` and `wrEn` are asserted.
+- A read transaction is initiated by asserting `enable` in the same cycle with `addr` valid. A read transaction occurs on each cycle that `enable` is asserted. The `readData` is valid on the next cycle after the read transaction is initiated.
+
+image::https://svg.wavedrom.com/github/BrewKris/testWavedrom/main/memory.json5[width=3072]

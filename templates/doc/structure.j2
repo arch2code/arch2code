@@ -1,0 +1,4 @@
+Structure: {{ data.struct.structure }}
+{% for var, vardata in data.struct.vars.items() %}
+Var: {{vardata.variableType}} {{vardata.variable}} {{vardata.desc}} {{data.desc[var]}}
+{% endfor %}

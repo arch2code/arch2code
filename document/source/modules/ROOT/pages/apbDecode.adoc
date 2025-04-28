@@ -1,0 +1,24 @@
+= Block Diagram of apbDecode example
+
+This example is used to show SystemVerilog generation. This example was also used to test APB address decode and leaf node generation. The *SSoT* for this architecture can be found in the directory `apbDecode` in the root of the https://bitbucket.org/arch2code/arch2code/src/main/[code repository].
+
+.apbDecode
+image::uapbDecode.svg[width=3072,opts=interactive,id=apbDecode]
+
+The <<apbDecode>> diagram can be made with the following commands. These should be run from the root of the repository.
+[bash]
+----
+./arch2code.py --yaml examples/apbDecode/apbDecodeProject.yaml
+./arch2code.py --db examples/apbDecode/apbDecode.db -r --diagram --depth 4
+----
+The output file for the image and is located at:
+[bash]
+----
+gv_out/apbDecode.gv.svg
+----
+
+The output SystemVerilog files can be found at:
+[bash]
+----
+examples/apbDecode/systemVerilog
+----

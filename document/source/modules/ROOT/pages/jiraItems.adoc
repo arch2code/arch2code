@@ -1,0 +1,306 @@
+[cols="8%,8%,10%,10%,64%"]
+|===
+|Issue|Issue Type|Priority|Status|Summary
+
+|https://arch2code.atlassian.net/browse/A2C-310[A2C-310]
+|Story
+|Medium
+|In Progress
+|Add missing dpi for synch_lock_arb
+
+|https://arch2code.atlassian.net/browse/A2C-264[A2C-264]
+|Story
+|Medium
+|In Progress
+|regression launcher with local SQL store
+
+|https://arch2code.atlassian.net/browse/A2C-257[A2C-257]
+|Story
+|Medium
+|In Progress
+|Try FST instead of VCD
+
+|https://arch2code.atlassian.net/browse/A2C-323[A2C-323]
+|Story
+|Medium
+|Backlog
+|Add support for parameterized instances
+
+|https://arch2code.atlassian.net/browse/A2C-322[A2C-322]
+|Story
+|Medium
+|Backlog
+|hwMemory asserts
+
+|https://arch2code.atlassian.net/browse/A2C-319[A2C-319]
+|Story
+|Medium
+|Backlog
+|enable fmt lib
+
+|https://arch2code.atlassian.net/browse/A2C-316[A2C-316]
+|Bug
+|Medium
+|Backlog
+|apb tee mismatch
+
+|https://arch2code.atlassian.net/browse/A2C-313[A2C-313]
+|Story
+|Medium
+|Backlog
+|Add api to register synchlock
+
+|https://arch2code.atlassian.net/browse/A2C-265[A2C-265]
+|Story
+|Medium
+|Backlog
+|Implement local example regrLauncher usage
+
+|https://arch2code.atlassian.net/browse/A2C-224[A2C-224]
+|Story
+|Medium
+|Backlog
+|Add log function for errors
+
+|https://arch2code.atlassian.net/browse/A2C-207[A2C-207]
+|Story
+|Medium
+|Backlog
+|Add setMultiWrite fn in apb
+
+|https://arch2code.atlassian.net/browse/A2C-202[A2C-202]
+|Story
+|Medium
+|Backlog
+|Convert all examples to use the same makefile scheme as apbDecode example
+
+|https://arch2code.atlassian.net/browse/A2C-200[A2C-200]
+|Story
+|Medium
+|Backlog
+|Implement mechanism to disable the trackers in systemc
+
+|https://arch2code.atlassian.net/browse/A2C-199[A2C-199]
+|Story
+|Medium
+|Backlog
+|Update flop definitions
+
+|https://arch2code.atlassian.net/browse/A2C-196[A2C-196]
+|Story
+|Medium
+|Backlog
+|Make separate directory for post process scripts
+
+|https://arch2code.atlassian.net/browse/A2C-191[A2C-191]
+|Bug
+|Medium
+|Backlog
+|Nested includes of yaml contexts
+
+|https://arch2code.atlassian.net/browse/A2C-185[A2C-185]
+|Story
+|Medium
+|Backlog
+|Add automated block selection functionality
+
+|https://arch2code.atlassian.net/browse/A2C-161[A2C-161]
+|Story
+|Medium
+|Backlog
+|Add example for tracker automation
+
+|https://arch2code.atlassian.net/browse/A2C-153[A2C-153]
+|Story
+|Medium
+|Backlog
+|Add bitfields to special structure generation
+
+|https://arch2code.atlassian.net/browse/A2C-142[A2C-142]
+|Story
+|Medium
+|Backlog
+|cleanup qualConstParse handling integer correctly
+
+|https://arch2code.atlassian.net/browse/A2C-139[A2C-139]
+|Bug
+|Medium
+|Backlog
+|Check optional key(s) in connectionMap for validity to a connection, also consider creating a warning for any connectionMap key that is not in the schema
+
+|https://arch2code.atlassian.net/browse/A2C-138[A2C-138]
+|Bug
+|Medium
+|Backlog
+|Recurse connectionMaps for port address matching for address decoding
+
+|https://arch2code.atlassian.net/browse/A2C-134[A2C-134]
+|Story
+|Medium
+|Backlog
+|Make optional field support, numbers, strings, bool, None
+
+|https://arch2code.atlassian.net/browse/A2C-123[A2C-123]
+|Story
+|Medium
+|Backlog
+|Add autodetection of register structures and eliminate the generator: register usage
+
+|https://arch2code.atlassian.net/browse/A2C-121[A2C-121]
+|Story
+|Medium
+|Backlog
+|Optionally add memoryConnections and registerConnections to diagrams
+
+|https://arch2code.atlassian.net/browse/A2C-104[A2C-104]
+|Story
+|Medium
+|Backlog
+|Test register & memory connections that traverse more than one level of hierarchy
+
+|https://arch2code.atlassian.net/browse/A2C-89[A2C-89]
+|Story
+|Medium
+|Backlog
+|make constants unsigned 64bit
+
+|https://arch2code.atlassian.net/browse/A2C-80[A2C-80]
+|Task
+|Medium
+|Backlog
+|Update systemVerilog/readme to describe multiple contexts
+
+|https://arch2code.atlassian.net/browse/A2C-72[A2C-72]
+|Story
+|Medium
+|Backlog
+|Update SystemVerilog readme.md
+
+|https://arch2code.atlassian.net/browse/A2C-70[A2C-70]
+|Story
+|Medium
+|Backlog
+|Add instructions for align and specialStructures
+
+|https://arch2code.atlassian.net/browse/A2C-49[A2C-49]
+|Bug
+|Medium
+|Backlog
+|outFile is not used
+
+|https://arch2code.atlassian.net/browse/A2C-43[A2C-43]
+|Story
+|Medium
+|Backlog
+|Add . in hierarchical names such as connection.ends
+
+|https://arch2code.atlassian.net/browse/A2C-28[A2C-28]
+|Story
+|Medium
+|Backlog
+|Update --flows option post refactor so an example is still demo-able and processing connections can be cross checked.
+
+|https://arch2code.atlassian.net/browse/A2C-292[A2C-292]
+|Story
+|Low
+|Backlog
+|list imported packages for document generation
+
+|https://arch2code.atlassian.net/browse/A2C-291[A2C-291]
+|Story
+|Low
+|Backlog
+|draw child instances for document generator
+
+|https://arch2code.atlassian.net/browse/A2C-290[A2C-290]
+|Story
+|Low
+|Backlog
+|draw registers as a table for document generator
+
+|https://arch2code.atlassian.net/browse/A2C-289[A2C-289]
+|Story
+|Low
+|Backlog
+|draw memory instance tables in block document generator
+
+|https://arch2code.atlassian.net/browse/A2C-288[A2C-288]
+|Story
+|Low
+|Backlog
+|Add block diagram to block specification generator
+
+|https://arch2code.atlassian.net/browse/A2C-287[A2C-287]
+|Story
+|Low
+|Backlog
+|Add a field by field compare print in generated structures
+
+|https://arch2code.atlassian.net/browse/A2C-238[A2C-238]
+|Story
+|Low
+|Backlog
+|verilog-xl args converter
+
+|https://arch2code.atlassian.net/browse/A2C-197[A2C-197]
+|Bug
+|Low
+|Backlog
+|YAML context and package / namespace for blocks that have their own context but are in a higher hier context
+
+|https://arch2code.atlassian.net/browse/A2C-175[A2C-175]
+|Story
+|Low
+|Backlog
+|Expand AXI user ports to have 5 unique structures instead of 1
+
+|https://arch2code.atlassian.net/browse/A2C-133[A2C-133]
+|Story
+|Low
+|Backlog
+|Walk through each example in the docs
+
+|https://arch2code.atlassian.net/browse/A2C-122[A2C-122]
+|Story
+|Low
+|Backlog
+|Draw block diagrams with only blocks listed in the instancesList.yaml
+
+|https://arch2code.atlassian.net/browse/A2C-108[A2C-108]
+|Story
+|Low
+|Backlog
+|Update InAndOut to have both a rdyAck and rdyVld
+
+|https://arch2code.atlassian.net/browse/A2C-103[A2C-103]
+|Story
+|Low
+|Backlog
+|Optionally draw memory and connections in diagram
+
+|https://arch2code.atlassian.net/browse/A2C-14[A2C-14]
+|Story
+|Low
+|Backlog
+|Add ports to diagram
+
+|https://arch2code.atlassian.net/browse/A2C-198[A2C-198]
+|Feature Request
+|Lowest
+|Backlog
+|Request to update package / namespace creation with directory structure that does not match yaml directory structure
+
+|https://arch2code.atlassian.net/browse/A2C-176[A2C-176]
+|Story
+|Lowest
+|Backlog
+|antora-ui and syntax highlighter for verilog
+
+|https://arch2code.atlassian.net/browse/A2C-25[A2C-25]
+|Story
+|Lowest
+|Backlog
+|Cross check connections in flows
+
+|===
+

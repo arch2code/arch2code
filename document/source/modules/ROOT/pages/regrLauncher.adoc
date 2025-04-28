@@ -1,0 +1,320 @@
+== Regression Launcher Tool
+
+The Regression Launcher Tool enables the parallel submission of regression jobs in batch, capture execution status, log failure analysis, and unified failure reporting, from a centralized command line script and a regression file
+
+This is an essential tool for the automation of the CI integration and build checks, as well as an efficient solution for the user to locally launch customized batch regression jobs, for debug purposes, or to asses impact of local changed prior to push commits
+
+== Command Line Arguments
+
+_usage: regrLauncher.py [-h] --dir DIR [--build] [-j [JOBS]] [--count COUNT] [--labels LABELS] [--seq] [--attr ATTR [ATTR ...]] file [group]_
+
+[width="60%",cols="15%,15%,5%,65%",options="header",]
+|===
+| | |*Mandatory* |*Short Description*
+|*positional arguments:* | | |
+|file |regression file |Y |Regression definition file in json format. Includes 3 main containers session/build/run. Detailed schema is described in details in this document
+|group |Optional hierarchical group |N |Allows for selection of a subset of tests, based on string matching or glob matching of the tests group hierarchical path
+|*options:* | | |
+|-h, --help |show this help message and exit |N |
+|--dir DIR |session output directory |Y |Location of the session output directory
+|--build |execute session build |N |When specified on the command line, the build step, as defined in the build container of the regression file is executed, prior to the run step
+|-j [JOBS], --jobs [JOBS] |concurrent run jobs |N |Override the number of concurrent jobs defined in the session container of the regression file. This controls the depth of the multi-threaded worker pool on the execution host. If JOBS is not specified, maximum number of allowed threads on the execution host is used
+|--count COUNT |override default run count |N |Override the count attribute defined in the run container of the regression file. The count attribute defines the number of occurrences of a given test in the regression session. The special value ``0`` ignores the count when ``seed`` attribute is a list item
+|--labels LABELS |Labels to include or exclude tests from regression |N |Allows for selection of a subset of tests, based on labels specified on the command line. Labels are comma separated words. Tests with matched labels as specified in the regression file will be included in the regression. Others will be filtered out. +
+It is possible to specify a negative filter for the label, appending ~ the a label. Tests with negative filter label will be excluded from the regression
+|--seq |sequential run scheduler |N |This flag enforces a sequential queuing of all the jobs per test category
+|--attr ATTR [ATTR ...] |overwrite session attribute |N |Advanced option that gives the user to override any attribute from the regression file, from the command line. This option is useful to change attributes affecting the behavior of the regression at run time, without modifying the regression file content
+|===
+
+== Features Details
+
+=== Regression File Format
+
+The ``regression file`` is the central element for defining and launching a regression with the regression launcher tool. It is a mandatory positional argument of the ``regrLauncher.py`` script.
+
+The ``regression file`` defines, in JSON format, the attributes required to the creation, construction and execution of the regression session, following a schema described below:
+[source, text]
+----
+{
+  "session" : {
+    "name" : <session_name:string:mandatory>,
+    "jobs" : <num_job_threads:integer:mandatory>
+    "lrp" : <log_retention_policy:integer:mandatory>
+  },
+  "build" : {
+    "command" : <build_command:string:mandatory>,
+    "timeout" : <build_timeout:integer:mandatory>
+  },
+  "run" : {
+    "command" : <run_command:string:mandatory>,
+    "args" : <run_args:string:mandatory>,
+    "timeout" : <run_timeout:integer:mandatory>,
+    "rules" : [ <rule_file:string:mandatory> ],
+    "count" : <num_runs:integer:mandatory>,
+    "seed" : <seed:string|integer|null:optional> | [ <seed> ]
+    "labels": [ <label:string:optional> ],
+    <group:object:optional> : {
+      "command[+]" : <run_command:string:optional>,
+      "args[+]" : <run_args:string:optional>,
+      "timeout" : <run_timeout:integer:optional>,
+      "rules[+]" : [ <rule_file:string:optional> ],
+      "count" : <num_runs:integer:optional>,
+      "labels[+]": [ <label:string:optional> ],
+      "test_group" : <optional> {
+        <test:object:optional> : {
+          "command[+]" : <run_command:string:optional>,
+          "args[+]" : <run_args:string:optional>,
+          "timeout" : <run_timeout:integer:optional>,
+          "rules[+]" : [ <rule_file:string:optional> ],
+          "count" : <num_runs:integer:optional>,
+          "labels[+]": [ <label:string:optional> ]        
+        }
+      }
+    }
+  }
+}
+----
+==== Rules and guidelines for defining a regression file
+
+* The three containers ``session``, ``build`` and ``run`` are mandatory root containers, along with the mandatory root attributes in each of these containers.
+* Mandatory root containers attributes can be empty initialized but shall exist in the regression file
+* Each ``group`` container requires zero or one ``test_group`` container
+* Each ``group`` container can contain zero or more sub``group`` containers
+* ``run`` container is considered the root group container, and shall follow the ``group`` container rules and guidelines
+* There is no limit to the number of nested levels of ``group`` and sub``group`` hierarchy defined in a ``run`` container of the regression file
+* Each test hierarchy is referenced by a POSIX style directory structure across the defined groups hierarchy (i.e ``/<group>/<group/.../test``)
+* The ``test_group`` container level is omitted from the directory style structure reference of a test hierarchy
+* As a leaf container, the ``test_group`` container shall not define attributes, only contain zero or more ``test`` containers
+* It is strongly suggested, although not required, that at least one ``test`` container is defined inside a ``test_group`` container. An empty ``test_group`` container does not have useful purpose, except as a placeholder.
+* Any attribute can be redefined or augmented at any level of hierarchy, inside the ``group`` or ``test`` containers.
+* An attribute is inherited from its parent ``group`` container top-down, across all levels of hierarchy, until redefined explicitly for a group or test container in the regression file
+* For session ``group`` or ``test`` attributes of string or list type, appending a ``+`` (append) flag to the attribute name appends the new value to the inherited attribute value.
+* Non ``string`` or ``list`` attribute types (such asinteger) do not support the ``+`` (append) flag
+
+The rules above can be used to elaborate complex cases and partitioning of tests in categories and sub-categories, with multiple combinations of attributes.
+
+[NOTE]
+====
+The JSON format will most likely be revisited in favor of a YAML format, that has syntax compatibility with JSON, while offering extended capabilities, such as https://yaml.org/spec/1.2.2/#71-alias-nodes[anchors and aliases], that can greatly improve the definition of the regression by reducing repetition
+====
+
+==== Regression File Attributes
+
+All attributes are mandatory in their respective root container. Default for string when not applicable is '', for integer
+
+[width="60%",cols="15%,15%,70%",options="header",]
+|===
+|*<root container>.<attribute name>* |*Type* |*Description*
+|session.name |string |Name of the session. The session will be created under <DIR>/<session.name>.<username>.<date>-<time>.<pid> where <DIR> is specified by the --dir command line mandatory argument
+|session.jobs |integer |Default multithreaded worker pool queue depth. Default from the regression file attribute can be overridden from the -j [JOBS] on the command line
+|session.lrp |integer |Default log retention policy for the session
+|build.command |string |Command invoked by the session build executor of the regression session. +
+The build step is executed only when --build flag is set on the command line
+|build.timeout |integer |Build time timeout in seconds. The build job will be killed and the regression aborted if the duration of the build step, specified by the build.command attribute exceeds build.timeout seconds
+|run.command |string |Command invoked by the session run executor, for each individual run job scheduled in the worker queue
+|run.args |string a|
+List of arguments added to the run.command attribute for each job executed by the runner
+
+The command executed by the worker pool is run.command + run.args
+
+|run.timeout |integer |Individual run job execution timeout in seconds. Each individual job executed by the worker pool on separate threads will be killed if the duration of the job, specified by the run.command + run.args attributes exceeds run.timeout seconds
+|run.rules |list of strings |List of rule files for post processing of the log files, for log failure analysis. The rule files in this list are specified relative to the current regression file location when relative paths are used. The format of the rules definition inside the rule file is described in a dedicated section of this document. +
+The rules files are loaded in the order they are declared in the list. Rules can be redefined or modified based on inclusion order in the run.rules list attribute
+|run.count |integer, null |Number of run jobs scheduled to be executed in the regression for each test category
+|run.seed | integer, random, list, null | Single seed value or list of multiple seed values. Legal seed values can be specified as 32-bit integers, decimal string values (i.e "12345") or hex string values (i.e "0xabcd1234"). +
+The ``random`` string value generates a new 32-bit hexadecimal random value for each run command scheduled to be executed +
+The ``null`` string value sets the default seed (0)
+|run.labels |list of strings |Define labels that will be applied to each test category in the hierarchy. When combined with the --labels from the command line, this attribute provide flexible filtering of tests for selective execution
+|===
+
+=== Job queuing and execution
+
+The order of the scheduling of each run depends on the scheduling algorithm in the job queuer +
+When count > 1 for a given test category, the queuing of the jobs is following a round-robin sequence with the other tests categories defined in the regression.
+
+The ``--seq`` flag from the command line enforces a sequential queuing of all the jobs for a given test before moving on to the following test
+
+=== Seed Management ===
+
+The regression launcher scripts implements a seed based run command execution mechanisms for random seed based regressions and regressions with fixed seed values
+
+==== Queueing rules ====
+The regression launcher automatically adjust the number of queued run commands based on the value and type of the ``seed`` and ``count`` attributes, according to the rules below
+
+[width="60%",cols="30%,30%,40%",options="header",]
+|===
+|``seed`` attribute|``count`` attribute|queued run command seed value
+|null | integer > 0 | default ``seed`` value is assigned to all ``count`` runs
+|integer, decimal, hex | integer | specified ``seed`` value is assigned to all ``count`` runs queued
+|random | integer | random 32-bit hex value is assigned to each individual run queued
+| list of seeds | null | Queue one run commands per each seed in the list 
+| list of seeds | integer >= num seeds | Queue one run commands per each seed in the list, ignore count value greater than number of specified seeds
+| list of seeds | integer < num seeds | Queue one run commands per each seed in the truncated seed list [0:count] 
+|===
+
+==== Using seed attribute in run commands ====
+The individual run commands ``seed`` attribute can be referenced in the ``command`` and ``args`` attributes as the environment variable ``RL_SEED`` as in example below
+[source, text]
+"command" : "echo 'my seed is ' :", 
+"args" : "${RL_SEED}"
+
+
+=== Log Failure Analysis Rules
+
+The rules for the analysis of the failures from the run output logs use regular expression based pattern matching for failure extraction.
+
+==== Rules File Format
+
+The set of rules applied by the log parser analyzer are defined in the rules files in JSON format described below
+
+[source, text]
+----
+{
+  "name" : <string:mandatory>,
+  "description" : <string:mandatory>,
+  "filters" : <mandatory> {
+    <filtername:object:optional> : {
+      "description" : <string:mandatory>,
+      "re" : <string:mandatory>,
+      "msg" : <string:mandatory>,
+      "file": <string:mandatory> | <object:null>,
+      "sev" : <string:mandatory:enum=[info, warning, error, fatal]>
+    }
+  },
+  "modifiers" : <mandatory> {
+    <filtername:object:optional> : {
+      <modname:object:optional> : {
+        "re" : <string:mandatory>,
+        "msg" : <string:mandatory>
+      }
+    }
+  }
+}
+----
+
+The name and description attributes are mandatory in every individual rules file
+
+The filters container is mandatory and can container zero or more filter objects
+
+The modifiers container is mandatory and can container zero or more modifier objects
+
+===== Filter objects definition
+
+Each filter object is identified by a ``filtername`` and the following attributes to characterize a unique failure type in the log file
+
+* ``re`` regular expression of the pattern that will trigger a match for the failure type in the log +
+This follows the regular expression rules of the python re library, including support for defining regexp group
+* ``msg`` The failure message when regular expression is a match. +
+The definition of the failure message supports ``group`` reference from the regexp defined in re attribute
+* ``file`` if available, the reference to the source file issuing the failure +
+Can be referenced from regexp group defined in re attribute
+* ``sev`` one of the valid severity level that describes the failure ``info``, ``warning``, ``error``, ``fatal``
+
+===== Modifier object definition
+
+Modifier object enable post processing of the failures from the filter objects. The typical use case for applying a modifier on a failure filter rule is to alter the failure signature by regular expression substitution, for improved signature grouping.
+
+Modifier objects are implemented in container name matching one of the previously defined filter object.
+
+Each modifier object is identified by a ``modname`` and the following attributes to characterize a unique failure type in the log file
+
+* ``re`` regular expression of the pattern that will trigger a modifier match in the failure message +
+This follows the regular expression rules of the python re library, including support for defining regexp group
+* msg The modified failure message when regular expression is a match. +
+The definition of the modified failure message supports group reference from the regexp defined in ``re`` attribute
+
+==== Rules files inclusion order rules in regression session
+
+When multiple rule files are specified, the log parser process them in the order in which they are defined in the ``run.rules`` list attribute. +
+If multiple failure filter or modifier rules are encountered, the last occurrence overrides any of the previous occurrences of the rule
+
+==== Example rules file (mdl.json)
+
+The following example shows how the definition of the filter for the Q_ASSERT error failures reported in log, and a typical modifier that replaces the actual tag id value with a fixed string, to uniquify the qassert_error:l1CacheTag signatures across all the logs
+
+[source, json]
+----
+{
+  "name" : "mdl",
+  "description" : "Ruleset for parsing log generated from model execution",
+  "filters" : {
+    "qassert_error" : {
+      "description" : "Capture Q_ASSERT error and message",
+      "re" : "\\[Q_ASSERT\\]\\s*(?P<msg>.*) \\((?P<file>.*)\\)",
+      "msg" : "\\g<msg>",
+      "file": "\\g<file>",
+      "sev" : "error"
+    }
+  },
+  "modifiers" : {
+    "qassert_error" : {
+      "l1CacheTag" : {
+        "re" : "l1CacheTag:(\\S+) (?P<msg>.*)",
+        "msg" : "l1CacheTag:<tagid> \\g<msg>"
+      }
+    }
+  }
+}
+----
+
+=== Regression output directory structure
+
+[, text]
+----
+<DIR>/<session.name>.<username>.<date>-<time>.<pid>
+├── build.log (--build only)
+├── runs
+│   ├── <groupname>
+│   │   └── <testname>
+│   │       └── >run_<rid>
+│   │           ├── <testname>.cmd
+│   │           └── <testname>.log
+│   └── run_<rid> -> ./<groupname>/<testname>/run_<rid>
+└── test-reports
+    └── junit.xml
+----
+
+=== Log files retention policy
+
+In order to limit the accumulation of potentially large log files when running regressions with higher verbosity levels over a larger number of runs, a log retention policy can be put in place from the regression file, or controlled using attribute from the command line, to better control the disk space utilization. The retention policy management allows for selection among multiple policies below
+
+[width="30%",cols="10%,10%,10%",options="header",]
+|===
+|session.lrp |Test Status |
+| |Pass |Fail
+|0 |keep |keep
+|1 |remove |keep
+|2 |remove |remove
+|3 |remove |compress
+|4 |compress |compress
+|other |keep |keep
+|===
+
+The control of the log retention policy from the command line, to override the default setting from the command line is done by ``--attr session.lrp=<value>`` where ``<value>`` is any valid option from the table
+
+=== Regression status reports
+
+Following the completion of each individual run, the exit status of the run command is recorded, and the log is analyzed for pattern matching failures, as defined in the rules files listed in the run.rules attribute
+
+The run execution records the following types of command exit status:
+
+* Completed Process (exit status code 0)
+* Process Error (exit status != 0)
+* Timeout Expired (process exec did not complete before ``run.timeout`` seconds)
+
+The log parser analyzer process all rules defined for the test, extracts and stores all matches in a failure list.
+
+If ``error`` or ``fatal`` level failures are found in the log, the first failure is reported, regardless of the execution status, and tests is considered failed
+
+If no failure are found in the log, a test is considered failed if exit status is not ``Completed Process`` and the execution status is reported
+
+The outcome of each run command execution is reported in the status report files, in the session run directory.
+
+Currently, only the JUnit xml status report file is generated , summarizing the status of each test executed, under ``<DIR>/<session.name>.<username>.<date>-<time>.<pid>/test-reports/junit.xml``
+
+[NOTE]
+====
+JUnit xml report is a commonly used format for reporting unit tests reports from traditional JUnit testing framework, and consumed by build automation platforms such as Jenkins CI or Bitbucket pipeline to publish the test results metrics
+
+Although there is no clearly defined specification for the schema, some https://github.com/testmoapp/junitxml[open source project attempt to document it]. Automation tools have limited and undocumented levels of support for the features supported in the format
+====

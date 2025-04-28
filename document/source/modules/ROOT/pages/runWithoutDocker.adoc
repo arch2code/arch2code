@@ -1,0 +1,23 @@
+= How To Run Without docker
+
+_note:_ This method is not recommended, instead use this xref:usage.adoc[method].
+
+== Prerequisites
+
+* A proper shell; bash from ubuntu, bash from WSL (Windows System for Linux), zsh Mac OS.
+* java runtime environment (java)
+* graphviz
+* python3 >= 3.10 (tested with 3.10.6)
+* Jinja
+
+== Install Python libraries
+
+The python libraries can be updated using ```pip3``` or ```pip```. Usually ```pip``` will work if you only have python3 on your machine. If you have both python2 and python3 you may need to use the ```pip3``` command.
+
+Run one of the following commands to get the required python libraries; ```pip install -r requirements.txt``` or ```pip3 install -r requirements.txt```.
+
+_note: plantuml is used but the jar file is in the pu_jar directory in the A2C repository_
+
+== Explore
+
+Last, explore the commands used in the `Makefile` to build different example architectures with different output generations.

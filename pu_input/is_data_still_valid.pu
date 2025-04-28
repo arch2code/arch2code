@@ -1,0 +1,12 @@
+@startuml is data still valid
+Alice -> Bob: Do some stuff
+Bob -> Alice: stuff done
+u_blocka -> u_blockc0 : cs_stuff '''process'''
+loop 1000 times
+Bob -> Bob: Are we done?
+note right of Bob: should be done in much less than 1000
+end
+'u_blocka -> u_blockc0: cs_stuff '''process'''
+  ' a comment
+note right: Bobs brother
+@enduml

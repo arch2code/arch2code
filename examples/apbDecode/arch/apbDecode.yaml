@@ -1,0 +1,141 @@
+blockDir: .
+constants:
+  ASIZE :             {value: 29, desc: "The size of A"}
+  DWORD :             {value: 32, desc: size of a double word}
+  MEMORYA_WORDS:      {value: 19, desc: "Address wordlines for memory A"}
+  MEMORYA_WORDS_LOG2: {eval: "($MEMORYA_WORDS-1).bit_length()", desc: "Address wordlines for memory A log2"}
+  MEMORYA_WIDTH:      {value: 63, desc: "Bit width of content for memory A, more than 32, less than 64"}
+  MEMORYB_WORDS:      {value: 21, desc: "Address wordlines for memory B"}
+  MEMORYB_WORDS_LOG2: {eval: "($MEMORYB_WORDS-1).bit_length()", desc: "Address wordlines for memory B log2"}
+
+types:
+  thirtySevenBitT:
+    width: 37
+    desc: Used as a thirty seven bit register structure
+  aSizeT:
+    width: ASIZE
+    desc: type of width ASIZE
+  apbAddrT:
+    width: DWORD
+    desc: for addressing register via APB
+  apbDataT:
+    width: DWORD
+    desc: for the data sent or recieved via APB
+  aAddrBitsT:
+    width: MEMORYA_WORDS_LOG2
+    desc: size of memory A address in bits
+  aDataBitsT:
+    width: MEMORYA_WIDTH
+    desc: size of memory A data in bits
+  bAddrBitsT:
+    width: MEMORYB_WORDS_LOG2
+    desc: size of memory B address in bits
+  u8T:
+    width: 8
+    desc: Byte integral type
+  u16T:
+    width: 16
+    desc: sixteen bit integral type
+  u32T:
+    width: 32
+    desc: thirty two bit integral type
+  u64T:
+    width: 64
+    desc: sixty four bit integral type
+
+structures:
+  aRegSt:
+    a: {varType: thirtySevenBitT, generator: register}
+  un0BRegSt:
+    fa: {varType: u8T, generator: register, desc: "[7:0] - byte 0-2"}
+    fb: {varType: u16T, generator: register, desc: "[23:8] - byte 3-4"}
+  un0ARegSt:
+    fa : {varType: u8T, generator: register, desc: "[7:0] - byte 0-3"}
+    fb : {varType: u32T, generator: register, desc: "[39:8] - byte 4-7" }
+    fc : {varType: u8T, generator: register, desc: "[47:40] - byte 8-11"}
+  aSizeRegSt:
+    index: {varType: aSizeT, generator: register}
+  apbAddrSt:
+    address: {varType: apbAddrT, generator: address}
+  apbDataSt:
+    data: {varType: apbDataT, generator: data}
+  aMemAddrSt:
+    address: {varType: aAddrBitsT}
+  aMemSt:
+    data: {varType: aDataBitsT}
+  bMemAddrSt:
+    address: {varType: bAddrBitsT}
+  bMemSt:
+    data: {varType: u32T, arraySize : 3}
+
+interfaces:
+  apbReg:
+    desc: "CPU access to SoC registers in the design"
+    interfaceType: apb
+    structures:
+      - {structure: apbAddrSt, structureType: addr_t}
+      - {structure: apbDataSt, structureType: data_t}
+
+blocks:
+  top:
+    desc: The top most block
+    blockGroup: blocks
+  cpu:
+    desc: A RISC-V CPU
+    blockGroup: blocks
+  apbDecode:
+    desc: The block to decode apb addresses
+    blockGroup: blocks
+  someRapper:
+    desc: A level of wrapper
+    blockGroup: blocks
+  blockA:
+    desc: The block named A
+    blockGroup: blocks
+  blockB:
+    desc: The block named B
+    blockGroup: blocks
+  blockARegs:
+    desc: The register block inside block A
+    blockGroup: blocks
+    hasMdl: false
+  blockBRegs:
+    desc: The register block inside block B
+    blockGroup: blocks
+    hasMdl: false
+
+instances:
+  uTop:
+    container:  top # self reference
+    instanceType: top
+    addressMap: False
+    instGroup: top
+  uCPU:         {container: top,        instanceType: cpu,        addressMap: False,  instGroup: top, color: pink}
+  uAPBDecode:   {container: someRapper, instanceType: apbDecode,  addressMap: False,  instGroup: top, color: pink}
+  uSomeRapper:  {container: top,        instanceType: someRapper, addressMap: False,  instGroup: top}
+  uBlockA:      {container: someRapper, instanceType: blockA,     addressGroup: top,  instGroup: top}
+  uBlockB:      {container: someRapper, instanceType: blockB,     addressGroup: top,  instGroup: top, color: lightslateblue}
+  uBlockARegs:  {container: blockA,     instanceType: blockARegs, addressMap: False,  instGroup: top, color: grey, registerLeafInstance: True}
+  uBlockBRegs:  {container: blockB,     instanceType: blockBRegs, addressMap: False,  instGroup: top, color: grey, registerLeafInstance: True}
+
+connections:
+  - {interface: apbReg,    src: uCPU,                             dst: uSomeRapper}
+
+connectionMaps:
+  - {interface: apbReg,  block: someRapper,                     direction: dst, instance: uAPBDecode,  instancePort: apbReg}
+  - {interface: apbReg,  block: blockB,                         direction: dst, instance: uBlockBRegs, instancePort: apbReg}
+  - {interface: apbReg,  block: blockA,                         direction: dst, instance: uBlockARegs, instancePort: apbReg}
+
+memories:
+  - {memory: blockATable0, block: blockA, structure: aMemSt, wordLines: MEMORYA_WORDS, addressStruct: aMemAddrSt, regAccess: true, desc: "Table0 to test memory access from cpu"}
+  - {memory: blockATableX, block: blockA, structure: aMemSt, wordLines: MEMORYA_WORDS, addressStruct: aMemAddrSt, regAccess: false, desc: "TableX with no cpu access"}
+  - {memory: blockATable1, block: blockA, structure: aMemSt, wordLines: MEMORYA_WORDS, addressStruct: aMemAddrSt, regAccess: true, desc: "Table1 to test memory access from cpu"}
+  - {memory: blockBTable,  block: blockB, structure: bMemSt, wordLines: MEMORYB_WORDS, addressStruct: bMemAddrSt, regAccess: true, desc: "Table to test memory access from cpu"}
+
+registers:
+  - {register: rwUn0B,   regType: rw,  block: blockB,   structure: un0BRegSt,  desc: A unaligned four bytes Read Write register}
+  - {register: roB,      regType: ro,  block: blockB,   structure: aSizeRegSt, desc: A Read Only register}
+  - {register: roA,      regType: ro,  block: blockA,   structure: aRegSt,     desc: A Read Only register}
+  - {register: rwUn0A,   regType: rw,  block: blockA,   structure: un0ARegSt,  desc: A unaligned Read Write register}
+  - {register: roUn0A,   regType: ro,  block: blockA,   structure: un0ARegSt,  desc: A unaligned Read Only register}
+  - {register: extA,     regType: ext, block: blockA,   structure: un0ARegSt,  desc: A unaligned Read Only register defined externally}

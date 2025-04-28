@@ -1,0 +1,37 @@
+= YAML project layout
+
+== Project File
+
+The project file is the main configuration file for a project and provides the definition of a project. Project files are nestable, ie one project file can include another. In the case of nested project files, the top level one overrides project specific options.
+
+=== projectName
+
+projectName allows setting overall name that is available for generator access
+
+=== projectFiles
+
+The projectFiles setting allows for list of yaml files to be specified that will be scanned for architecture objects
+
+=== dbSchema
+
+The dbSchema allows the specification of objects captured by the architecture (see Schema section for more details)
+
+=== addressControl
+
+Address control provides configuration necessary for address generation
+
+=== topInstance
+
+Allows for the specification of the root instance for a design
+
+=== docConfig
+
+Allows specification of templates used for document generation
+
+== Schema
+
+The schema defines how data is represented in the yaml files. The schema defines how fields are parsed and provides capability to generate nested tables. The exampleSchema provides more details
+
+== Data Output for Generators
+
+When arch2code.py is run with RO flag the yaml is not parsed, but instead the database is used to create a data structure via the projectOpen class. This class contains all the yaml in dict format. The different elements of the schema can be found in the data dictionary and are there to be used. The data format follows the same structure as the schema with nested elements as appropriate.

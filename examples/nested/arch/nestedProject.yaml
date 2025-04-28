@@ -1,0 +1,44 @@
+# Example project file that defines project level information
+
+
+projectName: nested
+
+# project files can be regular input files, regular input files with additional projectFiles sections, or additional ProjectFiles. 
+# note in the case of additional project files any top level controls (such as schema:) are ignored
+# relative path names are resolved based on location of project file (this includes sub projects)
+projectFiles:
+  - nestedTop.yaml
+
+
+addressControl: nestedAddress.yaml
+
+topInstance: uTop
+
+dirs: # this is list of locations that can be referenced as base path in fileMap section
+  root: ..    # project root directory relative to project file - required  
+  base: $root/includes  
+  model: $root/model
+  
+# information about project directory structure to enable simplified maintenance
+# and generation of file for new blocks. Note that directory structure will mirror 
+# architecture hierarchy. 
+fileGeneration:
+  template: $a2c/templates/fileGen/fileGen.py
+  topModuleDir: top   # as top is special case in the hierarchy define sub directory where top file goes (optional, defaults to top)
+  fileMap:
+    # generation has 2 modes, block and context
+    # block creates a file per design block and cond: depend on the block definition
+    # context creates a file per yaml file and cond: depend on the yaml file (typically this is for includes/packages)
+    # name will be added to the module name to generate a filename plus associated extensions
+    # path to the file is based on dirs section and otherwise follows block/yaml file structure
+    # this means if blocks are defined in a file called cpu/cpu.yaml ie in the cpu directory then the implementation file is in cpu unless overridden in the block definition
+    # if blockDirs is true then the file is placed in a directory the block appended as well
+    # note that basePath should reference a path key in the dirs section
+    # cond: matches fields in the block definition, if all fields are true then the file is generated
+    # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file 
+    # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
+    blockBase   : { name : "_base",           ext: {hdr: "h"},             cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class header file"}
+    block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
+    include     : { name : "Includes",        ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include file"}
+  # standard copyright statement to be added to all generated files - change to suite your company
+  fileCopyrightStatement: "copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE"

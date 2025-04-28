@@ -1,0 +1,4 @@
+
+constants:
+  B_ANOTHER_SIZE: {value: 9, desc: "The size for b another size"}
+

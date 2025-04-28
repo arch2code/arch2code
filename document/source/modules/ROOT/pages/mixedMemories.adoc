@@ -1,0 +1,179 @@
+= Mixed Example's Memories
+
+These tables are the complete set of memories from the mixed example architecture.
+
+The documentation below this point is all generated with arch2code. This is intended as an example of how to generate documentation.
+This `html` file is generated from an asciidoctor `adoc` file. The `adoc` file has *GENERATE_CODE_* sections in it which are keys for
+arch2code to process and create generated output. These are used for documentation and code output (for SystemC or SystemVerilog).
+
+The `adoc` source can be found in the repository, https://bitbucket.org/arch2code/arch2code/src/main/document/source/modules/ROOT/pages/mixedMemories.adoc[here].
+
+To update this `adoc` file with any changes in the *SSoT* run the following commands. To experiment a user could add a memory, change `BZISE`
+or other varaiables, types, constants, or structures and generate the output again.
+
+[bash]
+----
+./arch2code.py --yaml examples/mixed/mixedProject.yaml
+./arch2code.py -r --docgen --file document/source/modules/ROOT/pages/mixedMemories.adoc
+----
+
+// GENERATED_CODE_PARAM
+// GENERATED_CODE_BEGIN --template=memories
+.blockBTable0
+[cols="1, 1, 1, 1, 1, 1, 1"]
+|===
+|Memory |Block Containing |wordlines |addressStruct |structure for Data |description |count
+
+|blockBTable0
+
+|blockB
+
+|BSIZE (10)
+
+|xref:#bSizeSt[bSizeSt]
+
+|xref:#seeSt[seeSt]
+
+|Dual Port with no connections
+
+|1
+|===
+
+
+.bSizeSt
+[#bSizeSt]
+image::bSizeSt.svg[width=auto,opts=interactive]
+.seeSt
+[#seeSt]
+image::seeSt.svg[width=auto,opts=interactive]
+.blockBTable1
+[cols="1, 1, 1, 1, 1, 1, 1"]
+|===
+|Memory |Block Containing |wordlines |addressStruct |structure for Data |description |count
+
+|blockBTable1
+
+|blockB
+
+|BSIZE (10)
+
+|xref:#bSizeSt[bSizeSt]
+
+|xref:#seeSt[seeSt]
+
+|Dual Port with one connection
+
+|1
+|===
+
+
+.blockBTable2
+[cols="1, 1, 1, 1, 1, 1, 1"]
+|===
+|Memory |Block Containing |wordlines |addressStruct |structure for Data |description |count
+
+|blockBTable2
+
+|blockB
+
+|BSIZE (10)
+
+|xref:#bSizeSt[bSizeSt]
+
+|xref:#seeSt[seeSt]
+
+|Dual Port with two connections native to blockB
+
+|1
+|===
+
+
+.blockBTable3
+[cols="1, 1, 1, 1, 1, 1, 1"]
+|===
+|Memory |Block Containing |wordlines |addressStruct |structure for Data |description |count
+
+|blockBTable3
+
+|blockB
+
+|BSIZE (10)
+
+|xref:#bSizeSt[bSizeSt]
+
+|xref:#seeSt[seeSt]
+
+|Dual Port with two connections native to blockB, explicitly connected
+
+|1
+|===
+
+
+.blockEFTable
+[cols="1, 1, 1, 1, 1, 1, 1"]
+|===
+|Memory |Block Containing |wordlines |addressStruct |structure for Data |description |count
+
+|blockEFTable
+
+|blockB
+
+|BSIZE (10)
+
+|xref:#bSizeSt[bSizeSt]
+
+|xref:#seeSt[seeSt]
+
+|Dual Port with two connections
+
+|1
+|===
+
+
+.blockBTableSP0
+[cols="1, 1, 1, 1, 1, 1, 1"]
+|===
+|Memory |Block Containing |wordlines |addressStruct |structure for Data |description |count
+
+|blockBTableSP0
+
+|blockB
+
+|BSIZE (10)
+
+|xref:#bSizeSt[bSizeSt]
+
+|xref:#seeSt[seeSt]
+
+|Single Port with no connections
+
+|1
+|===
+
+
+.blockBTableSP
+[cols="1, 1, 1, 1, 1, 1, 1"]
+|===
+|Memory |Block Containing |wordlines |addressStruct |structure for Data |description |count
+
+|blockBTableSP
+
+|blockB
+
+|BSIZE (10)
+
+|xref:#bSizeSt[bSizeSt]
+
+|xref:#nestedSt[nestedSt]
+
+|Single Port with connection
+
+|ASIZE (1)
+|===
+
+
+.nestedSt
+[#nestedSt]
+image::nestedSt.svg[width=auto,opts=interactive]
+
+// GENERATED_CODE_END

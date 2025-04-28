@@ -1,0 +1,25 @@
+= A List of Future Improvements to add to Jira and consider
+
+. align names of python files, calsses, and the usage in the tool
+   - for example: makeDoc is the import for a class named docgen in a file named docgen.py
+. align names for input arguments with class / function and filenames
+   - for example: --diagram input calls a function displayInstanceDiagram
+       - maybe the function name can be long and 2 command line options can be used, either --diagram or --displayInstanceDiagram can both be useable to increase readability
+. database name, should default to projectName from the yaml input, similarly so should the usage of in Makefiles, this should allow for more flexibility for build automation
+   - would require passing in the project file even in read-only mode, programatic discovery of .db file from project name
+ 
+. move nested to some name that better describes the set of demonstrations within the example
+ 
+. consider adding systemC generation to mixed to keep it a complete example
+. consider changing repository name to something unique but descriptive, arch2code is surprising difficult to find in searches
+. `mixed/readme.md` should be udpated to help walk a user through setting up a project from scratch or copying the example and modifying
+. Should directory names better describe contents, `mixed` is an input and `templates` is an input, but `systemC` is sort of both input and output. Maybe a description of directories in the `readme.md` would be enough to give guidance
+. Is it intended that a user must always run --yaml to build the database and then run --read-only to generate any output? Or is it intended that --yaml can be used with output options like --diagram, --systemc, etc?
+. We should probably add a few examples of generating SystemC and SystemVerilog to the `readme.md` in repo root.
+. nested diagram does not look correct, perhaps an issue with interfaces starting at the top most block? Might be the interface connections origination at uTop, or something to do with testContainer, maybe not instance of uTestContainer?
+. We will probably need to illustrate the multiple levels of context within the input / yaml. An architecture broken down into large chunks (subsystems), and then blocks within those subsystems.
+
+== Static List of Jira items
+
+.Jira Items Already Filed
+include::./jiraItems.adoc[]

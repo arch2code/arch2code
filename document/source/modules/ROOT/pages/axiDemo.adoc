@@ -1,0 +1,56 @@
+= Block Diagram of axiDemo
+
+This example is used to show AXI interface generation.
+
+The *SSoT* for this example is in the documentation directorys `document/source/modules/ROOT/examples/axiDemo`,  from the root of the https://bitbucket.org/arch2code/arch2code/src/main/[code repository].
+
+.AXI interface input
+[,yaml]
+----
+include::example$axiDemo/axiDemo.yaml[lines=37..-1]
+----
+
+You can mouse over the two interfaces in <<axi>> and see the structures. One interface contains the Read Channels for Address and Data.
+The second interface contains the Write Channels for Address, Data, and Response.
+
+.axiDemo
+image::uaxiDemo.svg[width=3072,opts=interactive,id=axi]
+
+The <<axi>> diagram can be made with the following commands. These should be run from the root of the repository.
+[,bash]
+----
+./arch2code.py --yaml document/source/modules/ROOT/examples/axiDemo/axiDemoProject.yaml
+./arch2code.py -r --diagram
+----
+The output file for the image and is located at:
+[,bash]
+----
+gv_out/axiDemo.gv.svg
+----
+
+.top.sv
+[#top]
+[source,verilog]
+----
+include::example$axiDemo/systemVerilog/top.sv[]
+----
+
+.producer.sv
+[#producer]
+[source,verilog]
+----
+include::example$axiDemo/systemVerilog/producer.sv[]
+----
+
+.consumer.sv
+[#consumer]
+[,verilog]
+----
+include::example$axiDemo/systemVerilog/consumer.sv[]
+----
+
+The SystemVerilog output files; xref:#top[top.sv RTL], xref:#consumer[consumer.sv RTL], and xref:#producer[producer.sv RTL] can be found at:
+[bash]
+----
+examples/axiDemo/systemVerilog/
+----

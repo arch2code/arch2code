@@ -1,0 +1,90 @@
+# This example which is being used for requirements building shows 8 dictionaries
+#                                                                     constants
+#                                                                     variables
+#                                                                     structures
+#                                                                     interfaces
+#                                                                     objects
+#                                                                     connections
+#                                                                     instances
+#                                                                     flows
+include:
+  - hierIncludeTop.yaml
+  
+constants:
+  ASIZE : {value: 7, desc: "The size of A"}
+  ASIZE2: {eval: "$ASIZE+$ANOTHER_SIZE", desc: "The size of A + included constant another size"}
+
+types:
+  aSizeT:
+    width: ASIZE
+    desc: type of width ASIZE
+  aBiggerT:
+    width: ASIZE2
+    desc: yet another type
+  anotherSizeT:
+    width: ANOTHER_SIZE
+    desc: A type with an included constant
+  yetAnotherSizeT:
+    width: YET_ANOTHER_SIZE
+    desc: A type with a nested included constant
+
+variables:
+  variablea:
+    type: aSizeT
+    desc: One bit of A
+  variablea2:
+    type: aBiggerT
+    desc: Two bits of A
+
+structures:
+  aSt:
+    variablea: {}
+    variablea2: {arraySize: ASIZE2}
+    another: {varType: anotherSizeT}
+    yetAnother: {varType: yetAnotherSizeT}
+  anotherSt:
+    another: {varType: anotherSizeT}
+  yetAnotherSt:
+    yetAnother: {varType: yetAnotherSizeT}
+
+interfaces:
+  anInterface:
+    interfaceType: rdy_vld 
+    desc: "An interface for testing"
+    structures:
+      - {structure: aSt, structureType: data_t}
+  b2C:
+    interfaceType: req_ack 
+    desc: "Between subsystems"
+    structures:
+      - {structure: anotherSt,    structureType: data_t}
+      - {structure: yetAnotherSt, structureType: rdata_t}
+
+blocks:
+  top:
+    desc: The top most block
+    blockGroup: blocks
+  blockA:
+    desc: The block named A
+    blockGroup: blocks
+  blockB:
+    desc: The block named B
+    blockGroup: blocks
+  blockC:
+    desc: The block named C
+    blockGroup: blocks
+
+instances:
+  uTop:
+    container:  top # self reference
+    instanceType: top
+    addressMap: False
+    instGroup: top
+  uBlockA:     {container: top,     instanceType: blockA,     addressMap: False, instGroup: top, color: green}
+  uBlockB:     {container: top,     instanceType: blockB,     addressMap: False, instGroup: top, color: lightslateblue}
+  uBlockC:     {container: top,     instanceType: blockC,     addressMap: False, instGroup: top, color: orange}
+
+connections:
+  - {interface: anInterface, src: uBlockA, dst: uBlockB, dstport: eh2b, name: anInterfaceB}
+  - {interface: anInterface, src: uBlockA, dst: uBlockC, dstport: eh2c, name: anInterfaceC}
+  - {interface: b2C,         src: uBlockB, dst: uBlockC}

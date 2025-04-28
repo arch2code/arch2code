@@ -1,0 +1,24 @@
+= Block Diagram of nested example
+
+This example is used to show SystemC generation. This example was also used to test interface connectivity. The *SSoT* for this nested can be found in the directory `examples/nested/arch` at the root of the https://bitbucket.org/arch2code/arch2code/src/main/[code repository].
+
+.nested
+image::uNested.svg[width=3072,opts=interactive,id=nested]
+
+The <<nested>> diagram can be made with the following commands. These should be run from the root of the repository.
+[bash]
+----
+./arch2code.py --yaml examples/nested/arch/nestedProject.yaml
+./arch2code.py -r --diagram --depth 6
+----
+The output file for the image and is located at:
+[bash]
+----
+gv_out/nested.gv.svg
+----
+
+The output SystemC files can be found at:
+[bash]
+----
+examples/nested/model
+----

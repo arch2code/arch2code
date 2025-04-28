@@ -1,0 +1,24 @@
+= Block Diagram of inAndOut example
+
+This example is used to show SystemVerilog generation. This example was also used to test the moduleSignalBlast template used to generate a verilator friendly wrapper that has signals instead of interfaces at the top level. This is needed until verilator supports interfaces at the top level of verilation. The *SSoT* for this example can be found in the `examples/inAndOut` directory at the root of the https://bitbucket.org/arch2code/arch2code/src/main/[code repository].
+
+.inAndOut
+image::uinAndOut.svg[width=3072,opts=interactive,id=inAndOut]
+
+The <<inAndOut>> diagram can be made with the following commands. These should be run from the root of the repository.
+[bash]
+----
+./arch2code.py --yaml examples/inAndOut/inAndOutProject.yaml
+./arch2code.py --db examples/inAndOut/inAndOut.db -r --diagram --depth 2
+----
+The output file for the image and is located at:
+[bash]
+----
+gv_out/inAndOut.gv.svg
+----
+
+The output SystemVerilog files can be found at:
+[bash]
+----
+examples/inAndOut.systemVerilog/
+----

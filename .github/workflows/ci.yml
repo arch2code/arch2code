@@ -1,0 +1,38 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  lint-build:
+    runs-on: [self-hosted, linux, x64]
+    container:
+      image: qistor/qi-dev:v2.030
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Python dependencies
+        run: pip3 install -r ./requirements.txt
+
+      - name: Run Make Pipeline Tests
+        run: |
+          git config --global --add safe.directory /__w/arch2code/arch2code 
+          make pipeline-test
+
+      - name: Check for unclean repo
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then 
+            echo "Repo clean."
+          else 
+            echo "Repo not clean after build"
+            git status
+            git diff
+            exit 1
+          fi
+

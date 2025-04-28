@@ -1,0 +1,8 @@
+= Specification Generation Example
+
+[source, bash]
+----
+./arch2code.py --yaml examples/mixed/mixedProject.yaml && ./arch2code.py -r --docgen
+----
+
+**note:** The first command with the `--yaml` option creates the database and only needs to be re-run if the yaml files are edited. For brevity in future examples that command will be omitted. There are Makefiles in the examples directory that can be used to run the commands. 

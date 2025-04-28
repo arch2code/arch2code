@@ -1,0 +1,41 @@
+@startuml PlantUML example
+
+'plantuml example shown here: http://www.plantuml.com/plantuml/uml/TPB1JiCm44Jl_Wghd7lWXEW1rNPQ2Qb2Y0fntiOBM4diTErG2kBViPEAEgcuxfkTcRMyz04eT4tDV6Li2mGDtq5PlP7hh5QkTiIlLgkLB5IcU0Uh3sH2GCi3TSWovd7VeIsHVpD1v0w3Hu7ORgkZhADObC6HTAIHBk76lEB6MCpvRWIcxSHjeOerOu_n45EQ5cpuppoNJ6mAfz-Gfggri-416kJtJGjbcAAj-K9-VJCTJueDzqxoOD_1GCuR5u-KP_mD-Zu2MlnaFun16lDdZyJQSmi-MnloWQiQl9zny5oCyHPBPtN6vPXlOBIj64iHV7x7nIA-rOkZAaMR3mYnJBmn8RdWYZ1Ddj8dyE4iaOp9956NsuefFX-s4oYSHQRZChbZofKzZAadprE4ZfhSNVIoL38bz1PvloLQdNxvBm00
+
+skinparam backgroundColor #EEEBDC
+skinparam handwritten true
+skinparam sequence {
+    ArrowColor DeepSkyBlue
+    ActorBorderColor DeepSkyBlue
+    LifeLineBorderColor blue
+    LifeLineBackgroundColor #A9DCDF
+    ParticipantBorderColor DeepSkyBlue
+    ParticipantBackgroundColor DodgerBlue
+    ParticipantFontName Impact
+    ParticipantFontSize 17
+    ParticipantFontColor #A9DCDF
+    ActorBackgroundColor aqua
+    ActorFontColor DeepSkyBlue
+    ActorFontSize 17
+    ActorFontName Aapex
+}
+
+actor User
+
+participant "First Class" as A
+participant "Second Class" as B
+participant "Last Class" as C
+
+User -> A: DoWork
+activate A
+A -> B: Create Request
+activate B
+B -> C: DoWork
+activate C
+C --> B: WorkDone
+destroy C
+B --> A: Request Created
+deactivate B
+A --> User: Done
+deactivate A
+@enduml

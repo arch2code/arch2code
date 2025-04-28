@@ -1,0 +1,24 @@
+= Block Diagram of helloWord example
+
+This example is a small "hello world" to show SystemC generation. The input *SSoT* can be found in the directory `helloWorld` located in the root of the https://bitbucket.org/arch2code/arch2code/src/main/[code repository].
+
+.helloWord
+image::uHelloWorld.svg[width=3072,opts=interactive,id=helloWord]
+
+The <<helloWord>> project diagram can be made with the following commands. These should be run from the root of the repository.
+[bash]
+----
+./arch2code.py --yaml helloWord/helloWordProject.yaml
+./arch2code.py -r --diagram --depth 2
+----
+The output file for the image and is located at:
+[bash]
+----
+gv_out/helloWord.gv.svg
+----
+
+The output SystemC files can be found at:
+[bash]
+----
+systemC/helloWord
+----

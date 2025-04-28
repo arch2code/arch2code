@@ -1,0 +1,53 @@
+# Example project file that defines project level information
+
+
+projectName: mixed
+
+# project files can be regular input files, regular input files with additional projectFiles sections, or additional ProjectFiles.
+# note in the case of additional project files any top level controls (such as schema:) are ignored
+# relative path names are resolved based on location of project file (this includes sub projects)
+projectFiles:
+  - mixed.yaml
+  - mixedBlockC.yaml
+
+
+addressControl: exampleAddress.yaml
+
+topInstance: uTop
+
+dirs: # this is list of locations that can be referenced as base path in fileMap section
+  root: ..    # project root directory relative to project file - required  
+  base: $root/includes  
+  model: $root/model
+  rtl: $root/systemVerilog
+  vl_wrap: $root/verif/vl_wrap/blocks
+  
+# information about project directory structure to enable simplified maintenance
+# and generation of file for new blocks. Note that directory structure will mirror 
+# architecture hierarchy. 
+fileGeneration:
+  template: $a2c/templates/fileGen/fileGen.py
+  topModuleDir: top   # as top is special case in the hierarchy define sub directory where top file goes (optional, defaults to top)
+  fileMap:
+    # filePrefix and fileSuffix will be added to the module name to generate a filename
+    # path to the file will be based on command line input and the base path defined in the dirs section
+    # note that basePath should reference a path key in the dirs section
+    blockBase   : { name : "_base",           ext: {hdr: "h"},             cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class header file"}
+    block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
+    rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
+    vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
+    vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
+#    tandem      : { name : "Tandem",          ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true, hasRtl: true},  mode: block,   basePath: base,    desc: "Model tandem module wrapper class header file"}
+#    testbench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
+#    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench config files"}
+#    tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench external files"}
+    include     : { name : "Includes",        ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include file"}
+#    includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
+    package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     desc: "yaml based package file"}
+
+
+  # standard copyright statement to be added to all generated files - change to suite your company
+  fileCopyrightStatement: "copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE"
+postProcess:
+  - ../../common/postParseRegister.py
+  - ../../common/postParseChecks.py

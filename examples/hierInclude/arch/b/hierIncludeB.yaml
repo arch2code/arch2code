@@ -1,0 +1,52 @@
+# This example which is being used for requirements building shows 8 dictionaries
+#                                                                     constants
+#                                                                     variables
+#                                                                     structures
+#                                                                     interfaces
+#                                                                     objects
+#                                                                     connections
+#                                                                     instances
+#                                                                     flows
+include:
+  - hierIncludeBInclude.yaml
+  - ../hierInclude.yaml
+
+types:
+  bSizeT:
+    width: B_ANOTHER_SIZE
+    desc: A type from an include
+
+structures:
+  bSt:
+    bAnother: {varType: bSizeT}
+
+interfaces:
+  bnInterface:
+    interfaceType: rdy_vld
+    desc: "An interface running inside B"
+    structures:
+      - {structure: bSt, structureType: data_t}
+
+blocks:
+  blockBX:
+    desc: The block named BX
+    blockGroup: blocks
+  blockBY:
+    desc: The block named BY
+    blockGroup: blocks
+  blockBZ:
+    desc: The block named BZ
+    blockGroup: blocks
+
+instances:
+  uBlockBX:     {container: blockB,  instanceType: blockBX,  addressMap: False, instGroup: blocks}
+  uBlockBY:     {container: blockB,  instanceType: blockBY,  addressMap: False, instGroup: blocks}
+  uBlockBZ:     {container: blockB,  instanceType: blockBZ,  addressMap: False, instGroup: blocks}
+
+connections:
+  - {interface: bnInterface, src: uBlockBX, dst: uBlockBY, dstport: x, name: bx2y}
+  - {interface: bnInterface, src: uBlockBX, dst: uBlockBZ, dstport: x, name: bx2z}
+
+connectionMaps:
+  - {interface: anInterface, block: blockB,  port: eh2b, direction: dst, instance: uBlockBX}
+  - {interface: b2C,         block: blockB,              direction: src, instance: uBlockBX}

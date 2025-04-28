@@ -1,0 +1,230 @@
+= Coding Guidelines
+There are eight rules and three guidlines.
+
+The rules.
+
+. Abbreviation is ok on small sections of code less than 40 lines and as loop counters when the reference to the loop is obvious. Well used abbreviations are ok eg Command can be abbreviated to cmd, and Description can be abbreviated to desc.
+. Interfaces must be abbreviated to 3 letters, eg RdyVld. Interfaces classes must be appended with If, eg RdyVldIf.
+. Instances of interfaces should be descriptive as possible, and the same as port name (if possible)
+. globals must be abbreviated to `g` once instanced or imported.
+. Clocks and resets will be abbreviated to `clk` and `rst`, `rstN` for active low.
+. Class / Block / Modules names are unique accross the entire design
+. Instance names of Classes / Block / Modules must be `camelCase` prepended with `u`
+. `camelCase` handling of acronyms should be handled as intelligently as possible. eg `PCIe` with lowercase `e` is preferred instead of `pCIE`. 
+. Any defined type will be appended with a capital T. The created type does not need the T just the type itself.
+
+[source,verilog]
+----
+parameter type dataT logic[1:0]
+----
+
+. Any defined structure will be appended with an St. The created structure does not need the St just the definition of the structure.
+
+[source,verilog]
+----
+typedef struct packed {
+    dataT one;
+    dataT two;
+} twoDatasSt;
+
+twoDatasSt theseTwoDatas;
+----
+
+The guidelines.
+
+. If the intended usage is not obvious to a new reader then longer more explicit names are required.
+. If anything is double ended like an interface the abbreviations must be the same number of characters.
+. The camelCase style should be used for anything that is not abbreviated.
+
+== Abbreviations and Explicit Names
+
+=== When is it ok to abbreviate?
+
+It is ok to abbreviate varables and names in many cases.
+
+. In a small set of code in a function or loop where all code is visible on the screen so a backreference is simple. So loops and functions of 40 lines or less can have abbreviated local variables.
+* Python Example
+
+[source,python]
+----
+for k, v in localDictionary.items():
+    if (k is None):
+        exit(1)
+    else:
+        print(v)
+----
+
+* c++ Example
+
+[source,cpp]
+----
+for (int i = 0; i < 5; i++) {
+  cout << i << "\n";
+}
+----
+
+=== When is abbreviation required?
+
+. Interfaces will be abbreviated. Interfaces such as a ready valid interface will be `rdyVld`. Or `rdy` on the source side and `vld` on the destination side. A Request Acknowledge interface will be `reqAck`. Or `req` on the source side and `ack` on the destination side. Interfaces (interface classes) will be appended with `If`. 
+
+The parameter typs will also be labled as a `St`. The structure, or structures if more than one, will match the intention of the structure. So below see the `parameter type vldDataSt` indicating the structure is used as for `vldData`.
+
+[source,verilog]
+----
+interface rdyVldIf #(
+        parameter type vldDataSt = logic[1:0]
+    );
+
+    vldDataSt vldData;
+    logic     rdy;
+    logic     vld;
+
+    // Source
+    modport src  (output vldData, vld, input rdy);
+
+    // Destination
+    modport dst  (input  vldData, vld, output rdy);
+
+endinterface : rdyVldIf
+----
+
+Example instance of a `rdyVldIf`.
+
+[source,verilog]
+----
+    rdyVldIf #(.vldDataSt(myDataSt)) myInterfaceName();
+----
+
+. An abbreviation that will always be present is `globals` instace or package will always be abbreviated to `g`.
+
+[source,python]
+----
+import pysrc.arch2codeGlobals as g
+...
+g.filename = 'inputFile.yaml'
+----
+
+[source,cpp]
+----
+globals& g = globals::inst();
+...
+g.filename = 'inputFile.yaml'
+----
+
+Globals should be reserved for system wide parameters.
+
+. Another abbreviation that will always be present are the signals for clock and reset. They will be `clk` and `rstN`. This is the main clock and active low reset.
+
+=== General rules for abbreviations
+
+Aside from the 3 rules above the general rules are as follows.
+. If the intended usage is not obvious it should be longer and more descriptive.
+. if something is double ended it should be of the same length, so if one side is 1 character both sides should be 1 character; 3 and 3, etc
+
+[source,python]
+----
+# DON'T DO THIS!!!
+for key, v in localDictionary.items():
+    if (key is None):
+        exit(1)
+    else:
+        print(v)
+----
+
+[source,python]
+----
+# Instead do this or
+for k, v in localDictionary.items():
+    if (k is None):
+        exit(1)
+    else:
+        print(v)
+----
+
+[source,python]
+----
+# this
+for key, value in localDictionary.items():
+    if (key is None):
+        exit(1)
+    else:
+        print(value)
+----
+
+== Block Names (Class / Module Names)
+
+While the generator allows block names to be scope specific, Block names should be unique across the entire design. 
+
+A counter example would be something like a `crc.cpp` or `crc.sv` class / module that handles 128 bit crc in one portion of the design and somewhere else another `crc.cpp` or `crc.sv` that handles 64 bit crc. These could be combined into one class / module with parameters instead.
+
+== Instance Names
+
+Instance names are camelCase with preceding u.
+
+[source,verilog]
+----
+module commandProcessor (
+    ...
+);
+...
+endmodule
+----
+
+[source,verilog]
+----
+module command (
+    ...
+);
+...
+commandProcessor uCommandProcessor (
+    ...
+    input clk, rstN
+);
+...
+endmodule
+----
+
+[source,cpp]
+----
+class commandProcessor {
+    ...
+};
+----
+
+[source,cpp]
+----
+class command {
+    ...
+    commandProcessor uCommandProcessor;
+    ...
+};
+----
+
+If the module / class command calls for multiple command processors then they can be instanced with a post pended integer starting at 0.
+
+[source,verilog]
+----
+module command (
+    ...
+);
+...
+commandProcessor uCommandProcessor0 (
+    ...
+    input clk, rstN
+);
+commandProcessor uCommandProcessor1 (
+    ...
+    input clk, rstN
+...
+endmodule
+----
+
+[source,cpp]
+----
+class command {
+    ...
+    commandProcessor uCommandProcessor0;
+    commandProcessor uCommandProcessor1;
+    ...
+};
+----

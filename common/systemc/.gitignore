@@ -1,0 +1,10 @@
+# ignore __pycache__
+__pycache__
+
+# hide Microsoft Visual Studo workspaces
+*.code-workspace
+.vscode/
+
+**/build/*
+*.log
+*.o

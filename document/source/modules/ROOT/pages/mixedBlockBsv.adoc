@@ -1,0 +1,11 @@
+= SystemVerilog output of blockB.sv
+
+This example is used to show different memory connection examples. This SystemVerilog output also shows interface and module instance generation as well. This outptu is all genererated from the *SSoT* located at `examples/mixed/arch/mixed.yaml` relative to the root of the https://bitbucket.org/arch2code/arch2code/src/main/[code repository].
+
+The example SystemVerilog code below is all generated from the *SSoT*.
+
+.blockB.sv
+[,verilog]
+----
+include::example$mixed/blockB.sv[]
+----

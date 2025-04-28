@@ -1,0 +1,25 @@
+= Arch2Code Documentation
+include::./DateAndHash.adoc[]
+
+== Introduction
+Arch2Code is an EDA tool written in `python`. Arch2Code processes sources written in the YAML file format. These input sources are a **S**ingle **S**ource of **T**ruth, *SSoT*, for the acthiectue that it defines.
+Arch2Code can then take this *SSoT* and generate many outputs. Some examples:
+
+1. Block and chip level specifications
+2. SystemVerilog (RTL) code interface connectivity
+3. SystemVerilog code for APB address decode & register CSR (Control and Status Register) decode
+4. SystemVerilog (DV) connectivity
+5. SystemC interface connectivity
+
+In an *SSoT* architecture all of the following can be defined; constants, types, variables, structures, interfaces, registers, memories, blocks, and instances of blocks. All connectivity between instances can be defined using the interfaces, structures, variables and so on. The result is that a single change to the bit width can be easily propogated to all code and documentation at the push of a button.
+
+.Arch2Code Usage Flow
+image::https://arch2code.org/wp-content/uploads/2023/02/logo.png[width=3072]
+
+// revnumber comes from ./arch2code --version
+// to update edit the `version` in pysrc/arch2codeGlobals.py
+Revision: {revnumber}, `latest`
+
+Build Date: {builddate}
+
+Git Hash of Revision: {revhash}

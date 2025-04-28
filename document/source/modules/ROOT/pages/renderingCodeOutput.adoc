@@ -1,0 +1,9 @@
+= Rendering Output
+
+Output can be generated using either a Jinja or Python custom renderer, controlled in the
+appropriate config file. The rendering uses GENERATED_CODE_BEGIN and 
+GENERATED_CODE_END to bracket out the code to be generated. These lines should be commented
+out in language specific manner. GENERATED_CODE_BEGIN also has command line parameters
+such as --template=includes --section=constants to allow passing in information to the renderer.
+
+The renderer takes these input parameters and the database and converts into code.

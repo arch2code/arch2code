@@ -1,0 +1,17 @@
+site:
+  title: Arch2Code Documentation
+  url: https://docs.arch2code.org/
+  start_page: a2c-docs::index.adoc
+content:
+  edit_url: false
+  sources:
+  - url: ./ #needs to be repo root and is relative to run location
+    branches: HEAD
+    start_path: ./document/source #should be relative to repo root
+ui:
+  bundle:
+    url: ./antora/ui-bundle.zip
+    snapshot: true
+  supplemental_files: ./document/source/supplemental-ui #need to put this in place for full sized svg images and favicon
+output:
+  dir: ./document/build

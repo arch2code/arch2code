@@ -1,0 +1,35 @@
+// Instances Diagram
+digraph {
+	graph [bgcolor=snow tooltip="uTop/mixed.yaml + depth 2"]
+	node [shape=rect]
+	"uTop/mixed.yaml.uCPU/mixed.yaml" [label=cpu fillcolor=pink style=filled tooltip="A RISC-V CPU"]
+	// uTop/mixed.yaml.uBlockA/mixed.yaml subgraph
+	subgraph "cluster_uTop/mixed.yaml.uBlockA/mixed.yaml" {
+		graph [color="" label=blockA style="" tooltip="The block named A"]
+		"uTop/mixed.yaml.uBlockA/mixed.yaml" [label=blockA style=invis]
+		"uTop/mixed.yaml.uBlockA/mixed.yaml.uBlockARegs/mixed.yaml" [label=blockARegs fillcolor=grey style=filled tooltip="The register block inside block A"]
+	}
+	"uTop/mixed.yaml.uAPBDecode/mixed.yaml" [label=apbDecode fillcolor=pink style=filled tooltip="The block to decode apb addresses"]
+	"uTop/mixed.yaml.uBlockC/mixed.yaml" [label=blockC fillcolor=orange style=filled tooltip="The block named C"]
+	// uTop/mixed.yaml.uBlockB/mixed.yaml subgraph
+	subgraph "cluster_uTop/mixed.yaml.uBlockB/mixed.yaml" {
+		graph [color=lightslateblue label=blockB style=filled tooltip="The block named B"]
+		"uTop/mixed.yaml.uBlockB/mixed.yaml" [label=blockB style=invis]
+		"uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockBRegs/mixed.yaml" [label=blockBRegs fillcolor=grey style=filled tooltip="The register block inside block B"]
+		"uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockD/mixed.yaml" [label=blockD fillcolor=white style=filled tooltip="The block named D"]
+		"uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockF0/mixed.yaml" [label=blockF fillcolor=white style=filled tooltip="The block named F"]
+		"uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockF1/mixed.yaml" [label=blockF fillcolor=white style=filled tooltip="The block named F"]
+		"uTop/mixed.yaml.uBlockB/mixed.yaml.uThreeCs/mixed.yaml" [label=threeCs fillcolor=green style=filled tooltip="A block that contains three copies of blockC"]
+	}
+	"uTop/mixed.yaml.uBlockA/mixed.yaml" -> "uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockD/mixed.yaml" [tooltip="aStuffIf(aSt, aASt) An interface for A"]
+	"uTop/mixed.yaml.uBlockA/mixed.yaml" -> "uTop/mixed.yaml.uBlockC/mixed.yaml" [tooltip="cStuffIf(seeSt) An interface for C"]
+	"uTop/mixed.yaml.uCPU/mixed.yaml" -> "uTop/mixed.yaml.uAPBDecode/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
+	"uTop/mixed.yaml.uBlockA/mixed.yaml" -> "uTop/mixed.yaml.uBlockB/mixed.yaml" [tooltip="startDone() A start done interface"]
+	"uTop/mixed.yaml.uAPBDecode/mixed.yaml" -> "uTop/mixed.yaml.uBlockA/mixed.yaml.uBlockARegs/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
+	"uTop/mixed.yaml.uAPBDecode/mixed.yaml" -> "uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockBRegs/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
+	"uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockD/mixed.yaml" -> "uTop/mixed.yaml.uBlockB/mixed.yaml.uThreeCs/mixed.yaml" [tooltip="cStuffIf(seeSt) An interface for C"]
+	"uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockF0/mixed.yaml" -> "uTop/mixed.yaml.uBlockB/mixed.yaml.uThreeCs/mixed.yaml" [tooltip="cStuffIf(seeSt) An interface for C"]
+	"uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockF1/mixed.yaml" -> "uTop/mixed.yaml.uBlockB/mixed.yaml.uThreeCs/mixed.yaml" [tooltip="cStuffIf(seeSt) An interface for C"]
+	"uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockD/mixed.yaml" -> "uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockF0/mixed.yaml" [tooltip="dStuffIf(dSt) An interface for D"]
+	"uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockD/mixed.yaml" -> "uTop/mixed.yaml.uBlockB/mixed.yaml.uBlockF1/mixed.yaml" [tooltip="dStuffIf(dSt) An interface for D"]
+}

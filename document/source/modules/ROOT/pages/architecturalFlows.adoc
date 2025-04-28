@@ -1,0 +1,17 @@
+= Architectural Flows
+
+Flows need to be updated, they no longer function.
+
+// Below is the commented out reference text from the readme.md in the root of the code repository.
+
+//The two flows below are generated from examples/mixed/mixed.yaml. If they dont' show here in the readme just run the following command to see them ```./arch2code.py -y examples/mixed/mixed.yaml --flows```.
+//
+//Below is the flow named "is data still valid". Note that if you don't like spaces in file names you will need to change Title in the input pu file. The Title is in pu_input/is_data_still_valid.pu and is the string right after @startuml. Changing the Title from ```is data still valid:``` to something like ```is_data_still_valid:``` will get rid of spaces in the output file names. If spaces are used in order to reference them a ```%20``` will be needed in place of each space in url paths.
+//
+//Additionally for this flow there is an example of a processed interface connection. Notice the connection between *u_blocka* and *u_blockc0*. The connection name is *cs_stuff* and in the file ```pu_input/is_data_still_valid.pu``` the syntax for appling this type of connection that gets cross checked against the defined connections in you definitions. This example gets cross checked against the connections in ```examples/mixed/mixed.yaml```. Try to change it to a connection that does not exist and see the result error when processing flows. Or make a syntactical error like on the commented out ***line 9***.
+//
+//![image "Not Generated in this cloned directory yet"](./pu_out/is%20data%20still%20valid.svg)
+//
+//This example is a pure plantuml example and has no generation and checks done by arch2code. This is used as an illustration to show if no connection processing is specified in the plant uml input file. The input file used for this example is ```pu_input/from_plantuml.pu```.
+//
+//![image "Not gGenerated in this cloned directory yet"](./pu_out/PlantUML%20example.svg)

@@ -1,0 +1,486 @@
+# Example schema file
+
+# schema entries start with the object/table name (eg constants)
+# indented from the object name are fields that are used to capture the data
+# fields can have either a single attribute or a nested set of attributes
+# all tables have field named _context which is the relative filename that the entry is defined.
+#
+# schema format:
+# object:
+#   field: Field Type   //simple entry
+#   field:              //entry with validator. Value of this field must be present in <objectName>,<object-field>
+#     _type: Field Type
+#     _validate:
+#       section: <objectName>
+#       field: <object-field>
+#   field:              //entry with validator. Value of this field must be in the list of options
+#     _type: Field Type
+#       values:  # list of valid values
+#         - <validValue1>
+#         - <validValue2>
+#   subObject:
+#     _attribs: [multiple, optional, required, list]
+#     field: outerKey   //should match key of outer table
+
+#
+# if the indented attributes do not contain a _type definition
+# they are considered to contain fields and therefore is the definition of a sub table
+#   sub table can have _attribs. These define rules for the subtable itself similar to fields
+#   multiple: means these may be many entries per outer key
+#   list: means that multiple entries in list form
+#   collapsed: means that the subtable is the only thing except the key so the next level down are all part of the subtable
+#              this avoids the need to specify the field all the subtable items are grouped under so evey input entry doesnt need the subtable field
+#              eg see structures:
+#              without collapse every input entry would look like
+#              structName:
+#                vars:   <- with collapse this vars: field is omitted
+#                   myVar: {}
+#
+#
+# _type is used to contain the field type that would otherwise be on the single line
+# _validate is used to define a lookup in another object
+#   the section defines which object to search in
+#   field indicates which field to use. Note that this search is context aware, you can only have refences within defined scope
+# _dataSchema allows for seperate definition of data capture and data storage. This is only applicable with custom hander
+# _key is used to indicate when the key is actually made up of multiple fields
+#   when this happens the fields are taken in order and assembled into a key
+#   the goal of the key is to be a unique identifier
+
+# Field types
+#  As stated above this can be either only attribute of the field or specified in indended _type
+#
+# key: used to define the field that the base name of the object goes in. Required field
+#  the field identified as key will appear in output table in two forms.
+#    field - just the value
+#    fieldKey - the same value plus the file context aded to ensure uniqueness. For database purposes fieldKey should be used for any joins etc
+# required: Required field (unless a field is specified as optional it is always required)
+# eval: means that expression may require eval. Required field.
+# const: can be a value or a key from constants. Required field.
+# optional(default value): means that field is not required, (default value)
+# optionalConst(default value): means that field is not required, (default value), and can also be a key from constants
+# auto(xxx): field calculated by code, based on other fields. The function is defined _auto_xxx. eg auto(instanceGroup) will use _auto_instanceGroup fn
+# outerkey: Specific to subtables, outer key to allow inner table to link to outer record note that similar to key this appeays in two forms
+#  field - just the value of the outer key
+#  fieldKey - the same value plus the file context aded to ensure uniqueness. For database purposes fieldKey should be used for any joins etc
+
+# regular format consists of
+
+constants:
+  constant: key
+  value: eval
+  desc: required
+
+variables:
+  variable: key
+  desc: required
+  type:
+    _type: required
+    _validate:
+      section: types
+      field: type
+
+types:
+  type: key
+  desc: required
+  enum:
+    _attribs: [optional, list]
+    enumName: required
+    type: outerkey
+    desc: optional
+    value: eval
+  width: auto(width) #allows width field to be autocalculate in the case that an enum is provided. Must be after enum field
+
+structures: # customer handler, the fields here must match the code
+  structure: key
+  vars:
+    _attribs: [required, multiple, collapsed]
+    structure: outerkey
+    variable: key
+    varType:
+      _type: optional
+      _validate:
+        section: types
+        field: type
+    subStruct:
+      _type: optional
+      _validate:
+        section: structures
+        field: structure
+    arraySize: optionalConst(1)
+    entryType: auto(entryType)
+    generator: optional
+    desc: optional
+    align: optional(0)
+  width: auto(structWidth) #note that because of collapsed this is not entered by user, and purely autogenerated
+
+interfaces:
+  interface: key
+  interfaceType:
+    _type: required
+    _validate:
+      values:  # list of valid values
+        - rdy_vld
+        - push_ack
+        - pop_ack
+        - req_ack
+        - status
+        - apb
+        - axi_read
+        - axi_write
+        - notify_ack
+        - status
+  desc: required
+  maxTransferSize: optionalConst(0) # for multiCycle operation, specifies the maximum transfer size in bytes.
+                                    # For a single transaction, num_cycles = roundup( datapath width / transfer size ), where transfer size <= maxTransferSize
+                                    # optional field for tracker based multiCycle interfaces. Note that this field maybe overridden in the connection section
+  multiCycleMode:
+    _type: optional()
+    _validate:
+      values:  # list of valid values
+        - fixed_size        #
+        - header_tracker    # for rdyVldBurst tracker tag comes from field in the header (based on field with "generator: tracker(xxx)"" in structures where xxx is the tracker name)
+        - header_size       # for rdyVldBurst size comes from field in the header (based on field with "generator: tracker(length)"" in structures)
+        - api_list_tracker  # tracker tag comes from write api and push_context
+        - api_list_size     # size comes from write api and push_context
+  trackerType: optional() # must specify a valid tracker name in the design. For cases where the tracker value is coming from the header, this field is optional
+  structures: #indented list for subtable
+    _attribs: [optional, list] #list means potentially more than 1
+    interface: outerkey
+    structure:
+      _type: required
+      _validate:
+        section: structures
+        field: structure
+    structureType:
+      _type: required
+      _validate:
+        values:  # list of valid values
+          - data_t
+          - rdata_t
+          - addr_t
+          - strb_t
+          - hdr_t
+
+instances:
+  instance: key
+  instanceType:
+    _type: required
+    _validate:
+      section: blocks
+      field: block
+  variant: optional
+  color: optional
+  count: optional(1)
+  container:
+    _type: auto(container)
+    _validate:
+      section: blocks
+      field: block
+      scope: global  # override the normal context search space to global
+  addressMap: auto(addressMap)    #True|False to define if they are included in the address map (defaults to True). If false other address fields are optional and are ignored
+  addressGroup: auto(addressGroup) #this field needs to be one of the valid AddressGroups defined in the addressControl file
+  addressID: auto(addressID) #note that even if specified in instances section, will be overridden
+  addressMultiples: auto(addressMultiples) #optional field to get multiple address groups
+  instGroup: auto(instanceGroup) # this field needs to be one of the valid AddressGroups defined in the addressControl file
+  instID: auto(instanceID)  #note that even if specified in instances section, will be overridden
+  offset: optional(0)  #overridden by address generation
+  registerLeafInstance: auto(registerLeafInstance) #True to define, defaults to False / None if not defined
+
+blocks:
+  block: key
+  desc: required
+  attrib: optional
+  blockGroup: auto(instanceGroup) # this field needs to be one of the valid AddressGroups defined in the addressControl file
+  blockID: auto(instanceID)  #note that even if specified in instances section, will be overridden
+  hasVl: optional(false)
+  hasTb: optional(false)
+  hasMdl: optional(true)
+  hasRtl: optional(true)
+  dir: auto(blockDir)
+  params:
+    _attribs: [optional, list]
+    param: key
+    block: outerkey
+
+parameters:
+  block:
+    _type: key
+    _validate:
+      section: blocks
+      field: block
+  variants:
+    _attribs: [multiple, collapsed]
+    variant: required
+    block: outerkey
+    param: required
+    value: const
+    blockVariantParam:
+      _key:
+        block: required
+        variant: required
+        param: required
+
+connections: # custom handler
+  _dataSchema: #dataschema is used when how the data is parsed is different to how db stores data
+    interface:
+      _type: required
+      _validate:
+        section: interfaces
+        field: interface
+    name: optional() # name can be used to override the interface name and if used the ports and channels will follow this name
+    src:
+      _type: required
+      _validate:
+        section: instances
+        field: instance
+    srcport: optional # port can be used to force the naming of the port to allow it to be different each end
+    dst:
+      _type: required
+      _validate:
+        section: instances
+        field: instance
+    dstport: optional # port can be used to force the naming of the port to allow it to be different each end
+    interfaceName: optional  # force the interface instance name for HW case. This is to allows the array case to instead use names for the array instances
+    maxTransferSize: optional(0) # for multiCycle operation, overrides the interface maxTransferSize definition
+    tracker: # this indicates that an interface will see the first or last use of a tracker tag, and interface should manage the tracker instead of generate error
+             # the use case is to allow automation of tracker when HW implimentation is performing allocation or deallocation
+      _type: optional
+      _validate:
+        values:
+          - alloc
+          - dealloc
+          - allocReq   # outbound interface only alloc
+          - deallocReq # outbound interface only dealloc
+          - allocAck   # inbound interface only alloc
+          - deallocAck # inbound interface only dealloc
+    connection:  # at the end to ensure calculated fieldfs populated
+      _key:
+        interfaceKey: required
+        name: required
+        srcKey: required
+        srcport: optional
+        dstKey: required
+        dstport: optional
+  connection:
+    _key:
+      interfaceKey: required
+      name: required
+      srcKey: required
+      srcport: optional
+      dstKey: required
+      dstport: optional
+  interface: required
+  interfaceKey: required
+  name: optional()
+  src: required
+  srcport: optional
+  dst: required
+  dstport: optional
+  interfaceName: optional  # force the interface instance name for HW case. This is to allows the array case to instead use names for the array instances
+  channel: optional #filled programatically based on src portName
+  maxTransferSize: optional(0) # for multiCycle operation, overrides the interface maxTransferSize definition
+  tracker: optional
+  ends:
+    _attribs: multiple
+    connection: outerkey
+    direction: required
+    instanceType: required       # note validators not required as they have already been validated by data schema or programatically
+    instanceTypeKey: required    #
+    instance: required           #
+    instanceKey: required        #
+    port: optional
+    portName: optional  #filled programatically
+    portId :
+      _key:
+        instanceTypeKey: required  # we want port to be unique within a block
+        portName: required  # name is generated from rules of port name
+    #connCount: optional
+
+connectionMaps:
+  interface:
+    _type: required
+    _validate:
+      section: interfaces
+      field: interface
+  name: optional()
+  port: optional
+  direction:
+    _type: required
+    _validate:
+      values:  # list of valid values
+        - src
+        - dst
+  portName: auto(portName)
+  block:
+    _type: required
+    _validate:
+      section: blocks
+      field: block
+      scope: global  # override the normal context search space to global
+  instance:
+    _type: required
+    _validate:
+      section: instances
+      field: instance
+  instancePort: # currently no validator
+    _type: optional
+  portId : # at end for ordering
+    _key:
+      blockKey: required
+      portName: required
+
+memories:
+  memory: required
+  structure:
+    _type: required
+    _validate:
+      section: structures
+      field: structure
+  block:
+    _type: required
+    _validate:
+      section: blocks
+      field: block
+  desc: required
+  wordLines: param
+  addressStruct:
+    _type: required
+    _validate:
+      section: structures
+      field: structure
+  count: optionalConst(1)
+  offset: optional(0)
+  regAccess: optional(false)
+  local: optional(false) # for memories that need to be in flops with fast array access
+  memoryBlock:
+    _key:
+      memory: required
+      block: required
+  memoryType:
+    _type: optional(dualPort)
+    _validate:
+      values:
+        - singlePort
+        - dualPort
+        - register
+
+registers:
+  register: required
+  regType:
+    _type: required
+    _validate:
+      values:  # list of valid values
+        - ro
+        - rw
+        - ext
+  block:
+    _type: required
+    _validate:
+      section: blocks
+      field: block
+  desc: required
+  structure:
+    _type: required
+    _validate:
+      section: structures
+      field: structure
+  offset: optional(0)
+  registerBlock:
+    _key:
+      register: required
+      block: required
+
+specialStructures:
+  structure: key
+  baseStruct:
+    _type: required
+    _validate:
+      section: structures
+      field: structure
+
+memoryConnections:
+  memory: required
+  block:
+    _type: required
+    _validate:
+      section: blocks
+      field: block
+  memoryBlock:
+    _type: required
+    _combo:
+      memory: required
+      block: required
+    _validate:
+      section: memories
+      field: memoryBlock
+  instance:
+    _type: optional()
+    _validate:
+      section: instances
+      field: instance
+  portSuffix:
+    _type: optional()
+  memoryBlockInstance:
+    _key:
+      memory: required
+      block: required
+      instance: required
+      portSuffix: required
+
+
+registerConnections:
+  register: required
+  block:
+    _type: required
+    _validate:
+      section: blocks
+      field: block
+  registerBlock:
+    _type: required
+    _combo:
+      register: required
+      block: required
+    _validate:
+      section: registers
+      field: registerBlock
+  instance:
+    _type: required
+    _validate:
+      section: instances
+      field: instance
+  registerBlockInstance:
+    _key:
+      register: required
+      block: required
+      instance: required
+
+# encoders are custom object used to describe how different ranges of values are encoded into a single value
+# all encoded items are power of 2 size, but can be different for different items
+# logic will sort items in decending size order for efficent encoding
+# to put encoded value at the end of a number range zeroBased should be set to false
+# and subFieldBits should be set to the number of bits that are xor'd with the value.
+# eg if a 32bit value has some encoded values at the end of the range, then the subFieldBits would be 32, and zeroBased would be false.
+encoders:
+  encoder: key
+  desc: required
+  zeroBased: optional(true)
+  encoderType: required # type used to hold an encoded value. This type will be created in the types section
+  encoderTypeDesc: required
+  encoderTypeWidth: const
+  totalBits: optional(0)   # filled out by custom handler. Total number of bits required for this encoder
+  enumType: optional       # filled out by custom handler. defaults to encoder name keyTypeT if not provided. This is for the type (with enum) that differentiates between items
+  enumPrefix: optional     # filled out by custom handler. Prefix to be used for enum values. defaults to encoder name KEY_TYPE_ if not provided
+  enumDesc: optional
+  baseConstPrefix: optional # filled out by custom handler. Prefix to be used for base constants ie the value for the zeroth element of a given item
+  encodeMax: optional(0)   # filled out by custom handler. Maximum value output from the encoder
+  extendedRangeItem: optional # should only be used in zeroBased: False case. Allows specification of values outside of encoded range
+  extendedRangeDesc: optional # should only be used in zeroBased: False case. Allows description of values outside of encoded range
+  items:
+    _attribs: [required, multiple]
+    encoder: outerkey
+    item: key
+    desc: required
+    varName: required
+    numBits: const
+    itemOrder: optional(0) # filled out by custom handler, result of sorting by size
+    encodingValue: optional(0) # filled out by custom handler, value detected by encoder

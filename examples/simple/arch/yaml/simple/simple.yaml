@@ -1,0 +1,101 @@
+# This example which is being used for requirements building shows 8 dictionaries
+#                                                                     constants
+#                                                                     variables
+#                                                                     structures
+#                                                                     interfaces
+#                                                                     objects
+#                                                                     connections
+#                                                                     instances
+#                                                                     flows
+include:
+  - ../pipe/pipe.yaml
+
+projectFiles:
+  - ../pipe/pipe.yaml
+
+# constants / parameters are architectural level variables that can be used to control the size of structures,
+# variables, number of instances, etc.
+## constantname: is the constant's name and key for usage by any other dictionary doing a lookup, required
+## for any other key in any other dictionary
+### value: followed by a number to indicate the value for this constant, required if eval is not used
+### desc: followed by a string is a description of this constant, required
+### eval: optional in place of value, this is a math function that can be used to make a constant from other constant
+###       supports +, -, *, and / math.
+### to reference another constant use $CONSTNAME
+
+# variables used as members of structures, only structures are attached to interfaces
+## variablename: is the variable's name and key for usage by any other dictionary doing a lookup, required
+### width: followed by a number or a constant's key (constantname), required
+### desc: followed by a string is a description of this variable, required
+
+# structures are collections of variables, or other structures, structures are the main communication tool from block to block on any interface
+## structureName: is the structure's name and key for usage by any other dictionary doing a lookup, required
+### - variablename
+### - strcuturename
+### dash (-) followed by a variablename or a structureName, the dash is making a list of variables or structures at least one is required to create a valid structure
+
+# interfaces are needed to make any connection from one instance of a block to another block's instance
+## interfacename: is the interface's name and key for usage by any other dictionary doing a lookup, required
+### interfaceType: followed by a string that links to a valid interface type
+####        i.e. rdy_vld could be defined as a ready valid interface
+####             static could be defined as a single port interface with a structure and no protocol
+####             req_ack could be defined as a request acknowledge interface with a structure in both directions
+### structures: is a list of dictionaries, each dictionary has two keys, each item in the list is one per structure on this interface
+###                 some interfaces can have more than one structure but all interfaces must have at least one
+#### dash (-) followed by a dictionary
+#### structureName: followed by a string is a key reference to the structures dictionary
+#### structureType: followed by a string, the structureType is what the structureName gets bound to during generation
+####                    a System Verilog interface may have more than one structureType defined and that is what each 
+####                    structureName gets bound to during generation, similar for System C
+### desc: followed by a string is a description of this interface, required
+
+
+# blocks these are subsystems or blocks that can be instanced one or more times
+## blockname: followed by a name that gives this object (block) a unique key
+### portname: followed by a name that gives this port a unique key for this block, this is used when a block is instanced
+###           more than once or if a port is instanced more than once to connect to multiple blocks with the same interface, optional
+#### count: number that indicates how many of these portname exist and can be connected, optional
+####          numbered from 0 upto count - 1
+blocks:
+  simple:
+    desc: Simple block
+    blockGroup: blockTop
+    hasVl: true
+  producer:
+    desc: Producer block
+    blockGroup: blockTop
+    hasVl: true
+  consumer:
+    desc: Consumer block
+    blockGroup: blockTop
+    hasVl: true
+
+# instances, these are instantiations of objects
+#   implies a top level of some kind that is instancing objects, an instance can instance other objects, optional nesting
+## instancename: is the instance name being instanced, required
+### instanceType: followed by a string which is the key to finding which object is being instanced (objectname), required
+### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
+###          for this instance, optional (currently does not work in diagram generation code)
+instances:
+  u_producer:      { container: simple,  instanceType: producer,    addressGroup: top,    instGroup: allInstances }
+  u_pipe:          { container: simple,  instanceType: pipe,        addressGroup: top,    instGroup: allInstances }
+  u_consumer:      { container: simple,  instanceType: consumer,    addressGroup: top,    instGroup: allInstances }
+
+# connections are specify interface connections between different instaces of objects
+## - {}, dash followed by a dictionary, connections is a list of dictionaries
+### interfaceyname: followed by string that is a key to this interface, an interface can be connected 1 or more times
+### src: followed by a name of the source / master instance for this conneciton
+### dst: followed by a name of the destination / slave instance for this conneciton
+### count: followed by a number to indicate the number of ports to connect to, only valid with srcport or dstport and an interfacename that has multiple ports
+###
+### ports are optional, and are implied in most use cases. The exception is where disambiguation is needed, mainly in array use cases
+### srcport: used if there is more than one objectname instance of the source / master, declares the port of source objectname to connect to
+### dstport: used if there is more than one objectname instance of destination / slave, declares the port of destination objectname to connect to
+### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
+###          for this connection, optional (currently does not work in diagram generation code)
+connections:
+  - {interface: tag,   src: u_producer,       dst: u_pipe,       name: tag_in0   } 
+  - {interface: tag,   src: u_producer,       dst: u_pipe,       name: tag_in1   } 
+  - {interface: tag,   src: u_pipe,           dst: u_consumer,   name: tag_out0  } 
+  - {interface: tag,   src: u_pipe,           dst: u_consumer,   name: tag_out1  } 
+

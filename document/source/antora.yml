@@ -1,0 +1,5 @@
+name: a2c-docs
+title: Arch2Code
+version: latest # get this from repo or tags or something more programatic later
+nav:
+- modules/ROOT/nav.adoc

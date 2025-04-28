@@ -1,0 +1,16 @@
+
+constants:
+  C_ANOTHER_SIZE: {value: 10, desc: "The size of c another size"}
+  D_SIZE: {value: 3, desc: "The size for d"}
+
+types:
+  cStateT:
+    width: 4
+    desc: A state machine type for blockC
+  dT:
+    width: D_SIZE
+    desc: D Type
+
+structures:
+  dSt:
+    d: {varType: dT}

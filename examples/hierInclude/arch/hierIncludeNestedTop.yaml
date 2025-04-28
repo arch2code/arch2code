@@ -1,0 +1,4 @@
+
+constants:
+  YET_ANOTHER_SIZE: {value: 8, desc: "The size of yet another size"}
+
