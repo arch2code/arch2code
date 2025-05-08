@@ -9,27 +9,29 @@
 template<typename VL_ADDR_T, typename VL_DATA_T, typename VL_STRB_T>
 struct axi_write_hdl_if: public sc_interface {
 
-    typedef axiWriteAddressSt<VL_ADDR_T> _aT;
-    typedef axiWriteDataSt<VL_DATA_T, VL_STRB_T> _dT;
-    typedef axiWriteRespSt _bT;
+    static constexpr unsigned int idWidth    = 4;
+    static constexpr unsigned int lenWidth   = 8;
+    static constexpr unsigned int sizeWidth  = 3;
+    static constexpr unsigned int burstWidth = 2;
+    static constexpr unsigned int respWidth = 2;
 
-    sc_signal<sc_bv<_aT::idWidth>> awid;
+    sc_signal<sc_bv<idWidth>> awid;
     sc_signal<VL_ADDR_T> awaddr;
-    sc_signal<sc_bv<_aT::lenWidth>> awlen;
-    sc_signal<sc_bv<_aT::sizeWidth>> awsize;
-    sc_signal<sc_bv<_aT::burstWidth>> awburst;
+    sc_signal<sc_bv<lenWidth>> awlen;
+    sc_signal<sc_bv<sizeWidth>> awsize;
+    sc_signal<sc_bv<burstWidth>> awburst;
     sc_signal<bool> awvalid;
     sc_signal<bool> awready;
 
-    sc_signal<sc_bv<_dT::idWidth>> wid;
+    sc_signal<sc_bv<idWidth>> wid;
     sc_signal<VL_DATA_T> wdata;
     sc_signal<VL_STRB_T> wstrb;
     sc_signal<bool> wlast;
     sc_signal<bool> wvalid;
     sc_signal<bool> wready;
 
-    sc_signal<sc_bv<_bT::idWidth>> bid;
-    sc_signal<sc_bv<_bT::respWidth>> bresp;
+    sc_signal<sc_bv<idWidth>> bid;
+    sc_signal<sc_bv<respWidth>> bresp;
     sc_signal<bool> bvalid;
     sc_signal<bool> bready;
 

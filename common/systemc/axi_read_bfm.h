@@ -9,21 +9,24 @@
 template<typename VL_ADDR_T, typename VL_DATA_T>
 struct axi_read_hdl_if: public sc_interface {
 
-    typedef axiReadAddressSt<VL_ADDR_T> _aT;
-    typedef axiReadRespSt<VL_DATA_T> _dT;
+    static constexpr unsigned int idWidth    = 4;
+    static constexpr unsigned int lenWidth   = 8;
+    static constexpr unsigned int sizeWidth  = 3;
+    static constexpr unsigned int burstWidth = 2;
+    static constexpr unsigned int respWidth = 2;
 
-    sc_signal<sc_bv<_aT::idWidth>> arid;
+    sc_signal<sc_bv<idWidth>> arid;
     sc_signal<VL_ADDR_T> araddr;
-    sc_signal<sc_bv<_aT::lenWidth>> arlen;
-    sc_signal<sc_bv<_aT::sizeWidth>> arsize;
-    sc_signal<sc_bv<_aT::burstWidth>> arburst;
+    sc_signal<sc_bv<lenWidth>> arlen;
+    sc_signal<sc_bv<sizeWidth>> arsize;
+    sc_signal<sc_bv<burstWidth>> arburst;
     sc_signal<bool> arvalid;
     sc_signal<bool> arready;
 
-    sc_signal<sc_bv<_dT::idWidth>> rid;
+    sc_signal<sc_bv<idWidth>> rid;
     sc_signal<VL_DATA_T> rdata;
     sc_signal<bool> rlast;
-    sc_signal<sc_bv<_dT::respWidth>> rresp;
+    sc_signal<sc_bv<respWidth>> rresp;
     sc_signal<bool> rvalid;
     sc_signal<bool> rready;
 

@@ -36,9 +36,18 @@ struct axiWriteDataSt
     D wdata;     // Write data
     S wstrb;     // Write strobes. This signal indicates which byte lanes hold valid data
     bool wlast;  // Write last. This signal indicates the last transfer in a write burst transaction
-    static constexpr int idWidth = 4; // number of bits in wid
-    static constexpr int dataWidth = D::_bitWidth; // number of bits in wdata
-    static constexpr int strbWidth = S::_bitWidth; // number of bits in wstrb
+
+    static constexpr unsigned int idWidth = 4; // number of bits in wid
+    static constexpr unsigned int dataWidth = D::_bitWidth; // number of bits in data
+    static constexpr unsigned int strbWidth = S::_bitWidth; // number of bits in wstrb
+    static constexpr unsigned int lastWidth = 1; // number of bits in wlast
+
+    static constexpr unsigned int _bitWidth = idWidth + dataWidth + strbWidth + lastWidth;
+    static constexpr unsigned int _byteWidth = (_bitWidth + 7)>>3;
+    static constexpr unsigned int _packedSize = (_byteWidth + 7)>>3;
+
+    typedef uint64_t _packedSt[_packedSize];
+
     axiWriteDataSt() {};
 
     static int getBurstSize(void) { return(sizeof(D));} // returns datapath width in bytes
@@ -85,6 +94,49 @@ struct axiWriteDataSt
         return( wdata.getStructValue() );
     }
 
+    inline void pack(_packedSt &_ret) const
+    {
+        uint16_t _pos{0};
+        memset(&_ret, 0, axiWriteDataSt::_byteWidth);
+        pack_bits((uint64_t *)&_ret, _pos, wid, idWidth);
+        _pos += idWidth;
+        {
+            typename D::_packedSt _tmp{0};
+            wdata.pack(_tmp);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, dataWidth);
+        }
+        _pos += dataWidth;
+        {
+            typename S::_packedSt _tmp{0};
+            wstrb.pack(_tmp);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, strbWidth);
+        }
+        _pos += strbWidth;
+        pack_bits((uint64_t *)&_ret, _pos, wlast, lastWidth);
+        _pos += lastWidth;
+    }
+
+    inline void unpack(_packedSt &_src)
+    {
+        uint16_t _pos{0};
+        wid = (_axiIdT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        _pos += idWidth;
+        {
+            typename D::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, dataWidth);
+            wdata.unpack(_tmp);
+        }
+        _pos += dataWidth;
+        {
+            typename S::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, strbWidth);
+            wstrb.unpack(_tmp);
+        }
+        _pos += strbWidth;
+        wlast = (bool)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << lastWidth) - 1));
+        _pos += lastWidth;
+    }
+
 };
 
 template <typename A>
@@ -95,11 +147,18 @@ struct axiWriteAddressSt
     uint8_t     awlen;   // Burst length. This signal indicates the exact number of transfers in a burst.
     _axiSizeT   awsize;  // Burst size. This signal indicates the size of each transfer in the burst.
     _axiBurstT  awburst; // Master Burst type. The burst type and the size information determine how the address for each transfer within the burst is calculated
-    static constexpr int idWidth = 4; // number of bits in awid
-    static constexpr int addrWidth = A::_bitWidth; // number of bits in awaddr
-    static constexpr int lenWidth = 8; // number of bits in awlen
-    static constexpr int sizeWidth = 3; // number of bits in awsize
-    static constexpr int burstWidth = 2; // number of bits in awburst
+
+    static constexpr unsigned int idWidth = 4; // number of bits in awid
+    static constexpr unsigned int addrWidth = A::_bitWidth; // number of bits in awaddr
+    static constexpr unsigned int lenWidth = 8; // number of bits in awlen
+    static constexpr unsigned int sizeWidth = 3; // number of bits in awsize
+    static constexpr unsigned int burstWidth = 2; // number of bits in awburst
+
+    static constexpr unsigned int _bitWidth = idWidth + addrWidth + lenWidth + sizeWidth + burstWidth;
+    static constexpr unsigned int _byteWidth = (_bitWidth + 7)>>3;
+    static constexpr unsigned int _packedSize = (_byteWidth + 7)>>3;
+
+    typedef uint64_t _packedSt[_packedSize];
 
     axiWriteAddressSt() {};
 
@@ -146,6 +205,43 @@ struct axiWriteAddressSt
     {
         return( awaddr.getStructValue() );
     }
+    inline void pack(_packedSt &_ret) const
+    {
+        uint16_t _pos{0};
+        memset(&_ret, 0, axiWriteAddressSt::_byteWidth);
+        pack_bits((uint64_t *)&_ret, _pos, awid, idWidth);
+        _pos += idWidth;
+        {
+            typename A::_packedSt _tmp{0};
+            awaddr.pack(_tmp);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, addrWidth);
+        }
+        _pos += addrWidth;
+        pack_bits((uint64_t *)&_ret, _pos, awlen, lenWidth);
+        _pos += lenWidth;
+        pack_bits((uint64_t *)&_ret, _pos, awsize, sizeWidth);
+        _pos += sizeWidth;
+        pack_bits((uint64_t *)&_ret, _pos, awburst, burstWidth);
+        _pos += burstWidth;
+    }
+    inline void unpack(_packedSt &_src)
+    {
+        uint16_t _pos{0};
+        awid = (_axiIdT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        _pos += idWidth;
+        {
+            typename A::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, addrWidth);
+            awaddr.unpack(_tmp);
+        }
+        _pos += addrWidth;
+        awlen = (uint8_t)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << lenWidth) - 1));
+        _pos += lenWidth;
+        awsize = (_axiSizeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << sizeWidth) - 1));
+        _pos += sizeWidth;
+        awburst = (_axiBurstT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << burstWidth) - 1));
+        _pos += burstWidth;
+    }
 
 };
 
@@ -153,8 +249,15 @@ struct axiWriteRespSt
 {
     _axiIdT     bid;    // Write address ID. This signal is the identification tag for the write address group of signals (4bits)
     _axiResponseT bresp; // Write response. This signal indicates the status of the write transaction
-    static constexpr int idWidth = 4; // number of bits in bid
-    static constexpr int respWidth = 2; // number of bits in bresp
+
+    static constexpr unsigned int idWidth = 4; // number of bits in bid
+    static constexpr unsigned int respWidth = 2; // number of bits in bresp
+
+    static constexpr unsigned int _bitWidth = idWidth + respWidth;
+    static constexpr unsigned int _byteWidth = (_bitWidth + 7)>>3;
+    static constexpr unsigned int _packedSize = (_byteWidth + 7)>>3;
+
+    typedef uint64_t _packedSt[_packedSize];
 
     axiWriteRespSt() {};
 
@@ -188,6 +291,23 @@ struct axiWriteRespSt
     inline uint64_t getStructValue(void) const
     {
         return( -1 );
+    }
+    inline void pack(_packedSt &_ret) const
+    {
+        uint16_t _pos{0};
+        memset(&_ret, 0, axiWriteRespSt::_byteWidth);
+        pack_bits((uint64_t *)&_ret, _pos, bid, idWidth);
+        _pos += idWidth;
+        pack_bits((uint64_t *)&_ret, _pos, bresp, respWidth);
+        _pos += respWidth;
+    }
+    inline void unpack(_packedSt &_src)
+    {
+        uint16_t _pos{0};
+        bid = (_axiIdT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        _pos += idWidth;
+        bresp = (_axiResponseT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << respWidth) - 1));
+        _pos += respWidth;
     }
 
 };
@@ -367,7 +487,7 @@ public:
     virtual void setTimed(int nsec, timedDelayMode mode) override { m_addr_channel.setTimed(nsec, mode); m_data_channel.setTimed(nsec, mode); m_resp_channel.setTimed(nsec, mode);}
     virtual void setCycleTransaction(portType type_) override
     {
-        Q_ASSERT(type_ != PORTTYPE_ANY, "For AXI read, PORTTYPE_SOURCE or PORTTYPE_DEST must be specified");
+        Q_ASSERT(type_ != PORTTYPE_ANY, "For AXI read, PORTTYPE_IN or PORTTYPE_OUT must be specified");
         // axi in = axi_resp = data out
         if (type_ == PORTTYPE_IN) {
             m_receiver_cycle_transaction = true;
