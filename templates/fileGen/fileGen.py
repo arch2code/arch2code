@@ -260,7 +260,7 @@ tbConfigTemplate = \
         return true;
     }
 };
-__modulename__Config::registerTestBenchConfig __modulename__Config::registertbConfig_; //register the testBench with the factory
+__modulename__Config::registerTestBenchConfig __modulename__Config::registerTestBenchConfig_; //register the testBench with the factory
 """
 
 def tbConfig(args, prj, data):
@@ -355,13 +355,13 @@ include_hdrTemplate = \
 // GENERATED_CODE_PARAM --context=__context__
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=constants 
+// GENERATED_CODE_BEGIN --template=includes --section=constants
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=types 
+// GENERATED_CODE_BEGIN --template=includes --section=types
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=enums 
+// GENERATED_CODE_BEGIN --template=includes --section=enums
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=structures 
+// GENERATED_CODE_BEGIN --template=structures
 // GENERATED_CODE_END
 #endif //__HEADERGUARD___
 """
@@ -406,11 +406,11 @@ includeFW_hdrTemplate = \
 namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=types 
+// GENERATED_CODE_BEGIN --template=includes --section=types
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=enums 
+// GENERATED_CODE_BEGIN --template=includes --section=enums
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=structures 
+// GENERATED_CODE_BEGIN --template=structures
 // GENERATED_CODE_END
 } // end of namespace fw_ns
 #endif //__HEADERGUARD___

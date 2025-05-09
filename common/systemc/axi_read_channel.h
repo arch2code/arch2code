@@ -14,6 +14,7 @@
 #include "portBase.h"
 #include "interfaceBase.h"
 #include "pingPongBuffer.h"
+#include "bitTwiddling.h"
 #include <memory>
 #include <vector>
 #include "simpleQueue.h"
@@ -33,10 +34,18 @@ struct axiReadRespSt
     _axiResponseT rresp; // Slave Read response. This signal indicates the status of the read transfer
     bool rlast; // Slave Read last. This signal indicates the last transfer in a read burst transaction
 
+    static constexpr unsigned int idWidth = 4; // number of bits in rid
+    static constexpr unsigned int respWidth = 2; // number of bits in rresp
+    static constexpr unsigned int dataWidth = D::_bitWidth; // number of bits in data
+    static constexpr unsigned int lastWidth = 1; // number of bits in rlast
+
+    static constexpr unsigned int _bitWidth = idWidth + dataWidth + respWidth + lastWidth;
+    static constexpr unsigned int _byteWidth = (_bitWidth + 7)>>3;
+    static constexpr unsigned int _packedSize = (_byteWidth + 7)>>3;
+
+    typedef uint64_t _packedSt[_packedSize];
+
     axiReadRespSt() {};
-    static constexpr int idWidth = 4; // number of bits in rid
-    static constexpr int respWidth = 2; // number of bits in rresp
-    static constexpr int dataWidth = D::_bitWidth; // number of bits in rlast
 
     static int getBurstSize(void) { return(sizeof(D));} // returns datapath width in bytes
 
@@ -81,6 +90,39 @@ struct axiReadRespSt
     {
         return( rdata.getStructValue() );
     }
+    inline void pack(_packedSt &_ret) const
+    {
+        uint16_t _pos{0};
+        memset(&_ret, 0, axiReadRespSt::_byteWidth);
+        pack_bits((uint64_t *)&_ret, _pos, rid, idWidth);
+        _pos += idWidth;
+        {
+            typename D::_packedSt _tmp{0};
+            rdata.pack(_tmp);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, dataWidth);
+        }
+        _pos += dataWidth;
+        pack_bits((uint64_t *)&_ret, _pos, rresp, respWidth);
+        _pos += respWidth;
+        pack_bits((uint64_t *)&_ret, _pos, rlast, lastWidth);
+        _pos += lastWidth;
+    }
+    inline void unpack(_packedSt &_src)
+    {
+        uint16_t _pos{0};
+        rid = (_axiIdT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        _pos += idWidth;
+        {
+            typename D::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, dataWidth);
+            rdata.unpack(_tmp);
+        }
+        _pos += dataWidth;
+        rresp = (_axiResponseT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << respWidth) - 1));
+        _pos += respWidth;
+        rlast = (bool)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << lastWidth) - 1));
+        _pos += lastWidth;
+    }
 
 };
 
@@ -92,12 +134,18 @@ struct axiReadAddressSt
     uint8_t     arlen;   // Master Burst length. This signal indicates the exact number of transfers in a burst.
     _axiSizeT   arsize;  // Master Burst size. This signal indicates the size of each transfer in the burst.
     _axiBurstT  arburst; // Master Burst type. The burst type and the size information determine how the address for each transfer within the burst is calculated
-    static constexpr int idWidth = 4; // number of bits in arid
-    static constexpr int addrWidth = A::_bitWidth; // number of bits in araddr
-    static constexpr int lenWidth = 8; // number of bits in arlen
-    static constexpr int sizeWidth = 3; // number of bits in arsize
-    static constexpr int burstWidth = 2; // number of bits in arburst
 
+    static constexpr unsigned int idWidth = 4; // number of bits in arid
+    static constexpr unsigned int addrWidth = A::_bitWidth; // number of bits in araddr
+    static constexpr unsigned int lenWidth = 8; // number of bits in arlen
+    static constexpr unsigned int sizeWidth = 3; // number of bits in arsize
+    static constexpr unsigned int burstWidth = 2; // number of bits in arburst
+
+    static constexpr unsigned int _bitWidth = idWidth + addrWidth + lenWidth + sizeWidth + burstWidth;
+    static constexpr unsigned int _byteWidth = (_bitWidth + 7)>>3;
+    static constexpr unsigned int _packedSize = (_byteWidth + 7)>>3;
+
+    typedef uint64_t _packedSt[_packedSize];
 
     axiReadAddressSt() {};
 
@@ -143,6 +191,43 @@ struct axiReadAddressSt
     inline uint64_t getStructValue(void) const
     {
         return( araddr.getStructValue() );
+    }
+    inline void pack(_packedSt &_ret) const
+    {
+        uint16_t _pos{0};
+        memset(&_ret, 0, axiReadAddressSt::_byteWidth);
+        pack_bits((uint64_t *)&_ret, _pos, arid, idWidth);
+        _pos += idWidth;
+        {
+            typename A::_packedSt _tmp{0};
+            araddr.pack(_tmp);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, addrWidth);
+        }
+        _pos += addrWidth;
+        pack_bits((uint64_t *)&_ret, _pos, arlen, lenWidth);
+        _pos += lenWidth;
+        pack_bits((uint64_t *)&_ret, _pos, arsize, sizeWidth);
+        _pos += sizeWidth;
+        pack_bits((uint64_t *)&_ret, _pos, arburst, burstWidth);
+        _pos += burstWidth;
+    }
+    inline void unpack(_packedSt &_src)
+    {
+        uint16_t _pos{0};
+        arid = (_axiIdT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << idWidth) - 1));
+        _pos += idWidth;
+        {
+            typename A::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, addrWidth);
+            araddr.unpack(_tmp);
+        }
+        _pos += addrWidth;
+        arlen = (uint8_t)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << lenWidth) - 1));
+        _pos += lenWidth;
+        arsize = (_axiSizeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << sizeWidth) - 1));
+        _pos += sizeWidth;
+        arburst = (_axiBurstT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << burstWidth) - 1));
+        _pos += burstWidth;
     }
 
 };
