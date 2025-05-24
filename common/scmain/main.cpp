@@ -68,7 +68,6 @@ int sc_main(int argc, char* argv[])
     std::string testBenchName;
     std::shared_ptr<testBenchConfigBase> testBench;
     std::string configFile;
-    bool vlTandem = false;
     bool vlTrace = false;
     std::filesystem::path execPath{argv[0]};
     std::string execName = execPath.filename().string();
@@ -77,7 +76,7 @@ int sc_main(int argc, char* argv[])
     #define XSTR(s) STR(s)
     vlInst = XSTR(VL_INST);
     vlType = XSTR(VL_TYPE);
-    vlTandem = VL_TANDEM ? true : false;
+    simController::vlTandem = VL_TANDEM ? true : false;
 
     VcsSetExitFunc(exit_handler);
     synchLockFactoryRegistery::getInstance().setHierarchyPrefix("sc_main");
@@ -277,7 +276,7 @@ int sc_main(int argc, char* argv[])
     if (instVerbosity != VERBOSITY_UNKNOWN) {
         instanceFactory::setLogging(instVerbosity);
     }
-    if (vlInst != "" && vlTandem) {
+    if (vlInst != "" && simController::vlTandem) {
         std::cout << "Synchlock Report. SynchLocks associated with " << vlInst << '\n';
         std::cout << synchLockFactoryRegistery::getInstance().dumpInstanceLocks(vlInst);
     }
@@ -288,7 +287,7 @@ int sc_main(int argc, char* argv[])
     if(simController::vlTrace) {
         std::shared_ptr<blockBase> dut_wrp;
         std::string traceInst = vlInst;
-        if(vlTandem) traceInst.append(".verif");
+        if(simController::vlTandem) traceInst.append(".verif");
         dut_wrp = std::dynamic_pointer_cast<blockBase>(instanceFactory::getInstance(traceInst));
         dut_wrp->vl_trace(vlTracer->m_tfp, 3);
         vlTracer->open_trace();

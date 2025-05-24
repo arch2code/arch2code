@@ -35,9 +35,9 @@ def render(args, prj, data):
     # Generate enums
     out += f"\n// enums\n"
     for unusedKey, value in data['enums'].items():
-        if isinstance(value['width'], int):
-            width = max(value['width'], 1)
-        else:
+        try:
+            width = max(int(value['width']), 1)
+        except (ValueError, TypeError):
             width = value['width']
             if value['width'] in prj.data['constants']:
                 width = prj.data['constants'][value['width']]['constant']            
