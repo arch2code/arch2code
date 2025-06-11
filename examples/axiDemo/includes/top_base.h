@@ -7,6 +7,7 @@
 
 // GENERATED_CODE_PARAM --block=top
 // GENERATED_CODE_BEGIN --template=baseClassDecl
+#include "axi4_stream_channel.h"
 #include "axi_read_channel.h"
 #include "axi_write_channel.h"
 #include "axiDemoIncludes.h"

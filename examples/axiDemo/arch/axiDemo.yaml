@@ -45,6 +45,16 @@ interfaces:
       - {structure: axiAddrSt, structureType: addr_t}
       - {structure: axiDataSt, structureType: data_t}
       - {structure: axiStrobeSt, structureType: strb_t }
+  axiStreamIf:
+    desc: "AXI stream channel"
+    interfaceType: axi4_stream
+    multiCycleMode: api_list_size
+    maxTransferSize: 256
+    structures:
+      - {structure: axiDataSt, structureType: tdata_t}
+      - {structure: axiAddrSt, structureType: tid_t}
+      - {structure: axiAddrSt, structureType: tdest_t}
+      - {structure: axiAddrSt, structureType: tuser_t}
 
 blocks:
   top:
@@ -70,5 +80,7 @@ connections:
   - {interface: axiWrIf, src: uProducer, dst: uConsumer, name: axiWr1}
   - {interface: axiWrIf, src: uProducer, dst: uConsumer, name: axiWr2}
   - {interface: axiWrIf, src: uProducer, dst: uConsumer, name: axiWr3}
+  - {interface: axiStreamIf, src: uProducer, dst: uConsumer, name: axiStr0}
+  - {interface: axiStreamIf, src: uProducer, dst: uConsumer, name: axiStr1}
 
   
