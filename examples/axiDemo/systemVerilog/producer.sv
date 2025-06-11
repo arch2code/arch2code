@@ -13,6 +13,8 @@ import axiDemo_package::*;
     axi_write_if.src axiWr1,
     axi_write_if.src axiWr2,
     axi_write_if.src axiWr3,
+    axi4_stream_if.src axiStr0,
+    axi4_stream_if.src axiStr1,
     input clk, rst_n
 );
 

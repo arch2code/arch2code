@@ -7,6 +7,7 @@
 
 // GENERATED_CODE_PARAM --block=producer
 // GENERATED_CODE_BEGIN --template=baseClassDecl
+#include "axi4_stream_channel.h"
 #include "axi_read_channel.h"
 #include "axi_write_channel.h"
 #include "axiDemoIncludes.h"
@@ -32,6 +33,10 @@ public:
     axi_write_out< axiAddrSt, axiDataSt, axiStrobeSt > axiWr2;
     // axiWrIf->uConsumer: AXI Write channels; Address, Data, and Response
     axi_write_out< axiAddrSt, axiDataSt, axiStrobeSt > axiWr3;
+    // axiStreamIf->uConsumer: AXI stream channel
+    axi4_stream_out< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr0;
+    // axiStreamIf->uConsumer: AXI stream channel
+    axi4_stream_out< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr1;
 
     // dst ports
 
@@ -45,6 +50,8 @@ public:
         ,axiWr1("axiWr1")
         ,axiWr2("axiWr2")
         ,axiWr3("axiWr3")
+        ,axiStr0("axiStr0")
+        ,axiStr1("axiStr1")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -56,6 +63,8 @@ public:
         axiWr1->setTimed(nsec, mode);
         axiWr2->setTimed(nsec, mode);
         axiWr3->setTimed(nsec, mode);
+        axiStr0->setTimed(nsec, mode);
+        axiStr1->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -68,6 +77,8 @@ public:
         axiWr1->setLogging(verbosity);
         axiWr2->setLogging(verbosity);
         axiWr3->setLogging(verbosity);
+        axiStr0->setLogging(verbosity);
+        axiStr1->setLogging(verbosity);
     };
 };
 class producerInverted : public virtual blockPortBase
@@ -90,6 +101,10 @@ public:
     axi_write_in< axiAddrSt, axiDataSt, axiStrobeSt > axiWr2;
     // axiWrIf->uConsumer: AXI Write channels; Address, Data, and Response
     axi_write_in< axiAddrSt, axiDataSt, axiStrobeSt > axiWr3;
+    // axiStreamIf->uConsumer: AXI stream channel
+    axi4_stream_in< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr0;
+    // axiStreamIf->uConsumer: AXI stream channel
+    axi4_stream_in< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr1;
 
     // dst ports
 
@@ -103,6 +118,8 @@ public:
         ,axiWr1(("axiWr1"+name).c_str())
         ,axiWr2(("axiWr2"+name).c_str())
         ,axiWr3(("axiWr3"+name).c_str())
+        ,axiStr0(("axiStr0"+name).c_str())
+        ,axiStr1(("axiStr1"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -114,6 +131,8 @@ public:
         axiWr1->setTimed(nsec, mode);
         axiWr2->setTimed(nsec, mode);
         axiWr3->setTimed(nsec, mode);
+        axiStr0->setTimed(nsec, mode);
+        axiStr1->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -126,6 +145,8 @@ public:
         axiWr1->setLogging(verbosity);
         axiWr2->setLogging(verbosity);
         axiWr3->setLogging(verbosity);
+        axiStr0->setLogging(verbosity);
+        axiStr1->setLogging(verbosity);
     };
 };
 class producerChannels
@@ -148,6 +169,10 @@ public:
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr2;
     //   axiWrIf
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr3;
+    //   axiStreamIf
+    axi4_stream_channel< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr0;
+    //   axiStreamIf
+    axi4_stream_channel< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr1;
 
     // dst ports
 
@@ -161,6 +186,8 @@ public:
     ,axiWr1(("axiWr1"+name).c_str(), srcName, "api_list_size", 256, "")
     ,axiWr2(("axiWr2"+name).c_str(), srcName, "api_list_size", 256, "")
     ,axiWr3(("axiWr3"+name).c_str(), srcName, "api_list_size", 256, "")
+    ,axiStr0(("axiStr0"+name).c_str(), srcName, "api_list_size", 256, "")
+    ,axiStr1(("axiStr1"+name).c_str(), srcName, "api_list_size", 256, "")
     {};
     void bind( producerBase *a, producerInverted *b)
     {
@@ -180,6 +207,10 @@ public:
         b->axiWr2( axiWr2 );
         a->axiWr3( axiWr3 );
         b->axiWr3( axiWr3 );
+        a->axiStr0( axiStr0 );
+        b->axiStr0( axiStr0 );
+        a->axiStr1( axiStr1 );
+        b->axiStr1( axiStr1 );
     };
 };
 
