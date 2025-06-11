@@ -21,6 +21,7 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#include "axi4_stream_bfm.h"
 #include "axi_read_bfm.h"
 #include "axi_write_bfm.h"
 
@@ -58,6 +59,8 @@ public:
     axi_write_src_bfm<axiAddrSt, axiDataSt, axiStrobeSt, sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr1_bfm;
     axi_write_src_bfm<axiAddrSt, axiDataSt, axiStrobeSt, sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr2_bfm;
     axi_write_src_bfm<axiAddrSt, axiDataSt, axiStrobeSt, sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr3_bfm;
+    axi4_stream_src_bfm<axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>> axiStr0_bfm;
+    axi4_stream_src_bfm<axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>> axiStr1_bfm;
 
     SC_HAS_PROCESS (producer_hdl_sc_wrapper);
 
@@ -74,6 +77,8 @@ public:
         axiWr1_bfm("axiWr1_bfm"),
         axiWr2_bfm("axiWr2_bfm"),
         axiWr3_bfm("axiWr3_bfm"),
+        axiStr0_bfm("axiStr0_bfm"),
+        axiStr1_bfm("axiStr1_bfm"),
         rst_n(0)
     {
 #if !defined(VERILATOR) && defined(VCS)
@@ -202,6 +207,24 @@ public:
         dut_hdl->axiWr3_bid(axiWr3_hdl_if.bid);
         dut_hdl->axiWr3_bvalid(axiWr3_hdl_if.bvalid);
         dut_hdl->axiWr3_bready(axiWr3_hdl_if.bready);
+        dut_hdl->axiStr0_tvalid(axiStr0_hdl_if.tvalid);
+        dut_hdl->axiStr0_tready(axiStr0_hdl_if.tready);
+        dut_hdl->axiStr0_tdata(axiStr0_hdl_if.tdata);
+        dut_hdl->axiStr0_tstrb(axiStr0_hdl_if.tstrb);
+        dut_hdl->axiStr0_tkeep(axiStr0_hdl_if.tkeep);
+        dut_hdl->axiStr0_tlast(axiStr0_hdl_if.tlast);
+        dut_hdl->axiStr0_tid(axiStr0_hdl_if.tid);
+        dut_hdl->axiStr0_tdest(axiStr0_hdl_if.tdest);
+        dut_hdl->axiStr0_tuser(axiStr0_hdl_if.tuser);
+        dut_hdl->axiStr1_tvalid(axiStr1_hdl_if.tvalid);
+        dut_hdl->axiStr1_tready(axiStr1_hdl_if.tready);
+        dut_hdl->axiStr1_tdata(axiStr1_hdl_if.tdata);
+        dut_hdl->axiStr1_tstrb(axiStr1_hdl_if.tstrb);
+        dut_hdl->axiStr1_tkeep(axiStr1_hdl_if.tkeep);
+        dut_hdl->axiStr1_tlast(axiStr1_hdl_if.tlast);
+        dut_hdl->axiStr1_tid(axiStr1_hdl_if.tid);
+        dut_hdl->axiStr1_tdest(axiStr1_hdl_if.tdest);
+        dut_hdl->axiStr1_tuser(axiStr1_hdl_if.tuser);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
@@ -245,6 +268,16 @@ public:
         axiWr3_bfm.clk(clk);
         axiWr3_bfm.rst_n(rst_n);
 
+        axiStr0_bfm.if_p(axiStr0);
+        axiStr0_bfm.hdl_if_p(axiStr0_hdl_if);
+        axiStr0_bfm.clk(clk);
+        axiStr0_bfm.rst_n(rst_n);
+
+        axiStr1_bfm.if_p(axiStr1);
+        axiStr1_bfm.hdl_if_p(axiStr1_hdl_if);
+        axiStr1_bfm.clk(clk);
+        axiStr1_bfm.rst_n(rst_n);
+
         SC_THREAD(reset_driver);
 
         end_ctor_init();
@@ -269,6 +302,8 @@ private:
     axi_write_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr1_hdl_if;
     axi_write_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr2_hdl_if;
     axi_write_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr3_hdl_if;
+    axi4_stream_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>> axiStr0_hdl_if;
+    axi4_stream_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>> axiStr1_hdl_if;
 
     sc_signal<bool> rst_n;
 

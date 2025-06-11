@@ -127,6 +127,7 @@ interfaces:
         - apb
         - axi_read
         - axi_write
+        - axi4_stream
         - notify_ack
         - status
   desc: required
@@ -160,6 +161,10 @@ interfaces:
           - addr_t
           - strb_t
           - hdr_t
+          - tdata_t
+          - tid_t
+          - tdest_t
+          - tuser_t
 
 instances:
   instance: key

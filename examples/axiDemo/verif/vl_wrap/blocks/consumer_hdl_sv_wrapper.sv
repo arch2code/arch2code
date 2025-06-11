@@ -144,6 +144,28 @@ module consumer_hdl_sv_wrapper
     output bit axiWr3_bvalid,
     input bit axiWr3_bready,
 
+    // axi4_stream_if.dst
+    input bit axiStr0_tvalid,
+    output bit axiStr0_tready,
+    input bit [31:0] axiStr0_tdata,
+    input bit [31:0] axiStr0_tstrb,
+    input bit [31:0] axiStr0_tkeep,
+    input bit axiStr0_tlast,
+    input bit [31:0] axiStr0_tid,
+    input bit [31:0] axiStr0_tdest,
+    input bit [31:0] axiStr0_tuser,
+
+    // axi4_stream_if.dst
+    input bit axiStr1_tvalid,
+    output bit axiStr1_tready,
+    input bit [31:0] axiStr1_tdata,
+    input bit [31:0] axiStr1_tstrb,
+    input bit [31:0] axiStr1_tkeep,
+    input bit axiStr1_tlast,
+    input bit [31:0] axiStr1_tid,
+    input bit [31:0] axiStr1_tdest,
+    input bit [31:0] axiStr1_tuser,
+
     input clk,
     input rst_n
 );
@@ -299,6 +321,32 @@ module consumer_hdl_sv_wrapper
     assign #0 axiWr3_bvalid = axiWr3.bvalid;
     assign #0 axiWr3.bready = axiWr3_bready;
 
+    // axi4_stream_if.dst
+    axi4_stream_if #(.tdata_t(axiDataSt), .tid_t(axiAddrSt), .tdest_t(axiAddrSt), .tuser_t(axiAddrSt)) axiStr0();
+
+    assign #0 axiStr0.tvalid = axiStr0_tvalid;
+    assign #0 axiStr0_tready = axiStr0.tready;
+    assign #0 axiStr0.tdata = axiStr0_tdata;
+    assign #0 axiStr0.tstrb = axiStr0_tstrb;
+    assign #0 axiStr0.tkeep = axiStr0_tkeep;
+    assign #0 axiStr0.tlast = axiStr0_tlast;
+    assign #0 axiStr0.tid = axiStr0_tid;
+    assign #0 axiStr0.tdest = axiStr0_tdest;
+    assign #0 axiStr0.tuser = axiStr0_tuser;
+
+    // axi4_stream_if.dst
+    axi4_stream_if #(.tdata_t(axiDataSt), .tid_t(axiAddrSt), .tdest_t(axiAddrSt), .tuser_t(axiAddrSt)) axiStr1();
+
+    assign #0 axiStr1.tvalid = axiStr1_tvalid;
+    assign #0 axiStr1_tready = axiStr1.tready;
+    assign #0 axiStr1.tdata = axiStr1_tdata;
+    assign #0 axiStr1.tstrb = axiStr1_tstrb;
+    assign #0 axiStr1.tkeep = axiStr1_tkeep;
+    assign #0 axiStr1.tlast = axiStr1_tlast;
+    assign #0 axiStr1.tid = axiStr1_tid;
+    assign #0 axiStr1.tdest = axiStr1_tdest;
+    assign #0 axiStr1.tuser = axiStr1_tuser;
+
     consumer dut (
         .axiRd0(axiRd0), // axi_read_if.dst
         .axiRd1(axiRd1), // axi_read_if.dst
@@ -308,6 +356,8 @@ module consumer_hdl_sv_wrapper
         .axiWr1(axiWr1), // axi_write_if.dst
         .axiWr2(axiWr2), // axi_write_if.dst
         .axiWr3(axiWr3), // axi_write_if.dst
+        .axiStr0(axiStr0), // axi4_stream_if.dst
+        .axiStr1(axiStr1), // axi4_stream_if.dst
         .clk(clk),
         .rst_n(rst_n)
     );

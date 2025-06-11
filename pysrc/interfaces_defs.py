@@ -254,5 +254,39 @@ INTF_DEFS = {
            'param_cast' : None,
            'multicycle_types' : ['fixed_size', 'api_list_tracker',  'api_list_size']
         },
+    },
+    'axi4_stream' : {
+        'parameters' : {
+           'tdata_t' : { 'datatype' : 'struct', 'default' : 'bit' },
+           'tid_t' : { 'datatype' : 'struct', 'default' : 'bit' },
+           'tdest_t' : { 'datatype' : 'struct', 'default' : 'bit' },
+           'tuser_t' : { 'datatype' : 'struct', 'default' : 'bit' }
+        },
+        'signals' : {
+            'tvalid' : 'bool',
+            'tready' : 'bool',
+            'tdata' : 'tdata_t',
+            'tstrb' : 'tdata_t',
+            'tkeep' : 'tdata_t',
+            'tlast' : 'bool',
+            'tid' : 'tid_t',
+            'tdest' : 'tdest_t',
+            'tuser' : 'tuser_t'
+        },
+        'modports' : {
+            'src' : {
+                'inputs' : ['tready'],
+                'outputs': ['tvalid', 'tdata', 'tstrb', 'tkeep', 'tlast', 'tid', 'tdest', 'tuser']
+            },
+            'dst' : {
+                'inputs' : ['tvalid', 'tdata', 'tstrb', 'tkeep', 'tlast', 'tid', 'tdest', 'tuser'],
+                'outputs': ['tready']
+            }
+        },
+        'sc_channel' : {
+           'type' : 'axi4_stream',
+           'param_cast' : None,
+           'multicycle_types' : ['fixed_size', 'api_list_tracker',  'api_list_size']
+        },
     }
 }
