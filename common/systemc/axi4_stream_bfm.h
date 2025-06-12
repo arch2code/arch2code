@@ -54,7 +54,7 @@ public:
             tinfo.tdata.sc_unpack(hdl_if_p->tdata);
             tinfo.tstrb.sc_unpack(hdl_if_p->tstrb);
             tinfo.tkeep.sc_unpack(hdl_if_p->tkeep);
-            tinfo.tlast = (bool) hdl_if_p->tlast.read();;
+            tinfo.tlast = (bool) hdl_if_p->tlast.read();
             tinfo.tid.sc_unpack(hdl_if_p->tid);
             tinfo.tdest.sc_unpack(hdl_if_p->tdest);
             tinfo.tuser.sc_unpack(hdl_if_p->tuser);
