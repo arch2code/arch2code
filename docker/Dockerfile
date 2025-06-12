@@ -1,0 +1,43 @@
+FROM arch2code/a2c-dev:1.0
+
+ARG USERNAME=
+ARG USER_UID=
+ARG USER_GID=
+
+RUN apt update && apt install openssh-server vim lcov -y
+
+# Setup defaul bashrc
+RUN cat <<EOF >> /etc/skel/.bashrc
+
+# Custom RC additions
+if [ -f ~/.bash_custom ]; then
+    . ~/.bash_custom
+fi
+EOF
+
+COPY <<EOF /etc/skel/.bashrc
+export NVM_DIR=/usr/local/nvm
+export PATH=\${NVM_DIR}/versions/node/default/bin:\${PATH}
+
+export SYSTEMC_INCLUDE=/usr/include
+export SYSTEMC_LIBDIR=/usr/lib
+export LD_BOOST=/usr/lib/x86_64-linux-gnu
+export BOOST_INCLUDE=/usr/include/boost
+
+export TZ='US/Pacific'
+EOF
+
+# Create the user
+RUN groupadd -f --gid $USER_GID $USERNAME
+RUN useradd --uid $USER_UID --gid $USER_GID --create-home $USERNAME --shell /bin/bash
+
+# Enable sudoer access without password request
+RUN apt update && apt install sudo -y
+RUN usermod -aG sudo $USERNAME
+RUN echo $USERNAME:changeme | chpasswd
+RUN echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+USER $USERNAME
+
+CMD sudo service ssh start; bash
+
