@@ -27,6 +27,9 @@ export BOOST_INCLUDE=/usr/include/boost
 export TZ='US/Pacific'
 EOF
 
+COPY requirements.txt /tmp/a2c-requirements.txt
+RUN pip3 install -r /tmp/a2c-requirements.txt
+
 # Create the user
 RUN groupadd -f --gid $USER_GID $USERNAME
 RUN useradd --uid $USER_UID --gid $USER_GID --create-home $USERNAME --shell /bin/bash
