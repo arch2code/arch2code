@@ -25,6 +25,8 @@ class newModule:
             if key not in fileGenerationConfig:
                 printError(f"fileGeneration section of project file must contain {key}")
                 exit(warningAndErrorReport())
+        if not prj.data.get("blocks"):
+            return
         someBlock = next(iter(prj.data["blocks"])) # any random entry
         for fileKey, fileDefinition in fileGenerationConfig['fileMap'].items():
             mode = fileDefinition.get('mode', 'block') 
@@ -63,6 +65,8 @@ class newModule:
                     for field, value in cond.items():
                         if prj.data["blocks"][qualBlock][field] != value:
                             makeFile = False 
+                        else:
+                            makeFile = True
                 if makeFile:
                     hasVariant = fileDefinition.get('variant', False)
                     if hasVariant and data['variants']:

@@ -27,7 +27,7 @@ projectName: {{data.projectName}}
 # note in the case of additional project files any top level controls (such as schema:) are ignored
 # relative path names are resolved based on location of project file (this includes sub projects)
 projectFiles:
-  - testbench/topTestbench.yaml
+  - testbench/testbench.yaml
 
 # uncomment to use a custom schema file, otherwise the default schema is used
 #dbSchema: config/schema.yaml
@@ -58,7 +58,6 @@ dirs:
 # architecture hierarchy.
 fileGeneration:
   template: $a2c/templates/fileGen/fileGen.py
-  topModuleDir: ascariTop   # as top is special case in the hierarchy define sub directory where top file goes (optional, defaults to top)
   fileMap:
     # generation has 2 modes, block and context
     # block creates a file per design block and cond: depend on the block definition
@@ -77,7 +76,7 @@ fileGeneration:
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
     vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
     # tandem      : { name : "Tandem",          ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true, hasRtl: true},  mode: block,   basePath: base,    desc: "Model tandem module wrapper class header file"}
-    testbench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
+    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
     tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench config files"}
     tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench external files"}
     include     : { name : "Includes",        ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include file"}

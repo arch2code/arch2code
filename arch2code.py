@@ -93,6 +93,10 @@ if args.yaml == "" and args.db == "":
     exit(warningAndErrorReport())
 if args.db != "" and args.yaml == "":
     args.readonly = True
+elif args.db == "" and args.yaml != "":
+    printError("Must specify file path to create db from yaml")
+    exit(warningAndErrorReport())
+
 if args.version:
     if args.readonly:
         # readonly and version prints only version with no colors for builds and scripting

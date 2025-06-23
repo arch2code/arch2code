@@ -848,7 +848,7 @@ class projectOpen:
                 if self.data['instances'][inst]['variant'] != '':
                     filtered_variants_data = {k: v for k, v in self.data['parametersvariants'][qualBlock].items() if v.get('variant') == self.data['instances'][inst]['variant']}
                     ret['variants'][self.data['instances'][inst]['variant']] = filtered_variants_data
-            if inst in self.hierKey[qualBlock]:
+            if qualBlock in self.hierKey and inst in self.hierKey[qualBlock]:
                 ret['subBlockInstances'][inst] = self.hierKey[qualBlock][inst]
         if len(qualBlockInstances) == 0:
             # there is no instance of the of type qualblock
@@ -1479,7 +1479,7 @@ class projectCreate:
             self.addressControl = existsLoad(addressControlFile)
             self.validateAddressControl(self.addressControl, addressControlFile)
         else:
-            printError(f"Project file {projFile} is missing dbSchema: setting")
+            printError(f"Project file {projFile} is missing addressControl: setting")
             exit(warningAndErrorReport())
         if 'topInstance' in self.proj:
             # all designs have a top instance, which must be specified in the project file
@@ -1786,13 +1786,13 @@ class projectCreate:
             for include, includeData in self.includeValid.items():
                 includeName = self.includeName[include]
                 if not(smartInclude and not includeData['valid']):
-                    fileName = expandNewModulePath(fileData, includeData['dir'], includeName, includeName)
+                    fileName = expandNewModulePath(fileData, includeData['dir'], includeName, includeName, missingDirOk=True)
                     for ext in fileData['ext']:
                         fileNameExt = fileName + "." + fileData['ext'][ext]
                         baseName = os.path.basename(fileNameExt)
                         expandedType = fileType + "_" + ext
                         if not (os.path.exists(fileNameExt)):
-                            printError(f"File {fileNameExt} does not exist. run arch2code.py with --newmodule option")
+                            printWarning(f"File {fileNameExt} does not exist. run arch2code.py with --newmodule option")
                         includeFiles.setdefault(expandedType, {})[include] = {'baseName': baseName, 'fileName': fileNameExt}
                     
         self.config.setConfig('INCLUDEFILES', includeFiles)            

@@ -348,7 +348,6 @@ include_hdrTemplate = \
 #include "systemc.h"
 #include <cstdint>
 #include <fmt/format.h>
-#include "tagTrackers.h"
 #include <iostream>
 #include <iomanip>
 
