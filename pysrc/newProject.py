@@ -58,7 +58,6 @@ dirs:
 # architecture hierarchy.
 fileGeneration:
   template: $a2c/templates/fileGen/fileGen.py
-  topModuleDir: ascariTop   # as top is special case in the hierarchy define sub directory where top file goes (optional, defaults to top)
   fileMap:
     # generation has 2 modes, block and context
     # block creates a file per design block and cond: depend on the block definition
