@@ -11,6 +11,7 @@
 #include "q_assert.h"
 #include <iomanip>
 #include <atomic>
+#include <fmt/format.h>
 
 const int unsigned MAX_DUMP_HALF_LIMIT = 5;
 
