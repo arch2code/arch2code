@@ -54,19 +54,17 @@ class newModule:
         blockFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'block'}
         for block, blockData in prj.blocks.items():
             data = dict()
-            makeFile = True
             qualBlock = prj.getQualBlock(block)
             data['variants'] = prj.getQualBlockVariants(qualBlock)
             data['block'] = block
             data['qualBlock'] = qualBlock
             for fileKey, fileDefinition in blockFileGenerationConfig.items():
                 cond = fileDefinition.get("cond", None)
+                makeFile = True
                 if cond:
                     for field, value in cond.items():
                         if prj.data["blocks"][qualBlock][field] != value:
                             makeFile = False 
-                        else:
-                            makeFile = True
                 if makeFile:
                     hasVariant = fileDefinition.get('variant', False)
                     if hasVariant and data['variants']:
