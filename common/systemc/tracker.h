@@ -3,6 +3,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 #include <vector>
 #include <string>
+#include <type_traits>
 #include <fmt/format.h>
 #include "logging.h"
 #include "trackerBase.h"
@@ -14,12 +15,28 @@
 #include <sstream>
 #include <iomanip>  // For std::hex
 
+// SFINAE helper to check if T has std::string prt(void) method
+template<typename T, typename = void>
+struct has_prt_method : std::false_type {};
+
+template<typename T>
+struct has_prt_method<T, std::void_t<
+    decltype(std::declval<T>().prt())
+>> : std::is_same<std::string, decltype(std::declval<T>().prt())> {};
+
 // tracker can use a shared counter to allow multiple trackers to avoid the same sequence number, or use there own counter
 template <class T>
 class tracker : public trackerBase
 {
+    static_assert(has_prt_method<T>::value, 
+        "Type T must have a 'std::string prt(void)' method");
 public:
     // private counter use case
+    // size : number of tags
+    // name : tracker name used for logging
+    // prefix : prefix for the tag string, used to distinguish between different trackers typically this wants to be uniquely searchable eg 'C#'
+    // prtTag : function to print the tag, typically this is a lambda provides any useful formatting
+    // internalBufferSize : size of the internal buffer for the backdoor pointer, if 0 then no internal buffer is allocated
     tracker(const int size, const std::string &name, const std::string &prefix, std::function<std::string(const int tag)> prtTag, int internalBufferSize = 0) :
         prefix_(prefix),
         pSequenceCounter_(std::make_shared<uint64_t>(0)),
@@ -38,6 +55,8 @@ public:
             initInternalBuffers(internalBufferSize);
         }
     // shared counter use case
+    // as above but with a shared pointer to a counter
+    // counter : shared pointer to a counter that will be used to generate unique sequence numbers for the tags
     tracker(const int size, std::shared_ptr<uint64_t> counter, const std::string name, const std::string &prefix, std::function<std::string(const int tag)> prtTag, int internalBufferSize = 0) :
         prefix_(prefix),
         pSequenceCounter_(counter),
@@ -399,6 +418,7 @@ private:
     std::map<std::string, std::shared_ptr<trackerBase>> trackers;
 
 };
+// this is a sample class suitable for using in a tracker
 class simpleString {
 public:
     simpleString(const std::string &info_) : info(info_) {}

@@ -24,7 +24,6 @@ dirs: # this is list of locations that can be referenced as base path in fileMap
 # architecture hierarchy. 
 fileGeneration:
   template: $a2c/templates/fileGen/fileGen.py
-  topModuleDir: top   # as top is special case in the hierarchy define sub directory where top file goes (optional, defaults to top)
   fileMap:
     # generation has 2 modes, block and context
     # block creates a file per design block and cond: depend on the block definition
