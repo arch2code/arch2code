@@ -346,13 +346,11 @@ include_hdrTemplate = \
 // __copyright__
 
 #include "systemc.h"
-#include <cstdint>
-#include <fmt/format.h>
-#include <iostream>
-#include <iomanip>
 
 // GENERATED_CODE_PARAM --context=__context__
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 // GENERATED_CODE_END
