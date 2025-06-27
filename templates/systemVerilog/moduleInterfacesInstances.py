@@ -213,7 +213,4 @@ def render(args, prj, data):
             out += f"{indent}.mem ({localMemInst}),\n"
         out += f"{indent}.clk (clk)\n);\n\n"
 
-    if data['parentModule']:
-        out += f"endmodule // {data['blockName']}"
-
     return (out)

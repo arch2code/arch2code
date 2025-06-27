@@ -1,7 +1,6 @@
-// GENERATED_CODE_PARAM --contexts mixedBlockC.yaml
+// GENERATED_CODE_PARAM --context mixedBlockC.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package mixedBlockC_package;
-//constants as defined by the scope of the following context(s): ('mixedBlockC.yaml',)
 //         CSIZE =                              'd2;  // The size of C
 localparam CSIZE =                            32'h0000_0002;  // The size of C
 //         CSIZE_PLUS =                         'd3;  // The size of C plus 1

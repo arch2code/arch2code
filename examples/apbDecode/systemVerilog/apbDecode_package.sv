@@ -1,9 +1,8 @@
 
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
-// GENERATED_CODE_PARAM --contexts=apbDecode.yaml
+// GENERATED_CODE_PARAM --context=apbDecode.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package apbDecode_package;
-//constants as defined by the scope of the following context(s): ('apbDecode.yaml',)
 //         ASIZE =                             'd29;  // The size of A
 localparam ASIZE =                           32'h0000_001D;  // The size of A
 //         DWORD =                             'd32;  // size of a double word

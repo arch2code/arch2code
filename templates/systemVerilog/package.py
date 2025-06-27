@@ -7,16 +7,14 @@ from pysrc.systemVerilogGeneratorHelper import importPackages
 def render(args, prj, data):
     out     = ''
     indent  = ' ' *4
-    if data['contexts'] is None:
+    if data['context'] is None:
         return out
-    packageName = prj.includeName[data['contexts'][0]] + '_package'
+    packageName = prj.includeName[data['context'][0]] + '_package'
 
     out     += f"package {packageName};\n"
-    out     += importPackages(args, prj, data['contexts'][0], data, excludeSelf=True)
+    out     += importPackages(args, prj, data['context'][0], data, excludeSelf=True)
 
     # Now put in everything at this context level
-    # print list in f string without braces; https://stackoverflow.com/a/62225685/8980882
-    out += f"//constants as defined by the scope of the following context(s): {*data['contexts'],}\n"
     # Generate constants as localparam[s]
     for unusedKey, value in data['constants'].items():
         if value['value'] > 0xFFFFFFFF:
@@ -40,7 +38,7 @@ def render(args, prj, data):
         except (ValueError, TypeError):
             width = value['width']
             if value['width'] in prj.data['constants']:
-                width = prj.data['constants'][value['width']]['constant']            
+                width = prj.data['constants'][value['width']]['constant']
         out += f"typedef enum logic[{width}-1:0] {{ {' '*value['descSpaces']}//{value['desc']}\n"
         # below loop processes enums and puts a comma after them for all in the list but the last one
         for enumData in value['enum'][:-1]:

@@ -1,11 +1,10 @@
 
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
-// GENERATED_CODE_PARAM --contexts=axiDemo.yaml
+// GENERATED_CODE_PARAM --context=axiDemo.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package axiDemo_package;
 // Generated Import package statement(s)
 import axiStd_package::*;
-//constants as defined by the scope of the following context(s): ('axiDemo.yaml',)
 //         AXI_ADDRESS_WIDTH =                 'd32;  // The width of the AXI address busses
 localparam AXI_ADDRESS_WIDTH =               32'h0000_0020;  // The width of the AXI address busses
 //         AXI_DATA_WIDTH =                    'd32;  // The width of the AXI data busses

@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=apbDecode --parentModule
+// GENERATED_CODE_PARAM --block=apbDecode
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
 //module as defined by block: apbDecode
 module apbDecode
@@ -89,5 +89,5 @@ assign apbReg.pready  = pready;
 assign apbReg.prdata  = prdata;
 assign apbReg.pslverr = pslverr;
 
-endmodule // apbDecode
+endmodule: apbDecode
 // GENERATED_CODE_END
