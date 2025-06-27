@@ -2,7 +2,7 @@ package mixedEncoderPackage;
 
     import mixed_package::*;
 
-    // GENERATED_CODE_PARAM --contexts=mixed.yaml
+    // GENERATED_CODE_PARAM --context=mixed.yaml
     // GENERATED_CODE_BEGIN --template=encoder
 
     function automatic opcodeTagT opcodeEnAEncoderEncode (opcodeTagT tag, opcodeEnumT tagType);

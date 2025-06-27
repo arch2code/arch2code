@@ -443,7 +443,7 @@ def includeFW_src(args, prj, data):
 package_svTemplate = \
 """
 // __copyright__
-// GENERATED_CODE_PARAM --contexts=__context__
+// GENERATED_CODE_PARAM --context=__context__
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 // GENERATED_CODE_END
 """

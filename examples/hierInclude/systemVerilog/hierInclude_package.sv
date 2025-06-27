@@ -1,10 +1,9 @@
-// GENERATED_CODE_PARAM --contexts hierInclude.yaml
+// GENERATED_CODE_PARAM --context hierInclude.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package hierInclude_package;
 // Generated Import package statement(s)
 import hierIncludeNestedTop_package::*;
 import hierIncludeTop_package::*;
-//constants as defined by the scope of the following context(s): ('hierInclude.yaml',)
 //         ASIZE =                              'd7;  // The size of A
 localparam ASIZE =                            32'h0000_0007;  // The size of A
 //         ASIZE2 =                            'd11;  // The size of A + included constant another size
