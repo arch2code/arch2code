@@ -4,7 +4,7 @@
 
 // GENERATED_CODE_PARAM --context=helloWorldTop.yaml
 // GENERATED_CODE_BEGIN --template=structures --section=cppIncludes
-#include <fmt/format.h>
+#include "logging.h"
 #include <algorithm>
 #include "bitTwiddling.h"
 
