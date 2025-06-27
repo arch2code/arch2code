@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=blockA --parentModule
+// GENERATED_CODE_PARAM --block=blockA
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockA
 module blockA
@@ -26,5 +26,7 @@ blockARegs #(.APB_ADDR_MASK('hff_ffff)) uBlockARegs (
     .rst_n (rst_n)
 );
 
-endmodule // blockA
+
 // GENERATED_CODE_END
+
+endmodule: blockA

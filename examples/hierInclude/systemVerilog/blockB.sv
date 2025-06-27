@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=blockB --parentModule 
+// GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockB
 module blockB
@@ -37,5 +37,7 @@ blockBZ uBlockBZ (
     .rst_n (rst_n)
 );
 
-endmodule // blockB
+
 // GENERATED_CODE_END
+
+endmodule: blockB

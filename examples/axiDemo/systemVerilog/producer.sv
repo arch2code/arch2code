@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=producer --parentModule
+// GENERATED_CODE_PARAM --block=producer
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: producer
 module producer
@@ -19,5 +19,7 @@ import axiDemo_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-endmodule // producer
+
 // GENERATED_CODE_END
+
+endmodule: producer

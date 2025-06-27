@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=someRapper --parentModule
+// GENERATED_CODE_PARAM --block=someRapper
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: someRapper
 module someRapper
@@ -34,5 +34,7 @@ blockB uBlockB (
     .rst_n (rst_n)
 );
 
-endmodule // someRapper
+
 // GENERATED_CODE_END
+
+endmodule : someRapper

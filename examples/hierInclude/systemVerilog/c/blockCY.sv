@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=blockCY --parentModule
+// GENERATED_CODE_PARAM --block=blockCY
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockCY
 module blockCY
@@ -12,5 +12,7 @@ import hierIncludeC_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-endmodule // blockCY
+
 // GENERATED_CODE_END
+
+endmodule: blockCY

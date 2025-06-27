@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=blockC --parentModule 
+// GENERATED_CODE_PARAM --block=blockC
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockC
 module blockC
@@ -37,5 +37,7 @@ blockCZ uBlockCZ (
     .rst_n (rst_n)
 );
 
-endmodule // blockC
+
 // GENERATED_CODE_END
+
+endmodule: blockC

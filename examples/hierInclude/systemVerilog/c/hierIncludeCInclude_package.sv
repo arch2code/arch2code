@@ -1,7 +1,6 @@
-// GENERATED_CODE_PARAM --contexts c/hierIncludeCInclude.yaml
+// GENERATED_CODE_PARAM --context c/hierIncludeCInclude.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package hierIncludeCInclude_package;
-//constants as defined by the scope of the following context(s): ('c/hierIncludeCInclude.yaml',)
 //         C_ANOTHER_SIZE =                    'd10;  // The size of c another size
 localparam C_ANOTHER_SIZE =                  32'h0000_000A;  // The size of c another size
 //         D_SIZE =                             'd3;  // The size for d

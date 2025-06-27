@@ -1,11 +1,10 @@
-// GENERATED_CODE_PARAM --contexts mixed.yaml
+// GENERATED_CODE_PARAM --context mixed.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package mixed_package;
 // Generated Import package statement(s)
 import mixedBlockC_package::*;
 import mixedNestedInclude_package::*;
 import mixedInclude_package::*;
-//constants as defined by the scope of the following context(s): ('mixed.yaml',)
 //         ASIZE =                              'd1;  // The size of A
 localparam ASIZE =                            32'h0000_0001;  // The size of A
 //         ASIZE2 =                             'd2;  // The size of A+1

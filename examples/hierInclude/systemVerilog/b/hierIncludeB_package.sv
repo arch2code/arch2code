@@ -1,11 +1,10 @@
-// GENERATED_CODE_PARAM --contexts b/hierIncludeB.yaml
+// GENERATED_CODE_PARAM --context b/hierIncludeB.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package hierIncludeB_package;
 // Generated Import package statement(s)
 import hierIncludeTop_package::*;
 import hierInclude_package::*;
 import hierIncludeBInclude_package::*;
-//constants as defined by the scope of the following context(s): ('b/hierIncludeB.yaml',)
 
 // types
 typedef logic[9-1:0] bSizeT; //A type from an include sizing from constant B_ANOTHER_SIZE

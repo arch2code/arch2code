@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=blockBY --parentModule
+// GENERATED_CODE_PARAM --block=blockBY
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockBY
 module blockBY
@@ -12,5 +12,7 @@ import hierIncludeB_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-endmodule // blockBY
+
 // GENERATED_CODE_END
+
+endmodule: blockBY

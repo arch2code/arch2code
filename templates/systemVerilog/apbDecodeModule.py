@@ -199,7 +199,7 @@ def render(args, prj, data):
 
     out += "\n"
 
-    out += f"endmodule // {data['blockName']}"
+    out += f"endmodule: {data['blockName']}"
 
     return (out)
 

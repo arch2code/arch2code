@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=consumer --parentModule
+// GENERATED_CODE_PARAM --block=consumer
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: consumer
 module consumer
@@ -19,5 +19,7 @@ import axiDemo_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-endmodule // consumer
+
 // GENERATED_CODE_END
+
+endmodule: consumer

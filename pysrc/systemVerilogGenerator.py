@@ -35,44 +35,40 @@ class systemVerilogGenerator:
         fileName = args.file
         self.code = codeText(fileName, "//")
         data = None
-        parentModule = None
         importPackages = None
-        contexts = None
+        context = None
         if not self.code.sections:
             # Gracefully skip files that do not have the appropriate GENERATED_CODE_ comments in them
             return
-        if self.code.params.parentModule:
-            parentModule = self.code.params.parentModule
         if self.code.params.importPackages:
             importPackages = self.code.params.importPackages
-        if self.code.params.block and self.code.params.contexts:
+        if self.code.params.block and self.code.params.context:
             qualBlock = prj.getQualBlock( self.code.block )
             data = prj.getBlockData(qualBlock, self.instances)
             if not data:
                 printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                 exit(warningAndErrorReport())
-            contexts = self.code.params.contexts
-            data.update(prj.getContextData(contexts, self.dataTypeMappings))
+            context = self.code.params.context
+            data.update(prj.getContextData(context, self.dataTypeMappings))
         elif self.code.params.block:
             qualBlock = prj.getQualBlock( self.code.block )
             data = prj.getBlockData(qualBlock, self.instances)
             if not data:
                 printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                 exit(warningAndErrorReport())
-        elif self.code.params.contexts:
-            contexts = self.code.params.contexts
-            data = prj.getContextData(contexts, self.dataTypeMappings)
+        elif self.code.params.context:
+            context = self.code.params.context
+            data = prj.getContextData(context, self.dataTypeMappings)
         else:
-            contexts = 'No context specified in GENERATED_CODE_PARAM'
+            context = 'No context specified in GENERATED_CODE_PARAM'
         if not data:
             printError(f"In {fileName} there was no context or block specified in GENERATED_CODE_PARAM")
             exit(warningAndErrorReport())
 
         parser = argparse.ArgumentParser(description="SystemVerilog generated code parser", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-        data['parentModule']    = parentModule
         data['importPackages']  = importPackages
-        data['contexts']        = contexts
+        data['context']         = context
         data['fileName']        = fileName
         if 'registerLeafInstance' in data:
             qualBlock = prj.getQualBlock(data['registerLeafInstance']['container'])
@@ -80,7 +76,7 @@ class systemVerilogGenerator:
             data['includeContext'].update(data2['includeContext'])
             data['registers'] = data2['registers']
 
-        genOut = self.renderer.renderSections(self, self.code, parser, prj, data, args)      
+        genOut = self.renderer.renderSections(self, self.code, parser, prj, data, args)
 
     def _handler_generic(self, args, prj, data):
         vars = {'prj': prj, 'block': data, 'args': args}

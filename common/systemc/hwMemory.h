@@ -82,12 +82,12 @@ public:
     constexpr int _size(void) {
         return nextPowerOf2min4(MEM_DATA::_byteWidth);
     }
-    // direct access for compatability
+    // direct access for compatability and backdoor uses such as logging
     MEM_DATA& operator[] (uint64_t index) {
         Q_ASSERT(index < rows, "Address out of range");
         return m_mem[index];
     }
-    // timed access
+    // timed access without any locking
     MEM_DATA read(uint64_t index) {
         Q_ASSERT(index < rows, "Address out of range");
         MEM_DATA val;
@@ -97,7 +97,7 @@ public:
         val = m_mem[index];
         return val;
     }
-    // timed access
+    // timed access without any locking
     void write(uint64_t index, MEM_DATA val) {
         Q_ASSERT(index < rows, "Address out of range");
         Q_ASSERT(m_memType == HWMEMORYTYPE_NORMAL, "write called on register memory - not allowed");
@@ -109,10 +109,14 @@ public:
         Q_ASSERT(m_memType == HWMEMORYTYPE_NORMAL, "write called on register memory - not allowed");
         m_mem[index] = val;
     }
+    // program the timing access parameters
     void setTimed(uint64_t nsec, timedDelayMode mode) override
     {
         m_delay.setTimed(nsec, mode);
     }
+    // read-modify-write access with locking. This function will create a row lock on the memory as part of the read
+    // the magicNumber is used to distinguish between different thread accesses to the same row
+    // this is used for synchLock synchronization (a2c-pro feature)in tandem mode
     MEM_DATA readRMW(uint64_t index, uint64_t magicNumber) {
         Q_ASSERT(m_synch, "writeRMW called on non-synch memory");
         Q_ASSERT(m_rowLock != nullptr, "missing call to configureSynch")
@@ -131,6 +135,7 @@ public:
         Q_ASSERT(m_memType == HWMEMORYTYPE_NORMAL, "readRMW called on register memory - not allowed");
         m_rowLock->lock(index, magicNumber);
     }
+    // read-modify-write access with locking. This function will release the lock created with the readRMW function
     void writeRMW(uint64_t index, MEM_DATA val) {
         Q_ASSERT(m_synch, "writeRMW called on non-synch memory");
         Q_ASSERT(index < rows, "Address out of range");
@@ -139,6 +144,7 @@ public:
         m_mem[index] = val;
         m_rowLock->unlock(index);
     }
+    // release the lock created with the readRMW function without any write
     void releaseRMW(uint64_t index) {
         Q_ASSERT(m_synch, "releaseRMW called on non-synch memory");
         Q_ASSERT(index < rows, "Address out of range");
@@ -152,6 +158,7 @@ public:
     std::string name(void) {
         return m_name;
     }
+    // sets up the memory for row synchronization
     void configureSynch(std::string synchLockNameBase, std::function<std::string(const arraySynchRecord &value)> prt) 
     {
         m_synch = true;

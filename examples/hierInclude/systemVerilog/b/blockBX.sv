@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=blockBX --parentModule
+// GENERATED_CODE_PARAM --block=blockBX
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockBX
 module blockBX
@@ -16,5 +16,7 @@ import hierIncludeB_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-endmodule // blockBX
+
 // GENERATED_CODE_END
+
+endmodule: blockBX
