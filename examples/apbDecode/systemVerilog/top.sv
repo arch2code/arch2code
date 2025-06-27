@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=top --parentModule
+// GENERATED_CODE_PARAM --block=top
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: top
 module top
@@ -24,5 +24,7 @@ someRapper uSomeRapper (
     .rst_n (rst_n)
 );
 
-endmodule // top
+
 // GENERATED_CODE_END
+
+endmodule : top

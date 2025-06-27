@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=cpu --parentModule
+// GENERATED_CODE_PARAM --block=cpu
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: cpu
 module cpu
@@ -12,5 +12,7 @@ import apbDecode_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-endmodule // cpu
+
 // GENERATED_CODE_END
+
+endmodule : cpu

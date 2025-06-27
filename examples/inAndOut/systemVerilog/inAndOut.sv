@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=inAndOut --parentModule
+// GENERATED_CODE_PARAM --block=inAndOut
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: inAndOut
 module inAndOut
@@ -17,5 +17,7 @@ import inAndOut_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-endmodule // inAndOut
+
 // GENERATED_CODE_END
+
+endmodule: inAndOut

@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=threeCs --parentModule
+// GENERATED_CODE_PARAM --block=threeCs
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: threeCs
 module threeCs
@@ -32,5 +32,7 @@ blockC uBlockC2 (
     .rst_n (rst_n)
 );
 
-endmodule // threeCs
+
 // GENERATED_CODE_END
+
+endmodule: threeCs

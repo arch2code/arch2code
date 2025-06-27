@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=blockB --parentModule
+// GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockB
 module blockB
@@ -119,5 +119,7 @@ memory_sp #(.DEPTH(BSIZE), .data_t(nestedSt)) uBlockBTableSP (
     .clk (clk)
 );
 
-endmodule // blockB
+
 // GENERATED_CODE_END
+
+endmodule: blockB

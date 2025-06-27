@@ -35,14 +35,11 @@ class systemVerilogGenerator:
         fileName = args.file
         self.code = codeText(fileName, "//")
         data = None
-        parentModule = None
         importPackages = None
         context = None
         if not self.code.sections:
             # Gracefully skip files that do not have the appropriate GENERATED_CODE_ comments in them
             return
-        if self.code.params.parentModule:
-            parentModule = self.code.params.parentModule
         if self.code.params.importPackages:
             importPackages = self.code.params.importPackages
         if self.code.params.block and self.code.params.context:
@@ -70,7 +67,6 @@ class systemVerilogGenerator:
 
         parser = argparse.ArgumentParser(description="SystemVerilog generated code parser", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-        data['parentModule']    = parentModule
         data['importPackages']  = importPackages
         data['context']         = context
         data['fileName']        = fileName

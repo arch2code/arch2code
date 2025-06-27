@@ -22,4 +22,4 @@ import mixedBlockC_package::*;
 
 // GENERATED_CODE_END
 
-endmodule
+endmodule: blockD

@@ -1,4 +1,4 @@
-// GENERATED_CODE_PARAM --block=blockF --parentModule
+// GENERATED_CODE_PARAM --block=blockF
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockF
 module blockF
@@ -30,5 +30,7 @@ memory_dp #(.DEPTH(bob), .data_t(seeSt)) uTest (
     .clk (clk)
 );
 
-endmodule // blockF
+
 // GENERATED_CODE_END
+
+endmodule: blockF
