@@ -15,7 +15,7 @@ if [ -f ~/.bash_custom ]; then
 fi
 EOF
 
-COPY <<EOF /etc/skel/.bashrc
+COPY <<EOF /etc/skel/.bash_custom
 export NVM_DIR=/usr/local/nvm
 export PATH=\${NVM_DIR}/versions/node/default/bin:\${PATH}
 
@@ -26,6 +26,9 @@ export BOOST_INCLUDE=/usr/include/boost
 
 export TZ='US/Pacific'
 EOF
+
+# Podman hack for escape character substitution in command above
+RUN sed -i 's/\\\$/$/g' /etc/skel/.bash_custom
 
 COPY requirements.txt /tmp/a2c-requirements.txt
 RUN pip3 install -r /tmp/a2c-requirements.txt
