@@ -29,5 +29,5 @@ dockerImage:
 	rm -rf $(DOCKERFILE_DIR)/requirements.txt
 
 dockerRun:
-	$(DOCKER_PRE_SH) docker run --rm -ti $(DOCKER_RUN_OPTS) -v $(DOCKER_WORKDIR):/work --user $(USER) --hostname $(DOCKER_IMAGE) --name $(DOCKER_CONTAINER) --workdir "/work" $(USER)/$(DOCKER_IMAGE)
+	$(DOCKER_PRE_SH) docker run --rm -ti $(DOCKER_RUN_OPTS) -v $(DOCKER_WORKDIR):/work --user $(USER) --hostname $(DOCKER_IMAGE) --name $(DOCKER_CONTAINER) --workdir '/work' $(USER)/$(DOCKER_IMAGE)
 
