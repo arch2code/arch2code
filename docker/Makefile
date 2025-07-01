@@ -8,6 +8,9 @@ DOCKER_CONTAINER=$(USER)_$(DOCKER_IMAGE)
 
 DOCKER_RUN_OPTS=
 
+# Needed by some RHEL SSH clients with podman (https://bugzilla.redhat.com/show_bug.cgi?id=1923728)
+DOCKER_RUN_OPTS += --cap-add=AUDIT_WRITE
+
 ifneq ($(DOCKER_SSH_PORT),'')
 DOCKER_RUN_OPTS += -p $(DOCKER_SSH_PORT):22
 endif
