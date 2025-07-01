@@ -884,6 +884,7 @@ class projectOpen:
                     isApbRouter = True
                     ret['addressDecode']['addressGroupData'] = addressGroupData
                     ret['addressDecode']['addressGroup'] = addressGroup
+                    ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
                     ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
                     ret['addressDecode']['instanceWithRegApb'] = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
         ret['addressDecode']['isApbRouter'] = isApbRouter
@@ -1126,6 +1127,19 @@ class projectOpen:
             ret['addressDecode']['addressBits'] = (addressConfig['AddressGroups'][addressGroup]['addressIncrement'] * instanceInfo['addressMultiples']).bit_length()
             ret['addressDecode']['addressGroup'] = addressGroup
             #ret['addressDecode']['decodePort'] =
+
+        if isApbRouter:
+            # search for the interface definition in apb decoder ports
+            ret['addressDecode']['registerBusStructs'] = dict()
+            for apbIfPort in filter(lambda x: x['interfaceData']['interfaceType'] == 'apb', ret['ports'].values()):
+                for item in filter(lambda x: x['interface'] == addressConfig['RegisterBusInterface'], apbIfPort['interfaceData']['structures']):
+                    ret['addressDecode']['registerBusStructs'].update( { item['structureType'] : item['structure'] } )
+            # if we have found no register bus structs then report an error
+            if not ret['addressDecode']['registerBusStructs']:
+                printError(f"Register Bus Interface {addressConfig['RegisterBusInterface']} not found in ports of block {qualBlock}")
+                exit(warningAndErrorReport())
+
+
         sourceContexts = self.extractContext(structs, consts)
         for sourceContext in sourceContexts:
             if sourceContext != "_global":
@@ -1800,11 +1814,10 @@ class projectCreate:
 
 
     def validateAddressControl(self, addressControl, addressControlFile):
-        validGen = {'AddressGroups': {'addressIncrement': None, 'maxAddressSpaces': None, 'varType': None, 'varTypeContext': None, 'enumPrefix': None, 'decoderInstance': None, 'primaryDecode': None },
+        validGen = {'AddressGroups': {'addressIncrement': None, 'maxAddressSpaces': None, 'varType': None, 'varTypeContext': None, 'enumPrefix': None, 'decoderInstance': None, 'primaryDecode': None},
+                    'RegisterBusInterface' : None,
                     'InstanceGroups': {'varType': None, 'enumPrefix': None},
                     'AddressObjects': {'alignment': None, 'sizeRoundUpPowerOf2': None, 'sortDescending': None} }
-
-
 
         for gen in addressControl:
             if gen not in validGen:
@@ -1829,6 +1842,12 @@ class projectCreate:
                             myLineNumber = groupSettings.lc.line + 1
                             printError(f"Bad addressControl detected in {addressControlFile}:{myLineNumber}, section {gen}, group {group} has unknown parameter {setting}")
                             exit(warningAndErrorReport())
+            elif gen == 'RegisterBusInterface':
+                self.registerBusInterface = addressControl[gen]
+                # register bus interface
+                if not self.registerBusInterface:
+                    printError(f"Bad RegisterBusInterface detected in {addressControlFile}, section {gen} is null")
+                    exit(warningAndErrorReport())
             else:
                 # addressObjects
                 self.addressObjects = addressControl[gen]

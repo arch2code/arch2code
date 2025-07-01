@@ -43,8 +43,9 @@ def constructorInit(args, prj, data):
         out.append(f'    decoder.decodeThread();\n}}\n\n')
 
     if data['addressDecode']['hasDecoder']:
+        busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
         out.append(f'void { className }::regHandler(void) {{ //handle register decode\n')
-        out.append(f'    registerHandler< apbAddrSt, apbDataSt >(regs, apbReg, (1<<({data["addressDecode"]["addressBits"]}-1))-1); }}\n\n')
+        out.append(f'    registerHandler< {busStructs} >(regs, apbReg, (1<<({data["addressDecode"]["addressBits"]}-1))-1); }}\n\n')
 
     out.append(f'{ className }::{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode)\n')
     out.append(f'       : sc_module(blockName)\n')
