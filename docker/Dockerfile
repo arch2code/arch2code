@@ -15,7 +15,7 @@ if [ -f ~/.bash_custom ]; then
 fi
 EOF
 
-COPY <<EOF /etc/skel/.bashrc
+COPY <<EOF /etc/skel/.bash_custom
 export NVM_DIR=/usr/local/nvm
 export PATH=\${NVM_DIR}/versions/node/default/bin:\${PATH}
 

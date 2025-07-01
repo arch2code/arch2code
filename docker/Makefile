@@ -6,6 +6,16 @@ DOCKER_IMAGE=a2c-dev
 DOCKER_WORKDIR=$(A2C_REPO_ROOT)
 DOCKER_CONTAINER=$(USER)_$(DOCKER_IMAGE)
 
+DOCKER_RUN_OPTS=
+
+ifneq ($(DOCKER_SSH_PORT),'')
+DOCKER_RUN_OPTS += -p $(DOCKER_SSH_PORT):22
+endif
+
+ifdef DOCKER_RUN_DETACHED
+DOCKER_RUN_OPTS += -d
+endif
+
 .PHONY: all dockerImage dockerRun
 
 all: dockerImage dockerRun
@@ -16,5 +26,5 @@ dockerImage:
 	rm -rf $(DOCKERFILE_DIR)/requirements.txt
 
 dockerRun:
-	$(DOCKER_PRE_SH) docker run --rm -ti -v $(DOCKER_WORKDIR):/work --user $(USER) --hostname $(DOCKER_IMAGE) --name $(DOCKER_CONTAINER) --workdir "/work" --entrypoint /bin/bash $(USER)/$(DOCKER_IMAGE)
+	$(DOCKER_PRE_SH) docker run --rm -ti $(DOCKER_RUN_OPTS) -v $(DOCKER_WORKDIR):/work --user $(USER) --hostname $(DOCKER_IMAGE) --name $(DOCKER_CONTAINER) --workdir "/work" $(USER)/$(DOCKER_IMAGE)
 
