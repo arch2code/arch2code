@@ -7,6 +7,7 @@ DOCKER_WORKDIR=$(A2C_REPO_ROOT)
 DOCKER_CONTAINER=$(USER)_$(DOCKER_IMAGE)
 
 DOCKER_RUN_OPTS=
+DOCKER_USER_RUN_OPTS=
 
 # Needed by some RHEL SSH clients with podman (https://bugzilla.redhat.com/show_bug.cgi?id=1923728)
 DOCKER_RUN_OPTS += --cap-add=AUDIT_WRITE
@@ -18,6 +19,8 @@ endif
 ifdef DOCKER_RUN_DETACHED
 DOCKER_RUN_OPTS += -d
 endif
+
+DOCKER_RUN_OPTS += $(DOCKER_USER_RUN_OPTS)
 
 .PHONY: all dockerImage dockerRun
 
