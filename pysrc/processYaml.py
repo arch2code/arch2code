@@ -1128,8 +1128,8 @@ class projectOpen:
             ret['addressDecode']['addressGroup'] = addressGroup
             #ret['addressDecode']['decodePort'] =
 
-        if isApbRouter:
-            # search for the interface definition in apb decoder ports
+        if isApbRouter or addressDecoder:
+            # search for the interface definition in block ports
             ret['addressDecode']['registerBusStructs'] = dict()
             for apbIfPort in filter(lambda x: x['interfaceData']['interfaceType'] == 'apb', ret['ports'].values()):
                 for item in filter(lambda x: x['interface'] == addressConfig['RegisterBusInterface'], apbIfPort['interfaceData']['structures']):
