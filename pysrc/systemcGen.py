@@ -39,6 +39,9 @@ class genSystemC:
         # setup the user source file helper object. This object will read in the file and chop it up into generated and non-generated pieces
         # the object will also find any generic parameters eg block name that will be the same for all pieces of the file that need rendering
         self.code = codeText(fileName, "//")
+        if not self.code.sections:
+            # Gracefully skip files that do not have the appropriate GENERATED_CODE_ comments in them
+            return
         projectName = prj.config.getConfig('PROJECTNAME')
         if "project" not in self.code.params:
             print (f"Project name is {projectName}")
