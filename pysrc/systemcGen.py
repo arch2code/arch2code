@@ -30,8 +30,9 @@ class genSystemC:
             # convert the list of user fieldly instances into context qualified instances
             self.instances = prj.getQualInstances( instances['instances'] )
         else:
-            # otherwise use the list of instances from the database
-            self.instances = dict.fromkeys(prj.data['instances'], 0)
+            # otherwise use the list of instances from the database        
+            # Filter out instances with registerLeafInstance = 1 using dict comprehension
+            self.instances = {k: v for k, v in prj.data['instances'].items() if not v.get('registerLeafInstance', False)}
         # set up connection info
         prj.initConnections(self.instances)
         fileName = args.file
