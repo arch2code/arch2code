@@ -37,8 +37,7 @@ def render(args, prj, data):
     return("".join(out))
 
 includeMapping = {
-    'prt': ['<iostream>', '<iomanip>'],
-    'prtFmt': ['<fmt/format.h>'],
+    'prtFmt': ['"logging.h"'],
     'fw_pack': ['<algorithm>', '"bitTwiddling.h"'],
     'fw_unpack': ['<algorithm>'],
 }

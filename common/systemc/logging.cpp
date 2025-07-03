@@ -5,7 +5,6 @@
 #include "tracker.h"
 #include "systemc.h"
 #include <time.h>
-#include <fmt/format.h>
 
 void log(const std::string &fname, std::string &block, const std::string &logmsg, const loglevel_e loglevel)
 {

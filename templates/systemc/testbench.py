@@ -126,6 +126,7 @@ def ext_sec_header(args, prj, data):
 
 sec_tb_class_header_template = """\
 #include "systemc.h"
+#include "instanceFactory.h"
 
 #include "{{blockname}}Base.h"
 #include "{{blockname}}External.h"

@@ -6,7 +6,6 @@
 #include <random>
 #include "logging.h"
 #include <thread>
-#include "tagTrackers.h"
 #include "randFactory.h"
 #include <csignal>
 #include <chrono>
@@ -37,7 +36,6 @@ static std::string VERSION = "build " __DATE__ " "  __TIME__;
 static std::string COPYRIGHT = "Copyright QiStor, Inc. 2022-2024";
 int try_sc_start(bool noLimit, const sc_time scMaxRunTime);
 void configureLogging(verbosity_e verbosity, std::vector<std::string> &blockVerbosity);
-void testStructs(void);
 namespace po = boost::program_options;
 
 void signalHandler(int signum) {
@@ -53,7 +51,6 @@ void signalHandler(int signum) {
 int sc_main(int argc, char* argv[])
 {
     logging &lg = logging::GetInstance();
-    testStructs();
     // cmd line & config
     std::string logfile;
     bool unbufferedLogs = false;
@@ -250,7 +247,6 @@ int sc_main(int argc, char* argv[])
     // If a valid verilated instance is provided from command line, register with factory
 
     lg.setTimeStampPrint(enableTimeStamp);
-    trackerInit(); // setup the tag trackers
     // declare and initialize tasks
 
 #if defined(VERILATOR)

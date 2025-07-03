@@ -58,6 +58,10 @@ AddressGroups:
     varTypeContext: axiDemo.yaml
     enumPrefix: ADDR_ID_IP3_
 
+# Specify the register bus interface, this is used to define the address and data types used for register access
+# This interface definition must exist in the context of the register decoder instance specified in the address group
+RegisterBusInterface: None  # No register bus interface in this example, can be set to a valid interface if needed
+
 # instanceId's are simlar to addressID, with the exception that address space is not tied to them
 # typical use cases might include error reporting to FW where an id is needed to be assigned
 # a var and enum is automatically generated for each address group eg

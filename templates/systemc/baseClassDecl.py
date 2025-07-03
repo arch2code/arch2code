@@ -15,6 +15,8 @@ def render(args, prj, data):
         [v['interfaceType'] for v in data['connections'].values()]
     )
 
+    if not block_intf_set:
+        out.append('#include "blockBase.h"\n')
 
     for intfType in sorted(block_intf_set):
         chnlType = intf_gen_utils.INTF_DEFS[intfType]['sc_channel']['type']

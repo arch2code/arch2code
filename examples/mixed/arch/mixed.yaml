@@ -43,7 +43,6 @@ encoders:
     enumPrefix: OPCODEATYPE_
     baseConstPrefix: OPCODEABASE_
     zeroBased: true
-    logarithmic: true
     items:
       read:     { numBits: DWORD_LOG2,     desc: Read command,   varName: read }
       write:    { numBits: DWORD_LOG2,     desc: Write command,  varName: write }

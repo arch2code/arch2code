@@ -50,8 +50,9 @@ def render_default(args, prj, data):
         out.append('    void regHandler(void);\n')
         out.append('    addressMap regs;\n')
     if data['addressDecode']['isApbRouter']:
+        busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
         out.append('    void routerDecode(void);\n')
-        out.append('    abpBusDecode< apbAddrSt, apbDataSt > decoder;\n')
+        out.append(f'    abpBusDecode< {busStructs} > decoder;\n')
     out.append('\n')
     indent = ' '*4
     out.append(indent + 'struct registerBlock\n')

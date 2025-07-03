@@ -848,7 +848,7 @@ class projectOpen:
                 if self.data['instances'][inst]['variant'] != '':
                     filtered_variants_data = {k: v for k, v in self.data['parametersvariants'][qualBlock].items() if v.get('variant') == self.data['instances'][inst]['variant']}
                     ret['variants'][self.data['instances'][inst]['variant']] = filtered_variants_data
-            if inst in self.hierKey[qualBlock]:
+            if qualBlock in self.hierKey and inst in self.hierKey[qualBlock]:
                 ret['subBlockInstances'][inst] = self.hierKey[qualBlock][inst]
         if len(qualBlockInstances) == 0:
             # there is no instance of the of type qualblock
@@ -884,6 +884,7 @@ class projectOpen:
                     isApbRouter = True
                     ret['addressDecode']['addressGroupData'] = addressGroupData
                     ret['addressDecode']['addressGroup'] = addressGroup
+                    ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
                     ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
                     ret['addressDecode']['instanceWithRegApb'] = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
         ret['addressDecode']['isApbRouter'] = isApbRouter
@@ -1126,6 +1127,19 @@ class projectOpen:
             ret['addressDecode']['addressBits'] = (addressConfig['AddressGroups'][addressGroup]['addressIncrement'] * instanceInfo['addressMultiples']).bit_length()
             ret['addressDecode']['addressGroup'] = addressGroup
             #ret['addressDecode']['decodePort'] =
+
+        if isApbRouter or addressDecoder:
+            # search for the interface definition in block ports
+            ret['addressDecode']['registerBusStructs'] = dict()
+            for apbIfPort in filter(lambda x: x['interfaceData']['interfaceType'] == 'apb', ret['ports'].values()):
+                for item in filter(lambda x: x['interface'] == addressConfig['RegisterBusInterface'], apbIfPort['interfaceData']['structures']):
+                    ret['addressDecode']['registerBusStructs'].update( { item['structureType'] : item['structure'] } )
+            # if we have found no register bus structs then report an error
+            if not ret['addressDecode']['registerBusStructs']:
+                printError(f"Register Bus Interface {addressConfig['RegisterBusInterface']} not found in ports of block {qualBlock}")
+                exit(warningAndErrorReport())
+
+
         sourceContexts = self.extractContext(structs, consts)
         for sourceContext in sourceContexts:
             if sourceContext != "_global":
@@ -1479,7 +1493,7 @@ class projectCreate:
             self.addressControl = existsLoad(addressControlFile)
             self.validateAddressControl(self.addressControl, addressControlFile)
         else:
-            printError(f"Project file {projFile} is missing dbSchema: setting")
+            printError(f"Project file {projFile} is missing addressControl: setting")
             exit(warningAndErrorReport())
         if 'topInstance' in self.proj:
             # all designs have a top instance, which must be specified in the project file
@@ -1786,13 +1800,13 @@ class projectCreate:
             for include, includeData in self.includeValid.items():
                 includeName = self.includeName[include]
                 if not(smartInclude and not includeData['valid']):
-                    fileName = expandNewModulePath(fileData, includeData['dir'], includeName, includeName)
+                    fileName = expandNewModulePath(fileData, includeData['dir'], includeName, includeName, missingDirOk=True)
                     for ext in fileData['ext']:
                         fileNameExt = fileName + "." + fileData['ext'][ext]
                         baseName = os.path.basename(fileNameExt)
                         expandedType = fileType + "_" + ext
                         if not (os.path.exists(fileNameExt)):
-                            printError(f"File {fileNameExt} does not exist. run arch2code.py with --newmodule option")
+                            printWarning(f"File {fileNameExt} does not exist. run arch2code.py with --newmodule option")
                         includeFiles.setdefault(expandedType, {})[include] = {'baseName': baseName, 'fileName': fileNameExt}
                     
         self.config.setConfig('INCLUDEFILES', includeFiles)            
@@ -1800,11 +1814,10 @@ class projectCreate:
 
 
     def validateAddressControl(self, addressControl, addressControlFile):
-        validGen = {'AddressGroups': {'addressIncrement': None, 'maxAddressSpaces': None, 'varType': None, 'varTypeContext': None, 'enumPrefix': None, 'decoderInstance': None, 'primaryDecode': None },
+        validGen = {'AddressGroups': {'addressIncrement': None, 'maxAddressSpaces': None, 'varType': None, 'varTypeContext': None, 'enumPrefix': None, 'decoderInstance': None, 'primaryDecode': None},
+                    'RegisterBusInterface' : None,
                     'InstanceGroups': {'varType': None, 'enumPrefix': None},
                     'AddressObjects': {'alignment': None, 'sizeRoundUpPowerOf2': None, 'sortDescending': None} }
-
-
 
         for gen in addressControl:
             if gen not in validGen:
@@ -1829,6 +1842,12 @@ class projectCreate:
                             myLineNumber = groupSettings.lc.line + 1
                             printError(f"Bad addressControl detected in {addressControlFile}:{myLineNumber}, section {gen}, group {group} has unknown parameter {setting}")
                             exit(warningAndErrorReport())
+            elif gen == 'RegisterBusInterface':
+                self.registerBusInterface = addressControl[gen]
+                # register bus interface
+                if not self.registerBusInterface:
+                    printError(f"Bad RegisterBusInterface detected in {addressControlFile}, section {gen} is null")
+                    exit(warningAndErrorReport())
             else:
                 # addressObjects
                 self.addressObjects = addressControl[gen]

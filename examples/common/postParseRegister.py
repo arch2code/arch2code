@@ -6,6 +6,7 @@ def postProcess(prj):
     Args:
         prj (project): The project object.
     """
+    reg_interface = prj.addressControl.get('RegisterBusInterface', 'apbReg')
     # build a dictionary with sections and content the same as if it was parsed from a file
     #
     blocksWithRegisters = dict()
@@ -80,7 +81,7 @@ def postProcess(prj):
             if instanceDirectConnection[instanceKey]:
                 connection['src'] = instancesSimple[groupDecoder[instanceData['addressGroup']]]
                 connection['dst'] = instance
-                connection['interface'] = "apbReg"
+                connection['interface'] = reg_interface
                 connection['srcport'] = "apb_"+instance
                 connections.append(connection)
             else:
@@ -102,12 +103,12 @@ def postProcess(prj):
                 simpleContainerBlock = instanceData['instanceType']
                 connection['src'] = src
                 connection['dst'] = dst
-                connection['interface'] = "apbReg"
+                connection['interface'] = reg_interface
                 connection['srcport'] = "apb_"+dst
                 connections.append(connection)
             # there is a single connectionMap for each decoder container within the block
             connectionMap = dict()
-            connectionMap['interface'] = "apbReg"
+            connectionMap['interface'] = reg_interface
             connectionMap['block'] = simpleContainerBlock
             connectionMap['direction'] = "dst"
             connectionMap['instance'] = instancesSimple[decoder]
