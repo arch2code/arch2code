@@ -49,22 +49,17 @@ interfaces:
 blocks:
   top:
     desc: "The top most block, not really used in this project"
-    blockGroup: blocks
   producer:
     desc: "The block that initiates AXI transactions, the one reading or writting."
-    blockGroup: blocks
   consumer:
     desc: "The block that recieves AXI transactions, the one returns read data or stores write data."
-    blockGroup: blocks
 
 instances:
   uTop:
     container:  top # self reference
     instanceType: top
-    addressMap: False
-    instGroup: top
-  uProducer:  {container: top, instanceType: producer, addressMap: False, instGroup: top, color: green}
-  uConsumer:  {container: top, instanceType: consumer, addressGroup: top, instGroup: top, color: orange}
+  uProducer:  {container: top, instanceType: producer, color: green}
+  uConsumer:  {container: top, instanceType: consumer, color: orange}
   
 connections:
   - {interface: axiRdIf, src: uProducer, dst: uConsumer, name: axiRd0}

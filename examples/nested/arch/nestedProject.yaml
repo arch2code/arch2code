@@ -10,7 +10,9 @@ projectFiles:
   - nestedTop.yaml
 
 
-addressControl: nestedAddress.yaml
+# The addressControl file contains all the information to resolve all the addresses for register access
+# This field is optional if you do not have any register access
+addressControl: null
 
 topInstance: uTop
 

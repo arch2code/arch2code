@@ -871,22 +871,23 @@ class projectOpen:
 
         # is this block a special apbDecode block type that performs abp bus routing
         isApbRouter = False
-        addressConfig = self.config.getConfig('ADDRESS_CONFIG')
-        for addressGroup, addressGroupData in addressConfig['AddressGroups'].items():
-            decoder = addressGroupData.get('decoderInstance', None)
-            if decoder is not None:
-                qualDecoder = self.getQualInstance(decoder)
-                if qualDecoder in qualBlockInstances:
-                    instanceWithRegApb = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
-                    if instanceWithRegApb is None:
-                        printError('No instances with register interface found in db: missing or invalid register post processing script')
-                        exit(warningAndErrorReport())
-                    isApbRouter = True
-                    ret['addressDecode']['addressGroupData'] = addressGroupData
-                    ret['addressDecode']['addressGroup'] = addressGroup
-                    ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
-                    ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
-                    ret['addressDecode']['instanceWithRegApb'] = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
+        addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
+        if addressConfig:
+            for addressGroup, addressGroupData in addressConfig.get('AddressGroups', {}).items():
+                decoder = addressGroupData.get('decoderInstance', None)
+                if decoder is not None:
+                    qualDecoder = self.getQualInstance(decoder)
+                    if qualDecoder in qualBlockInstances:
+                        instanceWithRegApb = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
+                        if instanceWithRegApb is None:
+                            printError('No instances with register interface found in db: missing or invalid register post processing script')
+                            exit(warningAndErrorReport())
+                        isApbRouter = True
+                        ret['addressDecode']['addressGroupData'] = addressGroupData
+                        ret['addressDecode']['addressGroup'] = addressGroup
+                        ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
+                        ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
+                        ret['addressDecode']['instanceWithRegApb'] = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
         ret['addressDecode']['isApbRouter'] = isApbRouter
         # go through memory connections and collect if either src or dest
         for memConn, val in self.data['memoryConnections'].items():
@@ -1487,14 +1488,11 @@ class projectCreate:
         self.schema = schema(self.schemaYaml, schemaFile)
         self.counterReverseField = self.schema.data['counterReverseField']
 
-        if "addressControl" in self.proj:
+        if self.proj.get("addressControl"):
             # load and check the addressControl file specified in the project file
             addressControlFile = self.proj["addressControl"]
             self.addressControl = existsLoad(addressControlFile)
             self.validateAddressControl(self.addressControl, addressControlFile)
-        else:
-            printError(f"Project file {projFile} is missing addressControl: setting")
-            exit(warningAndErrorReport())
         if 'topInstance' in self.proj:
             # all designs have a top instance, which must be specified in the project file
             self.topInstance = self.proj['topInstance']
@@ -1753,7 +1751,7 @@ class projectCreate:
         self.yamlContext['_global'] = {key: None for key in self.yamlContext}
         # calculate all the enums and types
         typesEnum = dict()
-        for group in self.counterGroupControl['AddressGroups']:
+        for group in self.counterGroupControl.get('AddressGroups', []):
             # create a dictionary of all the enums and types for this group
             typesEnum[group] = {'desc': f'Generated type for addressing {group} instances',   'enum': list()}
         for context in self.data['instances']:
@@ -1818,11 +1816,25 @@ class projectCreate:
                     'RegisterBusInterface' : None,
                     'InstanceGroups': {'varType': None, 'enumPrefix': None},
                     'AddressObjects': {'alignment': None, 'sizeRoundUpPowerOf2': None, 'sortDescending': None} }
+        
+        allKeys = set(validGen.keys())
+        optionalKeys = { 'InstanceGroups' }
+        mandatoryKeys = allKeys - optionalKeys
 
+        # check if addressControl is a dictionary and has the correct keys
+        if not isinstance(addressControl, dict) or set(addressControl.keys()).difference(allKeys):
+            printError(f"Bad addressControl detected in {addressControlFile}, Valid section types are AddressGroups|RegisterBusInterface|InstanceGroups|AddressObjects")
+            exit(warningAndErrorReport())
+        elif not set(addressControl.keys()).issuperset(mandatoryKeys):
+            printError(f"Bad addressControl detected in {addressControlFile}, Missing mandatory section types from {list(mandatoryKeys)}")
+            exit(warningAndErrorReport())
+
+        # Check for mandatory keys in address control
+        if not isinstance(addressControl, dict) or not set(addressControl.keys()).issuperset(mandatoryKeys):
+            printError(f"Bad addressControl detected in {addressControlFile}, keys do not match. Valid keys are {list(validGen.keys())}")
+            exit(warningAndErrorReport())
+        
         for gen in addressControl:
-            if gen not in validGen:
-                printError(f"Bad addressControl detected in {addressControlFile}, section {gen} is not a valid type. Valid types are AddressGroups|InstanceGroups|AddressObjects")
-                exit(warningAndErrorReport())
             if gen=='AddressGroups':
                 addressMode=True
             else:
@@ -2425,8 +2437,16 @@ class projectCreate:
         return ret
 
     def _auto_addressMap(self, section, itemkey, item, field, yamlFile, processed):
-        # addressmap is enabled by default. This allows user to specify a given element is not included in the address map
-        ret = item.get(field, True)
+        if self.addressControl == None:
+            if not item.get(field, False) == False:
+                # if addressControl is not defined, then we cannot use addressMap
+                self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' tried to use addressMap but no addressControl section was defined")
+                exit(warningAndErrorReport())
+            defaultAddressMap = False
+        else:
+            # else, addressmap is enabled by default. This allows user to specify a given element is not included in the address map
+            defaultAddressMap = True
+        ret = item.get(field, defaultAddressMap)
         return ret
 
     def _auto_addressGroup(self, section, itemkey, item, field, yamlFile, processed):
@@ -2456,16 +2476,22 @@ class projectCreate:
     def _auto_instanceGroup(self, section, itemkey, item, field, yamlFile, processed):
          # this field needs to be one of the valid InstanceGroups defined in the addressControl file
         ret=item.get(field, None)
-        if ret:
-            if ret not in self.counterGroup['InstanceGroups']:
-                self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' referenced a non existant instance group {ret}")
-        else:
-            self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' is missing the field: {field}")
+        if not ret:
+            # if not specified, use the default group
+            ret = 'default'
+        if ret not in self.counterGroup['InstanceGroups']:
+            self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' referenced a non existant instance group {ret}")
         return ret
 
     def _auto_instanceID(self, section, itemkey, item, field, yamlFile, processed):
           #note that even if specified in instances section, will be overridde
-        group = item[self.counterReverseField[section+'instanceGroup']]
+        if not self.counterGroup.get(section+'InstanceGroups', None):
+            group = 'default'
+            if not 'InstanceGroups' in self.counterGroup:
+                self.counterGroup['InstanceGroups'] = dict()
+            self.counterGroup['InstanceGroups'][group] = 0
+        else:
+            group = item[self.counterReverseField[section+'instanceGroup']]
         ret = self.counterGroup['InstanceGroups'][group]
         self.counterGroup['InstanceGroups'][group] = ret + 1
         return ret

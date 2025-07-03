@@ -35,13 +35,10 @@ interfaces:
 blocks:
   blockCX:
     desc: The block named CX
-    blockGroup: blocks
   blockCY:
     desc: The block named CY
-    blockGroup: blocks
   blockCZ:
     desc: The block named CZ
-    blockGroup: blocks
 
 instances:
   uBlockCX:     {container: blockC,  instanceType: blockCX,  addressMap: False, instGroup: blocks}

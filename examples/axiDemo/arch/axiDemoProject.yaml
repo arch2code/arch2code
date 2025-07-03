@@ -10,7 +10,9 @@ projectFiles:
 
 # this example is inside the documentation directories so the relative path goes all the way upto the repository root
 
-addressControl: axiDemoAddress.yaml
+# The addressControl file contains all the information to resolve all the addresses for register access
+# This field is optional if you do not have any register access
+addressControl: null
 
 topInstance: uTop
   

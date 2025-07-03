@@ -30,13 +30,10 @@ interfaces:
 blocks:
   blockBX:
     desc: The block named BX
-    blockGroup: blocks
   blockBY:
     desc: The block named BY
-    blockGroup: blocks
   blockBZ:
     desc: The block named BZ
-    blockGroup: blocks
 
 instances:
   uBlockBX:     {container: blockB,  instanceType: blockBX,  addressMap: False, instGroup: blocks}

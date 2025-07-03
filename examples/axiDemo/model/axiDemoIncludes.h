@@ -28,16 +28,6 @@ typedef uint8_t axiStrobeT; // [4] Width of the strobe bus.
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums 
 // enums
-enum  addr_id_top {          //Generated type for addressing top instances
-    ADDR_ID_TOP_UCONSUMER=0 }; // uConsumer instance address
-inline const char* addr_id_top_prt( addr_id_top val )
-{
-    switch( val )
-    {
-        case ADDR_ID_TOP_UCONSUMER: return( "ADDR_ID_TOP_UCONSUMER" );
-    }
-    return("!!!BADENUM!!!");
-}
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures

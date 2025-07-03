@@ -190,48 +190,37 @@ interfaces:
 blocks:
   top:
     desc: The top most block
-    blockGroup: blocks
     hasVl: false
   cpu:
     desc: A RISC-V CPU
-    blockGroup: blocks
     hasVl: false
   blockA:
     desc: The block named A
-    blockGroup: blocks
     hasVl: true
   blockB:
     desc: The block named B
-    blockGroup: blocks
     hasVl: false
   apbDecode:
     desc: The block to decode apb addresses
-    blockGroup: blocks
     hasVl: false
   blockBRegs:
     desc: The register block inside block B
-    blockGroup: blocks
     hasVl: false
   blockD:
     desc: The block named D
-    blockGroup: blocks
     hasVl: false
   blockARegs:
     desc: The register block inside block A
-    blockGroup: blocks
     hasVl: false
   blockE:
     desc: The block named E
-    blockGroup: blocks
     hasVl: false
   blockF:
     desc: The block named F
-    blockGroup: blocks
     params: [bob, fred]
     hasVl: true
   threeCs:
     desc: A block that contains three copies of blockC
-    blockGroup: blocks
     hasVl: false
 
 
@@ -256,7 +245,7 @@ instances:
   uBlockARegs: {container: blockA,  instanceType: blockARegs, addressMap: False,  instGroup: top, registerLeafInstance: True, color: grey}
   uBlockBRegs: {container: blockB,  instanceType: blockBRegs, addressMap: False,  instGroup: top, registerLeafInstance: True, color: grey}
   uBlockD:     {container: blockB,  instanceType: blockD,     addressGroup: ip1,  instGroup: top, addressMultiples: 2 } #get 2x the number of addresses
-  uBlockF0:    {container: blockB,  instanceType: blockF,     addressMap: False,  instGroup: top, variant: variant0   }
+  uBlockF0:    {container: blockB,  instanceType: blockF,     addressMap: False,  addressGroup: ip1, instGroup: top, variant: variant0   }
   uBlockF1:    {container: blockB,  instanceType: blockF,     addressMap: False,  instGroup: top, variant: variant1   }
   uThreeCs:    {container: blockB,  instanceType: threeCs,    addressMap: False,  instGroup: top,                             color: green}
   uBlockC0:    {container: threeCs, instanceType: blockC,     addressMap: False,  instGroup: top,                             color: orange}

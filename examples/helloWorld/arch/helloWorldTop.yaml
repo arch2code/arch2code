@@ -89,13 +89,10 @@ interfaces:
 blocks:
   top:
     desc: top
-    blockGroup: blockTop
   producer:
     desc: Producer
-    blockGroup: blockTop
   consumer:
     desc: Consumer
-    blockGroup: blockTop
 
 # instances, these are instantiations of objects
 #   implies a top level of some kind that is instancing objects, an instance can instance other objects, optional nesting

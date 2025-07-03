@@ -59,15 +59,12 @@ projectFiles:
 blocks:
   simple:
     desc: Simple block
-    blockGroup: blockTop
     hasVl: true
   producer:
     desc: Producer block
-    blockGroup: blockTop
     hasVl: true
   consumer:
     desc: Consumer block
-    blockGroup: blockTop
     hasVl: true
 
 # instances, these are instantiations of objects

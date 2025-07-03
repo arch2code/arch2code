@@ -25,10 +25,6 @@ typedef enum logic[1-1:0] {               //either ready or not ready
     READY_NO = 0,            // Not ready
     READY_YES = 1           // Ready
 } readyT;
-typedef enum logic[1-1:0] {          //Generated type for addressing inAndOut instances
-    ADDR_ID_TOP_UINANDOUT0 = 0, // uInAndOut0 instance address
-    ADDR_ID_TOP_UINANDOUT1 = 1 // uInAndOut1 instance address
-} addr_id_top;
 
 // structures
 typedef struct packed {

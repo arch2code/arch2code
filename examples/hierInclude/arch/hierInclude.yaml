@@ -63,16 +63,12 @@ interfaces:
 blocks:
   top:
     desc: The top most block
-    blockGroup: blocks
   blockA:
     desc: The block named A
-    blockGroup: blocks
   blockB:
     desc: The block named B
-    blockGroup: blocks
   blockC:
     desc: The block named C
-    blockGroup: blocks
 
 instances:
   uTop:

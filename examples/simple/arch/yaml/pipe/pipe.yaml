@@ -70,11 +70,9 @@ interfaces:
 blocks:
   pipe:
     desc: Plumbing container
-    blockGroup: blockTop
     hasVl: true
   in_out:
     desc: in out block
-    blockGroup: blockTop
     hasVl: false
     hasMdl: false
 

@@ -57,7 +57,6 @@ include:
 blocks:
   testbench:
     desc: Top testbench
-    blockGroup: blockTop
     hasVl: false
     hasRtl: false
     hasMdl: false
