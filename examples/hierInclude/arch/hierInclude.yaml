@@ -74,11 +74,10 @@ instances:
   uTop:
     container:  top # self reference
     instanceType: top
-    addressMap: False
     instGroup: top
-  uBlockA:     {container: top,     instanceType: blockA,     addressMap: False, instGroup: top, color: green}
-  uBlockB:     {container: top,     instanceType: blockB,     addressMap: False, instGroup: top, color: lightslateblue}
-  uBlockC:     {container: top,     instanceType: blockC,     addressMap: False, instGroup: top, color: orange}
+  uBlockA:     {container: top,     instanceType: blockA,     instGroup: top, color: green}
+  uBlockB:     {container: top,     instanceType: blockB,     instGroup: top, color: lightslateblue}
+  uBlockC:     {container: top,     instanceType: blockC,     instGroup: top, color: orange}
 
 connections:
   - {interface: anInterface, src: uBlockA, dst: uBlockB, dstport: eh2b, name: anInterfaceB}

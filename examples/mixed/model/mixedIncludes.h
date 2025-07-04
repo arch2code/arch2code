@@ -105,12 +105,14 @@ inline const char* addr_id_top_prt( addr_id_top val )
     return("!!!BADENUM!!!");
 }
 enum  addr_id_ip1 {          //Generated type for addressing ip1 instances
-    ADDR_ID_IP1_UBLOCKD=0 }; // uBlockD instance address
+    ADDR_ID_IP1_UBLOCKD=0,   // uBlockD instance address
+    ADDR_ID_IP1_UBLOCKF0=2 }; // uBlockF0 instance address
 inline const char* addr_id_ip1_prt( addr_id_ip1 val )
 {
     switch( val )
     {
         case ADDR_ID_IP1_UBLOCKD: return( "ADDR_ID_IP1_UBLOCKD" );
+        case ADDR_ID_IP1_UBLOCKF0: return( "ADDR_ID_IP1_UBLOCKF0" );
     }
     return("!!!BADENUM!!!");
 }

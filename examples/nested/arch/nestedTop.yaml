@@ -201,91 +201,69 @@ instances:
   uTop:
     container: top # self referential
     instanceType: top
-    addressMap: False
   uTestBlock0:
     container: testContainer 
     instanceType: testBlock
-    addressMap: False
   uTestBlock1:
     container: testContainer 
     instanceType: testBlock
-    addressMap: False
   uSubBlockContainer0:
     container: testContainer
     instanceType: subBlockContainer
-    addressMap: False
   uSubBlockContainer1:
     container: testContainer
     instanceType: subBlockContainer
-    addressMap: False
   uSubBlockContainer2:
     container: testContainer
     instanceType: subBlockContainer
-    addressMap: False
   uSubBlock0:
     container: subBlockContainer
     instanceType: subBlock
-    addressMap: False
   uSubBlock1:
     container: subBlockContainer
     instanceType: subBlock
-    addressMap: False
   uTestTop:
     container: top
     instanceType: testContainer
-    addressMap: False
   uNestedL1:
     container: top
     instanceType: nestedL1
-    addressMap: False
   uNestedL2:
     container: nestedL1
     instanceType: nestedL2
-    addressMap: False
   uNestedL3:
     container: nestedL2
     instanceType: nestedL3
-    addressMap: False
   uNestedL4:
     container: nestedL3
     instanceType: nestedL4
-    addressMap: False
   uNestedL5:
     container: nestedL4
     instanceType: nestedL5
-    addressMap: False
   uNestedL6:
     container: nestedL5
     instanceType: nestedL6
-    addressMap: False
   uFirst:
     container: testContainer
     instanceType: firstBlock
-    addressMap: False
   uSecond:
     container: testContainer
     instanceType: secondBlock
-    addressMap: False
   uLast:
     container: testContainer
     instanceType: lastBlock
-    addressMap: False
   uSecondSubA:
     container: secondBlock
     instanceType: secondSubA
-    addressMap: False
   uSecondSubB:
     container: secondBlock
     instanceType: secondSubB
-    addressMap: False
   uProducer:
     container: testContainer
     instanceType: producer
-    addressMap: False
   uConsumer:
     container: testContainer
     instanceType: consumer
-    addressMap: False
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries

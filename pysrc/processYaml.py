@@ -226,7 +226,7 @@ class schema:
     # validate schema processes the schema definition for later use in the processing of user input
     def validateSchema(self, schema, schemaFile, context=''):
         validFieldTypes = { 'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param'}
-        addressControlFields = {'addressMap', 'addressGroup', 'addressID', 'addressMultiples', 'instanceGroup', 'instanceID'}
+        addressControlFields = {'addressGroup', 'addressID', 'addressMultiples', 'instanceGroup', 'instanceID'}
         reservedKeys = {'_validate', '_type', '_key', '_combo', '_attribs', '_singular'} # reserved keys begin with _
         customChecker = {'_singular'} # keys that should use custom checker
 
@@ -1587,6 +1587,10 @@ class projectCreate:
         self.errorState = True
         printError(msg)
 
+    def logWarning(self, msg):
+        self.errorState = False
+        printWarning(msg)
+
     def postYamlExternalScript(self):
         if "postProcess" in self.proj:
             self.generateHierarchy()
@@ -2438,15 +2442,21 @@ class projectCreate:
 
     def _auto_addressMap(self, section, itemkey, item, field, yamlFile, processed):
         if self.addressControl == None:
-            if not item.get(field, False) == False:
+            if not item.get('addressGroup') == None:
                 # if addressControl is not defined, then we cannot use addressMap
-                self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' tried to use addressMap but no addressControl section was defined")
+                self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' tried to use addressGroup but no addressControl section was defined")
                 exit(warningAndErrorReport())
             defaultAddressMap = False
         else:
-            # else, addressmap is enabled by default. This allows user to specify a given element is not included in the address map
-            defaultAddressMap = True
-        ret = item.get(field, defaultAddressMap)
+            defaultAddressMap = item.get('addressGroup', False)
+        if field in item:
+            if item[field] != ('addressGroup' in item):
+                self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' sets deprecated addressMap field to illegal value")
+                exit(warningAndErrorReport())
+            else:
+                self.logWarning(f"In section: {section} of file: {yamlFile}, '{itemkey}' sets deprecated addressMap field")
+        # if addressGroup is not specified, use the default address map
+        ret = item.get('addressGroup', defaultAddressMap)
         return ret
 
     def _auto_addressGroup(self, section, itemkey, item, field, yamlFile, processed):
@@ -2458,7 +2468,7 @@ class projectCreate:
 
     def _auto_addressID(self, section, itemkey, item, field, yamlFile, processed):
         #note that even if specified in instances section, will be overridden
-        addressControlFields = {'addressMap': None, 'addressGroup': None, 'addressID': None, 'addressMultiples': None, 'instanceGroup': None, 'instanceID': None}
+        addressControlFields = {'addressGroup': None, 'addressID': None, 'addressMultiples': None, 'instanceGroup': None, 'instanceID': None}
         ret = None
         if processed[self.counterReverseField[section+'addressMap']]:
             group = processed[self.counterReverseField[section+'addressGroup']]

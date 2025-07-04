@@ -100,14 +100,13 @@ instances:
   uTop:
     container:  top # self reference
     instanceType: top
-    addressMap: False
-  uCPU:         {container: top,        instanceType: cpu,        addressMap: False,  color: pink}
-  uAPBDecode:   {container: someRapper, instanceType: apbDecode,  addressMap: False,  color: pink}
-  uSomeRapper:  {container: top,        instanceType: someRapper, addressMap: False,  }
-  uBlockA:      {container: someRapper, instanceType: blockA,     addressMap: True,  addressGroup: top,  }
-  uBlockB:      {container: someRapper, instanceType: blockB,     addressMap: True,  addressGroup: top,  color: lightslateblue}
-  uBlockARegs:  {container: blockA,     instanceType: blockARegs, addressMap: False,  color: grey, registerLeafInstance: True}
-  uBlockBRegs:  {container: blockB,     instanceType: blockBRegs, addressMap: False,  color: grey, registerLeafInstance: True}
+  uCPU:         {container: top,        instanceType: cpu,        color: pink}
+  uAPBDecode:   {container: someRapper, instanceType: apbDecode,  color: pink}
+  uSomeRapper:  {container: top,        instanceType: someRapper  }
+  uBlockA:      {container: someRapper, instanceType: blockA,     addressGroup: top }
+  uBlockB:      {container: someRapper, instanceType: blockB,     addressGroup: top,  color: lightslateblue}
+  uBlockARegs:  {container: blockA,     instanceType: blockARegs, color: grey, registerLeafInstance: True}
+  uBlockBRegs:  {container: blockB,     instanceType: blockBRegs, color: grey, registerLeafInstance: True}
 
 connections:
   - {interface: apbReg,    src: uCPU,                             dst: uSomeRapper}
