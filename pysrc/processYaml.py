@@ -2441,22 +2441,21 @@ class projectCreate:
         return ret
 
     def _auto_addressMap(self, section, itemkey, item, field, yamlFile, processed):
+        addressMapValue = ('addressGroup' in item)
         if self.addressControl == None:
-            if not item.get('addressGroup') == None:
+            if addressMapValue:
                 # if addressControl is not defined, then we cannot use addressMap
                 self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' tried to use addressGroup but no addressControl section was defined")
                 exit(warningAndErrorReport())
-            defaultAddressMap = False
-        else:
-            defaultAddressMap = item.get('addressGroup', False)
-        if field in item:
-            if item[field] != ('addressGroup' in item):
+            addressMapValue = False
+        if 'addressMap' in item:
+            if item['addressMap'] != addressMapValue:
                 self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' sets deprecated addressMap field to illegal value")
                 exit(warningAndErrorReport())
             else:
                 self.logWarning(f"In section: {section} of file: {yamlFile}, '{itemkey}' sets deprecated addressMap field")
         # if addressGroup is not specified, use the default address map
-        ret = item.get('addressGroup', defaultAddressMap)
+        ret = addressMapValue
         return ret
 
     def _auto_addressGroup(self, section, itemkey, item, field, yamlFile, processed):
