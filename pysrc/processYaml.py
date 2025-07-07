@@ -1760,7 +1760,7 @@ class projectCreate:
             typesEnum[group] = {'desc': f'Generated type for addressing {group} instances',   'enum': list()}
         for context in self.data['instances']:
             for instance, instData in self.data['instances'][context].items():
-                if instData['addressMap']:
+                if instData.get('addressGroup', None) is not None:
                     # this block needs an address space
                     group = instData['addressGroup']
                     control = self.counterGroupControl['AddressGroups'][group]
@@ -2440,24 +2440,6 @@ class projectCreate:
             ret = "_topInstance"
         return ret
 
-    def _auto_addressMap(self, section, itemkey, item, field, yamlFile, processed):
-        addressMapValue = ('addressGroup' in item)
-        if self.addressControl == None:
-            if addressMapValue:
-                # if addressControl is not defined, then we cannot use addressMap
-                self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' tried to use addressGroup but no addressControl section was defined")
-                exit(warningAndErrorReport())
-            addressMapValue = False
-        if 'addressMap' in item:
-            if item['addressMap'] != addressMapValue:
-                self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' sets deprecated addressMap field to illegal value")
-                exit(warningAndErrorReport())
-            else:
-                self.logWarning(f"In section: {section} of file: {yamlFile}, '{itemkey}' sets deprecated addressMap field")
-        # if addressGroup is not specified, use the default address map
-        ret = addressMapValue
-        return ret
-
     def _auto_addressGroup(self, section, itemkey, item, field, yamlFile, processed):
         ret=item.get(field, None)
         if ret:
@@ -2469,7 +2451,7 @@ class projectCreate:
         #note that even if specified in instances section, will be overridden
         addressControlFields = {'addressGroup': None, 'addressID': None, 'addressMultiples': None, 'instanceGroup': None, 'instanceID': None}
         ret = None
-        if processed[self.counterReverseField[section+'addressMap']]:
+        if processed[self.counterReverseField[section+'addressGroup']] is not None:
             group = processed[self.counterReverseField[section+'addressGroup']]
             counter = self.counterGroup['AddressGroups'][group]
             base = counter * self.addressControl['AddressGroups'][group]['addressIncrement']

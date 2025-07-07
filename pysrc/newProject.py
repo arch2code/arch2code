@@ -243,7 +243,6 @@ include:
 blocks:
   testbench:
     desc: Top testbench
-    blockGroup: blockTop
     hasVl: false
     hasRtl: false
     hasMdl: false
@@ -254,8 +253,8 @@ blocks:
 ### instanceType: followed by a string which is the key to finding which object is being instanced (objectname), required
 ### in the top level testbench the main ip (top) is instanced, along with whatever models are necessary to support the testbench
 instances:
-  u_top:          { container: testbench,  instanceType: top,           instGroup: allInstances,    addressMap: False}
-  testbench:      { container: testbench,  instanceType: testbench,     instGroup: allInstances,    addressMap: False} # self referential
+  u_top:          { container: testbench,  instanceType: top,           instGroup: allInstances }
+  testbench:      { container: testbench,  instanceType: testbench,     instGroup: allInstances } # self referential
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries
