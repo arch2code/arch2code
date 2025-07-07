@@ -177,7 +177,6 @@ instances:
       section: blocks
       field: block
       scope: global  # override the normal context search space to global
-  addressMap: auto(addressMap)    #True|False to define if they are included in the address map (defaults to True). If false other address fields are optional and are ignored
   addressGroup: auto(addressGroup) #this field needs to be one of the valid AddressGroups defined in the addressControl file
   addressID: auto(addressID) #note that even if specified in instances section, will be overridden
   addressMultiples: auto(addressMultiples) #optional field to get multiple address groups
@@ -190,7 +189,6 @@ blocks:
   block: key
   desc: required
   attrib: optional
-  blockGroup: auto(instanceGroup) # this field needs to be one of the valid AddressGroups defined in the addressControl file
   blockID: auto(instanceID)  #note that even if specified in instances section, will be overridden
   hasVl: optional(false)
   hasTb: optional(false)

@@ -66,8 +66,9 @@ typedef enum logic[1-1:0] {          //Generated type for addressing top instanc
     ADDR_ID_TOP_UBLOCKA = 0, // uBlockA instance address
     ADDR_ID_TOP_UBLOCKB = 1 // uBlockB instance address
 } addr_id_top;
-typedef enum logic[1-1:0] {          //Generated type for addressing ip1 instances
-    ADDR_ID_IP1_UBLOCKD = 0 // uBlockD instance address
+typedef enum logic[2-1:0] {          //Generated type for addressing ip1 instances
+    ADDR_ID_IP1_UBLOCKD = 0, // uBlockD instance address
+    ADDR_ID_IP1_UBLOCKF0 = 2 // uBlockF0 instance address
 } addr_id_ip1;
 
 // structures

@@ -30,18 +30,15 @@ interfaces:
 blocks:
   blockBX:
     desc: The block named BX
-    blockGroup: blocks
   blockBY:
     desc: The block named BY
-    blockGroup: blocks
   blockBZ:
     desc: The block named BZ
-    blockGroup: blocks
 
 instances:
-  uBlockBX:     {container: blockB,  instanceType: blockBX,  addressMap: False, instGroup: blocks}
-  uBlockBY:     {container: blockB,  instanceType: blockBY,  addressMap: False, instGroup: blocks}
-  uBlockBZ:     {container: blockB,  instanceType: blockBZ,  addressMap: False, instGroup: blocks}
+  uBlockBX:     {container: blockB,  instanceType: blockBX,  instGroup: blocks}
+  uBlockBY:     {container: blockB,  instanceType: blockBY,  instGroup: blocks}
+  uBlockBZ:     {container: blockB,  instanceType: blockBZ,  instGroup: blocks}
 
 connections:
   - {interface: bnInterface, src: uBlockBX, dst: uBlockBY, dstport: x, name: bx2y}

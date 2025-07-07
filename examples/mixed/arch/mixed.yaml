@@ -190,48 +190,37 @@ interfaces:
 blocks:
   top:
     desc: The top most block
-    blockGroup: blocks
     hasVl: false
   cpu:
     desc: A RISC-V CPU
-    blockGroup: blocks
     hasVl: false
   blockA:
     desc: The block named A
-    blockGroup: blocks
     hasVl: true
   blockB:
     desc: The block named B
-    blockGroup: blocks
     hasVl: false
   apbDecode:
     desc: The block to decode apb addresses
-    blockGroup: blocks
     hasVl: false
   blockBRegs:
     desc: The register block inside block B
-    blockGroup: blocks
     hasVl: false
   blockD:
     desc: The block named D
-    blockGroup: blocks
     hasVl: false
   blockARegs:
     desc: The register block inside block A
-    blockGroup: blocks
     hasVl: false
   blockE:
     desc: The block named E
-    blockGroup: blocks
     hasVl: false
   blockF:
     desc: The block named F
-    blockGroup: blocks
     params: [bob, fred]
     hasVl: true
   threeCs:
     desc: A block that contains three copies of blockC
-    blockGroup: blocks
     hasVl: false
 
 
@@ -246,22 +235,21 @@ instances:
   uTop:
     container:  top # self reference
     instanceType: top
-    addressMap: False
     instGroup: top
-  uCPU:        {container: top,     instanceType: cpu,        addressMap: False,  instGroup: top,                             color: pink}
+  uCPU:        {container: top,     instanceType: cpu,                            instGroup: top,                             color: pink}
   uBlockA:     {container: top,     instanceType: blockA,     addressGroup: top,  instGroup: top}
-  uAPBDecode:  {container: top,     instanceType: apbDecode,  addressMap: False,  instGroup: top,                             color: pink}
-  uBlockC:     {container: top,     instanceType: blockC,     addressMap: False,  instGroup: top,                             color: orange}
+  uAPBDecode:  {container: top,     instanceType: apbDecode,                      instGroup: top,                             color: pink}
+  uBlockC:     {container: top,     instanceType: blockC,                         instGroup: top,                             color: orange}
   uBlockB:     {container: top,     instanceType: blockB,     addressGroup: top,  instGroup: top,                             color: lightslateblue}
-  uBlockARegs: {container: blockA,  instanceType: blockARegs, addressMap: False,  instGroup: top, registerLeafInstance: True, color: grey}
-  uBlockBRegs: {container: blockB,  instanceType: blockBRegs, addressMap: False,  instGroup: top, registerLeafInstance: True, color: grey}
+  uBlockARegs: {container: blockA,  instanceType: blockARegs,                     instGroup: top, registerLeafInstance: True, color: grey}
+  uBlockBRegs: {container: blockB,  instanceType: blockBRegs,                     instGroup: top, registerLeafInstance: True, color: grey}
   uBlockD:     {container: blockB,  instanceType: blockD,     addressGroup: ip1,  instGroup: top, addressMultiples: 2 } #get 2x the number of addresses
-  uBlockF0:    {container: blockB,  instanceType: blockF,     addressMap: False,  instGroup: top, variant: variant0   }
-  uBlockF1:    {container: blockB,  instanceType: blockF,     addressMap: False,  instGroup: top, variant: variant1   }
-  uThreeCs:    {container: blockB,  instanceType: threeCs,    addressMap: False,  instGroup: top,                             color: green}
-  uBlockC0:    {container: threeCs, instanceType: blockC,     addressMap: False,  instGroup: top,                             color: orange}
-  uBlockC1:    {container: threeCs, instanceType: blockC,     addressMap: False,  instGroup: top,                             color: orange}
-  uBlockC2:    {container: threeCs, instanceType: blockC,     addressMap: False,  instGroup: top,                             color: orange}
+  uBlockF0:    {container: blockB,  instanceType: blockF,     addressGroup: ip1,  instGroup: top, variant: variant0   }
+  uBlockF1:    {container: blockB,  instanceType: blockF,                         instGroup: top, variant: variant1   }
+  uThreeCs:    {container: blockB,  instanceType: threeCs,                        instGroup: top,                             color: green}
+  uBlockC0:    {container: threeCs, instanceType: blockC,                         instGroup: top,                             color: orange}
+  uBlockC1:    {container: threeCs, instanceType: blockC,                         instGroup: top,                             color: orange}
+  uBlockC2:    {container: threeCs, instanceType: blockC,                         instGroup: top,                             color: orange}
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries

@@ -50,4 +50,3 @@ interfaces:
 blocks:
   blockC:
     desc: The block named C
-    blockGroup: blocks

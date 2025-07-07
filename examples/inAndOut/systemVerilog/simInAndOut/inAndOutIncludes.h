@@ -43,18 +43,6 @@ inline const char* readyT_prt( readyT val )
     }
     return("!!!BADENUM!!!");
 }
-enum  addr_id_top {          //Generated type for addressing inAndOut instances
-    ADDR_ID_TOP_UINANDOUT0=0,   // uInAndOut0 instance address
-    ADDR_ID_TOP_UINANDOUT1=1 }; // uInAndOut1 instance address
-inline const char* addr_id_top_prt( addr_id_top val )
-{
-    switch( val )
-    {
-        case ADDR_ID_TOP_UINANDOUT0: return( "ADDR_ID_TOP_UINANDOUT0" );
-        case ADDR_ID_TOP_UINANDOUT1: return( "ADDR_ID_TOP_UINANDOUT1" );
-    }
-    return("!!!BADENUM!!!");
-}
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures

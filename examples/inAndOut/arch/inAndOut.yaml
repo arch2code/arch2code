@@ -147,10 +147,8 @@ interfaces:
 blocks:
   top:
     desc: The top most block, the only block
-    blockGroup: blocks
   inAndOut:
     desc: The block that has each interface type in and out to show both directions
-    blockGroup: blocks
 
 # instances, these are instantiations of objects
 #   implies a top level of some kind that is instancing objects, an instance can instance other objects, optional nesting
@@ -163,20 +161,14 @@ instances:
   uTop:
     container:  top # self reference
     instanceType: top
-    addressMap: False
-    instGroup: inAndOut
   uInAndOut0:
     container:  top
     instanceType: inAndOut
     color: orange
-    addressGroup: inAndOut
-    instGroup: inAndOut
   uInAndOut1:
     container:  top
     instanceType: inAndOut
     color: green
-    addressGroup: inAndOut
-    instGroup: inAndOut
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries

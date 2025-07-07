@@ -21,7 +21,7 @@ DB_FILE = $(PROJECT_ROOT)/$(PROJECT_NAME).db
 DOT_DB_FILE = $(PROJECT_ROOT)/.$(PROJECT_NAME).db
 
 YAML_FILES = $(shell find $(PROJECT_ROOT)/arch -type f -name '*.yaml')
-PROJ_FILE = $(PROJECT_ROOT)/arch/$(PROJECT_NAME)_project.yaml
+PROJ_FILE = $(PROJECT_ROOT)/arch/$(PROJECT_NAME)Project.yaml
 
 .PHONY: db db-clean
 

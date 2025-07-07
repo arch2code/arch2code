@@ -18,9 +18,6 @@ typedef logic[32-1:0] axiDataT; //Width of the data bus. sizing from constant AX
 typedef logic[4-1:0] axiStrobeT; //Width of the strobe bus. sizing from constant AXI_STROBE_WIDTH
 
 // enums
-typedef enum logic[1-1:0] {          //Generated type for addressing top instances
-    ADDR_ID_TOP_UCONSUMER = 0 // uConsumer instance address
-} addr_id_top;
 
 // structures
 typedef struct packed {

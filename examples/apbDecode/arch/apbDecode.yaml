@@ -79,44 +79,34 @@ interfaces:
 blocks:
   top:
     desc: The top most block
-    blockGroup: blocks
   cpu:
     desc: A RISC-V CPU
-    blockGroup: blocks
   apbDecode:
     desc: The block to decode apb addresses
-    blockGroup: blocks
   someRapper:
     desc: A level of wrapper
-    blockGroup: blocks
   blockA:
     desc: The block named A
-    blockGroup: blocks
   blockB:
     desc: The block named B
-    blockGroup: blocks
   blockARegs:
     desc: The register block inside block A
-    blockGroup: blocks
     hasMdl: false
   blockBRegs:
     desc: The register block inside block B
-    blockGroup: blocks
     hasMdl: false
 
 instances:
   uTop:
     container:  top # self reference
     instanceType: top
-    addressMap: False
-    instGroup: top
-  uCPU:         {container: top,        instanceType: cpu,        addressMap: False,  instGroup: top, color: pink}
-  uAPBDecode:   {container: someRapper, instanceType: apbDecode,  addressMap: False,  instGroup: top, color: pink}
-  uSomeRapper:  {container: top,        instanceType: someRapper, addressMap: False,  instGroup: top}
-  uBlockA:      {container: someRapper, instanceType: blockA,     addressGroup: top,  instGroup: top}
-  uBlockB:      {container: someRapper, instanceType: blockB,     addressGroup: top,  instGroup: top, color: lightslateblue}
-  uBlockARegs:  {container: blockA,     instanceType: blockARegs, addressMap: False,  instGroup: top, color: grey, registerLeafInstance: True}
-  uBlockBRegs:  {container: blockB,     instanceType: blockBRegs, addressMap: False,  instGroup: top, color: grey, registerLeafInstance: True}
+  uCPU:         {container: top,        instanceType: cpu,        color: pink}
+  uAPBDecode:   {container: someRapper, instanceType: apbDecode,  color: pink}
+  uSomeRapper:  {container: top,        instanceType: someRapper  }
+  uBlockA:      {container: someRapper, instanceType: blockA,     addressGroup: top }
+  uBlockB:      {container: someRapper, instanceType: blockB,     addressGroup: top,  color: lightslateblue}
+  uBlockARegs:  {container: blockA,     instanceType: blockARegs, color: grey, registerLeafInstance: True}
+  uBlockBRegs:  {container: blockB,     instanceType: blockBRegs, color: grey, registerLeafInstance: True}
 
 connections:
   - {interface: apbReg,    src: uCPU,                             dst: uSomeRapper}

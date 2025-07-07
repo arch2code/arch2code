@@ -35,18 +35,15 @@ interfaces:
 blocks:
   blockCX:
     desc: The block named CX
-    blockGroup: blocks
   blockCY:
     desc: The block named CY
-    blockGroup: blocks
   blockCZ:
     desc: The block named CZ
-    blockGroup: blocks
 
 instances:
-  uBlockCX:     {container: blockC,  instanceType: blockCX,  addressMap: False, instGroup: blocks}
-  uBlockCY:     {container: blockC,  instanceType: blockCY,  addressMap: False, instGroup: blocks}
-  uBlockCZ:     {container: blockC,  instanceType: blockCZ,  addressMap: False, instGroup: blocks}
+  uBlockCX:     {container: blockC,  instanceType: blockCX,  instGroup: blocks}
+  uBlockCY:     {container: blockC,  instanceType: blockCY,  instGroup: blocks}
+  uBlockCZ:     {container: blockC,  instanceType: blockCZ,  instGroup: blocks}
 
 connections:
   - {interface: cnInterface, src: uBlockCX, dst: uBlockCY, dstport: x, name: cx2y}

@@ -25,7 +25,6 @@
 # enum: ADDRESS_GROUP_TOP_IP1=0x0, ADDRESS_GROUP_TOP_IP2=0x1, ADDRESS_GROUP_TOP_IP2=0x2
 #
 # instances definition have a couple of fields to allow control. 
-#  AddressMap: True|False to define if they are included in the address map (defaults to True)
 #  AddressGroup: this field needs to be one of the valid AddressGroups defined in the addressControl file
 #  AddressID: this is the same as the value in the address group enum above
 #  AddressMultiples: this is used to get multiple address increments, if omitted, assumed to be 1
@@ -58,13 +57,13 @@ RegisterBusInterface: apbReg
 
 # in the example below all instances will have a unique id across entire design
 
-InstanceGroups:
-  top:
-    varType: inst_top
-    enumPrefix: INST_TOP_
-  blocks:
-    varType: blockID
-    enumPrefix: BLOCK_TOP_
+# InstanceGroups:
+#   top:
+#     varType: inst_top
+#     enumPrefix: INST_TOP_
+#   blocks:
+#     varType: blockID
+#     enumPrefix: BLOCK_TOP_
 
 AddressObjects:
   memories: # note order is important as it controls address generation. Memories first as they are typically bigger and have alignment restrictions

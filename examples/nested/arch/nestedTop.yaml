@@ -157,58 +157,40 @@ interfaces:
 blocks:
   top:
     desc: Fake top
-    blockGroup: blockTop
   testContainer:
     desc: Top for test blocks
-    blockGroup: blockTop
   testBlock:
     desc: Top test block
-    blockGroup: blockTop
   subBlockContainer:
     desc: container of sub test blocks
-    blockGroup: blockTop
   subBlock:
     desc: sub test block
-    blockGroup: blockTop
   firstBlock:
     desc: initiator
-    blockGroup: blockTop
   secondBlock:
     desc: middle Block
-    blockGroup: blockTop
   lastBlock:
     desc: last block
-    blockGroup: blockTop
   secondSubA:
     desc: sub block A of second
-    blockGroup: blockTop
   secondSubB:
     desc: sub block B of second
-    blockGroup: blockTop  
   nestedL1:
     desc: Nested mapping test case L1
-    blockGroup: blockTop
   nestedL2:
     desc: Nested mapping test case L2
-    blockGroup: blockTop
   nestedL3:
     desc: Nested mapping test case L3
-    blockGroup: blockTop
   nestedL4:
     desc: Nested mapping test case L4
-    blockGroup: blockTop
   nestedL5:
     desc: Nested mapping test case L5
-    blockGroup: blockTop
   nestedL6:
     desc: Nested mapping test case L6
-    blockGroup: blockTop
   producer:
     desc: producer test block
-    blockGroup: blockTop
   consumer:
     desc: consumer test block
-    blockGroup: blockTop
 # instances, these are instantiations of objects
 #   implies a top level of some kind that is instancing objects, an instance can instance other objects, optional nesting
 ## instancename: is the instance name being instanced, required
@@ -219,113 +201,69 @@ instances:
   uTop:
     container: top # self referential
     instanceType: top
-    instGroup: top
-    addressMap: False
   uTestBlock0:
     container: testContainer 
     instanceType: testBlock
-    instGroup: top
-    addressMap: False
   uTestBlock1:
     container: testContainer 
     instanceType: testBlock
-    instGroup: top
-    addressMap: False
   uSubBlockContainer0:
     container: testContainer
     instanceType: subBlockContainer
-    instGroup: top
-    addressMap: False
   uSubBlockContainer1:
     container: testContainer
     instanceType: subBlockContainer
-    instGroup: top
-    addressMap: False
   uSubBlockContainer2:
     container: testContainer
     instanceType: subBlockContainer
-    instGroup: top
-    addressMap: False
   uSubBlock0:
     container: subBlockContainer
     instanceType: subBlock
-    instGroup: top
-    addressMap: False
   uSubBlock1:
     container: subBlockContainer
     instanceType: subBlock
-    instGroup: top
-    addressMap: False
   uTestTop:
     container: top
     instanceType: testContainer
-    instGroup: top
-    addressMap: False
   uNestedL1:
     container: top
     instanceType: nestedL1
-    instGroup: top
-    addressMap: False
   uNestedL2:
     container: nestedL1
     instanceType: nestedL2
-    instGroup: top
-    addressMap: False
   uNestedL3:
     container: nestedL2
     instanceType: nestedL3
-    instGroup: top
-    addressMap: False
   uNestedL4:
     container: nestedL3
     instanceType: nestedL4
-    instGroup: top
-    addressMap: False
   uNestedL5:
     container: nestedL4
     instanceType: nestedL5
-    instGroup: top
-    addressMap: False
   uNestedL6:
     container: nestedL5
     instanceType: nestedL6
-    instGroup: top
-    addressMap: False
   uFirst:
     container: testContainer
     instanceType: firstBlock
-    instGroup: top
-    addressMap: False
   uSecond:
     container: testContainer
     instanceType: secondBlock
-    instGroup: top
-    addressMap: False
   uLast:
     container: testContainer
     instanceType: lastBlock
-    instGroup: top
-    addressMap: False
   uSecondSubA:
     container: secondBlock
     instanceType: secondSubA
-    instGroup: top
-    addressMap: False
   uSecondSubB:
     container: secondBlock
     instanceType: secondSubB
-    instGroup: top
-    addressMap: False
   uProducer:
     container: testContainer
     instanceType: producer
-    instGroup: top
-    addressMap: False
   uConsumer:
     container: testContainer
     instanceType: consumer
-    instGroup: top
-    addressMap: False
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries

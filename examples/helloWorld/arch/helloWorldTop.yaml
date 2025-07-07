@@ -89,13 +89,10 @@ interfaces:
 blocks:
   top:
     desc: top
-    blockGroup: blockTop
   producer:
     desc: Producer
-    blockGroup: blockTop
   consumer:
     desc: Consumer
-    blockGroup: blockTop
 
 # instances, these are instantiations of objects
 #   implies a top level of some kind that is instancing objects, an instance can instance other objects, optional nesting
@@ -108,17 +105,14 @@ instances:
     container: top # self referential
     instanceType: top
     instGroup: top
-    addressMap: False
   uProducer:
     container: top 
     instanceType: producer
     instGroup: top
-    addressMap: False
   uConsumer:
     container: top 
     instanceType: consumer
     instGroup: top
-    addressMap: False
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries
