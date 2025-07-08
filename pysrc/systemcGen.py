@@ -149,7 +149,7 @@ class genSystemC:
                     except ValueError:
                         # otherwise lookup the constant based on the key version
                         arraySize = prj.getConst(varData['arraySizeKey'])
-                    if arraySize == 1:
+                    if arraySize == 0:
                         varData['isArray'] = False
                     else:
                         varData['isArray'] = True
@@ -169,12 +169,12 @@ class genSystemC:
                         bitwidth = typeInfo['width']
                     bitwidth = prj.getConst( bitwidth )
                     varData['bitwidth'] = bitwidth
-                    varData['arraywidth'] = bitwidth * arraySize
+                    varData['arraywidth'] = bitwidth * arraySize if varData['isArray'] else bitwidth
                     varData['bitshift'] = offset
                     offset = offset + varData['arraywidth']
 
                     # build a format string here to avoid doing it in jinja
-                    if arraySize > 1:
+                    if arraySize :
                         varData['format'] = f"Array:{varData['variable']}:NotShown "
                         varloopCount = (bitwidth + 63) // 64  #16hex digits per 64bit value
                         varData['varLoopCount'] = varloopCount

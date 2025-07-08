@@ -106,7 +106,7 @@ structures: # customer handler, the fields here must match the code
       _validate:
         section: structures
         field: structure
-    arraySize: optionalConst(1)
+    arraySize: optionalConst(0)
     entryType: auto(entryType)
     generator: optional
     desc: optional

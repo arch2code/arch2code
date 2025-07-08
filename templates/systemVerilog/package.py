@@ -54,7 +54,7 @@ def render(args, prj, data):
     for struct, value in data['structures'].items():
         out += f"typedef struct packed {{\n"
         for var, varData in value['vars'].items():
-            if varData['arraySize'] == 1 or varData['arraySize'] == '1':
+            if varData['arraySize'] == 0 or varData['arraySize'] == '0':
                 arraySize = ''
             else:
                 arraySize = f"[{varData['arraySize']}-1:0] "

@@ -2221,7 +2221,7 @@ class projectCreate:
             except ValueError:
                 # otherwise lookup the constant based on the key version
                 arraySize = self.qualConstParse(varInfo['arraySizeKey'])
-            width = structInfo['width'] * arraySize
+            width = structInfo['width'] * arraySize if arraySize else structInfo['width']
         elif varInfo['entryType']=='Reserved':
             width = varInfo['align']
         else:
@@ -2232,7 +2232,7 @@ class projectCreate:
             except ValueError:
                 # otherwise lookup the constant based on the key version
                 arraySize = self.qualConstParse(varInfo['arraySizeKey'])
-            width = typeWidth * arraySize
+            width = typeWidth * arraySize if arraySize else typeWidth
         return width
 
     # AUTO SECTIONS begin here
