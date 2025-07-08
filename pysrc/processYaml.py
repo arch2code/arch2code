@@ -885,7 +885,6 @@ class projectOpen:
                         isApbRouter = True
                         ret['addressDecode']['addressGroupData'] = addressGroupData
                         ret['addressDecode']['addressGroup'] = addressGroup
-                        ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
                         ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
                         ret['addressDecode']['instanceWithRegApb'] = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
         ret['addressDecode']['isApbRouter'] = isApbRouter
@@ -1135,6 +1134,7 @@ class projectOpen:
             for apbIfPort in filter(lambda x: x['interfaceData']['interfaceType'] == 'apb', ret['ports'].values()):
                 for item in filter(lambda x: x['interface'] == addressConfig['RegisterBusInterface'], apbIfPort['interfaceData']['structures']):
                     ret['addressDecode']['registerBusStructs'].update( { item['structureType'] : item['structure'] } )
+                    ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
             # if we have found no register bus structs then report an error
             if not ret['addressDecode']['registerBusStructs']:
                 printError(f"Register Bus Interface {addressConfig['RegisterBusInterface']} not found in ports of block {qualBlock}")

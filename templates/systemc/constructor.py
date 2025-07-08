@@ -43,8 +43,8 @@ def constructorInit(args, prj, data):
         out.append(f'    decoder.decodeThread();\n}}\n\n')
 
     if data['addressDecode']['hasDecoder']:
-        busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
         busInterface = data["addressDecode"]["registerBusInterface"]
+        busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
         out.append(f'void { className }::regHandler(void) {{ //handle register decode\n')
         out.append(f'    registerHandler< {busStructs} >(regs, {busInterface}, (1<<({data["addressDecode"]["addressBits"]}-1))-1); }}\n\n')
 
