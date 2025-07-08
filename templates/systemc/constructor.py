@@ -44,8 +44,9 @@ def constructorInit(args, prj, data):
 
     if data['addressDecode']['hasDecoder']:
         busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
+        busInterface = data["addressDecode"]["registerBusInterface"]
         out.append(f'void { className }::regHandler(void) {{ //handle register decode\n')
-        out.append(f'    registerHandler< {busStructs} >(regs, apbReg, (1<<({data["addressDecode"]["addressBits"]}-1))-1); }}\n\n')
+        out.append(f'    registerHandler< {busStructs} >(regs, {busInterface}, (1<<({data["addressDecode"]["addressBits"]}-1))-1); }}\n\n')
 
     out.append(f'{ className }::{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode)\n')
     out.append(f'       : sc_module(blockName)\n')
@@ -201,7 +202,8 @@ def addressDecoder(args, prj, data):
     decoderInstance = addressGroupData['decoderInstance']
     containerBlock = data['addressDecode']['containerBlock']
     instanceWithRegApb = data['addressDecode']['instanceWithRegApb']
-    out.append(f'        ,decoder({addressGroupData["maxAddressSpaces"]}, {addressGroupData["addressIncrement"].bit_length()-1}, apbReg, {{\n')
+    busInterface = data["addressDecode"]["registerBusInterface"]
+    out.append(f'        ,decoder({addressGroupData["maxAddressSpaces"]}, {addressGroupData["addressIncrement"].bit_length()-1}, {busInterface}, {{\n')
     addressChannels = dict()
     for instance, instanceData in prj.data['instances'].items():
         if instanceData['addressGroup'] == addressGroup:
