@@ -1120,12 +1120,12 @@ def processPackUnpack(fname, handle, args, vars, indent):
 
 def structTest(args, prj, data):
     out = list()
-    fn = os.path.splitext(os.path.basename(args.file))[0]
+    fn = os.path.splitext(os.path.basename(data['context']))[0] + '_structs'
     if args.section == 'testStructsHeader':
         out.append(f'class test_{fn} {{\n')
-        out.append(f'    std::string name(void);\n')
         out.append(f'public:\n')
-        out.append(f'    void test(void);\n')
+        out.append(f'    static std::string name(void);\n')
+        out.append(f'    static void test(void);\n')
         out.append(f'}};\n')
         return out
 
@@ -1134,6 +1134,7 @@ def structTest(args, prj, data):
     out.append(f'void test_{fn}::test(void) {{\n')
     indent = ' '*4
     out.append(f'{indent}std::vector<uint8_t> patterns{{0x6a, 0xa6}};\n')
+    out.append(f'{indent}cout << "Running " << name() << endl;\n')
     for _, value in data['structures'].items():
         struct = value['structure']
         out.append(f'{indent}for(auto pattern : patterns) {{\n')

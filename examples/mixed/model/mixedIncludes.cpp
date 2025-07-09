@@ -242,7 +242,9 @@ void nestedSt::unpack(_packedSt &_src)
         uint16_t _bits = 5;
         uint16_t _consume;
         {
-            joe[i].unpack(*(seeSt::_packedSt*)&_src);
+            seeSt::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, 10);
+            joe[i].unpack(_tmp);
         }
         _pos += 5;
     }
