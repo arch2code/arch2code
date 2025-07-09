@@ -57,6 +57,12 @@ class genSystemC:
                 if not data:
                     printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                     exit(warningAndErrorReport())
+                # If block is a leaf node, remove all sub-instances and connections
+                if prj.data['blocks'][qualBlock].get('mdlLeafNode', 0):
+                    data['subBlocks'] = {}
+                    data['subBlockInstances'] = {}
+                    data['connectionMaps'] = {}
+                    data['connections'] = {}
             else:
                 block = 'No block specified in GENERATED_CODE_PARAM'
             if self.code.params.inst:

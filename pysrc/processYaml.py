@@ -1153,6 +1153,7 @@ class projectOpen:
         for inst, instVal in self.hierKey[qualBlock].items():
             if inst in instances:
                 ret['subBlocks'][instVal['instanceTypeKey']] = instVal['instanceType']
+
         return ret
 
     def extractContext(self, structs, consts):
