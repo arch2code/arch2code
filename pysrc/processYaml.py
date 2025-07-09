@@ -1154,13 +1154,6 @@ class projectOpen:
             if inst in instances:
                 ret['subBlocks'][instVal['instanceTypeKey']] = instVal['instanceType']
 
-        # If block is a leaf node, remove all sub-instances and connections
-        if self.data['blocks'][qualBlock].get('mdlLeafNode', 0):
-            ret['subBlocks'] = {}
-            ret['subBlockInstances'] = {}
-            ret['connectionMaps'] = {}
-            ret['connections'] = {}
-
         return ret
 
     def extractContext(self, structs, consts):
