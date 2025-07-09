@@ -149,6 +149,7 @@ class genSystemC:
                     except ValueError:
                         # otherwise lookup the constant based on the key version
                         arraySize = prj.getConst(varData['arraySizeKey'])
+                    varData['arraySizeValue'] = arraySize
                     if arraySize == 0:
                         varData['isArray'] = False
                     else:
