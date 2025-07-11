@@ -16,7 +16,7 @@ constexpr uint64_t findNextPowerOf2Constexpr(uint64_t n) {
 }
 extern uint64_t findNextPowerOf2(uint64_t n);
 extern uint16_t log2ofPowerOf2(uint64_t n);
-extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits); // by ptr
-extern void pack_bits(uint64_t* dest, uint16_t pos, uint64_t* src, uint16_t bits); // by ptr
-extern void pack_bits(uint64_t* dest, uint16_t pos, uint64_t src, uint16_t bits); // by value
+extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits); // by ptr any alignment
+extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t bits); // by ptr aligned to start of src
+extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t src, uint16_t bits); // by value
 #endif //BITTWIDDLING_H

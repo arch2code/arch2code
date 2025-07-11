@@ -908,7 +908,7 @@ def fw_unpack(handle, args, vars, indent):
                 out.append(f'{indent}{varName}{varIndex}.unpack(*({varType}::_packedSt*)&{src});\n')
             else:
                 out.append(f"{indent}{varType}::_packedSt _tmp{{0}};\n")
-                out.append(f"{indent}pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {data['arraywidth']});\n")
+                out.append(f"{indent}pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {data['bitwidth']});\n")
                 out.append(f'{indent}{varName}{varIndex}.unpack(_tmp);\n')
                 # when we copied we used a tmp ptr to prevent overrun, reset point to correct place
             indent = indent[:-4]
@@ -979,7 +979,7 @@ def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
 def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
     out = list()
     # nested structure, declare a tmp variable to hold the value and copy it to the destination
-    tmpType, tmpRowType, tmpBaseSize = convertToType(data['arraywidth'])
+    tmpType, tmpRowType, tmpBaseSize = convertToType(data['bitwidth'])
     baseSize = fw_pack_vars['baseSize']
     baseMask = baseSize - 1
     isArray = data['isArray']
@@ -1002,7 +1002,7 @@ def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
         else:
             dest = "_ret"
     else:
-        if data['arraywidth'] > 64:
+        if data['bitwidth'] > 64:
             tmp = f"(uint64_t *)&_tmp"
         else:
             tmp = "_tmp"
