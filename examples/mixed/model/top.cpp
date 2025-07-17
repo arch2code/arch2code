@@ -46,4 +46,8 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     uAPBDecode->apbReg(apbReg);
     log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
+
+    test_mixed_structs::test(); // Run the test for structures
+    log_.logPrint(fmt::format("Instance {} test completed.", this->name()), LOG_IMPORTANT );
+    
 }

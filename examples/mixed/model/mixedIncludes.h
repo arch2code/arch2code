@@ -492,6 +492,49 @@ struct apbDataSt {
     explicit apbDataSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+struct cSt {
+    sevenBitT sevenBitArray[5]; //An array of total size > 32 bit and < 64 bits
+
+    cSt() {}
+
+    static constexpr uint16_t _bitWidth = 35;
+    static constexpr uint16_t _byteWidth = 5;
+    typedef uint64_t _packedSt;
+    bool operator == (const cSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const cSt & v, const std::string & NAME ) {
+        for(int i=0; i<5; i++) {
+            sc_trace(tf,v.sevenBitArray[i], NAME + ".sevenBitArray[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  cSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(_packedSt &_src);
+    sc_bv<35> sc_pack(void) const;
+    void sc_unpack(sc_bv<35> packed_data);
+    explicit cSt(sc_bv<35> packed_data) { sc_unpack(packed_data); }
+    explicit cSt(
+        sevenBitT sevenBitArray_[5])
+    {
+        memcpy(&sevenBitArray, &sevenBitArray_, sizeof(sevenBitArray));
+    }
+    explicit cSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+
+// GENERATED_CODE_END
+
+// GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
+class test_mixed_structs {
+public:
+    static std::string name(void);
+    static void test(void);
+};
 
 // GENERATED_CODE_END
 
