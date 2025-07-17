@@ -116,5 +116,9 @@ typedef struct packed {
     apbDataT data; //
 } apbDataSt;
 
+typedef struct packed {
+    sevenBitT [5-1:0] sevenBitArray; //An array of total size > 32 bit and < 64 bits
+} cSt;
+
 endpackage : mixed_package
 // GENERATED_CODE_END

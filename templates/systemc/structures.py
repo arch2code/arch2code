@@ -908,7 +908,10 @@ def fw_unpack(handle, args, vars, indent):
                 out.append(f'{indent}{varName}{varIndex}.unpack(*({varType}::_packedSt*)&{src});\n')
             else:
                 out.append(f"{indent}{varType}::_packedSt _tmp{{0}};\n")
-                out.append(f"{indent}pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {data['bitwidth']});\n")
+                if (bitwidth >= 64):
+                    out.append(f"{indent}pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {data['bitwidth']});\n")
+                else:
+                    out.append(f"{indent}_tmp = (_src >> _pos) & ((1ULL << {data['bitwidth']}) - 1);\n")
                 out.append(f'{indent}{varName}{varIndex}.unpack(_tmp);\n')
                 # when we copied we used a tmp ptr to prevent overrun, reset point to correct place
             indent = indent[:-4]
