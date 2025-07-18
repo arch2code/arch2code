@@ -44,6 +44,7 @@ typedef uint8_t sevenBitT; // [7] Used as a threeBitT plus a fourBitT for the re
 typedef uint8_t aSizeT; // [1] type of width ASIZE
 typedef uint8_t aBiggerT; // [2] yet another type
 typedef uint8_t bSizeT; // [4] for addressing memory
+typedef uint16_t wordT; // [16] a word type, used for test
 typedef uint32_t apbAddrT; // [32] for addressing register via APB
 typedef uint32_t apbDataT; // [32] for the data sent or recieved via APB
 
@@ -762,6 +763,74 @@ struct test7St {
         memcpy(&largeStruct, &largeStruct_, sizeof(largeStruct));
     }
     explicit test7St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct test8St {
+    wordT words[3]; //Aligned array of 3 words, each word is 16 bits
+
+    test8St() {}
+
+    static constexpr uint16_t _bitWidth = 48;
+    static constexpr uint16_t _byteWidth = 6;
+    typedef uint64_t _packedSt;
+    bool operator == (const test8St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const test8St & v, const std::string & NAME ) {
+        for(int i=0; i<3; i++) {
+            sc_trace(tf,v.words[i], NAME + ".words[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  test8St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(_packedSt &_src);
+    sc_bv<48> sc_pack(void) const;
+    void sc_unpack(sc_bv<48> packed_data);
+    explicit test8St(sc_bv<48> packed_data) { sc_unpack(packed_data); }
+    explicit test8St(
+        wordT words_[3])
+    {
+        memcpy(&words, &words_, sizeof(words));
+    }
+    explicit test8St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct test9St {
+    test8St wordArray[4]; //Array of 4 * 48 bits
+
+    test9St() {}
+
+    static constexpr uint16_t _bitWidth = 192;
+    static constexpr uint16_t _byteWidth = 24;
+    typedef uint64_t _packedSt[3];
+    bool operator == (const test9St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const test9St & v, const std::string & NAME ) {
+        for(int i=0; i<4; i++) {
+            sc_trace(tf,v.wordArray[i], NAME + ".wordArray[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  test9St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(_packedSt &_src);
+    sc_bv<192> sc_pack(void) const;
+    void sc_unpack(sc_bv<192> packed_data);
+    explicit test9St(sc_bv<192> packed_data) { sc_unpack(packed_data); }
+    explicit test9St(
+        test8St wordArray_[4])
+    {
+        memcpy(&wordArray, &wordArray_, sizeof(wordArray));
+    }
+    explicit test9St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
 

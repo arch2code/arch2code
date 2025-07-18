@@ -995,7 +995,7 @@ def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
     baseSize = fw_pack_vars['baseSize']
     baseMask = baseSize - 1
     isArray = data['isArray']
-    isAligned = ((pos & (baseMask)) == 0) and (not isArray or (data['arraywidth'] & baseMask == 0))
+    isAligned = ((pos & (baseMask)) == 0) and (not isArray or ((data['arraywidth'] & baseMask == 0) and (data['bitwidth'] & baseMask == 0)))
 
     if isArray:
         srcPos = '_pos'
