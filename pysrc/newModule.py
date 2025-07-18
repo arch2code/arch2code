@@ -62,9 +62,11 @@ class newModule:
                 cond = fileDefinition.get("cond", None)
                 makeFile = True
                 if cond:
+                    makeFile = False
                     for field, value in cond.items():
-                        if prj.data["blocks"][qualBlock][field] != value:
-                            makeFile = False 
+                        if prj.data["blocks"][qualBlock][field] == value:
+                            makeFile = True 
+                            break
                 if makeFile:
                     hasVariant = fileDefinition.get('variant', False)
                     if hasVariant and data['variants']:
