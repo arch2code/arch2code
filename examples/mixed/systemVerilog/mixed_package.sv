@@ -120,5 +120,34 @@ typedef struct packed {
     sevenBitT [5-1:0] sevenBitArray; //An array of total size > 32 bit and < 64 bits
 } cSt;
 
+typedef struct packed {
+    sevenBitT [5-1:0] sevenBitArray; //An array of total size > 32 bit and < 64 bits
+    sevenBitT [5-1:0] sevenBitArray2; //An array of total size > 32 bit and < 64 bits
+} test1St;
+
+typedef struct packed {
+    cSt [5-1:0] thirtyFiveBitArray; //An array of 35 bit * 5
+} test2St;
+
+typedef struct packed {
+    aRegSt [5-1:0] sevenBitArray; //An array of 7 bit * 5
+} test3St;
+
+typedef struct packed {
+    aRegSt sevenBitArray; //An array of 7 bit
+} test4St;
+
+typedef struct packed {
+    aRegSt [10-1:0] sevenBitArray; //An array of 7 bit * 10
+} test5St;
+
+typedef struct packed {
+    test1St largeStruct; //An array of 70 bit
+} test6St;
+
+typedef struct packed {
+    test1St [5-1:0] largeStruct; //An array of 70 bit * 5
+} test7St;
+
 endpackage : mixed_package
 // GENERATED_CODE_END

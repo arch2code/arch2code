@@ -526,6 +526,244 @@ struct cSt {
     explicit cSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+struct test1St {
+    sevenBitT sevenBitArray2[5]; //An array of total size > 32 bit and < 64 bits
+    sevenBitT sevenBitArray[5]; //An array of total size > 32 bit and < 64 bits
+
+    test1St() {}
+
+    static constexpr uint16_t _bitWidth = 70;
+    static constexpr uint16_t _byteWidth = 9;
+    typedef uint64_t _packedSt[2];
+    bool operator == (const test1St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const test1St & v, const std::string & NAME ) {
+        for(int i=0; i<5; i++) {
+            sc_trace(tf,v.sevenBitArray[i], NAME + ".sevenBitArray[i]");
+        }
+        for(int i=0; i<5; i++) {
+            sc_trace(tf,v.sevenBitArray2[i], NAME + ".sevenBitArray2[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  test1St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(_packedSt &_src);
+    sc_bv<70> sc_pack(void) const;
+    void sc_unpack(sc_bv<70> packed_data);
+    explicit test1St(sc_bv<70> packed_data) { sc_unpack(packed_data); }
+    explicit test1St(
+        sevenBitT sevenBitArray2_[5],
+        sevenBitT sevenBitArray_[5])
+    {
+        memcpy(&sevenBitArray2, &sevenBitArray2_, sizeof(sevenBitArray2));
+        memcpy(&sevenBitArray, &sevenBitArray_, sizeof(sevenBitArray));
+    }
+    explicit test1St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct test2St {
+    cSt thirtyFiveBitArray[5]; //An array of 35 bit * 5
+
+    test2St() {}
+
+    static constexpr uint16_t _bitWidth = 175;
+    static constexpr uint16_t _byteWidth = 22;
+    typedef uint64_t _packedSt[3];
+    bool operator == (const test2St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const test2St & v, const std::string & NAME ) {
+        for(int i=0; i<5; i++) {
+            sc_trace(tf,v.thirtyFiveBitArray[i], NAME + ".thirtyFiveBitArray[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  test2St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(_packedSt &_src);
+    sc_bv<175> sc_pack(void) const;
+    void sc_unpack(sc_bv<175> packed_data);
+    explicit test2St(sc_bv<175> packed_data) { sc_unpack(packed_data); }
+    explicit test2St(
+        cSt thirtyFiveBitArray_[5])
+    {
+        memcpy(&thirtyFiveBitArray, &thirtyFiveBitArray_, sizeof(thirtyFiveBitArray));
+    }
+    explicit test2St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct test3St {
+    aRegSt sevenBitArray[5]; //An array of 7 bit * 5
+
+    test3St() {}
+
+    static constexpr uint16_t _bitWidth = 35;
+    static constexpr uint16_t _byteWidth = 5;
+    typedef uint64_t _packedSt;
+    bool operator == (const test3St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const test3St & v, const std::string & NAME ) {
+        for(int i=0; i<5; i++) {
+            sc_trace(tf,v.sevenBitArray[i], NAME + ".sevenBitArray[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  test3St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(_packedSt &_src);
+    sc_bv<35> sc_pack(void) const;
+    void sc_unpack(sc_bv<35> packed_data);
+    explicit test3St(sc_bv<35> packed_data) { sc_unpack(packed_data); }
+    explicit test3St(
+        aRegSt sevenBitArray_[5])
+    {
+        memcpy(&sevenBitArray, &sevenBitArray_, sizeof(sevenBitArray));
+    }
+    explicit test3St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct test4St {
+    aRegSt sevenBitArray; //An array of 7 bit
+
+    test4St() {}
+
+    static constexpr uint16_t _bitWidth = 7;
+    static constexpr uint16_t _byteWidth = 1;
+    typedef uint8_t _packedSt;
+    bool operator == (const test4St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const test4St & v, const std::string & NAME ) {
+        sc_trace(tf,v.sevenBitArray, NAME + ".sevenBitArray");
+    }
+    inline friend ostream& operator << ( ostream& os,  test4St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(_packedSt &_src);
+    sc_bv<7> sc_pack(void) const;
+    void sc_unpack(sc_bv<7> packed_data);
+    explicit test4St(sc_bv<7> packed_data) { sc_unpack(packed_data); }
+    explicit test4St(
+        aRegSt sevenBitArray_) :
+        sevenBitArray(sevenBitArray_)
+    {}
+    explicit test4St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct test5St {
+    aRegSt sevenBitArray[10]; //An array of 7 bit * 10
+
+    test5St() {}
+
+    static constexpr uint16_t _bitWidth = 70;
+    static constexpr uint16_t _byteWidth = 9;
+    typedef uint64_t _packedSt[2];
+    bool operator == (const test5St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const test5St & v, const std::string & NAME ) {
+        for(int i=0; i<10; i++) {
+            sc_trace(tf,v.sevenBitArray[i], NAME + ".sevenBitArray[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  test5St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(_packedSt &_src);
+    sc_bv<70> sc_pack(void) const;
+    void sc_unpack(sc_bv<70> packed_data);
+    explicit test5St(sc_bv<70> packed_data) { sc_unpack(packed_data); }
+    explicit test5St(
+        aRegSt sevenBitArray_[10])
+    {
+        memcpy(&sevenBitArray, &sevenBitArray_, sizeof(sevenBitArray));
+    }
+    explicit test5St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct test6St {
+    test1St largeStruct; //An array of 70 bit
+
+    test6St() {}
+
+    static constexpr uint16_t _bitWidth = 70;
+    static constexpr uint16_t _byteWidth = 9;
+    typedef uint64_t _packedSt[2];
+    bool operator == (const test6St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const test6St & v, const std::string & NAME ) {
+        sc_trace(tf,v.largeStruct, NAME + ".largeStruct");
+    }
+    inline friend ostream& operator << ( ostream& os,  test6St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(_packedSt &_src);
+    sc_bv<70> sc_pack(void) const;
+    void sc_unpack(sc_bv<70> packed_data);
+    explicit test6St(sc_bv<70> packed_data) { sc_unpack(packed_data); }
+    explicit test6St(
+        test1St largeStruct_) :
+        largeStruct(largeStruct_)
+    {}
+    explicit test6St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct test7St {
+    test1St largeStruct[5]; //An array of 70 bit * 5
+
+    test7St() {}
+
+    static constexpr uint16_t _bitWidth = 350;
+    static constexpr uint16_t _byteWidth = 44;
+    typedef uint64_t _packedSt[6];
+    bool operator == (const test7St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const test7St & v, const std::string & NAME ) {
+        for(int i=0; i<5; i++) {
+            sc_trace(tf,v.largeStruct[i], NAME + ".largeStruct[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  test7St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(_packedSt &_src);
+    sc_bv<350> sc_pack(void) const;
+    void sc_unpack(sc_bv<350> packed_data);
+    explicit test7St(sc_bv<350> packed_data) { sc_unpack(packed_data); }
+    explicit test7St(
+        test1St largeStruct_[5])
+    {
+        memcpy(&largeStruct, &largeStruct_, sizeof(largeStruct));
+    }
+    explicit test7St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
 
 // GENERATED_CODE_END
 

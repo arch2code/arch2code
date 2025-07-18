@@ -907,12 +907,21 @@ def fw_unpack(handle, args, vars, indent):
             if (isAligned):
                 out.append(f'{indent}{varName}{varIndex}.unpack(*({varType}::_packedSt*)&{src});\n')
             else:
-                out.append(f"{indent}{varType}::_packedSt _tmp{{0}};\n")
+                # cases include whether src or dst is >=64 bits
+                # if tmp is <= 32 bit we want to use a 64 bit temp to prevent alignment issues and cast for the unpack
+                if data['bitwidth'] <= 32:
+                    out.append(f"{indent}uint64_t _tmp{{0}};\n")
+                    unpackCast = f"*(({varType}::_packedSt*)&_tmp)"
+                else:
+                    out.append(f"{indent}{varType}::_packedSt _tmp{{0}};\n")
+                    unpackCast = f"_tmp"
                 if (bitwidth >= 64):
+                    # src is using 64 bit words so use pass by pointer
                     out.append(f"{indent}pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {data['bitwidth']});\n")
                 else:
+                    # src is using < 64 bit so we can just use bit shifting
                     out.append(f"{indent}_tmp = (_src >> _pos) & ((1ULL << {data['bitwidth']}) - 1);\n")
-                out.append(f'{indent}{varName}{varIndex}.unpack(_tmp);\n')
+                out.append(f'{indent}{varName}{varIndex}.unpack({unpackCast});\n')
                 # when we copied we used a tmp ptr to prevent overrun, reset point to correct place
             indent = indent[:-4]
             out.append(f'{indent}}}\n')
