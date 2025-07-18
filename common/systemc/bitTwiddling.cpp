@@ -28,12 +28,33 @@ uint16_t log2ofPowerOf2(uint64_t v)
     }
     return r;
 }
-
+// copy bits from src at offset srcPos to dest at offset destPos
+// this handles arbitrary bit offsets and lengths
+// destPos and srcPos are bit offsets within the destination and source words respectively
 void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits)
 {
     while (bits > 0) {
-        uint16_t left_shift = destPos & 63;
-        uint16_t right_shift = srcPos & 63;
+        uint16_t left_shift = destPos & 63; // Bit offset within destination word (0-63)
+        uint16_t right_shift = srcPos & 63; // Bit offset within source word (0-63)
+        uint16_t consume = std::min(bits, (uint16_t)(64-(left_shift))); // How many bits to consume from src without overflowing dest
+        consume = std::min(consume, (uint16_t)(64-(right_shift))); // How many bits to consume from src without overflowing src word
+        if (left_shift > right_shift) {
+            dest[ destPos >> 6 ] |= src[srcPos >> 6] << (left_shift - right_shift);
+        } else {
+            dest[ destPos >> 6 ] |= src[srcPos >> 6] >> (right_shift - left_shift);
+        }
+        destPos += consume;
+        srcPos += consume;
+        bits -= consume;
+    }
+}
+// copy bits from aligned src to dest at offset pos
+void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t bits)
+{
+    uint16_t srcPos = 0; // note starts at 0 ie aligned to the start of src
+    while (bits > 0) {
+        uint16_t left_shift = destPos & 63; // Bit offset within destination word (0-63)        
+        uint16_t right_shift = srcPos & 63; // Bit offset within source word (0-63)
         uint16_t consume = std::min(bits, (uint16_t)(64-(left_shift)));
         consume = std::min(consume, (uint16_t)(64-(right_shift)));
         if (left_shift > right_shift) {
@@ -46,38 +67,21 @@ void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos,
         bits -= consume;
     }
 }
-void pack_bits(uint64_t* dest, uint16_t pos, uint64_t* src, uint16_t bits)
+// copy bits from src to dest at offset pos where src is a single 64-bit value
+void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t src, uint16_t bits)
 {
     uint16_t srcPos = 0;
     while (bits > 0) {
-        uint16_t left_shift = pos & 63;
+        uint16_t left_shift = destPos & 63;
         uint16_t right_shift = srcPos & 63;
         uint16_t consume = std::min(bits, (uint16_t)(64-(left_shift)));
         consume = std::min(consume, (uint16_t)(64-(right_shift)));
         if (left_shift > right_shift) {
-            dest[ pos >> 6 ] |= src[srcPos >> 6] << (left_shift - right_shift);
+            dest[ destPos >> 6 ] |= src << (left_shift - right_shift);
         } else {
-            dest[ pos >> 6 ] |= src[srcPos >> 6] >> (right_shift - left_shift);
+            dest[ destPos >> 6 ] |= src >> (right_shift - left_shift);
         }
-        pos += consume;
-        srcPos += consume;
-        bits -= consume;
-    }
-}
-void pack_bits(uint64_t* dest, uint16_t pos, uint64_t src, uint16_t bits)
-{
-    uint16_t srcPos = 0;
-    while (bits > 0) {
-        uint16_t left_shift = pos & 63;
-        uint16_t right_shift = srcPos & 63;
-        uint16_t consume = std::min(bits, (uint16_t)(64-(left_shift)));
-        consume = std::min(consume, (uint16_t)(64-(right_shift)));
-        if (left_shift > right_shift) {
-            dest[ pos >> 6 ] |= src << (left_shift - right_shift);
-        } else {
-            dest[ pos >> 6 ] |= src >> (right_shift - left_shift);
-        }
-        pos += consume;
+        destPos += consume;
         srcPos += consume;
         bits -= consume;
     }

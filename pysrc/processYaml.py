@@ -885,7 +885,6 @@ class projectOpen:
                         isApbRouter = True
                         ret['addressDecode']['addressGroupData'] = addressGroupData
                         ret['addressDecode']['addressGroup'] = addressGroup
-                        ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
                         ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
                         ret['addressDecode']['instanceWithRegApb'] = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
         ret['addressDecode']['isApbRouter'] = isApbRouter
@@ -1135,6 +1134,7 @@ class projectOpen:
             for apbIfPort in filter(lambda x: x['interfaceData']['interfaceType'] == 'apb', ret['ports'].values()):
                 for item in filter(lambda x: x['interface'] == addressConfig['RegisterBusInterface'], apbIfPort['interfaceData']['structures']):
                     ret['addressDecode']['registerBusStructs'].update( { item['structureType'] : item['structure'] } )
+                    ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
             # if we have found no register bus structs then report an error
             if not ret['addressDecode']['registerBusStructs']:
                 printError(f"Register Bus Interface {addressConfig['RegisterBusInterface']} not found in ports of block {qualBlock}")
@@ -1153,6 +1153,7 @@ class projectOpen:
         for inst, instVal in self.hierKey[qualBlock].items():
             if inst in instances:
                 ret['subBlocks'][instVal['instanceTypeKey']] = instVal['instanceType']
+
         return ret
 
     def extractContext(self, structs, consts):
@@ -2221,7 +2222,7 @@ class projectCreate:
             except ValueError:
                 # otherwise lookup the constant based on the key version
                 arraySize = self.qualConstParse(varInfo['arraySizeKey'])
-            width = structInfo['width'] * arraySize
+            width = structInfo['width'] * arraySize if arraySize else structInfo['width']
         elif varInfo['entryType']=='Reserved':
             width = varInfo['align']
         else:
@@ -2232,7 +2233,7 @@ class projectCreate:
             except ValueError:
                 # otherwise lookup the constant based on the key version
                 arraySize = self.qualConstParse(varInfo['arraySizeKey'])
-            width = typeWidth * arraySize
+            width = typeWidth * arraySize if arraySize else typeWidth
         return width
 
     # AUTO SECTIONS begin here

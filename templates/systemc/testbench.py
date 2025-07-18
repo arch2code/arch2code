@@ -40,15 +40,15 @@ def tb_config_class(args, prj, data):
 def tb_sec_init(args, prj, data):
     t = Template(sec_tb_class_init_template)
     blockName=data['blockName']
-    instName=camelCase('u', blockName)
-    s = t.render(blockname=blockName, dutinstname=instName)
+    instName=blockName
+    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external")
     return s
 
 def tb_sec_header(args, prj, data):
     t = Template(sec_tb_class_header_template)
     blockName=data['blockName']
-    instName=camelCase('u', blockName)
-    s = t.render(blockname=blockName, dutinstname=instName)
+    instName=blockName
+    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external")
     return s
 
 def ext_sec_init(args, prj, data):
@@ -148,7 +148,7 @@ class {{blockname}}Testbench: public sc_module, public blockBase, public {{block
 public:
 
     std::shared_ptr<{{blockname}}Base> {{dutinstname}};
-    {{blockname}}External uExternal;
+    {{blockname}}External {{extinstname}};
 
     {{blockname}}Testbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~{{blockname}}Testbench() override = default;
@@ -173,9 +173,9 @@ sec_tb_class_init_template = """\
        : blockBase("{{blockname}}Testbench", name(), bbMode)
         ,{{blockname}}Channels("Chnl", "tb")
         ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base>( instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "")))
-        ,uExternal("uExternal")
+        ,{{extinstname}}("{{extinstname}}")
 {
-    bind({{dutinstname}}.get(), &uExternal);
+    bind({{dutinstname}}.get(), &{{extinstname}});
 }
 """
 

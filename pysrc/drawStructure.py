@@ -81,20 +81,27 @@ def structureAndLabel(prj, contextPlusStructure, bitColors, addPort=None):
             arraySize = prj.data['constants'][v['arraySizeKey']]['value']
         if v['entryType'] == 'NamedStruct':
             width = prj.data['structures'][v['subStructKey']]['width']
-            for i in range(arraySize-1, -1, -1):
-                if arraySize-1 == 0:
-                    arrayString = ''
-                else:
+            if arraySize:
+                for i in range(arraySize-1, -1, -1):
                     arrayString = f'[{i}]'
+                    name = f'{v["variable"]}{arrayString}'
+                    if i == arraySize-1:
+                        port = v['subStruct']
+                    else:
+                        port = None
+                    rows.append({'name': name, 'width': width, 'row': r, 'col': c, 'color': variableColor, 'port': None})
+                    rows.append({'name': v['subStruct'], 'width': width, 'row': r+1, 'col': c, 'color': nestedStColor, 'port': port})
+                    rows.append({'name': width, 'width': width, 'row': r+2, 'col': c, 'color': globals.bgcolor, 'port': None})
+                    c = c + 1
+            else:
+                arrayString = ''
                 name = f'{v["variable"]}{arrayString}'
-                if i == arraySize-1:
-                    port = v['subStruct']
-                else:
-                    port = None
+                port = v['subStruct']
                 rows.append({'name': name, 'width': width, 'row': r, 'col': c, 'color': variableColor, 'port': None})
                 rows.append({'name': v['subStruct'], 'width': width, 'row': r+1, 'col': c, 'color': nestedStColor, 'port': port})
                 rows.append({'name': width, 'width': width, 'row': r+2, 'col': c, 'color': globals.bgcolor, 'port': None})
                 c = c + 1
+
             r = r + 3
         elif v['entryType'] == 'NamedVar' or v['entryType'] == 'NamedType':
             # variable has to have a type
@@ -109,12 +116,15 @@ def structureAndLabel(prj, contextPlusStructure, bitColors, addPort=None):
                 width = prj.data['constants'][constKeyOrWidth]['value']
                 constName = f"{prj.data['constants'][constKeyOrWidth]['constant']} ({width})"
                 colorForConstRow = constColor
-            for i in range(arraySize-1, -1, -1):
-                if arraySize-1 == 0:
-                    arrayString = ''
-                else:
-                    arrayString = f'[{i}]'
-                name = f'{v["variable"]}{arrayString}'
+            if arraySize:
+                for i in range(arraySize-1, -1, -1):
+                    name = f'{v["variable"]}[{i}]'
+                    rows.append({'name': name, 'width': width, 'row': r, 'col': c, 'color': variableColor, 'port': None})
+                    rows.append({'name': typeName, 'width': width, 'row': r+1, 'col': c, 'color': typeColor, 'port': None})
+                    rows.append({'name': constName, 'width': width, 'row': r+2, 'col': c, 'color': colorForConstRow, 'port': None})
+                    c = c + 1
+            else:
+                name = f'{v["variable"]}'
                 rows.append({'name': name, 'width': width, 'row': r, 'col': c, 'color': variableColor, 'port': None})
                 rows.append({'name': typeName, 'width': width, 'row': r+1, 'col': c, 'color': typeColor, 'port': None})
                 rows.append({'name': constName, 'width': width, 'row': r+2, 'col': c, 'color': colorForConstRow, 'port': None})

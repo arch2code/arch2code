@@ -43,6 +43,7 @@ typedef logic[7-1:0] sevenBitT; //Used as a threeBitT plus a fourBitT for the re
 typedef logic[1-1:0] aSizeT; //type of width ASIZE sizing from constant ASIZE
 typedef logic[2-1:0] aBiggerT; //yet another type sizing from constant ASIZE2
 typedef logic[4-1:0] bSizeT; //for addressing memory sizing from constant BSIZE_LOG2
+typedef logic[16-1:0] wordT; //a word type, used for test
 typedef logic[32-1:0] apbAddrT; //for addressing register via APB sizing from constant DWORD
 typedef logic[32-1:0] apbDataT; //for the data sent or recieved via APB sizing from constant DWORD
 
@@ -115,6 +116,47 @@ typedef struct packed {
 typedef struct packed {
     apbDataT data; //
 } apbDataSt;
+
+typedef struct packed {
+    sevenBitT [5-1:0] sevenBitArray; //An array of total size > 32 bit and < 64 bits
+} cSt;
+
+typedef struct packed {
+    sevenBitT [5-1:0] sevenBitArray; //An array of total size > 32 bit and < 64 bits
+    sevenBitT [5-1:0] sevenBitArray2; //An array of total size > 32 bit and < 64 bits
+} test1St;
+
+typedef struct packed {
+    cSt [5-1:0] thirtyFiveBitArray; //An array of 35 bit * 5
+} test2St;
+
+typedef struct packed {
+    aRegSt [5-1:0] sevenBitArray; //An array of 7 bit * 5
+} test3St;
+
+typedef struct packed {
+    aRegSt sevenBitArray; //An array of 7 bit
+} test4St;
+
+typedef struct packed {
+    aRegSt [10-1:0] sevenBitArray; //An array of 7 bit * 10
+} test5St;
+
+typedef struct packed {
+    test1St largeStruct; //An array of 70 bit
+} test6St;
+
+typedef struct packed {
+    test1St [5-1:0] largeStruct; //An array of 70 bit * 5
+} test7St;
+
+typedef struct packed {
+    wordT [3-1:0] words; //Aligned array of 3 words, each word is 16 bits
+} test8St;
+
+typedef struct packed {
+    test8St [4-1:0] wordArray; //Array of 4 * 48 bits
+} test9St;
 
 endpackage : mixed_package
 // GENERATED_CODE_END

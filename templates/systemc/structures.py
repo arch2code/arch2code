@@ -808,11 +808,12 @@ def fw_unpack(handle, args, vars, indent):
     baseMask = baseSize - 1
     log2BaseSize = baseMask.bit_length()
     usePos = False
+    isSingleArray = (count == 1 and vars['vars'][next(iter(vars['vars']))]['arraySizeValue'] == 1) # detect array with only single element
     offsetShift = ""
     if bitwidth > baseSize:
         src = f"_src[ _pos >> {log2BaseSize} ]"
         isPtr = True
-    if isPtr or count > 1 or (count == 1 and vars['vars'][next(iter(vars['vars']))]['isArray']):
+    if isPtr or count > 1 or (count == 1 and vars['vars'][next(iter(vars['vars']))]['isArray'] and not isSingleArray):
         out.append(f"{indent}uint16_t _pos{{0}};\n")
         usePos = True
         offsetShift = f" >> (_pos & {baseMask})"
@@ -832,7 +833,7 @@ def fw_unpack(handle, args, vars, indent):
             varIndex = f"[i]"
             out.append(f"{indent}for(int i=0; i<{data['arraySize']}; i++) {{\n")
             indent += ' '*4
-            calcAlign = True
+            calcAlign = (not isSingleArray) or usePos
             bitsLeft = data['bitwidth']
             out.append(f"{indent}uint16_t _bits = {bitsLeft};\n")
             out.append(f"{indent}uint16_t _consume;\n")
@@ -898,15 +899,29 @@ def fw_unpack(handle, args, vars, indent):
             # nested structure, declare a tmp variable to hold the value and copy it to the destination
             tmpType, tmpRowType, tmpBaseSize = convertToType(data['arraywidth'])
             loop_current = currentPos
-            isAligned = ((currentPos & (baseMask)) == 0)
+            # we are aligned if the current position is a multiple of the base size
+            # except for the array case, unless the array case is the single element array case)
+            isAligned = ((currentPos & (baseMask)) == 0) and not (data['isArray'] and not isSingleArray) 
             out.append(f'{indent}{{\n')
             indent += ' '*4
             if (isAligned):
                 out.append(f'{indent}{varName}{varIndex}.unpack(*({varType}::_packedSt*)&{src});\n')
             else:
-                out.append(f"{indent}{varType}::_packedSt _tmp{{0}};\n")
-                out.append(f"{indent}pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {data['arraywidth']});\n")
-                out.append(f'{indent}{varName}{varIndex}.unpack(_tmp);\n')
+                # cases include whether src or dst is >=64 bits
+                # if tmp is <= 32 bit we want to use a 64 bit temp to prevent alignment issues and cast for the unpack
+                if data['bitwidth'] <= 32:
+                    out.append(f"{indent}uint64_t _tmp{{0}};\n")
+                    unpackCast = f"*(({varType}::_packedSt*)&_tmp)"
+                else:
+                    out.append(f"{indent}{varType}::_packedSt _tmp{{0}};\n")
+                    unpackCast = f"_tmp"
+                if (bitwidth >= 64):
+                    # src is using 64 bit words so use pass by pointer
+                    out.append(f"{indent}pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {data['bitwidth']});\n")
+                else:
+                    # src is using < 64 bit so we can just use bit shifting
+                    out.append(f"{indent}_tmp = (_src >> _pos) & ((1ULL << {data['bitwidth']}) - 1);\n")
+                out.append(f'{indent}{varName}{varIndex}.unpack({unpackCast});\n')
                 # when we copied we used a tmp ptr to prevent overrun, reset point to correct place
             indent = indent[:-4]
             out.append(f'{indent}}}\n')
@@ -976,11 +991,11 @@ def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
 def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
     out = list()
     # nested structure, declare a tmp variable to hold the value and copy it to the destination
-    tmpType, tmpRowType, tmpBaseSize = convertToType(data['arraywidth'])
+    tmpType, tmpRowType, tmpBaseSize = convertToType(data['bitwidth'])
     baseSize = fw_pack_vars['baseSize']
     baseMask = baseSize - 1
     isArray = data['isArray']
-    isAligned = ((pos & (baseMask)) == 0) and (not isArray or (data['arraywidth'] & baseMask == 0))
+    isAligned = ((pos & (baseMask)) == 0) and (not isArray or ((data['arraywidth'] & baseMask == 0) and (data['bitwidth'] & baseMask == 0)))
 
     if isArray:
         srcPos = '_pos'
@@ -999,7 +1014,7 @@ def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
         else:
             dest = "_ret"
     else:
-        if data['arraywidth'] > 64:
+        if data['bitwidth'] > 64:
             tmp = f"(uint64_t *)&_tmp"
         else:
             tmp = "_tmp"
@@ -1117,12 +1132,12 @@ def processPackUnpack(fname, handle, args, vars, indent):
 
 def structTest(args, prj, data):
     out = list()
-    fn = os.path.splitext(os.path.basename(args.file))[0]
+    fn = os.path.splitext(os.path.basename(data['context']))[0] + '_structs'
     if args.section == 'testStructsHeader':
         out.append(f'class test_{fn} {{\n')
-        out.append(f'    std::string name(void);\n')
         out.append(f'public:\n')
-        out.append(f'    void test(void);\n')
+        out.append(f'    static std::string name(void);\n')
+        out.append(f'    static void test(void);\n')
         out.append(f'}};\n')
         return out
 
@@ -1131,6 +1146,7 @@ def structTest(args, prj, data):
     out.append(f'void test_{fn}::test(void) {{\n')
     indent = ' '*4
     out.append(f'{indent}std::vector<uint8_t> patterns{{0x6a, 0xa6}};\n')
+    out.append(f'{indent}cout << "Running " << name() << endl;\n')
     for _, value in data['structures'].items():
         struct = value['structure']
         out.append(f'{indent}for(auto pattern : patterns) {{\n')

@@ -242,14 +242,16 @@ void nestedSt::unpack(_packedSt &_src)
         uint16_t _bits = 5;
         uint16_t _consume;
         {
-            joe[i].unpack(*(seeSt::_packedSt*)&_src);
+            uint64_t _tmp{0};
+            _tmp = (_src >> _pos) & ((1ULL << 5) - 1);
+            joe[i].unpack(*((seeSt::_packedSt*)&_tmp));
         }
         _pos += 5;
     }
     {
-        dSt::_packedSt _tmp{0};
-        pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, 7);
-        bob.unpack(_tmp);
+        uint64_t _tmp{0};
+        _tmp = (_src >> _pos) & ((1ULL << 7) - 1);
+        bob.unpack(*((dSt::_packedSt*)&_tmp));
     }
     _pos += 7;
     variablea = (aSizeT)((_src >> (_pos & 31)) & 1);
@@ -392,7 +394,1346 @@ void apbDataSt::sc_unpack(sc_bv<32> packed_data)
 {
     data = (apbDataT) packed_data.range(31, 0).to_uint64();
 }
+bool cSt::operator == (const cSt & rhs) const {
+    bool ret = true; 
+    for(int i=0; i<5; i++) {
+        ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
+    }
+    return ( ret );
+    }
+std::string cSt::prt(bool all) const
+{
+    return (fmt::format("sevenBitArray[0:4]: {}",
+       staticArrayPrt<sevenBitT, 5>(sevenBitArray, all)
+    ));
+}
+void cSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, cSt::_byteWidth);
+    uint16_t _pos{0};
+    for(int i=0; i<5; i++) {
+        pack_bits((uint64_t *)&_ret, _pos, sevenBitArray[i], 7);
+        _pos += 7;
+    }
+}
+void cSt::unpack(_packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(int i=0; i<5; i++) {
+        uint16_t _bits = 7;
+        uint16_t _consume;
+        _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
+        sevenBitArray[i] = (sevenBitT)((_src >> (_pos & 63)) & ((1ULL << 7) - 1));
+        _pos += _consume;
+        _bits -= _consume;
+        if ((_bits > 0) && (_consume != 64)) {
+            sevenBitArray[i] = (sevenBitT)(sevenBitArray[i] | ((_src << _consume) & ((1ULL << 7) - 1)));
+            _pos += _bits;
+        }
+    }
+}
+sc_bv<35> cSt::sc_pack(void) const
+{
+    sc_bv<35> packed_data;
+    for(int i=0; i<5; i++) {
+        packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray[i];
+    }
+    return packed_data;
+}
+void cSt::sc_unpack(sc_bv<35> packed_data)
+{
+    for(int i=0; i<5; i++) {
+        sevenBitArray[i] = (sevenBitT) packed_data.range(0+(i+1)*7-1, 0+i*7).to_uint64();
+    }
+}
+bool test1St::operator == (const test1St & rhs) const {
+    bool ret = true; 
+    for(int i=0; i<5; i++) {
+        ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
+    }
+    for(int i=0; i<5; i++) {
+        ret = ret && (sevenBitArray2[i] == rhs.sevenBitArray2[i]);
+    }
+    return ( ret );
+    }
+std::string test1St::prt(bool all) const
+{
+    return (fmt::format("sevenBitArray[0:4]: {} sevenBitArray2[0:4]: {}",
+       staticArrayPrt<sevenBitT, 5>(sevenBitArray, all),
+       staticArrayPrt<sevenBitT, 5>(sevenBitArray2, all)
+    ));
+}
+void test1St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, test1St::_byteWidth);
+    uint16_t _pos{0};
+    for(int i=0; i<5; i++) {
+        pack_bits((uint64_t *)&_ret, _pos, sevenBitArray2[i], 7);
+        _pos += 7;
+    }
+    for(int i=0; i<5; i++) {
+        pack_bits((uint64_t *)&_ret, _pos, sevenBitArray[i], 7);
+        _pos += 7;
+    }
+}
+void test1St::unpack(_packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(int i=0; i<5; i++) {
+        uint16_t _bits = 7;
+        uint16_t _consume;
+        _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
+        sevenBitArray2[i] = (sevenBitT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 7) - 1));
+        _pos += _consume;
+        _bits -= _consume;
+        if ((_bits > 0) && (_consume != 64)) {
+            sevenBitArray2[i] = (sevenBitT)(sevenBitArray2[i] | ((_src[ _pos >> 6 ] << _consume) & ((1ULL << 7) - 1)));
+            _pos += _bits;
+        }
+    }
+    for(int i=0; i<5; i++) {
+        uint16_t _bits = 7;
+        uint16_t _consume;
+        _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
+        sevenBitArray[i] = (sevenBitT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 7) - 1));
+        _pos += _consume;
+        _bits -= _consume;
+        if ((_bits > 0) && (_consume != 64)) {
+            sevenBitArray[i] = (sevenBitT)(sevenBitArray[i] | ((_src[ _pos >> 6 ] << _consume) & ((1ULL << 7) - 1)));
+            _pos += _bits;
+        }
+    }
+}
+sc_bv<70> test1St::sc_pack(void) const
+{
+    sc_bv<70> packed_data;
+    for(int i=0; i<5; i++) {
+        packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray2[i];
+    }
+    for(int i=0; i<5; i++) {
+        packed_data.range(35+(i+1)*7-1, 35+i*7) = sevenBitArray[i];
+    }
+    return packed_data;
+}
+void test1St::sc_unpack(sc_bv<70> packed_data)
+{
+    for(int i=0; i<5; i++) {
+        sevenBitArray2[i] = (sevenBitT) packed_data.range(0+(i+1)*7-1, 0+i*7).to_uint64();
+    }
+    for(int i=0; i<5; i++) {
+        sevenBitArray[i] = (sevenBitT) packed_data.range(35+(i+1)*7-1, 35+i*7).to_uint64();
+    }
+}
+bool test2St::operator == (const test2St & rhs) const {
+    bool ret = true; 
+    for(int i=0; i<5; i++) {
+        ret = ret && (thirtyFiveBitArray[i] == rhs.thirtyFiveBitArray[i]);
+    }
+    return ( ret );
+    }
+std::string test2St::prt(bool all) const
+{
+    return (fmt::format("{}",
+       structArrayPrt<cSt, 5>(thirtyFiveBitArray, "thirtyFiveBitArray", all)
+    ));
+}
+void test2St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, test2St::_byteWidth);
+    uint16_t _pos{0};
+    for(int i=0; i<5; i++) {
+        cSt::_packedSt _tmp{0};
+        thirtyFiveBitArray[i].pack(_tmp);
+        pack_bits((uint64_t *)&_ret, _pos, _tmp, 35);
+        _pos += 35;
+    }
+}
+void test2St::unpack(_packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(int i=0; i<5; i++) {
+        uint16_t _bits = 35;
+        uint16_t _consume;
+        {
+            cSt::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, 35);
+            thirtyFiveBitArray[i].unpack(_tmp);
+        }
+        _pos += 35;
+    }
+}
+sc_bv<175> test2St::sc_pack(void) const
+{
+    sc_bv<175> packed_data;
+    for(int i=0; i<5; i++) {
+        packed_data.range(0+(i+1)*35-1, 0+i*35) = thirtyFiveBitArray[i].sc_pack();
+    }
+    return packed_data;
+}
+void test2St::sc_unpack(sc_bv<175> packed_data)
+{
+    for(int i=0; i<5; i++) {
+        thirtyFiveBitArray[i].sc_unpack(packed_data.range(0+(i+1)*35-1, 0+i*35));
+    }
+}
+bool test3St::operator == (const test3St & rhs) const {
+    bool ret = true; 
+    for(int i=0; i<5; i++) {
+        ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
+    }
+    return ( ret );
+    }
+std::string test3St::prt(bool all) const
+{
+    return (fmt::format("{}",
+       structArrayPrt<aRegSt, 5>(sevenBitArray, "sevenBitArray", all)
+    ));
+}
+void test3St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, test3St::_byteWidth);
+    uint16_t _pos{0};
+    for(int i=0; i<5; i++) {
+        aRegSt::_packedSt _tmp{0};
+        sevenBitArray[i].pack(_tmp);
+        _ret |= (uint64_t)_tmp << (_pos & 63);
+        _pos += 7;
+    }
+}
+void test3St::unpack(_packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(int i=0; i<5; i++) {
+        uint16_t _bits = 7;
+        uint16_t _consume;
+        {
+            uint64_t _tmp{0};
+            _tmp = (_src >> _pos) & ((1ULL << 7) - 1);
+            sevenBitArray[i].unpack(*((aRegSt::_packedSt*)&_tmp));
+        }
+        _pos += 7;
+    }
+}
+sc_bv<35> test3St::sc_pack(void) const
+{
+    sc_bv<35> packed_data;
+    for(int i=0; i<5; i++) {
+        packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray[i].sc_pack();
+    }
+    return packed_data;
+}
+void test3St::sc_unpack(sc_bv<35> packed_data)
+{
+    for(int i=0; i<5; i++) {
+        sevenBitArray[i].sc_unpack(packed_data.range(0+(i+1)*7-1, 0+i*7));
+    }
+}
+bool test4St::operator == (const test4St & rhs) const {
+    bool ret = true; 
+    ret = ret && (sevenBitArray == rhs.sevenBitArray);
+    return ( ret );
+    }
+std::string test4St::prt(bool all) const
+{
+    return (fmt::format("sevenBitArray:<{}>",
+       sevenBitArray.prt(all)
+    ));
+}
+void test4St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, test4St::_byteWidth);
+    {
+        sevenBitArray.pack(*(aRegSt::_packedSt*)&_ret);
+    }
+}
+void test4St::unpack(_packedSt &_src)
+{
+    {
+        sevenBitArray.unpack(*(aRegSt::_packedSt*)&_src);
+    }
+}
+sc_bv<7> test4St::sc_pack(void) const
+{
+    sc_bv<7> packed_data;
+    packed_data.range(6, 0) = sevenBitArray.sc_pack();
+    return packed_data;
+}
+void test4St::sc_unpack(sc_bv<7> packed_data)
+{
+    sevenBitArray.sc_unpack(packed_data.range(6, 0));
+}
+bool test5St::operator == (const test5St & rhs) const {
+    bool ret = true; 
+    for(int i=0; i<10; i++) {
+        ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
+    }
+    return ( ret );
+    }
+std::string test5St::prt(bool all) const
+{
+    return (fmt::format("{}",
+       structArrayPrt<aRegSt, 10>(sevenBitArray, "sevenBitArray", all)
+    ));
+}
+void test5St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, test5St::_byteWidth);
+    uint16_t _pos{0};
+    for(int i=0; i<10; i++) {
+        aRegSt::_packedSt _tmp{0};
+        sevenBitArray[i].pack(_tmp);
+        pack_bits((uint64_t *)&_ret, _pos, _tmp, 7);
+        _pos += 7;
+    }
+}
+void test5St::unpack(_packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(int i=0; i<10; i++) {
+        uint16_t _bits = 7;
+        uint16_t _consume;
+        {
+            uint64_t _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, 7);
+            sevenBitArray[i].unpack(*((aRegSt::_packedSt*)&_tmp));
+        }
+        _pos += 7;
+    }
+}
+sc_bv<70> test5St::sc_pack(void) const
+{
+    sc_bv<70> packed_data;
+    for(int i=0; i<10; i++) {
+        packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray[i].sc_pack();
+    }
+    return packed_data;
+}
+void test5St::sc_unpack(sc_bv<70> packed_data)
+{
+    for(int i=0; i<10; i++) {
+        sevenBitArray[i].sc_unpack(packed_data.range(0+(i+1)*7-1, 0+i*7));
+    }
+}
+bool test6St::operator == (const test6St & rhs) const {
+    bool ret = true; 
+    ret = ret && (largeStruct == rhs.largeStruct);
+    return ( ret );
+    }
+std::string test6St::prt(bool all) const
+{
+    return (fmt::format("largeStruct:<{}>",
+       largeStruct.prt(all)
+    ));
+}
+void test6St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, test6St::_byteWidth);
+    {
+        largeStruct.pack(*(test1St::_packedSt*)&_ret[ 0 ]);
+    }
+}
+void test6St::unpack(_packedSt &_src)
+{
+    uint16_t _pos{0};
+    {
+        largeStruct.unpack(*(test1St::_packedSt*)&_src[ _pos >> 6 ]);
+    }
+}
+sc_bv<70> test6St::sc_pack(void) const
+{
+    sc_bv<70> packed_data;
+    packed_data.range(69, 0) = largeStruct.sc_pack();
+    return packed_data;
+}
+void test6St::sc_unpack(sc_bv<70> packed_data)
+{
+    largeStruct.sc_unpack(packed_data.range(69, 0));
+}
+bool test7St::operator == (const test7St & rhs) const {
+    bool ret = true; 
+    for(int i=0; i<5; i++) {
+        ret = ret && (largeStruct[i] == rhs.largeStruct[i]);
+    }
+    return ( ret );
+    }
+std::string test7St::prt(bool all) const
+{
+    return (fmt::format("{}",
+       structArrayPrt<test1St, 5>(largeStruct, "largeStruct", all)
+    ));
+}
+void test7St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, test7St::_byteWidth);
+    uint16_t _pos{0};
+    for(int i=0; i<5; i++) {
+        test1St::_packedSt _tmp{0};
+        largeStruct[i].pack(_tmp);
+        pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, 70);
+        _pos += 70;
+    }
+}
+void test7St::unpack(_packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(int i=0; i<5; i++) {
+        uint16_t _bits = 70;
+        uint16_t _consume;
+        {
+            test1St::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, 70);
+            largeStruct[i].unpack(_tmp);
+        }
+        _pos += 70;
+    }
+}
+sc_bv<350> test7St::sc_pack(void) const
+{
+    sc_bv<350> packed_data;
+    for(int i=0; i<5; i++) {
+        packed_data.range(0+(i+1)*70-1, 0+i*70) = largeStruct[i].sc_pack();
+    }
+    return packed_data;
+}
+void test7St::sc_unpack(sc_bv<350> packed_data)
+{
+    for(int i=0; i<5; i++) {
+        largeStruct[i].sc_unpack(packed_data.range(0+(i+1)*70-1, 0+i*70));
+    }
+}
+bool test8St::operator == (const test8St & rhs) const {
+    bool ret = true; 
+    for(int i=0; i<3; i++) {
+        ret = ret && (words[i] == rhs.words[i]);
+    }
+    return ( ret );
+    }
+std::string test8St::prt(bool all) const
+{
+    return (fmt::format("words[0:2]: {}",
+       staticArrayPrt<wordT, 3>(words, all)
+    ));
+}
+void test8St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, test8St::_byteWidth);
+    uint16_t _pos{0};
+    for(int i=0; i<3; i++) {
+        pack_bits((uint64_t *)&_ret, _pos, words[i], 16);
+        _pos += 16;
+    }
+}
+void test8St::unpack(_packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(int i=0; i<3; i++) {
+        uint16_t _bits = 16;
+        uint16_t _consume;
+        _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
+        words[i] = (wordT)((_src >> (_pos & 63)) & ((1ULL << 16) - 1));
+        _pos += _consume;
+        _bits -= _consume;
+        if ((_bits > 0) && (_consume != 64)) {
+            words[i] = (wordT)(words[i] | ((_src << _consume) & ((1ULL << 16) - 1)));
+            _pos += _bits;
+        }
+    }
+}
+sc_bv<48> test8St::sc_pack(void) const
+{
+    sc_bv<48> packed_data;
+    for(int i=0; i<3; i++) {
+        packed_data.range(0+(i+1)*16-1, 0+i*16) = words[i];
+    }
+    return packed_data;
+}
+void test8St::sc_unpack(sc_bv<48> packed_data)
+{
+    for(int i=0; i<3; i++) {
+        words[i] = (wordT) packed_data.range(0+(i+1)*16-1, 0+i*16).to_uint64();
+    }
+}
+bool test9St::operator == (const test9St & rhs) const {
+    bool ret = true; 
+    for(int i=0; i<4; i++) {
+        ret = ret && (wordArray[i] == rhs.wordArray[i]);
+    }
+    return ( ret );
+    }
+std::string test9St::prt(bool all) const
+{
+    return (fmt::format("{}",
+       structArrayPrt<test8St, 4>(wordArray, "wordArray", all)
+    ));
+}
+void test9St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, test9St::_byteWidth);
+    uint16_t _pos{0};
+    for(int i=0; i<4; i++) {
+        test8St::_packedSt _tmp{0};
+        wordArray[i].pack(_tmp);
+        pack_bits((uint64_t *)&_ret, _pos, _tmp, 48);
+        _pos += 48;
+    }
+}
+void test9St::unpack(_packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(int i=0; i<4; i++) {
+        uint16_t _bits = 48;
+        uint16_t _consume;
+        {
+            test8St::_packedSt _tmp{0};
+            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, 48);
+            wordArray[i].unpack(_tmp);
+        }
+        _pos += 48;
+    }
+}
+sc_bv<192> test9St::sc_pack(void) const
+{
+    sc_bv<192> packed_data;
+    for(int i=0; i<4; i++) {
+        packed_data.range(0+(i+1)*48-1, 0+i*48) = wordArray[i].sc_pack();
+    }
+    return packed_data;
+}
+void test9St::sc_unpack(sc_bv<192> packed_data)
+{
+    for(int i=0; i<4; i++) {
+        wordArray[i].sc_unpack(packed_data.range(0+(i+1)*48-1, 0+i*48));
+    }
+}
 
 // GENERATED_CODE_END
 
+// GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
+#include "q_assert.h"
+std::string test_mixed_structs::name(void) { return "test_mixed_structs"; }
+void test_mixed_structs::test(void) {
+    std::vector<uint8_t> patterns{0x6a, 0xa6};
+    cout << "Running " << name() << endl;
+    for(auto pattern : patterns) {
+        aSt::_packedSt packed;
+        memset(&packed, pattern, aSt::_byteWidth);
+        sc_bv<aSt::_bitWidth> aInit;
+        sc_bv<aSt::_bitWidth> aTest;
+        for (int i = 0; i < aSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, aSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        aSt a;
+        a.sc_unpack(aInit);
+        aSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"aSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"aSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = aSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"aSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        aASt::_packedSt packed;
+        memset(&packed, pattern, aASt::_byteWidth);
+        sc_bv<aASt::_bitWidth> aInit;
+        sc_bv<aASt::_bitWidth> aTest;
+        for (int i = 0; i < aASt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, aASt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        aASt a;
+        a.sc_unpack(aInit);
+        aASt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"aASt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"aASt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = aASt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"aASt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        aRegSt::_packedSt packed;
+        memset(&packed, pattern, aRegSt::_byteWidth);
+        sc_bv<aRegSt::_bitWidth> aInit;
+        sc_bv<aRegSt::_bitWidth> aTest;
+        for (int i = 0; i < aRegSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, aRegSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        aRegSt a;
+        a.sc_unpack(aInit);
+        aRegSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"aRegSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"aRegSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = aRegSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"aRegSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        dRegSt::_packedSt packed;
+        memset(&packed, pattern, dRegSt::_byteWidth);
+        sc_bv<dRegSt::_bitWidth> aInit;
+        sc_bv<dRegSt::_bitWidth> aTest;
+        for (int i = 0; i < dRegSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, dRegSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        dRegSt a;
+        a.sc_unpack(aInit);
+        dRegSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"dRegSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"dRegSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = dRegSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"dRegSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        dSt::_packedSt packed;
+        memset(&packed, pattern, dSt::_byteWidth);
+        sc_bv<dSt::_bitWidth> aInit;
+        sc_bv<dSt::_bitWidth> aTest;
+        for (int i = 0; i < dSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, dSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        dSt a;
+        a.sc_unpack(aInit);
+        dSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"dSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"dSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = dSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"dSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        nestedSt::_packedSt packed;
+        memset(&packed, pattern, nestedSt::_byteWidth);
+        sc_bv<nestedSt::_bitWidth> aInit;
+        sc_bv<nestedSt::_bitWidth> aTest;
+        for (int i = 0; i < nestedSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, nestedSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        nestedSt a;
+        a.sc_unpack(aInit);
+        nestedSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"nestedSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"nestedSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = nestedSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"nestedSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        bSizeRegSt::_packedSt packed;
+        memset(&packed, pattern, bSizeRegSt::_byteWidth);
+        sc_bv<bSizeRegSt::_bitWidth> aInit;
+        sc_bv<bSizeRegSt::_bitWidth> aTest;
+        for (int i = 0; i < bSizeRegSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, bSizeRegSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        bSizeRegSt a;
+        a.sc_unpack(aInit);
+        bSizeRegSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"bSizeRegSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"bSizeRegSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = bSizeRegSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"bSizeRegSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        bSizeSt::_packedSt packed;
+        memset(&packed, pattern, bSizeSt::_byteWidth);
+        sc_bv<bSizeSt::_bitWidth> aInit;
+        sc_bv<bSizeSt::_bitWidth> aTest;
+        for (int i = 0; i < bSizeSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, bSizeSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        bSizeSt a;
+        a.sc_unpack(aInit);
+        bSizeSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"bSizeSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"bSizeSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = bSizeSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"bSizeSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        apbAddrSt::_packedSt packed;
+        memset(&packed, pattern, apbAddrSt::_byteWidth);
+        sc_bv<apbAddrSt::_bitWidth> aInit;
+        sc_bv<apbAddrSt::_bitWidth> aTest;
+        for (int i = 0; i < apbAddrSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, apbAddrSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        apbAddrSt a;
+        a.sc_unpack(aInit);
+        apbAddrSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"apbAddrSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"apbAddrSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = apbAddrSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"apbAddrSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        apbDataSt::_packedSt packed;
+        memset(&packed, pattern, apbDataSt::_byteWidth);
+        sc_bv<apbDataSt::_bitWidth> aInit;
+        sc_bv<apbDataSt::_bitWidth> aTest;
+        for (int i = 0; i < apbDataSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, apbDataSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        apbDataSt a;
+        a.sc_unpack(aInit);
+        apbDataSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"apbDataSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"apbDataSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = apbDataSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"apbDataSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        cSt::_packedSt packed;
+        memset(&packed, pattern, cSt::_byteWidth);
+        sc_bv<cSt::_bitWidth> aInit;
+        sc_bv<cSt::_bitWidth> aTest;
+        for (int i = 0; i < cSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, cSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        cSt a;
+        a.sc_unpack(aInit);
+        cSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"cSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"cSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = cSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"cSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        test1St::_packedSt packed;
+        memset(&packed, pattern, test1St::_byteWidth);
+        sc_bv<test1St::_bitWidth> aInit;
+        sc_bv<test1St::_bitWidth> aTest;
+        for (int i = 0; i < test1St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, test1St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        test1St a;
+        a.sc_unpack(aInit);
+        test1St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"test1St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"test1St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = test1St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"test1St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        test2St::_packedSt packed;
+        memset(&packed, pattern, test2St::_byteWidth);
+        sc_bv<test2St::_bitWidth> aInit;
+        sc_bv<test2St::_bitWidth> aTest;
+        for (int i = 0; i < test2St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, test2St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        test2St a;
+        a.sc_unpack(aInit);
+        test2St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"test2St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"test2St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = test2St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"test2St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        test3St::_packedSt packed;
+        memset(&packed, pattern, test3St::_byteWidth);
+        sc_bv<test3St::_bitWidth> aInit;
+        sc_bv<test3St::_bitWidth> aTest;
+        for (int i = 0; i < test3St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, test3St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        test3St a;
+        a.sc_unpack(aInit);
+        test3St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"test3St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"test3St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = test3St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"test3St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        test4St::_packedSt packed;
+        memset(&packed, pattern, test4St::_byteWidth);
+        sc_bv<test4St::_bitWidth> aInit;
+        sc_bv<test4St::_bitWidth> aTest;
+        for (int i = 0; i < test4St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, test4St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        test4St a;
+        a.sc_unpack(aInit);
+        test4St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"test4St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"test4St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = test4St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"test4St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        test5St::_packedSt packed;
+        memset(&packed, pattern, test5St::_byteWidth);
+        sc_bv<test5St::_bitWidth> aInit;
+        sc_bv<test5St::_bitWidth> aTest;
+        for (int i = 0; i < test5St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, test5St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        test5St a;
+        a.sc_unpack(aInit);
+        test5St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"test5St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"test5St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = test5St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"test5St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        test6St::_packedSt packed;
+        memset(&packed, pattern, test6St::_byteWidth);
+        sc_bv<test6St::_bitWidth> aInit;
+        sc_bv<test6St::_bitWidth> aTest;
+        for (int i = 0; i < test6St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, test6St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        test6St a;
+        a.sc_unpack(aInit);
+        test6St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"test6St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"test6St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = test6St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"test6St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        test7St::_packedSt packed;
+        memset(&packed, pattern, test7St::_byteWidth);
+        sc_bv<test7St::_bitWidth> aInit;
+        sc_bv<test7St::_bitWidth> aTest;
+        for (int i = 0; i < test7St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, test7St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        test7St a;
+        a.sc_unpack(aInit);
+        test7St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"test7St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"test7St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = test7St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"test7St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        test8St::_packedSt packed;
+        memset(&packed, pattern, test8St::_byteWidth);
+        sc_bv<test8St::_bitWidth> aInit;
+        sc_bv<test8St::_bitWidth> aTest;
+        for (int i = 0; i < test8St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, test8St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        test8St a;
+        a.sc_unpack(aInit);
+        test8St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"test8St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"test8St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = test8St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"test8St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        test9St::_packedSt packed;
+        memset(&packed, pattern, test9St::_byteWidth);
+        sc_bv<test9St::_bitWidth> aInit;
+        sc_bv<test9St::_bitWidth> aTest;
+        for (int i = 0; i < test9St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, test9St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        test9St a;
+        a.sc_unpack(aInit);
+        test9St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"test9St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"test9St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = test9St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"test9St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+}
 
+// GENERATED_CODE_END

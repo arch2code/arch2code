@@ -57,6 +57,12 @@ class genSystemC:
                 if not data:
                     printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                     exit(warningAndErrorReport())
+                # If block is a leaf node, remove all sub-instances and connections
+                if prj.data['blocks'][qualBlock].get('mdlLeafNode', 0):
+                    data['subBlocks'] = {}
+                    data['subBlockInstances'] = {}
+                    data['connectionMaps'] = {}
+                    data['connections'] = {}
             else:
                 block = 'No block specified in GENERATED_CODE_PARAM'
             if self.code.params.inst:
@@ -149,7 +155,8 @@ class genSystemC:
                     except ValueError:
                         # otherwise lookup the constant based on the key version
                         arraySize = prj.getConst(varData['arraySizeKey'])
-                    if arraySize == 1:
+                    varData['arraySizeValue'] = arraySize
+                    if arraySize == 0:
                         varData['isArray'] = False
                     else:
                         varData['isArray'] = True
@@ -169,12 +176,12 @@ class genSystemC:
                         bitwidth = typeInfo['width']
                     bitwidth = prj.getConst( bitwidth )
                     varData['bitwidth'] = bitwidth
-                    varData['arraywidth'] = bitwidth * arraySize
+                    varData['arraywidth'] = bitwidth * arraySize if varData['isArray'] else bitwidth
                     varData['bitshift'] = offset
                     offset = offset + varData['arraywidth']
 
                     # build a format string here to avoid doing it in jinja
-                    if arraySize > 1:
+                    if arraySize :
                         varData['format'] = f"Array:{varData['variable']}:NotShown "
                         varloopCount = (bitwidth + 63) // 64  #16hex digits per 64bit value
                         varData['varLoopCount'] = varloopCount

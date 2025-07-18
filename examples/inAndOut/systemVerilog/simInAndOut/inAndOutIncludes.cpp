@@ -243,14 +243,16 @@ void eNestedSt::unpack(_packedSt &_src)
         uint16_t _bits = 5;
         uint16_t _consume;
         {
-            joe[i].unpack(*(seeSt::_packedSt*)&_src);
+            uint64_t _tmp{0};
+            _tmp = (_src >> _pos) & ((1ULL << 5) - 1);
+            joe[i].unpack(*((seeSt::_packedSt*)&_tmp));
         }
         _pos += 5;
     }
     {
-        dSt::_packedSt _tmp{0};
-        pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, 7);
-        bob.unpack(_tmp);
+        uint64_t _tmp{0};
+        _tmp = (_src >> _pos) & ((1ULL << 7) - 1);
+        bob.unpack(*((dSt::_packedSt*)&_tmp));
     }
     _pos += 7;
     variablea = (aSizeT)((_src >> (_pos & 31)) & 1);
