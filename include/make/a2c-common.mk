@@ -19,7 +19,7 @@ $(error HDL_TOP_MODULE is not set - please set to the name of your HDL top modul
 endif
 
 #------------------------------------------------------------------------
-# Helper macro functions to find source files in directories
+# Helper macro functions to find source files in list of root directories
 #------------------------------------------------------------------------
 
 define find_cpp_sources
@@ -50,6 +50,22 @@ define find_gen_sv_sources
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
 			find $$dir -type f \( -name '*.sv' -or -name '*.svh' \) -exec grep -l 'GENERATED_CODE_BEGIN' {} \; ; \
+		fi \
+	done)
+endef
+
+define find_cpp_source_directories
+	$(shell for dir in $(1); do \
+		if [ -d "$$dir" ]; then \
+			find $$dir -type f \( -name '*.cpp' -or -name '*.h' \) -exec dirname {} \; | sort -u ; \
+		fi \
+	done)
+endef
+
+define find_sv_source_directories
+	$(shell for dir in $(1); do \
+		if [ -d "$$dir" ]; then \
+			find $$dir -type f \( -name '*.sv' -or -name '*.svh' \) -exec dirname {} \; | sort -u ; \
 		fi \
 	done)
 endef
