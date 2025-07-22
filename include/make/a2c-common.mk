@@ -6,16 +6,16 @@
 #------------------------------------------------------------------------
 
 ifndef REPO_ROOT
-	$(error REPO_ROOT is not set - please set to the root of your repository)
+$(error REPO_ROOT is not set - please set to the root of your repository)
 endif
 ifndef PROJECTNAME
-	$(error PROJECTNAME is not set - please set to the name of your project)
+$(error PROJECTNAME is not set - please set to the name of your project)
 endif
 ifndef TB_TOP_MODULE
-	$(error TB_TOP_MODULE is not set - please set to the name of your testbench top module)
+$(error TB_TOP_MODULE is not set - please set to the name of your testbench top module)
 endif
 ifndef HDL_TOP_MODULE
-	$(error HDL_TOP_MODULE is not set - please set to the name of your HDL top module)
+$(error HDL_TOP_MODULE is not set - please set to the name of your HDL top module)
 endif
 
 #------------------------------------------------------------------------
