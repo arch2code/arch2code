@@ -2,6 +2,7 @@
 import textwrap
 
 from  pysrc.processYaml import camelCase
+from pysrc.intf_gen_utils import sc_gen_block_channels
 
 from jinja2 import Template
 
@@ -21,6 +22,7 @@ def render_sc(args, prj, data):
             case 'header': return tb_sec_header(args, prj, data)
             case _ : return 'xx'
     elif(args.template == "tbExternal"):
+        refactor_tbExternal(args, prj, data)
         match args.section:
             case 'init' : return ext_sec_init(args, prj, data)
             case 'body': return ext_sec_body(args, prj, data)
@@ -72,6 +74,15 @@ def ext_sec_init(args, prj, data):
             s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base>( instanceFactory::createInstance(name(), "{instName}", "{blockName}", "")))'
             out.append(s.format(blockName=data_['instanceType'], instName=data_['instance']))
 
+    if data.get('cinst', None):
+        for _,data_ in data['connections'].items():
+            if data['cinst'] in [ data_['src'], data_['dst'] ]:
+                continue
+            srcInst = data_['src']
+            chnlData = sc_gen_block_channels(data_, prj)
+            s = '   ,{chnlName}("{chnlName}", "{instName}")'
+            out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst))
+
     return "\n".join(out)
 
 def ext_sec_body(args, prj, data):
@@ -84,11 +95,9 @@ def ext_sec_body(args, prj, data):
 
     if data.get('cinst', None):
         for _,data_ in data['connections'].items():
-            intfName = data_['interfaceName']
+            chnlName = data_['channelName']
             instPortName = data_['interfaceName']
-            if data['cinst'] not in [ data_['src'], data_['dst']]:
-                continue
-            elif data['cinst'] == data_['src']:
+            if data['cinst'] == data_['src']:
                 instName = data_['dst']
                 if data_['dstport']:
                     instPortName = data_['dstport']
@@ -96,8 +105,20 @@ def ext_sec_body(args, prj, data):
                 instName = data_['src']
                 if data_['srcport']:
                     instPortName = data_['srcport']
-            s = '{instName}->{instPortName}({intfName});'
-            out.append(indent + s.format(instName=instName, instPortName=instPortName, intfName=intfName))
+            else:
+                continue
+            s = '{instName}->{instPortName}({chnlName});'
+            out.append(indent + s.format(instName=instName, instPortName=instPortName, chnlName=chnlName))
+
+        for _,data_ in data['connections'].items():
+            if data['cinst'] in [ data_['src'], data_['dst'] ]:
+                continue
+            chnlName = data_['channelName']
+            for _,ends_ in data_['ends'].items():
+                instName = ends_['instance']
+                instPortName = ends_['portName']
+                s = '{instName}->{instPortName}({chnlName});'
+                out.append(indent + s.format(instName=instName, instPortName=instPortName, chnlName=chnlName))
 
     return "\n".join(out)
 
@@ -116,13 +137,45 @@ def ext_sec_header(args, prj, data):
             s = 'std::shared_ptr<{blockName}Base> {instName};'
             ext_inst_decl_s.append(s.format(blockName=data_['instanceType'], instName=data_['instance']))
 
+    ext_chnl_decl_s = []
+    if data.get('cinst', None):
+        for _,data_ in data['connections'].items():
+            if data['cinst'] in [ data_['src'], data_['dst'] ]:
+                continue
+            chnlData = sc_gen_block_channels(data_, prj)
+            ext_chnl_decl_s.append(chnlData['channel_decl'])
+
     t = Template(sec_tb_external_header_template)
     s = t.render(
         blockname=args.block, cinst=data.get('cinst', None),
         ext_fwd_decl='\n'.join(ext_fwd_decl_s),
-        ext_inst_decl='\n'.join(ext_inst_decl_s)
+        ext_inst_decl='\n'.join(ext_inst_decl_s),
+        ext_chnl_decl='\n'.join(ext_chnl_decl_s)
     )
     return(s)
+
+"""
+Refactor the external block connectivity to be used in the testbench 
+and avoid channel name clashes
+"""
+def refactor_tbExternal(args, prj, data):
+    if data.get('cinst', None):
+        # Rename interface if necessary
+        # Gather all port names for cinst
+        cinst_ports = set()
+        for _,data_ in data['connections'].items():
+            for _,ends_ in data_['ends'].items():
+                if data['cinst'] in ends_['instance']:
+                    cinst_ports.add(ends_['portName'])
+                    data_['channelName'] = ends_['portName']
+
+        # Now rename the interface names if duplicated
+        for _,data_ in data['connections'].items():
+            if data_['channelName'] in cinst_ports:
+                f = list(filter(lambda x: x['instance'] == data['cinst'], data_['ends'].values()))
+                if len(f) == 0:
+                    # Alter the duplicated channel to avoid clash
+                    data_['channelName'] = data_['channelName'] + '_'
 
 sec_tb_class_header_template = """\
 #include "systemc.h"
@@ -183,7 +236,7 @@ sec_tb_external_header_template = """\
 
 #include "{{blockname}}Base.h"
 
-{%- if cinst %}
+{%- if ext_fwd_decl %}
 
 //contained instances forward class declaration
 {{ext_fwd_decl}}
@@ -195,7 +248,7 @@ class {{blockname}}External: public sc_module, public {{blockname}}Inverted {
 
 public:
 
-{%- if cinst %}
+{%- if ext_inst_decl %}
 
     {{ ext_inst_decl | indent(4) }}
 {%- endif %}
@@ -203,6 +256,11 @@ public:
     SC_HAS_PROCESS ({{blockname}}External);
 
     {{blockname}}External(sc_module_name modulename);
+
+{%- if ext_chnl_decl %}
+
+    {{ ext_chnl_decl | indent(4) }}
+{%- endif %}
 
 """
 
