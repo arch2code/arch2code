@@ -8,6 +8,9 @@ endif
 ifndef PROJECTNAME
 $(error PROJECTNAME is not set - please set to the name of your project)
 endif
+ifndef VL_SRC_DIRS
+$(error VL_SRC_DIRS is not set - please set to the directory containing your wrapper source files to be verilated)
+endif
 
 #------------------------------------------------------------------------
 # Systemc build global variables
@@ -19,8 +22,6 @@ VERILATOR_CFLAG_OPTS = '-std=$(C_STD_VER)'
 ifdef VL_COV
 VERILATOR_OPTS += --coverage
 endif
-
-VL_SRC_DIRS = $(REPO_ROOT)/verif/vl_wrap
 
 VL_GEN_SV_FILES := $(call find_gen_sv_sources, $(VL_SRC_DIRS))
 VL_GEN_SC_FILES := $(call find_gen_cpp_sources, $(VL_SRC_DIRS))
