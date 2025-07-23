@@ -1,4 +1,3 @@
-from pathlib import Path
 from pysrc.systemVerilogGeneratorHelper import importPackages
 
 # args from generator line
