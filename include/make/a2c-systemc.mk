@@ -55,12 +55,19 @@ CPP_SRC =
 CPP_SRC += $(foreach dir, $(A2C_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 
+# Special optimization for some systemc files.
+O3_CPP_SRC = $(A2C_ROOT)/common/systemc/logging.cpp $(A2C_ROOT)/common/systemc/bitTwiddling.cpp $(A2C_ROOT)/common/systemc/instanceFactory.cpp
+
+# Include generated files with names matching '*Includes*.cpp' in SC_GEN_FILES.
+O3_CPP_SRC = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
+
 # Extra compiler / linker dependencies (set by project Makefile)
 PRJ_SRC_DIRS += $(EXTRA_PRJ_SRC_DIRS)
-CXX_FLAGS += $(EXTRA_CXX_FLAGS)
-CPP_SRC +=$(EXTRA_CPP_SRC)
+CXX_FLAGS    += $(EXTRA_CXX_FLAGS)
+CPP_SRC      += $(EXTRA_CPP_SRC)
+O3_CPP_SRC   += $(EXTRA_O3_CPP_SRC)
 CPP_INCLUDES += $(EXTRA_CPP_INCLUDES)
-LD_FLAGS += $(EXTRA_LD_FLAGS)
+LD_FLAGS     += $(EXTRA_LD_FLAGS)
 
 ifdef VL_DUT
 CPP_SRC += $(REPO_ROOT)/verif/vl_wrap/vl_wrap.cpp
@@ -103,10 +110,15 @@ $(BIN_DIR)/$(BIN) : $(OBJ)
     # Just link all the object files.
 	$(CXX) $(CXX_FLAGS) -o $@ $^ $(LD_FLAGS)
 
+# Rule to compile files in O3_CPP_SRC to add -o3 optimization
+$(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp 
+	mkdir -p $(@D)
+	$(CXX) -O3 $(CXX_FLAGS) -MMD -c $< -o $@
+
+# Rule to compile all other .cpp files 
+# The -MMD flags additionaly creates a .d file with the same name as the .o file.
 $(BUILD_DIR)/%.o : %.cpp $(GEN_DB_DEPS)
 	mkdir -p $(@D)
-# The -MMD flags additionaly creates a .d file with
-# the same name as the .o file.
 	$(CXX) $(CXX_FLAGS) -MMD -c $< -o $@
 
 # Include all .d files
