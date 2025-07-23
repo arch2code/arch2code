@@ -58,9 +58,6 @@ CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 # Special optimization for some systemc files.
 O3_CPP_SRC = $(A2C_ROOT)/common/systemc/logging.cpp $(A2C_ROOT)/common/systemc/bitTwiddling.cpp $(A2C_ROOT)/common/systemc/instanceFactory.cpp
 
-# Include generated files with names matching '*Includes*.cpp' in SC_GEN_FILES.
-O3_CPP_SRC = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
-
 # Extra compiler / linker dependencies (set by project Makefile)
 PRJ_SRC_DIRS += $(EXTRA_PRJ_SRC_DIRS)
 CXX_FLAGS    += $(EXTRA_CXX_FLAGS)
