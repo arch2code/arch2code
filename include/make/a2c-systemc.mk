@@ -36,9 +36,7 @@ endif
 # Systemc build global variables
 #------------------------------------------------------------------------
 
-CXX = clang++
-
-CXX_FLAGS = -m64 -std=c++17 -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -fstandalone-debug -DBOOST_STACKTRACE_LINK
+CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -fstandalone-debug -DBOOST_STACKTRACE_LINK
 LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lyaml-cpp -lsystemc -lfmt
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
