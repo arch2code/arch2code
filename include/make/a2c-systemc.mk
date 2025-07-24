@@ -41,17 +41,15 @@ LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(L
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
 A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain 
-PRJ_SRC_DIRS = $(call find_cpp_source_directories, $(REPO_ROOT)/base $(REPO_ROOT)/model $(REPO_ROOT)/tb)
+PRJ_SRC_DIRS = $(call find_cpp_source_directories, $(REPO_ROOT)/base $(REPO_ROOT)/model $(REPO_ROOT)/fw $(REPO_ROOT)/tb)
 
 ifdef A2CPRO
 A2C_SRC_DIRS += $(A2C_ROOT)/pro/common/systemc
 CXX_FLAGS += -DA2CPRO
 endif
 
-# Find all .cpp files in the A2C_SRC_DIRS and PRJ_SRC_DIRS directories.
+# Standard optimization source files.
 CPP_SRC = 
-CPP_SRC += $(foreach dir, $(A2C_SRC_DIRS), $(wildcard $(dir)/*.cpp))
-CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 
 # Special optimization for some systemc files.
 O3_CPP_SRC = $(A2C_ROOT)/common/systemc/logging.cpp $(A2C_ROOT)/common/systemc/bitTwiddling.cpp $(A2C_ROOT)/common/systemc/instanceFactory.cpp
@@ -63,6 +61,10 @@ CPP_SRC      += $(EXTRA_CPP_SRC)
 O3_CPP_SRC   += $(EXTRA_O3_CPP_SRC)
 CPP_INCLUDES += $(EXTRA_CPP_INCLUDES)
 LD_FLAGS     += $(EXTRA_LD_FLAGS)
+
+# Find all .cpp files in the A2C_SRC_DIRS and PRJ_SRC_DIRS directories.
+CPP_SRC += $(foreach dir, $(A2C_SRC_DIRS), $(wildcard $(dir)/*.cpp))
+CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 
 ifdef VL_DUT
 CPP_SRC += $(REPO_ROOT)/verif/vl_wrap/vl_wrap.cpp
