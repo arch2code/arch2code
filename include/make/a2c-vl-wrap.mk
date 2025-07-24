@@ -60,3 +60,7 @@ all : gen
 
 clean::
 	rm -rf lib*vl_s_wrap.a obj_dir/
+
+
+help::
+	@echo "  all     	- Build the verilator wrapper library"

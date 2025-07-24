@@ -128,3 +128,11 @@ clean::
 	rm -f $(A2C_SQLDB_FILE) $(A2C_SQLDB_DOTFILE)
 
 
+help::
+	@echo "Usage: make [target] [vars]"
+	@echo "Available targets:"
+	@echo "  db       	- Generate or update the project database"
+	@echo "  gen      	- Generate SystemC and SystemVerilog files from the project database"
+	@echo "  newmodule	- Create a new module in the project database"
+	@echo "  clean    	- Clean generated files and project database"
+	@echo "  help     	- Show this help message"

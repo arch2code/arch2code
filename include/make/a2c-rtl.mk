@@ -30,3 +30,8 @@ all : lint
 
 lint: gen $(PROJECTNAME).f 
 	verilator --no-timing --lint-only --top-module $(TOP_HDL_SV_WRAPPER_NAME) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -f $(PROJECTNAME).f $(HDL_TOP_MODULE).sv $(TOP_HDL_SV_WRAPPER_FILE)
+
+help::
+	@echo "  all     	- Run all lint checks"
+	@echo "  lint    	- Run lint checks on the HDL files"
+	@echo "  help    	- Show this help message"

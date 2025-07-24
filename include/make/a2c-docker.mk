@@ -54,3 +54,14 @@ clean::
 		rm -rf $(DOCKERFILE_DIR)/Dockerfile; \
 	fi
 	rm -rf $(DOCKERFILE_DIR)/requirements.txt
+
+help::
+	@echo "  all           - Build the docker image and run the container"
+	@echo "  dockerImage   - Build the docker image"
+	@echo "  dockerRun     - Run the docker container"
+	@echo "Makefile Runtime Variables:"
+	@echo "  DOCKER_SSH_PORT=<port>              - SSH port mapping for the container"
+	@echo "  DOCKER_RUN_DETACHED=1               - Run the container in detached mode"
+	@echo "  DOCKER_PRE_SH=<command>             - Shell command to prepend to docker command (e.g., for setting up environment variables)"
+	@echo "  DOCKER_WORKDIR=<path>               - Working directory in the host mounted to /work in container (default: $(REPO_ROOT))"
+	@echo "  DOCKER_USER_RUN_OPTS=<options>      - Additional options to pass to the docker run command"

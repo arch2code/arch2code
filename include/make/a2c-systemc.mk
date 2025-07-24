@@ -136,3 +136,8 @@ clean::
 	$(RM) -r $(BIN_DIR)
 	$(RM) -rf simx.*
 	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap clean
+
+help::
+	@echo "  all     	- Build the project binary"
+	@echo "Makefile Runtime Variables:"
+	@echo "  VL_DUT=1	- Build verilator wrapper for the DUT instances"
