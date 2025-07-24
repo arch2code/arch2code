@@ -16,8 +16,17 @@ endif
 # RTL build global variables
 #------------------------------------------------------------------------
 
+VERILATOR_OPTS = --no-timing --lint-only
+
+VERILATOR_OPTS += $(VERILATOR_USER_OPTS)
+
 TOP_HDL_SV_WRAPPER_NAME = $(HDL_TOP_MODULE)_hdl_sv_wrapper
 TOP_HDL_SV_WRAPPER_FILE = $(REPO_ROOT)/verif/vl_wrap/$(TOP_HDL_SV_WRAPPER_NAME).sv
+
+RTL_DOT_F_FILE = $(REPO_ROOT)/rtl/rtl.f
+
+RTL_SRC_FILES += $(REPO_ROOT)/rtl/$(HDL_TOP_MODULE).sv $(TOP_HDL_SV_WRAPPER_FILE)
+
 
 #------------------------------------------------------------------------
 # Systemc build phony targets
@@ -28,8 +37,8 @@ TOP_HDL_SV_WRAPPER_FILE = $(REPO_ROOT)/verif/vl_wrap/$(TOP_HDL_SV_WRAPPER_NAME).
 
 all : lint
 
-lint: gen $(PROJECTNAME).f 
-	verilator --no-timing --lint-only --top-module $(TOP_HDL_SV_WRAPPER_NAME) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -f $(PROJECTNAME).f $(HDL_TOP_MODULE).sv $(TOP_HDL_SV_WRAPPER_FILE)
+lint: gen $(RTL_DOT_F_FILE)
+	verilator  $(VERILATOR_OPTS) --top-module $(TOP_HDL_SV_WRAPPER_NAME) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -f $(RTL_DOT_F_FILE) $(RTL_SRC_FILES)
 
 help::
 	@echo "  all     	- Run all lint checks"

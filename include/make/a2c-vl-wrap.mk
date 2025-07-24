@@ -23,6 +23,8 @@ ifdef VL_COV
 VERILATOR_OPTS += --coverage
 endif
 
+VERILATOR_OPTS += $(VERILATOR_USER_OPTS)
+
 VL_GEN_SV_FILES := $(call find_gen_sv_sources, $(VL_SRC_DIRS))
 VL_GEN_SC_FILES := $(call find_gen_cpp_sources, $(VL_SRC_DIRS))
 
@@ -43,7 +45,7 @@ obj_dir/Vvl_dummy: $(VL_GEN_SV_FILES) $(SV_GEN_DOT_FILES)
 	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) vl_dummy.sv --top vl_dummy -exe
 
 $(VL_OBJ_FILES): $(VL_GEN_SV_FILES) 
-	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(REPO_ROOT)/rtl/$(PROJECTNAME).f $(subst obj_dir/V,, $(patsubst %.o, %.sv, $@)) -top $(notdir $(subst obj_dir/V,, $(patsubst %.o,%, $@)))
+	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(REPO_ROOT)/rtl/rtl.f $(subst obj_dir/V,, $(patsubst %.o, %.sv, $@)) -top $(notdir $(subst obj_dir/V,, $(patsubst %.o,%, $@)))
 
 lib$(PROJECTNAME)vl_s_wrap.a: obj_dir/Vvl_dummy $(VL_OBJ_FILES) 
 	ar -rcs $@ $(VL_LIB_OBJ_FILES) obj_dir/V*_hdl_sv_wrapper*.o

@@ -86,7 +86,7 @@ GEN_BUILD_DIR = $(REPO_ROOT)/.gen
 SC_GEN_FILES =  $(call find_gen_cpp_sources, $(REPO_ROOT)/base/ $(REPO_ROOT)/model/ $(REPO_ROOT)/tb/ $(REPO_ROOT)/verif/vl_wrap)
 SC_GEN_DOT_FILES = $(SC_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 
-SV_GEN_FILES =  $(call find_gen_sv_sources, $(REPO_ROOT)/rtl/ $(REPO_ROOT)/verif/vl_wrap) $(REPO_ROOT)/rtl/$(PROJECTNAME).f
+SV_GEN_FILES =  $(call find_gen_sv_sources, $(REPO_ROOT)/rtl/ $(REPO_ROOT)/verif/vl_wrap) $(REPO_ROOT)/rtl/rtl.f
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
 # C++ compilation global variables
