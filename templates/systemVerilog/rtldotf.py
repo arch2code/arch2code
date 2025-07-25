@@ -15,7 +15,8 @@ def render(args, prj, data):
         incdirs.add(contextBasename)
     for incdir in incdirs:
         out.append(f'+incdir+{incdir}')
-    for context in data['includeFiles']['package_sv']:
+    
+    for context in data['includeFiles'].get('package_sv', list()):
         contextBasename = os.path.dirname(context)
         if contextBasename:
             contextBasename += '/'

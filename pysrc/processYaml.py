@@ -1642,6 +1642,8 @@ class projectCreate:
     def getFileList(self, data, basePath):
         todoNorm = list()
         incNorm = list()
+        if not data:
+            return (todoNorm, incNorm)
         if "projectFiles" in data:
             todo = data["projectFiles"]
             for f in todo:
@@ -1663,7 +1665,7 @@ class projectCreate:
                     self.yamlAllFiles[f] = None
                     self.yamlRaw[f] = existsLoad(f)
                     (todo, include) = self.getFileList(self.yamlRaw[f], myBase)
-                    if "includeName" in self.yamlRaw[f]:
+                    if self.yamlRaw[f] and "includeName" in self.yamlRaw[f]:
                         self.includeName[f] = self.yamlRaw[f]["includeName"]
                     else:
                         self.includeName[f] = os.path.splitext(os.path.basename(f))[0]
@@ -1944,6 +1946,8 @@ class projectCreate:
             printIfDebug(f"Processing yaml file {yamlFile}")
             sections = self.yamlRaw[yamlFile]
         self.currentContext = yamlFile
+        if not sections:
+            return
         if "blockDir" in sections:
             self.yamlDir = sections["blockDir"]
         else:
