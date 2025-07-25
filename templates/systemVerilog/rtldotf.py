@@ -9,7 +9,7 @@ def render(args, prj, data):
     for context in data['includeContext']:
         contextBasename = os.path.dirname(context)
         if contextBasename:
-            contextBasename += './'
+            contextBasename = './' + contextBasename
         else:
             contextBasename = '.'
         incdirs.add(contextBasename)
