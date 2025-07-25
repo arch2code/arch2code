@@ -14,7 +14,7 @@ def fileNameBlockCheck(f, b):
     return out
 
 # Takes a project file prj, a starting context sc, and a dictionary for code param passed in user defined packages up
-#   excludeSelf is used to exclude self context references, used when importing packages inisde a package
+#   excludeSelf is used to exclude self context references, used when importing packages inside a package
 #   returns a string of text that imports automatic packages and user defined packages
 def importPackages(args, prj, sc, data, excludeSelf=False):
     out = ''

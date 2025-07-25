@@ -19,3 +19,4 @@ templates:
   module_hdl_sv_wrapper: $a2c/templates/systemVerilog/module_hdl_wrapper.py
   # Encoder objects systemverilog functions generation
   encoder: $a2c/templates/systemVerilog/encoder.py
+  rtlDotF: $a2c/templates/systemVerilog/rtldotf.py
