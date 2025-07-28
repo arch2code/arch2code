@@ -79,4 +79,21 @@ end
 
 `endif // ASIC
 
+// Defines to instantate the flops given a signal type and name
+`define DFF_INST(type, name) \
+type name, n_``name; \
+`DFF(name, n_``name)
+
+`define DFFR_INST(type, name, rval) \
+type name, n_``name; \
+`DFFR(name, n_``name, rval)
+
+`define DFFNR_INST(type, name) \
+type name, n_``name; \
+`DFFNR(name, n_``name)
+
+`define DFFEN_INST(type, name, en) \
+type name, n_``name; \
+`DFFEN(name, n_``name, en)
+
 `endif  // FLOPS_SV
