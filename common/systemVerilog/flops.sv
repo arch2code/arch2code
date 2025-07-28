@@ -79,6 +79,7 @@ end
 
 `endif // ASIC
 
+
 // Defines to instantate the flops given a signal type and name
 `define DFF_INST(type, name) \
 type name, n_``name; \
