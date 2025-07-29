@@ -25,8 +25,8 @@ endif
 
 VERILATOR_OPTS += $(VERILATOR_USER_OPTS)
 
-VL_GEN_SV_FILES := $(call find_gen_sv_sources, $(VL_SRC_DIRS))
-VL_GEN_SC_FILES := $(call find_gen_cpp_sources, $(VL_SRC_DIRS))
+VL_GEN_SV_FILES += $(call find_gen_sv_sources, $(VL_SRC_DIRS))
+VL_GEN_SC_FILES += $(call find_gen_cpp_sources, $(VL_SRC_DIRS))
 
 VL_OBJ_FILES = $(subst ./,obj_dir/V, $(patsubst %.sv, %.o, $(VL_GEN_SV_FILES)))
 
