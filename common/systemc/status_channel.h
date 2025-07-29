@@ -152,12 +152,10 @@ inline void status_channel<T>::register_port( sc_port_base& port_,
     std::string nm( if_typename_ );
     if( nm == typeid( status_in_if<T> ).name() )
     {
-        // only one reader can be connected
-        if( m_reader != 0 ) {
-            SC_REPORT_ERROR( SC_ID_MORE_THAN_ONE_FIFO_READER_, 0 );
-            // may continue, if suppressed
-        }
-        m_reader = &port_;
+        // multiple readers can be connected 
+        if( m_reader == 0 ) {
+            m_reader = &port_;
+	}
     } else if( nm == typeid( status_out_if<T> ).name() )
     {
         // only one writer can be connected
