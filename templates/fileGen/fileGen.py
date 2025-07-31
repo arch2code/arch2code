@@ -119,6 +119,31 @@ def block_src(args, prj, data):
     out.append('};\n\n')
     return("".join(out))
 
+def blockRegs_hdr(args, prj, data):
+    out = list()
+    blockUpper = data["block"].upper()
+    out.append(f'#ifndef {blockUpper}_REGS_H\n')
+    out.append(f'#define {blockUpper}_REGS_H\n\n')
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append('#include "systemc.h"\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=blockRegs --section=header\n')
+    out.append('\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append(f'#endif //{blockUpper}_REGS_H\n')
+    return("".join(out))
+
+def blockRegs_src(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=blockRegs --section=init\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('// GENERATED_CODE_BEGIN --template=blockRegs --section=body\n')
+    out.append('    // GENERATED_CODE_END\n')
+    out.append('};\n\n')
+    return("".join(out))
+
 # rtl file for implementation
 def rtlModule(args, prj, data):
     out = list()
@@ -127,6 +152,14 @@ def rtlModule(args, prj, data):
     out.append('// GENERATED_CODE_BEGIN --template=moduleInterfacesInstances\n')
     out.append('// GENERATED_CODE_END\n')
     out.append(f'\nendmodule: {data["block"]}\n')
+    return("".join(out))
+
+def rtlModuleRegs(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=moduleRegs\n')
+    out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 
 vlSvWrap_svTemplate = \
