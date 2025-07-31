@@ -820,7 +820,8 @@ class projectOpen:
     # subBlocks will be referenced if in the set of instances
     # this would be easier in SQL..
     def getBlockData(self, qualBlock, instances):
-        blockDataSet = {'subBlockInstances', 'ports', 'registers', 'memories', 'memoryConnections', 'registerConnections', 'connections', 'connectionMaps', 'subBlocks', 'includeContext', 'addressDecode', 'variants'}
+        blockDataSet = {'subBlockInstances', 'ports', 'registers', 'memories', 'memoryConnections', 'registerConnections', 'regPorts', 'connections', 'connectionMaps', 'subBlocks', 'includeContext', 'addressDecode', 'variants'}
+        regDirection = { 'blk': { 'ro': 'src', 'rw': 'dst', 'ext': 'dst'}, 'reg': { 'ro': 'dst', 'rw': 'src', 'ext': 'src'}}
         ret = dict()
         structs = dict() # to capture where all the objects are defined
         consts = dict() # to capture where all the objects are defined
@@ -830,6 +831,7 @@ class projectOpen:
         for k in blockDataSet:
             ret[k] = dict()
         ret['qualBlock'] = qualBlock
+        ret['blockInfo'] = self.data['blocks'][qualBlock]
         ports = dict()
         regPorts = dict()
         addressDecoder = False # does the block need any address decode logic
@@ -945,6 +947,9 @@ class projectOpen:
                     if conKey not in ret['connections']:
                         ret['connections'][conKey] = dict()
                     ret['connections'][conKey]['interfaceName'] = regInfo['register']
+                    ret['connections'][conKey]['interface'] = regInfo['register']
+                    ret['connections'][conKey]['channelName'] = regInfo['register']
+                    ret['connections'][conKey]['struct'] = regInfo['structure']
                     ret['connections'][conKey]['channelCount'] = 1
                     if(regInfo['regType'] == 'ext'):
                         ret['connections'][conKey]['interfaceType'] = 'external_reg'
@@ -955,7 +960,10 @@ class projectOpen:
                     ret['connections'][conKey]['ends'][inst] = dict()
                     ret['connections'][conKey]['ends'][inst]['instance'] = self.data['instances'][inst]['instance']
                     ret['connections'][conKey]['ends'][inst]['portName'] = regInfo['register']
+                    ret['connections'][conKey]['ends'][inst]['name'] = regInfo['register']
                     ret['connections'][conKey]['ends'][inst]['interfaceName'] = regInfo['register']
+                    ret['connections'][conKey]['ends'][inst]['direction'] = regDirection['reg'].get(regInfo['regType'], None)
+                    ret['connections'][conKey]['ends'][inst]['instanceType'] = self.data['instances'][inst]['instanceType'] 
                     structs[regInfo['structureKey']] = 0
                 for mem, memInfo in self.data['memories'].items():
                     if memInfo['block'] == self.data['instances'][inst]['container'] and memInfo['regAccess']:
@@ -1078,7 +1086,6 @@ class projectOpen:
             ret['ports'][interface]['channelName'] = portNameThis
             ret['ports'][interface]['direction'] = this['direction']
             ret['ports'][interface]['port'] = this['port']
-            ret['ports'][interface]['inScope'] = this['inScope']
             ret['ports'][interface]['commentOut'] = this['commentOut']
 
             interfaceKey = this['interfaceKey']
@@ -1089,6 +1096,30 @@ class projectOpen:
                 for structInfo in self.data['interfaces'][interfaceKey]['structures']:
                     structs[structInfo['structureKey']] = 0
 
+        for reg, regConn in ret['registerConnections'].items():
+            myReg = dict()
+            myReg['name'] = regConn['register']
+            myReg['commentOut'] = ''
+            myReg['interfaceData'] = regConn
+            regInfo = self.data['registers'][regConn['registerBlock']]
+            myReg['interfaceData']['desc'] = regInfo['desc']
+            myReg['interfaceData']['structures'] = list()
+            myReg['interfaceData']['structures'].append({'structure': regInfo['structure'], 'structureKey': regInfo['structureKey'], 'structureType': 'data_t'})
+            myReg['connectionData'] = dict()
+            if regInfo['regType'] == 'ext':
+                interfaceType = 'external_reg'
+            else:
+                interfaceType = 'status'
+            myReg['direction'] = regDirection['blk'].get(regInfo['regType'], None)
+            if myReg['direction'] is None:
+                printError(f"Unknown register type {regInfo['regType']} for register {reg}")
+                exit(warningAndErrorReport())
+            myReg['interfaceData']['interfaceType'] = interfaceType
+            myReg['connectionData']['direction'] = myReg['direction']
+            myReg['interfaceData']['interface'] = regInfo['register']
+            ret['regPorts'][reg] = myReg
+            structs[regInfo['structureKey']] = 0
+
         # Test and if this qualBlock has a leafInstance set meaning that it is a register / apb leaf register decode block
         #   then we want to include the registers inside this block as well for generation
         if qualBlockLeafInstance and len(qualBlockInstances) == 1:
@@ -1096,9 +1127,13 @@ class projectOpen:
             regPorts['ports'] = dict()
             for reg, regInfo in self.data['registers'].items():
                 if regInfo['blockKey'] == parentBlock:
-                    regPorts['ports'][reg] = dict()
+                    regPorts['ports'][reg] = regInfo
                     regPorts['ports'][reg]['name'] = regInfo['register']
-                    regPorts['ports'][reg]['interfaceData'] = dict()
+                    regPorts['ports'][reg]['commentOut'] = ''
+                    regPorts['ports'][reg]['interfaceData'] = regInfo
+                    regPorts['ports'][reg]['interfaceData']['structures'] = list()
+                    regPorts['ports'][reg]['interfaceData']['structures'].append({'structure': regInfo['structure'], 'structureKey': regInfo['structureKey'], 'structureType': 'data_t'})
+                    regPorts['ports'][reg]['interfaceData']['connectionData'] = dict()
                     if regInfo['regType'] == 'rw':
                         regPorts['ports'][reg]['interfaceData']['interfaceType'] = 'status'
                         regPorts['ports'][reg]['direction'] = 'src'
@@ -1110,6 +1145,8 @@ class projectOpen:
                         regPorts['ports'][reg]['direction'] = 'src'
                     else:
                         assert(0)
+                    regPorts['ports'][reg]['interfaceData']['connectionData']['direction'] = regPorts['ports'][reg]['direction']
+                    regPorts['ports'][reg]['interfaceData']['interface'] = regInfo['register']
                     structs[regInfo['structureKey']] = 0
             ret['ports'].update(regPorts['ports'])
             # for ease of SystemVerilog generation make a dictionary that indicates a registerLeafInstance

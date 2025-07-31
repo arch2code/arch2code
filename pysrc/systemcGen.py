@@ -32,7 +32,8 @@ class genSystemC:
         else:
             # otherwise use the list of instances from the database        
             # Filter out instances with registerLeafInstance = 1 using dict comprehension
-            self.instances = {k: v for k, v in prj.data['instances'].items() if not v.get('registerLeafInstance', False)}
+            #self.instances = {k: v for k, v in prj.data['instances'].items() if not v.get('registerLeafInstance', False)}
+            self.instances = dict.fromkeys(prj.data['instances'], 0)
         # set up connection info
         prj.initConnections(self.instances)
         fileName = args.file
@@ -63,6 +64,10 @@ class genSystemC:
                     data['subBlockInstances'] = {}
                     data['connectionMaps'] = {}
                     data['connections'] = {}
+                    data['registerConnections'] = {}
+                else:
+                    data['registers'] = {}
+                    data['addressDecode']['hasDecoder'] = False
             else:
                 block = 'No block specified in GENERATED_CODE_PARAM'
             if self.code.params.inst:

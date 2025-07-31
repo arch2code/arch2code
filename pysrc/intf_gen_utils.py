@@ -80,13 +80,11 @@ def sc_gen_modport_signal_blast(port_data, prj, swap_dir=False):
 
     intf_def = INTF_DEFS[intf_type]
 
-    in_scope = port_data['inScope']
 
     if swap_dir :
         intf_modp = inverse_portdir(intf_modp)
 
     out['is_skip'] = intf_def.get('skip', False)
-    out['in_scope'] = in_scope
     out['multicycle_types'] = intf_def['sc_channel']['multicycle_types']
     out['description'] = intf_data['desc']
     out['intf_name'] = intf_name
@@ -119,10 +117,6 @@ def sc_gen_modport_signal_blast(port_data, prj, swap_dir=False):
     #out['channel_decl'] = f"{chnl_type}<{chnl_params}> {intf_name}_chnl;"
     out['channel_decl'] = f"{chnl_type}<{chnl_params}> {intf_name};"
     out['port_decl'] = f"{port_type}<{chnl_params}> {intf_name};"
-
-    if not in_scope:
-        out['channel_decl'] = '//' + out['channel_decl']
-        out['port_decl'] = '//' + out['port_decl']
 
     hdl_intf_type = intf_def['sc_channel']['type'] + '_hdl_if'
     hdl_intf_name = intf_name + '_hdl_if'
@@ -173,7 +167,10 @@ def sc_gen_block_channels(conn_data, prj):
     intf_type = conn_data['interfaceType']
     intf_name = conn_data['interface']
     chnl_name = conn_data['channelName']
-    intf_structs = lookup_struct(conn_data['interfaceKey'], prj.data["interfacesstructures"])
+    if 'interfaceKey' in conn_data:
+        intf_structs = lookup_struct(conn_data['interfaceKey'], prj.data["interfacesstructures"])
+    else:
+        intf_structs = [{'structureType': 'data_t', 'structure': conn_data['struct']}]
 
     if conn_data['channelCount'] > 1:
         chnl_name += '_' + '_'.join([conn_data['src'], conn_data['dst']])

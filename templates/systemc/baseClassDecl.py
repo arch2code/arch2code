@@ -12,6 +12,7 @@ def render(args, prj, data):
 
     block_intf_set = set(
         [v['interfaceData']['interfaceType'] for v in data['ports'].values()] +
+        [v['interfaceData']['interfaceType'] for v in data['regPorts'].values()] +
         [v['interfaceType'] for v in data['connections'].values()]
     )
 
@@ -83,7 +84,20 @@ def renderClass(args, prj, data, blockName, ifMapping):
     mp_sig = dict()
     for port in data['ports']:
         mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port], prj, swap_dir=ifMapping['swap_dir'])
-
+    # add condition for including register ports
+    regs = dict()
+    for port in data['regPorts']:
+        regName = data['regPorts'][port]['name']
+        if regName not in regs:
+            regs[regName] = 0
+            mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['regPorts'][port], prj, swap_dir=ifMapping['swap_dir'])
+            # add the regPort to the ports dict
+            data['ports'][port] = data['regPorts'][port]
+        else:
+            if data['regPorts'][port]['interfaceData']['interfaceType'] != 'status':
+                printError(f"Register port {regName} is defined multiple times in block {data['qualBlock']} and not a status interface")
+                exit(warningAndErrorReport())
+    
     def gen_sc_ports_decl(args, prj, data):
         s = []
         s.append('// src ports')
@@ -281,9 +295,9 @@ def channelConstructor(args, prj, data, line, multicycle_types):
 
     # we may have a multicycle interface
     interfaceInfo = line['interfaceData']
-    interfaceSize = interfaceInfo['maxTransferSize']
-    trackerType = interfaceInfo['trackerType']
-    multiCycleMode = interfaceInfo['multiCycleMode']
+    interfaceSize = interfaceInfo.get('maxTransferSize',0)
+    trackerType = interfaceInfo.get('trackerType',"")
+    multiCycleMode = interfaceInfo.get('multiCycleMode',"")
     tracker = line['connectionData'].get('tracker',"")
     autoMode = autoModeMapping.get(tracker,"")
 
@@ -304,10 +318,5 @@ def channelConstructor(args, prj, data, line, multicycle_types):
         else:
             if interfaceSize != "0" or trackerType:
                 print(f"warning: interface {line['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
-    else:
-        # check nothing set
-        if not (multiCycleMode == "" and interfaceSize == "0" and trackerType == ""):
-            printError(f"Interface type does support multiCycleMode, interfaceSize and trackerType")
-            exit(warningAndErrorReport())
 
     return(f'{ line["name"] }(("{ line["name"] }"+name).c_str(), srcName{extra}{autoMode})')
