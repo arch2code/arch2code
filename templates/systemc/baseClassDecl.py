@@ -8,7 +8,11 @@ from pysrc.arch2codeHelper import printError, warningAndErrorReport
 intf_gen_utils.LEGACY_COMPAT_MODE = True
 
 def render(args, prj, data):
+
     out = list()
+
+    # A bit of preprocessing to filter out register ports based on block context 
+    data['regPorts'] = {k: v for k, v in data['regPorts'].items() if v['interfaceData']['block'] != data['blockName']}
 
     block_intf_set = set(
         [v['interfaceData']['interfaceType'] for v in data['ports'].values()] +

@@ -132,6 +132,13 @@ def render_sc(args, prj, data):
         s = '\n'.join(s)
         return s
 
+    if not args.hierarchy:
+
+        # A bit of preprocessing to filter out register ports based on block first 
+        data['regPorts'] = {k: v for k, v in data['regPorts'].items() if v['interfaceData']['block'] != data['blockName']}
+        # Add to the block ports for easier processing
+        data['ports'].update(data['regPorts'])
+
     # ports blaster
     mp_sig = dict()
     for port in data['ports'] if not args.hierarchy else []:
