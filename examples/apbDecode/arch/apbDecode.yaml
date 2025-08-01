@@ -92,9 +92,11 @@ blocks:
   blockARegs:
     desc: The register block inside block A
     hasMdl: false
+    isRegHandler: true
   blockBRegs:
     desc: The register block inside block B
     hasMdl: false
+    isRegHandler: true
 
 instances:
   uTop:

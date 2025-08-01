@@ -58,8 +58,15 @@ class genSystemC:
                 if not data:
                     printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                     exit(warningAndErrorReport())
-                # If block is a leaf node, remove all sub-instances and connections
-                if prj.data['blocks'][qualBlock].get('mdlLeafNode', 0):
+                if prj.data['blocks'][qualBlock]['isRegHandler']:
+                    qualBlock = prj.getQualBlock(data['registerLeafInstance']['container'])
+                    cdata = prj.getBlockData(qualBlock, self.instances)
+                    data['includeContext'].update(cdata['includeContext'])
+                    data['registers'] = cdata['registers']
+                    data['addressDecode'] = cdata['addressDecode']
+                # If block is declared a leaf node or only register leaf instance, remove all sub-instances and connections
+                elif prj.data['blocks'][qualBlock]['mdlLeafNode'] or \
+                    (data['registers'] and not data['subBlockInstances']):
                     data['subBlocks'] = {}
                     data['subBlockInstances'] = {}
                     data['connectionMaps'] = {}

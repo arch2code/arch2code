@@ -4,6 +4,7 @@ instances:
  - uBlockC
  - uBlockB
  - uBlockD
+ - uBlockBRegs
  - uBlockF0
  - uBlockF1
  - uThreeCs

@@ -31,11 +31,11 @@ fileGeneration:
     # filePrefix and fileSuffix will be added to the module name to generate a filename
     # path to the file will be based on command line input and the base path defined in the dirs section
     # note that basePath should reference a path key in the dirs section
-    blockBase   : { name : "_base",           ext: {hdr: "h"},             cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class header file"}
+    blockBase   : { name : "_base",           ext: {hdr: "h"},             cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    desc: "Module Base class header file"}
     block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
-    vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
-    vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
+    vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},   mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
+    vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true},   mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
 #    tandem      : { name : "Tandem",          ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true, hasRtl: true},  mode: block,   basePath: base,    desc: "Model tandem module wrapper class header file"}
 #    testbench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
 #    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench config files"}
