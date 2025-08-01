@@ -841,6 +841,12 @@ class projectOpen:
         qualBlockLeafInstance = None
         qualBlockLeafInstanceContainer = None
 
+        # FIXME Until global code refactoring, we define the legacy 'registerLeafInstance' flag, 
+        #       based on the block based 'isRegHandler' flag of each instance
+        for inst in instances:
+            instBlock = self.data['instances'][inst]['instanceTypeKey']
+            self.data['instances'][inst]['registerLeafInstance'] = self.data['blocks'][instBlock]['isRegHandler']
+
         for inst in instances:
             if self.data['instances'][inst]['instanceTypeKey'] == qualBlock:
                 parentBlock = self.data['instances'][inst]['containerKey']
@@ -2529,10 +2535,10 @@ class projectCreate:
         self.counterGroup['InstanceGroups'][group] = ret + 1
         return ret
 
-    def _auto_registerLeafInstance(self, section, itemkey, item, field, yamlFile, processed):
-        # registerLeafInstance is not enabled by default.
-        ret = item.get(field, None)
-        return ret
+    # def _auto_registerLeafInstance(self, section, itemkey, item, field, yamlFile, processed):
+    #     # registerLeafInstance is not enabled by default.
+    #     ret = item.get(field, None)
+    #     return ret
 
     def _auto_addressMultiples(self, section, itemkey, item, field, yamlFile, processed):
           #note that even if specified in instances section, will be overridde

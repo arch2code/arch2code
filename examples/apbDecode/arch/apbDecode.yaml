@@ -107,8 +107,8 @@ instances:
   uSomeRapper:  {container: top,        instanceType: someRapper  }
   uBlockA:      {container: someRapper, instanceType: blockA,     addressGroup: top }
   uBlockB:      {container: someRapper, instanceType: blockB,     addressGroup: top,  color: lightslateblue}
-  uBlockARegs:  {container: blockA,     instanceType: blockARegs, color: grey, registerLeafInstance: True}
-  uBlockBRegs:  {container: blockB,     instanceType: blockBRegs, color: grey, registerLeafInstance: True}
+  uBlockARegs:  {container: blockA,     instanceType: blockARegs, color: grey}
+  uBlockBRegs:  {container: blockB,     instanceType: blockBRegs, color: grey}
 
 connections:
   - {interface: apbReg,    src: uCPU,                             dst: uSomeRapper}
