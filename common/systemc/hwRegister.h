@@ -96,10 +96,6 @@ public:
         {
             (*m_port)->write(m_val);
         }
-        if (m_event != nullptr && address == (N-4))
-        {
-            m_event->notify();
-        }
     }
     REG_DATA read(void)
     {
@@ -109,21 +105,12 @@ public:
     {
         m_val = val;
         (*m_port)->write(m_val);
-        if (m_event != nullptr)
-        {
-            m_event->notify();
-        }
     }
     void copy(REG_DATA& to)
     { 
         to = *this; 
     }  
-    void registerEvent(sc_event *event)
-    {
-        m_event = event;
-    }
     REG_DATA m_val;
-    sc_event *m_event=nullptr;
 private:
     sc_bv<N*8> m_val_sc;
     PORT *m_port;
