@@ -65,16 +65,19 @@ class genSystemC:
                     data['registers'] = cdata['registers']
                     data['addressDecode'] = cdata['addressDecode']
                 # If block is declared a leaf node or only register leaf instance, remove all sub-instances and connections
-                elif prj.data['blocks'][qualBlock]['mdlLeafNode'] or \
-                    (data['registers'] and not data['subBlockInstances']):
+                elif prj.data['blocks'][qualBlock]['mdlLeafNode']:
                     data['subBlocks'] = {}
                     data['subBlockInstances'] = {}
                     data['connectionMaps'] = {}
                     data['connections'] = {}
                     data['registerConnections'] = {}
-                else:
+                # If block is not leaf node and has sub-instances
+                elif data['subBlockInstances']:
                     data['registers'] = {}
                     data['addressDecode']['hasDecoder'] = False
+                # The fallback case is that the block is not a leaf node or has no sub-instances
+                else:
+                    pass
             else:
                 block = 'No block specified in GENERATED_CODE_PARAM'
             if self.code.params.inst:
