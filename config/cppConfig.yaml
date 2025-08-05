@@ -3,6 +3,7 @@ templates:
   baseClassDecl: $a2c/templates/systemc/baseClassDecl.py
   constructor: $a2c/templates/systemc/constructor.py
   baseConstructor: $a2c/templates/systemc/baseConstructor.py
+  blockRegs: $a2c/templates/systemc/blockRegs.py
   headers: $a2c/templates/systemc/headers.py
   includes: $a2c/templates/systemc/includes.py
   structures: $a2c/templates/systemc/structures.py

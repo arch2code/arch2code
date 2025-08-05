@@ -76,23 +76,30 @@ def constructorInit(args, prj, data):
         channelTitle = dst + "_" + channelBase
         extra = ''
         # we may have a multicycle interface
-        interfaceInfo = prj.data['interfaces'][value['interfaceKey']]
-        interfaceSize = interfaceInfo['maxTransferSize']
-        # did the connection specify an interface maxTransferSize
-        if value['maxTransferSize'] != "0": # check for override
-            interfaceSize = value['maxTransferSize'] # override interface setting from connection
-        trackerType = interfaceInfo['trackerType']
-        multiCycleMode = interfaceInfo['multiCycleMode']
-        autoModeMapping = {
-            "": "",
-            "alloc": ", INTERFACE_AUTO_ALLOC",
-            "dealloc": ", INTERFACE_AUTO_DEALLOC",
-            "allocReq": ", INTERFACE_AUTO_ALLOC, INTERFACE_AUTO_OFF",
-            "deallocReq": ", INTERFACE_AUTO_DEALLOC, INTERFACE_AUTO_OFF",
-            "allocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_ALLOC",
-            "deallocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_DEALLOC"
-        }
-        autoMode = autoModeMapping.get(value['tracker'],"")
+        if 'interfaceKey' in value:
+            interfaceInfo = prj.data['interfaces'][value['interfaceKey']]
+            interfaceSize = interfaceInfo['maxTransferSize']
+            # did the connection specify an interface maxTransferSize
+            if value['maxTransferSize'] != "0": # check for override
+                interfaceSize = value['maxTransferSize'] # override interface setting from connection
+            trackerType = interfaceInfo['trackerType']
+            multiCycleMode = interfaceInfo['multiCycleMode']
+            autoModeMapping = {
+                "": "",
+                "alloc": ", INTERFACE_AUTO_ALLOC",
+                "dealloc": ", INTERFACE_AUTO_DEALLOC",
+                "allocReq": ", INTERFACE_AUTO_ALLOC, INTERFACE_AUTO_OFF",
+                "deallocReq": ", INTERFACE_AUTO_DEALLOC, INTERFACE_AUTO_OFF",
+                "allocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_ALLOC",
+                "deallocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_DEALLOC"
+            }
+            autoMode = autoModeMapping.get(value['tracker'],"")
+        else:
+            # register interface
+            interfaceSize = 0
+            trackerType = ''
+            multiCycleMode = ''
+            autoMode = ''
 
         if chnl_table[key]['multicycle_types']:
             #- fixed_size        #
@@ -108,11 +115,6 @@ def constructorInit(args, prj, data):
             else:
                 if interfaceSize != "0" or trackerType:
                     print(f"warning: interface {value['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
-        else:
-            # check nothing set
-            if not (multiCycleMode == "" and interfaceSize == "0" and trackerType == ""):
-                printError(f"Interface type does support multiCycleMode, interfaceSize or trackerType")
-                exit(warningAndErrorReport())
 
         out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{extra}{autoMode})\n')
 
@@ -181,6 +183,14 @@ def constructorBody(args, prj, data):
         #channelBase += '_chnl'
         for end, endvalue in value["ends"].items():
             out.append(f'    { endvalue["instance"] }->{ endvalue["name"]}({ channelBase });\n')
+    first = True
+    for key, value in data["registerConnections"].items():
+        if value['block'] == data['blockName']:
+            if first:
+                first=False
+                out.append(f'// register - instance connections\n')
+            out.append(f'    { value["instance"] }->{ value["register"]}({ value["register"] });\n')
+
     if data['addressDecode']['isApbRouter']:
         out.append(f'    SC_THREAD(routerDecode);\n')
     if data['addressDecode']['hasDecoder']:

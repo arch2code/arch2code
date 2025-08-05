@@ -41,7 +41,7 @@ endef
 define find_gen_cpp_sources
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find $$dir -type f \( -name '*.cpp' -or -name '*.h' \) -exec grep -l 'GENERATED_CODE_BEGIN' {} \; ; \
+			find $$dir -type f \( -name '*.cpp' -or -name '*.h' \) -exec grep -l 'GENERATED_CODE_' {} \; ; \
 		fi \
 	done)
 endef
@@ -49,7 +49,7 @@ endef
 define find_gen_sv_sources
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find $$dir -type f \( -name '*.sv' -or -name '*.svh' \) -exec grep -l 'GENERATED_CODE_BEGIN' {} \; ; \
+			find $$dir -type f \( -name '*.sv' -or -name '*.svh' \) -exec grep -l 'GENERATED_CODE_' {} \; ; \
 		fi \
 	done)
 endef

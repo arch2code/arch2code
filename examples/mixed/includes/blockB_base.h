@@ -11,6 +11,7 @@
 #include "notify_ack_channel.h"
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
+#include "status_channel.h"
 #include "mixedBlockCIncludes.h"
 #include "mixedIncludes.h"
 #include "mixedIncludeIncludes.h"

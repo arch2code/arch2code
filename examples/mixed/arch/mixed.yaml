@@ -230,14 +230,19 @@ blocks:
   blockBRegs:
     desc: The register block inside block B
     hasVl: false
+    isRegHandler: true
   blockD:
     desc: The block named D
     hasVl: false
   blockARegs:
     desc: The register block inside block A
+    hasMdl: false
     hasVl: false
-  blockE:
+    isRegHandler: true
+  blockE: # Unused block - this is to test that unused blocks are handled properly by generator
     desc: The block named E
+    hasMdl: false
+    hasRtl: false
     hasVl: false
   blockF:
     desc: The block named F
@@ -265,8 +270,8 @@ instances:
   uAPBDecode:  {container: top,     instanceType: apbDecode,                      instGroup: top,                             color: pink}
   uBlockC:     {container: top,     instanceType: blockC,                         instGroup: top,                             color: orange}
   uBlockB:     {container: top,     instanceType: blockB,     addressGroup: top,  instGroup: top,                             color: lightslateblue}
-  uBlockARegs: {container: blockA,  instanceType: blockARegs,                     instGroup: top, registerLeafInstance: True, color: grey}
-  uBlockBRegs: {container: blockB,  instanceType: blockBRegs,                     instGroup: top, registerLeafInstance: True, color: grey}
+  uBlockARegs: {container: blockA,  instanceType: blockARegs,                     instGroup: top,                             color: grey}
+  uBlockBRegs: {container: blockB,  instanceType: blockBRegs,                     instGroup: top,                             color: grey}
   uBlockD:     {container: blockB,  instanceType: blockD,     addressGroup: ip1,  instGroup: top, addressMultiples: 2 } #get 2x the number of addresses
   uBlockF0:    {container: blockB,  instanceType: blockF,     addressGroup: ip1,  instGroup: top, variant: variant0   }
   uBlockF1:    {container: blockB,  instanceType: blockF,                         instGroup: top, variant: variant1   }

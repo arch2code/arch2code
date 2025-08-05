@@ -11,12 +11,12 @@
 #include "instanceFactory.h"
 #include "blockB_base.h"
 #include "addressMap.h"
-#include "hwRegister.h"
 #include "hwMemory.h"
 #include "mixedBlockCIncludes.h"
 #include "mixedIncludes.h"
 #include "mixedIncludeIncludes.h"
 //contained instances forward class declaration
+class blockBRegsBase;
 class blockDBase;
 class blockFBase;
 class threeCsBase;
@@ -24,8 +24,6 @@ class threeCsBase;
 SC_MODULE(blockB), public blockBase, public blockBBase
 {
 private:
-    void regHandler(void);
-    addressMap regs;
 
     struct registerBlock
     {
@@ -45,6 +43,10 @@ public:
     rdy_vld_channel< dSt > dee0;
     //   dStuffIf
     rdy_vld_channel< dSt > dee1;
+    //   rwD
+    status_channel< dRegSt > rwD;
+    //   roBsize
+    status_channel< bSizeRegSt > roBsize;
     //   cStuffIf
     rdy_vld_channel< seeSt > cStuffIf_uBlockF0_uThreeCs;
     //   cStuffIf
@@ -52,13 +54,10 @@ public:
 
     //instances contained in block
     std::shared_ptr<blockDBase> uBlockD;
+    std::shared_ptr<blockBRegsBase> uBlockBRegs;
     std::shared_ptr<blockFBase> uBlockF0;
     std::shared_ptr<blockFBase> uBlockF1;
     std::shared_ptr<threeCsBase> uThreeCs;
-
-    //registers
-    hwRegister< dRegSt, 4 > rwD; // A Read Write register
-    hwRegister< bSizeRegSt, 4 > roBsize; // A Read Only register with a structure that has a definition from an included context
 
     memories mems;
     //memories

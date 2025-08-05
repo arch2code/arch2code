@@ -32,7 +32,8 @@ class genSystemC:
         else:
             # otherwise use the list of instances from the database        
             # Filter out instances with registerLeafInstance = 1 using dict comprehension
-            self.instances = {k: v for k, v in prj.data['instances'].items() if not v.get('registerLeafInstance', False)}
+            #self.instances = {k: v for k, v in prj.data['instances'].items() if not v.get('registerLeafInstance', False)}
+            self.instances = dict.fromkeys(prj.data['instances'], 0)
         # set up connection info
         prj.initConnections(self.instances)
         fileName = args.file
@@ -57,12 +58,26 @@ class genSystemC:
                 if not data:
                     printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                     exit(warningAndErrorReport())
-                # If block is a leaf node, remove all sub-instances and connections
-                if prj.data['blocks'][qualBlock].get('mdlLeafNode', 0):
+                if prj.data['blocks'][qualBlock]['isRegHandler']:
+                    qualBlock = prj.getQualBlock(data['registerLeafInstance']['container'])
+                    cdata = prj.getBlockData(qualBlock, self.instances)
+                    data['includeContext'].update(cdata['includeContext'])
+                    data['registers'] = cdata['registers']
+                    data['addressDecode'] = cdata['addressDecode']
+                # If block is declared a leaf node or only register leaf instance, remove all sub-instances and connections
+                elif prj.data['blocks'][qualBlock]['mdlLeafNode']:
                     data['subBlocks'] = {}
                     data['subBlockInstances'] = {}
                     data['connectionMaps'] = {}
                     data['connections'] = {}
+                    data['registerConnections'] = {}
+                # If block is not leaf node and has sub-instances
+                elif data['subBlockInstances']:
+                    data['registers'] = {}
+                    data['addressDecode']['hasDecoder'] = False
+                # The fallback case is that the block is not a leaf node or has no sub-instances
+                else:
+                    pass
             else:
                 block = 'No block specified in GENERATED_CODE_PARAM'
             if self.code.params.inst:
