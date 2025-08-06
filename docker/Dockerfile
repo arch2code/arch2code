@@ -1,4 +1,5 @@
-FROM arch2code/a2c-dev:1.0
+ARG BASE_IMAGE=arch2code/a2c-dev:1.0
+FROM $BASE_IMAGE
 
 ARG USERNAME=
 ARG USER_UID=
