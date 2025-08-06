@@ -21,7 +21,7 @@ DOCKER_CONTAINER=$(USER)_$(DOCKER_IMAGE)
 DOCKER_BUILD_OPTS=
 
 ifdef DOCKER_BASE_IMAGE
-DOCKER_BUILD_OPTS += --build_arg BASE_IMAGE=$(DOCKER_BASE_IMAGE)
+DOCKER_BUILD_OPTS += --build-arg BASE_IMAGE='$(DOCKER_BASE_IMAGE)'
 endif
 
 # Allow user to append additional options
@@ -52,7 +52,7 @@ dockerImage:
 	   rm -rf $(DOCKERFILE_DIR)/Dockerfile && cat $(A2C_ROOT)/docker/Dockerfile $(DOCKERFILE_DIR)/Dockerfile.incr > $(DOCKERFILE_DIR)/Dockerfile; \
 	fi
 	rm -rf $(DOCKERFILE_DIR)/requirements.txt && cp -rpL $(A2C_ROOT)/requirements.txt $(DOCKERFILE_DIR)/requirements.txt
-	$(DOCKER_PRE_SH) docker build -t $(USER)/$(DOCKER_IMAGE) $(DOCKERFILE_DIR) --build-arg USERNAME=$(USER) --build-arg USER_UID=$(shell id -u) --build-arg USER_GID=$(shell id -g) --build-arg BASE_IMAGE=$(DOCKER_BASE_IMAGE)
+	$(DOCKER_PRE_SH) docker build -t $(USER)/$(DOCKER_IMAGE) $(DOCKERFILE_DIR) --build-arg USERNAME=$(USER) --build-arg USER_UID=$(shell id -u) --build-arg USER_GID=$(shell id -g) $(DOCKER_BUILD_OPTS)
 	rm -rf $(DOCKERFILE_DIR)/requirements.txt
 
 dockerRun:
