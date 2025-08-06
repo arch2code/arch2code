@@ -40,21 +40,17 @@ CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -W
 LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lyaml-cpp -lsystemc -lfmt
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
-A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain 
+A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain
 PRJ_SRC_DIRS = $(call find_cpp_source_directories, $(REPO_ROOT)/base $(REPO_ROOT)/model $(REPO_ROOT)/fw $(REPO_ROOT)/tb)
 
-ifdef A2CPRO
-A2C_SRC_DIRS += $(A2C_ROOT)/pro/common/systemc
-CXX_FLAGS += -DA2CPRO
-endif
-
 # Standard optimization source files.
-CPP_SRC = 
+CPP_SRC =
 
 # Special optimization for some systemc files.
 O3_CPP_SRC = $(A2C_ROOT)/common/systemc/logging.cpp $(A2C_ROOT)/common/systemc/bitTwiddling.cpp $(A2C_ROOT)/common/systemc/instanceFactory.cpp
 
 # Extra compiler / linker dependencies (set by project Makefile)
+A2C_SRC_DIRS += $(EXTRA_A2C_SRC_DIRS)
 PRJ_SRC_DIRS += $(EXTRA_PRJ_SRC_DIRS)
 CXX_FLAGS    += $(EXTRA_CXX_FLAGS)
 CPP_SRC      += $(EXTRA_CPP_SRC)
@@ -108,11 +104,11 @@ $(BIN_DIR)/$(BIN) : $(OBJ)
 	$(CXX) $(CXX_FLAGS) -o $@ $^ $(LD_FLAGS)
 
 # Rule to compile files in O3_CPP_SRC to add -o3 optimization
-$(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp 
+$(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp
 	mkdir -p $(@D)
 	$(CXX) -O3 $(CXX_FLAGS) -MMD -c $< -o $@
 
-# Rule to compile all other .cpp files 
+# Rule to compile all other .cpp files
 # The -MMD flags additionaly creates a .d file with the same name as the .o file.
 $(BUILD_DIR)/%.o : %.cpp $(GEN_DB_DEPS)
 	mkdir -p $(@D)
