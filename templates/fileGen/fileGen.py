@@ -17,7 +17,7 @@ class TemplateCustom(Template):
 
 # this file is used to create blank files for a new module with sections required
 def render(args, prj, data):
-    isRegHandler = True if next(filter(lambda x: x['block'] == data['block'] and x['isRegHandler'] == 1, prj['blocks'].values()), None) else False
+    isRegHandler = True if 'block' in data and next(filter(lambda x: x['block'] == data['block'] and x['isRegHandler'] == 1, prj['blocks'].values()), None) else False
     match data['target']:
         case 'blockBase_hdr':
             return(blockBase_hdr(args, prj, data))
