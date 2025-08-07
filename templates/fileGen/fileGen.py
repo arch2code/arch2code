@@ -295,6 +295,7 @@ tbConfigTemplate = \
 
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
+#include "endOfTest.h"
 
 // GENERATED_CODE_PARAM --block=__modulename__
 // GENERATED_CODE_BEGIN --template=tbConfig
@@ -306,6 +307,14 @@ tbConfigTemplate = \
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "__modulename__Testbench", "");
         return true;
     }
+
+    void final(void) override
+    {
+        // Final cleanup if needed
+        Q_ASSERT_CTX(endOfTestState::GetInstance().isEndOfTest(), "final", "Premature end of test detected");
+        errorCode::pass();
+    }
+
 };
 __modulename__Config::registerTestBenchConfig __modulename__Config::registerTestBenchConfig_; //register the testBench with the factory
 """
