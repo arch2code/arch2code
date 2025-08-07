@@ -1,6 +1,8 @@
 #ifndef ENDOFTEST_H
 #define ENDOFTEST_H
 // copyright QiStor 2022
+
+#include <systemc.h>
 #include <atomic>
 
 // global class to hold conf information
@@ -17,6 +19,8 @@ public:
     bool isEndOfTest(void) {return done;};
     void forceEndOfTest(void) {done = true;}; // bypass counting
 
+    sc_event eotEvent; // event to signal end of test
+
 private:
     // for explicit use cases where you just want to explicitly declare end of test
     inline void setEndOfTest(bool isEnd)
@@ -25,6 +29,7 @@ private:
             endOfTestCounter++;
             if (endOfTestCounter>=voters) {
                 done = true;
+                eotEvent.notify(SC_ZERO_TIME); // notify the event
             }
         } else {
             endOfTestCounter--;
@@ -39,6 +44,7 @@ private:
     std::atomic<int> voters = 0;
     std::atomic<bool> done = false;
     endOfTestState() {};
+
 };
 
 // this class is for voters who determine if the test is ending or not
