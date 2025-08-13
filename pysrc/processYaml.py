@@ -10,6 +10,8 @@ import pickle
 import math
 import importlib
 
+continueOnError = False
+
 # yaml = YAML(typ='safe', pure=True)
 yaml = YAMLRAW.YAML(typ='rt')
 
@@ -841,7 +843,7 @@ class projectOpen:
         qualBlockLeafInstance = None
         qualBlockLeafInstanceContainer = None
 
-        # FIXME Until global code refactoring, we define the legacy 'registerLeafInstance' flag, 
+        # FIXME Until global code refactoring, we define the legacy 'registerLeafInstance' flag,
         #       based on the block based 'isRegHandler' flag of each instance
         for inst in instances:
             instBlock = self.data['instances'][inst]['instanceTypeKey']
@@ -969,7 +971,7 @@ class projectOpen:
                     ret['connections'][conKey]['ends'][inst]['name'] = regInfo['register']
                     ret['connections'][conKey]['ends'][inst]['interfaceName'] = regInfo['register']
                     ret['connections'][conKey]['ends'][inst]['direction'] = regDirection['reg'].get(regInfo['regType'], None)
-                    ret['connections'][conKey]['ends'][inst]['instanceType'] = self.data['instances'][inst]['instanceType'] 
+                    ret['connections'][conKey]['ends'][inst]['instanceType'] = self.data['instances'][inst]['instanceType']
                     structs[regInfo['structureKey']] = 0
                 for mem, memInfo in self.data['memories'].items():
                     if memInfo['block'] == self.data['instances'][inst]['container'] and memInfo['regAccess']:
@@ -1630,6 +1632,8 @@ class projectCreate:
     def logError(self, msg):
         self.errorState = True
         printError(msg)
+        if not continueOnError:
+            exit(warningAndErrorReport())
 
     def logWarning(self, msg):
         self.errorState = False
@@ -1856,9 +1860,9 @@ class projectCreate:
                         if not (os.path.exists(fileNameExt)):
                             printWarning(f"File {fileNameExt} does not exist. run arch2code.py with --newmodule option")
                         includeFiles.setdefault(expandedType, {})[include] = {'baseName': baseName, 'fileName': fileNameExt}
-                    
-        self.config.setConfig('INCLUDEFILES', includeFiles)            
-                    
+
+        self.config.setConfig('INCLUDEFILES', includeFiles)
+
 
 
     def validateAddressControl(self, addressControl, addressControlFile):
@@ -1866,7 +1870,7 @@ class projectCreate:
                     'RegisterBusInterface' : None,
                     'InstanceGroups': {'varType': None, 'enumPrefix': None},
                     'AddressObjects': {'alignment': None, 'sizeRoundUpPowerOf2': None, 'sortDescending': None} }
-        
+
         allKeys = set(validGen.keys())
         optionalKeys = { 'InstanceGroups' }
         mandatoryKeys = allKeys - optionalKeys
@@ -1883,7 +1887,7 @@ class projectCreate:
         if not isinstance(addressControl, dict) or not set(addressControl.keys()).issuperset(mandatoryKeys):
             printError(f"Bad addressControl detected in {addressControlFile}, keys do not match. Valid keys are {list(validGen.keys())}")
             exit(warningAndErrorReport())
-        
+
         for gen in addressControl:
             if gen=='AddressGroups':
                 addressMode=True
@@ -2014,7 +2018,7 @@ class projectCreate:
                 else:
                     printError(f"Unknown section: {section} found in {yamlFile}:{sectData.lc.line}")
                     exit(warningAndErrorReport())
-                if section in self.includeSections:                    
+                if section in self.includeSections:
                     self.includeValid[yamlFile]["valid"] = True
 
     # loop through section handling all items for simple and inbetween sections
@@ -2108,7 +2112,7 @@ class projectCreate:
                 if not isinstance(field, dict) and not isinstance(item[field], dict):
                     if field not in schema and field not in ['eval', 'lc', '_yamlFileOverride']:
                         printWarning(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{itemkey} has unknown field {field}")
-                
+
         # loop through the schema processing the input one field at a time
         for field, ftype in schema.items():
             comboField = comboSchema.get(field, None)
@@ -2288,7 +2292,7 @@ class projectCreate:
     #constants: constant: key, value: eval, desc: required
     def _constants(self, itemkey, item, yamlFile):
         ret = self.processSimple('constants', itemkey, item, yamlFile)
-        # constants require special section handling as we want to save the const's in dict to allow later 
+        # constants require special section handling as we want to save the const's in dict to allow later
         if 'value' not in ret:
             self.logError(f"Processing constants in {yamlFile}:{ret['lc'].line + 1} and constant:{itemkey} does not have a 'value' or 'eval' field")
         self.const[yamlFile][itemkey] = ret['value']
