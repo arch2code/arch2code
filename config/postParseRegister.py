@@ -79,6 +79,9 @@ def postProcess(prj):
             instanceKey = instanceData['instanceKey']
             listOfInstances.append(instanceKey)
             if instanceDirectConnection[instanceKey]:
+                if not instanceData.get('addressGroup'):
+                    printError(f"Instance {instanceKey} needs to specify an address group for register address decode")
+                    exit(warningAndErrorReport())
                 connection['src'] = instancesSimple[groupDecoder[instanceData['addressGroup']]]
                 connection['dst'] = instance
                 connection['interface'] = reg_interface
