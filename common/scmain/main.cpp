@@ -54,7 +54,7 @@ int sc_main(int argc, char* argv[])
     // cmd line & config
     std::string logfile;
     bool unbufferedLogs = false;
-    bool log = true;    
+    bool log = true;
     bool enableTimeStamp = false;
     std::vector<std::string> blockVerbosity;
     verbosity_e verbosity = VERBOSITY_MEDIUM;
@@ -65,7 +65,6 @@ int sc_main(int argc, char* argv[])
     std::string testBenchName;
     std::shared_ptr<testBenchConfigBase> testBench;
     std::string configFile;
-    bool vlTrace = false;
     std::filesystem::path execPath{argv[0]};
     std::string execName = execPath.filename().string();
 #ifdef VCS
@@ -300,7 +299,7 @@ int sc_main(int argc, char* argv[])
         try_sc_start(true, SC_ZERO_TIME);
     }
 #if defined(VERILATOR)
-    if(vlTrace) {
+    if(simController::vlTrace) {
         vlTracer->close_trace();
     }
 #endif
