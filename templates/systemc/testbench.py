@@ -120,6 +120,8 @@ def ext_sec_body(args, prj, data):
                 s = '{instName}->{instPortName}({chnlName});'
                 out.append(indent + s.format(instName=instName, instPortName=instPortName, chnlName=chnlName))
 
+    out.append('\n' + indent +'SC_THREAD(eotThread);\n')
+
     return "\n".join(out)
 
 def ext_sec_header(args, prj, data):
@@ -155,7 +157,7 @@ def ext_sec_header(args, prj, data):
     return(s)
 
 """
-Refactor the external block connectivity to be used in the testbench 
+Refactor the external block connectivity to be used in the testbench
 and avoid channel name clashes
 """
 def refactor_tbExternal(args, prj, data):
@@ -235,6 +237,7 @@ sec_tb_class_init_template = """\
 sec_tb_external_header_template = """\
 
 #include "{{blockname}}Base.h"
+#include "endOfTest.h"
 
 {%- if ext_fwd_decl %}
 
@@ -261,6 +264,12 @@ public:
 
     {{ ext_chnl_decl | indent(4) }}
 {%- endif %}
+
+    // Thread monitoring the end of test event to stop simulation
+    void eotThread(void) {
+        wait((endOfTestState::GetInstance().eotEvent));
+        sc_stop();
+    }
 
 """
 
