@@ -36,12 +36,16 @@ endif
 # Systemc build global variables
 #------------------------------------------------------------------------
 
-CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -fstandalone-debug -DBOOST_STACKTRACE_LINK
+CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK
 LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc -lfmt
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
 A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain
 PRJ_SRC_DIRS = $(call find_cpp_source_directories, $(REPO_ROOT)/base $(REPO_ROOT)/model $(REPO_ROOT)/fw $(REPO_ROOT)/tb)
+
+ifndef USE_GNU_COMPILER
+CXX_FLAGS += -fstandalone-debug
+endif
 
 # Standard optimization source files.
 CPP_SRC =

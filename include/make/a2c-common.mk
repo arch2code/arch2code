@@ -90,8 +90,12 @@ SV_GEN_FILES =  $(call find_gen_sv_sources, $(REPO_ROOT)/rtl/ $(REPO_ROOT)/verif
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
 # C++ compilation global variables
-CXX = clang++
+CXX=clang++
 C_STD_VER=c++17
+
+ifeq ($(CXX), g++)
+USE_GNU_COMPILER = 1
+endif
 
 #------------------------------------------------------------------------
 # Project global file based targets
