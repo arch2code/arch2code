@@ -16,15 +16,15 @@ addressControl: exampleAddress.yaml
 topInstance: uTop
 
 dirs: # this is list of locations that can be referenced as base path in fileMap section
-  root: ..    # project root directory relative to project file - required  
-  base: $root/includes  
+  root: ..    # project root directory relative to project file - required
+  base: $root/includes
   model: $root/model
   rtl: $root/systemVerilog
   vl_wrap: $root/verif/vl_wrap/blocks
-  
+
 # information about project directory structure to enable simplified maintenance
-# and generation of file for new blocks. Note that directory structure will mirror 
-# architecture hierarchy. 
+# and generation of file for new blocks. Note that directory structure will mirror
+# architecture hierarchy.
 fileGeneration:
   template: $a2c/templates/fileGen/fileGen.py
   fileMap:
@@ -48,5 +48,5 @@ fileGeneration:
   # standard copyright statement to be added to all generated files - change to suite your company
   fileCopyrightStatement: "copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE"
 postProcess:
-  - ../../common/postParseRegister.py
-  - ../../common/postParseChecks.py
+  - $a2c/config/postParseRegister.py
+  - $a2c/config/postParseChecks.py

@@ -18,6 +18,15 @@ DOCKERFILE_DIR = $(REPO_ROOT)/docker
 DOCKER_WORKDIR=$(REPO_ROOT)
 DOCKER_CONTAINER=$(USER)_$(DOCKER_IMAGE)
 
+DOCKER_BUILD_OPTS=
+
+ifdef DOCKER_BASE_IMAGE
+DOCKER_BUILD_OPTS += --build-arg BASE_IMAGE='$(DOCKER_BASE_IMAGE)'
+endif
+
+# Allow user to append additional options
+DOCKER_BUILD_OPTS += $(DOCKER_USER_BUILD_OPTS)
+
 DOCKER_RUN_OPTS=
 
 # Needed by some RHEL SSH clients with podman (https://bugzilla.redhat.com/show_bug.cgi?id=1923728)
@@ -43,7 +52,7 @@ dockerImage:
 	   rm -rf $(DOCKERFILE_DIR)/Dockerfile && cat $(A2C_ROOT)/docker/Dockerfile $(DOCKERFILE_DIR)/Dockerfile.incr > $(DOCKERFILE_DIR)/Dockerfile; \
 	fi
 	rm -rf $(DOCKERFILE_DIR)/requirements.txt && cp -rpL $(A2C_ROOT)/requirements.txt $(DOCKERFILE_DIR)/requirements.txt
-	$(DOCKER_PRE_SH) docker build -t $(USER)/$(DOCKER_IMAGE) $(DOCKERFILE_DIR) --build-arg USERNAME=$(USER) --build-arg USER_UID=$(shell id -u) --build-arg USER_GID=$(shell id -g)
+	$(DOCKER_PRE_SH) docker build -t $(USER)/$(DOCKER_IMAGE) $(DOCKERFILE_DIR) --build-arg USERNAME=$(USER) --build-arg USER_UID=$(shell id -u) --build-arg USER_GID=$(shell id -g) $(DOCKER_BUILD_OPTS)
 	rm -rf $(DOCKERFILE_DIR)/requirements.txt
 
 dockerRun:
@@ -60,8 +69,10 @@ help::
 	@echo "  dockerImage   - Build the docker image"
 	@echo "  dockerRun     - Run the docker container"
 	@echo "Makefile Runtime Variables:"
+	@echo "  DOCKER_BASE_IMAGE=<image>           - Base image to build image from"
 	@echo "  DOCKER_SSH_PORT=<port>              - SSH port mapping for the container"
 	@echo "  DOCKER_RUN_DETACHED=1               - Run the container in detached mode"
 	@echo "  DOCKER_PRE_SH=<command>             - Shell command to prepend to docker command (e.g., for setting up environment variables)"
 	@echo "  DOCKER_WORKDIR=<path>               - Working directory in the host mounted to /work in container (default: $(REPO_ROOT))"
+	@echo "  DOCKER_USER_BUILD_OPTS=<options>    - Additional options to pass to the docker build command"
 	@echo "  DOCKER_USER_RUN_OPTS=<options>      - Additional options to pass to the docker run command"

@@ -4,6 +4,8 @@ from pathlib import Path
 from colorama import Fore, Back, Style
 import math
 
+import traceback
+
 def clog2(x):
   return math.ceil(math.log2(x))
 
@@ -133,3 +135,6 @@ def printWarning(inString):
     globals.warningCount +=1
     print(Fore.YELLOW + f'Warning Number ' + Style.RESET_ALL + Back.YELLOW + f'{globals.warningCount}' + Style.RESET_ALL + Fore.YELLOW + ':')
     print(Fore.YELLOW + f'{inString}')
+
+def printTracebackStack():
+    traceback.print_stack()

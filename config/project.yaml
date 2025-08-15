@@ -31,7 +31,7 @@ fileGeneration:
     # if blockDirs is true then the file is placed in a directory the block appended as well
     # note that basePath should reference a path key in the dirs section
     # cond: matches fields in the block definition, if all fields are true then the file is generated
-    # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file 
+    # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file
     # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
     blockBase   : { name : "Base",            ext: {hdr: "h"},             cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class header file"}
     block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
@@ -47,6 +47,5 @@ fileGeneration:
   # standard copyright statement to be added to all generated files - change to suite your company
   fileCopyrightStatement: "Update your copywright statement in your project yaml file"
 postProcess:
-  - config/postParseFwQueue.py
-  - ../../builder/base/examples/common/postParseRegister.py
-  - ../../builder/base/examples/common/postParseChecks.py
+  - $a2c/config/postParseRegister.py
+  - $a2c/config/postParseChecks.py

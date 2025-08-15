@@ -38,6 +38,8 @@ public:
             std::this_thread::sleep_for(std::chrono::nanoseconds(nsec));
         }
     };
+    bool isSCEventValid(void) const { return pSCEvent != nullptr; }
+
 private:
     bool isSystemCThread = false;
     std::condition_variable cv;
@@ -230,6 +232,7 @@ public:
             std::map<std::string, std::shared_ptr<workerEvent>> & eventMap = getEventMap();
             for(auto it : eventMap)
             {
+                Q_ASSERT_CTX_NODUMP(it.second->isSCEventValid(), it.first, "SystemC event not set, is startSystemCThread() called in environment ?");
                 it.second->notify("workerFactory::notifyAll");
             }
         } else {
@@ -242,6 +245,7 @@ public:
     }
 
 private:
+
     static uint64_t & getNumThreads(void)
     {
         static uint64_t numThreads = 0;

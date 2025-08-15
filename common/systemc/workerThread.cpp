@@ -42,8 +42,8 @@ void workerEvent::wait(const char *why)
 }
 
 workerThread::workerThread(uint64_t threadNumber_, std::shared_ptr<workerEvent> threadEvent_, std::string name_) :
-        threadEvent(threadEvent_),    
-        threadNumber(threadNumber_), 
+        threadEvent(threadEvent_),
+        threadNumber(threadNumber_),
         log_(fmt::format("workerThread{}", threadNumber_)),
         name(name_)
         {}
@@ -67,7 +67,7 @@ void workerThread::main(void)
     }
     threadsNotIdle.resize(workers.size() + 1);
     uint64_t totalLoops = 0;
-    
+
     simController::advanceStartupPhase(fmt::format("Thread {} {} startupInit ", threadNumber, name));
     while (simController::getStartupPhase() < STARTUP_DONE)
     {
