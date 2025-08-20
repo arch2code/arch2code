@@ -4,7 +4,7 @@
 #include <string>
 #include <memory>
 #include "logging.h"
-#include <fmt/format.h>
+#include <format>
 #include "apb_channel.h"
 #include "addressBase.h"
 #include "q_assert.h"
@@ -44,9 +44,9 @@ public:
         m_lastWriteAddress = address;
         auto it = find(address);
         if (it->m_type == addressElementType::REG) {
-            log_.logPrint([&]() { return fmt::format("Reg {} Write Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
+            log_.logPrint([&]() { return std::format("Reg {} Write Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
         } else {
-            log_.logPrint([&]() { return fmt::format("Mem {} Write Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
+            log_.logPrint([&]() { return std::format("Mem {} Write Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
         }
         it->m_ptr->cpu_write((address - it->m_address), val);
     }
@@ -54,9 +54,9 @@ public:
         auto it = find(address);
         uint32_t val = it->m_ptr->cpu_read((address - it->m_address));
         if (it->m_type == addressElementType::REG) {
-            log_.logPrint([&]() { return fmt::format("Reg {} Read Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
+            log_.logPrint([&]() { return std::format("Reg {} Read Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
         } else {
-            log_.logPrint([&]() { return fmt::format("Mem {} Read Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
+            log_.logPrint([&]() { return std::format("Mem {} Read Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
         }
         return val;
     }
@@ -69,7 +69,7 @@ public:
                 return &it;
             }
         }
-        Q_ASSERT_CTX(false, "", fmt::format("Invalid address 0x{:x}", address));
+        Q_ASSERT_CTX(false, "", std::format("Invalid address 0x{:x}", address));
         return nullptr;
     }
 private:

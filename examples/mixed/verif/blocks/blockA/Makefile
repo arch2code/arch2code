@@ -16,13 +16,13 @@ MODEL_DIR = $(PROJECT_ROOT)/model
 BUILDER_SC_COMMON = $(REPO_ROOT)/common/systemc
 
 CXX = clang++
-INCLUDES = -I$(PROJECT_ROOT)/verif/vl_wrap/blocks -I$(PROJECT_ROOT)/verif/vl_wrap/obj_dir -I$(COMMON_DIR) -I$(MODEL_DIR) -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd -I$(BUILDER_SC_COMMON)
+INCLUDES = -I$(PROJECT_ROOT)/verif/vl_wrap/blocks -I$(PROJECT_ROOT)/verif/vl_wrap/obj_dir -I$(COMMON_DIR) -I$(MODEL_DIR) -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd -I$(BUILDER_SC_COMMON) -I$(BUILDER_SC_COMMON)/include/fmt
 
 CXXFLAGS = -c -std=c++17 -MMD -DVERILATOR -DVM_TRACE_VCD -DVERIF_TB $(INCLUDES)
 LDFLAGS = -L$(PROJECT_ROOT)/verif/vl_wrap -L$(SYSTEMC_LIBDIR) -lvl_s_wrap -lsystemc -latomic -lpthread -ldl -lfmt -L$(LD_BOOST) -lboost_system -lboost_program_options
 
 BUILD_DIR = ./build
-CPP_SRCS = src/sc_main.cpp 
+CPP_SRCS = src/sc_main.cpp
 CPP_SRCS += $(wildcard $(BUILDER_SC_COMMON)/*.cpp)
 CPP_SRCS += $(wildcard $(MODEL_DIR)/*Includes.cpp)
 -include build/src/sc_main.d
@@ -48,6 +48,6 @@ run:
 
 clean:
 	rm -rf build *.vcd
-	
+
 clean_all : clean
 	$(MAKE) -C $(PROJECT_ROOT)/verif/vl_wrap clean

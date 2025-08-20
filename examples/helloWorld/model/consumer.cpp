@@ -2,7 +2,7 @@
 #include "testController.h"
 
 // GENERATED_CODE_PARAM --block=consumer
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "consumer.h"
 SC_HAS_PROCESS(consumer);
 
@@ -15,7 +15,7 @@ consumer::consumer(sc_module_name blockName, const char * variant, blockBaseMode
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(consumerInRdyVld);
     SC_THREAD(consumerInReqAck);
@@ -42,8 +42,8 @@ void consumer::consumerInRdyVld(void)
     wait(SC_ZERO_TIME);
     test_rdy_vld->read(data);
     log_.logPrint("RV4");
-    controller.test_complete(test_name);   
-    
+    controller.test_complete(test_name);
+
 }
 void consumer::consumerInReqAck(void)
 {
@@ -71,8 +71,8 @@ void consumer::consumerInReqAck(void)
     ackData = reqData;
     test_req_ack->ack(ackData);
     log_.logPrint("RQA4");
-    controller.test_complete(test_name);   
-    
+    controller.test_complete(test_name);
+
 }
 void consumer::consumerInPushAck(void)
 {
@@ -99,8 +99,8 @@ void consumer::consumerInPushAck(void)
     log_.logPrint("VA6");
     test_push_ack->ack();
     log_.logPrint("VA7");
-    controller.test_complete(test_name);   
-    
+    controller.test_complete(test_name);
+
 }
 void consumer::consumerInPopAck(void)
 {
@@ -127,7 +127,7 @@ void consumer::consumerInPopAck(void)
     ackData.b = 0;
     test_pop_ack->ack(ackData);
     log_.logPrint("RDA4");
-    controller.test_complete(test_name);   
-    
+    controller.test_complete(test_name);
+
 }
 

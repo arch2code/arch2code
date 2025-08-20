@@ -7,7 +7,7 @@ DOT_DB_FILE = ../.$(PROJECTNAME).db
 $(DOT_DB_FILE):
 	make -C ../arch
 
-db: $(DOT_DB_FILE) 
+db: $(DOT_DB_FILE)
 
 ifndef SYSTEMC_INCLUDE
 $(error SYSTEMC_INCLUDE is not set - please set to systemc-2.3.4 install directory)
@@ -25,7 +25,7 @@ endif
 CXX = clang++
 CXX_FLAGS = -std=c++17 -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter
 LD_FLAGS = -lboost_system -lboost_program_options -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -lsystemc -lfmt
-INCLUDE = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I$(REPO_ROOT)/common/systemc -I../includes -I. -I/usr/local/include
+INCLUDE = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I$(REPO_ROOT)/common/systemc -I../includes -I. -I/usr/local/include -I$(REPO_ROOT)/common/systemc/include/fmt
 # Final binary
 BIN = $(PROJECTNAME)
 # Put all auto generated stuff to this build dir.
@@ -38,7 +38,7 @@ HPP = $(wildcard *.h) $(wildcard ../includes/*.h )
 .DEFAULT_GOAL = $(BUILD_DIR)/$(BIN)
 .PHONY : gen db common run
 
-GEN_FILES = $(shell find . ../includes \( -name '*.cpp' -or -name '*.h' \) -exec grep -E -l 'GENERATED_CODE_BEGIN' {} +) 
+GEN_FILES = $(shell find . ../includes \( -name '*.cpp' -or -name '*.h' \) -exec grep -E -l 'GENERATED_CODE_BEGIN' {} +)
 #$(info  Genfiles $(GEN_FILES) )
 # All .o files go to build dir.
 OBJ = $(CPP:%.cpp=$(BUILD_DIR)/%.o)
@@ -86,5 +86,6 @@ $(BUILD_DIR)/%.o : %.cpp $(DOT_DB_FILE) $(GEN_FILES)
 .PHONY : clean
 clean :
     # This should remove all generated files.
+	$(MAKE) -C $(REPO_ROOT)/common/systemc clean
 	$(RM) -r $(BUILD_DIR)
 	$(RM) -f $(DB_FILE) $(DOT_DB_FILE)

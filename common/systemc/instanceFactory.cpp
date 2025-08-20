@@ -1,7 +1,7 @@
 //copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "q_assert.h"
-#include <fmt/format.h>
+#include <format>
 
 
 #include "instanceFactory.h"
@@ -35,7 +35,7 @@ std::shared_ptr< blockBase> instanceFactory::getInstance(std::string qualifiedNa
             return it->second;
         }
     }
-    Q_ASSERT_CTX_NODUMP(false, "", fmt::format("Unknown instance {} Check your command line option is a valid hierarchy name", qualifiedName) );
+    Q_ASSERT_CTX_NODUMP(false, "", std::format("Unknown instance {} Check your command line option is a valid hierarchy name", qualifiedName) );
     return NULL;
 
 }
@@ -117,7 +117,7 @@ std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierar
             return newBlock;
         }
     }
-    Q_ASSERT_CTX_NODUMP(false, "", fmt::format("Attempted to create an instance {} of an unregistered block type {}", blockName, blockType) );
+    Q_ASSERT_CTX_NODUMP(false, "", std::format("Attempted to create an instance {} of an unregistered block type {}", blockName, blockType) );
     return NULL;
 }
 void instanceFactory::setInstanceFactoryMode(instanceFactoryMode mode, std::string name)
@@ -203,7 +203,7 @@ uint64_t instanceFactory::getParam(const char * blockName, const std::string var
     if (it != getVariantParams().end()) {
             return it->second;
     }
-    Q_ASSERT_CTX_NODUMP(false, "", fmt::format("Attempted to get a parameter {} that does not exist in variant {}", variant, blockName) );
+    Q_ASSERT_CTX_NODUMP(false, "", std::format("Attempted to get a parameter {} that does not exist in variant {}", variant, blockName) );
     return 0;
 }
 std::string instanceFactory::dumpInstances(void)
@@ -243,12 +243,12 @@ std::string instanceFactory::getHierarchyName(const std::string name, blockBaseM
         }
         size_t pos = ret.find_last_of(".");
         if (pos == std::string::npos) {
-            Q_ASSERT_CTX_NODUMP(false, "", fmt::format("Could not find instance name {}", name) );
+            Q_ASSERT_CTX_NODUMP(false, "", std::format("Could not find instance name {}", name) );
         } else {
             ret = ret.substr(0, pos);
         }
     }
-    Q_ASSERT_CTX_NODUMP(false, "", fmt::format("Could not find instance name {}", name) );
+    Q_ASSERT_CTX_NODUMP(false, "", std::format("Could not find instance name {}", name) );
     return "";
 }
 

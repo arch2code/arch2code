@@ -210,7 +210,7 @@ inline void notify_ack_channel<T>::notify(int magicValue)
 {
     // if we are reentering the write before the reader has had time to read the previous entry we need to block on the read event
     if (isLocking()) { synchLock_->lock(magicValue); }
-    Q_ASSERT(m_multi_writer==false, fmt::format("multiple threads driving {} interface, did you set multiwrite?", name() ));
+    Q_ASSERT(m_multi_writer==false, std::format("multiple threads driving {} interface, did you set multiwrite?", name() ));
     m_multi_writer = true;
     interfaceBase::delay(false);
     m_active = true;
@@ -231,7 +231,7 @@ template <class T>
 inline void notify_ack_channel<T>::notifyNonBlocking(void)
 {
     // if we are reentering the write before the reader has had time to read the previous entry we need to block on the read event
-    Q_ASSERT(m_multi_writer==false, fmt::format("multiple threads driving {} interface", name() ));
+    Q_ASSERT(m_multi_writer==false, std::format("multiple threads driving {} interface", name() ));
     m_multi_writer = true;
     interfaceBase::delay(false);
     m_active = true;
@@ -260,7 +260,7 @@ void notify_ack_channel<T>::status(void)
 {
     if (m_active && !m_done)
     {
-        log_.logPrint(fmt::format("{} notify issued but not ack", name()  ), LOG_IMPORTANT );
+        log_.logPrint(std::format("{} notify issued but not ack", name()  ), LOG_IMPORTANT );
     }
     teeStatus();
 }

@@ -39,7 +39,7 @@ def constructorInit(args, prj, data):
 
     if data['addressDecode']['isApbRouter']:
         out.append(f'void { className }::routerDecode(void) //handle apb routing for register\n{{\n')
-        out.append(f'    log_.logPrint(fmt::format("SystemC Thread:{{}} started", __func__));\n')
+        out.append(f'    log_.logPrint(std::format("SystemC Thread:{{}} started", __func__));\n')
         out.append(f'    decoder.decodeThread();\n}}\n\n')
 
     if data['addressDecode']['hasDecoder']:
@@ -195,7 +195,7 @@ def constructorBody(args, prj, data):
         out.append(f'    SC_THREAD(routerDecode);\n')
     if data['addressDecode']['hasDecoder']:
         out.append(f'    SC_THREAD(regHandler);\n')
-    out.append(f'    log_.logPrint(fmt::format("Instance {{}} initialized.", this->name()), LOG_IMPORTANT );\n')
+    out.append(f'    log_.logPrint(std::format("Instance {{}} initialized.", this->name()), LOG_IMPORTANT );\n')
     # take the list and return a string
     if out:
         last = out.pop()

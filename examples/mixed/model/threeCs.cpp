@@ -2,7 +2,7 @@
 
 
 // GENERATED_CODE_PARAM --block=threeCs
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "threeCs.h"
 #include "blockC_base.h"
 SC_HAS_PROCESS(threeCs);
@@ -23,6 +23,6 @@ threeCs::threeCs(sc_module_name blockName, const char * variant, blockBaseMode b
     uBlockC0->see(see0);
     uBlockC1->see(see1);
     uBlockC2->see(see2);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 }

@@ -3,18 +3,18 @@
 
 #include <vector>
 #include <string>
-#include <fmt/format.h>
+#include <format>
 
 
 
-class cmdIdInfo 
+class cmdIdInfo
 {
 public:
     int dummy;
     std::string prt(void);
 };
 
-class tagInfo 
+class tagInfo
 {
 public:
     tagInfo() : cmdId(-1), buff(nullptr), buffLen(0) {}

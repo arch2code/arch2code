@@ -24,7 +24,7 @@ blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBase
     regs.addRegister( 0x0, 1, "rwD", &rwD );
     regs.addRegister( 0x8, 1, "roBsize", &roBsize );
     SC_THREAD(regHandler);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
 

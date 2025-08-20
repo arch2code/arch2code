@@ -2,7 +2,7 @@
 
 
 // GENERATED_CODE_PARAM --block=blockB
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "blockB.h"
 #include "blockD_base.h"
 #include "blockBRegs_base.h"
@@ -53,7 +53,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     uThreeCs->see1(cStuffIf_uBlockF0_uThreeCs);
     uBlockF1->cStuffIf(cStuffIf_uBlockF1_uThreeCs);
     uThreeCs->see2(cStuffIf_uBlockF1_uThreeCs);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(doneTest);
 }

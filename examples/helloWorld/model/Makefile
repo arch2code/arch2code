@@ -7,7 +7,7 @@ DOT_DB_FILE = ../.$(PROJECTNAME).db
 $(DOT_DB_FILE):
 	make -C ../arch
 
-db: $(DOT_DB_FILE) 
+db: $(DOT_DB_FILE)
 
 ifndef SYSTEMC_INCLUDE
 $(error SYSTEMC_INCLUDE is not set - please set to systemc-2.3.4 install directory)
@@ -25,7 +25,7 @@ endif
 CXX = clang++
 CXX_FLAGS = -std=c++17 -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter
 LD_FLAGS = -lboost_system -lboost_program_options -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -lsystemc -lfmt
-INCLUDE = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I$(REPO_ROOT)/common/systemc -I../includes -I. -I/usr/local/include
+INCLUDE = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I$(REPO_ROOT)/common/systemc -I../includes -I. -I/usr/local/include -I$(REPO_ROOT)/common/systemc/include/fmt
 # Final binary
 BIN = $(PROJECTNAME)
 # Put all auto generated stuff to this build dir.

@@ -12,7 +12,7 @@
 #include "portBase.h"
 #include "interfaceBase.h"
 #include "synchLock.h"
-#include <fmt/format.h>
+#include <format>
 
 // pop( &A )
 // |        -------> popReceive( )
@@ -126,7 +126,7 @@ public:
     // portBase overrides
     void setMultiDriver(std::string name_, std::function<std::string(const uint64_t &value)> prt = nullptr) override
     {
-        Q_ASSERT(false, fmt::format("multiple drivers on {} pop_ack interface is invalid", name_ ));
+        Q_ASSERT(false, std::format("multiple drivers on {} pop_ack interface is invalid", name_ ));
     }
     std::shared_ptr<trackerBase> getTracker(void) override { return (tracker_);}
     virtual void setTeeBusy(bool busy) override { teeBusy_ = busy; }
@@ -273,7 +273,7 @@ template <class A>
 void pop_ack_channel<A>::status(void)
 {
     if (m_value_written == true) {
-        log_.logPrint(fmt::format("{} no ack received", name() ), LOG_IMPORTANT );
+        log_.logPrint(std::format("{} no ack received", name() ), LOG_IMPORTANT );
         dump();
     }
     teeStatus();
