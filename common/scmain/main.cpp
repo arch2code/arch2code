@@ -8,7 +8,6 @@
 #include <thread>
 #include "randFactory.h"
 #include <csignal>
-#include <chrono>
 #include <sys/utsname.h>
 #include <filesystem>
 #include "instanceFactory.h"

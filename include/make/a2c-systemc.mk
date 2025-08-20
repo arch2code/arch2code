@@ -36,7 +36,7 @@ endif
 # Systemc build global variables
 #------------------------------------------------------------------------
 
-CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK
+CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK -DSC_CPLUSPLUS=201703L
 LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
@@ -47,8 +47,9 @@ ifndef USE_GNU_COMPILER
 CXX_FLAGS += -fstandalone-debug
 endif
 
-ifneq ($(C_STD_VER), c++23)
-CPP_INCLUDES += -I$(A2C_ROOT)/common/systemc/fmt_shim
+# If not using g++ with c++23, use std::format shim and fmt library
+ifneq ($(strip $(call is_gcc_cxx23)), true)
+CPP_INCLUDES += -I$(A2C_ROOT)/common/systemc/include/fmt
 LD_FLAGS += -lfmt
 endif
 
