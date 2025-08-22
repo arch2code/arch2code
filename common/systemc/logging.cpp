@@ -71,7 +71,7 @@ void logging::logPrint(const std::string &fname, const std::string &block, const
             clock_gettime(CLOCK_MONOTONIC, &ts);
             // Successfully obtained the time
             uint64_t useconds = (ts.tv_sec * 1000000LL + ts.tv_nsec / 1000LL) - startTime;
-            sc_time current_time = sc_time_stamp();
+            //sc_time current_time = sc_time_stamp();
             //timeStamp = std::format("{d} {} ",useconds, current_time );
         }
         std::cout << timeStamp << fname << logmsg;
