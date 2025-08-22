@@ -909,10 +909,11 @@ def fw_unpack(handle, args, vars, indent):
             else:
                 # cases include whether src or dst is >=64 bits
                 # if tmp is <= 32 bit we want to use a 64 bit temp to prevent alignment issues and cast for the unpack
-                out.append(f"{indent}{varType}::_packedSt _tmp{{0}};\n")
                 if data['bitwidth'] <= 32:
+                    out.append(f"{indent}uint64_t _tmp{{0}};\n")
                     unpackCast = f"*(({varType}::_packedSt*)&_tmp)"
                 else:
+                    out.append(f"{indent}{varType}::_packedSt _tmp{{0}};\n")
                     unpackCast = f"_tmp"
                 if (bitwidth >= 64):
                     # src is using 64 bit words so use pass by pointer
