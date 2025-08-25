@@ -5,7 +5,7 @@
 
 #include "systemc.h"
 #include <cstdint>
-#include <fmt/format.h>
+#include <format>
 #include <iostream>
 #include <iomanip>
 
@@ -13,11 +13,11 @@
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
 
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=constants 
+// GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
 
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=types 
+// GENERATED_CODE_BEGIN --template=includes --section=types
 // types
 typedef uint8_t _axiIdT; // [4] Type for axi ID tags. Used for ARID, RID, AWID, BID.
 typedef uint8_t _axiLenT; // [8] Exact number of transfers in a burst.
@@ -27,7 +27,7 @@ typedef uint8_t _axiQoST; // [4] QoS type for the AXI protocol
 typedef uint8_t _axiRegionT; // [4] Region type for the AXI protocol
 
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=includes --section=enums 
+// GENERATED_CODE_BEGIN --template=includes --section=enums
 // enums
 enum  _axiResponseT {        //Response type for the AXI protocol
     AXIRESP_OKAY=0,          // OKAY
@@ -109,7 +109,7 @@ inline const char* _axiWrCacheT_prt( _axiWrCacheT val )
 }
 
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=structures 
+// GENERATED_CODE_BEGIN --template=structures
 
 // GENERATED_CODE_END
 #endif //AXISTDINCLUDES_H_

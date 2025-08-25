@@ -7,7 +7,7 @@
 #include <string>
 #include <map>
 #include <boost/lockfree/spsc_queue.hpp>
-#include <fmt/format.h>
+#include <format>
 #include "logging.h"
 #include <type_traits>
 #include "instanceFactory.h"

@@ -3,7 +3,7 @@
 #include "tagTrackers.h"
 
 // GENERATED_CODE_PARAM --block=producer
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "producer.h"
 SC_HAS_PROCESS(producer);
 
@@ -16,7 +16,7 @@ producer::producer(sc_module_name blockName, const char * variant, blockBaseMode
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(producerOutRdyVld);
     SC_THREAD(producerOutPopAck);
@@ -47,7 +47,7 @@ void producer::producerOutRdyVld(void)
     data.b = 0;
     test_rdy_vld->write(data);
     log_.logPrint("RV5");
-    controller.test_complete(test_name);   
+    controller.test_complete(test_name);
 
 }
 void producer::producerOutReqAck(void)
@@ -74,7 +74,7 @@ void producer::producerOutReqAck(void)
     reqData.b = 0;
     test_req_ack->req(reqData, ackData);
     log_.logPrint("RQA5");
-    controller.test_complete(test_name);   
+    controller.test_complete(test_name);
 
 }
 void producer::producerOutPushAck(void)
@@ -100,7 +100,7 @@ void producer::producerOutPushAck(void)
     data.b = 0;
     test_push_ack->push(data);
     log_.logPrint("VA5");
-    controller.test_complete(test_name);   
+    controller.test_complete(test_name);
 }
 
 void producer::producerOutPopAck(void)
@@ -123,6 +123,6 @@ void producer::producerOutPopAck(void)
     log_.logPrint("RDA4");
     test_pop_ack->pop(ackData);
     log_.logPrint("RDA5");
-    controller.test_complete(test_name);   
+    controller.test_complete(test_name);
 
 }

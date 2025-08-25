@@ -6,10 +6,7 @@
 #include <memory>
 #include <boost/functional/hash.hpp>
 
-class randObject;
-class randUniformIntDistrObj;
-
-class randFactory {
+class randFactoryBase {
 public:
 
     static std::size_t gSeed;
@@ -18,22 +15,13 @@ public:
         gSeed = seed;
     }
 
-    static std::size_t str2hash(std::string s) {
-        boost::hash<std::string> hasher;
-        return hasher(s);
-    }
-
-    static std::unique_ptr<randUniformIntDistrObj> createUniformRandDistrObj(std::size_t hash, int min, int max) {
-        return std::make_unique<randUniformIntDistrObj>(hash, min, max);
-    }
-
 };
 
 class randObject {
 
 public:
     randObject(std::size_t hash = 0x0) {
-        m_seed = randFactory::gSeed;
+        m_seed = randFactoryBase::gSeed;
         // combine global seed and object hash value
         boost::hash_combine(m_seed, hash);
         m_gen = std::default_random_engine (m_seed);
@@ -67,6 +55,20 @@ class randUniformIntDistrObj: public randTmplDistrObj<std::uniform_int_distribut
 public:
     randUniformIntDistrObj(std::size_t hash, int min, int max) :
         randTmplDistrObj<std::uniform_int_distribution<int> >(hash, std::uniform_int_distribution<int>(min, max)){}
+
+};
+
+class randFactory: public randFactoryBase {
+public:
+
+    static std::size_t str2hash(std::string s) {
+        boost::hash<std::string> hasher;
+        return hasher(s);
+    }
+
+    static std::unique_ptr<randUniformIntDistrObj> createUniformRandDistrObj(std::size_t hash, int min, int max) {
+        return std::make_unique<randUniformIntDistrObj>(hash, min, max);
+    }
 
 };
 

@@ -2,7 +2,7 @@
 
 
 // GENERATED_CODE_PARAM --block=secondBlock
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "secondBlock.h"
 #include "secondSubA_base.h"
 #include "secondSubB_base.h"
@@ -26,7 +26,7 @@ secondBlock::secondBlock(sc_module_name blockName, const char * variant, blockBa
 // instance to instance connections via channel
     uSecondSubA->test(test);
     uSecondSubB->test(test);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 
 }

@@ -6,7 +6,7 @@
 #include "systemc.h"
 #include "apb_channel.h"
 #include "logging.h"
-#include <fmt/format.h>
+#include <format>
 #include <cmath>
 
 
@@ -33,7 +33,7 @@ public:
         }
         if (blockPorts.size() > numberOfaddressSpaces)
         {
-            Q_ASSERT_CTX(false, apbIn.name(), fmt::format("abpBusDecode::abpBusDecode: number of ports {} does not match number of address spaces {}", blockPorts.size(), numberOfaddressSpaces));
+            Q_ASSERT_CTX(false, apbIn.name(), std::format("abpBusDecode::abpBusDecode: number of ports {} does not match number of address spaces {}", blockPorts.size(), numberOfaddressSpaces));
         }
         int addressBits = 0;
         uint32_t numberOfSpaces = numberOfaddressSpaces_;
@@ -56,7 +56,7 @@ public:
             uint32_t blockAddress = (address >> addressShift) & addressMask;
             if (blockAddress >= numberOfaddressSpaces)
             {
-                Q_ASSERT_CTX(false, apbIn.name(), fmt::format("abpBusDecode::decodeThread: address {:x} out of range, block {:x}", address, blockAddress));
+                Q_ASSERT_CTX(false, apbIn.name(), std::format("abpBusDecode::decodeThread: address {:x} out of range, block {:x}", address, blockAddress));
             }
             auto port = blockPorts[blockAddress];
             if (port != nullptr)
@@ -69,7 +69,7 @@ public:
                     apbIn->complete(data);
                 }
             } else {
-                Q_ASSERT_CTX(false, apbIn.name(), fmt::format("abpBusDecode::decodeThread: address {:x} not mapped, block {:x}", address, blockAddress));
+                Q_ASSERT_CTX(false, apbIn.name(), std::format("abpBusDecode::decodeThread: address {:x} not mapped, block {:x}", address, blockAddress));
             }
         }
     }

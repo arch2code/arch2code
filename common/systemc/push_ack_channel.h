@@ -316,7 +316,7 @@ void push_ack_channel<T>::status(void)
 {
     if (m_value_written == true)
     {
-        log_.logPrint(fmt::format("{} has data/or no ack received", name()  ), LOG_IMPORTANT );
+        log_.logPrint(std::format("{} has data/or no ack received", name()  ), LOG_IMPORTANT );
         dump();
     }
     teeStatus();

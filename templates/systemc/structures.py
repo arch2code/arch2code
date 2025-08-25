@@ -298,7 +298,7 @@ def equalTest(handle, args, structName, vars, indent):
         out.append(f"{indent}bool {decl}{structName}::operator == (const { structName } & rhs) const {{\n")
     else:
         return out
-    out.append(f"{indent}    bool ret = true; \n")
+    out.append(f"{indent}    bool ret = true;\n")
     indent += ' '*4
     for var, vardata in vars["vars"].items():
         varName = vardata['variable']
@@ -459,7 +459,7 @@ def prtFmt(handle, args, vars, indent, prj):
             varOut.append(f'{indent}   {item[2]},\n')
     # add semicolon to the last item in the list
     varOut[-1] = varOut[-1].replace(',\n', '\n')
-    out.append(f'{indent}return (fmt::format("{fmt}",\n')
+    out.append(f'{indent}return (std::format("{fmt}",\n')
     out.extend(varOut)
     out.append(f"{indent}));\n")
     indent = indent[:-4]
@@ -901,7 +901,7 @@ def fw_unpack(handle, args, vars, indent):
             loop_current = currentPos
             # we are aligned if the current position is a multiple of the base size
             # except for the array case, unless the array case is the single element array case)
-            isAligned = ((currentPos & (baseMask)) == 0) and not (data['isArray'] and not isSingleArray) 
+            isAligned = ((currentPos & (baseMask)) == 0) and not (data['isArray'] and not isSingleArray)
             out.append(f'{indent}{{\n')
             indent += ' '*4
             if (isAligned):

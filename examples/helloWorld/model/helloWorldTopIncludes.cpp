@@ -12,13 +12,13 @@
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures
 bool test_st::operator == (const test_st & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (a == rhs.a);
     return ( ret );
     }
 std::string test_st::prt(bool all) const
 {
-    return (fmt::format("a:0x{:02x}",
+    return (std::format("a:0x{:02x}",
        (uint64_t) a
     ));
 }
@@ -42,13 +42,13 @@ void test_st::sc_unpack(sc_bv<8> packed_data)
     a = (byteT) packed_data.range(7, 0).to_uint64();
 }
 bool test_no_tracker_st::operator == (const test_no_tracker_st & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (a == rhs.a);
     return ( ret );
     }
 std::string test_no_tracker_st::prt(bool all) const
 {
-    return (fmt::format("a:0x{:02x}",
+    return (std::format("a:0x{:02x}",
        (uint64_t) a
     ));
 }
@@ -72,13 +72,13 @@ void test_no_tracker_st::sc_unpack(sc_bv<8> packed_data)
     a = (byteT) packed_data.range(7, 0).to_uint64();
 }
 bool data_st::operator == (const data_st & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (b == rhs.b);
     return ( ret );
     }
 std::string data_st::prt(bool all) const
 {
-    return (fmt::format("b:0x{:016x}",
+    return (std::format("b:0x{:016x}",
        (uint64_t) b
     ));
 }

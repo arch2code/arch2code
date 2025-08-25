@@ -70,6 +70,11 @@ define find_sv_source_directories
 	done)
 endef
 
+# Returns '1' when g++ is used with c++23
+define is_gcc_cxx23
+$(if $(and $(filter g++, $(CXX)), $(filter c++23, $(C_STD_VER))), true, false)
+endef
+
 #------------------------------------------------------------------------
 # Project global variables
 #------------------------------------------------------------------------

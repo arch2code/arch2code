@@ -18,7 +18,7 @@
 #include <memory>
 #include <vector>
 #include "simpleQueue.h"
-#include <fmt/format.h>
+#include <format>
 #include "axiCommon.h"
 
 // sendAddr( A )
@@ -382,7 +382,7 @@ public:
     // portBase overrides
     void setMultiDriver(std::string name_, std::function<std::string(const uint64_t &value)> prt = nullptr) override
     {
-        Q_ASSERT(false, fmt::format("multiple drivers on {} axiRd interface is invalid", name_ ));
+        Q_ASSERT(false, std::format("multiple drivers on {} axiRd interface is invalid", name_ ));
     }
     std::shared_ptr<trackerBase> getTracker(void) override { return (m_data_in->getTracker());}
     virtual void setTeeBusy(bool busy) override { m_data_in->setTeeBusy(busy); }
@@ -460,7 +460,7 @@ template <class A, class D>
 inline void axi_read_channel<A, D>::manageSendDataTransaction(const axiReadRespSt<D> & data_)
 {
     if (m_transactions[data_.rid].empty()) {
-        m_data_channel.log_.logPrint(fmt::format("transaction id not valid: {}", data_.prt()));
+        m_data_channel.log_.logPrint(std::format("transaction id not valid: {}", data_.prt()));
         Q_ASSERT(false, "transaction id not valid");
     }
     m_active_write_transactions[data_.rid] = m_transactions[data_.rid].front();
@@ -471,7 +471,7 @@ template <class A, class D>
 inline void axi_read_channel<A, D>::manageReceiveDataTransaction(const axiReadRespSt<D> & data_)
 {
     if (m_transaction_pipeline[data_.rid].isEmpty()) {
-        m_data_channel.log_.logPrint(fmt::format("transaction id not valid: {}", data_.prt()));
+        m_data_channel.log_.logPrint(std::format("transaction id not valid: {}", data_.prt()));
         Q_ASSERT(false, "transaction id not valid");
     }
     m_active_read_transactions[data_.rid] = m_transaction_pipeline[data_.rid].pop();
@@ -484,7 +484,7 @@ inline void axi_read_channel<A, D>::handleSendTransactionLog(_axiIdT id)
         if (m_active_write_transactions[id].transactionStr) {
             m_logQueueData->push(*m_active_write_transactions[id].transactionStr);
         } else {
-            m_logQueueData->push(fmt::format("RTX#{:x} ",m_active_write_transactions[id].transactionNo));
+            m_logQueueData->push(std::format("RTX#{:x} ",m_active_write_transactions[id].transactionNo));
         }
     }
 }
@@ -549,7 +549,7 @@ inline void axi_read_channel<A, D>::sendAddr( const axiReadAddressSt<A>& addr_, 
         if (str) {
             m_logQueueAddr->push(*str);
         } else {
-            m_logQueueAddr->push(fmt::format("RTX#{:x} ",transactionNo));
+            m_logQueueAddr->push(std::format("RTX#{:x} ",transactionNo));
         }
     }
     m_transactions[addr_.arid].emplace(addr_.arid, addr_.arlen, addr_.arsize, transactionNo++, std::move(str));

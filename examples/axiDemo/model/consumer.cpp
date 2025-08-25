@@ -2,7 +2,7 @@
 #include "testController.h"
 
 // GENERATED_CODE_PARAM --block=consumer
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "consumer.h"
 SC_HAS_PROCESS(consumer);
 
@@ -15,7 +15,7 @@ consumer::consumer(sc_module_name blockName, const char * variant, blockBaseMode
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(inAXI0Rd);
     SC_THREAD(inAXI1Rd);
@@ -42,11 +42,11 @@ void consumer::inAXI0Rd(void)
         {
             resp[i].rresp = AXIRESP_OKAY;
             resp[i].rid = addr.arid;
-            resp[i].rdata.data = i * 0x01010101; 
+            resp[i].rdata.data = i * 0x01010101;
         }
         axiRd0->sendData(*resp, num_bursts);
     }
-    controller.test_complete(test_name);   
+    controller.test_complete(test_name);
 }
 // send and recieve single cycle transactions
 void consumer::inAXI1Rd(void)
@@ -69,7 +69,7 @@ void consumer::inAXI1Rd(void)
             axiRd1->sendDataCycle(resp);
         }
     }
-    controller.test_complete(test_name);   
+    controller.test_complete(test_name);
 }
 
 // send and recieve multicycle transactions
@@ -98,12 +98,12 @@ void consumer::inAXI0Wr(void)
             {
                 log_.logPrint("Data mismatch");
                 resp.bresp = AXIRESP_SLVERR;
-            }             
+            }
         }
         resp.bid = addr.awid;
         axiWr0->sendResp(resp);
-    }    
-    controller.test_complete(test_name);   
+    }
+    controller.test_complete(test_name);
 }
 // send multicycle transaction and recieve single cycle transaction
 void consumer::inAXI1Wr(void)
@@ -117,7 +117,7 @@ void consumer::inAXI1Wr(void)
         axiWriteAddressSt<axiAddrSt> addr;
         axiWriteDataSt<axiDataSt, axiStrobeSt> data;
         axiWriteRespSt resp;
-        axiWr1->receiveAddr(addr); 
+        axiWr1->receiveAddr(addr);
         int num_bursts = addr.awlen + 1;
         for (int i = 0; i < num_bursts; i++)
         {
@@ -135,8 +135,8 @@ void consumer::inAXI1Wr(void)
         }
         resp.bid = addr.awid;
         axiWr1->sendRespCycle(resp);
-    }    
-    controller.test_complete(test_name);   
+    }
+    controller.test_complete(test_name);
 
 }
 // send single cycle transaction and recieve multicycle transaction
@@ -169,8 +169,8 @@ void consumer::inAXI2Wr(void)
         }
         resp.bid = addr.awid;
         axiWr2->sendResp(resp);
-    }    
-    controller.test_complete(test_name);   
+    }
+    controller.test_complete(test_name);
 }
 
 // send and recieve single cycle transactions
@@ -186,7 +186,7 @@ void consumer::inAXI3Wr(void)
         axiWriteDataSt<axiDataSt, axiStrobeSt> data;
         axiWriteRespSt resp;
         resp.bresp = AXIRESP_OKAY;
-        axiWr3->receiveAddr(addr); 
+        axiWr3->receiveAddr(addr);
         int num_bursts = addr.awlen + 1;
         for (int i = 0; i < num_bursts; i++)
         {
@@ -202,7 +202,7 @@ void consumer::inAXI3Wr(void)
         }
         resp.bid = data.wid;
         axiWr3->sendRespCycle(resp);
-    }    
-    controller.test_complete(test_name);   
+    }
+    controller.test_complete(test_name);
 
 }

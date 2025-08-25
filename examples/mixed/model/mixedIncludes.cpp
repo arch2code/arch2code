@@ -11,7 +11,7 @@
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures
 bool aSt::operator == (const aSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(int i=0; i<ASIZE2; i++) {
         ret = ret && (variablea[i] == rhs.variablea[i]);
     }
@@ -20,7 +20,7 @@ bool aSt::operator == (const aSt & rhs) const {
     }
 std::string aSt::prt(bool all) const
 {
-    return (fmt::format("variablea[0:1]: {} variablea2:0x{:01x}",
+    return (std::format("variablea[0:1]: {} variablea2:0x{:01x}",
        staticArrayPrt<aSizeT, ASIZE2>(variablea, all),
        (uint64_t) variablea2
     ));
@@ -70,13 +70,13 @@ void aSt::sc_unpack(sc_bv<4> packed_data)
     }
 }
 bool aASt::operator == (const aASt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variablea == rhs.variablea);
     return ( ret );
     }
 std::string aASt::prt(bool all) const
 {
-    return (fmt::format("variablea:0x{:01x}",
+    return (std::format("variablea:0x{:01x}",
        (uint64_t) variablea
     ));
 }
@@ -104,13 +104,13 @@ void aASt::sc_unpack(sc_bv<1> packed_data)
     variablea = (aSizeT) packed_data.range(0, 0).to_uint64();
 }
 bool aRegSt::operator == (const aRegSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (a == rhs.a);
     return ( ret );
     }
 std::string aRegSt::prt(bool all) const
 {
-    return (fmt::format("a:0x{:02x}",
+    return (std::format("a:0x{:02x}",
        (uint64_t) a
     ));
 }
@@ -134,13 +134,13 @@ void aRegSt::sc_unpack(sc_bv<7> packed_data)
     a = (sevenBitT) packed_data.range(6, 0).to_uint64();
 }
 bool dRegSt::operator == (const dRegSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (d == rhs.d);
     return ( ret );
     }
 std::string dRegSt::prt(bool all) const
 {
-    return (fmt::format("d:0x{:02x}",
+    return (std::format("d:0x{:02x}",
        (uint64_t) d
     ));
 }
@@ -164,14 +164,14 @@ void dRegSt::sc_unpack(sc_bv<7> packed_data)
     d = (sevenBitT) packed_data.range(6, 0).to_uint64();
 }
 bool dSt::operator == (const dSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variabled == rhs.variabled);
     ret = ret && (variabled2 == rhs.variabled2);
     return ( ret );
     }
 std::string dSt::prt(bool all) const
 {
-    return (fmt::format("variabled:0x{:01x} variabled2:0x{:01x}",
+    return (std::format("variabled:0x{:01x} variabled2:0x{:01x}",
        (uint64_t) variabled,
        (uint64_t) variabled2
     ));
@@ -202,7 +202,7 @@ void dSt::sc_unpack(sc_bv<7> packed_data)
     variabled = (threeBitT) packed_data.range(6, 4).to_uint64();
 }
 bool nestedSt::operator == (const nestedSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variablea == rhs.variablea);
     ret = ret && (bob == rhs.bob);
     for(int i=0; i<2; i++) {
@@ -212,7 +212,7 @@ bool nestedSt::operator == (const nestedSt & rhs) const {
     }
 std::string nestedSt::prt(bool all) const
 {
-    return (fmt::format("variablea:0x{:01x} bob:<{}>{}",
+    return (std::format("variablea:0x{:01x} bob:<{}>{}",
        (uint64_t) variablea,
        bob.prt(all),
        structArrayPrt<seeSt, 2>(joe, "joe", all)
@@ -275,13 +275,13 @@ void nestedSt::sc_unpack(sc_bv<18> packed_data)
     variablea = (aSizeT) packed_data.range(17, 17).to_uint64();
 }
 bool bSizeRegSt::operator == (const bSizeRegSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (index == rhs.index);
     return ( ret );
     }
 std::string bSizeRegSt::prt(bool all) const
 {
-    return (fmt::format("index:0x{:01x}",
+    return (std::format("index:0x{:01x}",
        (uint64_t) index
     ));
 }
@@ -305,13 +305,13 @@ void bSizeRegSt::sc_unpack(sc_bv<4> packed_data)
     index = (bSizeT) packed_data.range(3, 0).to_uint64();
 }
 bool bSizeSt::operator == (const bSizeSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (index == rhs.index);
     return ( ret );
     }
 std::string bSizeSt::prt(bool all) const
 {
-    return (fmt::format("index:0x{:01x}",
+    return (std::format("index:0x{:01x}",
        (uint64_t) index
     ));
 }
@@ -335,13 +335,13 @@ void bSizeSt::sc_unpack(sc_bv<4> packed_data)
     index = (bSizeT) packed_data.range(3, 0).to_uint64();
 }
 bool apbAddrSt::operator == (const apbAddrSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (address == rhs.address);
     return ( ret );
     }
 std::string apbAddrSt::prt(bool all) const
 {
-    return (fmt::format("address:0x{:08x}",
+    return (std::format("address:0x{:08x}",
        (uint64_t) address
     ));
 }
@@ -365,13 +365,13 @@ void apbAddrSt::sc_unpack(sc_bv<32> packed_data)
     address = (apbAddrT) packed_data.range(31, 0).to_uint64();
 }
 bool apbDataSt::operator == (const apbDataSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (data == rhs.data);
     return ( ret );
     }
 std::string apbDataSt::prt(bool all) const
 {
-    return (fmt::format("data:0x{:08x}",
+    return (std::format("data:0x{:08x}",
        (uint64_t) data
     ));
 }
@@ -395,7 +395,7 @@ void apbDataSt::sc_unpack(sc_bv<32> packed_data)
     data = (apbDataT) packed_data.range(31, 0).to_uint64();
 }
 bool cSt::operator == (const cSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(int i=0; i<5; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
@@ -403,7 +403,7 @@ bool cSt::operator == (const cSt & rhs) const {
     }
 std::string cSt::prt(bool all) const
 {
-    return (fmt::format("sevenBitArray[0:4]: {}",
+    return (std::format("sevenBitArray[0:4]: {}",
        staticArrayPrt<sevenBitT, 5>(sevenBitArray, all)
     ));
 }
@@ -447,7 +447,7 @@ void cSt::sc_unpack(sc_bv<35> packed_data)
     }
 }
 bool test1St::operator == (const test1St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(int i=0; i<5; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
@@ -458,7 +458,7 @@ bool test1St::operator == (const test1St & rhs) const {
     }
 std::string test1St::prt(bool all) const
 {
-    return (fmt::format("sevenBitArray[0:4]: {} sevenBitArray2[0:4]: {}",
+    return (std::format("sevenBitArray[0:4]: {} sevenBitArray2[0:4]: {}",
        staticArrayPrt<sevenBitT, 5>(sevenBitArray, all),
        staticArrayPrt<sevenBitT, 5>(sevenBitArray2, all)
     ));
@@ -525,7 +525,7 @@ void test1St::sc_unpack(sc_bv<70> packed_data)
     }
 }
 bool test2St::operator == (const test2St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(int i=0; i<5; i++) {
         ret = ret && (thirtyFiveBitArray[i] == rhs.thirtyFiveBitArray[i]);
     }
@@ -533,7 +533,7 @@ bool test2St::operator == (const test2St & rhs) const {
     }
 std::string test2St::prt(bool all) const
 {
-    return (fmt::format("{}",
+    return (std::format("{}",
        structArrayPrt<cSt, 5>(thirtyFiveBitArray, "thirtyFiveBitArray", all)
     ));
 }
@@ -577,7 +577,7 @@ void test2St::sc_unpack(sc_bv<175> packed_data)
     }
 }
 bool test3St::operator == (const test3St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(int i=0; i<5; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
@@ -585,7 +585,7 @@ bool test3St::operator == (const test3St & rhs) const {
     }
 std::string test3St::prt(bool all) const
 {
-    return (fmt::format("{}",
+    return (std::format("{}",
        structArrayPrt<aRegSt, 5>(sevenBitArray, "sevenBitArray", all)
     ));
 }
@@ -629,13 +629,13 @@ void test3St::sc_unpack(sc_bv<35> packed_data)
     }
 }
 bool test4St::operator == (const test4St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (sevenBitArray == rhs.sevenBitArray);
     return ( ret );
     }
 std::string test4St::prt(bool all) const
 {
-    return (fmt::format("sevenBitArray:<{}>",
+    return (std::format("sevenBitArray:<{}>",
        sevenBitArray.prt(all)
     ));
 }
@@ -663,7 +663,7 @@ void test4St::sc_unpack(sc_bv<7> packed_data)
     sevenBitArray.sc_unpack(packed_data.range(6, 0));
 }
 bool test5St::operator == (const test5St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(int i=0; i<10; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
@@ -671,7 +671,7 @@ bool test5St::operator == (const test5St & rhs) const {
     }
 std::string test5St::prt(bool all) const
 {
-    return (fmt::format("{}",
+    return (std::format("{}",
        structArrayPrt<aRegSt, 10>(sevenBitArray, "sevenBitArray", all)
     ));
 }
@@ -715,13 +715,13 @@ void test5St::sc_unpack(sc_bv<70> packed_data)
     }
 }
 bool test6St::operator == (const test6St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (largeStruct == rhs.largeStruct);
     return ( ret );
     }
 std::string test6St::prt(bool all) const
 {
-    return (fmt::format("largeStruct:<{}>",
+    return (std::format("largeStruct:<{}>",
        largeStruct.prt(all)
     ));
 }
@@ -750,7 +750,7 @@ void test6St::sc_unpack(sc_bv<70> packed_data)
     largeStruct.sc_unpack(packed_data.range(69, 0));
 }
 bool test7St::operator == (const test7St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(int i=0; i<5; i++) {
         ret = ret && (largeStruct[i] == rhs.largeStruct[i]);
     }
@@ -758,7 +758,7 @@ bool test7St::operator == (const test7St & rhs) const {
     }
 std::string test7St::prt(bool all) const
 {
-    return (fmt::format("{}",
+    return (std::format("{}",
        structArrayPrt<test1St, 5>(largeStruct, "largeStruct", all)
     ));
 }
@@ -802,7 +802,7 @@ void test7St::sc_unpack(sc_bv<350> packed_data)
     }
 }
 bool test8St::operator == (const test8St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(int i=0; i<3; i++) {
         ret = ret && (words[i] == rhs.words[i]);
     }
@@ -810,7 +810,7 @@ bool test8St::operator == (const test8St & rhs) const {
     }
 std::string test8St::prt(bool all) const
 {
-    return (fmt::format("words[0:2]: {}",
+    return (std::format("words[0:2]: {}",
        staticArrayPrt<wordT, 3>(words, all)
     ));
 }
@@ -854,7 +854,7 @@ void test8St::sc_unpack(sc_bv<48> packed_data)
     }
 }
 bool test9St::operator == (const test9St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(int i=0; i<4; i++) {
         ret = ret && (wordArray[i] == rhs.wordArray[i]);
     }
@@ -862,7 +862,7 @@ bool test9St::operator == (const test9St & rhs) const {
     }
 std::string test9St::prt(bool all) const
 {
-    return (fmt::format("{}",
+    return (std::format("{}",
        structArrayPrt<test8St, 4>(wordArray, "wordArray", all)
     ));
 }

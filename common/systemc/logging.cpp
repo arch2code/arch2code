@@ -71,8 +71,8 @@ void logging::logPrint(const std::string &fname, const std::string &block, const
             clock_gettime(CLOCK_MONOTONIC, &ts);
             // Successfully obtained the time
             uint64_t useconds = (ts.tv_sec * 1000000LL + ts.tv_nsec / 1000LL) - startTime;
-            sc_time current_time = sc_time_stamp();
-            timeStamp = fmt::format("{d} {} ",useconds, current_time.to_string() );
+            //sc_time current_time = sc_time_stamp();
+            //timeStamp = std::format("{d} {} ",useconds, current_time );
         }
         std::cout << timeStamp << fname << logmsg;
     }
@@ -91,7 +91,7 @@ void logging::logPrintDirect(const std::string &logmsg)
             // Successfully obtained the time
             uint64_t useconds = (ts.tv_sec * 1000000LL + ts.tv_nsec / 1000LL) - startTime;
             sc_time current_time = sc_time_stamp();
-            std::string timeStamp = fmt::format("{} {} ", useconds, current_time.to_string() );
+            std::string timeStamp = std::format("{} {} ", useconds, current_time.to_string() );
             std::cout << timeStamp << logmsg << '\n';
         } else {
             std::cout << logmsg << '\n';
@@ -111,7 +111,7 @@ void logging::bufferDump(uint8_t *buff, int size)
     if (size < BYTES_PER_LINE) {
         for (int i=0; i<size; i++)
         {
-            std::cout << fmt::format("{:02x} ", (uint64_t)*(buff+i));
+            std::cout << std::format("{:02x} ", (uint64_t)*(buff+i));
         }
         std::cout << '\n';
         return;
@@ -140,14 +140,14 @@ void logging::bufferDump(uint8_t *buff, int size)
             }
             for(int i=0; i<byteAlignment; i++)
             {
-                s = fmt::format("{:02x}", (uint64_t)*(current)) + s;
+                s = std::format("{:02x}", (uint64_t)*(current)) + s;
                 current++;
             }
             s = " " + s;
         }
         for(int i=0; i<qWordAlignment; i++)
         {
-            s = fmt::format(" {:016x}", *(uint64_t*)current ) + s;
+            s = std::format(" {:016x}", *(uint64_t*)current ) + s;
             current +=8;
         }
         std::cout << std::setw(4) << line << ":" << s << '\n';
@@ -156,7 +156,7 @@ void logging::bufferDump(uint8_t *buff, int size)
     uint64_t * qWordBuff = (uint64_t *)current;
     for(int i=0; i<(middle/BYTES_PER_LINE); i++)
     {
-        std::cout << fmt::format("{:4d}: {:016x} {:016x} {:016x} {:016x}", line, *(qWordBuff+3), *(qWordBuff+2), *(qWordBuff+1), *(qWordBuff)) << '\n';
+        std::cout << std::format("{:4d}: {:016x} {:016x} {:016x} {:016x}", line, *(qWordBuff+3), *(qWordBuff+2), *(qWordBuff+1), *(qWordBuff)) << '\n';
         qWordBuff +=4;
         line++;
     }
@@ -167,7 +167,7 @@ void logging::bufferDump(uint8_t *buff, int size)
         int qWords = (back >> BYTES_PER_QWORD_LOG2);
         for(int i=0; i<qWords; i++)
         {
-            s = fmt::format(" {:016x}", *qWordBuff ) + s;
+            s = std::format(" {:016x}", *qWordBuff ) + s;
             qWordBuff++;
         }
         current = (uint8_t *)qWordBuff;
@@ -175,7 +175,7 @@ void logging::bufferDump(uint8_t *buff, int size)
         {
             for(int i=0; i<bytes; i++)
             {
-                s = fmt::format("{:02x}", (uint64_t)*current ) + s;
+                s = std::format("{:02x}", (uint64_t)*current ) + s;
                 current++;
             }
             for(int i=0; i<((BYTES_PER_QWORD-bytes) & BYTES_PER_QWORD_MASK); i++)
@@ -202,7 +202,7 @@ void logging::statusPrint(void)
         if ( status.second != nullptr ) {
             status.second();
         } else {
-            logDirect(fmt::format("statusPrint: {} is null, prev {}", status.first , prev), LOG_IMPORTANT);
+            logDirect(std::format("statusPrint: {} is null, prev {}", status.first , prev), LOG_IMPORTANT);
             Q_ASSERT_CTX_NODUMP(false, "", "statusPrint: null status");
         }
         prev = status.first;
@@ -217,7 +217,7 @@ void logging::queueStatusPrint(void)
         if ( status.second != nullptr ) {
             status.second();
         } else {
-            logDirect(fmt::format("queueStatusList: {} is null", status.first), LOG_IMPORTANT);
+            logDirect(std::format("queueStatusList: {} is null", status.first), LOG_IMPORTANT);
             Q_ASSERT_CTX_NODUMP(false, "", "queueStatusList: null status");
         }
     }
@@ -239,7 +239,7 @@ std::string logging::report(void)
         if ( report.second != nullptr ) {
             ret += report.second();
         } else {
-           logDirect(fmt::format("report: {} is null", report.first), LOG_IMPORTANT);
+           logDirect(std::format("report: {} is null", report.first), LOG_IMPORTANT);
            Q_ASSERT_CTX_NODUMP(false, "", "report: null status");
         }
     }
@@ -253,7 +253,7 @@ void logging::interfaceStatus(void)
         if ( status.second != nullptr ) {
             status.second();
         } else {
-           logDirect(fmt::format("interfaceStatus: {} is null", status.first), LOG_IMPORTANT);
+           logDirect(std::format("interfaceStatus: {} is null", status.first), LOG_IMPORTANT);
            Q_ASSERT_CTX_NODUMP(false, "", "interfaceStatus: null status");
         }
     }
@@ -268,7 +268,7 @@ void logging::lockStatus(void)
         if ( status.second != nullptr ) {
             status.second();
         } else {
-           logDirect(fmt::format("lockStatus: {} is null", status.first), LOG_IMPORTANT);
+           logDirect(std::format("lockStatus: {} is null", status.first), LOG_IMPORTANT);
             Q_ASSERT_CTX_NODUMP(false, "", "lockStatus: null status");
         }
     }

@@ -1,0 +1,17 @@
+#ifndef STD_FORMAT_SHIM_H
+#define STD_FORMAT_SHIM_H
+
+// This file is a shim to provide std::format functionality using the fmt library
+// std::format is not available in C++ compilers (GCC, Clang) prior to C++23
+
+#include <string>
+#include <fmt/core.h>
+
+namespace std {
+  template <class... Args>
+  inline std::string format(fmt::format_string<Args...> fmt_str, Args&&... args) {
+    return fmt::format(fmt_str, std::forward<Args>(args)...);
+  }
+}
+
+#endif  // STD_FORMAT_SHIM_H
