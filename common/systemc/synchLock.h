@@ -189,7 +189,7 @@ public:
     }
 private:
     std::unordered_map<std::string, std::shared_ptr<synchLock<T>>> locks;
-    synchLockFactory<T>()
+    synchLockFactory()
     {
         synchLockFactoryRegistery::getInstance().registerSynchLockFactory(this);
         hierarchyPrefixLen = (synchLockFactoryRegistery::getInstance().getHierarchyPrefix()).length();
@@ -197,8 +197,8 @@ private:
             hierarchyPrefixLen++; // add one for the dot
         }
     }
-    void operator=(synchLockFactory<T> const&);
-    synchLockFactory<T>(synchLockFactory<T> const&);
+    void operator=(synchLockFactory const&);
+    synchLockFactory(synchLockFactory const&);
     logging &log = logging::GetInstance();
     int hierarchyPrefixLen = 0;
 
