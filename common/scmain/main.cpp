@@ -69,8 +69,8 @@ int sc_main(int argc, char* argv[])
 #ifdef VCS
     #define STR(s) #s
     #define XSTR(s) STR(s)
-    vlInst = XSTR(VL_INST);
-    vlType = XSTR(VL_TYPE);
+    simController::vlInst = XSTR(VL_INST);
+    simController::vlType = XSTR(VL_TYPE);
     simController::vlTandem = VL_TANDEM ? true : false;
 
     VcsSetExitFunc(exit_handler);
@@ -105,6 +105,9 @@ int sc_main(int argc, char* argv[])
         po::store(parsed1, vm);
         po::notify(vm);
 
+#ifdef VCS
+        testBenchName = XSTR(TESTBENCH);
+#endif
         std::cout << "TestBench Selected: " << testBenchName << "\n";
         testBench = testBenchConfigFactory::createTestBench(testBenchName);
         if (!testBench) {

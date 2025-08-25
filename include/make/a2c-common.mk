@@ -89,6 +89,10 @@ SC_GEN_DOT_FILES = $(SC_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 SV_GEN_FILES =  $(call find_gen_sv_sources, $(REPO_ROOT)/rtl/ $(REPO_ROOT)/verif/vl_wrap) $(REPO_ROOT)/rtl/rtl.f
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
+ifdef USE_VCS
+  USE_GCC := 1
+endif
+
 # C++ compilation global variables
 ifndef USE_GCC
   CXX=clang++
