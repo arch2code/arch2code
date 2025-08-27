@@ -45,6 +45,11 @@ PRJ_SRC_DIRS = $(call find_cpp_source_directories, $(REPO_ROOT)/base $(REPO_ROOT
 
 ifndef USE_GCC
 CXX_FLAGS += -fstandalone-debug
+else
+CXX_FLAGS += -Wno-class-memaccess -Wno-aggressive-loop-optimizations -Wno-strict-aliasing
+ifdef VL_DUT
+CXX_FLAGS += -Wno-pedantic
+endif
 endif
 
 # If not using c++23, use std::format shim and fmt library
