@@ -12,7 +12,7 @@ jobs:
   lint-build:
     runs-on: [self-hosted, linux, x64]
     container:
-      image: arch2code/a2c-dev:1.0
+      image: arch2code/a2c-dev:2.0
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
