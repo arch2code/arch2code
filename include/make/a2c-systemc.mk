@@ -146,11 +146,7 @@ $(BUILD_DIR)/%.o : %.cpp $(GEN_DB_DEPS)
 
 all: gen
 ifdef VL_DUT
-ifndef USE_VCS
-	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap lib$(PROJECTNAME)vl_s_wrap.a
-else
-	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap vcswrap VCS_RUNDIR=$(PROJECT_RUNDIR)
-endif
+	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap vlwrap
 endif
 	$(MAKE) $(BIN_DIR)/$(BIN)
 
