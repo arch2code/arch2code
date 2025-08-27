@@ -17,7 +17,7 @@ endif
 #------------------------------------------------------------------------
 
 VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 --no-timing --build -Wno-fatal -j 4 -DVL_DUT -MMD
-VERILATOR_CFLAG_OPTS = '-std=$(C_STD_VER)'
+VERILATOR_CFLAG_OPTS = '-std=$(C_STD_VER) -DSC_CPLUSPLUS=201703L'
 
 ifdef VL_COV
 VERILATOR_OPTS += --coverage

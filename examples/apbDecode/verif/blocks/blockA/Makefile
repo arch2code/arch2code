@@ -16,10 +16,10 @@ MODEL_DIR = $(PROJECT_ROOT)/model
 BUILDER_SC_COMMON = $(REPO_ROOT)/common/systemc
 
 CXX = clang++
-INCLUDES = -I$(PROJECT_ROOT)/verif/vl_wrap/blocks -I$(PROJECT_ROOT)/verif/vl_wrap/obj_dir -I$(COMMON_DIR) -I$(MODEL_DIR) -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd -I$(BUILDER_SC_COMMON) -I$(BUILDER_SC_COMMON)/include/fmt
+INCLUDES = -I$(PROJECT_ROOT)/verif/vl_wrap/blocks -I$(PROJECT_ROOT)/verif/vl_wrap/obj_dir -I$(COMMON_DIR) -I$(MODEL_DIR) -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd -I$(BUILDER_SC_COMMON)
 
-CXXFLAGS = -c -std=c++17 -MMD -DVERILATOR -DVM_TRACE_VCD -DVERIF_TB $(INCLUDES)
-LDFLAGS = -L$(PROJECT_ROOT)/verif/vl_wrap -L$(SYSTEMC_LIBDIR) -lvl_s_wrap -lsystemc -latomic -lpthread -ldl -lfmt -L$(LD_BOOST) -lboost_system -lboost_program_options
+CXXFLAGS = -c -std=c++23 -MMD -DVERILATOR -DVM_TRACE_VCD -DVERIF_TB -DSC_CPLUSPLUS=201703L $(INCLUDES)
+LDFLAGS = -L$(PROJECT_ROOT)/verif/vl_wrap -L$(SYSTEMC_LIBDIR) -lvl_s_wrap -lsystemc -latomic -lpthread -ldl -L$(LD_BOOST) -lboost_system -lboost_program_options
 
 BUILD_DIR = ./build
 
@@ -35,7 +35,7 @@ $(BUILD_DIR)/%.o: %.cpp
 	$(CXX) $(CXXFLAGS) $< -o $@
 
 $(BUILD_DIR)/simx : $(OBJ_FILES)
-	$(CXX) -std=c++17 $(OBJ_FILES) $(LDFLAGS) -o $@
+	$(CXX) $(OBJ_FILES) $(LDFLAGS) -o $@
 
 lib:
 	$(MAKE) -C $(PROJECT_ROOT)/verif/vl_wrap libvl_s_wrap.a

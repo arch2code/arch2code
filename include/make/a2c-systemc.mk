@@ -43,12 +43,12 @@ CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain
 PRJ_SRC_DIRS = $(call find_cpp_source_directories, $(REPO_ROOT)/base $(REPO_ROOT)/model $(REPO_ROOT)/fw $(REPO_ROOT)/tb)
 
-ifndef USE_GNU_COMPILER
+ifndef USE_GCC
 CXX_FLAGS += -fstandalone-debug
 endif
 
-# If not using g++ with c++23, use std::format shim and fmt library
-ifneq ($(strip $(call is_gcc_cxx23)), true)
+# If not using c++23, use std::format shim and fmt library
+ifneq ($(C_STD_VER), c++23)
 CPP_INCLUDES += -I$(A2C_ROOT)/common/systemc/include/fmt
 LD_FLAGS += -lfmt
 endif
@@ -86,7 +86,8 @@ BIN = run
 BIN_DIR = $(PROJECT_RUNDIR)/build
 BUILD_DIR = $(BIN_DIR)/$(PROJECTNAME).build
 
-CXX_FLAGS += $(CPP_INCLUDES) $(EXTRA_CXX_FLAGS)
+# Add to compiler dependencies
+CXX_FLAGS += $(CPP_INCLUDES)
 
 ifdef VL_DUT
 CXX_FLAGS += -DVERILATOR

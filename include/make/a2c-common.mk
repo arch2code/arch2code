@@ -70,11 +70,6 @@ define find_sv_source_directories
 	done)
 endef
 
-# Returns '1' when g++ is used with c++23
-define is_gcc_cxx23
-$(if $(and $(filter g++, $(CXX)), $(filter c++23, $(C_STD_VER))), true, false)
-endef
-
 #------------------------------------------------------------------------
 # Project global variables
 #------------------------------------------------------------------------
@@ -95,11 +90,12 @@ SV_GEN_FILES =  $(call find_gen_sv_sources, $(REPO_ROOT)/rtl/ $(REPO_ROOT)/verif
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
 # C++ compilation global variables
-CXX=clang++
-C_STD_VER=c++17
-
-ifeq ($(CXX), g++)
-USE_GNU_COMPILER = 1
+ifndef USE_GCC
+  CXX=clang++
+  C_STD_VER=c++23
+else
+  CXX=g++
+  C_STD_VER=c++23
 endif
 
 #------------------------------------------------------------------------
