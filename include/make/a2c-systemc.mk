@@ -45,6 +45,11 @@ PRJ_SRC_DIRS = $(call find_cpp_source_directories, $(REPO_ROOT)/base $(REPO_ROOT
 
 ifndef USE_GCC
 CXX_FLAGS += -fstandalone-debug
+else
+CXX_FLAGS += -Wno-class-memaccess -Wno-aggressive-loop-optimizations -Wno-strict-aliasing
+ifdef VL_DUT
+CXX_FLAGS += -Wno-pedantic
+endif
 endif
 
 # If not using c++23, use std::format shim and fmt library
@@ -90,10 +95,12 @@ BUILD_DIR = $(BIN_DIR)/$(PROJECTNAME).build
 CXX_FLAGS += $(CPP_INCLUDES)
 
 ifdef VL_DUT
+ifndef USE_VCS
 CXX_FLAGS += -DVERILATOR
 LD_FLAGS += -L$(REPO_ROOT)/verif/vl_wrap -l$(PROJECTNAME)vl_s_wrap -latomic
 # https://github.com/verilator/verilator/issues/5672
 CXX_FLAGS += -Wno-sign-compare
+endif
 endif
 
 #------------------------------------------------------------------------
@@ -109,10 +116,12 @@ DEP = $(OBJ:%.o=%.d)
 
 # Actual target of the binary - depends on all .o files.
 $(BIN_DIR)/$(BIN) : $(OBJ)
+ifndef USE_VCS
     # Create build directories - same structure as sources.
 	mkdir -p $(@D)
     # Just link all the object files.
-	$(CXX) $(CXX_FLAGS) -o $@ $^ $(LD_FLAGS)
+	$(CXX) -o $@ $^ $(LD_FLAGS)
+endif
 
 # Rule to compile files in O3_CPP_SRC to add -o3 optimization
 $(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp
@@ -137,7 +146,7 @@ $(BUILD_DIR)/%.o : %.cpp $(GEN_DB_DEPS)
 
 all: gen
 ifdef VL_DUT
-	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap lib$(PROJECTNAME)vl_s_wrap.a
+	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap vlwrap
 endif
 	$(MAKE) $(BIN_DIR)/$(BIN)
 

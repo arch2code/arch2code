@@ -89,6 +89,10 @@ SC_GEN_DOT_FILES = $(SC_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 SV_GEN_FILES =  $(call find_gen_sv_sources, $(REPO_ROOT)/rtl/ $(REPO_ROOT)/verif/vl_wrap) $(REPO_ROOT)/rtl/rtl.f
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
+ifndef SKIP_GEN
+GEN_DEPS = $(SC_GEN_DOT_FILES) $(SV_GEN_DOT_FILES)
+endif
+
 # C++ compilation global variables
 ifndef USE_GCC
   CXX=clang++
@@ -122,7 +126,8 @@ $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
 
 db : $(A2C_SQLDB_FILE)
 
-gen: $(SC_GEN_DOT_FILES) $(SV_GEN_DOT_FILES)
+
+gen: $(GEN_DEPS)
 
 newmodule: $(A2C_SQLDB_FILE)
 	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --newmodule
