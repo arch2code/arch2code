@@ -1206,7 +1206,7 @@ class projectOpen:
     # subBlocks will be referenced if in the set of instances
     # this would be easier in SQL..
     def getBlockData2(self, qualBlock):
-        blockDataSet = {'instances', 'subBlockInstances', 'registers', 'memories', 'ports', 'memoryConnections', 'registerConnections', 'regPorts', 'connections', 'connectionMaps', 'subBlocks', 'includeContext', 'addressDecode', 'variants'}
+        blockDataSet = {'ports', 'memoryConnections', 'registerConnections', 'regPorts', 'connections', 'connectionMaps', 'subBlocks', 'includeContext', 'addressDecode', 'variants'}
         ret = dict()
         # create some of the simple returns
         ret['includeFiles'] = self.config.getConfig('INCLUDEFILES')
@@ -1220,12 +1220,12 @@ class projectOpen:
         ret['addressDecode']['hasDecoder'] = False
         # assemble the instance information. This is the instances of the qualBlock and any contained instances
         self.getBDInstances(qualBlock, ret)
-        # get all the register information
-        self.getBDRegisters(qualBlock, ret)
-        # get all the memory information
-        self.getBDMemories(qualBlock, ret)
+        # get all the register and memory information
+        self.getBDRegistersMemories(qualBlock, ret)
         # based on memories and registers, do we need address decoding etc
         self.getDBAddressDecode(ret)
+        # address bus info
+        self.getBDAddressBus(ret)
         # memory connections
         self.getBDMemoryConnections(ret)
         # register connections
@@ -1234,19 +1234,20 @@ class projectOpen:
         self.getBDConnectionMaps(ret)
         # regular connections
         self.getBDConnections(ret)
+        self.getBDPorts(ret)
 
-        # address bus info
-        self.getBDAddressBus(ret)
         return ret
 
     def getBDInstances(self, qualBlock, ret):
         qualBlockInstances = dict()
         containedInstances = dict()
+        containerBlocks = dict()  # do we need?
         for k, v in self.data['instances'].items():
             if v.get('containerKey') == qualBlock:
                 containedInstances[k] = v
             if v.get('instanceTypeKey') == qualBlock:
                 qualBlockInstances[k] = v
+                containerBlocks[v['containerKey']] = 0
                 if v['variant'] != '':
                     filtered_variants_data = {k: v for k, v in self.data['parametersvariants'][qualBlock].items() if v.get('variant') == v['variant']}
                     ret['variants'][v['variant']] = filtered_variants_data
@@ -1255,23 +1256,31 @@ class projectOpen:
             exit(warningAndErrorReport())
         ret['instances'] = qualBlockInstances
         ret['subBlockInstances'] = containedInstances
+        ret['containerBlocks'] = containerBlocks
 
-    def getBDRegisters(self, qualBlock, ret):
-        for reg, regInfo in self.data['registers'].items():
-            if regInfo['blockKey'] == qualBlock:
-                ret['registers'][reg] = regInfo
-                ret['registers'][reg]['bytes'] = (self.data['structures'][regInfo['structureKey']]['width'] + 7) >> 3 # round up to whole byte
-                ret['temp']['structs'][regInfo['structureKey']] = 0
-                ret['addressDecode']['hasDecoder'] = True #register = AddressDecoder
-
-    def getBDMemories(self, qualBlock, ret):
-        for mem, memInfo in self.data['memories'].items():
-            if memInfo['blockKey'] == qualBlock:
-                ret['memories'][mem] = memInfo
-                ret['temp']['structs'][memInfo['structureKey']] = 0
-                ret['temp']['consts'][memInfo['wordLinesKey']] = 0
-                if memInfo['regAccess']:
-                    ret['addressDecode']['hasDecoder'] = True # we have memories that need FW access
+    def getBDRegistersMemories(self, qualBlock, ret):
+        # figure out which memories are either in this block or accessible through registers
+        block = qualBlock
+        regHandler = ret['blockInfo']['isRegHandler']
+        if regHandler:
+            # for a register handler the design objects are in the parent
+            qualifier = "Parent"
+            block = ret['instances'][next(iter(ret['instances']))]['containerKey'] # note there should be a 1:1 relationship for reg handler
+        for designObject in ['registers', 'memories']:
+            data = dict() 
+            for obj, objInfo in self.data[designObject].items():
+                if objInfo['blockKey'] == block:
+                    data[obj] = objInfo
+                    ret['temp']['structs'][objInfo['structureKey']] = 0
+                    # handle any object specific special cases
+                    if (designObject == 'memories'):
+                        ret['temp']['consts'][objInfo['wordLinesKey']] = 0
+                        if objInfo['regAccess']:
+                            ret['addressDecode']['hasDecoder'] = True # we have memories that need FW access
+                    else:
+                        data[obj]['bytes'] = (self.data['structures'][objInfo['structureKey']]['width'] + 7) >> 3 # round up to whole byte
+                        ret['addressDecode']['hasDecoder'] = True #register = AddressDecoder
+            ret[designObject+qualifier] = data
 
     def getDBAddressDecode(self, ret):
         # is this block a special apbDecode block type that performs abp bus routing
@@ -1342,21 +1351,42 @@ class projectOpen:
 
     # regular connections
     def getBDConnections(self, ret):
-        pass
+        # iterate through all the connections for the instances of interest
+        interfaces = dict()
+        ports = dict()
+        for inst in ret['instances']:
+            # loop through all the connections defined for this instance
+            for conn, connVal in self.connections[inst].items():
+                # assume interface uniqueness is based on portName
+                interface = connVal['interfaceKey'] + getPortName(connVal)
+                # add it for later iteration to calc superset
+                interfaces[interface] = None
 
+                if interface not in ports:
+                    ports[interface] = dict()
+                if inst not in ports[interface]:
+                    ports[interface][inst] = dict()
+                ports[interface][inst][conn] = connVal
+                if connVal['_context'] == '_global':
+                    # this is a generated interface
+                    if connVal['interface'] == ret['addressDecode']['registerBusInterface']:
+                        ret['addressDecode']['portName'] = connVal['portName']
+
+    def getBDPorts(self, ret):
+        pass
     def getBDAddressBus(self, ret):
         if ret['addressDecode']['isApbRouter'] or ret['addressDecode']['hasDecoder']:
-            # search for the interface definition in block ports
+            # search for the interface definition
             ret['addressDecode']['registerBusStructs'] = dict()
             addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
-            for apbIfPort in filter(lambda x: x['interfaceData']['interfaceType'] == 'apb', ret['ports'].values()):
-                for item in filter(lambda x: x['interface'] == addressConfig['RegisterBusInterface'], apbIfPort['interfaceData']['structures']):
-                    ret['addressDecode']['registerBusStructs'].update( { item['structureType'] : item['structure'] } )
-                    ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
-            # if we have found no register bus structs then report an error
-            if not ret['addressDecode']['registerBusStructs']:
-                printError(f"Register Bus Interface {addressConfig['RegisterBusInterface']} not found in ports of block {qualBlock}")
+            ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
+            interfaceInfo = [x for x in self.data['interfaces'].values() if x.get('interface') == addressConfig['RegisterBusInterface']]
+            if not interfaceInfo:
+                printError(f"Register Bus Interface {addressConfig['RegisterBusInterface']} from addressConfig does not match any yaml defined interface definitions. This is necessary to define what interface type is used for registers")
                 exit(warningAndErrorReport())
+            for regIf in interfaceInfo:
+                for item in regIf['structures']:
+                    ret['addressDecode']['registerBusStructs'].update( { item['structureType'] : item['structure'] } )
 
     def extractContext(self, structs, consts):
         ret = dict()

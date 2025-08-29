@@ -155,6 +155,37 @@ INTF_DEFS = {
             'multicycle_types' : []
         }
     },
+    'memory' : {
+        'parameters' : {
+            'addr_t' : { 'datatype' : 'struct', 'default' : 'bit' },
+            'data_t' : { 'datatype' : 'struct', 'default' : 'bit' }
+        },
+        'signals' : {
+            'paddr' : 'addr_t',
+            'psel' : 'bool',
+            'penable' : 'bool',
+            'pwrite' : 'bool',
+            'pwdata' : 'data_t',
+            'pready' : 'bool',
+            'prdata' : 'data_t',
+            'pslverr' : 'bool'
+        },
+        'modports' : {
+            'src' : {
+                'inputs' : ['pready', 'prdata', 'pslverr'],
+                'outputs': ['paddr', 'psel', 'penable', 'pwrite', 'pwdata']
+            },
+            'dst' : {
+                'inputs' : ['paddr', 'psel', 'penable', 'pwrite', 'pwdata'],
+                'outputs': ['pready', 'prdata', 'pslverr']
+            }
+        },
+        'sc_channel' : {
+            'type' : 'memory',
+            'param_cast' : None,
+            'multicycle_types' : []
+        }
+    },
     'notify_ack' : {
         'parameters' : {
         },
