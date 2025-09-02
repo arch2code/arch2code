@@ -12,8 +12,8 @@ axi4sDemo::axi4sDemo(sc_module_name blockName, const char * variant, blockBaseMo
         ,blockBase("axi4sDemo", name(), bbMode)
         ,axi4sDemoBase(name(), variant)
 // GENERATED_CODE_END
-// GENERATED_CODE_BEGIN --template=constructor --section=body
         ,axis4_t1_fifo("axis4_t1_fifo", 4)
+// GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

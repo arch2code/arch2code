@@ -10,3 +10,10 @@ EXTRA_LD_FLAGS     =
 EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 
 include $(A2C_ROOT)/include/make/a2c-systemc.mk
+
+run: $(BIN_DIR)/$(BIN)
+ifndef VL_DUT
+	$(BIN_DIR)/$(BIN) $(PROJECTNAME)
+else
+	$(BIN_DIR)/$(BIN) $(PROJECTNAME) --vlInst $(HDL_TOP_MODULE)
+endif

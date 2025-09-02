@@ -260,14 +260,18 @@ INTF_DEFS = {
            'tdata_t' : { 'datatype' : 'struct', 'default' : 'bit' },
            'tid_t' : { 'datatype' : 'struct', 'default' : 'bit' },
            'tdest_t' : { 'datatype' : 'struct', 'default' : 'bit' },
-           'tuser_t' : { 'datatype' : 'struct', 'default' : 'bit' }
+           'tuser_t' : { 'datatype' : 'struct', 'default' : 'bit' },
+        },
+        'hdlparams' : {
+            'tstrb_t' : { 'isEval' : True, 'datatype' : 'integer', 'value' : 'tdata_t.to_bytes()' },
+            'tkeep_t' : { 'isEval' : True, 'datatype' : 'integer', 'value' : 'tdata_t.to_bytes()' }
         },
         'signals' : {
             'tvalid' : 'bool',
             'tready' : 'bool',
             'tdata' : 'tdata_t',
-            'tstrb' : 'tdata_t',
-            'tkeep' : 'tdata_t',
+            'tstrb' : 'tstrb_t',
+            'tkeep' : 'tkeep_t',
             'tlast' : 'bool',
             'tid' : 'tid_t',
             'tdest' : 'tdest_t',

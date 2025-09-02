@@ -5,7 +5,7 @@ PROJECTNAME = axi4sDemo
 TB_TOP_MODULE = axi4s_tb
 HDL_TOP_MODULE = axi4sDemo
 
-SKIP_GEN=1
+#SKIP_GEN=1
 
 # # Anchor the actual project root to the shared makefile path location in the repository
 # # This allows the project to be built from any directory without needing to adjust paths.

@@ -59,8 +59,8 @@ public:
     axi_write_src_bfm<axiAddrSt, axiDataSt, axiStrobeSt, sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr1_bfm;
     axi_write_src_bfm<axiAddrSt, axiDataSt, axiStrobeSt, sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr2_bfm;
     axi_write_src_bfm<axiAddrSt, axiDataSt, axiStrobeSt, sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr3_bfm;
-    axi4_stream_src_bfm<axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>> axiStr0_bfm;
-    axi4_stream_src_bfm<axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>> axiStr1_bfm;
+    axi4_stream_src_bfm<axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<4>, sc_bv<4>> axiStr0_bfm;
+    axi4_stream_src_bfm<axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<4>, sc_bv<4>> axiStr1_bfm;
 
     SC_HAS_PROCESS (producer_hdl_sc_wrapper);
 
@@ -302,8 +302,8 @@ private:
     axi_write_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr1_hdl_if;
     axi_write_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr2_hdl_if;
     axi_write_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<4>> axiWr3_hdl_if;
-    axi4_stream_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>> axiStr0_hdl_if;
-    axi4_stream_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>> axiStr1_hdl_if;
+    axi4_stream_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<4>, sc_bv<4>> axiStr0_hdl_if;
+    axi4_stream_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<4>, sc_bv<4>> axiStr1_hdl_if;
 
     sc_signal<bool> rst_n;
 
