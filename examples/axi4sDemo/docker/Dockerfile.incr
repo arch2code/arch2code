@@ -1,0 +1,2 @@
+# This file is extending the a2c builder default Dockerfile
+# insert additional image recipe build steps specific to project below if needed

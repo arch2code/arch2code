@@ -91,6 +91,8 @@ SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
 ifndef SKIP_GEN
 GEN_DEPS = $(SC_GEN_DOT_FILES) $(SV_GEN_DOT_FILES)
+else
+$(warning "Forced skipping generation step (SKIP_GEN=1)")
 endif
 
 # C++ compilation global variables

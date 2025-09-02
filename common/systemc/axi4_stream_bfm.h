@@ -6,13 +6,13 @@
 #include "systemc.h"
 #include "axi4_stream_channel.h"
 
-template<typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TUSER_T>
+template<typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TUSER_T, typename VL_TSTRB_T, typename VL_TKEEP_T>
 struct axi4_stream_hdl_if: public sc_interface {
     sc_signal<bool> tvalid;
     sc_signal<bool> tready;
     sc_signal<VL_TDATA_T> tdata;
-    sc_signal<VL_TDATA_T> tstrb;
-    sc_signal<VL_TDATA_T> tkeep;
+    sc_signal<VL_TSTRB_T> tstrb;
+    sc_signal<VL_TKEEP_T> tkeep;
     sc_signal<bool> tlast;
     sc_signal<VL_TID_T> tid;
     sc_signal<VL_TDEST_T> tdest;
@@ -20,13 +20,13 @@ struct axi4_stream_hdl_if: public sc_interface {
 };
 
 template<typename TDATA_T, typename TID_T, typename TDEST_T, typename TUSER_T,
-    typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TUSER_T>
+typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TUSER_T, typename VL_TSTRB_T, typename VL_TKEEP_T>
 class axi4_stream_src_bfm: public sc_module {
 
 public:
 
     axi4_stream_out<TDATA_T, TID_T, TDEST_T, TUSER_T> if_p;
-    sc_port<axi4_stream_hdl_if<VL_TDATA_T, VL_TID_T, VL_TDEST_T, VL_TUSER_T>> hdl_if_p;
+    sc_port<axi4_stream_hdl_if<VL_TDATA_T, VL_TID_T, VL_TDEST_T, VL_TUSER_T, VL_TSTRB_T, VL_TKEEP_T>> hdl_if_p;
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
@@ -70,13 +70,13 @@ private:
 };
 
 template<typename TDATA_T, typename TID_T, typename TDEST_T, typename TUSER_T,
-    typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TUSER_T>
+typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TUSER_T, typename VL_TSTRB_T, typename VL_TKEEP_T>
 class axi4_stream_dst_bfm: public sc_module {
 
 public:
 
     axi4_stream_in<TDATA_T, TID_T, TDEST_T, TUSER_T> if_p;
-    sc_port<axi4_stream_hdl_if<VL_TDATA_T, VL_TID_T, VL_TDEST_T, VL_TUSER_T>> hdl_if_p;
+    sc_port<axi4_stream_hdl_if<VL_TDATA_T, VL_TID_T, VL_TDEST_T, VL_TUSER_T, VL_TSTRB_T, VL_TKEEP_T>> hdl_if_p;
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;

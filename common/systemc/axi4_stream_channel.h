@@ -21,16 +21,46 @@
 #include "simpleQueue.h"
 #include "axiCommon.h"
 
+typedef enum { Q_FALSE = 0x00, Q_TRUE = 0xff } axi4StreamByteQual_e;
+
+template <int W>
+struct axi4StreamByteQualT
+{
+    static_assert(W%8==0, "Bit width must be a multiple of 8");
+
+    static constexpr unsigned int _bitWidth = W;
+    static constexpr unsigned int _byteWidth = (_bitWidth + 7) / 8;
+
+    axi4StreamByteQualT() : Q{Q_FALSE} {}
+
+    // Provide indexed access to the underlying qualifiers
+    inline axi4StreamByteQual_e& operator[](unsigned int i) { return Q[i]; }
+    inline const axi4StreamByteQual_e& operator[](unsigned int i) const { return Q[i]; }
+
+    sc_bv<_byteWidth> sc_pack(void) const
+    {
+        sc_bv<_byteWidth> bv;
+        for (unsigned int i = 0; i < _byteWidth; i++) {
+            bv[i] = (Q[i] == Q_TRUE) ? 1 : 0;
+        }
+        return (bv);
+    }
+
+    void sc_unpack(const sc_bv<_byteWidth>& bv)
+    {
+        for (unsigned int i = 0; i < _byteWidth; i++) {
+            Q[i] = (bv[i] == 1) ? Q_TRUE : Q_FALSE;
+        }
+    }
+
+    private:
+    axi4StreamByteQual_e Q[_byteWidth];
+
+};
+
 template <typename TDATA, typename TID, typename TDEST, typename TUSER>
 struct axi4StreamInfoSt
 {
-    TDATA tdata;
-    TDATA tstrb;
-    TDATA tkeep;
-    TID   tid;
-    bool  tlast;
-    TDEST tdest;
-    TUSER tuser;
 
     static constexpr unsigned int tdataWidth = TDATA::_bitWidth;
     static constexpr unsigned int tstrbWidth = TDATA::_bitWidth;
@@ -46,11 +76,20 @@ struct axi4StreamInfoSt
 
     typedef uint64_t _packedSt[_packedSize];
 
+    TDATA tdata;
+    axi4StreamByteQualT<tstrbWidth> tstrb;
+    axi4StreamByteQualT<tkeepWidth> tkeep;
+    TID   tid;
+    bool  tlast;
+    TDEST tdest;
+    TUSER tuser;
+
     axi4StreamInfoSt() {};
 
     std::string prt(bool all=false) const
     {
         std::stringstream ss;
+        ss << std::format("tdata:{} tstrb:{} tkeep:{} tid:{} tlast:{} tdest:{} tuser:{}", tdata.prt(all), tstrb.sc_pack().to_string(), tkeep.sc_pack().to_string(), tid.prt(all), tlast, tdest.prt(all), tuser.prt(all));
         return(ss.str());
     }
 
@@ -64,6 +103,10 @@ struct axi4StreamInfoSt
         return( tdata.getStructValue() );
     }
 
+    inline friend ostream& operator << ( ostream& os,  axi4StreamInfoSt<TDATA, TID, TDEST, TUSER> const & v ) {
+        os << v.tdata << " " << v.tid << " " << v.tlast << " " << v.tdest << " " << v.tuser;
+        return os;
+    }
 };
 
 // sendInfo( T )
