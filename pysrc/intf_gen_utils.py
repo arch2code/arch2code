@@ -6,6 +6,16 @@ LEGACY_COMPAT_MODE = False
 
 from pysrc.interfaces_defs import INTF_DEFS
 
+class intfEvalDSL:
+
+    def __init__(self, prj_data, struct_key):
+        self.prj_data = prj_data
+        self.struct_key = struct_key
+
+    def to_bytes(self):
+        w = get_struct_width(self.struct_key, self.prj_data['structures'])
+        return w // 8 + (1 if w % 8 != 0 else 0)
+
 def sv_gen_modport_signal_blast(port_data, prj_data, swap_dir=False):
     out = {}
 
@@ -14,6 +24,7 @@ def sv_gen_modport_signal_blast(port_data, prj_data, swap_dir=False):
     intf_name = port_data['name']
     intf_modp = port_data['direction']
     intf_param = dict()
+    hdl_param = dict()
 
     assert(intf_type in INTF_DEFS and
            intf_modp in INTF_DEFS[intf_type]['modports'])
@@ -30,6 +41,16 @@ def sv_gen_modport_signal_blast(port_data, prj_data, swap_dir=False):
         struct_data = list(filter(lambda item: item['structureType'] == param, intf_data['structures']))
         assert(len(struct_data) == 1); # expecting one exact match
         intf_param[param] = struct_data[0]
+
+    for param in intf_def.get('hdlparams', {}):
+        assert(intf_def['hdlparams'][param]['datatype'] in ['integer'])
+        if intf_def['hdlparams'][param]['isEval']:
+            key, data = intf_def['hdlparams'][param]['value'].split('.')
+            if key in intf_param:
+                data_obj = intfEvalDSL(prj_data, intf_param[key]['structureKey'])
+                eval_str = 'data_obj{}'.format('.' + data)
+                hdl_param[param] = eval(eval_str)
+                assert(isinstance(hdl_param[param], int))
 
     # Interface parameters declaration
     parameters_decl = ', '.join([".{}({})".format(param, intf_param[param]['structure']) for param in intf_def['parameters']])
@@ -50,6 +71,9 @@ def sv_gen_modport_signal_blast(port_data, prj_data, swap_dir=False):
         port_name = f"{intf_name}_{intf_sig}"
         if port_type in intf_param.keys():
             w = get_struct_width(intf_param[port_type]['structureKey'], prj_data['structures'])
+            port_type = 'bit' if w == 1 else f"bit [{w-1}:0]"
+        elif port_type in hdl_param.keys():
+            w = hdl_param[port_type]
             port_type = 'bit' if w == 1 else f"bit [{w-1}:0]"
         elif port_type == 'bool':
             port_type = 'bit'
@@ -126,6 +150,18 @@ def sc_gen_modport_signal_blast(port_data, prj, swap_dir=False):
         w = get_struct_width(intf_param[param]['structureKey'], prj.data['structures'])
         sc_bv_type = 'bool' if w == 1 else f"sc_bv<{w}>"
         hdl_if_bv_types.append(sc_bv_type)
+
+    for param in intf_def.get('hdlparams', {}):
+        assert(intf_def['hdlparams'][param]['datatype'] in ['integer'])
+        if intf_def['hdlparams'][param]['isEval']:
+            key, data = intf_def['hdlparams'][param]['value'].split('.')
+            if key in intf_param:
+                data_obj = intfEvalDSL(prj.data, intf_param[key]['structureKey'])
+                eval_str = 'data_obj{}'.format('.' + data)
+                w = eval(eval_str)
+                assert(isinstance(w, int))
+                sc_bv_type = 'bool' if w == 1 else f"sc_bv<{w}>"
+                hdl_if_bv_types.append(sc_bv_type)
 
     hdl_if_params = ', '.join(hdl_if_bv_types)
 

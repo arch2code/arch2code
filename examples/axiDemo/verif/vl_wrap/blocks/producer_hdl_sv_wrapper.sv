@@ -144,6 +144,28 @@ module producer_hdl_sv_wrapper
     input bit axiWr3_bvalid,
     output bit axiWr3_bready,
 
+    // axi4_stream_if.src
+    output bit axiStr0_tvalid,
+    input bit axiStr0_tready,
+    output bit [31:0] axiStr0_tdata,
+    output bit [3:0] axiStr0_tstrb,
+    output bit [3:0] axiStr0_tkeep,
+    output bit axiStr0_tlast,
+    output bit [31:0] axiStr0_tid,
+    output bit [31:0] axiStr0_tdest,
+    output bit [31:0] axiStr0_tuser,
+
+    // axi4_stream_if.src
+    output bit axiStr1_tvalid,
+    input bit axiStr1_tready,
+    output bit [31:0] axiStr1_tdata,
+    output bit [3:0] axiStr1_tstrb,
+    output bit [3:0] axiStr1_tkeep,
+    output bit axiStr1_tlast,
+    output bit [31:0] axiStr1_tid,
+    output bit [31:0] axiStr1_tdest,
+    output bit [31:0] axiStr1_tuser,
+
     input clk,
     input rst_n
 );
@@ -299,6 +321,32 @@ module producer_hdl_sv_wrapper
     assign #0 axiWr3.bvalid = axiWr3_bvalid;
     assign #0 axiWr3_bready = axiWr3.bready;
 
+    // axi4_stream_if.src
+    axi4_stream_if #(.tdata_t(axiDataSt), .tid_t(axiAddrSt), .tdest_t(axiAddrSt), .tuser_t(axiAddrSt)) axiStr0();
+
+    assign #0 axiStr0_tvalid = axiStr0.tvalid;
+    assign #0 axiStr0.tready = axiStr0_tready;
+    assign #0 axiStr0_tdata = axiStr0.tdata;
+    assign #0 axiStr0_tstrb = axiStr0.tstrb;
+    assign #0 axiStr0_tkeep = axiStr0.tkeep;
+    assign #0 axiStr0_tlast = axiStr0.tlast;
+    assign #0 axiStr0_tid = axiStr0.tid;
+    assign #0 axiStr0_tdest = axiStr0.tdest;
+    assign #0 axiStr0_tuser = axiStr0.tuser;
+
+    // axi4_stream_if.src
+    axi4_stream_if #(.tdata_t(axiDataSt), .tid_t(axiAddrSt), .tdest_t(axiAddrSt), .tuser_t(axiAddrSt)) axiStr1();
+
+    assign #0 axiStr1_tvalid = axiStr1.tvalid;
+    assign #0 axiStr1.tready = axiStr1_tready;
+    assign #0 axiStr1_tdata = axiStr1.tdata;
+    assign #0 axiStr1_tstrb = axiStr1.tstrb;
+    assign #0 axiStr1_tkeep = axiStr1.tkeep;
+    assign #0 axiStr1_tlast = axiStr1.tlast;
+    assign #0 axiStr1_tid = axiStr1.tid;
+    assign #0 axiStr1_tdest = axiStr1.tdest;
+    assign #0 axiStr1_tuser = axiStr1.tuser;
+
     producer dut (
         .axiRd0(axiRd0), // axi_read_if.src
         .axiRd1(axiRd1), // axi_read_if.src
@@ -308,6 +356,8 @@ module producer_hdl_sv_wrapper
         .axiWr1(axiWr1), // axi_write_if.src
         .axiWr2(axiWr2), // axi_write_if.src
         .axiWr3(axiWr3), // axi_write_if.src
+        .axiStr0(axiStr0), // axi4_stream_if.src
+        .axiStr1(axiStr1), // axi4_stream_if.src
         .clk(clk),
         .rst_n(rst_n)
     );

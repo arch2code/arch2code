@@ -1,0 +1,8 @@
+
+blocks:
+  axi4sDemo:
+    desc: Module Top
+    hasVl: true
+    hasRtl: true
+    hasMdl: true
+    hasTb: true

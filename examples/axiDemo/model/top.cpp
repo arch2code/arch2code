@@ -24,6 +24,8 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
         ,axiWr1("consumer_axiWr1", "producer", "api_list_size", 256, "")
         ,axiWr2("consumer_axiWr2", "producer", "api_list_size", 256, "")
         ,axiWr3("consumer_axiWr3", "producer", "api_list_size", 256, "")
+        ,axiStr0("consumer_axiStr0", "producer", "api_list_size", 256, "")
+        ,axiStr1("consumer_axiStr1", "producer", "api_list_size", 256, "")
         ,uProducer(std::dynamic_pointer_cast<producerBase>( instanceFactory::createInstance(name(), "uProducer", "producer", "")))
         ,uConsumer(std::dynamic_pointer_cast<consumerBase>( instanceFactory::createInstance(name(), "uConsumer", "consumer", "")))
 // GENERATED_CODE_END
@@ -46,6 +48,10 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     uConsumer->axiWr2(axiWr2);
     uProducer->axiWr3(axiWr3);
     uConsumer->axiWr3(axiWr3);
+    uProducer->axiStr0(axiStr0);
+    uConsumer->axiStr0(axiStr0);
+    uProducer->axiStr1(axiStr1);
+    uConsumer->axiStr1(axiStr1);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 
