@@ -22,14 +22,19 @@ axi4s_s_drv::axi4s_s_drv(sc_module_name blockName, const char * variant, blockBa
 void axi4s_s_drv::axis4_t2_driver_thread()
 {
     int unsigned num_frames = 0;
+    int unsigned num_data = 0;
     m_eot.registerVoter();
     while (true) {
         // Pop from send fifo
         t2_info_t info;
         axis4_t2->receiveInfo(info);
+        Q_ASSERT(check_parity_t2(info.tdata.data, info.tuser.parity), "Parity mismatch");
+        num_data++;
         if(info.tlast) {
             num_frames++;
             log_.logPrint(std::format("Frame {} received", num_frames), LOG_ALWAYS);
+            Q_ASSERT(num_data==4096, std::format("Frame length mismatch expected ({})", num_data));
+            num_data = 0;
         }
         wait(SC_ZERO_TIME); // allow other threads to run
         if(num_frames==4) break;

@@ -21,6 +21,7 @@ axi4s_m_drv::axi4s_m_drv(sc_module_name blockName, const char * variant, blockBa
 
 void axi4s_m_drv::axis4_t1_driver_thread()
 {
+    wait(10, SC_NS); // FIXME Force wait for 10 ns before starting
     while (true) {
         for (int i = 0; i < 1024; i++) {
             // cast frame[i].tdata.data to uint8_t*
@@ -32,19 +33,10 @@ void axi4s_m_drv::axis4_t1_driver_thread()
             }
             frame[i].tdest.tid = 0x3;
             frame[i].tid.tid = 0x4;
-            frame[i].tuser.parity = calc_parity(frame[i].tdata.data);
+            frame[i].tuser.parity = calc_parity_t1(frame[i].tdata.data);
             frame[i].tlast = (i==1023) ? true : false;
             axis4_t1->sendInfo(frame[i]);
             wait(SC_ZERO_TIME); // allow other threads to run
         }
     }
-}
-
-bv16_t axi4s_m_drv::calc_parity(bv256_t data)
-{
-    bv16_t parity = 0;
-    for (int i = 0; i < 32; i++) {
-        parity ^= data.word[i];
-    }
-    return(parity);
 }

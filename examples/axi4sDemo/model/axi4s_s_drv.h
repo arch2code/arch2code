@@ -5,6 +5,7 @@
 
 #include "systemc.h"
 #include "endOfTest.h"
+#include "axi4sDemo_utils.h"
 
 // GENERATED_CODE_PARAM --block=axi4s_s_drv
 // GENERATED_CODE_BEGIN --template=classDecl

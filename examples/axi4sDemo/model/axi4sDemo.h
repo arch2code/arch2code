@@ -4,6 +4,7 @@
 //
 
 #include "systemc.h"
+#include "axi4sDemo_utils.h"
 
 // GENERATED_CODE_PARAM --block=axi4sDemo
 // GENERATED_CODE_BEGIN --template=classDecl
@@ -43,8 +44,6 @@ public:
     typedef axi4StreamInfoSt<data_t2_t, tid_t2_t, tdest_t2_t, tuser_t2_t> axis4_t2_info_t;
 
     sc_fifo<axis4_t1_info_t> axis4_t1_fifo;
-
-    bv4_t calc_t2_parity(bv64_t data);
 
 };
 

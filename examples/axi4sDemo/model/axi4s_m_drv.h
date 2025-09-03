@@ -4,6 +4,7 @@
 //
 
 #include "systemc.h"
+#include "axi4sDemo_utils.h"
 
 // GENERATED_CODE_PARAM --block=axi4s_m_drv
 // GENERATED_CODE_BEGIN --template=classDecl
@@ -39,8 +40,6 @@ public:
     typedef axi4StreamInfoSt<data_t1_t, tid_t1_t, tdest_t1_t, tuser_t1_t> t1_info_t;
 
     void axis4_t1_driver_thread();
-
-    bv16_t calc_parity(bv256_t data);
 
     typedef t1_info_t t1_frame_t [1024];
 

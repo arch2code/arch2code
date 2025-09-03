@@ -29,6 +29,8 @@ void axi4sDemo::axis4_t1_listener_thread()
         // Push to receive fifo
         axis4_t1_info_t info;
         axis4_t1->receiveInfo(info);
+        // Check Parity
+        Q_ASSERT(check_parity_t1(info.tdata.data, info.tuser.parity), "Parity mismatch");
         axis4_t1_fifo.write(info);
         wait(SC_ZERO_TIME); // allow other threads to run
     }
@@ -37,33 +39,24 @@ void axi4sDemo::axis4_t1_listener_thread()
 void axi4sDemo::axis4_t2_driver_thread()
 {
     while (true) {
-        axis4_t1_info_t us_info;
-        axis4_t2_info_t ds_info;
-        us_info = axis4_t1_fifo.read();
+        axis4_t1_info_t t1_info;
+        axis4_t2_info_t t2_info;
+        t1_info = axis4_t1_fifo.read();
 
         // Split the transaction based on downsize ratio between upstream and downstream
         for(int i=0; i<4; i++) {
             for(int j=0; j<8; j++) {
-                ds_info.tdata.data = us_info.tdata.data.word[i];
-                ds_info.tstrb[j] = us_info.tstrb[i*8 + j];
-                ds_info.tkeep[j] = us_info.tkeep[i*8 + j];
+                t2_info.tdata.data = t1_info.tdata.data.word[i];
+                t2_info.tstrb[j] = t1_info.tstrb[i*8 + j];
+                t2_info.tkeep[j] = t1_info.tkeep[i*8 + j];
             }
-            ds_info.tuser.parity = calc_t2_parity(ds_info.tdata.data);
-            ds_info.tid.tid = us_info.tid.tid;
-            ds_info.tdest.tid = us_info.tdest.tid;
-            ds_info.tlast = (i==3) ? us_info.tlast : false;
-            axis4_t2->sendInfo(ds_info);
+            t2_info.tuser.parity = calc_parity_t2(t2_info.tdata.data);
+            t2_info.tid.tid = t1_info.tid.tid;
+            t2_info.tdest.tid = t1_info.tdest.tid;
+            t2_info.tlast = (i==3) ? t1_info.tlast : false;
+            axis4_t2->sendInfo(t2_info);
             wait(SC_ZERO_TIME);
         }
 
     }
-}
-
-bv4_t axi4sDemo::calc_t2_parity(bv64_t data)
-{
-    bv4_t parity = 0;
-    for(int i=0; i<64; i++) {
-        parity ^= (data >> i) & 0x7;
-    }
-    return(parity);
 }
