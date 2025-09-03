@@ -52,20 +52,6 @@ import axi4sDemo_tb_package::*;
     logic [$clog2((RATIO>0)?RATIO:1):0] chunk_idx;     // current chunk index
     logic [$clog2((RATIO>0)?RATIO:1):0] chunks_total;  // number of chunks to emit for this input beat (1..RATIO)
 
-    // Helper: count contiguous valid bytes from LSB in TKEEP for last beat
-    function automatic int unsigned count_valid_bytes(input logic [SRC_BYTES-1:0] k, input logic last);
-        int unsigned c;
-        int i;
-        if (!last) return SRC_BYTES;
-        c = 0;
-        for (i = 0; i < SRC_BYTES; i++) begin
-            if (k[i]) c++; else break;
-        end
-        // Fallback in case of malformed last-beat keep (should not happen per AXI4-Stream)
-        if (c == 0) c = SRC_BYTES;
-        return c;
-    endfunction
-
     // Ready to accept a new input beat only when not currently holding one
     assign axis4_t1.tready = !have_word;
 
@@ -109,9 +95,6 @@ import axi4sDemo_tb_package::*;
         end else begin
             // Accept a new input beat when ready
             if (in_fire) begin
-                int unsigned vb;
-                int unsigned ct;
-
                 data_reg  <= axis4_t1.tdata;
                 keep_reg  <= axis4_t1.tkeep;
                 strb_reg  <= axis4_t1.tstrb;
@@ -122,11 +105,8 @@ import axi4sDemo_tb_package::*;
 
                 assert(check_parity_t1(axis4_t1.tdata, axis4_t1.tuser.parity)) else $error("axi4sDemo: Input parity error on tdata/tuser");
 
-                // Determine how many output chunks to send for this beat
-                vb = count_valid_bytes(axis4_t1.tkeep, axis4_t1.tlast);
-                ct = (vb + DST_BYTES - 1) / DST_BYTES; // ceil division
-                if (ct == 0) ct = 1; // safety
-                chunks_total <= ct[$bits(chunks_total)-1:0];
+                // Always emit all RATIO chunks (256 -> 64 => 4 chunks)
+                chunks_total <= RATIO[$bits(chunks_total)-1:0];
 
                 chunk_idx  <= '0;
                 have_word  <= 1'b1;
@@ -136,8 +116,8 @@ import axi4sDemo_tb_package::*;
                     chunk_idx <= chunk_idx + 1;
                 end else begin
                     // Finished all chunks for this word
-                    have_word  <= 1'b0;
-                    chunk_idx  <= '0;
+                    have_word    <= 1'b0;
+                    chunk_idx    <= '0;
                     chunks_total <= '0;
                 end
             end
