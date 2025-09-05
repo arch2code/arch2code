@@ -15,8 +15,8 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-#define CSIZE                            2  // The size of C
-#define CSIZE_PLUS                       3  // The size of C plus 1
+const int CSIZE = 2;  // The size of C
+const int CSIZE_PLUS = 3;  // The size of C plus 1
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 

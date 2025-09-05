@@ -16,12 +16,17 @@ def render(args, prj, data):
     # Now put in everything at this context level
     # Generate constants as localparam[s]
     for unusedKey, value in data['constants'].items():
-        if value['value'] > 0xFFFFFFFF:
-            out += f"//         {value['constant']} = {' '*value['valueSpaces']}   'd{value['value']};  // {value['desc']}\n"
-            out += f"localparam {value['constant']} = {' '*value['valueSpaces']} 64'h{value['value']:019_X};  // {value['desc']}\n"
-        else:
-            out += f"//         {value['constant']} = {' '*value['valueSpaces']}   'd{value['value']};  // {value['desc']}\n"
-            out += f"localparam {value['constant']} = {' '*value['valueSpaces']} 32'h{value['value']:09_X};  // {value['desc']}\n"
+        match value['valueType']:
+            case 'int':
+                type_str = 'int'
+                value_str = f"32'h{value['value']:09_X}"
+            case 'long':
+                type_str = 'longint'
+                value_str = f"64'h{value['value']:019_X}"
+            case 'double':
+                type_str = 'real'
+                value_str = f"{value['value']}"
+        out += f"localparam {type_str} {value['constant']} = {value_str};  // {value['desc']}\n"
     # Generate types
     out += f"\n// types\n"
     for unusedKey, value in data['types'].items():

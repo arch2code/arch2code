@@ -13,10 +13,10 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-#define ASIZE                            1  // The size of A
-#define ASIZE2                           2  // The size of A+1
-#define BIGE33                  8589934591  // Test constant for numbers slightly bigger than 32 bits
-#define BIGE53           18014398509481983  // Test constant for numbers slightly bigger than 32 bits
+const int ASIZE = 1;  // The size of A
+const int ASIZE2 = 2;  // The size of A+1
+const long BIGE33 = 0X1FFFFFFFFL;  // Test constant for numbers slightly bigger than 32 bits
+const long BIGE53 = 0X3FFFFFFFFFFFFFL;  // Test constant for numbers slightly bigger than 32 bits
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 

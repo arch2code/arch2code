@@ -26,7 +26,14 @@ def includeConstants(args, prj, data):
     out.append("//constants\n")
 
     for const, value in data['constants'].items():
-        out.append(f"#define { value['constant'] } { ' '*value['valueSpaces'] } { value['value'] }  // {value['desc']}\n")
+        match value['valueType']:
+            case 'int':
+                value_str = f"{value['value']}"
+            case 'long':
+                value_str = f"{hex(value['value']).upper()}L"
+            case 'double':
+                value_str = f"{value['value']}"
+        out.append(f"const {value['valueType']} { value['constant'] } = { value_str };  // {value['desc']}\n")
 
     return("".join(out))
 

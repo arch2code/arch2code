@@ -4,10 +4,8 @@ package hierInclude_package;
 // Generated Import package statement(s)
 import hierIncludeNestedTop_package::*;
 import hierIncludeTop_package::*;
-//         ASIZE =                              'd7;  // The size of A
-localparam ASIZE =                            32'h0000_0007;  // The size of A
-//         ASIZE2 =                            'd11;  // The size of A + included constant another size
-localparam ASIZE2 =                          32'h0000_000B;  // The size of A + included constant another size
+localparam int ASIZE = 32'h0000_0007;  // The size of A
+localparam int ASIZE2 = 32'h0000_000B;  // The size of A + included constant another size
 
 // types
 typedef logic[7-1:0] aSizeT; //type of width ASIZE sizing from constant ASIZE

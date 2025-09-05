@@ -18,20 +18,20 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-#define ASIZE                            1  // The size of A
-#define ASIZE2                           2  // The size of A+1
-#define BIGE33                  8589934591  // Test constant for numbers slightly bigger than 32 bits
-#define BIGE53           18014398509481983  // Test constant for numbers slightly bigger than 32 bits
-#define YUGE           9223372036854775807  // Test constant for numbers of 63 bits
-#define DWORD                           32  // size of a double word
-#define DWORD_LOG2                       6  // size of a double word log2
-#define BOB0                            16  // Memory size for instance 0
-#define BOB1                            15  // Memory size for instance 1
-#define OPCODEABASE_READ                 0  // base value for Read command
-#define OPCODEABASE_WRITE               64  // base value for Write command
-#define OPCODEABASE_WAIT               128  // base value for Wait command
-#define OPCODEABASE_EVICT              192  // base value for Evict command
-#define OPCODEABASE_TRIM               256  // base value for Trim command
+const int ASIZE = 1;  // The size of A
+const int ASIZE2 = 2;  // The size of A+1
+const long BIGE33 = 0X1FFFFFFFFL;  // Test constant for numbers slightly bigger than 32 bits
+const long BIGE53 = 0X3FFFFFFFFFFFFFL;  // Test constant for numbers slightly bigger than 32 bits
+const long YUGE = 0X7FFFFFFFFFFFFFFFL;  // Test constant for numbers of 63 bits
+const int DWORD = 32;  // size of a double word
+const int DWORD_LOG2 = 6;  // size of a double word log2
+const int BOB0 = 16;  // Memory size for instance 0
+const int BOB1 = 15;  // Memory size for instance 1
+const int OPCODEABASE_READ = 0;  // base value for Read command
+const int OPCODEABASE_WRITE = 64;  // base value for Write command
+const int OPCODEABASE_WAIT = 128;  // base value for Wait command
+const int OPCODEABASE_EVICT = 192;  // base value for Evict command
+const int OPCODEABASE_TRIM = 256;  // base value for Trim command
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 

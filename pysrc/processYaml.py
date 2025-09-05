@@ -769,9 +769,16 @@ class projectOpen:
                             ret[object][key] = value
                     if object=='constants':
                         ret[object][key] = value
-                        valLen = len(str(value["value"]))
-                        constLen = len(str(value["constant"]))
-                        ret[object][key]['valueSpaces']   = max(0, 32-constLen-valLen)
+                        if isinstance(value["value"], int):
+                            if abs(value["value"]) <= 0xFFFFFFFF:
+                                ret[object][key]['valueType'] = 'int'
+                            else:
+                                ret[object][key]['valueType'] = 'long'
+                        elif isinstance(value["value"], float):
+                                ret[object][key]['valueType'] = 'double'
+                        else:
+                            printError(f"Invalid constant type for {key}")
+                            exit(warningAndErrorReport())
                     if object=='types':
                         if value['enum']:
                             enums[key] = value

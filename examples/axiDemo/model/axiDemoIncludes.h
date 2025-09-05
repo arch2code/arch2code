@@ -14,9 +14,9 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-#define AXI_ADDRESS_WIDTH               32  // The width of the AXI address busses
-#define AXI_DATA_WIDTH                  32  // The width of the AXI data busses
-#define AXI_STROBE_WIDTH                 4  // The width of the AXI strobe signals
+const int AXI_ADDRESS_WIDTH = 32;  // The width of the AXI address busses
+const int AXI_DATA_WIDTH = 32;  // The width of the AXI data busses
+const int AXI_STROBE_WIDTH = 4;  // The width of the AXI strobe signals
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 

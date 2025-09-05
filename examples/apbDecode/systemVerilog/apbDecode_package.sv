@@ -3,20 +3,13 @@
 // GENERATED_CODE_PARAM --context=apbDecode.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package apbDecode_package;
-//         ASIZE =                             'd29;  // The size of A
-localparam ASIZE =                           32'h0000_001D;  // The size of A
-//         DWORD =                             'd32;  // size of a double word
-localparam DWORD =                           32'h0000_0020;  // size of a double word
-//         MEMORYA_WORDS =                     'd19;  // Address wordlines for memory A
-localparam MEMORYA_WORDS =                   32'h0000_0013;  // Address wordlines for memory A
-//         MEMORYA_WORDS_LOG2 =                 'd5;  // Address wordlines for memory A log2
-localparam MEMORYA_WORDS_LOG2 =               32'h0000_0005;  // Address wordlines for memory A log2
-//         MEMORYA_WIDTH =                     'd63;  // Bit width of content for memory A, more than 32, less than 64
-localparam MEMORYA_WIDTH =                   32'h0000_003F;  // Bit width of content for memory A, more than 32, less than 64
-//         MEMORYB_WORDS =                     'd21;  // Address wordlines for memory B
-localparam MEMORYB_WORDS =                   32'h0000_0015;  // Address wordlines for memory B
-//         MEMORYB_WORDS_LOG2 =                 'd5;  // Address wordlines for memory B log2
-localparam MEMORYB_WORDS_LOG2 =               32'h0000_0005;  // Address wordlines for memory B log2
+localparam int ASIZE = 32'h0000_001D;  // The size of A
+localparam int DWORD = 32'h0000_0020;  // size of a double word
+localparam int MEMORYA_WORDS = 32'h0000_0013;  // Address wordlines for memory A
+localparam int MEMORYA_WORDS_LOG2 = 32'h0000_0005;  // Address wordlines for memory A log2
+localparam int MEMORYA_WIDTH = 32'h0000_003F;  // Bit width of content for memory A, more than 32, less than 64
+localparam int MEMORYB_WORDS = 32'h0000_0015;  // Address wordlines for memory B
+localparam int MEMORYB_WORDS_LOG2 = 32'h0000_0005;  // Address wordlines for memory B log2
 
 // types
 typedef logic[37-1:0] thirtySevenBitT; //Used as a thirty seven bit register structure

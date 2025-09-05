@@ -15,13 +15,13 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-#define ASIZE                           29  // The size of A
-#define DWORD                           32  // size of a double word
-#define MEMORYA_WORDS                   19  // Address wordlines for memory A
-#define MEMORYA_WORDS_LOG2               5  // Address wordlines for memory A log2
-#define MEMORYA_WIDTH                   63  // Bit width of content for memory A, more than 32, less than 64
-#define MEMORYB_WORDS                   21  // Address wordlines for memory B
-#define MEMORYB_WORDS_LOG2               5  // Address wordlines for memory B log2
+const int ASIZE = 29;  // The size of A
+const int DWORD = 32;  // size of a double word
+const int MEMORYA_WORDS = 19;  // Address wordlines for memory A
+const int MEMORYA_WORDS_LOG2 = 5;  // Address wordlines for memory A log2
+const int MEMORYA_WIDTH = 63;  // Bit width of content for memory A, more than 32, less than 64
+const int MEMORYB_WORDS = 21;  // Address wordlines for memory B
+const int MEMORYB_WORDS_LOG2 = 5;  // Address wordlines for memory B log2
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 
