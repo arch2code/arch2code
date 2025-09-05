@@ -14,8 +14,8 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-#define DSIZE                            1  // The size of D
-#define DSIZE2                           2  // The size of D2
+const uint32_t DSIZE = 1;  // The size of D
+const uint32_t DSIZE2 = 2;  // The size of D2
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 

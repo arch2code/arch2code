@@ -3,14 +3,10 @@
 // GENERATED_CODE_PARAM --context=inAndOut.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package inAndOut_package;
-//         ASIZE =                              'd1;  // The size of A
-localparam ASIZE =                            32'h0000_0001;  // The size of A
-//         ASIZE2 =                             'd2;  // The size of A+1
-localparam ASIZE2 =                           32'h0000_0002;  // The size of A+1
-//         BIGE33 =                    'd8589934591;  // Test constant for numbers slightly bigger than 32 bits
-localparam BIGE33 =                  64'h0000_0001_FFFF_FFFF;  // Test constant for numbers slightly bigger than 32 bits
-//         BIGE53 =             'd18014398509481983;  // Test constant for numbers slightly bigger than 32 bits
-localparam BIGE53 =           64'h003F_FFFF_FFFF_FFFF;  // Test constant for numbers slightly bigger than 32 bits
+localparam int unsigned ASIZE = 32'h0000_0001;  // The size of A
+localparam int unsigned ASIZE2 = 32'h0000_0002;  // The size of A+1
+localparam longint unsigned BIGE33 = 64'h0000_0001_FFFF_FFFF;  // Test constant for numbers slightly bigger than 32 bits
+localparam longint unsigned BIGE53 = 64'h003F_FFFF_FFFF_FFFF;  // Test constant for numbers slightly bigger than 32 bits
 
 // types
 typedef logic[2-1:0] twoBitT; //this is a 2 bit type

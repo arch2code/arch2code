@@ -13,10 +13,10 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-#define ASIZE                            1  // The size of A
-#define ASIZE2                           2  // The size of A+1
-#define BIGE33                  8589934591  // Test constant for numbers slightly bigger than 32 bits
-#define BIGE53           18014398509481983  // Test constant for numbers slightly bigger than 32 bits
+const uint32_t ASIZE = 1;  // The size of A
+const uint32_t ASIZE2 = 2;  // The size of A+1
+const uint64_t BIGE33 = 0X1FFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
+const uint64_t BIGE53 = 0X3FFFFFFFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 
@@ -57,7 +57,7 @@ struct aSt {
     typedef uint8_t _packedSt;
     bool operator == (const aSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const aSt & v, const std::string & NAME ) {
-        for(int i=0; i<ASIZE2; i++) {
+        for(unsigned int i=0; i<ASIZE2; i++) {
             sc_trace(tf,v.variablea[i], NAME + ".variablea[i]");
         }
     }
@@ -228,7 +228,7 @@ struct eNestedSt {
     inline friend void sc_trace(sc_trace_file *tf, const eNestedSt & v, const std::string & NAME ) {
         sc_trace(tf,v.variablea, NAME + ".variablea");
         sc_trace(tf,v.bob, NAME + ".bob");
-        for(int i=0; i<2; i++) {
+        for(unsigned int i=0; i<2; i++) {
             sc_trace(tf,v.joe[i], NAME + ".joe[i]");
         }
     }

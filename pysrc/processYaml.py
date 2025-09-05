@@ -769,9 +769,17 @@ class projectOpen:
                             ret[object][key] = value
                     if object=='constants':
                         ret[object][key] = value
-                        valLen = len(str(value["value"]))
-                        constLen = len(str(value["constant"]))
-                        ret[object][key]['valueSpaces']   = max(0, 32-constLen-valLen)
+                        if isinstance(value["value"], int):
+                            isSigned = value["value"] < 0
+                            if not isSigned and abs(value["value"]) <= 0xFFFFFFFF:
+                                ret[object][key]['valueType'] = 'uint32_t'
+                            elif isSigned and abs(value["value"]) <= 0x7FFFFFFF:
+                                ret[object][key]['valueType'] = 'int32_t'
+                            else:
+                                ret[object][key]['valueType'] = 'int64_t' if isSigned else 'uint64_t'
+                        else:
+                            printError(f"Invalid constant type for {key}")
+                            exit(warningAndErrorReport())
                     if object=='types':
                         if value['enum']:
                             enums[key] = value
