@@ -309,7 +309,7 @@ def equalTest(handle, args, structName, vars, indent):
             #myArray= ''
             myArrayLoopIndex= ''
         if vardata['isArray']:
-            out.append(f"{indent}for(int i=0; i<{vardata['arraySize']}; i++) {{\n")
+            out.append(f"{indent}for(unsigned int i=0; i<{vardata['arraySize']}; i++) {{\n")
             indent += ' '*4
 
         if vardata['bitwidth'] <= 64 or vardata['generator'] == 'datapath' or vardata['entryType'] == 'NamedStruct':
@@ -346,7 +346,7 @@ def scTrace(handle, args, structName, vars, indent):
             #myArray= ''
             myArrayLoopIndex= ''
         if vardata['isArray']:
-            out.append(f"{indent}for(int i=0; i<{vardata['arraySize']}; i++) {{\n")
+            out.append(f"{indent}for(unsigned int i=0; i<{vardata['arraySize']}; i++) {{\n")
             indent += ' '*4
 
         if vardata['bitwidth'] <= 64 or vardata['generator'] == 'datapath' or vardata['entryType'] == 'NamedStruct':
@@ -586,7 +586,7 @@ def sc_pack(handle, args, vars, indent):
         high = low + data['arraywidth'] - 1
         if data['generator'] == 'datapath':
             num_bytes = int(data['bitwidth'] / 8)
-            out.append(f'{indent}for(int unsigned bsl=0; bsl<{num_bytes}; bsl++) {{\n')
+            out.append(f'{indent}for(unsigned int bsl=0; bsl<{num_bytes}; bsl++) {{\n')
             rng_high, rng_low  = f"{low}+bsl*8+7", f"{low}+bsl*8"
             indent += ' '*4
             out.append(f'{indent}packed_data.range({rng_high}, {rng_low}) = {varName}[bsl];\n')
@@ -595,7 +595,7 @@ def sc_pack(handle, args, vars, indent):
         else:
             if data['isArray']:
                 varIndex = f"[i]"
-                out.append(f"{indent}for(int i=0; i<{data['arraySize']}; i++) {{\n")
+                out.append(f"{indent}for(unsigned int i=0; i<{data['arraySize']}; i++) {{\n")
                 rng_high, rng_low  = f"{low}+(i+1)*{data['bitwidth']}-1", f"{low}+i*{data['bitwidth']}"
                 indent += ' '*4
             else:
@@ -658,7 +658,7 @@ def sc_unpack(handle, args, structType, vars, indent):
         high = low + data['arraywidth'] - 1
         if data['generator'] == 'datapath':
             num_bytes = int(data['bitwidth'] / 8)
-            out.append(f'{indent}for(int unsigned bsl=0; bsl<{num_bytes}; bsl++) {{\n')
+            out.append(f'{indent}for(unsigned int bsl=0; bsl<{num_bytes}; bsl++) {{\n')
             rng_high, rng_low  = f"{low}+bsl*8+7", f"{low}+bsl*8"
             indent += ' '*4
             out.append(f'{indent}{varName}[bsl] = (uint8_t) packed_data.range({rng_high}, {rng_low}).to_uint64();\n')
@@ -667,7 +667,7 @@ def sc_unpack(handle, args, structType, vars, indent):
         else:
             if data['isArray']:
                 varIndex = f"[i]"
-                out.append(f"{indent}for(int i=0; i<{data['arraySize']}; i++) {{\n")
+                out.append(f"{indent}for(unsigned int i=0; i<{data['arraySize']}; i++) {{\n")
                 rng_high, rng_low  = f"{low}+(i+1)*{data['bitwidth']}-1", f"{low}+i*{data['bitwidth']}"
                 indent += ' '*4
             else:
@@ -831,7 +831,7 @@ def fw_unpack(handle, args, vars, indent):
         # for array case, create an outer loop
         if data['isArray']:
             varIndex = f"[i]"
-            out.append(f"{indent}for(int i=0; i<{data['arraySize']}; i++) {{\n")
+            out.append(f"{indent}for(unsigned int i=0; i<{data['arraySize']}; i++) {{\n")
             indent += ' '*4
             calcAlign = (not isSingleArray) or usePos
             bitsLeft = data['bitwidth']
@@ -1109,7 +1109,7 @@ def processPackUnpack(fname, handle, args, vars, indent):
                 posDeclare = None
             else:
                 out.append(indent + posCorrection.format(pos)) if not posCorrect and posCorrection else None
-            out.append(f"{indent}for(int i=0; i<{data['arraySize']}; i++) {{\n")
+            out.append(f"{indent}for(unsigned int i=0; i<{data['arraySize']}; i++) {{\n")
             loopClose = f"{indent}}}\n"
             indent += ' '*4
         if data['entryType'] == 'NamedStruct':

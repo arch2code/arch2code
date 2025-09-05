@@ -12,7 +12,7 @@
 // structures
 bool aSt::operator == (const aSt & rhs) const {
     bool ret = true;
-    for(int i=0; i<ASIZE2; i++) {
+    for(unsigned int i=0; i<ASIZE2; i++) {
         ret = ret && (variablea[i] == rhs.variablea[i]);
     }
     ret = ret && (variablea2 == rhs.variablea2);
@@ -30,7 +30,7 @@ void aSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, aSt::_byteWidth);
     _ret = variablea2;
     uint16_t _pos{2};
-    for(int i=0; i<ASIZE2; i++) {
+    for(unsigned int i=0; i<ASIZE2; i++) {
         pack_bits((uint64_t *)&_ret, _pos, variablea[i], 1);
         _pos += 1;
     }
@@ -40,7 +40,7 @@ void aSt::unpack(_packedSt &_src)
     uint16_t _pos{0};
     variablea2 = (twoBitT)((_src >> (_pos & 7)) & ((1ULL << 2) - 1));
     _pos += 2;
-    for(int i=0; i<ASIZE2; i++) {
+    for(unsigned int i=0; i<ASIZE2; i++) {
         uint16_t _bits = 1;
         uint16_t _consume;
         _consume = std::min(_bits, (uint16_t)(8-(_pos & 7)));
@@ -57,7 +57,7 @@ sc_bv<4> aSt::sc_pack(void) const
 {
     sc_bv<4> packed_data;
     packed_data.range(1, 0) = variablea2;
-    for(int i=0; i<ASIZE2; i++) {
+    for(unsigned int i=0; i<ASIZE2; i++) {
         packed_data.range(2+(i+1)*1-1, 2+i*1) = variablea[i];
     }
     return packed_data;
@@ -65,7 +65,7 @@ sc_bv<4> aSt::sc_pack(void) const
 void aSt::sc_unpack(sc_bv<4> packed_data)
 {
     variablea2 = (twoBitT) packed_data.range(1, 0).to_uint64();
-    for(int i=0; i<ASIZE2; i++) {
+    for(unsigned int i=0; i<ASIZE2; i++) {
         variablea[i] = (aSizeT) packed_data.range(2+(i+1)*1-1, 2+i*1).to_uint64();
     }
 }
@@ -205,7 +205,7 @@ bool nestedSt::operator == (const nestedSt & rhs) const {
     bool ret = true;
     ret = ret && (variablea == rhs.variablea);
     ret = ret && (bob == rhs.bob);
-    for(int i=0; i<2; i++) {
+    for(unsigned int i=0; i<2; i++) {
         ret = ret && (joe[i] == rhs.joe[i]);
     }
     return ( ret );
@@ -222,7 +222,7 @@ void nestedSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, nestedSt::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<2; i++) {
+    for(unsigned int i=0; i<2; i++) {
         seeSt::_packedSt _tmp{0};
         joe[i].pack(_tmp);
         _ret |= (uint32_t)_tmp << (_pos & 31);
@@ -238,7 +238,7 @@ void nestedSt::pack(_packedSt &_ret) const
 void nestedSt::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<2; i++) {
+    for(unsigned int i=0; i<2; i++) {
         uint16_t _bits = 5;
         uint16_t _consume;
         {
@@ -259,7 +259,7 @@ void nestedSt::unpack(_packedSt &_src)
 sc_bv<18> nestedSt::sc_pack(void) const
 {
     sc_bv<18> packed_data;
-    for(int i=0; i<2; i++) {
+    for(unsigned int i=0; i<2; i++) {
         packed_data.range(0+(i+1)*5-1, 0+i*5) = joe[i].sc_pack();
     }
     packed_data.range(16, 10) = bob.sc_pack();
@@ -268,7 +268,7 @@ sc_bv<18> nestedSt::sc_pack(void) const
 }
 void nestedSt::sc_unpack(sc_bv<18> packed_data)
 {
-    for(int i=0; i<2; i++) {
+    for(unsigned int i=0; i<2; i++) {
         joe[i].sc_unpack(packed_data.range(0+(i+1)*5-1, 0+i*5));
     }
     bob.sc_unpack(packed_data.range(16, 10));
@@ -396,7 +396,7 @@ void apbDataSt::sc_unpack(sc_bv<32> packed_data)
 }
 bool cSt::operator == (const cSt & rhs) const {
     bool ret = true;
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
     return ( ret );
@@ -411,7 +411,7 @@ void cSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, cSt::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         pack_bits((uint64_t *)&_ret, _pos, sevenBitArray[i], 7);
         _pos += 7;
     }
@@ -419,7 +419,7 @@ void cSt::pack(_packedSt &_ret) const
 void cSt::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         uint16_t _bits = 7;
         uint16_t _consume;
         _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
@@ -435,23 +435,23 @@ void cSt::unpack(_packedSt &_src)
 sc_bv<35> cSt::sc_pack(void) const
 {
     sc_bv<35> packed_data;
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray[i];
     }
     return packed_data;
 }
 void cSt::sc_unpack(sc_bv<35> packed_data)
 {
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         sevenBitArray[i] = (sevenBitT) packed_data.range(0+(i+1)*7-1, 0+i*7).to_uint64();
     }
 }
 bool test1St::operator == (const test1St & rhs) const {
     bool ret = true;
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         ret = ret && (sevenBitArray2[i] == rhs.sevenBitArray2[i]);
     }
     return ( ret );
@@ -467,11 +467,11 @@ void test1St::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, test1St::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         pack_bits((uint64_t *)&_ret, _pos, sevenBitArray2[i], 7);
         _pos += 7;
     }
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         pack_bits((uint64_t *)&_ret, _pos, sevenBitArray[i], 7);
         _pos += 7;
     }
@@ -479,7 +479,7 @@ void test1St::pack(_packedSt &_ret) const
 void test1St::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         uint16_t _bits = 7;
         uint16_t _consume;
         _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
@@ -491,7 +491,7 @@ void test1St::unpack(_packedSt &_src)
             _pos += _bits;
         }
     }
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         uint16_t _bits = 7;
         uint16_t _consume;
         _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
@@ -507,26 +507,26 @@ void test1St::unpack(_packedSt &_src)
 sc_bv<70> test1St::sc_pack(void) const
 {
     sc_bv<70> packed_data;
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray2[i];
     }
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         packed_data.range(35+(i+1)*7-1, 35+i*7) = sevenBitArray[i];
     }
     return packed_data;
 }
 void test1St::sc_unpack(sc_bv<70> packed_data)
 {
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         sevenBitArray2[i] = (sevenBitT) packed_data.range(0+(i+1)*7-1, 0+i*7).to_uint64();
     }
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         sevenBitArray[i] = (sevenBitT) packed_data.range(35+(i+1)*7-1, 35+i*7).to_uint64();
     }
 }
 bool test2St::operator == (const test2St & rhs) const {
     bool ret = true;
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         ret = ret && (thirtyFiveBitArray[i] == rhs.thirtyFiveBitArray[i]);
     }
     return ( ret );
@@ -541,7 +541,7 @@ void test2St::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, test2St::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         cSt::_packedSt _tmp{0};
         thirtyFiveBitArray[i].pack(_tmp);
         pack_bits((uint64_t *)&_ret, _pos, _tmp, 35);
@@ -551,7 +551,7 @@ void test2St::pack(_packedSt &_ret) const
 void test2St::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         uint16_t _bits = 35;
         uint16_t _consume;
         {
@@ -565,20 +565,20 @@ void test2St::unpack(_packedSt &_src)
 sc_bv<175> test2St::sc_pack(void) const
 {
     sc_bv<175> packed_data;
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         packed_data.range(0+(i+1)*35-1, 0+i*35) = thirtyFiveBitArray[i].sc_pack();
     }
     return packed_data;
 }
 void test2St::sc_unpack(sc_bv<175> packed_data)
 {
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         thirtyFiveBitArray[i].sc_unpack(packed_data.range(0+(i+1)*35-1, 0+i*35));
     }
 }
 bool test3St::operator == (const test3St & rhs) const {
     bool ret = true;
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
     return ( ret );
@@ -593,7 +593,7 @@ void test3St::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, test3St::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         aRegSt::_packedSt _tmp{0};
         sevenBitArray[i].pack(_tmp);
         _ret |= (uint64_t)_tmp << (_pos & 63);
@@ -603,7 +603,7 @@ void test3St::pack(_packedSt &_ret) const
 void test3St::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         uint16_t _bits = 7;
         uint16_t _consume;
         {
@@ -617,14 +617,14 @@ void test3St::unpack(_packedSt &_src)
 sc_bv<35> test3St::sc_pack(void) const
 {
     sc_bv<35> packed_data;
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray[i].sc_pack();
     }
     return packed_data;
 }
 void test3St::sc_unpack(sc_bv<35> packed_data)
 {
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         sevenBitArray[i].sc_unpack(packed_data.range(0+(i+1)*7-1, 0+i*7));
     }
 }
@@ -664,7 +664,7 @@ void test4St::sc_unpack(sc_bv<7> packed_data)
 }
 bool test5St::operator == (const test5St & rhs) const {
     bool ret = true;
-    for(int i=0; i<10; i++) {
+    for(unsigned int i=0; i<10; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
     return ( ret );
@@ -679,7 +679,7 @@ void test5St::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, test5St::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<10; i++) {
+    for(unsigned int i=0; i<10; i++) {
         aRegSt::_packedSt _tmp{0};
         sevenBitArray[i].pack(_tmp);
         pack_bits((uint64_t *)&_ret, _pos, _tmp, 7);
@@ -689,7 +689,7 @@ void test5St::pack(_packedSt &_ret) const
 void test5St::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<10; i++) {
+    for(unsigned int i=0; i<10; i++) {
         uint16_t _bits = 7;
         uint16_t _consume;
         {
@@ -703,14 +703,14 @@ void test5St::unpack(_packedSt &_src)
 sc_bv<70> test5St::sc_pack(void) const
 {
     sc_bv<70> packed_data;
-    for(int i=0; i<10; i++) {
+    for(unsigned int i=0; i<10; i++) {
         packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray[i].sc_pack();
     }
     return packed_data;
 }
 void test5St::sc_unpack(sc_bv<70> packed_data)
 {
-    for(int i=0; i<10; i++) {
+    for(unsigned int i=0; i<10; i++) {
         sevenBitArray[i].sc_unpack(packed_data.range(0+(i+1)*7-1, 0+i*7));
     }
 }
@@ -751,7 +751,7 @@ void test6St::sc_unpack(sc_bv<70> packed_data)
 }
 bool test7St::operator == (const test7St & rhs) const {
     bool ret = true;
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         ret = ret && (largeStruct[i] == rhs.largeStruct[i]);
     }
     return ( ret );
@@ -766,7 +766,7 @@ void test7St::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, test7St::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         test1St::_packedSt _tmp{0};
         largeStruct[i].pack(_tmp);
         pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, 70);
@@ -776,7 +776,7 @@ void test7St::pack(_packedSt &_ret) const
 void test7St::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         uint16_t _bits = 70;
         uint16_t _consume;
         {
@@ -790,20 +790,20 @@ void test7St::unpack(_packedSt &_src)
 sc_bv<350> test7St::sc_pack(void) const
 {
     sc_bv<350> packed_data;
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         packed_data.range(0+(i+1)*70-1, 0+i*70) = largeStruct[i].sc_pack();
     }
     return packed_data;
 }
 void test7St::sc_unpack(sc_bv<350> packed_data)
 {
-    for(int i=0; i<5; i++) {
+    for(unsigned int i=0; i<5; i++) {
         largeStruct[i].sc_unpack(packed_data.range(0+(i+1)*70-1, 0+i*70));
     }
 }
 bool test8St::operator == (const test8St & rhs) const {
     bool ret = true;
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         ret = ret && (words[i] == rhs.words[i]);
     }
     return ( ret );
@@ -818,7 +818,7 @@ void test8St::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, test8St::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         pack_bits((uint64_t *)&_ret, _pos, words[i], 16);
         _pos += 16;
     }
@@ -826,7 +826,7 @@ void test8St::pack(_packedSt &_ret) const
 void test8St::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         uint16_t _bits = 16;
         uint16_t _consume;
         _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
@@ -842,20 +842,20 @@ void test8St::unpack(_packedSt &_src)
 sc_bv<48> test8St::sc_pack(void) const
 {
     sc_bv<48> packed_data;
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         packed_data.range(0+(i+1)*16-1, 0+i*16) = words[i];
     }
     return packed_data;
 }
 void test8St::sc_unpack(sc_bv<48> packed_data)
 {
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         words[i] = (wordT) packed_data.range(0+(i+1)*16-1, 0+i*16).to_uint64();
     }
 }
 bool test9St::operator == (const test9St & rhs) const {
     bool ret = true;
-    for(int i=0; i<4; i++) {
+    for(unsigned int i=0; i<4; i++) {
         ret = ret && (wordArray[i] == rhs.wordArray[i]);
     }
     return ( ret );
@@ -870,7 +870,7 @@ void test9St::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, test9St::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<4; i++) {
+    for(unsigned int i=0; i<4; i++) {
         test8St::_packedSt _tmp{0};
         wordArray[i].pack(_tmp);
         pack_bits((uint64_t *)&_ret, _pos, _tmp, 48);
@@ -880,7 +880,7 @@ void test9St::pack(_packedSt &_ret) const
 void test9St::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<4; i++) {
+    for(unsigned int i=0; i<4; i++) {
         uint16_t _bits = 48;
         uint16_t _consume;
         {
@@ -894,14 +894,14 @@ void test9St::unpack(_packedSt &_src)
 sc_bv<192> test9St::sc_pack(void) const
 {
     sc_bv<192> packed_data;
-    for(int i=0; i<4; i++) {
+    for(unsigned int i=0; i<4; i++) {
         packed_data.range(0+(i+1)*48-1, 0+i*48) = wordArray[i].sc_pack();
     }
     return packed_data;
 }
 void test9St::sc_unpack(sc_bv<192> packed_data)
 {
-    for(int i=0; i<4; i++) {
+    for(unsigned int i=0; i<4; i++) {
         wordArray[i].sc_unpack(packed_data.range(0+(i+1)*48-1, 0+i*48));
     }
 }

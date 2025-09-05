@@ -23,6 +23,10 @@ blockDir: .
 constants:
   ASIZE : {value: 1, desc: "The size of A"}
   ASIZE2: {eval: "$ASIZE+1", desc: "The size of A+1"}
+  INTP: {value: 0xFFFFFC00, desc: "Test constant for numbers of unsigned integer type "}
+  INTN: {value: -0x7FFFFC00, desc: "Test constant for numbers of signed integer type (two's complement negative)"}
+  LONGP: {value: 0x1FFFFFFFFFFFFC00, desc: "Test constant for numbers unsigned long type "}
+  LONGN: {value: -0xFFFFFC00, desc: "Test constant for numbers signed long type (two's complement negative)"}
   BIGE33: {value: 0x1FFFFFFFF, desc: "Test constant for numbers slightly bigger than 32 bits"}
   BIGE53: {value: 0x3FFFFFFFFFFFFF, desc: "Test constant for numbers slightly bigger than 32 bits"}
 # Test constant for https://arch2code.atlassian.net/browse/A2C-89

@@ -305,7 +305,7 @@ void bMemAddrSt::sc_unpack(sc_bv<5> packed_data)
 }
 bool bMemSt::operator == (const bMemSt & rhs) const {
     bool ret = true;
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         ret = ret && (data[i] == rhs.data[i]);
     }
     return ( ret );
@@ -320,7 +320,7 @@ void bMemSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, bMemSt::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         pack_bits((uint64_t *)&_ret, _pos, data[i], 32);
         _pos += 32;
     }
@@ -328,7 +328,7 @@ void bMemSt::pack(_packedSt &_ret) const
 void bMemSt::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         uint16_t _bits = 32;
         uint16_t _consume;
         _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
@@ -344,14 +344,14 @@ void bMemSt::unpack(_packedSt &_src)
 sc_bv<96> bMemSt::sc_pack(void) const
 {
     sc_bv<96> packed_data;
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         packed_data.range(0+(i+1)*32-1, 0+i*32) = data[i];
     }
     return packed_data;
 }
 void bMemSt::sc_unpack(sc_bv<96> packed_data)
 {
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         data[i] = (u32T) packed_data.range(0+(i+1)*32-1, 0+i*32).to_uint64();
     }
 }

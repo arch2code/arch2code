@@ -15,13 +15,13 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-const int ASIZE = 29;  // The size of A
-const int DWORD = 32;  // size of a double word
-const int MEMORYA_WORDS = 19;  // Address wordlines for memory A
-const int MEMORYA_WORDS_LOG2 = 5;  // Address wordlines for memory A log2
-const int MEMORYA_WIDTH = 63;  // Bit width of content for memory A, more than 32, less than 64
-const int MEMORYB_WORDS = 21;  // Address wordlines for memory B
-const int MEMORYB_WORDS_LOG2 = 5;  // Address wordlines for memory B log2
+const uint32_t ASIZE = 29;  // The size of A
+const uint32_t DWORD = 32;  // size of a double word
+const uint32_t MEMORYA_WORDS = 19;  // Address wordlines for memory A
+const uint32_t MEMORYA_WORDS_LOG2 = 5;  // Address wordlines for memory A log2
+const uint32_t MEMORYA_WIDTH = 63;  // Bit width of content for memory A, more than 32, less than 64
+const uint32_t MEMORYB_WORDS = 21;  // Address wordlines for memory B
+const uint32_t MEMORYB_WORDS_LOG2 = 5;  // Address wordlines for memory B log2
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 
@@ -412,7 +412,7 @@ struct bMemSt {
     typedef uint64_t _packedSt[2];
     bool operator == (const bMemSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const bMemSt & v, const std::string & NAME ) {
-        for(int i=0; i<3; i++) {
+        for(unsigned int i=0; i<3; i++) {
             sc_trace(tf,v.data[i], NAME + ".data[i]");
         }
     }

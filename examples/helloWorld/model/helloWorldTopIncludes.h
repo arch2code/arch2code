@@ -15,7 +15,7 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-const int BUFFER_SIZE = 64;  // Buffer size
+const uint32_t BUFFER_SIZE = 64;  // Buffer size
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 

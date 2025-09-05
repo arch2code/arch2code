@@ -18,20 +18,24 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-const int ASIZE = 1;  // The size of A
-const int ASIZE2 = 2;  // The size of A+1
-const long BIGE33 = 0X1FFFFFFFFL;  // Test constant for numbers slightly bigger than 32 bits
-const long BIGE53 = 0X3FFFFFFFFFFFFFL;  // Test constant for numbers slightly bigger than 32 bits
-const long YUGE = 0X7FFFFFFFFFFFFFFFL;  // Test constant for numbers of 63 bits
-const int DWORD = 32;  // size of a double word
-const int DWORD_LOG2 = 6;  // size of a double word log2
-const int BOB0 = 16;  // Memory size for instance 0
-const int BOB1 = 15;  // Memory size for instance 1
-const int OPCODEABASE_READ = 0;  // base value for Read command
-const int OPCODEABASE_WRITE = 64;  // base value for Write command
-const int OPCODEABASE_WAIT = 128;  // base value for Wait command
-const int OPCODEABASE_EVICT = 192;  // base value for Evict command
-const int OPCODEABASE_TRIM = 256;  // base value for Trim command
+const uint32_t ASIZE = 1;  // The size of A
+const uint32_t ASIZE2 = 2;  // The size of A+1
+const uint32_t INTP = 4294966272;  // Test constant for numbers of unsigned integer type 
+const int32_t INTN = -2147482624;  // Test constant for numbers of signed integer type (two's complement negative)
+const uint64_t LONGP = 0X1FFFFFFFFFFFFC00UL;  // Test constant for numbers unsigned long type 
+const int64_t LONGN = -0XFFFFFC00L;  // Test constant for numbers signed long type (two's complement negative)
+const uint64_t BIGE33 = 0X1FFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
+const uint64_t BIGE53 = 0X3FFFFFFFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
+const uint64_t YUGE = 0X7FFFFFFFFFFFFFFFUL;  // Test constant for numbers of 63 bits
+const uint32_t DWORD = 32;  // size of a double word
+const uint32_t DWORD_LOG2 = 6;  // size of a double word log2
+const uint32_t BOB0 = 16;  // Memory size for instance 0
+const uint32_t BOB1 = 15;  // Memory size for instance 1
+const uint32_t OPCODEABASE_READ = 0;  // base value for Read command
+const uint32_t OPCODEABASE_WRITE = 64;  // base value for Write command
+const uint32_t OPCODEABASE_WAIT = 128;  // base value for Wait command
+const uint32_t OPCODEABASE_EVICT = 192;  // base value for Evict command
+const uint32_t OPCODEABASE_TRIM = 256;  // base value for Trim command
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 
@@ -132,7 +136,7 @@ struct aSt {
     typedef uint8_t _packedSt;
     bool operator == (const aSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const aSt & v, const std::string & NAME ) {
-        for(int i=0; i<ASIZE2; i++) {
+        for(unsigned int i=0; i<ASIZE2; i++) {
             sc_trace(tf,v.variablea[i], NAME + ".variablea[i]");
         }
         sc_trace(tf,v.variablea2, NAME + ".variablea2");
@@ -326,7 +330,7 @@ struct nestedSt {
     inline friend void sc_trace(sc_trace_file *tf, const nestedSt & v, const std::string & NAME ) {
         sc_trace(tf,v.variablea, NAME + ".variablea");
         sc_trace(tf,v.bob, NAME + ".bob");
-        for(int i=0; i<2; i++) {
+        for(unsigned int i=0; i<2; i++) {
             sc_trace(tf,v.joe[i], NAME + ".joe[i]");
         }
     }
@@ -503,7 +507,7 @@ struct cSt {
     typedef uint64_t _packedSt;
     bool operator == (const cSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const cSt & v, const std::string & NAME ) {
-        for(int i=0; i<5; i++) {
+        for(unsigned int i=0; i<5; i++) {
             sc_trace(tf,v.sevenBitArray[i], NAME + ".sevenBitArray[i]");
         }
     }
@@ -538,10 +542,10 @@ struct test1St {
     typedef uint64_t _packedSt[2];
     bool operator == (const test1St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test1St & v, const std::string & NAME ) {
-        for(int i=0; i<5; i++) {
+        for(unsigned int i=0; i<5; i++) {
             sc_trace(tf,v.sevenBitArray[i], NAME + ".sevenBitArray[i]");
         }
-        for(int i=0; i<5; i++) {
+        for(unsigned int i=0; i<5; i++) {
             sc_trace(tf,v.sevenBitArray2[i], NAME + ".sevenBitArray2[i]");
         }
     }
@@ -577,7 +581,7 @@ struct test2St {
     typedef uint64_t _packedSt[3];
     bool operator == (const test2St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test2St & v, const std::string & NAME ) {
-        for(int i=0; i<5; i++) {
+        for(unsigned int i=0; i<5; i++) {
             sc_trace(tf,v.thirtyFiveBitArray[i], NAME + ".thirtyFiveBitArray[i]");
         }
     }
@@ -611,7 +615,7 @@ struct test3St {
     typedef uint64_t _packedSt;
     bool operator == (const test3St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test3St & v, const std::string & NAME ) {
-        for(int i=0; i<5; i++) {
+        for(unsigned int i=0; i<5; i++) {
             sc_trace(tf,v.sevenBitArray[i], NAME + ".sevenBitArray[i]");
         }
     }
@@ -676,7 +680,7 @@ struct test5St {
     typedef uint64_t _packedSt[2];
     bool operator == (const test5St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test5St & v, const std::string & NAME ) {
-        for(int i=0; i<10; i++) {
+        for(unsigned int i=0; i<10; i++) {
             sc_trace(tf,v.sevenBitArray[i], NAME + ".sevenBitArray[i]");
         }
     }
@@ -741,7 +745,7 @@ struct test7St {
     typedef uint64_t _packedSt[6];
     bool operator == (const test7St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test7St & v, const std::string & NAME ) {
-        for(int i=0; i<5; i++) {
+        for(unsigned int i=0; i<5; i++) {
             sc_trace(tf,v.largeStruct[i], NAME + ".largeStruct[i]");
         }
     }
@@ -775,7 +779,7 @@ struct test8St {
     typedef uint64_t _packedSt;
     bool operator == (const test8St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test8St & v, const std::string & NAME ) {
-        for(int i=0; i<3; i++) {
+        for(unsigned int i=0; i<3; i++) {
             sc_trace(tf,v.words[i], NAME + ".words[i]");
         }
     }
@@ -809,7 +813,7 @@ struct test9St {
     typedef uint64_t _packedSt[3];
     bool operator == (const test9St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test9St & v, const std::string & NAME ) {
-        for(int i=0; i<4; i++) {
+        for(unsigned int i=0; i<4; i++) {
             sc_trace(tf,v.wordArray[i], NAME + ".wordArray[i]");
         }
     }

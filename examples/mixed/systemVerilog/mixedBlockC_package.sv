@@ -1,8 +1,8 @@
 // GENERATED_CODE_PARAM --context mixedBlockC.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package mixedBlockC_package;
-localparam int CSIZE = 32'h0000_0002;  // The size of C
-localparam int CSIZE_PLUS = 32'h0000_0003;  // The size of C plus 1
+localparam int unsigned CSIZE = 32'h0000_0002;  // The size of C
+localparam int unsigned CSIZE_PLUS = 32'h0000_0003;  // The size of C plus 1
 
 // types
 typedef logic[2-1:0] cSizeT; //size of c sizing from constant CSIZE

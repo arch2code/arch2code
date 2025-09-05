@@ -770,12 +770,13 @@ class projectOpen:
                     if object=='constants':
                         ret[object][key] = value
                         if isinstance(value["value"], int):
-                            if abs(value["value"]) <= 0xFFFFFFFF:
-                                ret[object][key]['valueType'] = 'int'
+                            isSigned = value["value"] < 0
+                            if not isSigned and abs(value["value"]) <= 0xFFFFFFFF:
+                                ret[object][key]['valueType'] = 'uint32_t'
+                            elif isSigned and abs(value["value"]) <= 0x7FFFFFFF:
+                                ret[object][key]['valueType'] = 'int32_t'
                             else:
-                                ret[object][key]['valueType'] = 'long'
-                        elif isinstance(value["value"], float):
-                                ret[object][key]['valueType'] = 'double'
+                                ret[object][key]['valueType'] = 'int64_t' if isSigned else 'uint64_t'
                         else:
                             printError(f"Invalid constant type for {key}")
                             exit(warningAndErrorReport())

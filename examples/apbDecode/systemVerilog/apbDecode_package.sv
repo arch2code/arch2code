@@ -3,13 +3,13 @@
 // GENERATED_CODE_PARAM --context=apbDecode.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package apbDecode_package;
-localparam int ASIZE = 32'h0000_001D;  // The size of A
-localparam int DWORD = 32'h0000_0020;  // size of a double word
-localparam int MEMORYA_WORDS = 32'h0000_0013;  // Address wordlines for memory A
-localparam int MEMORYA_WORDS_LOG2 = 32'h0000_0005;  // Address wordlines for memory A log2
-localparam int MEMORYA_WIDTH = 32'h0000_003F;  // Bit width of content for memory A, more than 32, less than 64
-localparam int MEMORYB_WORDS = 32'h0000_0015;  // Address wordlines for memory B
-localparam int MEMORYB_WORDS_LOG2 = 32'h0000_0005;  // Address wordlines for memory B log2
+localparam int unsigned ASIZE = 32'h0000_001D;  // The size of A
+localparam int unsigned DWORD = 32'h0000_0020;  // size of a double word
+localparam int unsigned MEMORYA_WORDS = 32'h0000_0013;  // Address wordlines for memory A
+localparam int unsigned MEMORYA_WORDS_LOG2 = 32'h0000_0005;  // Address wordlines for memory A log2
+localparam int unsigned MEMORYA_WIDTH = 32'h0000_003F;  // Bit width of content for memory A, more than 32, less than 64
+localparam int unsigned MEMORYB_WORDS = 32'h0000_0015;  // Address wordlines for memory B
+localparam int unsigned MEMORYB_WORDS_LOG2 = 32'h0000_0005;  // Address wordlines for memory B log2
 
 // types
 typedef logic[37-1:0] thirtySevenBitT; //Used as a thirty seven bit register structure

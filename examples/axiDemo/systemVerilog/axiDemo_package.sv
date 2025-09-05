@@ -5,9 +5,9 @@
 package axiDemo_package;
 // Generated Import package statement(s)
 import axiStd_package::*;
-localparam int AXI_ADDRESS_WIDTH = 32'h0000_0020;  // The width of the AXI address busses
-localparam int AXI_DATA_WIDTH = 32'h0000_0020;  // The width of the AXI data busses
-localparam int AXI_STROBE_WIDTH = 32'h0000_0004;  // The width of the AXI strobe signals
+localparam int unsigned AXI_ADDRESS_WIDTH = 32'h0000_0020;  // The width of the AXI address busses
+localparam int unsigned AXI_DATA_WIDTH = 32'h0000_0020;  // The width of the AXI data busses
+localparam int unsigned AXI_STROBE_WIDTH = 32'h0000_0004;  // The width of the AXI strobe signals
 
 // types
 typedef logic[32-1:0] axiAddrT; //Address Width sizing from constant AXI_ADDRESS_WIDTH
