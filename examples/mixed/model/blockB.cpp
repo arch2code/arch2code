@@ -19,7 +19,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,cStuffIf_uBlockD_uThreeCs("threeCs_cStuffIf_uBlockD_uThreeCs", "blockD")
         ,dee0("blockF_dee0", "blockD")
         ,dee1("blockF_dee1", "blockD")
-        ,rwD("blockF_rwD", "blockBRegs")
+        ,rwD("rwD", "blockBRegs")
         ,roBsize("blockBRegs_roBsize", "blockBRegs")
         ,cStuffIf_uBlockF0_uThreeCs("threeCs_cStuffIf_uBlockF0_uThreeCs", "blockF")
         ,cStuffIf_uBlockF1_uThreeCs("threeCs_cStuffIf_uBlockF1_uThreeCs", "blockF")

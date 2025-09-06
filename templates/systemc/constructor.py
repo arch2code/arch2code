@@ -68,12 +68,17 @@ def constructorInit(args, prj, data):
         else:
             channelBase = value["channelName"]
         #channelBase += "_chnl"
+        dst = None
         for k, v in value["ends"].items():
             if v["direction"] == "src":
                 src = v["instanceType"]
             else:
                 dst = v["instanceType"]
-        channelTitle = dst + "_" + channelBase
+
+        if dst is None:
+            printWarning(f"warning: connection {key} missing dst instance")
+
+        channelTitle = dst + "_" + channelBase if dst else channelBase
         extra = ''
         # we may have a multicycle interface
         if 'interfaceKey' in value:
