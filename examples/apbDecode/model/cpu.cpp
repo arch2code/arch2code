@@ -64,11 +64,11 @@ void cpu::memAccessTest(void)
     std::array<aMemSt, MEMORYA_WORDS>  aTableData0;
 
     // Memory blockATable0 Write sequential
-    for(int rowId=0; rowId<MEMORYA_WORDS; rowId++)
+    for(unsigned int rowId=0; rowId<MEMORYA_WORDS; rowId++)
         writeBlockATable0Mem(rowId, aTableData0_[rowId]);
 
     // Memory blockATable0 Read sequential
-    for(int rowId=0; rowId<MEMORYA_WORDS; rowId++)
+    for(unsigned int rowId=0; rowId<MEMORYA_WORDS; rowId++)
         readBlockATable0Mem(rowId, aTableData0[rowId]);
 
     // Compare data from blockATable0 array
