@@ -2610,6 +2610,11 @@ class projectCreate:
             # every connection has a nested table with the source and destination of the connection saved in the ends field
             entry['ends'] = dict()
             myKey = row['connection']
+            # if a name is provided use that as the channel name, otherwise use the src port naming
+            if row['name'] != '':
+                entry['channel'] = row['name']
+            else:
+                entry['channel'] = ''
             for dir in ['src', 'dst']:
                 (instInfo, instContext) = self.getFromContext('instances', yamlFile, row[dir], NotFoundFatal=True)
                 row['instanceType'] = instInfo['instanceType']
@@ -2629,7 +2634,7 @@ class projectCreate:
                     print(f"Warning: no line number in connections section for {yamlFile}:{myConnection}")
 
                 # the channel is declared based on the src port
-                if dir=='src':
+                if entry['channel'] == '' and dir=='src':
                     entry['channel'] = portName
                 endRow = self.processSimple('ends', 'dummy', row, yamlFile, schema=self.schema.data['schema']['connections']['ends'],context='connections', outer = row )
 
