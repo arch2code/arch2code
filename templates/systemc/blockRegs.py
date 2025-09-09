@@ -47,8 +47,9 @@ def get_hwregs(prj, data):
             "name": reg['register'] + '_reg',
             "datatype": reg['structure'],
             "size": reg['bytes']*4,
+            "ro" : 'true' if reg['regType'] == 'ro' else 'false',
             "offset": hex(reg['offset']),
-            "port_type": reg['interfaceType'] + '_out',
+            "port_type": reg['interfaceType'] + ('_in' if reg['regType'] == 'ro' else '_out'),
             "port_name": reg['register'],
             "descr": reg['desc']
         })
@@ -104,7 +105,7 @@ public:
 
     //registers
     {% for entry in hwregs -%}
-        hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size}}> {{entry.name}}; // {{entry.descr}}
+        hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size}}, {{entry.ro}}> {{entry.name}}; // {{entry.descr}}
     {% endfor %}
 '''
 
