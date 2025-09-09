@@ -82,6 +82,10 @@ public:
     {
         Q_ASSERT_CTX(address < N, "", "Address out of range");
         uint32_t val;
+        if constexpr (RO)
+        {
+            m_val = (*m_port)->read();
+        }
         m_val_sc = m_val.sc_pack();
         val = (uint32_t) m_val_sc.range(8*address+31, 8*address).to_uint64();
         return val;
@@ -104,6 +108,10 @@ public:
     }
     REG_DATA read(void)
     {
+        if constexpr (RO)
+        {
+            m_val = (*m_port)->read();
+        }
         return m_val;
     }
     void write(REG_DATA val)
