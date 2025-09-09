@@ -18,10 +18,10 @@ private:
 };
 
 template <class REG_DATA, int N=4>
-class hwRegister : public regBase 
+class hwRegister : public regBase
 {
 public:
-    hwRegister() 
+    hwRegister()
     {
         memset(&m_val, 0, sizeof(m_val));
     }
@@ -57,9 +57,9 @@ public:
         }
     }
     void copy(REG_DATA& to)
-    { 
-        to = *this; 
-    }  
+    {
+        to = *this;
+    }
     void registerEvent(sc_event *event)
     {
         m_event = event;
@@ -70,7 +70,7 @@ private:
     sc_bv<N*8> m_val_sc;
 };
 
-template <class REG_DATA, class PORT, int N=4>
+template <class REG_DATA, class PORT, int N, bool RO>
 class hwRegisterIf : public regBase
 {
 public:
@@ -88,13 +88,18 @@ public:
     }
     void cpu_write(uint64_t address, uint32_t val) override
     {
-        Q_ASSERT_CTX(address < N, "", "Address out of range");
-        m_val_sc = m_val.sc_pack();
-        m_val_sc.range(8*address+31, 8*address) = val;
-        m_val.sc_unpack(m_val_sc);
-        if (address == (N-4))
+        if constexpr (RO)
         {
-            (*m_port)->write(m_val);
+            Q_ASSERT_CTX(false, "", "Attempt to write to read-only register");
+        } else {
+            Q_ASSERT_CTX(address < N, "", "Address out of range");
+            m_val_sc = m_val.sc_pack();
+            m_val_sc.range(8*address+31, 8*address) = val;
+            m_val.sc_unpack(m_val_sc);
+            if (address == (N-4))
+            {
+                (*m_port)->write(m_val);
+            }
         }
     }
     REG_DATA read(void)
@@ -103,13 +108,18 @@ public:
     }
     void write(REG_DATA val)
     {
-        m_val = val;
-        (*m_port)->write(m_val);
+        if constexpr (RO)
+        {
+            Q_ASSERT_CTX(false, "", "Attempt to write to read-only register");
+        } else {
+            m_val = val;
+            (*m_port)->write(m_val);
+        }
     }
     void copy(REG_DATA& to)
-    { 
-        to = *this; 
-    }  
+    {
+        to = *this;
+    }
     REG_DATA m_val;
 private:
     sc_bv<N*8> m_val_sc;
