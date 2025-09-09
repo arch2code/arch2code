@@ -79,12 +79,13 @@ CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 
 ifdef VL_DUT
 CPP_SRC += $(REPO_ROOT)/verif/vl_wrap/vl_wrap.cpp
-CPP_INCLUDES += -I$(REPO_ROOT)/verif/vl_wrap -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd -I$(REPO_ROOT)/verif/vl_wrap/obj_dir
+CPP_INCLUDES += $(foreach dir, $(call find_cpp_source_directories, $(REPO_ROOT)/verif/vl_wrap), -I$(dir))
+CPP_INCLUDES += -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd
 endif
 
 # All include directories.
-CPP_INCLUDES +=  $(foreach dir, $(A2C_SRC_DIRS), -I$(dir))
-CPP_INCLUDES +=  $(foreach dir, $(PRJ_SRC_DIRS), -I$(dir))
+CPP_INCLUDES += $(foreach dir, $(A2C_SRC_DIRS), -I$(dir))
+CPP_INCLUDES += $(foreach dir, $(PRJ_SRC_DIRS), -I$(dir))
 
 # Put all auto generated stuff to this build dir.
 BIN = run
