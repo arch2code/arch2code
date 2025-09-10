@@ -1702,9 +1702,12 @@ class projectCreate:
         self.instanceContainer = instanceContainer
         self.blocks = blocks
 
-    def getFileList(self, data, basePath):
+    def getFileList(self, data, basePath, dependancies=None):
         todoNorm = list()
         incNorm = list()
+        dep_set = set()
+        if dependancies:
+            dep_set = set(sum(dependancies.values(), []))
         if not data:
             return (todoNorm, incNorm)
         if "projectFiles" in data:
@@ -1714,7 +1717,10 @@ class projectCreate:
         if "include" in data:
             inc = data["include"]
             for f in inc:
-                incNorm.append(os.path.relpath(os.path.join(basePath, f), g.yamlBasePath))
+                if os.path.basename(f) == f and f in dep_set:
+                    incNorm.append(f)
+                else:
+                    incNorm.append(os.path.relpath(os.path.join(basePath, f), g.yamlBasePath))
             todoNorm.extend(incNorm)
         return(todoNorm, incNorm)
 
@@ -1727,7 +1733,7 @@ class projectCreate:
                 if f not in self.yamlAllFiles:
                     self.yamlAllFiles[f] = None
                     self.yamlRaw[f] = existsLoad(f)
-                    (todo, include) = self.getFileList(self.yamlRaw[f], myBase)
+                    (todo, include) = self.getFileList(self.yamlRaw[f], myBase, self.yamlDependancies)
                     if self.yamlRaw[f] and "includeName" in self.yamlRaw[f]:
                         self.includeName[f] = self.yamlRaw[f]["includeName"]
                     else:
