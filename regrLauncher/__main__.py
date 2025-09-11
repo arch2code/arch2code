@@ -1,4 +1,3 @@
-import multiprocessing
 import argparse
 import pathlib
 import json
@@ -6,12 +5,16 @@ import os
 import pwd
 import datetime
 import re
+import multiprocessing
+#import concurrent.futures
 
 from .queue import rlJobQueuer
 from .runner import sessionBuildExecutor, sessionRunExecutor
 from .report import JUnitXMLReport
 from .utils import cstr, RED, GREEN, MAGENTA
 from .utils import convert_value
+
+from .database import init_db, sqlDbSession, SESSION_STATUS_ENUM
 
 def propagate_attributes(dictionary):
     attributes = dict(filter(lambda item: not isinstance(item[1], dict), dictionary.items()))
@@ -42,9 +45,15 @@ def queue_run_commands(level, dictionary, test_commands):
 def get_username():
     return pwd.getpwuid(os.getuid()).pw_name
 
+def timestamp():
+    return datetime.datetime.now()
+
+def timestamp_str():
+    return timestamp().strftime("%Y-%m-%d %H:%M:%S")
+
 def setup_session(session_db, args):
 
-    session_db['session']['start_date'] = datetime.datetime.now()
+    session_db['session']['start_date'] = timestamp()
     session_db['session']['uid'] = '.'.join([session_db['session']['name'], str(get_username()),
                                              session_db['session']['start_date'].strftime("%Y-%d-%m-%H%M%S"), str(os.getpid())])
     session_db['session']['dir'] = args.dir.joinpath(session_db['session']['uid'])
@@ -183,6 +192,22 @@ def main():
         print(cstr('Run session execution queue is empty', RED))
         exit(1)
 
+    # Initialize shared database connection
+    session_db['session']['db_file'] = session_db['session']['dir'].joinpath('regr.db')
+    init_db(session_db['session']['db_file'])
+
+    # Insert session record and get session_id
+    sql = sqlDbSession(session_db['session']['db_file'])
+
+    sql.insert_session(
+        session_db['session']['name'],
+        str(session_db['session']['dir']),
+        session_db['session']['start_date'].strftime("%Y-%m-%d %H:%M:%S"),
+        SESSION_STATUS_ENUM['running']
+    )
+
+    session_db['session']['id'] = sql.session_id
+
     #---------------------------------------------------
     # Build
     #---------------------------------------------------
@@ -196,6 +221,7 @@ def main():
             print(cstr("Build session done [{}]".format(bx.get_exec_time('seconds')), GREEN))
         except Exception as e:
             bx.close_exec()
+            sql.update_session(timestamp_str(), SESSION_STATUS_ENUM['finished'])
             print(e)
             print(cstr("Build session failed [{}]".format(bx.get_exec_time('seconds')), RED))
             exit(1)
@@ -209,12 +235,15 @@ def main():
     rx = sessionRunExecutor(session_db)
 
     with multiprocessing.get_context("spawn").Pool(session_db['session']['jobs']) as p:
+    #with concurrent.futures.ProcessPoolExecutor(max_workers=session_db['session']['jobs']) as p:
         try:
             rx.tests_status += p.imap_unordered(rx, job_queuer.run_command_gen())
+            #rx.tests_status += p.map(rx, job_queuer.run_command_gen())
         except KeyboardInterrupt:
             p.close()
             p.terminate()
             p.join()
+            #p.shutdown(wait=False)
 
     rx.close_exec()
     exec_time = rx.get_exec_time('seconds')
@@ -230,6 +259,9 @@ def main():
 
     # Session run summary
     run_status_s = fmt_postrun_stats(session_db)
+
+    # Update session record as finished
+    sql.update_session(timestamp_str(), SESSION_STATUS_ENUM['finished'])
 
     # Exit Status
     if not rx.check_status():

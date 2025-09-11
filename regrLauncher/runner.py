@@ -10,6 +10,8 @@ from .time import timedelta
 from .utils import cstr, RED, GREEN
 from .utils import _str_join
 
+from .database import sqlDbRun
+
 ''' Clean up output from subprocess.CalledProcessError.__str__() '''
 class CalledProcessError(subprocess.CalledProcessError):
 
@@ -117,6 +119,7 @@ class sessionRunExecutor(sessionExecutorBase):
         self.tests_status = list()
 
     def __call__(self, test_cmd):
+        sql = sqlDbRun(self.session_db['session']['db_file'], self.session_db['session']['id'])
         hier_test, rid, cmd, timeout, rules = test_cmd
         hier, test = os.path.split(hier_test)
         run_id = f"run_{rid}"
@@ -130,6 +133,10 @@ class sessionRunExecutor(sessionExecutorBase):
             fp.write('# ' + str(hier_test) + '\n')
             fp.write(str(cmd)+'\n')
         log_ = rundir.joinpath(test+'.log')
+
+        # Insert run record and get id
+        rowid = sql.insert_run(run_id, hier, test, str(rundir), str(cmd))
+
         with open(log_, 'wt') as fp:
             exec_status = self.execute_command(cmd, fp, timeout, env=None)
 
@@ -138,6 +145,11 @@ class sessionRunExecutor(sessionExecutorBase):
         failures = lpa.analyze(log_)
 
         test_status = sessionTestStatus(test_cmd, exec_status, failures)
+
+        # Update run record with test status once completed
+        sql.update_run(run_id,
+            int(bool(exec_status)), len(failures), exec_status.runtime.total_seconds(), int(bool(exec_status))
+        )
 
         # Apply log retention policy
         self.__lrp(log_, bool(test_status))
