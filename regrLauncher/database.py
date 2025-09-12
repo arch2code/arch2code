@@ -24,10 +24,31 @@ def init_db(db_file):
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS exec_status (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT,
+                returncode INTEGER,
+                output TEXT,
+                stderr TEXT,
+                str TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS failures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL REFERENCES runs(id),
+                failure_type TEXT,
+                failure_msg TEXT,
+                file TEXT,
+                severity INTEGER,
+                lineno INTEGER
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id TEXT NOT NULL,
                 session_id INTEGER NOT NULL REFERENCES sessions(id),
+                run_id TEXT NOT NULL,
                 test_group TEXT,
                 test_name TEXT,
                 run_dir TEXT,
@@ -35,9 +56,11 @@ def init_db(db_file):
                 status INTEGER,
                 num_failures INTEGER,
                 duration REAL,
-                exec_status_ INTEGER
+                exec_status_id INTEGER REFERENCES exec_status(id),
+                UNIQUE(run_id, session_id)
             )
         """)
+
     conn.close()
 
 class sqlDbSession:
@@ -94,12 +117,32 @@ class sqlDbRun:
         self.conn.commit()
         return cursor.lastrowid
 
-    def update_run(self, run_id, status, num_failures, duration, exec_status_):
+    def update_run(self, run_id, status, num_failures, duration, exec_status_id):
         with self.conn:  # 'with' handles transactions and commits
             with lock:  # Ensure thread-safe access to the connection
                 self.conn.execute("""
                     UPDATE runs
-                    SET status = ?, num_failures = ?, duration = ?, exec_status_ = ?
-                    WHERE (run_id = ? AND session_id = ?)
-                """, (status, num_failures, duration, exec_status_, run_id, self.session_id))
+                    SET status = ?, num_failures = ?, duration = ?, exec_status_id = ?
+                    WHERE (id = ? AND session_id = ?)
+                """, (status, num_failures, duration, exec_status_id, run_id, self.session_id))
         self.conn.close()
+
+    def insert_failure(self, run_id, failure_type, failure_msg, file, severity, lineno):
+        with self.conn:  # 'with' handles transactions and commits
+            with lock:  # Ensure thread-safe access to the connection
+                self.conn.execute("""
+                    INSERT INTO failures (run_id, failure_type, failure_msg, file, severity, lineno)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (run_id, failure_type, failure_msg, file, severity, lineno))
+        self.conn.commit()
+
+    def insert_exec_status(self, type, returncode, output, stderr, str):
+        with self.conn:  # 'with' handles transactions and commits
+            cursor = self.conn.cursor()
+            with lock:  # Ensure thread-safe access to the connection
+                cursor.execute("""
+                    INSERT INTO exec_status (type, returncode, output, stderr, str)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (type, returncode, output, stderr, str))
+        self.conn.commit()
+        return cursor.lastrowid

@@ -147,9 +147,10 @@ class sessionRunExecutor(sessionExecutorBase):
         test_status = sessionTestStatus(test_cmd, exec_status, failures)
 
         # Update run record with test status once completed
-        sql.update_run(run_id,
-            int(bool(exec_status)), len(failures), exec_status.runtime.total_seconds(), int(bool(exec_status))
-        )
+        for f in failures:
+            sql.insert_failure(rowid, f['name'], f['msg'], f['file'], f['sev'], f['lineno'])
+        exec_id = sql.insert_exec_status(exec_status.type, exec_status.returncode, exec_status.output, exec_status.stderr, str(exec_status))
+        sql.update_run(rowid, int(bool(exec_status)), len(failures), exec_status.runtime.total_seconds(), exec_id)
 
         # Apply log retention policy
         self.__lrp(log_, bool(test_status))
