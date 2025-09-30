@@ -28,8 +28,6 @@ public:
     // testrvSize->uConsumer: Data path test interface
     rdy_vld_out< testDataSt > src_trans_dest_clock_rv_size;
 
-    // dst ports
-
 
     producerBase(std::string name, const char * variant) :
         src_trans_dest_trans_rv_tracker("src_trans_dest_trans_rv_tracker")
@@ -76,8 +74,6 @@ public:
     // testrvSize->uConsumer: Data path test interface
     rdy_vld_in< testDataSt > src_trans_dest_clock_rv_size;
 
-    // dst ports
-
 
     producerInverted(std::string name) :
         src_trans_dest_trans_rv_tracker(("src_trans_dest_trans_rv_tracker"+name).c_str())
@@ -111,20 +107,18 @@ class producerChannels
 {
 public:
     // src ports
-    //   testrvTracker
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_trans_rv_tracker;
-    //   testrvTracker
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_clock_dest_trans_rv_tracker;
-    //   testrvTracker
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_clock_rv_tracker;
-    //   testrvSize
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_trans_rv_size;
-    //   testrvSize
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_clock_dest_trans_rv_size;
-    //   testrvSize
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_clock_rv_size;
-
-    // dst ports
 
 
     producerChannels(std::string name, std::string srcName) :

@@ -295,10 +295,13 @@ connections:
   - {interface: aStuffIf, src: uBlockA,                  dst: uBlockB,    dstport: btod} # struct defined as part of class / instance
   - {interface: cStuffIf, src: uBlockA,                  dst: uBlockC,    dstport: see}
   - {interface: cStuffIf, src: uBlockD,                  dst: uThreeCs,   dstport: see0}
-  - {interface: cStuffIf, src: uBlockF0,                 dst: uThreeCs,   dstport: see1}
-  - {interface: cStuffIf, src: uBlockF1,                 dst: uThreeCs,   dstport: see2}
-  - {interface: dStuffIf, src: uBlockD, srcport: dee0,   dst: uBlockF0}
-  - {interface: dStuffIf, src: uBlockD, srcport: dee1,   dst: uBlockF1}
+  - {interface: cStuffIf, src: uBlockF0,                 dst: uThreeCs,   dstport: see1, interfaceName: cStuff1}
+  - {interface: cStuffIf, src: uBlockF1,                 dst: uThreeCs,   dstport: see2, interfaceName: cStuff2}
+  - {interface: dStuffIf, src: uBlockD, srcport: dee0,   dst: uBlockF0,   interfaceName: dee0}
+  - {interface: dStuffIf, src: uBlockD, srcport: dee1,   dst: uBlockF1,   interfaceName: dee1}
+  - {interface: dStuffIf, src: uBlockD, srcport: outD,   dst: uBlockF0,   dstport: dSin, interfaceName: loopDF} # loop interface d -> F0 -> F1 -> D
+  - {interface: dStuffIf, src: uBlockF0, srcport: dSout, dst: uBlockF1,   dstport: dSin, interfaceName: loopFF}
+  - {interface: dStuffIf, src: uBlockF1, srcport: dSout, dst: uBlockD,    dstport: inD,  interfaceName: loopFD}
   - {interface: apbReg,   src: uCPU,                     dst: uAPBDecode}
   - {interface: startDone, src: uBlockA,                 dst: uBlockB}
 
@@ -313,11 +316,11 @@ connectionMaps:
 
 memories:
   - {memory: blockBTable0,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, local: true, desc: "Dual Port with no connections, local mem array"}
-  - {memory: blockBTable1,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Dual Port with one connection"}
-  - {memory: blockBTable2,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Dual Port with two connections native to blockB"}
-  - {memory: blockBTable3,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Dual Port with two connections native to blockB, explicitly connected"}
+  - {memory: blockBTable1,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, regAccess: true, desc: "Dual Port with one connection"}
+  - {memory: blockBTable2,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: ['Port2'], desc: "Dual Port with two connections native to blockB"}
+  - {memory: blockBTable3,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: ['Read', 'Write'], desc: "Dual Port with two connections native to blockB, explicitly connected"}
   - {memory: blockBTableSP0, block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Single Port with no connections", memoryType: singlePort}
-  - {memory: blockBTableSP,  block: blockB, structure: nestedSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Single Port with connection",     memoryType: singlePort, count: ASIZE}
+  - {memory: blockBTableSP,  block: blockB, structure: nestedSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Single Port with connection",  memoryType: singlePort, count: ASIZE}
   - {memory: test,           block: blockF, structure: seeSt, wordLines: bob, addressStruct: bSizeSt, desc: "Dual Port with one connection"}
 
 parameters:
@@ -329,9 +332,6 @@ parameters:
 
 memoryConnections:
   - {memory: blockBTable1,  block: blockB, instance: uBlockD}
-  - {memory: blockBTable2,  block: blockB, portSuffix: Port2}
-  - {memory: blockBTable3,  block: blockB, portSuffix: Write}
-  - {memory: blockBTable3,  block: blockB, portSuffix: Read}
   - {memory: blockBTableSP, block: blockB, instance: uBlockD}
 
 registers:
@@ -342,6 +342,10 @@ registers:
   - {register: roBsize,  regType: ro,  block: blockB,   structure: bSizeRegSt, desc: A Read Only register with a structure that has a definition from an included context}
   - {register: roA,      regType: ro,  block: blockA,   structure: aRegSt,     desc: A Read Only register}
 
+registerConnections:
+  - {register: roBsize,  block: blockB, instance: uBlockF0 }
+  - {register: roBsize,  block: blockB, instance: uBlockF1 }
+  - {register: roBsize,  block: blockB, instance: uBlockD }
 
 # flows, are very similar to a plantuml sequence diagram, a filename is taken and optionally
 #   consistency checks can be made for connections the flow

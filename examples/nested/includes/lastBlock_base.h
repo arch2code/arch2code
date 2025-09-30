@@ -71,11 +71,11 @@ class lastBlockChannels
 {
 public:
     // src ports
-    //   gamma
+    // Test interface gamma
     rdy_vld_channel< test_st > response;
 
     // dst ports
-    //   beta
+    // Test interface beta
     rdy_vld_channel< test_st > beta;
 
 

@@ -7,15 +7,16 @@
 
 // GENERATED_CODE_PARAM --block=threeCs
 // GENERATED_CODE_BEGIN --template=baseClassDecl
+#include "apb_channel.h"
+#include "notify_ack_channel.h"
 #include "rdy_vld_channel.h"
+#include "req_ack_channel.h"
 #include "mixedBlockCIncludes.h"
 
 class threeCsBase : public virtual blockPortBase
 {
 public:
     virtual ~threeCsBase() = default;
-    // src ports
-
     // dst ports
     // uBlockD->cStuffIf: An interface for C
     rdy_vld_in< seeSt > see0;
@@ -47,8 +48,6 @@ public:
 class threeCsInverted : public virtual blockPortBase
 {
 public:
-    // src ports
-
     // dst ports
     // uBlockD->cStuffIf: An interface for C
     rdy_vld_out< seeSt > see0;
@@ -80,14 +79,12 @@ public:
 class threeCsChannels
 {
 public:
-    // src ports
-
     // dst ports
-    //   cStuffIf
+    // An interface for C
     rdy_vld_channel< seeSt > see0;
-    //   cStuffIf
+    // An interface for C
     rdy_vld_channel< seeSt > see1;
-    //   cStuffIf
+    // An interface for C
     rdy_vld_channel< seeSt > see2;
 
 

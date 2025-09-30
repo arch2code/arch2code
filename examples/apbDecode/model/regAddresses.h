@@ -10,7 +10,7 @@
 #define BASE_ADDR_UAPBDECODE           0x0
 #define BASE_ADDR_USOMERAPPER          0x0
 #define BASE_ADDR_UBLOCKA              0x0
-#define BASE_ADDR_UBLOCKB              0x1000000
+#define BASE_ADDR_UBLOCKB              0x0
 #define BASE_ADDR_UBLOCKAREGS          0x0
 #define BASE_ADDR_UBLOCKBREGS          0x0
 

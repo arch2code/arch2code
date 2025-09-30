@@ -34,39 +34,38 @@ private:
     };
     static registerBlock registerBlock_;
 public:
-
     // channels
-    //   test
-    rdy_vld_channel< test_st > loop1src_uTestBlock0_uTestBlock1;
-    //   test
-    rdy_vld_channel< test_st > loop1src_uTestBlock1_uTestBlock0;
-    //   test
-    rdy_vld_channel< test_st > loop2src_uTestBlock0_uSubBlockContainer0;
-    //   test
-    rdy_vld_channel< test_st > out_uSubBlockContainer0_uTestBlock0;
-    //   test
-    rdy_vld_channel< test_st > loop2src_uTestBlock1_uSubBlockContainer1;
-    //   test
-    rdy_vld_channel< test_st > out_uSubBlockContainer2_uTestBlock1;
-    //   test
-    rdy_vld_channel< test_st > out_uSubBlockContainer1_uSubBlockContainer2;
-    //   alpha
+    // Test interface
+    rdy_vld_channel< test_st > loop1a;
+    // Test interface
+    rdy_vld_channel< test_st > loop1b;
+    // Test interface
+    rdy_vld_channel< test_st > loop2a;
+    // Test interface
+    rdy_vld_channel< test_st > loop2b;
+    // Test interface
+    rdy_vld_channel< test_st > loop3a;
+    // Test interface
+    rdy_vld_channel< test_st > loop3b;
+    // Test interface
+    rdy_vld_channel< test_st > loop3c;
+    // Test interface alpha
     rdy_vld_channel< test_st > primary;
-    //   gamma
-    rdy_vld_channel< test_st > response;
-    //   beta
+    // Test interface beta
     rdy_vld_channel< test_st > beta;
-    //   testrvTracker
+    // Test interface gamma
+    rdy_vld_channel< test_st > response;
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_trans_rv_tracker;
-    //   testrvTracker
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_clock_dest_trans_rv_tracker;
-    //   testrvTracker
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_clock_rv_tracker;
-    //   testrvSize
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_trans_rv_size;
-    //   testrvSize
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_clock_dest_trans_rv_size;
-    //   testrvSize
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_clock_rv_size;
 
     //instances contained in block

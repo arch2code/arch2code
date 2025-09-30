@@ -10,16 +10,18 @@
 #include "q_assert.h"
 
 
+
 enum addressElementType {REG, MEM};
 
 struct addressElement {
-    addressElement(uint64_t _address, uint64_t _size, addressElementType _type,std::string _name, addressBase *_ptr) :
-        m_address(_address), m_size(_size), m_type(_type), m_name(_name), m_ptr(_ptr) {}
+    addressElement(uint64_t _address, uint64_t _size, addressElementType _type,std::string _name, addressBase *_ptr, std::function<void(bool, uint64_t, uint32_t&)> _accessFunc):
+        m_address(_address), m_size(_size), m_type(_type), m_name(_name), m_ptr(_ptr), m_accessFunc(_accessFunc) {}
     uint64_t m_address;
     uint64_t m_size;
     addressElementType m_type;
     std::string m_name;
     addressBase *m_ptr;
+    std::function<void(bool, uint64_t, uint32_t&)> m_accessFunc; // function for memory access
 };
 
 class addressMap
@@ -33,12 +35,17 @@ public:
     void addRegister(uint64_t address, uint64_t size, std::string name, addressBase *ptr)
     {
         Q_ASSERT_CTX(m_addressMap.size()==0 || (address >= m_addressMap.back().m_address + m_addressMap.back().m_size), name, "Address overlap");
-        m_addressMap.emplace_back(addressElement(address, size, addressElementType::REG, name, ptr));
+        m_addressMap.emplace_back(addressElement(address, size, addressElementType::REG, name, ptr, nullptr));
     }
     void addMemory(uint64_t address, uint64_t size, std::string name, addressBase *ptr)
     {
         Q_ASSERT_CTX(m_addressMap.size()==0 || (address >= m_addressMap.back().m_address + m_addressMap.back().m_size), name, "Address overlap");
-        m_addressMap.emplace_back(addressElement(address, size, addressElementType::MEM, name, ptr));
+        m_addressMap.emplace_back(addressElement(address, size, addressElementType::MEM, name, ptr, nullptr));
+    }
+    void addMemory(uint64_t address, uint64_t size, std::string name)
+    {
+        Q_ASSERT_CTX(m_addressMap.size()==0 || (address >= m_addressMap.back().m_address + m_addressMap.back().m_size), name, "Address overlap");
+        m_addressMap.emplace_back(addressElement(address, size, addressElementType::MEM, name, nullptr, nullptr));
     }
     void cpu_write(uint64_t address, uint32_t val) {
         m_lastWriteAddress = address;
@@ -46,13 +53,22 @@ public:
         if (it->m_type == addressElementType::REG) {
             log_.logPrint([&]() { return fmt::format("Reg {} Write Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
         } else {
+            if (it->m_accessFunc) {
+                it->m_accessFunc(true, address, val);
+                return;
+            }
             log_.logPrint([&]() { return fmt::format("Mem {} Write Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
         }
         it->m_ptr->cpu_write((address - it->m_address), val);
     }
     uint32_t cpu_read(uint64_t address) {
         auto it = find(address);
-        uint32_t val = it->m_ptr->cpu_read((address - it->m_address));
+        uint32_t val = 0;
+        if (it->m_accessFunc) {
+            it->m_accessFunc(false, address, val);
+            return val;
+        }
+        val = it->m_ptr->cpu_read((address - it->m_address));
         if (it->m_type == addressElementType::REG) {
             log_.logPrint([&]() { return fmt::format("Reg {} Read Addr:0x{:x} Val:0x{:x}", it->m_name, address, val); });
         } else {

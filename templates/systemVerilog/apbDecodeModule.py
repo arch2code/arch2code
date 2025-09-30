@@ -66,7 +66,7 @@ def render(args, prj, data):
                 # otherwise use the list of instances from the database
                 instances = dict.fromkeys(prj.data['instances'], 0)
             prj.initConnections(instances)
-            parentData = prj.getBlockData(parentBlock, instances)
+            parentData = prj.getBlockDataOld(parentBlock, instances)
 
     addressGroupData = data['addressDecode']['addressGroupData']
     addrDecodeSize = addressGroupData['addressIncrement'] * addressGroupData['maxAddressSpaces']

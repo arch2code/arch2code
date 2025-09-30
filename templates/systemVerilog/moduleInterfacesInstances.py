@@ -1,73 +1,58 @@
 from pathlib import Path
 from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck, importPackages
 from pysrc.processYaml import camelCase
+import pysrc.intf_gen_utils as intf_gen_utils
 
 # args from generator line
 # prj object
 # data set dict
 def render(args, prj, data):
-    out = ''
+    out = []
     indent = ' ' * 4
 
     # Pass in the stem of fileName and the blockName
-    out += fileNameBlockCheck(Path(data['fileName']).resolve().stem, data['blockName'])
+    out.append(fileNameBlockCheck(Path(data['fileName']).resolve().stem, data['blockName']))
 
     # Packages
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
-    out += importPackages(args, prj, startingContext, data)
+    out.append(importPackages(args, prj, startingContext, data))
 
     # Parameters
     if ( prj.data['blocks'][data['qualBlock']]['params'] ):
-        out += '#(\n'
-        out += ",\n".join([f"{indent}parameter {param['param']}" for param in prj.data['blocks'][data['qualBlock']]['params']])
-        out += '\n)\n'
+        out.append('#(\n')
+        out.append(",\n".join([f"{indent}parameter {param['param']}" for param in prj.data['blocks'][data['qualBlock']]['params']]))
+        out.append('\n)\n')
 
-    out += "(\n"
+    out.append("(\n")
 
     # Ports
-    for unusedKey, value in data['ports'].items():
-        out += f"{indent}{value['interfaceData']['interfaceType']}_if.{value['direction']} {value['name']},\n"
-    #loop through the memory connections and declare ports if its for this block
-    for unusedKey, memValue in data['memoryConnections'].items():
-        if (memValue['instanceTypeKey'] == data['blockName']):
-            out += f"{indent}memory_if.src  {memValue['memory']},\n"
-    #loop through the register connections and declare ports if its for this block
-    for unusedKey, regValue in data['registerConnections'].items():
-        if (prj.data['instances'][regValue['instanceKey']]['instanceType'] == data['blockName']):
-            if (prj.data['registers'][regValue['registerBlock']]['regType'] == 'rw'):
-                out += f"{indent}status_if.dst {regValue['register']},\n"
-            elif (prj.data['registers'][regValue['registerBlock']]['regType'] == 'ro'):
-                out += f"{indent}status_if.src {regValue['register']},\n"
-            elif (prj.data['registers'][regValue['registerBlock']]['regType'] == 'ext'):
-                out += f"{indent}external_reg_if.dst {regValue['register']},\n"
-    out += f"{indent}input clk, rst_n\n"
-    out += ");\n\n"
+    for sourceType in data['ports']:
+        for port, port_data in data['ports'][sourceType].items():
+            connectionData = port_data.get('connection', {})
+            intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
+            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'])
+            out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']},\n")
+    out.append(f"{indent}input clk, rst_n\n")
+    out.append(");\n\n")
 
     #// Interface Instances, needed for between instanced modules inside this module
-    out +=f"{indent}// Interface Instances, needed for between instanced modules inside this module\n"
-    for unusedKey, value in data['connections'].items():
-        # the 'registerLeaf' is used to indicate if a `registerLeaf` was infered
-        #  this is done when a block has a registerParentBlock with registers
-        if 'registerLeaf' not in value:
-            if value['channelCount'] > 1 and not value['channelDeclare']:
-                continue
-            out += f"{indent}{value['interfaceType']}_if #("
-            if not prj.data['interfaces'][value['interfaceKey']]['structures']:
-                prj.data['interfaces'][value['interfaceKey']]['structures'] = []
+    out.append(f"{indent}// Interface Instances, needed for between instanced modules inside this module\n")
+    for channelType in data["connectDouble"]:
+        for key, value in data["connectDouble"][channelType].items():
+            intf_type = intf_gen_utils.get_intf_type(value['interfaceType'])
+            intf_data = intf_gen_utils.get_intf_data(value, prj)
+            out.append(f"{indent}{intf_type}_if #(")
             params = list()
-            for item in prj.data['interfaces'][value['interfaceKey']]['structures']:
+            for item in intf_data['structures']:
                 params.append(f".{item['structureType']}({item['structure']})")
-            out += ', '.join(params)
-            out += f") {value['interfaceName']}"
-            if value['channelCount'] > 1:
-                out += f"[{value['channelCount']}]();\n"
-            else:
-                out += "();\n"
-    out += "\n"
+            out.append(', '.join(params))
+            out.append(f") {value['interfaceName']}")
+            out.append("();\n")
+    out.append("\n")
 
     #// Memory Interfaces if they exist
     if data['memories']:
-        out += f"{indent}// Memory Interfaces\n"
+        out.append(f"{indent}// Memory Interfaces\n")
         for unusedKey, value in data['memories'].items():
             # dualPort with no connection is one with name
             #   and one with Unused
@@ -81,7 +66,7 @@ def render(args, prj, data):
             portSuffix = None
             for memoryConnectionKey, memoryConnection in data['memoryConnections'].items():
                 if (value['memory'] == memoryConnection['memory']):
-                    out += f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}{memoryConnection['portSuffix']}();\n"
+                    out.append(f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}{memoryConnection['portSuffix']}();\n")
                     connectionsPerMemory = connectionsPerMemory + 1
                     if memoryConnection['portSuffix'] != '':
                         portSuffix = True
@@ -89,50 +74,50 @@ def render(args, prj, data):
                 if value['memoryType'] == 'dualPort':
                     key = memoryConnectionKey + "PortA"
                     data['memoryConnections'][key] = {'memory': value['memory'], 'instance': None, 'portSuffix': ''}
-                    out += f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}();\n"
+                    out.append(f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}();\n")
                     key = memoryConnectionKey + "PortB"
                     if value['regAccess']:
                         data['memoryConnections'][key] = {'memory': value['memory'], 'instance': None, 'portSuffix': 'Regs'}
-                        out += f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}Regs();\n"
+                        out.append(f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}Regs();\n")
                     else:
                         data['memoryConnections'][key] = {'memory': value['memory'], 'instance': None, 'portSuffix': 'Unused'}
-                        out += f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}Unused();\n"
+                        out.append(f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}Unused();\n")
 
                 else: # singlePort
                     memoryConnectionKey = memoryConnectionKey + "Single"
                     if value['regAccess'] and value['local']:
-                        out += f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}Regs();\n"
+                        out.append(f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}Regs();\n")
                         data['memoryConnections'][memoryConnectionKey] = {'memory': value['memory'], 'instance': None, 'portSuffix': 'Regs'}
                     else:
                         data['memoryConnections'][memoryConnectionKey] = {'memory': value['memory'], 'instance': None, 'portSuffix': ''}
-                        out += f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}();\n"
+                        out.append(f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}();\n")
             elif connectionsPerMemory == 1 and value['memoryType'] == 'dualPort' and not portSuffix:
                 memoryConnectionKey = memoryConnectionKey + "PortB"
                 if value['regAccess']:
                     data['memoryConnections'][memoryConnectionKey] = {'memory': value['memory'], 'instance': None, 'portSuffix': 'Regs'}
-                    out += f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}Regs();\n"
+                    out.append(f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}Regs();\n")
                 else:
                     data['memoryConnections'][memoryConnectionKey] = {'memory': value['memory'], 'instance': None, 'portSuffix': 'Unused'}
-                    out += f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}Unused();\n"
+                    out.append(f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}Unused();\n")
             elif connectionsPerMemory == 1 and value['memoryType'] == 'dualPort' and portSuffix:
                 memoryConnectionKey = memoryConnectionKey + "PortB"
                 data['memoryConnections'][memoryConnectionKey] = {'memory': value['memory'], 'instance': None, 'portSuffix': ''}
-                out += f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}();\n"
-        out += "\n"
+                out.append(f"{indent}memory_if #(.data_t({value['structure']}), .addr_t({value['addressStruct']})) {value['memory']}();\n")
+        out.append("\n")
 
     #// Register Interfaces if they exist
     if data['registers']:
-        out += f"{indent}// Register Interfaces\n"
+        out.append(f"{indent}// Register Interfaces\n")
         for unusedKey, value in data['registers'].items():
             #the register interfaces get inferred and therefore are mostly hardcoded here
             if (value['regType'] in ['ro', 'rw']):
-                out += f"{indent}status_if #(.data_t({value['structure']})) {value['register']}();\n"
+                out.append(f"{indent}status_if #(.data_t({value['structure']})) {value['register']}();\n")
             elif (value['regType'] == 'ext'):
-                out += f"{indent}external_reg_if #(.data_t({value['structure']})) {value['register']}();\n"
-        out += "\n"
+                out.append(f"{indent}external_reg_if #(.data_t({value['structure']})) {value['register']}();\n")
+        out.append("\n")
 
     #// Instances
-    out += "// Instances\n"
+    out.append("// Instances\n")
     for unusedKey, value in data['subBlockInstances'].items():
 
         qualBlockInst = prj.getQualBlock(value['instanceType'])
@@ -150,34 +135,34 @@ def render(args, prj, data):
 
         if ( value['registerLeafInstance'] == 1 ):
             mask = (1<<(data['addressDecode']['addressBits']-1))-1
-            out += f"{value['instanceType']} #(.APB_ADDR_MASK('h{mask:_x})) {value['instance']} (\n"
+            out.append(f"{value['instanceType']} #(.APB_ADDR_MASK('h{mask:_x})) {value['instance']} (\n")
         else:
-            out += f"{value['instanceType']}{inst_params}{value['instance']} (\n"
+            out.append(f"{value['instanceType']}{inst_params}{value['instance']} (\n")
         # Declare connectionMaps that connect to this instance
         for unusedKey2, value2 in data['connectionMaps'].items():
             if (value['instance'] == value2['instance']):
-                out += f"{indent}.{value2['instancePortName']} ({value2['parentPortName']}),\n"
+                out.append(f"{indent}.{value2['instancePortName']} ({value2['parentPortName']}),\n")
         # loop through the memory connections that connect to this instance
         for unusedKey2, memValue in data['memoryConnections'].items():
             if (value['instance'] == memValue['instance']):
-                out += f"{indent}.{memValue['memory']} ({memValue['memory']}{memValue['portSuffix']}),\n"
+                out.append(f"{indent}.{memValue['memory']} ({memValue['memory']}{memValue['portSuffix']}),\n")
         # loop through the register connections that connect to this instance
         for unusedKey2, regValue in data['registerConnections'].items():
             if (value['instance'] == regValue['instance']):
-                out += f"{indent}.{regValue['register']} ({regValue['register']}),\n"
+                out.append(f"{indent}.{regValue['register']} ({regValue['register']}),\n")
         # loop through connection for this instance
         for unusedKey2, value2 in data['connections'].items():
             for unusedKey3, value3 in value2['ends'].items():
                 if (value['instance'] == value3['instance']):
                     if value2['channelCount'] > 1:
-                        out += f"{indent}.{value3['portName']} ({value2['interfaceName']}[{value2['channelIndex']}]),\n"
+                        out.append(f"{indent}.{value3['portName']} ({value2['interfaceName']}[{value2['channelIndex']}]),\n")
                     else:
-                        out += f"{indent}.{value3['portName']} ({value2['interfaceName']}),\n"
-        out += f"{indent}.clk (clk),\n{indent}.rst_n (rst_n)\n);\n\n"
+                        out.append(f"{indent}.{value3['portName']} ({value2['interfaceName']}),\n")
+        out.append(f"{indent}.clk (clk),\n{indent}.rst_n (rst_n)\n);\n\n")
 
     #// Memory Instances if they exist
     if data['memories']:
-        out += "// Memory Instances\n"
+        out.append("// Memory Instances\n")
     for unusedKey, value in data['memories'].items():
         # memories are currenlty all parameterized behavioral memories
         if value['local']:
@@ -191,26 +176,25 @@ def render(args, prj, data):
             external = ''
         if value['memoryType'] == 'dualPort':
             portValue = 'A'
-            out += f"// dual port{external}\n"
+            out.append(f"// dual port{external}\n")
             if isLocal:
-                out += f"{value['structure']} {localMemInst} [{value['wordLines']}-1:0];\n"
+                out.append(f"{value['structure']} {localMemInst} [{value['wordLines']}-1:0];\n")
             memInstName = camelCase('u', value['memory'])
-            out += f"memory_dp{ext} #(.DEPTH({value['wordLines']}), .data_t({value['structure']})) {memInstName} (\n"
+            out.append(f"memory_dp{ext} #(.DEPTH({value['wordLines']}), .data_t({value['structure']})) {memInstName} (\n")
         elif value['memoryType'] == 'singlePort':
-            out += f"// single port{external}\n"
+            out.append(f"// single port{external}\n")
             if isLocal:
-                out += f"{value['structure']} {localMemInst} [{value['wordLines']}-1:0];\n"
+                out.append(f"{value['structure']} {localMemInst} [{value['wordLines']}-1:0];\n")
             memInstName = camelCase('u', value['memory'])
-            out += f"memory_sp{ext} #(.DEPTH({value['wordLines']}), .data_t({value['structure']})) {memInstName} (\n"
+            out.append(f"memory_sp{ext} #(.DEPTH({value['wordLines']}), .data_t({value['structure']})) {memInstName} (\n")
         for unusedKey2, memoryConnection in data['memoryConnections'].items():
             if value['memory'] == memoryConnection['memory']:
                 if value['memoryType'] == 'dualPort':
-                    out += f"{indent}.mem_port{portValue} ({value['memory']}{memoryConnection['portSuffix']}),\n"
+                    out.append(f"{indent}.mem_port{portValue} ({value['memory']}{memoryConnection['portSuffix']}),\n")
                     portValue = 'B'
                 elif value['memoryType'] == 'singlePort':
-                    out += f"{indent}.mem_port ({value['memory']}{memoryConnection['portSuffix']}),\n"
+                    out.append(f"{indent}.mem_port ({value['memory']}{memoryConnection['portSuffix']}),\n")
         if isLocal:
-            out += f"{indent}.mem ({localMemInst}),\n"
-        out += f"{indent}.clk (clk)\n);\n\n"
-
-    return (out)
+            out.append(f"{indent}.mem ({localMemInst}),\n")
+        out.append(f"{indent}.clk (clk)\n);\n\n")
+    return "".join(out)

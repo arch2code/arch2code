@@ -28,7 +28,7 @@ class documentGenerator:
                 exit(warningAndErrorReport())
             else:
                 qualBlock = prj.getQualBlock( self.code.block )
-                self.data = prj.getBlockData(qualBlock, self.instances)
+                self.data = prj.getBlockDataOld(qualBlock, self.instances)
         args.fileName = fileName
         parser = argparse.ArgumentParser(description="Document generated code parser", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         self.renderer.renderSections(self, self.code, parser, prj, self.data, args)

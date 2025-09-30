@@ -18,8 +18,6 @@ public:
     // apbReg->uSomeRapper: CPU access to SoC registers in the design
     apb_out< apbAddrSt, apbDataSt > apbReg;
 
-    // dst ports
-
 
     cpuBase(std::string name, const char * variant) :
         apbReg("apbReg")
@@ -41,8 +39,6 @@ public:
     // apbReg->uSomeRapper: CPU access to SoC registers in the design
     apb_in< apbAddrSt, apbDataSt > apbReg;
 
-    // dst ports
-
 
     cpuInverted(std::string name) :
         apbReg(("apbReg"+name).c_str())
@@ -61,10 +57,8 @@ class cpuChannels
 {
 public:
     // src ports
-    //   apbReg
+    // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apbReg;
-
-    // dst ports
 
 
     cpuChannels(std::string name, std::string srcName) :

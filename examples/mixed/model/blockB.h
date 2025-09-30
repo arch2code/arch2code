@@ -12,8 +12,8 @@
 #include "blockB_base.h"
 #include "addressMap.h"
 #include "hwMemory.h"
-#include "mixedBlockCIncludes.h"
 #include "mixedIncludes.h"
+#include "mixedBlockCIncludes.h"
 #include "mixedIncludeIncludes.h"
 //contained instances forward class declaration
 class blockBRegsBase;
@@ -35,26 +35,29 @@ private:
     };
     static registerBlock registerBlock_;
 public:
-
     // channels
-    //   cStuffIf
-    rdy_vld_channel< seeSt > cStuffIf_uBlockD_uThreeCs;
-    //   dStuffIf
+    // An interface for C
+    rdy_vld_channel< seeSt > cStuffIf;
+    // An interface for C
+    rdy_vld_channel< seeSt > cStuff1;
+    // An interface for C
+    rdy_vld_channel< seeSt > cStuff2;
+    // An interface for D
     rdy_vld_channel< dSt > dee0;
-    //   dStuffIf
+    // An interface for D
     rdy_vld_channel< dSt > dee1;
-    //   rwD
-    status_channel< dRegSt > rwD;
-    //   roBsize
+    // An interface for D
+    rdy_vld_channel< dSt > loopDF;
+    // An interface for D
+    rdy_vld_channel< dSt > loopFF;
+    // An interface for D
+    rdy_vld_channel< dSt > loopFD;
+    // A Read Only register with a structure that has a definition from an included context
     status_channel< bSizeRegSt > roBsize;
-    //   cStuffIf
-    rdy_vld_channel< seeSt > cStuffIf_uBlockF0_uThreeCs;
-    //   cStuffIf
-    rdy_vld_channel< seeSt > cStuffIf_uBlockF1_uThreeCs;
 
     //instances contained in block
-    std::shared_ptr<blockDBase> uBlockD;
     std::shared_ptr<blockBRegsBase> uBlockBRegs;
+    std::shared_ptr<blockDBase> uBlockD;
     std::shared_ptr<blockFBase> uBlockF0;
     std::shared_ptr<blockFBase> uBlockF1;
     std::shared_ptr<threeCsBase> uThreeCs;

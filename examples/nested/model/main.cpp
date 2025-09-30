@@ -61,7 +61,7 @@ int sc_main(int argc, char* argv[])
         "src_clock_dest_trans_rv_tracker", 
         "src_trans_dest_clock_rv_tracker" 
         });
-    std::shared_ptr<blockBase> uTop = instanceFactory::createInstance("", "uTestContainer", "testContainer", "");
+    std::shared_ptr<blockBase> uTop = instanceFactory::createInstance("", "uTop", "top", "");
 
     // start simulation
     sc_start();

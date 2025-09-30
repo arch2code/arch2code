@@ -95,15 +95,15 @@ class blockAChannels
 {
 public:
     // src ports
-    //   aStuffIf
+    // An interface for A
     req_ack_channel< aSt, aASt > aStuffIf;
-    //   cStuffIf
+    // An interface for C
     rdy_vld_channel< seeSt > cStuffIf;
-    //   startDone
+    // A start done interface
     notify_ack_channel< > startDone;
 
     // dst ports
-    //   apbReg
+    // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apbReg;
 
 

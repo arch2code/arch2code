@@ -30,6 +30,7 @@ def render_default(args, prj, data):
         fileMapKey = args.fileMapKey
     else:
         fileMapKey = 'include_hdr'
+    registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
 
     for context in data['includeContext']:
         if context in data['includeFiles'][fileMapKey]:
@@ -46,7 +47,7 @@ def render_default(args, prj, data):
     out.append(f'SC_MODULE({ className }), public blockBase, public { baseClassName }\n')
     out.append('{\n')
     out.append('private:\n')
-    if data['addressDecode']['hasDecoder']:
+    if registerDecode:
         out.append('    void regHandler(void);\n')
         out.append('    addressMap regs;\n')
     if data['addressDecode']['isApbRouter']:
@@ -68,33 +69,16 @@ def render_default(args, prj, data):
     out.append(indent + 'static registerBlock registerBlock_;\n')
     out.append('public:\n')
 
-
-    out.append('\n')
-    out.append( indent + '// channels\n')
-
-    chnl_table = dict()
-    for key, value in data["connections"].items():
-        chnl_table[key] = intf_gen_utils.sc_gen_block_channels(value, prj)
-
-    def gen_sc_channels_decl(args, prj, data):
-        s = []
-        for key in data["connections"]:
-            if chnl_table[key]['is_skip']:
-                continue
-            s.append('//   {}'.format(chnl_table[key]['intf_name']))
-            s.append(chnl_table[key]['channel_decl'])
-        s = '\n'.join(s)
-        return s
-
-    out.append(textwrap.indent(gen_sc_channels_decl(args, prj, data), indent))
-
-    out.append('\n')
+    channels = intf_gen_utils.sc_declare_channels(data, prj, indent)
+    if len(channels):
+        out.append( indent + '// channels\n')
+        out.extend(channels)
+        out.append('\n')
 
 
     first = True
     for instance, instData in data["subBlockInstances"].items():
         if first:
-            out.append('\n')
             out.append( indent + f'//instances contained in block\n')
             first = False
 

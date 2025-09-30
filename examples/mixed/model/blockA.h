@@ -32,9 +32,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     //registers
     hwRegister< aRegSt, 4 > roA; // A Read Only register
 

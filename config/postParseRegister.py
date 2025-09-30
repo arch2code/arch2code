@@ -86,6 +86,7 @@ def postProcess(prj):
                 connection['dst'] = instance
                 connection['interface'] = reg_interface
                 connection['srcport'] = "apb_"+instance
+                connection['interfaceName'] = "apb_"+instance
                 connections.append(connection)
             else:
                 # for non direct connect cases we need to connect to parent in the same container as the address decode block

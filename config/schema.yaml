@@ -178,8 +178,8 @@ instances:
       field: block
       scope: global  # override the normal context search space to global
   addressGroup: auto(addressGroup) #this field needs to be one of the valid AddressGroups defined in the addressControl file
-  addressID: auto(addressID) #note that even if specified in instances section, will be overridden
   addressMultiples: auto(addressMultiples) #optional field to get multiple address groups
+  addressID: auto(addressID) #note that even if specified in instances section, will be overridden
   instGroup: auto(instanceGroup) # this field needs to be one of the valid AddressGroups defined in the addressControl file
   instID: auto(instanceID)  #note that even if specified in instances section, will be overridden
   offset: optional(0)  #overridden by address generation
@@ -196,6 +196,7 @@ blocks:
   isRegHandler: optional(false) # this is used to indicate that this block handles registers
   mdlLeafNode: optional(false)
   dir: auto(blockDir)
+  maxAddress: optional(0) # filled out by address generation
   params:
     _attribs: [optional, list]
     param: key
@@ -260,6 +261,15 @@ connections: # custom handler
         srcport: optional
         dstKey: required
         dstport: optional
+  interface: required
+  interfaceKey: required
+  name: optional()
+  src: required
+  srcKey: required
+  srcport: optional
+  dst: required
+  dstKey: required
+  dstport: optional
   connection:
     _key:
       interfaceKey: required
@@ -268,13 +278,6 @@ connections: # custom handler
       srcport: optional
       dstKey: required
       dstport: optional
-  interface: required
-  interfaceKey: required
-  name: optional()
-  src: required
-  srcport: optional
-  dst: required
-  dstport: optional
   interfaceName: optional  # force the interface instance name for HW case. This is to allows the array case to instead use names for the array instances
   channel: optional #filled programatically based on src portName
   maxTransferSize: optional(0) # for multiCycle operation, overrides the interface maxTransferSize definition
@@ -323,6 +326,7 @@ connectionMaps:
       field: instance
   instancePort: # currently no validator
     _type: optional
+  instancePortName: auto(instancePortName)
   portId : # at end for ordering
     _key:
       blockKey: required
@@ -362,6 +366,10 @@ memories:
         - singlePort
         - dualPort
         - register
+  ports:
+    _attribs: [optional, list]
+    port: key
+    memoryBlock: outerkey
 
 registers:
   register: required
@@ -417,14 +425,11 @@ memoryConnections:
     _validate:
       section: instances
       field: instance
-  portSuffix:
-    _type: optional()
   memoryBlockInstance:
     _key:
       memory: required
       block: required
       instance: required
-      portSuffix: required
 
 
 registerConnections:

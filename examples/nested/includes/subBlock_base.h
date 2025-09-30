@@ -15,11 +15,11 @@ class subBlockBase : public virtual blockPortBase
 public:
     virtual ~subBlockBase() = default;
     // src ports
-    // test->External: Test interface
+    // test->uSubBlock1: Test interface
     rdy_vld_out< test_st > src;
 
     // dst ports
-    // External->test: Test interface
+    // uSubBlock0->test: Test interface
     rdy_vld_in< test_st > dst;
 
 
@@ -43,11 +43,11 @@ class subBlockInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // test->External: Test interface
+    // test->uSubBlock1: Test interface
     rdy_vld_in< test_st > src;
 
     // dst ports
-    // External->test: Test interface
+    // uSubBlock0->test: Test interface
     rdy_vld_out< test_st > dst;
 
 
@@ -71,11 +71,11 @@ class subBlockChannels
 {
 public:
     // src ports
-    //   test
+    // Test interface
     rdy_vld_channel< test_st > src;
 
     // dst ports
-    //   test
+    // Test interface
     rdy_vld_channel< test_st > dst;
 
 

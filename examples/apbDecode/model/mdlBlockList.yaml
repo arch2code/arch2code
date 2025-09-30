@@ -1,8 +1,0 @@
-# list of instances to generate model for
-instances:
-    - uTop
-    - uCPU
-    - uAPBDecode
-    - uSomeRapper
-    - uBlockA
-    - uBlockB

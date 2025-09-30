@@ -30,11 +30,10 @@ private:
     };
     static registerBlock registerBlock_;
 public:
-
     // channels
-    //   apbReg
+    // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apb_uBlockA;
-    //   apbReg
+    // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apb_uBlockB;
 
     //instances contained in block

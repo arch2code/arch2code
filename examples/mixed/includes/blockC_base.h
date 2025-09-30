@@ -7,17 +7,18 @@
 
 // GENERATED_CODE_PARAM --block=blockC
 // GENERATED_CODE_BEGIN --template=baseClassDecl
+#include "apb_channel.h"
+#include "notify_ack_channel.h"
 #include "rdy_vld_channel.h"
+#include "req_ack_channel.h"
 #include "mixedBlockCIncludes.h"
 
 class blockCBase : public virtual blockPortBase
 {
 public:
     virtual ~blockCBase() = default;
-    // src ports
-
     // dst ports
-    // External->cStuffIf: An interface for C
+    // uBlockA->cStuffIf: An interface for C
     rdy_vld_in< seeSt > see;
 
 
@@ -37,10 +38,8 @@ public:
 class blockCInverted : public virtual blockPortBase
 {
 public:
-    // src ports
-
     // dst ports
-    // External->cStuffIf: An interface for C
+    // uBlockA->cStuffIf: An interface for C
     rdy_vld_out< seeSt > see;
 
 
@@ -60,10 +59,8 @@ public:
 class blockCChannels
 {
 public:
-    // src ports
-
     // dst ports
-    //   cStuffIf
+    // An interface for C
     rdy_vld_channel< seeSt > see;
 
 

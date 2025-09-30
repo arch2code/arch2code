@@ -19,9 +19,9 @@ h:
 	echo $(GEN_SV_FILES)
 
 $(GEN_SV_FILES) : $(DOT_DB_FILE) 
-	$(REPO_ROOT)/arch2code.py --readonly --db $(DB_FILE) -sv --instances $(PROJECT_ROOT)/model/mdlBlockList.yaml --file $@
+	$(REPO_ROOT)/arch2code.py --readonly --db $(DB_FILE) -sv --file $@
 $(GEN_H_FILES) : $(DOT_DB_FILE) 
-	$(REPO_ROOT)/arch2code.py --readonly --db $(DB_FILE) -sc --instances $(PROJECT_ROOT)/model/mdlBlockList.yaml --file $@
+	$(REPO_ROOT)/arch2code.py --readonly --db $(DB_FILE) -sc --file $@
 
 gen: $(GEN_SV_FILES) $(GEN_H_FILES)
 

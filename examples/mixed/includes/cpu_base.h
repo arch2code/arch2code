@@ -8,6 +8,9 @@
 // GENERATED_CODE_PARAM --block=cpu
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
+#include "notify_ack_channel.h"
+#include "rdy_vld_channel.h"
+#include "req_ack_channel.h"
 #include "mixedIncludes.h"
 
 class cpuBase : public virtual blockPortBase
@@ -17,8 +20,6 @@ public:
     // src ports
     // apbReg->uAPBDecode: CPU access to SoC registers in the design
     apb_out< apbAddrSt, apbDataSt > apbReg;
-
-    // dst ports
 
 
     cpuBase(std::string name, const char * variant) :
@@ -41,8 +42,6 @@ public:
     // apbReg->uAPBDecode: CPU access to SoC registers in the design
     apb_in< apbAddrSt, apbDataSt > apbReg;
 
-    // dst ports
-
 
     cpuInverted(std::string name) :
         apbReg(("apbReg"+name).c_str())
@@ -61,10 +60,8 @@ class cpuChannels
 {
 public:
     // src ports
-    //   apbReg
+    // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apbReg;
-
-    // dst ports
 
 
     cpuChannels(std::string name, std::string srcName) :

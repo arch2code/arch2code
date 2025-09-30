@@ -179,7 +179,7 @@ struct testDataSt {
 
 };
 struct testDataHdrSt {
-    cmdidT cmdid; //Command context
+    cmdidT cmdid; //
 
     testDataHdrSt() {}
 
@@ -241,7 +241,7 @@ struct lengthHdrSt {
 
 };
 struct cmdidHdrSt {
-    cmdidT cmdid; //Command context
+    cmdidT cmdid; //
 
     cmdidHdrSt() {}
 

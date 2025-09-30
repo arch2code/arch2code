@@ -277,16 +277,63 @@ instances:
 ### dstport: used if there is more than one objectname instance of destination / slave, declares the port of destination objectname to connect to
 ### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
 ###          for this connection, optional (currently does not work in diagram generation code)
+#┌───────────────────────────────────────────────────────────────────────┐
+#│                                    testContainer                      │
+#├───────────────────────────────────────────────────────────────────────┤
+#│                                                                       │
+#│      ┌─────────────┐     loop1a       ┌─────────────┐                 │
+#│  ┌──→│ uTestBlock0 ├─────────────────→│ uTestBlock1 │←────────────┐   │
+#│  |   │             │←─────────────────┤             │             │   │
+#│  │   └──────┬──────┘     loop1b       └──────┬──────┘             │   │
+#│  │          │                                │                    │   │
+#│  │          │loop2a                          │loop3a              │   │
+#│  │          ▼ in                             ▼ in                 │   │
+#│  │   ┌───────────────────┐              ┌───────────────────┐     │   │
+#│  │   │uSubBlockContainer0│              │uSubBlockContainer1│     │   │
+#│  │   │        |dst       │              │        |dst       │     │   │
+#│  │   │  ┌───────────┐    │              │  ┌───────────┐    │     │   │
+#│  │   │  │uSubBlock0 │    │              │  │uSubBlock0 │    │     │   │
+#│  │   │  │           │    │              │  │           │    │     │   │
+#│  │   │  └───────────┘    │              │  └───────────┘    │     │   │
+#│  │   │        |src       │              │        |src       │     │   │
+#│  │   │        |dst       │              │        |dst       │     │   │
+#│  │   │  ┌───────────┐    │              │  ┌───────────┐    │     │   │
+#│  │   │  │uSubBlock1 │    │              │  │uSubBlock1 │    │     │   │
+#│  │   │  │           │    │              │  │           │    │     │   │
+#│  │   │  └───────────┘    │              │  └───────────┘    │     │   │
+#│  │   │        |src       │              │        |src       │     │   │
+#│  │   └───────────────────┘              └───────────────────┘     │   │
+#│  │        out │                               │ out               │   │
+#│  └────────────┘                               │loop3b             │   │
+#│     loop2b                                    ▼ in                │   │
+#│                                         ┌───────────────────┐     │   │
+#│                                         │uSubBlockContainer2│     │   │
+#│                                         │        |dst       │     │   │
+#│                                         │  ┌───────────┐    │     │   │
+#│                                         │  │uSubBlock0 │    │     │   │
+#│                                         │  │           │    │     │   │
+#│                                         │  └───────────┘    │     │   │
+#│                                         │        |src       │     │   │
+#│                                         │        |dst       │     │   │
+#│                                         │  ┌───────────┐    │     │   │
+#│                                         │  │uSubBlock1 │    │     │   │
+#│                                         │  │           │    │     │   │
+#│                                         │  └───────────┘    │     │   │
+#│                                         │        |src       │     │   │
+#│                                         └───────────────────┘     │   │
+#│                                                |out          loop3c   │
+#│                                                └──────────────────┘   │
+#└───────────────────────────────────────────────────────────────────────┘
+
+
 connections:
-  - {interface: test,    name: top0,   src: uTop,                dst: uTestBlock0,         dstport: top}
-  - {interface: test,    name: top1,   src: uTop,                dst: uTestBlock1,         dstport: top}
-  - {interface: test,                  src: uTestBlock0,         srcport: loop1src,  dst: uTestBlock1,         dstport: loop1dst}
-  - {interface: test,                  src: uTestBlock1,         srcport: loop1src,  dst: uTestBlock0,         dstport: loop1dst}
-  - {interface: test,                  src: uTestBlock0,         srcport: loop2src,  dst: uSubBlockContainer0, dstport: in}
-  - {interface: test,                  src: uSubBlockContainer0, srcport: out,       dst: uTestBlock0,         dstport: loop2dst}
-  - {interface: test,                  src: uTestBlock1,         srcport: loop2src,  dst: uSubBlockContainer1, dstport: in}
-  - {interface: test,                  src: uSubBlockContainer1, srcport: out,       dst: uSubBlockContainer2, dstport: in}
-  - {interface: test,                  src: uSubBlockContainer2, srcport: out,       dst: uTestBlock1,         dstport: loop2dst}
+  - {interface: test,                  src: uTestBlock0,         srcport: loop1src,  dst: uTestBlock1,         dstport: loop1dst, interfaceName: loop1a}
+  - {interface: test,                  src: uTestBlock1,         srcport: loop1src,  dst: uTestBlock0,         dstport: loop1dst, interfaceName: loop1b}
+  - {interface: test,                  src: uTestBlock0,         srcport: loop2src,  dst: uSubBlockContainer0, dstport: in,       interfaceName: loop2a}
+  - {interface: test,                  src: uSubBlockContainer0, srcport: out,       dst: uTestBlock0,         dstport: loop2dst, interfaceName: loop2b}
+  - {interface: test,                  src: uTestBlock1,         srcport: loop2src,  dst: uSubBlockContainer1, dstport: in,       interfaceName: loop3a}
+  - {interface: test,                  src: uSubBlockContainer1, srcport: out,       dst: uSubBlockContainer2, dstport: in,       interfaceName: loop3b}
+  - {interface: test,                  src: uSubBlockContainer2, srcport: out,       dst: uTestBlock1,         dstport: loop2dst, interfaceName: loop3c}
   - {interface: test,                  src: uSubBlock0,          srcport: src,       dst: uSubBlock1,          dstport: dst}
   - {interface: test,                  src: uTestTop,                                dst: uNestedL1,           dstport: nested1}
   - {interface: alpha, name: primary,  src: uFirst,                                  dst: uSecond          } # no ports, but named

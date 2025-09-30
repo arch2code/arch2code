@@ -28,10 +28,9 @@ private:
     };
     static registerBlock registerBlock_;
 public:
-
     // channels
-    //   test
-    rdy_vld_channel< test_st > src;
+    // Test interface
+    rdy_vld_channel< test_st > test;
 
     //instances contained in block
     std::shared_ptr<subBlockBase> uSubBlock0;

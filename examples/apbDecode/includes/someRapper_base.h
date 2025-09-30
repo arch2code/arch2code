@@ -14,8 +14,6 @@ class someRapperBase : public virtual blockPortBase
 {
 public:
     virtual ~someRapperBase() = default;
-    // src ports
-
     // dst ports
     // uCPU->apbReg: CPU access to SoC registers in the design
     apb_in< apbAddrSt, apbDataSt > apbReg;
@@ -37,8 +35,6 @@ public:
 class someRapperInverted : public virtual blockPortBase
 {
 public:
-    // src ports
-
     // dst ports
     // uCPU->apbReg: CPU access to SoC registers in the design
     apb_out< apbAddrSt, apbDataSt > apbReg;
@@ -60,10 +56,8 @@ public:
 class someRapperChannels
 {
 public:
-    // src ports
-
     // dst ports
-    //   apbReg
+    // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apbReg;
 
 

@@ -33,9 +33,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     //registers
     hwRegister< dRegSt, 4 > rwD; // A Read Write register
     hwRegister< bSizeRegSt, 4 > roBsize; // A Read Only register with a structure that has a definition from an included context

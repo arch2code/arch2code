@@ -11,14 +11,7 @@ def render(args, prj, data):
 
     out = list()
 
-    # A bit of preprocessing to filter out register ports based on block context 
-    data['regPorts'] = {k: v for k, v in data['regPorts'].items() if v['interfaceData']['block'] != data['blockName']}
-
-    block_intf_set = set(
-        [v['interfaceData']['interfaceType'] for v in data['ports'].values()] +
-        [v['interfaceData']['interfaceType'] for v in data['regPorts'].values()] +
-        [v['interfaceType'] for v in data['connections'].values()]
-    )
+    block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'])
 
     if not block_intf_set:
         out.append('#include "blockBase.h"\n')
@@ -86,60 +79,64 @@ def renderClass(args, prj, data, blockName, ifMapping):
                 out.append(f'    const uint64_t {param["param"]};\n')
 
     mp_sig = dict()
-    for port in data['ports']:
-        mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port], prj, swap_dir=ifMapping['swap_dir'])
+    portNames = dict()
+    for sourceType in data['ports']:
+        for port, port_data in data['ports'][sourceType].items():
+            mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(port_data, prj, swap_dir=ifMapping['swap_dir'])
+            if port not in portNames:
+                portNames[port] = 0
+            else:
+                if port_data['interfaceData']['interfaceType'] != 'status':
+                    printError(f"Port {port} is defined multiple times in block {data['qualBlock']} and not a status interface")
+                    exit(warningAndErrorReport())
     # add condition for including register ports
     regs = dict()
-    for port in data['regPorts']:
-        regName = data['regPorts'][port]['name']
-        if regName not in regs:
-            regs[regName] = 0
-            mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['regPorts'][port], prj, swap_dir=ifMapping['swap_dir'])
-            # add the regPort to the ports dict
-            data['ports'][port] = data['regPorts'][port]
+    port_count = 0
+    def get_sc_if_comment(args, port_type, port_data, intf_data, direction):
+        if port_type in ['connections', 'connectionMaps']:
+            if args.noExternalComments:
+                partner_inst = "External"
+            else:
+                partner_inst = port_data.get(intf_gen_utils.inverse_portdir(direction), "External")
+            ifString = intf_data.get('interface', intf_data.get('interfaceType',''))
+            if direction == 'src':
+                return (f"// {ifString}->{partner_inst}: {intf_data['desc']}")
+            else:
+                return (f"// {partner_inst}->{ifString}: {intf_data['desc']}")
         else:
-            if data['regPorts'][port]['interfaceData']['interfaceType'] != 'status':
-                printError(f"Register port {regName} is defined multiple times in block {data['qualBlock']} and not a status interface")
-                exit(warningAndErrorReport())
-    
+            if port_type == 'registers':
+                return (f"// {port_data['connection']['block']}->reg({port_data['connection']['register']}) {port_data['connection']['desc']}")
+            if port_type == 'memories':
+                return (f"// {port_data['connection']['block']}->mem({port_data['connection']['memory']}) {port_data['connection']['desc']}")
+            return (f"//   {port_type}")
+
     def gen_sc_ports_decl(args, prj, data):
+        nonlocal port_count
         s = []
-        s.append('// src ports')
-        for port in filter(lambda p : data['ports'][p]['direction'] == 'src', data['ports'].keys()):
-            if mp_sig[port]['is_skip']:
-                continue
-            intf_data = data['ports'][port]['interfaceData']
-            if args.noExternalComments:
-                partner_inst = "External"
-            else:
-                partner_inst = data['ports'][port]['connectionData'].get('dst', "External")
-            s.append('// {}->{}: {}'.format(intf_data['interface'], partner_inst, intf_data['desc']))
-            s.append(mp_sig[port]['port_decl'])
-        s.append('')
-        s.append('// dst ports')
-        for port in filter(lambda p : data['ports'][p]['direction'] == 'dst', data['ports'].keys()):
-            if mp_sig[port]['is_skip']:
-                continue
-            intf_data = data['ports'][port]['interfaceData']
-            if args.noExternalComments:
-                partner_inst = "External"
-            else:
-                partner_inst = data['ports'][port]['connectionData'].get('src', "External")
-            s.append('// {}->{}: {}'.format(partner_inst, intf_data['interface'], intf_data['desc']))
-            s.append(mp_sig[port]['port_decl'])
-        s.append('')
+        for direction in ['src', 'dst']:
+            section = []
+            have_port = False
+            section.append(f'// {direction} ports')
+            for port_type in data['ports']:
+                for port in filter(lambda p : data['ports'][port_type][p]['direction'] == direction, data['ports'][port_type].keys()):
+                    if mp_sig[port]['is_skip']:
+                        continue
+                    have_port = True
+                    port_count += 1
+                    port_data = data['ports'][port_type][port]
+                    intf_data = intf_gen_utils.get_intf_data(port_data['connection'], prj)
+                    section.append(get_sc_if_comment(args, port_type, port_data, intf_data, direction))
+                    section.append(mp_sig[port]['port_decl'])
+            section.append('')
+            if have_port:
+                s.extend(section)
         s = '\n'.join(s)
         return s
 
     out.append(textwrap.indent(gen_sc_ports_decl(args, prj, data), indent))
 
     out.append('\n'*2)
-    colon = ''
-    if len(data['ports']) > 0:
-        for key, value in data['ports'].items():
-            if value["commentOut"] == '':
-                colon = ':'
-                break
+    colon = ':' if port_count > 0 else ''
     out.append( indent + f'{ className }({ ifMapping["parameter"] }) {colon}\n')
     comma = ''
     if ifMapping['ctorStringHasParam']:
@@ -154,51 +151,38 @@ def renderClass(args, prj, data, blockName, ifMapping):
                 out.append(f'        {comma}{param["param"]}(instanceFactory::getParam("{ blockName }", variant, "{param["param"]}"))\n')
                 comma = ','
 
-    # loop twice for c++ constructor init ordering reasons
-    for key, value in data['ports'].items():
-        if mp_sig[key]['is_skip']:
-            continue
-        if value['direction'] == 'src':
-            out.append(f'        { value  ["commentOut"] }{comma}{ value["name"] }({prefix}"{ value["name"] }"{postfix})\n')
-            if value["commentOut"] == '':
-                comma = ','
-    for key, value in data['ports'].items():
-        if mp_sig[key]['is_skip']:
-            continue
-        if value['direction'] == 'dst':
-            out.append(f'        { value  ["commentOut"] }{comma}{ value["name"] }({prefix}"{ value["name"] }"{postfix})\n')
-            if value["commentOut"] == '':
-                comma = ','
+
+    for direction in ['src', 'dst']:
+        for port_type in data['ports']:
+            for key, value in data['ports'][port_type].items():
+                if mp_sig[key]['is_skip']:
+                    continue
+                if value['direction'] == direction:
+                    out.append(f'        {comma}{ value["name"] }({prefix}"{ value["name"] }"{postfix})\n')
+                    comma = ','
     out.append( indent + '{};\n')
 
     out.append( indent + f'void setTimed(int nsec, timedDelayMode mode) override\n')
     out.append( indent + '{\n')
     # loop twice for cleanliness with other parts
-    for key, value in data['ports'].items():
-        if mp_sig[key]['is_skip']:
-            continue
-        if value['direction'] == 'src':
-            out.append(f'        { value  ["commentOut"] }{ value["name"] }->setTimed(nsec, mode);\n')
-    for key, value in data['ports'].items():
-        if mp_sig[key]['is_skip']:
-            continue
-        if value['direction'] == 'dst':
-            out.append(f'        { value  ["commentOut"] }{ value["name"] }->setTimed(nsec, mode);\n')
+    for direction in ['src', 'dst']:
+        for port_type in data['ports']:
+            for key, value in data['ports'][port_type].items():
+                if mp_sig[key]['is_skip']:
+                    continue
+                if value['direction'] == direction:
+                    out.append(f'        { value["name"] }->setTimed(nsec, mode);\n')
     out.append( indent + '    setTimedLocal(nsec, mode);\n')
     out.append( indent + '};\n')
     out.append( indent + f'void setLogging(verbosity_e verbosity) override\n')
     out.append( indent + '{\n')
-    # loop twice for cleanliness with other parts
-    for key, value in data['ports'].items():
-        if mp_sig[key]['is_skip']:
-            continue
-        if value['direction'] == 'src':
-            out.append(f'        { value  ["commentOut"] }{ value["name"] }->setLogging(verbosity);\n')
-    for key, value in data['ports'].items():
-        if mp_sig[key]['is_skip']:
-            continue
-        if value['direction'] == 'dst':
-            out.append(f'        { value  ["commentOut"] }{ value["name"] }->setLogging(verbosity);\n')
+    for direction in ['src', 'dst']:
+        for port_type in data['ports']:
+            for key, value in data['ports'][port_type].items():
+                if mp_sig[key]['is_skip']:
+                    continue
+                if value['direction'] == direction:
+                    out.append(f'        { value["name"] }->setLogging(verbosity);\n')
     out.append( indent + '};\n')
 
     out.append( '};\n')
@@ -211,29 +195,33 @@ def renderChannels(args, prj, data):
     out.append('{\n')
     out.append('public:\n')
     indent = ' '*4
-
+    port_count = 0
     mp_sig = dict()
-    for port in data['ports']:
-        mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port], prj, swap_dir=False)
+    for direction in ['src', 'dst']:
+        for port_type in data['ports']:
+            for port, value in data['ports'][port_type].items():
+                mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(value, prj, swap_dir=False)
 
     def gen_sc_channels_decl(args, prj, data):
+        nonlocal port_count
         s = []
-        s.append('// src ports')
-        for port in filter(lambda p : data['ports'][p]['direction'] == 'src', data['ports'].keys()):
-            if mp_sig[port]['is_skip']:
-                continue
-            intf_data = data['ports'][port]['interfaceData']
-            s.append('//   {}'.format(intf_data['interface']))
-            s.append(mp_sig[port]['channel_decl'])
-        s.append('')
-        s.append('// dst ports')
-        for port in filter(lambda p : data['ports'][p]['direction'] == 'dst', data['ports'].keys()):
-            if mp_sig[port]['is_skip']:
-                continue
-            intf_data = data['ports'][port]['interfaceData']
-            s.append('//   {}'.format(intf_data['interface']))
-            s.append(mp_sig[port]['channel_decl'])
-        s.append('')
+        for direction in ['src', 'dst']:
+            section = []
+            have_port = False
+            section.append(f'// {direction} ports')
+            for port_type in data['ports']:
+                for port in filter(lambda p : data['ports'][port_type][p]['direction'] == direction, data['ports'][port_type].keys()):
+                    if mp_sig[port]['is_skip']:
+                        continue
+                    have_port = True
+                    port_count += 1
+                    port_data = data['ports'][port_type][port]
+                    intf_data = intf_gen_utils.get_intf_data(port_data['connection'], prj)
+                    section.append(f"// {intf_data['desc']}")
+                    section.append(mp_sig[port]['channel_decl'])
+            section.append('')
+            if have_port:
+                s.extend(section)
         s = '\n'.join(s)
         return s
 
@@ -241,45 +229,29 @@ def renderChannels(args, prj, data):
 
     out.append('\n'*2)
 
-    colon = ''
-    if len(data['ports']) > 0:
-        for key, value in data['ports'].items():
-            if value["commentOut"] == '':
-                colon = ':'
-                break
+    colon = ':' if port_count > 0 else ''
     out.append( indent + f'{ className }(std::string name, std::string srcName) {colon}\n')
     comma = ''
-    # loop twice for c++ constructor init ordering reasons
-    for key, value in data['ports'].items():
-        if mp_sig[key]['is_skip']:
-            continue
-        if value['direction'] == 'src':
-            out.append(indent + value["commentOut"] + comma + channelConstructor(args, prj, data, value, mp_sig[key]['multicycle_types']) + '\n')
-            if value["commentOut"] == '':
-                comma = ','
-    for key, value in data['ports'].items():
-        if mp_sig[key]['is_skip']:
-            continue
-        if value['direction'] == 'dst':
-            out.append(indent + value["commentOut"] + comma + channelConstructor(args, prj, data, value, mp_sig[key]['multicycle_types']) + '\n')
-            if value["commentOut"] == '':
-                comma = ','
+    for direction in ['src', 'dst']:
+        for port_type in data['ports']:
+            for port, value in data['ports'][port_type].items():
+                if mp_sig[port]['is_skip']:
+                    continue
+                if value['direction'] == direction:
+                    out.append(indent + comma + channelConstructor(args, prj, data, value, mp_sig[port]['multicycle_types']) + '\n')
+                    comma = ','
     out.append( indent + '{};\n')
     out.append( indent + f'void bind( {data["blockName"]}Base *a, {data["blockName"]}Inverted *b)\n')
     out.append( indent + '{\n')
     indent = indent + ' '*4
-    for key, value in data['ports'].items():
-        if mp_sig[key]['is_skip']:
-            continue
-        if value['direction'] == 'src':
-            out.append( indent + f'{ value["commentOut"]  }a->{ value["name"] }( { value["name"] } );\n')
-            out.append( indent + f'{ value["commentOut"]  }b->{ value["name"] }( { value["name"] } );\n')
-    for key, value in data['ports'].items():
-        if mp_sig[key]['is_skip']:
-            continue
-        if value['direction'] == 'dst':
-            out.append( indent + f'{ value["commentOut"]  }a->{ value["name"] }( { value["name"] } );\n')
-            out.append( indent + f'{ value["commentOut"]  }b->{ value["name"] }( { value["name"] } );\n')
+    for direction in ['src', 'dst']:
+        for port_type in data['ports']:
+            for port, value in data['ports'][port_type].items():
+                if mp_sig[port]['is_skip']:
+                    continue
+                if value['direction'] == direction:
+                    out.append( indent + f'a->{ value["name"] }( { value["name"] } );\n')
+                    out.append( indent + f'b->{ value["name"] }( { value["name"] } );\n')
     indent = ' '*4
     out.append( indent +'};\n')
     out.append( '};\n')
@@ -298,12 +270,12 @@ def channelConstructor(args, prj, data, line, multicycle_types):
     extra = ''
 
     # we may have a multicycle interface
-    interfaceInfo = line['interfaceData']
-    interfaceSize = interfaceInfo.get('maxTransferSize',0)
-    trackerType = interfaceInfo.get('trackerType',"")
-    multiCycleMode = interfaceInfo.get('multiCycleMode',"")
-    tracker = line['connectionData'].get('tracker',"")
-    autoMode = autoModeMapping.get(tracker,"")
+    intf_data = intf_gen_utils.get_intf_data(line['connection'], prj)
+    interface_size = intf_data.get('maxTransferSize',0)
+    tracker_type = intf_data.get('trackerType',"")
+    multi_cycle_mode = intf_data.get('multiCycleMode',"")
+    tracker = line.get('tracker',"")
+    auto_mode = autoModeMapping.get(tracker,"")
 
     if multicycle_types:
         #- fixed_size        #
@@ -312,15 +284,15 @@ def channelConstructor(args, prj, data, line, multicycle_types):
         #- api_list_tracker  # tracker tag comes from write api and push_context
         #- api_list_size     # size comes from write api and push_context
 
-        if multiCycleMode != "":
-            if multiCycleMode not in multicycle_types:
-                printError(f"Interface type does not support multiCycleMode {multiCycleMode}")
+        if multi_cycle_mode != "":
+            if multi_cycle_mode not in multicycle_types:
+                printError(f"Interface type does not support multiCycleMode {multi_cycle_mode}")
                 exit(warningAndErrorReport())
-            if trackerType != "":
-                trackerType = f'tracker:{trackerType}'
-            extra = f', "{multiCycleMode}", {interfaceSize}, "{trackerType}"'
+            if tracker_type != "":
+                tracker_type = f'tracker:{tracker_type}'
+            extra = f', "{multi_cycle_mode}", {interface_size}, "{tracker_type}"'
         else:
-            if interfaceSize != "0" or trackerType:
+            if interface_size != "0" or tracker_type:
                 print(f"warning: interface {line['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
 
-    return(f'{ line["name"] }(("{ line["name"] }"+name).c_str(), srcName{extra}{autoMode})')
+    return(f'{ line["name"] }(("{ line["name"] }"+name).c_str(), srcName{extra}{auto_mode})')
