@@ -227,7 +227,7 @@ class schema:
 
     # validate schema processes the schema definition for later use in the processing of user input
     def validateSchema(self, schema, schemaFile, context=''):
-        validFieldTypes = { 'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param'}
+        validFieldTypes = { 'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param', 'singleEntryList', 'listkey'}
         addressControlFields = {'addressGroup', 'addressID', 'addressMultiples', 'instanceGroup', 'instanceID'}
         reservedKeys = {'_validate', '_type', '_key', '_combo', '_attribs', '_singular'} # reserved keys begin with _
         customChecker = {'_singular'} # keys that should use custom checker
@@ -241,6 +241,7 @@ class schema:
             dataSchema = None
             mySingular = None
             multiEntry = False # determines if there can be multiple records in the input/output
+            singleEntryList = False # if true the user input is a list but we convert to dict with key based on list index
             output = dict() 
             optionalDefaults = dict() # dictionary of fields that are optional and have a default value
             for field, ftype in schema[section].items():
@@ -385,6 +386,10 @@ class schema:
                         multiEntry = True
                         itemkeyname = '_listIndex'
                         output['_listIndex'] = 'key'
+                    if 'singleEntryList' in myType:
+                        # the user input is a list not a dict, so we 'generate' a key based on the list index
+                        multiEntry = True
+                        singleEntryList = True
                     attrib = myType
                 if field == '_singular':
                     mySingular = myType
@@ -419,7 +424,18 @@ class schema:
             schema[section].pop('_singular', None) #delete attrib if it exists, as it is now stored separately
             schema[section]['_context'] = 'context'
             indexes.append(itemkeyname+'Key')
-
+            if singleEntryList:
+                foundlistkey = False
+                for field, ftype in schema[section].items():
+                    if ftype == 'listkey':
+                        foundlistkey = True
+                    else:
+                        if ftype not in ['key', 'outerkey', 'outer', 'outerkeyKey', 'context', 'contextKey']:
+                            printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section} context {context}. singleEntryList is specified but field {field} is defined as {ftype}. Only listkey, key, outerkey and outer are allowed")
+                            exit(warningAndErrorReport())
+                if not foundlistkey:
+                    printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section} context {context}. singleEntryList is specified but no field is defined as listkey")
+                    exit(warningAndErrorReport())
             self.data['indexes'][context+section] = indexes
 
     def sections(self):
@@ -1370,7 +1386,7 @@ class projectOpen:
             if val['blockKey'] == qualBlock:
                 # the connection is to a memory inside the target block so we will need a channel and bindings
                 ret['memoryConnections'][memConn] = dict(val)
-                ret['memoryConnections'][memConn]['interfaceName'] = val['memory']
+                ret['memoryConnections'][memConn]['interfaceName'] = val['memory']+'_'+val['port']
                 if (val['instance'] != ''):
                     # we are connecting to an instance so lets add the instance type for the template
                     ret['memoryConnections'][memConn]['instanceTypeKey'] = self.data['instances'][val['instanceKey']]['instanceType']
@@ -1428,16 +1444,16 @@ class projectOpen:
         isRegHandler = ret['blockInfo']['isRegHandler']
         regHandlerKey = ret.get('regHandler', None)
         regHandler = ''
+        connected_regs = dict()
         if regHandlerKey:
             regHandler = self.data['instances'][regHandlerKey]['instance']
         if isRegHandler:
             # for a register handler the registerConnections are in the parent
             block = ret['instances'][next(iter(ret['instances']))]['containerKey']
-            dirMap = self.regMapReg
-        else:
-            dirMap = self.regMapBlock
         for regConn, val in self.data['registerConnections'].items():
             if val['blockKey'] == block:
+                reg_name = val['register']
+                connected_regs[reg_name] = 0
                 regType =  ret['registers'][val['registerBlock']]['regType']
                 ifType = 'reg_' + regType
                 regInfo = self.data['registers'][val['registerBlock']]
@@ -1452,17 +1468,18 @@ class projectOpen:
                         output = dict(regInfo, **val)
                         inst = val['instance']
                         output['ends'] = dict()
-                        output['ends'][inst] =          {'instance': inst,       'portName': val['register'], 'direction': self.regMapBlock[regType]}
-                        output['ends'][regHandlerKey] = {'instance': regHandler, 'portName': val['register'], 'direction': self.regMapReg[regType]}
+                        output['ends'][inst] =          {'instance': inst,       'portName': reg_name, 'direction': self.regMapBlock[regType]}
+                        output['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg_name, 'direction': self.regMapReg[regType]}
                         output['interfaceType'] = ifType
-                        output['interfaceName'] = val['register']
+                        output['interfaceName'] = reg_name
                         ret['registerConnections'][connKey] = output
                     else:
                         inst = val['instance']
-                        ret['registerConnections'][connKey]['ends'][inst] = {'instance': inst, 'portName': val['register'], 'direction': self.regMapBlock[regType]}
+                        ret['registerConnections'][connKey]['ends'][inst] = {'instance': inst, 'portName': reg_name, 'direction': self.regMapBlock[regType]}
                 ret['interfaceTypes'][ifType] = 0
             if val['instanceKey'] in qualBlockInstances:
                 portName = val['register']
+                connected_regs[portName] = 0
                 regInfo = self.data['registers'][val['registerBlock']]
                 ret['registerPorts'][portName] = dict(regInfo, **val) # merge the two dicts
                 regType = regInfo['regType']
@@ -1471,7 +1488,29 @@ class projectOpen:
                 ret['registerPorts'][portName]['interfaceType'] = ifType
                 ret['interfaceTypes'][ifType] = 0
                 ret['temp']['structs'][regInfo['structureKey']] = 0
-
+        # handle implied register connections. These interfaces connect any unconnected registers to the block
+        implied_reg = dict()
+        for reg_key, reg_data in ret['registers'].items():
+            reg = reg_data['register']
+            if reg not in connected_regs:
+                regType = reg_data['regType']
+                ifType = 'reg_' + regType
+                implied_reg[reg] = dict(reg_data)
+                implied_reg[reg]['interfaceType'] = ifType
+                if isRegHandler:
+                    implied_reg[reg]['direction'] = self.regMapReg[regType]
+                else:
+                    implied_reg[reg]['interfaceName'] = reg
+                    implied_reg[reg]['ends'] = dict()
+                    inst = next(iter(qualBlockInstances))
+                    implied_reg[reg]['ends'][inst] = {'instance': qualBlockInstances[inst]['instance'], 'portName': reg, 'direction': self.regMapBlock[regType]}
+                    implied_reg[reg]['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg, 'direction': self.regMapReg[regType]}
+                ret['interfaceTypes'][ifType] = 0
+                ret['temp']['structs'][reg_data['structureKey']] = 0
+        if isRegHandler:
+            ret['registerPorts'].update(implied_reg)
+        else:
+            ret['registerConnections'].update(implied_reg)
     # connection maps
     def getBDConnectionMaps(self, ret):
         qualBlock = ret['qualBlock']
@@ -2575,6 +2614,8 @@ class projectCreate:
                 if ((field+'Key') not in ret) and (field+'Key') in schema:
                     ret[field+'Key'] = itemkey+'/'+yamlFile
             else:
+                if ftype == 'listkey':
+                    ret[field] = item
                 if ftype == 'contextKey':
                     # append the key with the filename to create contextKey
                     ret[field] = itemkey+'/'+yamlFile
@@ -3159,6 +3200,8 @@ class projectCreate:
         # there is probably an opportunitiy for some refactoring here with ProcessSection
         ret = dict()
         nestedContext = context+section
+        if nestedContext == 'memoriesports':
+            pass
         if yamlFile not in self.data[nestedContext]:
             self.data[nestedContext][yamlFile] = OrderedDict()
         attribs = self.schema.data['attrib'].get(nestedContext, {})

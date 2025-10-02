@@ -10,9 +10,12 @@ import mixedBlockC_package::*;
     rdy_vld_if.src cStuffIf,
     rdy_vld_if.src dee0,
     rdy_vld_if.src dee1,
+    rdy_vld_if.src outD,
+    rdy_vld_if.dst inD,
     req_ack_if.dst btod,
-    memory_if.src  blockBTable1,
-    memory_if.src  blockBTableSP,
+    status_if.src roBsize,
+    memory_if.src blockBTable1,
+    memory_if.src blockBTableSP,
     input clk, rst_n
 );
 

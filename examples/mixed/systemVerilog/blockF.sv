@@ -12,6 +12,9 @@ import mixedBlockC_package::*;
 (
     rdy_vld_if.src cStuffIf,
     rdy_vld_if.dst dStuffIf,
+    rdy_vld_if.dst dSin,
+    rdy_vld_if.src dSout,
+    status_if.src roBsize,
     input clk, rst_n
 );
 
@@ -19,14 +22,13 @@ import mixedBlockC_package::*;
 
     // Memory Interfaces
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) test();
-    memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) testUnused();
+    memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) test_unused();
 
 // Instances
 // Memory Instances
-// dual port
 memory_dp #(.DEPTH(bob), .data_t(seeSt)) uTest (
     .mem_portA (test),
-    .mem_portB (testUnused),
+    .mem_portB (test_unused),
     .clk (clk)
 );
 

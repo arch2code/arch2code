@@ -1,15 +1,5 @@
-# mapping of interface types to filename stubs
+# mapping exception cases of interface types to filename stubs
 INTF_TYPES = {
-    'status' : 'status',
-    'rdy_vld' : 'rdy_vld',
-    'req_ack' : 'req_ack',
-    'push_ack' : 'push_ack',
-    'pop_ack' : 'pop_ack',
-    'apb' : 'apb',
-    'memory' : 'memory',
-    'notify_ack' : 'notify_ack',
-    'axi_read' : 'axi_read',
-    'axi_write' : 'axi_write',
     'reg_ro' : 'status',
     'reg_rw' : 'status',
     'reg_ext' : 'reg_external'
@@ -37,7 +27,7 @@ INTF_DEFS = {
            'param_cast' : None,
            'multicycle_types' : []
         },
-        'multiDst' : True,
+        'multiDst' : True,  # allow multiple destinations to connect to a single source
     },
     'rdy_vld' : {
         'parameters' : {

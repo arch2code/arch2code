@@ -15,8 +15,8 @@ typedef logic[13-1:0] cBiggerT; //yet another type
 
 // structures
 typedef struct packed {
-    cSizeT variablec; //Two bits of C
-    cSizePlusT variablec2; //Three bits of C
+    cSizeT variablec; //
+    cSizePlusT variablec2; //
 } seeSt;
 
 typedef struct packed {

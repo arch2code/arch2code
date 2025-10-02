@@ -74,12 +74,12 @@ typedef enum logic[2-1:0] {          //Generated type for addressing ip1 instanc
 
 // structures
 typedef struct packed {
-    aSizeT [ASIZE2-1:0] variablea; //One bit of A
+    aSizeT [ASIZE2-1:0] variablea; //
     twoBitT variablea2; //
 } aSt;
 
 typedef struct packed {
-    aSizeT variablea; //One bit of A
+    aSizeT variablea; //
 } aASt;
 
 typedef struct packed {
@@ -91,12 +91,12 @@ typedef struct packed {
 } dRegSt;
 
 typedef struct packed {
-    threeBitT variabled; //Three bits of D
-    fourBitT variabled2; //Four bits of D
+    threeBitT variabled; //
+    fourBitT variabled2; //
 } dSt;
 
 typedef struct packed {
-    aSizeT variablea; //One bit of A
+    aSizeT variablea; //
     dSt bob; //
     seeSt [2-1:0] joe; //Need two of these
 } nestedSt;

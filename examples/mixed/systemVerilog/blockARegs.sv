@@ -2,11 +2,9 @@
 // GENERATED_CODE_BEGIN --template=moduleRegs
 module blockARegs
     // Generated Import package statement(s)
-    import mixedBlockC_package::*;
     import mixed_package::*;
 
     #(
-        parameter apbAddrSt APB_ADDR_MASK = '1,
         parameter bit APB_READY_1WS = 0
     )
     (
@@ -17,7 +15,7 @@ module blockARegs
     );
 
     apbAddrSt apb_addr;
-    assign apb_addr = apbAddrSt'(apbReg.paddr) & APB_ADDR_MASK;
+    assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h7;
 
     aRegSt roA_reg;
     assign roA_reg = roA.data;

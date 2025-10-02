@@ -7,10 +7,10 @@ LEGACY_COMPAT_MODE = False
 from pysrc.interfaces_defs import INTF_DEFS, INTF_TYPES
 
 def get_set_intf_types(ifType):
-    return {INTF_TYPES[intf] for intf in ifType if intf in INTF_TYPES}
+    return {get_intf_type(intf) for intf in ifType} # return set of interface names handling the exception cases
 
 def get_intf_type(ifType):
-    return INTF_TYPES.get(ifType, None)
+    return INTF_TYPES.get(ifType, ifType)
 
 def get_intf_data(data, prj_data):
     #ret = data.get('interfaceData', data.get('connection', {}).get('interfaceData', None))
@@ -86,6 +86,18 @@ def sv_gen_modport_signal_blast(port_data, prj_data, swap_dir=False):
         assign_rhs = f"{intf_name}_{intf_sig}" if intf_sig in modp_signals['inputs'] else f"{intf_name}.{intf_sig}"
         out['assign'].append(f"assign #0 {assign_lhs} = {assign_rhs};")
 
+    return out
+
+def sv_gen_ports(data, prj, indent):
+    out = []
+    for sourceType in data['ports']:
+        for port, port_data in data['ports'][sourceType].items():
+            connectionData = port_data.get('connection', {})
+            intf_data = get_intf_data(connectionData, prj)
+            intf_type = get_intf_type(intf_data['interfaceType'])
+            out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']},\n")
+    out.append(f"{indent}input clk, rst_n\n")
+    out.append(");\n\n")
     return out
 
 def sc_gen_modport_signal_blast(port_data, prj, swap_dir=False):

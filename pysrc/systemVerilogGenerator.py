@@ -28,6 +28,7 @@ class systemVerilogGenerator:
         # setup the user source file helper object. This object will read in the file and chop it up into generated and non-generated pieces
         # the object will also find any generic parameters eg block name that will be the same for all pieces of the file that need rendering
         self.code = codeText(fileName, "//")
+        print(f"Processing {fileName}")
         data = None
         importPackages = None
         context = None
