@@ -5,6 +5,7 @@
 LEGACY_COMPAT_MODE = False
 
 from pysrc.interfaces_defs import INTF_DEFS, INTF_TYPES
+from pysrc.arch2codeHelper import printError
 
 def get_set_intf_types(ifType):
     return {get_intf_type(intf) for intf in ifType} # return set of interface names handling the exception cases
@@ -95,9 +96,38 @@ def sv_gen_ports(data, prj, indent):
             connectionData = port_data.get('connection', {})
             intf_data = get_intf_data(connectionData, prj)
             intf_type = get_intf_type(intf_data['interfaceType'])
-            out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']},\n")
-    out.append(f"{indent}input clk, rst_n\n")
-    out.append(");\n\n")
+            out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']},")
+    out.append(f"{indent}input clk, rst_n")
+    out.append(");\n")
+    return out
+
+def sc_connect_channels(data, indent):
+    out = []
+    for channelType in data["connectDouble"]:
+        out.extend(sc_connect_channel_type(data["connectDouble"][channelType], indent))
+    return out
+
+def sc_connect_channel_type(data, indent):
+    out = []
+    for key, value in data.items():
+        channelBase = value["interfaceName"]
+        if (len(value['ends']) > 2):
+            multiDst = get_intf_defs(get_intf_type(value['interfaceType'])).get('multiDst', False)
+            if not multiDst:
+                printError(f"connection {key} has more than 2 ends. Only status interfaces (including ro registers) can have multiple dst connections")
+        for end, endvalue in value["ends"].items():
+            out.append(f'{indent}{ endvalue["instance"] }->{ endvalue["portName"]}({ channelBase });')
+    return out
+
+def sc_instance_includes(data, prj):
+    out = []
+    includes = dict()
+    # create a dict of unique includes
+    for key, value in data['subBlockInstances'].items():
+        includes[value["instanceType"]] = None
+    for include in includes:
+        baseInclude = prj.getModuleFilename('blockBase', include, 'hdr')
+        out.append(f'#include "{baseInclude}"')
     return out
 
 def sc_gen_modport_signal_blast(port_data, prj, swap_dir=False):
@@ -261,8 +291,8 @@ def sc_declare_channels(data, prj, indent):
         for key, value in data["connectDouble"][channelType].items():
             chnlInfo = sc_gen_block_channels(value, prj)
             if not chnlInfo['is_skip']:
-                out.append(f'{indent}// {chnlInfo["desc"]}\n')
-                out.append(indent + chnlInfo['channel_decl']+ '\n')
+                out.append(f'{indent}// {chnlInfo["desc"]}')
+                out.append(indent + chnlInfo['channel_decl'])
     return out
 
 def inverse_portdir(port):

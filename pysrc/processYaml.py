@@ -1226,10 +1226,10 @@ class projectOpen:
     # from perspective of qualBlock
     # subBlocks will be referenced if in the set of instances
     # this would be easier in SQL..
-    def getBlockData(self, qualBlock, trimRegLeafInstance=False):
+    def getBlockData(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
         blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts', 
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext', 
-                        'addressDecode', 'variants', "interfaceTypes"}
+                        'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections'}
         ret = dict()
         # create some of the simple returns
         ret['includeFiles'] = self.config.getConfig('INCLUDEFILES')
@@ -1242,7 +1242,7 @@ class projectOpen:
             ret[k] = dict()
         ret['addressDecode']['hasDecoder'] = False
         # assemble the instance information. This is the instances of the qualBlock and any contained instances
-        self.getBDInstances(qualBlock, ret, trimRegLeafInstance)
+        self.getBDInstances(qualBlock, ret, trimRegLeafInstance, excludeInstances)
         # get all the register and memory information
         self.getBDRegistersMemories(qualBlock, ret)
         # based on memories and registers, do we need address decoding etc
@@ -1259,7 +1259,7 @@ class projectOpen:
         # connection maps
         self.getBDConnectionMaps(ret)
         # regular connections
-        self.getBDConnections(ret)
+        self.getBDConnections(ret, allowSingleEnded=(len(excludeInstances)!=0))
         # build final connection info
         self.getBDConnectionsFinal(ret)
         # deduplicate the ports
@@ -1278,12 +1278,18 @@ class projectOpen:
                 ret['temp']['structs'][structInfo['structureKey']] = 0
         ret['interfaceTypes'][intfData['interfaceType']] = 0
 
-    def getBDInstances(self, qualBlock, ret, trimRegLeafInstance):
+    def getBDInstances(self, qualBlock, ret, trimRegLeafInstance, excludeInstances):
         qualBlockInstances = dict()
         containedInstances = dict()
-        containerBlocks = dict()  # do we need?
+        containerBlocks = dict()
+        excluded = dict()
+        hasExcluded = 0
         for k, v in self.data['instances'].items():
             if v.get('containerKey') == qualBlock:
+                if v['instance'] in excludeInstances:
+                    hasExcluded = 1
+                    excluded[k] = v
+                    continue
                 containedInstances[k] = v
                 if self.data['blocks'][v['instanceTypeKey']]['isRegHandler']:
                     ret['regHandler'] = k
@@ -1300,7 +1306,7 @@ class projectOpen:
         ret['enableRegConnections'] = True
         if trimRegLeafInstance and 'regHandler' in ret:
             # if the only contained instance is the regHandler then remove it
-            if len(containedInstances) == 1:
+            if (len(containedInstances) + hasExcluded) == 1:
                 containedInstances = dict()
                 ret['enableRegConnections'] = False
         ret['subBlockInstances'] = containedInstances
@@ -1308,7 +1314,10 @@ class projectOpen:
         ret['blockName'] = self.data['blocks'][qualBlock]['block']
         for inst, instInfo in containedInstances.items():
             ret['subBlocks'][instInfo['instanceTypeKey']] = instInfo['instanceType']
-
+        if hasExcluded == 0 and len(excludeInstances) > 0:
+            printError(f"--excludeInst={excludeInstances} did not find any of the instances to exclude in block {qualBlock}")
+            exit(warningAndErrorReport())
+        ret['excludedInstances'] = excluded
 
     def getBDRegistersMemories(self, qualBlock, ret):
         # figure out which memories are either in this block or accessible through registers
@@ -1382,8 +1391,9 @@ class projectOpen:
         qualBlock = ret['qualBlock']
         qualBlockInstances = ret['instances']
         isRegHandler = ret['blockInfo']['isRegHandler']
+        containedInstances = ret['subBlockInstances']
         for memConn, val in self.data['memoryConnections'].items():
-            if val['blockKey'] == qualBlock:
+            if val['blockKey'] == qualBlock and val['instanceKey'] in containedInstances:
                 # the connection is to a memory inside the target block so we will need a channel and bindings
                 ret['memoryConnections'][memConn] = dict(val)
                 ret['memoryConnections'][memConn]['interfaceName'] = val['memory']+'_'+val['port']
@@ -1441,6 +1451,7 @@ class projectOpen:
     def getBDRegisterConnections(self, ret):
         block = ret['qualBlock']
         qualBlockInstances = ret['instances']
+        containedInstances = ret['subBlockInstances']
         isRegHandler = ret['blockInfo']['isRegHandler']
         regHandlerKey = ret.get('regHandler', None)
         regHandler = ''
@@ -1451,12 +1462,12 @@ class projectOpen:
             # for a register handler the registerConnections are in the parent
             block = ret['instances'][next(iter(ret['instances']))]['containerKey']
         for regConn, val in self.data['registerConnections'].items():
-            if val['blockKey'] == block:
+            if val['blockKey'] == block and val['instanceKey'] in containedInstances:
                 reg_name = val['register']
                 connected_regs[reg_name] = 0
                 regType =  ret['registers'][val['registerBlock']]['regType']
                 ifType = 'reg_' + regType
-                regInfo = self.data['registers'][val['registerBlock']]
+                regInfo = ret['registers'][val['registerBlock']]
                 ret['temp']['structs'][regInfo['structureKey']] = 0
                 if isRegHandler:
                     ret['registerPorts'][regConn] = dict(regInfo, **val)
@@ -1530,36 +1541,45 @@ class projectOpen:
                 self.getBDGetIntfStructs(ret, intfKey=connMap['interfaceKey'])
 
     # regular connections
-    def getBDConnections(self, ret):
+    def getBDConnections(self, ret, allowSingleEnded=False):
         # iterate through all the connections for the instances of interest
-        interfaces = dict()
         ports = dict()
         qualBlockInstances = ret['instances']
         containedInstances = ret['subBlockInstances']
+        excludeInstances = ret['excludedInstances']
         connections = dict()
+        prunedConnections = dict()
         for conn, connVal in self.data['connections'].items():
             connectionCount = 0
             isPort = False
             tempPorts = dict()
+            pop_ends = []
             for end, endVal in connVal['ends'].items():
                 if endVal['instanceKey'] in containedInstances:
-                    connections[conn] = connVal
+                    connections[conn] = dict(connVal)
                     connectionCount += 1
                 if endVal['instanceKey'] in qualBlockInstances:
                     isPort = True
                     tempPorts[end] = endVal
+                if endVal['instanceKey'] in excludeInstances:
+                    pop_ends.append(end)
+                    prunedConnections[conn] = 0
+            # filter out any excluded instances after looping
+            for end in pop_ends:
+                connVal['ends'].pop(end)
             if isPort:
                 # shallow copy
                 ports[conn] = dict(connVal)
                 # replace ends with our pruned version
                 ports[conn]['ends'] = tempPorts
-            if connectionCount == 1:
+            if connectionCount == 1 and not allowSingleEnded:
                 printError(f"Connection {conn} is only connected to one contained instance in block {ret['qualBlock']}. Connections must be between two contained instances")
                 exit(warningAndErrorReport())
             if connectionCount > 0 and isPort:
                 printError(f"Connection {conn} is connected to both a contained instance and the parent instance in block {ret['qualBlock']}. Connections must be between two contained instances")
                 exit(warningAndErrorReport())
-            ret['interfaceTypes'][self.data['interfaces'][connVal['interfaceKey']]['interfaceType']] = 0
+            if connectionCount > 1 or isPort:
+                ret['interfaceTypes'][self.data['interfaces'][connVal['interfaceKey']]['interfaceType']] = 0
         for conn, connVal in connections.items():
             # create jinja friendly names
             connVal['interfaceName'] = getPortChannelName(connVal, 'interfaceName')
@@ -1568,6 +1588,10 @@ class projectOpen:
             connVal['interfaceType'] = intfInfo['interfaceType']
             for end, endVal in connVal['ends'].items():
                 endVal['name'] = endVal['portName']
+        # move all the pruned connections to a separate dict
+        for conn in prunedConnections:
+            ret['prunedConnections'][conn] = connections.pop(conn)
+            
         ret['connections'] = connections
         ret['connectionPorts'] = ports
 

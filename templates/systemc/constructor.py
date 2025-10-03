@@ -25,36 +25,31 @@ def constructorInit(args, prj, data):
     className = data["blockName"]
     baseClassName = f'{ className }Base'
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
-    out.append(f'#include "{className}.h"\n')
-    includes = dict()
-    # create a dict of unique includes
-    for key, value in data['subBlockInstances'].items():
-        includes[value["instanceType"]] = None
-    for include in includes:
-        baseInclude = prj.getModuleFilename('blockBase', include, 'hdr')
-        out.append(f'#include "{baseInclude}"\n')
+    out.append(f'#include "{className}.h"')
+    
+    out += intf_gen_utils.sc_instance_includes(data, prj)
 
-    out.append(f'SC_HAS_PROCESS({ className });\n\n')
-    out.append(f'{ className }::registerBlock { className }::registerBlock_; //register the block with the factory\n\n')
+    out.append(f'SC_HAS_PROCESS({ className });\n')
+    out.append(f'{ className }::registerBlock { className }::registerBlock_; //register the block with the factory\n')
 
     if data['addressDecode']['isApbRouter']:
-        out.append(f'void { className }::routerDecode(void) //handle apb routing for register\n{{\n')
-        out.append(f'    log_.logPrint(fmt::format("SystemC Thread:{{}} started", __func__));\n')
-        out.append(f'    decoder.decodeThread();\n}}\n\n')
+        out.append(f'void { className }::routerDecode(void) //handle apb routing for register\n{{')
+        out.append(f'    log_.logPrint(fmt::format("SystemC Thread:{{}} started", __func__));')
+        out.append(f'    decoder.decodeThread();\n}}\n')
 
     if registerDecode:
         busInterface = data["addressDecode"]["registerBusInterface"]
         busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
-        out.append(f'void { className }::regHandler(void) {{ //handle register decode\n')
-        out.append(f'    registerHandler< {busStructs} >(regs, {busInterface}, (1<<({data["addressDecode"]["addressBits"]}-1))-1); }}\n\n')
+        out.append(f'void { className }::regHandler(void) {{ //handle register decode')
+        out.append(f'    registerHandler< {busStructs} >(regs, {busInterface}, (1<<({data["addressDecode"]["addressBits"]}-1))-1); }}\n')
 
-    out.append(f'{ className }::{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode)\n')
-    out.append(f'       : sc_module(blockName)\n')
-    out.append(f'        ,blockBase("{ className }", name(), bbMode)\n')
-    out.append(f'        ,{ baseClassName}(name(), variant)\n')
+    out.append(f'{ className }::{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode)')
+    out.append(f'       : sc_module(blockName)')
+    out.append(f'        ,blockBase("{ className }", name(), bbMode)')
+    out.append(f'        ,{ baseClassName}(name(), variant)')
 
     if registerDecode:
-        out.append(f'        ,regs(log_)\n')
+        out.append(f'        ,regs(log_)')
     if data['addressDecode']['isApbRouter']:
         out += addressDecoder(args, prj, data)
 
@@ -116,29 +111,25 @@ def constructorInit(args, prj, data):
                     if interfaceSize != "0" or trackerType:
                         print(f"warning: interface {chnlInfo['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
 
-            out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{extra}{autoMode})\n')
+            out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{extra}{autoMode})')
 
 
     for key, value in data['subBlockInstances'].items():
-        out.append(f'        ,{ value["instance"] }(std::dynamic_pointer_cast<{ value["instanceType"] }Base>( instanceFactory::createInstance(name(), "{ value["instance"]}", "{value["instanceType"]}", "{value["variant"]}")))\n')
+        out.append(f'        ,{ value["instance"] }(std::dynamic_pointer_cast<{ value["instanceType"] }Base>( instanceFactory::createInstance(name(), "{ value["instance"]}", "{value["instanceType"]}", "{value["variant"]}")))')
     for reg, regData in data['registers'].items():
-        out.append(f'        ,{ regData["register"] }({ regData.get("defaultValue", "") })\n')
+        out.append(f'        ,{ regData["register"] }({ regData.get("defaultValue", "") })')
     for mem, memData in data['memories'].items():
         if memData["local"]:
-            out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)\n')
+            out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')
         else:
-            out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]})\n')
+            out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]})')
     # take the list and return a string
-    if out:
-        last = out.pop()
-        last = last[:-1]
-        out.append(last)
-    return("".join(out))
+    return("\n".join(out))
 
 def constructorBody(args, prj, data):
     out = list()
 
-    out.append('{\n')
+    out.append('{')
     first = True
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
     if registerDecode:
@@ -152,65 +143,46 @@ def constructorBody(args, prj, data):
         for mem, memData in mems.items():
             if first:
                 first=False
-                out.append(f'    // register memories for FW access\n')
+                out.append(f'    // register memories for FW access')
             if memData["regAccess"]:
                 width = intf_gen_utils.get_struct_width(memData["structureKey"], prj.data["structures"])
                 memSize = roundup_pow2min4((width + 7) >> 3) * intf_gen_utils.get_const(memData['wordLinesKey'], prj.data['constants'])
                 if memoryKey == 'memoriesParent':
-                    out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}");\n') # TODO add access function
+                    out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}");') # TODO add access function
                 else:
-                    out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}", &{memData["memory"]});\n')
+                    out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}", &{memData["memory"]});')
 
         first = True
         regs = dict(sorted(data["registers"].items(), key=lambda item: item[1]["offset"]))
         for reg, regData in regs.items():
             if first:
                 first=False
-                out.append(f'    // register registers for FW access\n')
+                out.append(f'    // register registers for FW access')
 
-            out.append(f'    regs.addRegister( 0x{regData["offset"]:0x}, {regData["bytes"]}, "{ regData["register"] }", &{ regData["register"] } );\n')
+            out.append(f'    regs.addRegister( 0x{regData["offset"]:0x}, {regData["bytes"]}, "{ regData["register"] }", &{ regData["register"] } );')
 
         first = True
     for key, value in data["connectionMaps"].items():
         if first:
             first=False
-            out.append(f'// hierarchical connections: instance port->parent port (dst->dst, src-src without channels)\n')
+            out.append(f'// hierarchical connections: instance port->parent port (dst->dst, src-src without channels)')
 
-        out.append(f'    { value["instance"] }->{ value["instancePortName"]}({ value["parentPortName"] });\n')
+        out.append(f'    { value["instance"] }->{ value["instancePortName"]}({ value["parentPortName"] });')
 
 
-    first = True
-    for channelType in data["connectDouble"]:
-        for key, value in data["connectDouble"][channelType].items():
-            if first:
-                first=False
-                out.append(f'// instance to instance connections via channel\n')
-
-            #if value["channelCount"] > 1:
-            #    channelBase = value["interfaceName"] + "_" + value["src"] + "_" + value["dst"]
-            #else:
-            channelBase = value["interfaceName"]
-            #channelBase += '_chnl'
-            if (len(value['ends']) > 2):
-                multiDst = intf_gen_utils.get_intf_defs(intf_gen_utils.get_intf_type(value['interfaceType'])).get('multiDst', False)
-                if not multiDst:
-                    printError(f"connection {key} has more than 2 ends. Only status interfaces (including ro registers) can have multiple dst connections")
-            for end, endvalue in value["ends"].items():
-                out.append(f'    { endvalue["instance"] }->{ endvalue["portName"]}({ channelBase });\n')
+    connections = intf_gen_utils.sc_connect_channels(data, ' '*4)
+    if connections:
+        out.append(f'    // instance to instance connections via channel')
+        out += connections
     first = True
 
     if data['addressDecode']['isApbRouter']:
-        out.append(f'    SC_THREAD(routerDecode);\n')
+        out.append(f'    SC_THREAD(routerDecode);')
     if registerDecode:
-        out.append(f'    SC_THREAD(regHandler);\n')
-    out.append(f'    log_.logPrint(fmt::format("Instance {{}} initialized.", this->name()), LOG_IMPORTANT );\n')
+        out.append(f'    SC_THREAD(regHandler);')
+    out.append(f'    log_.logPrint(fmt::format("Instance {{}} initialized.", this->name()), LOG_IMPORTANT );')
     # take the list and return a string
-    if out:
-        last = out.pop()
-        last = last[:-1]
-        out.append(last)
-    return("".join(out))
-
+    return("\n".join(out))
 
 def addressDecoder(args, prj, data):
     out = list()
@@ -221,7 +193,7 @@ def addressDecoder(args, prj, data):
     containerBlock = data['addressDecode']['containerBlock']
     instanceWithRegApb = data['addressDecode']['instanceWithRegApb']
     busInterface = data["addressDecode"]["registerBusInterface"]
-    out.append(f'        ,decoder({addressGroupData["maxAddressSpaces"]}, {addressGroupData["addressIncrement"].bit_length()-1}, {busInterface}, {{\n')
+    out.append(f'        ,decoder({addressGroupData["maxAddressSpaces"]}, {addressGroupData["addressIncrement"].bit_length()-1}, {busInterface}, {{')
     addressChannels = dict()
     for instance, instanceData in prj.data['instances'].items():
         if instanceData['addressGroup'] == addressGroup:
@@ -233,17 +205,17 @@ def addressDecoder(args, prj, data):
     for instance, instanceData in sortedInstances.items():
         if instanceData['addressID'] < addressID:
             for channel in range(addressID, instanceData['addressID']):
-                out.append('            nullptr,\n')
+                out.append('            nullptr,')
         if instance in instanceWithRegApb:
             for channel in range(instanceData['addressMultiples']):
-                out.append(f'            &apb_{instanceData["instance"]},\n')
+                out.append(f'            &apb_{instanceData["instance"]},')
         else:
-            out.append('            nullptr,\n')
+            out.append('            nullptr,')
 
     # replace the last comma with a space
     if out:
         last = out.pop()
-        last = last[:-2] + '})\n'
+        last = last[:-1] + '\n})'
         out.append(last)
     return out
 

@@ -14,11 +14,11 @@ def render(args, prj, data):
     block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'])
 
     if not block_intf_set:
-        out.append('#include "blockBase.h"\n')
+        out.append('#include "blockBase.h"')
 
     for intfType in sorted(block_intf_set):
         chnlType = intf_gen_utils.INTF_DEFS[intfType]['sc_channel']['type']
-        out.append(f'#include "{chnlType}_channel.h"\n')
+        out.append(f'#include "{chnlType}_channel.h"')
 
     if args.fileMapKey:
         fileMapKey = args.fileMapKey
@@ -27,15 +27,15 @@ def render(args, prj, data):
 
     for context in data['includeContext']:
         if context in data['includeFiles'][fileMapKey]:
-            out.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"\n')
+            out.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
 
 
-    out.append('\n')
+    out.append('')
     blockName = data["blockName"]
     ifMapping = {
         'classNamePostfix' : 'Base',
         'parameter' : 'std::string name, const char * variant',
-        'destructor' : f'virtual ~{ blockName }Base() = default;\n',
+        'destructor' : f'virtual ~{ blockName }Base() = default;',
         'src': 'out',
         'dst': 'in',
         'swap_dir' : False,
@@ -60,15 +60,15 @@ def render(args, prj, data):
     out.extend( renderChannels(args, prj, data) )
     if warningAndErrorReport() != 0:
         exit(1)
-    return("".join(out))
+    return("\n".join(out))
 
 
 def renderClass(args, prj, data, blockName, ifMapping):
     out = list()
     className = blockName + ifMapping['classNamePostfix']
-    out.append(f'class { className } : public virtual blockPortBase\n')
-    out.append('{\n')
-    out.append('public:\n')
+    out.append(f'class { className } : public virtual blockPortBase')
+    out.append('{')
+    out.append('public:')
     indent = ' '*4
     if ifMapping['destructor'] != '':
         out.append( indent + ifMapping['destructor'] )
@@ -76,7 +76,7 @@ def renderClass(args, prj, data, blockName, ifMapping):
     if ifMapping['addConsts']:
         if prj.data['blocks'][data['qualBlock']]['params']:
             for param in prj.data['blocks'][data['qualBlock']]['params']:
-                out.append(f'    const uint64_t {param["param"]};\n')
+                out.append(f'    const uint64_t {param["param"]};')
 
     mp_sig = dict()
     portNames = dict()
@@ -135,9 +135,9 @@ def renderClass(args, prj, data, blockName, ifMapping):
 
     out.append(textwrap.indent(gen_sc_ports_decl(args, prj, data), indent))
 
-    out.append('\n'*2)
+    out.append('')
     colon = ':' if port_count > 0 else ''
-    out.append( indent + f'{ className }({ ifMapping["parameter"] }) {colon}\n')
+    out.append( indent + f'{ className }({ ifMapping["parameter"] }) {colon}')
     comma = ''
     if ifMapping['ctorStringHasParam']:
         prefix = '('
@@ -148,7 +148,7 @@ def renderClass(args, prj, data, blockName, ifMapping):
     if ifMapping['addConsts']:
         if prj.data['blocks'][data['qualBlock']]['params']:
             for param in prj.data['blocks'][data['qualBlock']]['params']:
-                out.append(f'        {comma}{param["param"]}(instanceFactory::getParam("{ blockName }", variant, "{param["param"]}"))\n')
+                out.append(f'        {comma}{param["param"]}(instanceFactory::getParam("{ blockName }", variant, "{param["param"]}"))')
                 comma = ','
 
 
@@ -158,12 +158,12 @@ def renderClass(args, prj, data, blockName, ifMapping):
                 if mp_sig[key]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append(f'        {comma}{ value["name"] }({prefix}"{ value["name"] }"{postfix})\n')
+                    out.append(f'        {comma}{ value["name"] }({prefix}"{ value["name"] }"{postfix})')
                     comma = ','
-    out.append( indent + '{};\n')
+    out.append( indent + '{};')
 
-    out.append( indent + f'void setTimed(int nsec, timedDelayMode mode) override\n')
-    out.append( indent + '{\n')
+    out.append( indent + f'void setTimed(int nsec, timedDelayMode mode) override')
+    out.append( indent + '{')
     # loop twice for cleanliness with other parts
     for direction in ['src', 'dst']:
         for port_type in data['ports']:
@@ -171,29 +171,29 @@ def renderClass(args, prj, data, blockName, ifMapping):
                 if mp_sig[key]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append(f'        { value["name"] }->setTimed(nsec, mode);\n')
-    out.append( indent + '    setTimedLocal(nsec, mode);\n')
-    out.append( indent + '};\n')
-    out.append( indent + f'void setLogging(verbosity_e verbosity) override\n')
-    out.append( indent + '{\n')
+                    out.append(f'        { value["name"] }->setTimed(nsec, mode);')
+    out.append( indent + '    setTimedLocal(nsec, mode);')
+    out.append( indent + '};')
+    out.append( indent + f'void setLogging(verbosity_e verbosity) override')
+    out.append( indent + '{')
     for direction in ['src', 'dst']:
         for port_type in data['ports']:
             for key, value in data['ports'][port_type].items():
                 if mp_sig[key]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append(f'        { value["name"] }->setLogging(verbosity);\n')
-    out.append( indent + '};\n')
+                    out.append(f'        { value["name"] }->setLogging(verbosity);')
+    out.append( indent + '};')
 
-    out.append( '};\n')
+    out.append( '};')
     return out
 
 def renderChannels(args, prj, data):
     out = list()
     className = data["blockName"] + 'Channels'
-    out.append(f'class { className }\n')
-    out.append('{\n')
-    out.append('public:\n')
+    out.append(f'class { className }')
+    out.append('{')
+    out.append('public:')
     indent = ' '*4
     port_count = 0
     mp_sig = dict()
@@ -227,10 +227,10 @@ def renderChannels(args, prj, data):
 
     out.append(textwrap.indent(gen_sc_channels_decl(args, prj, data), indent))
 
-    out.append('\n'*2)
+    out.append('')
 
     colon = ':' if port_count > 0 else ''
-    out.append( indent + f'{ className }(std::string name, std::string srcName) {colon}\n')
+    out.append( indent + f'{ className }(std::string name, std::string srcName) {colon}')
     comma = ''
     for direction in ['src', 'dst']:
         for port_type in data['ports']:
@@ -238,11 +238,11 @@ def renderChannels(args, prj, data):
                 if mp_sig[port]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append(indent + comma + channelConstructor(args, prj, data, value, mp_sig[port]['multicycle_types']) + '\n')
+                    out.append(indent + comma + channelConstructor(args, prj, data, value, mp_sig[port]['multicycle_types']) )
                     comma = ','
-    out.append( indent + '{};\n')
-    out.append( indent + f'void bind( {data["blockName"]}Base *a, {data["blockName"]}Inverted *b)\n')
-    out.append( indent + '{\n')
+    out.append( indent + '{};')
+    out.append( indent + f'void bind( {data["blockName"]}Base *a, {data["blockName"]}Inverted *b)')
+    out.append( indent + '{')
     indent = indent + ' '*4
     for direction in ['src', 'dst']:
         for port_type in data['ports']:
@@ -250,10 +250,10 @@ def renderChannels(args, prj, data):
                 if mp_sig[port]['is_skip']:
                     continue
                 if value['direction'] == direction:
-                    out.append( indent + f'a->{ value["name"] }( { value["name"] } );\n')
-                    out.append( indent + f'b->{ value["name"] }( { value["name"] } );\n')
+                    out.append( indent + f'a->{ value["name"] }( { value["name"] } );')
+                    out.append( indent + f'b->{ value["name"] }( { value["name"] } );')
     indent = ' '*4
-    out.append( indent +'};\n')
+    out.append( indent +'};')
     out.append( '};\n')
     return out
 autoModeMapping = {

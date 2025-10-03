@@ -2,7 +2,7 @@
 import textwrap
 
 from  pysrc.processYaml import camelCase
-from pysrc.intf_gen_utils import sc_gen_block_channels
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_connect_channel_type, sc_instance_includes
 
 from jinja2 import Template
 
@@ -56,28 +56,20 @@ def tb_sec_header(args, prj, data):
 def ext_sec_init(args, prj, data):
 
     out = []
-
-    if data.get('cinst', None):
-        external_blocks = set([v['instanceType'] for v in data['subBlockInstances'].values() if v['instance'] != data['cinst']])
-        for blockName in sorted(external_blocks):
-            s = '#include "{blockName}Base.h"'
-            out.append(s.format(blockName=blockName))
+    out += sc_instance_includes(data, prj)
 
     s = """
 {blockName}External::{blockName}External(sc_module_name modulename) :
     {blockName}Inverted("Chnl"),
-    log_(name())"""
+    log_(name())\n"""
     out.append(s.format(blockName=args.block))
 
-    if data.get('cinst', None):
-        for data_ in [v for v in data['subBlockInstances'].values() if v['instance'] != data['cinst']]:
-            s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base>( instanceFactory::createInstance(name(), "{instName}", "{blockName}", "")))'
-            out.append(s.format(blockName=data_['instanceType'], instName=data_['instance']))
+    for data_ in data['subBlockInstances'].values():
+        s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base>( instanceFactory::createInstance(name(), "{instName}", "{blockName}", "")))'
+        out.append(s.format(blockName=data_['instanceType'], instName=data_['instance']))
 
-    if data.get('cinst', None):
-        for _,data_ in data['connections'].items():
-            if data['cinst'] in [ data_['src'], data_['dst'] ]:
-                continue
+    for channelType in data['connectDouble']:
+        for _,data_ in data['connectDouble'][channelType].items():
             srcInst = data_['src']
             chnlData = sc_gen_block_channels(data_, prj)
             s = '   ,{chnlName}("{chnlName}", "{instName}")'
@@ -92,6 +84,13 @@ def ext_sec_body(args, prj, data):
     indent = ' '*4
 
     out.append('{')
+    connections = sc_connect_channels(data, indent)
+    prunedConnections = sc_connect_channel_type(data.get('prunedConnections', dict()), indent)
+
+    if connections or prunedConnections:
+        out.append(indent +'// instance to instance connections via channel')
+        out += connections
+        out += prunedConnections
 
     if data.get('cinst', None):
         for _,data_ in data['connections'].items():
@@ -120,7 +119,7 @@ def ext_sec_body(args, prj, data):
                 s = '{instName}->{instPortName}({chnlName});'
                 out.append(indent + s.format(instName=instName, instPortName=instPortName, chnlName=chnlName))
 
-    out.append('\n' + indent +'SC_THREAD(eotThread);\n')
+    out.append('\n' + indent +'SC_THREAD(eotThread);')
 
     return "\n".join(out)
 

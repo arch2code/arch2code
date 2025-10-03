@@ -40,38 +40,19 @@ class genSystemC:
             # setup the data for the renderer
             data = None
             if self.code.params.block:
+                if self.code.params.excludeInst:
+                    exclude = {self.code.params.excludeInst}
+                else:
+                    exclude = set()
                 # get a block based view of the database. This is used for block definitions
-                qualBlock = prj.getQualBlock( self.code.block )
+                qualBlock = prj.getQualBlock( self.code.block)
                 block = prj.data['blocks'][qualBlock]['block']
-                data = prj.getBlockData(qualBlock, trimRegLeafInstance=True)
+                data = prj.getBlockData(qualBlock, trimRegLeafInstance=True, excludeInstances=exclude)
                 if not data:
                     printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                     exit(warningAndErrorReport())
             else:
                 block = 'No block specified in GENERATED_CODE_PARAM'
-            if self.code.params.inst:
-                if not self.code.params.block:
-                    printError(f"In {fileName}, the --inst requires the corresponding --block for the specified instance")
-                    exit(warningAndErrorReport())
-                try:
-                    cblock, cinst = self.code.params.inst.split('.')
-                except ValueError:
-                    printError(f"In {fileName}, the format of --inst={self.code.params.inst}, specified in GENERATED_CODE_PARAM is invalid (--inst=<block>.<instance> expected)")
-                    exit(warningAndErrorReport())
-                if not data:
-                    printError(f"In {fileName}, the container block ({cblock}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
-                    exit(warningAndErrorReport())
-                # Instance in container block
-                subinst = [v for v in data['subBlockInstances'].values() if v['instance'] == cinst]
-                if not subinst:
-                    printError(f"In {fileName}, the container instance ({cinst}) specified in GENERATED_CODE_PARAM is either wrong or undefined.")
-                    exit(warningAndErrorReport())
-                else:
-                    subinst = subinst[0]
-                if subinst['instanceTypeKey'] != qualBlock:
-                    printError(f"In {fileName}, the container instance type ({subinst['instanceType']}) specified in GENERATED_CODE_PARAM does not match specified block")
-                    exit(warningAndErrorReport())
-                data['cinst'] = cinst
             if self.code.params.context:
                 # get a context view of the database. This is used for shared header files
                 context = self.code.params.context
