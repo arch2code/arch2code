@@ -30,19 +30,19 @@ Interface: aStuffIf
 An interface for A
 
 Structure: aSt
-Var:  variablea  One bit of A
+Var:  variablea One bit of A One bit of A
 Var:  variablea2  this is a 2 bit type
 
 Structure: aASt
-Var:  variablea  One bit of A
+Var:  variablea One bit of A One bit of A
 
 Connection: uBlockA -> uBlockC
 Interface: cStuffIf
 An interface for C
 
 Structure: seeSt
-Var:  variablec  Two bits of C
-Var:  variablec2  Three bits of C
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
 
 Connection: uBlockA -> uBlockB
 Interface: startDone
@@ -95,8 +95,8 @@ Interface: cStuffIf
 An interface for C
 
 Structure: seeSt
-Var:  variablec  Two bits of C
-Var:  variablec2  Three bits of C
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
 
 Block: blockB
 Connection: uBlockA -> uBlockB
@@ -104,11 +104,11 @@ Interface: aStuffIf
 An interface for A
 
 Structure: aSt
-Var:  variablea  One bit of A
+Var:  variablea One bit of A One bit of A
 Var:  variablea2  this is a 2 bit type
 
 Structure: aASt
-Var:  variablea  One bit of A
+Var:  variablea One bit of A One bit of A
 
 Connection: uBlockA -> uBlockB
 Interface: startDone
@@ -132,40 +132,40 @@ Interface: cStuffIf
 An interface for C
 
 Structure: seeSt
-Var:  variablec  Two bits of C
-Var:  variablec2  Three bits of C
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
 
 Connection: uBlockD -> uBlockF0
 Interface: dStuffIf
 An interface for D
 
 Structure: dSt
-Var:  variabled  Three bits of D
-Var:  variabled2  Four bits of D
+Var:  variabled Three bits of D Three bits of D
+Var:  variabled2 Four bits of D Four bits of D
 
 Connection: uBlockD -> uBlockF1
 Interface: dStuffIf
 An interface for D
 
 Structure: dSt
-Var:  variabled  Three bits of D
-Var:  variabled2  Four bits of D
+Var:  variabled Three bits of D Three bits of D
+Var:  variabled2 Four bits of D Four bits of D
 
 Connection: uBlockD -> uBlockF0
 Interface: dStuffIf
 An interface for D
 
 Structure: dSt
-Var:  variabled  Three bits of D
-Var:  variabled2  Four bits of D
+Var:  variabled Three bits of D Three bits of D
+Var:  variabled2 Four bits of D Four bits of D
 
 Connection: uBlockF1 -> uBlockD
 Interface: dStuffIf
 An interface for D
 
 Structure: dSt
-Var:  variabled  Three bits of D
-Var:  variabled2  Four bits of D
+Var:  variabled Three bits of D Three bits of D
+Var:  variabled2 Four bits of D Four bits of D
 
 Block: blockF
 Connection: uBlockF0 -> uThreeCs
@@ -173,32 +173,32 @@ Interface: cStuffIf
 An interface for C
 
 Structure: seeSt
-Var:  variablec  Two bits of C
-Var:  variablec2  Three bits of C
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
 
 Connection: uBlockD -> uBlockF0
 Interface: dStuffIf
 An interface for D
 
 Structure: dSt
-Var:  variabled  Three bits of D
-Var:  variabled2  Four bits of D
+Var:  variabled Three bits of D Three bits of D
+Var:  variabled2 Four bits of D Four bits of D
 
 Connection: uBlockD -> uBlockF0
 Interface: dStuffIf
 An interface for D
 
 Structure: dSt
-Var:  variabled  Three bits of D
-Var:  variabled2  Four bits of D
+Var:  variabled Three bits of D Three bits of D
+Var:  variabled2 Four bits of D Four bits of D
 
 Connection: uBlockF0 -> uBlockF1
 Interface: dStuffIf
 An interface for D
 
 Structure: dSt
-Var:  variabled  Three bits of D
-Var:  variabled2  Four bits of D
+Var:  variabled Three bits of D Three bits of D
+Var:  variabled2 Four bits of D Four bits of D
 
 Block: blockF
 Connection: uBlockF1 -> uThreeCs
@@ -206,32 +206,32 @@ Interface: cStuffIf
 An interface for C
 
 Structure: seeSt
-Var:  variablec  Two bits of C
-Var:  variablec2  Three bits of C
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
 
 Connection: uBlockD -> uBlockF1
 Interface: dStuffIf
 An interface for D
 
 Structure: dSt
-Var:  variabled  Three bits of D
-Var:  variabled2  Four bits of D
+Var:  variabled Three bits of D Three bits of D
+Var:  variabled2 Four bits of D Four bits of D
 
 Connection: uBlockF0 -> uBlockF1
 Interface: dStuffIf
 An interface for D
 
 Structure: dSt
-Var:  variabled  Three bits of D
-Var:  variabled2  Four bits of D
+Var:  variabled Three bits of D Three bits of D
+Var:  variabled2 Four bits of D Four bits of D
 
 Connection: uBlockF1 -> uBlockD
 Interface: dStuffIf
 An interface for D
 
 Structure: dSt
-Var:  variabled  Three bits of D
-Var:  variabled2  Four bits of D
+Var:  variabled Three bits of D Three bits of D
+Var:  variabled2 Four bits of D Four bits of D
 
 Block: threeCs
 Connection: uBlockD -> uThreeCs
@@ -239,24 +239,24 @@ Interface: cStuffIf
 An interface for C
 
 Structure: seeSt
-Var:  variablec  Two bits of C
-Var:  variablec2  Three bits of C
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
 
 Connection: uBlockF0 -> uThreeCs
 Interface: cStuffIf
 An interface for C
 
 Structure: seeSt
-Var:  variablec  Two bits of C
-Var:  variablec2  Three bits of C
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
 
 Connection: uBlockF1 -> uThreeCs
 Interface: cStuffIf
 An interface for C
 
 Structure: seeSt
-Var:  variablec  Two bits of C
-Var:  variablec2  Three bits of C
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
 
 Block: blockC
 Block: blockC

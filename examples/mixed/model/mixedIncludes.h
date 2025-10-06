@@ -127,7 +127,7 @@ inline const char* addr_id_ip1_prt( addr_id_ip1 val )
 // structures
 struct aSt {
     twoBitT variablea2; //
-    aSizeT variablea[ASIZE2]; //
+    aSizeT variablea[ASIZE2]; //One bit of A
 
     aSt() {}
 
@@ -164,7 +164,7 @@ struct aSt {
 
 };
 struct aASt {
-    aSizeT variablea; //
+    aSizeT variablea; //One bit of A
 
     aASt() {}
 
@@ -282,8 +282,8 @@ struct dRegSt {
 
 };
 struct dSt {
-    fourBitT variabled2; //
-    threeBitT variabled; //
+    fourBitT variabled2; //Four bits of D
+    threeBitT variabled; //Three bits of D
 
     dSt() {}
 
@@ -319,7 +319,7 @@ struct dSt {
 struct nestedSt {
     seeSt joe[2]; //Need two of these
     dSt bob; //
-    aSizeT variablea; //
+    aSizeT variablea; //One bit of A
 
     nestedSt() {}
 

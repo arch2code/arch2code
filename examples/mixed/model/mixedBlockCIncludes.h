@@ -33,8 +33,8 @@ typedef uint16_t cBiggerT; // [13] yet another type
 // GENERATED_CODE_BEGIN --template=structures
 // structures
 struct seeSt {
-    cSizePlusT variablec2; //
-    cSizeT variablec; //
+    cSizePlusT variablec2; //Three bits of C
+    cSizeT variablec; //Two bits of C
 
     seeSt() {}
 

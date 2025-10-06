@@ -17,8 +17,8 @@ typedef logic[8-1:0] yetAnotherSizeT; //A type with a nested included constant s
 
 // structures
 typedef struct packed {
-    aSizeT variablea; //
-    aBiggerT [ASIZE2-1:0] variablea2; //
+    aSizeT variablea; //One bit of A
+    aBiggerT [ASIZE2-1:0] variablea2; //Two bits of A
     anotherSizeT another; //
     yetAnotherSizeT yetAnother; //
 } aSt;

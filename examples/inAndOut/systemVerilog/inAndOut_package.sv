@@ -24,11 +24,11 @@ typedef enum logic[1-1:0] {               //either ready or not ready
 
 // structures
 typedef struct packed {
-    aSizeT [ASIZE2-1:0] variablea; //
+    aSizeT [ASIZE2-1:0] variablea; //One bit of A
 } aSt;
 
 typedef struct packed {
-    bSizeT variableb; //
+    bSizeT variableb; //Variable of B
 } bSt;
 
 typedef struct packed {
@@ -36,17 +36,17 @@ typedef struct packed {
 } bBSt;
 
 typedef struct packed {
-    twoBitT variablec; //
-    threeBitT variablec2; //
+    twoBitT variablec; //Two bits of C
+    threeBitT variablec2; //Three bits of C
 } seeSt;
 
 typedef struct packed {
-    threeBitT variabled; //
-    fourBitT variabled2; //
+    threeBitT variabled; //Three bits of D
+    fourBitT variabled2; //Four bits of D
 } dSt;
 
 typedef struct packed {
-    aSizeT variablea; //
+    aSizeT variablea; //One bit of A
     dSt bob; //
     seeSt [2-1:0] joe; //Need two of these
 } eNestedSt;

@@ -48,7 +48,7 @@ inline const char* readyT_prt( readyT val )
 // GENERATED_CODE_BEGIN --template=structures
 // structures
 struct aSt {
-    aSizeT variablea[ASIZE2]; //
+    aSizeT variablea[ASIZE2]; //One bit of A
 
     aSt() {}
 
@@ -82,7 +82,7 @@ struct aSt {
 
 };
 struct bSt {
-    bSizeT variableb; //
+    bSizeT variableb; //Variable of B
 
     bSt() {}
 
@@ -145,8 +145,8 @@ struct bBSt {
 
 };
 struct seeSt {
-    threeBitT variablec2; //
-    twoBitT variablec; //
+    threeBitT variablec2; //Three bits of C
+    twoBitT variablec; //Two bits of C
 
     seeSt() {}
 
@@ -180,8 +180,8 @@ struct seeSt {
 
 };
 struct dSt {
-    fourBitT variabled2; //
-    threeBitT variabled; //
+    fourBitT variabled2; //Four bits of D
+    threeBitT variabled; //Three bits of D
 
     dSt() {}
 
@@ -217,7 +217,7 @@ struct dSt {
 struct eNestedSt {
     seeSt joe[2]; //Need two of these
     dSt bob; //
-    aSizeT variablea; //
+    aSizeT variablea; //One bit of A
 
     eNestedSt() {}
 
