@@ -28,10 +28,6 @@ private:
                 { "blockF.variant0.fred", 0 },
                 { "blockF.variant1.bob", BOB1 },
                 { "blockF.variant1.fred", 1 },
-                { "blockF.variant0.bob", BOB0 },
-                { "blockF.variant0.fred", 0 },
-                { "blockF.variant1.bob", BOB1 },
-                { "blockF.variant1.fred", 1 },
             });
             // lamda function to construct the block
             instanceFactory::registerBlock("blockF_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<blockF>(blockName, variant, bbMode));}, "" );

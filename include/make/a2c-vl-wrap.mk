@@ -17,7 +17,7 @@ endif
 #------------------------------------------------------------------------
 
 VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 --no-timing --build -Wno-fatal -j 4 -DVL_DUT -MMD
-VERILATOR_CFLAG_OPTS = '-std=$(C_STD_VER)'
+VERILATOR_CFLAG_OPTS = '-std=$(C_STD_VER) -DSC_CPLUSPLUS=201703L'
 
 ifdef VL_COV
 VERILATOR_OPTS += --coverage
@@ -41,7 +41,7 @@ endif
 #------------------------------------------------------------------------
 
 # Compile verilator common objects (verilated_dpi.o, verilated_vcd_c.o, verilated_threads.o)
-obj_dir/Vvl_dummy: $(VL_GEN_SV_FILES) $(SV_GEN_DOT_FILES)
+obj_dir/Vvl_dummy: $(VL_GEN_SV_FILES) $(GEN_DEPS)
 	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) vl_dummy.sv --top vl_dummy -exe
 
 $(VL_OBJ_FILES): $(VL_GEN_SV_FILES) 
@@ -57,8 +57,10 @@ lib$(PROJECTNAME)vl_s_wrap.a: obj_dir/Vvl_dummy $(VL_OBJ_FILES)
 .PHONY : all clean
 .DEFAULT_GOAL := all
 
+vlwrap: lib$(PROJECTNAME)vl_s_wrap.a
+
 all : gen
-	$(MAKE) lib$(PROJECTNAME)vl_s_wrap.a
+	$(MAKE) vlwrap
 
 clean::
 	rm -rf lib*vl_s_wrap.a obj_dir/

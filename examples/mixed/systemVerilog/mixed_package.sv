@@ -4,35 +4,24 @@ package mixed_package;
 // Generated Import package statement(s)
 import mixedBlockC_package::*;
 import mixedNestedInclude_package::*;
-import mixedInclude_package::*;
-//         ASIZE =                              'd1;  // The size of A
-localparam ASIZE =                            32'h0000_0001;  // The size of A
-//         ASIZE2 =                             'd2;  // The size of A+1
-localparam ASIZE2 =                           32'h0000_0002;  // The size of A+1
-//         BIGE33 =                    'd8589934591;  // Test constant for numbers slightly bigger than 32 bits
-localparam BIGE33 =                  64'h0000_0001_FFFF_FFFF;  // Test constant for numbers slightly bigger than 32 bits
-//         BIGE53 =             'd18014398509481983;  // Test constant for numbers slightly bigger than 32 bits
-localparam BIGE53 =           64'h003F_FFFF_FFFF_FFFF;  // Test constant for numbers slightly bigger than 32 bits
-//         YUGE =             'd9223372036854775807;  // Test constant for numbers of 63 bits
-localparam YUGE =           64'h7FFF_FFFF_FFFF_FFFF;  // Test constant for numbers of 63 bits
-//         DWORD =                             'd32;  // size of a double word
-localparam DWORD =                           32'h0000_0020;  // size of a double word
-//         DWORD_LOG2 =                         'd6;  // size of a double word log2
-localparam DWORD_LOG2 =                       32'h0000_0006;  // size of a double word log2
-//         BOB0 =                              'd16;  // Memory size for instance 0
-localparam BOB0 =                            32'h0000_0010;  // Memory size for instance 0
-//         BOB1 =                              'd15;  // Memory size for instance 1
-localparam BOB1 =                            32'h0000_000F;  // Memory size for instance 1
-//         OPCODEABASE_READ =                   'd0;  // base value for Read command
-localparam OPCODEABASE_READ =                 32'h0000_0000;  // base value for Read command
-//         OPCODEABASE_WRITE =                 'd64;  // base value for Write command
-localparam OPCODEABASE_WRITE =               32'h0000_0040;  // base value for Write command
-//         OPCODEABASE_WAIT =                 'd128;  // base value for Wait command
-localparam OPCODEABASE_WAIT =               32'h0000_0080;  // base value for Wait command
-//         OPCODEABASE_EVICT =                'd192;  // base value for Evict command
-localparam OPCODEABASE_EVICT =              32'h0000_00C0;  // base value for Evict command
-//         OPCODEABASE_TRIM =                 'd256;  // base value for Trim command
-localparam OPCODEABASE_TRIM =               32'h0000_0100;  // base value for Trim command
+import mixedInclude_package::*;localparam int unsigned ASIZE = 32'h0000_0001;  // The size of A
+localparam int unsigned ASIZE2 = 32'h0000_0002;  // The size of A+1
+localparam int unsigned INTP = 32'hFFFF_FC00;  // Test constant for numbers of unsigned integer type 
+localparam int INTN = -32'sh7FFF_FC00;  // Test constant for numbers of signed integer type (two's complement negative)
+localparam longint unsigned LONGP = 64'h1FFF_FFFF_FFFF_FC00;  // Test constant for numbers unsigned long type 
+localparam longint LONGN = -64'sh0000_0000_FFFF_FC00;  // Test constant for numbers signed long type (two's complement negative)
+localparam longint unsigned BIGE33 = 64'h0000_0001_FFFF_FFFF;  // Test constant for numbers slightly bigger than 32 bits
+localparam longint unsigned BIGE53 = 64'h003F_FFFF_FFFF_FFFF;  // Test constant for numbers slightly bigger than 32 bits
+localparam longint unsigned YUGE = 64'h7FFF_FFFF_FFFF_FFFF;  // Test constant for numbers of 63 bits
+localparam int unsigned DWORD = 32'h0000_0020;  // size of a double word
+localparam int unsigned DWORD_LOG2 = 32'h0000_0006;  // size of a double word log2
+localparam int unsigned BOB0 = 32'h0000_0010;  // Memory size for instance 0
+localparam int unsigned BOB1 = 32'h0000_000F;  // Memory size for instance 1
+localparam int unsigned OPCODEABASE_READ = 32'h0000_0000;  // base value for Read command
+localparam int unsigned OPCODEABASE_WRITE = 32'h0000_0040;  // base value for Write command
+localparam int unsigned OPCODEABASE_WAIT = 32'h0000_0080;  // base value for Wait command
+localparam int unsigned OPCODEABASE_EVICT = 32'h0000_00C0;  // base value for Evict command
+localparam int unsigned OPCODEABASE_TRIM = 32'h0000_0100;  // base value for Trim command
 
 // types
 typedef logic[9-1:0] opcodeTagT; //opcode tag

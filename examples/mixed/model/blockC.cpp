@@ -2,7 +2,7 @@
 
 
 // GENERATED_CODE_PARAM --block=blockC
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "blockC.h"
 SC_HAS_PROCESS(blockC);
 
@@ -15,6 +15,6 @@ blockC::blockC(sc_module_name blockName, const char * variant, blockBaseMode bbM
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 }

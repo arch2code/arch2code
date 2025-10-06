@@ -6,8 +6,7 @@
 
 module inAndOut_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import inAndOut_package::*;
-(
+    import inAndOut_package::*;(
     // rdy_vld_if.src
     output bit aOut_vld,
     output bit [1:0] aOut_data,

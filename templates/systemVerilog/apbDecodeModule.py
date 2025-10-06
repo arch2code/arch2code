@@ -35,64 +35,32 @@ def render(args, prj, data):
     # Packages
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
     out.append(importPackages(args, prj, startingContext, data))
-    out.append("(\n")
+    out.append("(")
 
     # Ports
     out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent))
 
-# Seach container / parent's address group and find the instance for that group
-#  to start processing
-#  container's address is the incomingn apb interface
-#  all other's attached are the address range of the instance not
-#  matching the container
-#    qualBlock = prj.getQualBlock(data['blockName'])
-#    qualInstance = None
-#    for unusedKey, value in prj.data['instances'].items():
-#        if value['instanceTypeKey'] == qualBlock:
-#            if qualInstance:
-#                printError(f"Detected multiple instances of {qualBlock}, only one instance of decoder type is allowed")
-#                exit(warningAndErrorReport())
-#            qualInstance = value['instance']
-#            parentBlock = prj.getQualBlock(value['container'])
-#            if args.instances:
-#                instFile = args.instances
-#                # so load it
-#                instances = existsLoad(instFile)
-#                # convert the list of user fieldly instances into context qualified instances
-#                instances = prj.getQualInstances( instances['instances'] )
-#            else:
-#                # otherwise use the list of instances from the database
-#                instances = dict.fromkeys(prj.data['instances'], 0)
-#            prj.initConnections(instances)
-#            parentData = prj.getBlockDataOld(parentBlock, instances)
     qualInstance = next(iter(data['instances']))
-    parentBlock = next(iter(data['containerBlocks']))
-    parentData = prj.getBlockData(parentBlock)
-    addressGroupData = data['addressDecode']['addressGroupData']
-    addrDecodeSize = addressGroupData['addressIncrement'] * addressGroupData['maxAddressSpaces']
-    addrDecodeMask = addrDecodeSize - 1
-
-    # Find the parent interface port name
-    # Find a list of child interface port name(s)
-    childInterfacePorts = []
-    parentInterfacePort = None
-    for unusedKey, value in parentData['connections'].items():
-        if value['dstKey'] == qualInstance:
-            parentInterfacePort = getPortChannelName(value, 'dstport')
-            parentAddrSt, parentDataSt = getParentStructures(prj, value)
-        elif value['srcKey'] == qualInstance:
-            myPort = getPortChannelName(value, 'srcport')
-            childInterfacePorts.append({"name": myPort, "offset": f"{prj.data['instances'][value['dstKey']]['offset']}"})
-
-    # Search connectionMaps for parent port
-    #  no need to build childInterfacePorts because those most be at a connection at the level of the parent
-    if parentInterfacePort is None:
-        for unusedKey, value in parentData['connectionMaps'].items():
-            if value['direction'] == 'dst' and value['instance'] == qualInstance:
-                parentInterfacePort = getPortChannelName(value, 'instancePortName')
-                parentAddrSt, parentDataSt = getParentStructures(prj, value)
-
-# for now assume any selection at any address from the parentInterfacePort is valid
+    addr_decode_data = data['addressDecode']
+    address_group_data = addr_decode_data['addressGroupData']
+    address_group = addr_decode_data['addressGroup']
+    addr_decode_size = address_group_data['addressIncrement'] * address_group_data['maxAddressSpaces']
+    addr_decode_mask = addr_decode_size - 1
+    reg_intf_addr_st = addr_decode_data['registerBusStructs']['addr_t']
+    reg_intf_data_st = addr_decode_data['registerBusStructs']['data_t']
+    inst_decode_info = dict()
+    for conn, conn_data in data['ports']['connections'].items():
+        if conn_data['srcKey'] == qualInstance:
+            inst_decode_info[conn_data['dstKey']] = {'offset': prj.data['instances'][conn_data['dstKey']]['offset'],
+                                                     'name': conn_data['srcport'],
+                                                     'connectionKey': conn}
+        else:
+            parent_interface_port = conn_data['name']
+    for conn, conn_data in data['ports']['connectionMaps'].items():
+        if conn_data['direction'] == 'dst':
+            parent_interface_port = conn_data['name']
+    sorted_keys = sorted(inst_decode_info.keys(), key=lambda k: int(inst_decode_info[k]['offset']), reverse=True)
+# for now assume any selection at any address from the parent_interface_port is valid
 #   there is no way to check address ranges currently
 # need a selection
 # need a clear of selection
@@ -100,86 +68,86 @@ def render(args, prj, data):
 # flop prdata and pready
 # pass pWData and all other signals down without flops
 
-    out.append(f"{parentAddrSt} apb_addr;\n")
-    out.append(f"assign apb_addr = {parentAddrSt}'({parentInterfacePort}.paddr) & {parentAddrSt}'(32'h{addrDecodeMask:_x});\n")
+    out.append(f"{reg_intf_addr_st} apb_addr;")
+    out.append(f"assign apb_addr = {reg_intf_addr_st}'({parent_interface_port}.paddr) & {reg_intf_addr_st}'(32'h{addr_decode_mask:_x});")
 
     # Set up parent signals
     t = Template(parent_sig_decl_j2_template)
 
     out.append(t.render(
         parent = {
-            "interfacePort" : parentInterfacePort, "addrSt" : parentAddrSt, "dataSt" : parentDataSt
+            "interfacePort" : parent_interface_port, "addrSt" : reg_intf_addr_st, "dataSt" : reg_intf_data_st
         }
     ))
-    out.append('\n\n')
+    out.append('')
 
-    childInterfacePorts.sort(reverse=True, key=keySort)
-    for item in childInterfacePorts:
+    for item in sorted_keys:
         t = Template(child_sig_decl_j2_template)
         out.append(t.render(
             child = {
-                "interfacePort" : item['name']
+                "interfacePort" : inst_decode_info[item]['name']
             }
         ))
-        out.append('\n\n')
+        out.append('')
 
     # Set up parent interface for incoming address selection
-    out.append(f"always_comb begin\n")
-    for item in childInterfacePorts:
-        out.append(f"{indent}{item['name']}_next_psel = 1'b0;\n")
-    out.append(f"{indent}set_trans_active = 1'b0;\n")
-    out.append(f"{indent}if ({parentInterfacePort}.psel & ~trans_active) begin\n")
-    out.append(f"{indent*2}set_trans_active = 1'b1;\n")
+    out.append(f"always_comb begin")
+    for item in sorted_keys:
+        out.append(f"{indent}{inst_decode_info[item]['name']}_next_psel = 1'b0;")
+    out.append(f"{indent}set_trans_active = 1'b0;")
+    out.append(f"{indent}if ({parent_interface_port}.psel & ~trans_active) begin")
+    out.append(f"{indent*2}set_trans_active = 1'b1;")
     first = True
-    for item in childInterfacePorts:
+    for item in sorted_keys:
         if first:
-            out.append(f"{indent*2}if (apb_addr >= {parentAddrSt}'(32'h{int(item['offset']):_x})) begin\n")
+            out.append(f"{indent*2}if (apb_addr >= {reg_intf_addr_st}'(32'h{int(inst_decode_info[item]['offset']):_x})) begin")
             first = False
         else:
-            if (item['offset'] == 0 or item['offset'] == '0'):
-                out.append(f"{indent*2}end else begin\n")
+            if (int(inst_decode_info[item]['offset']) == 0 ):
+                out.append(f"{indent*2}end else begin")
             else:
-                out.append(f"{indent*2}end else if (apb_addr >= {parentAddrSt}'(32'h{int(item['offset']):_x})) begin\n")
-        out.append(f"{indent*3}{item['name']}_next_psel = '1;\n")
-    out.append(f"{indent*2}end\n")
-    out.append(f"{indent}end\n")
-    out.append("end\n\n")
+                out.append(f"{indent*2}end else if (apb_addr >= {reg_intf_addr_st}'(32'h{int(inst_decode_info[item]['offset']):_x})) begin")
+        out.append(f"{indent*3}{inst_decode_info[item]['name']}_next_psel = '1;")
+    out.append(f"{indent*2}end")
+    out.append(f"{indent}end")
+    out.append("end\n")
 
-    out.append(f"logic {parentInterfacePort}_next_pready;\n")
-    out.append(f"{parentDataSt} {parentInterfacePort}_next_prdata, prdata;\n")
-    out.append(f"logic {parentInterfacePort}_next_pslverr, pslverr;\n")
-    out.append("always_comb begin\n")
-    out.append(f"{indent}{parentInterfacePort}_next_pready  = '0;\n")
-    out.append(f"{indent}{parentInterfacePort}_next_prdata  = '0;\n")
-    out.append(f"{indent}{parentInterfacePort}_next_pslverr = '0;\n")
+    out.append(f"logic {parent_interface_port}_next_pready;")
+    out.append(f"{reg_intf_data_st} {parent_interface_port}_next_prdata, prdata;")
+    out.append(f"logic {parent_interface_port}_next_pslverr, pslverr;")
+    out.append("always_comb begin")
+    out.append(f"{indent}{parent_interface_port}_next_pready  = '0;")
+    out.append(f"{indent}{parent_interface_port}_next_prdata  = '0;")
+    out.append(f"{indent}{parent_interface_port}_next_pslverr = '0;")
     first = 0
-    for item in childInterfacePorts:
+    for port in sorted_keys:
+        item = inst_decode_info[port]
         if first == 0:
-            out.append(f"{indent}if ({item['name']}_psel) begin\n")
-            out.append(f"{indent*2}{parentInterfacePort}_next_pready  = {item['name']}.pready;\n")
-            out.append(f"{indent*2}{parentInterfacePort}_next_prdata  = {item['name']}.prdata;\n")
-            out.append(f"{indent*2}{parentInterfacePort}_next_pslverr = {item['name']}.pslverr;\n")
+            out.append(f"{indent}if ({item['name']}_psel) begin")
+            out.append(f"{indent*2}{parent_interface_port}_next_pready  = {item['name']}.pready;")
+            out.append(f"{indent*2}{parent_interface_port}_next_prdata  = {item['name']}.prdata;")
+            out.append(f"{indent*2}{parent_interface_port}_next_pslverr = {item['name']}.pslverr;")
         else:
-            out.append(f" else if ({item['name']}_psel) begin\n")
-            out.append(f"{indent*2}{parentInterfacePort}_next_pready  = {item['name']}.pready;\n")
-            out.append(f"{indent*2}{parentInterfacePort}_next_prdata  = {item['name']}.prdata;\n")
-            out.append(f"{indent*2}{parentInterfacePort}_next_pslverr = {item['name']}.pslverr;\n")
-        out.append(f"{indent}end")
+            out.append(f"{indent}end else if ({item['name']}_psel) begin")
+            out.append(f"{indent*2}{parent_interface_port}_next_pready  = {item['name']}.pready;")
+            out.append(f"{indent*2}{parent_interface_port}_next_prdata  = {item['name']}.prdata;")
+            out.append(f"{indent*2}{parent_interface_port}_next_pslverr = {item['name']}.pslverr;")
         first += 1
-    out.append("\nend\n\n")
+    out.append(f"{indent}end")
+    out.append("end\n")
 
     # Retun the parent APB signals
-    out.append(f"`DFF(pready, {parentInterfacePort}_next_pready)\n")
-    out.append(f"`DFF(prdata, {parentInterfacePort}_next_prdata)\n")
-    out.append(f"`DFF(pslverr, {parentInterfacePort}_next_pslverr)\n")
-    out.append(f"assign {parentInterfacePort}.pready  = pready;\n")
-    out.append(f"assign {parentInterfacePort}.prdata  = prdata;\n")
-    out.append(f"assign {parentInterfacePort}.pslverr = pslverr;\n")
+    out.append(f"`DFF(pready, {parent_interface_port}_next_pready)")
+    out.append(f"`DFF(prdata, {parent_interface_port}_next_prdata)")
+    out.append(f"`DFF(pslverr, {parent_interface_port}_next_pslverr)")
+    out.append(f"assign {parent_interface_port}.pready  = pready;")
+    out.append(f"assign {parent_interface_port}.prdata  = prdata;")
+    out.append(f"assign {parent_interface_port}.pslverr = pslverr;")
 
-    out.append("\n")
+    out.append("")
 
     out.append(f"endmodule: {data['blockName']}")
-    return ("".join(out))
+    return ("\n".join(out))
 
 #------------------------------------------------------------------------------
 # Jinja2 templates

@@ -34,7 +34,7 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
     regs.addRegister( 0x210, 6, "roUn0A", &roUn0A );
     regs.addRegister( 0x218, 6, "extA", &extA );
     SC_THREAD(regHandler);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(LocalRegAccess);
 };

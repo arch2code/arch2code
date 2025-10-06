@@ -3,7 +3,6 @@
 module blockARegs
     // Generated Import package statement(s)
     import mixed_package::*;
-
     #(
         parameter bit APB_READY_1WS = 0
     )

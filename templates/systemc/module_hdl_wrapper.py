@@ -16,19 +16,17 @@ def render_sc(args, prj, data):
 
     def sec_channel_decl(args, prj, data):
         s = []
-        for port in data['ports']:
-            if mp_sig[port]['is_skip']:
-                continue
-            s.append(mp_sig[port]['channel_decl'])
+        for port_type in data['ports']:
+            for port, port_data in data['ports'][port_type].items():
+                if mp_sig[port]['is_skip']:
+                    continue
+                s.append(mp_sig[port]['channel_decl'])
         s = '\n'.join(s)
         return s
 
     def sec_bfm_includes(args, prj, data):
         s = []
-        block_intf_set = set(
-            [v['interfaceData']['interfaceType'] for v in data['ports'].values()] +
-            [v['interfaceType'] for v in data['connections'].values()]
-        )
+        block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'])
         for intf_type in sorted(block_intf_set):
             if intf_gen_utils.INTF_DEFS[intf_type].get('skip', None):
                 continue
@@ -38,26 +36,29 @@ def render_sc(args, prj, data):
 
     def sec_bfm_decl(args, prj, data):
         s = []
-        for port in data['ports']:
-            if mp_sig[port]['is_skip']:
-                continue
-            s.append(mp_sig[port]['bfm_decl'])
+        for port_type in data['ports']:
+            for port in data['ports'][port_type]:
+                if mp_sig[port]['is_skip']:
+                    continue
+                s.append(mp_sig[port]['bfm_decl'])
         s = '\n'.join(s)
         return s
 
     def sec_bfm_ctor_init(args, prj, data):
         s = []
-        for port in data['ports']:
-            if mp_sig[port]['is_skip']:
-                continue
-            s.append(mp_sig[port]['bfm_ctor_init'])
+        for port_type in data['ports']:
+            for port in data['ports'][port_type]:
+                if mp_sig[port]['is_skip']:
+                    continue
+                s.append(mp_sig[port]['bfm_ctor_init'])
         s = (',\n'.join(s) + ',') if s else ''
         return s
 
     def sec_dut_connect(args, prj, data):
         s = []
-        for port in data['ports']:
-            s.append('\n'.join(mp_sig[port]['dut_ports_decl']))
+        for port_type in data['ports']:
+            for port in data['ports'][port_type]:
+                s.append('\n'.join(mp_sig[port]['dut_ports_decl']))
         s.append(f'dut_hdl->clk(clk);')
         s.append(f'dut_hdl->rst_n(rst_n);')
         s = '\n'.join(s)
@@ -65,25 +66,27 @@ def render_sc(args, prj, data):
 
     def sec_bfm_connect(args, prj, data):
         s = []
-        for port in data['ports']:
-            s_ = []
-            if mp_sig[port]['is_skip']:
-                continue
-            intf_name = data['ports'][port]['name']
-            bfm_name = intf_name + '_bfm'
-            hdl_intf_name = intf_name + '_hdl_if'
-            s_.append(f'{bfm_name}.if_p({intf_name});')
-            s_.append(f'{bfm_name}.hdl_if_p({hdl_intf_name});')
-            s_.append(f'{bfm_name}.clk(clk);')
-            s_.append(f'{bfm_name}.rst_n(rst_n);')
-            s.append('\n'.join(s_))
+        for port_type in data['ports']:
+            for port in data['ports'][port_type]:
+                if mp_sig[port]['is_skip']:
+                    continue
+                s_ = []
+                intf_name = data['ports'][port_type][port]['name']
+                bfm_name = intf_name + '_bfm'
+                hdl_intf_name = intf_name + '_hdl_if'
+                s_.append(f'{bfm_name}.if_p({intf_name});')
+                s_.append(f'{bfm_name}.hdl_if_p({hdl_intf_name});')
+                s_.append(f'{bfm_name}.clk(clk);')
+                s_.append(f'{bfm_name}.rst_n(rst_n);')
+                s.append('\n'.join(s_))
         s = '\n\n'.join(s)
         return s
 
     def sec_hdl_if_decl(args, prj, data):
         s = []
-        for port in data['ports']:
-            s.append(mp_sig[port]['hdl_if_decl'])
+        for port_type in data['ports']:
+            for port in data['ports'][port_type]:
+                s.append(mp_sig[port]['hdl_if_decl'])
         s = '\n'.join(s)
         return s
 
@@ -132,17 +135,12 @@ def render_sc(args, prj, data):
         s = '\n'.join(s)
         return s
 
-    if not args.hierarchy:
-
-        # A bit of preprocessing to filter out register ports based on block first 
-        data['regPorts'] = {k: v for k, v in data['regPorts'].items() if v['interfaceData']['block'] != data['blockName']}
-        # Add to the block ports for easier processing
-        data['ports'].update(data['regPorts'])
-
     # ports blaster
     mp_sig = dict()
-    for port in data['ports'] if not args.hierarchy else []:
-        mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port], prj)
+    if not args.hierarchy:
+        for port_type in data['ports']:
+            for port in data['ports'][port_type] if not args.hierarchy else []:
+                mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port_type][port], prj)
 
     match args.section:
         case 'hdl_sc_wrapper_class' : return sec_hdl_sc_wrapper_class(args, prj, data)

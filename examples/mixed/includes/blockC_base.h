@@ -7,10 +7,7 @@
 
 // GENERATED_CODE_PARAM --block=blockC
 // GENERATED_CODE_BEGIN --template=baseClassDecl
-#include "apb_channel.h"
-#include "notify_ack_channel.h"
 #include "rdy_vld_channel.h"
-#include "req_ack_channel.h"
 #include "mixedBlockCIncludes.h"
 
 class blockCBase : public virtual blockPortBase

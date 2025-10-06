@@ -791,9 +791,17 @@ class projectOpen:
                             ret[object][key] = value
                     if object=='constants':
                         ret[object][key] = value
-                        valLen = len(str(value["value"]))
-                        constLen = len(str(value["constant"]))
-                        ret[object][key]['valueSpaces']   = max(0, 32-constLen-valLen)
+                        if isinstance(value["value"], int):
+                            isSigned = value["value"] < 0
+                            if not isSigned and abs(value["value"]) <= 0xFFFFFFFF:
+                                ret[object][key]['valueType'] = 'uint32_t'
+                            elif isSigned and abs(value["value"]) <= 0x7FFFFFFF:
+                                ret[object][key]['valueType'] = 'int32_t'
+                            else:
+                                ret[object][key]['valueType'] = 'int64_t' if isSigned else 'uint64_t'
+                        else:
+                            printError(f"Invalid constant type for {key}")
+                            exit(warningAndErrorReport())
                     if object=='types':
                         if value['enum']:
                             enums[key] = value
@@ -1284,21 +1292,21 @@ class projectOpen:
         containerBlocks = dict()
         excluded = dict()
         hasExcluded = 0
-        for k, v in self.data['instances'].items():
-            if v.get('containerKey') == qualBlock:
-                if v['instance'] in excludeInstances:
+        for inst_key, inst_data in self.data['instances'].items():
+            if inst_data.get('containerKey') == qualBlock:
+                if inst_data['instance'] in excludeInstances:
                     hasExcluded = 1
-                    excluded[k] = v
+                    excluded[inst_key] = inst_data
                     continue
-                containedInstances[k] = v
-                if self.data['blocks'][v['instanceTypeKey']]['isRegHandler']:
-                    ret['regHandler'] = k
-            if v.get('instanceTypeKey') == qualBlock:
-                qualBlockInstances[k] = v
-                containerBlocks[v['containerKey']] = 0
-                if v['variant'] != '':
-                    filtered_variants_data = {k: v for k, v in self.data['parametersvariants'][qualBlock].items() if v.get('variant') == v['variant']}
-                    ret['variants'][v['variant']] = filtered_variants_data
+                containedInstances[inst_key] = inst_data
+                if self.data['blocks'][inst_data['instanceTypeKey']]['isRegHandler']:
+                    ret['regHandler'] = inst_key
+            if inst_data.get('instanceTypeKey') == qualBlock:
+                qualBlockInstances[inst_key] = inst_data
+                containerBlocks[inst_data['containerKey']] = 0
+                if inst_data['variant'] != '':
+                    filtered_variants_data = {k: v for k, v in self.data['parametersvariants'][qualBlock].items() if v.get('variant') == inst_data['variant']}
+                    ret['variants'][inst_data['variant']] = filtered_variants_data
         if len(qualBlockInstances) == 0:
             printError(f"There are no instances of {qualBlock} in the design")
             exit(warningAndErrorReport())
@@ -3082,6 +3090,11 @@ class projectCreate:
             # every connection has a nested table with the source and destination of the connection saved in the ends field
             entry['ends'] = dict()
             myKey = row['connection']
+            # if a name is provided use that as the channel name, otherwise use the src port naming
+            if row['name'] != '':
+                entry['channel'] = row['name']
+            else:
+                entry['channel'] = ''
             for dir in ['src', 'dst']:
                 (instInfo, instContext) = self.getFromContext('instances', yamlFile, row[dir], NotFoundFatal=True)
                 row['instanceType'] = instInfo['instanceType']
@@ -3101,7 +3114,7 @@ class projectCreate:
                     print(f"Warning: no line number in connections section for {yamlFile}:{myConnection}")
 
                 # the channel is declared based on the src port
-                if dir=='src':
+                if entry['channel'] == '' and dir=='src':
                     entry['channel'] = portName
                 endRow = self.processSimple('ends', 'dummy', row, yamlFile, schema=self.schema.data['schema']['connections']['ends'],context='connections', outer = row )
 

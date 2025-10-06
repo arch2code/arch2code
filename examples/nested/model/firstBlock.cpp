@@ -4,7 +4,7 @@
 #include "testController.h"
 
 // GENERATED_CODE_PARAM --block=firstBlock
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "firstBlock.h"
 SC_HAS_PROCESS(firstBlock);
 
@@ -17,7 +17,7 @@ firstBlock::firstBlock(sc_module_name blockName, const char * variant, blockBase
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(producer);
     SC_THREAD(consumer);

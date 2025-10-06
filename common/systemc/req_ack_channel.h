@@ -330,7 +330,7 @@ void req_ack_channel<R, A>::status(void)
 {
     if (m_value_written == true)
     {
-        req_interfaceBase.log_.logPrint(fmt::format("{} has data/or no ack received", name()  ), LOG_IMPORTANT );
+        req_interfaceBase.log_.logPrint(std::format("{} has data/or no ack received", name()  ), LOG_IMPORTANT );
         dump();
     }
     req_interfaceBase.teeStatus();

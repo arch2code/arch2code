@@ -12,14 +12,14 @@
 // structures
 bool aSt::operator == (const aSt & rhs) const {
     bool ret = true; 
-    for(int i=0; i<ASIZE2; i++) {
+    for(unsigned int i=0; i<ASIZE2; i++) {
         ret = ret && (variablea[i] == rhs.variablea[i]);
     }
     return ( ret );
     }
 std::string aSt::prt(bool all) const
 {
-    return (fmt::format("variablea[0:1]: {}",
+    return (std::format("variablea[0:1]: {}",
        staticArrayPrt<aSizeT, ASIZE2>(variablea, all)
     ));
 }
@@ -27,7 +27,7 @@ void aSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, aSt::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<ASIZE2; i++) {
+    for(unsigned int i=0; i<ASIZE2; i++) {
         pack_bits((uint64_t *)&_ret, _pos, variablea[i], 1);
         _pos += 1;
     }
@@ -35,7 +35,7 @@ void aSt::pack(_packedSt &_ret) const
 void aSt::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<ASIZE2; i++) {
+    for(unsigned int i=0; i<ASIZE2; i++) {
         uint16_t _bits = 1;
         uint16_t _consume;
         _consume = std::min(_bits, (uint16_t)(8-(_pos & 7)));
@@ -51,14 +51,14 @@ void aSt::unpack(_packedSt &_src)
 sc_bv<2> aSt::sc_pack(void) const
 {
     sc_bv<2> packed_data;
-    for(int i=0; i<ASIZE2; i++) {
+    for(unsigned int i=0; i<ASIZE2; i++) {
         packed_data.range(0+(i+1)*1-1, 0+i*1) = variablea[i];
     }
     return packed_data;
 }
 void aSt::sc_unpack(sc_bv<2> packed_data)
 {
-    for(int i=0; i<ASIZE2; i++) {
+    for(unsigned int i=0; i<ASIZE2; i++) {
         variablea[i] = (aSizeT) packed_data.range(0+(i+1)*1-1, 0+i*1).to_uint64();
     }
 }
@@ -69,7 +69,7 @@ bool bSt::operator == (const bSt & rhs) const {
     }
 std::string bSt::prt(bool all) const
 {
-    return (fmt::format("variableb:0x{:02x}",
+    return (std::format("variableb:0x{:02x}",
        (uint64_t) variableb
     ));
 }
@@ -99,7 +99,7 @@ bool bBSt::operator == (const bBSt & rhs) const {
     }
 std::string bBSt::prt(bool all) const
 {
-    return (fmt::format("ready:{}",
+    return (std::format("ready:{}",
        readyT_prt( ready )
     ));
 }
@@ -134,7 +134,7 @@ bool seeSt::operator == (const seeSt & rhs) const {
     }
 std::string seeSt::prt(bool all) const
 {
-    return (fmt::format("variablec:0x{:01x} variablec2:0x{:01x}",
+    return (std::format("variablec:0x{:01x} variablec2:0x{:01x}",
        (uint64_t) variablec,
        (uint64_t) variablec2
     ));
@@ -172,7 +172,7 @@ bool dSt::operator == (const dSt & rhs) const {
     }
 std::string dSt::prt(bool all) const
 {
-    return (fmt::format("variabled:0x{:01x} variabled2:0x{:01x}",
+    return (std::format("variabled:0x{:01x} variabled2:0x{:01x}",
        (uint64_t) variabled,
        (uint64_t) variabled2
     ));
@@ -206,14 +206,14 @@ bool eNestedSt::operator == (const eNestedSt & rhs) const {
     bool ret = true; 
     ret = ret && (variablea == rhs.variablea);
     ret = ret && (bob == rhs.bob);
-    for(int i=0; i<2; i++) {
+    for(unsigned int i=0; i<2; i++) {
         ret = ret && (joe[i] == rhs.joe[i]);
     }
     return ( ret );
     }
 std::string eNestedSt::prt(bool all) const
 {
-    return (fmt::format("variablea:0x{:01x} bob:<{}>{}",
+    return (std::format("variablea:0x{:01x} bob:<{}>{}",
        (uint64_t) variablea,
        bob.prt(all),
        structArrayPrt<seeSt, 2>(joe, "joe", all)
@@ -223,7 +223,7 @@ void eNestedSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, eNestedSt::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<2; i++) {
+    for(unsigned int i=0; i<2; i++) {
         seeSt::_packedSt _tmp{0};
         joe[i].pack(_tmp);
         _ret |= (uint32_t)_tmp << (_pos & 31);
@@ -239,7 +239,7 @@ void eNestedSt::pack(_packedSt &_ret) const
 void eNestedSt::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<2; i++) {
+    for(unsigned int i=0; i<2; i++) {
         uint16_t _bits = 5;
         uint16_t _consume;
         {
@@ -260,7 +260,7 @@ void eNestedSt::unpack(_packedSt &_src)
 sc_bv<18> eNestedSt::sc_pack(void) const
 {
     sc_bv<18> packed_data;
-    for(int i=0; i<2; i++) {
+    for(unsigned int i=0; i<2; i++) {
         packed_data.range(0+(i+1)*5-1, 0+i*5) = joe[i].sc_pack();
     }
     packed_data.range(16, 10) = bob.sc_pack();
@@ -269,7 +269,7 @@ sc_bv<18> eNestedSt::sc_pack(void) const
 }
 void eNestedSt::sc_unpack(sc_bv<18> packed_data)
 {
-    for(int i=0; i<2; i++) {
+    for(unsigned int i=0; i<2; i++) {
         joe[i].sc_unpack(packed_data.range(0+(i+1)*5-1, 0+i*5));
     }
     bob.sc_unpack(packed_data.range(16, 10));
@@ -282,7 +282,7 @@ bool bSizeSt::operator == (const bSizeSt & rhs) const {
     }
 std::string bSizeSt::prt(bool all) const
 {
-    return (fmt::format("index:0x{:02x}",
+    return (std::format("index:0x{:02x}",
        (uint64_t) index
     ));
 }
@@ -312,7 +312,7 @@ bool eHeaderSt::operator == (const eHeaderSt & rhs) const {
     }
 std::string eHeaderSt::prt(bool all) const
 {
-    return (fmt::format("hdr:0x{:01x}",
+    return (std::format("hdr:0x{:01x}",
        (uint64_t) hdr
     ));
 }

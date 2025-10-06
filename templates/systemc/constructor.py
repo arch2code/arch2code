@@ -34,7 +34,7 @@ def constructorInit(args, prj, data):
 
     if data['addressDecode']['isApbRouter']:
         out.append(f'void { className }::routerDecode(void) //handle apb routing for register\n{{')
-        out.append(f'    log_.logPrint(fmt::format("SystemC Thread:{{}} started", __func__));')
+        out.append(f'    log_.logPrint(std::format("SystemC Thread:{{}} started", __func__));')
         out.append(f'    decoder.decodeThread();\n}}\n')
 
     if registerDecode:
@@ -180,20 +180,25 @@ def constructorBody(args, prj, data):
         out.append(f'    SC_THREAD(routerDecode);')
     if registerDecode:
         out.append(f'    SC_THREAD(regHandler);')
-    out.append(f'    log_.logPrint(fmt::format("Instance {{}} initialized.", this->name()), LOG_IMPORTANT );')
+    out.append(f'    log_.logPrint(std::format("Instance {{}} initialized.", this->name()), LOG_IMPORTANT );')
     # take the list and return a string
     return("\n".join(out))
 
 def addressDecoder(args, prj, data):
     out = list()
-    blockName = data["blockName"]
     addressGroup = data['addressDecode']['addressGroup']
     addressGroupData = data['addressDecode']['addressGroupData']
-    decoderInstance = addressGroupData['decoderInstance']
-    containerBlock = data['addressDecode']['containerBlock']
     instanceWithRegApb = data['addressDecode']['instanceWithRegApb']
-    busInterface = data["addressDecode"]["registerBusInterface"]
-    out.append(f'        ,decoder({addressGroupData["maxAddressSpaces"]}, {addressGroupData["addressIncrement"].bit_length()-1}, {busInterface}, {{')
+    qualInstance = next(iter(data['instances']))
+    for conn, conn_data in data['ports']['connections'].items():
+        if conn_data['dstKey'] == qualInstance:
+            parent_interface_port = conn_data['name']
+    for conn, conn_data in data['ports']['connectionMaps'].items():
+        if conn_data['direction'] == 'dst':
+            parent_interface_port = conn_data['name']
+
+
+    out.append(f'        ,decoder({addressGroupData["maxAddressSpaces"]}, {addressGroupData["addressIncrement"].bit_length()-1}, {parent_interface_port}, {{')
     addressChannels = dict()
     for instance, instanceData in prj.data['instances'].items():
         if instanceData['addressGroup'] == addressGroup:
@@ -215,7 +220,7 @@ def addressDecoder(args, prj, data):
     # replace the last comma with a space
     if out:
         last = out.pop()
-        last = last[:-1] + '\n})'
+        last = last[:-1] + '})'
         out.append(last)
     return out
 

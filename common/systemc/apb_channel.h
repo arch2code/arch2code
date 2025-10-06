@@ -352,7 +352,7 @@ void apb_channel<R, D>::status(void)
     if (m_in_progress)
     {
         req_interfaceBase.log_.logPrint(
-            fmt::format("{} has data/or no ack received m_valid:{} m_ready:{} m_data_available:{} m_value_written:{} m_isWrite:{} ",
+            std::format("{} has data/or no ack received m_valid:{} m_ready:{} m_data_available:{} m_value_written:{} m_isWrite:{} ",
               name(), (uint16_t)m_valid, (uint16_t)m_ready, (uint16_t)m_data_available, (uint16_t)m_value_written, (uint16_t)m_isWrite), LOG_IMPORTANT );
         dump();
     }

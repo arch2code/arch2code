@@ -37,11 +37,11 @@ public:
         std::array<bMemSt, MEMORYB_WORDS>  bTableData;
 
         // Memory blockBTable Write sequential
-        for(int rowId=0; rowId<MEMORYB_WORDS; rowId++)
+        for(unsigned int rowId=0; rowId<MEMORYB_WORDS; rowId++)
             writeBlockBTableMem(rowId, bTableData_[rowId]);
 
         // Memory blockBTable Read sequential
-        for(int rowId=0; rowId<MEMORYB_WORDS; rowId++)
+        for(unsigned int rowId=0; rowId<MEMORYB_WORDS; rowId++)
             readBlockBTableMem(rowId, bTableData[rowId]);
 
         // Compare data from blockBTable array

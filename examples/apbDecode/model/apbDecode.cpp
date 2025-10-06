@@ -10,7 +10,7 @@ apbDecode::registerBlock apbDecode::registerBlock_; //register the block with th
 
 void apbDecode::routerDecode(void) //handle apb routing for register
 {
-    log_.logPrint(fmt::format("SystemC Thread:{} started", __func__));
+    log_.logPrint(std::format("SystemC Thread:{} started", __func__));
     decoder.decodeThread();
 }
 
@@ -25,7 +25,7 @@ apbDecode::apbDecode(sc_module_name blockName, const char * variant, blockBaseMo
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     SC_THREAD(routerDecode);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 }
 

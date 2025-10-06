@@ -18,7 +18,7 @@ nestedL2::nestedL2(sc_module_name blockName, const char * variant, blockBaseMode
 {
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
     uNestedL3->nested3(nested2);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
 

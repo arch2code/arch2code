@@ -30,19 +30,19 @@ Interface: aStuffIf
 An interface for A
 
 Structure: aSt
-Var:  variablea One bit of A One bit of A
+Var:  variablea  One bit of A
 Var:  variablea2  this is a 2 bit type
 
 Structure: aASt
-Var:  variablea One bit of A One bit of A
+Var:  variablea  One bit of A
 
 Connection: uBlockA -> uBlockC
 Interface: cStuffIf
 An interface for C
 
 Structure: seeSt
-Var:  variablec Two bits of C Two bits of C
-Var:  variablec2 Three bits of C Three bits of C
+Var:  variablec  Two bits of C
+Var:  variablec2  Three bits of C
 
 Connection: uBlockA -> uBlockB
 Interface: startDone
@@ -95,8 +95,8 @@ Interface: cStuffIf
 An interface for C
 
 Structure: seeSt
-Var:  variablec Two bits of C Two bits of C
-Var:  variablec2 Three bits of C Three bits of C
+Var:  variablec  Two bits of C
+Var:  variablec2  Three bits of C
 
 Block: blockB
 Connection: uBlockA -> uBlockB
@@ -104,11 +104,11 @@ Interface: aStuffIf
 An interface for A
 
 Structure: aSt
-Var:  variablea One bit of A One bit of A
+Var:  variablea  One bit of A
 Var:  variablea2  this is a 2 bit type
 
 Structure: aASt
-Var:  variablea One bit of A One bit of A
+Var:  variablea  One bit of A
 
 Connection: uBlockA -> uBlockB
 Interface: startDone

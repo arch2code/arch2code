@@ -15,7 +15,7 @@
 #include "multiCycleBase.h"
 #include "pingPongBuffer.h"
 #include "synchLock.h"
-#include <fmt/format.h>
+#include <format>
 
 namespace sc_core {
 
@@ -211,7 +211,7 @@ public:
     // portBase overrides
     void setMultiDriver(std::string name_, std::function<std::string(const uint64_t &value)> prt = nullptr) override
     {
-        Q_ASSERT(false, fmt::format("multiple drivers on {} rdyVld interface is invalid", name_));
+        Q_ASSERT(false, std::format("multiple drivers on {} rdyVld interface is invalid", name_));
     }
     std::shared_ptr<trackerBase> getTracker(void) override { return (tracker_);}
     virtual void setTeeBusy(bool busy) override { teeBusy_ = busy; }
@@ -332,7 +332,7 @@ inline void rdy_vld_channel<T>::read( T& val_ )
         m_multicycle->copyReadData(tag, (uint8_t *)&val_);
         int buffer_size = m_multicycle->getReadBufferSize(tag);
         if (log_.isMatch(LOG_NORMAL)) {
-            interfaceLog( fmt::format("{} transferSize:0x{:0x}", val_.prt(isDebugLog), buffer_size) , tag);
+            interfaceLog( std::format("{} transferSize:0x{:0x}", val_.prt(isDebugLog), buffer_size) , tag);
         }
     }
     if (m_writer_waiting) {
@@ -483,11 +483,11 @@ template <class T>
 void rdy_vld_channel<T>::status(void)
 {
     if (m_ready && m_writer_waiting) {
-        log_.logPrint(fmt::format("{} has deadlock bug", name()), LOG_IMPORTANT);
+        log_.logPrint(std::format("{} has deadlock bug", name()), LOG_IMPORTANT);
     }
     int available = num_available();
     if (available > 0) {
-        log_.logPrint(fmt::format("{} has data", name()  ), LOG_IMPORTANT );
+        log_.logPrint(std::format("{} has data", name()  ), LOG_IMPORTANT );
         dump();
     }
     teeStatus();

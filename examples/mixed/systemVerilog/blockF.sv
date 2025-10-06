@@ -14,11 +14,12 @@ import mixedBlockC_package::*;
     rdy_vld_if.dst dStuffIf,
     rdy_vld_if.dst dSin,
     rdy_vld_if.src dSout,
-    status_if.src roBsize,
+    status_if.dst rwD,
     input clk, rst_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
+
 
     // Memory Interfaces
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) test();
@@ -31,7 +32,6 @@ memory_dp #(.DEPTH(bob), .data_t(seeSt)) uTest (
     .mem_portB (test_unused),
     .clk (clk)
 );
-
 
 // GENERATED_CODE_END
 

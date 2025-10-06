@@ -166,11 +166,11 @@ public:
         std::array<aMemSt, MEMORYA_WORDS>  aTableData1;
 
         // Memory BlockATable1 Write sequential
-        for(int rowId=0; rowId<MEMORYA_WORDS; rowId++)
+        for(unsigned int rowId=0; rowId<MEMORYA_WORDS; rowId++)
             writeBlockATable1Mem(rowId, aTableData1_[rowId]);
 
         // Memory BlockATable1 Read sequential
-        for(int rowId=0; rowId<MEMORYA_WORDS; rowId++)
+        for(unsigned int rowId=0; rowId<MEMORYA_WORDS; rowId++)
             readBlockATable1Mem(rowId, aTableData1[rowId]);
 
         // Compare data from BlockATable1 array
@@ -227,11 +227,11 @@ public:
         std::array<bMemSt, MEMORYB_WORDS>  bTableData;
 
         // Memory blockBTable Write sequential
-        for(int rowId=0; rowId<MEMORYB_WORDS; rowId++)
+        for(unsigned int rowId=0; rowId<MEMORYB_WORDS; rowId++)
             writeBlockBTableMem(rowId, bTableData_[rowId]);
 
         // Memory blockBTable Read sequential
-        for(int rowId=0; rowId<MEMORYB_WORDS; rowId++)
+        for(unsigned int rowId=0; rowId<MEMORYB_WORDS; rowId++)
             readBlockBTableMem(rowId, bTableData[rowId]);
 
         // Compare data from blockBTable array

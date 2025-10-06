@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <memory>
-#include <fmt/format.h>
+#include <format>
 #include "addressBase.h"
 #include "timedDelay.h"
 #include "synchLock.h"
@@ -58,7 +58,7 @@ public:
         : m_mem(rows_),
             rows(rows_),
             m_name(std::string(hierarchicalName_) + "_" + std::string(memName_)),
-            m_memName(memName_), 
+            m_memName(memName_),
             m_delay(m_name),
             m_memType(memType_)
     {
@@ -159,7 +159,7 @@ public:
         return m_name;
     }
     // sets up the memory for row synchronization
-    void configureSynch(std::string synchLockNameBase, std::function<std::string(const arraySynchRecord &value)> prt) 
+    void configureSynch(std::string synchLockNameBase, std::function<std::string(const arraySynchRecord &value)> prt)
     {
         m_synch = true;
         m_rowLock = std::make_unique<synchArrayLock>(synchLockNameBase, m_memName, rows, prt);

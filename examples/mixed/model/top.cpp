@@ -2,7 +2,7 @@
 
 
 // GENERATED_CODE_PARAM --block=top
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "top.h"
 #include "cpu_base.h"
 #include "blockA_base.h"
@@ -31,7 +31,7 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-// instance to instance connections via channel
+    // instance to instance connections via channel
     uBlockA->aStuffIf(aStuffIf);
     uBlockB->btod(aStuffIf);
     uBlockA->cStuffIf(cStuffIf);
@@ -44,10 +44,10 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     uBlockA->apbReg(apb_uBlockA);
     uAPBDecode->apb_uBlockB(apb_uBlockB);
     uBlockB->apbReg(apb_uBlockB);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 
     test_mixed_structs::test(); // Run the test for structures
-    log_.logPrint(fmt::format("Instance {} test completed.", this->name()), LOG_IMPORTANT );
-    
+    log_.logPrint(std::format("Instance {} test completed.", this->name()), LOG_IMPORTANT );
+
 }

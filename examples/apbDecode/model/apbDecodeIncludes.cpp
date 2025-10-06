@@ -17,7 +17,7 @@ bool aRegSt::operator == (const aRegSt & rhs) const {
     }
 std::string aRegSt::prt(bool all) const
 {
-    return (fmt::format("a:0x{:010x}",
+    return (std::format("a:0x{:010x}",
        (uint64_t) a
     ));
 }
@@ -48,7 +48,7 @@ bool un0BRegSt::operator == (const un0BRegSt & rhs) const {
     }
 std::string un0BRegSt::prt(bool all) const
 {
-    return (fmt::format("fa:0x{:02x} fb:0x{:04x}",
+    return (std::format("fa:0x{:02x} fb:0x{:04x}",
        (uint64_t) fa,
        (uint64_t) fb
     ));
@@ -87,7 +87,7 @@ bool un0ARegSt::operator == (const un0ARegSt & rhs) const {
     }
 std::string un0ARegSt::prt(bool all) const
 {
-    return (fmt::format("fa:0x{:02x} fb:0x{:08x} fc:0x{:02x}",
+    return (std::format("fa:0x{:02x} fb:0x{:08x} fc:0x{:02x}",
        (uint64_t) fa,
        (uint64_t) fb,
        (uint64_t) fc
@@ -130,7 +130,7 @@ bool aSizeRegSt::operator == (const aSizeRegSt & rhs) const {
     }
 std::string aSizeRegSt::prt(bool all) const
 {
-    return (fmt::format("index:0x{:08x}",
+    return (std::format("index:0x{:08x}",
        (uint64_t) index
     ));
 }
@@ -160,7 +160,7 @@ bool apbAddrSt::operator == (const apbAddrSt & rhs) const {
     }
 std::string apbAddrSt::prt(bool all) const
 {
-    return (fmt::format("address:0x{:08x}",
+    return (std::format("address:0x{:08x}",
        (uint64_t) address
     ));
 }
@@ -190,7 +190,7 @@ bool apbDataSt::operator == (const apbDataSt & rhs) const {
     }
 std::string apbDataSt::prt(bool all) const
 {
-    return (fmt::format("data:0x{:08x}",
+    return (std::format("data:0x{:08x}",
        (uint64_t) data
     ));
 }
@@ -220,7 +220,7 @@ bool aMemAddrSt::operator == (const aMemAddrSt & rhs) const {
     }
 std::string aMemAddrSt::prt(bool all) const
 {
-    return (fmt::format("address:0x{:02x}",
+    return (std::format("address:0x{:02x}",
        (uint64_t) address
     ));
 }
@@ -250,7 +250,7 @@ bool aMemSt::operator == (const aMemSt & rhs) const {
     }
 std::string aMemSt::prt(bool all) const
 {
-    return (fmt::format("data:0x{:016x}",
+    return (std::format("data:0x{:016x}",
        (uint64_t) data
     ));
 }
@@ -280,7 +280,7 @@ bool bMemAddrSt::operator == (const bMemAddrSt & rhs) const {
     }
 std::string bMemAddrSt::prt(bool all) const
 {
-    return (fmt::format("address:0x{:02x}",
+    return (std::format("address:0x{:02x}",
        (uint64_t) address
     ));
 }
@@ -305,14 +305,14 @@ void bMemAddrSt::sc_unpack(sc_bv<5> packed_data)
 }
 bool bMemSt::operator == (const bMemSt & rhs) const {
     bool ret = true; 
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         ret = ret && (data[i] == rhs.data[i]);
     }
     return ( ret );
     }
 std::string bMemSt::prt(bool all) const
 {
-    return (fmt::format("data[0:2]: {}",
+    return (std::format("data[0:2]: {}",
        staticArrayPrt<u32T, 3>(data, all)
     ));
 }
@@ -320,7 +320,7 @@ void bMemSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, bMemSt::_byteWidth);
     uint16_t _pos{0};
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         pack_bits((uint64_t *)&_ret, _pos, data[i], 32);
         _pos += 32;
     }
@@ -328,7 +328,7 @@ void bMemSt::pack(_packedSt &_ret) const
 void bMemSt::unpack(_packedSt &_src)
 {
     uint16_t _pos{0};
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         uint16_t _bits = 32;
         uint16_t _consume;
         _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
@@ -344,14 +344,14 @@ void bMemSt::unpack(_packedSt &_src)
 sc_bv<96> bMemSt::sc_pack(void) const
 {
     sc_bv<96> packed_data;
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         packed_data.range(0+(i+1)*32-1, 0+i*32) = data[i];
     }
     return packed_data;
 }
 void bMemSt::sc_unpack(sc_bv<96> packed_data)
 {
-    for(int i=0; i<3; i++) {
+    for(unsigned int i=0; i<3; i++) {
         data[i] = (u32T) packed_data.range(0+(i+1)*32-1, 0+i*32).to_uint64();
     }
 }

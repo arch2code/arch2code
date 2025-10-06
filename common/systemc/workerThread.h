@@ -5,7 +5,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
-#include <fmt/format.h>
+#include <format>
 #include <map>
 #include "systemc.h"
 // copyright QiStor 2022
@@ -19,7 +19,7 @@ public:
     workerEvent(std::string name_, bool isSystemCThread_) :
         isSystemCThread(isSystemCThread_),
         name(name_),
-        log_(fmt::format("workerEvent{}", name_))
+        log_(std::format("workerEvent{}", name_))
         {}
     void notify(const char *why);
     void wait(const char *why);

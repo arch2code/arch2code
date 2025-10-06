@@ -46,6 +46,10 @@ public:
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr2;
     // AXI Write channels; Address, Data, and Response
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr3;
+    // AXI stream channel
+    axi4_stream_channel< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr0;
+    // AXI stream channel
+    axi4_stream_channel< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr1;
 
     //instances contained in block
     std::shared_ptr<producerBase> uProducer;

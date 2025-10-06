@@ -13,6 +13,7 @@ import mixedBlockC_package::*;
 
     // Interface Instances, needed for between instanced modules inside this module
 
+
 // Instances
 blockC uBlockC0 (
     .see (see0),
@@ -31,7 +32,6 @@ blockC uBlockC2 (
     .clk (clk),
     .rst_n (rst_n)
 );
-
 
 // GENERATED_CODE_END
 

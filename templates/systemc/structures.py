@@ -310,7 +310,7 @@ def equalTest(handle, args, structName, vars, indent):
             #myArray= ''
             myArrayLoopIndex= ''
         if vardata['isArray']:
-            out.append(f"{indent}for(int i=0; i<{vardata['arraySize']}; i++) {{")
+            out.append(f"{indent}for(unsigned int i=0; i<{vardata['arraySize']}; i++) {{")
             indent += ' '*4
 
         if vardata['bitwidth'] <= 64 or vardata['generator'] == 'datapath' or vardata['entryType'] == 'NamedStruct':
@@ -347,7 +347,7 @@ def scTrace(handle, args, structName, vars, indent):
             #myArray= ''
             myArrayLoopIndex= ''
         if vardata['isArray']:
-            out.append(f"{indent}for(int i=0; i<{vardata['arraySize']}; i++) {{")
+            out.append(f"{indent}for(unsigned int i=0; i<{vardata['arraySize']}; i++) {{")
             indent += ' '*4
 
         if vardata['bitwidth'] <= 64 or vardata['generator'] == 'datapath' or vardata['entryType'] == 'NamedStruct':
@@ -460,7 +460,7 @@ def prtFmt(handle, args, vars, indent, prj):
             varOut.append(f'{indent}   {item[2]},')
     # add semicolon to the last item in the list
     varOut[-1] = varOut[-1][:-1]
-    out.append(f'{indent}return (fmt::format("{fmt}",')
+    out.append(f'{indent}return (std::format("{fmt}",')
     out.extend(varOut)
     out.append(f"{indent}));")
     indent = indent[:-4]
@@ -532,7 +532,7 @@ def registerFeatures(vars, indent):
                 out.append(f"{indent}( {varName} << { vardata['bitshift'] } )")
         out.append(f" +")
     out.pop()
-    out.append(f";")
+    out[-1] = out[-1] + ";"
     out.append(f"{indent}return( ret );")
     indent = ' '*4
     out.append(f"{indent}}}")
@@ -587,7 +587,7 @@ def sc_pack(handle, args, vars, indent):
         high = low + data['arraywidth'] - 1
         if data['generator'] == 'datapath':
             num_bytes = int(data['bitwidth'] / 8)
-            out.append(f'{indent}for(int unsigned bsl=0; bsl<{num_bytes}; bsl++) {{')
+            out.append(f'{indent}for(unsigned int bsl=0; bsl<{num_bytes}; bsl++) {{')
             rng_high, rng_low  = f"{low}+bsl*8+7", f"{low}+bsl*8"
             indent += ' '*4
             out.append(f'{indent}packed_data.range({rng_high}, {rng_low}) = {varName}[bsl];')
@@ -596,7 +596,7 @@ def sc_pack(handle, args, vars, indent):
         else:
             if data['isArray']:
                 varIndex = f"[i]"
-                out.append(f"{indent}for(int i=0; i<{data['arraySize']}; i++) {{")
+                out.append(f"{indent}for(unsigned int i=0; i<{data['arraySize']}; i++) {{")
                 rng_high, rng_low  = f"{low}+(i+1)*{data['bitwidth']}-1", f"{low}+i*{data['bitwidth']}"
                 indent += ' '*4
             else:
@@ -659,7 +659,7 @@ def sc_unpack(handle, args, structType, vars, indent):
         high = low + data['arraywidth'] - 1
         if data['generator'] == 'datapath':
             num_bytes = int(data['bitwidth'] / 8)
-            out.append(f'{indent}for(int unsigned bsl=0; bsl<{num_bytes}; bsl++) {{')
+            out.append(f'{indent}for(unsigned int bsl=0; bsl<{num_bytes}; bsl++) {{')
             rng_high, rng_low  = f"{low}+bsl*8+7", f"{low}+bsl*8"
             indent += ' '*4
             out.append(f'{indent}{varName}[bsl] = (uint8_t) packed_data.range({rng_high}, {rng_low}).to_uint64();')
@@ -668,7 +668,7 @@ def sc_unpack(handle, args, structType, vars, indent):
         else:
             if data['isArray']:
                 varIndex = f"[i]"
-                out.append(f"{indent}for(int i=0; i<{data['arraySize']}; i++) {{")
+                out.append(f"{indent}for(unsigned int i=0; i<{data['arraySize']}; i++) {{")
                 rng_high, rng_low  = f"{low}+(i+1)*{data['bitwidth']}-1", f"{low}+i*{data['bitwidth']}"
                 indent += ' '*4
             else:
@@ -832,7 +832,7 @@ def fw_unpack(handle, args, vars, indent):
         # for array case, create an outer loop
         if data['isArray']:
             varIndex = f"[i]"
-            out.append(f"{indent}for(int i=0; i<{data['arraySize']}; i++) {{")
+            out.append(f"{indent}for(unsigned int i=0; i<{data['arraySize']}; i++) {{")
             indent += ' '*4
             calcAlign = (not isSingleArray) or usePos
             bitsLeft = data['bitwidth']
@@ -902,7 +902,7 @@ def fw_unpack(handle, args, vars, indent):
             loop_current = currentPos
             # we are aligned if the current position is a multiple of the base size
             # except for the array case, unless the array case is the single element array case)
-            isAligned = ((currentPos & (baseMask)) == 0) and not (data['isArray'] and not isSingleArray) 
+            isAligned = ((currentPos & (baseMask)) == 0) and not (data['isArray'] and not isSingleArray)
             out.append(f'{indent}{{')
             indent += ' '*4
             if (isAligned):
@@ -1110,7 +1110,7 @@ def processPackUnpack(fname, handle, args, vars, indent):
                 posDeclare = None
             else:
                 out.append(indent + posCorrection.format(pos)) if not posCorrect and posCorrection else None
-            out.append(f"{indent}for(int i=0; i<{data['arraySize']}; i++) {{")
+            out.append(f"{indent}for(unsigned int i=0; i<{data['arraySize']}; i++) {{")
             loopClose = f"{indent}}}"
             indent += ' '*4
         if data['entryType'] == 'NamedStruct':

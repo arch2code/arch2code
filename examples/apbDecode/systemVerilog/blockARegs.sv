@@ -3,9 +3,7 @@
 module blockARegs
     // Generated Import package statement(s)
     import apbDecode_package::*;
-
     #(
-        parameter apbAddrSt APB_ADDR_MASK = '1,
         parameter bit APB_READY_1WS = 0
     )
     (
@@ -21,7 +19,7 @@ module blockARegs
     );
 
     apbAddrSt apb_addr;
-    assign apb_addr = apbAddrSt'(apbReg.paddr) & APB_ADDR_MASK;
+    assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h3ff;
 
     aRegSt roA_reg;
     assign roA_reg = roA.data;

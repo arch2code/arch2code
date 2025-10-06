@@ -36,15 +36,26 @@ endif
 # Systemc build global variables
 #------------------------------------------------------------------------
 
-CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK
-LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc -lfmt
+CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK -DSC_CPLUSPLUS=201703L
+LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
 A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain
 PRJ_SRC_DIRS = $(call find_cpp_source_directories, $(REPO_ROOT)/base $(REPO_ROOT)/model $(REPO_ROOT)/fw $(REPO_ROOT)/tb)
 
-ifndef USE_GNU_COMPILER
+ifndef USE_GCC
 CXX_FLAGS += -fstandalone-debug
+else
+CXX_FLAGS += -Wno-class-memaccess -Wno-aggressive-loop-optimizations -Wno-strict-aliasing
+ifdef VL_DUT
+CXX_FLAGS += -Wno-pedantic
+endif
+endif
+
+# If not using c++23, use std::format shim and fmt library
+ifneq ($(C_STD_VER), c++23)
+CPP_INCLUDES += -I$(A2C_ROOT)/common/systemc/include/fmt
+LD_FLAGS += -lfmt
 endif
 
 # Standard optimization source files.
@@ -80,13 +91,16 @@ BIN = run
 BIN_DIR = $(PROJECT_RUNDIR)/build
 BUILD_DIR = $(BIN_DIR)/$(PROJECTNAME).build
 
-CXX_FLAGS += $(CPP_INCLUDES) $(EXTRA_CXX_FLAGS)
+# Add to compiler dependencies
+CXX_FLAGS += $(CPP_INCLUDES)
 
 ifdef VL_DUT
+ifndef USE_VCS
 CXX_FLAGS += -DVERILATOR
 LD_FLAGS += -L$(REPO_ROOT)/verif/vl_wrap -l$(PROJECTNAME)vl_s_wrap -latomic
 # https://github.com/verilator/verilator/issues/5672
 CXX_FLAGS += -Wno-sign-compare
+endif
 endif
 
 #------------------------------------------------------------------------
@@ -102,10 +116,12 @@ DEP = $(OBJ:%.o=%.d)
 
 # Actual target of the binary - depends on all .o files.
 $(BIN_DIR)/$(BIN) : $(OBJ)
+ifndef USE_VCS
     # Create build directories - same structure as sources.
 	mkdir -p $(@D)
     # Just link all the object files.
-	$(CXX) $(CXX_FLAGS) -o $@ $^ $(LD_FLAGS)
+	$(CXX) -o $@ $^ $(LD_FLAGS)
+endif
 
 # Rule to compile files in O3_CPP_SRC to add -o3 optimization
 $(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp
@@ -130,7 +146,7 @@ $(BUILD_DIR)/%.o : %.cpp $(GEN_DB_DEPS)
 
 all: gen
 ifdef VL_DUT
-	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap lib$(PROJECTNAME)vl_s_wrap.a
+	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap vlwrap
 endif
 	$(MAKE) $(BIN_DIR)/$(BIN)
 

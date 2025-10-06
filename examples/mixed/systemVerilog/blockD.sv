@@ -13,6 +13,7 @@ import mixedBlockC_package::*;
     rdy_vld_if.src outD,
     rdy_vld_if.dst inD,
     req_ack_if.dst btod,
+    status_if.dst rwD,
     status_if.src roBsize,
     memory_if.src blockBTable1,
     memory_if.src blockBTableSP,
@@ -21,8 +22,8 @@ import mixedBlockC_package::*;
 
     // Interface Instances, needed for between instanced modules inside this module
 
-// Instances
 
+// Instances
 // GENERATED_CODE_END
 
 endmodule: blockD

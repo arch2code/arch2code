@@ -2,7 +2,7 @@
 #include "testController.h"
 
 // GENERATED_CODE_PARAM --block=producer
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "producer.h"
 SC_HAS_PROCESS(producer);
 
@@ -15,7 +15,7 @@ producer::producer(sc_module_name blockName, const char * variant, blockBaseMode
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(outAXI0Rd);
     SC_THREAD(outAXI1Rd);
@@ -62,10 +62,10 @@ void producer::outAXI0Rd(void)
     }
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end-start;
-    log_.logPrint(fmt::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
-    controller.test_complete(test_name);   
-} 
- 
+    log_.logPrint(std::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
+    controller.test_complete(test_name);
+}
+
 // send and recieve single cycle transactions
 void producer::outAXI1Rd(void)
 {
@@ -96,16 +96,16 @@ void producer::outAXI1Rd(void)
             }
             if ((i == 255 && cycleData.rlast == 0) || (i < 255 && cycleData.rlast == 1))
             {
-                log_.logPrint(fmt::format("Last set incorrectly on cycle: %i", i));
+                log_.logPrint(std::format("Last set incorrectly on cycle: %i", i));
                 Q_ASSERT(false, "last wrong");
             }
         }
     }
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end-start;
-    log_.logPrint(fmt::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
-    controller.test_complete(test_name);   
-} 
+    log_.logPrint(std::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
+    controller.test_complete(test_name);
+}
 // send and recieve multicycle transactions
 void producer::outAXI0Wr(void)
 {
@@ -135,8 +135,8 @@ void producer::outAXI0Wr(void)
     }
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end-start;
-    log_.logPrint(fmt::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
-    controller.test_complete(test_name);   
+    log_.logPrint(std::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
+    controller.test_complete(test_name);
 }
 void producer::outRespHandlerAXI0Wr(void)
 {
@@ -154,8 +154,8 @@ void producer::outRespHandlerAXI0Wr(void)
             Q_ASSERT(false, "Data mismatch");
         }
     }
-    controller.test_complete(test_name); 
-    log_.logPrint(fmt::format("Response Test {}", test_name ), LOG_ALWAYS);
+    controller.test_complete(test_name);
+    log_.logPrint(std::format("Response Test {}", test_name ), LOG_ALWAYS);
 }
 // send multicycle transaction and recieve single cycle transaction
 void producer::outAXI1Wr(void)
@@ -186,8 +186,8 @@ void producer::outAXI1Wr(void)
     }
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end-start;
-    log_.logPrint(fmt::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
-    controller.test_complete(test_name);   
+    log_.logPrint(std::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
+    controller.test_complete(test_name);
 }
 void producer::outRespHandlerAXI1Wr(void)
 {
@@ -206,8 +206,8 @@ void producer::outRespHandlerAXI1Wr(void)
         }
 
     }
-    controller.test_complete(test_name); 
-    log_.logPrint(fmt::format("Response Test {}", test_name ), LOG_ALWAYS);
+    controller.test_complete(test_name);
+    log_.logPrint(std::format("Response Test {}", test_name ), LOG_ALWAYS);
 }
 
 // send single cycle transaction and recieve multicycle transaction
@@ -240,8 +240,8 @@ void producer::outAXI2Wr(void)
     }
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end-start;
-    log_.logPrint(fmt::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
-    controller.test_complete(test_name);   
+    log_.logPrint(std::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
+    controller.test_complete(test_name);
 }
 void producer::outRespHandlerAXI2Wr(void)
 {
@@ -260,7 +260,7 @@ void producer::outRespHandlerAXI2Wr(void)
         }
 
     }
-    controller.test_complete(test_name); 
+    controller.test_complete(test_name);
 }
 
 // send and recieve single cycle transactions
@@ -293,8 +293,8 @@ void producer::outAXI3Wr(void)
     }
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end-start;
-    log_.logPrint(fmt::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
-    controller.test_complete(test_name);   
+    log_.logPrint(std::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
+    controller.test_complete(test_name);
 }
 void producer::outRespHandlerAXI3Wr(void)
 {
@@ -313,6 +313,6 @@ void producer::outRespHandlerAXI3Wr(void)
         }
 
     }
-    log_.logPrint(fmt::format("Response Test {}", test_name ), LOG_ALWAYS);
-    controller.test_complete(test_name); 
+    log_.logPrint(std::format("Response Test {}", test_name ), LOG_ALWAYS);
+    controller.test_complete(test_name);
 }

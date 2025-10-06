@@ -17,7 +17,7 @@ bool test_st::operator == (const test_st & rhs) const {
     }
 std::string test_st::prt(bool all) const
 {
-    return (fmt::format("a:0x{:03x}",
+    return (std::format("a:0x{:03x}",
        (uint64_t) a
     ));
 }
@@ -48,7 +48,7 @@ bool bigSt::operator == (const bigSt & rhs) const {
     }
 std::string bigSt::prt(bool all) const
 {
-    return (fmt::format("b:0x{:08x}{:016x}",
+    return (std::format("b:0x{:08x}{:016x}",
        b.word[1],
        b.word[0]
     ));
@@ -85,7 +85,7 @@ bool testDataSt::operator == (const testDataSt & rhs) const {
     }
 std::string testDataSt::prt(bool all) const
 {
-    return (fmt::format("data:0x{:016x}{:016x}",
+    return (std::format("data:0x{:016x}{:016x}",
        data.word[1],
        data.word[0]
     ));
@@ -121,7 +121,7 @@ bool testDataHdrSt::operator == (const testDataHdrSt & rhs) const {
     }
 std::string testDataHdrSt::prt(bool all) const
 {
-    return (fmt::format("cmdid:0x{:03x}",
+    return (std::format("cmdid:0x{:03x}",
        (uint64_t) cmdid
     ));
 }
@@ -151,7 +151,7 @@ bool lengthHdrSt::operator == (const lengthHdrSt & rhs) const {
     }
 std::string lengthHdrSt::prt(bool all) const
 {
-    return (fmt::format("length:0x{:04x}",
+    return (std::format("length:0x{:04x}",
        (uint64_t) length
     ));
 }
@@ -181,7 +181,7 @@ bool cmdidHdrSt::operator == (const cmdidHdrSt & rhs) const {
     }
 std::string cmdidHdrSt::prt(bool all) const
 {
-    return (fmt::format("cmdid:0x{:03x}",
+    return (std::format("cmdid:0x{:03x}",
        (uint64_t) cmdid
     ));
 }

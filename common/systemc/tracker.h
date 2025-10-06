@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 #include <type_traits>
-#include <fmt/format.h>
+#include <format>
 #include "logging.h"
 #include "trackerBase.h"
 #include <map>
@@ -28,7 +28,7 @@ struct has_prt_method<T, std::void_t<
 template <class T>
 class tracker : public trackerBase
 {
-    static_assert(has_prt_method<T>::value, 
+    static_assert(has_prt_method<T>::value,
         "Type T must have a 'std::string prt(void)' method");
 public:
     // private counter use case
@@ -80,8 +80,8 @@ public:
         if (noAssert && !valid_[tag]) {
             return "{Invalid Tag}";
         }
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x}", tag ));
         uint64_t seq = sequenceNo_[tag];
         std::stringstream ss;
         if (tags_[tag] != nullptr) {
@@ -93,8 +93,8 @@ public:
     }
     std::string prt(const int tag, const std::string &s) override
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x} [{}]", tag, s ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x} [{}]", tag, s ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x} [{}]", tag, s ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x} [{}]", tag, s ));
         uint64_t seq = sequenceNo_[tag];
         std::stringstream ss;
         if (tags_[tag] != nullptr) {
@@ -109,8 +109,8 @@ public:
     }
     std::string prt(const int tag, const std::string &s, const std::string &lastPrefix) override
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x} [{}]", tag, s ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x} [{}]", tag, s ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x} [{}]", tag, s ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x} [{}]", tag, s ));
         uint64_t seq = sequenceNo_[tag];
         std::stringstream ss;
         if (tags_[tag] != nullptr) {
@@ -126,8 +126,8 @@ public:
     // version of prt that uses [] instead of {} to simplify parsing output
     std::string getString(const int tag) override
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x}", tag ));
         uint64_t seq = sequenceNo_[tag];
         std::stringstream ss;
         if (tags_[tag] != nullptr) {
@@ -139,8 +139,8 @@ public:
     }
     std::string getString(const int tag, const std::string &s) override
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x} [{}]", tag, s));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x} [{}]", tag, s));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x} [{}]", tag, s));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x} [{}]", tag, s));
         uint64_t seq = sequenceNo_[tag];
         std::stringstream ss;
         if (tags_[tag] != nullptr) {
@@ -156,15 +156,15 @@ public:
     }
     std::string getLastString(const int tag) override
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x}", tag ));
         return lastString_[tag];
     }
     void alloc(const int tag, std::shared_ptr<T> element, const int useCount=2)
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
         allocCount_[tag] += useCount;
-        Q_ASSERT_NODUMP(allocCount_[tag] <= 3, fmt::format("Too many allocs tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(allocCount_[tag] <= 3, std::format("Too many allocs tag 0x{:x}", tag ));
         // override the existing tracker info with the programatic one
         if (element != nullptr) {
             tags_[tag] = element;
@@ -190,8 +190,8 @@ public:
     }
     void dealloc(const int tag, const int useCount=2)
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
-        Q_ASSERT_NODUMP((allocCount_[tag]-useCount) >= 0, fmt::format("Too many deallocs tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP((allocCount_[tag]-useCount) >= 0, std::format("Too many deallocs tag 0x{:x}", tag ));
         // in case interface already deallocated the tag
         allocCount_[tag] -= useCount;
         if (allocCount_[tag] == 0)
@@ -210,20 +210,20 @@ public:
     }
     inline std::shared_ptr<T> info(const int tag)
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x}", tag ));
         return(tags_[tag]);
     }
     uint64_t getLen(const int tag) override
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x}", tag ));
         return (lenBackdoor_[tag]);
     }
     void setLen(const int tag, const uint64_t len) override
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x}", tag ));
         lenBackdoor_[tag] = len;
     }
     uint8_t * getBackdoorPtr(const int tag) override
@@ -238,8 +238,8 @@ public:
     }
     void setBackdoorPtr(const int tag, uint8_t * ptr) override
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x}", tag ));
         dataBackdoor_[tag] = ptr;
     }
     // same as setBackdoorPtr but without valid check for t0 initialization use cases
@@ -250,26 +250,26 @@ public:
     // api to allow configuring the backdoor buffer size different for different tags
     void initBackdoorBuffer(const int tag, uint32_t size) override
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
         internalBuffers[tag] = std::make_unique<std::vector<uint8_t>>(size, 0);
         dataBackdoor_[tag] = internalBuffers[tag]->data();
         lenBackdoor_[tag] = size;
     }
     int getSequenceNo(const int tag)
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x}", tag ));
         return(sequenceNo_[tag]);
     }
     void dump(void) override
     {
-        logDirect(fmt::format("Tracker: {} has {} tags allocated", name_, count_), LOG_IMPORTANT);
+        logDirect(std::format("Tracker: {} has {} tags allocated", name_, count_), LOG_IMPORTANT);
         if (!saveLastString_) {
             for (int i=0; i<size_; i++)
             {
                 if (valid_[i])
                 {
-                    logDirect(fmt::format("{} dump:0x{:x} {}", name_, i, prt(i)), LOG_IMPORTANT);
+                    logDirect(std::format("{} dump:0x{:x} {}", name_, i, prt(i)), LOG_IMPORTANT);
                 }
             }
         } else {
@@ -277,7 +277,7 @@ public:
             {
                 if (valid_[i])
                 {
-                    logDirect(fmt::format("{} dump:0x{:x} {}", name_, i, lastString_[i]), LOG_IMPORTANT);
+                    logDirect(std::format("{} dump:0x{:x} {}", name_, i, lastString_[i]), LOG_IMPORTANT);
                 }
             }
         }
@@ -292,8 +292,8 @@ public:
     }
     std::shared_ptr<T> getTagRef(const int tag)
     {
-        Q_ASSERT_NODUMP(tag < size_, fmt::format("Attempted to use out of range tag 0x{:x}", tag ));
-        Q_ASSERT_NODUMP(valid_[tag], fmt::format("Attempted to use unallocated tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(tag < size_, std::format("Attempted to use out of range tag 0x{:x}", tag ));
+        Q_ASSERT_NODUMP(valid_[tag], std::format("Attempted to use unallocated tag 0x{:x}", tag ));
         return tags_[tag];
     }
 

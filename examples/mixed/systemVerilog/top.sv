@@ -10,12 +10,31 @@ import mixed_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-    req_ack_if #(.data_t(aSt), .rdata_t(aASt)) aStuffIf();
-    rdy_vld_if #(.data_t(seeSt)) cStuffIf();
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
-    notify_ack_if #() startDone();
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBlockA();
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBlockB();
+
+    req_ack_if #(
+.data_t(aSt), .rdata_t(aASt)
+) aStuffIf
+();
+    rdy_vld_if #(
+.data_t(seeSt)
+) cStuffIf
+();
+    apb_if #(
+.addr_t(apbAddrSt), .data_t(apbDataSt)
+) apbReg
+();
+    notify_ack_if #(
+
+) startDone
+();
+    apb_if #(
+.addr_t(apbAddrSt), .data_t(apbDataSt)
+) apb_uBlockA
+();
+    apb_if #(
+.addr_t(apbAddrSt), .data_t(apbDataSt)
+) apb_uBlockB
+();
 
 // Instances
 cpu uCPU (
@@ -54,7 +73,6 @@ blockB uBlockB (
     .clk (clk),
     .rst_n (rst_n)
 );
-
 
 // GENERATED_CODE_END
 

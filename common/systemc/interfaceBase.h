@@ -78,8 +78,8 @@ public:
         {
             if (!tracker_->is_valid(tag))
             {
-                log_.logPrint(fmt::format("Invalid tracker tag:0x{:x} interface data:{}", tag, s), LOG_IMPORTANT);
-                Q_ASSERT_CTX(false, fmt::format("{}.{}", blockName_, module_), "Invalid tracker interface data");
+                log_.logPrint(std::format("Invalid tracker tag:0x{:x} interface data:{}", tag, s), LOG_IMPORTANT);
+                Q_ASSERT_CTX(false, std::format("{}.{}", blockName_, module_), "Invalid tracker interface data");
             }
             if (autoAlloc) {
                 tracker_->autoAlloc(tag, s);
@@ -118,7 +118,7 @@ public:
     {
         if (teeBusy_)
         {
-            log_.logPrint(fmt::format("Tee for {} has one side, waiting for other", module_  ) );
+            log_.logPrint(std::format("Tee for {} has one side, waiting for other", module_  ) );
         }
     }
     // in tandem mode if either autoalloc or autodealloc- do both to neutralize the ref counting

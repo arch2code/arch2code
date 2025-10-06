@@ -28,6 +28,6 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     regs.addRegister( 0x200, 3, "rwUn0B", &rwUn0B );
     regs.addRegister( 0x208, 4, "roB", &roB );
     SC_THREAD(regHandler);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };

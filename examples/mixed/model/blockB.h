@@ -52,6 +52,8 @@ public:
     rdy_vld_channel< dSt > loopFF;
     // An interface for D
     rdy_vld_channel< dSt > loopFD;
+    // A Read Write register
+    status_channel< dRegSt > rwD;
     // A Read Only register with a structure that has a definition from an included context
     status_channel< bSizeRegSt > roBsize;
 

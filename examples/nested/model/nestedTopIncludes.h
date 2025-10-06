@@ -14,20 +14,20 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-#define NUM_COMMANDS                  1024  // Number of Commands
-#define NUM_COMMANDS_LOG2               10  // Number of Commands log2
-#define BIG_WIDTH                       96  // big width test case
-#define NUM_FIRST_TAGS                  64  // Num first Tags
-#define NUM_FIRST_TAGS_LOG2              6  // Num first Tags Log2
-#define NUM_SECOND_TAGS               1024  // Num second Tags
-#define NUM_SECOND_TAGS_LOG2            10  // Num second Tags Log2
-#define NUM_THIRD_TAGS                1024  // Num third Tags
-#define NUM_THIRD_TAGS_LOG2             10  // Num third Tags Log2
-#define NUM_TAGS                      2112  // Num Tags
-#define NUM_TAGS_LOG2                   12  // Num Tags Log2
-#define TAGBASE_SECONDTAG                0  // base value for Tag type 2
-#define TAGBASE_THIRDTAG              1024  // base value for Tag type 3
-#define TAGBASE_FIRSTTAG              2048  // base value for Tag type 1
+const uint32_t NUM_COMMANDS = 1024;  // Number of Commands
+const uint32_t NUM_COMMANDS_LOG2 = 10;  // Number of Commands log2
+const uint32_t BIG_WIDTH = 96;  // big width test case
+const uint32_t NUM_FIRST_TAGS = 64;  // Num first Tags
+const uint32_t NUM_FIRST_TAGS_LOG2 = 6;  // Num first Tags Log2
+const uint32_t NUM_SECOND_TAGS = 1024;  // Num second Tags
+const uint32_t NUM_SECOND_TAGS_LOG2 = 10;  // Num second Tags Log2
+const uint32_t NUM_THIRD_TAGS = 1024;  // Num third Tags
+const uint32_t NUM_THIRD_TAGS_LOG2 = 10;  // Num third Tags Log2
+const uint32_t NUM_TAGS = 2112;  // Num Tags
+const uint32_t NUM_TAGS_LOG2 = 12;  // Num Tags Log2
+const uint32_t TAGBASE_SECONDTAG = 0;  // base value for Tag type 2
+const uint32_t TAGBASE_THIRDTAG = 1024;  // base value for Tag type 3
+const uint32_t TAGBASE_FIRSTTAG = 2048;  // base value for Tag type 1
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 

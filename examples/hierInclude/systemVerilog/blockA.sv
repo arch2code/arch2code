@@ -12,8 +12,8 @@ import hierInclude_package::*;
 
     // Interface Instances, needed for between instanced modules inside this module
 
-// Instances
 
+// Instances
 // GENERATED_CODE_END
 
 endmodule: blockA

@@ -5,10 +5,10 @@ PROJECT_ROOT = $(REPO_ROOT)/examples/$(PROJECT_NAME)
 
 include $(REPO_ROOT)/examples/include/shared.mk
 
-C_STD_VER=c++17
+C_STD_VER=c++23
 
 VERILATOR_OPTS = -sc -sv --trace --trace-structs --trace-params --pins-bv 2 --no-timing --build -Wno-fatal -j 4
-VERILATOR_CFLAG_OPTS = '-std=$(C_STD_VER)'
+VERILATOR_CFLAG_OPTS = '-std=$(C_STD_VER) -DSC_CPLUSPLUS=201703L'
 
 CPP_SRCS = sc_main.cpp
 

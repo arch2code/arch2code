@@ -1,0 +1,89 @@
+include:
+  - axi4sDemo.yaml
+
+types:
+  bv4_t:
+    width: 4
+    desc: "Bit Vector 4 bits"
+  bv8_t:
+    width: 8
+    desc: "Bit Vector 8 bits"
+  bv16_t:
+    width: 16
+    desc: "Bit Vector 16 bits"
+  bv64_t:
+    width: 64
+    desc: "Bit Vector 64 bits"
+  bv256_t:
+    width: 256
+    desc: "Bit Vector 256 bits"
+
+structures:
+  data_t1_t:
+    data: {varType: bv256_t}
+  tid_t1_t:
+    tid: {varType: bv4_t}
+  tdest_t1_t:
+    tid: {varType: bv4_t}
+  tuser_t1_t:
+    parity: {varType: bv16_t }
+  data_t2_t:
+    data: {varType: bv64_t}
+  tid_t2_t:
+    tid: {varType: bv4_t}
+  tdest_t2_t:
+    tid: {varType: bv4_t}
+  tuser_t2_t:
+    parity: {varType: bv4_t }
+
+interfaces:
+  axi4str_t1:
+    interfaceType: axi4_stream
+    desc: "AXI4 Stream Interface Type 1 (256 bits data)"
+    multiCycleMode: api_list_size
+    maxTransferSize: 256
+    structures:
+      - {structure: data_t1_t, structureType: tdata_t}
+      - {structure: tid_t1_t, structureType: tid_t}
+      - {structure: tdest_t1_t, structureType: tdest_t}
+      - {structure: tuser_t1_t, structureType: tuser_t}
+  axi4str_t2:
+    interfaceType: axi4_stream
+    desc: "AXI4 Stream Interface Type 2 (64 bits data)"
+    multiCycleMode: api_list_size
+    maxTransferSize: 64
+    structures:
+      - {structure: data_t2_t, structureType: tdata_t}
+      - {structure: tid_t2_t, structureType: tid_t}
+      - {structure: tdest_t2_t, structureType: tdest_t}
+      - {structure: tuser_t2_t, structureType: tuser_t}
+
+blocks:
+  axi4sDemo_tb:
+    desc: Module Testbench Top (Root Container)
+    hasVl: false
+    hasRtl: false
+    hasMdl: false
+    hasTb: false
+  axi4s_m_drv:
+    desc: AXI4-Stream Master Driver
+    hasVl: false
+    hasRtl: false
+    hasMdl: true
+    hasTb: false
+  axi4s_s_drv:
+    desc: AXI4-Stream Slave Driver
+    hasVl: false
+    hasRtl: false
+    hasMdl: true
+    hasTb: false
+
+instances:
+  axi4sDemo_tb:  { container: axi4sDemo_tb, instanceType: axi4sDemo_tb,     instGroup: top  }
+  u_axi4sDemo:   { container: axi4sDemo_tb, instanceType: axi4sDemo,        instGroup: top  }
+  u_axi4s_m_drv: { container: axi4sDemo_tb, instanceType: axi4s_m_drv,      instGroup: top  }
+  u_axi4s_s_drv: { container: axi4sDemo_tb, instanceType: axi4s_s_drv,      instGroup: top  }
+
+connections:
+  - { src: u_axi4s_m_drv, dst: u_axi4sDemo, interface: axi4str_t1, name: axis4_t1 }
+  - { src: u_axi4sDemo, dst: u_axi4s_s_drv, interface: axi4str_t2, name: axis4_t2 }

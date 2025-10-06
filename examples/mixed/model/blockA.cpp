@@ -2,7 +2,7 @@
 
 
 // GENERATED_CODE_PARAM --block=blockA
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "blockA.h"
 SC_HAS_PROCESS(blockA);
 
@@ -23,7 +23,7 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
     // register registers for FW access
     regs.addRegister( 0x0, 1, "roA", &roA );
     SC_THREAD(regHandler);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(startTest);
 }

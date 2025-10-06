@@ -10,10 +10,9 @@
 #define BASE_ADDR_UAPBDECODE           0x0
 #define BASE_ADDR_USOMERAPPER          0x0
 #define BASE_ADDR_UBLOCKA              0x0
-#define BASE_ADDR_UBLOCKB              0x0
+#define BASE_ADDR_UBLOCKB              0x1000000
 #define BASE_ADDR_UBLOCKAREGS          0x0
 #define BASE_ADDR_UBLOCKBREGS          0x0
-
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=includes --section=regAddresses
@@ -28,7 +27,6 @@
 #define REG_BLOCKA_BLOCKATABLE0             0x0
 #define REG_BLOCKA_BLOCKATABLE1             0x100
 #define REG_BLOCKB_BLOCKBTABLE              0x0
-
 // GENERATED_CODE_END
 
 #endif //REGADDRESSES_H

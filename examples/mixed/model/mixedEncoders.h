@@ -18,7 +18,6 @@ public:
             { 0x100, 0x1fe, (uint64_t)1<<1, ((1 + 3) >> 2), "trim", "trim"},
         }, 9, 0x101, true) {}
 };
-
 // GENERATED_CODE_END
 
 

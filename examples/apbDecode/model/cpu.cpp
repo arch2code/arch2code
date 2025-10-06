@@ -14,7 +14,7 @@ cpu::cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(registerTest);
 };
@@ -64,11 +64,11 @@ void cpu::memAccessTest(void)
     std::array<aMemSt, MEMORYA_WORDS>  aTableData0;
 
     // Memory blockATable0 Write sequential
-    for(int rowId=0; rowId<MEMORYA_WORDS; rowId++)
+    for(unsigned int rowId=0; rowId<MEMORYA_WORDS; rowId++)
         writeBlockATable0Mem(rowId, aTableData0_[rowId]);
 
     // Memory blockATable0 Read sequential
-    for(int rowId=0; rowId<MEMORYA_WORDS; rowId++)
+    for(unsigned int rowId=0; rowId<MEMORYA_WORDS; rowId++)
         readBlockATable0Mem(rowId, aTableData0[rowId]);
 
     // Compare data from blockATable0 array

@@ -12,7 +12,7 @@ def render(args, prj, data):
 
 def render_sc(args, prj, data):
 
-    
+
     match args.section:
         case 'header': return render_section_header(args, prj, data)
         case 'init' : return render_section_init(args, prj, data)
@@ -32,11 +32,11 @@ def get_include_deps(prj, data):
 def get_reghandler_properties(prj, data):
     reghandler = dict()
     rhd = data['addressDecode']
-    reghandler = { 
-        "port_name": rhd['registerBusInterface'], 
-        "addr_type" : rhd['registerBusStructs']['addr_t'], 
-        "data_type" : rhd['registerBusStructs']['data_t'], 
-        "addressmask" : f"(1<<({rhd['addressBits']}-1))-1" 
+    reghandler = {
+        "port_name": rhd['registerBusInterface'],
+        "addr_type" : rhd['registerBusStructs']['addr_t'],
+        "data_type" : rhd['registerBusStructs']['data_t'],
+        "addressmask" : f"(1<<({rhd['addressBits']}-1))-1"
     }
     return reghandler
 
@@ -54,6 +54,7 @@ def get_hwregs(prj, data):
             "name": reg['register'] + '_reg',
             "datatype": reg['structure'],
             "size": reg['bytes']*4,
+            "ro" : 'true' if reg['regType'] == 'ro' else 'false',
             "offset": hex(reg['offset']),
             "port_type": port_type,
             "port_name": reg['register'],
@@ -111,7 +112,7 @@ public:
 
     //registers
     {% for entry in hwregs -%}
-        hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size}}> {{entry.name}}; // {{entry.descr}}
+        hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size}}, {{entry.ro}}> {{entry.name}}; // {{entry.descr}}
     {% endfor %}
 '''
 
@@ -143,5 +144,5 @@ block_regs_body_section_template = '''\
         regs.addRegister({{entry.offset}}, {{entry.size//4}}, "{{entry.port_name}}", &{{entry.name}} );
     {% endfor %}
     SC_THREAD(regHandler);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
 '''

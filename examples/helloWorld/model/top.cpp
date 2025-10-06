@@ -4,7 +4,7 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=top
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "top.h"
 #include "producer_base.h"
 #include "consumer_base.h"
@@ -25,7 +25,7 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-// instance to instance connections via channel
+    // instance to instance connections via channel
     uProducer->test_rdy_vld(test_rdy_vld);
     uConsumer->test_rdy_vld(test_rdy_vld);
     uProducer->test_req_ack(test_req_ack);
@@ -34,7 +34,7 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     uConsumer->test_push_ack(test_push_ack);
     uProducer->test_pop_ack(test_pop_ack);
     uConsumer->test_pop_ack(test_pop_ack);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     //auto baseInstance = instanceFactory::createInstance("uProducer");
     //uProducer2 = (producer *) baseInstance.get();

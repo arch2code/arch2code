@@ -3,7 +3,7 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=top
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "top.h"
 #include "cpu_base.h"
 #include "someRapper_base.h"
@@ -21,10 +21,10 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-// instance to instance connections via channel
+    // instance to instance connections via channel
     uCPU->apbReg(apbReg);
     uSomeRapper->apbReg(apbReg);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     //auto baseInstance = instanceFactory::createInstance("uProducer");
     //uProducer2 = (producer *) baseInstance.get();

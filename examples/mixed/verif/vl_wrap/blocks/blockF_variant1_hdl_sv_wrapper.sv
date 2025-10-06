@@ -7,8 +7,7 @@
 module blockF_variant1_hdl_sv_wrapper
     // Generated Import package statement(s)
     import mixed_package::*;
-    import mixedBlockC_package::*;
-(
+    import mixedBlockC_package::*;(
     // rdy_vld_if.src
     output bit cStuffIf_vld,
     output bit [4:0] cStuffIf_data,
@@ -18,6 +17,19 @@ module blockF_variant1_hdl_sv_wrapper
     input bit dStuffIf_vld,
     input bit [6:0] dStuffIf_data,
     output bit dStuffIf_rdy,
+
+    // rdy_vld_if.dst
+    input bit dSin_vld,
+    input bit [6:0] dSin_data,
+    output bit dSin_rdy,
+
+    // rdy_vld_if.src
+    output bit dSout_vld,
+    output bit [6:0] dSout_data,
+    input bit dSout_rdy,
+
+    // status_if.dst
+    input bit [6:0] rwD_data,
 
     input clk,
     input rst_n
@@ -36,9 +48,31 @@ module blockF_variant1_hdl_sv_wrapper
     assign #0 dStuffIf.data = dStuffIf_data;
     assign #0 dStuffIf_rdy = dStuffIf.rdy;
 
+    // rdy_vld_if.dst
+    rdy_vld_if #(.data_t(dSt)) dSin();
+
+    assign #0 dSin.vld = dSin_vld;
+    assign #0 dSin.data = dSin_data;
+    assign #0 dSin_rdy = dSin.rdy;
+
+    // rdy_vld_if.src
+    rdy_vld_if #(.data_t(dSt)) dSout();
+
+    assign #0 dSout_vld = dSout.vld;
+    assign #0 dSout_data = dSout.data;
+    assign #0 dSout.rdy = dSout_rdy;
+
+    // status_if.dst
+    status_if #(.data_t(dRegSt)) rwD();
+
+    assign #0 rwD.data = rwD_data;
+
     blockF #(.bob(BOB1), .fred(1)) dut (
         .cStuffIf(cStuffIf), // rdy_vld_if.src
         .dStuffIf(dStuffIf), // rdy_vld_if.dst
+        .dSin(dSin), // rdy_vld_if.dst
+        .dSout(dSout), // rdy_vld_if.src
+        .rwD(rwD), // status_if.dst
         .clk(clk),
         .rst_n(rst_n)
     );

@@ -7,9 +7,7 @@
 
 // GENERATED_CODE_PARAM --block=blockD
 // GENERATED_CODE_BEGIN --template=baseClassDecl
-#include "apb_channel.h"
 #include "memory_channel.h"
-#include "notify_ack_channel.h"
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 #include "status_channel.h"
@@ -42,6 +40,8 @@ public:
     rdy_vld_in< dSt > inD;
     // External->aStuffIf: An interface for A
     req_ack_in< aSt, aASt > btod;
+    // blockB->reg(rwD) A Read Write register
+    status_in< dRegSt > rwD;
 
 
     blockDBase(std::string name, const char * variant) :
@@ -54,6 +54,7 @@ public:
         ,blockBTableSP("blockBTableSP")
         ,inD("inD")
         ,btod("btod")
+        ,rwD("rwD")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -66,6 +67,7 @@ public:
         blockBTableSP->setTimed(nsec, mode);
         inD->setTimed(nsec, mode);
         btod->setTimed(nsec, mode);
+        rwD->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -79,6 +81,7 @@ public:
         blockBTableSP->setLogging(verbosity);
         inD->setLogging(verbosity);
         btod->setLogging(verbosity);
+        rwD->setLogging(verbosity);
     };
 };
 class blockDInverted : public virtual blockPortBase
@@ -105,6 +108,8 @@ public:
     rdy_vld_out< dSt > inD;
     // External->aStuffIf: An interface for A
     req_ack_out< aSt, aASt > btod;
+    // blockB->reg(rwD) A Read Write register
+    status_out< dRegSt > rwD;
 
 
     blockDInverted(std::string name) :
@@ -117,6 +122,7 @@ public:
         ,blockBTableSP(("blockBTableSP"+name).c_str())
         ,inD(("inD"+name).c_str())
         ,btod(("btod"+name).c_str())
+        ,rwD(("rwD"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -129,6 +135,7 @@ public:
         blockBTableSP->setTimed(nsec, mode);
         inD->setTimed(nsec, mode);
         btod->setTimed(nsec, mode);
+        rwD->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -142,6 +149,7 @@ public:
         blockBTableSP->setLogging(verbosity);
         inD->setLogging(verbosity);
         btod->setLogging(verbosity);
+        rwD->setLogging(verbosity);
     };
 };
 class blockDChannels
@@ -168,6 +176,8 @@ public:
     rdy_vld_channel< dSt > inD;
     // An interface for A
     req_ack_channel< aSt, aASt > btod;
+    // A Read Write register
+    status_channel< dRegSt > rwD;
 
 
     blockDChannels(std::string name, std::string srcName) :
@@ -180,6 +190,7 @@ public:
     ,blockBTableSP(("blockBTableSP"+name).c_str(), srcName)
     ,inD(("inD"+name).c_str(), srcName)
     ,btod(("btod"+name).c_str(), srcName)
+    ,rwD(("rwD"+name).c_str(), srcName)
     {};
     void bind( blockDBase *a, blockDInverted *b)
     {
@@ -201,6 +212,8 @@ public:
         b->inD( inD );
         a->btod( btod );
         b->btod( btod );
+        a->rwD( rwD );
+        b->rwD( rwD );
     };
 };
 

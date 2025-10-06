@@ -18,12 +18,12 @@ BUILDER_SC_COMMON = $(REPO_ROOT)/common/systemc
 CXX = clang++
 INCLUDES = -I$(PROJECT_ROOT)/verif/vl_wrap/blocks -I$(PROJECT_ROOT)/verif/vl_wrap/obj_dir -I$(COMMON_DIR) -I$(MODEL_DIR) -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd -I$(BUILDER_SC_COMMON)
 
-CXXFLAGS = -c -std=c++17 -MMD -DVERILATOR -DVM_TRACE_VCD -DVERIF_TB $(INCLUDES)
-LDFLAGS = -L$(PROJECT_ROOT)/verif/vl_wrap -L$(SYSTEMC_LIBDIR) -lvl_s_wrap -lsystemc -latomic -lpthread -ldl -lfmt -L$(LD_BOOST) -lboost_system -lboost_program_options
+CXXFLAGS = -c -std=c++23 -MMD -DVERILATOR -DVM_TRACE_VCD -DVERIF_TB -DSC_CPLUSPLUS=201703L $(INCLUDES)
+LDFLAGS = -L$(PROJECT_ROOT)/verif/vl_wrap -L$(SYSTEMC_LIBDIR) -lvl_s_wrap -lsystemc -latomic -lpthread -ldl -L$(LD_BOOST) -lboost_system -lboost_program_options
 
 BUILD_DIR = ./build
 
-CPP_SRCS = src/sc_main.cpp $(MODEL_DIR)/apbDecodeIncludes.cpp 
+CPP_SRCS = src/sc_main.cpp $(MODEL_DIR)/apbDecodeIncludes.cpp
 CPP_SRCS += $(wildcard $(BUILDER_SC_COMMON)/*.cpp)
 -include build/src/sc_main.d
 
@@ -35,7 +35,7 @@ $(BUILD_DIR)/%.o: %.cpp
 	$(CXX) $(CXXFLAGS) $< -o $@
 
 $(BUILD_DIR)/simx : $(OBJ_FILES)
-	$(CXX) -std=c++17 $(OBJ_FILES) $(LDFLAGS) -o $@
+	$(CXX) $(OBJ_FILES) $(LDFLAGS) -o $@
 
 lib:
 	$(MAKE) -C $(PROJECT_ROOT)/verif/vl_wrap libvl_s_wrap.a
@@ -48,6 +48,6 @@ run:
 
 clean:
 	rm -rf build *.vcd
-	
+
 clean_all : clean
 	$(MAKE) -C $(PROJECT_ROOT)/verif/vl_wrap clean

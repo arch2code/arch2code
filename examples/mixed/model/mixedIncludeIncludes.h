@@ -15,8 +15,8 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-#define BSIZE                           10  // The size of B, used for memory wordlines
-#define BSIZE_LOG2                       4  // The size of B, used for memory wordlines log 2
+const uint32_t BSIZE = 10;  // The size of B, used for memory wordlines
+const uint32_t BSIZE_LOG2 = 4;  // The size of B, used for memory wordlines log 2
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 

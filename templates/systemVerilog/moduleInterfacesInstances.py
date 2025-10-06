@@ -19,35 +19,35 @@ def render(args, prj, data):
 
     # Parameters
     if ( prj.data['blocks'][data['qualBlock']]['params'] ):
-        out.append('#(\n')
+        out.append('#(')
         out.append(",\n".join([f"{indent}parameter {param['param']}" for param in prj.data['blocks'][data['qualBlock']]['params']]))
-        out.append('\n)\n')
+        out.append(')')
 
-    out.append("(\n")
+    out.append("(")
 
     # Ports
     out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent))
 
     #// Interface Instances, needed for between instanced modules inside this module
-    out.append(f"{indent}// Interface Instances, needed for between instanced modules inside this module\n")
+    out.append(f"{indent}// Interface Instances, needed for between instanced modules inside this module")
     for channelType in data["connectDouble"]:
         for key, value in data["connectDouble"][channelType].items():
             intf_type = intf_gen_utils.get_intf_type(value['interfaceType'])
             intf_data = intf_gen_utils.get_intf_data(value, prj)
-            out.append(f"{indent}{intf_type}_if #(")
+            s = f"{indent}{intf_type}_if #("
             params = list()
             if intf_data['structures']:
                 for item in intf_data['structures']:
                     params.append(f".{item['structureType']}({item['structure']})")
-            out.append(', '.join(params))
-            out.append(f") {value['interfaceName']}")
-            out.append("();\n")
-    out.append("\n")
+            s += ', '.join(params)
+            s += f") {value['interfaceName']}();"
+            out.append(s)
+    out.append("")
 
     #// Memory Interfaces if they exist
     memory_ports = {}
     if data['memories']:
-        out.append(f"{indent}// Memory Interfaces\n")
+        out.append(f"{indent}// Memory Interfaces")
         for mem_key, mem_info in data['memories'].items():
             # dualPort with no connection is one with name
             #   and one with Unused
@@ -67,12 +67,12 @@ def render(args, prj, data):
             if mem_info['regAccess']:
                 ports[portCount-1] = mem_info['memory']+'_reg'
             for portName in ports.values():
-                out.append(f"{indent}memory_if #(.data_t({mem_info['structure']}), .addr_t({mem_info['addressStruct']})) {portName}();\n")
+                out.append(f"{indent}memory_if #(.data_t({mem_info['structure']}), .addr_t({mem_info['addressStruct']})) {portName}();")
             memory_ports[mem_key] = ports
-        out.append("\n")
+        out.append("")
 
     #// Instances
-    out.append("// Instances\n")
+    out.append("// Instances")
     for unusedKey, value in data['subBlockInstances'].items():
 
         qualBlockInst = prj.getQualBlock(value['instanceType'])
@@ -88,26 +88,26 @@ def render(args, prj, data):
             inst_params += ", ".join([f".{param['param']}({param['value']})" for param in variant_data])
             inst_params += ') '
 
-        out.append(f"{value['instanceType']}{inst_params}{value['instance']} (\n")
+        out.append(f"{value['instanceType']}{inst_params}{value['instance']} (")
         # Declare connectionMaps that connect to this instance
         for unusedKey2, value2 in data['connectionMaps'].items():
             if (value['instance'] == value2['instance']):
-                out.append(f"{indent}.{value2['instancePortName']} ({value2['parentPortName']}),\n")
+                out.append(f"{indent}.{value2['instancePortName']} ({value2['parentPortName']}),")
         # loop through the memory connections that connect to this instance
         for unusedKey2, memValue in data['memoryConnections'].items():
             if (value['instance'] == memValue['instance']):
-                out.append(f"{indent}.{memValue['memory']} ({memValue['interfaceName']}),\n")
+                out.append(f"{indent}.{memValue['memory']} ({memValue['interfaceName']}),")
         # loop through the register connections that connect to this instance
         for sourceType in data['connectDouble']:
             for connKey, connValue in data['connectDouble'][sourceType].items():
                 for end, endValue in connValue['ends'].items():
                     if (value['instance'] == endValue['instance']):
-                        out.append(f"{indent}.{endValue['portName']} ({connValue['interfaceName']}),\n")
-        out.append(f"{indent}.clk (clk),\n{indent}.rst_n (rst_n)\n);\n\n")
+                        out.append(f"{indent}.{endValue['portName']} ({connValue['interfaceName']}),")
+        out.append(f"{indent}.clk (clk),\n{indent}.rst_n (rst_n)\n);\n")
 
     #// Memory Instances if they exist
     if data['memories']:
-        out.append("// Memory Instances\n")
+        out.append("// Memory Instances")
     for mem_key, mem_data in data['memories'].items():
         # memories are currenlty all parameterized behavioral memories
         isLocal = mem_data['local']
@@ -115,13 +115,13 @@ def render(args, prj, data):
         if isLocal:
             memory_type += '_ext'
             localMemInst =f"{mem_data['memory']}Mem"
-            out.append(f"{mem_data['structure']} {localMemInst} [{mem_data['wordLines']}-1:0];\n")
+            out.append(f"{mem_data['structure']} {localMemInst} [{mem_data['wordLines']}-1:0];")
         memInstName = camelCase('u', mem_data['memory'])
-        out.append(f"{memory_type} #(.DEPTH({mem_data['wordLines']}), .data_t({mem_data['structure']})) {memInstName} (\n")
+        out.append(f"{memory_type} #(.DEPTH({mem_data['wordLines']}), .data_t({mem_data['structure']})) {memInstName} (")
         for port_key, port_data in memory_ports[mem_key].items():
             port = chr(int(port_key) + ord('A')) if mem_data['memoryType'] == 'dualPort' else ''
-            out.append(f"{indent}.mem_port{port} ({port_data}),\n")
+            out.append(f"{indent}.mem_port{port} ({port_data}),")
         if isLocal:
-            out.append(f"{indent}.mem ({localMemInst}),\n")
-        out.append(f"{indent}.clk (clk)\n);\n\n")
-    return "".join(out)
+            out.append(f"{indent}.mem ({localMemInst}),")
+        out.append(f"{indent}.clk (clk)\n);\n")
+    return "\n".join(out)

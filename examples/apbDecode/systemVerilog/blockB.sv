@@ -10,33 +10,29 @@ import apbDecode_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-
-    // Memory Interfaces
-    memory_if #(.data_t(bMemSt), .addr_t(bMemAddrSt)) blockBTable();
-    memory_if #(.data_t(bMemSt), .addr_t(bMemAddrSt)) blockBTableRegs();
-
-    // Register Interfaces
     status_if #(.data_t(un0BRegSt)) rwUn0B();
     status_if #(.data_t(aSizeRegSt)) roB();
 
+    // Memory Interfaces
+    memory_if #(.data_t(bMemSt), .addr_t(bMemAddrSt)) blockBTable();
+    memory_if #(.data_t(bMemSt), .addr_t(bMemAddrSt)) blockBTable_reg();
+
 // Instances
-blockBRegs #(.APB_ADDR_MASK('hff_ffff)) uBlockBRegs (
+blockBRegs uBlockBRegs (
     .apbReg (apbReg),
+    .blockBTable (blockBTable_reg),
     .rwUn0B (rwUn0B),
     .roB (roB),
-    .blockBTable (blockBTableRegs),
     .clk (clk),
     .rst_n (rst_n)
 );
 
 // Memory Instances
-// dual port
 memory_dp #(.DEPTH(MEMORYB_WORDS), .data_t(bMemSt)) uBlockBTable (
     .mem_portA (blockBTable),
-    .mem_portB (blockBTableRegs),
+    .mem_portB (blockBTable_reg),
     .clk (clk)
 );
-
 
 // GENERATED_CODE_END
 

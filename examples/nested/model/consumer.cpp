@@ -4,7 +4,7 @@
 
 
 // GENERATED_CODE_PARAM --block=consumer
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "consumer.h"
 SC_HAS_PROCESS(consumer);
 
@@ -19,7 +19,7 @@ consumer::consumer(sc_module_name blockName, const char * variant, blockBaseMode
         ,cmdTracker(std::static_pointer_cast< tracker < simpleString > >( trackerCollection::GetInstance().getTracker("cmdid") ))
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(consumerInRdyVldSizeTransactional1);
     SC_THREAD(consumerInRdyVldSizeTransactional2);
@@ -69,10 +69,10 @@ void consumer::consumerInRdyVldSizeTransactional(rdy_vld_in< testDataSt > &inPor
             // check if every byte is the same as the cmdid in the hdr
             if(data[i] != testCase)
             {
-                log_.logPrint(fmt::format("ERROR: {} {}", name_, test.prt()) );
+                log_.logPrint(std::format("ERROR: {} {}", name_, test.prt()) );
                 Q_ASSERT(false, "ERROR: consumerInRdyVldTransactional");
             }
-        } 
+        }
         testCase++;
     }
 }
@@ -101,14 +101,14 @@ void consumer::consumerInRdyVldSizeNonTransactional(void)
                 // check if every byte is the same as the cmdid in the hdr
                 if(*(((uint8_t *)&test.data) + i) != testCase)
                 {
-                    log_.logPrint(fmt::format("ERROR: {} {}", test_name, test.prt()) );
+                    log_.logPrint(std::format("ERROR: {} {}", test_name, test.prt()) );
                     Q_ASSERT(false, "ERROR: consumerInRdyVldSizeNonTransactional");
                 }
-            } 
+            }
         }
         testCase++;
     }
-    controller.test_complete(test_name);   
+    controller.test_complete(test_name);
 }
 
 
@@ -152,14 +152,14 @@ void consumer::consumerInRdyVldTrackerTransactional(rdy_vld_in< testDataSt > &in
             // check if every byte is the same as the cmdid in the hdr
             if(data[i] != testCase)
             {
-                log_.logPrint(fmt::format("ERROR: {} {}", name_, test.prt()) );
+                log_.logPrint(std::format("ERROR: {} {}", name_, test.prt()) );
                 Q_ASSERT(false, "ERROR: consumerInRdyVldTrackerTransactional");
             }
-        } 
+        }
         testCase++;
     }
 
-    
+
 
 }
 
@@ -187,12 +187,12 @@ void consumer::consumerInRdyVldTrackerNonTransactional(void)
                 // check if every byte is the same as the cmdid in the hdr
                 if(*(((uint8_t *)&test.data) + i) != testCase)
                 {
-                    log_.logPrint(fmt::format("ERROR: {} {}", test_name, test.prt()) );
+                    log_.logPrint(std::format("ERROR: {} {}", test_name, test.prt()) );
                     Q_ASSERT(false, "ERROR: consumerInRdyVldTrackerNonTransactional");
                 }
-            } 
+            }
         }
         testCase++;
     }
-    controller.test_complete(test_name);   
+    controller.test_complete(test_name);
 }

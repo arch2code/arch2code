@@ -4,7 +4,7 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=top
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "top.h"
 #include "producer_base.h"
 #include "consumer_base.h"
@@ -24,12 +24,14 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
         ,axiWr1("consumer_axiWr1", "producer", "api_list_size", 256, "")
         ,axiWr2("consumer_axiWr2", "producer", "api_list_size", 256, "")
         ,axiWr3("consumer_axiWr3", "producer", "api_list_size", 256, "")
+        ,axiStr0("consumer_axiStr0", "producer", "api_list_size", 256, "")
+        ,axiStr1("consumer_axiStr1", "producer", "api_list_size", 256, "")
         ,uProducer(std::dynamic_pointer_cast<producerBase>( instanceFactory::createInstance(name(), "uProducer", "producer", "")))
         ,uConsumer(std::dynamic_pointer_cast<consumerBase>( instanceFactory::createInstance(name(), "uConsumer", "consumer", "")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-// instance to instance connections via channel
+    // instance to instance connections via channel
     uProducer->axiRd0(axiRd0);
     uConsumer->axiRd0(axiRd0);
     uProducer->axiRd1(axiRd1);
@@ -46,7 +48,11 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     uConsumer->axiWr2(axiWr2);
     uProducer->axiWr3(axiWr3);
     uConsumer->axiWr3(axiWr3);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    uProducer->axiStr0(axiStr0);
+    uConsumer->axiStr0(axiStr0);
+    uProducer->axiStr1(axiStr1);
+    uConsumer->axiStr1(axiStr1);
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
-        
+
 }

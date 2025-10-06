@@ -17,7 +17,7 @@ bool axiAddrSt::operator == (const axiAddrSt & rhs) const {
     }
 std::string axiAddrSt::prt(bool all) const
 {
-    return (fmt::format("addr:0x{:08x}",
+    return (std::format("addr:0x{:08x}",
        (uint64_t) addr
     ));
 }
@@ -47,7 +47,7 @@ bool axiDataSt::operator == (const axiDataSt & rhs) const {
     }
 std::string axiDataSt::prt(bool all) const
 {
-    return (fmt::format("data:0x{:08x}",
+    return (std::format("data:0x{:08x}",
        (uint64_t) data
     ));
 }
@@ -77,7 +77,7 @@ bool axiStrobeSt::operator == (const axiStrobeSt & rhs) const {
     }
 std::string axiStrobeSt::prt(bool all) const
 {
-    return (fmt::format("strobe:0x{:01x}",
+    return (std::format("strobe:0x{:01x}",
        (uint64_t) strobe
     ));
 }

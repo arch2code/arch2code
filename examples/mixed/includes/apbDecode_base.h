@@ -8,9 +8,6 @@
 // GENERATED_CODE_PARAM --block=apbDecode
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
-#include "notify_ack_channel.h"
-#include "rdy_vld_channel.h"
-#include "req_ack_channel.h"
 #include "mixedIncludes.h"
 
 class apbDecodeBase : public virtual blockPortBase

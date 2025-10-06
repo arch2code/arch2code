@@ -18,7 +18,7 @@ bool test_st::operator == (const test_st & rhs) const {
     }
 std::string test_st::prt(bool all) const
 {
-    return (fmt::format("a:0x{:02x}",
+    return (std::format("a:0x{:02x}",
        (uint64_t) a
     ));
 }
@@ -48,7 +48,7 @@ bool test_no_tracker_st::operator == (const test_no_tracker_st & rhs) const {
     }
 std::string test_no_tracker_st::prt(bool all) const
 {
-    return (fmt::format("a:0x{:02x}",
+    return (std::format("a:0x{:02x}",
        (uint64_t) a
     ));
 }
@@ -78,7 +78,7 @@ bool data_st::operator == (const data_st & rhs) const {
     }
 std::string data_st::prt(bool all) const
 {
-    return (fmt::format("b:0x{:016x}",
+    return (std::format("b:0x{:016x}",
        (uint64_t) b
     ));
 }

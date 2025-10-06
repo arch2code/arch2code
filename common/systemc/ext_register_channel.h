@@ -1,6 +1,6 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
-#ifndef REGISTER_EXT_CHANNEL_H
-#define REGISTER_EXT_CHANNEL_H
+#ifndef EXT_REGISTER_CHANNEL_H
+#define EXT_REGISTER_CHANNEL_H
 
 #include "sysc/communication/sc_communication_ids.h"
 #include "sysc/communication/sc_prim_channel.h"
@@ -23,7 +23,7 @@ namespace sc_core {
 // read(T) <---T---|
 //
 template <class T>
-class register_ext_in_if
+class ext_register_in_if
 : virtual public sc_interface, virtual public portBase
 {
 public:
@@ -40,16 +40,16 @@ public:
 
 protected:
     // constructor
-    register_ext_in_if() {}
+    ext_register_in_if() {}
 
 private:
     // disabled
-    register_ext_in_if( const register_ext_in_if<T>& );
-    register_ext_in_if<T>& operator = ( const register_ext_in_if<T>& );
+    ext_register_in_if( const ext_register_in_if<T>& );
+    ext_register_in_if<T>& operator = ( const ext_register_in_if<T>& );
 };
 
 template <class T>
-class register_ext_out_if
+class ext_register_out_if
 : virtual public sc_interface, virtual public portBase
 {
 public:
@@ -60,24 +60,24 @@ public:
 
 protected:
     // constructor
-    register_ext_out_if() {}
+    ext_register_out_if() {}
 
 private:
     // disabled
-    register_ext_out_if( const register_ext_out_if<T>& );
-    register_ext_out_if<T>& operator = ( const register_ext_out_if<T>& );
+    ext_register_out_if( const ext_register_out_if<T>& );
+    ext_register_out_if<T>& operator = ( const ext_register_out_if<T>& );
 };
 
 template <class T>
-class register_ext_channel
-: public register_ext_in_if<T>,
-  public register_ext_out_if<T>,
+class ext_register_channel
+: public ext_register_in_if<T>,
+  public ext_register_out_if<T>,
   public sc_prim_channel,
   public interfaceBase
 {
 public:
     // constructor const char * module, std::string block
-    explicit register_ext_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
+    explicit ext_register_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
         interfaceBase(name_, block_, autoMode),
         m_channel_update_event( (std::string(name_) + "m_channel_update_event").c_str() ),
@@ -91,7 +91,7 @@ public:
         }
 
     // destructor
-    virtual ~register_ext_channel() {}
+    virtual ~ext_register_channel() {}
 
     // interface methods
     virtual void register_port( sc_port_base&, const char* ) override;
@@ -117,7 +117,7 @@ public:
     operator T ()
         { return read(); }
 
-    register_ext_channel<T>& operator = ( const T& a )
+    ext_register_channel<T>& operator = ( const T& a )
         { write( a ); return *this; }
 
     void trace( sc_trace_file* tf ) const override;
@@ -156,22 +156,22 @@ protected:
 
 private:
     // disabled
-    register_ext_channel( const register_ext_channel<T>& );
-    register_ext_channel& operator = ( const register_ext_channel<T>& );
+    ext_register_channel( const ext_register_channel<T>& );
+    ext_register_channel& operator = ( const ext_register_channel<T>& );
 };
 
 template <class T>
-inline void register_ext_channel<T>::register_port( sc_port_base& port_,
+inline void ext_register_channel<T>::register_port( sc_port_base& port_,
                 const char* if_typename_ )
 {
     std::string nm( if_typename_ );
-    if( nm == typeid( register_ext_in_if<T> ).name() )
+    if( nm == typeid( ext_register_in_if<T> ).name() )
     {
         // multiple readers can be connected 
         if( m_reader == 0 ) {
             m_reader = &port_;
 	}
-    } else if( nm == typeid( register_ext_out_if<T> ).name() )
+    } else if( nm == typeid( ext_register_out_if<T> ).name() )
     {
         // only one writer can be connected
         if( m_writer != 0 ) {
@@ -183,14 +183,14 @@ inline void register_ext_channel<T>::register_port( sc_port_base& port_,
     else
     {
         SC_REPORT_ERROR( SC_ID_BIND_IF_TO_PORT_,
-                         "register_ext_channel<T> port not recognized" );
+                         "ext_register_channel<T> port not recognized" );
         // may continue, if suppressed
     }
 }
 
 // blocking read
 template <class T>
-inline void register_ext_channel<T>::reg_read( T& val_ )
+inline void ext_register_channel<T>::reg_read( T& val_ )
 {
     wait(*m_channel_update_event_ptr);
     val_ = m_status_value;
@@ -198,7 +198,7 @@ inline void register_ext_channel<T>::reg_read( T& val_ )
 
 
 template <class T>
-inline T register_ext_channel<T>::reg_read()
+inline T ext_register_channel<T>::reg_read()
 {
     wait(*m_channel_update_event_ptr);
     return m_status_value;
@@ -206,7 +206,7 @@ inline T register_ext_channel<T>::reg_read()
 
 // non-blocking write for status interface
 template <class T>
-inline void register_ext_channel<T>::write( const T& val_ )
+inline void ext_register_channel<T>::write( const T& val_ )
 {
     if (m_status_value_written && val_ == m_status_value ) {
         return;
@@ -218,7 +218,7 @@ inline void register_ext_channel<T>::write( const T& val_ )
 }
 
 template <class T>
-inline void register_ext_channel<T>::reg_write( const T& val_ )
+inline void ext_register_channel<T>::reg_write( const T& val_ )
 {
     m_write_data = val_;
     interfaceBase::delay(false);
@@ -226,7 +226,7 @@ inline void register_ext_channel<T>::reg_write( const T& val_ )
 }
 
 template <class T>
-inline void register_ext_channel<T>::read( T& val_ )
+inline void ext_register_channel<T>::read( T& val_ )
 {
     wait(m_reg_write_event);
     val_ = m_write_data;
@@ -234,39 +234,39 @@ inline void register_ext_channel<T>::read( T& val_ )
 
 // non-blocking read
 template <class T>
-inline void register_ext_channel<T>::readNonBlocking( T& val_ )
+inline void ext_register_channel<T>::readNonBlocking( T& val_ )
 {
     val_ = m_status_value;
 }
 
 template <class T>
-inline T register_ext_channel<T>::readNonBlocking( )
+inline T ext_register_channel<T>::readNonBlocking( )
 {
     return m_status_value;
 }
 
 template <class T>
-void register_ext_channel<T>::status(void)
+void ext_register_channel<T>::status(void)
 {
     // for status interface there is nothing to print by default
     teeStatus();
 }
 
 template <class T>
-inline void register_ext_channel<T>::trace( sc_trace_file* tf ) const
+inline void ext_register_channel<T>::trace( sc_trace_file* tf ) const
 {
     (void) tf; /* ignore potentially unused parameter */
 }
 
 
 template <class T>
-inline void register_ext_channel<T>::print( ::std::ostream& os ) const
+inline void ext_register_channel<T>::print( ::std::ostream& os ) const
 {
     os << m_status_value.prt(isDebugLog) << '\n';
 }
 
 template <class T>
-inline void register_ext_channel<T>::dump( ::std::ostream& os ) const
+inline void ext_register_channel<T>::dump( ::std::ostream& os ) const
 {
     if (m_status_value_written)
     {
@@ -276,7 +276,7 @@ inline void register_ext_channel<T>::dump( ::std::ostream& os ) const
     }
 }
 template <>
-inline void register_ext_channel<bool>::dump( ::std::ostream& os ) const
+inline void ext_register_channel<bool>::dump( ::std::ostream& os ) const
 {
     if (m_status_value_written)
     {
@@ -287,7 +287,7 @@ inline void register_ext_channel<bool>::dump( ::std::ostream& os ) const
 }
 
 template <class T>
-inline ::std::ostream& operator << ( ::std::ostream& os, const register_ext_channel<T>& a )
+inline ::std::ostream& operator << ( ::std::ostream& os, const ext_register_channel<T>& a )
 {
     a.print( os );
     return os;
@@ -296,8 +296,8 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const register_ext_chan
 } // namespace sc_core
 
 template <class T>
-using register_ext_out = sc_port<register_ext_out_if< T > >;
+using ext_register_out = sc_port<ext_register_out_if< T > >;
 template <class T>
-using register_ext_in = sc_port<register_ext_in_if< T > >;
+using ext_register_in = sc_port<ext_register_in_if< T > >;
 
-#endif // REGISTER_EXT_CHANNEL_H
+#endif // EXT_REGISTER_CHANNEL_H

@@ -7,7 +7,7 @@ DOT_DB_FILE = ../.$(PROJECTNAME).db
 $(DOT_DB_FILE):
 	make -C ../arch
 
-db: $(DOT_DB_FILE) 
+db: $(DOT_DB_FILE)
 
 ifndef SYSTEMC_INCLUDE
 $(error SYSTEMC_INCLUDE is not set - please set to systemc-2.3.4 install directory)
@@ -23,8 +23,8 @@ $(error LD_BOOST is not set - please set to boost library (.so) path)
 endif
 
 CXX = clang++
-CXX_FLAGS = -std=c++17 -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter
-LD_FLAGS = -lboost_system -lboost_program_options -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -lsystemc -lfmt
+CXX_FLAGS = -std=c++23 -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -DSC_CPLUSPLUS=201703L
+LD_FLAGS = -lboost_system -lboost_program_options -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -lsystemc
 INCLUDE = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I$(REPO_ROOT)/common/systemc -I../includes -I. -I/usr/local/include
 # Final binary
 BIN = $(PROJECTNAME)
@@ -57,7 +57,7 @@ $(BUILD_DIR)/$(BIN) : $(OBJ) $(COMMON_OBJ)
     # Create build directories - same structure as sources.
 	mkdir -p $(@D)
     # Just link all the object files.
-	$(CXX) $(CXX_FLAGS) $(LD_FLAGS) $^ -o $@
+	$(CXX) $^ $(LD_FLAGS) -o $@
 
 # Include all .d files
 -include $(DEP)

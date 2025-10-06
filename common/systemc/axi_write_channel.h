@@ -17,7 +17,7 @@
 #include <memory>
 #include <vector>
 #include <queue>
-#include <fmt/format.h>
+#include <format>
 #include "simpleQueue.h"
 #include "axiCommon.h"
 
@@ -478,7 +478,7 @@ public:
     // portBase overrides
     void setMultiDriver(std::string name_, std::function<std::string(const uint64_t &value)> prt = nullptr) override
     {
-        Q_ASSERT(false, fmt::format("multiple drivers on {} axiWr interface is invalid", name_ ));
+        Q_ASSERT(false, std::format("multiple drivers on {} axiWr interface is invalid", name_ ));
     }
     std::shared_ptr<trackerBase> getTracker(void) override { return (m_data_in->getTracker());}
     virtual void setTeeBusy(bool busy) override { m_data_in->setTeeBusy(busy); }
@@ -589,7 +589,7 @@ inline void axi_write_channel<A, D, S>::handleSendTransactionLog(void)
         if (m_current_send_data_transaction.transactionStr) {
             m_logQueueData->push(*m_current_send_data_transaction.transactionStr);
         } else {
-            m_logQueueData->push(fmt::format("WTX#{:x} ",m_current_send_data_transaction.transactionNo));
+            m_logQueueData->push(std::format("WTX#{:x} ",m_current_send_data_transaction.transactionNo));
         }
     }
 
@@ -598,7 +598,7 @@ template <class A, class D, class S>
 inline void axi_write_channel<A, D, S>::manageSendRespTransaction(const axiWriteRespSt & resp_)
 {
     if (m_resp_transactions[resp_.bid].empty()) {
-        m_resp_channel.log_.logPrint(fmt::format("transaction id not valid: {}", resp_.prt()));
+        m_resp_channel.log_.logPrint(std::format("transaction id not valid: {}", resp_.prt()));
         Q_ASSERT(false, "transaction id not valid");
     }
     m_current_send_resp_transaction = m_resp_transactions[resp_.bid].front();
@@ -611,7 +611,7 @@ inline void axi_write_channel<A, D, S>::handleSendRespTransactionLog(void)
         if (m_current_send_resp_transaction.transactionStr) {
             m_logQueueResp->push(*m_current_send_resp_transaction.transactionStr);
         } else {
-            m_logQueueResp->push(fmt::format("WTX#{:x} ",m_current_send_resp_transaction.transactionNo));
+            m_logQueueResp->push(std::format("WTX#{:x} ",m_current_send_resp_transaction.transactionNo));
         }
     }
 }
@@ -655,7 +655,7 @@ inline void axi_write_channel<A, D, S>::sendAddr( const axiWriteAddressSt<A>& ad
         if (str) {
             m_logQueueAddr->push(*str);
         } else {
-            m_logQueueAddr->push(fmt::format("WTX#{:x} ",txn));
+            m_logQueueAddr->push(std::format("WTX#{:x} ",txn));
         }
     }
     if (m_sender_cycle_transaction && !m_receiver_cycle_transaction) {

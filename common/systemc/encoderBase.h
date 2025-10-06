@@ -2,7 +2,7 @@
 #define ENCODERBASE_H
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 #include "logging.h"
-#include <fmt/format.h>
+#include <format>
 #include <tuple>
 #include "q_assert.h"
 
@@ -32,7 +32,7 @@ public:
          {}
     ENCODEDTYPE encode(uint64_t tag, ENUMTYPE tagType)
     {
-        Q_ASSERT_CTX(tag <= encodeInfo[tagType].max, getName(tagType), fmt::format("Tag out of range tag=0x{:x}", tag));
+        Q_ASSERT_CTX(tag <= encodeInfo[tagType].max, getName(tagType), std::format("Tag out of range tag=0x{:x}", tag));
         return( encodeInfo[tagType].encodingValue | tag );
     }
     std::tuple<uint64_t, ENUMTYPE> decode(ENCODEDTYPE encodedTag)
@@ -48,7 +48,7 @@ public:
             }
             type++;
         }
-        Q_ASSERT_CTX(false, "", fmt::format("Tag out of range tag=0x{:x}", encodedTag));
+        Q_ASSERT_CTX(false, "", std::format("Tag out of range tag=0x{:x}", encodedTag));
         return {0,(ENUMTYPE)0};
     }
     std::string getName(ENUMTYPE tagType) {return(encodeInfo[tagType].name);}

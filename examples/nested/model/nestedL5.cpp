@@ -18,7 +18,7 @@ nestedL5::nestedL5(sc_module_name blockName, const char * variant, blockBaseMode
 {
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
     uNestedL6->nested6(nested5);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
 

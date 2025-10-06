@@ -5,14 +5,13 @@ module blockBRegs
     import mixedInclude_package::*;
     import mixedBlockC_package::*;
     import mixed_package::*;
-
     #(
         parameter bit APB_READY_1WS = 0
     )
     (
         apb_if.dst apbReg,
-        status_if.dst roBsize,
         status_if.src rwD,
+        status_if.dst roBsize,
         memory_if.src blockBTable1,
         input clk,
         input rst_n

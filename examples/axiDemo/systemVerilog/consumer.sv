@@ -13,13 +13,15 @@ import axiDemo_package::*;
     axi_write_if.dst axiWr1,
     axi_write_if.dst axiWr2,
     axi_write_if.dst axiWr3,
+    axi4_stream_if.dst axiStr0,
+    axi4_stream_if.dst axiStr1,
     input clk, rst_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
 
-// Instances
 
+// Instances
 // GENERATED_CODE_END
 
 endmodule: consumer

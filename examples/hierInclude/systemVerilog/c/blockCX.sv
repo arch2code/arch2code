@@ -3,8 +3,8 @@
 //module as defined by block: blockCX
 module blockCX
 // Generated Import package statement(s)
-import hierInclude_package::*;
 import hierIncludeC_package::*;
+import hierInclude_package::*;
 // User supplied Import package statement(s)
 import hierIncludeCInclude_package::*;
 (
@@ -17,8 +17,8 @@ import hierIncludeCInclude_package::*;
 
     // Interface Instances, needed for between instanced modules inside this module
 
-// Instances
 
+// Instances
 // GENERATED_CODE_END
 
 

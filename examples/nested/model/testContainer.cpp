@@ -2,7 +2,7 @@
 
 
 // GENERATED_CODE_PARAM --block=testContainer
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "testContainer.h"
 #include "testBlock_base.h"
 #include "subBlockContainer_base.h"
@@ -48,7 +48,7 @@ testContainer::testContainer(sc_module_name blockName, const char * variant, blo
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-// instance to instance connections via channel
+    // instance to instance connections via channel
     uTestBlock0->loop1src(loop1a);
     uTestBlock1->loop1dst(loop1a);
     uTestBlock1->loop1src(loop1b);
@@ -81,7 +81,7 @@ testContainer::testContainer(sc_module_name blockName, const char * variant, blo
     uConsumer->src_clock_dest_trans_rv_size(src_clock_dest_trans_rv_size);
     uProducer->src_trans_dest_clock_rv_size(src_trans_dest_clock_rv_size);
     uConsumer->src_trans_dest_clock_rv_size(src_trans_dest_clock_rv_size);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 
 }

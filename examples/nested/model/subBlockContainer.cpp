@@ -2,7 +2,7 @@
 
 
 // GENERATED_CODE_PARAM --block=subBlockContainer
-// GENERATED_CODE_BEGIN --template=constructor --section=init 
+// GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "subBlockContainer.h"
 #include "subBlock_base.h"
 SC_HAS_PROCESS(subBlockContainer);
@@ -22,10 +22,10 @@ subBlockContainer::subBlockContainer(sc_module_name blockName, const char * vari
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
     uSubBlock0->dst(in);
     uSubBlock1->src(out);
-// instance to instance connections via channel
+    // instance to instance connections via channel
     uSubBlock0->src(test);
     uSubBlock1->dst(test);
-    log_.logPrint(fmt::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 }
 

@@ -1,5 +1,5 @@
 REPO_ROOT = $(shell git rev-parse --show-toplevel)
- 
+
 SV_COM = $(REPO_ROOT)/common/systemVerilog
 # Location of the mixed outptus for lint test
 MIXED_DIR = examples/mixed
@@ -44,15 +44,15 @@ systemc: nested hello-world axiDemo
 diagram-and-doc :
 	mkdir -p examples/tests/out
 	make -C $(MIXED_DIR)/arch
-	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --depth 1 > $(DIAG_TEST_DIR)/out/mixedDocDepth1.txt 
-	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --depth 2 > $(DIAG_TEST_DIR)/out/mixedDocDepth2.txt 
-	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --depth 3 > $(DIAG_TEST_DIR)/out/mixedDocDepth3.txt 
+	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --depth 1 > $(DIAG_TEST_DIR)/out/mixedDocDepth1.txt
+	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --depth 2 > $(DIAG_TEST_DIR)/out/mixedDocDepth2.txt
+	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --depth 3 > $(DIAG_TEST_DIR)/out/mixedDocDepth3.txt
 	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --diagram --depth 1
-	cp gv_out/mixed.gv $(DIAG_TEST_DIR)/out/mixedDiagramDepth1.gv 
+	cp gv_out/mixed.gv $(DIAG_TEST_DIR)/out/mixedDiagramDepth1.gv
 	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --diagram --depth 2
-	cp gv_out/mixed.gv $(DIAG_TEST_DIR)/out/mixedDiagramDepth2.gv 
+	cp gv_out/mixed.gv $(DIAG_TEST_DIR)/out/mixedDiagramDepth2.gv
 	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --diagram --depth 3
-	cp gv_out/mixed.gv $(DIAG_TEST_DIR)/out/mixedDiagramDepth3.gv 
+	cp gv_out/mixed.gv $(DIAG_TEST_DIR)/out/mixedDiagramDepth3.gv
 	git diff --no-index $(DIAG_TEST_DIR)/golden/mixedDocDepth1.txt $(DIAG_TEST_DIR)/out/mixedDocDepth1.txt
 	git diff --no-index $(DIAG_TEST_DIR)/golden/mixedDocDepth2.txt $(DIAG_TEST_DIR)/out/mixedDocDepth2.txt
 	git diff --no-index $(DIAG_TEST_DIR)/golden/mixedDocDepth3.txt $(DIAG_TEST_DIR)/out/mixedDocDepth3.txt
@@ -74,6 +74,11 @@ nested:
 axiDemo:
 	make -C $(AXI_DIR) all -j
 	make -C $(AXI_DIR) run -j
+
+.PHONY : axi4sDemo
+axi4sDemo:
+	make -C examples/axi4sDemo/rundir -j all VL_DUT=1
+	make -C examples/axi4sDemo/rundir -j run VL_DUT=1
 
 .PHONY : hello-world
 hello-world:
@@ -159,5 +164,5 @@ clean :
 	make -C $(AXI_DIR) clean
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed in-and-out lint-axi lint-hier apbDecode axiDemo
+pipeline-test: diagram-and-doc nested hello-world mixed in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo
 push-test: clean pipeline-test

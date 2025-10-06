@@ -14,16 +14,47 @@ import mixed_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-    rdy_vld_if #(.data_t(seeSt)) cStuffIf();
-    rdy_vld_if #(.data_t(seeSt)) cStuff1();
-    rdy_vld_if #(.data_t(seeSt)) cStuff2();
-    rdy_vld_if #(.data_t(dSt)) dee0();
-    rdy_vld_if #(.data_t(dSt)) dee1();
-    rdy_vld_if #(.data_t(dSt)) loopDF();
-    rdy_vld_if #(.data_t(dSt)) loopFF();
-    rdy_vld_if #(.data_t(dSt)) loopFD();
-    status_if #(.data_t(bSizeRegSt)) roBsize();
-    status_if #(.data_t(dRegSt)) rwD();
+
+    rdy_vld_if #(
+.data_t(seeSt)
+) cStuffIf
+();
+    rdy_vld_if #(
+.data_t(seeSt)
+) cStuff1
+();
+    rdy_vld_if #(
+.data_t(seeSt)
+) cStuff2
+();
+    rdy_vld_if #(
+.data_t(dSt)
+) dee0
+();
+    rdy_vld_if #(
+.data_t(dSt)
+) dee1
+();
+    rdy_vld_if #(
+.data_t(dSt)
+) loopDF
+();
+    rdy_vld_if #(
+.data_t(dSt)
+) loopFF
+();
+    rdy_vld_if #(
+.data_t(dSt)
+) loopFD
+();
+    status_if #(
+.data_t(dRegSt)
+) rwD
+();
+    status_if #(
+.data_t(bSizeRegSt)
+) roBsize
+();
 
     // Memory Interfaces
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable0();
@@ -41,8 +72,8 @@ import mixed_package::*;
 blockBRegs uBlockBRegs (
     .apbReg (apbReg),
     .blockBTable1 (blockBTable1_reg),
-    .roBsize (roBsize),
     .rwD (rwD),
+    .roBsize (roBsize),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -56,6 +87,7 @@ blockD uBlockD (
     .dee1 (dee1),
     .outD (loopDF),
     .inD (loopFD),
+    .rwD (rwD),
     .roBsize (roBsize),
     .clk (clk),
     .rst_n (rst_n)
@@ -66,7 +98,7 @@ blockF #(.bob(BOB0), .fred(0)) uBlockF0 (
     .dStuffIf (dee0),
     .dSin (loopDF),
     .dSout (loopFF),
-    .roBsize (roBsize),
+    .rwD (rwD),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -76,7 +108,7 @@ blockF #(.bob(BOB1), .fred(1)) uBlockF1 (
     .dStuffIf (dee1),
     .dSin (loopFF),
     .dSout (loopFD),
-    .roBsize (roBsize),
+    .rwD (rwD),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -125,7 +157,6 @@ memory_sp #(.DEPTH(BSIZE), .data_t(nestedSt)) uBlockBTableSP (
     .mem_port (blockBTableSP_bob),
     .clk (clk)
 );
-
 
 // GENERATED_CODE_END
 

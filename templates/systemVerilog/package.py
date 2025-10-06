@@ -10,18 +10,37 @@ def render(args, prj, data):
         return out
     packageName = prj.includeName[data['context'][0]] + '_package'
 
-    out     += f"package {packageName};\n"
-    out     += importPackages(args, prj, data['context'][0], data, excludeSelf=True)
+    out += f"package {packageName};\n"
+    pkg_str = importPackages(args, prj, data['context'][0], data, excludeSelf=True) 
+    if pkg_str:
+        out += pkg_str + '\n'
 
     # Now put in everything at this context level
     # Generate constants as localparam[s]
     for unusedKey, value in data['constants'].items():
-        if value['value'] > 0xFFFFFFFF:
-            out += f"//         {value['constant']} = {' '*value['valueSpaces']}   'd{value['value']};  // {value['desc']}\n"
-            out += f"localparam {value['constant']} = {' '*value['valueSpaces']} 64'h{value['value']:019_X};  // {value['desc']}\n"
-        else:
-            out += f"//         {value['constant']} = {' '*value['valueSpaces']}   'd{value['value']};  // {value['desc']}\n"
-            out += f"localparam {value['constant']} = {' '*value['valueSpaces']} 32'h{value['value']:09_X};  // {value['desc']}\n"
+        match value['valueType']:
+            case 'int32_t':
+                type_str = 'int'
+                if value['value'] < 0:
+                    value_str = f"-32'sh{abs(value['value']):09_X}"
+                else:
+                    value_str = f"32'sh{value['value']:09_X}"
+            case 'uint32_t':
+                type_str = 'int unsigned'
+                value_str = f"32'h{value['value']:09_X}"
+            case 'int64_t':
+                type_str = 'longint'
+                if value['value'] < 0:
+                    value_str = f"-64'sh{abs(value['value']):019_X}"
+                else:
+                    value_str = f"64'sh{value['value']:019_X}"
+            case 'uint64_t':
+                type_str = 'longint unsigned'
+                value_str = f"64'h{value['value']:019_X}"
+            case _:
+                type_str = value['valueType']
+                value_str = f"{value['value']}"
+        out += f"localparam {type_str} {value['constant']} = {value_str};  // {value['desc']}\n"
     # Generate types
     out += f"\n// types\n"
     for unusedKey, value in data['types'].items():

@@ -3,7 +3,7 @@
 #include "pingPongBuffer.h"
 #include <cstring>
 #include "q_assert.h"
-#include <fmt/format.h>
+#include <format>
 
 std::unique_ptr<multiCycleBase> multiCycleFactory::createMultiCycle(std::string name, std::string type, int burst_size, int size, std::string trackerName)
 {
@@ -23,7 +23,7 @@ std::unique_ptr<multiCycleBase> multiCycleFactory::createMultiCycle(std::string 
         return std::make_unique<multiCyclePingPong>(name, burst_size, size);
     else
     {
-        Q_ASSERT_CTX(false, name, fmt::format("Multicycle type {} unknown", type));
+        Q_ASSERT_CTX(false, name, std::format("Multicycle type {} unknown", type));
         return nullptr;
     }
 }
