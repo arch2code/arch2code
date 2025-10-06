@@ -6,7 +6,8 @@
 
 module producer_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import axiDemo_package::*;(
+    import axiDemo_package::*;
+(
     // axi_read_if.src
     output bit [31:0] axiRd0_araddr,
     output bit [3:0] axiRd0_arid,

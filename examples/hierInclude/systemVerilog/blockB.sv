@@ -12,15 +12,8 @@ import hierInclude_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-
-    rdy_vld_if #(
-.data_t(bSt)
-) bx2y
-();
-    rdy_vld_if #(
-.data_t(bSt)
-) bx2z
-();
+    rdy_vld_if #(.data_t(bSt)) bx2y();
+    rdy_vld_if #(.data_t(bSt)) bx2z();
 
 // Instances
 blockBX uBlockBX (

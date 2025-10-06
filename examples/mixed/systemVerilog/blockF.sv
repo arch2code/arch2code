@@ -20,7 +20,6 @@ import mixedBlockC_package::*;
 
     // Interface Instances, needed for between instanced modules inside this module
 
-
     // Memory Interfaces
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) test();
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) test_unused();

@@ -5,7 +5,12 @@ module apbDecode
 // Generated Import package statement(s)
 import mixed_package::*;
 (
-    apb_if.dst apbReg,    apb_if.src apb_uBlockA,    apb_if.src apb_uBlockB,    input clk, rst_n);
+    apb_if.dst apbReg,
+    apb_if.src apb_uBlockA,
+    apb_if.src apb_uBlockB,
+    input clk, rst_n
+);
+
 apbAddrSt apb_addr;
 assign apb_addr = apbAddrSt'(apbReg.paddr) & apbAddrSt'(32'hfff_ffff);
 //signals for interface apbReg

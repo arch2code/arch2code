@@ -7,7 +7,8 @@
 module blockF_variant0_hdl_sv_wrapper
     // Generated Import package statement(s)
     import mixed_package::*;
-    import mixedBlockC_package::*;(
+    import mixedBlockC_package::*;
+(
     // rdy_vld_if.src
     output bit cStuffIf_vld,
     output bit [4:0] cStuffIf_data,

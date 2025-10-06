@@ -11,7 +11,6 @@ import mixed_package::*;
 
     // Interface Instances, needed for between instanced modules inside this module
 
-
 // Instances
 // GENERATED_CODE_END
 

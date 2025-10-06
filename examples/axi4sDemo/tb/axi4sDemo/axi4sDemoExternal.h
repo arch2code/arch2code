@@ -11,15 +11,22 @@
 #include "axi4sDemoBase.h"
 #include "endOfTest.h"
 
-class axi4sDemo_tbExternal: public sc_module, public axi4sDemoInverted {
+//contained instances forward class declaration
+class axi4s_m_drvBase;
+class axi4s_s_drvBase;
+
+class axi4sDemoExternal: public sc_module, public axi4sDemoInverted {
 
     logBlock log_;
 
 public:
 
-    SC_HAS_PROCESS (axi4sDemo_tbExternal);
+    std::shared_ptr<axi4s_m_drvBase> u_axi4s_m_drv;
+    std::shared_ptr<axi4s_s_drvBase> u_axi4s_s_drv;
 
-    axi4sDemo_tbExternal(sc_module_name modulename);
+    SC_HAS_PROCESS (axi4sDemoExternal);
+
+    axi4sDemoExternal(sc_module_name modulename);
 
     // Thread monitoring the end of test event to stop simulation
     void eotThread(void) {

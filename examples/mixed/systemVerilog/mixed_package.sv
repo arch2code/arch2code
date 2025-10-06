@@ -4,7 +4,8 @@ package mixed_package;
 // Generated Import package statement(s)
 import mixedBlockC_package::*;
 import mixedNestedInclude_package::*;
-import mixedInclude_package::*;localparam int unsigned ASIZE = 32'h0000_0001;  // The size of A
+import mixedInclude_package::*;
+localparam int unsigned ASIZE = 32'h0000_0001;  // The size of A
 localparam int unsigned ASIZE2 = 32'h0000_0002;  // The size of A+1
 localparam int unsigned INTP = 32'hFFFF_FC00;  // Test constant for numbers of unsigned integer type 
 localparam int INTN = -32'sh7FFF_FC00;  // Test constant for numbers of signed integer type (two's complement negative)

@@ -14,11 +14,7 @@ import mixed_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-
-    status_if #(
-.data_t(aRegSt)
-) roA
-();
+    status_if #(.data_t(aRegSt)) roA();
 
 // Instances
 blockARegs uBlockARegs (

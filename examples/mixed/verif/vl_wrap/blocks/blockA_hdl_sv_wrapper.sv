@@ -7,7 +7,8 @@
 module blockA_hdl_sv_wrapper
     // Generated Import package statement(s)
     import mixedBlockC_package::*;
-    import mixed_package::*;(
+    import mixed_package::*;
+(
     // req_ack_if.src
     output bit aStuffIf_req,
     output bit [3:0] aStuffIf_data,

@@ -9,47 +9,16 @@ import axiDemo_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-
-    axi_read_if #(
-.addr_t(axiAddrSt), .data_t(axiDataSt)
-) axiRd0
-();
-    axi_read_if #(
-.addr_t(axiAddrSt), .data_t(axiDataSt)
-) axiRd1
-();
-    axi_read_if #(
-.addr_t(axiAddrSt), .data_t(axiDataSt)
-) axiRd2
-();
-    axi_read_if #(
-.addr_t(axiAddrSt), .data_t(axiDataSt)
-) axiRd3
-();
-    axi_write_if #(
-.addr_t(axiAddrSt), .data_t(axiDataSt), .strb_t(axiStrobeSt)
-) axiWr0
-();
-    axi_write_if #(
-.addr_t(axiAddrSt), .data_t(axiDataSt), .strb_t(axiStrobeSt)
-) axiWr1
-();
-    axi_write_if #(
-.addr_t(axiAddrSt), .data_t(axiDataSt), .strb_t(axiStrobeSt)
-) axiWr2
-();
-    axi_write_if #(
-.addr_t(axiAddrSt), .data_t(axiDataSt), .strb_t(axiStrobeSt)
-) axiWr3
-();
-    axi4_stream_if #(
-.tdata_t(axiDataSt), .tid_t(axiAddrSt), .tdest_t(axiAddrSt), .tuser_t(axiAddrSt)
-) axiStr0
-();
-    axi4_stream_if #(
-.tdata_t(axiDataSt), .tid_t(axiAddrSt), .tdest_t(axiAddrSt), .tuser_t(axiAddrSt)
-) axiStr1
-();
+    axi_read_if #(.addr_t(axiAddrSt), .data_t(axiDataSt)) axiRd0();
+    axi_read_if #(.addr_t(axiAddrSt), .data_t(axiDataSt)) axiRd1();
+    axi_read_if #(.addr_t(axiAddrSt), .data_t(axiDataSt)) axiRd2();
+    axi_read_if #(.addr_t(axiAddrSt), .data_t(axiDataSt)) axiRd3();
+    axi_write_if #(.addr_t(axiAddrSt), .data_t(axiDataSt), .strb_t(axiStrobeSt)) axiWr0();
+    axi_write_if #(.addr_t(axiAddrSt), .data_t(axiDataSt), .strb_t(axiStrobeSt)) axiWr1();
+    axi_write_if #(.addr_t(axiAddrSt), .data_t(axiDataSt), .strb_t(axiStrobeSt)) axiWr2();
+    axi_write_if #(.addr_t(axiAddrSt), .data_t(axiDataSt), .strb_t(axiStrobeSt)) axiWr3();
+    axi4_stream_if #(.tdata_t(axiDataSt), .tid_t(axiAddrSt), .tdest_t(axiAddrSt), .tuser_t(axiAddrSt)) axiStr0();
+    axi4_stream_if #(.tdata_t(axiDataSt), .tid_t(axiAddrSt), .tdest_t(axiAddrSt), .tuser_t(axiAddrSt)) axiStr1();
 
 // Instances
 producer uProducer (

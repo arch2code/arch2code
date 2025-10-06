@@ -14,47 +14,16 @@ import mixed_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-
-    rdy_vld_if #(
-.data_t(seeSt)
-) cStuffIf
-();
-    rdy_vld_if #(
-.data_t(seeSt)
-) cStuff1
-();
-    rdy_vld_if #(
-.data_t(seeSt)
-) cStuff2
-();
-    rdy_vld_if #(
-.data_t(dSt)
-) dee0
-();
-    rdy_vld_if #(
-.data_t(dSt)
-) dee1
-();
-    rdy_vld_if #(
-.data_t(dSt)
-) loopDF
-();
-    rdy_vld_if #(
-.data_t(dSt)
-) loopFF
-();
-    rdy_vld_if #(
-.data_t(dSt)
-) loopFD
-();
-    status_if #(
-.data_t(dRegSt)
-) rwD
-();
-    status_if #(
-.data_t(bSizeRegSt)
-) roBsize
-();
+    rdy_vld_if #(.data_t(seeSt)) cStuffIf();
+    rdy_vld_if #(.data_t(seeSt)) cStuff1();
+    rdy_vld_if #(.data_t(seeSt)) cStuff2();
+    rdy_vld_if #(.data_t(dSt)) dee0();
+    rdy_vld_if #(.data_t(dSt)) dee1();
+    rdy_vld_if #(.data_t(dSt)) loopDF();
+    rdy_vld_if #(.data_t(dSt)) loopFF();
+    rdy_vld_if #(.data_t(dSt)) loopFD();
+    status_if #(.data_t(dRegSt)) rwD();
+    status_if #(.data_t(bSizeRegSt)) roBsize();
 
     // Memory Interfaces
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable0();

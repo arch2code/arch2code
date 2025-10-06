@@ -5,6 +5,7 @@ package hierIncludeB_package;
 import hierIncludeTop_package::*;
 import hierInclude_package::*;
 import hierIncludeBInclude_package::*;
+
 // types
 typedef logic[9-1:0] bSizeT; //A type from an include sizing from constant B_ANOTHER_SIZE
 

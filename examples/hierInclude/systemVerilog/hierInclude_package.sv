@@ -3,7 +3,8 @@
 package hierInclude_package;
 // Generated Import package statement(s)
 import hierIncludeNestedTop_package::*;
-import hierIncludeTop_package::*;localparam int unsigned ASIZE = 32'h0000_0007;  // The size of A
+import hierIncludeTop_package::*;
+localparam int unsigned ASIZE = 32'h0000_0007;  // The size of A
 localparam int unsigned ASIZE2 = 32'h0000_000B;  // The size of A + included constant another size
 
 // types

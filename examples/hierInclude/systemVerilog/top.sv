@@ -9,19 +9,9 @@ import hierInclude_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-
-    rdy_vld_if #(
-.data_t(aSt)
-) anInterfaceB
-();
-    rdy_vld_if #(
-.data_t(aSt)
-) anInterfaceC
-();
-    req_ack_if #(
-.data_t(anotherSt), .rdata_t(yetAnotherSt)
-) b2C
-();
+    rdy_vld_if #(.data_t(aSt)) anInterfaceB();
+    rdy_vld_if #(.data_t(aSt)) anInterfaceC();
+    req_ack_if #(.data_t(anotherSt), .rdata_t(yetAnotherSt)) b2C();
 
 // Instances
 blockA uBlockA (
