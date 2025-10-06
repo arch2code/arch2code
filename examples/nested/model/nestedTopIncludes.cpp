@@ -11,7 +11,7 @@
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures
 bool test_st::operator == (const test_st & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (a == rhs.a);
     return ( ret );
     }
@@ -41,7 +41,7 @@ void test_st::sc_unpack(sc_bv<10> packed_data)
     a = (cmdidT) packed_data.range(9, 0).to_uint64();
 }
 bool bigSt::operator == (const bigSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (b.word[ 0 ] == rhs.b.word[ 0 ]);
     ret = ret && (b.word[ 1 ] == rhs.b.word[ 1 ]);
     return ( ret );
@@ -78,7 +78,7 @@ void bigSt::sc_unpack(sc_bv<96> packed_data)
     b.word[1] = (uint64_t) packed_data.range(95, 64).to_uint64();
 }
 bool testDataSt::operator == (const testDataSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (data.word[ 0 ] == rhs.data.word[ 0 ]);
     ret = ret && (data.word[ 1 ] == rhs.data.word[ 1 ]);
     return ( ret );
@@ -115,7 +115,7 @@ void testDataSt::sc_unpack(sc_bv<128> packed_data)
     data.word[1] = (uint64_t) packed_data.range(127, 64).to_uint64();
 }
 bool testDataHdrSt::operator == (const testDataHdrSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (cmdid == rhs.cmdid);
     return ( ret );
     }
@@ -145,7 +145,7 @@ void testDataHdrSt::sc_unpack(sc_bv<10> packed_data)
     cmdid = (cmdidT) packed_data.range(9, 0).to_uint64();
 }
 bool lengthHdrSt::operator == (const lengthHdrSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (length == rhs.length);
     return ( ret );
     }
@@ -175,7 +175,7 @@ void lengthHdrSt::sc_unpack(sc_bv<16> packed_data)
     length = (lengthT) packed_data.range(15, 0).to_uint64();
 }
 bool cmdidHdrSt::operator == (const cmdidHdrSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (cmdid == rhs.cmdid);
     return ( ret );
     }

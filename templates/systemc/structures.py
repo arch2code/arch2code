@@ -299,7 +299,7 @@ def equalTest(handle, args, structName, vars, indent):
         out.append(f"{indent}bool {decl}{structName}::operator == (const { structName } & rhs) const {{")
     else:
         return out
-    out.append(f"{indent}    bool ret = true; ")
+    out.append(f"{indent}    bool ret = true;")
     indent += ' '*4
     for var, vardata in vars["vars"].items():
         varName = vardata['variable']

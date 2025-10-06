@@ -11,7 +11,7 @@
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures
 bool seeSt::operator == (const seeSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variablec == rhs.variablec);
     ret = ret && (variablec2 == rhs.variablec2);
     return ( ret );
@@ -49,7 +49,7 @@ void seeSt::sc_unpack(sc_bv<5> packed_data)
     variablec = (cSizeT) packed_data.range(4, 3).to_uint64();
 }
 bool cHeaderSt::operator == (const cHeaderSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (hdr == rhs.hdr);
     return ( ret );
     }

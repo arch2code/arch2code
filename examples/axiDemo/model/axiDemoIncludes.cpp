@@ -11,7 +11,7 @@
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures
 bool axiAddrSt::operator == (const axiAddrSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (addr == rhs.addr);
     return ( ret );
     }
@@ -41,7 +41,7 @@ void axiAddrSt::sc_unpack(sc_bv<32> packed_data)
     addr = (axiAddrT) packed_data.range(31, 0).to_uint64();
 }
 bool axiDataSt::operator == (const axiDataSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (data == rhs.data);
     return ( ret );
     }
@@ -71,7 +71,7 @@ void axiDataSt::sc_unpack(sc_bv<32> packed_data)
     data = (axiDataT) packed_data.range(31, 0).to_uint64();
 }
 bool axiStrobeSt::operator == (const axiStrobeSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (strobe == rhs.strobe);
     return ( ret );
     }

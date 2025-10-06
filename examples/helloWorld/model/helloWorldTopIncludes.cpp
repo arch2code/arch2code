@@ -12,7 +12,7 @@
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures
 bool test_st::operator == (const test_st & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (a == rhs.a);
     return ( ret );
     }
@@ -42,7 +42,7 @@ void test_st::sc_unpack(sc_bv<8> packed_data)
     a = (byteT) packed_data.range(7, 0).to_uint64();
 }
 bool test_no_tracker_st::operator == (const test_no_tracker_st & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (a == rhs.a);
     return ( ret );
     }
@@ -72,7 +72,7 @@ void test_no_tracker_st::sc_unpack(sc_bv<8> packed_data)
     a = (byteT) packed_data.range(7, 0).to_uint64();
 }
 bool data_st::operator == (const data_st & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (b == rhs.b);
     return ( ret );
     }

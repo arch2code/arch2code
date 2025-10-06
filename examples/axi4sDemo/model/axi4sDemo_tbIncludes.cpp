@@ -11,7 +11,7 @@
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures
 bool data_t1_t::operator == (const data_t1_t & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (data.word[ 0 ] == rhs.data.word[ 0 ]);
     ret = ret && (data.word[ 1 ] == rhs.data.word[ 1 ]);
     ret = ret && (data.word[ 2 ] == rhs.data.word[ 2 ]);
@@ -60,7 +60,7 @@ void data_t1_t::sc_unpack(sc_bv<256> packed_data)
     data.word[3] = (uint64_t) packed_data.range(255, 192).to_uint64();
 }
 bool tid_t1_t::operator == (const tid_t1_t & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (tid == rhs.tid);
     return ( ret );
     }
@@ -90,7 +90,7 @@ void tid_t1_t::sc_unpack(sc_bv<4> packed_data)
     tid = (bv4_t) packed_data.range(3, 0).to_uint64();
 }
 bool tdest_t1_t::operator == (const tdest_t1_t & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (tid == rhs.tid);
     return ( ret );
     }
@@ -120,7 +120,7 @@ void tdest_t1_t::sc_unpack(sc_bv<4> packed_data)
     tid = (bv4_t) packed_data.range(3, 0).to_uint64();
 }
 bool tuser_t1_t::operator == (const tuser_t1_t & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (parity == rhs.parity);
     return ( ret );
     }
@@ -150,7 +150,7 @@ void tuser_t1_t::sc_unpack(sc_bv<16> packed_data)
     parity = (bv16_t) packed_data.range(15, 0).to_uint64();
 }
 bool data_t2_t::operator == (const data_t2_t & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (data == rhs.data);
     return ( ret );
     }
@@ -180,7 +180,7 @@ void data_t2_t::sc_unpack(sc_bv<64> packed_data)
     data = (bv64_t) packed_data.range(63, 0).to_uint64();
 }
 bool tid_t2_t::operator == (const tid_t2_t & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (tid == rhs.tid);
     return ( ret );
     }
@@ -210,7 +210,7 @@ void tid_t2_t::sc_unpack(sc_bv<4> packed_data)
     tid = (bv4_t) packed_data.range(3, 0).to_uint64();
 }
 bool tdest_t2_t::operator == (const tdest_t2_t & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (tid == rhs.tid);
     return ( ret );
     }
@@ -240,7 +240,7 @@ void tdest_t2_t::sc_unpack(sc_bv<4> packed_data)
     tid = (bv4_t) packed_data.range(3, 0).to_uint64();
 }
 bool tuser_t2_t::operator == (const tuser_t2_t & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (parity == rhs.parity);
     return ( ret );
     }

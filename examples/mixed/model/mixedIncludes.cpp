@@ -11,7 +11,7 @@
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures
 bool aSt::operator == (const aSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<ASIZE2; i++) {
         ret = ret && (variablea[i] == rhs.variablea[i]);
     }
@@ -70,7 +70,7 @@ void aSt::sc_unpack(sc_bv<4> packed_data)
     }
 }
 bool aASt::operator == (const aASt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variablea == rhs.variablea);
     return ( ret );
     }
@@ -104,7 +104,7 @@ void aASt::sc_unpack(sc_bv<1> packed_data)
     variablea = (aSizeT) packed_data.range(0, 0).to_uint64();
 }
 bool aRegSt::operator == (const aRegSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (a == rhs.a);
     return ( ret );
     }
@@ -134,7 +134,7 @@ void aRegSt::sc_unpack(sc_bv<7> packed_data)
     a = (sevenBitT) packed_data.range(6, 0).to_uint64();
 }
 bool dRegSt::operator == (const dRegSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (d == rhs.d);
     return ( ret );
     }
@@ -164,7 +164,7 @@ void dRegSt::sc_unpack(sc_bv<7> packed_data)
     d = (sevenBitT) packed_data.range(6, 0).to_uint64();
 }
 bool dSt::operator == (const dSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variabled == rhs.variabled);
     ret = ret && (variabled2 == rhs.variabled2);
     return ( ret );
@@ -202,7 +202,7 @@ void dSt::sc_unpack(sc_bv<7> packed_data)
     variabled = (threeBitT) packed_data.range(6, 4).to_uint64();
 }
 bool nestedSt::operator == (const nestedSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variablea == rhs.variablea);
     ret = ret && (bob == rhs.bob);
     for(unsigned int i=0; i<2; i++) {
@@ -275,7 +275,7 @@ void nestedSt::sc_unpack(sc_bv<18> packed_data)
     variablea = (aSizeT) packed_data.range(17, 17).to_uint64();
 }
 bool bSizeRegSt::operator == (const bSizeRegSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (index == rhs.index);
     return ( ret );
     }
@@ -305,7 +305,7 @@ void bSizeRegSt::sc_unpack(sc_bv<4> packed_data)
     index = (bSizeT) packed_data.range(3, 0).to_uint64();
 }
 bool bSizeSt::operator == (const bSizeSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (index == rhs.index);
     return ( ret );
     }
@@ -335,7 +335,7 @@ void bSizeSt::sc_unpack(sc_bv<4> packed_data)
     index = (bSizeT) packed_data.range(3, 0).to_uint64();
 }
 bool apbAddrSt::operator == (const apbAddrSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (address == rhs.address);
     return ( ret );
     }
@@ -365,7 +365,7 @@ void apbAddrSt::sc_unpack(sc_bv<32> packed_data)
     address = (apbAddrT) packed_data.range(31, 0).to_uint64();
 }
 bool apbDataSt::operator == (const apbDataSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (data == rhs.data);
     return ( ret );
     }
@@ -395,7 +395,7 @@ void apbDataSt::sc_unpack(sc_bv<32> packed_data)
     data = (apbDataT) packed_data.range(31, 0).to_uint64();
 }
 bool cSt::operator == (const cSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<5; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
@@ -447,7 +447,7 @@ void cSt::sc_unpack(sc_bv<35> packed_data)
     }
 }
 bool test1St::operator == (const test1St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<5; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
@@ -525,7 +525,7 @@ void test1St::sc_unpack(sc_bv<70> packed_data)
     }
 }
 bool test2St::operator == (const test2St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<5; i++) {
         ret = ret && (thirtyFiveBitArray[i] == rhs.thirtyFiveBitArray[i]);
     }
@@ -577,7 +577,7 @@ void test2St::sc_unpack(sc_bv<175> packed_data)
     }
 }
 bool test3St::operator == (const test3St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<5; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
@@ -629,7 +629,7 @@ void test3St::sc_unpack(sc_bv<35> packed_data)
     }
 }
 bool test4St::operator == (const test4St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (sevenBitArray == rhs.sevenBitArray);
     return ( ret );
     }
@@ -663,7 +663,7 @@ void test4St::sc_unpack(sc_bv<7> packed_data)
     sevenBitArray.sc_unpack(packed_data.range(6, 0));
 }
 bool test5St::operator == (const test5St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<10; i++) {
         ret = ret && (sevenBitArray[i] == rhs.sevenBitArray[i]);
     }
@@ -715,7 +715,7 @@ void test5St::sc_unpack(sc_bv<70> packed_data)
     }
 }
 bool test6St::operator == (const test6St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (largeStruct == rhs.largeStruct);
     return ( ret );
     }
@@ -750,7 +750,7 @@ void test6St::sc_unpack(sc_bv<70> packed_data)
     largeStruct.sc_unpack(packed_data.range(69, 0));
 }
 bool test7St::operator == (const test7St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<5; i++) {
         ret = ret && (largeStruct[i] == rhs.largeStruct[i]);
     }
@@ -802,7 +802,7 @@ void test7St::sc_unpack(sc_bv<350> packed_data)
     }
 }
 bool test8St::operator == (const test8St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<3; i++) {
         ret = ret && (words[i] == rhs.words[i]);
     }
@@ -854,7 +854,7 @@ void test8St::sc_unpack(sc_bv<48> packed_data)
     }
 }
 bool test9St::operator == (const test9St & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<4; i++) {
         ret = ret && (wordArray[i] == rhs.wordArray[i]);
     }

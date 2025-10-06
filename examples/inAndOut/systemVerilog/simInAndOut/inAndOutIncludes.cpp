@@ -11,7 +11,7 @@
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures
 bool aSt::operator == (const aSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<ASIZE2; i++) {
         ret = ret && (variablea[i] == rhs.variablea[i]);
     }
@@ -63,7 +63,7 @@ void aSt::sc_unpack(sc_bv<2> packed_data)
     }
 }
 bool bSt::operator == (const bSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variableb == rhs.variableb);
     return ( ret );
     }
@@ -93,7 +93,7 @@ void bSt::sc_unpack(sc_bv<5> packed_data)
     variableb = (bSizeT) packed_data.range(4, 0).to_uint64();
 }
 bool bBSt::operator == (const bBSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (ready == rhs.ready);
     return ( ret );
     }
@@ -127,7 +127,7 @@ void bBSt::sc_unpack(sc_bv<1> packed_data)
     ready = (readyT) packed_data.range(0, 0).to_uint64();
 }
 bool seeSt::operator == (const seeSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variablec == rhs.variablec);
     ret = ret && (variablec2 == rhs.variablec2);
     return ( ret );
@@ -165,7 +165,7 @@ void seeSt::sc_unpack(sc_bv<5> packed_data)
     variablec = (twoBitT) packed_data.range(4, 3).to_uint64();
 }
 bool dSt::operator == (const dSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variabled == rhs.variabled);
     ret = ret && (variabled2 == rhs.variabled2);
     return ( ret );
@@ -203,7 +203,7 @@ void dSt::sc_unpack(sc_bv<7> packed_data)
     variabled = (threeBitT) packed_data.range(6, 4).to_uint64();
 }
 bool eNestedSt::operator == (const eNestedSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (variablea == rhs.variablea);
     ret = ret && (bob == rhs.bob);
     for(unsigned int i=0; i<2; i++) {
@@ -276,7 +276,7 @@ void eNestedSt::sc_unpack(sc_bv<18> packed_data)
     variablea = (aSizeT) packed_data.range(17, 17).to_uint64();
 }
 bool bSizeSt::operator == (const bSizeSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (index == rhs.index);
     return ( ret );
     }
@@ -306,7 +306,7 @@ void bSizeSt::sc_unpack(sc_bv<5> packed_data)
     index = (bSizeT) packed_data.range(4, 0).to_uint64();
 }
 bool eHeaderSt::operator == (const eHeaderSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (hdr == rhs.hdr);
     return ( ret );
     }

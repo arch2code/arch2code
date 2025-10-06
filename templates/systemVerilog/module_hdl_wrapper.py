@@ -11,11 +11,6 @@ def render(args, prj, data):
 
 def render_sv(args, prj, data):
 
-    ## A bit of preprocessing to filter out register ports based on block first 
-    #data['regPorts'] = {k: v for k, v in data['regPorts'].items() if v['interfaceData']['block'] != data['blockName']}
-    ## Add to the block ports for easier processing
-    #data['ports'].update(data['regPorts'])
-
     # ports blaster
     mp_sig = dict()
     for port_type in data['ports']:

@@ -11,7 +11,7 @@
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures
 bool aRegSt::operator == (const aRegSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (a == rhs.a);
     return ( ret );
     }
@@ -41,7 +41,7 @@ void aRegSt::sc_unpack(sc_bv<37> packed_data)
     a = (thirtySevenBitT) packed_data.range(36, 0).to_uint64();
 }
 bool un0BRegSt::operator == (const un0BRegSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (fa == rhs.fa);
     ret = ret && (fb == rhs.fb);
     return ( ret );
@@ -79,7 +79,7 @@ void un0BRegSt::sc_unpack(sc_bv<24> packed_data)
     fa = (u8T) packed_data.range(23, 16).to_uint64();
 }
 bool un0ARegSt::operator == (const un0ARegSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (fa == rhs.fa);
     ret = ret && (fb == rhs.fb);
     ret = ret && (fc == rhs.fc);
@@ -124,7 +124,7 @@ void un0ARegSt::sc_unpack(sc_bv<48> packed_data)
     fa = (u8T) packed_data.range(47, 40).to_uint64();
 }
 bool aSizeRegSt::operator == (const aSizeRegSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (index == rhs.index);
     return ( ret );
     }
@@ -154,7 +154,7 @@ void aSizeRegSt::sc_unpack(sc_bv<29> packed_data)
     index = (aSizeT) packed_data.range(28, 0).to_uint64();
 }
 bool apbAddrSt::operator == (const apbAddrSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (address == rhs.address);
     return ( ret );
     }
@@ -184,7 +184,7 @@ void apbAddrSt::sc_unpack(sc_bv<32> packed_data)
     address = (apbAddrT) packed_data.range(31, 0).to_uint64();
 }
 bool apbDataSt::operator == (const apbDataSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (data == rhs.data);
     return ( ret );
     }
@@ -214,7 +214,7 @@ void apbDataSt::sc_unpack(sc_bv<32> packed_data)
     data = (apbDataT) packed_data.range(31, 0).to_uint64();
 }
 bool aMemAddrSt::operator == (const aMemAddrSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (address == rhs.address);
     return ( ret );
     }
@@ -244,7 +244,7 @@ void aMemAddrSt::sc_unpack(sc_bv<5> packed_data)
     address = (aAddrBitsT) packed_data.range(4, 0).to_uint64();
 }
 bool aMemSt::operator == (const aMemSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (data == rhs.data);
     return ( ret );
     }
@@ -274,7 +274,7 @@ void aMemSt::sc_unpack(sc_bv<63> packed_data)
     data = (aDataBitsT) packed_data.range(62, 0).to_uint64();
 }
 bool bMemAddrSt::operator == (const bMemAddrSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     ret = ret && (address == rhs.address);
     return ( ret );
     }
@@ -304,7 +304,7 @@ void bMemAddrSt::sc_unpack(sc_bv<5> packed_data)
     address = (bAddrBitsT) packed_data.range(4, 0).to_uint64();
 }
 bool bMemSt::operator == (const bMemSt & rhs) const {
-    bool ret = true; 
+    bool ret = true;
     for(unsigned int i=0; i<3; i++) {
         ret = ret && (data[i] == rhs.data[i]);
     }
