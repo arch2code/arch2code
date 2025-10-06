@@ -343,14 +343,17 @@ registers:
 #  uncommnet rwNestsed and roD once fixed, this works for SystemVerilog but no SystemC currently
 # - {register: rwNested, regType: rw,  block: blockB,   structure: nestedSt,   desc: A Read Write register with a nested structure}
   - {register: rwD,      regType: rw,  block: blockB,   structure: dRegSt,     desc: A Read Write register}
+#  - {register: extD,     regType: ext, block: blockB,   structure: dRegSt,     desc: An External register}
   - {register: roBsize,  regType: ro,  block: blockB,   structure: bSizeRegSt, desc: A Read Only register with a structure that has a definition from an included context}
   - {register: roA,      regType: ro,  block: blockA,   structure: aRegSt,     desc: A Read Only register}
+#  - {register: extA,     regType: ext, block: blockA,   structure: aRegSt,     desc: An External register}
 
 registerConnections:
   - {register: rwD,     block: blockB, instance: uBlockF0 }
   - {register: rwD,     block: blockB, instance: uBlockF1 }
   - {register: rwD,     block: blockB, instance: uBlockD }
   - {register: roBsize, block: blockB, instance: uBlockD }
+#  - {register: extD,    block: blockB, instance: uBlockD }
 
 # flows, are very similar to a plantuml sequence diagram, a filename is taken and optionally
 #   consistency checks can be made for connections the flow
