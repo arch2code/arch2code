@@ -109,6 +109,7 @@ def postProcess(prj):
                 connection['dst'] = dst
                 connection['interface'] = reg_interface
                 connection['srcport'] = "apb_"+dst
+                connection['interfaceName'] = "apb_"+dst
                 connections.append(connection)
             # there is a single connectionMap for each decoder container within the block
             connectionMap = dict()
