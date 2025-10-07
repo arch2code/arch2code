@@ -131,7 +131,7 @@ def ext_sec_header(args, prj, data):
 
     t = Template(sec_tb_external_header_template)
     s = t.render(
-        blockname=data['blockName'], cinst=data.get('cinst', None),
+        blockname=data['blockName'],
         ext_fwd_decl='\n'.join(ext_fwd_decl_s),
         ext_inst_decl='\n'.join(ext_inst_decl_s),
         ext_chnl_decl='\n'.join(ext_chnl_decl_s)
@@ -143,25 +143,11 @@ Refactor the external block connectivity to be used in the testbench
 and avoid channel name clashes
 """
 def refactor_tbExternal(args, prj, data):
-    blockname = data['excludedInstances'][next(iter(data['excludedInstances']))]['instanceType']
+    if len(data['excludedInstances']) > 0:
+        blockname = data['excludedInstances'][next(iter(data['excludedInstances']))]['instanceType']
+    else:
+        blockname = data['blockName']
     data['blockName'] = blockname
-    if data.get('cinst', None):
-        # Rename interface if necessary
-        # Gather all port names for cinst
-        cinst_ports = set()
-        for _,data_ in data['connections'].items():
-            for _,ends_ in data_['ends'].items():
-                if data['cinst'] in ends_['instance']:
-                    cinst_ports.add(ends_['portName'])
-                    data_['channelName'] = ends_['portName']
-
-        # Now rename the interface names if duplicated
-        for _,data_ in data['connections'].items():
-            if data_['channelName'] in cinst_ports:
-                f = list(filter(lambda x: x['instance'] == data['cinst'], data_['ends'].values()))
-                if len(f) == 0:
-                    # Alter the duplicated channel to avoid clash
-                    data_['channelName'] = data_['channelName'] + '_'
 
 sec_tb_class_header_template = """\
 #include "systemc.h"
