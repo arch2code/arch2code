@@ -41,7 +41,7 @@ def constructorInit(args, prj, data):
         busInterface = data["addressDecode"]["registerBusInterface"]
         busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
         out.append(f'void { className }::regHandler(void) {{ //handle register decode')
-        out.append(f'    registerHandler< {busStructs} >(regs, {busInterface}, (1<<({data["addressDecode"]["addressBits"]}-1))-1); }}\n')
+        out.append(f'    registerHandler< {busStructs} >(regs, {busInterface}, (1<<({data["addressDecode"]["addressBits"]}))-1); }}\n')
 
     out.append(f'{ className }::{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode)')
     out.append(f'       : sc_module(blockName)')
