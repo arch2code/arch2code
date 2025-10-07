@@ -166,13 +166,10 @@ INTF_DEFS = {
         'parameters' : {
             'data_t' : { 'datatype' : 'struct', 'default' : 'bit' }
         },
-        'hdlparams' : {
-            'write_t' : { 'isEval' : False, 'datatype' : 'integer', 'value' : 'bit [1:0]' },
-        },
         'signals' : {
             'wdata' : 'data_t',
             'rdata' : 'data_t',
-            'write' : 'write_t'
+            'write' : 'bit [1:0]'
         },
         'modports' : {
             'src' : {
