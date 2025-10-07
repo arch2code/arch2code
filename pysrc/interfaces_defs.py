@@ -162,29 +162,54 @@ INTF_DEFS = {
             'multicycle_types' : []
         }
     },
+    'external_reg' : {
+        'parameters' : {
+            'data_t' : { 'datatype' : 'struct', 'default' : 'bit' }
+        },
+        'hdlparams' : {
+            'write_t' : { 'isEval' : False, 'datatype' : 'integer', 'value' : 'bit [1:0]' },
+        },
+        'signals' : {
+            'wdata' : 'data_t',
+            'rdata' : 'data_t',
+            'write' : 'write_t'
+        },
+        'modports' : {
+            'src' : {
+                'inputs' : ['rdata'],
+                'outputs': ['wdata', 'write']
+            },
+            'dst' : {
+                'inputs' : ['wdata', 'write'],
+                'outputs': ['rdata']
+            }
+        },
+        'sc_channel' : {
+            'type' : 'external_reg',
+            'param_cast' : None,
+            'multicycle_types' : []
+        }
+    },
     'memory' : {
         'parameters' : {
             'addr_t' : { 'datatype' : 'struct', 'default' : 'bit' },
             'data_t' : { 'datatype' : 'struct', 'default' : 'bit' }
         },
         'signals' : {
-            'paddr' : 'addr_t',
-            'psel' : 'bool',
-            'penable' : 'bool',
-            'pwrite' : 'bool',
-            'pwdata' : 'data_t',
-            'pready' : 'bool',
-            'prdata' : 'data_t',
-            'pslverr' : 'bool'
+            'write_data' : 'data_t',
+            'read_data' : 'data_t',
+            'addr' : 'addr_t',
+            'enable' : 'bool',
+            'wr_en' : 'bool'
         },
         'modports' : {
             'src' : {
-                'inputs' : ['pready', 'prdata', 'pslverr'],
-                'outputs': ['paddr', 'psel', 'penable', 'pwrite', 'pwdata']
+                'inputs' : ['read_data'],
+                'outputs': ['write_data', 'addr', 'enable', 'wr_en']
             },
             'dst' : {
-                'inputs' : ['paddr', 'psel', 'penable', 'pwrite', 'pwdata'],
-                'outputs': ['pready', 'prdata', 'pslverr']
+                'inputs' : ['write_data', 'addr', 'enable', 'wr_en'],
+                'outputs': ['read_data']
             }
         },
         'sc_channel' : {
