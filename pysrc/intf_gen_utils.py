@@ -30,6 +30,12 @@ def get_intf_data(data, prj_data):
             if 'addressStruct' in data:
                 ret['structures'].append({'structureType': 'addr_t', 'structure': data['addressStruct'], 'structureKey': data['addressStructKey']})
             return ret
+def get_channel_name(data):
+    channel_base = data["interfaceName"]
+    if data.get('channelCount', 0) > 1:
+        channel_base = f"{channel_base}_{data['index']}"
+    return channel_base
+
 class intfEvalDSL:
 
     def __init__(self, prj_data, struct_key):
@@ -135,7 +141,7 @@ def sc_connect_channels(data, indent):
 def sc_connect_channel_type(data, indent):
     out = []
     for key, value in data.items():
-        channelBase = value["interfaceName"]
+        channelBase = get_channel_name(value)
         if (len(value['ends']) > 2):
             multiDst = get_intf_defs(get_intf_type(value['interfaceType'])).get('multiDst', False)
             if not multiDst:
@@ -268,7 +274,7 @@ def sc_gen_block_channels(conn_data, prj):
 
     intf_type = get_intf_type(conn_data['interfaceType'])
     intf_data = get_intf_data(conn_data, prj)
-    chnl_name = conn_data['interfaceName']
+    chnl_name = get_channel_name(conn_data)
     intf_structs = intf_data['structures']
     intf_param = dict()
 
