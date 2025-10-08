@@ -4,8 +4,6 @@ instance uBlockA is of type blockA
 instance uAPBDecode is of type apbDecode
 instance uBlockC is of type blockC
 instance uBlockB is of type blockB
-instance uBlockARegs is of type blockARegs
-instance uBlockBRegs is of type blockBRegs
 instance uBlockD is of type blockD
 instance uBlockF0 is of type blockF
 instance uBlockF1 is of type blockF
@@ -13,6 +11,8 @@ instance uThreeCs is of type threeCs
 instance uBlockC0 is of type blockC
 instance uBlockC1 is of type blockC
 instance uBlockC2 is of type blockC
+instance ublockBRegs is of type blockBRegs
+instance ublockARegs is of type blockARegs
 Block: cpu
 Connection: uCPU -> uAPBDecode
 Interface: apbReg
@@ -125,7 +125,6 @@ Structure: apbDataSt
 Var:  data  for the data sent or recieved via APB
 
 Block: blockARegs
-Block: blockBRegs
 Block: blockD
 Connection: uBlockD -> uThreeCs
 Interface: cStuffIf
@@ -258,3 +257,4 @@ Structure: seeSt
 Var:  variablec Two bits of C Two bits of C
 Var:  variablec2 Three bits of C Three bits of C
 
+Block: blockBRegs

@@ -24,7 +24,7 @@ import apbDecode_package::*;
     memory_if #(.data_t(aMemSt), .addr_t(aMemAddrSt)) blockATable1_reg();
 
 // Instances
-blockARegs uBlockARegs (
+blockARegs ublockARegs (
     .apbReg (apbReg),
     .blockATable0 (blockATable0_reg),
     .blockATable1 (blockATable1_reg),

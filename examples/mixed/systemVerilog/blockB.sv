@@ -38,15 +38,6 @@ import mixed_package::*;
     memory_if #(.data_t(nestedSt), .addr_t(bSizeSt)) blockBTableSP_bob();
 
 // Instances
-blockBRegs uBlockBRegs (
-    .apbReg (apbReg),
-    .blockBTable1 (blockBTable1_reg),
-    .rwD (rwD),
-    .roBsize (roBsize),
-    .clk (clk),
-    .rst_n (rst_n)
-);
-
 blockD uBlockD (
     .btod (btod),
     .blockBTable1 (blockBTable1_port1),
@@ -86,6 +77,15 @@ threeCs uThreeCs (
     .see0 (cStuffIf),
     .see1 (cStuff1),
     .see2 (cStuff2),
+    .clk (clk),
+    .rst_n (rst_n)
+);
+
+blockBRegs ublockBRegs (
+    .apbReg (apbReg),
+    .blockBTable1 (blockBTable1_reg),
+    .rwD (rwD),
+    .roBsize (roBsize),
     .clk (clk),
     .rst_n (rst_n)
 );

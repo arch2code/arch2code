@@ -18,7 +18,7 @@ import apbDecode_package::*;
     memory_if #(.data_t(bMemSt), .addr_t(bMemAddrSt)) blockBTable_reg();
 
 // Instances
-blockBRegs uBlockBRegs (
+blockBRegs ublockBRegs (
     .apbReg (apbReg),
     .blockBTable (blockBTable_reg),
     .rwUn0B (rwUn0B),

@@ -7,22 +7,28 @@ def postProcess(prj):
         prj (project): The project object.
     """
     reg_interface = prj.addressControl.get('RegisterBusInterface', 'apbReg')
+    file_gen = prj.a2cProj.get('fileGeneration', {})
+    proj_file_gen = prj.proj.get('fileGeneration', {})
+    # prefer users input else revert to default
+    regBlockNaming = proj_file_gen.get('regBlockNaming', file_gen.get('regBlockNaming', {}))
+    instance_prefix = regBlockNaming.get('instancePrefix', 'u_')
+    block_suffix = regBlockNaming.get('blockSuffix', '_regs')
     # build a dictionary with sections and content the same as if it was parsed from a file
     #
     blocksWithRegisters = dict()
     for context, registers in prj.data['registers'].items():
         for register, registerData in registers.items():
             if registerData['blockKey'] not in blocksWithRegisters:
-                blocksWithRegisters[registerData['blockKey']] = None
+                blocksWithRegisters[registerData['blockKey']] = registerData['block']
     blocksWithMemories = dict()
     for context, memories in prj.data['memories'].items():
         for memory, memoryData in memories.items():
             if memoryData['regAccess'] and memoryData['blockKey'] not in blocksWithMemories:
-                blocksWithMemories[memoryData['blockKey']] = None
+                blocksWithMemories[memoryData['blockKey']] = memoryData['block']
     # create a dictionary of connections to be added to the database
     blocksNeedingConnections = blocksWithRegisters.copy()
     blocksNeedingConnections.update(blocksWithMemories)
-
+        
     # create a set containers that hold address decode blocks, as blocks within the same scope of the decode can be connected directly
     decoderContainer = dict() # mapping of qualified container to qualified decoder instance
     instancesSimple = dict() # mapping of qualified instance to simple instance name
@@ -31,6 +37,26 @@ def postProcess(prj):
     primaryDecodeContainer = None
     for instance, instanceKey in prj.instances.items():
         instancesSimple[instanceKey] = instance
+
+    reg_handler_blocks = dict()
+    reg_handler_instances = dict()
+    reg_handler_connection_maps = list()
+    for block_key, block in blocksNeedingConnections.items():
+        reg_block = block + block_suffix
+        has_mdl = len(prj.hierKey[block_key]) > 0
+        reg_handler_blocks[reg_block] = {'desc': block + ' Register handler',
+                                         'isRegHandler': True,
+                                         'hasVl': False,
+                                         'hasRtl': True,
+                                         'hasMdl': has_mdl,
+                                         'hasTb': False,
+                                         'isRegHandler': True}
+        reg_handler_instances[instance_prefix + reg_block] = {'instanceType': reg_block,
+                                                   'container': block}
+        reg_handler_connection_maps.append({'interface': reg_interface,
+                                            'block': block,
+                                            'direction': 'dst',
+                                            'instance': instance_prefix + reg_block})
 
     for addressGroup, groupData in prj.addressControl['AddressGroups'].items():
         if 'decoderInstance' in groupData:
@@ -69,6 +95,7 @@ def postProcess(prj):
                     decoderContainerInstances[instanceData['instanceTypeKey']] = {instanceData['instanceKey']: instanceData}
                 else:
                     decoderContainerInstances[instanceData['instanceTypeKey']][instanceData['instanceKey']] = instanceData
+
     connections = list()
     connectionMaps = list()
     listOfInstances = list()
@@ -118,7 +145,10 @@ def postProcess(prj):
             connectionMap['instance'] = instancesSimple[decoder]
             connectionMaps.append(connectionMap)
     ret = dict()
+    ret['blocks'] = reg_handler_blocks
+    ret['instances'] = reg_handler_instances
     ret['connections'] = connections
     ret['connectionMaps'] = connectionMaps
+    ret['connectionMaps'].extend(reg_handler_connection_maps)
     prj.config.setConfig("INSTANCES_WITH_REGAPB", listOfInstances, bin=True )
     return ret

@@ -231,18 +231,9 @@ blocks:
   apbDecode:
     desc: The block to decode apb addresses
     hasVl: false
-  blockBRegs:
-    desc: The register block inside block B
-    hasVl: false
-    isRegHandler: true
   blockD:
     desc: The block named D
     hasVl: false
-  blockARegs:
-    desc: The register block inside block A
-    hasMdl: false
-    hasVl: false
-    isRegHandler: true
   blockE: # Unused block - this is to test that unused blocks are handled properly by generator
     desc: The block named E
     hasMdl: false
@@ -274,8 +265,6 @@ instances:
   uAPBDecode:  {container: top,     instanceType: apbDecode,                      instGroup: top,                             color: pink}
   uBlockC:     {container: top,     instanceType: blockC,                         instGroup: top,                             color: orange}
   uBlockB:     {container: top,     instanceType: blockB,     addressGroup: top,  instGroup: top,                             color: lightslateblue}
-  uBlockARegs: {container: blockA,  instanceType: blockARegs,                     instGroup: top,                             color: grey}
-  uBlockBRegs: {container: blockB,  instanceType: blockBRegs,                     instGroup: top,                             color: grey}
   uBlockD:     {container: blockB,  instanceType: blockD,     addressGroup: ip1,  instGroup: top, addressMultiples: 2 } #get 2x the number of addresses
   uBlockF0:    {container: blockB,  instanceType: blockF,     addressGroup: ip1,  instGroup: top, variant: variant0   }
   uBlockF1:    {container: blockB,  instanceType: blockF,                         instGroup: top, variant: variant1   }
@@ -312,8 +301,6 @@ connections:
 # in connection maps the direction field should match the instance port direction
 connectionMaps:
   - {interface: aStuffIf, block: blockB,  port: btod, direction: dst, instance: uBlockD,     instancePort: btod}
-  - {interface: apbReg,   block: blockA,              direction: dst, instance: uBlockARegs}
-  - {interface: apbReg,   block: blockB,              direction: dst, instance: uBlockBRegs}
   - {interface: cStuffIf, block: threeCs, port: see0, direction: dst, instance: uBlockC0,    instancePort: see}
   - {interface: cStuffIf, block: threeCs, port: see1, direction: dst, instance: uBlockC1,    instancePort: see}
   - {interface: cStuffIf, block: threeCs, port: see2, direction: dst, instance: uBlockC2,    instancePort: see}

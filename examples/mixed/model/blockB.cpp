@@ -4,10 +4,10 @@
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "blockB.h"
-#include "blockBRegs_base.h"
 #include "blockD_base.h"
 #include "blockF_base.h"
 #include "threeCs_base.h"
+#include "blockBRegs_base.h"
 SC_HAS_PROCESS(blockB);
 
 blockB::registerBlock blockB::registerBlock_; //register the block with the factory
@@ -26,11 +26,11 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,loopFD("blockD_loopFD", "blockF")
         ,rwD("blockB_rwD", "blockB")
         ,roBsize("blockB_roBsize", "blockB")
-        ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>( instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "")))
         ,uBlockD(std::dynamic_pointer_cast<blockDBase>( instanceFactory::createInstance(name(), "uBlockD", "blockD", "")))
         ,uBlockF0(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0")))
         ,uBlockF1(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1")))
         ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>( instanceFactory::createInstance(name(), "uThreeCs", "threeCs", "")))
+        ,ublockBRegs(std::dynamic_pointer_cast<blockBRegsBase>( instanceFactory::createInstance(name(), "ublockBRegs", "blockBRegs", "")))
         ,blockBTable0(name(), "blockBTable0", mems, BSIZE, HWMEMORYTYPE_LOCAL)
         ,blockBTable1(name(), "blockBTable1", mems, BSIZE)
         ,blockBTable2(name(), "blockBTable2", mems, BSIZE)
@@ -42,7 +42,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
 {
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
     uBlockD->btod(btod);
-    uBlockBRegs->apbReg(apbReg);
+    ublockBRegs->apbReg(apbReg);
     // instance to instance connections via channel
     uBlockD->cStuffIf(cStuffIf);
     uThreeCs->see0(cStuffIf);
@@ -61,11 +61,11 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     uBlockF1->dSout(loopFD);
     uBlockD->inD(loopFD);
     uBlockF0->rwD(rwD);
-    uBlockBRegs->rwD(rwD);
+    ublockBRegs->rwD(rwD);
     uBlockF1->rwD(rwD);
     uBlockD->rwD(rwD);
     uBlockD->roBsize(roBsize);
-    uBlockBRegs->roBsize(roBsize);
+    ublockBRegs->roBsize(roBsize);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(doneTest);

@@ -2122,6 +2122,7 @@ class projectCreate:
             self.generateHierarchy()
             # create 'fake' global context to allow processing
             self.yamlContext['_global'] = {key: None for key in self.yamlContext}
+            self.yamlContext['_global']['_global'] = None
             for script in self.proj["postProcess"]:
                 fileName = basePathRelative(expandDirMacros(script))
                 scriptCode = loadModule(fileName)

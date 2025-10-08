@@ -11,8 +11,8 @@
 #define BASE_ADDR_USOMERAPPER          0x0
 #define BASE_ADDR_UBLOCKA              0x0
 #define BASE_ADDR_UBLOCKB              0x1000000
-#define BASE_ADDR_UBLOCKAREGS          0x0
 #define BASE_ADDR_UBLOCKBREGS          0x0
+#define BASE_ADDR_UBLOCKAREGS          0x0
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=includes --section=regAddresses

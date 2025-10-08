@@ -16,10 +16,10 @@
 #include "mixedBlockCIncludes.h"
 #include "mixedIncludeIncludes.h"
 //contained instances forward class declaration
-class blockBRegsBase;
 class blockDBase;
 class blockFBase;
 class threeCsBase;
+class blockBRegsBase;
 
 SC_MODULE(blockB), public blockBase, public blockBBase
 {
@@ -58,11 +58,11 @@ public:
     status_channel< bSizeRegSt > roBsize;
 
     //instances contained in block
-    std::shared_ptr<blockBRegsBase> uBlockBRegs;
     std::shared_ptr<blockDBase> uBlockD;
     std::shared_ptr<blockFBase> uBlockF0;
     std::shared_ptr<blockFBase> uBlockF1;
     std::shared_ptr<threeCsBase> uThreeCs;
+    std::shared_ptr<blockBRegsBase> ublockBRegs;
 
     memories mems;
     //memories
