@@ -40,7 +40,7 @@ def render(args, prj, data):
                 for item in intf_data['structures']:
                     params.append(f".{item['structureType']}({item['structure']})")
             s += ', '.join(params)
-            s += f") {value['interfaceName']}();"
+            s += f") {intf_gen_utils.get_channel_name(value)}();"
             out.append(s)
     out.append("")
 
@@ -96,13 +96,13 @@ def render(args, prj, data):
         # loop through the memory connections that connect to this instance
         for unusedKey2, memValue in data['memoryConnections'].items():
             if (value['instance'] == memValue['instance']):
-                out.append(f"{indent}.{memValue['memory']} ({memValue['interfaceName']}),")
+                out.append(f"{indent}.{memValue['memory']} ({intf_gen_utils.get_channel_name(memValue)}),")
         # loop through the register connections that connect to this instance
         for sourceType in data['connectDouble']:
             for connKey, connValue in data['connectDouble'][sourceType].items():
                 for end, endValue in connValue['ends'].items():
                     if (value['instance'] == endValue['instance']):
-                        out.append(f"{indent}.{endValue['portName']} ({connValue['interfaceName']}),")
+                        out.append(f"{indent}.{endValue['portName']} ({intf_gen_utils.get_channel_name(connValue)}),")
         out.append(f"{indent}.clk (clk),\n{indent}.rst_n (rst_n)\n);\n")
 
     #// Memory Instances if they exist

@@ -58,11 +58,7 @@ def constructorInit(args, prj, data):
         for chnl, chnlInfo in data["connectDouble"][channelType].items():
             chnl_table[chnl] = intf_gen_utils.sc_gen_block_channels(chnlInfo, prj)
 
-            #if chnlInfo["channelCount"] > 1:
-            #    channelBase = chnlInfo["interfaceName"] + "_" + chnlInfo["src"] + "_" + chnlInfo["dst"]
-            #else:
-            channelBase = chnlInfo["interfaceName"]
-            #channelBase += "_chnl"
+            channelBase = chnl_table[chnl]['chnl_name']
             for k, v in chnlInfo["ends"].items():
                 if v["direction"] == "src":
                     src = v.get("instanceType") or chnlInfo.get("block", "")

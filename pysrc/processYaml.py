@@ -99,15 +99,16 @@ def camelCase(*words):
             #no need for empty sting case
     return out
 
+def getKeyPriority(data, prioritylist):
+    for key in prioritylist:
+        ret = data.get(key, None)
+        # filter out empty strings or missing values
+        if ret:
+            return ret
+    return None
+
 def getPortChannelName(row, portKeyName = 'port'):
-    port = row.get(portKeyName, '')
-    name = row.get('name', '')
-    interface = row.get('interface', '')
-    if port:
-        return port
-    if name:
-        return name
-    return interface
+    return getKeyPriority(row, [portKeyName, 'name', 'interface'])
 
 def loadModule(filename):
     module = None
@@ -1590,7 +1591,7 @@ class projectOpen:
                 ret['interfaceTypes'][self.data['interfaces'][connVal['interfaceKey']]['interfaceType']] = 0
         for conn, connVal in connections.items():
             # create jinja friendly names
-            connVal['interfaceName'] = getPortChannelName(connVal, 'interfaceName')
+            connVal['interfaceName'] = getKeyPriority(connVal, ['interfaceName', 'srcport', 'name', 'interface'])
             intfInfo = self.data['interfaces'][connVal['interfaceKey']]
             self.getBDGetIntfStructs(ret, intfData=intfInfo)
             connVal['interfaceType'] = intfInfo['interfaceType']
@@ -1609,15 +1610,40 @@ class projectOpen:
     def getBDConnectionsFinal(self, ret):
         # deduplicate the channels
         duplicateCheck = dict()
+        duplicateList = []
         for connType, connSources in self.connMapping.items():
             for connSource in connSources:
                 ret[connType][connSource] = dict()
                 for conn, connVal in ret[connSource].items():
                     channel = connVal['interfaceName']
+                    index = 0
                     if channel in duplicateCheck:
-                        printError(f"Multiple instances of a connection with the same interface name {channel} ")
-                        exit(warningAndErrorReport())
-                    ret[connType][connSource][channel] = dict(connVal)
+                        if connVal['interfaceKey'] != duplicateCheck[channel]['connInfo']['interfaceKey']:
+                            printError(f"Connection {conn} in {connSource} has the same channel name {channel} as another connection but different interface types "
+                                       f"{self.data['interfaces'][connVal['interfaceKey']]['interfaceType']} and "
+                                       f"{self.data['interfaces'][duplicateCheck[channel]['connInfo']['interfaceKey']]['interfaceType']}. Please rename one of the channels")
+                            exit(warningAndErrorReport())
+                        if connType != duplicateCheck[channel]['connType'] or connSource != duplicateCheck[channel]['connSource']:
+                            printError(f"Connection {conn} in {connSource} has the same channel name {channel} as another connection but different connection types "
+                                       f"{connType} and {duplicateCheck[channel]['connType']}. Please rename one of the channels")
+                            exit(warningAndErrorReport())
+                        count = duplicateCheck[channel]['count']
+                        if count == 1:
+                            duplicateList.append(channel)
+                        duplicateCheck[channel]['conns'][conn] = count
+                        index = count
+                        duplicateCheck[channel]['count'] = count + 1
+                    else:
+                        duplicateCheck[channel] = {'connType': connType, 'connSource': connSource, 'connInfo': connVal, 'conns': {conn: 0}, 'count': 1}
+                    ret[connType][connSource][conn] = dict(connVal)
+                    ret[connType][connSource][conn]['channelCount'] = 1
+                    ret[connType][connSource][conn]['index'] = index
+        for channel in duplicateList:
+            connType = duplicateCheck[channel]['connType']
+            connSource = duplicateCheck[channel]['connSource']
+            channelCount = duplicateCheck[channel]['count']
+            for conn, connDisambiguate in duplicateCheck[channel]['conns'].items():
+                ret[connType][connSource][conn]['channelCount'] = channelCount
 
 
     def getBDPorts(self, ret):
