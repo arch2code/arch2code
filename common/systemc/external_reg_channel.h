@@ -19,7 +19,7 @@ namespace sc_core {
 // write(T)
 // |        ---T---> reg_read(T) where transaction is change of value event
 //
-//                   reg_write(T) 
+//                   reg_write(T)
 // read(T) <---T---|
 //
 template <class T>
@@ -30,13 +30,13 @@ public:
 
     // blocking read
     virtual void read( T& ) = 0;
-    virtual T read() = 0;
     // non-blocking variant
     virtual void readNonBlocking( T& ) = 0;
     virtual T readNonBlocking() = 0;
     virtual void setExternalEvent( sc_event *event ) = 0;
     // non-blocking
     virtual void write( const T& val_ ) = 0;
+    virtual void reg_write( const T& val_ ) = 0; // triggers event to reader
 
 protected:
     // constructor
@@ -55,7 +55,9 @@ class external_reg_out_if
 public:
     // blocking read
     virtual void reg_read( T& ) = 0;             // waits on event
+    virtual T reg_read() = 0;
     // blocking write
+    virtual void write( const T& val_ ) = 0;
     virtual void reg_write( const T& val_ ) = 0; // triggers event to reader
 
 protected:
@@ -98,7 +100,6 @@ public:
 
     // blocking push
     virtual void read( T& ) override;
-    virtual T read() override;
     // non-blocking variant
     virtual void readNonBlocking( T& ) override;
     virtual T readNonBlocking() override;
@@ -107,10 +108,11 @@ public:
         m_channel_update_event_ptr = event;
         m_external_arb = true;
     }
-    // non-blocking 
+    // non-blocking
     virtual void write( const T& val_ ) override;
     // blocking read
     virtual void reg_read( T& ) override;             // waits on event
+    virtual T reg_read() override;             // waits on event
     // blocking write
     virtual void reg_write( const T& val_ ) override; // triggers event to reader
     // other methods
@@ -146,7 +148,7 @@ protected:
 
     sc_event m_channel_update_event;
     sc_event* m_channel_update_event_ptr;
-    sc_event m_reg_write_event; 
+    sc_event m_reg_write_event;
 
     sc_port_base* m_reader; // used for static design rule checking
     sc_port_base* m_writer; // used for static design rule checking
@@ -167,7 +169,7 @@ inline void external_reg_channel<T>::register_port( sc_port_base& port_,
     std::string nm( if_typename_ );
     if( nm == typeid( external_reg_in_if<T> ).name() )
     {
-        // multiple readers can be connected 
+        // multiple readers can be connected
         if( m_reader == 0 ) {
             m_reader = &port_;
 	}
