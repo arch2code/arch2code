@@ -62,7 +62,7 @@ public:
     std::shared_ptr<blockFBase> uBlockF0;
     std::shared_ptr<blockFBase> uBlockF1;
     std::shared_ptr<threeCsBase> uThreeCs;
-    std::shared_ptr<blockBRegsBase> ublockBRegs;
+    std::shared_ptr<blockBRegsBase> uBlockBRegs;
 
     memories mems;
     //memories

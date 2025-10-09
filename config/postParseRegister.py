@@ -1,4 +1,5 @@
 from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport, printIfDebug
+from pysrc.processYaml import camelCase
 
 def postProcess(prj):
     """Post process the project after parsing the YAML file.
@@ -13,6 +14,7 @@ def postProcess(prj):
     regBlockNaming = proj_file_gen.get('regBlockNaming', file_gen.get('regBlockNaming', {}))
     instance_prefix = regBlockNaming.get('instancePrefix', 'u_')
     block_suffix = regBlockNaming.get('blockSuffix', '_regs')
+    camel_case = regBlockNaming.get('camelCase', False)
     # build a dictionary with sections and content the same as if it was parsed from a file
     #
     blocksWithRegisters = dict()
@@ -28,7 +30,7 @@ def postProcess(prj):
     # create a dictionary of connections to be added to the database
     blocksNeedingConnections = blocksWithRegisters.copy()
     blocksNeedingConnections.update(blocksWithMemories)
-        
+
     # create a set containers that hold address decode blocks, as blocks within the same scope of the decode can be connected directly
     decoderContainer = dict() # mapping of qualified container to qualified decoder instance
     instancesSimple = dict() # mapping of qualified instance to simple instance name
@@ -44,6 +46,7 @@ def postProcess(prj):
     for block_key, block in blocksNeedingConnections.items():
         reg_block = block + block_suffix
         has_mdl = len(prj.hierKey[block_key]) > 0
+        instance_name = camelCase(instance_prefix, reg_block) if camel_case else instance_prefix + reg_block
         reg_handler_blocks[reg_block] = {'desc': block + ' Register handler',
                                          'isRegHandler': True,
                                          'hasVl': False,
@@ -51,12 +54,12 @@ def postProcess(prj):
                                          'hasMdl': has_mdl,
                                          'hasTb': False,
                                          'isRegHandler': True}
-        reg_handler_instances[instance_prefix + reg_block] = {'instanceType': reg_block,
+        reg_handler_instances[instance_name] = {'instanceType': reg_block,
                                                    'container': block}
         reg_handler_connection_maps.append({'interface': reg_interface,
                                             'block': block,
                                             'direction': 'dst',
-                                            'instance': instance_prefix + reg_block})
+                                            'instance': instance_name})
 
     for addressGroup, groupData in prj.addressControl['AddressGroups'].items():
         if 'decoderInstance' in groupData:

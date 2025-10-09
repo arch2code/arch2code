@@ -81,7 +81,7 @@ threeCs uThreeCs (
     .rst_n (rst_n)
 );
 
-blockBRegs ublockBRegs (
+blockBRegs uBlockBRegs (
     .apbReg (apbReg),
     .blockBTable1 (blockBTable1_reg),
     .rwD (rwD),

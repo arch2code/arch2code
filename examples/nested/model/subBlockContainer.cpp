@@ -13,7 +13,7 @@ subBlockContainer::subBlockContainer(sc_module_name blockName, const char * vari
        : sc_module(blockName)
         ,blockBase("subBlockContainer", name(), bbMode)
         ,subBlockContainerBase(name(), variant)
-        ,test("subBlock_test", "subBlock")
+        ,src("subBlock_src", "subBlock")
         ,uSubBlock0(std::dynamic_pointer_cast<subBlockBase>( instanceFactory::createInstance(name(), "uSubBlock0", "subBlock", "")))
         ,uSubBlock1(std::dynamic_pointer_cast<subBlockBase>( instanceFactory::createInstance(name(), "uSubBlock1", "subBlock", "")))
 // GENERATED_CODE_END
@@ -23,8 +23,8 @@ subBlockContainer::subBlockContainer(sc_module_name blockName, const char * vari
     uSubBlock0->dst(in);
     uSubBlock1->src(out);
     // instance to instance connections via channel
-    uSubBlock0->src(test);
-    uSubBlock1->dst(test);
+    uSubBlock0->src(src);
+    uSubBlock1->dst(src);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 }

@@ -47,7 +47,7 @@ fileGeneration:
 
   # standard copyright statement to be added to all generated files - change to suite your company
   fileCopyrightStatement: "copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE"
-  regBlockNaming: {instancePrefix: 'u', blockSuffix: 'Regs'} # naming convention for register handler blocks - instancePrefix is prefix for instance names, blockSuffix is suffix for block names
+  regBlockNaming: {instancePrefix: 'u', blockSuffix: 'Regs', camelCase: true} # naming convention for register handler blocks - instancePrefix is prefix for instance names, blockSuffix is suffix for block names
 postProcess:
   - $a2c/config/postParseRegister.py
   - $a2c/config/postParseChecks.py

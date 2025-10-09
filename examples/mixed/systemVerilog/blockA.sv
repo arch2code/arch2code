@@ -17,7 +17,7 @@ import mixed_package::*;
     status_if #(.data_t(aRegSt)) roA();
 
 // Instances
-blockARegs ublockARegs (
+blockARegs uBlockARegs (
     .apbReg (apbReg),
     .roA (roA),
     .clk (clk),

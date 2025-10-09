@@ -30,7 +30,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,uBlockF0(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0")))
         ,uBlockF1(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1")))
         ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>( instanceFactory::createInstance(name(), "uThreeCs", "threeCs", "")))
-        ,ublockBRegs(std::dynamic_pointer_cast<blockBRegsBase>( instanceFactory::createInstance(name(), "ublockBRegs", "blockBRegs", "")))
+        ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>( instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "")))
         ,blockBTable0(name(), "blockBTable0", mems, BSIZE, HWMEMORYTYPE_LOCAL)
         ,blockBTable1(name(), "blockBTable1", mems, BSIZE)
         ,blockBTable2(name(), "blockBTable2", mems, BSIZE)
@@ -42,7 +42,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
 {
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
     uBlockD->btod(btod);
-    ublockBRegs->apbReg(apbReg);
+    uBlockBRegs->apbReg(apbReg);
     // instance to instance connections via channel
     uBlockD->cStuffIf(cStuffIf);
     uThreeCs->see0(cStuffIf);
@@ -61,11 +61,11 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     uBlockF1->dSout(loopFD);
     uBlockD->inD(loopFD);
     uBlockF0->rwD(rwD);
-    ublockBRegs->rwD(rwD);
+    uBlockBRegs->rwD(rwD);
     uBlockF1->rwD(rwD);
     uBlockD->rwD(rwD);
     uBlockD->roBsize(roBsize);
-    ublockBRegs->roBsize(roBsize);
+    uBlockBRegs->roBsize(roBsize);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(doneTest);

@@ -30,7 +30,7 @@ private:
 public:
     // channels
     // Test interface
-    rdy_vld_channel< test_st > test;
+    rdy_vld_channel< test_st > src;
 
     //instances contained in block
     std::shared_ptr<subBlockBase> uSubBlock0;
