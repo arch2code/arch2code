@@ -27,8 +27,6 @@ public:
     // test_pop_ack->uConsumer: Ready Ack Test interface
     pop_ack_out< data_st > test_pop_ack;
 
-    // dst ports
-
 
     producerBase(std::string name, const char * variant) :
         test_rdy_vld("test_rdy_vld")
@@ -65,8 +63,6 @@ public:
     // test_pop_ack->uConsumer: Ready Ack Test interface
     pop_ack_in< data_st > test_pop_ack;
 
-    // dst ports
-
 
     producerInverted(std::string name) :
         test_rdy_vld(("test_rdy_vld"+name).c_str())
@@ -94,16 +90,14 @@ class producerChannels
 {
 public:
     // src ports
-    //   test_rdy_vld
+    // Ready Valid Test interface
     rdy_vld_channel< data_st > test_rdy_vld;
-    //   test_req_ack
+    // Req Ack Test interface
     req_ack_channel< data_st, data_st > test_req_ack;
-    //   test_push_ack
+    // Valid Ack Test interface
     push_ack_channel< data_st > test_push_ack;
-    //   test_pop_ack
+    // Ready Ack Test interface
     pop_ack_channel< data_st > test_pop_ack;
-
-    // dst ports
 
 
     producerChannels(std::string name, std::string srcName) :

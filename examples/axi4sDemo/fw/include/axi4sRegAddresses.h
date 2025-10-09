@@ -9,13 +9,11 @@ namespace fw_ns {
 #define BASE_ADDR_U_AXI4SDEMO          0x0
 #define BASE_ADDR_U_AXI4S_M_DRV        0x0
 #define BASE_ADDR_U_AXI4S_S_DRV        0x0
-
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=includes --section=regAddresses
 //register addresses
 //memories base addresses
-
 // GENERATED_CODE_END
 
 }

@@ -22,7 +22,7 @@ subBlockContainer::subBlockContainer(sc_module_name blockName, const char * vari
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
     uSubBlock0->dst(in);
     uSubBlock1->src(out);
-// instance to instance connections via channel
+    // instance to instance connections via channel
     uSubBlock0->src(src);
     uSubBlock1->dst(src);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );

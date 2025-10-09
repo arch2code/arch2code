@@ -71,11 +71,11 @@ class secondSubBChannels
 {
 public:
     // src ports
-    //   beta
+    // Test interface beta
     rdy_vld_channel< test_st > beta;
 
     // dst ports
-    //   test
+    // Test interface
     rdy_vld_channel< test_st > test;
 
 

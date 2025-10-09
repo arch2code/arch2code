@@ -71,11 +71,11 @@ class axi4sDemoChannels
 {
 public:
     // src ports
-    //   axi4str_t2
+    // AXI4 Stream Interface Type 2 (64 bits data)
     axi4_stream_channel< data_t2_t, tid_t2_t, tdest_t2_t, tuser_t2_t > axis4_t2;
 
     // dst ports
-    //   axi4str_t1
+    // AXI4 Stream Interface Type 1 (256 bits data)
     axi4_stream_channel< data_t1_t, tid_t1_t, tdest_t1_t, tuser_t1_t > axis4_t1;
 
 

@@ -27,9 +27,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     producer(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~producer() override = default;
 

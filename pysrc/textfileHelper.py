@@ -114,6 +114,7 @@ class codeText:
         parser.add_argument('--project', default=[], nargs='+', help='List of projects that this file belongs to if no match ignore file' )
         parser.add_argument('--hierarchy', action='store_true', help='generate in hierarchy mode' )
         parser.add_argument('--inst', type=str, help='instance name' )
+        parser.add_argument('--excludeInst', type=str, help='Instance to exclude' )
 
         self.params = parser.parse_args(cmdLine.split(' '))
         self.block = self.params.block

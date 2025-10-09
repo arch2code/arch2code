@@ -15,24 +15,21 @@ class testBlockBase : public virtual blockPortBase
 public:
     virtual ~testBlockBase() = default;
     // src ports
-    // test->uTestBlock0: Test interface
+    // test->uTestBlock1: Test interface
     rdy_vld_out< test_st > loop1src;
-    // test->uSubBlockContainer1: Test interface
+    // test->uSubBlockContainer0: Test interface
     rdy_vld_out< test_st > loop2src;
 
     // dst ports
-    // uTop->test: Test interface
-    //rdy_vld_in< test_st > top;
     // uTestBlock0->test: Test interface
     rdy_vld_in< test_st > loop1dst;
-    // uSubBlockContainer2->test: Test interface
+    // uSubBlockContainer0->test: Test interface
     rdy_vld_in< test_st > loop2dst;
 
 
     testBlockBase(std::string name, const char * variant) :
         loop1src("loop1src")
         ,loop2src("loop2src")
-        //,top("top")
         ,loop1dst("loop1dst")
         ,loop2dst("loop2dst")
     {};
@@ -40,7 +37,6 @@ public:
     {
         loop1src->setTimed(nsec, mode);
         loop2src->setTimed(nsec, mode);
-        //top->setTimed(nsec, mode);
         loop1dst->setTimed(nsec, mode);
         loop2dst->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
@@ -49,7 +45,6 @@ public:
     {
         loop1src->setLogging(verbosity);
         loop2src->setLogging(verbosity);
-        //top->setLogging(verbosity);
         loop1dst->setLogging(verbosity);
         loop2dst->setLogging(verbosity);
     };
@@ -58,24 +53,21 @@ class testBlockInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // test->uTestBlock0: Test interface
+    // test->uTestBlock1: Test interface
     rdy_vld_in< test_st > loop1src;
-    // test->uSubBlockContainer1: Test interface
+    // test->uSubBlockContainer0: Test interface
     rdy_vld_in< test_st > loop2src;
 
     // dst ports
-    // uTop->test: Test interface
-    //rdy_vld_out< test_st > top;
     // uTestBlock0->test: Test interface
     rdy_vld_out< test_st > loop1dst;
-    // uSubBlockContainer2->test: Test interface
+    // uSubBlockContainer0->test: Test interface
     rdy_vld_out< test_st > loop2dst;
 
 
     testBlockInverted(std::string name) :
         loop1src(("loop1src"+name).c_str())
         ,loop2src(("loop2src"+name).c_str())
-        //,top(("top"+name).c_str())
         ,loop1dst(("loop1dst"+name).c_str())
         ,loop2dst(("loop2dst"+name).c_str())
     {};
@@ -83,7 +75,6 @@ public:
     {
         loop1src->setTimed(nsec, mode);
         loop2src->setTimed(nsec, mode);
-        //top->setTimed(nsec, mode);
         loop1dst->setTimed(nsec, mode);
         loop2dst->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
@@ -92,7 +83,6 @@ public:
     {
         loop1src->setLogging(verbosity);
         loop2src->setLogging(verbosity);
-        //top->setLogging(verbosity);
         loop1dst->setLogging(verbosity);
         loop2dst->setLogging(verbosity);
     };
@@ -101,24 +91,21 @@ class testBlockChannels
 {
 public:
     // src ports
-    //   test
+    // Test interface
     rdy_vld_channel< test_st > loop1src;
-    //   test
+    // Test interface
     rdy_vld_channel< test_st > loop2src;
 
     // dst ports
-    //   test
-    //rdy_vld_channel< test_st > top;
-    //   test
+    // Test interface
     rdy_vld_channel< test_st > loop1dst;
-    //   test
+    // Test interface
     rdy_vld_channel< test_st > loop2dst;
 
 
     testBlockChannels(std::string name, std::string srcName) :
     loop1src(("loop1src"+name).c_str(), srcName)
     ,loop2src(("loop2src"+name).c_str(), srcName)
-    //,top(("top"+name).c_str(), srcName)
     ,loop1dst(("loop1dst"+name).c_str(), srcName)
     ,loop2dst(("loop2dst"+name).c_str(), srcName)
     {};
@@ -128,8 +115,6 @@ public:
         b->loop1src( loop1src );
         a->loop2src( loop2src );
         b->loop2src( loop2src );
-        //a->top( top );
-        //b->top( top );
         a->loop1dst( loop1dst );
         b->loop1dst( loop1dst );
         a->loop2dst( loop2dst );

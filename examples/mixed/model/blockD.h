@@ -28,9 +28,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     blockD(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~blockD() override = default;
 

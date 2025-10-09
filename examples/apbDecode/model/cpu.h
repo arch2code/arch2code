@@ -27,9 +27,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~cpu() override = default;
 

@@ -28,10 +28,6 @@ private:
     };
     static registerBlock registerBlock_;
 public:
-
-    // channels
-
-
     //instances contained in block
     std::shared_ptr<blockCBase> uBlockC0;
     std::shared_ptr<blockCBase> uBlockC1;

@@ -23,7 +23,7 @@ secondBlock::secondBlock(sc_module_name blockName, const char * variant, blockBa
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
     uSecondSubA->primary(primary);
     uSecondSubB->beta(beta);
-// instance to instance connections via channel
+    // instance to instance connections via channel
     uSecondSubA->test(test);
     uSecondSubB->test(test);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );

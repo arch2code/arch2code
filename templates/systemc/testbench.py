@@ -1,8 +1,9 @@
 
 import textwrap
 
-from  pysrc.processYaml import camelCase
-from pysrc.intf_gen_utils import sc_gen_block_channels
+from pysrc.processYaml import getPortChannelName
+from pysrc.arch2codeHelper import printError
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_connect_channel_type, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir
 
 from jinja2 import Template
 
@@ -56,28 +57,20 @@ def tb_sec_header(args, prj, data):
 def ext_sec_init(args, prj, data):
 
     out = []
-
-    if data.get('cinst', None):
-        external_blocks = set([v['instanceType'] for v in data['subBlockInstances'].values() if v['instance'] != data['cinst']])
-        for blockName in sorted(external_blocks):
-            s = '#include "{blockName}Base.h"'
-            out.append(s.format(blockName=blockName))
+    out += sc_instance_includes(data, prj)
 
     s = """
 {blockName}External::{blockName}External(sc_module_name modulename) :
     {blockName}Inverted("Chnl"),
-    log_(name())"""
-    out.append(s.format(blockName=args.block))
+    log_(name())\n"""
+    out.append(s.format(blockName=data['blockName']))
 
-    if data.get('cinst', None):
-        for data_ in [v for v in data['subBlockInstances'].values() if v['instance'] != data['cinst']]:
-            s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base>( instanceFactory::createInstance(name(), "{instName}", "{blockName}", "")))'
-            out.append(s.format(blockName=data_['instanceType'], instName=data_['instance']))
+    for data_ in data['subBlockInstances'].values():
+        s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base>( instanceFactory::createInstance(name(), "{instName}", "{blockName}", "")))'
+        out.append(s.format(blockName=data_['instanceType'], instName=data_['instance']))
 
-    if data.get('cinst', None):
-        for _,data_ in data['connections'].items():
-            if data['cinst'] in [ data_['src'], data_['dst'] ]:
-                continue
+    for channelType in data['connectDouble']:
+        for _,data_ in data['connectDouble'][channelType].items():
             srcInst = data_['src']
             chnlData = sc_gen_block_channels(data_, prj)
             s = '   ,{chnlName}("{chnlName}", "{instName}")'
@@ -92,64 +85,53 @@ def ext_sec_body(args, prj, data):
     indent = ' '*4
 
     out.append('{')
+    prunedConnections = []
+    port_names = set()
+    # connect hierarchical ports that connect the excluded instances to the external blocks
+    for key, value in data.get('prunedConnections', dict()).items():
+        if (len(value['ends']) > 2):
+            multiDst = get_intf_defs(get_intf_type(value['interfaceType'])).get('multiDst', False)
+            if not multiDst:
+                printError(f"connection {key} has more than 2 ends. Only status interfaces (including ro registers) can have multiple dst connections")
+        for end, endvalue in value["ends"].items():
+            port_name = getPortChannelName(value, inverse_portdir(endvalue['direction']) + 'port')
+            port_names.add(port_name)
+            prunedConnections.append(f'{indent}{ endvalue["instance"] }->{ endvalue["portName"]}({ port_name });')
 
-    if data.get('cinst', None):
-        for _,data_ in data['connections'].items():
-            chnlName = data_['channelName']
-            instPortName = data_['interfaceName']
-            if data['cinst'] == data_['src']:
-                instName = data_['dst']
-                if data_['dstport']:
-                    instPortName = data_['dstport']
-            elif data['cinst'] == data_['dst'] :
-                instName = data_['src']
-                if data_['srcport']:
-                    instPortName = data_['srcport']
-            else:
-                continue
-            s = '{instName}->{instPortName}({chnlName});'
-            out.append(indent + s.format(instName=instName, instPortName=instPortName, chnlName=chnlName))
+    # resolve any port-channel name clashes
+    for conn, conn_data in data.get('connections', dict()).items():
+        if conn_data['interfaceName'] in port_names:
+            conn_data['interfaceName'] = conn_data['interfaceName'] + '_'
 
-        for _,data_ in data['connections'].items():
-            if data['cinst'] in [ data_['src'], data_['dst'] ]:
-                continue
-            chnlName = data_['channelName']
-            for _,ends_ in data_['ends'].items():
-                instName = ends_['instance']
-                instPortName = ends_['portName']
-                s = '{instName}->{instPortName}({chnlName});'
-                out.append(indent + s.format(instName=instName, instPortName=instPortName, chnlName=chnlName))
+    # channels outside of any that include the excluded instances
+    connections = sc_connect_channels(data, indent)
 
-    out.append('\n' + indent +'SC_THREAD(eotThread);\n')
+    if connections or prunedConnections:
+        out.append(indent +'// instance to instance connections via channel')
+        out += connections
+        out += prunedConnections
+
+    out.append('\n' + indent +'SC_THREAD(eotThread);')
 
     return "\n".join(out)
 
 def ext_sec_header(args, prj, data):
 
     ext_fwd_decl_s = []
-    if data.get('cinst', None):
-        external_blocks = set([v['instanceType'] for v in data['subBlockInstances'].values() if v['instance'] != data['cinst']])
-        for blockName in sorted(external_blocks):
-            ext_fwd_decl_s.append(f'class {blockName}Base;')
+    external_blocks = sorted(data['subBlocks'].values())
+    for blockName in external_blocks:
+        ext_fwd_decl_s.append(f'class {blockName}Base;')
 
     ext_inst_decl_s = []
-    if data.get('cinst', None):
-        external_insts = [v for v in data['subBlockInstances'].values() if v['instance'] != data['cinst']]
-        for data_ in external_insts:
-            s = 'std::shared_ptr<{blockName}Base> {instName};'
-            ext_inst_decl_s.append(s.format(blockName=data_['instanceType'], instName=data_['instance']))
+    external_insts = [v for v in data['subBlockInstances'].values() ]
+    for data_ in external_insts:
+        ext_inst_decl_s.append(f'std::shared_ptr<{data_["instanceType"]}Base> {data_["instance"]};')
 
-    ext_chnl_decl_s = []
-    if data.get('cinst', None):
-        for _,data_ in data['connections'].items():
-            if data['cinst'] in [ data_['src'], data_['dst'] ]:
-                continue
-            chnlData = sc_gen_block_channels(data_, prj)
-            ext_chnl_decl_s.append(chnlData['channel_decl'])
+    ext_chnl_decl_s = sc_declare_channels(data, prj, ' '*4)
 
     t = Template(sec_tb_external_header_template)
     s = t.render(
-        blockname=args.block, cinst=data.get('cinst', None),
+        blockname=data['blockName'],
         ext_fwd_decl='\n'.join(ext_fwd_decl_s),
         ext_inst_decl='\n'.join(ext_inst_decl_s),
         ext_chnl_decl='\n'.join(ext_chnl_decl_s)
@@ -161,23 +143,11 @@ Refactor the external block connectivity to be used in the testbench
 and avoid channel name clashes
 """
 def refactor_tbExternal(args, prj, data):
-    if data.get('cinst', None):
-        # Rename interface if necessary
-        # Gather all port names for cinst
-        cinst_ports = set()
-        for _,data_ in data['connections'].items():
-            for _,ends_ in data_['ends'].items():
-                if data['cinst'] in ends_['instance']:
-                    cinst_ports.add(ends_['portName'])
-                    data_['channelName'] = ends_['portName']
-
-        # Now rename the interface names if duplicated
-        for _,data_ in data['connections'].items():
-            if data_['channelName'] in cinst_ports:
-                f = list(filter(lambda x: x['instance'] == data['cinst'], data_['ends'].values()))
-                if len(f) == 0:
-                    # Alter the duplicated channel to avoid clash
-                    data_['channelName'] = data_['channelName'] + '_'
+    if len(data['excludedInstances']) > 0:
+        blockname = data['excludedInstances'][next(iter(data['excludedInstances']))]['instanceType']
+    else:
+        blockname = data['blockName']
+    data['blockName'] = blockname
 
 sec_tb_class_header_template = """\
 #include "systemc.h"
@@ -262,7 +232,7 @@ public:
 
 {%- if ext_chnl_decl %}
 
-    {{ ext_chnl_decl | indent(4) }}
+{{ ext_chnl_decl }}
 {%- endif %}
 
     // Thread monitoring the end of test event to stop simulation

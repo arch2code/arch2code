@@ -3,8 +3,8 @@
 //module as defined by block: blockBX
 module blockBX
 // Generated Import package statement(s)
-import hierInclude_package::*;
 import hierIncludeB_package::*;
+import hierInclude_package::*;
 (
     rdy_vld_if.src bx2y,
     rdy_vld_if.src bx2z,
@@ -16,7 +16,6 @@ import hierIncludeB_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-
 // GENERATED_CODE_END
 
 endmodule: blockBX

@@ -10,8 +10,10 @@ def render(args, prj, data):
         return out
     packageName = prj.includeName[data['context'][0]] + '_package'
 
-    out     += f"package {packageName};\n"
-    out     += importPackages(args, prj, data['context'][0], data, excludeSelf=True)
+    out += f"package {packageName};\n"
+    pkg_str = importPackages(args, prj, data['context'][0], data, excludeSelf=True) 
+    if pkg_str:
+        out += pkg_str + '\n'
 
     # Now put in everything at this context level
     # Generate constants as localparam[s]

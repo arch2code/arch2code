@@ -19,16 +19,16 @@ testContainer::testContainer(sc_module_name blockName, const char * variant, blo
        : sc_module(blockName)
         ,blockBase("testContainer", name(), bbMode)
         ,testContainerBase(name(), variant)
-        ,loop1src_uTestBlock0_uTestBlock1("testBlock_loop1src_uTestBlock0_uTestBlock1", "testBlock")
-        ,loop1src_uTestBlock1_uTestBlock0("testBlock_loop1src_uTestBlock1_uTestBlock0", "testBlock")
-        ,loop2src_uTestBlock0_uSubBlockContainer0("subBlockContainer_loop2src_uTestBlock0_uSubBlockContainer0", "testBlock")
-        ,out_uSubBlockContainer0_uTestBlock0("testBlock_out_uSubBlockContainer0_uTestBlock0", "subBlockContainer")
-        ,loop2src_uTestBlock1_uSubBlockContainer1("subBlockContainer_loop2src_uTestBlock1_uSubBlockContainer1", "testBlock")
-        ,out_uSubBlockContainer2_uTestBlock1("testBlock_out_uSubBlockContainer2_uTestBlock1", "subBlockContainer")
-        ,out_uSubBlockContainer1_uSubBlockContainer2("subBlockContainer_out_uSubBlockContainer1_uSubBlockContainer2", "subBlockContainer")
+        ,loop1a("testBlock_loop1a", "testBlock")
+        ,loop1b("testBlock_loop1b", "testBlock")
+        ,loop2a("subBlockContainer_loop2a", "testBlock")
+        ,loop2b("testBlock_loop2b", "subBlockContainer")
+        ,loop3a("subBlockContainer_loop3a", "testBlock")
+        ,loop3b("subBlockContainer_loop3b", "subBlockContainer")
+        ,loop3c("testBlock_loop3c", "subBlockContainer")
         ,primary("secondBlock_primary", "firstBlock")
-        ,response("firstBlock_response", "lastBlock")
         ,beta("lastBlock_beta", "secondBlock")
+        ,response("firstBlock_response", "lastBlock")
         ,src_trans_dest_trans_rv_tracker("consumer_src_trans_dest_trans_rv_tracker", "producer", "api_list_tracker", 2048, "tracker:cmdid")
         ,src_clock_dest_trans_rv_tracker("consumer_src_clock_dest_trans_rv_tracker", "producer", "api_list_tracker", 2048, "tracker:cmdid")
         ,src_trans_dest_clock_rv_tracker("consumer_src_trans_dest_clock_rv_tracker", "producer", "api_list_tracker", 2048, "tracker:cmdid")
@@ -48,27 +48,27 @@ testContainer::testContainer(sc_module_name blockName, const char * variant, blo
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-// instance to instance connections via channel
-    uTestBlock0->loop1src(loop1src_uTestBlock0_uTestBlock1);
-    uTestBlock1->loop1dst(loop1src_uTestBlock0_uTestBlock1);
-    uTestBlock1->loop1src(loop1src_uTestBlock1_uTestBlock0);
-    uTestBlock0->loop1dst(loop1src_uTestBlock1_uTestBlock0);
-    uTestBlock0->loop2src(loop2src_uTestBlock0_uSubBlockContainer0);
-    uSubBlockContainer0->in(loop2src_uTestBlock0_uSubBlockContainer0);
-    uSubBlockContainer0->out(out_uSubBlockContainer0_uTestBlock0);
-    uTestBlock0->loop2dst(out_uSubBlockContainer0_uTestBlock0);
-    uTestBlock1->loop2src(loop2src_uTestBlock1_uSubBlockContainer1);
-    uSubBlockContainer1->in(loop2src_uTestBlock1_uSubBlockContainer1);
-    uSubBlockContainer2->out(out_uSubBlockContainer2_uTestBlock1);
-    uTestBlock1->loop2dst(out_uSubBlockContainer2_uTestBlock1);
-    uSubBlockContainer1->out(out_uSubBlockContainer1_uSubBlockContainer2);
-    uSubBlockContainer2->in(out_uSubBlockContainer1_uSubBlockContainer2);
+    // instance to instance connections via channel
+    uTestBlock0->loop1src(loop1a);
+    uTestBlock1->loop1dst(loop1a);
+    uTestBlock1->loop1src(loop1b);
+    uTestBlock0->loop1dst(loop1b);
+    uTestBlock0->loop2src(loop2a);
+    uSubBlockContainer0->in(loop2a);
+    uSubBlockContainer0->out(loop2b);
+    uTestBlock0->loop2dst(loop2b);
+    uTestBlock1->loop2src(loop3a);
+    uSubBlockContainer1->in(loop3a);
+    uSubBlockContainer1->out(loop3b);
+    uSubBlockContainer2->in(loop3b);
+    uSubBlockContainer2->out(loop3c);
+    uTestBlock1->loop2dst(loop3c);
     uFirst->primary(primary);
     uSecond->primary(primary);
-    uLast->response(response);
-    uFirst->response(response);
     uSecond->beta(beta);
     uLast->beta(beta);
+    uLast->response(response);
+    uFirst->response(response);
     uProducer->src_trans_dest_trans_rv_tracker(src_trans_dest_trans_rv_tracker);
     uConsumer->src_trans_dest_trans_rv_tracker(src_trans_dest_trans_rv_tracker);
     uProducer->src_clock_dest_trans_rv_tracker(src_clock_dest_trans_rv_tracker);

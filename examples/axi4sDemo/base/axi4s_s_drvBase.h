@@ -14,8 +14,6 @@ class axi4s_s_drvBase : public virtual blockPortBase
 {
 public:
     virtual ~axi4s_s_drvBase() = default;
-    // src ports
-
     // dst ports
     // u_axi4sDemo->axi4str_t2: AXI4 Stream Interface Type 2 (64 bits data)
     axi4_stream_in< data_t2_t, tid_t2_t, tdest_t2_t, tuser_t2_t > axis4_t2;
@@ -37,8 +35,6 @@ public:
 class axi4s_s_drvInverted : public virtual blockPortBase
 {
 public:
-    // src ports
-
     // dst ports
     // u_axi4sDemo->axi4str_t2: AXI4 Stream Interface Type 2 (64 bits data)
     axi4_stream_out< data_t2_t, tid_t2_t, tdest_t2_t, tuser_t2_t > axis4_t2;
@@ -60,10 +56,8 @@ public:
 class axi4s_s_drvChannels
 {
 public:
-    // src ports
-
     // dst ports
-    //   axi4str_t2
+    // AXI4 Stream Interface Type 2 (64 bits data)
     axi4_stream_channel< data_t2_t, tid_t2_t, tdest_t2_t, tuser_t2_t > axis4_t2;
 
 

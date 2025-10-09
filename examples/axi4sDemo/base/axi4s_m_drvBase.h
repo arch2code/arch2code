@@ -18,8 +18,6 @@ public:
     // axi4str_t1->u_axi4sDemo: AXI4 Stream Interface Type 1 (256 bits data)
     axi4_stream_out< data_t1_t, tid_t1_t, tdest_t1_t, tuser_t1_t > axis4_t1;
 
-    // dst ports
-
 
     axi4s_m_drvBase(std::string name, const char * variant) :
         axis4_t1("axis4_t1")
@@ -41,8 +39,6 @@ public:
     // axi4str_t1->u_axi4sDemo: AXI4 Stream Interface Type 1 (256 bits data)
     axi4_stream_in< data_t1_t, tid_t1_t, tdest_t1_t, tuser_t1_t > axis4_t1;
 
-    // dst ports
-
 
     axi4s_m_drvInverted(std::string name) :
         axis4_t1(("axis4_t1"+name).c_str())
@@ -61,10 +57,8 @@ class axi4s_m_drvChannels
 {
 public:
     // src ports
-    //   axi4str_t1
+    // AXI4 Stream Interface Type 1 (256 bits data)
     axi4_stream_channel< data_t1_t, tid_t1_t, tdest_t1_t, tuser_t1_t > axis4_t1;
-
-    // dst ports
 
 
     axi4s_m_drvChannels(std::string name, std::string srcName) :

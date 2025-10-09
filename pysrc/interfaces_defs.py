@@ -1,3 +1,9 @@
+# mapping exception cases of interface types to filename stubs
+INTF_TYPES = {
+    'reg_ro' : 'status',
+    'reg_rw' : 'status',
+    'reg_ext' : 'external_reg'
+}
 INTF_DEFS = {
     'status' : {
         'parameters' : {
@@ -21,6 +27,7 @@ INTF_DEFS = {
            'param_cast' : None,
            'multicycle_types' : []
         },
+        'multiDst' : True,  # allow multiple destinations to connect to a single source
     },
     'rdy_vld' : {
         'parameters' : {
@@ -151,6 +158,59 @@ INTF_DEFS = {
         },
         'sc_channel' : {
             'type' : 'apb',
+            'param_cast' : None,
+            'multicycle_types' : []
+        }
+    },
+    'external_reg' : {
+        'parameters' : {
+            'data_t' : { 'datatype' : 'struct', 'default' : 'bit' }
+        },
+        'signals' : {
+            'wdata' : 'data_t',
+            'rdata' : 'data_t',
+            'write' : 'bit [1:0]'
+        },
+        'modports' : {
+            'src' : {
+                'inputs' : ['rdata'],
+                'outputs': ['wdata', 'write']
+            },
+            'dst' : {
+                'inputs' : ['wdata', 'write'],
+                'outputs': ['rdata']
+            }
+        },
+        'sc_channel' : {
+            'type' : 'external_reg',
+            'param_cast' : None,
+            'multicycle_types' : []
+        }
+    },
+    'memory' : {
+        'parameters' : {
+            'addr_t' : { 'datatype' : 'struct', 'default' : 'bit' },
+            'data_t' : { 'datatype' : 'struct', 'default' : 'bit' }
+        },
+        'signals' : {
+            'write_data' : 'data_t',
+            'read_data' : 'data_t',
+            'addr' : 'addr_t',
+            'enable' : 'bool',
+            'wr_en' : 'bool'
+        },
+        'modports' : {
+            'src' : {
+                'inputs' : ['read_data'],
+                'outputs': ['write_data', 'addr', 'enable', 'wr_en']
+            },
+            'dst' : {
+                'inputs' : ['write_data', 'addr', 'enable', 'wr_en'],
+                'outputs': ['read_data']
+            }
+        },
+        'sc_channel' : {
+            'type' : 'memory',
             'param_cast' : None,
             'multicycle_types' : []
         }

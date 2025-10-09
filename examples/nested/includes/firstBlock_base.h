@@ -71,11 +71,11 @@ class firstBlockChannels
 {
 public:
     // src ports
-    //   alpha
+    // Test interface alpha
     rdy_vld_channel< test_st > primary;
 
     // dst ports
-    //   gamma
+    // Test interface gamma
     rdy_vld_channel< test_st > response;
 
 

@@ -4,7 +4,37 @@
 # Remove when refactoring
 LEGACY_COMPAT_MODE = False
 
-from pysrc.interfaces_defs import INTF_DEFS
+from pysrc.interfaces_defs import INTF_DEFS, INTF_TYPES
+from pysrc.arch2codeHelper import printError
+
+def get_set_intf_types(ifType):
+    return {get_intf_type(intf) for intf in ifType} # return set of interface names handling the exception cases
+
+def get_intf_type(ifType):
+    return INTF_TYPES.get(ifType, ifType)
+
+def get_intf_data(data, prj_data):
+    #ret = data.get('interfaceData', data.get('connection', {}).get('interfaceData', None))
+    ret = data.get('interfaceData', None)
+    if ret:
+        return ret
+    else:
+        #interfaceKey = data.get('interfaceKey', data.get('connection', {}).get('interfaceKey', None))
+        interfaceKey = data.get('interfaceKey', None)
+        if interfaceKey:
+            return prj_data.data['interfaces'].get(interfaceKey, None)
+        else:
+            ret =  {'structures': [{'structureType': 'data_t', 'structure': data['structure'], 'structureKey': data['structureKey']}],
+                    'interfaceType': data['interfaceType'],
+                    'desc': data.get('desc', '')}
+            if 'addressStruct' in data:
+                ret['structures'].append({'structureType': 'addr_t', 'structure': data['addressStruct'], 'structureKey': data['addressStructKey']})
+            return ret
+def get_channel_name(data):
+    channel_base = data["interfaceName"]
+    if data.get('channelCount', 0) > 1:
+        channel_base = f"{channel_base}_{data['index']}"
+    return channel_base
 
 class intfEvalDSL:
 
@@ -16,11 +46,12 @@ class intfEvalDSL:
         w = get_struct_width(self.struct_key, self.prj_data['structures'])
         return w // 8 + (1 if w % 8 != 0 else 0)
 
-def sv_gen_modport_signal_blast(port_data, prj_data, swap_dir=False):
+def sv_gen_modport_signal_blast(port_data, prj, swap_dir=False):
     out = {}
-
-    intf_data = port_data['interfaceData']
-    intf_type = intf_data['interfaceType']
+    prj_data = prj.data
+    connectionData = port_data.get('connection', {})
+    intf_data = get_intf_data(connectionData, prj)
+    intf_type = get_intf_type(intf_data['interfaceType'])
     intf_name = port_data['name']
     intf_modp = port_data['direction']
     intf_param = dict()
@@ -89,12 +120,53 @@ def sv_gen_modport_signal_blast(port_data, prj_data, swap_dir=False):
 
     return out
 
+def sv_gen_ports(data, prj, indent):
+    out = []
+    for sourceType in data['ports']:
+        for port, port_data in data['ports'][sourceType].items():
+            connectionData = port_data.get('connection', {})
+            intf_data = get_intf_data(connectionData, prj)
+            intf_type = get_intf_type(intf_data['interfaceType'])
+            out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']},")
+    out.append(f"{indent}input clk, rst_n")
+    out.append(");\n")
+    return out
+
+def sc_connect_channels(data, indent):
+    out = []
+    for channelType in data["connectDouble"]:
+        out.extend(sc_connect_channel_type(data["connectDouble"][channelType], indent))
+    return out
+
+def sc_connect_channel_type(data, indent):
+    out = []
+    for key, value in data.items():
+        channelBase = get_channel_name(value)
+        if (len(value['ends']) > 2):
+            multiDst = get_intf_defs(get_intf_type(value['interfaceType'])).get('multiDst', False)
+            if not multiDst:
+                printError(f"connection {key} has more than 2 ends. Only status interfaces (including ro registers) can have multiple dst connections")
+        for end, endvalue in value["ends"].items():
+            out.append(f'{indent}{ endvalue["instance"] }->{ endvalue["portName"]}({ channelBase });')
+    return out
+
+def sc_instance_includes(data, prj):
+    out = []
+    includes = dict()
+    # create a dict of unique includes
+    for key, value in data['subBlockInstances'].items():
+        includes[value["instanceType"]] = None
+    for include in includes:
+        baseInclude = prj.getModuleFilename('blockBase', include, 'hdr')
+        out.append(f'#include "{baseInclude}"')
+    return out
+
 def sc_gen_modport_signal_blast(port_data, prj, swap_dir=False):
 
     out = {}
-
-    intf_data = port_data['interfaceData']
-    intf_type = intf_data['interfaceType']
+    connectionData = port_data.get('connection', {})
+    intf_data = get_intf_data(connectionData, prj)
+    intf_type = get_intf_type(intf_data['interfaceType'])
     intf_name = port_data['name']
     intf_modp = port_data['direction']
     intf_param = dict()
@@ -200,17 +272,10 @@ def sc_gen_block_channels(conn_data, prj):
 
     out = {}
 
-    intf_type = conn_data['interfaceType']
-    intf_name = conn_data['interface']
-    chnl_name = conn_data['channelName']
-    if 'interfaceKey' in conn_data:
-        intf_structs = lookup_struct(conn_data['interfaceKey'], prj.data["interfacesstructures"])
-    else:
-        intf_structs = [{'structureType': 'data_t', 'structure': conn_data['struct']}]
-
-    if conn_data['channelCount'] > 1:
-        chnl_name += '_' + '_'.join([conn_data['src'], conn_data['dst']])
-
+    intf_type = get_intf_type(conn_data['interfaceType'])
+    intf_data = get_intf_data(conn_data, prj)
+    chnl_name = get_channel_name(conn_data)
+    intf_structs = intf_data['structures']
     intf_param = dict()
 
     assert(intf_type in INTF_DEFS)
@@ -219,14 +284,15 @@ def sc_gen_block_channels(conn_data, prj):
 
     out['is_skip'] = intf_def.get('skip', False)
     out['multicycle_types'] = intf_def['sc_channel']['multicycle_types']
-    out['intf_name'] = intf_name
+    out['intf_name'] = chnl_name
     out['chnl_name'] = chnl_name
+    out['desc'] = intf_data['desc']
 
     # Parameter
     for param in filter(lambda item: intf_def['parameters'][item]['datatype'] == 'struct', intf_def['parameters']):
         struct_data = list(filter(lambda item: item['structureType'] == param, intf_structs))
         if len(struct_data) == 0:
-            print(f"Interface {intf_name} is {intf_type} and expected structure types {param} not found")
+            print(f"Interface {chnl_name} is {intf_type} and expected structure types {param} not found")
         assert(len(struct_data) == 1); # the structure type on your interface is not the expected type
         intf_param[param] = struct_data[0];
 
@@ -252,6 +318,17 @@ def sc_gen_block_channels(conn_data, prj):
 
     return out
 
+
+def sc_declare_channels(data, prj, indent):
+    out = []
+    for channelType in data["connectDouble"]:
+        for key, value in data["connectDouble"][channelType].items():
+            chnlInfo = sc_gen_block_channels(value, prj)
+            if not chnlInfo['is_skip']:
+                out.append(f'{indent}// {chnlInfo["desc"]}')
+                out.append(indent + chnlInfo['channel_decl'])
+    return out
+
 def inverse_portdir(port):
     assert(port in ['src', 'dst'])
     return 'src' if port == 'dst' else 'dst'
@@ -269,3 +346,8 @@ def lookup_const(const_key, const_dict):
 def get_const(const_key, const_dict):
     const = lookup_const(const_key, const_dict)
     return const['value'] if const else 0
+
+def get_intf_defs(intf_type):
+    if intf_type in INTF_DEFS:
+        return INTF_DEFS[intf_type]
+    return None

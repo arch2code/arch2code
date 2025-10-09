@@ -26,9 +26,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     secondSubA(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~secondSubA() override = default;
 

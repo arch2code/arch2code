@@ -17,8 +17,6 @@ class consumerBase : public virtual blockPortBase
 {
 public:
     virtual ~consumerBase() = default;
-    // src ports
-
     // dst ports
     // uProducer->test_rdy_vld: Ready Valid Test interface
     rdy_vld_in< data_st > test_rdy_vld;
@@ -55,8 +53,6 @@ public:
 class consumerInverted : public virtual blockPortBase
 {
 public:
-    // src ports
-
     // dst ports
     // uProducer->test_rdy_vld: Ready Valid Test interface
     rdy_vld_out< data_st > test_rdy_vld;
@@ -93,16 +89,14 @@ public:
 class consumerChannels
 {
 public:
-    // src ports
-
     // dst ports
-    //   test_rdy_vld
+    // Ready Valid Test interface
     rdy_vld_channel< data_st > test_rdy_vld;
-    //   test_req_ack
+    // Req Ack Test interface
     req_ack_channel< data_st, data_st > test_req_ack;
-    //   test_push_ack
+    // Valid Ack Test interface
     push_ack_channel< data_st > test_push_ack;
-    //   test_pop_ack
+    // Ready Ack Test interface
     pop_ack_channel< data_st > test_pop_ack;
 
 

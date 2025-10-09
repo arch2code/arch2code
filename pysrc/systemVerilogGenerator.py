@@ -2,7 +2,7 @@
 from pysrc.processYaml import existsLoad
 from pysrc.textfileHelper import codeText
 import argparse
-from pysrc.arch2codeHelper import printError, warningAndErrorReport
+from pysrc.arch2codeHelper import printError, warningAndErrorReport, printWarning
 from pysrc.renderer import renderer
 import re
 class systemVerilogGenerator:
@@ -18,21 +18,15 @@ class systemVerilogGenerator:
         {'maxSize': 1024, 'type': 'uint64_t', 'arrayElementSize': 64}
     ]
     def __init__(self, prj, args):
-
-        # docType ?
+        # get name of file containing renderer configuration
+        # initialize the render object ready for later use
         self.renderer = renderer(prj, 'svConfig', docType='cpp' )
+        # file containing list of instances to include in the generation was provided on the command line
         if args.instances:
-            instFile = args.instances
-            # so load it
-            instances = existsLoad(instFile)
-            # convert the list of user fieldly instances into context qualified instances
-            self.instances = prj.getQualInstances( instances['instances'] )
-        else:
-            # otherwise use the list of instances from the database
-            self.instances = dict.fromkeys(prj.data['instances'], 0)
-
-        prj.initConnections(self.instances)
+            printWarning("The --instances option is not supported for systemC generation")
         fileName = args.file
+        # setup the user source file helper object. This object will read in the file and chop it up into generated and non-generated pieces
+        # the object will also find any generic parameters eg block name that will be the same for all pieces of the file that need rendering
         self.code = codeText(fileName, "//")
         data = None
         importPackages = None
@@ -43,8 +37,9 @@ class systemVerilogGenerator:
         if self.code.params.importPackages:
             importPackages = self.code.params.importPackages
         if self.code.params.block and self.code.params.context:
+            # get a block based view of the database. This is used for block definitions
             qualBlock = prj.getQualBlock( self.code.block )
-            data = prj.getBlockData(qualBlock, self.instances)
+            data = prj.getBlockData(qualBlock, trimRegLeafInstance=False)
             if not data:
                 printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                 exit(warningAndErrorReport())
@@ -52,7 +47,7 @@ class systemVerilogGenerator:
             data.update(prj.getContextData(context, self.dataTypeMappings))
         elif self.code.params.block:
             qualBlock = prj.getQualBlock( self.code.block )
-            data = prj.getBlockData(qualBlock, self.instances)
+            data = prj.getBlockData(qualBlock, trimRegLeafInstance=False)
             if not data:
                 printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                 exit(warningAndErrorReport())
@@ -70,11 +65,6 @@ class systemVerilogGenerator:
         data['importPackages']  = importPackages
         data['context']         = context
         data['fileName']        = fileName
-        if 'registerLeafInstance' in data:
-            qualBlock = prj.getQualBlock(data['registerLeafInstance']['container'])
-            data2 = prj.getBlockData(qualBlock, self.instances)
-            data['includeContext'].update(data2['includeContext'])
-            data['registers'] = data2['registers']
 
         genOut = self.renderer.renderSections(self, self.code, parser, prj, data, args)
 

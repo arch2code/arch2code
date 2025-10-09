@@ -71,11 +71,11 @@ class secondBlockChannels
 {
 public:
     // src ports
-    //   beta
+    // Test interface beta
     rdy_vld_channel< test_st > beta;
 
     // dst ports
-    //   alpha
+    // Test interface alpha
     rdy_vld_channel< test_st > primary;
 
 

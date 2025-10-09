@@ -29,27 +29,26 @@ private:
     };
     static registerBlock registerBlock_;
 public:
-
     // channels
-    //   axiRdIf
+    // AXI Read channels; Address and Data
     axi_read_channel< axiAddrSt, axiDataSt > axiRd0;
-    //   axiRdIf
+    // AXI Read channels; Address and Data
     axi_read_channel< axiAddrSt, axiDataSt > axiRd1;
-    //   axiRdIf
+    // AXI Read channels; Address and Data
     axi_read_channel< axiAddrSt, axiDataSt > axiRd2;
-    //   axiRdIf
+    // AXI Read channels; Address and Data
     axi_read_channel< axiAddrSt, axiDataSt > axiRd3;
-    //   axiWrIf
+    // AXI Write channels; Address, Data, and Response
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr0;
-    //   axiWrIf
+    // AXI Write channels; Address, Data, and Response
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr1;
-    //   axiWrIf
+    // AXI Write channels; Address, Data, and Response
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr2;
-    //   axiWrIf
+    // AXI Write channels; Address, Data, and Response
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr3;
-    //   axiStreamIf
+    // AXI stream channel
     axi4_stream_channel< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr0;
-    //   axiStreamIf
+    // AXI stream channel
     axi4_stream_channel< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr1;
 
     //instances contained in block

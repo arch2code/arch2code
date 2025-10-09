@@ -1,5 +1,5 @@
 import textwrap
-
+import pysrc.intf_gen_utils as intf_gen_utils
 from jinja2 import Template
 
 # args from generator line
@@ -42,14 +42,21 @@ def get_reghandler_properties(prj, data):
 
 def get_hwregs(prj, data):
     hwregs = []
-    for reg in data['registers'].values():
+    regs = dict()
+    for reg in data['registerPorts'].values():
+        if reg['register'] in regs:
+            continue
+        regs[reg['register']] = 0
+        port_type = intf_gen_utils.get_intf_type(reg['interfaceType'])
+        direction = "_out" if reg['direction'] == 'src' else "_in"
+        port_type = port_type + direction
         hwregs.append({
             "name": reg['register'] + '_reg',
             "datatype": reg['structure'],
             "size": reg['bytes']*4,
             "ro" : 'true' if reg['regType'] == 'ro' else 'false',
             "offset": hex(reg['offset']),
-            "port_type": reg['interfaceType'] + ('_in' if reg['regType'] == 'ro' else '_out'),
+            "port_type": port_type,
             "port_name": reg['register'],
             "descr": reg['desc']
         })

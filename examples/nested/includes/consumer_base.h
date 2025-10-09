@@ -14,8 +14,6 @@ class consumerBase : public virtual blockPortBase
 {
 public:
     virtual ~consumerBase() = default;
-    // src ports
-
     // dst ports
     // uProducer->testrvTracker: Data path test interface
     rdy_vld_in< testDataSt > src_trans_dest_trans_rv_tracker;
@@ -62,8 +60,6 @@ public:
 class consumerInverted : public virtual blockPortBase
 {
 public:
-    // src ports
-
     // dst ports
     // uProducer->testrvTracker: Data path test interface
     rdy_vld_out< testDataSt > src_trans_dest_trans_rv_tracker;
@@ -110,20 +106,18 @@ public:
 class consumerChannels
 {
 public:
-    // src ports
-
     // dst ports
-    //   testrvTracker
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_trans_rv_tracker;
-    //   testrvTracker
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_clock_dest_trans_rv_tracker;
-    //   testrvTracker
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_clock_rv_tracker;
-    //   testrvSize
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_trans_rv_size;
-    //   testrvSize
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_clock_dest_trans_rv_size;
-    //   testrvSize
+    // Data path test interface
     rdy_vld_channel< testDataSt > src_trans_dest_clock_rv_size;
 
 

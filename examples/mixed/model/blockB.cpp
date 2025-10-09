@@ -5,9 +5,9 @@
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "blockB.h"
 #include "blockD_base.h"
-#include "blockBRegs_base.h"
 #include "blockF_base.h"
 #include "threeCs_base.h"
+#include "blockBRegs_base.h"
 SC_HAS_PROCESS(blockB);
 
 blockB::registerBlock blockB::registerBlock_; //register the block with the factory
@@ -16,18 +16,21 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
        : sc_module(blockName)
         ,blockBase("blockB", name(), bbMode)
         ,blockBBase(name(), variant)
-        ,cStuffIf_uBlockD_uThreeCs("threeCs_cStuffIf_uBlockD_uThreeCs", "blockD")
+        ,cStuffIf("threeCs_cStuffIf", "blockD")
+        ,cStuff1("threeCs_cStuff1", "blockF")
+        ,cStuff2("threeCs_cStuff2", "blockF")
         ,dee0("blockF_dee0", "blockD")
         ,dee1("blockF_dee1", "blockD")
-        ,rwD("rwD", "blockBRegs")
-        ,roBsize("blockBRegs_roBsize", "blockBRegs")
-        ,cStuffIf_uBlockF0_uThreeCs("threeCs_cStuffIf_uBlockF0_uThreeCs", "blockF")
-        ,cStuffIf_uBlockF1_uThreeCs("threeCs_cStuffIf_uBlockF1_uThreeCs", "blockF")
+        ,loopDF("blockF_loopDF", "blockD")
+        ,loopFF("blockF_loopFF", "blockF")
+        ,loopFD("blockD_loopFD", "blockF")
+        ,rwD("blockB_rwD", "blockB")
+        ,roBsize("blockB_roBsize", "blockB")
         ,uBlockD(std::dynamic_pointer_cast<blockDBase>( instanceFactory::createInstance(name(), "uBlockD", "blockD", "")))
-        ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>( instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "")))
         ,uBlockF0(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0")))
         ,uBlockF1(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1")))
         ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>( instanceFactory::createInstance(name(), "uThreeCs", "threeCs", "")))
+        ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>( instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "")))
         ,blockBTable0(name(), "blockBTable0", mems, BSIZE, HWMEMORYTYPE_LOCAL)
         ,blockBTable1(name(), "blockBTable1", mems, BSIZE)
         ,blockBTable2(name(), "blockBTable2", mems, BSIZE)
@@ -40,19 +43,29 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
     uBlockD->btod(btod);
     uBlockBRegs->apbReg(apbReg);
-// instance to instance connections via channel
-    uBlockD->cStuffIf(cStuffIf_uBlockD_uThreeCs);
-    uThreeCs->see0(cStuffIf_uBlockD_uThreeCs);
+    // instance to instance connections via channel
+    uBlockD->cStuffIf(cStuffIf);
+    uThreeCs->see0(cStuffIf);
+    uBlockF0->cStuffIf(cStuff1);
+    uThreeCs->see1(cStuff1);
+    uBlockF1->cStuffIf(cStuff2);
+    uThreeCs->see2(cStuff2);
     uBlockD->dee0(dee0);
     uBlockF0->dStuffIf(dee0);
     uBlockD->dee1(dee1);
     uBlockF1->dStuffIf(dee1);
+    uBlockD->outD(loopDF);
+    uBlockF0->dSin(loopDF);
+    uBlockF0->dSout(loopFF);
+    uBlockF1->dSin(loopFF);
+    uBlockF1->dSout(loopFD);
+    uBlockD->inD(loopFD);
+    uBlockF0->rwD(rwD);
     uBlockBRegs->rwD(rwD);
+    uBlockF1->rwD(rwD);
+    uBlockD->rwD(rwD);
+    uBlockD->roBsize(roBsize);
     uBlockBRegs->roBsize(roBsize);
-    uBlockF0->cStuffIf(cStuffIf_uBlockF0_uThreeCs);
-    uThreeCs->see1(cStuffIf_uBlockF0_uThreeCs);
-    uBlockF1->cStuffIf(cStuffIf_uBlockF1_uThreeCs);
-    uThreeCs->see2(cStuffIf_uBlockF1_uThreeCs);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(doneTest);

@@ -32,9 +32,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     //registers
     hwRegister< aRegSt, 8 > roA; // A Read Only register
     hwRegister< un0ARegSt, 8 > rwUn0A; // A unaligned Read Write register
