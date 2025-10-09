@@ -36,7 +36,7 @@ def get_reghandler_properties(prj, data):
         "port_name": rhd['registerBusInterface'],
         "addr_type" : rhd['registerBusStructs']['addr_t'],
         "data_type" : rhd['registerBusStructs']['data_t'],
-        "addressmask" : f"(1<<({rhd['addressBits']}-1))-1"
+        "addressmask" : f"(1<<({rhd['addressBits']}))-1"
     }
     return reghandler
 
