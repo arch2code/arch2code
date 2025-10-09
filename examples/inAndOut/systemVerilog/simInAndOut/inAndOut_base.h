@@ -15,11 +15,11 @@ class inAndOutBase : public virtual blockPortBase
 public:
     virtual ~inAndOutBase() = default;
     // src ports
-    // aStuffIf->uInAndOut0: An interface of type rdyVld
+    // aStuffIf->uInAndOut1: An interface of type rdyVld
     rdy_vld_out< aSt > aOut;
-    // bStuffIf->uInAndOut0: An interface of type reqAck
+    // bStuffIf->uInAndOut1: An interface of type reqAck
     req_ack_out< bSt, bBSt > bOut;
-    // dStuffIf->uInAndOut0: An interface of type rdyAck
+    // dStuffIf->uInAndOut1: An interface of type rdyAck
     pop_ack_out< dSt > dOut;
 
     // dst ports
@@ -63,11 +63,11 @@ class inAndOutInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // aStuffIf->uInAndOut0: An interface of type rdyVld
+    // aStuffIf->uInAndOut1: An interface of type rdyVld
     rdy_vld_in< aSt > aOut;
-    // bStuffIf->uInAndOut0: An interface of type reqAck
+    // bStuffIf->uInAndOut1: An interface of type reqAck
     req_ack_in< bSt, bBSt > bOut;
-    // dStuffIf->uInAndOut0: An interface of type rdyAck
+    // dStuffIf->uInAndOut1: An interface of type rdyAck
     pop_ack_in< dSt > dOut;
 
     // dst ports
@@ -111,19 +111,19 @@ class inAndOutChannels
 {
 public:
     // src ports
-    //   aStuffIf
+    // An interface of type rdyVld
     rdy_vld_channel< aSt > aOut;
-    //   bStuffIf
+    // An interface of type reqAck
     req_ack_channel< bSt, bBSt > bOut;
-    //   dStuffIf
+    // An interface of type rdyAck
     pop_ack_channel< dSt > dOut;
 
     // dst ports
-    //   aStuffIf
+    // An interface of type rdyVld
     rdy_vld_channel< aSt > aIn;
-    //   bStuffIf
+    // An interface of type reqAck
     req_ack_channel< bSt, bBSt > bIn;
-    //   dStuffIf
+    // An interface of type rdyAck
     pop_ack_channel< dSt > dIn;
 
 

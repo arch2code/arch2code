@@ -164,6 +164,5 @@ clean :
 	make -C $(AXI_DIR) clean
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc hello-world mixed in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo
-#pipeline-test: diagram-and-doc nested hello-world mixed in-and-out lint-axi lint-hier apbDecode axiDemo
+pipeline-test: diagram-and-doc nested hello-world mixed in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo
 push-test: clean pipeline-test

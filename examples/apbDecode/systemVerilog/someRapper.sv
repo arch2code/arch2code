@@ -34,7 +34,6 @@ blockB uBlockB (
     .rst_n (rst_n)
 );
 
-
 // GENERATED_CODE_END
 
 endmodule : someRapper

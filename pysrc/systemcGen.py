@@ -2,7 +2,7 @@
 from pysrc.processYaml import existsLoad
 from pysrc.textfileHelper import codeText
 import argparse
-from pysrc.arch2codeHelper import printError, warningAndErrorReport
+from pysrc.arch2codeHelper import printError, warningAndErrorReport, printWarning
 from pysrc.renderer import renderer
 import re
 import os
@@ -24,18 +24,7 @@ class genSystemC:
         self.renderer = renderer(prj, 'cppConfig', docType='cpp' )
         # file containing list of instances to include in the generation was provided on the command line
         if args.instances:
-            instFile = args.instances
-            # so load it
-            instances = existsLoad(instFile)
-            # convert the list of user fieldly instances into context qualified instances
-            self.instances = prj.getQualInstances( instances['instances'] )
-        else:
-            # otherwise use the list of instances from the database        
-            # Filter out instances with registerLeafInstance = 1 using dict comprehension
-            #self.instances = {k: v for k, v in prj.data['instances'].items() if not v.get('registerLeafInstance', False)}
-            self.instances = dict.fromkeys(prj.data['instances'], 0)
-        # set up connection info
-        prj.initConnections(self.instances)
+            printWarning("The --instances option is not supported for systemC generation")
         fileName = args.file
         # setup the user source file helper object. This object will read in the file and chop it up into generated and non-generated pieces
         # the object will also find any generic parameters eg block name that will be the same for all pieces of the file that need rendering
@@ -51,61 +40,19 @@ class genSystemC:
             # setup the data for the renderer
             data = None
             if self.code.params.block:
+                if self.code.params.excludeInst:
+                    exclude = {self.code.params.excludeInst}
+                else:
+                    exclude = set()
                 # get a block based view of the database. This is used for block definitions
-                qualBlock = prj.getQualBlock( self.code.block )
+                qualBlock = prj.getQualBlock( self.code.block)
                 block = prj.data['blocks'][qualBlock]['block']
-                data = prj.getBlockData(qualBlock, self.instances)
+                data = prj.getBlockData(qualBlock, trimRegLeafInstance=True, excludeInstances=exclude)
                 if not data:
                     printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                     exit(warningAndErrorReport())
-                if prj.data['blocks'][qualBlock]['isRegHandler']:
-                    qualBlock = prj.getQualBlock(data['registerLeafInstance']['container'])
-                    cdata = prj.getBlockData(qualBlock, self.instances)
-                    data['includeContext'].update(cdata['includeContext'])
-                    data['registers'] = cdata['registers']
-                    data['addressDecode'] = cdata['addressDecode']
-                # If block is declared a leaf node or only register leaf instance, remove all sub-instances and connections
-                elif prj.data['blocks'][qualBlock]['mdlLeafNode']:
-                    data['subBlocks'] = {}
-                    data['subBlockInstances'] = {}
-                    data['connectionMaps'] = {}
-                    data['connections'] = {}
-                    data['registerConnections'] = {}
-                # If block is not leaf node and has sub-instances
-                elif data['subBlockInstances']:
-                    data['registers'] = {}
-                    data['addressDecode']['hasDecoder'] = False
-                # The fallback case is that the block is not a leaf node or has no sub-instances
-                else:
-                    pass
             else:
                 block = 'No block specified in GENERATED_CODE_PARAM'
-            if self.code.params.inst:
-                if not self.code.params.block:
-                    printError(f"In {fileName}, the --inst requires the corresponding --block for the specified instance")
-                    exit(warningAndErrorReport())
-                try:
-                    cblock, cinst = self.code.params.inst.split('.')
-                except ValueError:
-                    printError(f"In {fileName}, the format of --inst={self.code.params.inst}, specified in GENERATED_CODE_PARAM is invalid (--inst=<block>.<instance> expected)")
-                    exit(warningAndErrorReport())
-                # get a block based view of the database. This is used for block definitions
-                qualCBlock = prj.getQualBlock( cblock )
-                data = prj.getBlockData(qualCBlock, self.instances)
-                if not data:
-                    printError(f"In {fileName}, the container block ({cblock}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
-                    exit(warningAndErrorReport())
-                # Instance in container block
-                subinst = [v for v in data['subBlockInstances'].values() if v['instance'] == cinst]
-                if not subinst:
-                    printError(f"In {fileName}, the container instance ({cinst}) specified in GENERATED_CODE_PARAM is either wrong or undefined.")
-                    exit(warningAndErrorReport())
-                else:
-                    subinst = subinst[0]
-                if subinst['instanceTypeKey'] != qualBlock:
-                    printError(f"In {fileName}, the container instance type ({subinst['instanceType']}) specified in GENERATED_CODE_PARAM does not match specified block")
-                    exit(warningAndErrorReport())
-                data['cinst'] = cinst
             if self.code.params.context:
                 # get a context view of the database. This is used for shared header files
                 context = self.code.params.context

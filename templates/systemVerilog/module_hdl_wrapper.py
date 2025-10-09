@@ -11,15 +11,11 @@ def render(args, prj, data):
 
 def render_sv(args, prj, data):
 
-    # A bit of preprocessing to filter out register ports based on block first 
-    data['regPorts'] = {k: v for k, v in data['regPorts'].items() if v['interfaceData']['block'] != data['blockName']}
-    # Add to the block ports for easier processing
-    data['ports'].update(data['regPorts'])
-
     # ports blaster
     mp_sig = dict()
-    for port in data['ports']:
-        mp_sig[port] = intf_gen_utils.sv_gen_modport_signal_blast(data['ports'][port], prj.data)
+    for port_type in data['ports']:
+        for port in data['ports'][port_type]:
+            mp_sig[port] = intf_gen_utils.sv_gen_modport_signal_blast(data['ports'][port_type][port], prj)
 
     out = '\n'
 
@@ -43,31 +39,37 @@ def render_sv(args, prj, data):
     # packages
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
     out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
-    out += '(\n'
+    out += '\n(\n'
 
     # ports
     s = ''
-    for port in data['ports']:
-        intf_type = data['ports'][port]['interfaceData']['interfaceType'] + '_if'
-        intf_dir = data['ports'][port]['direction']
-        s += f'// {intf_type}.{intf_dir}\n'
-        s += ',\n'.join(mp_sig[port]['ports'])
-        s += ',\n'
-        s += '\n'
+    for port_type in data['ports']:
+        for port, port_data in data['ports'][port_type].items():
+            connectionData = port_data.get('connection', {})
+            intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
+            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType']) + '_if'
+            intf_dir = port_data['direction']
+            s += f'// {intf_type}.{intf_dir}\n'
+            s += ',\n'.join(mp_sig[port]['ports'])
+            s += ',\n'
+            s += '\n'
     s += 'input clk,\ninput rst_n\n'
     out += textwrap.indent(s, ' '*4)
     out += ');\n'
 
     # assigns ports<->interface
     s = ''
-    for port in data['ports']:
-        intf_type = data['ports'][port]['interfaceData']['interfaceType'] + '_if'
-        intf_dir = data['ports'][port]['direction']
-        s += f'// {intf_type}.{intf_dir}\n'
-        s += mp_sig[port]['intf_decl'] + '\n'*2
-        s += '\n'.join(mp_sig[port]['assign'])
-        s += '\n'
-        s += '\n'
+    for port_type in data['ports']:
+        for port, port_data in data['ports'][port_type].items():
+            connectionData = port_data.get('connection', {})
+            intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
+            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType']) + '_if'
+            intf_dir = port_data['direction']
+            s += f'// {intf_type}.{intf_dir}\n'
+            s += mp_sig[port]['intf_decl'] + '\n'*2
+            s += '\n'.join(mp_sig[port]['assign'])
+            s += '\n'
+            s += '\n'
 
     out += textwrap.indent(s, ' '*4)
 
@@ -84,11 +86,14 @@ def render_sv(args, prj, data):
 
     s = f'{blk_name}{blk_param} dut (\n'
     s_1 = ''
-    for port in data['ports']:
-        intf_name = data['ports'][port]['name']
-        intf_type = data['ports'][port]['interfaceData']['interfaceType'] + '_if'
-        intf_dir = data['ports'][port]['direction']
-        s_1 += f".{intf_name}({intf_name}), // {intf_type}.{intf_dir}\n"
+    for port_type in data['ports']:
+        for port, port_data in data['ports'][port_type].items():
+            intf_name = port_data['name']
+            connectionData = port_data.get('connection', {})
+            intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
+            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType']) + '_if'
+            intf_dir = port_data['direction']
+            s_1 += f".{intf_name}({intf_name}), // {intf_type}.{intf_dir}\n"
     s_1 += '.clk(clk),\n.rst_n(rst_n)\n'
     s_1 = textwrap.indent(s_1, ' '*4)
     s += s_1 + ');'

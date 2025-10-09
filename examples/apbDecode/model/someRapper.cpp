@@ -24,7 +24,7 @@ someRapper::someRapper(sc_module_name blockName, const char * variant, blockBase
 {
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
     uAPBDecode->apbReg(apbReg);
-// instance to instance connections via channel
+    // instance to instance connections via channel
     uAPBDecode->apb_uBlockA(apb_uBlockA);
     uBlockA->apbReg(apb_uBlockA);
     uAPBDecode->apb_uBlockB(apb_uBlockB);

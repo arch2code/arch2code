@@ -46,6 +46,7 @@ fileGeneration:
     package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     desc: "yaml based package file"}
   # standard copyright statement to be added to all generated files - change to suite your company
   fileCopyrightStatement: "Update your copywright statement in your project yaml file"
+  regBlockNaming: {instancePrefix: 'u_', blockSuffix: '_regs'} # naming convention for register handler blocks - instancePrefix is prefix for instance names, blockSuffix is suffix for block names
 postProcess:
   - $a2c/config/postParseRegister.py
   - $a2c/config/postParseChecks.py

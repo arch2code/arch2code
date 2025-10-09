@@ -1,7 +1,8 @@
+from xml.etree.ElementTree import indent
 from pysrc.systemVerilogGeneratorHelper import importPackages
 from pysrc.arch2codeHelper import printError, warningAndErrorReport, clog2
 
-from pysrc.intf_gen_utils import get_struct_width
+import pysrc.intf_gen_utils as intf_gen_utils
 
 from jinja2 import Template
 
@@ -24,30 +25,30 @@ def getParentStructures(prj, d):
 def render(args, prj, data):
     global regs_intf, regs_addr_t, regs_data_t
 
-    # Interface ports
-    for _, port_data in data['ports'].items():
-        if port_data['direction'] == 'dst':
-            regs_intf = port_data['interfaceData']['interface']
-            regs_addr_t, regs_data_t = getParentStructures(prj,port_data['interfaceData'])
-            # assume only one dst port in regs module, for the regs interface
-            break
+    regs_intf = data['addressDecode'].get('registerBusInterface', None)
+    if not regs_intf:
+        printError("In your address Config file registerBusInterface is not defined")
+        exit(warningAndErrorReport())
+
+    regs_addr_t = data['addressDecode']['registerBusStructs'].get('addr_t', None)
+    regs_data_t = data['addressDecode']['registerBusStructs'].get('data_t', None)
 
     # Pre-conditioning of the register data
     for reg_key, reg_data in data['registers'].items():
-        reg_data['bitwidth'] = get_struct_width(reg_data['structureKey'], prj.data['structures'])
+        reg_data['bitwidth'] = intf_gen_utils.get_struct_width(reg_data['structureKey'], prj.data['structures'])
         reg_data['segments'] = list(segment_register_gen(reg_data, REG_BUS_WIDTH_BYTES))
 
     # Pre-conditioning of the memory data, when existing
-    if prj.data['memories']:
+    if 'memoriesParent' in data:
         ctxt_memories = dict()
-        for mem_key, mem_data in prj.data['memories'].items():
-            if mem_data['block'] == data['registerLeafInstance']['container'] and mem_data['regAccess']:
-                mem_data['bitwidth'] = get_struct_width(mem_data['structureKey'], prj.data['structures'])
-                mem_data['segments'] = list(segment_register_gen(mem_data, REG_BUS_WIDTH_BYTES))
-                mem_data['rowwidth'] = clog2(len(mem_data['segments']) * REG_BUS_WIDTH_BYTES)
-                mem_data['memsize'] = prj.getConst(mem_data['wordLinesKey']) * (2** mem_data['rowwidth'])
-                mem_data['address_range'] = ( mem_data['segments'][0][0], mem_data['segments'][0][0] + mem_data['memsize'] - REG_BUS_WIDTH_BYTES )
-                ctxt_memories[mem_key] = mem_data
+        for mem_key, mem_data in data['memoriesParent'].items():
+            entry = dict(mem_data)
+            entry['bitwidth'] = intf_gen_utils.get_struct_width(mem_data['structureKey'], prj.data['structures'])
+            entry['segments'] = list(segment_register_gen(entry, REG_BUS_WIDTH_BYTES))
+            entry['rowwidth'] = clog2(len(entry['segments']) * REG_BUS_WIDTH_BYTES)
+            entry['memsize'] = prj.getConst(entry['wordLinesKey']) * (2** entry['rowwidth'])
+            entry['address_range'] = ( entry['segments'][0][0], entry['segments'][0][0] + entry['memsize'] - REG_BUS_WIDTH_BYTES )
+            ctxt_memories[mem_key] = entry
         data['memories'] = ctxt_memories
 
     # TODO extend support beyond 8-bytes wide for external registers
@@ -82,26 +83,21 @@ def section_package_imports(args, prj, data):
 
 def section_intf_ports(prj, data):
 
-    s_1 = []
+    out = []
+    # Ports
+    for sourceType in data['ports']:
+        for port, port_data in data['ports'][sourceType].items():
+            connectionData = port_data.get('connection', {})
+            intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
+            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'])
+            out.append(f"{intf_type}_if.{port_data['direction']} {port_data['name']},")
 
-    # Interface ports
-    for _, port_data in data['ports'].items():
-        ptype = port_data['interfaceData']['interfaceType'] + '_if'
-        pdir = port_data['direction']
-        pname = port_data['name']
-        s_1 += [ f"{ptype}.{pdir} {pname}," ]
 
-    # Memory Interfaces ports
-    for _, mem_data in data['memories'].items():
-        pname = mem_data['memory']
-        s_1 += [ f"memory_if.src {pname}," ]
-
-    return string_joiner(s_1, '\n')
+    return string_joiner(out, '\n')
 
 def section_address_mask(prj, data):
-    #mask = (1<<({data['addressDecode']['addressBits']}-1))-1
-    mask = 1<<32-1 # FIXME need to access data['addressDecode']['addressBits']
-    return f"{mask:_x}"
+    mask = (1<<(int(data['addressDecode']['addressBits'])))-1
+    return f"32'h{mask:_x}"
 
 # Signals declarations, flops and continous assignments
 def section_01(data):
@@ -350,7 +346,6 @@ module {{ modulename }}
     {{ packages_imports | indent(4) }}
 {%- endif %}
     #(
-        parameter {{regs_addr_t}} APB_ADDR_MASK = '1,
         parameter bit APB_READY_1WS = 0
     )
     (
@@ -360,7 +355,7 @@ module {{ modulename }}
     );
 
     {{regs_addr_t}} apb_addr;
-    assign apb_addr = {{regs_addr_t}}'({{regs_intf}}.paddr) & APB_ADDR_MASK;
+    assign apb_addr = {{regs_addr_t}}'({{regs_intf}}.paddr) & {{ address_mask }};
 
     {{ section_01 | indent(4) }}
 

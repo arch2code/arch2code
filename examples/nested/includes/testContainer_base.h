@@ -16,22 +16,20 @@ public:
     virtual ~testContainerBase() = default;
     // src ports
     // test->uNestedL1: Test interface
-    //rdy_vld_out< test_st > test;
-
-    // dst ports
+    rdy_vld_out< test_st > test;
 
 
-    testContainerBase(std::string name, const char * variant) 
-        //test("test")
+    testContainerBase(std::string name, const char * variant) :
+        test("test")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
-        //test->setTimed(nsec, mode);
+        test->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
     {
-        //test->setLogging(verbosity);
+        test->setLogging(verbosity);
     };
 };
 class testContainerInverted : public virtual blockPortBase
@@ -39,41 +37,37 @@ class testContainerInverted : public virtual blockPortBase
 public:
     // src ports
     // test->uNestedL1: Test interface
-    //rdy_vld_in< test_st > test;
-
-    // dst ports
+    rdy_vld_in< test_st > test;
 
 
-    testContainerInverted(std::string name) 
-        //test(("test"+name).c_str())
+    testContainerInverted(std::string name) :
+        test(("test"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
-        //test->setTimed(nsec, mode);
+        test->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
     {
-        //test->setLogging(verbosity);
+        test->setLogging(verbosity);
     };
 };
 class testContainerChannels
 {
 public:
     // src ports
-    //   test
-    //rdy_vld_channel< test_st > test;
-
-    // dst ports
+    // Test interface
+    rdy_vld_channel< test_st > test;
 
 
-    testContainerChannels(std::string name, std::string srcName) 
-    //test(("test"+name).c_str(), srcName)
+    testContainerChannels(std::string name, std::string srcName) :
+    test(("test"+name).c_str(), srcName)
     {};
     void bind( testContainerBase *a, testContainerInverted *b)
     {
-        //a->test( test );
-        //b->test( test );
+        a->test( test );
+        b->test( test );
     };
 };
 

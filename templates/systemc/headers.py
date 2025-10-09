@@ -6,11 +6,12 @@ def render(args, prj, data):
     # to effectively backup
     out = list()
     if args.fileMapKey not in data['includeFiles']:
-        out.append(f'Error {args.fileMapKey} must match option in project file\n')
+        out.append(f'Error {args.fileMapKey} must match option in project file')
     for name in data['includeContext']:
         if name and name in data['includeFiles'][args.fileMapKey]:
             includeName = data['includeFiles'][args.fileMapKey][name]['baseName']
             if includeName != data['fileNameBase']:
-                out.append(f'#include "{includeName}"\n')
+                out.append(f'#include "{includeName}"')
     # take the list and return a string
-    return("".join(out))
+    out.append("")
+    return("\n".join(out))

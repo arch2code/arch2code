@@ -1,4 +1,5 @@
 from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport, printIfDebug
+from pysrc.processYaml import camelCase
 
 def postProcess(prj):
     """Post process the project after parsing the YAML file.
@@ -7,18 +8,25 @@ def postProcess(prj):
         prj (project): The project object.
     """
     reg_interface = prj.addressControl.get('RegisterBusInterface', 'apbReg')
+    file_gen = prj.a2cProj.get('fileGeneration', {})
+    proj_file_gen = prj.proj.get('fileGeneration', {})
+    # prefer users input else revert to default
+    regBlockNaming = proj_file_gen.get('regBlockNaming', file_gen.get('regBlockNaming', {}))
+    instance_prefix = regBlockNaming.get('instancePrefix', 'u_')
+    block_suffix = regBlockNaming.get('blockSuffix', '_regs')
+    camel_case = regBlockNaming.get('camelCase', False)
     # build a dictionary with sections and content the same as if it was parsed from a file
     #
     blocksWithRegisters = dict()
     for context, registers in prj.data['registers'].items():
         for register, registerData in registers.items():
             if registerData['blockKey'] not in blocksWithRegisters:
-                blocksWithRegisters[registerData['blockKey']] = None
+                blocksWithRegisters[registerData['blockKey']] = registerData['block']
     blocksWithMemories = dict()
     for context, memories in prj.data['memories'].items():
         for memory, memoryData in memories.items():
             if memoryData['regAccess'] and memoryData['blockKey'] not in blocksWithMemories:
-                blocksWithMemories[memoryData['blockKey']] = None
+                blocksWithMemories[memoryData['blockKey']] = memoryData['block']
     # create a dictionary of connections to be added to the database
     blocksNeedingConnections = blocksWithRegisters.copy()
     blocksNeedingConnections.update(blocksWithMemories)
@@ -31,6 +39,27 @@ def postProcess(prj):
     primaryDecodeContainer = None
     for instance, instanceKey in prj.instances.items():
         instancesSimple[instanceKey] = instance
+
+    reg_handler_blocks = dict()
+    reg_handler_instances = dict()
+    reg_handler_connection_maps = list()
+    for block_key, block in blocksNeedingConnections.items():
+        reg_block = block + block_suffix
+        has_mdl = len(prj.hierKey[block_key]) > 0
+        instance_name = camelCase(instance_prefix, reg_block) if camel_case else instance_prefix + reg_block
+        reg_handler_blocks[reg_block] = {'desc': block + ' Register handler',
+                                         'isRegHandler': True,
+                                         'hasVl': False,
+                                         'hasRtl': True,
+                                         'hasMdl': has_mdl,
+                                         'hasTb': False,
+                                         'isRegHandler': True}
+        reg_handler_instances[instance_name] = {'instanceType': reg_block,
+                                                   'container': block}
+        reg_handler_connection_maps.append({'interface': reg_interface,
+                                            'block': block,
+                                            'direction': 'dst',
+                                            'instance': instance_name})
 
     for addressGroup, groupData in prj.addressControl['AddressGroups'].items():
         if 'decoderInstance' in groupData:
@@ -69,6 +98,7 @@ def postProcess(prj):
                     decoderContainerInstances[instanceData['instanceTypeKey']] = {instanceData['instanceKey']: instanceData}
                 else:
                     decoderContainerInstances[instanceData['instanceTypeKey']][instanceData['instanceKey']] = instanceData
+
     connections = list()
     connectionMaps = list()
     listOfInstances = list()
@@ -86,6 +116,7 @@ def postProcess(prj):
                 connection['dst'] = instance
                 connection['interface'] = reg_interface
                 connection['srcport'] = "apb_"+instance
+                connection['interfaceName'] = "apb_"+instance
                 connections.append(connection)
             else:
                 # for non direct connect cases we need to connect to parent in the same container as the address decode block
@@ -108,6 +139,7 @@ def postProcess(prj):
                 connection['dst'] = dst
                 connection['interface'] = reg_interface
                 connection['srcport'] = "apb_"+dst
+                connection['interfaceName'] = "apb_"+dst
                 connections.append(connection)
             # there is a single connectionMap for each decoder container within the block
             connectionMap = dict()
@@ -117,7 +149,10 @@ def postProcess(prj):
             connectionMap['instance'] = instancesSimple[decoder]
             connectionMaps.append(connectionMap)
     ret = dict()
+    ret['blocks'] = reg_handler_blocks
+    ret['instances'] = reg_handler_instances
     ret['connections'] = connections
     ret['connectionMaps'] = connectionMaps
+    ret['connectionMaps'].extend(reg_handler_connection_maps)
     prj.config.setConfig("INSTANCES_WITH_REGAPB", listOfInstances, bin=True )
     return ret

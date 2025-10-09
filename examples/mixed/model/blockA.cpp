@@ -9,7 +9,7 @@ SC_HAS_PROCESS(blockA);
 blockA::registerBlock blockA::registerBlock_; //register the block with the factory
 
 void blockA::regHandler(void) { //handle register decode
-    registerHandler< apbAddrSt, apbDataSt >(regs, apbReg, (1<<(25-1))-1); }
+    registerHandler< apbAddrSt, apbDataSt >(regs, apbReg, (1<<(3))-1); }
 
 blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)

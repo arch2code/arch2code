@@ -36,9 +36,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     memories mems;
     //memories
     hwMemory< seeSt > test;

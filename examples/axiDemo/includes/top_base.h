@@ -16,9 +16,6 @@ class topBase : public virtual blockPortBase
 {
 public:
     virtual ~topBase() = default;
-    // src ports
-
-    // dst ports
 
 
     topBase(std::string name, const char * variant) 
@@ -34,9 +31,6 @@ public:
 class topInverted : public virtual blockPortBase
 {
 public:
-    // src ports
-
-    // dst ports
 
 
     topInverted(std::string name) 
@@ -52,9 +46,6 @@ public:
 class topChannels
 {
 public:
-    // src ports
-
-    // dst ports
 
 
     topChannels(std::string name, std::string srcName) 

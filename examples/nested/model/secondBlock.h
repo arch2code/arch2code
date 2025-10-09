@@ -28,9 +28,8 @@ private:
     };
     static registerBlock registerBlock_;
 public:
-
     // channels
-    //   test
+    // Test interface
     rdy_vld_channel< test_st > test;
 
     //instances contained in block

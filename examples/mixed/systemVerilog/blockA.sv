@@ -14,18 +14,15 @@ import mixed_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-
-    // Register Interfaces
     status_if #(.data_t(aRegSt)) roA();
 
 // Instances
-blockARegs #(.APB_ADDR_MASK('hff_ffff)) uBlockARegs (
+blockARegs uBlockARegs (
     .apbReg (apbReg),
     .roA (roA),
     .clk (clk),
     .rst_n (rst_n)
 );
-
 
 // GENERATED_CODE_END
 

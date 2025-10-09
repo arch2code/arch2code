@@ -62,8 +62,8 @@ $(BUILD_DIR)/$(BIN) : $(OBJ) $(COMMON_OBJ)
 # Include all .d files
 -include $(DEP)
 
-$(GEN_FILES) : $(DOT_DB_FILE) mdlBlockList.yaml
-	$(REPO_ROOT)/arch2code.py --readonly --db $(DB_FILE) --systemc --instances mdlBlockList.yaml --file $@
+$(GEN_FILES) : $(DOT_DB_FILE)
+	$(REPO_ROOT)/arch2code.py --readonly --db $(DB_FILE) --systemc --file $@
 
 gen: $(GEN_FILES)
 

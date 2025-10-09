@@ -15,7 +15,6 @@ import axi4sDemo_tb_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-
 // GENERATED_CODE_END
 
     localparam int SRC_DATA_WIDTH = 256;

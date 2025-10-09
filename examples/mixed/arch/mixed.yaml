@@ -231,18 +231,9 @@ blocks:
   apbDecode:
     desc: The block to decode apb addresses
     hasVl: false
-  blockBRegs:
-    desc: The register block inside block B
-    hasVl: false
-    isRegHandler: true
   blockD:
     desc: The block named D
     hasVl: false
-  blockARegs:
-    desc: The register block inside block A
-    hasMdl: false
-    hasVl: false
-    isRegHandler: true
   blockE: # Unused block - this is to test that unused blocks are handled properly by generator
     desc: The block named E
     hasMdl: false
@@ -274,8 +265,6 @@ instances:
   uAPBDecode:  {container: top,     instanceType: apbDecode,                      instGroup: top,                             color: pink}
   uBlockC:     {container: top,     instanceType: blockC,                         instGroup: top,                             color: orange}
   uBlockB:     {container: top,     instanceType: blockB,     addressGroup: top,  instGroup: top,                             color: lightslateblue}
-  uBlockARegs: {container: blockA,  instanceType: blockARegs,                     instGroup: top,                             color: grey}
-  uBlockBRegs: {container: blockB,  instanceType: blockBRegs,                     instGroup: top,                             color: grey}
   uBlockD:     {container: blockB,  instanceType: blockD,     addressGroup: ip1,  instGroup: top, addressMultiples: 2 } #get 2x the number of addresses
   uBlockF0:    {container: blockB,  instanceType: blockF,     addressGroup: ip1,  instGroup: top, variant: variant0   }
   uBlockF1:    {container: blockB,  instanceType: blockF,                         instGroup: top, variant: variant1   }
@@ -299,29 +288,30 @@ connections:
   - {interface: aStuffIf, src: uBlockA,                  dst: uBlockB,    dstport: btod} # struct defined as part of class / instance
   - {interface: cStuffIf, src: uBlockA,                  dst: uBlockC,    dstport: see}
   - {interface: cStuffIf, src: uBlockD,                  dst: uThreeCs,   dstport: see0}
-  - {interface: cStuffIf, src: uBlockF0,                 dst: uThreeCs,   dstport: see1}
-  - {interface: cStuffIf, src: uBlockF1,                 dst: uThreeCs,   dstport: see2}
-  - {interface: dStuffIf, src: uBlockD, srcport: dee0,   dst: uBlockF0}
-  - {interface: dStuffIf, src: uBlockD, srcport: dee1,   dst: uBlockF1}
+  - {interface: cStuffIf, src: uBlockF0,                 dst: uThreeCs,   dstport: see1, interfaceName: cStuff1}
+  - {interface: cStuffIf, src: uBlockF1,                 dst: uThreeCs,   dstport: see2, interfaceName: cStuff2}
+  - {interface: dStuffIf, src: uBlockD, srcport: dee0,   dst: uBlockF0,   interfaceName: dee0}
+  - {interface: dStuffIf, src: uBlockD, srcport: dee1,   dst: uBlockF1,   interfaceName: dee1}
+  - {interface: dStuffIf, src: uBlockD, srcport: outD,   dst: uBlockF0,   dstport: dSin, interfaceName: loopDF} # loop interface d -> F0 -> F1 -> D
+  - {interface: dStuffIf, src: uBlockF0, srcport: dSout, dst: uBlockF1,   dstport: dSin, interfaceName: loopFF}
+  - {interface: dStuffIf, src: uBlockF1, srcport: dSout, dst: uBlockD,    dstport: inD,  interfaceName: loopFD}
   - {interface: apbReg,   src: uCPU,                     dst: uAPBDecode}
   - {interface: startDone, src: uBlockA,                 dst: uBlockB}
 
 # in connection maps the direction field should match the instance port direction
 connectionMaps:
   - {interface: aStuffIf, block: blockB,  port: btod, direction: dst, instance: uBlockD,     instancePort: btod}
-  - {interface: apbReg,   block: blockA,              direction: dst, instance: uBlockARegs}
-  - {interface: apbReg,   block: blockB,              direction: dst, instance: uBlockBRegs}
   - {interface: cStuffIf, block: threeCs, port: see0, direction: dst, instance: uBlockC0,    instancePort: see}
   - {interface: cStuffIf, block: threeCs, port: see1, direction: dst, instance: uBlockC1,    instancePort: see}
   - {interface: cStuffIf, block: threeCs, port: see2, direction: dst, instance: uBlockC2,    instancePort: see}
 
 memories:
   - {memory: blockBTable0,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, local: true, desc: "Dual Port with no connections, local mem array"}
-  - {memory: blockBTable1,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Dual Port with one connection"}
-  - {memory: blockBTable2,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Dual Port with two connections native to blockB"}
-  - {memory: blockBTable3,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Dual Port with two connections native to blockB, explicitly connected"}
+  - {memory: blockBTable1,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [port1], regAccess: true, desc: "Dual Port with one connection"}
+  - {memory: blockBTable2,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [port1, port2], desc: "Dual Port with two connections native to blockB"}
+  - {memory: blockBTable3,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [read, write], desc: "Dual Port with two connections native to blockB, explicitly connected"}
   - {memory: blockBTableSP0, block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Single Port with no connections", memoryType: singlePort}
-  - {memory: blockBTableSP,  block: blockB, structure: nestedSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Single Port with connection",     memoryType: singlePort, count: ASIZE}
+  - {memory: blockBTableSP,  block: blockB, structure: nestedSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [bob], desc: "Single Port with connection",  memoryType: singlePort, count: ASIZE}
   - {memory: test,           block: blockF, structure: seeSt, wordLines: bob, addressStruct: bSizeSt, desc: "Dual Port with one connection"}
 
 parameters:
@@ -332,20 +322,25 @@ parameters:
     - {variant: variant1, param: fred, value: 1    }
 
 memoryConnections:
-  - {memory: blockBTable1,  block: blockB, instance: uBlockD}
-  - {memory: blockBTable2,  block: blockB, portSuffix: Port2}
-  - {memory: blockBTable3,  block: blockB, portSuffix: Write}
-  - {memory: blockBTable3,  block: blockB, portSuffix: Read}
-  - {memory: blockBTableSP, block: blockB, instance: uBlockD}
+  - {memory: blockBTable1,  block: blockB, instance: uBlockD, port: port1}
+  - {memory: blockBTableSP, block: blockB, instance: uBlockD, port: bob}
 
 registers:
 # after https://arch2code.atlassian.net/browse/A2C-123
 #  uncommnet rwNestsed and roD once fixed, this works for SystemVerilog but no SystemC currently
 # - {register: rwNested, regType: rw,  block: blockB,   structure: nestedSt,   desc: A Read Write register with a nested structure}
   - {register: rwD,      regType: rw,  block: blockB,   structure: dRegSt,     desc: A Read Write register}
+#  - {register: extD,     regType: ext, block: blockB,   structure: dRegSt,     desc: An External register}
   - {register: roBsize,  regType: ro,  block: blockB,   structure: bSizeRegSt, desc: A Read Only register with a structure that has a definition from an included context}
   - {register: roA,      regType: ro,  block: blockA,   structure: aRegSt,     desc: A Read Only register}
+#  - {register: extA,     regType: ext, block: blockA,   structure: aRegSt,     desc: An External register}
 
+registerConnections:
+  - {register: rwD,     block: blockB, instance: uBlockF0 }
+  - {register: rwD,     block: blockB, instance: uBlockF1 }
+  - {register: rwD,     block: blockB, instance: uBlockD }
+  - {register: roBsize, block: blockB, instance: uBlockD }
+#  - {register: extD,    block: blockB, instance: uBlockD }
 
 # flows, are very similar to a plantuml sequence diagram, a filename is taken and optionally
 #   consistency checks can be made for connections the flow

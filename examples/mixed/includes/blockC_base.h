@@ -14,10 +14,8 @@ class blockCBase : public virtual blockPortBase
 {
 public:
     virtual ~blockCBase() = default;
-    // src ports
-
     // dst ports
-    // External->cStuffIf: An interface for C
+    // uBlockA->cStuffIf: An interface for C
     rdy_vld_in< seeSt > see;
 
 
@@ -37,10 +35,8 @@ public:
 class blockCInverted : public virtual blockPortBase
 {
 public:
-    // src ports
-
     // dst ports
-    // External->cStuffIf: An interface for C
+    // uBlockA->cStuffIf: An interface for C
     rdy_vld_out< seeSt > see;
 
 
@@ -60,10 +56,8 @@ public:
 class blockCChannels
 {
 public:
-    // src ports
-
     // dst ports
-    //   cStuffIf
+    // An interface for C
     rdy_vld_channel< seeSt > see;
 
 

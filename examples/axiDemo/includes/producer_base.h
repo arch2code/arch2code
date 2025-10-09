@@ -38,8 +38,6 @@ public:
     // axiStreamIf->uConsumer: AXI stream channel
     axi4_stream_out< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr1;
 
-    // dst ports
-
 
     producerBase(std::string name, const char * variant) :
         axiRd0("axiRd0")
@@ -106,8 +104,6 @@ public:
     // axiStreamIf->uConsumer: AXI stream channel
     axi4_stream_in< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr1;
 
-    // dst ports
-
 
     producerInverted(std::string name) :
         axiRd0(("axiRd0"+name).c_str())
@@ -153,28 +149,26 @@ class producerChannels
 {
 public:
     // src ports
-    //   axiRdIf
+    // AXI Read channels; Address and Data
     axi_read_channel< axiAddrSt, axiDataSt > axiRd0;
-    //   axiRdIf
+    // AXI Read channels; Address and Data
     axi_read_channel< axiAddrSt, axiDataSt > axiRd1;
-    //   axiRdIf
+    // AXI Read channels; Address and Data
     axi_read_channel< axiAddrSt, axiDataSt > axiRd2;
-    //   axiRdIf
+    // AXI Read channels; Address and Data
     axi_read_channel< axiAddrSt, axiDataSt > axiRd3;
-    //   axiWrIf
+    // AXI Write channels; Address, Data, and Response
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr0;
-    //   axiWrIf
+    // AXI Write channels; Address, Data, and Response
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr1;
-    //   axiWrIf
+    // AXI Write channels; Address, Data, and Response
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr2;
-    //   axiWrIf
+    // AXI Write channels; Address, Data, and Response
     axi_write_channel< axiAddrSt, axiDataSt, axiStrobeSt > axiWr3;
-    //   axiStreamIf
+    // AXI stream channel
     axi4_stream_channel< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr0;
-    //   axiStreamIf
+    // AXI stream channel
     axi4_stream_channel< axiDataSt, axiAddrSt, axiAddrSt, axiAddrSt > axiStr1;
-
-    // dst ports
 
 
     producerChannels(std::string name, std::string srcName) :

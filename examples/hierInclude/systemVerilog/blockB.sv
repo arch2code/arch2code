@@ -3,8 +3,8 @@
 //module as defined by block: blockB
 module blockB
 // Generated Import package statement(s)
-import hierInclude_package::*;
 import hierIncludeB_package::*;
+import hierInclude_package::*;
 (
     rdy_vld_if.dst eh2b,
     req_ack_if.src b2C,
@@ -36,7 +36,6 @@ blockBZ uBlockBZ (
     .clk (clk),
     .rst_n (rst_n)
 );
-
 
 // GENERATED_CODE_END
 

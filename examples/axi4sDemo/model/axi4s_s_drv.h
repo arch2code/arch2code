@@ -29,9 +29,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     axi4s_s_drv(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~axi4s_s_drv() override = default;
 

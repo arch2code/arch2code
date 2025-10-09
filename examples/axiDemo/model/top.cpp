@@ -31,7 +31,7 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-// instance to instance connections via channel
+    // instance to instance connections via channel
     uProducer->axiRd0(axiRd0);
     uConsumer->axiRd0(axiRd0);
     uProducer->axiRd1(axiRd1);

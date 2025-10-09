@@ -26,9 +26,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     subBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~subBlock() override = default;
 

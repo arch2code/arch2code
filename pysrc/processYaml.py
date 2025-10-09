@@ -99,15 +99,16 @@ def camelCase(*words):
             #no need for empty sting case
     return out
 
-def getPortName(row, portKeyName = 'port'):
-    port = row.get(portKeyName, '')
-    name = row.get('name', '')
-    interface = row.get('interface', '')
-    if port:
-        return port
-    if name:
-        return name
-    return interface
+def getKeyPriority(data, prioritylist):
+    for key in prioritylist:
+        ret = data.get(key, None)
+        # filter out empty strings or missing values
+        if ret:
+            return ret
+    return None
+
+def getPortChannelName(row, portKeyName = 'port'):
+    return getKeyPriority(row, [portKeyName, 'name', 'interface'])
 
 def loadModule(filename):
     module = None
@@ -227,7 +228,7 @@ class schema:
 
     # validate schema processes the schema definition for later use in the processing of user input
     def validateSchema(self, schema, schemaFile, context=''):
-        validFieldTypes = { 'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param'}
+        validFieldTypes = { 'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param', 'singleEntryList', 'listkey'}
         addressControlFields = {'addressGroup', 'addressID', 'addressMultiples', 'instanceGroup', 'instanceID'}
         reservedKeys = {'_validate', '_type', '_key', '_combo', '_attribs', '_singular'} # reserved keys begin with _
         customChecker = {'_singular'} # keys that should use custom checker
@@ -241,9 +242,11 @@ class schema:
             dataSchema = None
             mySingular = None
             multiEntry = False # determines if there can be multiple records in the input/output
-            appendLater = dict() # dictionary of fields that are based on other fields and ordering must be enforced
+            singleEntryList = False # if true the user input is a list but we convert to dict with key based on list index
+            output = dict() 
             optionalDefaults = dict() # dictionary of fields that are optional and have a default value
             for field, ftype in schema[section].items():
+                output[field] = ftype
                 #check for nested specification. A nesting specification may be reservedKeys or a sub table, or _dataschema
                 if hasattr(ftype,'lc'):
                     myLineNumber = ftype.lc.line + 1
@@ -285,33 +288,44 @@ class schema:
                                 # just adding another key
                                 self.data['subTable'][subTable][subTable+field] = field
                             # process the nested schema
-                            self.validateSchema({field: ftype}, schemaFile, context=context+section)
+                            temp = {field: ftype}
+                            self.validateSchema(temp, schemaFile, context=context+section)
+                            output[field] = temp[field]
                             continue
                         else:
                             if myType is None:
                                 printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Section {context}, {section}, Field {field}, is missing a _type definition")
                                 exit(warningAndErrorReport())
+                    output[field] = myType
                     if myValidate is not None:
                         self.data['validator'][context+section+field] = myValidate
                         # is this validator a lookup?
                         if 'section' in myValidate:
                             # if the validator is a lookup, we need to also add the 'key' version from the lookup
-                            appendLater[field+'Key'] = 'ignore' # note that this will be effectively ignored by simple parser
+                            output[field+'Key'] = 'ignore' # note that this will be effectively ignored by simple parser
                     # a combo key is for when the key is created by concatenating other fields
                     if myComboKey:
-                        self.data['comboKey'][context+section] = myComboKey
-                        appendLater[field] = 'key' # make sure ignore by simple parser and calculated after the other fields
+                        # check that the fields referenced in the combo key are already in the output
+                        for k in myComboKey:
+                            if k not in output:
+                                printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} combo key, is referencing an invalid field '{k}'. Fields must be declared before use")
+                                exit(warningAndErrorReport())
+                        self.data['comboKey'][context+section] = myComboKey                        
+                        output[field] = 'key' # make sure ignore by simple parser and calculated after the other fields
                         # add check that input is valid..
                     if myComboField:
+                        for k in myComboField:
+                            if k not in output:
+                                printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} combo field, is referencing an invalid field '{k}'. Fields must be declared before use")
+                                exit(warningAndErrorReport())
                         if context+section not in self.data['comboField']:
                             self.data['comboField'][context+section] = dict()
                         self.data['comboField'][context+section][field] = myComboField
-                        appendLater[field] = myType
-                    # replace the internal dict with simple value
-                    schema[section][field] = myType
+                        output[field] = myType
                 else:
                     # simple case
                     myType = ftype
+                output[field] = myType
                 # if the first four leters are auto it may be an automatic function
                 # probably need to add some more tests here or prepend an _ TODO
                 if myType[:4]=='auto' and len(myType)>4 :
@@ -324,16 +338,13 @@ class schema:
                         self.data['fnStr'][context+section+field] = fn
                         # counterReverseField allows back reference between fields that control counter generation and the counter value - this is to deal with ordering issue
                         self.data['counterReverseField'][context+section+braceContents] = field
-                        # we need to ensure that the counterID generation is after any other counter flags, as there is no guarentee that
-                        # user generated schema with correct ordering, so we will remove any ID generation and reapply after processing
-                        if braceContents in ['addressID', 'instanceID', 'entryType']:
-                            appendLater[field] = myType
                     else:
                         printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} auto, is referencing an invalid function '{myType}' ")
                         exit(warningAndErrorReport())
                     myType = 'auto'
+                    output[field] = myType
                 if myType == 'const' or myType[:13]=='optionalConst' or myType == 'param':
-                    appendLater[field+'Key'] = "ignore"
+                    output[field+'Key'] = "ignore"
                 if myType[:8]=='optional' and len(myType)>8 :
                     braceContents = self.optionalFind.search(myType)
                     if braceContents:
@@ -346,7 +357,7 @@ class schema:
                         if (str(default).lower() in {"true", "false"}):
                             # convert to boolean
                             default = str(default).lower() == "true"
-                        schema[section][field] = optionalType
+                        output[field] = optionalType
                         myType = optionalType
                         optionalDefaults[field] = default
                 # the following code only wants to deal with lists, so if its not already a list, make it one
@@ -360,9 +371,10 @@ class schema:
                         exit(warningAndErrorReport())
                 if myType == 'key':
                     itemkeyname = field
+                    output[field+'Key'] = 'contextKey' # the true key for the record is the user identified key with the scope added
                 if myType == 'outerkey':
                     # for outerkey case we also need the key with context added
-                    appendLater[field+'Key'] = 'outerkeyKey'
+                    output[field+'Key'] = 'outerkeyKey'
                     self.data['outerkeyKey'][context+section] = field+'Key'
                     indexes.append(field+'Key')
                 if field == '_attribs':
@@ -374,7 +386,11 @@ class schema:
                         # the user input is a list not a dict, so we 'generate' a key based on the list index
                         multiEntry = True
                         itemkeyname = '_listIndex'
-                        appendLater['_listIndex'] = 'key'
+                        output['_listIndex'] = 'key'
+                    if 'singleEntryList' in myType:
+                        # the user input is a list not a dict, so we 'generate' a key based on the list index
+                        multiEntry = True
+                        singleEntryList = True
                     attrib = myType
                 if field == '_singular':
                     mySingular = myType
@@ -396,10 +412,7 @@ class schema:
                     exit(warningAndErrorReport())
 
             # note this is all done outside the loop as you cant modify a dict your iterating on
-            for later, val in appendLater.items():
-                # enforce ordering by deleting and adding back
-                schema[section].pop(later, None)
-                schema[section][later] = val
+            schema[section] = output
             if section == '_dataSchema':
                 self.data['dataSchema'][context] = schema['_dataSchema']
                 optionalPrefix = context+'_dataSchema'
@@ -411,9 +424,19 @@ class schema:
             schema[section].pop('_attribs', None) #delete attrib if it exists, as it is now stored separately
             schema[section].pop('_singular', None) #delete attrib if it exists, as it is now stored separately
             schema[section]['_context'] = 'context'
-            schema[section][itemkeyname+'Key'] = 'contextKey'  # the true key for the record is the user identified key with the scope added
             indexes.append(itemkeyname+'Key')
-
+            if singleEntryList:
+                foundlistkey = False
+                for field, ftype in schema[section].items():
+                    if ftype == 'listkey':
+                        foundlistkey = True
+                    else:
+                        if ftype not in ['key', 'outerkey', 'outer', 'outerkeyKey', 'context', 'contextKey']:
+                            printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section} context {context}. singleEntryList is specified but field {field} is defined as {ftype}. Only listkey, key, outerkey and outer are allowed")
+                            exit(warningAndErrorReport())
+                if not foundlistkey:
+                    printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section} context {context}. singleEntryList is specified but no field is defined as listkey")
+                    exit(warningAndErrorReport())
             self.data['indexes'][context+section] = indexes
 
     def sections(self):
@@ -837,7 +860,7 @@ class projectOpen:
     # from perspective of qualBlock
     # subBlocks will be referenced if in the set of instances
     # this would be easier in SQL..
-    def getBlockData(self, qualBlock, instances):
+    def getBlockDataOld(self, qualBlock, instances, trimRegLeafInstance=False):
         blockDataSet = {'subBlockInstances', 'ports', 'registers', 'memories', 'memoryConnections', 'registerConnections', 'regPorts', 'connections', 'connectionMaps', 'subBlocks', 'includeContext', 'addressDecode', 'variants'}
         regDirection = { 'blk': { 'ro': 'src', 'rw': 'dst', 'ext': 'dst'}, 'reg': { 'ro': 'dst', 'rw': 'src', 'ext': 'src'}}
         ret = dict()
@@ -1216,6 +1239,479 @@ class projectOpen:
                 ret['subBlocks'][instVal['instanceTypeKey']] = instVal['instanceType']
 
         return ret
+    # do some preproccessing to assemble subset of data easily accessed by templates
+    # from perspective of qualBlock
+    # subBlocks will be referenced if in the set of instances
+    # this would be easier in SQL..
+    def getBlockData(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
+        blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts', 
+                        'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext', 
+                        'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections'}
+        ret = dict()
+        # create some of the simple returns
+        ret['includeFiles'] = self.config.getConfig('INCLUDEFILES')
+        ret['qualBlock'] = qualBlock
+        ret['blockInfo'] = self.data['blocks'][qualBlock]
+        ret['temp'] = dict()
+        ret['temp']['structs'] = dict()
+        ret['temp']['consts'] = dict()
+        for k in blockDataSet:
+            ret[k] = dict()
+        ret['addressDecode']['hasDecoder'] = False
+        # assemble the instance information. This is the instances of the qualBlock and any contained instances
+        self.getBDInstances(qualBlock, ret, trimRegLeafInstance, excludeInstances)
+        # get all the register and memory information
+        self.getBDRegistersMemories(qualBlock, ret)
+        # based on memories and registers, do we need address decoding etc
+        self.getBDAddressDecode(ret)
+        # address bus info
+        self.getBDAddressBus(ret)
+        # memory connections
+        self.getBDMemoryConnections(ret)
+        # register connections
+        if ret['enableRegConnections']:
+            self.getBDRegisterConnections(ret)
+            if not ret['blockInfo']['isRegHandler']:
+                ret['registers'] = dict()
+        # connection maps
+        self.getBDConnectionMaps(ret)
+        # regular connections
+        self.getBDConnections(ret, allowSingleEnded=(len(excludeInstances)!=0))
+        # build final connection info
+        self.getBDConnectionsFinal(ret)
+        # deduplicate the ports
+        self.getBDPorts(ret)
+        # figure out includes
+        self.getBDIncludes(ret)
+        ret.pop('temp') # remove temp data
+
+        return ret
+
+    def getBDGetIntfStructs(self, ret, intfData={}, intfKey=''):
+        if not intfData:
+            intfData = self.data['interfaces'][intfKey]
+        if intfData['structures']:
+            for structInfo in intfData['structures']:
+                ret['temp']['structs'][structInfo['structureKey']] = 0
+        ret['interfaceTypes'][intfData['interfaceType']] = 0
+
+    def getBDInstances(self, qualBlock, ret, trimRegLeafInstance, excludeInstances):
+        qualBlockInstances = dict()
+        containedInstances = dict()
+        containerBlocks = dict()
+        excluded = dict()
+        hasExcluded = 0
+        for inst_key, inst_data in self.data['instances'].items():
+            if inst_data.get('containerKey') == qualBlock:
+                if inst_data['instance'] in excludeInstances:
+                    hasExcluded = 1
+                    excluded[inst_key] = inst_data
+                    continue
+                containedInstances[inst_key] = inst_data
+                if self.data['blocks'][inst_data['instanceTypeKey']]['isRegHandler']:
+                    ret['regHandler'] = inst_key
+            if inst_data.get('instanceTypeKey') == qualBlock:
+                qualBlockInstances[inst_key] = inst_data
+                containerBlocks[inst_data['containerKey']] = 0
+                if inst_data['variant'] != '':
+                    filtered_variants_data = {k: v for k, v in self.data['parametersvariants'][qualBlock].items() if v.get('variant') == inst_data['variant']}
+                    ret['variants'][inst_data['variant']] = filtered_variants_data
+        if len(qualBlockInstances) == 0:
+            printError(f"There are no instances of {qualBlock} in the design")
+            exit(warningAndErrorReport())
+        ret['instances'] = qualBlockInstances
+        ret['enableRegConnections'] = True
+        if trimRegLeafInstance and 'regHandler' in ret:
+            # if the only contained instance is the regHandler then remove it
+            if (len(containedInstances) + hasExcluded) == 1:
+                containedInstances = dict()
+                ret['enableRegConnections'] = False
+        ret['subBlockInstances'] = containedInstances
+        ret['containerBlocks'] = containerBlocks
+        ret['blockName'] = self.data['blocks'][qualBlock]['block']
+        for inst, instInfo in containedInstances.items():
+            ret['subBlocks'][instInfo['instanceTypeKey']] = instInfo['instanceType']
+        if hasExcluded == 0 and len(excludeInstances) > 0:
+            printError(f"--excludeInst={excludeInstances} did not find any of the instances to exclude in block {qualBlock}")
+            exit(warningAndErrorReport())
+        ret['excludedInstances'] = excluded
+
+    def getBDRegistersMemories(self, qualBlock, ret):
+        # figure out which memories are either in this block or accessible through registers
+        block = qualBlock
+        isRegHandler = ret['blockInfo']['isRegHandler']
+        if isRegHandler:
+            # for register handler blocks we want the registers from the parent block
+            block = ret['instances'][next(iter(ret['instances']))]['containerKey'] # note there should be a 1:1 relationship for reg handler
+            decodeBlock = block
+            # figure out an instance of the parent block
+            # we will use this to get the address group for the address decode
+            for k, v in self.data['instances'].items():
+                if v['instanceTypeKey'] == decodeBlock:
+                    addressGroup = v['addressGroup']
+                    break
+        else:
+            decodeBlock = qualBlock
+            instanceInfo = ret['instances'][next(iter(ret['instances']))] # we only need one instance for the info as all instances must have similar config.. TODO add more checks
+            addressGroup = instanceInfo['addressGroup']
+
+        for designObject in ['registers', 'memories']:
+            data = dict() 
+            for obj, objInfo in self.data[designObject].items():
+                if objInfo['blockKey'] == block:
+                    data[obj] = dict(objInfo)
+                    ret['temp']['structs'][objInfo['structureKey']] = 0
+                    # handle any object specific special cases
+                    if (designObject == 'memories'):
+                        ret['temp']['consts'][objInfo['wordLinesKey']] = 0
+                        if objInfo['regAccess']:
+                            ret['addressDecode']['hasDecoder'] = True # we have memories that need FW access
+                        else:
+                            if isRegHandler:
+                                # for a regHandler we only want memories that have regAccess
+                                data.pop(obj)
+                    
+                    else:
+                        data[obj]['bytes'] = (self.data['structures'][objInfo['structureKey']]['width'] + 7) >> 3 # round up to whole byte
+                        ret['addressDecode']['hasDecoder'] = True #register = AddressDecoder
+            ret[designObject] = data
+
+        if ret['addressDecode']['hasDecoder']:
+            ret['addressDecode']['addressBits'] = (self.data['blocks'][decodeBlock]['maxAddress']).bit_length()
+            ret['addressDecode']['addressGroup'] = addressGroup
+
+    def getBDAddressDecode(self, ret):
+        # is this block a special apbDecode block type that performs abp bus routing
+        isApbRouter = False
+        addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
+        # iterate through the address config and see if we were mentioned
+        if addressConfig:
+            for addressGroup, addressGroupData in addressConfig.get('AddressGroups', {}).items():
+                decoder = addressGroupData.get('decoderInstance', None)
+                if decoder is not None:
+                    qualDecoder = self.getQualInstance(decoder)
+                    if qualDecoder in ret['instances']:
+                        instanceWithRegApb = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
+                        if instanceWithRegApb is None:
+                            printError('No instances with register interface found in db: missing or invalid register post processing script')
+                            exit(warningAndErrorReport())
+                        isApbRouter = True
+                        ret['addressDecode']['addressGroupData'] = addressGroupData
+                        ret['addressDecode']['addressGroup'] = addressGroup
+                        ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
+                        ret['addressDecode']['instanceWithRegApb'] = instanceWithRegApb
+        ret['addressDecode']['isApbRouter'] = isApbRouter
+
+    # memory connections
+    def getBDMemoryConnections(self, ret):
+        # go through memory connections and collect if either src or dest
+        qualBlock = ret['qualBlock']
+        qualBlockInstances = ret['instances']
+        isRegHandler = ret['blockInfo']['isRegHandler']
+        containedInstances = ret['subBlockInstances']
+        for memConn, val in self.data['memoryConnections'].items():
+            if val['blockKey'] == qualBlock and val['instanceKey'] in containedInstances:
+                # the connection is to a memory inside the target block so we will need a channel and bindings
+                ret['memoryConnections'][memConn] = dict(val)
+                ret['memoryConnections'][memConn]['interfaceName'] = val['memory']+'_'+val['port']
+                if (val['instance'] != ''):
+                    # we are connecting to an instance so lets add the instance type for the template
+                    ret['memoryConnections'][memConn]['instanceTypeKey'] = self.data['instances'][val['instanceKey']]['instanceType']
+                else:
+                    # for local mode where we are not connecting to an instance ensure we dont get a key missing error
+                    ret['memoryConnections'][memConn]['instanceTypeKey'] = ''
+                ret['interfaceTypes']['memory'] = 0
+                ret['temp']['structs'][self.data['memories'][val['memoryBlock']]['structureKey']] = 0
+                ret['temp']['consts'][self.data['memories'][val['memoryBlock']]['wordLinesKey']] = 0
+            if val['instanceKey'] in qualBlockInstances:
+                # we are the instance getting a memory connection so this means we have a port
+                memInfo = self.data['memories'][val['memoryBlock']]
+                ret['memoryPorts'][memConn] = dict(memInfo, **val) # merge the two dicts
+                ret['memoryPorts'][memConn]['interfaceName'] = val['memory']
+                ret['memoryPorts'][memConn]['direction'] = 'src'
+                ret['memoryPorts'][memConn]['interfaceType'] = 'memory' 
+                if (val['instance'] != ''):
+                    ret['memoryPorts'][memConn]['instanceTypeKey'] = self.data['instances'][val['instanceKey']]['instanceType']
+                else:
+                    ret['memoryPorts'][memConn]['instanceTypeKey'] = ''
+                ret['interfaceTypes']['memory'] = 0
+                ret['temp']['structs'][self.data['memories'][val['memoryBlock']]['structureKey']] = 0
+                ret['temp']['consts'][self.data['memories'][val['memoryBlock']]['wordLinesKey']] = 0
+
+        for mem, memInfo in ret['memories'].items():
+            # we also need to create a port for any memory that has regAccess as the register block will need to connect to it
+            if memInfo['regAccess']:
+                interfaceName = memInfo['memory']+ '_reg'
+                ret['temp']['structs'][memInfo['structureKey']] = 0
+                if isRegHandler:
+                    ret['memoryPorts'][interfaceName] = dict(memInfo)
+                    ret['memoryPorts'][interfaceName]['interfaceName'] = interfaceName
+                    ret['memoryPorts'][interfaceName]['direction'] = 'src'
+                    ret['memoryPorts'][interfaceName]['interfaceType'] = 'memory'
+                    ret['interfaceTypes']['memory'] = 0
+                else:
+                    if ret['enableRegConnections']:
+                        # we also need to create a memory connection for the register block to connect to the memory
+                        ret['memoryConnections'][interfaceName] = dict(memInfo)
+                        ret['memoryConnections'][interfaceName]['interfaceName'] = interfaceName
+                        ret['memoryConnections'][interfaceName]['instanceKey'] = ret['regHandler']
+                        ret['memoryConnections'][interfaceName]['instance'] = ret['subBlockInstances'][ret['regHandler']]['instance']
+                        ret['memoryConnections'][interfaceName]['instanceTypeKey'] = ret['subBlockInstances'][ret['regHandler']]['instanceType']
+                        ret['memoryConnections'][interfaceName]['direction'] = 'src'
+        if isRegHandler:
+            ret['memoriesParent'] = ret['memories']
+            ret['memories'] = dict()
+ 
+    # register connections
+    regMapReg   = { 'rw': 'src', 'ro': 'dst', 'ext': 'src' } # mapping of the register type to the registerBlock port direction
+    regMapBlock = { 'rw': 'dst', 'ro': 'src', 'ext': 'dst' } # mapping of the register type to the block port direction
+    def getBDRegisterConnections(self, ret):
+        block = ret['qualBlock']
+        qualBlockInstances = ret['instances']
+        containedInstances = ret['subBlockInstances']
+        isRegHandler = ret['blockInfo']['isRegHandler']
+        regHandlerKey = ret.get('regHandler', None)
+        regHandler = ''
+        connected_regs = dict()
+        if regHandlerKey:
+            regHandler = self.data['instances'][regHandlerKey]['instance']
+        if isRegHandler:
+            # for a register handler the registerConnections are in the parent
+            block = ret['instances'][next(iter(ret['instances']))]['containerKey']
+        for regConn, val in self.data['registerConnections'].items():
+            if val['blockKey'] == block and val['instanceKey'] in containedInstances:
+                reg_name = val['register']
+                connected_regs[reg_name] = 0
+                regType =  ret['registers'][val['registerBlock']]['regType']
+                ifType = 'reg_' + regType
+                regInfo = ret['registers'][val['registerBlock']]
+                ret['temp']['structs'][regInfo['structureKey']] = 0
+                if isRegHandler:
+                    ret['registerPorts'][regConn] = dict(regInfo, **val)
+                    ret['registerPorts'][regConn]['direction'] = self.regMapReg.get(ret['registers'][val['registerBlock']]['regType'], None)
+                    ret['registerPorts'][regConn]['interfaceType'] = ifType
+                else:
+                    connKey = regInfo['register']
+                    if connKey not in ret['registerConnections']:
+                        output = dict(regInfo, **val)
+                        inst = val['instance']
+                        output['ends'] = dict()
+                        output['ends'][inst] =          {'instance': inst,       'portName': reg_name, 'direction': self.regMapBlock[regType]}
+                        output['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg_name, 'direction': self.regMapReg[regType]}
+                        output['interfaceType'] = ifType
+                        output['interfaceName'] = reg_name
+                        ret['registerConnections'][connKey] = output
+                    else:
+                        inst = val['instance']
+                        ret['registerConnections'][connKey]['ends'][inst] = {'instance': inst, 'portName': reg_name, 'direction': self.regMapBlock[regType]}
+                ret['interfaceTypes'][ifType] = 0
+            if val['instanceKey'] in qualBlockInstances:
+                portName = val['register']
+                connected_regs[portName] = 0
+                regInfo = self.data['registers'][val['registerBlock']]
+                ret['registerPorts'][portName] = dict(regInfo, **val) # merge the two dicts
+                regType = regInfo['regType']
+                ret['registerPorts'][portName]['direction'] = self.regMapBlock.get(regType, None)
+                ifType = 'reg_' + regType
+                ret['registerPorts'][portName]['interfaceType'] = ifType
+                ret['interfaceTypes'][ifType] = 0
+                ret['temp']['structs'][regInfo['structureKey']] = 0
+        # handle implied register connections. These interfaces connect any unconnected registers to the block
+        implied_reg = dict()
+        for reg_key, reg_data in ret['registers'].items():
+            reg = reg_data['register']
+            if reg not in connected_regs:
+                regType = reg_data['regType']
+                ifType = 'reg_' + regType
+                implied_reg[reg] = dict(reg_data)
+                implied_reg[reg]['interfaceType'] = ifType
+                if isRegHandler:
+                    implied_reg[reg]['direction'] = self.regMapReg[regType]
+                else:
+                    implied_reg[reg]['interfaceName'] = reg
+                    implied_reg[reg]['ends'] = dict()
+                    inst = next(iter(qualBlockInstances))
+                    implied_reg[reg]['ends'][inst] = {'instance': qualBlockInstances[inst]['instance'], 'portName': reg, 'direction': self.regMapBlock[regType]}
+                    implied_reg[reg]['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg, 'direction': self.regMapReg[regType]}
+                ret['interfaceTypes'][ifType] = 0
+                ret['temp']['structs'][reg_data['structureKey']] = 0
+        if isRegHandler:
+            ret['registerPorts'].update(implied_reg)
+        else:
+            ret['registerConnections'].update(implied_reg)
+    # connection maps
+    def getBDConnectionMaps(self, ret):
+        qualBlock = ret['qualBlock']
+        qualBlockInstances = ret['instances']
+        containedInstances = ret['subBlockInstances']
+        for connMapKey, connMap in self.data['connectionMaps'].items():
+            # note we check that a valid qualBlock connects to a contained instance in case it was pruned (regBlock)
+            if connMap['blockKey'] == qualBlock and connMap['instanceKey'] in containedInstances:
+                ret['connectionMaps'][connMapKey] = dict(connMap)
+                ret['connectionMaps'][connMapKey]['interfaceName'] = connMap['portName']
+                ret['connectionMaps'][connMapKey]['parentPortName'] = connMap['portName']
+                self.getBDGetIntfStructs(ret, intfKey=connMap['interfaceKey'])
+            if connMap['instanceKey'] in qualBlockInstances:
+                # use portName as the key to deduplicate the port definitions
+                portName = connMap['instancePortName']
+                ret['connectionMapPorts'][portName] = dict(connMap)
+                self.getBDGetIntfStructs(ret, intfKey=connMap['interfaceKey'])
+
+    # regular connections
+    def getBDConnections(self, ret, allowSingleEnded=False):
+        # iterate through all the connections for the instances of interest
+        ports = dict()
+        qualBlockInstances = ret['instances']
+        containedInstances = ret['subBlockInstances']
+        excludeInstances = ret['excludedInstances']
+        connections = dict()
+        prunedConnections = dict()
+        for conn, connVal in self.data['connections'].items():
+            connectionCount = 0
+            isPort = False
+            tempPorts = dict()
+            pop_ends = []
+            for end, endVal in connVal['ends'].items():
+                if endVal['instanceKey'] in containedInstances:
+                    connections[conn] = dict(connVal)
+                    connectionCount += 1
+                if endVal['instanceKey'] in qualBlockInstances:
+                    isPort = True
+                    tempPorts[end] = endVal
+                if endVal['instanceKey'] in excludeInstances:
+                    pop_ends.append(end)
+                    prunedConnections[conn] = 0
+            # filter out any excluded instances after looping
+            for end in pop_ends:
+                connVal['ends'].pop(end)
+            if isPort:
+                # shallow copy
+                ports[conn] = dict(connVal)
+                # replace ends with our pruned version
+                ports[conn]['ends'] = tempPorts
+            if connectionCount == 1 and not allowSingleEnded:
+                printError(f"Connection {conn} is only connected to one contained instance in block {ret['qualBlock']}. Connections must be between two contained instances")
+                exit(warningAndErrorReport())
+            if connectionCount > 0 and isPort:
+                printError(f"Connection {conn} is connected to both a contained instance and the parent instance in block {ret['qualBlock']}. Connections must be between two contained instances")
+                exit(warningAndErrorReport())
+            if connectionCount > 1 or isPort:
+                ret['interfaceTypes'][self.data['interfaces'][connVal['interfaceKey']]['interfaceType']] = 0
+        for conn, connVal in connections.items():
+            # create jinja friendly names
+            connVal['interfaceName'] = getKeyPriority(connVal, ['interfaceName', 'srcport', 'name', 'interface'])
+            intfInfo = self.data['interfaces'][connVal['interfaceKey']]
+            self.getBDGetIntfStructs(ret, intfData=intfInfo)
+            connVal['interfaceType'] = intfInfo['interfaceType']
+            for end, endVal in connVal['ends'].items():
+                endVal['name'] = endVal['portName']
+        # move all the pruned connections to a separate dict
+        for conn in prunedConnections:
+            ret['prunedConnections'][conn] = connections.pop(conn)
+            
+        ret['connections'] = connections
+        ret['connectionPorts'] = ports
+
+    connMapping = { 'connectDouble': ['connections', 'registerConnections'], 
+                    'connectSingle': ['connectionMaps', 'memoryConnections'] }
+
+    def getBDConnectionsFinal(self, ret):
+        # deduplicate the channels
+        duplicateCheck = dict()
+        duplicateList = []
+        for connType, connSources in self.connMapping.items():
+            for connSource in connSources:
+                ret[connType][connSource] = dict()
+                for conn, connVal in ret[connSource].items():
+                    channel = connVal['interfaceName']
+                    index = 0
+                    if channel in duplicateCheck:
+                        if connVal['interfaceKey'] != duplicateCheck[channel]['connInfo']['interfaceKey']:
+                            printError(f"Connection {conn} in {connSource} has the same channel name {channel} as another connection but different interface types "
+                                       f"{self.data['interfaces'][connVal['interfaceKey']]['interfaceType']} and "
+                                       f"{self.data['interfaces'][duplicateCheck[channel]['connInfo']['interfaceKey']]['interfaceType']}. Please rename one of the channels")
+                            exit(warningAndErrorReport())
+                        if connType != duplicateCheck[channel]['connType'] or connSource != duplicateCheck[channel]['connSource']:
+                            printError(f"Connection {conn} in {connSource} has the same channel name {channel} as another connection but different connection types "
+                                       f"{connType} and {duplicateCheck[channel]['connType']}. Please rename one of the channels")
+                            exit(warningAndErrorReport())
+                        count = duplicateCheck[channel]['count']
+                        if count == 1:
+                            duplicateList.append(channel)
+                        duplicateCheck[channel]['conns'][conn] = count
+                        index = count
+                        duplicateCheck[channel]['count'] = count + 1
+                    else:
+                        duplicateCheck[channel] = {'connType': connType, 'connSource': connSource, 'connInfo': connVal, 'conns': {conn: 0}, 'count': 1}
+                    ret[connType][connSource][conn] = dict(connVal)
+                    ret[connType][connSource][conn]['channelCount'] = 1
+                    ret[connType][connSource][conn]['index'] = index
+        for channel in duplicateList:
+            connType = duplicateCheck[channel]['connType']
+            connSource = duplicateCheck[channel]['connSource']
+            channelCount = duplicateCheck[channel]['count']
+            for conn, connDisambiguate in duplicateCheck[channel]['conns'].items():
+                ret[connType][connSource][conn]['channelCount'] = channelCount
+
+
+    def getBDPorts(self, ret):
+        # iterate through the port definitions to deduplicate
+        ports = dict()
+        newPorts = dict()
+        for conn, connVal in ret['connectionPorts'].items():
+            for end, endVal in connVal['ends'].items():
+                portName = endVal['portName']
+                self.getBDAddPort(ports, newPorts, portName, endVal)
+                temp = dict(connVal, **ports[portName])
+                temp['connection']['interfaceKey'] = connVal['interfaceKey']
+                self.getBDGetIntfStructs(ret, intfKey=connVal['interfaceKey'])
+                ports[portName] = temp                
+        ret['ports']['connections'] = dict(ports)
+        portTypes = {'connectionMapPorts': {'dest': 'connectionMaps', 'portName': 'instancePortName'}, 
+                     'registerPorts': {'dest': 'registers', 'portName': 'register'}, 
+                     'memoryPorts': {'dest': 'memories', 'portName': 'memory'}}
+        for connType, portType in portTypes.items():
+            newPorts = dict()
+            for conn, connVal in ret[connType].items():
+                self.getBDAddPort(ports, newPorts, connVal[portType['portName']], connVal)
+            ret['ports'][portType['dest']] = dict(newPorts)
+
+    def getBDAddPort(self, ports, newPorts, portName, connVal):
+        instanceKey = connVal.get('instanceKey', 'parent')
+        if portName not in ports:
+            ports[portName] = dict()
+            ports[portName]['connection'] = dict(connVal)
+            ports[portName]['instance'] = {instanceKey: 0}
+            ports[portName]['name'] = portName
+            ports[portName]['direction'] = connVal.get('direction', 'src') # default to src for memory case
+            newPorts[portName] = dict(ports[portName])
+        else:
+            if instanceKey in ports[portName]['instance']:
+                printError(f"Duplicate port definition found for {portName} instance {instanceKey}")
+                exit(warningAndErrorReport())
+            else:
+                ports[portName]['instance'][instanceKey] = 0
+
+    def getBDAddressBus(self, ret):
+        if ret['addressDecode']['isApbRouter'] or ret['addressDecode']['hasDecoder']:
+            # search for the interface definition
+            ret['addressDecode']['registerBusStructs'] = dict()
+            addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
+            ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
+            interfaceInfo = [x for x in self.data['interfaces'].values() if x.get('interface') == addressConfig['RegisterBusInterface']]
+            if not interfaceInfo:
+                printError(f"Register Bus Interface {addressConfig['RegisterBusInterface']} from addressConfig does not match any yaml"
+                           f"defined interface definitions. This is necessary to define what interface type is used for registers")
+                exit(warningAndErrorReport())
+            for regIf in interfaceInfo:
+                for item in regIf['structures']:
+                    ret['addressDecode']['registerBusStructs'].update( { item['structureType'] : item['structure'] } )
+
+    def getBDIncludes(self, ret):
+        sourceContexts = self.extractContext(ret['temp']['structs'], ret['temp']['consts'])
+        for sourceContext in sourceContexts:
+            if sourceContext != "_global":
+                ret['includeContext'][sourceContext] = 0
 
     def extractContext(self, structs, consts):
         ret = dict()
@@ -1660,6 +2156,7 @@ class projectCreate:
             self.generateHierarchy()
             # create 'fake' global context to allow processing
             self.yamlContext['_global'] = {key: None for key in self.yamlContext}
+            self.yamlContext['_global']['_global'] = None
             for script in self.proj["postProcess"]:
                 fileName = basePathRelative(expandDirMacros(script))
                 scriptCode = loadModule(fileName)
@@ -1815,13 +2312,16 @@ class projectCreate:
         for context in self.data['instances']:
             for instance, instData in self.data['instances'][context].items():
                 # not every instance has used any space, so only check the ones that do
-                if instData['instanceKey'] in blockAddressCurrent:
+                if instData['instanceTypeKey'] in blockAddressCurrent:
                     # available is based on the number of size of each address space in that group * addressMultiples
                     availableSpace = self.addressControl['AddressGroups'][instData['addressGroup']]['addressIncrement'] * instData['addressMultiples']
-                    if blockAddressCurrent[instData['instanceKey']] > availableSpace:
-                        printError(f"Block {instData['instanceKey']} overflowed its address space. Used: {blockAddressCurrent[instData['instanceKey']]}. Available: {availableSpace}")
+                    if blockAddressCurrent[instData['instanceTypeKey']] > availableSpace:
+                        printError(f"Block {instData['instanceKey']} overflowed its address space. Used: {blockAddressCurrent[instData['instanceTypeKey']]}. Available: {availableSpace}")
                         exit(warningAndErrorReport())
-
+        for blockKey, address in blockAddressCurrent.items():
+            sql = f"UPDATE blocks SET maxAddress = {address-1} WHERE blockKey = '{blockKey}'"
+            g.cur.execute(sql)
+            
 
     def generateAddressEnums(self):
         self.yamlContext['_global'] = {key: None for key in self.yamlContext}
@@ -2187,6 +2687,8 @@ class projectCreate:
                 if ((field+'Key') not in ret) and (field+'Key') in schema:
                     ret[field+'Key'] = itemkey+'/'+yamlFile
             else:
+                if ftype == 'listkey':
+                    ret[field] = item
                 if ftype == 'contextKey':
                     # append the key with the filename to create contextKey
                     ret[field] = itemkey+'/'+yamlFile
@@ -2241,7 +2743,7 @@ class projectCreate:
                             myVal = self.constFind.sub(self.re_constReplace, item['eval'])
                             # needs work to deal with const
                             ret[field] = eval(myVal, {}, {})
-                if ftype[:4]=='auto' and len(ftype)>4 :
+                if ftype[:4]=='auto':
                     # auto fields are used to handle all the special cases and prevent processSimple becoming bloated
                     # hopefully this eases maintainance and makes adding new special cases simplier
                     # call the special case:
@@ -2476,7 +2978,11 @@ class projectCreate:
 
     # algorithm for special portname convention
     def _auto_portName(self, section, itemkey, item, field, yamlFile, processed):
-        return(getPortName(item))
+        return(getPortChannelName(item))
+
+    # algorithm for special portname convention
+    def _auto_instancePortName(self, section, itemkey, item, field, yamlFile, processed):
+        return(getPortChannelName(item, "instancePort"))
 
     # handle structure auto sensing of type
     def _auto_entryType(self, section, itemkey, item, field, yamlFile, processed):
@@ -2516,9 +3022,10 @@ class projectCreate:
 
     def _auto_addressGroup(self, section, itemkey, item, field, yamlFile, processed):
         ret=item.get(field, None)
-        if ret:
-            if ret not in self.counterGroup['AddressGroups']:
-                self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' referenced a non existant address group {ret}")
+        if ret:            
+            if ret not in self.counterGroup.get('AddressGroups', {}):
+                self.logError(f"In {yamlFile}:{item.lc.line + 1}, '{itemkey}' referenced a non existant address group {ret}"
+                              ", check addressGroup match your AddressControl file")
         return ret
 
     def _auto_addressID(self, section, itemkey, item, field, yamlFile, processed):
@@ -2535,7 +3042,7 @@ class projectCreate:
             }
             self.counterGroup['AddressGroups'][group] = counter + processed[self.counterReverseField[section+'addressMultiples']]
             if self.counterGroup['AddressGroups'][group] > self.addressControl['AddressGroups'][group]['maxAddressSpaces']:
-                self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' we ran out of address space, check your maxAddressSpaces: in AddressControl file")
+                self.logError(f"In {yamlFile}:{item.lc.line + 1}, '{itemkey}' we ran out of address space, check your maxAddressSpaces: in AddressControl file")
         return ret
 
     def _auto_instanceGroup(self, section, itemkey, item, field, yamlFile, processed):
@@ -2544,8 +3051,8 @@ class projectCreate:
         if not ret:
             # if not specified, use the default group
             ret = 'default'
-        if ret not in self.counterGroup['InstanceGroups']:
-            self.logError(f"In section: {section} of file: {yamlFile}, '{itemkey}' referenced a non existant instance group {ret}")
+        if ret not in self.counterGroup.get('InstanceGroups', {}):
+            self.logError(f"In {yamlFile}:{item.lc.line + 1}, '{itemkey}' referenced a non existant instance group {ret}")
         return ret
 
     def _auto_instanceID(self, section, itemkey, item, field, yamlFile, processed):
@@ -2637,7 +3144,7 @@ class projectCreate:
                 row['instanceKey'] = row[dir+'Key']
                 row['port'] = row[dir+'port']
                 row['direction'] = dir
-                portName = getPortName(row, dir+'port') # use naming convention
+                portName = getPortChannelName(row, dir+'port') # use naming convention
                 row['portName'] = portName
                 if 'lc' in instInfo:
                     row['lc'] = instInfo['lc']
@@ -2771,6 +3278,8 @@ class projectCreate:
         # there is probably an opportunitiy for some refactoring here with ProcessSection
         ret = dict()
         nestedContext = context+section
+        if nestedContext == 'memoriesports':
+            pass
         if yamlFile not in self.data[nestedContext]:
             self.data[nestedContext][yamlFile] = OrderedDict()
         attribs = self.schema.data['attrib'].get(nestedContext, {})

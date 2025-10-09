@@ -35,7 +35,6 @@ blockC uBlockC (
     .rst_n (rst_n)
 );
 
-
 // GENERATED_CODE_END
 
 endmodule: top

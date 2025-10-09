@@ -8,7 +8,6 @@ include $(REPO_ROOT)/examples/include/shared.mk
 SV_COM = $(REPO_ROOT)/common/systemVerilog
 SV_DIR = $(PROJECT_ROOT)/systemVerilog
 DOT_GEN_FILE = $(SV_DIR)/.gen_file
-LINT_INSTANCES = $(SV_DIR)/instancesList.yaml
 SV_GEN_FILES = $(shell find $(SV_DIR) -type f -name '*.sv')
 
 .PHONY: all clean lint init-packages
@@ -20,7 +19,7 @@ init-packages: $(DOT_DB_FILE)
 	$(REPO_ROOT)/arch2code.py -r --db $(DB_FILE) --initialSystemVerilogPackagesGenerator --moduledir $(SV_DIR)
 
 $(DOT_GEN_FILE): $(DOT_DB_FILE)
-	for i in $(SV_GEN_FILES); do $(REPO_ROOT)/arch2code.py --db $(DB_FILE) -r -sv --instances $(LINT_INSTANCES) --file $$i; done
+	for i in $(SV_GEN_FILES); do $(REPO_ROOT)/arch2code.py --db $(DB_FILE) -r -sv --file $$i; done
 	touch $@
 
 all : lint

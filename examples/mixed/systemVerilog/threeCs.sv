@@ -32,7 +32,6 @@ blockC uBlockC2 (
     .rst_n (rst_n)
 );
 
-
 // GENERATED_CODE_END
 
 endmodule: threeCs

@@ -31,9 +31,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     apbDecode(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~apbDecode() override = default;
 

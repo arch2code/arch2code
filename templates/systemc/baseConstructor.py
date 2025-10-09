@@ -20,17 +20,17 @@ def constructorInit(args, prj, data):
         colon = ':'
     else:
         colon = ''
-    out.append(f'{ data["blockName"] }Base::{ data["blockName"] }Base(void) {colon}\n')
+    out.append(f'{ data["blockName"] }Base::{ data["blockName"] }Base(void) {colon}')
     comma = ''
     # loop twice for c++ constructor init ordering reasons
     for key, value in data['ports'].items():
         if value['direction'] == 'src':
-            out.append(f'        { value  ["commentOut"] }{comma}{ value["name"] }("{ value["name"] }")\n')
+            out.append(f'        { value  ["commentOut"] }{comma}{ value["name"] }("{ value["name"] }")')
             if value["commentOut"] == '':
                 comma = ','
     for key, value in data['ports'].items():
         if value['direction'] == 'dst':
-            out.append(f'        { value  ["commentOut"] }{comma}{ value["name"] }("{ value["name"] }")\n')
+            out.append(f'        { value  ["commentOut"] }{comma}{ value["name"] }("{ value["name"] }")')
             if value["commentOut"] == '':
                 comma = ','
 
@@ -38,15 +38,15 @@ def constructorInit(args, prj, data):
         last = out.pop()
         last = last[:-1]
         out.append(last)
-    return("".join(out))
+    return("\n".join(out))
 
 def constructorBody(args, prj, data):
     out = list()
 
-    out.append('{\n')
+    out.append('{')
     # take the list and return a string
     if out:
         last = out.pop()
         last = last[:-1]
         out.append(last)
-    return("".join(out))
+    return("\n".join(out))

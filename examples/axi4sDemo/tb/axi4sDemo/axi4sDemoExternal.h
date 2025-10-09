@@ -5,7 +5,7 @@
 #include "systemc.h"
 #include "logging.h"
 
-// GENERATED_CODE_PARAM --block=axi4sDemo --inst=axi4sDemo_tb.u_axi4sDemo
+// GENERATED_CODE_PARAM --block=axi4sDemo_tb --excludeInst=u_axi4sDemo
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
 #include "axi4sDemoBase.h"

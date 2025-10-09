@@ -34,27 +34,26 @@ private:
     };
     static registerBlock registerBlock_;
 public:
-
     // channels
-    //   aStuffIf
+    // An interface for A
     req_ack_channel< aSt, aASt > aStuffIf;
-    //   cStuffIf
+    // An interface for C
     rdy_vld_channel< seeSt > cStuffIf;
-    //   startDone
-    notify_ack_channel< > startDone;
-    //   apbReg
-    apb_channel< apbAddrSt, apbDataSt > apb_uBlockA;
-    //   apbReg
-    apb_channel< apbAddrSt, apbDataSt > apb_uBlockB;
-    //   apbReg
+    // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apbReg;
+    // A start done interface
+    notify_ack_channel< > startDone;
+    // CPU access to SoC registers in the design
+    apb_channel< apbAddrSt, apbDataSt > apb_uBlockA;
+    // CPU access to SoC registers in the design
+    apb_channel< apbAddrSt, apbDataSt > apb_uBlockB;
 
     //instances contained in block
+    std::shared_ptr<cpuBase> uCPU;
     std::shared_ptr<blockABase> uBlockA;
+    std::shared_ptr<apbDecodeBase> uAPBDecode;
     std::shared_ptr<blockCBase> uBlockC;
     std::shared_ptr<blockBBase> uBlockB;
-    std::shared_ptr<apbDecodeBase> uAPBDecode;
-    std::shared_ptr<cpuBase> uCPU;
 
     top(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~top() override = default;

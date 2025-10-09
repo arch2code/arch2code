@@ -89,14 +89,6 @@ blocks:
     desc: The block named A
   blockB:
     desc: The block named B
-  blockARegs:
-    desc: The register block inside block A
-    hasMdl: false
-    isRegHandler: true
-  blockBRegs:
-    desc: The register block inside block B
-    hasMdl: false
-    isRegHandler: true
 
 instances:
   uTop:
@@ -107,16 +99,12 @@ instances:
   uSomeRapper:  {container: top,        instanceType: someRapper  }
   uBlockA:      {container: someRapper, instanceType: blockA,     addressGroup: top }
   uBlockB:      {container: someRapper, instanceType: blockB,     addressGroup: top,  color: lightslateblue}
-  uBlockARegs:  {container: blockA,     instanceType: blockARegs, color: grey}
-  uBlockBRegs:  {container: blockB,     instanceType: blockBRegs, color: grey}
 
 connections:
   - {interface: apbReg,    src: uCPU,                             dst: uSomeRapper}
 
 connectionMaps:
   - {interface: apbReg,  block: someRapper,                     direction: dst, instance: uAPBDecode,  instancePort: apbReg}
-  - {interface: apbReg,  block: blockB,                         direction: dst, instance: uBlockBRegs, instancePort: apbReg}
-  - {interface: apbReg,  block: blockA,                         direction: dst, instance: uBlockARegs, instancePort: apbReg}
 
 memories:
   - {memory: blockATable0, block: blockA, structure: aMemSt, wordLines: MEMORYA_WORDS, addressStruct: aMemAddrSt, regAccess: true, desc: "Table0 to test memory access from cpu"}

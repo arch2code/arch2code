@@ -8,20 +8,19 @@
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
+#include "memory_channel.h"
 #include "notify_ack_channel.h"
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 #include "status_channel.h"
-#include "mixedBlockCIncludes.h"
 #include "mixedIncludes.h"
+#include "mixedBlockCIncludes.h"
 #include "mixedIncludeIncludes.h"
 
 class blockBBase : public virtual blockPortBase
 {
 public:
     virtual ~blockBBase() = default;
-    // src ports
-
     // dst ports
     // uBlockA->aStuffIf: An interface for A
     req_ack_in< aSt, aASt > btod;
@@ -53,8 +52,6 @@ public:
 class blockBInverted : public virtual blockPortBase
 {
 public:
-    // src ports
-
     // dst ports
     // uBlockA->aStuffIf: An interface for A
     req_ack_out< aSt, aASt > btod;
@@ -86,14 +83,12 @@ public:
 class blockBChannels
 {
 public:
-    // src ports
-
     // dst ports
-    //   aStuffIf
+    // An interface for A
     req_ack_channel< aSt, aASt > btod;
-    //   startDone
+    // A start done interface
     notify_ack_channel< > startDone;
-    //   apbReg
+    // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apbReg;
 
 

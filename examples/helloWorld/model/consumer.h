@@ -27,9 +27,6 @@ private:
     static registerBlock registerBlock_;
 public:
 
-    // channels
-
-
     consumer(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~consumer() override = default;
 
