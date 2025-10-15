@@ -23,7 +23,7 @@ module blockBRegs
     dRegSt rwD_reg;
     logic rwD_reg_update_0;
     assign rwD.data = rwD_reg;
-    `DFFEN(rwD_reg[6:0], apbReg.pwdata[6:0], rwD_reg_update_0)
+    `DFFREN(rwD_reg[6:0], apbReg.pwdata[6:0], rwD_reg_update_0, 7'h00000000)
 
     bSizeRegSt roBsize_reg;
     assign roBsize_reg = roBsize.data;

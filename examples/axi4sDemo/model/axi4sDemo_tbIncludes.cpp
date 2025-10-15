@@ -32,7 +32,7 @@ void data_t1_t::pack(_packedSt &_ret) const
     memset(&_ret, 0, data_t1_t::_byteWidth);
     pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&data, 256);
 }
-void data_t1_t::unpack(_packedSt &_src)
+void data_t1_t::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     data.word[0] = ((_src[ _pos >> 6 ] >> (_pos & 63)));
@@ -75,7 +75,7 @@ void tid_t1_t::pack(_packedSt &_ret) const
     memset(&_ret, 0, tid_t1_t::_byteWidth);
     _ret = tid;
 }
-void tid_t1_t::unpack(_packedSt &_src)
+void tid_t1_t::unpack(const _packedSt &_src)
 {
     tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
 }
@@ -105,7 +105,7 @@ void tdest_t1_t::pack(_packedSt &_ret) const
     memset(&_ret, 0, tdest_t1_t::_byteWidth);
     _ret = tid;
 }
-void tdest_t1_t::unpack(_packedSt &_src)
+void tdest_t1_t::unpack(const _packedSt &_src)
 {
     tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
 }
@@ -135,7 +135,7 @@ void tuser_t1_t::pack(_packedSt &_ret) const
     memset(&_ret, 0, tuser_t1_t::_byteWidth);
     _ret = parity;
 }
-void tuser_t1_t::unpack(_packedSt &_src)
+void tuser_t1_t::unpack(const _packedSt &_src)
 {
     parity = (bv16_t)((_src));
 }
@@ -165,7 +165,7 @@ void data_t2_t::pack(_packedSt &_ret) const
     memset(&_ret, 0, data_t2_t::_byteWidth);
     _ret = data;
 }
-void data_t2_t::unpack(_packedSt &_src)
+void data_t2_t::unpack(const _packedSt &_src)
 {
     data = (bv64_t)((_src));
 }
@@ -195,7 +195,7 @@ void tid_t2_t::pack(_packedSt &_ret) const
     memset(&_ret, 0, tid_t2_t::_byteWidth);
     _ret = tid;
 }
-void tid_t2_t::unpack(_packedSt &_src)
+void tid_t2_t::unpack(const _packedSt &_src)
 {
     tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
 }
@@ -225,7 +225,7 @@ void tdest_t2_t::pack(_packedSt &_ret) const
     memset(&_ret, 0, tdest_t2_t::_byteWidth);
     _ret = tid;
 }
-void tdest_t2_t::unpack(_packedSt &_src)
+void tdest_t2_t::unpack(const _packedSt &_src)
 {
     tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
 }
@@ -255,7 +255,7 @@ void tuser_t2_t::pack(_packedSt &_ret) const
     memset(&_ret, 0, tuser_t2_t::_byteWidth);
     _ret = parity;
 }
-void tuser_t2_t::unpack(_packedSt &_src)
+void tuser_t2_t::unpack(const _packedSt &_src)
 {
     parity = (bv4_t)((_src) & ((1ULL << 4) - 1));
 }

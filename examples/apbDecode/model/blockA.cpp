@@ -16,7 +16,7 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockABase(name(), variant)
         ,regs(log_)
         ,roA()
-        ,rwUn0A()
+        ,rwUn0A(un0ARegSt::_packedSt(0x1234abcdef))
         ,roUn0A()
         ,extA()
         ,blockATable0(name(), "blockATable0", mems, MEMORYA_WORDS)

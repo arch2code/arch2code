@@ -69,7 +69,7 @@ struct aSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<2> sc_pack(void) const;
     void sc_unpack(sc_bv<2> packed_data);
     explicit aSt(sc_bv<2> packed_data) { sc_unpack(packed_data); }
@@ -101,7 +101,7 @@ struct bSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<5> sc_pack(void) const;
     void sc_unpack(sc_bv<5> packed_data);
     explicit bSt(sc_bv<5> packed_data) { sc_unpack(packed_data); }
@@ -132,7 +132,7 @@ struct bBSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     bool sc_pack(void) const;
     void sc_unpack(bool packed_data);
     void sc_unpack(sc_bv<1> packed_data);
@@ -166,7 +166,7 @@ struct seeSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<5> sc_pack(void) const;
     void sc_unpack(sc_bv<5> packed_data);
     explicit seeSt(sc_bv<5> packed_data) { sc_unpack(packed_data); }
@@ -201,7 +201,7 @@ struct dSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<7> sc_pack(void) const;
     void sc_unpack(sc_bv<7> packed_data);
     explicit dSt(sc_bv<7> packed_data) { sc_unpack(packed_data); }
@@ -240,7 +240,7 @@ struct eNestedSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<18> sc_pack(void) const;
     void sc_unpack(sc_bv<18> packed_data);
     explicit eNestedSt(sc_bv<18> packed_data) { sc_unpack(packed_data); }
@@ -276,7 +276,7 @@ struct bSizeSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<5> sc_pack(void) const;
     void sc_unpack(sc_bv<5> packed_data);
     explicit bSizeSt(sc_bv<5> packed_data) { sc_unpack(packed_data); }
@@ -307,7 +307,7 @@ struct eHeaderSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<2> sc_pack(void) const;
     void sc_unpack(sc_bv<2> packed_data);
     explicit eHeaderSt(sc_bv<2> packed_data) { sc_unpack(packed_data); }

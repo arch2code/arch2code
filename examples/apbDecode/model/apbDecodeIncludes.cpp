@@ -26,7 +26,7 @@ void aRegSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, aRegSt::_byteWidth);
     _ret = a;
 }
-void aRegSt::unpack(_packedSt &_src)
+void aRegSt::unpack(const _packedSt &_src)
 {
     a = (thirtySevenBitT)((_src) & ((1ULL << 37) - 1));
 }
@@ -59,7 +59,7 @@ void un0BRegSt::pack(_packedSt &_ret) const
     _ret = fb;
     _ret |= (uint32_t)fa << (16 & 31);
 }
-void un0BRegSt::unpack(_packedSt &_src)
+void un0BRegSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     fb = (u16T)((_src >> (_pos & 31)) & ((1ULL << 16) - 1));
@@ -100,7 +100,7 @@ void un0ARegSt::pack(_packedSt &_ret) const
     _ret |= (uint64_t)fb << (8 & 63);
     _ret |= (uint64_t)fa << (40 & 63);
 }
-void un0ARegSt::unpack(_packedSt &_src)
+void un0ARegSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     fc = (u8T)((_src >> (_pos & 63)) & ((1ULL << 8) - 1));
@@ -139,7 +139,7 @@ void aSizeRegSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, aSizeRegSt::_byteWidth);
     _ret = index;
 }
-void aSizeRegSt::unpack(_packedSt &_src)
+void aSizeRegSt::unpack(const _packedSt &_src)
 {
     index = (aSizeT)((_src) & ((1ULL << 29) - 1));
 }
@@ -169,7 +169,7 @@ void apbAddrSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, apbAddrSt::_byteWidth);
     _ret = address;
 }
-void apbAddrSt::unpack(_packedSt &_src)
+void apbAddrSt::unpack(const _packedSt &_src)
 {
     address = (apbAddrT)((_src));
 }
@@ -199,7 +199,7 @@ void apbDataSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, apbDataSt::_byteWidth);
     _ret = data;
 }
-void apbDataSt::unpack(_packedSt &_src)
+void apbDataSt::unpack(const _packedSt &_src)
 {
     data = (apbDataT)((_src));
 }
@@ -229,7 +229,7 @@ void aMemAddrSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, aMemAddrSt::_byteWidth);
     _ret = address;
 }
-void aMemAddrSt::unpack(_packedSt &_src)
+void aMemAddrSt::unpack(const _packedSt &_src)
 {
     address = (aAddrBitsT)((_src) & ((1ULL << 5) - 1));
 }
@@ -259,7 +259,7 @@ void aMemSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, aMemSt::_byteWidth);
     _ret = data;
 }
-void aMemSt::unpack(_packedSt &_src)
+void aMemSt::unpack(const _packedSt &_src)
 {
     data = (aDataBitsT)((_src) & ((1ULL << 63) - 1));
 }
@@ -289,7 +289,7 @@ void bMemAddrSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, bMemAddrSt::_byteWidth);
     _ret = address;
 }
-void bMemAddrSt::unpack(_packedSt &_src)
+void bMemAddrSt::unpack(const _packedSt &_src)
 {
     address = (bAddrBitsT)((_src) & ((1ULL << 5) - 1));
 }
@@ -325,7 +325,7 @@ void bMemSt::pack(_packedSt &_ret) const
         _pos += 32;
     }
 }
-void bMemSt::unpack(_packedSt &_src)
+void bMemSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<3; i++) {

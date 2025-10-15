@@ -54,7 +54,7 @@ struct seeSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<5> sc_pack(void) const;
     void sc_unpack(sc_bv<5> packed_data);
     explicit seeSt(sc_bv<5> packed_data) { sc_unpack(packed_data); }
@@ -87,7 +87,7 @@ struct cHeaderSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<13> sc_pack(void) const;
     void sc_unpack(sc_bv<13> packed_data);
     explicit cHeaderSt(sc_bv<13> packed_data) { sc_unpack(packed_data); }

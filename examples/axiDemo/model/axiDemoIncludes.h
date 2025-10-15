@@ -52,7 +52,7 @@ struct axiAddrSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<32> sc_pack(void) const;
     void sc_unpack(sc_bv<32> packed_data);
     explicit axiAddrSt(sc_bv<32> packed_data) { sc_unpack(packed_data); }
@@ -83,7 +83,7 @@ struct axiDataSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<32> sc_pack(void) const;
     void sc_unpack(sc_bv<32> packed_data);
     explicit axiDataSt(sc_bv<32> packed_data) { sc_unpack(packed_data); }
@@ -114,7 +114,7 @@ struct axiStrobeSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<4> sc_pack(void) const;
     void sc_unpack(sc_bv<4> packed_data);
     explicit axiStrobeSt(sc_bv<4> packed_data) { sc_unpack(packed_data); }

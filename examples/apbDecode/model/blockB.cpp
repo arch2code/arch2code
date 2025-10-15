@@ -16,7 +16,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockBase("blockB", name(), bbMode)
         ,blockBBase(name(), variant)
         ,regs(log_)
-        ,rwUn0B()
+        ,rwUn0B(un0BRegSt::_packedSt(0x0))
         ,roB()
         ,blockBTable(name(), "blockBTable", mems, MEMORYB_WORDS)
 // GENERATED_CODE_END

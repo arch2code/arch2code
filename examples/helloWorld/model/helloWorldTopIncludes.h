@@ -50,7 +50,7 @@ struct test_st {
     static const char* getValueType(void) { return( "tracker:cmd" );}
     inline uint64_t getStructValue(void) const { return( a );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<8> sc_pack(void) const;
     void sc_unpack(sc_bv<8> packed_data);
     explicit test_st(sc_bv<8> packed_data) { sc_unpack(packed_data); }
@@ -81,7 +81,7 @@ struct test_no_tracker_st {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<8> sc_pack(void) const;
     void sc_unpack(sc_bv<8> packed_data);
     explicit test_no_tracker_st(sc_bv<8> packed_data) { sc_unpack(packed_data); }
@@ -112,7 +112,7 @@ struct data_st {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<64> sc_pack(void) const;
     void sc_unpack(sc_bv<64> packed_data);
     explicit data_st(sc_bv<64> packed_data) { sc_unpack(packed_data); }

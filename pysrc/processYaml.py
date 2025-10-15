@@ -243,7 +243,7 @@ class schema:
             mySingular = None
             multiEntry = False # determines if there can be multiple records in the input/output
             singleEntryList = False # if true the user input is a list but we convert to dict with key based on list index
-            output = dict() 
+            output = dict()
             optionalDefaults = dict() # dictionary of fields that are optional and have a default value
             for field, ftype in schema[section].items():
                 output[field] = ftype
@@ -310,7 +310,7 @@ class schema:
                             if k not in output:
                                 printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} combo key, is referencing an invalid field '{k}'. Fields must be declared before use")
                                 exit(warningAndErrorReport())
-                        self.data['comboKey'][context+section] = myComboKey                        
+                        self.data['comboKey'][context+section] = myComboKey
                         output[field] = 'key' # make sure ignore by simple parser and calculated after the other fields
                         # add check that input is valid..
                     if myComboField:
@@ -738,6 +738,7 @@ class projectOpen:
                 printError(f"Unknown constant {value}")
                 exit(warningAndErrorReport())
         return ret
+
 
     # based on a block get the sub hier tree
     def getSubHier(self, topBlock):
@@ -1244,8 +1245,8 @@ class projectOpen:
     # subBlocks will be referenced if in the set of instances
     # this would be easier in SQL..
     def getBlockData(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
-        blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts', 
-                        'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext', 
+        blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts',
+                        'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
                         'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections'}
         ret = dict()
         # create some of the simple returns
@@ -1356,7 +1357,7 @@ class projectOpen:
             addressGroup = instanceInfo['addressGroup']
 
         for designObject in ['registers', 'memories']:
-            data = dict() 
+            data = dict()
             for obj, objInfo in self.data[designObject].items():
                 if objInfo['blockKey'] == block:
                     data[obj] = dict(objInfo)
@@ -1370,7 +1371,7 @@ class projectOpen:
                             if isRegHandler:
                                 # for a regHandler we only want memories that have regAccess
                                 data.pop(obj)
-                    
+
                     else:
                         data[obj]['bytes'] = (self.data['structures'][objInfo['structureKey']]['width'] + 7) >> 3 # round up to whole byte
                         ret['addressDecode']['hasDecoder'] = True #register = AddressDecoder
@@ -1429,7 +1430,7 @@ class projectOpen:
                 ret['memoryPorts'][memConn] = dict(memInfo, **val) # merge the two dicts
                 ret['memoryPorts'][memConn]['interfaceName'] = val['memory']
                 ret['memoryPorts'][memConn]['direction'] = 'src'
-                ret['memoryPorts'][memConn]['interfaceType'] = 'memory' 
+                ret['memoryPorts'][memConn]['interfaceType'] = 'memory'
                 if (val['instance'] != ''):
                     ret['memoryPorts'][memConn]['instanceTypeKey'] = self.data['instances'][val['instanceKey']]['instanceType']
                 else:
@@ -1461,7 +1462,7 @@ class projectOpen:
         if isRegHandler:
             ret['memoriesParent'] = ret['memories']
             ret['memories'] = dict()
- 
+
     # register connections
     regMapReg   = { 'rw': 'src', 'ro': 'dst', 'ext': 'src' } # mapping of the register type to the registerBlock port direction
     regMapBlock = { 'rw': 'dst', 'ro': 'src', 'ext': 'dst' } # mapping of the register type to the block port direction
@@ -1608,11 +1609,11 @@ class projectOpen:
         # move all the pruned connections to a separate dict
         for conn in prunedConnections:
             ret['prunedConnections'][conn] = connections.pop(conn)
-            
+
         ret['connections'] = connections
         ret['connectionPorts'] = ports
 
-    connMapping = { 'connectDouble': ['connections', 'registerConnections'], 
+    connMapping = { 'connectDouble': ['connections', 'registerConnections'],
                     'connectSingle': ['connectionMaps', 'memoryConnections'] }
 
     def getBDConnectionsFinal(self, ret):
@@ -1665,10 +1666,10 @@ class projectOpen:
                 temp = dict(connVal, **ports[portName])
                 temp['connection']['interfaceKey'] = connVal['interfaceKey']
                 self.getBDGetIntfStructs(ret, intfKey=connVal['interfaceKey'])
-                ports[portName] = temp                
+                ports[portName] = temp
         ret['ports']['connections'] = dict(ports)
-        portTypes = {'connectionMapPorts': {'dest': 'connectionMaps', 'portName': 'instancePortName'}, 
-                     'registerPorts': {'dest': 'registers', 'portName': 'register'}, 
+        portTypes = {'connectionMapPorts': {'dest': 'connectionMaps', 'portName': 'instancePortName'},
+                     'registerPorts': {'dest': 'registers', 'portName': 'register'},
                      'memoryPorts': {'dest': 'memories', 'portName': 'memory'}}
         for connType, portType in portTypes.items():
             newPorts = dict()
@@ -2321,7 +2322,7 @@ class projectCreate:
         for blockKey, address in blockAddressCurrent.items():
             sql = f"UPDATE blocks SET maxAddress = {address-1} WHERE blockKey = '{blockKey}'"
             g.cur.execute(sql)
-            
+
 
     def generateAddressEnums(self):
         self.yamlContext['_global'] = {key: None for key in self.yamlContext}
@@ -3022,7 +3023,7 @@ class projectCreate:
 
     def _auto_addressGroup(self, section, itemkey, item, field, yamlFile, processed):
         ret=item.get(field, None)
-        if ret:            
+        if ret:
             if ret not in self.counterGroup.get('AddressGroups', {}):
                 self.logError(f"In {yamlFile}:{item.lc.line + 1}, '{itemkey}' referenced a non existant address group {ret}"
                               ", check addressGroup match your AddressControl file")
