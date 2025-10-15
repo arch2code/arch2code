@@ -32,7 +32,7 @@ void aSt::pack(_packedSt &_ret) const
         _pos += 1;
     }
 }
-void aSt::unpack(_packedSt &_src)
+void aSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<ASIZE2; i++) {
@@ -78,7 +78,7 @@ void bSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, bSt::_byteWidth);
     _ret = variableb;
 }
-void bSt::unpack(_packedSt &_src)
+void bSt::unpack(const _packedSt &_src)
 {
     variableb = (bSizeT)((_src) & ((1ULL << 5) - 1));
 }
@@ -108,7 +108,7 @@ void bBSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, bBSt::_byteWidth);
     _ret = ready;
 }
-void bBSt::unpack(_packedSt &_src)
+void bBSt::unpack(const _packedSt &_src)
 {
     ready = (readyT)((_src) & 1);
 }
@@ -145,7 +145,7 @@ void seeSt::pack(_packedSt &_ret) const
     _ret = variablec2;
     _ret |= (uint8_t)variablec << (3 & 7);
 }
-void seeSt::unpack(_packedSt &_src)
+void seeSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     variablec2 = (threeBitT)((_src >> (_pos & 7)) & ((1ULL << 3) - 1));
@@ -183,7 +183,7 @@ void dSt::pack(_packedSt &_ret) const
     _ret = variabled2;
     _ret |= (uint8_t)variabled << (4 & 7);
 }
-void dSt::unpack(_packedSt &_src)
+void dSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     variabled2 = (fourBitT)((_src >> (_pos & 7)) & ((1ULL << 4) - 1));
@@ -236,7 +236,7 @@ void eNestedSt::pack(_packedSt &_ret) const
     }
     _ret |= (uint32_t)variablea << (17 & 31);
 }
-void eNestedSt::unpack(_packedSt &_src)
+void eNestedSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<2; i++) {
@@ -291,7 +291,7 @@ void bSizeSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, bSizeSt::_byteWidth);
     _ret = index;
 }
-void bSizeSt::unpack(_packedSt &_src)
+void bSizeSt::unpack(const _packedSt &_src)
 {
     index = (bSizeT)((_src) & ((1ULL << 5) - 1));
 }
@@ -321,7 +321,7 @@ void eHeaderSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, eHeaderSt::_byteWidth);
     _ret = hdr;
 }
-void eHeaderSt::unpack(_packedSt &_src)
+void eHeaderSt::unpack(const _packedSt &_src)
 {
     hdr = (aBiggerT)((_src) & ((1ULL << 2) - 1));
 }

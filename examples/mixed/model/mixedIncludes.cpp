@@ -35,7 +35,7 @@ void aSt::pack(_packedSt &_ret) const
         _pos += 1;
     }
 }
-void aSt::unpack(_packedSt &_src)
+void aSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     variablea2 = (twoBitT)((_src >> (_pos & 7)) & ((1ULL << 2) - 1));
@@ -85,7 +85,7 @@ void aASt::pack(_packedSt &_ret) const
     memset(&_ret, 0, aASt::_byteWidth);
     _ret = variablea;
 }
-void aASt::unpack(_packedSt &_src)
+void aASt::unpack(const _packedSt &_src)
 {
     variablea = (aSizeT)((_src) & 1);
 }
@@ -119,7 +119,7 @@ void aRegSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, aRegSt::_byteWidth);
     _ret = a;
 }
-void aRegSt::unpack(_packedSt &_src)
+void aRegSt::unpack(const _packedSt &_src)
 {
     a = (sevenBitT)((_src) & ((1ULL << 7) - 1));
 }
@@ -149,7 +149,7 @@ void dRegSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, dRegSt::_byteWidth);
     _ret = d;
 }
-void dRegSt::unpack(_packedSt &_src)
+void dRegSt::unpack(const _packedSt &_src)
 {
     d = (sevenBitT)((_src) & ((1ULL << 7) - 1));
 }
@@ -182,7 +182,7 @@ void dSt::pack(_packedSt &_ret) const
     _ret = variabled2;
     _ret |= (uint8_t)variabled << (4 & 7);
 }
-void dSt::unpack(_packedSt &_src)
+void dSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     variabled2 = (fourBitT)((_src >> (_pos & 7)) & ((1ULL << 4) - 1));
@@ -235,7 +235,7 @@ void nestedSt::pack(_packedSt &_ret) const
     }
     _ret |= (uint32_t)variablea << (17 & 31);
 }
-void nestedSt::unpack(_packedSt &_src)
+void nestedSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<2; i++) {
@@ -290,7 +290,7 @@ void bSizeRegSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, bSizeRegSt::_byteWidth);
     _ret = index;
 }
-void bSizeRegSt::unpack(_packedSt &_src)
+void bSizeRegSt::unpack(const _packedSt &_src)
 {
     index = (bSizeT)((_src) & ((1ULL << 4) - 1));
 }
@@ -320,7 +320,7 @@ void bSizeSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, bSizeSt::_byteWidth);
     _ret = index;
 }
-void bSizeSt::unpack(_packedSt &_src)
+void bSizeSt::unpack(const _packedSt &_src)
 {
     index = (bSizeT)((_src) & ((1ULL << 4) - 1));
 }
@@ -350,7 +350,7 @@ void apbAddrSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, apbAddrSt::_byteWidth);
     _ret = address;
 }
-void apbAddrSt::unpack(_packedSt &_src)
+void apbAddrSt::unpack(const _packedSt &_src)
 {
     address = (apbAddrT)((_src));
 }
@@ -380,7 +380,7 @@ void apbDataSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, apbDataSt::_byteWidth);
     _ret = data;
 }
-void apbDataSt::unpack(_packedSt &_src)
+void apbDataSt::unpack(const _packedSt &_src)
 {
     data = (apbDataT)((_src));
 }
@@ -416,7 +416,7 @@ void cSt::pack(_packedSt &_ret) const
         _pos += 7;
     }
 }
-void cSt::unpack(_packedSt &_src)
+void cSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<5; i++) {
@@ -476,7 +476,7 @@ void test1St::pack(_packedSt &_ret) const
         _pos += 7;
     }
 }
-void test1St::unpack(_packedSt &_src)
+void test1St::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<5; i++) {
@@ -548,7 +548,7 @@ void test2St::pack(_packedSt &_ret) const
         _pos += 35;
     }
 }
-void test2St::unpack(_packedSt &_src)
+void test2St::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<5; i++) {
@@ -600,7 +600,7 @@ void test3St::pack(_packedSt &_ret) const
         _pos += 7;
     }
 }
-void test3St::unpack(_packedSt &_src)
+void test3St::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<5; i++) {
@@ -646,7 +646,7 @@ void test4St::pack(_packedSt &_ret) const
         sevenBitArray.pack(*(aRegSt::_packedSt*)&_ret);
     }
 }
-void test4St::unpack(_packedSt &_src)
+void test4St::unpack(const _packedSt &_src)
 {
     {
         sevenBitArray.unpack(*(aRegSt::_packedSt*)&_src);
@@ -686,7 +686,7 @@ void test5St::pack(_packedSt &_ret) const
         _pos += 7;
     }
 }
-void test5St::unpack(_packedSt &_src)
+void test5St::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<10; i++) {
@@ -732,7 +732,7 @@ void test6St::pack(_packedSt &_ret) const
         largeStruct.pack(*(test1St::_packedSt*)&_ret[ 0 ]);
     }
 }
-void test6St::unpack(_packedSt &_src)
+void test6St::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     {
@@ -773,7 +773,7 @@ void test7St::pack(_packedSt &_ret) const
         _pos += 70;
     }
 }
-void test7St::unpack(_packedSt &_src)
+void test7St::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<5; i++) {
@@ -823,7 +823,7 @@ void test8St::pack(_packedSt &_ret) const
         _pos += 16;
     }
 }
-void test8St::unpack(_packedSt &_src)
+void test8St::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<3; i++) {
@@ -877,7 +877,7 @@ void test9St::pack(_packedSt &_ret) const
         _pos += 48;
     }
 }
-void test9St::unpack(_packedSt &_src)
+void test9St::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<4; i++) {

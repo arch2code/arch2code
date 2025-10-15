@@ -792,13 +792,13 @@ def fw_unpack(handle, args, vars, indent):
     bitwidth = vars['width']
     paramType, rowType, baseSize = convertToType(bitwidth)
     if args.section == 'header' and handle == 'inline':
-        out.append(f"{indent}inline void unpack(_packedSt &_src)")
+        out.append(f"{indent}inline void unpack(const _packedSt &_src)")
     elif args.section == 'header' and handle == 'split':
-        out.append(f"{indent}void unpack(_packedSt &_src);")
+        out.append(f"{indent}void unpack(const _packedSt &_src);")
         return out
     elif args.section == 'cpp' and handle == 'split':
         decl = f"{args.namespace}::" if args.namespace else ''
-        out.append(f"{indent}void {decl}{vars['structure']}::unpack(_packedSt &_src)")
+        out.append(f"{indent}void {decl}{vars['structure']}::unpack(const _packedSt &_src)")
     else:
         return out
     out.append(f'{indent}{{')

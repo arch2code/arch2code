@@ -26,7 +26,7 @@ void axiAddrSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, axiAddrSt::_byteWidth);
     _ret = addr;
 }
-void axiAddrSt::unpack(_packedSt &_src)
+void axiAddrSt::unpack(const _packedSt &_src)
 {
     addr = (axiAddrT)((_src));
 }
@@ -56,7 +56,7 @@ void axiDataSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, axiDataSt::_byteWidth);
     _ret = data;
 }
-void axiDataSt::unpack(_packedSt &_src)
+void axiDataSt::unpack(const _packedSt &_src)
 {
     data = (axiDataT)((_src));
 }
@@ -86,7 +86,7 @@ void axiStrobeSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, axiStrobeSt::_byteWidth);
     _ret = strobe;
 }
-void axiStrobeSt::unpack(_packedSt &_src)
+void axiStrobeSt::unpack(const _packedSt &_src)
 {
     strobe = (axiStrobeT)((_src) & ((1ULL << 4) - 1));
 }

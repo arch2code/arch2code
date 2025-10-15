@@ -103,7 +103,7 @@ struct test_st {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<10> sc_pack(void) const;
     void sc_unpack(sc_bv<10> packed_data);
     explicit test_st(sc_bv<10> packed_data) { sc_unpack(packed_data); }
@@ -135,7 +135,7 @@ struct bigSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<96> sc_pack(void) const;
     void sc_unpack(sc_bv<96> packed_data);
     explicit bigSt(sc_bv<96> packed_data) { sc_unpack(packed_data); }
@@ -167,7 +167,7 @@ struct testDataSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<128> sc_pack(void) const;
     void sc_unpack(sc_bv<128> packed_data);
     explicit testDataSt(sc_bv<128> packed_data) { sc_unpack(packed_data); }
@@ -198,7 +198,7 @@ struct testDataHdrSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<10> sc_pack(void) const;
     void sc_unpack(sc_bv<10> packed_data);
     explicit testDataHdrSt(sc_bv<10> packed_data) { sc_unpack(packed_data); }
@@ -229,7 +229,7 @@ struct lengthHdrSt {
     static const char* getValueType(void) { return( "length" );}
     inline uint64_t getStructValue(void) const { return( length );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<16> sc_pack(void) const;
     void sc_unpack(sc_bv<16> packed_data);
     explicit lengthHdrSt(sc_bv<16> packed_data) { sc_unpack(packed_data); }
@@ -260,7 +260,7 @@ struct cmdidHdrSt {
     static const char* getValueType(void) { return( "tracker:cmdid" );}
     inline uint64_t getStructValue(void) const { return( cmdid );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<10> sc_pack(void) const;
     void sc_unpack(sc_bv<10> packed_data);
     explicit cmdidHdrSt(sc_bv<10> packed_data) { sc_unpack(packed_data); }
