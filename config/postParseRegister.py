@@ -45,7 +45,7 @@ def postProcess(prj):
     reg_handler_connection_maps = list()
     for block_key, block in blocksNeedingConnections.items():
         reg_block = block + block_suffix
-        has_mdl = len(prj.hierKey[block_key]) > 0
+        has_mdl = len(prj.hierKey.get(block_key, [])) > 0
         instance_name = camelCase(instance_prefix, reg_block) if camel_case else instance_prefix + reg_block
         reg_handler_blocks[reg_block] = {'desc': block + ' Register handler',
                                          'isRegHandler': True,
