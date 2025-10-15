@@ -29,7 +29,7 @@ void seeSt::pack(_packedSt &_ret) const
     _ret = variablec2;
     _ret |= (uint8_t)variablec << (3 & 7);
 }
-void seeSt::unpack(_packedSt &_src)
+void seeSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     variablec2 = (cSizePlusT)((_src >> (_pos & 7)) & ((1ULL << 3) - 1));
@@ -64,7 +64,7 @@ void cHeaderSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, cHeaderSt::_byteWidth);
     _ret = hdr;
 }
-void cHeaderSt::unpack(_packedSt &_src)
+void cHeaderSt::unpack(const _packedSt &_src)
 {
     hdr = (cBiggerT)((_src) & ((1ULL << 13) - 1));
 }

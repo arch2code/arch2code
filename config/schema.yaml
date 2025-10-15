@@ -401,6 +401,7 @@ registers:
       section: structures
       field: structure
   offset: optional(0)
+  defaultValue: optional(0)
   registerBlock:
     _key:
       register: required

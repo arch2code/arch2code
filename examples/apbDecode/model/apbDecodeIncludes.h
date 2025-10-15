@@ -77,7 +77,7 @@ struct aRegSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     // register functions
     inline int _size(void) {return( (37 + 7) >> 4 ); }
     uint64_t _getValue(void)
@@ -122,7 +122,7 @@ struct un0BRegSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     // register functions
     inline int _size(void) {return( (24 + 7) >> 4 ); }
     uint64_t _getValue(void)
@@ -172,7 +172,7 @@ struct un0ARegSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     // register functions
     inline int _size(void) {return( (48 + 7) >> 4 ); }
     uint64_t _getValue(void)
@@ -221,7 +221,7 @@ struct aSizeRegSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     // register functions
     inline int _size(void) {return( (29 + 7) >> 4 ); }
     uint64_t _getValue(void)
@@ -265,7 +265,7 @@ struct apbAddrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline apbAddrT _getAddress(void) { return( address); }
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<32> sc_pack(void) const;
     void sc_unpack(sc_bv<32> packed_data);
     explicit apbAddrSt(sc_bv<32> packed_data) { sc_unpack(packed_data); }
@@ -298,7 +298,7 @@ struct apbDataSt {
     inline apbDataT _getData(void) { return( data); }
     inline void _setData(apbDataT value) { data = value; }
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<32> sc_pack(void) const;
     void sc_unpack(sc_bv<32> packed_data);
     explicit apbDataSt(sc_bv<32> packed_data) { sc_unpack(packed_data); }
@@ -329,7 +329,7 @@ struct aMemAddrSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<5> sc_pack(void) const;
     void sc_unpack(sc_bv<5> packed_data);
     explicit aMemAddrSt(sc_bv<5> packed_data) { sc_unpack(packed_data); }
@@ -360,7 +360,7 @@ struct aMemSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<63> sc_pack(void) const;
     void sc_unpack(sc_bv<63> packed_data);
     explicit aMemSt(sc_bv<63> packed_data) { sc_unpack(packed_data); }
@@ -391,7 +391,7 @@ struct bMemAddrSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<5> sc_pack(void) const;
     void sc_unpack(sc_bv<5> packed_data);
     explicit bMemAddrSt(sc_bv<5> packed_data) { sc_unpack(packed_data); }
@@ -424,7 +424,7 @@ struct bMemSt {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<96> sc_pack(void) const;
     void sc_unpack(sc_bv<96> packed_data);
     explicit bMemSt(sc_bv<96> packed_data) { sc_unpack(packed_data); }

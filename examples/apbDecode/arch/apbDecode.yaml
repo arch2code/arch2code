@@ -116,6 +116,6 @@ registers:
   - {register: rwUn0B,   regType: rw,  block: blockB,   structure: un0BRegSt,  desc: A unaligned four bytes Read Write register}
   - {register: roB,      regType: ro,  block: blockB,   structure: aSizeRegSt, desc: A Read Only register}
   - {register: roA,      regType: ro,  block: blockA,   structure: aRegSt,     desc: A Read Only register}
-  - {register: rwUn0A,   regType: rw,  block: blockA,   structure: un0ARegSt,  desc: A unaligned Read Write register}
+  - {register: rwUn0A,   regType: rw,  block: blockA,   structure: un0ARegSt,  defaultValue: 0x1234abcdef, desc: A unaligned Read Write register}
   - {register: roUn0A,   regType: ro,  block: blockA,   structure: un0ARegSt,  desc: A unaligned Read Only register}
   - {register: extA,     regType: ext, block: blockA,   structure: un0ARegSt,  desc: A unaligned Read Only register defined externally}

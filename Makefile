@@ -14,6 +14,8 @@ APBDECODE_DIR = examples/apbDecode
 APBDECODE_DOT_DB_FILE = $(APBDECODE_DIR)/.apbDecode.db
 APBDECODE_DB_FILE = $(APBDECODE_DIR)/apbDecode.db
 
+AXI4SDEMO_DIR = examples/axi4sDemo
+
 IN_OUT_DIR = examples/inAndOut
 IN_OUT_DOT_DB_FILE = $(IN_OUT_DIR)/.inAndOut.db
 IN_OUT_DB_FILE = $(IN_OUT_DIR)/inAndOut.db
@@ -77,8 +79,8 @@ axiDemo:
 
 .PHONY : axi4sDemo
 axi4sDemo:
-	make -C examples/axi4sDemo/rundir -j all VL_DUT=1
-	make -C examples/axi4sDemo/rundir -j run VL_DUT=1
+	make -C $(AXI4SDEMO_DIR)/rundir -j all VL_DUT=1
+	make -C $(AXI4SDEMO_DIR)/rundir -j run VL_DUT=1
 
 .PHONY : hello-world
 hello-world:
@@ -162,6 +164,7 @@ clean :
 	make -C $(HELLO_DIR)/model clean
 	make -C $(APBDECODE_DIR) clean
 	make -C $(AXI_DIR) clean
+	make -C $(AXI4SDEMO_DIR) clean
 
 .PHONY : push-test pipeline-test
 pipeline-test: diagram-and-doc nested hello-world mixed in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo

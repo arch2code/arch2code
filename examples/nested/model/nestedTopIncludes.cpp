@@ -26,7 +26,7 @@ void test_st::pack(_packedSt &_ret) const
     memset(&_ret, 0, test_st::_byteWidth);
     _ret = a;
 }
-void test_st::unpack(_packedSt &_src)
+void test_st::unpack(const _packedSt &_src)
 {
     a = (cmdidT)((_src) & ((1ULL << 10) - 1));
 }
@@ -58,7 +58,7 @@ void bigSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, bigSt::_byteWidth);
     pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&b, 96);
 }
-void bigSt::unpack(_packedSt &_src)
+void bigSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     b.word[0] = ((_src[ _pos >> 6 ] >> (_pos & 63)));
@@ -95,7 +95,7 @@ void testDataSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, testDataSt::_byteWidth);
     pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&data, 128);
 }
-void testDataSt::unpack(_packedSt &_src)
+void testDataSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     data.word[0] = ((_src[ _pos >> 6 ] >> (_pos & 63)));
@@ -130,7 +130,7 @@ void testDataHdrSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, testDataHdrSt::_byteWidth);
     _ret = cmdid;
 }
-void testDataHdrSt::unpack(_packedSt &_src)
+void testDataHdrSt::unpack(const _packedSt &_src)
 {
     cmdid = (cmdidT)((_src) & ((1ULL << 10) - 1));
 }
@@ -160,7 +160,7 @@ void lengthHdrSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, lengthHdrSt::_byteWidth);
     _ret = length;
 }
-void lengthHdrSt::unpack(_packedSt &_src)
+void lengthHdrSt::unpack(const _packedSt &_src)
 {
     length = (lengthT)((_src));
 }
@@ -190,7 +190,7 @@ void cmdidHdrSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, cmdidHdrSt::_byteWidth);
     _ret = cmdid;
 }
-void cmdidHdrSt::unpack(_packedSt &_src)
+void cmdidHdrSt::unpack(const _packedSt &_src)
 {
     cmdid = (cmdidT)((_src) & ((1ULL << 10) - 1));
 }

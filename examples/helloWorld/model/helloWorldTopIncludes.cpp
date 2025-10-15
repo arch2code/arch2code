@@ -27,7 +27,7 @@ void test_st::pack(_packedSt &_ret) const
     memset(&_ret, 0, test_st::_byteWidth);
     _ret = a;
 }
-void test_st::unpack(_packedSt &_src)
+void test_st::unpack(const _packedSt &_src)
 {
     a = (byteT)((_src));
 }
@@ -57,7 +57,7 @@ void test_no_tracker_st::pack(_packedSt &_ret) const
     memset(&_ret, 0, test_no_tracker_st::_byteWidth);
     _ret = a;
 }
-void test_no_tracker_st::unpack(_packedSt &_src)
+void test_no_tracker_st::unpack(const _packedSt &_src)
 {
     a = (byteT)((_src));
 }
@@ -87,7 +87,7 @@ void data_st::pack(_packedSt &_ret) const
     memset(&_ret, 0, data_st::_byteWidth);
     _ret = b;
 }
-void data_st::unpack(_packedSt &_src)
+void data_st::unpack(const _packedSt &_src)
 {
     b = (qwordT)((_src));
 }

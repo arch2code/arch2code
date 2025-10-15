@@ -28,8 +28,8 @@ module blockARegs
     logic rwUn0A_reg_update_0;
     logic rwUn0A_reg_update_1;
     assign rwUn0A.data = rwUn0A_reg;
-    `DFFEN(rwUn0A_reg[31:0], apbReg.pwdata[31:0], rwUn0A_reg_update_0)
-    `DFFEN(rwUn0A_reg[47:32], apbReg.pwdata[15:0], rwUn0A_reg_update_1)
+    `DFFREN(rwUn0A_reg[31:0], apbReg.pwdata[31:0], rwUn0A_reg_update_0, 32'h34abcdef)
+    `DFFREN(rwUn0A_reg[47:32], apbReg.pwdata[15:0], rwUn0A_reg_update_1, 16'h00000012)
 
     un0ARegSt roUn0A_reg;
     assign roUn0A_reg = roUn0A.data;

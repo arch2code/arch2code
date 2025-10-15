@@ -5,8 +5,12 @@
 
 `ifdef ASIC
 // Flop definitions for ASIC flow, with sync reset
-// D flop
+
+`ifndef RST
 `define RST ~rstN
+`endif
+
+// D flop
 `define DFF(q, d) \
 always_ff @(posedge clk) begin \
     q <= (`RST) ? '0 : (d); \
@@ -27,9 +31,14 @@ end
 
 // D flop with enable
 `define DFFEN(q, d, en) \
-initial q = '0; \
 always_ff @(posedge clk) begin \
     q <= (`RST) ? '0 : ((en) ? (d) : q); \
+end
+
+// D flop with reset and enable
+`define DFFREN(q, d, en, rval) \
+always_ff @(posedge clk) begin \
+    q <= (`RST) ? rval : ((en) ? (d) : q); \
 end
 
 // Set clear flop, set priority
@@ -66,6 +75,13 @@ end
 // D flop with enable
 `define DFFEN(q, d, en) \
 initial q = '0; \
+always_ff @(posedge clk) begin \
+    q <= (en) ? (d) : q; \
+end
+
+// D flop with reset and enable
+`define DFFREN(q, d, en, rval) \
+initial q = rval; \
 always_ff @(posedge clk) begin \
     q <= (en) ? (d) : q; \
 end
