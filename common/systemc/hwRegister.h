@@ -25,7 +25,7 @@ public:
     {
         memset(&m_val, 0, sizeof(m_val));
     }
-    hwRegister(const REG_DATA::_packedSt& val) {
+    hwRegister(const typename REG_DATA::_packedSt& val) {
         m_val.unpack(val);
     };
     uint32_t cpu_read(uint64_t address) override
@@ -81,7 +81,7 @@ public:
     {
        memset(&m_val, 0, sizeof(m_val));
     }
-    hwRegisterIf(PORT *port_, const REG_DATA::_packedSt& val) : m_port(port_)
+    hwRegisterIf(PORT *port_, const typename REG_DATA::_packedSt& val) : m_port(port_)
     {
         m_val.unpack(val);
     };
