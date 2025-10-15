@@ -54,7 +54,7 @@ struct data_t1_t {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<256> sc_pack(void) const;
     void sc_unpack(sc_bv<256> packed_data);
     explicit data_t1_t(sc_bv<256> packed_data) { sc_unpack(packed_data); }
@@ -85,7 +85,7 @@ struct tid_t1_t {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<4> sc_pack(void) const;
     void sc_unpack(sc_bv<4> packed_data);
     explicit tid_t1_t(sc_bv<4> packed_data) { sc_unpack(packed_data); }
@@ -116,7 +116,7 @@ struct tdest_t1_t {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<4> sc_pack(void) const;
     void sc_unpack(sc_bv<4> packed_data);
     explicit tdest_t1_t(sc_bv<4> packed_data) { sc_unpack(packed_data); }
@@ -147,7 +147,7 @@ struct tuser_t1_t {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<16> sc_pack(void) const;
     void sc_unpack(sc_bv<16> packed_data);
     explicit tuser_t1_t(sc_bv<16> packed_data) { sc_unpack(packed_data); }
@@ -178,7 +178,7 @@ struct data_t2_t {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<64> sc_pack(void) const;
     void sc_unpack(sc_bv<64> packed_data);
     explicit data_t2_t(sc_bv<64> packed_data) { sc_unpack(packed_data); }
@@ -209,7 +209,7 @@ struct tid_t2_t {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<4> sc_pack(void) const;
     void sc_unpack(sc_bv<4> packed_data);
     explicit tid_t2_t(sc_bv<4> packed_data) { sc_unpack(packed_data); }
@@ -240,7 +240,7 @@ struct tdest_t2_t {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<4> sc_pack(void) const;
     void sc_unpack(sc_bv<4> packed_data);
     explicit tdest_t2_t(sc_bv<4> packed_data) { sc_unpack(packed_data); }
@@ -271,7 +271,7 @@ struct tuser_t2_t {
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
-    void unpack(_packedSt &_src);
+    void unpack(const _packedSt &_src);
     sc_bv<4> sc_pack(void) const;
     void sc_unpack(sc_bv<4> packed_data);
     explicit tuser_t2_t(sc_bv<4> packed_data) { sc_unpack(packed_data); }

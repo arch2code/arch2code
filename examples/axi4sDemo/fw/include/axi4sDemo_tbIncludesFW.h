@@ -48,7 +48,7 @@ struct data_t1_t {
         memset(&_ret, 0, data_t1_t::_byteWidth);
         pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&data, 256);
     }
-    inline void unpack(_packedSt &_src)
+    inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
         data.word[0] = ((_src[ _pos >> 6 ] >> (_pos & 63)));
@@ -78,7 +78,7 @@ struct tid_t1_t {
         memset(&_ret, 0, tid_t1_t::_byteWidth);
         _ret = tid;
     }
-    inline void unpack(_packedSt &_src)
+    inline void unpack(const _packedSt &_src)
     {
         tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
     }
@@ -101,7 +101,7 @@ struct tdest_t1_t {
         memset(&_ret, 0, tdest_t1_t::_byteWidth);
         _ret = tid;
     }
-    inline void unpack(_packedSt &_src)
+    inline void unpack(const _packedSt &_src)
     {
         tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
     }
@@ -124,7 +124,7 @@ struct tuser_t1_t {
         memset(&_ret, 0, tuser_t1_t::_byteWidth);
         _ret = parity;
     }
-    inline void unpack(_packedSt &_src)
+    inline void unpack(const _packedSt &_src)
     {
         parity = (bv16_t)((_src));
     }
@@ -147,7 +147,7 @@ struct data_t2_t {
         memset(&_ret, 0, data_t2_t::_byteWidth);
         _ret = data;
     }
-    inline void unpack(_packedSt &_src)
+    inline void unpack(const _packedSt &_src)
     {
         data = (bv64_t)((_src));
     }
@@ -170,7 +170,7 @@ struct tid_t2_t {
         memset(&_ret, 0, tid_t2_t::_byteWidth);
         _ret = tid;
     }
-    inline void unpack(_packedSt &_src)
+    inline void unpack(const _packedSt &_src)
     {
         tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
     }
@@ -193,7 +193,7 @@ struct tdest_t2_t {
         memset(&_ret, 0, tdest_t2_t::_byteWidth);
         _ret = tid;
     }
-    inline void unpack(_packedSt &_src)
+    inline void unpack(const _packedSt &_src)
     {
         tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
     }
@@ -216,7 +216,7 @@ struct tuser_t2_t {
         memset(&_ret, 0, tuser_t2_t::_byteWidth);
         _ret = parity;
     }
-    inline void unpack(_packedSt &_src)
+    inline void unpack(const _packedSt &_src)
     {
         parity = (bv4_t)((_src) & ((1ULL << 4) - 1));
     }
