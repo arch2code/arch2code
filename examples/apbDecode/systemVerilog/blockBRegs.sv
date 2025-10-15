@@ -21,7 +21,7 @@ module blockBRegs
     un0BRegSt rwUn0B_reg;
     logic rwUn0B_reg_update_0;
     assign rwUn0B.data = rwUn0B_reg;
-    `DFFEN(rwUn0B_reg[23:0], apbReg.pwdata[23:0], rwUn0B_reg_update_0)
+    `DFFREN(rwUn0B_reg[23:0], apbReg.pwdata[23:0], rwUn0B_reg_update_0, 24'h00000000)
 
     aSizeRegSt roB_reg;
     assign roB_reg = roB.data;

@@ -26,7 +26,7 @@ def constructorInit(args, prj, data):
     baseClassName = f'{ className }Base'
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
     out.append(f'#include "{className}.h"')
-    
+
     out += intf_gen_utils.sc_instance_includes(data, prj)
 
     out.append(f'SC_HAS_PROCESS({ className });\n')
@@ -113,7 +113,11 @@ def constructorInit(args, prj, data):
     for key, value in data['subBlockInstances'].items():
         out.append(f'        ,{ value["instance"] }(std::dynamic_pointer_cast<{ value["instanceType"] }Base>( instanceFactory::createInstance(name(), "{ value["instance"]}", "{value["instanceType"]}", "{value["variant"]}")))')
     for reg, regData in data['registers'].items():
-        out.append(f'        ,{ regData["register"] }({ regData.get("defaultValue", "") })')
+        if regData['regType'] == 'rw':
+            defaultValue = hex(prj.getConst(regData["defaultValue"]))
+            out.append(f'        ,{ regData["register"] }({regData["structure"]}::_packedSt({defaultValue}))')
+        else:
+            out.append(f'        ,{ regData["register"] }()')
     for mem, memData in data['memories'].items():
         if memData["local"]:
             out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')

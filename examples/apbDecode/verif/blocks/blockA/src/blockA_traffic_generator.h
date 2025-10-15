@@ -71,6 +71,27 @@ public:
         un0ARegSt rwUn0A, rwUn0A_;
         un0ARegScT rwUn0ASc;
 
+        // Reset value check
+
+        rwUn0A_ = un0ARegSt((un0ARegSt::_packedSt)0x1234abcdefUL);
+
+        addr.address = REG_BLOCKA_RWUN0A + 0x0;
+        apbReg->request(false, addr, readData);
+        rwUn0ASc.range(31, 0) = readData.data;
+
+        addr.address = REG_BLOCKA_RWUN0A + 0x4;
+        apbReg->request(false, addr, readData);
+        rwUn0ASc.range(47, 32) = readData.data;
+
+        rwUn0A.sc_unpack(rwUn0ASc);
+
+        if(rwUn0A == rwUn0A_)
+            log_.logPrint( "UBLOCKA.REG_BLOCKA_RWUN0A read default success" );
+        else
+            Q_ASSERT(false, "UBLOCKA.REG_BLOCKA_RWUN0A read default fail");
+
+        wait(1, SC_US);
+
         rwUn0A_.fa = 'a';
         rwUn0A_.fb = 0x12345678;
         rwUn0A_.fc = 'c';

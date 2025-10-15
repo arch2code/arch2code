@@ -25,6 +25,9 @@ public:
     {
         memset(&m_val, 0, sizeof(m_val));
     }
+    hwRegister(const REG_DATA::_packedSt& val) {
+        m_val.sc_unpack(val);
+    };
     uint32_t cpu_read(uint64_t address) override
     {
         Q_ASSERT_CTX(address < N, "", "Address out of range");
@@ -78,6 +81,10 @@ public:
     {
        memset(&m_val, 0, sizeof(m_val));
     }
+    hwRegisterIf(PORT *port_, const REG_DATA::_packedSt& val) : m_port(port_)
+    {
+        m_val.sc_unpack(val);
+    };
     uint32_t cpu_read(uint64_t address) override
     {
         Q_ASSERT_CTX(address < N, "", "Address out of range");

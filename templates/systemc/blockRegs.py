@@ -58,6 +58,7 @@ def get_hwregs(prj, data):
             "offset": hex(reg['offset']),
             "port_type": port_type,
             "port_name": reg['register'],
+            "default": hex(prj.getConst(reg['defaultValue'])) if reg['regType'] == 'rw' else None,
             "descr": reg['desc']
         })
     return hwregs
@@ -133,7 +134,11 @@ void {{blockname}}::regHandler(void) { //handle register decode
         ,{{blockname}}Base(name(), variant)
         ,regs(log_)
         {% for entry in hwregs -%}
+        {%if entry.default -%}
+        ,{{entry.name}}(&{{entry.port_name}}, {{entry.datatype}}::_packedSt({{entry.default}}))
+        {% else -%}
         ,{{entry.name}}(&{{entry.port_name}})
+        {% endif -%}
         {% endfor -%}
 '''
 

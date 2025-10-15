@@ -36,7 +36,7 @@ def render(args, prj, data):
     # Pre-conditioning of the register data
     for reg_key, reg_data in data['registers'].items():
         reg_data['bitwidth'] = intf_gen_utils.get_struct_width(reg_data['structureKey'], prj.data['structures'])
-        reg_data['segments'] = list(segment_register_gen(reg_data, REG_BUS_WIDTH_BYTES))
+        reg_data['segments'] = list(segment_register_gen(reg_data, REG_BUS_WIDTH_BYTES, prj.getConst(reg_data['defaultValue'])))
 
     # Pre-conditioning of the memory data, when existing
     if 'memoriesParent' in data:
@@ -44,7 +44,7 @@ def render(args, prj, data):
         for mem_key, mem_data in data['memoriesParent'].items():
             entry = dict(mem_data)
             entry['bitwidth'] = intf_gen_utils.get_struct_width(mem_data['structureKey'], prj.data['structures'])
-            entry['segments'] = list(segment_register_gen(entry, REG_BUS_WIDTH_BYTES))
+            entry['segments'] = list(segment_register_gen(entry, REG_BUS_WIDTH_BYTES, 0))
             entry['rowwidth'] = clog2(len(entry['segments']) * REG_BUS_WIDTH_BYTES)
             entry['memsize'] = prj.getConst(entry['wordLinesKey']) * (2** entry['rowwidth'])
             entry['address_range'] = ( entry['segments'][0][0], entry['segments'][0][0] + entry['memsize'] - REG_BUS_WIDTH_BYTES )
@@ -123,11 +123,11 @@ def section_01_regs(reg_data):
 
     s_3, s_4 = [], []
     for seg in segments_enum:
-        n, (o, u, l, w) = seg
+        n, (o, u, l, w, d) = seg
         update_sig = f"{reg_local}_update_{n}"
         if reg_data['regType'] == 'rw':
             s_3 += [ f"logic {update_sig};" ]
-            s_4 += [ f"`DFFEN({reg_local}[{u}:{l}], {regs_intf}.pwdata[{w-1}:0], {update_sig})" ]
+            s_4 += [ f"`DFFREN({reg_local}[{u}:{l}], {regs_intf}.pwdata[{w-1}:0], {update_sig}, {w}'h{d:08x})" ]
 
     return string_joiner(s_1 + s_3 + s_2 + s_4, '\n')
 
@@ -164,7 +164,7 @@ def section_02a_regs(reg_data):
         s_1 += [ f"{reg_intf}.wdata = '0;" ]
 
     for seg in segments_enum:
-        n, (o, u, l, w) = seg
+        n, (o, u, l, w, _) = seg
         update_sig = f"{reg_local}_update_{n}"
         if reg_data['regType'] == 'rw':
             s_1 += [ f"{update_sig} = 1'b0;" ]
@@ -180,7 +180,7 @@ def section_02a_mems(mem_data):
     s_1 = []
 
     for seg in segments_enum:
-        n, (o, u, l, w) = seg
+        n, (o, u, l, w, _) = seg
         update_sig = f"{mem_intf}_update_{n}"
         s_1 += [ f"{update_sig} = 1'b0;" ]
 
@@ -203,7 +203,7 @@ def section_02b_regs(reg_data):
 
     s_1 = []
     for seg in segments_enum:
-        n, (o, u, l, w) = seg
+        n, (o, u, l, w, _) = seg
         if reg_data['regType'] == 'rw':
             s_1 += [ f"32'h{o:x} : begin" ]
             s_1 += [ f"    {reg_local}_update_{n} = 1'b1;" ]
@@ -212,7 +212,7 @@ def section_02b_regs(reg_data):
             s_1 += [ f"32'h{o:x} : begin" ]
             s_1 += [ f"    {reg_intf}.write = {1<<n};" ]
             for s_seg in segments_enum:
-                _, (_, s_u, s_l, _) = s_seg
+                _, (_, s_u, s_l, _, _) = s_seg
                 if s_seg == seg:
                     s_1 += [ f"    {reg_intf}.wdata[{s_u}:{s_l}] = {regs_intf}.pwdata[{w-1}:0];" ]
                 else:
@@ -234,7 +234,7 @@ def section_02b_mems(mem_data):
     s_1 += [ f"[32'h{addr_l:x}:32'h{addr_h:x}]: begin" ]
     s_1 += [ f"    case (apb_addr[{mem_data['rowwidth']-1}:0])" ]
     for seg in segments_enum:
-        n, (o, u, l, w) = seg
+        n, (o, u, l, w, _) = seg
         o -= addr_l # offset relative to base of mem mod bus width
         s_1 += [ f"        {mem_data['rowwidth']}'h{o:x}: begin" ]
         s_1 += [ f"            {mem_intf}_update_{n} = 1'b1;" ]
@@ -275,7 +275,7 @@ def section_03b_regs(reg_data):
 
     s_1 = []
     for seg in segments_enum:
-        n, (o, u, l, w) = seg
+        n, (o, u, l, w, _) = seg
         update_sig = f"{reg_local}_update_{n}"
         if reg_data['regType'] in [ 'ro', 'rw', 'ext' ]:
             s_1 += [ f"32'h{o:x} : begin" ]
@@ -298,7 +298,7 @@ def section_03b_mems(mem_data):
     s_1 += [ f"[32'h{addr_l:x}:32'h{addr_h:x}]: begin" ]
     s_1 += [ f"    case (apb_addr[{mem_data['rowwidth']-1}:0])" ]
     for seg in segments_enum:
-        n, (o, u, l, w) = seg
+        n, (o, u, l, w, _) = seg
         o -= addr_l # offset relative to base of mem mod bus width
         s_1 += [ f"        {mem_data['rowwidth']}'h{o:x}: begin" ]
         s_1 += [ f"            if ({mem_intf}_rd_capture) begin" ]
@@ -314,8 +314,8 @@ def section_03b_mems(mem_data):
     return string_joiner(s_1, '\n')
 
 # generator yields quadruplets segments split at bus_width_bytes
-# (addr-offset, bit-upper, bit-lower, bit-width)
-def segment_register_gen(reg_data, bus_width_bytes):
+# (addr-offset, bit-upper, bit-lower, bit-width, reset-value)
+def segment_register_gen(reg_data, bus_width_bytes, default_value):
     offset = reg_data['offset']
     bitwidth = reg_data['bitwidth']
     bus_width = bus_width_bytes * 8
@@ -323,7 +323,8 @@ def segment_register_gen(reg_data, bus_width_bytes):
     while r > 0:
       w = bus_width if r >= bus_width else r
       u = w + l - 1
-      seg = (o, u, l, w)
+      d = (default_value >> l) & ((1<<w)-1)
+      seg = (o, u, l, w, d)
       l = u + 1
       o += bus_width_bytes
       r -= w

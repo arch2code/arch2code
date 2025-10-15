@@ -15,7 +15,7 @@ blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBase
         ,blockBase("blockBRegs", name(), bbMode)
         ,blockBRegsBase(name(), variant)
         ,regs(log_)
-        ,rwD()
+        ,rwD(dRegSt::_packedSt(0x0))
         ,roBsize()
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
