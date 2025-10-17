@@ -11,6 +11,14 @@ include:
   - mixedInclude.yaml
   - mixedBlockC.yaml
 blockDir: .
+enums:
+  test1EnumT:
+    desc: a test enum
+    enum:
+      - {enumName: TEST1_A, desc: Test A, value: 0}
+      - {enumName: TEST1_B, desc: Test B, value: 1}
+      - {enumName: TEST1_C, desc: Test C, value: 2}
+
 # constants / parameters are architectural level variables that can be used to control the size of structures,
 # variables, number of instances, etc.
 ## constantname: is the constant's name and key for usage by any other dictionary doing a lookup, required
@@ -36,6 +44,8 @@ constants:
   DWORD_LOG2 : {eval: "($DWORD).bit_length()", desc: "size of a double word log2"}
   BOB0  : {value: 16, desc: "Memory size for instance 0"}
   BOB1  : {value: 15, desc: "Memory size for instance 1"}
+  TESTCONST1 : {value: 1, desc: "A test constant"}
+  TESTCONST2 : {eval: "$TEST1_C+4", desc: "A test constant using an enum value"}
 
 encoders:
   opcodeEnA:
@@ -56,6 +66,12 @@ encoders:
 
 
 types:
+  testEnumT:
+    desc: a test enum
+    enum:
+      - {enumName: TEST_A, desc: Test A, value: 0}
+      - {enumName: TEST_B, desc: Test B, eval: $TESTCONST1+4}
+      - {enumName: TEST_C, desc: Test C, value: 2}
   twoBitT:
     width: 2
     desc: this is a 2 bit type

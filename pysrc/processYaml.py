@@ -190,13 +190,16 @@ class config:
 class schema:
     data = dict()
     config = None
-    autoFind = re.compile("auto\(([^\)]*)\)")
+    fn_finders = {
+        'auto': re.compile("auto\(([^\)]*)\)"),
+        'post': re.compile("post\(([^\)]*)\)")
+    }
     # match optional*() and get the bracket contents
     optionalFind = re.compile("optional.*\(([^\)]*)\)")
 
 
     def __init__(self, schemaYaml = None, schemaFile = '') -> None:
-        for item in ('schema', 'key', 'attrib', 'dataSchema', 'colsSQL', 'multiEntry', 'fnStr', 'optionalDefault',
+        for item in ('schema', 'key', 'attrib', 'dataSchema', 'colsSQL', 'multiEntry', 'fnStr', 'post', 'optionalDefault', 'mapto',
                      'validator', 'counterReverseField', 'subTable', 'outerkeyKey', 'indexes', 'tables', 'comboKey', 'comboField', 'singular'):
             # create all the control dicts
             # schema: the actual schema
@@ -221,17 +224,33 @@ class schema:
             self.config = config(RO = False)
             self.data['schema'] = schemaYaml
             self.validateSchema(self.data['schema'], schemaFile)
+            for section in self.data['mapto']:
+                self.data['schema'].pop(section, None) # remove any mapped to sections from the schema
         else:
             self.config = config(RO = True)
             self.data = self.config.getConfig('SCHEMA')
         printIfDebug("Schema loaded")
 
+    def function_find(self, fnType, data):
+        if data[:len(fnType)] == fnType and len(data) > len(fnType):
+            f = self.fn_finders[fnType].search(data)
+            braceContents = f.group(1).strip()
+            fn = f"_{fnType}_"+braceContents
+            # search the projectCreate class to see if it contains an appropriate fn to deal with the auto
+            if hasattr(projectCreate, fn):
+                # valid function
+                return fn
+            else:
+                return "__bad_function"
+        return ""
+
     # validate schema processes the schema definition for later use in the processing of user input
     def validateSchema(self, schema, schemaFile, context=''):
-        validFieldTypes = { 'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param', 'singleEntryList', 'listkey'}
+        validFieldTypes = { 'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'post',
+                           'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param', 'singleEntryList', 'listkey'}
         addressControlFields = {'addressGroup', 'addressID', 'addressMultiples', 'instanceGroup', 'instanceID'}
-        reservedKeys = {'_validate', '_type', '_key', '_combo', '_attribs', '_singular'} # reserved keys begin with _
-        customChecker = {'_singular'} # keys that should use custom checker
+        reservedKeys = {'_validate', '_type', '_key', '_combo', '_attribs', '_singular', '_mapto'} # reserved keys begin with _
+        customChecker = {'_singular', '_mapto'} # keys that should use custom checker
 
         for section in schema:
             itemkeyname = None
@@ -241,6 +260,7 @@ class schema:
             indexes = list()
             dataSchema = None
             mySingular = None
+            mapto = None
             multiEntry = False # determines if there can be multiple records in the input/output
             singleEntryList = False # if true the user input is a list but we convert to dict with key based on list index
             output = dict()
@@ -328,19 +348,16 @@ class schema:
                 output[field] = myType
                 # if the first four leters are auto it may be an automatic function
                 # probably need to add some more tests here or prepend an _ TODO
-                if myType[:4]=='auto' and len(myType)>4 :
-                    f = self.autoFind.search(myType)
-                    braceContents = f.group(1).strip()
-                    fn = "_auto_"+braceContents
-                    # search the projectCreate class to see if it contains an appropriate fn to deal with the auto
-                    if hasattr(projectCreate, fn):
+                fn = self.function_find('auto', myType)
+                if fn:
+                    if fn == "__bad_function":
+                        printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} auto, is referencing an invalid function '{myType}' ")
+                        exit(warningAndErrorReport())
+                    else:
                         # valid function
                         self.data['fnStr'][context+section+field] = fn
                         # counterReverseField allows back reference between fields that control counter generation and the counter value - this is to deal with ordering issue
-                        self.data['counterReverseField'][context+section+braceContents] = field
-                    else:
-                        printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} auto, is referencing an invalid function '{myType}' ")
-                        exit(warningAndErrorReport())
+                        self.data['counterReverseField'][context+section+fn[len('_auto_'):]] = field
                     myType = 'auto'
                     output[field] = myType
                 if myType == 'const' or myType[:13]=='optionalConst' or myType == 'param':
@@ -366,6 +383,8 @@ class schema:
                 else:
                     checkfields = myType
                 for check in checkfields:
+                    if check[:4] == 'post':
+                        continue
                     if check not in validFieldTypes and field not in customChecker:
                         printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} is using unknown value '{check}' ")
                         exit(warningAndErrorReport())
@@ -391,9 +410,28 @@ class schema:
                         # the user input is a list not a dict, so we 'generate' a key based on the list index
                         multiEntry = True
                         singleEntryList = True
+                    for attrib in myType:
+                        fn = self.function_find('post', attrib)
+                        if fn:
+                            if fn == "__bad_function":
+                                printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Attrib {field} post, is referencing an invalid function '{attrib}' ")
+                                exit(warningAndErrorReport())
+                            else:
+                                self.data['post'][context+section] = fn
                     attrib = myType
                 if field == '_singular':
                     mySingular = myType
+                if field == '_mapto':
+                    # this is a special case where we want to map this section to another table
+                    mapto = myType
+                    if mapto not in schema:
+                        printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section}. _mapto is specifying an invalid section {mapto}")
+                        exit(warningAndErrorReport())
+                    self.data['mapto'][context+section] = mapto
+                    
+            if mapto is not None:
+                self.data['tables'].pop(section)
+                continue # skip rest of processing as this section is just a map to another
             if itemkeyname == None:
                 printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section}. There is no field defined as key")
                 exit(warningAndErrorReport())
@@ -438,7 +476,6 @@ class schema:
                     printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section} context {context}. singleEntryList is specified but no field is defined as listkey")
                     exit(warningAndErrorReport())
             self.data['indexes'][context+section] = indexes
-
     def sections(self):
         return self.data['schema']
 
@@ -733,6 +770,11 @@ class projectOpen:
             ret = int(value)
         except:
             # nested get with None if missing
+            for dataType in ('constants', 'typesenums', 'enumsenum'):
+                if value in self.data[dataType]:
+                    ret = self.data[dataType][value].get('value', None)
+                    if ret is not None:
+                        break
             ret = self.data['constants'].get(value, {'value': None})['value']
             if ret is None:
                 printError(f"Unknown constant {value}")
@@ -1974,6 +2016,8 @@ class projectCreate:
     yamlContext = OrderedDict() #dict containing precalculated contexts by file
     const = dict() # contains constants by yamlfile scope
     qualConst = dict() # contains constants by qualified name
+    enums = dict() # contains enums by yamlfile scope
+    qualEnums = dict() # contains enums by qualified name
     # section are simple, custom or something inbetween.
     #simple sections dont need any special handling - no auto fields
     simpleSections = {"types", "blocks", "variables", "interfaces", "instances", 'connectionMaps', "structures", "memories", "registers", "memoryConnections", "registerConnections", "parameters" }
@@ -2514,6 +2558,8 @@ class projectCreate:
                 self.includeValid[yamlFile] = {"dir": self.yamlDir, "valid": False}
         # we are going to go through every section of the input yaml file and process it
         for section, sectData in sections.items():
+            if section in self.schema.data['mapto']:
+                section = self.schema.data['mapto'][section]
             # some sections need to be ignored (eg in case this is a nested project file)
             if section not in self.ignoreSections:
                 if (section in self.schema.sections()):
@@ -2773,7 +2819,11 @@ class projectCreate:
                     else:
                         # if this is a special value that should not be validated
                         ret[field+'Key'] = ret[field] + '/' + yamlFile
-
+        if context+section in self.schema.data['post']:
+            # if there is a post process function for this section, call it now
+            funct = self.schema.data['post'][context+section]
+            # getattr is used to call the function specified in the string funct in the self object
+            ret = getattr(self, funct)(itemkey, ret, yamlFile)
         return ret
 
     def varWidth(self, varInfo, yamlFile):
@@ -2809,6 +2859,17 @@ class projectCreate:
         self.const[yamlFile][itemkey] = ret['value']
         self.qualConst[itemkey+'/'+yamlFile] = ret['value']
         return ret
+
+    def _post_add_enum(self, itemkey, item, yamlFile):
+        if 'enumName' in item:
+            if item['enumName'] in self.enums.get(yamlFile, {}):
+                self.logError(f"Processing enums in {yamlFile}:{item['lc'].line + 1} and enum:{itemkey} has duplicate enumName {item['enumName']}")
+                exit(warningAndErrorReport())
+            if yamlFile not in self.enums:
+                self.enums[yamlFile] = dict()
+            self.enums[yamlFile][item['enumName']] = {'value': item['value'], 'type': item['type']} 
+            self.qualEnums[item['enumName']+'/'+yamlFile] = {'value': item['value'], 'type': item['type']}
+        return item 
 
     #interfaces: interface: key, interfaceType: required, desc: required, structname: subkey,  structureType: auto,
     def _interfaces(self, itemkey, item, yamlFile):
@@ -3172,12 +3233,14 @@ class projectCreate:
         if not found:
             # now check from dependancies
             for myContext in self.yamlContext[context]:
-                try:
-                    ret = self.const[myContext][data]
+                const_val = self.const.get(myContext, {}).get(data)
+                if const_val is None:
+                    const_val = self.enums.get(myContext, {}).get(data, {}).get('value')
+                if const_val is not None:
+                    ret = const_val
                     retContext = data+'/'+myContext
                     found = True
                     break
-                except: KeyError
         if found:
             if value:
                 return ret
@@ -3202,7 +3265,9 @@ class projectCreate:
             found = True
         except: ValueError
         if not found:
-            ret = self.qualConst[data]
+            ret = self.qualConst.get(data)
+            if ret is None:
+                ret = self.qualEnums.get(data, {}).get('value')
         return(ret)
 
     # in conversions involving context there are two main cases
