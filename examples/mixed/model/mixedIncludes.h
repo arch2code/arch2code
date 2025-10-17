@@ -31,6 +31,8 @@ const uint32_t DWORD = 32;  // size of a double word
 const uint32_t DWORD_LOG2 = 6;  // size of a double word log2
 const uint32_t BOB0 = 16;  // Memory size for instance 0
 const uint32_t BOB1 = 15;  // Memory size for instance 1
+const uint32_t TESTCONST1 = 1;  // A test constant
+const uint32_t TESTCONST2 = 6;  // A test constant using an enum value
 const uint32_t OPCODEABASE_READ = 0;  // base value for Read command
 const uint32_t OPCODEABASE_WRITE = 64;  // base value for Write command
 const uint32_t OPCODEABASE_WAIT = 128;  // base value for Wait command
@@ -55,6 +57,20 @@ typedef uint32_t apbDataT; // [32] for the data sent or recieved via APB
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums 
 // enums
+enum  test1EnumT {           //a test enum
+    TEST1_A=0,               // Test A
+    TEST1_B=1,               // Test B
+    TEST1_C=2 };             // Test C
+inline const char* test1EnumT_prt( test1EnumT val )
+{
+    switch( val )
+    {
+        case TEST1_A: return( "TEST1_A" );
+        case TEST1_B: return( "TEST1_B" );
+        case TEST1_C: return( "TEST1_C" );
+    }
+    return("!!!BADENUM!!!");
+}
 enum  opcodeEnumT {          //Type of opcodeEnA (auto generated from encoder section)
     OPCODEATYPE_READ=0,      // Read command
     OPCODEATYPE_WRITE=1,     // Write command
@@ -70,6 +86,20 @@ inline const char* opcodeEnumT_prt( opcodeEnumT val )
         case OPCODEATYPE_WAIT: return( "OPCODEATYPE_WAIT" );
         case OPCODEATYPE_EVICT: return( "OPCODEATYPE_EVICT" );
         case OPCODEATYPE_TRIM: return( "OPCODEATYPE_TRIM" );
+    }
+    return("!!!BADENUM!!!");
+}
+enum  testEnumT {            //a test enum
+    TEST_A=0,                // Test A
+    TEST_B=5,                // Test B
+    TEST_C=2 };              // Test C
+inline const char* testEnumT_prt( testEnumT val )
+{
+    switch( val )
+    {
+        case TEST_A: return( "TEST_A" );
+        case TEST_B: return( "TEST_B" );
+        case TEST_C: return( "TEST_C" );
     }
     return("!!!BADENUM!!!");
 }

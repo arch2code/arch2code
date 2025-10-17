@@ -18,6 +18,8 @@ localparam int unsigned DWORD = 32'h0000_0020;  // size of a double word
 localparam int unsigned DWORD_LOG2 = 32'h0000_0006;  // size of a double word log2
 localparam int unsigned BOB0 = 32'h0000_0010;  // Memory size for instance 0
 localparam int unsigned BOB1 = 32'h0000_000F;  // Memory size for instance 1
+localparam int unsigned TESTCONST1 = 32'h0000_0001;  // A test constant
+localparam int unsigned TESTCONST2 = 32'h0000_0006;  // A test constant using an enum value
 localparam int unsigned OPCODEABASE_READ = 32'h0000_0000;  // base value for Read command
 localparam int unsigned OPCODEABASE_WRITE = 32'h0000_0040;  // base value for Write command
 localparam int unsigned OPCODEABASE_WAIT = 32'h0000_0080;  // base value for Wait command
@@ -38,6 +40,11 @@ typedef logic[32-1:0] apbAddrT; //for addressing register via APB sizing from co
 typedef logic[32-1:0] apbDataT; //for the data sent or recieved via APB sizing from constant DWORD
 
 // enums
+typedef enum logic[2-1:0] {           //a test enum
+    TEST1_A = 0,             // Test A
+    TEST1_B = 1,             // Test B
+    TEST1_C = 2             // Test C
+} test1EnumT;
 typedef enum logic[3-1:0] {          //Type of opcodeEnA (auto generated from encoder section)
     OPCODEATYPE_READ = 0,    // Read command
     OPCODEATYPE_WRITE = 1,   // Write command
@@ -45,6 +52,11 @@ typedef enum logic[3-1:0] {          //Type of opcodeEnA (auto generated from en
     OPCODEATYPE_EVICT = 3,   // Evict command
     OPCODEATYPE_TRIM = 4    // Trim command
 } opcodeEnumT;
+typedef enum logic[3-1:0] {            //a test enum
+    TEST_A = 0,              // Test A
+    TEST_B = 5,              // Test B
+    TEST_C = 2              // Test C
+} testEnumT;
 typedef enum logic[1-1:0] {               //either ready or not ready
     READY_NO = 0,            // Not ready
     READY_YES = 1           // Ready
