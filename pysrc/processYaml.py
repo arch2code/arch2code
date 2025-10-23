@@ -2,6 +2,7 @@ from typing import Dict, OrderedDict
 import pysrc.arch2codeGlobals as g
 from pysrc.yamlInclude import YAML
 from pysrc.arch2codeHelper import printError, printWarning, printTracebackStack, warningAndErrorReport, printIfDebug, roundup_pow2min4
+from pysrc.schema import Schema
 import ruamel.yaml as YAMLRAW
 import sqlite3
 import os
@@ -588,8 +589,8 @@ class projectOpen:
             g.db.row_factory = sqlite3.Row
         g.cur = g.db.cursor()
         self.config = config()
-        self.schema = schema()
-        self.tables = self.schema.tables()
+        self.schema = Schema()
+        self.tables = self.schema.get_table_names()
         g.yamlBasePath = self.config.getConfig('BASEYAMLPATH')
         self.yamlContext = self.config.getConfig('YAMLCONTEXT')
         self.includeName = self.config.getConfig('INCLUDENAME')
@@ -603,7 +604,7 @@ class projectOpen:
 
     def loadData(self):
         # loop through the schema loading all the tables
-        for table in self.schema.data['schema']:
+        for table in self.schema.tables:
             printIfDebug("Loading table: "+table)
             # we need the key for the table
             if table in self.schema.data['comboKey']:
@@ -2087,8 +2088,8 @@ class projectCreate:
         # read schema file referenced by project
         self.schemaYaml = existsLoad(schemaFile)
         # initialize schema base on the schema file
-        self.schema = schema(self.schemaYaml, schemaFile)
-        self.counterReverseField = self.schema.data['counterReverseField']
+        self.schema = Schema(self.schemaYaml, schemaFile)
+        self.counterReverseField = self.schema.counter_reverse_field
 
         if self.proj.get("addressControl"):
             # load and check the addressControl file specified in the project file
@@ -2109,7 +2110,7 @@ class projectCreate:
         # save the base yaml path as well incase needed by the generators
         self.config.setConfig('BASEYAMLPATH', g.yamlBasePath)
         # create all the databases based on the schema
-        self.createDatabase(self.schema.sections())
+        self.createDatabase(self.schema.data['schema'])
         self.yamlUnread = self.getFileList(self.proj, g.yamlBasePath)[0] #pre populate based on project file
         #read all the files into project
         self.readRaw()
@@ -2211,7 +2212,7 @@ class projectCreate:
         g.db.commit()
 
     def generateIndexes(self):
-        for table in self.schema.sections():
+        for table in self.schema.tables:
             for index in self.schema.data['indexes'][table]:
                 sql = f"CREATE INDEX idx_{table}_{index} ON {table} (\"{index}\")"
                 g.cur.execute(sql)
@@ -2569,7 +2570,7 @@ class projectCreate:
                 section = self.schema.data['mapto'][section]
             # some sections need to be ignored (eg in case this is a nested project file)
             if section not in self.ignoreSections:
-                if (section in self.schema.sections()):
+                if (section in self.schema.data['schema']):
                     # does this section have a custom section handler
                     if section in self.customSections:
                         funct = '_process_'+ section
@@ -2662,7 +2663,7 @@ class projectCreate:
         comboSchema = self.schema.data['comboField'].get(context+section, {})
         if not schema:
             # default schema for non nested uses
-            schema = self.schema.sections()[section]
+            schema = self.schema.get_section(section).get_fields_dict() if self.schema.get_section(section) else {}
         # handle singular case and convert item to a dict
         if not isinstance(item, dict):
             if context+section in self.schema.data['singular']:
@@ -2903,7 +2904,7 @@ class projectCreate:
             self.logError(f"Processing specialStructures in {yamlFile} and entry:{itemkey} does not reference valid baseStruct")
             exit(warningAndErrorReport())
 
-        varschema = self.schema.sections()['structures']['vars']
+        varschema = self.schema.get_node('structuresvars').get_fields_dict() if self.schema.get_node('structuresvars') else {}
         newStruct = OrderedDict()
         newStructVars = OrderedDict()
         reserved = 0
