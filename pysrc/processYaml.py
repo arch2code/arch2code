@@ -246,7 +246,7 @@ class schema:
 
     # validate schema processes the schema definition for later use in the processing of user input
     def validateSchema(self, schema, schemaFile, context=''):
-        validFieldTypes = { 'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'post',
+        validFieldTypes = { 'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'post', 'dataGroup',
                            'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param', 'singleEntryList', 'listkey'}
         addressControlFields = {'addressGroup', 'addressID', 'addressMultiples', 'instanceGroup', 'instanceID'}
         reservedKeys = {'_validate', '_type', '_key', '_combo', '_attribs', '_singular', '_mapto'} # reserved keys begin with _
@@ -311,6 +311,10 @@ class schema:
                             temp = {field: ftype}
                             self.validateSchema(temp, schemaFile, context=context+section)
                             output[field] = temp[field]
+                            # even though its a subtable in collapsed case it could still be the key
+                            if myType == 'key':
+                                itemkeyname = field
+                                output[field+'Key'] = 'contextKey' # the true key for the record is the user identified key with the scope added
                             continue
                         else:
                             if myType is None:
@@ -410,6 +414,9 @@ class schema:
                         # the user input is a list not a dict, so we 'generate' a key based on the list index
                         multiEntry = True
                         singleEntryList = True
+                    if 'dataGroup' in myType:
+                        # the schema defines a subtable that is really just a method to group the data that shares the same key as the parent
+                        pass
                     for attrib in myType:
                         fn = self.function_find('post', attrib)
                         if fn:
@@ -2206,7 +2213,7 @@ class projectCreate:
     def generateIndexes(self):
         for table in self.schema.sections():
             for index in self.schema.data['indexes'][table]:
-                sql = f"CREATE INDEX idx_{table}_{index} ON {table} ({index})"
+                sql = f"CREATE INDEX idx_{table}_{index} ON {table} (\"{index}\")"
                 g.cur.execute(sql)
 
     def createDatabase(self, schema, level=""):
@@ -2221,7 +2228,7 @@ class projectCreate:
             if isinstance(cols[field], dict):
                 self.createTable(table+field, cols[field])
             else:
-                col = f"{col}{comma}{field}"
+                col = f"{col}{comma}\"{field}\"" # field is quoted to allow for sql reserved words
                 comma = ", "
         self.schema.data['colsSQL'][table] = col
         sql = f"CREATE TABLE {table} ({col})"
@@ -2336,7 +2343,7 @@ class projectCreate:
                         offset = ((blockAddressCurrent[currentBlock] + size - 1) // size ) * size
                         blockAddressCurrent[currentBlock] = offset + size
                 blockAddressCurrent[currentBlock] = offset + size
-                sql = f"UPDATE {addressType} SET offset = {offset} WHERE {keyField} = '{row[keyField]}'"
+                sql = f"UPDATE {addressType} SET offset = {offset} WHERE \"{keyField}\" = '{row[keyField]}'" # field is quoted to allow for sql reserved words
                 g.cur.execute(sql)
 
         # once all addresses are calculated we need to perform space checks
@@ -3330,7 +3337,7 @@ class projectCreate:
         # there is probably an opportunitiy for some refactoring here with ProcessSection
         ret = dict()
         nestedContext = context+section
-        if nestedContext == 'memoriesports':
+        if section == 'modports':
             pass
         if yamlFile not in self.data[nestedContext]:
             self.data[nestedContext][yamlFile] = OrderedDict()
@@ -3364,9 +3371,12 @@ class projectCreate:
                     exit(warningAndErrorReport())
 
             else:
-                for itemkey, item in nested.items():
-                    ret[itemkey] = self.processSimple(section, itemkey, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
-                    self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
+                if 'dataGroup' in attribs:
+                    ret = self.processSimple(section, outerItemKey, nested, yamlFile, schema=nestedSchema, context=context, outer=outer)
+                else:
+                    for itemkey, item in nested.items():
+                        ret[itemkey] = self.processSimple(section, itemkey, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
+                        self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
         return ret
 
     # add an item to the database
