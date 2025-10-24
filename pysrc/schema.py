@@ -653,12 +653,26 @@ class Schema:
                     
     def _load_from_config(self):
         """Load schema from config database (for read-only access)"""
-        # This will be implemented when we need to support loading from database
-        # For now, just get the data dict from config
+        # Load the schema data dictionary from config
         data = self.config.getConfig('SCHEMA')
-        # TODO: Convert old dict format to new Node/Field structure
-        # This is a backward compatibility path that we may not need immediately
-        pass
+        if not data:
+            return
+            
+        # For backward compatibility, store the data dict directly
+        self._data = data
+        
+        # Extract tables list
+        if 'tables' in data:
+            # Convert from dict format {table_name: table_name} to list
+            self.tables = list(data['tables'].keys())
+        
+        # Extract counter reverse field
+        if 'counterReverseField' in data:
+            self.counter_reverse_field = data['counterReverseField']
+            
+        # Extract colsSQL
+        if 'colsSQL' in data:
+            self.col_sql = data['colsSQL']
         
     def save(self):
         """Serialize schema to database"""
@@ -687,10 +701,8 @@ class Schema:
         
         # Convert nodes back to dict structure
         for full_path, node in self.nodes.items():
-            # Build field dict
-            field_dict = {}
-            for field_name, field in node.fields.items():
-                field_dict[field_name] = field.field_type
+            # Build field dict (including nested subnodes)
+            field_dict = node.get_fields_dict()
                 
             # Store in schema dict
             if node.context == "":
@@ -699,6 +711,9 @@ class Schema:
             # Store key field
             if node.anchor_field:
                 data['key'][full_path] = node.anchor_field
+            elif node.is_list:
+                # Lists use _listIndex as the key
+                data['key'][full_path] = '_listIndex'
                 
             # Store attributes
             if node.attributes:

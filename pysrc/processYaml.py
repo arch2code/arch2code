@@ -10,6 +10,7 @@ import re
 import pickle
 import math
 import importlib
+import importlib.util
 
 continueOnError = False
 
@@ -616,19 +617,37 @@ class projectOpen:
                 # otherwise use the context version to ensure uniqueness of entries
                 keyName = self.schema.data['key'][table] + 'Key'
 
+            # Load subtables recursively (depth-first) before loading the parent table
             if table in self.schema.data['subTable']:
-                for subTable in self.schema.data['subTable'][table]:
-                    printIfDebug("  Loading sub table: "+subTable)
-                    # the schema for the sub table is nested inside the table, attached to the appropriate var
-                    # this only works for single level subtable at the moment...
-                    self.loadTable(subTable, self.schema.data['schema'][table][self.schema.data['subTable'][table][subTable]], self.schema.data['key'][subTable], outerkeyKey = keyName)
+                self._loadSubTablesRecursive(table, self.schema.data['schema'][table], keyName)
 
             self.loadTable(table, self.schema.data['schema'][table], keyName)
+    
+    def _loadSubTablesRecursive(self, parentTable, parentSchema, parentKeyName):
+        """Recursively load all subtables depth-first"""
+        if parentTable not in self.schema.data['subTable']:
+            return
+        
+        for subTable in self.schema.data['subTable'][parentTable]:
+            printIfDebug(f"  Loading sub table: {subTable}")
+            
+            # Get the field name that holds this subtable in the parent schema
+            subTableFieldName = self.schema.data['subTable'][parentTable][subTable]
+            subTableSchema = parentSchema[subTableFieldName]
+            
+            # Get the key for this subtable
+            subTableKey = self.schema.data['key'][subTable]
+            
+            # Recursively load any nested subtables first (depth-first)
+            self._loadSubTablesRecursive(subTable, subTableSchema, subTableKey)
+            
+            # Now load this subtable
+            self.loadTable(subTable, subTableSchema, subTableKey, outerkeyKey=parentKeyName)
 
     # when outerkey is None we are just creating a simple dictionary
     # when outerkey is not none then the records should be grouped under outer key for later reassembly
     def loadTable(self, tableName, schema, keyName, outerkeyKey=None):
-        attrib = self.schema.data['attrib'][tableName]
+        attrib = self.schema.data['attrib'].get(tableName, [])
         columns = schema.copy()
         # figure out which mode to use
         if 'list' in attrib:
@@ -773,19 +792,49 @@ class projectOpen:
         fileName = f"{module}{fileStub}.{extension}"
         return fileName
 
+    def _build_enum_lookup(self):
+        """Build a lookup dictionary for enum values (lazy initialization)"""
+        if hasattr(self, '_enum_lookup'):
+            return
+        
+        self._enum_lookup = {}
+        
+        # Build lookup from typesenum table
+        # typesenum is organized as: {'enumType/file.yaml': [list of enum entries]}
+        # Each enum entry has 'enumName' and 'value' fields
+        if 'typesenum' in self.data:
+            for enum_type_key, enum_list in self.data['typesenum'].items():
+                if isinstance(enum_list, list):
+                    for enum_entry in enum_list:
+                        if isinstance(enum_entry, dict):
+                            enum_name = enum_entry.get('enumName')
+                            enum_value = enum_entry.get('value')
+                            context = enum_entry.get('_context', '')
+                            
+                            if enum_name and context and enum_value is not None:
+                                qual_enum_name = f"{enum_name}/{context}"
+                                self._enum_lookup[qual_enum_name] = enum_value
+    
     def getConst(self, value):
         try:
             ret = int(value)
         except:
-            # nested get with None if missing
-            for dataType in ('constants', 'typesenums', 'enumsenum'):
-                if value in self.data[dataType]:
-                    ret = self.data[dataType][value].get('value', None)
-                    if ret is not None:
-                        break
-            ret = self.data['constants'].get(value, {'value': None})['value']
+            ret = None
+            
+            # First, try to look up in constants table using qualified key
+            if 'constants' in self.data and value in self.data['constants']:
+                const_data = self.data['constants'][value]
+                if isinstance(const_data, dict):
+                    ret = const_data.get('value', None)
+            
+            # If not found in constants, look up in enum lookup dictionary
             if ret is None:
-                printError(f"Unknown constant {value}")
+                # Build enum lookup on first use (lazy initialization)
+                self._build_enum_lookup()
+                ret = self._enum_lookup.get(value, None)
+            
+            if ret is None:
+                printError(f"Unknown constant '{value}'")
                 exit(warningAndErrorReport())
         return ret
 
@@ -2739,7 +2788,7 @@ class projectCreate:
                     ret[field] = item.get(field)
                 if ftype in {'optional', 'optionalConst'}:
                     # note that its only optional in the input - hence get usage
-                    default = self.schema.data['optionalDefault'].get(section+field, "")
+                    default = self.schema.data['optionalDefault'].get(context+section+field, "")
                     ret[field] = item.get(field, default)
                 if ftype=='outerkey' or ftype=='outerkeyKey' or ftype=='outer':
                     # outer key is for the nested case, we want to refer back to the entry we are nested within
