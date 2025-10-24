@@ -9,7 +9,6 @@ projectName: mixed
 projectFiles:
   - mixed.yaml
   - mixedBlockC.yaml
-  - ../../../interfaces/apb/apb_if.yaml
 
 
 addressControl: exampleAddress.yaml

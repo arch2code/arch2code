@@ -27,7 +27,7 @@ all : lint
 gen: $(DOT_GEN_FILE)
 
 lint: gen
-	verilator --lint-only -f package.f -f $(PROJECT_NAME).f --top-module top
+	verilator --lint-only -F $(SV_COM)/a2c.f -f package.f -f $(PROJECT_NAME).f --top-module top
 
 clean: db-clean
 	$(RM) $(DOT_GEN_FILE)

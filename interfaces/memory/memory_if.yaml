@@ -1,0 +1,24 @@
+
+interface_defs:
+  memory : 
+    parameters : 
+      addr_t : { datatype : struct, default : 'bit' }
+      data_t : { datatype : struct, default : 'bit' }
+    signals: 
+      write_data : data_t
+      read_data : data_t
+      addr : addr_t
+      enable : bool
+      wr_en : bool
+    modports :
+      src : 
+        inputs : ['read_data']
+        outputs: ['write_data', 'addr', 'enable', 'wr_en']
+      dst : 
+        inputs : ['write_data', 'addr', 'enable', 'wr_en']
+        outputs: ['read_data']
+    sc_channel :
+      type : 'memory'
+      param_cast : None
+      multicycle_types : []
+

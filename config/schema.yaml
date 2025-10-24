@@ -164,24 +164,15 @@ interface_defs:
         _key:
           interface_type: outerkey
           multicycle_type: required
+  multiDst: optional(False)  # allow multiple destinations to connect to a single source
 
 interfaces:
   interface: key
   interfaceType:
     _type: required
     _validate:
-      values:  # list of valid values
-        - rdy_vld
-        - push_ack
-        - pop_ack
-        - req_ack
-        - status
-        - apb
-        - axi_read
-        - axi_write
-        - axi4_stream
-        - notify_ack
-        - status
+      section: interface_defs
+      field: interface_type
   desc: required
   maxTransferSize: optionalConst(0) # for multiCycle operation, specifies the maximum transfer size in bytes.
                                     # For a single transaction, num_cycles = roundup( datapath width / transfer size ), where transfer size <= maxTransferSize

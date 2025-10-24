@@ -564,6 +564,7 @@ class projectOpen:
     tables = None
     config = None
     schema = None
+    specialContexts = {"_global", "_a2csystem"} # special contexts that should be excluded from includes
     hier = dict()
     hierKey = dict()
     instances = dict() # mapping of instance names (user friendly) to qualified instance names (unique)
@@ -1319,7 +1320,7 @@ class projectOpen:
 
         sourceContexts = self.extractContext(structs, consts)
         for sourceContext in sourceContexts:
-            if sourceContext != "_global":
+            if sourceContext not in self.specialContexts:
                 ret['includeContext'][sourceContext] = 0
 
         ret['hierKey'] = self.hierKey[qualBlock]
@@ -1802,7 +1803,7 @@ class projectOpen:
     def getBDIncludes(self, ret):
         sourceContexts = self.extractContext(ret['temp']['structs'], ret['temp']['consts'])
         for sourceContext in sourceContexts:
-            if sourceContext != "_global":
+            if sourceContext not in self.specialContexts:
                 ret['includeContext'][sourceContext] = 0
 
     def extractContext(self, structs, consts):
@@ -2085,6 +2086,7 @@ class projectCreate:
     generatorTemplates = {"cppConfig", "svConfig", "docConfig" }
     dontValidate = {'_topInstance'} # list of keys that should not be validated if validator is present
     stdFields = {"context"}
+    specialContexts = {"_global", "_a2csystem"} # special contexts that should be excluded from includes
     constFind = re.compile(r"(\$)(\w+)")
     currentContext = None
     errorState = False
@@ -2160,7 +2162,18 @@ class projectCreate:
         self.config.setConfig('BASEYAMLPATH', g.yamlBasePath)
         # create all the databases based on the schema
         self.createDatabase(self.schema.data['schema'])
-        self.yamlUnread = self.getFileList(self.proj, g.yamlBasePath)[0] #pre populate based on project file
+        # Load system files first (from a2cProj - base/pro config)
+        systemFiles = []
+        if "systemFiles" in self.a2cProj:
+            # Use a2cRoot directly as the base path since it's already set correctly
+            systemFiles = self.getFileList(self.a2cProj, self.a2cRoot)[0]
+        
+        # Then load user project files
+        userFiles = self.getFileList(self.proj, g.yamlBasePath)[0]
+        
+        # Combine with system files first (so they process with priority)
+        self.yamlUnread = systemFiles + userFiles
+        self.systemFiles = set(systemFiles)  # Track which are system files
         #read all the files into project
         self.readRaw()
         # process all files
@@ -2198,7 +2211,7 @@ class projectCreate:
 
     def createProjectConfig(self):
         # save anything in project file to config except named items
-        notConfig = {"projectFiles", "dirs"}
+        notConfig = {"projectFiles", "dirs", "systemFiles"}
         toSave = {'TOPINSTANCE': '_top', "PROJECTNAME": "Nameless"} #initialize to some defaults as appropriate
         for item in self.proj:
             # to allow later processing of nested project files we need to ensure the lower level parser ignores them by adding them to the set
@@ -2298,6 +2311,13 @@ class projectCreate:
         incNorm = list()
         if not data:
             return (todoNorm, incNorm)
+        # Handle systemFiles (needs macro expansion)
+        if "systemFiles" in data:
+            systemF = data["systemFiles"]
+            for f in systemF:
+                # Expand macros like $a2c before resolving path
+                expandedPath = expandDirMacros(f)
+                todoNorm.append(os.path.relpath(os.path.join(basePath, expandedPath), g.yamlBasePath))
         if "projectFiles" in data:
             todo = data["projectFiles"]
             for f in todo:
@@ -2554,8 +2574,15 @@ class projectCreate:
             for myYaml, dep in toProcess.items():
                 if not dep:
                     # if there are no dependancies, its always safe to process
-                    self.yamlContext[myYaml] = OrderedDict({myYaml: None})
-                    self.processSingleFile(myYaml)
+                    if myYaml in self.systemFiles:
+                        # System files go into special _a2csystem context
+                        if '_a2csystem' not in self.yamlContext:
+                            self.yamlContext['_a2csystem'] = OrderedDict()
+                        self.yamlContext['_a2csystem'][myYaml] = None
+                        self.processSingleFile(myYaml, contextOverride='_a2csystem')
+                    else:
+                        self.yamlContext[myYaml] = OrderedDict({myYaml: None})
+                        self.processSingleFile(myYaml)
                     processed[myYaml] = None
                     didWork = True
                 else:
@@ -2597,19 +2624,21 @@ class projectCreate:
         g.db.commit()
 
     # process a single previously read file or provided standalone data
-    def processSingleFile(self, yamlFile, sections=None):
+    def processSingleFile(self, yamlFile, sections=None, contextOverride=None):
         # loop through the sections and process the section
         if sections is None:
             printIfDebug(f"Processing yaml file {yamlFile}")
             sections = self.yamlRaw[yamlFile]
-        self.currentContext = yamlFile
+        # Use contextOverride if provided (for system files in _a2csystem context)
+        contextFile = contextOverride if contextOverride else yamlFile
+        self.currentContext = contextFile
         if not sections:
             return
         if "blockDir" in sections:
             self.yamlDir = sections["blockDir"]
         else:
             self.yamlDir = os.path.dirname(yamlFile)
-        if yamlFile not in self.includeValid and yamlFile !='_global':
+        if yamlFile not in self.includeValid and yamlFile not in self.specialContexts:
             # check if this is a nested project file
             if 'addressControl' not in sections:
                 self.includeValid[yamlFile] = {"dir": self.yamlDir, "valid": False}
@@ -2624,9 +2653,9 @@ class projectCreate:
                     if section in self.customSections:
                         funct = '_process_'+ section
                         # getattr is used to call the function specified in the string funct in the self object
-                        getattr(self, funct)(sectData, yamlFile)
+                        getattr(self, funct)(sectData, contextFile)
                     else:
-                        self.processSection(section, sectData, yamlFile)
+                        self.processSection(section, sectData, contextFile)
                 else:
                     printError(f"Unknown section: {section} found in {yamlFile}:{sectData.lc.line}")
                     exit(warningAndErrorReport())
@@ -2669,7 +2698,7 @@ class projectCreate:
                 item = loopitem
             else:
                 item = data[loopitem]
-            if yamlFile=='_global':
+            if yamlFile in self.specialContexts:
                 yamlFileOverride = item.get('_yamlFileOverride', yamlFile)
                 if yamlFileOverride not in self.data[section]:
                     self.data[section][yamlFileOverride] = OrderedDict()
@@ -3374,6 +3403,15 @@ class projectCreate:
                         ret = self.data[objType][qualification][key]
                         found = True
                         break
+                    except: KeyError
+                
+                # If not found in regular context, also search _a2csystem context
+                if not found and '_a2csystem' in self.yamlContext:
+                    # System files are all stored under '_a2csystem' qualification
+                    try:
+                        ret = self.data[objType]['_a2csystem'][key]
+                        qualification = '_a2csystem'
+                        found = True
                     except: KeyError
 
         if (not found) and NotFoundFatal:

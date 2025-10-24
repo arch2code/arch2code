@@ -27,7 +27,7 @@ $(DOT_GEN_FILE): $(DOT_DB_FILE)
 	touch $@
 
 lint: $(DOT_GEN_FILE)
-	verilator --lint-only -sv $(SV_COM)/flops.sv -f package.f $(SV_FILES) --top-module top -y $(SV_COM)
+	verilator --lint-only -sv -F $(SV_COM)/a2c.f -f package.f $(SV_FILES) --top-module top -y $(SV_COM)
 
 clean:
 	$(RM) $(DB_FILE) $(DOT_DB_FILE) $(DOT_GEN_FILE)

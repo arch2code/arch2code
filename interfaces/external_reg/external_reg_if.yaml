@@ -1,0 +1,21 @@
+
+interface_defs:
+  external_reg : 
+    parameters : 
+      data_t : { datatype : struct, default : 'bit' }
+    signals: 
+      wdata : data_t
+      rdata : data_t
+      write : 'bit [1:0]'
+    modports :
+      src : 
+        inputs : ['rdata']
+        outputs: ['wdata', 'write']
+      dst : 
+        inputs : ['wdata', 'write']
+        outputs: ['rdata']
+    sc_channel :
+      type : 'external_reg'
+      param_cast : None
+      multicycle_types : []
+

@@ -1,0 +1,21 @@
+
+interface_defs:
+  pop_ack : 
+    parameters : 
+      rdata_t : { datatype : struct, default : 'bit' }
+    signals: 
+      pop : bool
+      ack : bool
+      rdata : rdata_t
+    modports :
+      src : 
+        inputs : ['ack', 'rdata']
+        outputs: ['pop']
+      dst : 
+        inputs : ['pop']
+        outputs: ['ack', 'rdata']
+    sc_channel :
+      type : 'pop_ack'
+      param_cast : None
+      multicycle_types : []
+

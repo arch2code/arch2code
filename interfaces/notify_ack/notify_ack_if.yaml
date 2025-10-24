@@ -1,0 +1,19 @@
+
+interface_defs:
+  notify_ack : 
+    parameters : {}
+    signals: 
+      notify : bool
+      ack : bool
+    modports :
+      src : 
+        inputs : ['ack']
+        outputs: ['notify']
+      dst : 
+        inputs : ['notify']
+        outputs: ['ack']
+    sc_channel :
+      type : 'notify_ack'
+      param_cast : None
+      multicycle_types : []
+

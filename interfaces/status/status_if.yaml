@@ -1,0 +1,20 @@
+
+interface_defs:
+  status : 
+    parameters : 
+      data_t : { datatype : struct, default : 'bit' }
+    signals: 
+      data : data_t
+    modports :
+      src : 
+        inputs : []
+        outputs: ['data']
+      dst : 
+        inputs : ['data']
+        outputs: []
+    sc_channel :
+      type : 'status'
+      param_cast : None
+      multicycle_types : []
+    multiDst : True
+
