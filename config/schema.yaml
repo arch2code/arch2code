@@ -167,6 +167,7 @@ interface_defs:
   multiDst: optional(False)  # allow multiple destinations to connect to a single source
 
 interfaces:
+  _attribs: [post(validate_interface_structures)]
   interface: key
   interfaceType:
     _type: required
@@ -195,19 +196,7 @@ interfaces:
       _validate:
         section: structures
         field: structure
-    structureType:
-      _type: required
-      _validate:
-        values:  # list of valid values
-          - data_t
-          - rdata_t
-          - addr_t
-          - strb_t
-          - hdr_t
-          - tdata_t
-          - tid_t
-          - tdest_t
-          - tuser_t
+    structureType: required  # validated by post-processing function against interface_defs parameters
 
 instances:
   instance: key

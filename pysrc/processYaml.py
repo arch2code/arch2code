@@ -2957,6 +2957,76 @@ class projectCreate:
             self.qualEnums[item['enumName']+'/'+yamlFile] = {'value': item['value'], 'type': item['type']}
         return item 
 
+    def _post_validate_interface_structures(self, itemkey, item, yamlFile):
+        """Validate that structureType values match parameters defined in interface_defs
+        
+        This performs bidirectional validation:
+        1. Each structureType must be a valid parameter in interface_defs
+        2. All struct-type parameters from interface_defs must be present
+        """
+        # Only validate if interface has interfaceType
+        if 'interfaceType' not in item:
+            return item
+        
+        intf_type = item['interfaceType']
+        
+        # Get the interface_defs for this interfaceType
+        # interface_defs are loaded as system files, so they should be in '_a2csystem' context
+        (intf_def, intf_context) = self.getFromContext('interface_defs', '_a2csystem', intf_type, NotFoundFatal=False)
+        
+        if not intf_def:
+            # If interface_defs not found, the interfaceType validation will catch this
+            return item
+        
+        # Extract valid parameter names from interface_defs
+        if 'parameters' not in intf_def:
+            # No parameters defined, so no structure types are expected
+            if item.get('structures'):
+                line_num = item['lc'].line + 1 if hasattr(item, 'lc') else '?'
+                self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}' "
+                            f"has structures defined, but interface_defs '{intf_type}' does not define any parameters")
+            return item
+        
+        # Get all valid structure types and required struct parameters
+        all_params = intf_def['parameters']
+        valid_structure_types = set(all_params.keys())
+        
+        # Filter to only struct-type parameters (these are the ones that need structures defined)
+        required_struct_params = {
+            param_name for param_name, param_info in all_params.items()
+            if param_info.get('datatype') == 'struct'
+        }
+        
+        # Get the structureTypes that are defined in the interface
+        defined_structure_types = set()
+        structures = item.get('structures', {})
+        
+        # Validation 1: Check each defined structureType is valid
+        for struct_key, struct_data in structures.items():
+            if 'structureType' not in struct_data:
+                continue  # This will be caught by required field validation
+            
+            structure_type = struct_data['structureType']
+            defined_structure_types.add(structure_type)
+            
+            if structure_type not in valid_structure_types:
+                line_num = struct_data['lc'].line + 1 if hasattr(struct_data, 'lc') else '?'
+                valid_types_str = "', '".join(sorted(valid_structure_types))
+                self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}': "
+                            f"structureType '{structure_type}' is not valid. "
+                            f"Valid structureTypes for '{intf_type}' are: '{valid_types_str}'")
+        
+        # Validation 2: Check all required struct parameters are present
+        missing_params = required_struct_params - defined_structure_types
+        if missing_params:
+            line_num = item['lc'].line + 1 if hasattr(item, 'lc') else '?'
+            missing_params_str = "', '".join(sorted(missing_params))
+            self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}': "
+                        f"missing required structureType(s): '{missing_params_str}'. "
+                        f"All struct-type parameters from interface_defs must have corresponding structures.")
+        
+        return item
+
     #interfaces: interface: key, interfaceType: required, desc: required, structname: subkey,  structureType: auto,
     def _interfaces(self, itemkey, item, yamlFile):
         # handle simple stuff first
