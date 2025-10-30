@@ -1,5 +1,7 @@
 import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils
+from pysrc.arch2codeHelper import roundup_multiple
+
 from jinja2 import Template
 
 # args from generator line
@@ -53,7 +55,7 @@ def get_hwregs(prj, data):
         hwregs.append({
             "name": reg['register'] + '_reg',
             "datatype": reg['structure'],
-            "size": reg['bytes']*4,
+            "size": roundup_multiple(reg['bytes'], 4),
             "ro" : 'true' if reg['regType'] == 'ro' else 'false',
             "offset": hex(reg['offset']),
             "port_type": port_type,

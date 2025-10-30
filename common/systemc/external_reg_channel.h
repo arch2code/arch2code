@@ -79,7 +79,9 @@ class external_reg_channel
 {
 public:
     // constructor const char * module, std::string block
-    explicit external_reg_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
+    explicit external_reg_channel( const char* name_, std::string block_, 
+                                   INTERFACE_AUTO_MODE autoMode, 
+                                   const typename T::_packedSt& initialValue = typename T::_packedSt(0))
       : sc_prim_channel( name_ ),
         interfaceBase(name_, block_, autoMode),
         m_channel_update_event( (std::string(name_) + "m_channel_update_event").c_str() ),
@@ -90,6 +92,12 @@ public:
         {
             setTracker(T::getValueType());
             logging::GetInstance().registerInterfaceStatus(std::string(name_), [this](void){ status();});
+            m_write_data.unpack(initialValue);
+        }
+    explicit external_reg_channel( const char* name_, std::string block_, 
+                                   const typename T::_packedSt& initialValue = typename T::_packedSt(0))
+      : external_reg_channel(name_, block_, INTERFACE_AUTO_OFF, initialValue)
+        {
         }
 
     // destructor
@@ -238,13 +246,13 @@ inline void external_reg_channel<T>::read( T& val_ )
 template <class T>
 inline void external_reg_channel<T>::readNonBlocking( T& val_ )
 {
-    val_ = m_status_value;
+    val_ = m_write_data;
 }
 
 template <class T>
 inline T external_reg_channel<T>::readNonBlocking( )
 {
-    return m_status_value;
+    return m_write_data;
 }
 
 template <class T>
