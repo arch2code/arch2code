@@ -30,7 +30,11 @@ def postProcess(prj):
     # create a dictionary of connections to be added to the database
     blocksNeedingConnections = blocksWithRegisters.copy()
     blocksNeedingConnections.update(blocksWithMemories)
-
+    blockInfo = dict()
+    if blocksNeedingConnections:
+        for context, blockData in prj.data['blocks'].items():
+            for _, block in blockData.items():
+                blockInfo[block['blockKey']] = block
     # create a set containers that hold address decode blocks, as blocks within the same scope of the decode can be connected directly
     decoderContainer = dict() # mapping of qualified container to qualified decoder instance
     instancesSimple = dict() # mapping of qualified instance to simple instance name
@@ -53,7 +57,8 @@ def postProcess(prj):
                                          'hasRtl': True,
                                          'hasMdl': has_mdl,
                                          'hasTb': False,
-                                         'isRegHandler': True}
+                                         'isRegHandler': True,
+                                         'dir': blockInfo[block_key].get('dir', '') }
         reg_handler_instances[instance_name] = {'instanceType': reg_block,
                                                    'container': block}
         reg_handler_connection_maps.append({'interface': reg_interface,
