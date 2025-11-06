@@ -64,36 +64,36 @@
 </g>
 </g>
 <!-- uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml -->
-<!-- uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockA/apbDecode.yaml.uBlockARegs/apbDecode.yaml -->
+<!-- uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockA/apbDecode.yaml.ublockARegs/_global -->
 <g id="node5" class="node">
-<title>uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockA/apbDecode.yaml.uBlockARegs/apbDecode.yaml</title>
-<g id="a_node5"><a xlink:title="The register block inside block A">
-<polygon fill="grey" stroke="black" points="123.5,-60 24.5,-60 24.5,-24 123.5,-24 123.5,-60"/>
+<title>uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockA/apbDecode.yaml.ublockARegs/_global</title>
+<g id="a_node5"><a xlink:title="blockA Register handler">
+<polygon fill="white" stroke="black" points="123.5,-60 24.5,-60 24.5,-24 123.5,-24 123.5,-60"/>
 <text text-anchor="middle" x="74" y="-38.3" font-family="Times,serif" font-size="14.00">blockARegs</text>
 </a>
 </g>
 </g>
-<!-- uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uAPBDecode/apbDecode.yaml&#45;&gt;uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockA/apbDecode.yaml.uBlockARegs/apbDecode.yaml -->
+<!-- uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uAPBDecode/apbDecode.yaml&#45;&gt;uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockA/apbDecode.yaml.ublockARegs/_global -->
 <g id="edge2" class="edge">
-<title>uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uAPBDecode/apbDecode.yaml&#45;&gt;uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockA/apbDecode.yaml.uBlockARegs/apbDecode.yaml</title>
+<title>uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uAPBDecode/apbDecode.yaml&#45;&gt;uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockA/apbDecode.yaml.ublockARegs/_global</title>
 <g id="a_edge2"><a xlink:title="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design">
 <path fill="none" stroke="black" d="M107.57,-98.7C102.2,-89.79 95.55,-78.75 89.58,-68.85"/>
 <polygon fill="black" stroke="black" points="92.51,-66.93 84.35,-60.18 86.52,-70.55 92.51,-66.93"/>
 </a>
 </g>
 </g>
-<!-- uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockB/apbDecode.yaml.uBlockBRegs/apbDecode.yaml -->
+<!-- uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockB/apbDecode.yaml.ublockBRegs/_global -->
 <g id="node7" class="node">
-<title>uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockB/apbDecode.yaml.uBlockBRegs/apbDecode.yaml</title>
-<g id="a_node7"><a xlink:title="The register block inside block B">
-<polygon fill="grey" stroke="black" points="330,-60 230,-60 230,-24 330,-24 330,-60"/>
+<title>uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockB/apbDecode.yaml.ublockBRegs/_global</title>
+<g id="a_node7"><a xlink:title="blockB Register handler">
+<polygon fill="white" stroke="black" points="330,-60 230,-60 230,-24 330,-24 330,-60"/>
 <text text-anchor="middle" x="280" y="-38.3" font-family="Times,serif" font-size="14.00">blockBRegs</text>
 </a>
 </g>
 </g>
-<!-- uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uAPBDecode/apbDecode.yaml&#45;&gt;uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockB/apbDecode.yaml.uBlockBRegs/apbDecode.yaml -->
+<!-- uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uAPBDecode/apbDecode.yaml&#45;&gt;uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockB/apbDecode.yaml.ublockBRegs/_global -->
 <g id="edge3" class="edge">
-<title>uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uAPBDecode/apbDecode.yaml&#45;&gt;uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockB/apbDecode.yaml.uBlockBRegs/apbDecode.yaml</title>
+<title>uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uAPBDecode/apbDecode.yaml&#45;&gt;uTop/apbDecode.yaml.uSomeRapper/apbDecode.yaml.uBlockB/apbDecode.yaml.ublockBRegs/_global</title>
 <g id="a_edge3"><a xlink:title="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design">
 <path fill="none" stroke="black" d="M165.7,-108.28C182.74,-104.45 201.74,-98.89 218,-91 230.98,-84.7 243.84,-75.39 254.45,-66.64"/>
 <polygon fill="black" stroke="black" points="256.76,-69.27 262.1,-60.12 252.22,-63.95 256.76,-69.27"/>

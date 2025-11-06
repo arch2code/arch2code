@@ -428,7 +428,7 @@ class schema:
                         printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section}. _mapto is specifying an invalid section {mapto}")
                         exit(warningAndErrorReport())
                     self.data['mapto'][context+section] = mapto
-                    
+
             if mapto is not None:
                 self.data['tables'].pop(section)
                 continue # skip rest of processing as this section is just a map to another
@@ -1097,7 +1097,7 @@ class projectOpen:
             if connMapValue['instanceKey'] in instances:
                 ret['connectionMaps'][connMapKey] = connMapValue
                 connMapValue['parentPortName'] = connMapValue['portName'] # portName in the block is already pre calculated
-                connMapValue['instancePortName'] = getPortName(connMapValue, 'instancePort') # on the instance side it depends on any instancePort set
+                connMapValue['instancePortName'] = getPortChannelName(connMapValue, 'instancePort') # on the instance side it depends on any instancePort set
                 connMapValue['interfaceType'] = self.data['interfaces'][connMapValue['interfaceKey']]['interfaceType']
 
         # the definition of the ports is based on the superset of the connections
@@ -1117,7 +1117,7 @@ class projectOpen:
                     inScope = True
                     commentOut = ''
                 # assume interface uniqueness is based on portName
-                interface = connVal['interfaceKey'] + getPortName(connVal)
+                interface = connVal['interfaceKey'] + getPortChannelName(connVal)
                 # add it for later iteration to calc superset
                 interfaces[interface] = None
 
@@ -1141,7 +1141,7 @@ class projectOpen:
                 inst = connMapValue['instanceKey']
                 # is this one of us?
                 if inst in qualBlockInstances:
-                    interface = connMapValue['interfaceKey'] + getPortName(connMapValue, 'instancePort')
+                    interface = connMapValue['interfaceKey'] + getPortChannelName(connMapValue, 'instancePort')
                     interfaces[interface] = None
 
                     if interface not in ports:
@@ -1149,7 +1149,7 @@ class projectOpen:
                     if inst not in ports[interface]:
                         ports[interface][inst] = dict()
                     ports[interface][inst][connMapKey] = connMapValue.copy()
-                    ports[interface][inst][connMapKey]['port'] = getPortName(connMapValue, 'instancePort')
+                    ports[interface][inst][connMapKey]['port'] = getPortChannelName(connMapValue, 'instancePort')
                     ports[interface][inst][connMapKey]['inScope'] = True
                     ports[interface][inst][connMapKey]['commentOut'] = ''
 
@@ -1162,7 +1162,7 @@ class projectOpen:
                 count = max(len(ports[interface][inst]), count)
                 # ref for later use, will point to last one
             this = ports[interface][inst][next(iter(ports[interface][inst]))]
-            portNameThis = getPortName(this)
+            portNameThis = getPortChannelName(this)
             ret['ports'][interface]['count'] = count
             ret['ports'][interface]['name'] = portNameThis
             ret['ports'][interface]['channelName'] = portNameThis
@@ -1321,6 +1321,20 @@ class projectOpen:
         ret.pop('temp') # remove temp data
 
         return ret
+
+    def getBlockDataHier(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
+        def recurse_block(block, trimRegLeafInstance, excludeInstances, visited=None):
+            if visited is None:
+                visited = set()
+            if block in visited:
+                return None  # Prevent infinite recursion on cyclic references
+            visited.add(block)
+            data = self.getBlockData(block, trimRegLeafInstance, excludeInstances)
+            for subBlockKey in list(data['subBlocks'].keys()):
+                subData = recurse_block(subBlockKey, trimRegLeafInstance, excludeInstances, visited)
+                data['subBlocks'][subBlockKey] = subData
+            return data
+        return recurse_block(qualBlock, trimRegLeafInstance, excludeInstances)
 
     def getBDGetIntfStructs(self, ret, intfData={}, intfKey=''):
         if not intfData:
@@ -2867,9 +2881,9 @@ class projectCreate:
                 exit(warningAndErrorReport())
             if yamlFile not in self.enums:
                 self.enums[yamlFile] = dict()
-            self.enums[yamlFile][item['enumName']] = {'value': item['value'], 'type': item['type']} 
+            self.enums[yamlFile][item['enumName']] = {'value': item['value'], 'type': item['type']}
             self.qualEnums[item['enumName']+'/'+yamlFile] = {'value': item['value'], 'type': item['type']}
-        return item 
+        return item
 
     #interfaces: interface: key, interfaceType: required, desc: required, structname: subkey,  structureType: auto,
     def _interfaces(self, itemkey, item, yamlFile):
