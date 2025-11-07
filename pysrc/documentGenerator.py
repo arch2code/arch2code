@@ -1,5 +1,5 @@
 from pysrc.textfileHelper import codeText
-from pysrc.renderer import renderer 
+from pysrc.renderer import renderer
 import argparse
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 import os
@@ -22,13 +22,17 @@ class documentGenerator:
 
         self.code = codeText(args.file, "//")
         fileName = os.path.basename(args.file)
-        if self.code.template == 'blockSpecification':
-            if not self.code.params.block:
+
+        if not self.code.block:
                 printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                 exit(warningAndErrorReport())
-            else:
-                qualBlock = prj.getQualBlock( self.code.block )
+        else:
+            qualBlock = prj.getQualBlock( self.code.block )
+            if self.code.template == 'blockSpecification':
                 self.data = prj.getBlockDataOld(qualBlock, self.instances)
+            else:
+                self.data = prj.getBlockDataHier(qualBlock, trimRegLeafInstance=True, excludeInstances=[])
+
         args.fileName = fileName
         parser = argparse.ArgumentParser(description="Document generated code parser", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         self.renderer.renderSections(self, self.code, parser, prj, self.data, args)

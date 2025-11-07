@@ -34,53 +34,35 @@
 <g id="edge1" class="edge">
 <title>uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml</title>
 <g id="a_edge1"><a xlink:title="test_rdy_vld(data_st) Ready Valid Test interface">
-<path fill="none" stroke="black" d="M13.42,-71.7C9.36,-63.81 8.26,-54.3 10.14,-45.55"/>
-<polygon fill="black" stroke="black" points="13.45,-46.7 13.52,-36.1 6.86,-44.34 13.45,-46.7"/>
-</a>
-</g>
-</g>
-<!-- uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml -->
-<g id="edge2" class="edge">
-<title>uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml</title>
-<g id="a_edge2"><a xlink:title="test_rdy_vld_burst(test_st, data_st) Ready Valid Burst Test interface">
 <path fill="none" stroke="black" d="M25.25,-71.7C22.87,-63.98 22.19,-54.71 23.21,-46.11"/>
 <polygon fill="black" stroke="black" points="26.69,-46.61 25.31,-36.1 19.84,-45.17 26.69,-46.61"/>
 </a>
 </g>
 </g>
 <!-- uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml -->
-<g id="edge3" class="edge">
+<g id="edge2" class="edge">
 <title>uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml</title>
-<g id="a_edge3"><a xlink:title="test_rdy_vld_burst_no_tracker(test_no_tracker_st, data_st) Ready Valid Burst Test interface without tracker">
+<g id="a_edge2"><a xlink:title="test_req_ack(data_st, data_st) Req Ack Test interface">
 <path fill="none" stroke="black" d="M37.08,-71.7C36.29,-63.98 36.06,-54.71 36.4,-46.11"/>
 <polygon fill="black" stroke="black" points="39.9,-46.32 37.1,-36.1 32.92,-45.84 39.9,-46.32"/>
 </a>
 </g>
 </g>
 <!-- uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml -->
-<g id="edge4" class="edge">
+<g id="edge3" class="edge">
 <title>uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml</title>
-<g id="a_edge4"><a xlink:title="test_req_ack(data_st, data_st) Req Ack Test interface">
+<g id="a_edge3"><a xlink:title="test_push_ack(data_st) Valid Ack Test interface">
 <path fill="none" stroke="black" d="M48.92,-71.7C49.71,-63.98 49.94,-54.71 49.6,-46.11"/>
 <polygon fill="black" stroke="black" points="53.08,-45.84 48.9,-36.1 46.1,-46.32 53.08,-45.84"/>
 </a>
 </g>
 </g>
 <!-- uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml -->
-<g id="edge5" class="edge">
+<g id="edge4" class="edge">
 <title>uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml</title>
-<g id="a_edge5"><a xlink:title="test_vld_ack(data_st) Valid Ack Test interface">
+<g id="a_edge4"><a xlink:title="test_pop_ack(data_st) Ready Ack Test interface">
 <path fill="none" stroke="black" d="M60.75,-71.7C63.13,-63.98 63.81,-54.71 62.79,-46.11"/>
 <polygon fill="black" stroke="black" points="66.16,-45.17 60.69,-36.1 59.31,-46.61 66.16,-45.17"/>
-</a>
-</g>
-</g>
-<!-- uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml -->
-<g id="edge6" class="edge">
-<title>uTop/helloWorldTop.yaml.uProducer/helloWorldTop.yaml&#45;&gt;uTop/helloWorldTop.yaml.uConsumer/helloWorldTop.yaml</title>
-<g id="a_edge6"><a xlink:title="test_rdy_ack(data_st) Ready Ack Test interface">
-<path fill="none" stroke="black" d="M72.58,-71.7C76.64,-63.81 77.74,-54.3 75.86,-45.55"/>
-<polygon fill="black" stroke="black" points="79.14,-44.34 72.48,-36.1 72.55,-46.7 79.14,-44.34"/>
 </a>
 </g>
 </g>
