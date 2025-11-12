@@ -25,7 +25,8 @@ INTF_DEFS = {
         'sc_channel' : {
            'type' : 'status',
            'param_cast' : None,
-           'multicycle_types' : []
+           'multicycle_types' : [],
+           'set_initial_value' : True
         },
         'multiDst' : True,  # allow multiple destinations to connect to a single source
     },
@@ -184,7 +185,8 @@ INTF_DEFS = {
         'sc_channel' : {
             'type' : 'external_reg',
             'param_cast' : None,
-            'multicycle_types' : []
+            'multicycle_types' : [],
+            'set_initial_value' : True
         }
     },
     'memory' : {

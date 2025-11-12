@@ -17,7 +17,7 @@ or other varaiables, types, constants, or structures and generate the output aga
 ./arch2code.py -r --docgen --file document/source/modules/ROOT/pages/mixedMemories.adoc
 ----
 
-// GENERATED_CODE_PARAM
+// GENERATED_CODE_PARAM --block=top
 // GENERATED_CODE_BEGIN --template=memories
 .blockBTable0
 [cols="1, 1, 1, 1, 1, 1, 1"]
@@ -34,7 +34,7 @@ or other varaiables, types, constants, or structures and generate the output aga
 
 |xref:#seeSt[seeSt]
 
-|Dual Port with no connections
+|Dual Port with no connections, local mem array
 
 |1
 |===
@@ -109,27 +109,6 @@ image::seeSt.svg[width=auto,opts=interactive]
 |===
 
 
-.blockEFTable
-[cols="1, 1, 1, 1, 1, 1, 1"]
-|===
-|Memory |Block Containing |wordlines |addressStruct |structure for Data |description |count
-
-|blockEFTable
-
-|blockB
-
-|BSIZE (10)
-
-|xref:#bSizeSt[bSizeSt]
-
-|xref:#seeSt[seeSt]
-
-|Dual Port with two connections
-
-|1
-|===
-
-
 .blockBTableSP0
 [cols="1, 1, 1, 1, 1, 1, 1"]
 |===
@@ -175,5 +154,26 @@ image::seeSt.svg[width=auto,opts=interactive]
 .nestedSt
 [#nestedSt]
 image::nestedSt.svg[width=auto,opts=interactive]
+.test
+[cols="1, 1, 1, 1, 1, 1, 1"]
+|===
+|Memory |Block Containing |wordlines |addressStruct |structure for Data |description |count
+
+|test
+
+|blockF
+
+|bob
+
+|xref:#bSizeSt[bSizeSt]
+
+|xref:#seeSt[seeSt]
+
+|Dual Port with one connection
+
+|1
+|===
+
+
 
 // GENERATED_CODE_END

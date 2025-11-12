@@ -106,8 +106,12 @@ def constructorInit(args, prj, data):
                 else:
                     if interfaceSize != "0" or trackerType:
                         print(f"warning: interface {chnlInfo['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
+            if chnl_table[chnl]['set_initial_value']:
+                defaultValue = f", {chnlInfo['structure']}::_packedSt({hex(prj.getConst(chnl_table[chnl]['default_value']))})"
+            else:
+                defaultValue = ''
 
-            out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{extra}{autoMode})')
+            out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{extra}{autoMode}{defaultValue})')
 
 
     for key, value in data['subBlockInstances'].items():

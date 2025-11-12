@@ -69,7 +69,9 @@ class status_channel
 {
 public:
     // constructor const char * module, std::string block
-    explicit status_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
+    explicit status_channel( const char* name_, std::string block_,
+                             INTERFACE_AUTO_MODE autoMode,
+                             const typename T::_packedSt& initialValue)
       : sc_prim_channel( name_ ),
         interfaceBase(name_, block_, autoMode),
         m_channel_update_event( (std::string(name_) + "m_channel_update_event").c_str() ),
@@ -79,6 +81,13 @@ public:
         {
             setTracker(T::getValueType());
             logging::GetInstance().registerInterfaceStatus(std::string(name_), [this](void){ status();});
+            m_value.unpack(initialValue);
+        }
+
+    explicit status_channel( const char* name_, std::string block_,
+        const typename T::_packedSt& initialValue = typename T::_packedSt(0) )
+      : status_channel(name_, block_, INTERFACE_AUTO_OFF, initialValue)
+        {
         }
 
     // destructor
@@ -242,16 +251,6 @@ inline void status_channel<T>::dump( ::std::ostream& os ) const
     if (m_value_written)
     {
         os << m_value.prt(isDebugLog) << '\n';
-    } else {
-        os << "no value" << '\n';
-    }
-}
-template <>
-inline void status_channel<bool>::dump( ::std::ostream& os ) const
-{
-    if (m_value_written)
-    {
-        os << m_value << '\n';
     } else {
         os << "no value" << '\n';
     }

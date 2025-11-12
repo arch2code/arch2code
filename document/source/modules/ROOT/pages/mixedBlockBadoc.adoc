@@ -10,11 +10,11 @@ jira issue: https://arch2code.atlassian.net/browse/A2C-288[A2C-288], _todo_.
 |===
 |Interface Name |Interface Type |Direction |Structure Type |Structure Name |Description
 
-|btod |reqAckIf |blockB is Destination| reqDataSt |xref:#aSt[aSt]| An interface for A
-|||| ackDataSt |xref:#aASt[aASt]|
-|startDone |startDoneIf |blockB is Destination| None| None| A start done interface
-|apbReg |apbIf |blockB is Destination| apbAddrSt |xref:#apbAddrSt[apbAddrSt]| CPU access to SoC registers in the design
-|||| apbDataSt |xref:#apbDataSt[apbDataSt]|
+|btod |req_ack |blockB is Destination| data_t |xref:#aSt[aSt]| An interface for A
+|||| rdata_t |xref:#aASt[aASt]|
+|startDone |notify_ack |blockB is Destination| None| None| A start done interface
+|apbReg |apb |blockB is Destination| addr_t |xref:#apbAddrSt[apbAddrSt]| CPU access to SoC registers in the design
+|||| data_t |xref:#apbDataSt[apbDataSt]|
 |===
 
 

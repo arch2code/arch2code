@@ -83,12 +83,15 @@ types:
   type: key
   desc: required
   enum:
-    _attribs: [optional, list]
+    _attribs: [optional, list, post(add_enum)] # post allows performing custom handling after entry is processed
     enumName: required
     type: outerkey
     desc: optional
     value: eval
   width: auto(width) #allows width field to be autocalculate in the case that an enum is provided. Must be after enum field
+
+enums:
+  _mapto: types # this section maps to the types section to allow user to define two types sections as yaml does not allow multiple sections with same name
 
 structures: # customer handler, the fields here must match the code
   structure: key

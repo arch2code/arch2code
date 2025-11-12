@@ -9,3 +9,4 @@ templates:
   structure: $a2c/templates/doc/structure.j2
   memories: $a2c/templates/doc/memories.py
   blockSpecification: $a2c/templates/doc/blockSpecification.py
+  doctext: $a2c/templates/doc/doctext.py
