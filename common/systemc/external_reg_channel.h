@@ -285,16 +285,16 @@ inline void external_reg_channel<T>::dump( ::std::ostream& os ) const
         os << "no value" << '\n';
     }
 }
-template <>
-inline void external_reg_channel<bool>::dump( ::std::ostream& os ) const
-{
-    if (m_status_value_written)
-    {
-        os << m_status_value << '\n';
-    } else {
-        os << "no value" << '\n';
-    }
-}
+//template <>
+//inline void external_reg_channel<bool>::dump( ::std::ostream& os ) const
+//{
+//    if (m_status_value_written)
+//    {
+//        os << m_status_value << '\n';
+//    } else {
+//        os << "no value" << '\n';
+//    }
+//}
 
 template <class T>
 inline ::std::ostream& operator << ( ::std::ostream& os, const external_reg_channel<T>& a )
