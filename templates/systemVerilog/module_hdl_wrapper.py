@@ -15,7 +15,7 @@ def render_sv(args, prj, data):
     mp_sig = dict()
     for port_type in data['ports']:
         for port in data['ports'][port_type]:
-            mp_sig[port] = intf_gen_utils.sv_gen_modport_signal_blast(data['ports'][port_type][port], prj)
+            mp_sig[port] = intf_gen_utils.sv_gen_modport_signal_blast(data['ports'][port_type][port], prj, data)
 
     out = '\n'
 
@@ -47,7 +47,7 @@ def render_sv(args, prj, data):
         for port, port_data in data['ports'][port_type].items():
             connectionData = port_data.get('connection', {})
             intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
-            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType']) + '_if'
+            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
             intf_dir = port_data['direction']
             s += f'// {intf_type}.{intf_dir}\n'
             s += ',\n'.join(mp_sig[port]['ports'])
@@ -63,7 +63,7 @@ def render_sv(args, prj, data):
         for port, port_data in data['ports'][port_type].items():
             connectionData = port_data.get('connection', {})
             intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
-            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType']) + '_if'
+            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
             intf_dir = port_data['direction']
             s += f'// {intf_type}.{intf_dir}\n'
             s += mp_sig[port]['intf_decl'] + '\n'*2
@@ -91,7 +91,7 @@ def render_sv(args, prj, data):
             intf_name = port_data['name']
             connectionData = port_data.get('connection', {})
             intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
-            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType']) + '_if'
+            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
             intf_dir = port_data['direction']
             s_1 += f".{intf_name}({intf_name}), // {intf_type}.{intf_dir}\n"
     s_1 += '.clk(clk),\n.rst_n(rst_n)\n'

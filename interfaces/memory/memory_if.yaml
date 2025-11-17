@@ -19,6 +19,5 @@ interface_defs:
         outputs: ['read_data']
     sc_channel :
       type : 'memory'
-      param_cast : None
       multicycle_types : []
 

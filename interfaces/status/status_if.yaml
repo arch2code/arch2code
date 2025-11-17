@@ -14,7 +14,7 @@ interface_defs:
         outputs: []
     sc_channel :
       type : 'status'
-      param_cast : None
       multicycle_types : []
     multiDst : True
+    mappedFrom : ['reg_ro', 'reg_rw']
 

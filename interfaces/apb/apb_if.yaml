@@ -22,5 +22,4 @@ interface_defs:
         outputs: ['pready', 'prdata', 'pslverr']
     sc_channel :
       type : 'apb'
-      param_cast : None
       multicycle_types : []

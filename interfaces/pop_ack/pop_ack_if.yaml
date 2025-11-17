@@ -16,6 +16,5 @@ interface_defs:
         outputs: ['ack', 'rdata']
     sc_channel :
       type : 'pop_ack'
-      param_cast : None
       multicycle_types : []
 

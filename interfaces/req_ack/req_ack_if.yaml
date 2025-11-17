@@ -18,6 +18,5 @@ interface_defs:
         outputs: ['ack', 'rdata']
     sc_channel :
       type : 'req_ack'
-      param_cast : None
       multicycle_types : []
 

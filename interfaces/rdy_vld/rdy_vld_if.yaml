@@ -16,6 +16,5 @@ interface_defs:
         outputs: ['rdy']
     sc_channel :
       type : 'rdy_vld'
-      param_cast : None
       multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
 

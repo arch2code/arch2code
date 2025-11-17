@@ -157,5 +157,43 @@ clean::
 
 help::
 	@echo "  all     	- Build the project binary"
+	@echo "  clangd  	- Generate .clangd configuration for IDE"
 	@echo "Makefile Runtime Variables:"
 	@echo "  VL_DUT=1	- Build verilator wrapper for the DUT instances"
+
+#------------------------------------------------------------------------
+# Generate .clangd configuration for IDE
+#------------------------------------------------------------------------
+.PHONY: clangd
+clangd:
+	@echo "Generating .clangd configuration..."
+	@( \
+		echo "# Auto-generated from Makefile - DO NOT EDIT MANUALLY"; \
+		echo "# Regenerate with: make clangd"; \
+		echo ""; \
+		echo "CompileFlags:"; \
+		echo "  Add:"; \
+		for flag in $(filter-out -m% -Wfatal-errors -g $(CPP_INCLUDES), $(CXX_FLAGS)); do \
+			echo "    - $$flag"; \
+		done; \
+		for inc in $(CPP_INCLUDES); do \
+			echo "    - $$inc"; \
+		done; \
+		echo "  Compiler: clang++"; \
+		echo "  Remove:"; \
+		echo "    - -m*"; \
+		echo "    - -W*fatal-errors"; \
+		echo ""; \
+		echo "Diagnostics:"; \
+		echo "  UnusedIncludes: None"; \
+		echo ""; \
+		echo "InlayHints:"; \
+		echo "  Enabled: Yes"; \
+		echo "  ParameterNames: Yes"; \
+		echo "  DeducedTypes: Yes"; \
+		echo ""; \
+		echo "Hover:"; \
+		echo "  ShowAKA: Yes"; \
+	) > $(REPO_ROOT)/.clangd
+	@echo "Generated $(REPO_ROOT)/.clangd"
+	@echo "Reload your IDE to apply changes"

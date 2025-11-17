@@ -27,6 +27,5 @@ interface_defs:
         outputs: ['arready', 'rid', 'rdata', 'rresp', 'rlast', 'rvalid']
     sc_channel :
       type : 'axi_read'
-      param_cast : None
       multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
 

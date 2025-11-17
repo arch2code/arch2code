@@ -56,7 +56,7 @@ def constructorInit(args, prj, data):
     chnl_table = dict()
     for channelType in data["connectDouble"]:
         for chnl, chnlInfo in data["connectDouble"][channelType].items():
-            chnl_table[chnl] = intf_gen_utils.sc_gen_block_channels(chnlInfo, prj)
+            chnl_table[chnl] = intf_gen_utils.sc_gen_block_channels(chnlInfo, prj, data)
 
             channelBase = chnl_table[chnl]['chnl_name']
             for k, v in chnlInfo["ends"].items():
@@ -170,7 +170,7 @@ def constructorBody(args, prj, data):
         out.append(f'    { value["instance"] }->{ value["instancePortName"]}({ value["parentPortName"] });')
 
 
-    connections = intf_gen_utils.sc_connect_channels(data, ' '*4)
+    connections = intf_gen_utils.sc_connect_channels(data, ' '*4, data)
     if connections:
         out.append(f'    // instance to instance connections via channel')
         out += connections

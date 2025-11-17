@@ -41,10 +41,25 @@ class Field:
         self.auto_function: Optional[str] = None  # e.g., "_auto_width"
         self.post_function: Optional[str] = None
         self.is_combo = False
-        self.combo_sources: List[str] = []  # Fields used to create this field
+        self.combo_sources: List[str] = []  # Unqualified field names used to create this field
+        self.combo_sources_qualified: List[str] = []  # Qualified versions (computed during validation)
+        # Foreign key metadata - set when field has validator referencing another table
+        self.is_foreign_key: bool = False
         
     def __repr__(self):
         return f"Field({self.name}, {self.field_type})"
+    
+    def set_combo(self, combo_sources: List[str]):
+        self.is_combo = True
+        self.combo_sources = combo_sources
+    def get_value(self, row: dict) -> Any:
+        if self.is_combo:
+            for source in self.combo_sources:
+                if source not in row:
+                    raise KeyError(f"Missing combo source '{source}' in row for field '{self.name}'. Row keys: {row.keys()}")
+            return ''.join([row[source] for source in self.combo_sources])
+        else:
+            return row[self.name]
 
 
 class Node:
@@ -55,15 +70,28 @@ class Node:
         self.context = context  # e.g., "structures" for nested vars
         self.full_path = context + name
         self.fields: Dict[str, Field] = {}  # name -> Field
+        self.fields_lower: Dict[str, str] = {}  # lowercase name -> actual name (for case-insensitive collision detection)
         self.sub_nodes: Dict[str, Node] = {}  # name -> Node
         self._item_order: List[tuple] = []  # [(name, 'field'|'subnode')] - tracks insertion order
         
         # Key composition tracking
-        self.anchor_field: Optional[str] = None  # Field name that captures YAML anchor (marked as 'key')
+        # 
+        # Three different key concepts:
+        # 1. anchor_field: The YAML anchor - what user types as dict key (e.g., 'port1' in `ports: {port1: {...}}`)
+        #                  Used for hierarchical YAML structure navigation
+        # 2. storage_key_field: The composite key field name for DB storage (e.g., 'memoryBlockPort' = memoryBlock + port)
+        #                       For simple keys, same as anchor_field. For combo keys, the concatenated field name.
+        # 3. item_key_name: Base key field tracked during validation (local variable, not stored here)
+        self.anchor_field: Optional[str] = None  # Field name from YAML anchor (what user types as dict key)
+        self.storage_key_field: Optional[str] = None  # Field name for storage/DB (combo key field name or same as anchor)
+        self.storage_key_field_qualified: Optional[str] = None  # Qualified version: storage_key_field + 'Key'
+        self.parent_storage_key_field: Optional[str] = None  # Unqualified field name for storage/DB (parent's combo key field name or same as anchor)
         self.key_fields: List[str] = []  # All fields that compose the database key
         self.outer_key_fields: List[str] = []  # Fields marked as 'outerkey' (reference parent)
         self.is_combo_key = False  # True if key uses _key: directive
-        self.combo_key_sources: List[str] = []  # Fields used for combo key
+        self.combo_key_sources: List[str] = []  # Unqualified fields used for combo key
+        self.combo_key_sources_qualified: List[str] = []  # Qualified versions (computed during validation)
+        self.parent_key_chain: List[str] = []  # Auto-derived parent unqualified keys (e.g., ['interface_type', 'modport'])
         
         # Content structure
         self.content_type = 'dict'  # 'dict', 'list', or 'value'
@@ -94,8 +122,37 @@ class Node:
         return self.sub_nodes.get(name)
         
     def get_anchor_field_name(self) -> Optional[str]:
-        """Get the name of the field that captures the YAML anchor"""
+        """Get the name of the field from YAML anchor (what user types as dict key)"""
         return self.anchor_field
+    
+    def get_storage_key_field_name(self) -> Optional[str]:
+        """Get the name of the field used for storage/DB (combo key field name)"""
+        return self.storage_key_field
+    
+    def compute_qualified_combo_sources(self, combo_sources: List[str]) -> List[str]:
+        """
+        Compute the qualified versions of combo source fields based on metadata.
+        For foreign key fields (those with validators), return the qualified version (field + 'Key').
+        For local fields, return unqualified version.
+        
+        This should be called during schema validation to precompute the qualified sources.
+        
+        Args:
+            combo_sources: List of unqualified field names used in combo key
+            
+        Returns:
+            List of field names, with foreign keys qualified
+        """
+        qualified = []
+        for source in combo_sources:
+            field = self.get_field(source)
+            if field and field.is_foreign_key:
+                # Foreign key - use qualified version
+                qualified.append(source + 'Key')
+            else:
+                # Local field - use unqualified version
+                qualified.append(source)
+        return qualified
         
     def get_key_field_names(self) -> List[str]:
         """Get list of all fields that compose the database key"""
@@ -104,16 +161,286 @@ class Node:
     def get_outer_key_fields(self) -> List[str]:
         """Get fields that reference parent node's key"""
         return self.outer_key_fields
+    
+    def set_parent_key_chain(self, parent_keys: List[str], parent_storage_key: Optional[str] = None, parent_node: Optional['Node'] = None) -> None:
+        """
+        Set the parent key chain for this node and automatically add the necessary outer fields.
         
+        This is used during database loading to construct composite keys that include qualified parent keys.
+        For each parent key in the chain, this automatically creates:
+        - Unqualified field (e.g., 'interface_type') marked as 'outer'
+        - Qualified field (e.g., 'interface_typeKey') marked as 'outerKey' (only if it exists in parent)
+        
+        For nested tables with simple keys, this also updates the storage_key_field to be the composite
+        of all parent keys + own anchor field (e.g., 'interface_typemodport').
+        
+        Args:
+            parent_keys: List of parent key field names (e.g., ['interface_type', 'modport'])
+            parent_storage_key: Optional parent storage key field name (e.g., 'memoryBlockPortKey')
+            parent_node: Optional parent Node to check if qualified versions exist
+        """
+        
+        # Automatically add outer fields for each parent key
+        for parent_key in parent_keys:
+            outer_field = Field(parent_key, 'outer', 0) # add the parent key as an automatic outer field
+            self.add_field(outer_field)
+            self.parent_key_chain.append(parent_key)
+            qualified_key = parent_key + 'Key'
+            
+            # Only add qualified version if parent node has it (i.e., field has validator/reference)
+            if parent_node and parent_node.has_field(qualified_key):
+                if not self.has_field(qualified_key):
+                    # Qualified key fields from parent should be copied (outerkeyKey), not recomputed
+                    outer_key_field = Field(qualified_key, 'outerkeyKey', 0)
+                    self.add_field(outer_key_field)
+        
+        self.parent_storage_key_field = parent_storage_key
+        if parent_storage_key:
+            parent_storage_field = Field(parent_storage_key, 'outer', 0)
+            self.add_field(parent_storage_field)
+            qualified_key = parent_storage_key + 'Key'
+            # Only add qualified version if parent node has it
+            if parent_node and parent_node.has_field(qualified_key):
+                # Qualified key field from parent should be copied (outerkeyKey), not recomputed
+                outer_key_field = Field(qualified_key, 'outerkeyKey', 0)
+                self.add_field(outer_key_field)
+    
+    def set_key(self, field_name: Optional[str] = None, is_combo: bool = False, combo_sources: Optional[List[str]] = None):
+        """
+        Set the key field for this node.
+        
+        This API manages the internal details of key handling:
+        - Sets anchor_field
+        - Sets storage_key_field
+        - Sets combo_sources if applicable
+        
+        Note: parent_key_chain is NOT automatically cleared for combo keys.
+        The decision of whether to include parent context is made separately
+        based on the schema structure and nesting relationships.
+        
+        Args:
+            field_name: Name of the field that serves as the key (None for dataGroup - uses parent's key)
+            is_combo: True if this is a composite key created via _key directive
+            combo_sources: List of field names that compose the combo key
+        """
+        if self.is_data_group:
+            # dataGroup tables share parent's key (1-to-1 relationship)
+            # Use parent's storage_key_field directly (already set by set_parent_key_chain)
+            self.storage_key_field = self.parent_storage_key_field
+            self.storage_key_field_qualified = self.storage_key_field + 'Key' if self.storage_key_field else None
+            # Don't set anchor_field - dataGroup doesn't have its own anchor
+        elif is_combo:
+            # For combo keys, use add_combo to create all necessary fields
+            self.storage_key_field = field_name
+            self.storage_key_field_qualified = field_name + 'Key'
+            self.is_combo_key = True
+            self.add_combo(field_name, combo_sources, field_type='key')
+        else:
+            # For simple keys
+            self.anchor_field = field_name
+            if self.parent_storage_key_field:
+                # nested case - create composite storage key from parent + anchor
+                self.storage_key_field = self.parent_storage_key_field + field_name
+                self.storage_key_field_qualified = self.storage_key_field + 'Key'
+                # Storage key is a combo field that will be computed from parent + anchor
+                self.add_combo(self.storage_key_field, [self.parent_storage_key_field, field_name], field_type='key')
+            else:
+                # default simple case
+                self.storage_key_field = field_name
+                self.storage_key_field_qualified = field_name + 'Key'
+                storage_field = Field(self.storage_key_field, 'key', 0)
+                qualified_storage_field = Field(self.storage_key_field_qualified, 'contextKey', 0)
+                self.add_field(storage_field)
+                self.add_field(qualified_storage_field)
+        
+    def get_parent_key_chain(self) -> List[str]:
+        """Get the list of qualified parent keys for composite key construction"""
+        return self.parent_key_chain
+    
+    def build_storage_key(self, row: dict, inner_key: Optional[str] = None) -> str:
+        """
+        Build the composite key for storing this row in self.data[tableName].
+        
+        Strategy is determined during schema creation (is_multi_entry, parent_key_chain, storage_key_field)
+        and pickled with the Node, so it's efficiently available during loading.
+        
+        For multi-entry tables: Returns parent_key_chain values joined
+        For single-entry tables: Returns parent_key_chain + own qualified key joined
+        
+        Args:
+            row: Database row dict with all key values
+            inner_key: For multi-entry tables, the key field name (without 'Key' suffix) - unused, kept for compatibility
+        
+        Returns:
+            Composite key string (e.g., 'apb/src/_a2csystem')
+        
+        Examples:
+            # Single-entry table (interface_defs)
+            node.build_storage_key({'interface_type': 'apb', '_context': '_a2csystem'})
+            # Returns: 'apb/_a2csystem'
+            
+            # Single-entry nested (modports under interface_defs)
+            node.build_storage_key({
+                'interface_type': 'apb',
+                'modport': 'src',
+                '_context': '_a2csystem'} )
+            # Returns: 'apb/src/_a2csystem'
+            
+            # Multi-entry nested (modportGroups - multiple per modport)
+            node.build_storage_key({
+                'interface_type': 'apb',
+                'modport': 'src',
+                'modportGroup': 'inputs',
+                '_context': '_a2csystem'})
+            # Returns: 'apb/src/inputs/_a2csystem' 
+        """
+        # For single-entry tables (including dataGroup), return the qualified storage key
+        if not self.is_multi_entry and self.storage_key_field_qualified:
+            try:
+                return str(row[self.storage_key_field_qualified])
+            except (KeyError, IndexError):
+                row_keys = list(row.keys()) if hasattr(row, 'keys') else list(row.keys())
+                raise KeyError(f"Missing qualified key '{self.storage_key_field_qualified}' in row for table '{self.full_path}'. Row keys: {row_keys}")
+        
+        # For multi-entry tables, return the parent storage key for grouping
+        # (used to detect when we've finished reading all children for a parent)
+        if self.is_multi_entry and self.parent_storage_key_field:
+            try:
+                return str(row[self.parent_storage_key_field])
+            except (KeyError, IndexError):
+                row_keys = list(row.keys()) if hasattr(row, 'keys') else list(row.keys())
+                raise KeyError(f"Missing parent key '{self.parent_storage_key_field}' in row for table '{self.full_path}'. Row keys: {row_keys}")
+        
+        # If we reach here, the node is misconfigured
+        raise ValueError(
+            f"Cannot build storage key for table '{self.full_path}': "
+            f"is_multi_entry={self.is_multi_entry}, "
+            f"storage_key_field_qualified={self.storage_key_field_qualified}, "
+            f"parent_storage_key_field={self.parent_storage_key_field}. "
+            f"Node must have either storage_key_field_qualified (for single-entry) "
+            f"or parent_storage_key_field (for multi-entry)."
+        )
+    
+    def get_yaml_storage_key(self, row_dict: dict) -> str:
+        """
+        Extract the storage key from a row dict during YAML processing.
+        
+        During YAML processing (projectCreate), processSimple creates the composite key field
+        (e.g., 'memoryBlockPort') which contains the storage key value for this table.
+        
+        Args:
+            row_dict: The processed row dict returned from processSimple
+            
+        Returns:
+            Storage key string (e.g., 'blockBTable1port1' for a combo key)
+            
+        Examples:
+            # For memoryBlockPort table with combo key (memoryBlock + port):
+            node.get_yaml_storage_key({
+                'port': 'port1',
+                'memoryBlock': 'blockBTable1',
+                'memoryBlockPort': 'blockBTable1port1',  # The composite key value
+                'memoryBlockPortKey': 'blockBTable1port1/mixed.yaml'  # Qualified version
+            })
+            # Returns: 'blockBTable1port1'
+        """
+        # The storage key field contains the actual composite value (without /context)
+        return str(row_dict[self.storage_key_field])
+    
+    def get_parent_storage_key_field_name(self) -> Optional[str]:
+        """
+        Get the field name containing parent's storage key.
+        
+        For nested tables, this returns the parent's storage_key_field + 'Key' suffix.
+        Returns None for top-level tables (those without a parent).
+        
+        Returns:
+            Field name containing parent's storage key, or None for top-level tables
+        
+        Examples:
+            # For modportGroups nested under modports
+            node = schema.get_node('interface_defsmodportsmodportGroups')
+            node.get_parent_storage_key_field_name()
+            # Returns: 'modportKey'
+            
+            # For top-level table
+            node = schema.get_node('interface_defs')
+            node.get_parent_storage_key_field_name()
+            # Returns: None
+        """
+        if self.parent_storage_key_field:
+            return self.parent_storage_key_field + 'Key'
+        return None
+        
+    def has_field(self, field_name: str) -> bool:
+        """Check if a field exists (case-insensitive)"""
+        return field_name.lower() in self.fields_lower
+    
+    def get_field(self, field_name: str) -> Optional[Field]:
+        """Get a field by name (case-insensitive)"""
+        if field_name.lower() in self.fields_lower:
+            actual_name = self.fields_lower[field_name.lower()]
+            return self.fields[actual_name]
+        return None
+    
     def add_field(self, field: Field):
-        """Add a field to this node"""
-        self.fields[field.name] = field
-        self._item_order.append((field.name, 'field'))
+        """Add a field to this node (with case-insensitive duplicate detection)"""
+        if not self.has_field(field.name):
+            self.fields[field.name] = field
+            self.fields_lower[field.name.lower()] = field.name
+            self._item_order.append((field.name, 'field'))
         
     def add_sub_node(self, node: 'Node'):
         """Add a sub-node to this node"""
         self.sub_nodes[node.name] = node
         self._item_order.append((node.name, 'subnode'))
+    
+    def add_combo(self, field_name: str, combo_sources: List[str], field_type: str = 'key') -> Field:
+        """Add a combo field with qualified source computation.
+        
+        This method encapsulates all the logic for creating a combo field:
+        - Ensures all combo source fields exist (adds them if missing)
+        - Creates the combo field with the specified sources
+        - Computes and stores the qualified versions of combo sources
+        - Creates the qualified key field (fieldNameKey) only for 'key' type combo fields
+        - For 'key' type combos, also sets node.combo_key_sources_qualified for easy access
+        - Adds the field(s) to the node
+        
+        Args:
+            field_name: Name of the combo field (e.g., 'memoryBlockPort')
+            combo_sources: List of unqualified field names to combine (e.g., ['memoryBlock', 'port'])
+            field_type: Type for the combo field ('key' for storage keys, 'combo' for other combo fields)
+            
+        Returns:
+            The created combo Field object for further manipulation if needed
+        """
+        # Ensure all combo source fields exist
+        for source in combo_sources:
+            if not self.has_field(source):
+                source_field = Field(source, 'required', 0)
+                self.add_field(source_field)
+        
+        # Create the combo field if it doesn't exist
+        if not self.has_field(field_name):
+            combo_field = Field(field_name, field_type, 0)
+            combo_field.set_combo(combo_sources)
+            # Compute and store qualified combo sources
+            combo_field.combo_sources_qualified = self.compute_qualified_combo_sources(combo_sources)
+            self.add_field(combo_field)
+            
+            # For key-type combo fields:
+            if field_type == 'key':
+                # Create the qualified key field (contextKey type)
+                qualified_key = field_name + 'Key'
+                qualified_key_field = Field(qualified_key, 'contextKey', 0)
+                self.add_field(qualified_key_field)
+                
+                # Store qualified combo sources at node level for easy access
+                self.combo_key_sources_qualified = combo_field.combo_sources_qualified
+            
+            return combo_field
+        else:
+            return self.get_field(field_name)
         
     def set_metadata_field(self, field_name: str, value: Any, section_fields: dict, all_sections: dict) -> dict:
         """Handle special metadata fields (_attribs, _singular, _mapto).
@@ -127,12 +454,10 @@ class Node:
         Returns:
             Dict with:
                 - 'error': str or None - Error message if validation failed
-                - 'needs_listindex': bool - True if _listIndex field should be added
                 - 'post_functions': list - List of post function strings to validate
         """
         result = {
             'error': None,
-            'needs_listindex': False,
             'post_functions': []
         }
         
@@ -147,7 +472,6 @@ class Node:
             if 'list' in attrib_list:
                 self.is_list = True
                 self.is_multi_entry = True
-                result['needs_listindex'] = True
                 
             if 'singleEntryList' in attrib_list:
                 self.is_single_entry_list = True
@@ -194,7 +518,13 @@ class Node:
                 if name != '_dataSchema':
                     result[name] = self.sub_nodes[name].get_fields_dict()
         return result
+    def finalize(self):
+        """Finalize the node after all fields and sub-nodes have been added.
         
+        calculate storage key
+        """
+        printIfDebug(f"Node:{self.name}, storage_key: {self.storage_key_field} parent_keys: {self.parent_key_chain}, parent_storage_key: {self.parent_storage_key_field}")        
+
     def __repr__(self):
         return f"Node({self.name}, context={self.context}, fields={len(self.fields)}, sub_nodes={len(self.sub_nodes)})"
 
@@ -223,6 +553,8 @@ class Schema:
                 from pysrc.processYaml import config
                 self.config = config(RO=False)
             self.validate(schema_yaml, schema_file)
+            # Build data dict immediately after validation so it's available
+            self._data = self._build_data_dict()
         elif not skip_config:
             from pysrc.processYaml import config
             self.config = config(RO=True)
@@ -234,129 +566,7 @@ class Schema:
     @property
     def data(self) -> dict:
         """Backward compatibility property - provides old dict-based interface"""
-        if self._data is None:
-            self._data = self._build_data_dict()
         return self._data
-    
-    def _build_data_dict(self) -> dict:
-        """Build old-style data dictionary from Node/Field structure for backward compatibility"""
-        data = {
-            'schema': {},
-            'key': {},
-            'attrib': {},
-            'dataSchema': {},
-            'colsSQL': self.col_sql,
-            'multiEntry': {},
-            'fnStr': {},
-            'post': {},
-            'optionalDefault': {},
-            'mapto': {},
-            'validator': {},
-            'counterReverseField': self.counter_reverse_field,
-            'subTable': {},
-            'outerkeyKey': {},
-            'indexes': {},
-            'tables': {t: t for t in self.tables},
-            'comboKey': {},
-            'comboField': {},
-            'singular': {}
-        }
-        
-        # Convert nodes to dict structure
-        for full_path, node in self.nodes.items():
-            # Handle mapto nodes (they're aliases to other sections)
-            if node.mapto:
-                data['mapto'][full_path] = node.mapto
-                # Don't process the rest for mapto sections
-                continue
-            
-            # Build field dict
-            field_dict = node.get_fields_dict()
-            
-            # Store in schema dict (only top-level sections, excluding mapto)
-            if node.context == "":
-                data['schema'][node.name] = field_dict
-            
-            # Store key field
-            if node.anchor_field:
-                data['key'][full_path] = node.anchor_field
-                
-            # Store attributes
-            if node.attributes:
-                data['attrib'][full_path] = node.attributes
-                
-            # Store multi-entry flag
-            data['multiEntry'][full_path] = node.is_multi_entry
-            
-            # Store indexes
-            data['indexes'][full_path] = node.indexes
-            
-            # Store combo key
-            if node.is_combo_key:
-                data['comboKey'][full_path] = {src: 'required' for src in node.combo_key_sources}
-                
-            # Store singular
-            if node.is_singular:
-                data['singular'][full_path] = node.singular_field
-                
-            # Store mapto
-            if node.mapto:
-                data['mapto'][full_path] = node.mapto
-                
-            # Store post function
-            if node.post_function:
-                data['post'][full_path] = node.post_function
-                
-            # Store outer key key field
-            if node.outerkey_key_field:
-                data['outerkeyKey'][full_path] = node.outerkey_key_field
-                
-            # Store field-level data
-            for field_name, field in node.fields.items():
-                field_path = full_path + field_name
-                
-                # Store auto function
-                if field.auto_function:
-                    data['fnStr'][field_path] = field.auto_function
-                    
-                # Store default value
-                if field.default_value is not None:
-                    data['optionalDefault'][field_path] = field.default_value
-                    
-                # Store validator
-                if field.validator:
-                    if field.validator.rule_type == 'section':
-                        validator_dict = {
-                            'section': field.validator.section,
-                            'field': field.validator.field
-                        }
-                        # Only include scope if it's not None
-                        if field.validator.scope is not None:
-                            validator_dict['scope'] = field.validator.scope
-                        data['validator'][field_path] = validator_dict
-                    else:
-                        data['validator'][field_path] = {
-                            'values': field.validator.values
-                        }
-                    
-                # Store combo field
-                if field.is_combo:
-                    if full_path not in data['comboField']:
-                        data['comboField'][full_path] = {}
-                    data['comboField'][full_path][field_name] = {src: 'required' for src in field.combo_sources}
-                    
-            # Store sub-tables
-            if node.sub_nodes:
-                if node.full_path not in data['subTable']:
-                    data['subTable'][node.full_path] = {}
-                for sub_name, sub_node in node.sub_nodes.items():
-                    data['subTable'][node.full_path][sub_node.full_path] = sub_name
-                    
-            # Store data schema reference
-            if node.data_schema:
-                data['dataSchema'][full_path] = node.data_schema.get_fields_dict()
-                
-        return data
         
     def get_section(self, name: str) -> Optional[Node]:
         """Get a top-level section node"""
@@ -369,6 +579,18 @@ class Schema:
     def get_table_names(self) -> List[str]:
         """Get list of all table names (already filtered to exclude mapto aliases)"""
         return self.tables
+    
+    def get_node(self, table_name: str) -> Optional[Node]:
+        """
+        Get the Node object for a given table name.
+        
+        Args:
+            table_name: Full table name (e.g., 'interface_defs', 'interface_defsmodports')
+        
+        Returns:
+            Node object if found, None otherwise
+        """
+        return self.nodes.get(table_name)
         
     def _function_find(self, fn_type: str, data: str) -> str:
         """Find auto or post function in a field type string"""
@@ -394,19 +616,39 @@ class Schema:
         valid_field_types = {
             'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'post', 'dataGroup',
             'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param', 
-            'singleEntryList', 'listkey', 'subkey', 'context', 'contextKey', 'ignore', 'outerkeyKey'
+            'singleEntryList', 'listkey', 'subkey', 'context', 'contextKey', 'ignore', 'outerkeyKey', 'anchor'
         }
         reserved_keys = {'_validate', '_type', '_key', '_combo', '_attribs', '_singular', '_mapto'}
         custom_checker = {'_singular', '_mapto'}
         
-        # Process all sections recursively
+        # Process all sections recursively, starting with no parent keys
         self._validate_sections(schema_yaml, schema_file, '', valid_field_types, reserved_keys, custom_checker)
                 
     def _validate_sections(self, schema: dict, schema_file: str, context: str,
-                          valid_field_types: set, reserved_keys: set, custom_checker: set):
-        """Validate and build nodes for all sections in the schema"""
+                          valid_field_types: set, reserved_keys: set, custom_checker: set, 
+                          parent_keys: Optional[List[str]] = None, parent_storage_key: Optional[str] = None,
+                          parent_node: Optional['Node'] = None):
+        """Validate and build nodes for all sections in the schema
+        
+        Args:
+            parent_keys: List of ancestor key field names (e.g., ['interface_typeKey', 'modportKey'])
+                        that should be added to this node if it's a collapsed table
+        """
+        parent_keys = parent_keys or [] # handle default case. if none provided, use empty list
+
         for section in schema:
+            is_combo_override = False  # Reset for each section
+            current_keys = parent_keys  # Reset for each section - can be overridden by combo keys
+            if section == 'memories':
+                pass
             node = Node(section, context)
+            
+            # Set parent_key_chain from the parent_keys passed down
+            # parent_node is passed from the recursive call and contains the parent's field information
+            node.set_parent_key_chain(parent_keys, parent_storage_key, parent_node)
+            # For collapsed tables, add all ancestor key fields first
+            # This will be set later when we process _attribs, but we'll add the fields at the end
+            ancestor_keys_to_add = []
                 
             item_key_name = None
             indexes = []
@@ -432,12 +674,6 @@ class Schema:
                         printError(f"Bad schema detected in {schema_file}:{line_number}, section {section} context {context}. {result['error']}")
                         exit(warningAndErrorReport())
                     
-                    # Add _listIndex field if needed
-                    if result['needs_listindex']:
-                        item_key_name = '_listIndex'
-                        list_index_field = Field('_listIndex', 'key', line_number)
-                        node.add_field(list_index_field)
-                    
                     # Validate and set post functions
                     for post_func_str in result['post_functions']:
                         fn = self._function_find('post', post_func_str)
@@ -447,6 +683,15 @@ class Schema:
                                 exit(warningAndErrorReport())
                             else:
                                 node.post_function = fn
+                    
+                    # For dataGroup nodes, configure storage_key_field early (before processing subtables)
+                    # so that child tables can inherit it correctly
+                    if field_name == '_attribs' and node.is_data_group:
+                        if not node.parent_storage_key_field:
+                            printError(f"Bad schema detected in {schema_file}, section {section}. dataGroup table must be nested under a parent table with a key")
+                            exit(warningAndErrorReport())
+                        # Configure key using existing API - it handles dataGroup logic
+                        node.set_key()
                     
                     continue  # Don't process metadata fields as regular fields
                 
@@ -459,8 +704,8 @@ class Schema:
                     
                     if my_combo_key:
                         my_type = 'key'
-                        node.is_combo_key = True
-                        node.combo_key_sources = list(my_combo_key.keys()) if isinstance(my_combo_key, dict) else []
+                        # Note: We'll call set_key() later after fields are created and validated
+                        # Just mark that we have a combo key for now
                     if my_combo_field:
                         my_type = 'combo'
                         
@@ -471,7 +716,7 @@ class Schema:
                         # Process it separately but don't add it as a field or subnode
                         sub_schema_dict = {field_name: ftype}
                         self._validate_sections(sub_schema_dict, schema_file, context + section,
-                                              valid_field_types, reserved_keys, custom_checker)
+                                              valid_field_types, reserved_keys, custom_checker, parent_keys, node.get_storage_key_field_name(), node)
                         # Store reference to dataschema node (will be linked later)
                         continue  # Don't add _dataSchema as a regular field
                     else:
@@ -482,10 +727,15 @@ class Schema:
                                 break
                                 
                         if is_sub_table:
-                            # This is a subtable - recursively validate it
+                            # Build parent keys for the child - inherit our parent_keys plus our own key (if we have one)
+                            child_parent_keys = list(current_keys)  # Copy parent's keys
+                            if item_key_name and item_key_name not in child_parent_keys:  # If this node has a key, add it to child's parent keys
+                                child_parent_keys.append(item_key_name)
+                            
+                            # This is a subtable - recursively validate it with updated parent keys
                             sub_schema = {field_name: ftype}
                             self._validate_sections(sub_schema, schema_file, context + section,
-                                                  valid_field_types, reserved_keys, custom_checker)
+                                                  valid_field_types, reserved_keys, custom_checker, child_parent_keys, node.get_storage_key_field_name(), node)
                             
                             # Add the sub-node to this node
                             sub_node = self.nodes.get(context + section + field_name)
@@ -507,6 +757,21 @@ class Schema:
                     # Create field with the determined type
                     field = Field(field_name, my_type, line_number)
                     
+                    # Check for naming conflicts with auto-generated qualified key fields
+                    # The system auto-generates fields like 'interface_typeKey' for key/outerkey fields
+                    # Users should not manually declare fields ending with 'Key'
+                    if field_name.endswith('Key') and my_type not in ['contextKey', 'outerkeyKey', 'ignore']:
+                        # Check if this looks like it might be an auto-generated field name
+                        base_name = field_name[:-3]  # Remove 'Key' suffix
+                        if base_name in schema[section]:
+                            printError(
+                                f"Bad schema detected in {schema_file}:{line_number}. "
+                                f"Field '{field_name}' appears to be a manually declared qualified key field. "
+                                f"The system auto-generates '{field_name}' from '{base_name}'. "
+                                f"Please remove '{field_name}' from the schema - it will be created automatically."
+                            )
+                            exit(warningAndErrorReport())
+                    
                     # Handle validator
                     if my_validate is not None:
                         validator = ValidationRule('section' if 'section' in my_validate else 'values')
@@ -514,31 +779,48 @@ class Schema:
                             validator.section = my_validate['section']
                             validator.field = my_validate.get('field')
                             validator.scope = my_validate.get('scope')
-                            # Add fieldKey for lookup validators
-                            field_key = Field(field_name + 'Key', 'ignore', line_number)
-                            node.add_field(field_key)
+                            # Mark field as foreign key (references another table)
+                            field.is_foreign_key = True
+                            # Add fieldKey for lookup validators (but not for combo fields or combo keys)
+                            # Combo keys will have their qualified key created by set_key()
+                            # Regular combo fields don't need qualified keys
+                            if not my_combo_field and not my_combo_key:
+                                field_key = Field(field_name + 'Key', 'ignore', line_number)
+                                node.add_field(field_key)
                         elif 'values' in my_validate:
                             validator.values = my_validate['values']
                         field.validator = validator
                     
                     # Handle combo key
                     if my_combo_key:
+                        combo_sources = list(my_combo_key.keys()) if isinstance(my_combo_key, dict) else []
+                        
                         # Verify referenced fields exist
-                        for k in my_combo_key:
+                        for k in combo_sources:
                             if k not in node.fields:
                                 printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} combo key, is referencing an invalid field '{k}'. Fields must be declared before use")
                                 exit(warningAndErrorReport())
-                        node.combo_key_sources = list(my_combo_key.keys()) if isinstance(my_combo_key, dict) else []
+                        
+                        # Use the set_key API which internally uses add_combo for all setup
+                        current_keys = combo_sources  # override any inheritance from parent keys
+                        is_combo_override = True
+                        node.set_key(field_name, is_combo=True, combo_sources=combo_sources)
                         my_type = 'key'
+                        item_key_name = field_name
                         
                     # Handle combo field
                     if my_combo_field:
-                        for k in my_combo_field:
+                        combo_sources = list(my_combo_field.keys()) if isinstance(my_combo_field, dict) else []
+                        
+                        # Verify referenced fields exist
+                        for k in combo_sources:
                             if k not in node.fields:
                                 printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} combo field, is referencing an invalid field '{k}'. Fields must be declared before use")
                                 exit(warningAndErrorReport())
-                        field.is_combo = True
-                        field.combo_sources = list(my_combo_field.keys()) if isinstance(my_combo_field, dict) else []
+                        
+                        # Use add_combo which handles all setup including qualified sources
+                        # Update field reference to the one created by add_combo
+                        field = node.add_combo(field_name, combo_sources, field_type='combo')
                         
                     node.add_field(field)
                 else:
@@ -590,10 +872,56 @@ class Schema:
                         exit(warningAndErrorReport())
                         
                 # Handle key field
-                if my_type == 'key':
+                if my_type == 'key' and not is_combo_override:
+                    item_key_name = field_name
+                    
+                    # For nested tables, treat 'key' as 'anchor' since the actual storage key
+                    # will be a composite field created by set_key()
+                    if node.parent_storage_key_field:
+                        # Change field type to 'anchor' for nested tables
+                        field.field_type = 'anchor'
+                        my_type = 'anchor'
+                    
+                    # Add the key field itself first (needed by set_key for composite key creation)
+                    node.add_field(field)
+                    
+                    # Add contextKey field
+                    context_key_field = Field(field_name + 'Key', 'contextKey', line_number)
+                    node.add_field(context_key_field)
+                    node.set_key(field_name, is_combo=False)
+                    
+                    # Key field is fully processed, skip normal field addition
+                    continue
+                
+                # Handle anchor field (used with _key directive for composite keys, or in nested tables)
+                if my_type == 'anchor':
+                    # Anchor fields are valid in two cases:
+                    # 1. With _key directive (explicit combo key)
+                    # 2. In nested tables (where 'key' was converted to 'anchor')
+                    if not node.is_combo_key and not node.parent_storage_key_field:
+                        printError(
+                            f"Bad schema detected in {schema_file}:{line_number}. "
+                            f"Field '{field_name}' is declared as 'anchor' but no _key directive is present and this is not a nested table. "
+                            f"Anchor fields are only valid when defining composite keys with _key or in nested tables. "
+                            f"Either add a _key directive or change '{field_name}' to 'key'."
+                        )
+                        exit(warningAndErrorReport())
                     item_key_name = field_name
                     node.anchor_field = field_name
-                    # Add contextKey field
+                    # Note: storage_key_field is already set by the combo key processing (combo keys)
+                    # or by set_key() (nested tables)
+                    # Add contextKey field if not already present
+                    if not node.has_field(field_name + 'Key'):
+                        context_key_field = Field(field_name + 'Key', 'contextKey', line_number)
+                        node.add_field(context_key_field)
+                
+                # Handle listkey field (for singleEntryList)
+                # Only set as key if no key has been set yet (combo keys take precedence)
+                if my_type == 'listkey':
+                    if not item_key_name:  # Only set if not already set by a combo key
+                        item_key_name = field_name
+                        node.set_key(field_name, is_combo=False)
+                    # Add contextKey field regardless
                     context_key_field = Field(field_name + 'Key', 'contextKey', line_number)
                     node.add_field(context_key_field)
                     
@@ -605,14 +933,29 @@ class Schema:
                     node.outerkey_key_field = field_name + 'Key'
                     node.outer_key_fields.append(field_name)
                     indexes.append(field_name + 'Key')
-                        
+            
+            # Verify that list tables have an explicit key defined
+            if node.is_list and item_key_name is None:
+                printError(f"Bad schema detected in {schema_file}. Section {context}{section} is a list table but has no key field defined. All list tables must have an explicit key field (e.g., 'fieldName: key').")
+                exit(warningAndErrorReport())
+            
+            node.finalize()
+            
             # Verify key field exists (skip for mapto sections since they're just aliases)
             if node.mapto is not None:
                 # Store mapto node in nodes dict for lookups, but not in sections
                 # (mapto sections are aliases, not real tables)
                 self.nodes[node.full_path] = node
                 continue
-            if item_key_name is None:
+            
+            # Handle dataGroup tables - they inherit parent's key (1-to-1 relationship)
+            # Note: storage_key_field was already set early when processing _attribs
+            if node.is_data_group and item_key_name is None:
+                # Verify storage_key_field was set correctly
+                if not node.storage_key_field:
+                    printError(f"Bad schema detected in {schema_file}, section {section}. dataGroup table storage_key_field not configured")
+                    exit(warningAndErrorReport())
+            elif item_key_name is None:
                 printError(f"Bad schema detected in {schema_file}, section {section}. There is no field defined as key")
                 exit(warningAndErrorReport())
                 
@@ -634,7 +977,13 @@ class Schema:
             node.add_field(context_field)
             
             # Set up indexes
-            indexes.append(item_key_name + 'Key')
+            # For dataGroup tables, use the parent's storage key field for indexing
+            if node.is_data_group and item_key_name is None:
+                # dataGroup uses parent's storage key
+                if node.storage_key_field:
+                    indexes.append(node.storage_key_field + 'Key')
+            elif item_key_name:
+                indexes.append(item_key_name + 'Key')
             node.indexes = indexes
             
             # Store the node
@@ -653,30 +1002,21 @@ class Schema:
                     
     def _load_from_config(self):
         """Load schema from config database (for read-only access)"""
-        # Load the schema data dictionary from config
-        data = self.config.getConfig('SCHEMA')
-        if not data:
+        # Load the entire pickled Schema object
+        schema_obj = self.config.getConfig('SCHEMA')
+        if not schema_obj:
             return
-            
-        # For backward compatibility, store the data dict directly
-        self._data = data
         
-        # Extract tables list
-        if 'tables' in data:
-            # Convert from dict format {table_name: table_name} to list
-            self.tables = list(data['tables'].keys())
+        # Restore all attributes from the pickled Schema object
+        self.sections = schema_obj.sections
+        self.nodes = schema_obj.nodes
+        self.tables = schema_obj.tables
+        self.col_sql = schema_obj.col_sql
+        self.counter_reverse_field = schema_obj.counter_reverse_field
+        self._data = schema_obj._data
         
-        # Extract counter reverse field
-        if 'counterReverseField' in data:
-            self.counter_reverse_field = data['counterReverseField']
-            
-        # Extract colsSQL
-        if 'colsSQL' in data:
-            self.col_sql = data['colsSQL']
-        
-    def save(self):
-        """Serialize schema to database"""
-        # Convert Node/Field structure back to dict format for storage
+    def _build_data_dict(self) -> dict:
+        """Build data dictionary from Node/Field structure for backward compatibility"""
         data = {
             'schema': {},
             'key': {},
@@ -692,6 +1032,7 @@ class Schema:
             'counterReverseField': self.counter_reverse_field,
             'subTable': {},
             'outerkeyKey': {},
+            'parentKeyChain': {},  # Export parent key chains for nested reconstruction
             'indexes': {},
             'tables': {t: t for t in self.tables},
             'comboKey': {},
@@ -701,6 +1042,12 @@ class Schema:
         
         # Convert nodes back to dict structure
         for full_path, node in self.nodes.items():
+            # Skip mapto nodes - they're aliases, not real tables
+            if node.mapto is not None:
+                # Store mapto reference
+                data['mapto'][full_path] = node.mapto
+                continue
+                
             # Build field dict (including nested subnodes)
             field_dict = node.get_fields_dict()
                 
@@ -709,11 +1056,10 @@ class Schema:
                 data['schema'][node.name] = field_dict
             
             # Store key field
-            if node.anchor_field:
+            if node.storage_key_field:
+                data['key'][full_path] = node.storage_key_field
+            elif node.anchor_field:
                 data['key'][full_path] = node.anchor_field
-            elif node.is_list:
-                # Lists use _listIndex as the key
-                data['key'][full_path] = '_listIndex'
                 
             # Store attributes
             if node.attributes:
@@ -725,9 +1071,6 @@ class Schema:
             # Store indexes
             data['indexes'][full_path] = node.indexes
             
-            # Store combo key
-            if node.is_combo_key:
-                data['comboKey'][full_path] = {src: 'required' for src in node.combo_key_sources}
                 
             # Store singular
             if node.is_singular:
@@ -744,6 +1087,10 @@ class Schema:
             # Store outer key key field
             if node.outerkey_key_field:
                 data['outerkeyKey'][full_path] = node.outerkey_key_field
+            
+            # Store parent key chain (for nested reconstruction)
+            if node.parent_key_chain:
+                data['parentKeyChain'][full_path] = node.parent_key_chain
                 
             # Store field-level data
             for field_name, field in node.fields.items():
@@ -775,6 +1122,7 @@ class Schema:
                     
                 # Store combo field
                 if field.is_combo:
+                    data['comboKey'][full_path] = {src: 'required' for src in field.combo_sources}
                     if full_path not in data['comboField']:
                         data['comboField'][full_path] = {}
                     data['comboField'][full_path][field_name] = {src: 'required' for src in field.combo_sources}
@@ -789,8 +1137,16 @@ class Schema:
             # Store data schema reference
             if node.data_schema:
                 data['dataSchema'][full_path] = self._node_to_dict(node.data_schema)
-                
-        self.config.setConfig('SCHEMA', data, bin=True)
+        
+        return data
+    
+    def save(self):
+        """Serialize schema to database"""
+        # Build data dict and store in self._data before pickling
+        self._data = self._build_data_dict()
+        
+        # Pickle the entire Schema object (includes nodes, sections, tables, etc.)
+        self.config.setConfig('SCHEMA', self, bin=True)
         
     def _node_to_dict(self, node: Node) -> dict:
         """Convert a node to a dict representation for storage"""

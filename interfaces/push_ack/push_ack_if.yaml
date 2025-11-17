@@ -16,6 +16,5 @@ interface_defs:
         outputs: ['ack']
     sc_channel :
       type : 'push_ack'
-      param_cast : None
       multicycle_types : []
 

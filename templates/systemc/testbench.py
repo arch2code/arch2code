@@ -72,7 +72,7 @@ def ext_sec_init(args, prj, data):
     for channelType in data['connectDouble']:
         for _,data_ in data['connectDouble'][channelType].items():
             srcInst = data_['src']
-            chnlData = sc_gen_block_channels(data_, prj)
+            chnlData = sc_gen_block_channels(data_, prj, data)
             s = '   ,{chnlName}("{chnlName}", "{instName}")'
             out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst))
 
@@ -90,7 +90,7 @@ def ext_sec_body(args, prj, data):
     # connect hierarchical ports that connect the excluded instances to the external blocks
     for key, value in data.get('prunedConnections', dict()).items():
         if (len(value['ends']) > 2):
-            multiDst = get_intf_defs(get_intf_type(value['interfaceType'])).get('multiDst', False)
+            multiDst = get_intf_defs(get_intf_type(value['interfaceType'], data), data).get('multiDst', False)
             if not multiDst:
                 printError(f"connection {key} has more than 2 ends. Only status interfaces (including ro registers) can have multiple dst connections")
         for end, endvalue in value["ends"].items():
@@ -104,7 +104,7 @@ def ext_sec_body(args, prj, data):
             conn_data['interfaceName'] = conn_data['interfaceName'] + '_'
 
     # channels outside of any that include the excluded instances
-    connections = sc_connect_channels(data, indent)
+    connections = sc_connect_channels(data, indent, data)
 
     if connections or prunedConnections:
         out.append(indent +'// instance to instance connections via channel')
@@ -127,7 +127,7 @@ def ext_sec_header(args, prj, data):
     for data_ in external_insts:
         ext_inst_decl_s.append(f'std::shared_ptr<{data_["instanceType"]}Base> {data_["instance"]};')
 
-    ext_chnl_decl_s = sc_declare_channels(data, prj, ' '*4)
+    ext_chnl_decl_s = sc_declare_channels(data, prj, ' '*4, data)
 
     t = Template(sec_tb_external_header_template)
     s = t.render(

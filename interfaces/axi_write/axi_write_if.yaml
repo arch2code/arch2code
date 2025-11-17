@@ -32,6 +32,5 @@ interface_defs:
         outputs: ['awready', 'wready', 'bresp', 'bid', 'bvalid']
     sc_channel :
       type : 'axi_write'
-      param_cast : None
       multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
 

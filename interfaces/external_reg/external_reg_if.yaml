@@ -16,6 +16,6 @@ interface_defs:
         outputs: ['rdata']
     sc_channel :
       type : 'external_reg'
-      param_cast : None
       multicycle_types : []
+    mappedFrom : ['reg_ext']
 
