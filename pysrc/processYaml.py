@@ -3196,11 +3196,19 @@ class projectCreate:
                 if ftype in {'const', 'optionalConst', 'param'}:
                     constType = ftype
                     if ftype=='param':
+                        # param: field is required and can be either a block parameter or a constant
                         # parameters are instance specific so the design element must belong to a block
-                        if (not self.checkIsParam(ret['blockKey'], item[field], yamlFile)):
-                            constType = 'const' # if not a param, treat as a const
-                        else:
+                        if field not in item:
+                            # param field missing - this is an error (param is like required)
+                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{anchor} is missing required field {field}")
+                            constType = 'const'  # Continue processing as const to avoid additional errors
+                        elif 'blockKey' in ret and self.checkIsParam(ret['blockKey'], item[field], yamlFile):
+                            # TODO: move this logic to an auto function
+                            # Value is a block parameter - use it directly
                             ret[field] = item[field]
+                        else:
+                            # Value is not a parameter (or blockKey not yet available) - treat as constant
+                            constType = 'const'
                     # const can be a number or a reference to a constant that has already been declared
                     itemKeyField = None
                     if constType == 'const':
@@ -3225,14 +3233,24 @@ class projectCreate:
                     if field in item:
                         # named field is present, so use that
                         ret[field] = item[field]
-                    else:
+                    elif 'eval' in item:
                         # no named field, use eval
-                        if 'eval' in item:
-                            self.currentContext = yamlFile
-                            # look for $XXX and if found search within context to replace symbol
-                            myVal = self.constFind.sub(self.re_constReplace, item['eval'])
-                            # needs work to deal with const
+                        self.currentContext = yamlFile
+                        # look for $XXX and if found search within context to replace symbol
+                        myVal = self.constFind.sub(self.re_constReplace, item['eval'])
+                        # Execute the user-provided expression with proper error handling
+                        try:
                             ret[field] = eval(myVal, {}, {})
+                        except Exception as e:
+                            # User's eval expression failed - provide clear error
+                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} "
+                                        f"eval expression failed: '{item['eval']}' "
+                                        f"(after substitution: '{myVal}'). "
+                                        f"Error: {type(e).__name__}: {str(e)}")
+                            ret[field] = 0  # Set default to avoid cascading errors
+                    else:
+                        # Neither field nor eval provided - this is an error
+                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} must provide either '{field}' field or 'eval' expression")
                 if ftype[:4]=='auto':
                     # auto fields are used to handle all the special cases and prevent processSimple becoming bloated
                     # hopefully this eases maintainance and makes adding new special cases simplier
@@ -3323,6 +3341,11 @@ class projectCreate:
             if item['enumName'] in self.enums.get(yamlFile, {}):
                 self.logError(f"Processing enums in {yamlFile}:{item['lc'].line + 1} and enum:{itemkey} has duplicate enumName {item['enumName']}")
                 exit(warningAndErrorReport())
+            # Defensive check - value should have been validated in processSimple (eval field type)
+            # If value is missing here, validation failed earlier
+            if 'value' not in item:
+                # This shouldn't happen if processSimple validation works correctly
+                return item  # Skip adding incomplete enum
             if yamlFile not in self.enums:
                 self.enums[yamlFile] = dict()
             self.enums[yamlFile][item['enumName']] = {'value': item['value'], 'type': item['type']} 

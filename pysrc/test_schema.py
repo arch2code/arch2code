@@ -129,8 +129,10 @@ class TestNode(unittest.TestCase):
         """Test simple key field"""
         node = Node("constants")
         node.anchor_field = "constant"
+        node.storage_key_field = "constant"
         node.key_fields = ["constant"]
         self.assertEqual(node.get_anchor_field_name(), "constant")
+        self.assertEqual(node.get_storage_key_field_name(), "constant")
         self.assertEqual(node.get_key_field_names(), ["constant"])
         
     def test_composite_key(self):

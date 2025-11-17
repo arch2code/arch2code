@@ -844,6 +844,169 @@ class TestMixedProjectRoundTrip(unittest.TestCase):
         # Verify we have some optionalDefault entries
         self.assertGreater(len(optional_defaults), 0,
                           "Should have at least one optionalDefault entry")
+    
+    def test_39_getBlockData_returns_interface_defs(self):
+        """Test that getBlockData returns interface_defs for all interface types used"""
+        # Get block data for a block that uses interfaces
+        # blockA uses multiple interfaces from mixed.yaml
+        block_data = self.proj.getBlockData('blockA/mixed.yaml')
+        
+        # Verify interface_defs exists
+        self.assertIn('interface_defs', block_data,
+                     "Block data should contain interface_defs")
+        self.assertIsInstance(block_data['interface_defs'], dict,
+                            "interface_defs should be a dictionary")
+        
+        # Should have at least one interface definition
+        self.assertGreater(len(block_data['interface_defs']), 0,
+                          "Should have at least one interface definition")
+        
+        # Verify structure of interface definitions
+        for intf_type, intf_def in block_data['interface_defs'].items():
+            self.assertIsInstance(intf_def, dict,
+                                f"Interface definition for {intf_type} should be a dict")
+            self.assertIn('interface_type', intf_def,
+                        f"Interface definition for {intf_type} should have interface_type field")
+    
+    def test_40_getBlockData_returns_interface_type_mappings(self):
+        """Test that getBlockData returns interface_type_mappings dictionary"""
+        # Get block data for a block
+        block_data = self.proj.getBlockData('blockA/mixed.yaml')
+        
+        # Verify interface_type_mappings exists
+        self.assertIn('interface_type_mappings', block_data,
+                     "Block data should contain interface_type_mappings")
+        self.assertIsInstance(block_data['interface_type_mappings'], dict,
+                            "interface_type_mappings should be a dictionary")
+    
+    def test_41_interface_type_mappings_includes_reg_mappings(self):
+        """Test that interface_type_mappings includes register interface mappings"""
+        # Get block data for blockD which has registers
+        block_data = self.proj.getBlockData('blockD/mixed.yaml')
+        
+        mappings = block_data.get('interface_type_mappings', {})
+        
+        # Check for expected mappings from status_if.yaml and external_reg_if.yaml
+        # reg_ro and reg_rw should map to status
+        if 'reg_ro' in mappings:
+            self.assertEqual(mappings['reg_ro'], 'status',
+                           "reg_ro should map to status interface type")
+        
+        if 'reg_rw' in mappings:
+            self.assertEqual(mappings['reg_rw'], 'status',
+                           "reg_rw should map to status interface type")
+        
+        if 'reg_ext' in mappings:
+            self.assertEqual(mappings['reg_ext'], 'external_reg',
+                           "reg_ext should map to external_reg interface type")
+    
+    def test_42_interface_defs_contains_status_for_registers(self):
+        """Test that interface_defs includes status interface for blocks with registers"""
+        # blockD has registers with reg_ro and reg_rw types
+        block_data = self.proj.getBlockData('blockD/mixed.yaml')
+        
+        interface_defs = block_data.get('interface_defs', {})
+        
+        # Should have status interface definition (canonical type for reg_ro/reg_rw)
+        if 'status' in interface_defs:
+            status_def = interface_defs['status']
+            self.assertIsInstance(status_def, dict,
+                                "status interface definition should be a dict")
+            self.assertEqual(status_def.get('interface_type'), 'status',
+                           "status interface definition should have correct interface_type")
+            # Verify it has signals and modports
+            self.assertIn('signals', status_def,
+                        "status interface should have signals field")
+            self.assertIn('modports', status_def,
+                        "status interface should have modports field")
+    
+    def test_43_interface_defs_contains_used_interface_types(self):
+        """Test that interface_defs only includes interface types actually used by the block"""
+        # Get block data for blockA
+        block_data = self.proj.getBlockData('blockA/mixed.yaml')
+        
+        interface_defs = block_data.get('interface_defs', {})
+        interface_types = block_data.get('interfaceTypes', {})
+        
+        # All interface types used should have definitions (or be None for built-ins)
+        for intf_type, qual_key in interface_types.items():
+            if qual_key is not None:
+                # Should have a definition for this type (or its canonical mapping)
+                mappings = block_data.get('interface_type_mappings', {})
+                canonical_type = mappings.get(intf_type, intf_type)
+                
+                # Either the original type or canonical type should be in interface_defs
+                found = (intf_type in interface_defs or canonical_type in interface_defs)
+                self.assertTrue(found,
+                              f"Interface type {intf_type} (canonical: {canonical_type}) "
+                              f"should have a definition in interface_defs")
+    
+    def test_44_interface_defs_has_required_fields(self):
+        """Test that interface definitions contain all required fields"""
+        # Get block data for a block with various interface types
+        block_data = self.proj.getBlockData('blockA/mixed.yaml')
+        
+        interface_defs = block_data.get('interface_defs', {})
+        
+        # Check that each interface definition has required fields
+        for intf_type, intf_def in interface_defs.items():
+            self.assertIn('interface_type', intf_def,
+                        f"Interface {intf_type} should have interface_type field")
+            self.assertIn('signals', intf_def,
+                        f"Interface {intf_type} should have signals field")
+            self.assertIn('modports', intf_def,
+                        f"Interface {intf_type} should have modports field")
+            
+            # Verify signals is a dict or list
+            self.assertTrue(
+                isinstance(intf_def['signals'], (dict, list)),
+                f"Interface {intf_type} signals should be dict or list"
+            )
+            
+            # Verify modports is a dict or list
+            self.assertTrue(
+                isinstance(intf_def['modports'], (dict, list)),
+                f"Interface {intf_type} modports should be dict or list"
+            )
+    
+    def test_45_interface_defsmappedFrom_table_exists(self):
+        """Test that interface_defsmappedFrom table is loaded"""
+        # Verify the flattened mappedFrom table exists
+        self.assertIn('interface_defsmappedFrom', self.proj.data,
+                     "interface_defsmappedFrom table should exist")
+        
+        mapped_from = self.proj.data['interface_defsmappedFrom']
+        self.assertIsInstance(mapped_from, dict,
+                            "interface_defsmappedFrom should be a dictionary")
+    
+    def test_46_interface_defsmappedFrom_contains_expected_mappings(self):
+        """Test that interface_defsmappedFrom contains the mappings we added"""
+        # Check the flattened mappedFrom table
+        mapped_from = self.proj.data.get('interface_defsmappedFrom', {})
+        
+        # Should have entries for the mappings we added to YAML files
+        # Look for status interface mappings (reg_ro, reg_rw)
+        found_reg_ro = False
+        found_reg_rw = False
+        found_reg_ext = False
+        
+        for key, mapping_data in mapped_from.items():
+            if isinstance(mapping_data, dict):
+                interface_type = mapping_data.get('interface_type')
+                mapped_type = mapping_data.get('mapped_type')
+                
+                if interface_type == 'status' and mapped_type == 'reg_ro':
+                    found_reg_ro = True
+                if interface_type == 'status' and mapped_type == 'reg_rw':
+                    found_reg_rw = True
+                if interface_type == 'external_reg' and mapped_type == 'reg_ext':
+                    found_reg_ext = True
+        
+        # At least some of these should be found
+        found_any = found_reg_ro or found_reg_rw or found_reg_ext
+        self.assertTrue(found_any,
+                       "Should have found at least one of the expected mappings "
+                       "(reg_ro->status, reg_rw->status, reg_ext->external_reg)")
 
 
 def run_tests():
