@@ -75,9 +75,12 @@ def test_error_case(yaml_content, expected_patterns, test_name):
     
     try:
         # Try to build database - should fail
+        # Disable color output to prevent red flashing in test output
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
         arch2code_path = os.path.join(base_dir, 'arch2code.py')
         cmd = [sys.executable, arch2code_path, '--yaml', project_path, '--db', db_path]
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=test_dir)
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=test_dir, env=env)
         
         # Should have failed
         if result.returncode == 0:

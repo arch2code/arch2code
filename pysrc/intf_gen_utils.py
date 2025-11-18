@@ -320,6 +320,8 @@ def sc_gen_block_channels(conn_data, prj, block_data):
     out['intf_name'] = chnl_name
     out['chnl_name'] = chnl_name
     out['desc'] = intf_data['desc']
+    out['set_initial_value'] = intf_def['sc_channel'].get('set_initial_value', False) and 'register' in conn_data
+    out['default_value'] = conn_data.get('defaultValue', 0)
 
     # Parameter
     parameters = intf_def.get('parameters', {}) or {}

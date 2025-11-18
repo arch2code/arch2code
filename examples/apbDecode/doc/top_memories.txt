@@ -1,0 +1,40 @@
+// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+
+// GENERATED_CODE_PARAM --block=top
+// GENERATED_CODE_BEGIN --template=doctext --section=meminst
+
+Memory Instances Table
+======================
++--------------------------------------------+--------------+--------+-----------+---------------+---------------------------------------+-----------+----------+-------+-------+----------+
+| Instance                                   | Memory       | Block  | Structure | WordLines     | Description                           | RegAccess | MemType  | Width | Depth | Size(KB) |
++--------------------------------------------+--------------+--------+-----------+---------------+---------------------------------------+-----------+----------+-------+-------+----------+
+| top.uSomeRapper.uBlockA.blockATable0blockA | blockATable0 | blockA | aMemSt    | MEMORYA_WORDS | Table0 to test memory access from cpu | Y         | dualPort | 63    | 19    | 0.15     |
+| top.uSomeRapper.uBlockA.blockATableXblockA | blockATableX | blockA | aMemSt    | MEMORYA_WORDS | TableX with no cpu access             | N         | dualPort | 63    | 19    | 0.15     |
+| top.uSomeRapper.uBlockA.blockATable1blockA | blockATable1 | blockA | aMemSt    | MEMORYA_WORDS | Table1 to test memory access from cpu | Y         | dualPort | 63    | 19    | 0.15     |
+| top.uSomeRapper.uBlockB.blockBTableblockB  | blockBTable  | blockB | bMemSt    | MEMORYB_WORDS | Table to test memory access from cpu  | Y         | dualPort | 96    | 21    | 0.25     |
++--------------------------------------------+--------------+--------+-----------+---------------+---------------------------------------+-----------+----------+-------+-------+----------+
+
+Total entries: 4
+
+// GENERATED_CODE_END
+
+// GENERATED_CODE_BEGIN --template=doctext --section=memusage
+
+Per-Instance Memory Usage
+=========================
++--------------------------------------------+---------------------+-------+
+| Instance                                   | Cumulated Size (KB) | M     |
++--------------------------------------------+---------------------+-------+
+| top                                        | 0.68                |       |
+| top.uSomeRapper                            | 0.68                |       |
+| top.uSomeRapper.uBlockA                    | 0.44                |       |
+| top.uSomeRapper.uBlockA.blockATable0blockA | 0.15                | *     |
+| top.uSomeRapper.uBlockA.blockATable1blockA | 0.15                | *     |
+| top.uSomeRapper.uBlockA.blockATableXblockA | 0.15                | *     |
+| top.uSomeRapper.uBlockB                    | 0.25                |       |
+| top.uSomeRapper.uBlockB.blockBTableblockB  | 0.25                | *     |
++--------------------------------------------+---------------------+-------+
+
+Total entries: 8
+
+// GENERATED_CODE_END

@@ -84,13 +84,17 @@ def test_error_case(yaml_content, expected_patterns, test_name):
         os.unlink(db_path)  # Remove file, we just want the path
         
         # Run arch2code.py
+        # Disable color output to prevent red flashing in test output
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
         result = subprocess.run(
             ['python3', os.path.join(base_dir, 'arch2code.py'), 
              '-y', project_path, '--db', db_path],
             capture_output=True,
             text=True,
             timeout=10,
-            cwd=base_dir
+            cwd=base_dir,
+            env=env
         )
         
         # Combine stdout and stderr

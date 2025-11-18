@@ -1,5 +1,7 @@
 import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils
+from pysrc.arch2codeHelper import roundup_multiple
+
 from jinja2 import Template
 
 # args from generator line
@@ -53,7 +55,8 @@ def get_hwregs(prj, data):
         hwregs.append({
             "name": reg['register'] + '_reg',
             "datatype": reg['structure'],
-            "size": reg['bytes']*4,
+            "size_rounded": roundup_multiple(reg['bytes'], 4),
+            "size": reg['bytes'],
             "ro" : 'true' if reg['regType'] == 'ro' else 'false',
             "offset": hex(reg['offset']),
             "port_type": port_type,
@@ -113,7 +116,7 @@ public:
 
     //registers
     {% for entry in hwregs -%}
-        hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size}}, {{entry.ro}}> {{entry.name}}; // {{entry.descr}}
+        hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size_rounded}}, {{entry.ro}}> {{entry.name}}; // {{entry.descr}}
     {% endfor %}
 '''
 
@@ -146,7 +149,7 @@ block_regs_body_section_template = '''\
 {
     // register registers for FW access
     {% for entry in hwregs -%}
-        regs.addRegister({{entry.offset}}, {{entry.size//4}}, "{{entry.port_name}}", &{{entry.name}} );
+        regs.addRegister({{entry.offset}}, {{entry.size}}, "{{entry.port_name}}", &{{entry.name}} );
     {% endfor %}
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );

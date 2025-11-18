@@ -116,25 +116,39 @@ def warningAndErrorReport():
             s = 'Warning'
         else:
             s = 'Warnings'
-        print(Fore.YELLOW + f'Found {globals.warningCount} '+s+'.')
+        if globals.disableColors:
+            print(f'Found {globals.warningCount} '+s+'.')
+        else:
+            print(Fore.YELLOW + f'Found {globals.warningCount} '+s+'.')
     if (globals.errorCount > 0):
         returnValue = globals.errorCount
         if (globals.errorCount == 1):
             s = 'Error'
         else:
             s = 'Errors'
-        print(Fore.RED + f'Found {globals.errorCount} '+s+'.')
+        if globals.disableColors:
+            print(f'Found {globals.errorCount} '+s+'.')
+        else:
+            print(Fore.RED + f'Found {globals.errorCount} '+s+'.')
     return returnValue
 
 def printError(inString):
     globals.errorCount +=1
-    print(Fore.RED + f'Error Number ' + Style.RESET_ALL + Back.RED + f'{globals.errorCount}' + Style.RESET_ALL + Fore.RED + ':')
-    print(Fore.RED + f'{inString}')
+    if globals.disableColors:
+        print(f'Error Number {globals.errorCount}:')
+        print(f'{inString}')
+    else:
+        print(Fore.RED + f'Error Number ' + Style.RESET_ALL + Back.RED + f'{globals.errorCount}' + Style.RESET_ALL + Fore.RED + ':')
+        print(Fore.RED + f'{inString}')
 
 def printWarning(inString):
     globals.warningCount +=1
-    print(Fore.YELLOW + f'Warning Number ' + Style.RESET_ALL + Back.YELLOW + f'{globals.warningCount}' + Style.RESET_ALL + Fore.YELLOW + ':')
-    print(Fore.YELLOW + f'{inString}')
+    if globals.disableColors:
+        print(f'Warning Number {globals.warningCount}:')
+        print(f'{inString}')
+    else:
+        print(Fore.YELLOW + f'Warning Number ' + Style.RESET_ALL + Back.YELLOW + f'{globals.warningCount}' + Style.RESET_ALL + Fore.YELLOW + ':')
+        print(Fore.YELLOW + f'{inString}')
 
 def printTracebackStack():
     traceback.print_stack()

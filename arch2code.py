@@ -85,6 +85,9 @@ args = parser.parse_args()
 globals.debug    = args.debug
 globals.bgcolor  = args.bgcolor
 globals.deleteGV = args.diagramDeleteGV
+# Disable colors if NO_COLOR environment variable is set (useful for tests)
+import os
+globals.disableColors = os.environ.get('NO_COLOR', '').lower() in ('1', 'true', 'yes')
 if args.yaml == "" and args.db == "":
     if args.newproject:
         newProject(args)

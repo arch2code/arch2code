@@ -130,6 +130,7 @@ doc-build :
 	$(REPO_ROOT)/arch2code.py --db $(HELLO_DB_FILE) -r --diagram --depth 2 --instance uTop --diagramOutFilename uHelloWorld --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
 	make -C $(APBDECODE_DIR)/arch
 	$(REPO_ROOT)/arch2code.py --db $(APBDECODE_DB_FILE) -r --diagram --depth 4 --instance uTop --diagramOutFilename uapbDecode --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
+	$(REPO_ROOT)/arch2code.py --db $(APBDECODE_DB_FILE) -r --docgen --file $(APBDECODE_DIR)/doc/top_memories.txt --diagramOutDirectory $(DOC_IMAGES_DIR)
 	make -C $(IN_OUT_DIR)/arch
 	$(REPO_ROOT)/arch2code.py --db $(IN_OUT_DB_FILE) -r --diagram --depth 2 --instance uTop --diagramOutFilename uinAndOut --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
 	make -C $(AXI_DIR)/arch
