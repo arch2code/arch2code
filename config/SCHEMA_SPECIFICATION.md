@@ -762,13 +762,12 @@ Sets up the key field(s) for this node.
 
 **Effect**: Creates key field, qualified key field, and handles combo key logic.
 
-### `build_storage_key(row: dict, inner_key: Optional[str]) -> str`
+### `build_storage_key(row: dict) -> str`
 
 Builds the composite storage key for a database row.
 
 **Arguments**:
 - `row`: Database row dict with all key field values
-- `inner_key`: For multi-entry tables, the anchor field name (used for context)
 
 **Returns**: Composite key string (e.g., `'apb/src/inputs/_a2csystem'`)
 
@@ -783,7 +782,7 @@ row = {
     'modportGroup': 'inputs',
     '_context': '_a2csystem'
 }
-node.build_storage_key(row, 'modportGroup')
+node.build_storage_key(row)
 # Returns: 'apb/src/inputs/_a2csystem'
 ```
 

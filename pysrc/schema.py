@@ -257,7 +257,7 @@ class Node:
         """Get the list of qualified parent keys for composite key construction"""
         return self.parent_key_chain
     
-    def build_storage_key(self, row: dict, inner_key: Optional[str] = None) -> str:
+    def build_storage_key(self, row: dict) -> str:
         """
         Build the composite key for storing this row in self.data[tableName].
         
@@ -269,7 +269,6 @@ class Node:
         
         Args:
             row: Database row dict with all key values
-            inner_key: For multi-entry tables, the key field name (without 'Key' suffix) - unused, kept for compatibility
         
         Returns:
             Composite key string (e.g., 'apb/src/_a2csystem')

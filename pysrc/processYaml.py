@@ -472,7 +472,7 @@ class projectOpen:
 
     # when parent_key_chain is None we are just creating a simple dictionary
     # when parent_key_chain is not none then the records should be grouped under composite parent key for later reassembly
-    def loadTable(self, tableName, schema, keyName, outerkeyKey=None, parent_key_chain=None):
+    def loadTable(self, tableName, schema, keyName, parent_key_chain=None):
         """
         Load table from database and build dict structure
         
@@ -480,13 +480,9 @@ class projectOpen:
             tableName: Name of the table to load
             schema: Schema definition for this table
             keyName: The anchor field name (e.g., 'interface_type')
-            outerkeyKey: DEPRECATED - use parent_key_chain instead
             parent_key_chain: List of qualified parent key fields for composite grouping
                              (e.g., ['interface_typeKey', 'modportKey'])
         """
-        # Backward compatibility: if outerkeyKey is provided, convert to parent_key_chain
-        if outerkeyKey and not parent_key_chain:
-            parent_key_chain = [outerkeyKey + 'Key'] if not outerkeyKey.endswith('Key') else [outerkeyKey]
         
         attrib = self.schema.data['attrib'].get(tableName, [])
         columns = schema.copy()
@@ -545,10 +541,6 @@ class projectOpen:
             # For grouping, we'll use the immediate parent key (or unqualified version)
             myKeyName = None  # Will build grouping key per-row
             grouping_field = order_key if 'order_key' in locals() else None
-        elif outerkeyKey:
-            # Legacy single outerkey support
-            sql = f'SELECT * from {tableName} order by {outerkeyKey}, rowid'
-            myKeyName = outerkeyKey
         else:
             sql = f'SELECT * from {tableName} order by rowid'
             myKeyName = keyName
@@ -568,17 +560,20 @@ class projectOpen:
         for row in data:
             # Build the composite key for storing this row
             node = self.getSchemaNode(tableName)
-            if node and parent_key_chain is not None:
-                # Use Node's method to build storage key
-                newKey = node.build_storage_key(row, innerKey)
+            if not node:
+                printError(f"Table {tableName} has no Node object in schema - this should not happen")
+                exit(warningAndErrorReport())
+            
+            # Use Node's method to build storage key for nested tables with parent chains
+            # For top-level tables (parent_key_chain is None), use simple key
+            if parent_key_chain is not None:
+                newKey = node.build_storage_key(row)
             else:
-                # Legacy fallback for tables without Node objects
+                # Top-level table: use simple key field value
                 newKey = row[myKeyName] if myKeyName else ''
             
             # Get parent storage key field name for data_by_parent indexing (only for nested tables)
-            parent_key_field = None
-            if node:
-                parent_key_field = node.get_parent_storage_key_field_name()
+            parent_key_field = node.get_parent_storage_key_field_name()
                 
             #to deal with lists/nested dicts we need to create record only when the key changes
             if newKey != previousKey:
@@ -614,12 +609,12 @@ class projectOpen:
                         lookup_key = row[node.storage_key_field_qualified]
                         myRow[col] = self.data_by_parent[subtable_name].get(lookup_key, None)
                     else:
-                        # Top-level or legacy tables - use primary data structure
+                        # Top-level tables - use primary data structure
                         subtable_node = self.getSchemaNode(subtable_name)
-                        if subtable_node:
-                            subtable_lookup_key = subtable_node.build_storage_key(row, innerKey)
-                        else:
-                            subtable_lookup_key = newKey
+                        if not subtable_node:
+                            printError(f"Subtable {subtable_name} has no Node object in schema - this should not happen")
+                            exit(warningAndErrorReport())
+                        subtable_lookup_key = subtable_node.build_storage_key(row)
                         myRow[col] = self.data[subtable_name].get(subtable_lookup_key, None)
                 else:
                     myRow[col] = row[col]

@@ -54,7 +54,7 @@ def test_build_storage_key():
     }
     
     # Build storage key (should use parent's field value for multi-entry)
-    storage_key = node.build_storage_key(row, 'modportGroup')
+    storage_key = node.build_storage_key(row)
     expected = 'src'  # Uses parent's field value
     assert storage_key == expected, f"Expected '{expected}', got '{storage_key}'"
     print(f"✓ Multi-entry storage key: {storage_key}")
@@ -129,7 +129,7 @@ def test_context_appended_once():
     }
     
     # For multi-entry, storage key is parent keys only
-    key3 = node3.build_storage_key(row3, 'modportGroup')
+    key3 = node3.build_storage_key(row3)
     # But in the full qualified key, context appears once
     full_key3 = key3 + '/_a2csystem' if key3 else '_a2csystem'
     context_count3 = full_key3.count('_a2csystem')
