@@ -146,6 +146,7 @@ interface_defs:
     _attribs: [dataGroup]
     type: required
     param_cast: optional
+    set_initial_value: optional(false)
     multicycle_types:
       _attribs: [optional, singleEntryList, multiple]
       multicycle_type: listkey

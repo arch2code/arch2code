@@ -17,5 +17,6 @@ interface_defs:
     sc_channel :
       type : 'external_reg'
       multicycle_types : []
+      set_initial_value: true
     mappedFrom : ['reg_ext']
 
