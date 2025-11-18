@@ -189,6 +189,72 @@ class config:
         sql = f"DROP TABLE IF EXISTS _config"
         g.cur.execute(sql)
 
+# hierarchy is defined by who contains who, or who is my parent
+# this prevents the need for nested definition
+def generateHierarchy(inputInstances, inputBlocks, withContext = False ):
+    instances = dict()
+    blocks = dict()
+    hier = dict()
+    hierKey = dict()
+    instanceContainer = dict()
+    if not withContext:
+        # if we are being called from projectCreate, the input dictionaries do not have additional context depth
+        # so we need to make it compatible to avoid a bunch of conditionals, and then operate as if it is the nested case
+        instanceLoop = {"dummy": inputInstances}
+        blockLoop = {"dummy": inputBlocks}
+    else:
+        instanceLoop = inputInstances
+        blockLoop = inputBlocks
+    for context, contextInstances in instanceLoop.items():
+        for qualInst, row in contextInstances.items():
+            container = row['container']
+            containerKey = row['containerKey']
+            instance = row['instance']
+            instanceType = row['instanceType']
+            instanceTypeKey = row['instanceTypeKey']
+            # the two calling use cases (withContext) are slightly different so use get with fallback to loop key
+            instanceKey = row.get('instanceKey', qualInst)
+            if instance in instances:
+                # duplicate name
+                if not isinstance(instances[instance], dict):
+                    # this entry is not a dict, so convert it to one
+                    temp = instances[instance]
+                    instances[instance] = { temp: None}
+                instances[instance][instanceKey] = None
+            else:
+                instances[instance] = instanceKey
+            #ensure both parent and child are in the map
+            if instanceType not in hier:
+                hier[instanceType] = OrderedDict()
+            if instanceTypeKey not in hierKey:
+                hierKey[instanceTypeKey] = OrderedDict()
+            # topInstance is a special case that does not have a container as it is the root of the hierarchy
+            if container != "_topInstance":
+                if container not in hier:
+                    hier[container] = OrderedDict()
+                if containerKey not in hierKey:
+                    hierKey[containerKey] = OrderedDict()
+                hier[container][instance] = row
+                hierKey[containerKey][instanceKey] = row
+                blocks[container] = containerKey
+                instanceContainer[instanceKey] = containerKey
+    # create block to blockKey mapping
+    for context, contextBlocks in blockLoop.items():
+        for qualBlock, row in contextBlocks.items():
+            block = row['block']
+            # the two calling use cases are slightly different
+            blockKey = row.get('blockKey', qualBlock)
+            if block in blocks:
+                if not isinstance(blocks[block], dict):
+                    blocks[block] = {blocks[block]: None}
+                blocks[block][blockKey] = None
+            blocks[block] = blockKey
+    return (hier, hierKey, instances, instanceContainer, blocks)
+
+# project open is the class that loads the database and provides access to the data
+# it is used by the generators to access the data
+# it additionaly provides some helper functions to make the generators easier to write
+# the database contents are stored in the data dict in manner similar to the schema
 class projectOpen:
     data = dict() # all database derived data lives here. key = table name. Format corresponds to the schema
     data_by_parent = dict() # nested tables indexed by parent storage key for efficient child lookup
