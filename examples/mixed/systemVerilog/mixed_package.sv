@@ -38,6 +38,16 @@ typedef logic[4-1:0] bSizeT; //for addressing memory sizing from constant BSIZE_
 typedef logic[16-1:0] wordT; //a word type, used for test
 typedef logic[32-1:0] apbAddrT; //for addressing register via APB sizing from constant DWORD
 typedef logic[32-1:0] apbDataT; //for the data sent or recieved via APB sizing from constant DWORD
+typedef logic signed[8-1:0] signedByte_t; //Signed 8-bit type (-128 to 127)
+typedef logic signed[16-1:0] signedWord_t; //Signed 16-bit type (-32768 to 32767)
+typedef logic signed[32-1:0] signedDword_t; //Signed 32-bit type
+typedef logic signed[4-1:0] signedNibble_t; //Signed 4-bit type (-8 to 7) for testing small signed values
+typedef logic signed[3-1:0] signed3bit_t; //Signed 3-bit type (-4 to 3) non-byte-aligned
+typedef logic signed[5-1:0] signed5bit_t; //Signed 5-bit type (-16 to 15) non-byte-aligned
+typedef logic signed[7-1:0] signed7bit_t; //Signed 7-bit type (-64 to 63) non-byte-aligned
+typedef logic signed[11-1:0] signed11bit_t; //Signed 11-bit type (-1024 to 1023) non-byte-aligned
+typedef logic[5-1:0] unsigned5bit_t; //Unsigned 5-bit type for mixed testing
+typedef logic[9-1:0] unsigned9bit_t; //Unsigned 9-bit type for mixed testing
 
 // enums
 typedef enum logic[2-1:0] {           //a test enum
@@ -159,6 +169,48 @@ typedef struct packed {
 typedef struct packed {
     test8St [4-1:0] wordArray; //Array of 4 * 48 bits
 } test9St;
+
+typedef struct packed {
+    signedByte_t signedValue; //A signed byte value for testing
+    twoBitT unsignedValue; //An unsigned two-bit value
+} signedTestSt;
+
+typedef struct packed {
+    signedWord_t temp; //Temperature sensor value
+    signedByte_t offset; //Calibration offset
+    fourBitT flags; //Status flags
+} mixedSignedSt;
+
+typedef struct packed {
+    signedNibble_t [3-1:0] values; //Array of three signed nibbles
+} signedArraySt;
+
+typedef struct packed {
+    signed3bit_t field1; //3-bit signed at bit 0-2
+    unsigned5bit_t field2; //5-bit unsigned at bit 3-7
+    signed5bit_t field3; //5-bit signed at bit 8-12
+    threeBitT field4; //3-bit unsigned at bit 13-15
+} nonByteAlignedSignedSt;
+
+typedef struct packed {
+    signed7bit_t signedA; //7-bit signed field
+    unsigned9bit_t unsignedB; //9-bit unsigned field
+    signed11bit_t signedC; //11-bit signed field
+    fourBitT unsignedD; //4-bit unsigned field
+    signedByte_t signedE; //8-bit signed field to cross 32-bit boundary
+} complexMixedSt;
+
+typedef struct packed {
+    signed3bit_t tiny; //Very small signed value
+    signedNibble_t smallVal; //Small signed value
+    signed11bit_t mediumVal; //Medium signed value
+    signedWord_t largeVal; //Large signed value
+} edgeCaseSignedSt;
+
+typedef struct packed {
+    signed5bit_t [4-1:0] signedVals; //Array of 4 non-byte-aligned signed values
+    unsigned5bit_t [3-1:0] unsignedVals; //Array of 3 non-byte-aligned unsigned values
+} mixedArraySignedSt;
 
 endpackage : mixed_package
 // GENERATED_CODE_END
