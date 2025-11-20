@@ -251,7 +251,7 @@ def renderer_memusage(args, prj, data):
 def findMemInsts(prj, blockData, memInsts, hier=""):
     if 'memories' in blockData:
         for memName, memData in blockData['memories'].items():
-            fullName = hier + "." + memName
+            fullName = hier + "." + memData['memory']
             memInsts[fullName] = memData
     if 'subBlockInstances' in blockData:
         for instKey, instData in blockData['subBlockInstances'].items():
