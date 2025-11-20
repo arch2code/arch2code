@@ -504,50 +504,22 @@ class projectOpen:
         else:
             multi = False
         myTable = OrderedDict()
-        
-        # Build SQL query with parent key ordering if needed
-        if parent_key_chain:
-            # Use only the LAST key in the chain for SQL ordering (immediate parent)
-            # Each table only stores its immediate parent's key, not all ancestors
-            # For collapsed tables, the field may be unqualified (e.g., 'modportGroup' not 'modportGroupKey')
-            immediate_parent_key = parent_key_chain[-1] if parent_key_chain else None
-            
-            # Check if the qualified key exists, otherwise try unqualified version
-            if immediate_parent_key:
-                # Get all column names from schema
-                col_names = list(columns.keys()) + [keyName]
-                
-                # Try qualified key first (e.g., 'modportGroupKey')
-                if immediate_parent_key in col_names:
-                    order_key = immediate_parent_key
-                # Try unqualified version (e.g., 'modportGroup' from 'modportGroupKey')
-                elif immediate_parent_key.endswith('Key'):
-                    unqualified = immediate_parent_key[:-3]  # Remove 'Key' suffix
-                    if unqualified in col_names:
-                        order_key = unqualified
-                    else:
-                        order_key = None
-                else:
-                    order_key = None
-                
-                if order_key:
-                    sql = f'SELECT * from {tableName} ORDER BY {order_key}, rowid'
-                else:
-                    # Parent key not in this table, just order by rowid
-                    sql = f'SELECT * from {tableName} ORDER BY rowid'
-            else:
-                sql = f'SELECT * from {tableName} ORDER BY rowid'
-            
-            # For grouping, we'll use the immediate parent key (or unqualified version)
-            myKeyName = None  # Will build grouping key per-row
-            grouping_field = order_key if 'order_key' in locals() else None
-        else:
-            sql = f'SELECT * from {tableName} order by rowid'
-            myKeyName = keyName
-            
-        # Remove the key column from columns dict
-        if myKeyName:
-            del columns[myKeyName]
+
+        node = self.getSchemaNode(tableName)
+        if not node:
+            printError(f"Table {tableName} has no Node object in schema - this should not happen")
+            exit(warningAndErrorReport())
+        storage_key_field_qualified = node.get_storage_key_field_name_qualified()
+        storage_key_field = node.get_storage_key_field_name()
+        sql = f'SELECT * from {tableName} ORDER BY rowid'
+        # Get parent storage key field name for data_by_parent indexing (only for nested tables)
+        parent_key_field = node.get_parent_storage_key_field_name()
+        if not node or not node.storage_key_field_qualified:
+            raise ValueError(
+                f"Cannot lookup children for table '{tableName}': "
+                f"node.storage_key_field_qualified not configured. "
+                f"This indicates a schema configuration error."
+            )
             
         g.cur.execute(sql)
         data = g.cur.fetchall()
@@ -559,21 +531,10 @@ class projectOpen:
         
         for row in data:
             # Build the composite key for storing this row
-            node = self.getSchemaNode(tableName)
-            if not node:
-                printError(f"Table {tableName} has no Node object in schema - this should not happen")
-                exit(warningAndErrorReport())
             
             # Use Node's method to build storage key for nested tables with parent chains
             # For top-level tables (parent_key_chain is None), use simple key
-            if parent_key_chain is not None:
-                newKey = node.build_storage_key(row)
-            else:
-                # Top-level table: use simple key field value
-                newKey = row[myKeyName] if myKeyName else ''
-            
-            # Get parent storage key field name for data_by_parent indexing (only for nested tables)
-            parent_key_field = node.get_parent_storage_key_field_name()
+            newKey = node.build_storage_key(row)
                 
             #to deal with lists/nested dicts we need to create record only when the key changes
             if newKey != previousKey:
@@ -600,12 +561,6 @@ class projectOpen:
                     if subtable_name in self.data_by_parent:
                         # data_by_parent is always indexed by the qualified parent storage key
                         # Use the precomputed qualified field name from the node
-                        if not node or not node.storage_key_field_qualified:
-                            raise ValueError(
-                                f"Cannot lookup children for table '{tableName}': "
-                                f"node.storage_key_field_qualified not configured. "
-                                f"This indicates a schema configuration error."
-                            )
                         lookup_key = row[node.storage_key_field_qualified]
                         myRow[col] = self.data_by_parent[subtable_name].get(lookup_key, None)
                     else:
@@ -632,12 +587,6 @@ class projectOpen:
                 # and also build grouped structure for nested access
                 
                 # Determine the qualified key for top-level storage (use row, not myRow)
-                if not node or not node.storage_key_field_qualified:
-                    raise ValueError(
-                        f"Cannot store multi-entry table '{tableName}': "
-                        f"node.storage_key_field_qualified not configured. "
-                        f"This indicates a schema configuration error."
-                    )
                 top_level_key = row[node.storage_key_field_qualified]
                 
                 # Store individual entry in top-level table
@@ -1508,11 +1457,11 @@ class projectOpen:
                 else:
                     # for local mode where we are not connecting to an instance ensure we dont get a key missing error
                     ret['memoryConnections'][memConn]['instanceTypeKey'] = ''
-                ret['temp']['structs'][self.data['memories'][val['memoryBlock']]['structureKey']] = 0
-                ret['temp']['consts'][self.data['memories'][val['memoryBlock']]['wordLinesKey']] = 0
+                ret['temp']['structs'][self.data['memories'][val['memoryBlockKey']]['structureKey']] = 0
+                ret['temp']['consts'][self.data['memories'][val['memoryBlockKey']]['wordLinesKey']] = 0
             if val['instanceKey'] in qualBlockInstances:
                 # we are the instance getting a memory connection so this means we have a port
-                memInfo = self.data['memories'][val['memoryBlock']]
+                memInfo = self.data['memories'][val['memoryBlockKey']]
                 ret['memoryPorts'][memConn] = dict(memInfo, **val) # merge the two dicts
                 ret['memoryPorts'][memConn]['interfaceName'] = val['memory']
                 ret['memoryPorts'][memConn]['direction'] = 'src'
@@ -1521,8 +1470,8 @@ class projectOpen:
                     ret['memoryPorts'][memConn]['instanceTypeKey'] = self.data['instances'][val['instanceKey']]['instanceType']
                 else:
                     ret['memoryPorts'][memConn]['instanceTypeKey'] = ''
-                ret['temp']['structs'][self.data['memories'][val['memoryBlock']]['structureKey']] = 0
-                ret['temp']['consts'][self.data['memories'][val['memoryBlock']]['wordLinesKey']] = 0
+                ret['temp']['structs'][self.data['memories'][val['memoryBlockKey']]['structureKey']] = 0
+                ret['temp']['consts'][self.data['memories'][val['memoryBlockKey']]['wordLinesKey']] = 0
 
         for mem, memInfo in ret['memories'].items():
             # we also need to create a port for any memory that has regAccess as the register block will need to connect to it
@@ -1571,15 +1520,15 @@ class projectOpen:
             if val['blockKey'] == block and val['instanceKey'] in containedInstances:
                 reg_name = val['register']
                 connected_regs[reg_name] = 0
-                regType =  ret['registers'][val['registerBlock']]['regType']
+                regType =  ret['registers'][val['registerBlockKey']]['regType']
                 ifType = 'reg_' + regType
-                regInfo = ret['registers'][val['registerBlock']]
+                regInfo = ret['registers'][val['registerBlockKey']]
                 ret['temp']['structs'][regInfo['structureKey']] = 0
                 # Track register-based interface types for later processing
                 ret['temp']['registerInterfaceTypes'][ifType] = 0
                 if isRegHandler:
                     ret['registerPorts'][regConn] = dict(regInfo, **val)
-                    ret['registerPorts'][regConn]['direction'] = self.regMapReg.get(ret['registers'][val['registerBlock']]['regType'], None)
+                    ret['registerPorts'][regConn]['direction'] = self.regMapReg.get(ret['registers'][val['registerBlockKey']]['regType'], None)
                     ret['registerPorts'][regConn]['interfaceType'] = ifType
                 else:
                     connKey = regInfo['register']
@@ -1598,7 +1547,7 @@ class projectOpen:
             if val['instanceKey'] in qualBlockInstances:
                 portName = val['register']
                 connected_regs[portName] = 0
-                regInfo = self.data['registers'][val['registerBlock']]
+                regInfo = self.data['registers'][val['registerBlockKey']]
                 ret['registerPorts'][portName] = dict(regInfo, **val) # merge the two dicts
                 regType = regInfo['regType']
                 ret['registerPorts'][portName]['direction'] = self.regMapBlock.get(regType, None)
@@ -2768,7 +2717,6 @@ class projectCreate:
             ret['lc'] = item.lc
         else:
             myLineNumber = None
-
         comboKey = self.schema.data['comboKey'].get(context+section, None)
         comboSchema = self.schema.data['comboField'].get(context+section, {})
         if not schema:
@@ -2825,6 +2773,11 @@ class projectCreate:
                         exit(warningAndErrorReport())
                     comboStr = comboStr + ret[source_field]
                 ret[field] = comboStr
+                # Immediately populate the qualified field if it exists in schema
+                qualified_field = field + 'Key'
+                if qualified_field in schema and qualified_field not in ret:
+                    ret[qualified_field] = comboStr + '/' + yamlFile
+
             if ftype == 'key':
                 if comboKey:
                     # key is created by concatenation of other fields. schema will have enforced ordering to after other fields

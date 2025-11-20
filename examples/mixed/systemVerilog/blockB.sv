@@ -9,6 +9,7 @@ import mixed_package::*;
 (
     req_ack_if.dst btod,
     notify_ack_if.dst startDone,
+    rdy_vld_if.dst dupIf,
     apb_if.dst apbReg,
     input clk, rst_n
 );

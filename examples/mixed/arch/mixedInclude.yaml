@@ -6,3 +6,11 @@ constants:
   BSIZE      : {value: 10, desc: "The size of B, used for memory wordlines"}
   BSIZE_LOG2 : {eval: "($BSIZE-1).bit_length()" , desc: "The size of B, used for memory wordlines log 2"}
 
+
+interfaces:
+  dupIf:
+    desc: "Duplicate interface def"
+    interfaceType: rdy_vld
+    structures:
+      - {structure: dupTestSt, structureType: data_t}
+

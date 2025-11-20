@@ -43,6 +43,8 @@ public:
     apb_channel< apbAddrSt, apbDataSt > apbReg;
     // A start done interface
     notify_ack_channel< > startDone;
+    // Duplicate interface def
+    rdy_vld_channel< seeSt > dupIf;
     // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apb_uBlockA;
     // CPU access to SoC registers in the design

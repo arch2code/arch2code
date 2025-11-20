@@ -25,6 +25,8 @@ public:
     rdy_vld_out< seeSt > cStuffIf;
     // startDone->uBlockB: A start done interface
     notify_ack_out< > startDone;
+    // dupIf->uBlockB: Duplicate interface def
+    rdy_vld_out< seeSt > dupIf;
 
     // dst ports
     // uAPBDecode->apbReg: CPU access to SoC registers in the design
@@ -35,6 +37,7 @@ public:
         aStuffIf("aStuffIf")
         ,cStuffIf("cStuffIf")
         ,startDone("startDone")
+        ,dupIf("dupIf")
         ,apbReg("apbReg")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
@@ -42,6 +45,7 @@ public:
         aStuffIf->setTimed(nsec, mode);
         cStuffIf->setTimed(nsec, mode);
         startDone->setTimed(nsec, mode);
+        dupIf->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
@@ -50,6 +54,7 @@ public:
         aStuffIf->setLogging(verbosity);
         cStuffIf->setLogging(verbosity);
         startDone->setLogging(verbosity);
+        dupIf->setLogging(verbosity);
         apbReg->setLogging(verbosity);
     };
 };
@@ -63,6 +68,8 @@ public:
     rdy_vld_in< seeSt > cStuffIf;
     // startDone->uBlockB: A start done interface
     notify_ack_in< > startDone;
+    // dupIf->uBlockB: Duplicate interface def
+    rdy_vld_in< seeSt > dupIf;
 
     // dst ports
     // uAPBDecode->apbReg: CPU access to SoC registers in the design
@@ -73,6 +80,7 @@ public:
         aStuffIf(("aStuffIf"+name).c_str())
         ,cStuffIf(("cStuffIf"+name).c_str())
         ,startDone(("startDone"+name).c_str())
+        ,dupIf(("dupIf"+name).c_str())
         ,apbReg(("apbReg"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
@@ -80,6 +88,7 @@ public:
         aStuffIf->setTimed(nsec, mode);
         cStuffIf->setTimed(nsec, mode);
         startDone->setTimed(nsec, mode);
+        dupIf->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
@@ -88,6 +97,7 @@ public:
         aStuffIf->setLogging(verbosity);
         cStuffIf->setLogging(verbosity);
         startDone->setLogging(verbosity);
+        dupIf->setLogging(verbosity);
         apbReg->setLogging(verbosity);
     };
 };
@@ -101,6 +111,8 @@ public:
     rdy_vld_channel< seeSt > cStuffIf;
     // A start done interface
     notify_ack_channel< > startDone;
+    // Duplicate interface def
+    rdy_vld_channel< seeSt > dupIf;
 
     // dst ports
     // CPU access to SoC registers in the design
@@ -111,6 +123,7 @@ public:
     aStuffIf(("aStuffIf"+name).c_str(), srcName)
     ,cStuffIf(("cStuffIf"+name).c_str(), srcName)
     ,startDone(("startDone"+name).c_str(), srcName)
+    ,dupIf(("dupIf"+name).c_str(), srcName)
     ,apbReg(("apbReg"+name).c_str(), srcName)
     {};
     void bind( blockABase *a, blockAInverted *b)
@@ -121,6 +134,8 @@ public:
         b->cStuffIf( cStuffIf );
         a->startDone( startDone );
         b->startDone( startDone );
+        a->dupIf( dupIf );
+        b->dupIf( dupIf );
         a->apbReg( apbReg );
         b->apbReg( apbReg );
     };

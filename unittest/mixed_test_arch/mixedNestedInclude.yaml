@@ -4,3 +4,11 @@ constants:
   DSIZE : {value: 1, desc: "The size of D"}
   DSIZE2: {eval: "$DSIZE+1", desc: "The size of D2"}
 
+types:
+  dupTestT:
+    width: 13
+    desc: yet another type
+
+structures:
+  dupTestSt:
+    bob: {varType: dupTestT, desc: A test structure}
