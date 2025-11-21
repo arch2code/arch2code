@@ -57,6 +57,12 @@ if ! python3 test_error_auto_functions.py; then
     echo "    This indicates bugs in auto function error handling."
 fi
 
+# Test 8: Duplicate interface handling
+echo ""
+echo "Test Suite 8: Duplicate Interface Handling"
+echo "------------------------------------------------------------------------"
+python3 test_duplicate_interface.py || FAILED=1
+
 echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then

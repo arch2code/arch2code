@@ -15,6 +15,7 @@ interface_defs:
     sc_channel :
       type : 'status'
       multicycle_types : []
+      set_initial_value: true
     multiDst : True
     mappedFrom : ['reg_ro', 'reg_rw']
 

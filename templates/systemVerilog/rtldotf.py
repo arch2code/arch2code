@@ -5,17 +5,17 @@ import os.path
 # data set dict
 def render(args, prj, data):
     out = []
-    incdirs = set()
+    incdirs = dict()
     for context in data['includeContext']:
         contextBasename = os.path.dirname(context)
         if contextBasename:
             contextBasename = './' + contextBasename
         else:
             contextBasename = '.'
-        incdirs.add(contextBasename)
-    for incdir in incdirs:
-        out.append(f'+incdir+{incdir}')
-        out.append(f'-y {incdir}')
+        incdirs[contextBasename] = contextBasename
+    for incdir, incdirName in incdirs.items():
+        out.append(f'+incdir+{incdirName}')
+        out.append(f'-y {incdirName}')
     
     for context in data['includeFiles'].get('package_sv', list()):
         contextBasename = os.path.dirname(context)

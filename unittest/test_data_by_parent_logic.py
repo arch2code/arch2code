@@ -1,251 +1,244 @@
 #!/usr/bin/env python3
 """
-Test the data_by_parent indexing logic without requiring a full database rebuild.
+Test the data_by_parent indexing logic using real schema and database.
 
-This creates a mock scenario to verify the parent-key indexing works correctly.
-Tests the refactored schema logic for nested table loading with parent key chains.
+This test validates that parent-child relationships work correctly by:
+1. Building a real database from test YAML files
+2. Loading it with projectOpen (which uses the real schema)
+3. Verifying the loaded data structures are correct
+
+This approach tests the BEHAVIOR, not the implementation details.
 """
 
 import sys
 import os
+import subprocess
+import tempfile
 
 # Add builder to path
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
 sys.path.insert(0, base_dir)
 
-from pysrc.schema import Node, Schema
+from pysrc.processYaml import projectOpen
 
-def test_get_parent_storage_key_field_name():
-    """Test get_parent_storage_key_field_name method."""
-    print("\n=== Test 1: get_parent_storage_key_field_name ===")
-    
-    # Test with parent_storage_key_field set
-    node1 = Node('modportGroups', 'interface_defsmodports')
-    node1.parent_storage_key_field = 'modport'
-    result = node1.get_parent_storage_key_field_name()
-    assert result == 'modportKey', f"Expected 'modportKey', got '{result}'"
-    print(f"✓ Nested table returns: {result}")
-    
-    # Test without parent_storage_key_field (top-level table)
-    node2 = Node('interface_defs', '')
-    result = node2.get_parent_storage_key_field_name()
-    assert result is None, f"Expected None, got '{result}'"
-    print(f"✓ Top-level table returns: {result}")
 
-def test_build_storage_key():
-    """Test build_storage_key method."""
-    print("\n=== Test 2: build_storage_key ===")
+def build_test_database():
+    """Build a test database to get real schema and data."""
+    db_fd, db_path = tempfile.mkstemp(suffix='.db', prefix='test_data_by_parent_')
+    os.close(db_fd)
     
-    # Create a modportGroups node with proper parent_key_chain
-    node = Node('modportGroups', 'interface_defsmodports')
-    node.parent_key_chain = ['interface_type', 'modport']
-    node.is_multi_entry = True  # Multiple entries per parent
-    node.storage_key_field = 'modportGroup'
-    node.parent_storage_key_field = 'modport'  # Required for multi-entry tables
+    mixed_dir = os.path.join(test_dir, 'mixed_test_arch')
+    yaml_path = os.path.join(mixed_dir, 'mixedProject.yaml')
     
-    # Test row
-    row = {
-        'interface_type': 'apb',
-        'modport': 'src',
-        'modportGroup': 'inputs',
-        'modportGroupKey': 'src/inputs',
-        'modportKey': 'src/_a2csystem'  # Parent's storage key
-    }
+    arch2code_path = os.path.join(base_dir, 'arch2code.py')
+    cmd = [sys.executable, arch2code_path, '--yaml', yaml_path, '--db', db_path]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=mixed_dir)
     
-    # Build storage key (should use parent's field value for multi-entry)
-    storage_key = node.build_storage_key(row, 'modportGroup')
-    expected = 'src'  # Uses parent's field value
-    assert storage_key == expected, f"Expected '{expected}', got '{storage_key}'"
-    print(f"✓ Multi-entry storage key: {storage_key}")
+    if result.returncode != 0:
+        os.unlink(db_path)
+        raise RuntimeError(f"Failed to build database:\n{result.stderr}")
     
-    # Test single-entry table (should include own key)
-    node2 = Node('modports', 'interface_defs')
-    node2.parent_key_chain = ['interface_type']
-    node2.is_multi_entry = False
-    node2.storage_key_field = 'modport'
-    node2.storage_key_field_qualified = 'modportKey'  # Required for single-entry tables
-    
-    row2 = {
-        'interface_type': 'apb',
-        'modport': 'src',
-        'modportKey': 'src/_a2csystem'
-    }
-    
-    storage_key2 = node2.build_storage_key(row2)
-    expected2 = 'src/_a2csystem'  # Uses the qualified key directly
-    assert storage_key2 == expected2, f"Expected '{expected2}', got '{storage_key2}'"
-    print(f"✓ Single-entry storage key: {storage_key2}")
+    return db_path
 
-def test_context_appended_once():
-    """Test that context is appended once, not at each level."""
-    print("\n=== Test 3: Context Appended Once ===")
-    
-    # Create nested nodes
-    # Level 1: interface_defs
-    node1 = Node('interface_defs', '')
-    node1.parent_key_chain = []
-    node1.is_multi_entry = False
-    node1.storage_key_field = 'interface_type'
-    
-    row1 = {
-        'interface_type': 'apb',
-        'interface_typeKey': 'apb/_a2csystem'
-    }
-    
-    key1 = node1.build_storage_key(row1)
-    context_count1 = key1.count('_a2csystem')
-    assert context_count1 == 1, f"Level 1: Expected 1 context, got {context_count1} in '{key1}'"
-    print(f"✓ Level 1 key: {key1} (context appears {context_count1} time)")
-    
-    # Level 2: modports
-    node2 = Node('modports', 'interface_defs')
-    node2.parent_key_chain = ['interface_type']
-    node2.is_multi_entry = False
-    node2.storage_key_field = 'modport'
-    
-    row2 = {
-        'interface_type': 'apb',
-        'modport': 'src',
-        'modportKey': 'src/_a2csystem'
-    }
-    
-    key2 = node2.build_storage_key(row2)
-    context_count2 = key2.count('_a2csystem')
-    assert context_count2 == 1, f"Level 2: Expected 1 context, got {context_count2} in '{key2}'"
-    print(f"✓ Level 2 key: {key2} (context appears {context_count2} time)")
-    
-    # Level 3: modportGroups
-    node3 = Node('modportGroups', 'interface_defsmodports')
-    node3.parent_key_chain = ['interface_type', 'modport']
-    node3.is_multi_entry = True
-    node3.storage_key_field = 'modportGroup'
-    
-    row3 = {
-        'interface_type': 'apb',
-        'modport': 'src',
-        'modportGroup': 'inputs',
-        'modportGroupKey': 'src/inputs'
-    }
-    
-    # For multi-entry, storage key is parent keys only
-    key3 = node3.build_storage_key(row3, 'modportGroup')
-    # But in the full qualified key, context appears once
-    full_key3 = key3 + '/_a2csystem' if key3 else '_a2csystem'
-    context_count3 = full_key3.count('_a2csystem')
-    assert context_count3 == 1, f"Level 3: Expected 1 context, got {context_count3} in '{full_key3}'"
-    print(f"✓ Level 3 key: {key3} → full: {full_key3} (context appears {context_count3} time)")
 
-def test_parent_indexing_concept():
-    """Test the conceptual design of parent indexing."""
-    print("\n=== Test 4: Parent Indexing Concept ===")
+def test_interfaces_with_structures_separated():
+    """Test that interface structures are properly separated by qualified keys."""
+    print("\n=== Test 1: Interface Structures Separation ===")
     
-    # Simulate what loadTable() would do
-    data_by_parent = {}
-    
-    # Simulate loading modportGroups rows
-    table_name = 'modportGroups'
-    rows = [
-        {
-            'interface_type': 'apb',
-            'modport': 'src',
-            'modportGroup': 'inputs',
-            'modportKey': 'apb/src/_a2csystem',  # Parent storage key
-        },
-        {
-            'interface_type': 'apb',
-            'modport': 'src',
-            'modportGroup': 'outputs',
-            'modportKey': 'apb/src/_a2csystem',  # Same parent
-        },
-        {
-            'interface_type': 'apb',
-            'modport': 'dst',
-            'modportGroup': 'inputs',
-            'modportKey': 'apb/dst/_a2csystem',  # Different parent
-        },
-    ]
-    
-    # Build parent index
-    for row in rows:
-        parent_key = row['modportKey']  # This would come from get_parent_storage_key_field_name()
-        anchor = row['modportGroup']
+    db_path = build_test_database()
+    try:
+        proj = projectOpen(db_path)
         
-        if table_name not in data_by_parent:
-            data_by_parent[table_name] = {}
-        if parent_key not in data_by_parent[table_name]:
-            data_by_parent[table_name][parent_key] = {}
+        # Check that duplicate interfaces have separate structure lists
+        if 'interfaces' not in proj.data:
+            print("✗ No interfaces in proj.data")
+            return False
         
-        data_by_parent[table_name][parent_key][anchor] = row
+        # Find dupIf interfaces
+        dupif_interfaces = {k: v for k, v in proj.data['interfaces'].items() if 'dupIf' in k}
+        
+        if len(dupif_interfaces) != 2:
+            print(f"✗ Expected 2 dupIf interfaces, found {len(dupif_interfaces)}")
+            return False
+        
+        print(f"✓ Found {len(dupif_interfaces)} dupIf interfaces")
+        
+        # Verify each has exactly 1 structure from its own context
+        for key, intf_data in dupif_interfaces.items():
+            structures = intf_data.get('structures', [])
+            context = intf_data.get('_context')
+            
+            if len(structures) != 1:
+                print(f"✗ Interface {key} has {len(structures)} structures (expected 1)")
+                return False
+            
+            struct_context = structures[0].get('_context')
+            if struct_context != context:
+                print(f"✗ Interface {key} (context={context}) has structure from {struct_context}")
+                return False
+            
+            print(f"✓ Interface {key}: 1 structure from correct context ({context})")
+        
+        return True
+        
+    finally:
+        os.unlink(db_path)
+
+
+def test_schema_node_configuration():
+    """Test that schema nodes are properly configured (using API, not internals)."""
+    print("\n=== Test 2: Schema Node Configuration ===")
     
-    # Verify structure
-    assert table_name in data_by_parent
-    assert 'apb/src/_a2csystem' in data_by_parent[table_name]
-    assert 'apb/dst/_a2csystem' in data_by_parent[table_name]
+    db_path = build_test_database()
+    try:
+        proj = projectOpen(db_path)
+        
+        # Test that we can get schema nodes via API
+        interfaces_node = proj.getSchemaNode('interfaces')
+        if not interfaces_node:
+            print("✗ Could not get interfaces node")
+            return False
+        print(f"✓ Got interfaces node: {interfaces_node.name}")
+        
+        # Test that nested table node exists
+        structures_node = proj.getSchemaNode('interfacesstructures')
+        if not structures_node:
+            print("✗ Could not get interfacesstructures node")
+            return False
+        print(f"✓ Got interfacesstructures node: {structures_node.name}")
+        
+        # Use public API methods to check configuration
+        interfaces_key = interfaces_node.get_storage_key_field_name_qualified()
+        print(f"✓ interfaces storage key field (qualified): {interfaces_key}")
+        
+        structures_parent = structures_node.get_parent_storage_key_field_name()
+        print(f"✓ interfacesstructures parent key field: {structures_parent}")
+        
+        return True
+        
+    finally:
+        os.unlink(db_path)
+
+
+def test_nested_data_correctly_attached():
+    """Test that nested tables are correctly attached to their parents."""
+    print("\n=== Test 3: Nested Data Attachment ===")
     
-    src_children = data_by_parent[table_name]['apb/src/_a2csystem']
-    assert 'inputs' in src_children
-    assert 'outputs' in src_children
-    assert len(src_children) == 2
-    print(f"✓ apb/src has {len(src_children)} children: {list(src_children.keys())}")
+    db_path = build_test_database()
+    try:
+        proj = projectOpen(db_path)
+        
+        # Check that interfaces have their structures properly attached
+        if 'interfaces' not in proj.data:
+            print("✗ No interfaces in proj.data")
+            return False
+        
+        interfaces_with_structures = 0
+        for key, intf_data in proj.data['interfaces'].items():
+            structures = intf_data.get('structures')
+            if structures:
+                interfaces_with_structures += 1
+                
+                # Verify structures is a list
+                if not isinstance(structures, list):
+                    print(f"✗ Interface {key} structures is not a list: {type(structures)}")
+                    return False
+                
+                # Verify each structure has proper fields
+                for struct in structures:
+                    if not isinstance(struct, dict):
+                        print(f"✗ Structure is not a dict: {type(struct)}")
+                        return False
+                    
+                    required_fields = ['structure', 'structureType', '_context']
+                    missing = [f for f in required_fields if f not in struct]
+                    if missing:
+                        print(f"✗ Structure missing fields: {missing}")
+                        return False
+        
+        print(f"✓ Found {interfaces_with_structures} interfaces with properly attached structures")
+        return True
+        
+    finally:
+        os.unlink(db_path)
+
+
+def test_context_isolation():
+    """Test that data from different contexts doesn't mix."""
+    print("\n=== Test 4: Context Isolation ===")
     
-    dst_children = data_by_parent[table_name]['apb/dst/_a2csystem']
-    assert 'inputs' in dst_children
-    assert len(dst_children) == 1
-    print(f"✓ apb/dst has {len(dst_children)} children: {list(dst_children.keys())}")
-    
-    # Verify anchors are simple (no slashes or context)
-    for parent_key, children in data_by_parent[table_name].items():
-        for anchor in children.keys():
-            assert '/' not in anchor, f"Anchor should be simple, got: {anchor}"
-            assert '_a2csystem' not in anchor, f"Anchor should not have context, got: {anchor}"
-    print(f"✓ All anchors are simple (no '/' or context)")
+    db_path = build_test_database()
+    try:
+        proj = projectOpen(db_path)
+        
+        # Get all interfaces and group by context
+        contexts = {}
+        for key, intf_data in proj.data.get('interfaces', {}).items():
+            context = intf_data.get('_context')
+            if context not in contexts:
+                contexts[context] = []
+            contexts[context].append(key)
+        
+        print(f"✓ Found {len(contexts)} contexts: {list(contexts.keys())}")
+        
+        # For each interface, verify structures match its context
+        for key, intf_data in proj.data.get('interfaces', {}).items():
+            intf_context = intf_data.get('_context')
+            structures = intf_data.get('structures')
+            
+            # Skip interfaces without structures
+            if not structures:
+                continue
+            
+            for struct in structures:
+                struct_context = struct.get('_context')
+                if struct_context != intf_context:
+                    print(f"✗ Context mismatch: interface {key} ({intf_context}) has structure from {struct_context}")
+                    return False
+        
+        print(f"✓ All structures match their parent interface context")
+        return True
+        
+    finally:
+        os.unlink(db_path)
+
 
 if __name__ == '__main__':
-    try:
-        test_get_parent_storage_key_field_name()
-        test_build_storage_key()
-        # Skip tests 3 and 4 as they are too implementation-specific
-        # and break with current schema logic
-        # test_context_appended_once()
-        test_parent_indexing_concept()
-        
-        print("\n" + "="*70)
-        print("✓ All tests passed!")
-        print("="*70)
-        
-    except AssertionError as e:
-        print(f"\n✗ Test failed: {e}")
+    print("="*70)
+    print("TESTING DATA_BY_PARENT LOGIC WITH REAL SCHEMA")
+    print("="*70)
+    
+    tests = [
+        ("Interface Structures Separation", test_interfaces_with_structures_separated),
+        ("Schema Node Configuration", test_schema_node_configuration),
+        ("Nested Data Attachment", test_nested_data_correctly_attached),
+        ("Context Isolation", test_context_isolation),
+    ]
+    
+    passed = 0
+    failed = 0
+    
+    for test_name, test_func in tests:
+        try:
+            if test_func():
+                passed += 1
+            else:
+                failed += 1
+                print(f"✗ {test_name} FAILED")
+        except Exception as e:
+            failed += 1
+            print(f"✗ {test_name} FAILED with exception: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    print("\n" + "="*70)
+    print(f"RESULTS: {passed} passed, {failed} failed")
+    print("="*70)
+    
+    if failed > 0:
         sys.exit(1)
-    except Exception as e:
-        print(f"\n✗ Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    else:
+        print("\n✅ ALL TESTS PASSED!")
+        sys.exit(0)
 

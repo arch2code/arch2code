@@ -21,6 +21,7 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
         ,cStuffIf("blockC_cStuffIf", "blockA")
         ,apbReg("apbDecode_apbReg", "cpu")
         ,startDone("blockB_startDone", "blockA")
+        ,dupIf("blockB_dupIf", "blockA")
         ,apb_uBlockA("blockA_apb_uBlockA", "apbDecode")
         ,apb_uBlockB("blockB_apb_uBlockB", "apbDecode")
         ,uCPU(std::dynamic_pointer_cast<cpuBase>( instanceFactory::createInstance(name(), "uCPU", "cpu", "")))
@@ -40,6 +41,8 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     uAPBDecode->apbReg(apbReg);
     uBlockA->startDone(startDone);
     uBlockB->startDone(startDone);
+    uBlockA->dupIf(dupIf);
+    uBlockB->dupIf(dupIf);
     uAPBDecode->apb_uBlockA(apb_uBlockA);
     uBlockA->apbReg(apb_uBlockA);
     uAPBDecode->apb_uBlockB(apb_uBlockB);

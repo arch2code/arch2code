@@ -86,6 +86,7 @@ class Node:
         self.storage_key_field: Optional[str] = None  # Field name for storage/DB (combo key field name or same as anchor)
         self.storage_key_field_qualified: Optional[str] = None  # Qualified version: storage_key_field + 'Key'
         self.parent_storage_key_field: Optional[str] = None  # Unqualified field name for storage/DB (parent's combo key field name or same as anchor)
+        self.parent_storage_key_field_qualified: Optional[str] = None  # Unqualified field name for storage/DB (parent's combo key field name or same as anchor)
         self.key_fields: List[str] = []  # All fields that compose the database key
         self.outer_key_fields: List[str] = []  # Fields marked as 'outerkey' (reference parent)
         self.is_combo_key = False  # True if key uses _key: directive
@@ -128,6 +129,10 @@ class Node:
     def get_storage_key_field_name(self) -> Optional[str]:
         """Get the name of the field used for storage/DB (combo key field name)"""
         return self.storage_key_field
+
+    def get_storage_key_field_name_qualified(self) -> Optional[str]:
+        """Get the name of the field used for storage/DB (combo key field name qualified)"""
+        return self.storage_key_field_qualified
     
     def compute_qualified_combo_sources(self, combo_sources: List[str]) -> List[str]:
         """
@@ -199,6 +204,7 @@ class Node:
             parent_storage_field = Field(parent_storage_key, 'outer', 0)
             self.add_field(parent_storage_field)
             qualified_key = parent_storage_key + 'Key'
+            self.parent_storage_key_field_qualified = qualified_key
             # Only add qualified version if parent node has it
             if parent_node and parent_node.has_field(qualified_key):
                 # Qualified key field from parent should be copied (outerkeyKey), not recomputed
@@ -257,7 +263,7 @@ class Node:
         """Get the list of qualified parent keys for composite key construction"""
         return self.parent_key_chain
     
-    def build_storage_key(self, row: dict, inner_key: Optional[str] = None) -> str:
+    def build_storage_key(self, row: dict) -> str:
         """
         Build the composite key for storing this row in self.data[tableName].
         
@@ -269,7 +275,6 @@ class Node:
         
         Args:
             row: Database row dict with all key values
-            inner_key: For multi-entry tables, the key field name (without 'Key' suffix) - unused, kept for compatibility
         
         Returns:
             Composite key string (e.g., 'apb/src/_a2csystem')
@@ -304,21 +309,21 @@ class Node:
         
         # For multi-entry tables, return the parent storage key for grouping
         # (used to detect when we've finished reading all children for a parent)
-        if self.is_multi_entry and self.parent_storage_key_field:
+        if self.is_multi_entry and self.parent_storage_key_field_qualified:
             try:
-                return str(row[self.parent_storage_key_field])
+                return str(row[self.parent_storage_key_field_qualified])
             except (KeyError, IndexError):
                 row_keys = list(row.keys()) if hasattr(row, 'keys') else list(row.keys())
-                raise KeyError(f"Missing parent key '{self.parent_storage_key_field}' in row for table '{self.full_path}'. Row keys: {row_keys}")
+                raise KeyError(f"Missing parent key '{self.parent_storage_key_field_qualified}' in row for table '{self.full_path}'. Row keys: {row_keys}")
         
         # If we reach here, the node is misconfigured
         raise ValueError(
             f"Cannot build storage key for table '{self.full_path}': "
             f"is_multi_entry={self.is_multi_entry}, "
             f"storage_key_field_qualified={self.storage_key_field_qualified}, "
-            f"parent_storage_key_field={self.parent_storage_key_field}. "
+            f"parent_storage_key_field_qualified={self.parent_storage_key_field_qualified}. "
             f"Node must have either storage_key_field_qualified (for single-entry) "
-            f"or parent_storage_key_field (for multi-entry)."
+            f"or parent_storage_key_field_qualified  (for multi-entry)."
         )
     
     def get_yaml_storage_key(self, row_dict: dict) -> str:
@@ -639,8 +644,6 @@ class Schema:
         for section in schema:
             is_combo_override = False  # Reset for each section
             current_keys = parent_keys  # Reset for each section - can be overridden by combo keys
-            if section == 'memories':
-                pass
             node = Node(section, context)
             
             # Set parent_key_chain from the parent_keys passed down
@@ -781,10 +784,9 @@ class Schema:
                             validator.scope = my_validate.get('scope')
                             # Mark field as foreign key (references another table)
                             field.is_foreign_key = True
-                            # Add fieldKey for lookup validators (but not for combo fields or combo keys)
+                            # Add fieldKey for lookup validators (but not for combo keys)
                             # Combo keys will have their qualified key created by set_key()
-                            # Regular combo fields don't need qualified keys
-                            if not my_combo_field and not my_combo_key:
+                            if not my_combo_key:
                                 field_key = Field(field_name + 'Key', 'ignore', line_number)
                                 node.add_field(field_key)
                         elif 'values' in my_validate:

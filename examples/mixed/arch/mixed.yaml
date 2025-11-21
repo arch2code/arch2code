@@ -270,6 +270,11 @@ structures:
 ####                    structureName gets bound to during generation, similar for System C
 ### desc: followed by a string is a description of this interface, required
 interfaces:
+  dupIf:
+    desc: "Duplicate interface def"
+    interfaceType: rdy_vld
+    structures:
+      - {structure: seeSt, structureType: data_t}
   aStuffIf:
     interfaceType: req_ack
     desc: "An interface for A"
@@ -379,6 +384,7 @@ connections:
   - {interface: dStuffIf, src: uBlockF1, srcport: dSout, dst: uBlockD,    dstport: inD,  interfaceName: loopFD}
   - {interface: apbReg,   src: uCPU,                     dst: uAPBDecode}
   - {interface: startDone, src: uBlockA,                 dst: uBlockB}
+  - {interface: dupIf,    src: uBlockA,                  dst: uBlockB}
 
 # in connection maps the direction field should match the instance port direction
 connectionMaps:
