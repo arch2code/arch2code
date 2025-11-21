@@ -69,7 +69,7 @@ def render_default(args, prj, data):
     out.append(indent + 'static registerBlock registerBlock_;')
     out.append('public:')
 
-    channels = intf_gen_utils.sc_declare_channels(data, prj, indent)
+    channels = intf_gen_utils.sc_declare_channels(data, prj, indent, data)
     if len(channels):
         out.append( indent + '// channels')
         out.extend(channels)

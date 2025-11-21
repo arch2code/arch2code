@@ -1,0 +1,20 @@
+
+interface_defs:
+  rdy_vld : 
+    parameters : 
+      data_t : { datatype : struct, default : 'bit' }
+    signals: 
+      vld : bool
+      data : data_t
+      rdy : bool
+    modports :
+      src : 
+        inputs : ['rdy']
+        outputs: ['vld', 'data']
+      dst : 
+        inputs : ['vld', 'data']
+        outputs: ['rdy']
+    sc_channel :
+      type : 'rdy_vld'
+      multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
+

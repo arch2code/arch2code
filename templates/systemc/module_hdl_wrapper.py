@@ -26,9 +26,10 @@ def render_sc(args, prj, data):
 
     def sec_bfm_includes(args, prj, data):
         s = []
-        block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'])
+        block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'], data)
         for intf_type in sorted(block_intf_set):
-            if intf_gen_utils.INTF_DEFS[intf_type].get('skip', None):
+            intf_def = intf_gen_utils.get_intf_defs(intf_type, data)
+            if intf_def.get('skip', None):
                 continue
             s.append(f'#include "{intf_type}_bfm.h"')
         s = '\n'.join(s)
@@ -140,7 +141,7 @@ def render_sc(args, prj, data):
     if not args.hierarchy:
         for port_type in data['ports']:
             for port in data['ports'][port_type] if not args.hierarchy else []:
-                mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port_type][port], prj)
+                mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port_type][port], prj, data)
 
     match args.section:
         case 'hdl_sc_wrapper_class' : return sec_hdl_sc_wrapper_class(args, prj, data)

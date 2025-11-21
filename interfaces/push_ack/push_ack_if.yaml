@@ -1,0 +1,20 @@
+
+interface_defs:
+  push_ack : 
+    parameters : 
+      data_t : { datatype : struct, default : 'bit' }
+    signals: 
+      push : bool
+      data : data_t
+      ack : bool
+    modports :
+      src : 
+        inputs : ['ack']
+        outputs: ['push', 'data']
+      dst : 
+        inputs : ['push', 'data']
+        outputs: ['ack']
+    sc_channel :
+      type : 'push_ack'
+      multicycle_types : []
+

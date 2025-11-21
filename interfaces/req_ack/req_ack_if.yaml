@@ -1,0 +1,22 @@
+
+interface_defs:
+  req_ack : 
+    parameters : 
+      data_t : { datatype : struct, default : 'bit' }
+      rdata_t : { datatype : struct, default : 'bit' }
+    signals: 
+      req : bool
+      data : data_t
+      ack : bool
+      rdata : rdata_t
+    modports :
+      src : 
+        inputs : ['ack', 'rdata']
+        outputs: ['req', 'data']
+      dst : 
+        inputs : ['req', 'data']
+        outputs: ['ack', 'rdata']
+    sc_channel :
+      type : 'req_ack'
+      multicycle_types : []
+

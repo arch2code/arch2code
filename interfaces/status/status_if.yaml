@@ -1,0 +1,21 @@
+
+interface_defs:
+  status : 
+    parameters : 
+      data_t : { datatype : struct, default : 'bit' }
+    signals: 
+      data : data_t
+    modports :
+      src : 
+        inputs : []
+        outputs: ['data']
+      dst : 
+        inputs : ['data']
+        outputs: []
+    sc_channel :
+      type : 'status'
+      multicycle_types : []
+      set_initial_value: true
+    multiDst : True
+    mappedFrom : ['reg_ro', 'reg_rw']
+

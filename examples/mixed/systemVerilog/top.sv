@@ -14,6 +14,7 @@ import mixed_package::*;
     rdy_vld_if #(.data_t(seeSt)) cStuffIf();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
     notify_ack_if #() startDone();
+    rdy_vld_if #(.data_t(seeSt)) dupIf();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBlockA();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBlockB();
 
@@ -28,6 +29,7 @@ blockA uBlockA (
     .aStuffIf (aStuffIf),
     .cStuffIf (cStuffIf),
     .startDone (startDone),
+    .dupIf (dupIf),
     .apbReg (apb_uBlockA),
     .clk (clk),
     .rst_n (rst_n)
@@ -50,6 +52,7 @@ blockC uBlockC (
 blockB uBlockB (
     .btod (aStuffIf),
     .startDone (startDone),
+    .dupIf (dupIf),
     .apbReg (apb_uBlockB),
     .clk (clk),
     .rst_n (rst_n)

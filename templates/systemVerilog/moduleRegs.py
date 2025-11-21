@@ -89,7 +89,7 @@ def section_intf_ports(prj, data):
         for port, port_data in data['ports'][sourceType].items():
             connectionData = port_data.get('connection', {})
             intf_data = intf_gen_utils.get_intf_data(connectionData, prj)
-            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'])
+            intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data)
             out.append(f"{intf_type}_if.{port_data['direction']} {port_data['name']},")
 
 

@@ -28,7 +28,7 @@ gen: $(GEN_SV_FILES) $(GEN_SC_FILES)
 VL_OBJ_FILES = $(subst ./,obj_dir/V, $(patsubst %.sv, %.o, $(GEN_SV_FILES)))
 
 $(VL_OBJ_FILES): $(GEN_SV_FILES)
-	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) $(CPP_SRCS) -F $(PROJECT_ROOT)/systemVerilog/package.f -F $(PROJECT_ROOT)/systemVerilog/$(PROJECT_NAME).f $(subst obj_dir/V,, $(patsubst %.o, %.sv, $@)) -top $(notdir $(subst obj_dir/V,, $(patsubst %.o,%, $@))) --exe
+	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) $(CPP_SRCS) -F $(REPO_ROOT)/common/systemVerilog/a2c.f -F $(PROJECT_ROOT)/systemVerilog/package.f -F $(PROJECT_ROOT)/systemVerilog/$(PROJECT_NAME).f $(subst obj_dir/V,, $(patsubst %.o, %.sv, $@)) -top $(notdir $(subst obj_dir/V,, $(patsubst %.o,%, $@))) --exe
 
 
 libvl_s_wrap.a: $(VL_OBJ_FILES)

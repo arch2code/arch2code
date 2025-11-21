@@ -48,6 +48,14 @@ Connection: uBlockA -> uBlockB
 Interface: startDone
 A start done interface
 
+Connection: uBlockA -> uBlockB
+Interface: dupIf
+Duplicate interface def
+
+Structure: seeSt
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
+
 Connection: uAPBDecode -> uBlockA
 Interface: apbReg
 CPU access to SoC registers in the design
@@ -113,6 +121,14 @@ Var:  variablea One bit of A One bit of A
 Connection: uBlockA -> uBlockB
 Interface: startDone
 A start done interface
+
+Connection: uBlockA -> uBlockB
+Interface: dupIf
+Duplicate interface def
+
+Structure: seeSt
+Var:  variablec Two bits of C Two bits of C
+Var:  variablec2 Three bits of C Three bits of C
 
 Connection: uAPBDecode -> uBlockB
 Interface: apbReg

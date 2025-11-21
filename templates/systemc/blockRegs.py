@@ -49,7 +49,7 @@ def get_hwregs(prj, data):
         if reg['register'] in regs:
             continue
         regs[reg['register']] = 0
-        port_type = intf_gen_utils.get_intf_type(reg['interfaceType'])
+        port_type = intf_gen_utils.get_intf_type(reg['interfaceType'], data)
         direction = "_out" if reg['direction'] == 'src' else "_in"
         port_type = port_type + direction
         hwregs.append({
