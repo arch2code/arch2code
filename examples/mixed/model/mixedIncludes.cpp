@@ -905,6 +905,499 @@ void test9St::sc_unpack(sc_bv<192> packed_data)
         wordArray[i].sc_unpack(packed_data.range(0+(i+1)*48-1, 0+i*48));
     }
 }
+bool signedTestSt::operator == (const signedTestSt & rhs) const {
+    bool ret = true;
+    ret = ret && (signedValue == rhs.signedValue);
+    ret = ret && (unsignedValue == rhs.unsignedValue);
+    return ( ret );
+    }
+std::string signedTestSt::prt(bool all) const
+{
+    return (std::format("signedValue:0x{:02x} unsignedValue:0x{:01x}",
+       (uint64_t) signedValue,
+       (uint64_t) unsignedValue
+    ));
+}
+void signedTestSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, signedTestSt::_byteWidth);
+    _ret = unsignedValue;
+    _ret |= ((uint16_t)(signedValue & ((1ULL << 8) - 1))) << (2 & 15);
+}
+void signedTestSt::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    unsignedValue = (twoBitT)((_src >> (_pos & 15)) & ((1ULL << 2) - 1));
+    _pos += 2;
+    signedValue = (signedByte_t)((_src >> (_pos & 15)) & ((1ULL << 8) - 1));
+    _pos += 8;
+    // Sign extension for signed type
+    if (signedValue & (1ULL << (8 - 1))) {
+        signedValue = (signedByte_t)(signedValue | ~((1ULL << 8) - 1));
+    }
+}
+sc_bv<10> signedTestSt::sc_pack(void) const
+{
+    sc_bv<10> packed_data;
+    packed_data.range(1, 0) = unsignedValue;
+    packed_data.range(9, 2) = signedValue;
+    return packed_data;
+}
+void signedTestSt::sc_unpack(sc_bv<10> packed_data)
+{
+    unsignedValue = (twoBitT) packed_data.range(1, 0).to_uint64();
+    signedValue = (signedByte_t) packed_data.range(9, 2).to_uint64();
+    // Sign extension for signed type
+    if (signedValue & (1ULL << (8 - 1))) {
+        signedValue = (signedByte_t)(signedValue | ~((1ULL << 8) - 1));
+    }
+}
+bool mixedSignedSt::operator == (const mixedSignedSt & rhs) const {
+    bool ret = true;
+    ret = ret && (temp == rhs.temp);
+    ret = ret && (offset == rhs.offset);
+    ret = ret && (flags == rhs.flags);
+    return ( ret );
+    }
+std::string mixedSignedSt::prt(bool all) const
+{
+    return (std::format("temp:0x{:04x} offset:0x{:02x} flags:0x{:01x}",
+       (uint64_t) temp,
+       (uint64_t) offset,
+       (uint64_t) flags
+    ));
+}
+void mixedSignedSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, mixedSignedSt::_byteWidth);
+    _ret = flags;
+    _ret |= ((uint32_t)(offset & ((1ULL << 8) - 1))) << (4 & 31);
+    _ret |= ((uint32_t)(temp & ((1ULL << 16) - 1))) << (12 & 31);
+}
+void mixedSignedSt::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    flags = (fourBitT)((_src >> (_pos & 31)) & ((1ULL << 4) - 1));
+    _pos += 4;
+    offset = (signedByte_t)((_src >> (_pos & 31)) & ((1ULL << 8) - 1));
+    _pos += 8;
+    // Sign extension for signed type
+    if (offset & (1ULL << (8 - 1))) {
+        offset = (signedByte_t)(offset | ~((1ULL << 8) - 1));
+    }
+    temp = (signedWord_t)((_src >> (_pos & 31)) & ((1ULL << 16) - 1));
+    _pos += 16;
+    // Sign extension for signed type
+    if (temp & (1ULL << (16 - 1))) {
+        temp = (signedWord_t)(temp | ~((1ULL << 16) - 1));
+    }
+}
+sc_bv<28> mixedSignedSt::sc_pack(void) const
+{
+    sc_bv<28> packed_data;
+    packed_data.range(3, 0) = flags;
+    packed_data.range(11, 4) = offset;
+    packed_data.range(27, 12) = temp;
+    return packed_data;
+}
+void mixedSignedSt::sc_unpack(sc_bv<28> packed_data)
+{
+    flags = (fourBitT) packed_data.range(3, 0).to_uint64();
+    offset = (signedByte_t) packed_data.range(11, 4).to_uint64();
+    // Sign extension for signed type
+    if (offset & (1ULL << (8 - 1))) {
+        offset = (signedByte_t)(offset | ~((1ULL << 8) - 1));
+    }
+    temp = (signedWord_t) packed_data.range(27, 12).to_uint64();
+    // Sign extension for signed type
+    if (temp & (1ULL << (16 - 1))) {
+        temp = (signedWord_t)(temp | ~((1ULL << 16) - 1));
+    }
+}
+bool signedArraySt::operator == (const signedArraySt & rhs) const {
+    bool ret = true;
+    for(unsigned int i=0; i<3; i++) {
+        ret = ret && (values[i] == rhs.values[i]);
+    }
+    return ( ret );
+    }
+std::string signedArraySt::prt(bool all) const
+{
+    return (std::format("values[0:2]: {}",
+       staticArrayPrt<signedNibble_t, 3>(values, all)
+    ));
+}
+void signedArraySt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, signedArraySt::_byteWidth);
+    uint16_t _pos{0};
+    for(unsigned int i=0; i<3; i++) {
+        pack_bits((uint64_t *)&_ret, _pos, values[i] & ((1ULL << 4) - 1), 4);
+        _pos += 4;
+    }
+}
+void signedArraySt::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(unsigned int i=0; i<3; i++) {
+        uint16_t _bits = 4;
+        uint16_t _consume;
+        _consume = std::min(_bits, (uint16_t)(16-(_pos & 15)));
+        values[i] = (signedNibble_t)((_src >> (_pos & 15)) & ((1ULL << 4) - 1));
+        _pos += _consume;
+        _bits -= _consume;
+        if ((_bits > 0) && (_consume != 16)) {
+            values[i] = (signedNibble_t)(values[i] | ((_src << _consume) & ((1ULL << 4) - 1)));
+            _pos += _bits;
+        }
+        // Sign extension for signed type
+        if (values[i] & (1ULL << (4 - 1))) {
+            values[i] = (signedNibble_t)(values[i] | ~((1ULL << 4) - 1));
+        }
+    }
+}
+sc_bv<12> signedArraySt::sc_pack(void) const
+{
+    sc_bv<12> packed_data;
+    for(unsigned int i=0; i<3; i++) {
+        packed_data.range(0+(i+1)*4-1, 0+i*4) = values[i];
+    }
+    return packed_data;
+}
+void signedArraySt::sc_unpack(sc_bv<12> packed_data)
+{
+    for(unsigned int i=0; i<3; i++) {
+        values[i] = (signedNibble_t) packed_data.range(0+(i+1)*4-1, 0+i*4).to_uint64();
+        // Sign extension for signed type
+        if (values[i] & (1ULL << (4 - 1))) {
+            values[i] = (signedNibble_t)(values[i] | ~((1ULL << 4) - 1));
+        }
+    }
+}
+bool nonByteAlignedSignedSt::operator == (const nonByteAlignedSignedSt & rhs) const {
+    bool ret = true;
+    ret = ret && (field1 == rhs.field1);
+    ret = ret && (field2 == rhs.field2);
+    ret = ret && (field3 == rhs.field3);
+    ret = ret && (field4 == rhs.field4);
+    return ( ret );
+    }
+std::string nonByteAlignedSignedSt::prt(bool all) const
+{
+    return (std::format("field1:0x{:01x} field2:0x{:02x} field3:0x{:02x} field4:0x{:01x}",
+       (uint64_t) field1,
+       (uint64_t) field2,
+       (uint64_t) field3,
+       (uint64_t) field4
+    ));
+}
+void nonByteAlignedSignedSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, nonByteAlignedSignedSt::_byteWidth);
+    _ret = field4;
+    _ret |= ((uint16_t)(field3 & ((1ULL << 5) - 1))) << (3 & 15);
+    _ret |= (uint16_t)field2 << (8 & 15);
+    _ret |= ((uint16_t)(field1 & ((1ULL << 3) - 1))) << (13 & 15);
+}
+void nonByteAlignedSignedSt::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    field4 = (threeBitT)((_src >> (_pos & 15)) & ((1ULL << 3) - 1));
+    _pos += 3;
+    field3 = (signed5bit_t)((_src >> (_pos & 15)) & ((1ULL << 5) - 1));
+    _pos += 5;
+    // Sign extension for signed type
+    if (field3 & (1ULL << (5 - 1))) {
+        field3 = (signed5bit_t)(field3 | ~((1ULL << 5) - 1));
+    }
+    field2 = (unsigned5bit_t)((_src >> (_pos & 15)) & ((1ULL << 5) - 1));
+    _pos += 5;
+    field1 = (signed3bit_t)((_src >> (_pos & 15)) & ((1ULL << 3) - 1));
+    _pos += 3;
+    // Sign extension for signed type
+    if (field1 & (1ULL << (3 - 1))) {
+        field1 = (signed3bit_t)(field1 | ~((1ULL << 3) - 1));
+    }
+}
+sc_bv<16> nonByteAlignedSignedSt::sc_pack(void) const
+{
+    sc_bv<16> packed_data;
+    packed_data.range(2, 0) = field4;
+    packed_data.range(7, 3) = field3;
+    packed_data.range(12, 8) = field2;
+    packed_data.range(15, 13) = field1;
+    return packed_data;
+}
+void nonByteAlignedSignedSt::sc_unpack(sc_bv<16> packed_data)
+{
+    field4 = (threeBitT) packed_data.range(2, 0).to_uint64();
+    field3 = (signed5bit_t) packed_data.range(7, 3).to_uint64();
+    // Sign extension for signed type
+    if (field3 & (1ULL << (5 - 1))) {
+        field3 = (signed5bit_t)(field3 | ~((1ULL << 5) - 1));
+    }
+    field2 = (unsigned5bit_t) packed_data.range(12, 8).to_uint64();
+    field1 = (signed3bit_t) packed_data.range(15, 13).to_uint64();
+    // Sign extension for signed type
+    if (field1 & (1ULL << (3 - 1))) {
+        field1 = (signed3bit_t)(field1 | ~((1ULL << 3) - 1));
+    }
+}
+bool complexMixedSt::operator == (const complexMixedSt & rhs) const {
+    bool ret = true;
+    ret = ret && (signedA == rhs.signedA);
+    ret = ret && (unsignedB == rhs.unsignedB);
+    ret = ret && (signedC == rhs.signedC);
+    ret = ret && (unsignedD == rhs.unsignedD);
+    ret = ret && (signedE == rhs.signedE);
+    return ( ret );
+    }
+std::string complexMixedSt::prt(bool all) const
+{
+    return (std::format("signedA:0x{:02x} unsignedB:0x{:03x} signedC:0x{:03x} unsignedD:0x{:01x} signedE:0x{:02x}",
+       (uint64_t) signedA,
+       (uint64_t) unsignedB,
+       (uint64_t) signedC,
+       (uint64_t) unsignedD,
+       (uint64_t) signedE
+    ));
+}
+void complexMixedSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, complexMixedSt::_byteWidth);
+    _ret = signedE & ((1ULL << 8) - 1);
+    _ret |= (uint64_t)unsignedD << (8 & 63);
+    _ret |= ((uint64_t)(signedC & ((1ULL << 11) - 1))) << (12 & 63);
+    _ret |= (uint64_t)unsignedB << (23 & 63);
+    _ret |= ((uint64_t)(signedA & ((1ULL << 7) - 1))) << (32 & 63);
+}
+void complexMixedSt::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    signedE = (signedByte_t)((_src >> (_pos & 63)) & ((1ULL << 8) - 1));
+    _pos += 8;
+    // Sign extension for signed type
+    if (signedE & (1ULL << (8 - 1))) {
+        signedE = (signedByte_t)(signedE | ~((1ULL << 8) - 1));
+    }
+    unsignedD = (fourBitT)((_src >> (_pos & 63)) & ((1ULL << 4) - 1));
+    _pos += 4;
+    signedC = (signed11bit_t)((_src >> (_pos & 63)) & ((1ULL << 11) - 1));
+    _pos += 11;
+    // Sign extension for signed type
+    if (signedC & (1ULL << (11 - 1))) {
+        signedC = (signed11bit_t)(signedC | ~((1ULL << 11) - 1));
+    }
+    unsignedB = (unsigned9bit_t)((_src >> (_pos & 63)) & ((1ULL << 9) - 1));
+    _pos += 9;
+    signedA = (signed7bit_t)((_src >> (_pos & 63)) & ((1ULL << 7) - 1));
+    _pos += 7;
+    // Sign extension for signed type
+    if (signedA & (1ULL << (7 - 1))) {
+        signedA = (signed7bit_t)(signedA | ~((1ULL << 7) - 1));
+    }
+}
+sc_bv<39> complexMixedSt::sc_pack(void) const
+{
+    sc_bv<39> packed_data;
+    packed_data.range(7, 0) = signedE;
+    packed_data.range(11, 8) = unsignedD;
+    packed_data.range(22, 12) = signedC;
+    packed_data.range(31, 23) = unsignedB;
+    packed_data.range(38, 32) = signedA;
+    return packed_data;
+}
+void complexMixedSt::sc_unpack(sc_bv<39> packed_data)
+{
+    signedE = (signedByte_t) packed_data.range(7, 0).to_uint64();
+    // Sign extension for signed type
+    if (signedE & (1ULL << (8 - 1))) {
+        signedE = (signedByte_t)(signedE | ~((1ULL << 8) - 1));
+    }
+    unsignedD = (fourBitT) packed_data.range(11, 8).to_uint64();
+    signedC = (signed11bit_t) packed_data.range(22, 12).to_uint64();
+    // Sign extension for signed type
+    if (signedC & (1ULL << (11 - 1))) {
+        signedC = (signed11bit_t)(signedC | ~((1ULL << 11) - 1));
+    }
+    unsignedB = (unsigned9bit_t) packed_data.range(31, 23).to_uint64();
+    signedA = (signed7bit_t) packed_data.range(38, 32).to_uint64();
+    // Sign extension for signed type
+    if (signedA & (1ULL << (7 - 1))) {
+        signedA = (signed7bit_t)(signedA | ~((1ULL << 7) - 1));
+    }
+}
+bool edgeCaseSignedSt::operator == (const edgeCaseSignedSt & rhs) const {
+    bool ret = true;
+    ret = ret && (tiny == rhs.tiny);
+    ret = ret && (smallVal == rhs.smallVal);
+    ret = ret && (mediumVal == rhs.mediumVal);
+    ret = ret && (largeVal == rhs.largeVal);
+    return ( ret );
+    }
+std::string edgeCaseSignedSt::prt(bool all) const
+{
+    return (std::format("tiny:0x{:01x} smallVal:0x{:01x} mediumVal:0x{:03x} largeVal:0x{:04x}",
+       (uint64_t) tiny,
+       (uint64_t) smallVal,
+       (uint64_t) mediumVal,
+       (uint64_t) largeVal
+    ));
+}
+void edgeCaseSignedSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, edgeCaseSignedSt::_byteWidth);
+    _ret = largeVal & ((1ULL << 16) - 1);
+    _ret |= ((uint64_t)(mediumVal & ((1ULL << 11) - 1))) << (16 & 63);
+    _ret |= ((uint64_t)(smallVal & ((1ULL << 4) - 1))) << (27 & 63);
+    _ret |= ((uint64_t)(tiny & ((1ULL << 3) - 1))) << (31 & 63);
+}
+void edgeCaseSignedSt::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    largeVal = (signedWord_t)((_src >> (_pos & 63)) & ((1ULL << 16) - 1));
+    _pos += 16;
+    // Sign extension for signed type
+    if (largeVal & (1ULL << (16 - 1))) {
+        largeVal = (signedWord_t)(largeVal | ~((1ULL << 16) - 1));
+    }
+    mediumVal = (signed11bit_t)((_src >> (_pos & 63)) & ((1ULL << 11) - 1));
+    _pos += 11;
+    // Sign extension for signed type
+    if (mediumVal & (1ULL << (11 - 1))) {
+        mediumVal = (signed11bit_t)(mediumVal | ~((1ULL << 11) - 1));
+    }
+    smallVal = (signedNibble_t)((_src >> (_pos & 63)) & ((1ULL << 4) - 1));
+    _pos += 4;
+    // Sign extension for signed type
+    if (smallVal & (1ULL << (4 - 1))) {
+        smallVal = (signedNibble_t)(smallVal | ~((1ULL << 4) - 1));
+    }
+    tiny = (signed3bit_t)((_src >> (_pos & 63)) & ((1ULL << 3) - 1));
+    _pos += 3;
+    // Sign extension for signed type
+    if (tiny & (1ULL << (3 - 1))) {
+        tiny = (signed3bit_t)(tiny | ~((1ULL << 3) - 1));
+    }
+}
+sc_bv<34> edgeCaseSignedSt::sc_pack(void) const
+{
+    sc_bv<34> packed_data;
+    packed_data.range(15, 0) = largeVal;
+    packed_data.range(26, 16) = mediumVal;
+    packed_data.range(30, 27) = smallVal;
+    packed_data.range(33, 31) = tiny;
+    return packed_data;
+}
+void edgeCaseSignedSt::sc_unpack(sc_bv<34> packed_data)
+{
+    largeVal = (signedWord_t) packed_data.range(15, 0).to_uint64();
+    // Sign extension for signed type
+    if (largeVal & (1ULL << (16 - 1))) {
+        largeVal = (signedWord_t)(largeVal | ~((1ULL << 16) - 1));
+    }
+    mediumVal = (signed11bit_t) packed_data.range(26, 16).to_uint64();
+    // Sign extension for signed type
+    if (mediumVal & (1ULL << (11 - 1))) {
+        mediumVal = (signed11bit_t)(mediumVal | ~((1ULL << 11) - 1));
+    }
+    smallVal = (signedNibble_t) packed_data.range(30, 27).to_uint64();
+    // Sign extension for signed type
+    if (smallVal & (1ULL << (4 - 1))) {
+        smallVal = (signedNibble_t)(smallVal | ~((1ULL << 4) - 1));
+    }
+    tiny = (signed3bit_t) packed_data.range(33, 31).to_uint64();
+    // Sign extension for signed type
+    if (tiny & (1ULL << (3 - 1))) {
+        tiny = (signed3bit_t)(tiny | ~((1ULL << 3) - 1));
+    }
+}
+bool mixedArraySignedSt::operator == (const mixedArraySignedSt & rhs) const {
+    bool ret = true;
+    for(unsigned int i=0; i<4; i++) {
+        ret = ret && (signedVals[i] == rhs.signedVals[i]);
+    }
+    for(unsigned int i=0; i<3; i++) {
+        ret = ret && (unsignedVals[i] == rhs.unsignedVals[i]);
+    }
+    return ( ret );
+    }
+std::string mixedArraySignedSt::prt(bool all) const
+{
+    return (std::format("signedVals[0:3]: {} unsignedVals[0:2]: {}",
+       staticArrayPrt<signed5bit_t, 4>(signedVals, all),
+       staticArrayPrt<unsigned5bit_t, 3>(unsignedVals, all)
+    ));
+}
+void mixedArraySignedSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, mixedArraySignedSt::_byteWidth);
+    uint16_t _pos{0};
+    for(unsigned int i=0; i<3; i++) {
+        pack_bits((uint64_t *)&_ret, _pos, unsignedVals[i], 5);
+        _pos += 5;
+    }
+    for(unsigned int i=0; i<4; i++) {
+        pack_bits((uint64_t *)&_ret, _pos, signedVals[i] & ((1ULL << 5) - 1), 5);
+        _pos += 5;
+    }
+}
+void mixedArraySignedSt::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(unsigned int i=0; i<3; i++) {
+        uint16_t _bits = 5;
+        uint16_t _consume;
+        _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
+        unsignedVals[i] = (unsigned5bit_t)((_src >> (_pos & 63)) & ((1ULL << 5) - 1));
+        _pos += _consume;
+        _bits -= _consume;
+        if ((_bits > 0) && (_consume != 64)) {
+            unsignedVals[i] = (unsigned5bit_t)(unsignedVals[i] | ((_src << _consume) & ((1ULL << 5) - 1)));
+            _pos += _bits;
+        }
+    }
+    for(unsigned int i=0; i<4; i++) {
+        uint16_t _bits = 5;
+        uint16_t _consume;
+        _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
+        signedVals[i] = (signed5bit_t)((_src >> (_pos & 63)) & ((1ULL << 5) - 1));
+        _pos += _consume;
+        _bits -= _consume;
+        if ((_bits > 0) && (_consume != 64)) {
+            signedVals[i] = (signed5bit_t)(signedVals[i] | ((_src << _consume) & ((1ULL << 5) - 1)));
+            _pos += _bits;
+        }
+        // Sign extension for signed type
+        if (signedVals[i] & (1ULL << (5 - 1))) {
+            signedVals[i] = (signed5bit_t)(signedVals[i] | ~((1ULL << 5) - 1));
+        }
+    }
+}
+sc_bv<35> mixedArraySignedSt::sc_pack(void) const
+{
+    sc_bv<35> packed_data;
+    for(unsigned int i=0; i<3; i++) {
+        packed_data.range(0+(i+1)*5-1, 0+i*5) = unsignedVals[i];
+    }
+    for(unsigned int i=0; i<4; i++) {
+        packed_data.range(15+(i+1)*5-1, 15+i*5) = signedVals[i];
+    }
+    return packed_data;
+}
+void mixedArraySignedSt::sc_unpack(sc_bv<35> packed_data)
+{
+    for(unsigned int i=0; i<3; i++) {
+        unsignedVals[i] = (unsigned5bit_t) packed_data.range(0+(i+1)*5-1, 0+i*5).to_uint64();
+    }
+    for(unsigned int i=0; i<4; i++) {
+        signedVals[i] = (signed5bit_t) packed_data.range(15+(i+1)*5-1, 15+i*5).to_uint64();
+        // Sign extension for signed type
+        if (signedVals[i] & (1ULL << (5 - 1))) {
+            signedVals[i] = (signed5bit_t)(signedVals[i] | ~((1ULL << 5) - 1));
+        }
+    }
+}
 
 // GENERATED_CODE_END
 
@@ -913,6 +1406,7 @@ void test9St::sc_unpack(sc_bv<192> packed_data)
 std::string test_mixed_structs::name(void) { return "test_mixed_structs"; }
 void test_mixed_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
+    std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
     for(auto pattern : patterns) {
         aSt::_packedSt packed;
@@ -1729,6 +2223,293 @@ void test_mixed_structs::test(void) {
                 cout << a.prt();
                 cout << b.prt();
                 Q_ASSERT(false,"test9St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : signedPatterns) {
+        signedTestSt::_packedSt packed;
+        memset(&packed, pattern, signedTestSt::_byteWidth);
+        sc_bv<signedTestSt::_bitWidth> aInit;
+        sc_bv<signedTestSt::_bitWidth> aTest;
+        for (int i = 0; i < signedTestSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, signedTestSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        signedTestSt a;
+        a.sc_unpack(aInit);
+        signedTestSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"signedTestSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"signedTestSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = signedTestSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"signedTestSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : signedPatterns) {
+        mixedSignedSt::_packedSt packed;
+        memset(&packed, pattern, mixedSignedSt::_byteWidth);
+        sc_bv<mixedSignedSt::_bitWidth> aInit;
+        sc_bv<mixedSignedSt::_bitWidth> aTest;
+        for (int i = 0; i < mixedSignedSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, mixedSignedSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        mixedSignedSt a;
+        a.sc_unpack(aInit);
+        mixedSignedSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"mixedSignedSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"mixedSignedSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = mixedSignedSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"mixedSignedSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : signedPatterns) {
+        signedArraySt::_packedSt packed;
+        memset(&packed, pattern, signedArraySt::_byteWidth);
+        sc_bv<signedArraySt::_bitWidth> aInit;
+        sc_bv<signedArraySt::_bitWidth> aTest;
+        for (int i = 0; i < signedArraySt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, signedArraySt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        signedArraySt a;
+        a.sc_unpack(aInit);
+        signedArraySt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"signedArraySt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"signedArraySt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = signedArraySt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"signedArraySt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : signedPatterns) {
+        nonByteAlignedSignedSt::_packedSt packed;
+        memset(&packed, pattern, nonByteAlignedSignedSt::_byteWidth);
+        sc_bv<nonByteAlignedSignedSt::_bitWidth> aInit;
+        sc_bv<nonByteAlignedSignedSt::_bitWidth> aTest;
+        for (int i = 0; i < nonByteAlignedSignedSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, nonByteAlignedSignedSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        nonByteAlignedSignedSt a;
+        a.sc_unpack(aInit);
+        nonByteAlignedSignedSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"nonByteAlignedSignedSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"nonByteAlignedSignedSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = nonByteAlignedSignedSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"nonByteAlignedSignedSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : signedPatterns) {
+        complexMixedSt::_packedSt packed;
+        memset(&packed, pattern, complexMixedSt::_byteWidth);
+        sc_bv<complexMixedSt::_bitWidth> aInit;
+        sc_bv<complexMixedSt::_bitWidth> aTest;
+        for (int i = 0; i < complexMixedSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, complexMixedSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        complexMixedSt a;
+        a.sc_unpack(aInit);
+        complexMixedSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"complexMixedSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"complexMixedSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = complexMixedSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"complexMixedSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : signedPatterns) {
+        edgeCaseSignedSt::_packedSt packed;
+        memset(&packed, pattern, edgeCaseSignedSt::_byteWidth);
+        sc_bv<edgeCaseSignedSt::_bitWidth> aInit;
+        sc_bv<edgeCaseSignedSt::_bitWidth> aTest;
+        for (int i = 0; i < edgeCaseSignedSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, edgeCaseSignedSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        edgeCaseSignedSt a;
+        a.sc_unpack(aInit);
+        edgeCaseSignedSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"edgeCaseSignedSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"edgeCaseSignedSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = edgeCaseSignedSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"edgeCaseSignedSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : signedPatterns) {
+        mixedArraySignedSt::_packedSt packed;
+        memset(&packed, pattern, mixedArraySignedSt::_byteWidth);
+        sc_bv<mixedArraySignedSt::_bitWidth> aInit;
+        sc_bv<mixedArraySignedSt::_bitWidth> aTest;
+        for (int i = 0; i < mixedArraySignedSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, mixedArraySignedSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        mixedArraySignedSt a;
+        a.sc_unpack(aInit);
+        mixedArraySignedSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"mixedArraySignedSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"mixedArraySignedSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = mixedArraySignedSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"mixedArraySignedSt fail");
             }
             bitsLeft -= bits;
             ptr++;

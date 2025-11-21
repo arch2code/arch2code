@@ -83,6 +83,7 @@ variables:
 types:
   type: key
   desc: required
+  isSigned: optional(false)
   enum:
     _attribs: [optional, list, post(add_enum)] # post allows performing custom handling after entry is processed
     enumName: key

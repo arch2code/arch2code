@@ -823,6 +823,7 @@ class projectOpen:
                         else:
                             ret[object][key] = value
                             bitwidth = self.getConst( value['width'] )
+                            isSigned = value.get('isSigned', False)
                             # loop through ordered list
                             thisType = None
                             typeArraySize = 1
@@ -832,7 +833,8 @@ class projectOpen:
                                     if arrayElementSize > 0:
                                         # round up to the nearest multiple using integer div, plus one if there is a modulo non zero
                                         typeArraySize = bitwidth // arrayElementSize + (bitwidth % arrayElementSize > 0)
-                                    thisType = myType['type']
+                                    # Select signed or unsigned type based on isSigned flag
+                                    thisType = myType['signedType'] if isSigned else myType['unsignedType']
                                     #if we found something terminate the list as we want the smallest type
                                     break
                             if thisType is None:

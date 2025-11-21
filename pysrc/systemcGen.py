@@ -11,12 +11,12 @@ class genSystemC:
     instances = None
     code = None
     dataTypeMappings = [
-        {'maxSize': 1, 'type': 'uint8_t'},
-        {'maxSize': 8, 'type': 'uint8_t'},
-        {'maxSize': 16, 'type': 'uint16_t'},
-        {'maxSize': 32, 'type': 'uint32_t'},
-        {'maxSize': 64, 'type': 'uint64_t'},
-        {'maxSize': 1024, 'type': 'uint64_t', 'arrayElementSize': 64}
+        {'maxSize': 1, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
+        {'maxSize': 8, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
+        {'maxSize': 16, 'unsignedType': 'uint16_t', 'signedType': 'int16_t'},
+        {'maxSize': 32, 'unsignedType': 'uint32_t', 'signedType': 'int32_t'},
+        {'maxSize': 64, 'unsignedType': 'uint64_t', 'signedType': 'int64_t'},
+        {'maxSize': 1024, 'unsignedType': 'uint64_t', 'signedType': 'int64_t', 'arrayElementSize': 64}
     ]
     def __init__(self, prj, args):
         # get name of file containing renderer configuration
@@ -125,17 +125,22 @@ class genSystemC:
                     if varData['entryType'] == 'Reserved':
                         bitwidth = varData['align']
                         typeInfo = {'enum': False}
+                        varData['isSigned'] = False  # Reserved fields are always unsigned
                         for myType in self.dataTypeMappings:
                             if bitwidth <= myType['maxSize']:
-                                varData['varType'] = myType['type']
+                                # Reserved fields are always unsigned
+                                varData['varType'] = myType['unsignedType']
                                 break
 
                     elif varData['entryType'] == 'NamedStruct':
                         structInfo = prj.data['structures'][varData['subStructKey']]
                         bitwidth = structInfo['width']
+                        varData['isSigned'] = False  # Structures are not signed
                     else:
                         typeInfo = prj.data['types'][varData['varTypeKey']]
                         bitwidth = typeInfo['width']
+                        # Capture isSigned status from type (defaults to False)
+                        varData['isSigned'] = typeInfo.get('isSigned', False)
                     bitwidth = prj.getConst( bitwidth )
                     varData['bitwidth'] = bitwidth
                     varData['arraywidth'] = bitwidth * arraySize if varData['isArray'] else bitwidth
