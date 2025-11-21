@@ -118,8 +118,10 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # Blasted interface ports
     out['ports'] = []
     for intf_sig in intf_def['signals']:
-        modp_signals = intf_def['modports'][intf_modp]
-        port_dir = 'input' if intf_sig in modp_signals['modportGroups']['inputs']['groups'] else 'output'
+        modp_signals = intf_def['modports'][intf_modp]['modportGroups']
+        # Safely get inputs and outputs lists
+        inputs = modp_signals.get('inputs', {}).get('groups', {}) or {}
+        port_dir = 'input' if intf_sig in inputs else 'output'
         port_type = intf_def['signals'][intf_sig]['signalType']
         port_name = f"{intf_name}_{intf_sig}"
         if port_type in intf_param.keys():
@@ -135,9 +137,11 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # Assignment port <-> interface
     out['assign'] = []
     for intf_sig in intf_def['signals']:
-        modp_signals = intf_def['modports'][intf_modp]
-        assign_lhs = f"{intf_name}.{intf_sig}" if intf_sig in modp_signals['modportGroups']['inputs']['groups'] else f"{intf_name}_{intf_sig}"
-        assign_rhs = f"{intf_name}_{intf_sig}" if intf_sig in modp_signals['modportGroups']['inputs']['groups'] else f"{intf_name}.{intf_sig}"
+        modp_signals = intf_def['modports'][intf_modp]['modportGroups']
+        # Safely get inputs and outputs lists
+        inputs = modp_signals.get('inputs', {}).get('groups', {}) or {}
+        assign_lhs = f"{intf_name}.{intf_sig}" if intf_sig in inputs else f"{intf_name}_{intf_sig}"
+        assign_rhs = f"{intf_name}_{intf_sig}" if intf_sig in inputs else f"{intf_name}.{intf_sig}"
         out['assign'].append(f"assign #0 {assign_lhs} = {assign_rhs};")
 
     return out
