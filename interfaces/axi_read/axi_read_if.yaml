@@ -1,0 +1,31 @@
+
+interface_defs:
+  axi_read : 
+    parameters : 
+      addr_t : { datatype : struct, default : 'bit' }
+      data_t : { datatype : struct, default : 'bit' }
+    signals: 
+      araddr : addr_t
+      arid : 'bit [3:0]'
+      arlen : 'bit [7:0]'
+      arsize : 'bit [2:0]'
+      arburst : 'bit [1:0]'
+      arvalid : bool
+      arready : bool
+      rdata : data_t
+      rid : 'bit [3:0]'
+      rresp : 'bit [1:0]'
+      rlast : bool
+      rvalid : bool
+      rready : bool
+    modports :
+      src : 
+        inputs : ['arready', 'rid', 'rdata', 'rresp', 'rlast', 'rvalid']
+        outputs: ['arid', 'araddr', 'arlen', 'arsize', 'arburst', 'arvalid', 'rready']
+      dst : 
+        inputs : ['arid', 'araddr', 'arlen', 'arsize', 'arburst', 'arvalid', 'rready']
+        outputs: ['arready', 'rid', 'rdata', 'rresp', 'rlast', 'rvalid']
+    sc_channel :
+      type : 'axi_read'
+      multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
+

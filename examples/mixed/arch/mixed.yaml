@@ -113,6 +113,44 @@ types:
   apbDataT:
     width: DWORD
     desc: for the data sent or recieved via APB
+  signedByte_t:
+    width: 8
+    isSigned: true
+    desc: "Signed 8-bit type (-128 to 127)"
+  signedWord_t:
+    width: 16
+    isSigned: true
+    desc: "Signed 16-bit type (-32768 to 32767)"
+  signedDword_t:
+    width: 32
+    isSigned: true
+    desc: "Signed 32-bit type"
+  signedNibble_t:
+    width: 4
+    isSigned: true
+    desc: "Signed 4-bit type (-8 to 7) for testing small signed values"
+  signed3bit_t:
+    width: 3
+    isSigned: true
+    desc: "Signed 3-bit type (-4 to 3) non-byte-aligned"
+  signed5bit_t:
+    width: 5
+    isSigned: true
+    desc: "Signed 5-bit type (-16 to 15) non-byte-aligned"
+  signed7bit_t:
+    width: 7
+    isSigned: true
+    desc: "Signed 7-bit type (-64 to 63) non-byte-aligned"
+  signed11bit_t:
+    width: 11
+    isSigned: true
+    desc: "Signed 11-bit type (-1024 to 1023) non-byte-aligned"
+  unsigned5bit_t:
+    width: 5
+    desc: "Unsigned 5-bit type for mixed testing"
+  unsigned9bit_t:
+    width: 9
+    desc: "Unsigned 9-bit type for mixed testing"
 
 
 # variables used as members of structures, only structures are attached to interfaces
@@ -187,6 +225,34 @@ structures:
     words: {varType: wordT, arraySize: 3, desc: "Aligned array of 3 words, each word is 16 bits"}
   test9St:
     wordArray: {subStruct: test8St, arraySize: 4, desc: "Array of 4 * 48 bits"}
+  signedTestSt:
+    signedValue: {varType: signedByte_t, desc: "A signed byte value for testing"}
+    unsignedValue: {varType: twoBitT, desc: "An unsigned two-bit value"}
+  mixedSignedSt:
+    temp: {varType: signedWord_t, desc: "Temperature sensor value"}
+    offset: {varType: signedByte_t, desc: "Calibration offset"}
+    flags: {varType: fourBitT, desc: "Status flags"}
+  signedArraySt:
+    values: {varType: signedNibble_t, arraySize: 3, desc: "Array of three signed nibbles"}
+  nonByteAlignedSignedSt:
+    field1: {varType: signed3bit_t, desc: "3-bit signed at bit 0-2"}
+    field2: {varType: unsigned5bit_t, desc: "5-bit unsigned at bit 3-7"}
+    field3: {varType: signed5bit_t, desc: "5-bit signed at bit 8-12"}
+    field4: {varType: threeBitT, desc: "3-bit unsigned at bit 13-15"}
+  complexMixedSt:
+    signedA: {varType: signed7bit_t, desc: "7-bit signed field"}
+    unsignedB: {varType: unsigned9bit_t, desc: "9-bit unsigned field"}
+    signedC: {varType: signed11bit_t, desc: "11-bit signed field"}
+    unsignedD: {varType: fourBitT, desc: "4-bit unsigned field"}
+    signedE: {varType: signedByte_t, desc: "8-bit signed field to cross 32-bit boundary"}
+  edgeCaseSignedSt:
+    tiny: {varType: signed3bit_t, desc: "Very small signed value"}
+    smallVal: {varType: signedNibble_t, desc: "Small signed value"}
+    mediumVal: {varType: signed11bit_t, desc: "Medium signed value"}
+    largeVal: {varType: signedWord_t, desc: "Large signed value"}
+  mixedArraySignedSt:
+    signedVals: {varType: signed5bit_t, arraySize: 4, desc: "Array of 4 non-byte-aligned signed values"}
+    unsignedVals: {varType: unsigned5bit_t, arraySize: 3, desc: "Array of 3 non-byte-aligned unsigned values"}
 
 # interfaces are needed to make any connection from one instance of a block to another block's instance
 ## interfacename: is the interface's name and key for usage by any other dictionary doing a lookup, required
@@ -204,6 +270,11 @@ structures:
 ####                    structureName gets bound to during generation, similar for System C
 ### desc: followed by a string is a description of this interface, required
 interfaces:
+  dupIf:
+    desc: "Duplicate interface def"
+    interfaceType: rdy_vld
+    structures:
+      - {structure: seeSt, structureType: data_t}
   aStuffIf:
     interfaceType: req_ack
     desc: "An interface for A"
@@ -313,6 +384,7 @@ connections:
   - {interface: dStuffIf, src: uBlockF1, srcport: dSout, dst: uBlockD,    dstport: inD,  interfaceName: loopFD}
   - {interface: apbReg,   src: uCPU,                     dst: uAPBDecode}
   - {interface: startDone, src: uBlockA,                 dst: uBlockB}
+  - {interface: dupIf,    src: uBlockA,                  dst: uBlockB}
 
 # in connection maps the direction field should match the instance port direction
 connectionMaps:

@@ -11,13 +11,14 @@ def render(args, prj, data):
 
     out = list()
 
-    block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'])
+    block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'], data)
 
     if not block_intf_set:
         out.append('#include "blockBase.h"')
 
     for intfType in sorted(block_intf_set):
-        chnlType = intf_gen_utils.INTF_DEFS[intfType]['sc_channel']['type']
+        intf_def = intf_gen_utils.get_intf_defs(intfType, data)
+        chnlType = intf_def['sc_channel']['type']
         out.append(f'#include "{chnlType}_channel.h"')
 
     if args.fileMapKey:
@@ -82,7 +83,7 @@ def renderClass(args, prj, data, blockName, ifMapping):
     portNames = dict()
     for sourceType in data['ports']:
         for port, port_data in data['ports'][sourceType].items():
-            mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(port_data, prj, swap_dir=ifMapping['swap_dir'])
+            mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(port_data, prj, data, swap_dir=ifMapping['swap_dir'])
             if port not in portNames:
                 portNames[port] = 0
             else:
@@ -200,7 +201,7 @@ def renderChannels(args, prj, data):
     for direction in ['src', 'dst']:
         for port_type in data['ports']:
             for port, value in data['ports'][port_type].items():
-                mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(value, prj, swap_dir=False)
+                mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(value, prj, data, swap_dir=False)
 
     def gen_sc_channels_decl(args, prj, data):
         nonlocal port_count

@@ -12,6 +12,8 @@ filename = ''
 errorCount = 0
 # Warning Counter
 warningCount = 0
+# Disable color output in error/warning messages (useful for tests)
+disableColors = False
 
 # defaults used in multiple places
 # path to graphviz outputs

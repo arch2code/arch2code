@@ -40,7 +40,7 @@ CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -W
 LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
-A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain
+A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain $(wildcard $(A2C_ROOT)/interfaces/*)
 PRJ_SRC_DIRS = $(call find_cpp_source_directories, $(REPO_ROOT)/base $(REPO_ROOT)/model $(REPO_ROOT)/fw $(REPO_ROOT)/tb)
 
 ifndef USE_GCC
@@ -158,5 +158,43 @@ clean::
 
 help::
 	@echo "  all     	- Build the project binary"
+	@echo "  clangd  	- Generate .clangd configuration for IDE"
 	@echo "Makefile Runtime Variables:"
 	@echo "  VL_DUT=1	- Build verilator wrapper for the DUT instances"
+
+#------------------------------------------------------------------------
+# Generate .clangd configuration for IDE
+#------------------------------------------------------------------------
+.PHONY: clangd
+clangd:
+	@echo "Generating .clangd configuration..."
+	@( \
+		echo "# Auto-generated from Makefile - DO NOT EDIT MANUALLY"; \
+		echo "# Regenerate with: make clangd"; \
+		echo ""; \
+		echo "CompileFlags:"; \
+		echo "  Add:"; \
+		for flag in $(filter-out -m% -Wfatal-errors -g $(CPP_INCLUDES), $(CXX_FLAGS)); do \
+			echo "    - $$flag"; \
+		done; \
+		for inc in $(CPP_INCLUDES); do \
+			echo "    - $$inc"; \
+		done; \
+		echo "  Compiler: clang++"; \
+		echo "  Remove:"; \
+		echo "    - -m*"; \
+		echo "    - -W*fatal-errors"; \
+		echo ""; \
+		echo "Diagnostics:"; \
+		echo "  UnusedIncludes: None"; \
+		echo ""; \
+		echo "InlayHints:"; \
+		echo "  Enabled: Yes"; \
+		echo "  ParameterNames: Yes"; \
+		echo "  DeducedTypes: Yes"; \
+		echo ""; \
+		echo "Hover:"; \
+		echo "  ShowAKA: Yes"; \
+	) > $(REPO_ROOT)/.clangd
+	@echo "Generated $(REPO_ROOT)/.clangd"
+	@echo "Reload your IDE to apply changes"

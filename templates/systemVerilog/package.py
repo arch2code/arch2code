@@ -46,7 +46,10 @@ def render(args, prj, data):
     for unusedKey, value in data['types'].items():
         if value['width'] in prj.data['constants']:
             value['desc'] += f" sizing from constant {prj.data['constants'][value['width']]['constant']}"
-        out += f"typedef logic[{value['realwidth']}-1:0] {value['type']}; //{value['desc']}\n"
+        # Check if type is signed
+        isSigned = value.get('isSigned', False)
+        signedStr = " signed" if isSigned else ""
+        out += f"typedef logic{signedStr}[{value['realwidth']}-1:0] {value['type']}; //{value['desc']}\n"
 
     # Generate enums
     out += f"\n// enums\n"

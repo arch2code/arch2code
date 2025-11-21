@@ -2,6 +2,21 @@
 # note $a2c is automatically replaced with the path to the a2c directory
 dbSchema: $a2c/config/schema.yaml
 
+# System-level interface definitions - automatically loaded in all projects
+# These are processed first and placed in _a2csystem context
+systemFiles:
+  - $a2c/interfaces/apb/apb_if.yaml
+  - $a2c/interfaces/status/status_if.yaml
+  - $a2c/interfaces/rdy_vld/rdy_vld_if.yaml
+  - $a2c/interfaces/req_ack/req_ack_if.yaml
+  - $a2c/interfaces/push_ack/push_ack_if.yaml
+  - $a2c/interfaces/pop_ack/pop_ack_if.yaml
+  - $a2c/interfaces/external_reg/external_reg_if.yaml
+  - $a2c/interfaces/memory/memory_if.yaml
+  - $a2c/interfaces/notify_ack/notify_ack_if.yaml
+  - $a2c/interfaces/axi_read/axi_read_if.yaml
+  - $a2c/interfaces/axi_write/axi_write_if.yaml
+  - $a2c/interfaces/axi4_stream/axi4_stream_if.yaml
 
 docConfig : $a2c/config/docConfig.yaml
 cppConfig : $a2c/config/cppConfig.yaml

@@ -24,6 +24,11 @@ module blockA_hdl_sv_wrapper
     output bit startDone_notify,
     input bit startDone_ack,
 
+    // rdy_vld_if.src
+    output bit dupIf_vld,
+    output bit [4:0] dupIf_data,
+    input bit dupIf_rdy,
+
     // apb_if.dst
     input bit [31:0] apbReg_paddr,
     input bit apbReg_psel,
@@ -58,6 +63,13 @@ module blockA_hdl_sv_wrapper
     assign #0 startDone_notify = startDone.notify;
     assign #0 startDone.ack = startDone_ack;
 
+    // rdy_vld_if.src
+    rdy_vld_if #(.data_t(seeSt)) dupIf();
+
+    assign #0 dupIf_vld = dupIf.vld;
+    assign #0 dupIf_data = dupIf.data;
+    assign #0 dupIf.rdy = dupIf_rdy;
+
     // apb_if.dst
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
 
@@ -74,6 +86,7 @@ module blockA_hdl_sv_wrapper
         .aStuffIf(aStuffIf), // req_ack_if.src
         .cStuffIf(cStuffIf), // rdy_vld_if.src
         .startDone(startDone), // notify_ack_if.src
+        .dupIf(dupIf), // rdy_vld_if.src
         .apbReg(apbReg), // apb_if.dst
         .clk(clk),
         .rst_n(rst_n)

@@ -1,0 +1,36 @@
+
+interface_defs:
+  axi_write : 
+    parameters : 
+      addr_t : { datatype : struct, default : 'bit' }
+      data_t : { datatype : struct, default : 'bit' }
+      strb_t : { datatype : struct, default : 'bit' }
+    signals: 
+      awaddr : addr_t
+      awid : 'bit [3:0]'
+      awlen : 'bit [7:0]'
+      awsize : 'bit [2:0]'
+      awburst : 'bit [1:0]'
+      awvalid : bool
+      awready : bool
+      wdata : data_t
+      wid : 'bit [3:0]'
+      wstrb : strb_t
+      wlast : bool
+      wvalid : bool
+      wready : bool
+      bresp : 'bit [1:0]'
+      bid : 'bit [3:0]'
+      bvalid : bool
+      bready : bool
+    modports :
+      src : 
+        inputs : ['awready', 'wready', 'bresp', 'bid', 'bvalid']
+        outputs: ['awid', 'awaddr', 'awlen', 'awsize', 'awburst', 'awvalid', 'wid', 'wdata', 'wstrb', 'wlast', 'wvalid', 'bready']
+      dst : 
+        inputs : ['awid', 'awaddr', 'awlen', 'awsize', 'awburst', 'awvalid', 'wid', 'wdata', 'wstrb', 'wlast', 'wvalid', 'bready']
+        outputs: ['awready', 'wready', 'bresp', 'bid', 'bvalid']
+    sc_channel :
+      type : 'axi_write'
+      multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
+

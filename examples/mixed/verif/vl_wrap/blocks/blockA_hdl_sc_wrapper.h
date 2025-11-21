@@ -54,6 +54,7 @@ public:
     req_ack_src_bfm<aSt, aASt, sc_bv<4>, bool> aStuffIf_bfm;
     rdy_vld_src_bfm<seeSt, sc_bv<5>> cStuffIf_bfm;
     notify_ack_src_bfm<> startDone_bfm;
+    rdy_vld_src_bfm<seeSt, sc_bv<5>> dupIf_bfm;
     apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
 
     SC_HAS_PROCESS (blockA_hdl_sc_wrapper);
@@ -66,6 +67,7 @@ public:
         aStuffIf_bfm("aStuffIf_bfm"),
         cStuffIf_bfm("cStuffIf_bfm"),
         startDone_bfm("startDone_bfm"),
+        dupIf_bfm("dupIf_bfm"),
         apbReg_bfm("apbReg_bfm"),
         rst_n(0)
     {
@@ -84,6 +86,9 @@ public:
         dut_hdl->cStuffIf_rdy(cStuffIf_hdl_if.rdy);
         dut_hdl->startDone_notify(startDone_hdl_if.notify);
         dut_hdl->startDone_ack(startDone_hdl_if.ack);
+        dut_hdl->dupIf_vld(dupIf_hdl_if.vld);
+        dut_hdl->dupIf_data(dupIf_hdl_if.data);
+        dut_hdl->dupIf_rdy(dupIf_hdl_if.rdy);
         dut_hdl->apbReg_paddr(apbReg_hdl_if.paddr);
         dut_hdl->apbReg_psel(apbReg_hdl_if.psel);
         dut_hdl->apbReg_penable(apbReg_hdl_if.penable);
@@ -110,6 +115,11 @@ public:
         startDone_bfm.clk(clk);
         startDone_bfm.rst_n(rst_n);
 
+        dupIf_bfm.if_p(dupIf);
+        dupIf_bfm.hdl_if_p(dupIf_hdl_if);
+        dupIf_bfm.clk(clk);
+        dupIf_bfm.rst_n(rst_n);
+
         apbReg_bfm.if_p(apbReg);
         apbReg_bfm.hdl_if_p(apbReg_hdl_if);
         apbReg_bfm.clk(clk);
@@ -134,6 +144,7 @@ private:
     req_ack_hdl_if<sc_bv<4>, bool> aStuffIf_hdl_if;
     rdy_vld_hdl_if<sc_bv<5>> cStuffIf_hdl_if;
     notify_ack_hdl_if<> startDone_hdl_if;
+    rdy_vld_hdl_if<sc_bv<5>> dupIf_hdl_if;
     apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
 
     sc_signal<bool> rst_n;

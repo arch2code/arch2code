@@ -2,6 +2,7 @@ from typing import Dict, OrderedDict
 import pysrc.arch2codeGlobals as g
 from pysrc.yamlInclude import YAML
 from pysrc.arch2codeHelper import printError, printWarning, printTracebackStack, warningAndErrorReport, printIfDebug, roundup_pow2min4
+from pysrc.schema import Schema
 import ruamel.yaml as YAMLRAW
 import sqlite3
 import os
@@ -9,6 +10,7 @@ import re
 import pickle
 import math
 import importlib
+import importlib.util
 
 continueOnError = False
 
@@ -187,303 +189,6 @@ class config:
         sql = f"DROP TABLE IF EXISTS _config"
         g.cur.execute(sql)
 
-class schema:
-    data = dict()
-    config = None
-    fn_finders = {
-        'auto': re.compile("auto\(([^\)]*)\)"),
-        'post': re.compile("post\(([^\)]*)\)")
-    }
-    # match optional*() and get the bracket contents
-    optionalFind = re.compile("optional.*\(([^\)]*)\)")
-
-
-    def __init__(self, schemaYaml = None, schemaFile = '') -> None:
-        for item in ('schema', 'key', 'attrib', 'dataSchema', 'colsSQL', 'multiEntry', 'fnStr', 'post', 'optionalDefault', 'mapto',
-                     'validator', 'counterReverseField', 'subTable', 'outerkeyKey', 'indexes', 'tables', 'comboKey', 'comboField', 'singular'):
-            # create all the control dicts
-            # schema: the actual schema
-            # key: key for a given table
-            # attrib: attribute of any field
-            # dataSchema: for case that user input is different to table, store the database schema here
-            # colsSQL: strings used to insert values - this is currently set external to object - TODO
-            # multiEntry: flag indicating if multiple entries are allowed
-            # fnStr: maps a field to its special function handler
-            # optionalDefault: maps field to default
-            # validator: info on how to validate
-            # counterReverseField: back reference for calculator
-            # subTable: map of sub tables
-            # outerkeyKey: subtable to outerkey mapping
-            # indexes: database index generation
-            # tables: tables
-            # comboKey: for key which is derived from other fields
-            # comboField: as above except not the key
-            # singular: convert a single field to a dict
-            self.data[item] = dict()
-        if schemaYaml:
-            self.config = config(RO = False)
-            self.data['schema'] = schemaYaml
-            self.validateSchema(self.data['schema'], schemaFile)
-            for section in self.data['mapto']:
-                self.data['schema'].pop(section, None) # remove any mapped to sections from the schema
-        else:
-            self.config = config(RO = True)
-            self.data = self.config.getConfig('SCHEMA')
-        printIfDebug("Schema loaded")
-
-    def function_find(self, fnType, data):
-        if data[:len(fnType)] == fnType and len(data) > len(fnType):
-            f = self.fn_finders[fnType].search(data)
-            braceContents = f.group(1).strip()
-            fn = f"_{fnType}_"+braceContents
-            # search the projectCreate class to see if it contains an appropriate fn to deal with the auto
-            if hasattr(projectCreate, fn):
-                # valid function
-                return fn
-            else:
-                return "__bad_function"
-        return ""
-
-    # validate schema processes the schema definition for later use in the processing of user input
-    def validateSchema(self, schema, schemaFile, context=''):
-        validFieldTypes = { 'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'post',
-                           'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param', 'singleEntryList', 'listkey'}
-        addressControlFields = {'addressGroup', 'addressID', 'addressMultiples', 'instanceGroup', 'instanceID'}
-        reservedKeys = {'_validate', '_type', '_key', '_combo', '_attribs', '_singular', '_mapto'} # reserved keys begin with _
-        customChecker = {'_singular', '_mapto'} # keys that should use custom checker
-
-        for section in schema:
-            itemkeyname = None
-            if context == "":
-                self.data['tables'][section] = section # create table of primary sections
-            attrib = {}
-            indexes = list()
-            dataSchema = None
-            mySingular = None
-            mapto = None
-            multiEntry = False # determines if there can be multiple records in the input/output
-            singleEntryList = False # if true the user input is a list but we convert to dict with key based on list index
-            output = dict()
-            optionalDefaults = dict() # dictionary of fields that are optional and have a default value
-            for field, ftype in schema[section].items():
-                output[field] = ftype
-                #check for nested specification. A nesting specification may be reservedKeys or a sub table, or _dataschema
-                if hasattr(ftype,'lc'):
-                    myLineNumber = ftype.lc.line + 1
-                elif hasattr(schema[section], 'lc'):
-                    myLineNumber = schema[section].lc.line + 1
-                else:
-                    myLineNumber = 0
-                    printWarning(f"Warning: {schemaFile} {section} {field} does not have a line number")
-                if isinstance(ftype, dict):
-                    myType = ftype.get('_type', None)
-                    myValidate = ftype.get('_validate', None)
-                    myComboKey = ftype.get('_key', None)
-                    myComboField = ftype.get('_combo', None)
-                    if mySingular:
-                        pass
-                    if myComboKey:
-                        myType = 'key'
-                    if myComboField:
-                        myType = 'combo'
-                    isSubTable = False
-                    if field == '_dataSchema':
-                        # dataschema is treated like a nested definition
-                        self.validateSchema({field: ftype}, schemaFile, context=context+section)
-                        myType = "_ignore"
-                    else:
-                        for k in ftype:
-                            #check for any non-reserved fields. Any non reserved fields implies subTable
-                            if k not in reservedKeys:
-                                isSubTable = True
-                                break
-                        if isSubTable:
-                            #concatenate the names for subtables
-                            subTable = context+section
-                            #pass nested definition down a level
-                            if subTable not in self.data['subTable']:
-                                # adding a new subtable so add dict to contain it
-                                self.data['subTable'][subTable] = {subTable+field: field}
-                            else:
-                                # just adding another key
-                                self.data['subTable'][subTable][subTable+field] = field
-                            # process the nested schema
-                            temp = {field: ftype}
-                            self.validateSchema(temp, schemaFile, context=context+section)
-                            output[field] = temp[field]
-                            continue
-                        else:
-                            if myType is None:
-                                printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Section {context}, {section}, Field {field}, is missing a _type definition")
-                                exit(warningAndErrorReport())
-                    output[field] = myType
-                    if myValidate is not None:
-                        self.data['validator'][context+section+field] = myValidate
-                        # is this validator a lookup?
-                        if 'section' in myValidate:
-                            # if the validator is a lookup, we need to also add the 'key' version from the lookup
-                            output[field+'Key'] = 'ignore' # note that this will be effectively ignored by simple parser
-                    # a combo key is for when the key is created by concatenating other fields
-                    if myComboKey:
-                        # check that the fields referenced in the combo key are already in the output
-                        for k in myComboKey:
-                            if k not in output:
-                                printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} combo key, is referencing an invalid field '{k}'. Fields must be declared before use")
-                                exit(warningAndErrorReport())
-                        self.data['comboKey'][context+section] = myComboKey
-                        output[field] = 'key' # make sure ignore by simple parser and calculated after the other fields
-                        # add check that input is valid..
-                    if myComboField:
-                        for k in myComboField:
-                            if k not in output:
-                                printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} combo field, is referencing an invalid field '{k}'. Fields must be declared before use")
-                                exit(warningAndErrorReport())
-                        if context+section not in self.data['comboField']:
-                            self.data['comboField'][context+section] = dict()
-                        self.data['comboField'][context+section][field] = myComboField
-                        output[field] = myType
-                else:
-                    # simple case
-                    myType = ftype
-                output[field] = myType
-                # if the first four leters are auto it may be an automatic function
-                # probably need to add some more tests here or prepend an _ TODO
-                fn = self.function_find('auto', myType)
-                if fn:
-                    if fn == "__bad_function":
-                        printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} auto, is referencing an invalid function '{myType}' ")
-                        exit(warningAndErrorReport())
-                    else:
-                        # valid function
-                        self.data['fnStr'][context+section+field] = fn
-                        # counterReverseField allows back reference between fields that control counter generation and the counter value - this is to deal with ordering issue
-                        self.data['counterReverseField'][context+section+fn[len('_auto_'):]] = field
-                    myType = 'auto'
-                    output[field] = myType
-                if myType == 'const' or myType[:13]=='optionalConst' or myType == 'param':
-                    output[field+'Key'] = "ignore"
-                if myType[:8]=='optional' and len(myType)>8 :
-                    braceContents = self.optionalFind.search(myType)
-                    if braceContents:
-                        # strip the braces off in the schema
-                        if myType[:13]=='optionalConst':
-                            optionalType = 'optionalConst'
-                        else:
-                            optionalType = 'optional'
-                        default = braceContents.group(1).strip()
-                        if (str(default).lower() in {"true", "false"}):
-                            # convert to boolean
-                            default = str(default).lower() == "true"
-                        output[field] = optionalType
-                        myType = optionalType
-                        optionalDefaults[field] = default
-                # the following code only wants to deal with lists, so if its not already a list, make it one
-                if not isinstance(myType, list):
-                    checkfields = [myType]
-                else:
-                    checkfields = myType
-                for check in checkfields:
-                    if check[:4] == 'post':
-                        continue
-                    if check not in validFieldTypes and field not in customChecker:
-                        printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Field {field} is using unknown value '{check}' ")
-                        exit(warningAndErrorReport())
-                if myType == 'key':
-                    itemkeyname = field
-                    output[field+'Key'] = 'contextKey' # the true key for the record is the user identified key with the scope added
-                if myType == 'outerkey':
-                    # for outerkey case we also need the key with context added
-                    output[field+'Key'] = 'outerkeyKey'
-                    self.data['outerkeyKey'][context+section] = field+'Key'
-                    indexes.append(field+'Key')
-                if field == '_attribs':
-                    if not isinstance(myType, list):
-                        myType = [myType]
-                    if 'multiple' in myType:
-                        multiEntry = True
-                    if 'list' in myType:
-                        # the user input is a list not a dict, so we 'generate' a key based on the list index
-                        multiEntry = True
-                        itemkeyname = '_listIndex'
-                        output['_listIndex'] = 'key'
-                    if 'singleEntryList' in myType:
-                        # the user input is a list not a dict, so we 'generate' a key based on the list index
-                        multiEntry = True
-                        singleEntryList = True
-                    for attrib in myType:
-                        fn = self.function_find('post', attrib)
-                        if fn:
-                            if fn == "__bad_function":
-                                printError(f"Bad schema detected in {schemaFile}:{myLineNumber}. Attrib {field} post, is referencing an invalid function '{attrib}' ")
-                                exit(warningAndErrorReport())
-                            else:
-                                self.data['post'][context+section] = fn
-                    attrib = myType
-                if field == '_singular':
-                    mySingular = myType
-                if field == '_mapto':
-                    # this is a special case where we want to map this section to another table
-                    mapto = myType
-                    if mapto not in schema:
-                        printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section}. _mapto is specifying an invalid section {mapto}")
-                        exit(warningAndErrorReport())
-                    self.data['mapto'][context+section] = mapto
-
-            if mapto is not None:
-                self.data['tables'].pop(section)
-                continue # skip rest of processing as this section is just a map to another
-            if itemkeyname == None:
-                printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section}. There is no field defined as key")
-                exit(warningAndErrorReport())
-            if (context+section) in self.data['key']:
-                printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section} context {context}. Overlapping definition somehow")
-                exit(warningAndErrorReport())
-            self.data['multiEntry'][context+section] = multiEntry
-            self.data['key'][context+section] = itemkeyname
-            self.data['attrib'][context+section] = attrib
-            # custom checker for _singular
-            if mySingular:
-                # singular case, convert the field to a dict
-                self.data['singular'][context+section] = mySingular
-                if mySingular not in schema[section]:
-                    printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section} context {context}. Specified a singular field: {mySingular} that is not a field in this section")
-                    exit(warningAndErrorReport())
-
-            # note this is all done outside the loop as you cant modify a dict your iterating on
-            schema[section] = output
-            if section == '_dataSchema':
-                self.data['dataSchema'][context] = schema['_dataSchema']
-                optionalPrefix = context+'_dataSchema'
-            else:
-                optionalPrefix = section
-            for field, default in optionalDefaults.items():
-                self.data['optionalDefault'][optionalPrefix+field] = default
-            schema[section].pop('_dataSchema', None) #delete dataschema if it exists, as it is now stored separately
-            schema[section].pop('_attribs', None) #delete attrib if it exists, as it is now stored separately
-            schema[section].pop('_singular', None) #delete attrib if it exists, as it is now stored separately
-            schema[section]['_context'] = 'context'
-            indexes.append(itemkeyname+'Key')
-            if singleEntryList:
-                foundlistkey = False
-                for field, ftype in schema[section].items():
-                    if ftype == 'listkey':
-                        foundlistkey = True
-                    else:
-                        if ftype not in ['key', 'outerkey', 'outer', 'outerkeyKey', 'context', 'contextKey']:
-                            printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section} context {context}. singleEntryList is specified but field {field} is defined as {ftype}. Only listkey, key, outerkey and outer are allowed")
-                            exit(warningAndErrorReport())
-                if not foundlistkey:
-                    printError(f"Bad schema detected in {schemaFile}:{myLineNumber}, section {section} context {context}. singleEntryList is specified but no field is defined as listkey")
-                    exit(warningAndErrorReport())
-            self.data['indexes'][context+section] = indexes
-    def sections(self):
-        return self.data['schema']
-
-    def tables(self):
-        return self.data['tables']
-    def save(self):
-        self.config.setConfig('SCHEMA', self.data, bin=True)
-
 # hierarchy is defined by who contains who, or who is my parent
 # this prevents the need for nested definition
 def generateHierarchy(inputInstances, inputBlocks, withContext = False ):
@@ -552,9 +257,11 @@ def generateHierarchy(inputInstances, inputBlocks, withContext = False ):
 # the database contents are stored in the data dict in manner similar to the schema
 class projectOpen:
     data = dict() # all database derived data lives here. key = table name. Format corresponds to the schema
+    data_by_parent = dict() # nested tables indexed by parent storage key for efficient child lookup
     tables = None
     config = None
     schema = None
+    specialContexts = {"_global", "_a2csystem"} # special contexts that should be excluded from includes
     hier = dict()
     hierKey = dict()
     instances = dict() # mapping of instance names (user friendly) to qualified instance names (unique)
@@ -581,8 +288,8 @@ class projectOpen:
             g.db.row_factory = sqlite3.Row
         g.cur = g.db.cursor()
         self.config = config()
-        self.schema = schema()
-        self.tables = self.schema.tables()
+        self.schema = Schema()
+        self.tables = self.schema.get_table_names()
         g.yamlBasePath = self.config.getConfig('BASEYAMLPATH')
         self.yamlContext = self.config.getConfig('YAMLCONTEXT')
         self.includeName = self.config.getConfig('INCLUDENAME')
@@ -593,10 +300,22 @@ class projectOpen:
         self.loadData()
         self.generateHierarchy()
         printIfDebug("Project loaded")
+    
+    def getSchemaNode(self, table_name):
+        """
+        Get the schema Node object for a given table name.
+        
+        Args:
+            table_name: Full table name (e.g., 'interface_defs', 'interface_defsmodports')
+        
+        Returns:
+            Node object or None if not found
+        """
+        return self.schema.get_node(table_name)
 
     def loadData(self):
         # loop through the schema loading all the tables
-        for table in self.schema.data['schema']:
+        for table in self.schema.tables:
             printIfDebug("Loading table: "+table)
             # we need the key for the table
             if table in self.schema.data['comboKey']:
@@ -608,19 +327,164 @@ class projectOpen:
                 # otherwise use the context version to ensure uniqueness of entries
                 keyName = self.schema.data['key'][table] + 'Key'
 
+            # Load subtables recursively (depth-first) before loading the parent table
             if table in self.schema.data['subTable']:
-                for subTable in self.schema.data['subTable'][table]:
-                    printIfDebug("  Loading sub table: "+subTable)
-                    # the schema for the sub table is nested inside the table, attached to the appropriate var
-                    # this only works for single level subtable at the moment...
-                    self.loadTable(subTable, self.schema.data['schema'][table][self.schema.data['subTable'][table][subTable]], self.schema.data['key'][subTable], outerkeyKey = keyName)
+                self._loadSubTablesRecursive(table, self.schema.data['schema'][table], keyName)
 
             self.loadTable(table, self.schema.data['schema'][table], keyName)
+    
+    def _loadSubTablesRecursive(self, parentTable, parentSchema, parentKeyName, parent_key_chain=None):
+        """Recursively load all subtables depth-first
+        
+        Args:
+            parent_key_chain: List of parent qualified key field names (e.g., ['interface_typeKey', 'modportKey'])
+        """
+        if parentTable not in self.schema.data['subTable']:
+            return
+        
+        for subTable in self.schema.data['subTable'][parentTable]:
+            printIfDebug(f"  Loading sub table: {subTable}")
+            
+            # Get the field name that holds this subtable in the parent schema
+            subTableFieldName = self.schema.data['subTable'][parentTable][subTable]
+            subTableSchema = parentSchema[subTableFieldName]
+            
+            # Get the key for this subtable
+            subTableKey = self.schema.data['key'][subTable]
+            
+            # Build the extended parent key chain for this subtable
+            # Use the auto-derived parent_key_chain from schema (should always be available after _finalize_schema)
+            extended_chain = self.schema.data.get('parentKeyChain', {}).get(subTable, [])
+            
+            # Recursively load any nested subtables first (depth-first)
+            self._loadSubTablesRecursive(subTable, subTableSchema, subTableKey, extended_chain)
+            
+            # Now load this subtable with the full parent key chain
+            self.loadTable(subTable, subTableSchema, subTableKey, parent_key_chain=extended_chain)
 
-    # when outerkey is None we are just creating a simple dictionary
-    # when outerkey is not none then the records should be grouped under outer key for later reassembly
-    def loadTable(self, tableName, schema, keyName, outerkeyKey=None):
-        attrib = self.schema.data['attrib'][tableName]
+    def _reconstruct_nested_structure(self):
+        """
+        Reconstruct the nested dictionary structure by attaching loaded subtables
+        back to their parent tables.
+        
+        This runs after all tables are loaded. For each top-level table, we walk
+        through and attach its nested tables.
+        """
+        printIfDebug("Reconstructing nested structure...")
+        print(f"DEBUG: Schema tables = {self.schema.tables}")
+        print(f"DEBUG: Schema subTable keys = {list(self.schema.data['subTable'].keys())}")
+        
+        # Process each top-level table
+        for table in self.schema.tables:
+            if table in self.schema.data['subTable']:
+                print(f"DEBUG: Processing top-level table '{table}' with subtables: {list(self.schema.data['subTable'][table].keys())}")
+                self._attach_subtables_recursive(table, self.data[table], self.schema.data['schema'][table])
+    
+    def _attach_subtables_recursive(self, parentTable, parentData, parentSchema):
+        """
+        Recursively attach subtables to their parent entries.
+        
+        Args:
+            parentTable: Name of the parent table
+            parentData: Dict of parent table entries
+            parentSchema: Schema definition for parent table
+        """
+        if parentTable not in self.schema.data['subTable']:
+            return
+        
+        for subTable in self.schema.data['subTable'][parentTable]:
+            subTableFieldName = self.schema.data['subTable'][parentTable][subTable]
+            subTableSchema = parentSchema[subTableFieldName]
+            subTableData = self.data.get(subTable, {})
+            
+            if not subTableData:
+                continue
+            
+            # For each parent entry, find and attach its child entries
+            for parentKey, parentEntry in parentData.items():
+                # Build the grouping key for this parent
+                # Get the parent's qualified key fields that children reference
+                parent_key_chain = self.schema.data.get('parentKeyChain', {}).get(subTable, [])
+                
+                if parent_key_chain:
+                    # Build the composite grouping key from parent's qualified key fields
+                    # Example: for modportGroups with parent_key_chain=['modportKey'],
+                    # we need parentEntry['modportKey'] value
+                    composite_parts = []
+                    for pk_field in parent_key_chain:
+                        if pk_field in parentEntry:
+                            composite_parts.append(str(parentEntry[pk_field]))
+                        else:
+                            # Parent doesn't have this key field, skip
+                            break
+                    
+                    if len(composite_parts) == len(parent_key_chain):
+                        grouping_key = '/'.join(composite_parts)
+                    else:
+                        continue
+                else:
+                    # No parent key chain, use parent's own key
+                    grouping_key = parentKey
+                
+                # Find all child entries that belong to this parent
+                # Child entries were grouped by composite key during loading
+                children = {}
+                for childKey, childEntry in subTableData.items():
+                    # Skip if childEntry is not a dict (shouldn't happen but be defensive)
+                    if not isinstance(childEntry, dict):
+                        continue
+                    
+                    # Check if this child belongs to this parent
+                    # The child's grouping key should match or start with parent's grouping_key
+                    if parent_key_chain:
+                        # Build child's grouping key from its parent key fields
+                        child_composite_parts = []
+                        for pk_field in parent_key_chain:
+                            if pk_field in childEntry:
+                                child_composite_parts.append(str(childEntry[pk_field]))
+                        
+                        if child_composite_parts:
+                            child_grouping_key = '/'.join(child_composite_parts)
+                            if child_grouping_key == grouping_key:
+                                # Extract the child's own key (without parent keys)
+                                child_own_key = childEntry.get(self.schema.data['key'][subTable])
+                                if child_own_key:
+                                    children[child_own_key] = childEntry
+                    else:
+                        # Simple case: child has outerkey matching parent key
+                        outerkey_field = None
+                        for field_name, field_type in subTableSchema.items():
+                            if field_type == 'outerkey':
+                                outerkey_field = field_name
+                                break
+                        
+                        if outerkey_field and childEntry.get(outerkey_field) == parentEntry.get(outerkey_field):
+                            child_own_key = childEntry.get(self.schema.data['key'][subTable])
+                            if child_own_key:
+                                children[child_own_key] = childEntry
+                
+                # Attach children to parent if any found
+                if children:
+                    parentEntry[subTableFieldName] = children
+                    
+                    # Recursively process these children's subtables
+                    self._attach_subtables_recursive(subTable, children, subTableSchema)
+
+    # when parent_key_chain is None we are just creating a simple dictionary
+    # when parent_key_chain is not none then the records should be grouped under composite parent key for later reassembly
+    def loadTable(self, tableName, schema, keyName, parent_key_chain=None):
+        """
+        Load table from database and build dict structure
+        
+        Args:
+            tableName: Name of the table to load
+            schema: Schema definition for this table
+            keyName: The anchor field name (e.g., 'interface_type')
+            parent_key_chain: List of qualified parent key fields for composite grouping
+                             (e.g., ['interface_typeKey', 'modportKey'])
+        """
+        
+        attrib = self.schema.data['attrib'].get(tableName, [])
         columns = schema.copy()
         # figure out which mode to use
         if 'list' in attrib:
@@ -631,31 +495,47 @@ class projectOpen:
         if 'multiple' in attrib:
             multi = True
             # for multi case we are adding as a dict, so need to figure out how to group the records ie what is the dict key
-            for col, colType in columns.items():
-                if colType == 'key':
-                    innerKey = col
+            # Query the schema directly instead of searching through columns
+            innerKey = self.schema.data['key'].get(tableName, '')
             if innerKey == '':
-                printError(f"For table {tableName} inner key not specified")
+                printError(f"For table {tableName} inner key not specified in schema")
                 exit(warningAndErrorReport())
 
         else:
             multi = False
         myTable = OrderedDict()
-        if outerkeyKey:
-            sql = f'SELECT * from {tableName} order by {outerkeyKey}, rowid'
-            myKeyName = outerkeyKey
-        else:
-            sql = f'SELECT * from {tableName} order by rowid'
-            myKeyName = keyName
-        del columns[myKeyName]
+
+        node = self.getSchemaNode(tableName)
+        if not node:
+            printError(f"Table {tableName} has no Node object in schema - this should not happen")
+            exit(warningAndErrorReport())
+        storage_key_field_qualified = node.get_storage_key_field_name_qualified()
+        storage_key_field = node.get_storage_key_field_name()
+        sql = f'SELECT * from {tableName} ORDER BY rowid'
+        # Get parent storage key field name for data_by_parent indexing (only for nested tables)
+        parent_key_field = node.get_parent_storage_key_field_name()
+        if not node or not node.storage_key_field_qualified:
+            raise ValueError(
+                f"Cannot lookup children for table '{tableName}': "
+                f"node.storage_key_field_qualified not configured. "
+                f"This indicates a schema configuration error."
+            )
+            
         g.cur.execute(sql)
         data = g.cur.fetchall()
         firstRow = True
-        previousKey =''
+        previousKey = ''
         myList = list()
         myMulti = OrderedDict()
+        myRow = dict()
+        
         for row in data:
-            newKey = row[myKeyName]
+            # Build the composite key for storing this row
+            
+            # Use Node's method to build storage key for nested tables with parent chains
+            # For top-level tables (parent_key_chain is None), use simple key
+            newKey = node.build_storage_key(row)
+                
             #to deal with lists/nested dicts we need to create record only when the key changes
             if newKey != previousKey:
                 if not firstRow:
@@ -663,8 +543,8 @@ class projectOpen:
                         myTable[previousKey] = myList
                         myList = list()
                     elif multi:
-                        myTable[previousKey] = myMulti
-                        myMulti = OrderedDict()
+                        # Multi-entry: individual entries stored per-row, no grouping needed
+                        pass
                     else:
                         myTable[previousKey] = myRow
                 else:
@@ -674,22 +554,79 @@ class projectOpen:
             # now go through the row and create the dict
             for col in columns:
                 if isinstance(columns[col], dict):
-                    # this is a subtable
-                    myRow[col] = self.data[tableName+col].get(newKey, None)
+                    # this is a subtable - need to look it up from the already-loaded subtable data
+                    subtable_name = tableName + col
+                    
+                    # Use parent-indexed structure if available
+                    if subtable_name in self.data_by_parent:
+                        # data_by_parent is always indexed by the qualified parent storage key
+                        # Use the precomputed qualified field name from the node
+                        lookup_key = row[node.storage_key_field_qualified]
+                        myRow[col] = self.data_by_parent[subtable_name].get(lookup_key, None)
+                    else:
+                        # Top-level tables - use primary data structure
+                        subtable_node = self.getSchemaNode(subtable_name)
+                        if not subtable_node:
+                            printError(f"Subtable {subtable_name} has no Node object in schema - this should not happen")
+                            exit(warningAndErrorReport())
+                        subtable_lookup_key = subtable_node.build_storage_key(row)
+                        myRow[col] = self.data[subtable_name].get(subtable_lookup_key, None)
                 else:
                     myRow[col] = row[col]
+            
+            # For multi-entry tables, ensure the innerKey is in myRow
+            # (it might have been excluded from columns if it was myKeyName)
+            if multi and innerKey and innerKey not in myRow:
+                myRow[innerKey] = row[innerKey]
+                
             if listMode:
                 myList.append(myRow)
                 myRow = dict()
             if multi:
-                myMulti[myRow[innerKey]] = myRow
+                # For multi-entry tables, store individual entries in myTable using qualified keys
+                # and also build grouped structure for nested access
+                
+                # Determine the qualified key for top-level storage (use row, not myRow)
+                top_level_key = row[node.storage_key_field_qualified]
+                
+                # Store individual entry in top-level table
+                myTable[top_level_key] = myRow
+                
+                # Also build parent-indexed structure if this is a nested table
+                if parent_key_field:
+                    # Check if the parent key field exists in the row (try-except for sqlite3.Row compatibility)
+                    try:
+                        parent_storage_key = row[parent_key_field]
+                        
+                        if tableName not in self.data_by_parent:
+                            self.data_by_parent[tableName] = {}
+                        if parent_storage_key not in self.data_by_parent[tableName]:
+                            self.data_by_parent[tableName][parent_storage_key] = {}
+                        
+                        # Index by anchor field for user-friendly nested access (e.g., 'src', 'dst')
+                        # or by storage key for combo/collapsed tables (e.g., 'blockAaStuffIf')
+                        if node and node.anchor_field:
+                            nested_index_key = myRow[node.anchor_field]
+                        else:
+                            # For tables without anchor (combo/collapsed), use storage key value
+                            nested_index_key = myRow[innerKey]
+                        self.data_by_parent[tableName][parent_storage_key][nested_index_key] = myRow
+                    except (KeyError, IndexError) as e:
+                        # Parent key field not in this row (shouldn't happen for properly configured nested tables)
+                        raise ValueError(
+                            f"Failed to build data_by_parent for table '{tableName}': {e}. "
+                            f"parent_key_field='{parent_key_field}', "
+                            f"This indicates a schema configuration error or missing parent key in row."
+                        )
+                
                 myRow = dict()
         # the last record may need to be added
         if not firstRow:
             if listMode:
                 myTable[previousKey] = myList
             elif multi:
-                myTable[previousKey] = myMulti
+                # Multi-entry: already stored individual entries, nothing to do
+                pass
             else:
                 myTable[previousKey] = myRow
 
@@ -765,19 +702,49 @@ class projectOpen:
         fileName = f"{module}{fileStub}.{extension}"
         return fileName
 
+    def _build_enum_lookup(self):
+        """Build a lookup dictionary for enum values (lazy initialization)"""
+        if hasattr(self, '_enum_lookup'):
+            return
+        
+        self._enum_lookup = {}
+        
+        # Build lookup from typesenum table
+        # typesenum is organized as: {'enumType/file.yaml': [list of enum entries]}
+        # Each enum entry has 'enumName' and 'value' fields
+        if 'typesenum' in self.data:
+            for enum_type_key, enum_list in self.data['typesenum'].items():
+                if isinstance(enum_list, list):
+                    for enum_entry in enum_list:
+                        if isinstance(enum_entry, dict):
+                            enum_name = enum_entry.get('enumName')
+                            enum_value = enum_entry.get('value')
+                            context = enum_entry.get('_context', '')
+                            
+                            if enum_name and context and enum_value is not None:
+                                qual_enum_name = f"{enum_name}/{context}"
+                                self._enum_lookup[qual_enum_name] = enum_value
+    
     def getConst(self, value):
         try:
             ret = int(value)
         except:
-            # nested get with None if missing
-            for dataType in ('constants', 'typesenums', 'enumsenum'):
-                if value in self.data[dataType]:
-                    ret = self.data[dataType][value].get('value', None)
-                    if ret is not None:
-                        break
-            ret = self.data['constants'].get(value, {'value': None})['value']
+            ret = None
+            
+            # First, try to look up in constants table using qualified key
+            if 'constants' in self.data and value in self.data['constants']:
+                const_data = self.data['constants'][value]
+                if isinstance(const_data, dict):
+                    ret = const_data.get('value', None)
+            
+            # If not found in constants, look up in enum lookup dictionary
             if ret is None:
-                printError(f"Unknown constant {value}")
+                # Build enum lookup on first use (lazy initialization)
+                self._build_enum_lookup()
+                ret = self._enum_lookup.get(value, None)
+            
+            if ret is None:
+                printError(f"Unknown constant '{value}'")
                 exit(warningAndErrorReport())
         return ret
 
@@ -864,6 +831,7 @@ class projectOpen:
                         else:
                             ret[object][key] = value
                             bitwidth = self.getConst( value['width'] )
+                            isSigned = value.get('isSigned', False)
                             # loop through ordered list
                             thisType = None
                             typeArraySize = 1
@@ -873,7 +841,8 @@ class projectOpen:
                                     if arrayElementSize > 0:
                                         # round up to the nearest multiple using integer div, plus one if there is a modulo non zero
                                         typeArraySize = bitwidth // arrayElementSize + (bitwidth % arrayElementSize > 0)
-                                    thisType = myType['type']
+                                    # Select signed or unsigned type based on isSigned flag
+                                    thisType = myType['signedType'] if isSigned else myType['unsignedType']
                                     #if we found something terminate the list as we want the smallest type
                                     break
                             if thisType is None:
@@ -1270,7 +1239,7 @@ class projectOpen:
 
         sourceContexts = self.extractContext(structs, consts)
         for sourceContext in sourceContexts:
-            if sourceContext != "_global":
+            if sourceContext not in self.specialContexts:
                 ret['includeContext'][sourceContext] = 0
 
         ret['hierKey'] = self.hierKey[qualBlock]
@@ -1289,7 +1258,8 @@ class projectOpen:
     def getBlockData(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
         blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts',
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
-                        'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections'}
+                        'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings', 
+                        'interface_type_mappings_qualified'}
         ret = dict()
         # create some of the simple returns
         ret['includeFiles'] = self.config.getConfig('INCLUDEFILES')
@@ -1298,6 +1268,7 @@ class projectOpen:
         ret['temp'] = dict()
         ret['temp']['structs'] = dict()
         ret['temp']['consts'] = dict()
+        ret['temp']['registerInterfaceTypes'] = dict()
         for k in blockDataSet:
             ret[k] = dict()
         ret['addressDecode']['hasDecoder'] = False
@@ -1326,10 +1297,25 @@ class projectOpen:
         self.getBDPorts(ret)
         # figure out includes
         self.getBDIncludes(ret)
+        # collect interface definitions for all interface types used in the block
+        self.getBDInterfaceDefs(ret)
         ret.pop('temp') # remove temp data
 
         return ret
 
+    def _lookupInterfaceTypeKey(self, intf_type):
+        """Simple lookup for interface type qualified key when not from interfaces table        
+        For types like 'memory' etc. that are constructed, not from interfaces table.
+        """
+        all_interface_defs = self.data.get('interface_defs', {})
+        
+        if intf_type in all_interface_defs:
+            return intf_type
+        for parent_key, mappings_dict in all_interface_defs.items():
+            if mappings_dict['interface_type'] == intf_type:
+                return parent_key
+        return None
+    
     def getBlockDataHier(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
         def recurse_block(block, trimRegLeafInstance, excludeInstances, visited=None):
             if visited is None:
@@ -1350,7 +1336,11 @@ class projectOpen:
         if intfData['structures']:
             for structInfo in intfData['structures']:
                 ret['temp']['structs'][structInfo['structureKey']] = 0
-        ret['interfaceTypes'][intfData['interfaceType']] = 0
+        # Store qualified interface type key for direct lookup later
+        # The parser already stores this as interfaceTypeKey after validation
+        intf_type = intfData['interfaceType']
+        intf_type_key = intfData.get('interfaceTypeKey', None)
+        ret['interfaceTypes'][intf_type] = intf_type_key
 
     def getBDInstances(self, qualBlock, ret, trimRegLeafInstance, excludeInstances):
         qualBlockInstances = dict()
@@ -1371,7 +1361,7 @@ class projectOpen:
                 qualBlockInstances[inst_key] = inst_data
                 containerBlocks[inst_data['containerKey']] = 0
                 if inst_data['variant'] != '':
-                    filtered_variants_data = {k: v for k, v in self.data['parametersvariants'][qualBlock].items() if v.get('variant') == inst_data['variant']}
+                    filtered_variants_data = {k: v for k, v in self.data['parameters'][qualBlock]['variants'].items() if v.get('variant') == inst_data['variant']}
                     ret['variants'][inst_data['variant']] = filtered_variants_data
         if len(qualBlockInstances) == 0:
             printError(f"There are no instances of {qualBlock} in the design")
@@ -1477,12 +1467,11 @@ class projectOpen:
                 else:
                     # for local mode where we are not connecting to an instance ensure we dont get a key missing error
                     ret['memoryConnections'][memConn]['instanceTypeKey'] = ''
-                ret['interfaceTypes']['memory'] = 0
-                ret['temp']['structs'][self.data['memories'][val['memoryBlock']]['structureKey']] = 0
-                ret['temp']['consts'][self.data['memories'][val['memoryBlock']]['wordLinesKey']] = 0
+                ret['temp']['structs'][self.data['memories'][val['memoryBlockKey']]['structureKey']] = 0
+                ret['temp']['consts'][self.data['memories'][val['memoryBlockKey']]['wordLinesKey']] = 0
             if val['instanceKey'] in qualBlockInstances:
                 # we are the instance getting a memory connection so this means we have a port
-                memInfo = self.data['memories'][val['memoryBlock']]
+                memInfo = self.data['memories'][val['memoryBlockKey']]
                 ret['memoryPorts'][memConn] = dict(memInfo, **val) # merge the two dicts
                 ret['memoryPorts'][memConn]['interfaceName'] = val['memory']
                 ret['memoryPorts'][memConn]['direction'] = 'src'
@@ -1491,9 +1480,8 @@ class projectOpen:
                     ret['memoryPorts'][memConn]['instanceTypeKey'] = self.data['instances'][val['instanceKey']]['instanceType']
                 else:
                     ret['memoryPorts'][memConn]['instanceTypeKey'] = ''
-                ret['interfaceTypes']['memory'] = 0
-                ret['temp']['structs'][self.data['memories'][val['memoryBlock']]['structureKey']] = 0
-                ret['temp']['consts'][self.data['memories'][val['memoryBlock']]['wordLinesKey']] = 0
+                ret['temp']['structs'][self.data['memories'][val['memoryBlockKey']]['structureKey']] = 0
+                ret['temp']['consts'][self.data['memories'][val['memoryBlockKey']]['wordLinesKey']] = 0
 
         for mem, memInfo in ret['memories'].items():
             # we also need to create a port for any memory that has regAccess as the register block will need to connect to it
@@ -1505,7 +1493,6 @@ class projectOpen:
                     ret['memoryPorts'][interfaceName]['interfaceName'] = interfaceName
                     ret['memoryPorts'][interfaceName]['direction'] = 'src'
                     ret['memoryPorts'][interfaceName]['interfaceType'] = 'memory'
-                    ret['interfaceTypes']['memory'] = 0
                 else:
                     if ret['enableRegConnections']:
                         # we also need to create a memory connection for the register block to connect to the memory
@@ -1518,6 +1505,10 @@ class projectOpen:
         if isRegHandler:
             ret['memoriesParent'] = ret['memories']
             ret['memories'] = dict()
+        
+        # Add memory interface type only once if we have any memory ports or connections
+        if ret['memoryPorts'] or ret['memoryConnections']:
+            ret['interfaceTypes']['memory'] = self._lookupInterfaceTypeKey('memory')
 
     # register connections
     regMapReg   = { 'rw': 'src', 'ro': 'dst', 'ext': 'src' } # mapping of the register type to the registerBlock port direction
@@ -1539,13 +1530,15 @@ class projectOpen:
             if val['blockKey'] == block and val['instanceKey'] in containedInstances:
                 reg_name = val['register']
                 connected_regs[reg_name] = 0
-                regType =  ret['registers'][val['registerBlock']]['regType']
+                regType =  ret['registers'][val['registerBlockKey']]['regType']
                 ifType = 'reg_' + regType
-                regInfo = ret['registers'][val['registerBlock']]
+                regInfo = ret['registers'][val['registerBlockKey']]
                 ret['temp']['structs'][regInfo['structureKey']] = 0
+                # Track register-based interface types for later processing
+                ret['temp']['registerInterfaceTypes'][ifType] = 0
                 if isRegHandler:
                     ret['registerPorts'][regConn] = dict(regInfo, **val)
-                    ret['registerPorts'][regConn]['direction'] = self.regMapReg.get(ret['registers'][val['registerBlock']]['regType'], None)
+                    ret['registerPorts'][regConn]['direction'] = self.regMapReg.get(ret['registers'][val['registerBlockKey']]['regType'], None)
                     ret['registerPorts'][regConn]['interfaceType'] = ifType
                 else:
                     connKey = regInfo['register']
@@ -1561,17 +1554,17 @@ class projectOpen:
                     else:
                         inst = val['instance']
                         ret['registerConnections'][connKey]['ends'][inst] = {'instance': inst, 'portName': reg_name, 'direction': self.regMapBlock[regType]}
-                ret['interfaceTypes'][ifType] = 0
             if val['instanceKey'] in qualBlockInstances:
                 portName = val['register']
                 connected_regs[portName] = 0
-                regInfo = self.data['registers'][val['registerBlock']]
+                regInfo = self.data['registers'][val['registerBlockKey']]
                 ret['registerPorts'][portName] = dict(regInfo, **val) # merge the two dicts
                 regType = regInfo['regType']
                 ret['registerPorts'][portName]['direction'] = self.regMapBlock.get(regType, None)
                 ifType = 'reg_' + regType
                 ret['registerPorts'][portName]['interfaceType'] = ifType
-                ret['interfaceTypes'][ifType] = 0
+                # Track register-based interface types for later processing
+                ret['temp']['registerInterfaceTypes'][ifType] = 0
                 ret['temp']['structs'][regInfo['structureKey']] = 0
         # handle implied register connections. These interfaces connect any unconnected registers to the block
         implied_reg = dict()
@@ -1590,7 +1583,8 @@ class projectOpen:
                     inst = next(iter(qualBlockInstances))
                     implied_reg[reg]['ends'][inst] = {'instance': qualBlockInstances[inst]['instance'], 'portName': reg, 'direction': self.regMapBlock[regType]}
                     implied_reg[reg]['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg, 'direction': self.regMapReg[regType]}
-                ret['interfaceTypes'][ifType] = 0
+                # Track register-based interface types for later processing
+                ret['temp']['registerInterfaceTypes'][ifType] = 0
                 ret['temp']['structs'][reg_data['structureKey']] = 0
         if isRegHandler:
             ret['registerPorts'].update(implied_reg)
@@ -1653,7 +1647,10 @@ class projectOpen:
                 printError(f"Connection {conn} is connected to both a contained instance and the parent instance in block {ret['qualBlock']}. Connections must be between two contained instances")
                 exit(warningAndErrorReport())
             if connectionCount > 1 or isPort:
-                ret['interfaceTypes'][self.data['interfaces'][connVal['interfaceKey']]['interfaceType']] = 0
+                # Get interfaceTypeKey from the interfaces table (already has qualified key)
+                intfInfo = self.data['interfaces'][connVal['interfaceKey']]
+                intf_type = intfInfo['interfaceType']
+                ret['interfaceTypes'][intf_type] = intfInfo.get('interfaceTypeKey', None)
         for conn, connVal in connections.items():
             # create jinja friendly names
             connVal['interfaceName'] = getKeyPriority(connVal, ['interfaceName', 'srcport', 'name', 'interface'])
@@ -1767,8 +1764,37 @@ class projectOpen:
     def getBDIncludes(self, ret):
         sourceContexts = self.extractContext(ret['temp']['structs'], ret['temp']['consts'])
         for sourceContext in sourceContexts:
-            if sourceContext != "_global":
+            if sourceContext not in self.specialContexts:
                 ret['includeContext'][sourceContext] = 0
+
+    def getBDInterfaceDefs(self, ret):
+        """Collect interface definitions for all interface types used in the block
+        
+        Creates a simple mapping from interface type aliases to canonical interface types.
+        This allows 'reg_ro' to map to 'status', etc.
+        """
+        # Get interface_defs from loaded data
+        all_interface_defs = self.data.get('interface_defs', {})
+        
+        # Build simple mapping: alias -> qualified canonical interface type
+        # by filtering interface_defs that have mappedFrom data
+        # Example: {'reg_ro': 'status/_a2csystem', 'reg_rw': 'control/_a2csystem', ...}
+        type_mappings = {}
+        type_mappings_qualified = {}
+        for qual_key, intf_def in all_interface_defs.items():
+            if 'mappedFrom' in intf_def and intf_def['mappedFrom']:
+                for mapping_key, mapping_data in intf_def['mappedFrom'].items():
+                    if 'mapped_type' in mapping_data:
+                        mapped_type = mapping_data['mapped_type']
+                        # Only include mappings for register interface types we're using
+                        if mapped_type in ret['temp']['registerInterfaceTypes']:
+                            type_mappings[mapped_type] = intf_def['interface_type']
+                            type_mappings_qualified[mapped_type] = qual_key
+                            ret['interfaceTypes'][intf_def['interface_type']] = qual_key
+        
+        ret['interface_type_mappings'] = type_mappings
+        for intf_type, qual_key in ret['interfaceTypes'].items():
+            ret['interface_defs'][intf_type] = all_interface_defs[qual_key]
 
     def extractContext(self, structs, consts):
         ret = dict()
@@ -2007,9 +2033,10 @@ class projectOpen:
 
     def getQualBlockVariants(self, qualBlock):
         variants = []
-        for _,v in self.data['parametersvariants'].get(qualBlock, {}).items():
-            if v['variant'] not in variants:
-                variants.append(v['variant'])
+        variantData = self.data['parameters'].get(qualBlock, {}).get('variants', {})
+        for _, data in variantData.items():
+            if data['variant'] not in variants:
+                variants.append(data['variant'])
         return(variants)
 
 # this class is used to create the database based on the schema
@@ -2050,6 +2077,7 @@ class projectCreate:
     generatorTemplates = {"cppConfig", "svConfig", "docConfig" }
     dontValidate = {'_topInstance'} # list of keys that should not be validated if validator is present
     stdFields = {"context"}
+    specialContexts = {"_global", "_a2csystem"} # special contexts that should be excluded from includes
     constFind = re.compile(r"(\$)(\w+)")
     currentContext = None
     errorState = False
@@ -2102,8 +2130,8 @@ class projectCreate:
         # read schema file referenced by project
         self.schemaYaml = existsLoad(schemaFile)
         # initialize schema base on the schema file
-        self.schema = schema(self.schemaYaml, schemaFile)
-        self.counterReverseField = self.schema.data['counterReverseField']
+        self.schema = Schema(self.schemaYaml, schemaFile)
+        self.counterReverseField = self.schema.counter_reverse_field
 
         if self.proj.get("addressControl"):
             # load and check the addressControl file specified in the project file
@@ -2124,8 +2152,19 @@ class projectCreate:
         # save the base yaml path as well incase needed by the generators
         self.config.setConfig('BASEYAMLPATH', g.yamlBasePath)
         # create all the databases based on the schema
-        self.createDatabase(self.schema.sections())
-        self.yamlUnread = self.getFileList(self.proj, g.yamlBasePath)[0] #pre populate based on project file
+        self.createDatabase(self.schema.data['schema'])
+        # Load system files first (from a2cProj - base/pro config)
+        systemFiles = []
+        if "systemFiles" in self.a2cProj:
+            # Use a2cRoot directly as the base path since it's already set correctly
+            systemFiles = self.getFileList(self.a2cProj, self.a2cRoot)[0]
+        
+        # Then load user project files
+        userFiles = self.getFileList(self.proj, g.yamlBasePath)[0]
+        
+        # Combine with system files first (so they process with priority)
+        self.yamlUnread = systemFiles + userFiles
+        self.systemFiles = set(systemFiles)  # Track which are system files
         #read all the files into project
         self.readRaw()
         # process all files
@@ -2163,7 +2202,7 @@ class projectCreate:
 
     def createProjectConfig(self):
         # save anything in project file to config except named items
-        notConfig = {"projectFiles", "dirs"}
+        notConfig = {"projectFiles", "dirs", "systemFiles"}
         toSave = {'TOPINSTANCE': '_top', "PROJECTNAME": "Nameless"} #initialize to some defaults as appropriate
         for item in self.proj:
             # to allow later processing of nested project files we need to ensure the lower level parser ignores them by adding them to the set
@@ -2226,9 +2265,9 @@ class projectCreate:
         g.db.commit()
 
     def generateIndexes(self):
-        for table in self.schema.sections():
+        for table in self.schema.tables:
             for index in self.schema.data['indexes'][table]:
-                sql = f"CREATE INDEX idx_{table}_{index} ON {table} ({index})"
+                sql = f"CREATE INDEX idx_{table}_{index} ON {table} (\"{index}\")"
                 g.cur.execute(sql)
 
     def createDatabase(self, schema, level=""):
@@ -2243,7 +2282,7 @@ class projectCreate:
             if isinstance(cols[field], dict):
                 self.createTable(table+field, cols[field])
             else:
-                col = f"{col}{comma}{field}"
+                col = f"{col}{comma}\"{field}\"" # field is quoted to allow for sql reserved words
                 comma = ", "
         self.schema.data['colsSQL'][table] = col
         sql = f"CREATE TABLE {table} ({col})"
@@ -2266,6 +2305,13 @@ class projectCreate:
             dep_set = set(sum(dependancies.values(), []))
         if not data:
             return (todoNorm, incNorm)
+        # Handle systemFiles (needs macro expansion)
+        if "systemFiles" in data:
+            systemF = data["systemFiles"]
+            for f in systemF:
+                # Expand macros like $a2c before resolving path
+                expandedPath = expandDirMacros(f)
+                todoNorm.append(os.path.relpath(os.path.join(basePath, expandedPath), g.yamlBasePath))
         if "projectFiles" in data:
             todo = data["projectFiles"]
             for f in todo:
@@ -2364,7 +2410,7 @@ class projectCreate:
                         offset = ((blockAddressCurrent[currentBlock] + size - 1) // size ) * size
                         blockAddressCurrent[currentBlock] = offset + size
                 blockAddressCurrent[currentBlock] = offset + size
-                sql = f"UPDATE {addressType} SET offset = {offset} WHERE {keyField} = '{row[keyField]}'"
+                sql = f"UPDATE {addressType} SET offset = {offset} WHERE \"{keyField}\" = '{row[keyField]}'" # field is quoted to allow for sql reserved words
                 g.cur.execute(sql)
 
         # once all addresses are calculated we need to perform space checks
@@ -2525,8 +2571,15 @@ class projectCreate:
             for myYaml, dep in toProcess.items():
                 if not dep:
                     # if there are no dependancies, its always safe to process
-                    self.yamlContext[myYaml] = OrderedDict({myYaml: None})
-                    self.processSingleFile(myYaml)
+                    if myYaml in self.systemFiles:
+                        # System files go into special _a2csystem context
+                        if '_a2csystem' not in self.yamlContext:
+                            self.yamlContext['_a2csystem'] = OrderedDict()
+                        self.yamlContext['_a2csystem'][myYaml] = None
+                        self.processSingleFile(myYaml, contextOverride='_a2csystem')
+                    else:
+                        self.yamlContext[myYaml] = OrderedDict({myYaml: None})
+                        self.processSingleFile(myYaml)
                     processed[myYaml] = None
                     didWork = True
                 else:
@@ -2568,19 +2621,21 @@ class projectCreate:
         g.db.commit()
 
     # process a single previously read file or provided standalone data
-    def processSingleFile(self, yamlFile, sections=None):
+    def processSingleFile(self, yamlFile, sections=None, contextOverride=None):
         # loop through the sections and process the section
         if sections is None:
             printIfDebug(f"Processing yaml file {yamlFile}")
             sections = self.yamlRaw[yamlFile]
-        self.currentContext = yamlFile
+        # Use contextOverride if provided (for system files in _a2csystem context)
+        contextFile = contextOverride if contextOverride else yamlFile
+        self.currentContext = contextFile
         if not sections:
             return
         if "blockDir" in sections:
             self.yamlDir = sections["blockDir"]
         else:
             self.yamlDir = os.path.dirname(yamlFile)
-        if yamlFile not in self.includeValid and yamlFile !='_global':
+        if yamlFile not in self.includeValid and yamlFile not in self.specialContexts:
             # check if this is a nested project file
             if 'addressControl' not in sections:
                 self.includeValid[yamlFile] = {"dir": self.yamlDir, "valid": False}
@@ -2590,14 +2645,14 @@ class projectCreate:
                 section = self.schema.data['mapto'][section]
             # some sections need to be ignored (eg in case this is a nested project file)
             if section not in self.ignoreSections:
-                if (section in self.schema.sections()):
+                if (section in self.schema.data['schema']):
                     # does this section have a custom section handler
                     if section in self.customSections:
                         funct = '_process_'+ section
                         # getattr is used to call the function specified in the string funct in the self object
-                        getattr(self, funct)(sectData, yamlFile)
+                        getattr(self, funct)(sectData, contextFile)
                     else:
-                        self.processSection(section, sectData, yamlFile)
+                        self.processSection(section, sectData, contextFile)
                 else:
                     printError(f"Unknown section: {section} found in {yamlFile}:{sectData.lc.line}")
                     exit(warningAndErrorReport())
@@ -2628,7 +2683,7 @@ class projectCreate:
             if comboKey is None:
                 if isList:
                     # for list case the key is one of the data items
-                    itemkey = item[self.schema.data['key'][section]]
+                    itemkey = loopitem[self.schema.data['key'][section]]
                 else:
                     # for dict its the anchor of the data items ie loopitem
                     itemkey = loopitem
@@ -2640,7 +2695,7 @@ class projectCreate:
                 item = loopitem
             else:
                 item = data[loopitem]
-            if yamlFile=='_global':
+            if yamlFile in self.specialContexts:
                 yamlFileOverride = item.get('_yamlFileOverride', yamlFile)
                 if yamlFileOverride not in self.data[section]:
                     self.data[section][yamlFileOverride] = OrderedDict()
@@ -2668,7 +2723,7 @@ class projectCreate:
     # process a single entry and handle all the trivial cases
     # schema can be provided for sub table use cases
     # note that auto fields are ignored
-    def processSimple(self, section, itemkey, item, yamlFile, schema = None, context='', outer = None):
+    def processSimple(self, section, anchor, item, yamlFile, schema = None, context='', outer = None):
         ret = dict()
         if 'lc' in item:
             myLineNumber = item['lc'].line + 1
@@ -2678,12 +2733,12 @@ class projectCreate:
             ret['lc'] = item.lc
         else:
             myLineNumber = None
-
         comboKey = self.schema.data['comboKey'].get(context+section, None)
         comboSchema = self.schema.data['comboField'].get(context+section, {})
         if not schema:
             # default schema for non nested uses
-            schema = self.schema.sections()[section]
+            schema = self.schema.get_section(section).get_fields_dict() if self.schema.get_section(section) else {}
+        
         # handle singular case and convert item to a dict
         if not isinstance(item, dict):
             if context+section in self.schema.data['singular']:
@@ -2694,7 +2749,7 @@ class projectCreate:
             for field in item:
                 if not isinstance(field, dict) and not isinstance(item[field], dict):
                     if field not in schema and field not in ['eval', 'lc', '_yamlFileOverride']:
-                        printWarning(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{itemkey} has unknown field {field}")
+                        printWarning(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} has unknown field {field}")
 
         # loop through the schema processing the input one field at a time
         for field, ftype in schema.items():
@@ -2708,58 +2763,106 @@ class projectCreate:
                 else:
                     nested = item.get(field)
                 if not nested and 'required' in attrib:
-                    self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{itemkey} required sub table {field} is missing")
+                    self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} required sub table {field} is missing")
                 if nested:
                     if not isinstance(nested, (dict, list)):
-                        printError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{itemkey} required sub table {field} is missing definition")
+                        printError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} required sub table {field} is missing definition")
                         exit(warningAndErrorReport())
                     # recursively process the sub entry
-                    ret[field] = self.processSubTable(field, nested, yamlFile, ftype, itemkey, context+section, ret)
+                    ret[field] = self.processSubTable(field, nested, yamlFile, ftype, anchor, context+section, ret)
                 continue
             if ftype == 'ignore':
                 # while unknown ftypes are ignored anyway, prefer to be explicit in ignoring ignore ftype
                 continue
             if comboField:
                 # field is created by concatenation of other fields. schema will have enforced ordering to after other fields
+                # Use precomputed qualified sources from schema validation
+                node = self.schema.get_node(context+section)
+                field_obj = node.get_field(field) if node else None
+                if not (field_obj and field_obj.combo_sources_qualified):
+                    raise RuntimeError(f"Schema validation incomplete: combo field '{field}' in section '{context+section}' missing qualified sources")
+                qualified_sources = field_obj.combo_sources_qualified
                 comboStr = ""
-                for comboFieldKey in comboField:
-                    comboStr = comboStr + ret[comboFieldKey]
+                for source_field in qualified_sources:
+                    if source_field not in ret or ret[source_field] is None:
+                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, field:{field} is missing required combo source {source_field}")
+                        exit(warningAndErrorReport())
+                    comboStr = comboStr + ret[source_field]
                 ret[field] = comboStr
+                # Immediately populate the qualified field if it exists in schema
+                qualified_field = field + 'Key'
+                if qualified_field in schema and qualified_field not in ret:
+                    ret[qualified_field] = comboStr + '/' + yamlFile
+
             if ftype == 'key':
                 if comboKey:
                     # key is created by concatenation of other fields. schema will have enforced ordering to after other fields
+                    # Use precomputed qualified sources from schema validation
+                    node = self.schema.get_node(context+section)
+                    if not (node and node.combo_key_sources_qualified):
+                        raise RuntimeError(f"Schema validation incomplete: combo key in section '{context+section}' missing qualified sources")
+                    qualified_sources = node.combo_key_sources_qualified
                     keyStr = ""
-                    for keyField in comboKey:
-                        if keyField not in ret or ret[keyField] == None:
-                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{itemkey} is missing required field {keyField}")
+                    for source_field in qualified_sources:
+                        if source_field not in ret or ret[source_field] == None:
+                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{anchor} is missing required field {source_field}")
                             exit(warningAndErrorReport())
-                        keyStr = keyStr + ret[keyField]
-                    itemkey = keyStr
-
-                # if item key was supplied then use it
-                if itemkey:
-                    ret[field] = itemkey
+                        keyStr = keyStr + ret[source_field]
+                    ret[field] = keyStr
+                elif anchor:
+                    # if anchor was supplied then use it
+                    ret[field] = anchor
+                elif field not in item:
+                    # anchor was not supplied and field not in item - this is an error
+                    self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} is missing required field {field}")
                 else:
-                    # itemkey was not supplied this is a nested table use case, its in a regular field (similar to required)
-                    if field not in item:
-                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{itemkey} is missing required field {field}")
+                    # anchor was not supplied but field is in item - use the item value
                     ret[field] = item.get(field)
-                # temp hack to deal with nested cases
-                if ((field+'Key') not in ret) and (field+'Key') in schema:
-                    ret[field+'Key'] = itemkey+'/'+yamlFile
+                
+                # Immediately populate the qualified key field if it exists in schema
+                qualified_field = field + 'Key'
+                if qualified_field in schema and qualified_field not in ret and field in ret:
+                    ret[qualified_field] = ret[field] + '/' + yamlFile
             else:
                 if ftype == 'listkey':
-                    ret[field] = item
+                    # For singleEntryList, the list item value is passed as anchor, not in item dict
+                    ret[field] = anchor
+                    
+                    # Immediately populate the qualified key field if it exists in schema
+                    qualified_field = field + 'Key'
+                    if qualified_field in schema and qualified_field not in ret and field in ret:
+                        ret[qualified_field] = ret[field] + '/' + yamlFile
                 if ftype == 'contextKey':
-                    # append the key with the filename to create contextKey
-                    ret[field] = itemkey+'/'+yamlFile
+                    # contextKey fields are automatically populated when their corresponding
+                    # key/anchor/listkey field is processed (see immediate population after each type)
+                    # If not already populated, this is a bug that needs investigation
+                    if field not in ret:
+                        base_field = field[:-3] if field.endswith('Key') else field
+                        base_ftype = schema.get(base_field, 'unknown')
+                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {context}{section}, contextKey field '{field}' was not pre-populated by its base field '{base_field}' (type={base_ftype}). This is a bug in processYaml.")
+                        exit(warningAndErrorReport())
+                    # else: correctly pre-populated, no action needed
+                if ftype == 'anchor':
+                    # anchor: field value comes from YAML anchor, not from item data
+                    # Used for collapsed tables where the key is the YAML structure, not a field
+                    # For list tables with natural keys, anchor may be None - get value from item
+                    if anchor is not None:
+                        ret[field] = anchor
+                    elif field in item:
+                        # List table with natural key - get the key value from item data
+                        ret[field] = item[field]
+                    
+                    # Immediately populate the qualified key field if it exists in schema
+                    qualified_field = field + 'Key'
+                    if qualified_field in schema and qualified_field not in ret and field in ret:
+                        ret[qualified_field] = ret[field] + '/' + yamlFile
                 if ftype in {'required', 'subkey'}:
                     if field not in item:
-                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{itemkey} is missing required field {field}")
+                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} is missing required field {field}")
                     ret[field] = item.get(field)
                 if ftype in {'optional', 'optionalConst'}:
                     # note that its only optional in the input - hence get usage
-                    default = self.schema.data['optionalDefault'].get(section+field, "")
+                    default = self.schema.data['optionalDefault'].get(context+section+field, "")
                     ret[field] = item.get(field, default)
                 if ftype=='outerkey' or ftype=='outerkeyKey' or ftype=='outer':
                     # outer key is for the nested case, we want to refer back to the entry we are nested within
@@ -2767,17 +2870,25 @@ class projectCreate:
                 if ftype in {'const', 'optionalConst', 'param'}:
                     constType = ftype
                     if ftype=='param':
+                        # param: field is required and can be either a block parameter or a constant
                         # parameters are instance specific so the design element must belong to a block
-                        if (not self.checkIsParam(ret['blockKey'], item[field], yamlFile)):
-                            constType = 'const' # if not a param, treat as a const
-                        else:
+                        if field not in item:
+                            # param field missing - this is an error (param is like required)
+                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{anchor} is missing required field {field}")
+                            constType = 'const'  # Continue processing as const to avoid additional errors
+                        elif 'blockKey' in ret and self.checkIsParam(ret['blockKey'], item[field], yamlFile):
+                            # TODO: move this logic to an auto function
+                            # Value is a block parameter - use it directly
                             ret[field] = item[field]
+                        else:
+                            # Value is not a parameter (or blockKey not yet available) - treat as constant
+                            constType = 'const'
                     # const can be a number or a reference to a constant that has already been declared
                     itemKeyField = None
                     if constType == 'const':
                         # const is not optional so report error if missing
                         if field not in item:
-                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{itemkey} is missing required field {field}")
+                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{anchor} is missing required field {field}")
                         else:
                             ret[field], itemKeyField = self.constParse(item[field], yamlFile, value=False)
                     if constType == 'optionalConst':
@@ -2796,19 +2907,29 @@ class projectCreate:
                     if field in item:
                         # named field is present, so use that
                         ret[field] = item[field]
-                    else:
+                    elif 'eval' in item:
                         # no named field, use eval
-                        if 'eval' in item:
-                            self.currentContext = yamlFile
-                            # look for $XXX and if found search within context to replace symbol
-                            myVal = self.constFind.sub(self.re_constReplace, item['eval'])
-                            # needs work to deal with const
+                        self.currentContext = yamlFile
+                        # look for $XXX and if found search within context to replace symbol
+                        myVal = self.constFind.sub(self.re_constReplace, item['eval'])
+                        # Execute the user-provided expression with proper error handling
+                        try:
                             ret[field] = eval(myVal, {}, {})
+                        except Exception as e:
+                            # User's eval expression failed - provide clear error
+                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} "
+                                        f"eval expression failed: '{item['eval']}' "
+                                        f"(after substitution: '{myVal}'). "
+                                        f"Error: {type(e).__name__}: {str(e)}")
+                            ret[field] = 0  # Set default to avoid cascading errors
+                    else:
+                        # Neither field nor eval provided - this is an error
+                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} must provide either '{field}' field or 'eval' expression")
                 if ftype[:4]=='auto':
                     # auto fields are used to handle all the special cases and prevent processSimple becoming bloated
                     # hopefully this eases maintainance and makes adding new special cases simplier
                     # call the special case:
-                    myAutoRet = getattr(self, self.schema.data['fnStr'][context+section+field])(section, itemkey, item, field, yamlFile, ret)
+                    myAutoRet = getattr(self, self.schema.data['fnStr'][context+section+field])(section, anchor, item, field, yamlFile, ret)
                     # the special cases can create signle return field or multiple - detect and handle
                     if isinstance(myAutoRet, dict):
                         # our auto function returned multiple keys so add them all
@@ -2828,7 +2949,7 @@ class projectCreate:
                 if 'values' in validator:
                     # the validator can be a simple list of valid options
                     if ret[field] not in validator['values']:
-                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{itemkey} field {field}, {item[field]} is not in the allowed values, check schema for valid valued")
+                        self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} field {field}, {item[field]} is not in the allowed values, check schema for valid valued")
                 else:
                     # more complex validation necessary
                     # however we do have to avoid some special cases (for example _topInstance) which will by definition fail validation
@@ -2841,7 +2962,7 @@ class projectCreate:
                             # as its valid we also need to capture the context key - ie what file did the referenced value come from
                             ret[field+'Key'] = ret[field] + '/' + varContext
                         else:
-                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{itemkey} field {field}, value {ret[field]} was not valid in context {scope}")
+                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} field {field}, value {ret[field]} was not valid in context {scope}")
                             # add anyway to prevent key error later
                             ret[field+'Key'] = 'InvalidValueInYaml'
                     else:
@@ -2851,7 +2972,8 @@ class projectCreate:
             # if there is a post process function for this section, call it now
             funct = self.schema.data['post'][context+section]
             # getattr is used to call the function specified in the string funct in the self object
-            ret = getattr(self, funct)(itemkey, ret, yamlFile)
+            ret = getattr(self, funct)(anchor, ret, yamlFile)
+        
         return ret
 
     def varWidth(self, varInfo, yamlFile):
@@ -2893,10 +3015,85 @@ class projectCreate:
             if item['enumName'] in self.enums.get(yamlFile, {}):
                 self.logError(f"Processing enums in {yamlFile}:{item['lc'].line + 1} and enum:{itemkey} has duplicate enumName {item['enumName']}")
                 exit(warningAndErrorReport())
+            # Defensive check - value should have been validated in processSimple (eval field type)
+            # If value is missing here, validation failed earlier
+            if 'value' not in item:
+                # This shouldn't happen if processSimple validation works correctly
+                return item  # Skip adding incomplete enum
             if yamlFile not in self.enums:
                 self.enums[yamlFile] = dict()
             self.enums[yamlFile][item['enumName']] = {'value': item['value'], 'type': item['type']}
             self.qualEnums[item['enumName']+'/'+yamlFile] = {'value': item['value'], 'type': item['type']}
+        return item
+
+    def _post_validate_interface_structures(self, itemkey, item, yamlFile):
+        """Validate that structureType values match parameters defined in interface_defs
+        
+        This performs bidirectional validation:
+        1. Each structureType must be a valid parameter in interface_defs
+        2. All struct-type parameters from interface_defs must be present
+        """
+        # Only validate if interface has interfaceType
+        if 'interfaceType' not in item:
+            return item
+        
+        intf_type = item['interfaceType']
+        
+        # Get the interface_defs for this interfaceType
+        # Use yamlFile as context to allow user-defined interfaces, with _a2csystem as fallback
+        (intf_def, intf_context) = self.getFromContext('interface_defs', yamlFile, intf_type, NotFoundFatal=False)
+        
+        if not intf_def:
+            # If interface_defs not found, the interfaceType validation will catch this
+            return item
+        
+        # Extract valid parameter names from interface_defs
+        if 'parameters' not in intf_def:
+            # No parameters defined, so no structure types are expected
+            if item.get('structures'):
+                line_num = item['lc'].line + 1 if hasattr(item, 'lc') else '?'
+                self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}' "
+                            f"has structures defined, but interface_defs '{intf_type}' does not define any parameters")
+            return item
+        
+        # Get all valid structure types and required struct parameters
+        all_params = intf_def['parameters']
+        valid_structure_types = set(all_params.keys())
+        
+        # Filter to only struct-type parameters (these are the ones that need structures defined)
+        required_struct_params = {
+            param_name for param_name, param_info in all_params.items()
+            if param_info.get('datatype') == 'struct'
+        }
+        
+        # Get the structureTypes that are defined in the interface
+        defined_structure_types = set()
+        structures = item.get('structures', {})
+        
+        # Validation 1: Check each defined structureType is valid
+        for struct_key, struct_data in structures.items():
+            if 'structureType' not in struct_data:
+                continue  # This will be caught by required field validation
+            
+            structure_type = struct_data['structureType']
+            defined_structure_types.add(structure_type)
+            
+            if structure_type not in valid_structure_types:
+                line_num = struct_data['lc'].line + 1 if hasattr(struct_data, 'lc') else '?'
+                valid_types_str = "', '".join(sorted(valid_structure_types))
+                self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}': "
+                            f"structureType '{structure_type}' is not valid. "
+                            f"Valid structureTypes for '{intf_type}' are: '{valid_types_str}'")
+        
+        # Validation 2: Check all required struct parameters are present
+        missing_params = required_struct_params - defined_structure_types
+        if missing_params:
+            line_num = item['lc'].line + 1 if hasattr(item, 'lc') else '?'
+            missing_params_str = "', '".join(sorted(missing_params))
+            self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}': "
+                        f"missing required structureType(s): '{missing_params_str}'. "
+                        f"All struct-type parameters from interface_defs must have corresponding structures.")
+        
         return item
 
     #interfaces: interface: key, interfaceType: required, desc: required, structname: subkey,  structureType: auto,
@@ -2924,7 +3121,7 @@ class projectCreate:
             self.logError(f"Processing specialStructures in {yamlFile} and entry:{itemkey} does not reference valid baseStruct")
             exit(warningAndErrorReport())
 
-        varschema = self.schema.sections()['structures']['vars']
+        varschema = self.schema.get_node('structuresvars').get_fields_dict() if self.schema.get_node('structuresvars') else {}
         newStruct = OrderedDict()
         newStructVars = OrderedDict()
         reserved = 0
@@ -3233,6 +3430,7 @@ class projectCreate:
                 # the channel is declared based on the src port
                 if entry['channel'] == '' and dir=='src':
                     entry['channel'] = portName
+                
                 endRow = self.processSimple('ends', 'dummy', row, yamlFile, schema=self.schema.data['schema']['connections']['ends'],context='connections', outer = row )
 
                 entry['ends'][endRow['portId']]=endRow
@@ -3346,10 +3544,21 @@ class projectCreate:
                         found = True
                         break
                     except: KeyError
+                
+                # If not found in regular context, also search _a2csystem context
+                if not found and '_a2csystem' in self.yamlContext:
+                    # System files are all stored under '_a2csystem' qualification
+                    try:
+                        ret = self.data[objType]['_a2csystem'][key]
+                        qualification = '_a2csystem'
+                        found = True
+                    except: KeyError
 
         if (not found) and NotFoundFatal:
             printError(f"{objType} {key} in file {context} is unresolved")
             exit(warningAndErrorReport())
+        if not found:
+            qualification = None
 
         return (ret, qualification)
 
@@ -3364,19 +3573,45 @@ class projectCreate:
             self.data[nestedContext][yamlFile] = OrderedDict()
         attribs = self.schema.data['attrib'].get(nestedContext, {})
         comboKey = self.schema.data['comboKey'].get(nestedContext, None)
+        
         if 'list' in attribs:
             # if nested is a list of dictionaries then we will enumerate and process, however if it just a single enty, then it is just a key on its own
             if isinstance(nested[0], (dict, list)):
-                # for lists we are going to use the index as the item key
+                # All list tables now have explicit keys defined in schema
+                # The key value comes from item data, not from YAML anchor
+                node = self.schema.get_node(nestedContext)
+                
                 for index, item in enumerate(nested):
-                    itemkey = outerItemKey+'_'+str(index)
-                    ret[itemkey] = self.processSimple(section, itemkey, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
-                    self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
+                    # No anchor provided - key will come from item data
+                    anchor = None
+                    
+                    processed = self.processSimple(section, anchor, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
+                    
+                    # Get the key from the processed item's key field
+                    key_field = node.storage_key_field if node else None
+                    if not key_field:
+                        self.logError(f"In file {yamlFile}, section {context}{section}, list table schema has no storage_key_field defined. This is a schema validation bug.")
+                        exit(warningAndErrorReport())
+                    if key_field not in processed:
+                        self.logError(f"In file {yamlFile}, section {context}{section}, list table key field '{key_field}' not found in processed item. This is a processing bug.")
+                        exit(warningAndErrorReport())
+                    itemkey = processed[key_field]
+                    
+                    ret[itemkey] = processed
+                    self.data[nestedContext][yamlFile][itemkey] = processed
             else:
+                # Simple list of scalar values for singleEntryList
                 for item in nested:
                     itemkey = item
                     ret[itemkey] = self.processSimple(section, itemkey, {}, yamlFile, schema=nestedSchema, context=context, outer=outer)
                     self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
+        
+        elif 'singleEntryList' in attribs:
+            # Handle singleEntryList separately - items from a list become individual records
+            for item in nested:
+                itemkey = item
+                ret[itemkey] = self.processSimple(section, itemkey, {}, yamlFile, schema=nestedSchema, context=context, outer=outer)
+                self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
 
         else:
             if isinstance(nested, list):
@@ -3392,9 +3627,12 @@ class projectCreate:
                     exit(warningAndErrorReport())
 
             else:
-                for itemkey, item in nested.items():
-                    ret[itemkey] = self.processSimple(section, itemkey, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
-                    self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
+                if 'dataGroup' in attribs:
+                    ret = self.processSimple(section, outerItemKey, nested, yamlFile, schema=nestedSchema, context=context, outer=outer)
+                else:
+                    for itemkey, item in nested.items():
+                        ret[itemkey] = self.processSimple(section, itemkey, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
+                        self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
         return ret
 
     # add an item to the database
@@ -3421,7 +3659,7 @@ class projectCreate:
                         self.addRecord(table+col, yamlFile, itemkey, myEntry[col], schema[col], outerEntry=entry)
                     continue
                 if schema[col] == 'key':
-                    value = myEntryKey
+                    value = myEntry.get(col, myEntryKey)
                 if schema[col] in ['outerkey', 'outerkeyKey', 'outer']:
                     value = myEntry.get(col, outerEntry.get(col, None))
                     if value is None:
@@ -3438,7 +3676,14 @@ class projectCreate:
 
             sql = f"INSERT INTO {table} ({self.schema.data['colsSQL'][table]}) values ({params})"
             # use parameterized sql to finally fix the damn appostrophe
-            g.cur.execute(sql, valueList)
+            try:
+                g.cur.execute(sql, valueList)
+            except sqlite3.InterfaceError as e:
+                print(f"ERROR inserting into {table}:")
+                print(f"  SQL: {sql}")
+                print(f"  Values: {valueList}")
+                print(f"  Value types: {[type(v) for v in valueList]}")
+                raise
 
 
 

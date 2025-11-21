@@ -53,6 +53,16 @@ typedef uint8_t bSizeT; // [4] for addressing memory
 typedef uint16_t wordT; // [16] a word type, used for test
 typedef uint32_t apbAddrT; // [32] for addressing register via APB
 typedef uint32_t apbDataT; // [32] for the data sent or recieved via APB
+typedef int8_t signedByte_t; // [8] Signed 8-bit type (-128 to 127)
+typedef int16_t signedWord_t; // [16] Signed 16-bit type (-32768 to 32767)
+typedef int32_t signedDword_t; // [32] Signed 32-bit type
+typedef int8_t signedNibble_t; // [4] Signed 4-bit type (-8 to 7) for testing small signed values
+typedef int8_t signed3bit_t; // [3] Signed 3-bit type (-4 to 3) non-byte-aligned
+typedef int8_t signed5bit_t; // [5] Signed 5-bit type (-16 to 15) non-byte-aligned
+typedef int8_t signed7bit_t; // [7] Signed 7-bit type (-64 to 63) non-byte-aligned
+typedef int16_t signed11bit_t; // [11] Signed 11-bit type (-1024 to 1023) non-byte-aligned
+typedef uint8_t unsigned5bit_t; // [5] Unsigned 5-bit type for mixed testing
+typedef uint16_t unsigned9bit_t; // [9] Unsigned 9-bit type for mixed testing
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums 
@@ -865,6 +875,287 @@ struct test9St {
         memcpy(&wordArray, &wordArray_, sizeof(wordArray));
     }
     explicit test9St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct signedTestSt {
+    twoBitT unsignedValue; //An unsigned two-bit value
+    signedByte_t signedValue; //A signed byte value for testing
+
+    signedTestSt() {}
+
+    static constexpr uint16_t _bitWidth = 10;
+    static constexpr uint16_t _byteWidth = 2;
+    typedef uint16_t _packedSt;
+    bool operator == (const signedTestSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const signedTestSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.signedValue, NAME + ".signedValue");
+        sc_trace(tf,v.unsignedValue, NAME + ".unsignedValue");
+    }
+    inline friend ostream& operator << ( ostream& os,  signedTestSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<10> sc_pack(void) const;
+    void sc_unpack(sc_bv<10> packed_data);
+    explicit signedTestSt(sc_bv<10> packed_data) { sc_unpack(packed_data); }
+    explicit signedTestSt(
+        twoBitT unsignedValue_,
+        signedByte_t signedValue_) :
+        unsignedValue(unsignedValue_),
+        signedValue(signedValue_)
+    {}
+    explicit signedTestSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct mixedSignedSt {
+    fourBitT flags; //Status flags
+    signedByte_t offset; //Calibration offset
+    signedWord_t temp; //Temperature sensor value
+
+    mixedSignedSt() {}
+
+    static constexpr uint16_t _bitWidth = 28;
+    static constexpr uint16_t _byteWidth = 4;
+    typedef uint32_t _packedSt;
+    bool operator == (const mixedSignedSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const mixedSignedSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.temp, NAME + ".temp");
+        sc_trace(tf,v.offset, NAME + ".offset");
+        sc_trace(tf,v.flags, NAME + ".flags");
+    }
+    inline friend ostream& operator << ( ostream& os,  mixedSignedSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<28> sc_pack(void) const;
+    void sc_unpack(sc_bv<28> packed_data);
+    explicit mixedSignedSt(sc_bv<28> packed_data) { sc_unpack(packed_data); }
+    explicit mixedSignedSt(
+        fourBitT flags_,
+        signedByte_t offset_,
+        signedWord_t temp_) :
+        flags(flags_),
+        offset(offset_),
+        temp(temp_)
+    {}
+    explicit mixedSignedSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct signedArraySt {
+    signedNibble_t values[3]; //Array of three signed nibbles
+
+    signedArraySt() {}
+
+    static constexpr uint16_t _bitWidth = 12;
+    static constexpr uint16_t _byteWidth = 2;
+    typedef uint16_t _packedSt;
+    bool operator == (const signedArraySt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const signedArraySt & v, const std::string & NAME ) {
+        for(unsigned int i=0; i<3; i++) {
+            sc_trace(tf,v.values[i], NAME + ".values[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  signedArraySt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<12> sc_pack(void) const;
+    void sc_unpack(sc_bv<12> packed_data);
+    explicit signedArraySt(sc_bv<12> packed_data) { sc_unpack(packed_data); }
+    explicit signedArraySt(
+        signedNibble_t values_[3])
+    {
+        memcpy(&values, &values_, sizeof(values));
+    }
+    explicit signedArraySt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct nonByteAlignedSignedSt {
+    threeBitT field4; //3-bit unsigned at bit 13-15
+    signed5bit_t field3; //5-bit signed at bit 8-12
+    unsigned5bit_t field2; //5-bit unsigned at bit 3-7
+    signed3bit_t field1; //3-bit signed at bit 0-2
+
+    nonByteAlignedSignedSt() {}
+
+    static constexpr uint16_t _bitWidth = 16;
+    static constexpr uint16_t _byteWidth = 2;
+    typedef uint16_t _packedSt;
+    bool operator == (const nonByteAlignedSignedSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const nonByteAlignedSignedSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.field1, NAME + ".field1");
+        sc_trace(tf,v.field2, NAME + ".field2");
+        sc_trace(tf,v.field3, NAME + ".field3");
+        sc_trace(tf,v.field4, NAME + ".field4");
+    }
+    inline friend ostream& operator << ( ostream& os,  nonByteAlignedSignedSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<16> sc_pack(void) const;
+    void sc_unpack(sc_bv<16> packed_data);
+    explicit nonByteAlignedSignedSt(sc_bv<16> packed_data) { sc_unpack(packed_data); }
+    explicit nonByteAlignedSignedSt(
+        threeBitT field4_,
+        signed5bit_t field3_,
+        unsigned5bit_t field2_,
+        signed3bit_t field1_) :
+        field4(field4_),
+        field3(field3_),
+        field2(field2_),
+        field1(field1_)
+    {}
+    explicit nonByteAlignedSignedSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct complexMixedSt {
+    signedByte_t signedE; //8-bit signed field to cross 32-bit boundary
+    fourBitT unsignedD; //4-bit unsigned field
+    signed11bit_t signedC; //11-bit signed field
+    unsigned9bit_t unsignedB; //9-bit unsigned field
+    signed7bit_t signedA; //7-bit signed field
+
+    complexMixedSt() {}
+
+    static constexpr uint16_t _bitWidth = 39;
+    static constexpr uint16_t _byteWidth = 5;
+    typedef uint64_t _packedSt;
+    bool operator == (const complexMixedSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const complexMixedSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.signedA, NAME + ".signedA");
+        sc_trace(tf,v.unsignedB, NAME + ".unsignedB");
+        sc_trace(tf,v.signedC, NAME + ".signedC");
+        sc_trace(tf,v.unsignedD, NAME + ".unsignedD");
+        sc_trace(tf,v.signedE, NAME + ".signedE");
+    }
+    inline friend ostream& operator << ( ostream& os,  complexMixedSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<39> sc_pack(void) const;
+    void sc_unpack(sc_bv<39> packed_data);
+    explicit complexMixedSt(sc_bv<39> packed_data) { sc_unpack(packed_data); }
+    explicit complexMixedSt(
+        signedByte_t signedE_,
+        fourBitT unsignedD_,
+        signed11bit_t signedC_,
+        unsigned9bit_t unsignedB_,
+        signed7bit_t signedA_) :
+        signedE(signedE_),
+        unsignedD(unsignedD_),
+        signedC(signedC_),
+        unsignedB(unsignedB_),
+        signedA(signedA_)
+    {}
+    explicit complexMixedSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct edgeCaseSignedSt {
+    signedWord_t largeVal; //Large signed value
+    signed11bit_t mediumVal; //Medium signed value
+    signedNibble_t smallVal; //Small signed value
+    signed3bit_t tiny; //Very small signed value
+
+    edgeCaseSignedSt() {}
+
+    static constexpr uint16_t _bitWidth = 34;
+    static constexpr uint16_t _byteWidth = 5;
+    typedef uint64_t _packedSt;
+    bool operator == (const edgeCaseSignedSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const edgeCaseSignedSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.tiny, NAME + ".tiny");
+        sc_trace(tf,v.smallVal, NAME + ".smallVal");
+        sc_trace(tf,v.mediumVal, NAME + ".mediumVal");
+        sc_trace(tf,v.largeVal, NAME + ".largeVal");
+    }
+    inline friend ostream& operator << ( ostream& os,  edgeCaseSignedSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<34> sc_pack(void) const;
+    void sc_unpack(sc_bv<34> packed_data);
+    explicit edgeCaseSignedSt(sc_bv<34> packed_data) { sc_unpack(packed_data); }
+    explicit edgeCaseSignedSt(
+        signedWord_t largeVal_,
+        signed11bit_t mediumVal_,
+        signedNibble_t smallVal_,
+        signed3bit_t tiny_) :
+        largeVal(largeVal_),
+        mediumVal(mediumVal_),
+        smallVal(smallVal_),
+        tiny(tiny_)
+    {}
+    explicit edgeCaseSignedSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct mixedArraySignedSt {
+    unsigned5bit_t unsignedVals[3]; //Array of 3 non-byte-aligned unsigned values
+    signed5bit_t signedVals[4]; //Array of 4 non-byte-aligned signed values
+
+    mixedArraySignedSt() {}
+
+    static constexpr uint16_t _bitWidth = 35;
+    static constexpr uint16_t _byteWidth = 5;
+    typedef uint64_t _packedSt;
+    bool operator == (const mixedArraySignedSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const mixedArraySignedSt & v, const std::string & NAME ) {
+        for(unsigned int i=0; i<4; i++) {
+            sc_trace(tf,v.signedVals[i], NAME + ".signedVals[i]");
+        }
+        for(unsigned int i=0; i<3; i++) {
+            sc_trace(tf,v.unsignedVals[i], NAME + ".unsignedVals[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  mixedArraySignedSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<35> sc_pack(void) const;
+    void sc_unpack(sc_bv<35> packed_data);
+    explicit mixedArraySignedSt(sc_bv<35> packed_data) { sc_unpack(packed_data); }
+    explicit mixedArraySignedSt(
+        unsigned5bit_t unsignedVals_[3],
+        signed5bit_t signedVals_[4])
+    {
+        memcpy(&unsignedVals, &unsignedVals_, sizeof(unsignedVals));
+        memcpy(&signedVals, &signedVals_, sizeof(signedVals));
+    }
+    explicit mixedArraySignedSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
 

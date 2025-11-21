@@ -167,6 +167,10 @@ clean :
 	make -C $(AXI_DIR) clean
 	make -C $(AXI4SDEMO_DIR) clean
 
+.PHONY : unittest
+unittest:
+	cd unittest && ./run_all_tests.sh
+
 .PHONY : push-test pipeline-test
 pipeline-test: diagram-and-doc nested hello-world mixed in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo
-push-test: clean pipeline-test
+push-test: clean unittest pipeline-test

@@ -25,7 +25,8 @@ endif
 CXX = clang++
 CXX_FLAGS = -std=c++23 -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -DSC_CPLUSPLUS=201703L
 LD_FLAGS = -lboost_system -lboost_program_options -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -lsystemc
-INCLUDE = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I$(REPO_ROOT)/common/systemc -I../includes -I. -I/usr/local/include
+BUILDER_INTERFACES = $(wildcard $(REPO_ROOT)/interfaces/*)
+INCLUDE = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I$(REPO_ROOT)/common/systemc $(foreach dir,$(BUILDER_INTERFACES),-I$(dir)) -I../includes -I. -I/usr/local/include
 # Final binary
 BIN = $(PROJECTNAME)
 # Put all auto generated stuff to this build dir.

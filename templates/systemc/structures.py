@@ -1,12 +1,12 @@
 from pysrc.intf_gen_utils import get_const
 import os.path
 dataTypeMappings = [
-    {'maxSize': 1, 'type': 'uint8_t'},
-    {'maxSize': 8, 'type': 'uint8_t'},
-    {'maxSize': 16, 'type': 'uint16_t'},
-    {'maxSize': 32, 'type': 'uint32_t'},
-    {'maxSize': 64, 'type': 'uint64_t'},
-    {'maxSize': 4096, 'type': 'uint64_t', 'arrayElementSize': 64}
+    {'maxSize': 1, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
+    {'maxSize': 8, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
+    {'maxSize': 16, 'unsignedType': 'uint16_t', 'signedType': 'int16_t'},
+    {'maxSize': 32, 'unsignedType': 'uint32_t', 'signedType': 'int32_t'},
+    {'maxSize': 64, 'unsignedType': 'uint64_t', 'signedType': 'int64_t'},
+    {'maxSize': 4096, 'unsignedType': 'uint64_t', 'signedType': 'int64_t', 'arrayElementSize': 64}
 ]
 
 # args from generator line
@@ -61,20 +61,22 @@ def systemIncludes(args):
     return out
 
 
-def convertToType(bitwidth, name="_packedSt"):
+def convertToType(bitwidth, name="_packedSt", isSigned=False):
     global dataTypeMappings
     for myType in dataTypeMappings:
         if bitwidth <= myType['maxSize']:
             arrayElementSize = myType.get('arrayElementSize', 0)
+            # Select signed or unsigned type based on isSigned parameter
+            typeStr = myType['signedType'] if isSigned else myType['unsignedType']
             if arrayElementSize > 0:
                 # round up to the nearest multiple using integer div, plus one if there is a modulo non zero
                 typeArraySize = bitwidth // arrayElementSize + (bitwidth % arrayElementSize > 0)
-                retType = f"{myType['type']} {name}[{typeArraySize}]"
-                rowType = myType['type']
+                retType = f"{typeStr} {name}[{typeArraySize}]"
+                rowType = typeStr
                 baseSize = arrayElementSize
             else:
-                retType = f"{myType['type']} {name}"
-                rowType = myType['type']
+                retType = f"{typeStr} {name}"
+                rowType = typeStr
                 baseSize = myType['maxSize']
             #if we found something terminate the list as we want the smallest type
             break
@@ -693,6 +695,9 @@ def sc_unpack(handle, args, structType, vars, indent):
                             out.append(f'{indent}{varName}{varIndex}.word[{wix}] = ({varType}) packed_data.range({rng_high}, {rng_low}).to_uint64();')
                     else:
                         out.append(f'{indent}{varName}{varIndex} = ({varType}) packed_data.range({rng_high}, {rng_low}).to_uint64();')
+                        # Add sign extension for signed types
+                        isSigned = data.get('isSigned', False)
+                        out.extend(get_sign_extension_code(varName, varIndex, varType, data['bitwidth'], indent, isSigned))
                 else :
                     out.append(f'{indent}{varName}{varIndex} = ({varType}) packed_data;')
             elif data['entryType'] == 'NamedStruct':
@@ -773,6 +778,17 @@ def get_unpack_mask_str(needBits, baseSize):
     if (baseSize == 1 or needBits == 1):
         mask = ' & 1'
     return mask
+
+def get_sign_extension_code(varName, varIndex, varType, bitwidth, indent, isSigned):
+    """Generate sign extension code for signed types"""
+    out = []
+    if isSigned and bitwidth < 64:
+        # Need to perform sign extension if the sign bit is set
+        out.append(f"{indent}// Sign extension for signed type")
+        out.append(f"{indent}if ({varName}{varIndex} & (1ULL << ({bitwidth} - 1))) {{")
+        out.append(f"{indent}    {varName}{varIndex} = ({varType})({varName}{varIndex} | ~((1ULL << {bitwidth}) - 1));")
+        out.append(f"{indent}}}")
+    return out
 
 def processPackRet(structName, value, indent):
     out = list()
@@ -896,6 +912,9 @@ def fw_unpack(handle, args, vars, indent):
                 elif (bitsLeft >0 and consumeBits != baseSize):
                     out.append(f'{indent}{varName}{varIndex} = ({varType})({varName}{varIndex} | (({src} << {consumeBits}){srcMask}));')
                     out.append(f'{indent}_pos += {bitsLeft};') if usePos else None
+                # Add sign extension for signed types
+                isSigned = data.get('isSigned', False)
+                out.extend(get_sign_extension_code(varName, varIndex, varType, data['bitwidth'], indent, isSigned))
         elif data['entryType'] == 'NamedStruct':
             # nested structure, declare a tmp variable to hold the value and copy it to the destination
             tmpType, tmpRowType, tmpBaseSize = convertToType(data['arraywidth'])
@@ -962,6 +981,7 @@ def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
     else:
         ret = "_ret"
     isArray = data['isArray']
+    isSigned = data.get('isSigned', False)
     baseMask = fw_pack_vars['baseSize'] - 1
     if isArray:
         srcPos = '_pos'
@@ -971,18 +991,27 @@ def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
         srcPos = pos
         incPos = None
         arrayIndex = ''
+    # Generate mask for signed types to strip sign-extended bits after cast to uint64_t
+    # For unsigned types, the cast naturally zero-extends so no mask is needed
+    if isSigned and data['bitwidth'] < 64:
+        valueMask = f" & ((1ULL << {data['bitwidth']}) - 1)"
+    else:
+        valueMask = ""
     if pos + data['arraywidth'] <= 64 and not isArray:
         if pos==0:
-            out.append(f"{indent}{ret} = {data['variable']};")
+            out.append(f"{indent}{ret} = {data['variable']}{valueMask};")
         else:
-            out.append(f"{indent}{ret} |= {fw_pack_vars['cast']}{data['variable']}{arrayIndex} << ({srcPos} & {baseMask});")
+            if valueMask:
+                out.append(f"{indent}{ret} |= ({fw_pack_vars['cast']}({data['variable']}{arrayIndex}{valueMask})) << ({srcPos} & {baseMask});")
+            else:
+                out.append(f"{indent}{ret} |= {fw_pack_vars['cast']}{data['variable']}{arrayIndex} << ({srcPos} & {baseMask});")
     else:
         if data['bitwidth'] <= 64:
             if data['bitwidth'] == 1 and not isArray:
                 out.append(f"{indent}{ret} |= ({fw_pack_vars['cast']}{data['variable']} << ({srcPos} & {baseMask}));")
             else:
-                # use pass by value
-                out.append(f"{indent}pack_bits((uint64_t *)&_ret, {srcPos}, {data['variable']}{arrayIndex}, {data['bitwidth']});")
+                # use pass by value - mask for signed types to strip sign-extended bits
+                out.append(f"{indent}pack_bits((uint64_t *)&_ret, {srcPos}, {data['variable']}{arrayIndex}{valueMask}, {data['bitwidth']});")
         else:
             # use pass by reference
             out.append(f'{indent}pack_bits((uint64_t *)&_ret, {srcPos}, (uint64_t *)&{data["variable"]}{arrayIndex}, {data["bitwidth"]});')
@@ -1131,6 +1160,22 @@ def processPackUnpack(fname, handle, args, vars, indent):
     return out
 
 
+def structContainsSignedTypes(structValue, prj, data):
+    """Check if a structure contains any signed type fields"""
+    for varKey, varData in structValue['vars'].items():
+        if varData['entryType'] == 'NamedVar' or varData['entryType'] == 'NamedType':
+            # Check if the type is signed
+            typeInfo = prj.data['types'].get(varData['varTypeKey'])
+            if typeInfo and typeInfo.get('isSigned', False):
+                return True
+        elif varData['entryType'] == 'NamedStruct':
+            # Recursively check nested structures
+            nestedStructKey = varData['subStructKey']
+            nestedStruct = prj.data['structures'].get(nestedStructKey)
+            if nestedStruct and structContainsSignedTypes(nestedStruct, prj, data):
+                return True
+    return False
+
 def structTest(args, prj, data):
     out = list()
     fn = os.path.splitext(os.path.basename(data['context']))[0] + '_structs'
@@ -1147,10 +1192,14 @@ def structTest(args, prj, data):
     out.append(f'void test_{fn}::test(void) {{')
     indent = ' '*4
     out.append(f'{indent}std::vector<uint8_t> patterns{{0x6a, 0xa6}};')
+    out.append(f'{indent}std::vector<uint8_t> signedPatterns{{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF}};')
     out.append(f'{indent}cout << "Running " << name() << endl;')
     for _, value in data['structures'].items():
         struct = value['structure']
-        out.append(f'{indent}for(auto pattern : patterns) {{')
+        # Determine if this structure contains signed types
+        hasSigned = structContainsSignedTypes(value, prj, data)
+        patternVar = 'signedPatterns' if hasSigned else 'patterns'
+        out.append(f'{indent}for(auto pattern : {patternVar}) {{')
         indent += ' '*4
         out.append(f'{indent}{struct}::_packedSt packed;')
         out.append(f'{indent}memset(&packed, pattern, {struct}::_byteWidth);')

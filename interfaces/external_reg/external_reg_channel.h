@@ -79,8 +79,8 @@ class external_reg_channel
 {
 public:
     // constructor const char * module, std::string block
-    explicit external_reg_channel( const char* name_, std::string block_, 
-                                   INTERFACE_AUTO_MODE autoMode, 
+    explicit external_reg_channel( const char* name_, std::string block_,
+                                   INTERFACE_AUTO_MODE autoMode,
                                    const typename T::_packedSt& initialValue = typename T::_packedSt(0))
       : sc_prim_channel( name_ ),
         interfaceBase(name_, block_, autoMode),
@@ -94,7 +94,7 @@ public:
             logging::GetInstance().registerInterfaceStatus(std::string(name_), [this](void){ status();});
             m_write_data.unpack(initialValue);
         }
-    explicit external_reg_channel( const char* name_, std::string block_, 
+    explicit external_reg_channel( const char* name_, std::string block_,
                                    const typename T::_packedSt& initialValue = typename T::_packedSt(0))
       : external_reg_channel(name_, block_, INTERFACE_AUTO_OFF, initialValue)
         {
@@ -285,16 +285,6 @@ inline void external_reg_channel<T>::dump( ::std::ostream& os ) const
         os << "no value" << '\n';
     }
 }
-//template <>
-//inline void external_reg_channel<bool>::dump( ::std::ostream& os ) const
-//{
-//    if (m_status_value_written)
-//    {
-//        os << m_status_value << '\n';
-//    } else {
-//        os << "no value" << '\n';
-//    }
-//}
 
 template <class T>
 inline ::std::ostream& operator << ( ::std::ostream& os, const external_reg_channel<T>& a )

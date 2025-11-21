@@ -26,13 +26,13 @@ def render(args, prj, data):
     out.append("(")
 
     # Ports
-    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent))
+    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
 
     #// Interface Instances, needed for between instanced modules inside this module
     out.append(f"{indent}// Interface Instances, needed for between instanced modules inside this module")
     for channelType in data["connectDouble"]:
         for key, value in data["connectDouble"][channelType].items():
-            intf_type = intf_gen_utils.get_intf_type(value['interfaceType'])
+            intf_type = intf_gen_utils.get_intf_type(value['interfaceType'], data)
             intf_data = intf_gen_utils.get_intf_data(value, prj)
             s = f"{indent}{intf_type}_if #("
             params = list()

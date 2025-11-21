@@ -38,7 +38,7 @@ def render(args, prj, data):
     out.append("(")
 
     # Ports
-    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent))
+    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
 
     qualInstance = next(iter(data['instances']))
     addr_decode_data = data['addressDecode']
