@@ -22,6 +22,15 @@ docConfig : $a2c/config/docConfig.yaml
 cppConfig : $a2c/config/cppConfig.yaml
 svConfig : $a2c/config/svConfig.yaml
 
+dirs: # this is list of locations that can be referenced as base path in fileMap section
+  #root: ../..                  # project root directory relative to project file - required to be supplied by
+  base: $root/base             # for block base classes
+  model: $root/model           # systemC model implementation
+  rtl: $root/rtl               # RTL implementation
+  vl_wrap: $root/verif/vl_wrap # rtl wrapper files
+  tb: $root/tb                 # testbench definition files
+  fwInc: $root/fw/include      # firmware include files
+
 # this is a list of locations, orthogonal to design hierarchy, that maps out the functional layout of the project
 # root defines the top level directory for the project, and other directories are defined relative to this.
 # information about project directory structure to enable simplified maintenance
@@ -29,13 +38,6 @@ svConfig : $a2c/config/svConfig.yaml
 # architecture hierarchy.
 fileGeneration:
   template: $a2c/templates/fileGen/fileGen.py
-  dirs: # this is list of locations that can be referenced as base path in fileMap section
-    root: ../..
-    blockIncludes: ../../common
-    cppBase: ../../mdl
-    svBase: ../../rtl
-    vlWrap: ../../verif/vl_wrap
-    tbBase: ../../mdl/tb
   fileMap:
     # generation has 2 modes, block and context
     # block creates a file per design block and cond: depend on the block definition
@@ -48,12 +50,12 @@ fileGeneration:
     # cond: matches fields in the block definition, if all fields are true then the file is generated
     # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file
     # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
-    blockBase   : { name : "Base",            ext: {hdr: "h"},             cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class header file"}
+    blockBase   : { name : "Base",            ext: {hdr: "h"},             cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    desc: "Module Base class header file"}
     block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
-    vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
-    vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
-    testbench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
+    vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
+    vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
+    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
     tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench config files"}
     tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench external files"}
     include     : { name : "Includes",        ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include file"}
