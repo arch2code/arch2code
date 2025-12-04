@@ -12,6 +12,8 @@ import math
 import importlib
 import importlib.util
 
+from pysrc.merge_utils import merge_with_spec
+
 continueOnError = False
 
 # yaml = YAML(typ='safe', pure=True)
@@ -44,16 +46,26 @@ def existsLoad(myFile):
     return ret
 
 dirMacros = None
+
+
+def _expand_with_macros(path, macros):
+    """Expand a single leading $macro in path using the provided macros dict."""
+    if not path or not macros:
+        return path
+    if path[0] != '$':
+        return path
+
+    pathKey = path[1:].split('/', 1)[0]
+    if pathKey in macros:
+        return path.replace(f"${pathKey}", macros[pathKey])
+    return path
+
+
 def expandDirMacros(myFile):
     global dirMacros
     if not dirMacros:
         return myFile
-    if myFile[0] == '$':
-        # extract path before first /
-        pathKey = myFile[1:].split('/', 1)[0]
-        if pathKey in dirMacros:
-            myFile = myFile.replace(f"${pathKey}", dirMacros[pathKey])
-    return myFile
+    return _expand_with_macros(myFile, dirMacros)
 
 def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, missingDirOk = False):
     global dirMacros
@@ -71,7 +83,7 @@ def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, missi
     filePath = os.path.join(moduleDirAbs, fileName)
     return filePath
 
-# if yaml file exists load it, otherwise return empty dict
+    # if yaml file exists load it, otherwise return empty dict
 def loadIfExists(myFile):
     if not os.path.exists(myFile):
         return {}
@@ -2083,6 +2095,18 @@ class projectCreate:
     blocks = None
     a2cRoot = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) #parent directory of pysrc
     yamlDir = None
+    # Merge behaviour for combining base and pro project defaults.
+    # By default, dictionaries are shallow-merged and lists are overridden.
+    # Paths can opt into different strategies (see merge_with_spec helper).
+    MERGE_SPEC = {
+        # fileGeneration is merged shallow by default, but we allow
+        # additional depth for specific children via their own spec.
+        ("fileGeneration",): "dict_shallow",
+        ("dirs",): "dict_shallow",
+        # Merge fileMap at the key level (base and pro keys combined),
+        # but keep each individual map entry shallow.
+        ("fileGeneration", "fileMap"): "dict_shallow",
+    }
 
     def __init__(self, projFile, dbFile):
 
@@ -2109,10 +2133,12 @@ class projectCreate:
             self.a2cRoot = os.path.join(self.a2cRoot, "../")
         self.a2cRoot = os.path.abspath(self.a2cRoot)
         dirMacros = { "a2c" : self.a2cRoot }
-        proProj = loadIfExists( os.path.join(self.a2cRoot, "pro/config/project.yaml"))
-        baseProj = loadIfExists( os.path.join(self.a2cRoot, "config/project.yaml"))
-        # merge pro with base overriding base
-        self.a2cProj = { **baseProj, **proProj }
+        proProj = loadIfExists(os.path.join(self.a2cRoot, "pro/config/project.yaml"))
+        baseProj = loadIfExists(os.path.join(self.a2cRoot, "config/project.yaml"))
+        # merge pro with base, using shallow dict merge by default and
+        # configurable behaviour per path via MERGE_SPEC
+        self.a2cProj = merge_with_spec(baseProj, proProj, self.MERGE_SPEC, path=())
+        self.proj = merge_with_spec(self.a2cProj, self.proj, self.MERGE_SPEC, path=())
         self.config.setConfig('A2CROOT', self.a2cRoot)
         self.config.setConfig('A2CPROJ', self.a2cProj)
         # save the global base path referenced by project file location
@@ -2186,10 +2212,38 @@ class projectCreate:
         if 'dirs' in self.proj:
             if 'root' not in self.proj['dirs']:
                 self.logError("Definition for project root directory missing in project file. This should reflect the root of all generated files and is relative to project file")
-            for dir in self.proj['dirs']:
-                path = self.proj['dirs'][dir]
-                path = expandDirMacros(path)
-                dirMacros[dir] = os.path.abspath(path)
+            # Build dirMacros in an order-independent way: resolve entries only
+            # once their referenced macro (if any) is available.
+            if not dirMacros:
+                dirMacros = {}
+            pending = dict(self.proj['dirs'])
+            resolved_this_pass = True
+
+            while pending and resolved_this_pass:
+                resolved_this_pass = False
+                # Iterate over a *copy* so we can pop items as they are resolved.
+                for name, raw_path in list(pending.items()):
+                    # Use currently known macros (existing + newly resolved)
+                    expanded = _expand_with_macros(raw_path, dirMacros)
+
+                    # If expansion still starts with '$' then we have an
+                    # unresolved dependency on another macro – skip for now.
+                    if expanded and expanded[0] == '$':
+                        continue
+
+                    dirMacros[name] = os.path.abspath(expanded)
+                    pending.pop(name)
+                    resolved_this_pass = True
+
+            # Any remaining entries could not be resolved because their macro
+            # target is missing or circular; keep previous behaviour (store the
+            # raw path, abspath'd) but flag an error.
+            for name, raw_path in pending.items():
+                self.logError(
+                    f"Could not fully resolve directory macro '{name}' "
+                    f"with path '{raw_path}' – leaving unresolved macro in path."
+                )
+                dirMacros[name] = os.path.abspath(raw_path)
         self.config.setConfig('DIRS', dirMacros)
 
     def createProjectConfig(self):
