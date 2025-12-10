@@ -395,6 +395,7 @@ public:
         m_data_out->setCycleTransaction();
         m_data_in->setCycleTransaction();
     }
+    virtual sc_prim_channel* getChannel(void) override { return this; }
 protected:
     rdy_vld_channel<axiReadAddressSt<A>> m_addr_channel;
     rdy_vld_channel<axiReadRespSt<D>> m_data_channel;

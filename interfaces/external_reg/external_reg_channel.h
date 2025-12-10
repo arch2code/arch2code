@@ -149,6 +149,7 @@ public:
     virtual void setTandem(void) override { interfaceBase::setTandem(); }
     virtual void setLogging(verbosity_e verbosity) override { interfaceBase::setLogging(verbosity); }
     virtual void setTimed(int nsec, timedDelayMode mode) override { interfaceBase::setTimed(nsec, mode); }
+    virtual sc_prim_channel* getChannel(void) override { return this; }
 
 protected:
     T    m_status_value;           // the data

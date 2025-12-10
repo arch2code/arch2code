@@ -17,6 +17,7 @@ systemFiles:
   - $a2c/interfaces/axi_read/axi_read_if.yaml
   - $a2c/interfaces/axi_write/axi_write_if.yaml
   - $a2c/interfaces/axi4_stream/axi4_stream_if.yaml
+  - $a2c/interfaces/raw/raw_if.yaml
 
 docConfig : $a2c/config/docConfig.yaml
 cppConfig : $a2c/config/cppConfig.yaml
