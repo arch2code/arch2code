@@ -12,6 +12,7 @@
 +incdir+../../interfaces/axi_read
 +incdir+../../interfaces/axi_write
 +incdir+../../interfaces/axi4_stream
++incdir+../../interfaces/raw
 -y .
 flops.sv
 asserts.svh
