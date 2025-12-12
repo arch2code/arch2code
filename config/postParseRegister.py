@@ -7,6 +7,8 @@ def postProcess(prj):
     Args:
         prj (project): The project object.
     """
+    if not prj.addressControl:
+        return
     reg_interface = prj.addressControl.get('RegisterBusInterface', 'apbReg')
     file_gen = prj.a2cProj.get('fileGeneration', {})
     proj_file_gen = prj.proj.get('fileGeneration', {})

@@ -39,6 +39,9 @@ def create_test_files(arch_content):
     project_content = f"""projectName: error_test
 topInstance: uTop
 
+dirs:
+  root: ..    # project root directory relative to project file - required
+
 projectFiles:
   - {arch_basename}
 """

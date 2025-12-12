@@ -485,6 +485,7 @@ public:
     virtual void setTandem(void) override { m_addr_channel.setTandem(); m_data_channel.setTandem(); m_resp_channel.setTandem(); }
     virtual void setLogging(verbosity_e verbosity) override { m_addr_channel.setLogging(verbosity); m_data_channel.setLogging(verbosity); m_resp_channel.setLogging(verbosity); }
     virtual void setTimed(int nsec, timedDelayMode mode) override { m_addr_channel.setTimed(nsec, mode); m_data_channel.setTimed(nsec, mode); m_resp_channel.setTimed(nsec, mode);}
+    virtual sc_prim_channel* getChannel(void) override { return this; }
     virtual void setCycleTransaction(portType type_) override
     {
         Q_ASSERT(type_ != PORTTYPE_ANY, "For AXI read, PORTTYPE_IN or PORTTYPE_OUT must be specified");
