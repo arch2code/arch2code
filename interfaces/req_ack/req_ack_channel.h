@@ -141,6 +141,7 @@ public:
     virtual void setTandem(void) override { req_interfaceBase.setTandem(); ack_interfaceBase.setTandem(); }
     virtual void setLogging(verbosity_e verbosity) override { req_interfaceBase.setLogging(verbosity); ack_interfaceBase.setLogging(verbosity); }
     virtual void setTimed(int nsec, timedDelayMode mode) override { req_interfaceBase.setTimed(nsec, mode); ack_interfaceBase.setTimed(nsec, mode); }
+    virtual sc_prim_channel* getChannel(void) override { return this; }
 
 protected:
     R   m_req_data;

@@ -128,6 +128,7 @@ public:
     virtual void setTandem(void) override { req_interfaceBase.setTandem(); data_interfaceBase.setTandem(); }
     virtual void setLogging(verbosity_e verbosity) override { req_interfaceBase.setLogging(verbosity); data_interfaceBase.setLogging(verbosity); }
     virtual void setTimed(int nsec, timedDelayMode mode) override { req_interfaceBase.setTimed(nsec, mode); data_interfaceBase.setTimed(nsec, mode); }
+    virtual sc_prim_channel* getChannel(void) override { return this; }
 
 protected:
     A   m_address; // typically this is the address field plus any user defined fields

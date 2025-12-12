@@ -213,6 +213,7 @@ public:
     virtual void setTandem(void) override { m_tx_channel.setTandem(); }
     virtual void setLogging(verbosity_e verbosity) override { m_tx_channel.setLogging(verbosity); }
     virtual void setTimed(int nsec, timedDelayMode mode) override { m_tx_channel.setTimed(nsec, mode); }
+    virtual sc_prim_channel* getChannel(void) override { return this; }
 
 protected:
     rdy_vld_channel<axi4StreamInfoSt<TDATA, TID, TDEST, TUSER>> m_tx_channel;

@@ -171,6 +171,9 @@ class config:
             g.cur.execute(sql)
         else:
             # binary objects are 'pickled' to store them
+            # Keep in-memory cache in sync so later stages in the same run
+            # (generators) can access the config without reopening the DB.
+            self.data[item] = value
             pdata = pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
             g.cur.execute(f"INSERT OR REPLACE INTO _config (item, value, context, bin) values ('{item}', ?, '', TRUE)", (sqlite3.Binary(pdata), ))
 
@@ -2123,7 +2126,8 @@ class projectCreate:
         self.config = config(RO = False)
         global dirMacros
         #load project file from command line
-        self.proj = existsLoad(projFile)
+        self._userProjRaw = existsLoad(projFile)
+        self.proj = self._userProjRaw
         # the behavour or project file settings is as follows
         # for some settings the user project setting overrides the a2c defaults - eg schema is either user defined or a2c defined
         # for other settings they may be additive, eg template mappings are additive ie you get all the a2c defaults
@@ -2135,6 +2139,10 @@ class projectCreate:
         dirMacros = { "a2c" : self.a2cRoot }
         proProj = loadIfExists(os.path.join(self.a2cRoot, "pro/config/project.yaml"))
         baseProj = loadIfExists(os.path.join(self.a2cRoot, "config/project.yaml"))
+        # Keep the raw base/pro project inputs so configTemplates() can merge
+        # template config files with user > pro > base precedence.
+        self._a2cBaseProj = baseProj
+        self._a2cProProj = proProj
         # merge pro with base, using shallow dict merge by default and
         # configurable behaviour per path via MERGE_SPEC
         self.a2cProj = merge_with_spec(baseProj, proProj, self.MERGE_SPEC, path=())
@@ -2265,12 +2273,16 @@ class projectCreate:
         if templateType in project:
             configFile = expandDirMacros(project[templateType])
             a2cTemplates = existsLoad(configFile)
+            # Empty YAML files (or files containing only comments) load as None.
+            # Treat that as an empty config so template merging can proceed.
+            if not a2cTemplates:
+                a2cTemplates = {}
             # copy everything but the templates to return dict
             ret = {k: v for k, v in a2cTemplates.items() if k != 'templates'}
             # manually process the templates to expand any macros
             if 'templates' in a2cTemplates:
                 ret['templates'] = dict()
-                for template, fileName in a2cTemplates['templates'].items():
+                for template, fileName in (a2cTemplates.get('templates') or {}).items():
                     fileNameExpanded = expandDirMacros(fileName)
                     ret['templates'][template] = os.path.abspath(fileNameExpanded)
         return ret
@@ -2278,11 +2290,27 @@ class projectCreate:
     def configTemplates(self):
         templateConfig = dict()
         for templateType in self.generatorTemplates:
-            templateConfig[templateType] = self.parseTemplateFile(templateType, self.a2cProj)
-            # merge the user defined templates after the a2c defaults so that user can override
-            userTemplates = self.parseTemplateFile(templateType, self.proj)
-            templateConfig[templateType].update({k: v for k, v in userTemplates.items() if k != 'templates'})
-            templateConfig[templateType]['templates'].update(userTemplates.get('templates', {}))
+            # Template config precedence: user > pro > base.
+            # Note: a2cProj is already merged (pro overrides base), but for
+            # templates we need to load both config files and merge them so we
+            # keep base defaults that pro doesn't override.
+            baseTemplates = self.parseTemplateFile(templateType, self._a2cBaseProj)
+            proTemplates = self.parseTemplateFile(templateType, self._a2cProProj)
+            userTemplates = self.parseTemplateFile(templateType, self._userProjRaw)
+
+            merged = baseTemplates
+            if 'templates' not in merged:
+                merged['templates'] = dict()
+
+            # Merge pro on top of base.
+            merged.update({k: v for k, v in proTemplates.items() if k != 'templates'})
+            merged['templates'].update(proTemplates.get('templates', {}))
+
+            # Merge user on top of pro/base.
+            merged.update({k: v for k, v in userTemplates.items() if k != 'templates'})
+            merged['templates'].update(userTemplates.get('templates', {}))
+
+            templateConfig[templateType] = merged
         self.config.setConfig('TEMPLATE_CONFIGS', templateConfig)
 
     def logError(self, msg):

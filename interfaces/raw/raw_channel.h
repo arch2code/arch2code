@@ -15,76 +15,65 @@
 
 namespace sc_core {
 
-// push(T)
-// |        ---T---> pushReceive(T)
-// |                     |
-// |<---------------  ack()
+// write(T)
+// |        ---T---> read(T)
 
 template <class T>
-class push_ack_in_if
+class raw_in_if
 : virtual public sc_interface, virtual public portBase
 {
 public:
 
-    // blocking push
-    virtual void pushReceive( T& ) = 0;
-    virtual T pushReceive() = 0;
-    virtual void ack() = 0;
-    virtual bool isActive() = 0;
-    virtual bool isNotActive() = 0;
+    // blocking read
+    virtual void read( T& ) = 0;
+    virtual T read() = 0;
     virtual void setExternalEvent( sc_event *event ) = 0;
 
 protected:
     // constructor
-    push_ack_in_if() {}
+    raw_in_if() {}
 
 private:
     // disabled
-    push_ack_in_if( const push_ack_in_if<T>& );
-    push_ack_in_if<T>& operator = ( const push_ack_in_if<T>& );
+    raw_in_if( const raw_in_if<T>& );
+    raw_in_if<T>& operator = ( const raw_in_if<T>& );
 };
 
 template <class T>
-class push_ack_out_if
+class raw_out_if
 : virtual public sc_interface, virtual public portBase
 {
 public:
-    // blocking push
-    virtual void push( const T&, uint64_t userMagic = (uint64_t)-1 ) = 0;
-    // non-blocking variant for tee use case
-    virtual void pushNonBlocking( const T& val_, uint64_t userMagic = (uint64_t)-1 ) = 0;
-    virtual void waitAck( void ) = 0;
+    // blocking write
+    virtual void write( const T&, uint64_t userMagic = (uint64_t)-1 ) = 0;
 
 protected:
     // constructor
-    push_ack_out_if() {}
+    raw_out_if() {}
 
 private:
     // disabled
-    push_ack_out_if( const push_ack_out_if<T>& );
-    push_ack_out_if<T>& operator = ( const push_ack_out_if<T>& );
+    raw_out_if( const raw_out_if<T>& );
+    raw_out_if<T>& operator = ( const raw_out_if<T>& );
 };
 
 template <class T>
-class push_ack_channel
-: public push_ack_in_if<T>,
-  public push_ack_out_if<T>,
+class raw_channel
+: public raw_in_if<T>,
+  public raw_out_if<T>,
   public sc_prim_channel,
   public interfaceBase
 {
 public:
     // constructor const char * module, std::string block
-    explicit push_ack_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
+    explicit raw_channel( const char* name_, std::string block_, INTERFACE_AUTO_MODE autoMode=INTERFACE_AUTO_OFF)
       : sc_prim_channel( name_ ),
         interfaceBase(name_, block_, autoMode),
-        m_channel_push_event( (std::string(name_) + "m_channel_push_event").c_str() ),
-        m_channel_push_event_ptr(&m_channel_push_event),
-        m_channel_ack_event( (std::string(name_) + "m_channel_ack_event").c_str() ),
+        m_channel_sync_event( (std::string(name_) + "m_channel_sync_event").c_str() ),
+        m_channel_sync_event_ptr(&m_channel_sync_event),
         m_reader(nullptr),
         m_writer(nullptr),
-        m_active(false),
         m_waiting(false),
-        m_done(false),
         m_value_written(false)
         {
             setTracker(T::getValueType());
@@ -92,33 +81,27 @@ public:
         }
 
     // destructor
-    virtual ~push_ack_channel() {}
+    virtual ~raw_channel() {}
 
     // interface methods
     virtual void register_port( sc_port_base&, const char* ) override;
 
     // blocking push
-    virtual void pushReceive( T& ) override;
-    virtual T pushReceive() override;
-    virtual void ack() override;
-    virtual bool isActive() override { return(m_active); }
-    virtual bool isNotActive() override { return(!m_active); }
+    virtual void read( T& ) override;
+    virtual T read() override;
     virtual void setExternalEvent( sc_event *event ) override
     {
-        m_channel_push_event_ptr = event;
+        m_channel_sync_event_ptr = event;
         m_external_arb = true;
     }
     // blocking push
-    virtual void push( const T&, uint64_t userMagic ) override;
-    // non-blocking variant for tee use case
-    virtual void pushNonBlocking( const T& val_, uint64_t userMagic ) override;
-    virtual void waitAck( void ) override;
+    virtual void write( const T&, uint64_t userMagic ) override;
     // other methods
     operator T ()
-        { return pushReceive(); }
+        { return read(); }
 
-    push_ack_channel<T>& operator = ( const T& a )
-        { push( a ); return *this; }
+    raw_channel<T>& operator = ( const T& a )
+        { write( a ); return *this; }
 
     void trace( sc_trace_file* tf ) const override;
 
@@ -127,7 +110,7 @@ public:
     virtual void status(void);
 
     virtual const char* kind() const override
-        { return "push_ack_channel"; }
+        { return "raw_channel"; }
 
     // portBase overrides
     void setMultiDriver(std::string name, std::function<std::string(const uint64_t &value)> prt = nullptr) override
@@ -144,32 +127,29 @@ public:
 protected:
     T    m_value;           // the data
 
-    sc_event m_channel_push_event;
-    sc_event* m_channel_push_event_ptr;
-    sc_event m_channel_ack_event;
+    sc_event m_channel_sync_event;
+    sc_event* m_channel_sync_event_ptr;
 
     sc_port_base* m_reader; // used for static design rule checking
     sc_port_base* m_writer; // used for static design rule checking
 
-    bool m_active = false;   // push issued / waiting for ack
-    bool m_waiting = false; // waiting for push
-    bool m_done = false; // ack done
+    bool m_waiting = false; // waiting for write
     bool m_value_written = false; // m_value contain valid data when true
     bool m_multi_writer = false; //detect multiple writers
     bool m_external_arb = false;
 
 private:
     // disabled
-    push_ack_channel( const push_ack_channel<T>& );
-    push_ack_channel& operator = ( const push_ack_channel<T>& );
+    raw_channel( const raw_channel<T>& );
+    raw_channel& operator = ( const raw_channel<T>& );
 };
 
 template <class T>
-inline void push_ack_channel<T>::register_port( sc_port_base& port_,
+inline void raw_channel<T>::register_port( sc_port_base& port_,
                 const char* if_typename_ )
 {
     std::string nm( if_typename_ );
-    if( nm == typeid( push_ack_in_if<T> ).name() )
+    if( nm == typeid( raw_in_if<T> ).name() )
     {
         // only one reader can be connected
         if( m_reader != 0 ) {
@@ -177,7 +157,7 @@ inline void push_ack_channel<T>::register_port( sc_port_base& port_,
             // may continue, if suppressed
         }
         m_reader = &port_;
-    } else if( nm == typeid( push_ack_out_if<T> ).name() )
+    } else if( nm == typeid( raw_out_if<T> ).name() )
     {
         // only one writer can be connected
         if( m_writer != 0 ) {
@@ -189,19 +169,19 @@ inline void push_ack_channel<T>::register_port( sc_port_base& port_,
     else
     {
         SC_REPORT_ERROR( SC_ID_BIND_IF_TO_PORT_,
-                         "push_ack_channel<T> port not recognized" );
+                         "raw_channel<T> port not recognized" );
         // may continue, if suppressed
     }
 }
 
 // blocking read
 template <class T>
-inline void push_ack_channel<T>::pushReceive( T& val_ )
+inline void raw_channel<T>::read( T& val_ )
 {
     m_waiting = true;
     // as the event maybe external and probably shared in this case, we cannot guarentee that the event is for us
-    while (!m_active) {
-        sc_core::wait(*m_channel_push_event_ptr);
+    while (!m_value_written) {
+        sc_core::wait(*m_channel_sync_event_ptr);
     }
     val_ = m_value;
     m_value_written = false;
@@ -210,29 +190,21 @@ inline void push_ack_channel<T>::pushReceive( T& val_ )
     if (log_.isMatch(LOG_NORMAL)) {
         interfaceLog(val_.prt(isDebugLog), tag);
     }
+    m_channel_sync_event_ptr->notify(SC_ZERO_TIME);
 }
 
-// blocking read
-template <class T>
-inline void push_ack_channel<T>::ack( )
-{
-    interfaceBase::delay(false);
-    m_active = false;
-    m_done = true;
-    m_channel_ack_event.notify(SC_ZERO_TIME);
-}
 
 template <class T>
-inline T push_ack_channel<T>::pushReceive()
+inline T raw_channel<T>::read()
 {
     T tmp;
-    pushReceive( tmp );
+    read( tmp );
     return tmp;
 }
 
 // blocking write
 template <class T>
-inline void push_ack_channel<T>::push( const T& val_, uint64_t userMagic )
+inline void raw_channel<T>::write( const T& val_, uint64_t userMagic )
 {
     // if we are reentering the write before the reader has had time to read the previous entry we need to block on the read event
     if (isLocking())
@@ -255,65 +227,18 @@ inline void push_ack_channel<T>::push( const T& val_, uint64_t userMagic )
     interfaceBase::delay(false);
     m_value_written = true;
     m_value = val_;
-    m_active = true;
     // for external arb case, we will not be in the read function so we need to unconditionally notify the event
     if (m_waiting || m_external_arb)
     {
-        m_channel_push_event_ptr->notify(SC_ZERO_TIME);
+        m_channel_sync_event_ptr->notify(SC_ZERO_TIME);
     }
-    sc_core::wait(m_channel_ack_event);
-    m_multi_writer = false;
-    if (isLocking()) { synchLock_->unlock(); }
-}
-
-// blocking write
-// blocking variant for tee use case only
-template <class T>
-inline void push_ack_channel<T>::pushNonBlocking( const T& val_, uint64_t userMagic )
-{
-    // if we are reentering the write before the reader has had time to read the previous entry we need to block on the read event
-    if (isLocking())
-    {
-        uint64_t magicValue = userMagic;
-        if (magicValue == (uint64_t)-1)
-        {
-            magicValue = val_.getStructValue();
-            if (magicValue == (uint64_t)-1) {
-                typename T::_packedSt packed;
-                val_.pack(packed);
-                magicValue = fnv1a_hash((uint8_t *)&packed, T::_byteWidth);
-            }
-        }
-        synchLock_->lock(magicValue);
-    }
-
-    Q_ASSERT(m_multi_writer==false, "multiple threads driving interface, did you set multiwrite?");
-    m_multi_writer = true;
-    interfaceBase::delay(false);
-    m_value_written = true;
-    m_value = val_;
-    m_active = true;
-    m_done = false;
-    // for external arb case, we will not be in the read function so we need to unconditionally notify the event
-    if (m_waiting || m_external_arb)
-    {
-        m_channel_push_event_ptr->notify(SC_ZERO_TIME);
-    }
-}
-
-template <class T>
-inline void push_ack_channel<T>::waitAck( void )
-{
-    if (!m_done)
-    {
-        sc_core::wait(m_channel_ack_event);
-    }
+    sc_core::wait(m_channel_sync_event);
     m_multi_writer = false;
     if (isLocking()) { synchLock_->unlock(); }
 }
 
 template <class T>
-void push_ack_channel<T>::status(void)
+void raw_channel<T>::status(void)
 {
     if (m_value_written == true)
     {
@@ -324,20 +249,20 @@ void push_ack_channel<T>::status(void)
 }
 
 template <class T>
-inline void push_ack_channel<T>::trace( sc_trace_file* tf ) const
+inline void raw_channel<T>::trace( sc_trace_file* tf ) const
 {
     (void) tf; /* ignore potentially unused parameter */
 }
 
 
 template <class T>
-inline void push_ack_channel<T>::print( ::std::ostream& os ) const
+inline void raw_channel<T>::print( ::std::ostream& os ) const
 {
     os << m_value.prt(isDebugLog) << '\n';
 }
 
 template <class T>
-inline void push_ack_channel<T>::dump( ::std::ostream& os ) const
+inline void raw_channel<T>::dump( ::std::ostream& os ) const
 {
     if (m_value_written)
     {
@@ -347,7 +272,7 @@ inline void push_ack_channel<T>::dump( ::std::ostream& os ) const
     }
 }
 template <>
-inline void push_ack_channel<bool>::dump( ::std::ostream& os ) const
+inline void raw_channel<bool>::dump( ::std::ostream& os ) const
 {
     if (m_value_written)
     {
@@ -358,7 +283,7 @@ inline void push_ack_channel<bool>::dump( ::std::ostream& os ) const
 }
 
 template <class T>
-inline ::std::ostream& operator << ( ::std::ostream& os, const push_ack_channel<T>& a )
+inline ::std::ostream& operator << ( ::std::ostream& os, const raw_channel<T>& a )
 {
     a.print( os );
     return os;
@@ -367,8 +292,8 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const push_ack_channel<
 } // namespace sc_core
 
 template <class T>
-using push_ack_out = sc_port<push_ack_out_if< T > >;
+using raw_out = sc_port<raw_out_if< T > >;
 template <class T>
-using push_ack_in = sc_port<push_ack_in_if< T > >;
+using raw_in = sc_port<raw_in_if< T > >;
 
 #endif // PUSH_ACK_CHANNEL_H

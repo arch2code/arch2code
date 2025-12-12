@@ -34,11 +34,14 @@ class newModule:
                 if key not in fileDefinition:
                     printError(f"fileGeneration section of project file for file definition:{fileKey} in fileMap: must contain entry for {key}: ")
                     exit(warningAndErrorReport())
-            cond = fileDefinition.get("cond", None)
-            if cond:
-                for field, value in cond.items():
+            cond = fileDefinition.get("cond", {})
+            condAnd = fileDefinition.get("condAnd", {})
+            if len(cond) > 0 or len(condAnd) > 0:
+                # perform project file error checking vs schema
+                both = dict(cond, **condAnd)
+                for field, value in both.items():
                     if isinstance(value, bool):
-                        cond[field] = int(value)
+                        both[field] = int(value)
                     if mode == 'block' and field not in prj.data["blocks"][someBlock]:
                         printError(f"field {field} in cond does not exist in block schemafile")
             basePathKey = fileDefinition.get('basePath', '')
@@ -60,12 +63,21 @@ class newModule:
             data['qualBlock'] = qualBlock
             for fileKey, fileDefinition in blockFileGenerationConfig.items():
                 cond = fileDefinition.get("cond", None)
-                makeFile = True
+                condAnd = fileDefinition.get("condAnd", None)
+                makeFile = not cond # of there is no or cond, then we will make the file by default
+                # no and or or cond - make file
+                # or cond - make file if any of the cond is true
+                # and cond - make file if all of the cond are true
+                # if there is both or and and cond, then we will make the file if any of the or cond is true and all of the and cond are true
                 if cond:
-                    makeFile = False
                     for field, value in cond.items():
                         if prj.data["blocks"][qualBlock][field] == value:
                             makeFile = True 
+                            break
+                if condAnd:
+                    for field, value in condAnd.items():
+                        if prj.data["blocks"][qualBlock][field] != value:
+                            makeFile = False
                             break
                 if makeFile:
                     hasVariant = fileDefinition.get('variant', False)

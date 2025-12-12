@@ -1,0 +1,18 @@
+
+interface_defs:
+  raw : 
+    parameters : 
+      data_t : { datatype : struct, default : 'bit' }
+    signals: 
+      data : data_t
+    modports :
+      src : 
+        inputs : []
+        outputs: ['data']
+      dst : 
+        inputs : ['data']
+        outputs: []
+    sc_channel :
+      type : 'raw'
+      multicycle_types : []
+

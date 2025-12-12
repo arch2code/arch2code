@@ -6,6 +6,10 @@
 #include "blockBase.h"
 #include "stringPingPong.h"
 
+namespace sc_core {
+class sc_prim_channel;
+}
+
 enum portType { PORTTYPE_IN, PORTTYPE_OUT, PORTTYPE_ANY };
 // common functions to be overridden in the implementation
 struct portBase  
@@ -20,6 +24,7 @@ public:
     virtual void setCycleTransaction(portType type_=PORTTYPE_ANY) {};
     virtual void setTimedDelayPtr(std::shared_ptr<timedDelayBase> pTimedDelay) {};
     virtual portBase* getPort(void) { return this; }
+    virtual sc_core::sc_prim_channel* getChannel(void) { return nullptr; }
     virtual void setLogQueue(std::shared_ptr<stringPingPong> logQueue) {};
 };
 
