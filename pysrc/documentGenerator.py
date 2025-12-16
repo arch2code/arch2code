@@ -29,7 +29,13 @@ class documentGenerator:
         else:
             qualBlock = prj.getQualBlock( self.code.block )
             if self.code.template == 'blockSpecification':
-                self.data = prj.getBlockDataOld(qualBlock, self.instances)
+                # Check if this is a register-handler block
+                if prj.data['blocks'][qualBlock]['isRegHandler']:
+                    printError(f"In {fileName}, blockSpecification does not support register-handler blocks. "
+                              f"Block '{self.code.block}' is a register handler (implementation detail). "
+                              f"Please point the GENERATED_CODE_PARAM marker at the parent block instead.")
+                    exit(warningAndErrorReport())
+                self.data = prj.getBlockData(qualBlock, trimRegLeafInstance=False)
             else:
                 self.data = prj.getBlockDataHier(qualBlock, trimRegLeafInstance=True, excludeInstances=[])
 
