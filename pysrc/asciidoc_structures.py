@@ -8,7 +8,6 @@ suitable for hardware documentation. It handles nested structures, arrays, and R
 from typing import Dict, Set, List, Tuple, Any
 from collections import OrderedDict
 
-from pysrc.asciidoc_bytefield import render_bytefield
 
 def render_adoc_table(
     title: str,
