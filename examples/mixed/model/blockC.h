@@ -9,7 +9,7 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockC_base.h"
+#include "blockCBase.h"
 #include "mixedBlockCIncludes.h"
 
 SC_MODULE(blockC), public blockBase, public blockCBase

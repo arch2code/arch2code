@@ -100,6 +100,9 @@ def render_default(args, prj, data):
         out.append( indent + f'//memories')
 
     for mem, memData in data["memories"].items():
+        if memData['memoryType'] == 'external':
+            out.append( indent + f'// Memory { memData["memory"] } is external - declare manually')
+            continue
         out.append( indent + f'hwMemory< { memData["structure"] } > { memData["memory"] };')
 
     out.append('')

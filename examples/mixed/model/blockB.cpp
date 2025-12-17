@@ -1,13 +1,13 @@
 //copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
-
+#include "endOfTest.h"
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "blockB.h"
-#include "blockD_base.h"
-#include "blockF_base.h"
-#include "threeCs_base.h"
-#include "blockBRegs_base.h"
+#include "blockDBase.h"
+#include "blockFBase.h"
+#include "threeCsBase.h"
+#include "blockBRegsBase.h"
 SC_HAS_PROCESS(blockB);
 
 blockB::registerBlock blockB::registerBlock_; //register the block with the factory
@@ -32,11 +32,9 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>( instanceFactory::createInstance(name(), "uThreeCs", "threeCs", "")))
         ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>( instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "")))
         ,blockBTable0(name(), "blockBTable0", mems, BSIZE, HWMEMORYTYPE_LOCAL)
-        ,blockBTable1(name(), "blockBTable1", mems, BSIZE)
         ,blockBTable2(name(), "blockBTable2", mems, BSIZE)
         ,blockBTable3(name(), "blockBTable3", mems, BSIZE)
         ,blockBTableSP0(name(), "blockBTableSP0", mems, BSIZE)
-        ,blockBTableSP(name(), "blockBTableSP", mems, BSIZE)
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
@@ -73,6 +71,9 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
 
 void blockB::doneTest(void)
 {
+    endOfTest eot;
+    eot.registerVoter();
     startDone->waitNotify();
     startDone->ack();
+    eot.setEndOfTest(true);
 }

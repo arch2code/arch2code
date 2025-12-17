@@ -8,10 +8,9 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockD_base.h"
-#include "mixedBlockCIncludes.h"
+#include "blockDBase.h"
 #include "mixedIncludes.h"
-#include "mixedIncludeIncludes.h"
+#include "mixedBlockCIncludes.h"
 
 SC_MODULE(blockD), public blockBase, public blockDBase
 {

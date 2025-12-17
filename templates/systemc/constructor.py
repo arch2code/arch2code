@@ -123,6 +123,9 @@ def constructorInit(args, prj, data):
         else:
             out.append(f'        ,{ regData["register"] }()')
     for mem, memData in data['memories'].items():
+        if memData['memoryType'] == 'external':
+            # Skip constructor initialization for external memories
+            continue
         if memData["local"]:
             out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')
         else:
@@ -149,6 +152,10 @@ def constructorBody(args, prj, data):
                 first=False
                 out.append(f'    // register memories for FW access')
             if memData["regAccess"]:
+                # Skip FW memory registration for external memories (no hwMemory object exists)
+                if memData.get('memoryType') == 'external':
+                    out.append(f'    // Memory {memData["memory"]} is external - skipping FW registration')
+                    continue
                 width = intf_gen_utils.get_struct_width(memData["structureKey"], prj.data["structures"])
                 memSize = roundup_pow2min4((width + 7) >> 3) * intf_gen_utils.get_const(memData['wordLinesKey'], prj.data['constants'])
                 if memoryKey == 'memoriesParent':

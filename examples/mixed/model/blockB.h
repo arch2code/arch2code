@@ -9,7 +9,7 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockB_base.h"
+#include "blockBBase.h"
 #include "addressMap.h"
 #include "hwMemory.h"
 #include "mixedIncludes.h"
@@ -67,11 +67,9 @@ public:
     memories mems;
     //memories
     hwMemory< seeSt > blockBTable0;
-    hwMemory< seeSt > blockBTable1;
     hwMemory< seeSt > blockBTable2;
     hwMemory< seeSt > blockBTable3;
     hwMemory< seeSt > blockBTableSP0;
-    hwMemory< nestedSt > blockBTableSP;
 
     blockB(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~blockB() override = default;
