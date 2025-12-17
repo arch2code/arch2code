@@ -1,84 +1,306 @@
-import pysrc.arch2codeGlobals as globals
-from pysrc.drawStructure import drawStructure
+"""
+Block Specification template for Asciidoctor documentation.
 
-structList   = []
+Generates a comprehensive block specification including interfaces, registers, memories,
+and structure definitions using the new getBlockData() output format.
+"""
 
-# args from generator line
-# prj object
-# data set dict
+from pysrc.asciidoc_structures import (
+    render_adoc_table,
+    render_structure_tables_for_block,
+    collect_referenced_struct_keys
+)
+from pysrc.arch2codeHelper import printError, warningAndErrorReport
+
+
 def render(args, prj, data):
-    # Strings used during generation
-    out          = ''     # The returned output string
-    indent       = ' ' *4 # The indentation string
-    # set DeleteGV
-    globals.deleteGV = True
+    """
+    Render block specification as Asciidoctor markup.
+    
+    Args:
+        args: Command-line arguments
+        prj: Project object
+        data: Block data from getBlockData()
+    
+    Returns:
+        Formatted Asciidoctor string
+    """
+    # Belt-and-suspenders check: reject register-handler blocks
+    if data['blockInfo'].get('isRegHandler', False):
+        printError(f"blockSpecification template does not support register-handler blocks. "
+                  f"Block '{data['blockName']}' is a register handler (implementation detail). "
+                  f"Please point the marker at the parent block instead.")
+        exit(warningAndErrorReport())
+    
+    out = ""
+    block_name = data['blockName']
+    
+  
+    # Interfaces section
+    out += render_interfaces_section(prj, data, block_name)
+    
+    # Registers section
+    out += render_registers_section(prj, data, block_name)
+    
+    # Memories section
+    out += render_memories_section(prj, data, block_name)
+    
+    
+    # Structures section
+    out += f"== Structures referenced by {block_name}\n\n"
+    out += render_structure_tables_for_block(prj, data)
+    
+    return out
 
-    blockName = f"{data['blockName']}"
-    out += f"## Block Diagram for {blockName}\n\n"
-    out += "jira issue: https://arch2code.atlassian.net/browse/A2C-288[A2C-288], _todo_.\n\n"
-    out += f"## Interfaces for {blockName}\n\n"
 
-    # Ports
-    out += '[cols="1, 1, 1, 1, 1, 1"]\n|===\n'
-    direction = None
-    out += '|Interface Name |Interface Type |Direction |Structure Type |Structure Name |Description\n\n'
-    for unusedKey, value in data['ports'].items():
-        if (value['direction'] == 'dst'):
-            direction = f"{blockName} is Destination"
-        else: # assumes only two choices
-            direction = f"{blockName} is Initiator"
-        out += f"|{value['name']} |{value['interfaceData']['interfaceType']} |{direction}"
-        strucureNum = 0
-        if (value['interfaceData']['structures']):
-            for s in value['interfaceData']['structures']:
-                addStructure(s['structure'], s['structureKey'])
-                if (strucureNum > 0):
-                    out += f"|||| {s['structureType']} |xref:#{s['structure']}[{s['structure']}]|\n"
+def render_interfaces_section(prj, data, block_name):
+    """Render the interfaces section with a unified table of all ports."""
+    out = f"== Interfaces for {block_name}\n\n"
+    
+    rows = []
+    
+    # Process connection-based ports
+    for port_key, port_data in data.get('ports', {}).get('connections', {}).items():
+        direction = "Destination" if port_data.get('direction') == 'dst' else "Initiator"
+        direction_str = f"{block_name} is {direction}"
+        
+        port_name = port_data.get('name', port_key)
+        
+        # Get interface info
+        intf_key = port_data['connection'].get('interfaceKey')
+        if intf_key and intf_key in prj.data['interfaces']:
+            intf_info = prj.data['interfaces'][intf_key]
+            intf_type = intf_info.get('interfaceType', 'unknown')
+            desc = intf_info.get('desc', '')
+            
+            # Process structures
+            structures_data = intf_info.get('structures')
+            if structures_data:
+                struct_list = []
+                # structures can be either a dict or a list
+                if isinstance(structures_data, dict):
+                    struct_items = structures_data.values()
                 else:
-                    out += f"| {s['structureType']} |xref:#{s['structure']}[{s['structure']}]| {value['interfaceData']['desc']}\n"
-                strucureNum+=1
+                    struct_items = structures_data
+                
+                for struct_entry in struct_items:
+                    struct_name = struct_entry.get('structure', '')
+                    struct_type = struct_entry.get('structureType', '')
+                    if struct_name:
+                        struct_list.append((struct_type, struct_name))
+                
+                # Add first structure with full port info
+                if struct_list:
+                    struct_type, struct_name = struct_list[0]
+                    # Create a multi-line cell for structures if multiple
+                    if len(struct_list) == 1:
+                        rows.append([
+                            port_name,
+                            intf_type,
+                            direction_str,
+                            struct_type,
+                            f"xref:#{struct_name}[{struct_name}]",
+                            desc
+                        ])
+                    else:
+                        # Multiple structures - format them together
+                        struct_types = "\n\n".join(st for st, _ in struct_list)
+                        struct_refs = "\n\n".join(f"xref:#{sn}[{sn}]" for _, sn in struct_list)
+                        rows.append([
+                            port_name,
+                            intf_type,
+                            direction_str,
+                            struct_types,
+                            struct_refs,
+                            desc
+                        ])
+            else:
+                # No structures
+                rows.append([port_name, intf_type, direction_str, "None", "None", desc])
         else:
-            out += f"| None| None| {value['interfaceData']['desc']}\n"
+            # Interface not found
+            rows.append([port_name, "unknown", direction_str, "None", "None", "Interface definition not found"])
+    
+    # Process register ports
+    for port_key, port_data in data.get('ports', {}).get('registers', {}).items():
+        port_name = port_data['connection'].get('register', port_key)
+        reg_type = port_data['connection'].get('regType', 'unknown')
+        intf_type = f"reg_{reg_type}"
+        
+        # Determine direction based on register type
+        if reg_type == 'ro':
+            direction_str = f"{block_name} is Destination"
+        elif reg_type in ['rw', 'ext']:
+            direction_str = f"{block_name} is Initiator"
+        else:
+            direction_str = f"{block_name} direction unknown"
+        
+        struct_key = port_data['connection'].get('structureKey')
+        if struct_key and struct_key in prj.data['structures']:
+            struct_name = prj.data['structures'][struct_key]['structure']
+            desc = port_data['connection'].get('desc', '')
+            rows.append([
+                port_name,
+                intf_type,
+                direction_str,
+                "data_t",
+                f"xref:#{struct_name}[{struct_name}]",
+                desc
+            ])
+        else:
+            rows.append([port_name, intf_type, direction_str, "data_t", "unknown", ""])
+    
+    # Process memory ports
+    for port_key, port_data in data.get('ports', {}).get('memories', {}).items():
+        mem_name = port_data['connection'].get('memory', port_key)
+        direction_str = f"{block_name} is Initiator"
+        
+        # Memory ports typically have data and address structures
+        data_struct_key = port_data['connection'].get('structureKey')
+        addr_struct_key = port_data['connection'].get('addressStructKey')
+        desc = port_data['connection'].get('desc', '')
+        
+        if data_struct_key and data_struct_key in prj.data['structures']:
+            data_struct_name = prj.data['structures'][data_struct_key]['structure']
+            rows.append([
+                mem_name,
+                "memory",
+                direction_str,
+                "data_t",
+                f"xref:#{data_struct_name}[{data_struct_name}]",
+                desc
+            ])
+            
+            # Add address structure on next row if present
+            if addr_struct_key and addr_struct_key in prj.data['structures']:
+                addr_struct_name = prj.data['structures'][addr_struct_key]['structure']
+                rows.append([
+                    "",
+                    "",
+                    "",
+                    "addr_t",
+                    f"xref:#{addr_struct_name}[{addr_struct_name}]",
+                    ""
+                ])
+        else:
+            rows.append([mem_name, "memory", direction_str, "data_t", "unknown", desc])
+    
+    if not rows:
+        out += "No interfaces defined for this block.\n\n"
+    else:
+        out += render_adoc_table(
+            title=f"Interfaces for {block_name}",
+            headers=["Interface Name", "Interface Type", "Direction", "Structure Type", "Structure Name", "Description"],
+            rows=rows,
+            cols="2, 2, 2, 1, 2, 3"
+        )
+    
+    return out
 
-    out += f"|===\n\n\n"
 
-# TODO draw memories, same as memories module
-    out += f"## Memories Instances in {blockName}\n\n"
-    out += "jira issue: https://arch2code.atlassian.net/browse/A2C-289[A2C-289], _todo_.\n\n"
-# TODO draw registers as a table
-    out += f"## Registers Delcared in {blockName}\n\n"
-    out += "jira issue: https://arch2code.atlassian.net/browse/A2C-290[A2C-290], _todo_.\n\n"
-# TODO draw instances, one table each with interface list
-    out += f"## Module Instances in {blockName}\n\n"
-    out += "jira issue: https://arch2code.atlassian.net/browse/A2C-291[A2C-291], _todo_.\n\n"
-# TODO list included packages
-    out += f"## Packages included in {blockName}\n\n"
-    out += "jira issue: https://arch2code.atlassian.net/browse/A2C-292[A2C-292], _todo_.\n\n"
-# structures inline at the end of the specification
-#   TODO consider displaying in each sub category
-#        if previously delcared skip but have link to image
-    out += f"## Structures througout {blockName}\n\n"
-    out += drawStructures(prj, structList)
+def render_registers_section(prj, data, block_name):
+    """Render the registers section."""
+    out = f"== Registers in {block_name}\n\n"
+    
+    registers = data.get('registers', {})
+    
+    if not registers:
+        out += "No registers declared in this block.\n\n"
+        return out
+    
+    rows = []
+    for reg_key, reg_data in registers.items():
+        reg_name = reg_data.get('register', reg_key)
+        reg_type = reg_data.get('regType', 'unknown')
+        bytes_val = reg_data.get('bytes', 'unknown')
+        desc = reg_data.get('desc', '')
+        
+        struct_key = reg_data.get('structureKey')
+        if struct_key and struct_key in prj.data['structures']:
+            struct_name = prj.data['structures'][struct_key]['structure']
+            struct_ref = f"xref:#{struct_name}[{struct_name}]"
+        else:
+            struct_ref = "unknown"
+        
+        rows.append([reg_name, reg_type, str(bytes_val), struct_ref, desc])
+    
+    out += render_adoc_table(
+        title=f"Registers in {block_name}",
+        headers=["Register Name", "Type", "Size (bytes)", "Structure", "Description"],
+        rows=rows,
+        cols="2, 1, 1, 2, 4"
+    )
+    
+    return out
 
-    return(out)
 
-# better as a single line, or function call
-## if name not in structList
-def addStructure(name, key):
-    if name not in structList:
-        structList.append([name, key])
-
-# change name to documentStructures
-## share with memories
-def drawStructures(prj, listToDraw):
-    output = ''
-    for s in listToDraw:
-        # s is a list from the structList
-        ## item 0 is the name / structure
-        ## item 1 is the structureKey
-        globals.filename = s[0]
-        drawStructure(prj, s[1], globals.colors)
-        output += f".{s[0]}\n"
-        output += f"[#{s[0]}]\n"
-        output += f"image::{s[0]}.svg[width=auto,opts=interactive]\n"
-    return output
+def render_memories_section(prj, data, block_name):
+    """Render the memories section."""
+    out = f"== Memories in {block_name}\n\n"
+    
+    memories = data.get('memories', {})
+    
+    if not memories:
+        out += "No memories declared in this block.\n\n"
+        return out
+    
+    rows = []
+    for mem_key, mem_data in memories.items():
+        mem_name = mem_data.get('memory', mem_key)
+        block_containing = mem_data.get('block', block_name)
+        
+        # Word lines (with constant if available)
+        word_lines_key = mem_data.get('wordLinesKey', '')
+        if word_lines_key and word_lines_key in prj.data['constants']:
+            word_lines_val = prj.data['constants'][word_lines_key]['value']
+            word_lines_const = prj.data['constants'][word_lines_key]['constant']
+            word_lines_str = f"{word_lines_const} ({word_lines_val})"
+        else:
+            word_lines_str = str(mem_data.get('wordLines', 'unknown'))
+        
+        # Count (with constant if available)
+        count_key = mem_data.get('countKey', '')
+        if count_key and count_key in prj.data['constants']:
+            count_val = prj.data['constants'][count_key]['value']
+            count_const = prj.data['constants'][count_key]['constant']
+            count_str = f"{count_const} ({count_val})"
+        else:
+            count_str = str(mem_data.get('count', '1'))
+        
+        # Structures
+        addr_struct_key = mem_data.get('addressStructKey')
+        if addr_struct_key and addr_struct_key in prj.data['structures']:
+            addr_struct_name = prj.data['structures'][addr_struct_key]['structure']
+            addr_struct_ref = f"xref:#{addr_struct_name}[{addr_struct_name}]"
+        else:
+            addr_struct_ref = "unknown"
+        
+        data_struct_key = mem_data.get('structureKey')
+        if data_struct_key and data_struct_key in prj.data['structures']:
+            data_struct_name = prj.data['structures'][data_struct_key]['structure']
+            data_struct_ref = f"xref:#{data_struct_name}[{data_struct_name}]"
+        else:
+            data_struct_ref = "unknown"
+        
+        desc = mem_data.get('desc', '')
+        reg_access = "Yes" if mem_data.get('regAccess', False) else "No"
+        
+        rows.append([
+            mem_name,
+            block_containing,
+            word_lines_str,
+            addr_struct_ref,
+            data_struct_ref,
+            count_str,
+            reg_access,
+            desc
+        ])
+    
+    out += render_adoc_table(
+        title=f"Memories in {block_name}",
+        headers=["Memory Name", "Block", "Word Lines", "Address Structure", "Data Structure", "Count", "Reg Access", "Description"],
+        rows=rows,
+        cols="2, 2, 1, 2, 2, 1, 1, 3"
+    )
+    
+    return out
