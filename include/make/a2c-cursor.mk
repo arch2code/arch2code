@@ -13,10 +13,10 @@ endif
 # Cursor AI Setup Targets
 #------------------------------------------------------------------------
 
-.PHONY: cursor_setup cursor_clean
+.PHONY: cursor_setup cursor_clean cursor-setup cursor-clean
 
 # Setup Cursor AI rules for arch2code development
-cursor_setup:
+cursor_setup cursor-setup:
 	@echo "Setting up Cursor AI rules for arch2code..."
 	@# Create symlink to ARCH2CODE_AI_RULES.md in project root
 	@if [ ! -L "$(REPO_ROOT)/ARCH2CODE_AI_RULES.md" ] && [ ! -e "$(REPO_ROOT)/ARCH2CODE_AI_RULES.md" ]; then \
@@ -41,7 +41,7 @@ cursor_setup:
 	@echo "  3. Ensure AI assistant has access to builder/base/config/schema.yaml"
 
 # Remove Cursor AI setup files
-cursor_clean:
+cursor_clean cursor-clean:
 	@echo "Removing Cursor AI setup files..."
 	@if [ -L "$(REPO_ROOT)/ARCH2CODE_AI_RULES.md" ]; then \
 		rm $(REPO_ROOT)/ARCH2CODE_AI_RULES.md && \
@@ -54,6 +54,6 @@ cursor_clean:
 	@echo "Cursor AI cleanup complete!"
 
 help::
-	@echo "  cursor_setup - Setup Cursor AI rules and guidelines"
-	@echo "  cursor_clean - Remove Cursor AI setup files"
+	@echo "  cursor-setup - Setup Cursor AI rules and guidelines"
+	@echo "  cursor-clean - Remove Cursor AI setup files"
 
