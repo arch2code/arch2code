@@ -1,0 +1,65 @@
+# Arch2Code Project Rules
+
+This project uses the arch2code toolchain for hardware architecture definition.
+
+## Critical Reference Document
+Before creating or modifying YAML architecture files, consult:
+- ARCH2CODE_AI_RULES.md (in project root - symlink to builder/base/)
+- This document contains comprehensive rules for YAML syntax, field validation, and best practices
+
+## Key Principles
+1. All architecture is defined in YAML (Single Source of Truth)
+2. YAML files are in arch/yaml/ directory
+3. Types, structures, and constants must be defined in YAML, not in code
+4. Register decoders:
+   - Manual: Top-level bus decoders (e.g., apb_decode_system) - YOU must create
+   - Automatic: Block-level register handlers (<blockname>_regs) - auto-generated
+5. Always validate field names against builder/base/config/schema.yaml before suggesting YAML
+
+## When Working on YAML Files
+1. Read ARCH2CODE_AI_RULES.md first
+2. Validate all field names exist in builder/base/config/schema.yaml
+3. Follow naming conventions:
+   - Constants: UPPER_CASE
+   - Types/Structures: snake_case_t
+   - Blocks: snake_case
+   - Instances: u_snake_case
+   - Enums: UPPER_CASE
+4. Check that all references (types, structures, blocks, instances) exist before use
+5. Width is REQUIRED for non-enum types (error if omitted)
+6. Blocks default to hasRtl=true and hasMdl=true
+7. Register types: rw, ro, ext (NOT wo)
+8. Connections only connect instances in SAME container - use connectionMaps for hierarchical routing
+
+## Code Generation Workflow
+**IMPORTANT:** Always use make targets, NOT direct Python commands.
+
+- Generate code: `make gen` (or `make db` then `make gen`)
+- Create new module: `make newmodule`
+- Clean generated files: `make clean`
+- View all targets: `make help`
+
+**DO NOT run `python arch2code.py` directly** - use the provided make targets which ensure proper environment and dependencies.
+
+## Creating New Modules/Blocks
+**CRITICAL:** When adding new blocks or YAML files, use `make newmodule` - do NOT create files manually.
+
+`make newmodule` will:
+- Create properly structured YAML file in arch/yaml/
+- Generate corresponding implementation file skeletons
+- Update project structure correctly
+- Ensure consistent naming and organization
+
+**DO NOT manually create new YAML files** - use the interactive module creation workflow.
+
+## Project Structure
+- arch/yaml/          - Architecture YAML files
+- builder/            - Arch2code toolchain (submodule)
+- model/              - Generated SystemC models
+- rtl/                - Generated SystemVerilog RTL
+- base/               - Generated base classes
+- verif/              - Verification files
+- tb/                 - Testbenches
+
+For detailed information, see ARCH2CODE_AI_RULES.md
+
