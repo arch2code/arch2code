@@ -18,7 +18,9 @@ public:
     // blockB->reg(rwD) A Read Write register
     status_out< dRegSt > rwD;
     // blockB->mem(blockBTable1) Dual Port with one connection
-    memory_out< bSizeSt, seeSt > blockBTable1;
+    memory_out< bSizeSt, bigSt > blockBTable1;
+    // blockB->mem(blockBTableExt) External memory - interfaces created, hardware not instantiated
+    memory_out< bSizeSt, seeSt > blockBTableExt;
 
     // dst ports
     // External->apbReg: CPU access to SoC registers in the design
@@ -30,6 +32,7 @@ public:
     blockBRegsBase(std::string name, const char * variant) :
         rwD("rwD")
         ,blockBTable1("blockBTable1")
+        ,blockBTableExt("blockBTableExt")
         ,apbReg("apbReg")
         ,roBsize("roBsize")
     {};
@@ -37,6 +40,7 @@ public:
     {
         rwD->setTimed(nsec, mode);
         blockBTable1->setTimed(nsec, mode);
+        blockBTableExt->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
@@ -45,6 +49,7 @@ public:
     {
         rwD->setLogging(verbosity);
         blockBTable1->setLogging(verbosity);
+        blockBTableExt->setLogging(verbosity);
         apbReg->setLogging(verbosity);
         roBsize->setLogging(verbosity);
     };
@@ -56,7 +61,9 @@ public:
     // blockB->reg(rwD) A Read Write register
     status_in< dRegSt > rwD;
     // blockB->mem(blockBTable1) Dual Port with one connection
-    memory_in< bSizeSt, seeSt > blockBTable1;
+    memory_in< bSizeSt, bigSt > blockBTable1;
+    // blockB->mem(blockBTableExt) External memory - interfaces created, hardware not instantiated
+    memory_in< bSizeSt, seeSt > blockBTableExt;
 
     // dst ports
     // External->apbReg: CPU access to SoC registers in the design
@@ -68,6 +75,7 @@ public:
     blockBRegsInverted(std::string name) :
         rwD(("rwD"+name).c_str())
         ,blockBTable1(("blockBTable1"+name).c_str())
+        ,blockBTableExt(("blockBTableExt"+name).c_str())
         ,apbReg(("apbReg"+name).c_str())
         ,roBsize(("roBsize"+name).c_str())
     {};
@@ -75,6 +83,7 @@ public:
     {
         rwD->setTimed(nsec, mode);
         blockBTable1->setTimed(nsec, mode);
+        blockBTableExt->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
@@ -83,6 +92,7 @@ public:
     {
         rwD->setLogging(verbosity);
         blockBTable1->setLogging(verbosity);
+        blockBTableExt->setLogging(verbosity);
         apbReg->setLogging(verbosity);
         roBsize->setLogging(verbosity);
     };
@@ -94,7 +104,9 @@ public:
     // A Read Write register
     status_channel< dRegSt > rwD;
     // Dual Port with one connection
-    memory_channel< bSizeSt, seeSt > blockBTable1;
+    memory_channel< bSizeSt, bigSt > blockBTable1;
+    // External memory - interfaces created, hardware not instantiated
+    memory_channel< bSizeSt, seeSt > blockBTableExt;
 
     // dst ports
     // CPU access to SoC registers in the design
@@ -106,6 +118,7 @@ public:
     blockBRegsChannels(std::string name, std::string srcName) :
     rwD(("rwD"+name).c_str(), srcName)
     ,blockBTable1(("blockBTable1"+name).c_str(), srcName)
+    ,blockBTableExt(("blockBTableExt"+name).c_str(), srcName)
     ,apbReg(("apbReg"+name).c_str(), srcName)
     ,roBsize(("roBsize"+name).c_str(), srcName)
     {};
@@ -115,6 +128,8 @@ public:
         b->rwD( rwD );
         a->blockBTable1( blockBTable1 );
         b->blockBTable1( blockBTable1 );
+        a->blockBTableExt( blockBTableExt );
+        b->blockBTableExt( blockBTableExt );
         a->apbReg( apbReg );
         b->apbReg( apbReg );
         a->roBsize( roBsize );

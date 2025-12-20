@@ -7,8 +7,8 @@
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 #include "status_channel.h"
-#include "mixedBlockCIncludes.h"
 #include "mixedIncludes.h"
+#include "mixedBlockCIncludes.h"
 #include "mixedIncludeIncludes.h"
 
 class blockDBase : public virtual blockPortBase
@@ -27,7 +27,7 @@ public:
     // blockB->reg(roBsize) A Read Only register with a structure that has a definition from an included context
     status_out< bSizeRegSt > roBsize;
     // blockB->mem(blockBTable1) Dual Port with one connection
-    memory_out< bSizeSt, seeSt > blockBTable1;
+    memory_out< bSizeSt, bigSt > blockBTable1;
     // blockB->mem(blockBTableSP) Single Port with connection
     memory_out< bSizeSt, nestedSt > blockBTableSP;
 
@@ -95,7 +95,7 @@ public:
     // blockB->reg(roBsize) A Read Only register with a structure that has a definition from an included context
     status_in< bSizeRegSt > roBsize;
     // blockB->mem(blockBTable1) Dual Port with one connection
-    memory_in< bSizeSt, seeSt > blockBTable1;
+    memory_in< bSizeSt, bigSt > blockBTable1;
     // blockB->mem(blockBTableSP) Single Port with connection
     memory_in< bSizeSt, nestedSt > blockBTableSP;
 
@@ -163,7 +163,7 @@ public:
     // A Read Only register with a structure that has a definition from an included context
     status_channel< bSizeRegSt > roBsize;
     // Dual Port with one connection
-    memory_channel< bSizeSt, seeSt > blockBTable1;
+    memory_channel< bSizeSt, bigSt > blockBTable1;
     // Single Port with connection
     memory_channel< bSizeSt, nestedSt > blockBTableSP;
 

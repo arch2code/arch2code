@@ -4,8 +4,8 @@
 module blockD
 // Generated Import package statement(s)
 import mixedInclude_package::*;
-import mixed_package::*;
 import mixedBlockC_package::*;
+import mixed_package::*;
 (
     rdy_vld_if.src cStuffIf,
     rdy_vld_if.src dee0,

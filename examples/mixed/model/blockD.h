@@ -9,8 +9,8 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "blockDBase.h"
-#include "mixedBlockCIncludes.h"
 #include "mixedIncludes.h"
+#include "mixedBlockCIncludes.h"
 #include "mixedIncludeIncludes.h"
 
 SC_MODULE(blockD), public blockBase, public blockDBase

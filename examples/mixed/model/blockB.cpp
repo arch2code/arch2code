@@ -40,6 +40,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockBTable1_port1("blockBTable1_port1", "blockB")
         ,blockBTableSP_bob("blockBTableSP_bob", "blockB")
         ,blockBTable1_reg("blockBTable1_reg", "blockB")
+        ,blockBTableExt_reg("blockBTableExt_reg", "blockB")
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
@@ -76,6 +77,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     blockBTableSP.bindPort(blockBTableSP_bob);
     uBlockBRegs->blockBTable1(blockBTable1_reg);
     blockBTable1.bindPort(blockBTable1_reg);
+    uBlockBRegs->blockBTableExt(blockBTableExt_reg);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(doneTest);

@@ -67,14 +67,16 @@ public:
     memories mems;
     //memories
     hwMemory< seeSt > blockBTable0;
-    hwMemory< seeSt > blockBTable1;
+    hwMemory< bigSt > blockBTable1;
     hwMemory< seeSt > blockBTable2;
     hwMemory< seeSt > blockBTable3;
     hwMemory< seeSt > blockBTableSP0;
     hwMemory< nestedSt > blockBTableSP;
-    memory_channel<bSizeSt, seeSt> blockBTable1_port1;
+    // Memory blockBTableExt is external - declare manually
+    memory_channel<bSizeSt, bigSt> blockBTable1_port1;
     memory_channel<bSizeSt, nestedSt> blockBTableSP_bob;
-    memory_channel<bSizeSt, seeSt> blockBTable1_reg;
+    memory_channel<bSizeSt, bigSt> blockBTable1_reg;
+    memory_channel<bSizeSt, seeSt> blockBTableExt_reg;
 
     blockB(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~blockB() override = default;

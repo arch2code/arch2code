@@ -48,6 +48,7 @@ typedef logic signed[7-1:0] signed7bit_t; //Signed 7-bit type (-64 to 63) non-by
 typedef logic signed[11-1:0] signed11bit_t; //Signed 11-bit type (-1024 to 1023) non-byte-aligned
 typedef logic[5-1:0] unsigned5bit_t; //Unsigned 5-bit type for mixed testing
 typedef logic[9-1:0] unsigned9bit_t; //Unsigned 9-bit type for mixed testing
+typedef logic[64-1:0] bigT; //64-bit type for mixed testing
 
 // enums
 typedef enum logic[2-1:0] {           //a test enum
@@ -106,6 +107,10 @@ typedef struct packed {
     threeBitT variabled; //Three bits of D
     fourBitT variabled2; //Four bits of D
 } dSt;
+
+typedef struct packed {
+    bigT big; //
+} bigSt;
 
 typedef struct packed {
     aSizeT variablea; //One bit of A

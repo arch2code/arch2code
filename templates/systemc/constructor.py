@@ -122,14 +122,20 @@ def constructorInit(args, prj, data):
             out.append(f'        ,{ regData["register"] }({regData["structure"]}::_packedSt({defaultValue}))')
         else:
             out.append(f'        ,{ regData["register"] }()')
-    for mem, memData in data['memories'].items():
-        if memData['memoryType'] == 'external':
-            # Skip constructor initialization for external memories
-            continue
-        if memData["local"]:
-            out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')
-        else:
-            out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]})')
+    if data['blockInfo'].get('isRegHandler'):
+        # For register handlers, use hwMemoryPort for all register-accessible memories
+        mems = intf_gen_utils.get_sorted_memories(data)
+        for mem, memData in mems.items():
+            out.append(f'        ,{ memData["memory"] }_adapter({memData["memory"]})')
+    else:
+        for mem, memData in data['memories'].items():
+            if memData['memoryType'] == 'external':
+                # Skip constructor initialization for external memories
+                continue
+            if memData["local"]:
+                out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')
+            else:
+                out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]})')
 
     # Memory connections (channel initialization would happen here if variables declared in header)
     if len(data['memoryConnections']) > 0:
@@ -148,27 +154,21 @@ def constructorBody(args, prj, data):
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
     if registerDecode:
         # loop through the memories in offset order
-        if 'memoriesParent' in data:
-            memoryKey = 'memoriesParent'
-        else:
-            memoryKey = 'memories'
-        mems = dict(filter(lambda x: x[1]['regAccess'], data[memoryKey].items()))
-        mems = dict(sorted(mems.items(), key=lambda item: item[1]["offset"]))
+        mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():
             if first:
                 first=False
                 out.append(f'    // register memories for FW access')
-            if memData["regAccess"]:
+            width = intf_gen_utils.get_struct_width(memData["structureKey"], prj.data["structures"])
+            memSize = roundup_pow2min4((width + 7) >> 3) * intf_gen_utils.get_const(memData['wordLinesKey'], prj.data['constants'])
+            if data['blockInfo'].get('isRegHandler'):
+                    out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}", &{memData["memory"]}_adapter);')
+            else:
                 # Skip FW memory registration for external memories (no hwMemory object exists)
                 if memData.get('memoryType') == 'external':
                     out.append(f'    // Memory {memData["memory"]} is external - skipping FW registration')
                     continue
-                width = intf_gen_utils.get_struct_width(memData["structureKey"], prj.data["structures"])
-                memSize = roundup_pow2min4((width + 7) >> 3) * intf_gen_utils.get_const(memData['wordLinesKey'], prj.data['constants'])
-                if memoryKey == 'memoriesParent':
-                    out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}");') # TODO add access function
-                else:
-                    out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}", &{memData["memory"]});')
+                out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}", &{memData["memory"]});')
 
         first = True
         regs = dict(sorted(data["registers"].items(), key=lambda item: item[1]["offset"]))
@@ -199,7 +199,8 @@ def constructorBody(args, prj, data):
         for key, val in data['memoryConnections'].items():
             channelName = f'{val["interfaceName"]}'
             out.append(f'    {val["instance"]}->{val["memory"]}({channelName});')
-            out.append(f'    {val["memory"]}.bindPort({channelName});')
+            if val.get('memoryType', '') != 'external':
+                out.append(f'    {val["memory"]}.bindPort({channelName});')
 
     first = True
 

@@ -63,6 +63,7 @@ typedef int8_t signed7bit_t; // [7] Signed 7-bit type (-64 to 63) non-byte-align
 typedef int16_t signed11bit_t; // [11] Signed 11-bit type (-1024 to 1023) non-byte-aligned
 typedef uint8_t unsigned5bit_t; // [5] Unsigned 5-bit type for mixed testing
 typedef uint16_t unsigned9bit_t; // [9] Unsigned 9-bit type for mixed testing
+typedef uint64_t bigT; // [64] 64-bit type for mixed testing
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums 
@@ -354,6 +355,37 @@ struct dSt {
         variabled(variabled_)
     {}
     explicit dSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct bigSt {
+    bigT big; //
+
+    bigSt() {}
+
+    static constexpr uint16_t _bitWidth = 64;
+    static constexpr uint16_t _byteWidth = 8;
+    typedef uint64_t _packedSt;
+    bool operator == (const bigSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const bigSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.big, NAME + ".big");
+    }
+    inline friend ostream& operator << ( ostream& os,  bigSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<64> sc_pack(void) const;
+    void sc_unpack(sc_bv<64> packed_data);
+    explicit bigSt(sc_bv<64> packed_data) { sc_unpack(packed_data); }
+    explicit bigSt(
+        bigT big_) :
+        big(big_)
+    {}
+    explicit bigSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
 struct nestedSt {
