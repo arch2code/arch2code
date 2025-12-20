@@ -10,6 +10,7 @@ EXTRA_LD_FLAGS     =
 EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 
 include $(A2C_ROOT)/include/make/a2c-systemc.mk
+include $(A2C_ROOT)/include/make/a2c-cursor.mk
 
 run: $(BIN_DIR)/$(BIN)
 ifndef VL_DUT

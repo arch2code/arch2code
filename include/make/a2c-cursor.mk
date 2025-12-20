@@ -27,8 +27,15 @@ cursor_setup cursor-setup:
 	fi
 	@# Create .cursorrules file from template
 	@if [ ! -e "$(REPO_ROOT)/.cursorrules" ]; then \
-		cp $(A2C_ROOT)/base/.cursorrules.template $(REPO_ROOT)/.cursorrules && \
-		echo "  ✓ Created .cursorrules file"; \
+		if [ -f "$(A2C_ROOT)/base/.cursorrules.template" ]; then \
+			cp $(A2C_ROOT)/base/.cursorrules.template $(REPO_ROOT)/.cursorrules && \
+			echo "  ✓ Created .cursorrules file (from base)"; \
+		elif [ -f "$(A2C_ROOT)/.cursorrules.template" ]; then \
+			cp $(A2C_ROOT)/.cursorrules.template $(REPO_ROOT)/.cursorrules && \
+			echo "  ✓ Created .cursorrules file (from builder root)"; \
+		else \
+			echo "  ⚠ Warning: .cursorrules.template not found in builder/base or builder root"; \
+		fi \
 	else \
 		echo "  ℹ .cursorrules already exists"; \
 	fi

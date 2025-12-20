@@ -460,6 +460,7 @@ struct bSizeSt {
     std::string prt(bool all=false) const;
     static const char* getValueType(void) { return( "" );}
     inline uint64_t getStructValue(void) const { return( -1 );}
+    inline bSizeT _getAddress(void) { return( index); }
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
     sc_bv<4> sc_pack(void) const;

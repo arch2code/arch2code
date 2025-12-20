@@ -3,11 +3,13 @@
 
 // GENERATED_CODE_PARAM --block=blockD
 // GENERATED_CODE_BEGIN --template=baseClassDecl
+#include "memory_channel.h"
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 #include "status_channel.h"
-#include "mixedIncludes.h"
 #include "mixedBlockCIncludes.h"
+#include "mixedIncludes.h"
+#include "mixedIncludeIncludes.h"
 
 class blockDBase : public virtual blockPortBase
 {
@@ -24,6 +26,10 @@ public:
     rdy_vld_out< dSt > outD;
     // blockB->reg(roBsize) A Read Only register with a structure that has a definition from an included context
     status_out< bSizeRegSt > roBsize;
+    // blockB->mem(blockBTable1) Dual Port with one connection
+    memory_out< bSizeSt, seeSt > blockBTable1;
+    // blockB->mem(blockBTableSP) Single Port with connection
+    memory_out< bSizeSt, nestedSt > blockBTableSP;
 
     // dst ports
     // uBlockF1->dStuffIf: An interface for D
@@ -40,6 +46,8 @@ public:
         ,dee1("dee1")
         ,outD("outD")
         ,roBsize("roBsize")
+        ,blockBTable1("blockBTable1")
+        ,blockBTableSP("blockBTableSP")
         ,inD("inD")
         ,btod("btod")
         ,rwD("rwD")
@@ -51,6 +59,8 @@ public:
         dee1->setTimed(nsec, mode);
         outD->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
+        blockBTable1->setTimed(nsec, mode);
+        blockBTableSP->setTimed(nsec, mode);
         inD->setTimed(nsec, mode);
         btod->setTimed(nsec, mode);
         rwD->setTimed(nsec, mode);
@@ -63,6 +73,8 @@ public:
         dee1->setLogging(verbosity);
         outD->setLogging(verbosity);
         roBsize->setLogging(verbosity);
+        blockBTable1->setLogging(verbosity);
+        blockBTableSP->setLogging(verbosity);
         inD->setLogging(verbosity);
         btod->setLogging(verbosity);
         rwD->setLogging(verbosity);
@@ -82,6 +94,10 @@ public:
     rdy_vld_in< dSt > outD;
     // blockB->reg(roBsize) A Read Only register with a structure that has a definition from an included context
     status_in< bSizeRegSt > roBsize;
+    // blockB->mem(blockBTable1) Dual Port with one connection
+    memory_in< bSizeSt, seeSt > blockBTable1;
+    // blockB->mem(blockBTableSP) Single Port with connection
+    memory_in< bSizeSt, nestedSt > blockBTableSP;
 
     // dst ports
     // uBlockF1->dStuffIf: An interface for D
@@ -98,6 +114,8 @@ public:
         ,dee1(("dee1"+name).c_str())
         ,outD(("outD"+name).c_str())
         ,roBsize(("roBsize"+name).c_str())
+        ,blockBTable1(("blockBTable1"+name).c_str())
+        ,blockBTableSP(("blockBTableSP"+name).c_str())
         ,inD(("inD"+name).c_str())
         ,btod(("btod"+name).c_str())
         ,rwD(("rwD"+name).c_str())
@@ -109,6 +127,8 @@ public:
         dee1->setTimed(nsec, mode);
         outD->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
+        blockBTable1->setTimed(nsec, mode);
+        blockBTableSP->setTimed(nsec, mode);
         inD->setTimed(nsec, mode);
         btod->setTimed(nsec, mode);
         rwD->setTimed(nsec, mode);
@@ -121,6 +141,8 @@ public:
         dee1->setLogging(verbosity);
         outD->setLogging(verbosity);
         roBsize->setLogging(verbosity);
+        blockBTable1->setLogging(verbosity);
+        blockBTableSP->setLogging(verbosity);
         inD->setLogging(verbosity);
         btod->setLogging(verbosity);
         rwD->setLogging(verbosity);
@@ -140,6 +162,10 @@ public:
     rdy_vld_channel< dSt > outD;
     // A Read Only register with a structure that has a definition from an included context
     status_channel< bSizeRegSt > roBsize;
+    // Dual Port with one connection
+    memory_channel< bSizeSt, seeSt > blockBTable1;
+    // Single Port with connection
+    memory_channel< bSizeSt, nestedSt > blockBTableSP;
 
     // dst ports
     // An interface for D
@@ -156,6 +182,8 @@ public:
     ,dee1(("dee1"+name).c_str(), srcName)
     ,outD(("outD"+name).c_str(), srcName)
     ,roBsize(("roBsize"+name).c_str(), srcName)
+    ,blockBTable1(("blockBTable1"+name).c_str(), srcName)
+    ,blockBTableSP(("blockBTableSP"+name).c_str(), srcName)
     ,inD(("inD"+name).c_str(), srcName)
     ,btod(("btod"+name).c_str(), srcName)
     ,rwD(("rwD"+name).c_str(), srcName)
@@ -172,6 +200,10 @@ public:
         b->outD( outD );
         a->roBsize( roBsize );
         b->roBsize( roBsize );
+        a->blockBTable1( blockBTable1 );
+        b->blockBTable1( blockBTable1 );
+        a->blockBTableSP( blockBTableSP );
+        b->blockBTableSP( blockBTableSP );
         a->inD( inD );
         b->inD( inD );
         a->btod( btod );

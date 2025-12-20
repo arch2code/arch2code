@@ -105,6 +105,16 @@ def render_default(args, prj, data):
             continue
         out.append( indent + f'hwMemory< { memData["structure"] } > { memData["memory"] };')
 
+    # Memory connections (channel declarations)
+    if 'memoryConnections' in data:
+        for key, val in data['memoryConnections'].items():
+            channelName = f'{val["interfaceName"]}'
+            memKey = val['memoryBlockKey']
+            memData = data['memories'][memKey]
+            addrStruct = memData['addressStruct']
+            dataStruct = memData['structure']
+            out.append( indent + f'memory_channel<{addrStruct}, {dataStruct}> {channelName};')
+
     out.append('')
     out.append( indent + f'{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode);')
     if args.noDestructor == False:
@@ -132,4 +142,3 @@ def addParams(args, prj, data):
             out.append(f'        {{ "{data["blockName"]}.{value["variant"]}.{value["param"]}", {value["value"]} }},')
     out.append('    });')
     return("\n".join(out))
-

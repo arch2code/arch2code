@@ -130,6 +130,13 @@ def constructorInit(args, prj, data):
             out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')
         else:
             out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]})')
+
+    # Memory connections (channel initialization would happen here if variables declared in header)
+    if len(data['memoryConnections']) > 0:
+        for key, val in data['memoryConnections'].items():
+            channelName = f'{val["interfaceName"]}'
+            out.append(f'        ,{ channelName }("{ channelName }", "{ data["blockName"] }")')
+
     # take the list and return a string
     return("\n".join(out))
 
@@ -185,6 +192,15 @@ def constructorBody(args, prj, data):
     if connections:
         out.append(f'    // instance to instance connections via channel')
         out += connections
+
+    # Memory connections
+    if len(data['memoryConnections']) > 0:
+        out.append(f'    // memory connections')
+        for key, val in data['memoryConnections'].items():
+            channelName = f'{val["interfaceName"]}'
+            out.append(f'    {val["instance"]}->{val["memory"]}({channelName});')
+            out.append(f'    {val["memory"]}.bindPort({channelName});')
+
     first = True
 
     if data['addressDecode']['isApbRouter']:
@@ -234,4 +250,3 @@ def addressDecoder(args, prj, data):
         last = last[:-1] + '})'
         out.append(last)
     return out
-

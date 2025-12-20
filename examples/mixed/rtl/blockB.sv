@@ -29,15 +29,20 @@ import mixed_package::*;
     // Memory Interfaces
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable0();
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable0_unused();
+    memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable1_port1();
+    memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable1_reg();
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable2_port1();
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable2_port2();
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable3_read();
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable3_write();
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTableSP0();
+    memory_if #(.data_t(nestedSt), .addr_t(bSizeSt)) blockBTableSP_bob();
 
 // Instances
 blockD uBlockD (
     .btod (btod),
+    .blockBTable1 (blockBTable1_port1),
+    .blockBTableSP (blockBTableSP_bob),
     .cStuffIf (cStuffIf),
     .dee0 (dee0),
     .dee1 (dee1),
@@ -79,6 +84,7 @@ threeCs uThreeCs (
 
 blockBRegs uBlockBRegs (
     .apbReg (apbReg),
+    .blockBTable1 (blockBTable1_reg),
     .rwD (rwD),
     .roBsize (roBsize),
     .clk (clk),
@@ -91,6 +97,12 @@ memory_dp_ext #(.DEPTH(BSIZE), .data_t(seeSt)) uBlockBTable0 (
     .mem_portA (blockBTable0),
     .mem_portB (blockBTable0_unused),
     .mem (blockBTable0Mem),
+    .clk (clk)
+);
+
+memory_dp #(.DEPTH(BSIZE), .data_t(seeSt)) uBlockBTable1 (
+    .mem_portA (blockBTable1_port1),
+    .mem_portB (blockBTable1_reg),
     .clk (clk)
 );
 
@@ -108,6 +120,11 @@ memory_dp #(.DEPTH(BSIZE), .data_t(seeSt)) uBlockBTable3 (
 
 memory_sp #(.DEPTH(BSIZE), .data_t(seeSt)) uBlockBTableSP0 (
     .mem_port (blockBTableSP0),
+    .clk (clk)
+);
+
+memory_sp #(.DEPTH(BSIZE), .data_t(nestedSt)) uBlockBTableSP (
+    .mem_port (blockBTableSP_bob),
     .clk (clk)
 );
 

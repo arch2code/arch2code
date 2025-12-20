@@ -25,10 +25,11 @@
 
 // GENERATED_CODE_BEGIN --template=includes --section=regAddresses
 //register addresses
-#define REG_BLOCKB_RWD                      0x0
-#define REG_BLOCKB_ROBSIZE                  0x8
+#define REG_BLOCKB_RWD                      0x40
+#define REG_BLOCKB_ROBSIZE                  0x48
 #define REG_BLOCKA_ROA                      0x0
 //memories base addresses
+#define REG_BLOCKB_BLOCKBTABLE1             0x0
 // GENERATED_CODE_END
 
 #endif //REGADDRESSES_H

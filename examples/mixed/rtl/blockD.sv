@@ -3,8 +3,9 @@
 //module as defined by block: blockD
 module blockD
 // Generated Import package statement(s)
-import mixedBlockC_package::*;
+import mixedInclude_package::*;
 import mixed_package::*;
+import mixedBlockC_package::*;
 (
     rdy_vld_if.src cStuffIf,
     rdy_vld_if.src dee0,
@@ -14,6 +15,8 @@ import mixed_package::*;
     req_ack_if.dst btod,
     status_if.dst rwD,
     status_if.src roBsize,
+    memory_if.src blockBTable1,
+    memory_if.src blockBTableSP,
     input clk, rst_n
 );
 

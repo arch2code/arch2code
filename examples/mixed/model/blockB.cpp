@@ -32,9 +32,14 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>( instanceFactory::createInstance(name(), "uThreeCs", "threeCs", "")))
         ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>( instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "")))
         ,blockBTable0(name(), "blockBTable0", mems, BSIZE, HWMEMORYTYPE_LOCAL)
+        ,blockBTable1(name(), "blockBTable1", mems, BSIZE)
         ,blockBTable2(name(), "blockBTable2", mems, BSIZE)
         ,blockBTable3(name(), "blockBTable3", mems, BSIZE)
         ,blockBTableSP0(name(), "blockBTableSP0", mems, BSIZE)
+        ,blockBTableSP(name(), "blockBTableSP", mems, BSIZE)
+        ,blockBTable1_port1("blockBTable1_port1", "blockB")
+        ,blockBTableSP_bob("blockBTableSP_bob", "blockB")
+        ,blockBTable1_reg("blockBTable1_reg", "blockB")
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
@@ -64,6 +69,13 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     uBlockD->rwD(rwD);
     uBlockD->roBsize(roBsize);
     uBlockBRegs->roBsize(roBsize);
+    // memory connections
+    uBlockD->blockBTable1(blockBTable1_port1);
+    blockBTable1.bindPort(blockBTable1_port1);
+    uBlockD->blockBTableSP(blockBTableSP_bob);
+    blockBTableSP.bindPort(blockBTableSP_bob);
+    uBlockBRegs->blockBTable1(blockBTable1_reg);
+    blockBTable1.bindPort(blockBTable1_reg);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(doneTest);

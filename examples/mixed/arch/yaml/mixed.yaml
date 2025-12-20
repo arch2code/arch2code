@@ -199,7 +199,7 @@ structures:
   bSizeRegSt:
     index: {varType: bSizeT, generator: register}
   bSizeSt:
-    index: {varType: bSizeT}
+    index: {varType: bSizeT, generator: address}
   apbAddrSt:
     address: {varType: apbAddrT, generator: address}
   apbDataSt:
@@ -419,11 +419,11 @@ connectionMaps:
 
 memories:
   - {memory: blockBTable0,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, local: true, desc: "Dual Port with no connections, local mem array"}
-#  - {memory: blockBTable1,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [port1], regAccess: true, desc: "Dual Port with one connection"}
+  - {memory: blockBTable1,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [port1], regAccess: true, desc: "Dual Port with one connection"}
   - {memory: blockBTable2,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [port1, port2], desc: "Dual Port with two connections native to blockB"}
   - {memory: blockBTable3,   block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [read, write], desc: "Dual Port with two connections native to blockB, explicitly connected"}
   - {memory: blockBTableSP0, block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Single Port with no connections", memoryType: singlePort}
-#  - {memory: blockBTableSP,  block: blockB, structure: nestedSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [bob], desc: "Single Port with connection",  memoryType: singlePort, count: ASIZE}
+  - {memory: blockBTableSP,  block: blockB, structure: nestedSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [bob], desc: "Single Port with connection",  memoryType: singlePort, count: ASIZE}
   - {memory: test,           block: blockF, structure: seeSt, wordLines: bob, addressStruct: bSizeSt, desc: "Dual Port with one connection"}
 #  - {memory: blockBTableExt, block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, regAccess: true, desc: "External memory - interfaces created, hardware not instantiated", memoryType: external}
 
@@ -434,9 +434,9 @@ parameters:
     - {variant: variant1, param: bob,  value: BOB1 }
     - {variant: variant1, param: fred, value: 1    }
 
-#memoryConnections:
-#  - {memory: blockBTable1,  block: blockB, instance: uBlockD, port: port1}
-#  - {memory: blockBTableSP, block: blockB, instance: uBlockD, port: bob}
+memoryConnections:
+  - {memory: blockBTable1,  block: blockB, instance: uBlockD, port: port1}
+  - {memory: blockBTableSP, block: blockB, instance: uBlockD, port: bob}
 
 registers:
 # after https://arch2code.atlassian.net/browse/A2C-123

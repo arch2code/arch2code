@@ -8,6 +8,9 @@
 #include "timedDelay.h"
 #include "synchLock.h"
 
+#include "memory_channel.h"
+#include <systemc>
+
 // A:64 D:32 CPU Register access bus
 // N : size of CPU D-Bus aligned data entry, in bytes
 
@@ -177,6 +180,38 @@ public:
             }
         }
     }
+
+    // Binds a channel (passed by reference) to a new service thread
+    template <class ADDR>
+    void bindPort(sc_core::memory_in_if<ADDR, MEM_DATA>& port) {
+        // sc_bind creates a callback to serviceThread, passing '&port' as the argument.
+        // sc_spawn creates a new SystemC process to run that callback.
+        sc_core::sc_spawn(sc_core::sc_bind(&hwMemory::serviceThread<ADDR>, this, &port));
+    }
+
+    // The thread loop that services the specific channel
+    template <class ADDR>
+    void serviceThread(sc_core::memory_in_if<ADDR, MEM_DATA>* port) {
+        bool isWrite;
+        ADDR addrStruct;
+        MEM_DATA data;
+        while(true) {
+             // Wait for a request on this channel
+             port->reqReceive(isWrite, addrStruct, data);
+             
+             // Process request
+             uint64_t addrVal = addrStruct._getAddress();
+             if (isWrite) {
+                 write(addrVal, data);
+             } else {
+                 data = read(addrVal);
+             }
+             
+             // Send completion/data back
+             port->complete(data);
+        }
+    }
+
 private:
     std::vector<MEM_DATA> m_mem;
     uint64_t rows;
