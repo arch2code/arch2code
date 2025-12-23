@@ -1,6 +1,7 @@
 //copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "endOfTest.h"
+#include "testController.h"
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "blockB.h"
@@ -81,6 +82,11 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(doneTest);
+    SC_THREAD(blockBTableExtModel);
+
+    // Model-backed storage for external memory blockBTableExt (BSIZE wordlines).
+    // Default init: all zeros.
+    blockBTableExt_shadow_.assign(BSIZE, seeSt());
 }
 
 void blockB::doneTest(void)
@@ -89,5 +95,39 @@ void blockB::doneTest(void)
     eot.registerVoter();
     startDone->waitNotify();
     startDone->ack();
+    // Do not end the simulation until all registered tests have completed.
+    // This prevents premature sc_stop() (see mixedExternal::eotThread) before
+    // late tests like test_mem_hier_cpu_read run.
+    testController::GetInstance().wait_all_tests_complete();
     eot.setEndOfTest(true);
+}
+
+
+void blockB::blockBTableExtModel(void)
+{
+    while (true) {
+        bool isWrite = false;
+        bSizeSt addr;
+        seeSt data;
+
+        // Wait for a request from blockBRegs (FW APB accesses).
+        blockBTableExt_reg.reqReceive(isWrite, addr, data);
+
+        const uint32_t idx = static_cast<uint32_t>(addr.index);
+        if (idx >= blockBTableExt_shadow_.size()) {
+            log_.logPrint(std::format("blockBTableExtModel: addr out of range idx={}", idx), LOG_ALWAYS);
+            if (!isWrite) {
+                blockBTableExt_reg.complete(seeSt());
+            }
+            continue;
+        }
+
+        if (isWrite) {
+            // Writes are acknowledged inside reqReceive(); we just update the model state.
+            blockBTableExt_shadow_[idx] = data;
+        } else {
+            // Complete reads with the current model value.
+            blockBTableExt_reg.complete(blockBTableExt_shadow_[idx]);
+        }
+    }
 }

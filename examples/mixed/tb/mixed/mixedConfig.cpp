@@ -6,6 +6,8 @@
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
 #include "endOfTest.h"
+#include "workerThread.h"
+#include "testController.h"
 
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=tbConfig
@@ -28,6 +30,16 @@ public:
 
     bool createTestBench(void) override
     {
+        testController &controller = testController::GetInstance();
+        controller.set_test_names({
+            "test_mem_hier_blockd_write",
+            "test_mem_hier_blockd_read",
+            "test_mem_hier_cpu_read",
+            "test_mem_hier_cpu_write",
+            "test_mem_hier_cpu_ext_rw"
+        });
+
+
         //create hierarchy
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "mixedTestbench", "");
         return true;
@@ -37,6 +49,7 @@ public:
     {
         // Final cleanup if needed
         Q_ASSERT_CTX(endOfTestState::GetInstance().isEndOfTest(), "final", "Premature end of test detected");
+        Q_ASSERT_CTX(testController::GetInstance().are_all_tests_complete(), "final", "Not all tests completed");
         errorCode::pass();
     }
 

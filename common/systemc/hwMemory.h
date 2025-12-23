@@ -205,10 +205,10 @@ public:
                  write(addrVal, data);
              } else {
                  data = read(addrVal);
+                // Send completion/data back
+                port->complete(data);
              }
              
-             // Send completion/data back
-             port->complete(data);
         }
     }
 
@@ -239,7 +239,6 @@ public:
 
         // RMW
         m_port->request(false, addr_obj, data_obj);
-        m_port->waitComplete(data_obj);
 
         m_val_sc = data_obj.sc_pack();
         m_val_sc.range(8*n+31, 8*n) = val;
@@ -255,7 +254,6 @@ public:
         DATA data_obj;
 
         m_port->request(false, addr_obj, data_obj);
-        m_port->waitComplete(data_obj);
         
         m_val_sc = data_obj.sc_pack();
         return (uint32_t) m_val_sc.range(8*n+31, 8*n).to_uint64();

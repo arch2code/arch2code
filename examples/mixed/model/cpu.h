@@ -33,8 +33,8 @@ public:
 
     // block implementation members
 private:
-
-
+    void fwTest(void);
+   
 };
 
 #endif //CPU_H

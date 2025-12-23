@@ -33,6 +33,7 @@ public:
 
     // GENERATED_CODE_END
     // block implementation members
+    void memoryTest(void);
    
 };
 

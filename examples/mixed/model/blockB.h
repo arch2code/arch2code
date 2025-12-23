@@ -3,6 +3,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include <vector>
 #include "mixedIncludes.h"
 
 // GENERATED_CODE_PARAM --block=blockB
@@ -89,6 +90,12 @@ public:
     // GENERATED_CODE_END
     // block implementation members
     void doneTest(void);
+
+    // External memory model responder for blockBTableExt_reg.
+    // This services uBlockBRegs -> blockBTableExt transactions directly in the model
+    // (no hwMemory instantiation for this external memory).
+    void blockBTableExtModel(void);
+    std::vector<seeSt> blockBTableExt_shadow_;
 };
 
 #endif //BLOCKB_H
