@@ -3,13 +3,14 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include <vector>
 #include "mixedIncludes.h"
 
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockB_base.h"
+#include "blockBBase.h"
 #include "addressMap.h"
 #include "hwMemory.h"
 #include "mixedIncludes.h"
@@ -67,11 +68,16 @@ public:
     memories mems;
     //memories
     hwMemory< seeSt > blockBTable0;
-    hwMemory< seeSt > blockBTable1;
+    hwMemory< bigSt > blockBTable1;
     hwMemory< seeSt > blockBTable2;
     hwMemory< seeSt > blockBTable3;
     hwMemory< seeSt > blockBTableSP0;
     hwMemory< nestedSt > blockBTableSP;
+    // Memory blockBTableExt is external - declare manually
+    memory_channel<bSizeSt, bigSt> blockBTable1_port1;
+    memory_channel<bSizeSt, nestedSt> blockBTableSP_bob;
+    memory_channel<bSizeSt, bigSt> blockBTable1_reg;
+    memory_channel<bSizeSt, seeSt> blockBTableExt_reg;
 
     blockB(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~blockB() override = default;
@@ -84,6 +90,12 @@ public:
     // GENERATED_CODE_END
     // block implementation members
     void doneTest(void);
+
+    // External memory model responder for blockBTableExt_reg.
+    // This services uBlockBRegs -> blockBTableExt transactions directly in the model
+    // (no hwMemory instantiation for this external memory).
+    void blockBTableExtModel(void);
+    std::vector<seeSt> blockBTableExt_shadow_;
 };
 
 #endif //BLOCKB_H

@@ -1,14 +1,11 @@
+REPO_ROOT = $(shell git rev-parse --show-toplevel)/examples/mixed
 
-all:
-	$(MAKE) -C model all
-	$(MAKE) -C systemVerilog all
-	$(MAKE) -C verif all
+include $(REPO_ROOT)/include/make/shared.mk
 
-run:
-	$(MAKE) -C model 
-	$(MAKE) -C verif 
+.PHONY : reset clean
 
-clean:
-	$(MAKE) -C model clean
-	$(MAKE) -C systemVerilog clean
-	$(MAKE) -C verif clean
+reset: clean
+	rm -rf $(REPO_ROOT)/base $(REPO_ROOT)/model $(REPO_ROOT)/tb $(REPO_ROOT)/rtl $(REPO_ROOT)/verif
+
+clean::
+	rm -rf $(A2C_SQLDB_DOTFILE) $(A2C_SQLDB_FILE) $(GEN_BUILD_DIR)

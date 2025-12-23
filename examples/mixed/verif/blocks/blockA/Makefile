@@ -19,7 +19,7 @@ BUILDER_INTERFACES = $(wildcard $(REPO_ROOT)/interfaces/*)
 CXX = clang++
 INCLUDES = -I$(PROJECT_ROOT)/verif/vl_wrap/blocks -I$(PROJECT_ROOT)/verif/vl_wrap/obj_dir -I$(COMMON_DIR) -I$(MODEL_DIR) -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd -I$(BUILDER_SC_COMMON) $(foreach dir,$(BUILDER_INTERFACES),-I$(dir))
 
-CXXFLAGS = -c -std=c++23 -MMD -DVERILATOR -DVM_TRACE_VCD -DVERIF_TB -DSC_CPLUSPLUS=201703L $(INCLUDES)
+CXXFLAGS = -c -std=c++23 -MMD -DVERILATOR -DVM_TRACE_VCD -DVERIF_TB -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES $(INCLUDES)
 LDFLAGS = -L$(PROJECT_ROOT)/verif/vl_wrap -L$(SYSTEMC_LIBDIR) -lvl_s_wrap -lsystemc -latomic -lpthread -ldl -L$(LD_BOOST) -lboost_system -lboost_program_options
 
 BUILD_DIR = ./build

@@ -387,6 +387,15 @@ def get_const(const_key, const_dict):
     const = lookup_const(const_key, const_dict)
     return const['value'] if const else 0
 
+def get_sorted_memories(data):
+    if 'memoriesParent' in data:
+        memoryKey = 'memoriesParent'
+    else:
+        memoryKey = 'memories'
+    mems = dict(filter(lambda x: x[1]['regAccess'], data[memoryKey].items()))
+    mems = dict(sorted(mems.items(), key=lambda item: item[1]["offset"]))
+    return mems
+
 def get_intf_defs(intf_type, block_data):
     """Get interface definition for given interface type
     

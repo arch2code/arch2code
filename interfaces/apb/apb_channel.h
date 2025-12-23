@@ -86,7 +86,6 @@ public:
         m_channel_comp_event( (std::string(name_) + "m_channel_comp_event").c_str() ),
         m_reader(nullptr),
         m_writer(nullptr),
-        m_valid(false),
         m_value_written(false)
         {
             req_interfaceBase.setTracker(R::getValueType());
@@ -143,13 +142,18 @@ protected:
     sc_port_base* m_reader; // used for static design rule checking
     sc_port_base* m_writer; // used for static design rule checking
 
-    bool m_in_progress = false;   // is a request in progress (PSEL)
-    bool m_valid = false;         // can we read the value
-    bool m_ready = false;
-    bool m_data_available = false; // is read data available
+    // Protocol state:
+    // - m_req_pending models APB PSEL: 1 outstanding request at a time.
+    // - m_req_is_write models APB PWRITE for the outstanding request.
+    // - m_resp_pending models PRDATA valid for read responses.
+    //
+    // Events are wakeups only; state lives in these flags and must be checked in
+    // guarded wait loops to avoid missed notifications.
+    bool m_req_pending = false;
+    bool m_req_is_write = false;
+    bool m_resp_pending = false;
     bool m_value_written = false; // does m_value contain data not this is seperated from the ready/valid for optimization of the task switches
     bool m_multi_writer = false;  //detect multiple writers
-    bool m_isWrite = false;       // (PWRITE)
 
 private:
     // disabled
@@ -191,174 +195,205 @@ inline void apb_channel<R, D>::register_port( sc_port_base& port_,
 template <class R, class D>
 inline void apb_channel<R, D>::reqReceive(bool &isWrite, R &req, D &data)
 {
-    m_ready = true;
-    if (!m_in_progress)
+    while (!m_req_pending)
     {
         sc_core::wait(m_channel_req_event);
     }
-    isWrite = m_isWrite;
-    if (m_isWrite)
+
+    isWrite = m_req_is_write;
+
+    if (m_req_is_write)
     {
-        // we have a write so capture the data
+        // write: capture request payload and generate an ack
         data = m_data;
         req = m_req_data;
         uint64_t tag = req.getStructValue();
         if (req_interfaceBase.log_.isMatch(LOG_NORMAL)) {
-            req_interfaceBase.interfaceLog(std::string("write ")+req.prt(req_interfaceBase.isDebugLog), tag);
+            req_interfaceBase.interfaceLog(std::string("write " ) + req.prt(req_interfaceBase.isDebugLog), tag);
         }
         tag = data.getStructValue();
         if (data_interfaceBase.log_.isMatch(LOG_NORMAL)) {
-            data_interfaceBase.interfaceLog(std::string("write ")+data.prt(data_interfaceBase.isDebugLog), tag);
+            data_interfaceBase.interfaceLog(std::string("write " ) + data.prt(data_interfaceBase.isDebugLog), tag);
         }
         req_interfaceBase.delay();
-        m_channel_comp_event.notify(SC_ZERO_TIME);
+
         m_value_written = false;
-        m_in_progress = false;
-    } else {
-        req = m_req_data;
-        uint64_t tag = req.getStructValue();
-        if (req_interfaceBase.log_.isMatch(LOG_NORMAL)) {
-            req_interfaceBase.interfaceLog(std::string("read ")+req.prt(req_interfaceBase.isDebugLog), tag);
-        }
+        m_req_pending = false;
+        m_channel_comp_event.notify(SC_ZERO_TIME);
+        return;
     }
-    m_ready = false;
+
+    // read: capture request fields; response arrives via complete()
+    req = m_req_data;
+    uint64_t tag = req.getStructValue();
+    if (req_interfaceBase.log_.isMatch(LOG_NORMAL)) {
+        req_interfaceBase.interfaceLog(std::string("read " ) + req.prt(req_interfaceBase.isDebugLog), tag);
+    }
 }
+
+
+// blocking read completion
+
 
 // blocking read completion
 template <class R, class D>
 inline void apb_channel<R, D>::complete(const D& data )
 {
-    Q_ASSERT(m_isWrite==false && m_in_progress==true, "complete only valid on read");
+    Q_ASSERT(m_req_is_write==false && m_req_pending==true, "complete only valid on read");
+
     data_interfaceBase.delay();
     m_data = data;
-    m_data_available = true;
+    m_resp_pending = true;
+
     uint64_t tag = m_data.getStructValue();
     if (data_interfaceBase.log_.isMatch(LOG_NORMAL)) {
         std::ostringstream oss;
-        oss << "read req:" << m_req_data.prt(req_interfaceBase.isDebugLog) << " data:" << m_data.prt(data_interfaceBase.isDebugLog);
+        oss << "read req:" << m_req_data.prt(req_interfaceBase.isDebugLog)
+            << " data:" << m_data.prt(data_interfaceBase.isDebugLog);
         data_interfaceBase.interfaceLog(oss.str(), tag);
     }
-    m_in_progress = false;
+
+    m_req_pending = false;
     m_channel_comp_event.notify(SC_ZERO_TIME);
 }
+
+
+// blocking request
+
 
 // blocking request
 
 template <class R, class D>
 inline void apb_channel<R, D>::request(bool isWrite, const R& request, D& data )
 {
-    // if we are reentering the write before the reader has had time to read the previous entry we need to block on the read event
     Q_ASSERT(m_multi_writer==false, "multiple threads driving interface");
     m_multi_writer = true;
-    // for the write case we may need to wait for the previous operation to complete
-    if (m_in_progress)
+
+    // Single outstanding transaction per channel.
+    if (m_req_pending)
     {
-        Q_ASSERT(m_isWrite==true, "read in progress!");
-        sc_core::wait(m_channel_comp_event);
+        Q_ASSERT(m_req_is_write==true, "read in progress!");
+        while (m_req_pending)
+        {
+            sc_core::wait(m_channel_comp_event);
+        }
     }
+
     req_interfaceBase.delay();
+
     if (isWrite)
     {
-        // wait for previous write to complete
-        m_in_progress = true;
-        m_isWrite = isWrite;
+        m_req_pending = true;
+        m_req_is_write = true;
         m_value_written = true;
         m_data = data;
-        m_valid = true;
         m_req_data = request;
-        if (m_ready)
-        {
-            m_channel_req_event.notify(SC_ZERO_TIME);
-        }
-    } else {
-        m_in_progress = true;
-        m_data_available = false;
-        m_isWrite = isWrite;
-        m_req_data = request;
-        if (m_ready)
-        {
-            m_channel_req_event.notify(SC_ZERO_TIME);
-        }
-        sc_core::wait(m_channel_comp_event);
-        data = m_data;
-        m_in_progress = false;
+        m_channel_req_event.notify(SC_ZERO_TIME);
+        m_multi_writer = false;
+        return;
     }
+
+    // read
+    m_req_pending = true;
+    m_req_is_write = false;
+    m_resp_pending = false;
+    m_req_data = request;
+    m_channel_req_event.notify(SC_ZERO_TIME);
+
+    while (!m_resp_pending)
+    {
+        sc_core::wait(m_channel_comp_event);
+    }
+
+    data = m_data;
+    m_resp_pending = false;
     m_multi_writer = false;
 }
+
 
 template <class R, class D>
 inline void apb_channel<R, D>::requestNonBlocking(bool isWrite, const R& request, D& data )
 {
-    // if we are reentering the write before the reader has had time to read the previous entry we need to block on the read event
     Q_ASSERT(m_multi_writer==false, "multiple threads driving interface");
     m_multi_writer = true;
-    // for the write case we may need to wait for the previous operation to complete
-    if (m_in_progress)
+
+    if (m_req_pending)
     {
-        Q_ASSERT(m_isWrite==true, "read in progress!");
-        sc_core::wait(m_channel_comp_event);
+        Q_ASSERT(m_req_is_write==true, "read in progress!");
+        while (m_req_pending)
+        {
+            sc_core::wait(m_channel_comp_event);
+        }
     }
+
     req_interfaceBase.delay();
+
     if (isWrite)
     {
-        // wait for previous write to complete
-        m_in_progress = true;
-        m_isWrite = isWrite;
+        m_req_pending = true;
+        m_req_is_write = true;
         m_value_written = true;
         m_data = data;
-        m_valid = true;
         m_req_data = request;
-        if (m_ready)
-        {
-            m_channel_req_event.notify(SC_ZERO_TIME);
-        }
-    } else {
-        m_in_progress = true;
-        m_data_available = false;
-        m_isWrite = isWrite;
-        m_req_data = request;
-        if (m_ready)
-        {
-            m_channel_req_event.notify(SC_ZERO_TIME);
-        }
+        m_channel_req_event.notify(SC_ZERO_TIME);
+        return;
     }
+
+    // read
+    m_req_pending = true;
+    m_req_is_write = false;
+    m_resp_pending = false;
+    m_req_data = request;
+    m_channel_req_event.notify(SC_ZERO_TIME);
 }
+
 
 template <class R, class D>
 inline void apb_channel<R, D>::waitComplete(D& data )
 {
-    // if we are reentering the write before the reader has had time to read the previous entry we need to block on the read event
-
-    if (m_isWrite) {
-        // for the write case we may need to wait for the previous operation to complete
-        if (m_in_progress)
+    if (m_req_is_write)
+    {
+        while (m_req_pending)
         {
             sc_core::wait(m_channel_comp_event);
         }
-    } else {
-        if (!m_data_available)
-        {
-            sc_core::wait(m_channel_comp_event);
-        }
-        data = m_data;
+        m_multi_writer = false;
+        return;
     }
-    m_in_progress = false;
+
+    while (!m_resp_pending)
+    {
+        sc_core::wait(m_channel_comp_event);
+    }
+
+    data = m_data;
+    // Leave m_resp_pending asserted so a subsequent waitComplete() (used by some adapters)
+    // can return immediately without deadlocking.
     m_multi_writer = false;
 }
+
+
 
 
 template <class R, class D>
 void apb_channel<R, D>::status(void)
 {
-    if (m_in_progress)
+    if (m_req_pending || m_resp_pending)
     {
         req_interfaceBase.log_.logPrint(
-            std::format("{} has data/or no ack received m_valid:{} m_ready:{} m_data_available:{} m_value_written:{} m_isWrite:{} ",
-              name(), (uint16_t)m_valid, (uint16_t)m_ready, (uint16_t)m_data_available, (uint16_t)m_value_written, (uint16_t)m_isWrite), LOG_IMPORTANT );
+            std::format(
+                "{} has data/or no ack received req_pending:{} resp_pending:{} value_written:{} req_is_write:{} ",
+                name(),
+                (uint16_t)m_req_pending,
+                (uint16_t)m_resp_pending,
+                (uint16_t)m_value_written,
+                (uint16_t)m_req_is_write),
+            LOG_IMPORTANT);
         dump();
     }
     req_interfaceBase.teeStatus();
 }
+
 
 template <class R, class D>
 inline void apb_channel<R, D>::trace( sc_trace_file* tf ) const

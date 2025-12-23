@@ -17,7 +17,7 @@ apbDecode::apbDecode(sc_module_name blockName, const char * variant, blockBaseMo
        : sc_module(blockName)
         ,blockBase("apbDecode", name(), bbMode)
         ,apbDecodeBase(name(), variant)
-        ,decoder(16, 24, apbReg, {
+        ,decoder(16, 24, cpu_main, {
             &apb_uBlockA,
             &apb_uBlockB})
 // GENERATED_CODE_END

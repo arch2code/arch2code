@@ -45,7 +45,7 @@ systemc: nested hello-world axiDemo
 .PHONY : diagram-and-doc
 diagram-and-doc :
 	mkdir -p examples/tests/out
-	make -C $(MIXED_DIR)/arch
+	make -C $(MIXED_DIR) db
 	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --depth 1 > $(DIAG_TEST_DIR)/out/mixedDocDepth1.txt
 	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --depth 2 > $(DIAG_TEST_DIR)/out/mixedDocDepth2.txt
 	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --depth 3 > $(DIAG_TEST_DIR)/out/mixedDocDepth3.txt
@@ -94,9 +94,9 @@ apbDecode:
 
 .PHONY : mixed
 mixed:
-	make -C $(MIXED_DIR)/systemVerilog lint -j
-	make -C $(MIXED_DIR) all -j
-	make -C $(MIXED_DIR) run -j
+	make -C $(MIXED_DIR)/rundir -j all VL_DUT=1
+	make -C $(MIXED_DIR)/rundir run
+	make -C $(MIXED_DIR)/rtl lint -j
 
 .PHONY : in-and-out
 in-and-out:

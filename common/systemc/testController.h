@@ -37,11 +37,13 @@ public:
             m_outstanding_completions++;
         }
     }
-    void wait_test(std::string test_name) {
+    void wait_test(std::string test_name, sc_time delay = SC_ZERO_TIME) {
         // wait for test name match
         while (test_name != m_current_test) {
             wait(test_sequencer_event);
         }
+        // Optional guardband (e.g. to avoid SC_ZERO_TIME enumeration).
+        wait(delay);
     }
     void test_complete(std::string test_name) {
         if (test_name != m_current_test) {
@@ -71,6 +73,10 @@ public:
 
     void wait_all_tests_complete() {
         wait(all_tests_complete_event);
+    }
+
+    bool are_all_tests_complete() {
+        return m_test_number >= m_total_tests;
     }
 
 private:
