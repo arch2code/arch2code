@@ -24,7 +24,7 @@ def render_default(args, prj, data):
         out.append('#include "addressMap.h"')
     if  len(data['registers']) > 0:
         out.append('#include "hwRegister.h"')
-    if  len(data["memories"]) > 0:
+    if  len(data["memories"]) > 0 or len(data.get('memoriesParent', {})) > 0:
         out.append('#include "hwMemory.h"')
     if args.fileMapKey:
         fileMapKey = args.fileMapKey
@@ -99,8 +99,28 @@ def render_default(args, prj, data):
         out.append( indent + f'memories mems;')
         out.append( indent + f'//memories')
 
-    for mem, memData in data["memories"].items():
-        out.append( indent + f'hwMemory< { memData["structure"] } > { memData["memory"] };')
+    if data['blockInfo'].get('isRegHandler'):
+        # For register handlers, use hwMemoryPort for all register-accessible memories
+        mems = intf_gen_utils.get_sorted_memories(data)
+        for mem, memData in mems.items():
+            out.append( indent + f'hwMemoryPort< { memData["addressStruct"] }, { memData["structure"] } > { memData["memory"] }_adapter;')
+    else:
+        for mem, memData in data["memories"].items():
+            if memData['memoryType'] == 'external':
+                # for external memories, we are not going to declare a memory, instead declare a port
+                out.append( indent + f'// Memory { memData["memory"] } is external - declare manually')
+                continue
+            out.append( indent + f'hwMemory< { memData["structure"] } > { memData["memory"] };')
+
+    # Memory connections (channel declarations)
+    if 'memoryConnections' in data:
+        for key, val in data['memoryConnections'].items():
+            channelName = f'{val["interfaceName"]}'
+            memKey = val['memoryBlockKey']
+            memData = data['memories'][memKey]
+            addrStruct = memData['addressStruct']
+            dataStruct = memData['structure']
+            out.append( indent + f'memory_channel<{addrStruct}, {dataStruct}> {channelName};')
 
     out.append('')
     out.append( indent + f'{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode);')
@@ -129,4 +149,3 @@ def addParams(args, prj, data):
             out.append(f'        {{ "{data["blockName"]}.{value["variant"]}.{value["param"]}", {value["value"]} }},')
     out.append('    });')
     return("\n".join(out))
-

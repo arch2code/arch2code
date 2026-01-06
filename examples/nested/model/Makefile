@@ -23,7 +23,7 @@ $(error LD_BOOST is not set - please set to boost library (.so) path)
 endif
 
 CXX = clang++
-CXX_FLAGS = -std=c++23 -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -DSC_CPLUSPLUS=201703L
+CXX_FLAGS = -std=c++23 -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
 LD_FLAGS = -lboost_system -lboost_program_options -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -lsystemc
 BUILDER_INTERFACES = $(wildcard $(REPO_ROOT)/interfaces/*)
 INCLUDE = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I$(REPO_ROOT)/common/systemc $(foreach dir,$(BUILDER_INTERFACES),-I$(dir)) -I../includes -I. -I/usr/local/include

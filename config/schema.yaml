@@ -398,6 +398,7 @@ memories:
         - singlePort
         - dualPort
         - register
+        - external
   ports:
     _attribs: [optional, singleEntryList, multiple]  # singleEntryList means that the user provides a single entry and all other fields are derived from this
     port: listkey # required field for singleEntryList

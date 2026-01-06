@@ -8,9 +8,9 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockD_base.h"
-#include "mixedBlockCIncludes.h"
+#include "blockDBase.h"
 #include "mixedIncludes.h"
+#include "mixedBlockCIncludes.h"
 #include "mixedIncludeIncludes.h"
 
 SC_MODULE(blockD), public blockBase, public blockDBase
@@ -33,6 +33,7 @@ public:
 
     // GENERATED_CODE_END
     // block implementation members
+    void memoryTest(void);
    
 };
 

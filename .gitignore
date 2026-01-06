@@ -36,3 +36,8 @@ tests/out/*
 *.log
 *.o
 *.d
+
+# gen files
+*.scgen
+*.svgen
+.clangd

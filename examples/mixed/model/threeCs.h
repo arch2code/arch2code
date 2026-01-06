@@ -9,7 +9,7 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "threeCs_base.h"
+#include "threeCsBase.h"
 #include "mixedBlockCIncludes.h"
 //contained instances forward class declaration
 class blockCBase;
