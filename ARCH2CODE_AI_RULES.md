@@ -189,7 +189,7 @@ The project file is the entry point that orchestrates all architecture files.
 **Optional Fields:**
 - `dbSchema`: Custom schema file path
 - `addressControl`: Address control configuration file
-- `docConfig`, `cppConfig`, `svConfig`: Custom template configurations
+- `templates`: Custom template mappings (overrides defaults from builder/base/config/project.yaml)
 - `fileGeneration`: File generation template configuration
 
 #### Complete Example
@@ -2526,14 +2526,22 @@ Arch2code uses Python-based templates to generate code. Templates are located in
 
 ### Template Customization
 
-Projects can override default templates through config files:
+Projects can override default templates using the unified `templates:` section in project.yaml:
 
 ```yaml
 # project.yaml
-docConfig: config/docConfig.yaml
-cppConfig: config/cppConfig.yaml
-svConfig: config/svConfig.yaml
+templates:
+  # Override specific templates (paths relative to project or using $a2c macro)
+  package: $a2c/templates/systemVerilog/package.py
+  baseClassDecl: custom/templates/myBaseClass.py
+  # Default templates inherited from builder/base/config/project.yaml
 ```
+
+**Notes:**
+- Default templates are automatically loaded from `builder/base/config/project.yaml`
+- Only specify templates you want to override
+- Use `$a2c` macro to reference arch2code installation directory
+- Template paths can be relative to project root or absolute
 
 ### SystemVerilog Templates
 
@@ -2647,7 +2655,11 @@ public:
 To customize generation behavior:
 
 1. **Create custom template**: Copy from `builder/templates/` and modify
-2. **Reference in config**: Point to custom template in project config
+2. **Reference in project.yaml**: Add template to `templates:` section
+   ```yaml
+   templates:
+     myCustomTemplate: custom/path/to/template.py
+   ```
 3. **Maintain compatibility**: Keep generator interface consistent
 
 **AI Agent Guidance:**
@@ -2655,6 +2667,7 @@ To customize generation behavior:
 - Understand generated code structure to guide implementation
 - Point users to safe implementation regions
 - When issues arise, check if templates need updating vs YAML needs fixing
+- Default templates are inherited from `builder/base/config/project.yaml` - only override when necessary
 
 ---
 
@@ -3081,10 +3094,7 @@ project_name/
 │   └── yaml/
 │       ├── project.yaml
 │       ├── config/
-│       │   ├── addressControl.yaml
-│       │   ├── docConfig.yaml
-│       │   ├── cppConfig.yaml
-│       │   └── svConfig.yaml
+│       │   └── addressControl.yaml
 │       ├── shared_types.yaml
 │       └── <modules>/
 │           └── <module>.yaml

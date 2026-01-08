@@ -19,9 +19,40 @@ systemFiles:
   - $a2c/interfaces/axi4_stream/axi4_stream_if.yaml
   - $a2c/interfaces/raw/raw_if.yaml
 
-docConfig : $a2c/config/docConfig.yaml
-cppConfig : $a2c/config/cppConfig.yaml
-svConfig : $a2c/config/svConfig.yaml
+# Template mappings for code generation
+templates:
+  # SystemC/C++ templates
+  classDecl: $a2c/templates/systemc/classDecl.py
+  baseClassDecl: $a2c/templates/systemc/baseClassDecl.py
+  constructor: $a2c/templates/systemc/constructor.py
+  baseConstructor: $a2c/templates/systemc/baseConstructor.py
+  blockRegs: $a2c/templates/systemc/blockRegs.py
+  headers: $a2c/templates/systemc/headers.py
+  includes: $a2c/templates/systemc/includes.py
+  structures: $a2c/templates/systemc/structures.py
+  cpp_encoder: $a2c/templates/systemc/encoder.py
+  module_hdl_sc_wrapper: $a2c/templates/systemc/module_hdl_wrapper.py
+  tbExternal: $a2c/templates/systemc/testbench.py
+  tbConfig: $a2c/templates/systemc/testbench.py
+  testbench: $a2c/templates/systemc/testbench.py
+  # SystemVerilog templates
+  moduleInterfacesInstances: $a2c/templates/systemVerilog/moduleInterfacesInstances.py
+  apbDecodeModule: $a2c/templates/systemVerilog/apbDecodeModule.py
+  moduleRegs: $a2c/templates/systemVerilog/moduleRegs.py
+  constantsTypesEnumsStructures: $a2c/templates/systemVerilog/constantsTypesEnumsStructures.py
+  package: $a2c/templates/systemVerilog/package.py
+  module_hdl_sv_wrapper: $a2c/templates/systemVerilog/module_hdl_wrapper.py
+  encoder: $a2c/templates/systemVerilog/encoder.py
+  rtlDotF: $a2c/templates/systemVerilog/rtldotf.py
+  # Documentation templates
+  blockHeader: $a2c/templates/doc/blockHeader.j2
+  block: $a2c/templates/doc/block.j2
+  connectionHeader: $a2c/templates/doc/connectionHeader.py
+  structure: $a2c/templates/doc/structure.j2
+  memories: $a2c/templates/doc/memories.py
+  blockSpecification: $a2c/templates/doc/blockSpecification.py
+  structDiagram: $a2c/templates/doc/structDiagram.py
+  doctext: $a2c/templates/doc/doctext.py
 
 dirs: # this is list of locations that can be referenced as base path in fileMap section
   #root: ../..                  # project root directory relative to project file - required to be supplied by
