@@ -15,9 +15,8 @@ addressControl: config/address.yaml
 
 topInstance: testbench
 
-#docConfig : config/docConfig.yaml
-#cppConfig : config/cppConfig.yaml
-#svConfig : config/svConfig.yaml
+#templates: # uncomment to use custom templates or to override base templates
+#  testbench: templates/systemc/testbench_custom.py
 
 # this is a list of locations, orthogonal to design hierarchy, that maps out the functional layout of the project
 # root defines the top level directory for the project, and other directories are defined relative to this.
