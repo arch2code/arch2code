@@ -59,6 +59,7 @@ def get_hwregs(prj, data):
                 "size_rounded": roundup_multiple(reg['bytes'], 4),
                 "size": reg['bytes'],
                 "is_memory": True,
+                "word_lines": reg['wordLines'],
                 "offset": hex(reg['offset']),
                 "port_name": reg['register'],
                 "descr": reg['desc']
@@ -133,11 +134,11 @@ public:
 
     //registers
     {% for entry in hwregs -%}
-        {% if entry.is_memory -%}
-        hwMemoryPort< {{entry.addresstype}}, {{entry.datatype}} > {{entry.name}}; // {{entry.descr}}
-        {% else -%}
-        hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size_rounded}}, {{entry.ro}}> {{entry.name}}; // {{entry.descr}}
-        {% endif -%}
+    {% if entry.is_memory -%}
+    hwMemoryPort< {{entry.addresstype}}, {{entry.datatype}} > {{entry.name}}; // {{entry.descr}}
+    {% else -%}
+    hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size_rounded}}, {{entry.ro}}> {{entry.name}}; // {{entry.descr}}
+    {% endif -%}
     {% endfor %}
 '''
 
@@ -172,7 +173,11 @@ block_regs_body_section_template = '''\
 {
     // register registers for FW access
     {% for entry in hwregs -%}
-        regs.addRegister({{entry.offset}}, {{entry.size}}, "{{entry.port_name}}", &{{entry.name}} );
+    {% if entry.is_memory -%}
+    regs.addMemory({{entry.offset}}, {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
+    {% else -%}
+    regs.addRegister({{entry.offset}}, {{entry.size}}, "{{entry.port_name}}", &{{entry.name}} );
+    {% endif -%}
     {% endfor %}
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );

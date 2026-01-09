@@ -21,7 +21,25 @@ module blockARegs
     aRegSt roA_reg;
     assign roA_reg = roA.data;
 
-    aRegSt blockATableLocal_reg;
+    // blockATableLocal
+    aRegSt nxt_blockATableLocal_data, blockATableLocal_data;
+    bSizeSt blockATableLocal_addr;
+
+    logic blockATableLocal_update_0;
+    logic nxt_blockATableLocal_rd_enable, blockATableLocal_rd_enable, blockATableLocal_rd_capture;
+    logic blockATableLocal_wr_enable;
+
+    `DFF(blockATableLocal_addr, bSizeSt'(apb_addr[31:2]))
+    `DFF(blockATableLocal_wr_enable, blockATableLocal_update_0)
+    `DFF(blockATableLocal_rd_enable, nxt_blockATableLocal_rd_enable)
+    `DFF(blockATableLocal_rd_capture, blockATableLocal_rd_enable)
+
+    `DFFEN(blockATableLocal_data[6:0], nxt_blockATableLocal_data[6:0], blockATableLocal_update_0)
+
+    assign blockATableLocal.enable      = blockATableLocal_rd_enable | blockATableLocal_wr_enable;
+    assign blockATableLocal.wr_en       = blockATableLocal_wr_enable;
+    assign blockATableLocal.addr        = blockATableLocal_addr;
+    assign blockATableLocal.write_data  = blockATableLocal_data;
 
     logic wr_select;
     logic rd_select;
@@ -33,10 +51,19 @@ module blockARegs
     always_comb begin
         nxt_wr_pslverr = 1'b0;
         nxt_wr_ready = 1'b0;
-        
+        blockATableLocal_update_0 = 1'b0;
+        nxt_blockATableLocal_data = blockATableLocal_data;
         if (wr_select) begin
             case (apb_addr) inside
-                
+                [32'h0:32'h24]: begin
+                    case (apb_addr[2-1:0])
+                        2'h0: begin
+                            blockATableLocal_update_0 = 1'b1;
+                            nxt_blockATableLocal_data[6:0] = apbReg.pwdata[6:0];
+                        end
+                        default: ;
+                    endcase
+                end
                 default: begin
                     nxt_wr_pslverr = 1'b1;
                 end
@@ -52,12 +79,24 @@ module blockARegs
         nxt_rd_pslverr = 1'b0;
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
-        
+        nxt_blockATableLocal_rd_enable = 1'b0;
         if (rd_select) begin
             case (apb_addr) inside
                 32'h28 : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roA_reg[6:0]);
+                end
+                [32'h0:32'h24]: begin
+                    case (apb_addr[2-1:0])
+                        2'h0: begin
+                            if (blockATableLocal_rd_capture) begin
+                                nxt_rd_ready = 1'b1;
+                                nxt_rd_data = apbDataSt'(blockATableLocal.read_data[6:0]);
+                            end
+                        end
+                        default: ;
+                    endcase
+                    nxt_blockATableLocal_rd_enable = ~blockATableLocal_rd_capture;
                 end
                 default: begin
                     nxt_rd_data = apbDataSt'(32'hBADD_C0DE);

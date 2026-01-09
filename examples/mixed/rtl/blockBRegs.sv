@@ -29,8 +29,6 @@ module blockBRegs
     bSizeRegSt roBsize_reg;
     assign roBsize_reg = roBsize.data;
 
-    seeSt blockBTableExt_reg;
-
     // blockBTable1
     bigSt nxt_blockBTable1_data, blockBTable1_data;
     bSizeSt blockBTable1_addr;
@@ -53,6 +51,26 @@ module blockBRegs
     assign blockBTable1.addr        = blockBTable1_addr;
     assign blockBTable1.write_data  = blockBTable1_data;
 
+    // blockBTableExt
+    seeSt nxt_blockBTableExt_data, blockBTableExt_data;
+    bSizeSt blockBTableExt_addr;
+
+    logic blockBTableExt_update_0;
+    logic nxt_blockBTableExt_rd_enable, blockBTableExt_rd_enable, blockBTableExt_rd_capture;
+    logic blockBTableExt_wr_enable;
+
+    `DFF(blockBTableExt_addr, bSizeSt'(apb_addr[31:2]))
+    `DFF(blockBTableExt_wr_enable, blockBTableExt_update_0)
+    `DFF(blockBTableExt_rd_enable, nxt_blockBTableExt_rd_enable)
+    `DFF(blockBTableExt_rd_capture, blockBTableExt_rd_enable)
+
+    `DFFEN(blockBTableExt_data[4:0], nxt_blockBTableExt_data[4:0], blockBTableExt_update_0)
+
+    assign blockBTableExt.enable      = blockBTableExt_rd_enable | blockBTableExt_wr_enable;
+    assign blockBTableExt.wr_en       = blockBTableExt_wr_enable;
+    assign blockBTableExt.addr        = blockBTableExt_addr;
+    assign blockBTableExt.write_data  = blockBTableExt_data;
+
     logic wr_select;
     logic rd_select;
     assign wr_select = apbReg.psel & apbReg.penable & apbReg.pwrite & rst_n;
@@ -67,6 +85,8 @@ module blockBRegs
         blockBTable1_update_0 = 1'b0;
         blockBTable1_update_1 = 1'b0;
         nxt_blockBTable1_data = blockBTable1_data;
+        blockBTableExt_update_0 = 1'b0;
+        nxt_blockBTableExt_data = blockBTableExt_data;
         if (wr_select) begin
             case (apb_addr) inside
                 32'ha8 : begin
@@ -81,6 +101,15 @@ module blockBRegs
                         3'h4: begin
                             blockBTable1_update_1 = 1'b1;
                             nxt_blockBTable1_data[63:32] = apbReg.pwdata[31:0];
+                        end
+                        default: ;
+                    endcase
+                end
+                [32'h80:32'ha4]: begin
+                    case (apb_addr[2-1:0])
+                        2'h0: begin
+                            blockBTableExt_update_0 = 1'b1;
+                            nxt_blockBTableExt_data[4:0] = apbReg.pwdata[4:0];
                         end
                         default: ;
                     endcase
@@ -101,6 +130,7 @@ module blockBRegs
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
         nxt_blockBTable1_rd_enable = 1'b0;
+        nxt_blockBTableExt_rd_enable = 1'b0;
         if (rd_select) begin
             case (apb_addr) inside
                 32'ha8 : begin
@@ -128,6 +158,18 @@ module blockBRegs
                         default: ;
                     endcase
                     nxt_blockBTable1_rd_enable = ~blockBTable1_rd_capture;
+                end
+                [32'h80:32'ha4]: begin
+                    case (apb_addr[2-1:0])
+                        2'h0: begin
+                            if (blockBTableExt_rd_capture) begin
+                                nxt_rd_ready = 1'b1;
+                                nxt_rd_data = apbDataSt'(blockBTableExt.read_data[4:0]);
+                            end
+                        end
+                        default: ;
+                    endcase
+                    nxt_blockBTableExt_rd_enable = ~blockBTableExt_rd_capture;
                 end
                 default: begin
                     nxt_rd_data = apbDataSt'(32'hBADD_C0DE);
