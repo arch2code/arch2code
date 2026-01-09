@@ -34,7 +34,11 @@ public:
     // GENERATED_CODE_END
     // block implementation members
     void memoryTest(void);
-   
+    
+    // Memory register handler for blockBTableExt.
+    // This services register accesses to blockBTableExt through the memory port.
+    void blockBTableExtModel(void);
+    std::vector<seeSt> blockBTableExt_shadow_;
 };
 
 #endif //BLOCKD_H

@@ -86,6 +86,9 @@ def render_default(args, prj, data):
     first = True
 
     for reg, regData in data["registers"].items():
+        # Skip memory registers - they only have adapters, not hwRegister objects
+        if regData['regType'] == 'memory':
+            continue
         if first:
             out.append('')
             out.append( indent + f'//registers')
@@ -104,12 +107,12 @@ def render_default(args, prj, data):
         mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():
             out.append( indent + f'hwMemoryPort< { memData["addressStruct"] }, { memData["structure"] } > { memData["memory"] }_adapter;')
+        # Also handle memory registers
+        for reg, regData in data['registers'].items():
+            if regData.get('regType') == 'memory':
+                out.append( indent + f'hwMemoryPort< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_adapter;')
     else:
         for mem, memData in data["memories"].items():
-            if memData['memoryType'] == 'external':
-                # for external memories, we are not going to declare a memory, instead declare a port
-                out.append( indent + f'// Memory { memData["memory"] } is external - declare manually')
-                continue
             out.append( indent + f'hwMemory< { memData["structure"] } > { memData["memory"] };')
 
     # Memory connections (channel declarations)

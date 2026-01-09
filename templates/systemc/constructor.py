@@ -117,6 +117,9 @@ def constructorInit(args, prj, data):
     for key, value in data['subBlockInstances'].items():
         out.append(f'        ,{ value["instance"] }(std::dynamic_pointer_cast<{ value["instanceType"] }Base>( instanceFactory::createInstance(name(), "{ value["instance"]}", "{value["instanceType"]}", "{value["variant"]}")))')
     for reg, regData in data['registers'].items():
+        # Skip memory registers - they only have adapters, not hwRegister objects
+        if regData['regType'] == 'memory':
+            continue
         if regData['regType'] == 'rw':
             defaultValue = hex(prj.getConst(regData["defaultValue"]))
             out.append(f'        ,{ regData["register"] }({regData["structure"]}::_packedSt({defaultValue}))')
@@ -127,11 +130,12 @@ def constructorInit(args, prj, data):
         mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():
             out.append(f'        ,{ memData["memory"] }_adapter({memData["memory"]})')
+        # Also handle memory registers - connect adapter to base class port
+        for reg, regData in data['registers'].items():
+            if regData.get('regType') == 'memory':
+                out.append(f'        ,{ regData["register"] }_adapter({ baseClassName }::{ regData["register"] })')
     else:
         for mem, memData in data['memories'].items():
-            if memData['memoryType'] == 'external':
-                # Skip constructor initialization for external memories
-                continue
             if memData["local"]:
                 out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')
             else:
@@ -164,15 +168,24 @@ def constructorBody(args, prj, data):
             if data['blockInfo'].get('isRegHandler'):
                     out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}", &{memData["memory"]}_adapter);')
             else:
-                # Skip FW memory registration for external memories (no hwMemory object exists)
-                if memData.get('memoryType') == 'external':
-                    out.append(f'    // Memory {memData["memory"]} is external - skipping FW registration')
-                    continue
                 out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}", &{memData["memory"]});')
+        
+        # Handle memory registers
+        for reg, regData in data['registers'].items():
+            if regData.get('regType') == 'memory':
+                if first:
+                    first=False
+                    out.append(f'    // register memory registers for FW access')
+                width = intf_gen_utils.get_struct_width(regData["structureKey"], prj.data["structures"])
+                memSize = roundup_pow2min4((width + 7) >> 3) * intf_gen_utils.get_const(regData['wordLinesKey'], prj.data['constants'])
+                out.append(f'    regs.addMemory( 0x{regData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{regData["register"]}", &{regData["register"]}_adapter);')
 
         first = True
         regs = dict(sorted(data["registers"].items(), key=lambda item: item[1]["offset"]))
         for reg, regData in regs.items():
+            # Skip memory registers - they're only registered as memories
+            if regData['regType'] == 'memory':
+                continue
             if first:
                 first=False
                 out.append(f'    // register registers for FW access')
@@ -199,8 +212,7 @@ def constructorBody(args, prj, data):
         for key, val in data['memoryConnections'].items():
             channelName = f'{val["interfaceName"]}'
             out.append(f'    {val["instance"]}->{val["memory"]}({channelName});')
-            if val.get('memoryType', '') != 'external':
-                out.append(f'    {val["memory"]}.bindPort({channelName});')
+            out.append(f'    {val["memory"]}.bindPort({channelName});')
 
     first = True
 

@@ -430,7 +430,6 @@ memories:
   - {memory: blockBTableSP0, block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, desc: "Single Port with no connections", memoryType: singlePort}
   - {memory: blockBTableSP,  block: blockB, structure: nestedSt, wordLines: BSIZE, addressStruct: bSizeSt, ports: [bob], desc: "Single Port with connection",  memoryType: singlePort, count: ASIZE}
   - {memory: test,           block: blockF, structure: seeSt, wordLines: bob, addressStruct: bSizeSt, desc: "Dual Port with one connection"}
-  - {memory: blockBTableExt, block: blockB, structure: seeSt, wordLines: BSIZE, addressStruct: bSizeSt, regAccess: true, desc: "External memory - interfaces created, hardware not instantiated", memoryType: external}
 
 parameters:
   blockF:
@@ -452,12 +451,14 @@ registers:
   - {register: roBsize,  regType: ro,  block: blockB,   structure: bSizeRegSt, desc: A Read Only register with a structure that has a definition from an included context}
   - {register: roA,      regType: ro,  block: blockA,   structure: aRegSt,     desc: A Read Only register}
 #  - {register: extA,     regType: ext, block: blockA,   structure: aRegSt,     desc: An External register}
+  - {register: blockBTableExt, regType: memory, block: blockB, structure: seeSt, addressStruct: bSizeSt, wordLines: BSIZE, desc: Memory register - firmware accessible memory-mapped storage}
 
 registerConnections:
   - {register: rwD,     block: blockB, instance: uBlockF0 }
   - {register: rwD,     block: blockB, instance: uBlockF1 }
   - {register: rwD,     block: blockB, instance: uBlockD }
   - {register: roBsize, block: blockB, instance: uBlockD }
+  - {register: blockBTableExt, block: blockB, instance: uBlockD }
 #  - {register: extD,    block: blockB, instance: uBlockD }
 
 # flows, are very similar to a plantuml sequence diagram, a filename is taken and optionally

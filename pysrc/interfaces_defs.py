@@ -2,7 +2,8 @@
 INTF_TYPES = {
     'reg_ro' : 'status',
     'reg_rw' : 'status',
-    'reg_ext' : 'external_reg'
+    'reg_ext' : 'external_reg',
+    'reg_memory' : 'memory'
 }
 INTF_DEFS = {
     'status' : {

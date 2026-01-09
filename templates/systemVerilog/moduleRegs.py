@@ -120,6 +120,11 @@ def section_01_regs(reg_data):
         s_2 = [ f"assign {reg_intf}.data = {reg_local};" ]
     elif reg_data['regType'] == 'ext':
         s_2 = [ f"assign {reg_local} = {reg_intf}.rdata;" ]
+    elif reg_data['regType'] == 'memory':
+        # Memory registers are handled separately, no assignment needed
+        s_2 = []
+    else:
+        s_2 = []
 
     s_3, s_4 = [], []
     for seg in segments_enum:
