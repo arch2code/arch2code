@@ -15,6 +15,7 @@ import mixed_package::*;
     req_ack_if.dst btod,
     status_if.dst rwD,
     status_if.src roBsize,
+    memory_if.dst blockBTableExt,
     memory_if.src blockBTable1,
     memory_if.src blockBTableSP,
     input clk, rst_n

@@ -36,6 +36,9 @@ void cpu::fwTest(void)
     std::string test_ext = "test_mem_hier_cpu_ext_rw";
     controller.register_test_name(test_ext);
 
+    std::string test_local = "test_mem_local_cpu_rw";
+    controller.register_test_name(test_local);
+
     // Wait for read test
     controller.wait_test(test_read, sc_core::sc_time(1, sc_core::SC_NS));
     
@@ -144,6 +147,73 @@ void cpu::fwTest(void)
     }
 
     controller.test_complete(test_ext);
+
+    // Wait for local memory register test (blockATableLocal)
+    controller.wait_test(test_local, sc_core::sc_time(1, sc_core::SC_NS));
+
+    // blockATableLocal is a LOCAL memory register: serviced directly by blockA (not hierarchical)
+    // Access it via the FW-visible APB window (one 32b word per row; only low 7 bits are stored).
+    const uint32_t local_idx0 = 3;
+    const uint32_t local_idx1 = 9;
+    
+    // First verify initial test pattern (0x22 * index)
+    addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLELOCAL + 0x4 * local_idx0;
+    cpu_main->request(false, addr, data);
+    const uint32_t local_init0 = data.data & 0x7F;
+    
+    addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLELOCAL + 0x4 * local_idx1;
+    cpu_main->request(false, addr, data);
+    const uint32_t local_init1 = data.data & 0x7F;
+    
+    if (local_init0 == ((local_idx0 * 0x22) & 0x7F) && local_init1 == ((local_idx1 * 0x22) & 0x7F)) {
+        log_.logPrint("CPU LocalMem (blockATableLocal) initial pattern verify success", LOG_ALWAYS);
+    } else {
+        std::stringstream ss;
+        ss << "CPU LocalMem (blockATableLocal) initial pattern verify failed. Expected row"
+           << local_idx0 << "=0x" << std::hex << ((local_idx0 * 0x22) & 0x7F)
+           << " row" << std::dec << local_idx1 << "=0x" << std::hex << ((local_idx1 * 0x22) & 0x7F)
+           << ", got row" << std::dec << local_idx0 << "=0x" << std::hex << local_init0
+           << " row" << std::dec << local_idx1 << "=0x" << std::hex << local_init1;
+        log_.logPrint(ss.str(), LOG_ALWAYS);
+    }
+    
+    // Now write new values
+    const uint32_t local_wr0 = 0x3C;
+    const uint32_t local_wr1 = 0x55;
+
+    // Write row 3
+    addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLELOCAL + 0x4 * local_idx0;
+    data.data = local_wr0;
+    cpu_main->request(true, addr, data);
+
+    // Write row 9
+    addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLELOCAL + 0x4 * local_idx1;
+    data.data = local_wr1;
+    cpu_main->request(true, addr, data);
+
+    // Read back row 3
+    addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLELOCAL + 0x4 * local_idx0;
+    cpu_main->request(false, addr, data);
+    const uint32_t local_rd0 = data.data & 0x7F;
+
+    // Read back row 9
+    addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLELOCAL + 0x4 * local_idx1;
+    cpu_main->request(false, addr, data);
+    const uint32_t local_rd1 = data.data & 0x7F;
+
+    if (local_rd0 == (local_wr0 & 0x7F) && local_rd1 == (local_wr1 & 0x7F)) {
+         log_.logPrint("CPU LocalMem (blockATableLocal) RW verify success", LOG_ALWAYS);
+    } else {
+         std::stringstream ss;
+         ss << "CPU LocalMem (blockATableLocal) RW verify failed. Expected row"
+            << local_idx0 << "=0x" << std::hex << (local_wr0 & 0x7F)
+            << " row" << std::dec << local_idx1 << "=0x" << std::hex << (local_wr1 & 0x7F)
+            << ", got row" << std::dec << local_idx0 << "=0x" << std::hex << local_rd0
+            << " row" << std::dec << local_idx1 << "=0x" << std::hex << local_rd1;
+         log_.logPrint(ss.str(), LOG_ALWAYS);
+    }
+
+    controller.test_complete(test_local);
 }
 
 

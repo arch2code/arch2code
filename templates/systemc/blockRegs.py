@@ -49,21 +49,37 @@ def get_hwregs(prj, data):
         if reg['register'] in regs:
             continue
         regs[reg['register']] = 0
-        port_type = intf_gen_utils.get_intf_type(reg['interfaceType'], data)
-        direction = "_out" if reg['direction'] == 'src' else "_in"
-        port_type = port_type + direction
-        hwregs.append({
-            "name": reg['register'] + '_reg',
-            "datatype": reg['structure'],
-            "size_rounded": roundup_multiple(reg['bytes'], 4),
-            "size": reg['bytes'],
-            "ro" : 'true' if reg['regType'] == 'ro' else 'false',
-            "offset": hex(reg['offset']),
-            "port_type": port_type,
-            "port_name": reg['register'],
-            "default": hex(prj.getConst(reg['defaultValue'])) if reg['regType'] == 'rw' else None,
-            "descr": reg['desc']
-        })
+        
+        # Handle memory registers differently
+        if reg.get('regType') == 'memory':
+            hwregs.append({
+                "name": reg['register'] + '_adapter',
+                "datatype": reg['structure'],
+                "addresstype": reg['addressStruct'],
+                "size_rounded": roundup_multiple(reg['bytes'], 4),
+                "size": reg['bytes'],
+                "is_memory": True,
+                "offset": hex(reg['offset']),
+                "port_name": reg['register'],
+                "descr": reg['desc']
+            })
+        else:
+            port_type = intf_gen_utils.get_intf_type(reg['interfaceType'], data)
+            direction = "_out" if reg['direction'] == 'src' else "_in"
+            port_type = port_type + direction
+            hwregs.append({
+                "name": reg['register'] + '_reg',
+                "datatype": reg['structure'],
+                "size_rounded": roundup_multiple(reg['bytes'], 4),
+                "size": reg['bytes'],
+                "ro" : 'true' if reg['regType'] == 'ro' else 'false',
+                "is_memory": False,
+                "offset": hex(reg['offset']),
+                "port_type": port_type,
+                "port_name": reg['register'],
+                "default": hex(prj.getConst(reg['defaultValue'])) if reg['regType'] == 'rw' else None,
+                "descr": reg['desc']
+            })
     return hwregs
 
 def render_section_header(args, prj, data):
@@ -91,6 +107,7 @@ block_regs_header_template = '''\
 #include "instanceFactory.h"
 #include "addressMap.h"
 #include "hwRegister.h"
+#include "hwMemory.h"
 {% for entry in include_deps -%}
 #include "{{entry}}"
 {% endfor %}
@@ -116,7 +133,11 @@ public:
 
     //registers
     {% for entry in hwregs -%}
+        {% if entry.is_memory -%}
+        hwMemoryPort< {{entry.addresstype}}, {{entry.datatype}} > {{entry.name}}; // {{entry.descr}}
+        {% else -%}
         hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size_rounded}}, {{entry.ro}}> {{entry.name}}; // {{entry.descr}}
+        {% endif -%}
     {% endfor %}
 '''
 
@@ -137,7 +158,9 @@ void {{blockname}}::regHandler(void) { //handle register decode
         ,{{blockname}}Base(name(), variant)
         ,regs(log_)
         {% for entry in hwregs -%}
-        {%if entry.default -%}
+        {% if entry.is_memory -%}
+        ,{{entry.name}}({{entry.port_name}})
+        {% elif entry.default -%}
         ,{{entry.name}}(&{{entry.port_name}}, {{entry.datatype}}::_packedSt({{entry.default}}))
         {% else -%}
         ,{{entry.name}}(&{{entry.port_name}})

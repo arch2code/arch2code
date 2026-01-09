@@ -140,6 +140,17 @@ def constructorInit(args, prj, data):
                 out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')
             else:
                 out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]})')
+        
+        # Initialize LOCAL memory registers
+        # Note: registerDecode already computed at line 27
+        if registerDecode:
+            for reg, regData in data['registers'].items():
+                if regData['regType'] == 'memory':
+                    # LOCAL memory register - initialize channel, port, and adapter
+                    channelName = f'{data["blockName"]}_{regData["register"]}'
+                    out.append(f'        ,{ regData["register"] }_channel("{ channelName }", "{ data["blockName"] }")')
+                    out.append(f'        ,{ regData["register"] }_port("{ regData["register"] }_port")')
+                    out.append(f'        ,{ regData["register"] }_adapter({ regData["register"] }_port)')
 
     # Memory connections (channel initialization would happen here if variables declared in header)
     if len(data['memoryConnections']) > 0:
@@ -213,6 +224,16 @@ def constructorBody(args, prj, data):
             channelName = f'{val["interfaceName"]}'
             out.append(f'    {val["instance"]}->{val["memory"]}({channelName});')
             out.append(f'    {val["memory"]}.bindPort({channelName});')
+    
+    # Bind LOCAL memory register ports to channels
+    if registerDecode and not data['blockInfo'].get('isRegHandler'):
+        hasLocalMemReg = False
+        for reg, regData in data['registers'].items():
+            if regData['regType'] == 'memory':
+                if not hasLocalMemReg:
+                    out.append(f'    // bind local memory register ports to channels')
+                    hasLocalMemReg = True
+                out.append(f'    {regData["register"]}_port({regData["register"]}_channel);')
 
     first = True
 

@@ -3,6 +3,7 @@
 //module as defined by block: blockA
 module blockA
 // Generated Import package statement(s)
+import mixedInclude_package::*;
 import mixedBlockC_package::*;
 import mixed_package::*;
 (
@@ -16,11 +17,13 @@ import mixed_package::*;
 
     // Interface Instances, needed for between instanced modules inside this module
     status_if #(.data_t(aRegSt)) roA();
+    memory_if #(.data_t(aRegSt), .addr_t(bSizeSt)) blockATableLocal();
 
 // Instances
 blockARegs uBlockARegs (
     .apbReg (apbReg),
     .roA (roA),
+    .blockATableLocal (blockATableLocal),
     .clk (clk),
     .rst_n (rst_n)
 );

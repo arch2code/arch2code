@@ -24,13 +24,23 @@ def render_default(args, prj, data):
         out.append('#include "addressMap.h"')
     if  len(data['registers']) > 0:
         out.append('#include "hwRegister.h"')
-    if  len(data["memories"]) > 0 or len(data.get('memoriesParent', {})) > 0:
+    
+    # Check if we need hwMemory.h include
+    needsHwMemory = len(data["memories"]) > 0 or len(data.get('memoriesParent', {})) > 0
+    # Also need it if block has local memory registers (not isRegHandler but has registerDecode and memory registers)
+    registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
+    if registerDecode and not data['blockInfo'].get('isRegHandler'):
+        for reg, regData in data['registers'].items():
+            if regData['regType'] == 'memory':
+                needsHwMemory = True
+                break
+    if needsHwMemory:
         out.append('#include "hwMemory.h"')
+    
     if args.fileMapKey:
         fileMapKey = args.fileMapKey
     else:
         fileMapKey = 'include_hdr'
-    registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
 
     for context in data['includeContext']:
         if context in data['includeFiles'][fileMapKey]:
@@ -114,6 +124,17 @@ def render_default(args, prj, data):
     else:
         for mem, memData in data["memories"].items():
             out.append( indent + f'hwMemory< { memData["structure"] } > { memData["memory"] };')
+        
+        # Handle LOCAL memory registers (block has registerDecode but not isRegHandler)
+        if registerDecode:
+            for reg, regData in data['registers'].items():
+                if regData['regType'] == 'memory':
+                    # LOCAL memory register - needs channel, port, and adapter
+                    out.append('')
+                    out.append( indent + f'// Local memory register infrastructure')
+                    out.append( indent + f'memory_channel< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_channel;')
+                    out.append( indent + f'memory_out< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_port;')
+                    out.append( indent + f'hwMemoryPort< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_adapter;')
 
     # Memory connections (channel declarations)
     if 'memoryConnections' in data:

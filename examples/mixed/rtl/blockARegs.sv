@@ -2,6 +2,7 @@
 // GENERATED_CODE_BEGIN --template=moduleRegs
 module blockARegs
     // Generated Import package statement(s)
+    import mixedInclude_package::*;
     import mixed_package::*;
     #(
         parameter bit APB_READY_1WS = 0
@@ -9,15 +10,18 @@ module blockARegs
     (
         apb_if.dst apbReg,
         status_if.dst roA,
+        memory_if.src blockATableLocal,
         input clk,
         input rst_n
     );
 
     apbAddrSt apb_addr;
-    assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h7;
+    assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h3f;
 
     aRegSt roA_reg;
     assign roA_reg = roA.data;
+
+    aRegSt blockATableLocal_reg;
 
     logic wr_select;
     logic rd_select;
@@ -51,7 +55,7 @@ module blockARegs
         
         if (rd_select) begin
             case (apb_addr) inside
-                32'h0 : begin
+                32'h28 : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roA_reg[6:0]);
                 end

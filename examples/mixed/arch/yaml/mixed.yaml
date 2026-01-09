@@ -451,6 +451,7 @@ registers:
   - {register: roBsize,  regType: ro,  block: blockB,   structure: bSizeRegSt, desc: A Read Only register with a structure that has a definition from an included context}
   - {register: roA,      regType: ro,  block: blockA,   structure: aRegSt,     desc: A Read Only register}
 #  - {register: extA,     regType: ext, block: blockA,   structure: aRegSt,     desc: An External register}
+  - {register: blockATableLocal, regType: memory, block: blockA, structure: aRegSt, addressStruct: bSizeSt, wordLines: BSIZE, desc: Local memory register - serviced directly by blockA}
   - {register: blockBTableExt, regType: memory, block: blockB, structure: seeSt, addressStruct: bSizeSt, wordLines: BSIZE, desc: Memory register - firmware accessible memory-mapped storage}
 
 registerConnections:
