@@ -37,12 +37,10 @@ public:
     //registers
     hwRegister< aRegSt, 4 > roA; // A Read Only register
 
-    // Local memory register infrastructure
+    //local memory register infrastructure
     memory_channel< bSizeSt, aRegSt > blockATableLocal_channel;
     memory_out< bSizeSt, aRegSt > blockATableLocal_port;
     hwMemoryPort< bSizeSt, aRegSt > blockATableLocal_adapter;
-
-    // Local memory register infrastructure
     memory_channel< bSizeSt, test37BitRegSt > blockATable37Bit_channel;
     memory_out< bSizeSt, test37BitRegSt > blockATable37Bit_port;
     hwMemoryPort< bSizeSt, test37BitRegSt > blockATable37Bit_adapter;

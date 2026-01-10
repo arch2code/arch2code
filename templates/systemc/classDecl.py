@@ -127,11 +127,14 @@ def render_default(args, prj, data):
         
         # Handle LOCAL memory registers (block has registerDecode but not isRegHandler)
         if registerDecode:
+            first = True
             for reg, regData in data['registers'].items():
                 if regData['regType'] == 'memory':
                     # LOCAL memory register - needs channel, port, and adapter
-                    out.append('')
-                    out.append( indent + f'// Local memory register infrastructure')
+                    if first:
+                        out.append('')
+                        out.append( indent + f'//local memory register infrastructure')
+                        first = False
                     out.append( indent + f'memory_channel< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_channel;')
                     out.append( indent + f'memory_out< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_port;')
                     out.append( indent + f'hwMemoryPort< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_adapter;')

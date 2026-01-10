@@ -209,19 +209,24 @@ def constructorBody(args, prj, data):
         mem_reg_items.sort(key=lambda x: x['offset'])
         
         # Generate addMemory and addRegister calls in sorted order
+        memory_comment_written = False
+        register_comment_written = False
         for item in mem_reg_items:
-            if first:
-                first = False
-                out.append(f'    // register memories and registers for FW access')
-            
-            if item['type'] == 'memory':
-                if item['is_reg_handler']:
+            if item['type'] in ['memory', 'memory_register']:
+                if not memory_comment_written:
+                    memory_comment_written = True
+                    out.append(f'    // register memories for FW access')
+                if item['type'] == 'memory':
+                    if item['is_reg_handler']:
+                        out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                    else:
+                        out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
+                else:  # memory_register
                     out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
-                else:
-                    out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
-            elif item['type'] == 'memory_register':
-                out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
             else:  # regular register
+                if not register_comment_written:
+                    register_comment_written = True
+                    out.append(f'    // register registers for FW access')
                 out.append(f'    regs.addRegister( 0x{item["offset"]:0x}, {item["size"]}, "{item["name"]}", &{item["name"]} );')
 
         first = True

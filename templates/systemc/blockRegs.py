@@ -174,14 +174,20 @@ void {{blockname}}::regHandler(void) { //handle register decode
 
 block_regs_body_section_template = '''\
 {
-    // register registers for FW access
-    {% for entry in hwregs -%}
-    {% if entry.is_memory -%}
+    {% set memory_items = hwregs | selectattr('is_memory', 'equalto', true) | list -%}
+    {% if memory_items -%}
+    // register memories for FW access
+    {% for entry in memory_items -%}
     regs.addMemory({{entry.offset}}, {{entry.memory_size}}, "{{entry.port_name}}", &{{entry.name}} );
-    {% else -%}
-    regs.addRegister({{entry.offset}}, {{entry.size}}, "{{entry.port_name}}", &{{entry.name}} );
+    {% endfor -%}
     {% endif -%}
-    {% endfor %}
+    {% set register_items = hwregs | rejectattr('is_memory', 'equalto', true) | list -%}
+    {% if register_items -%}
+    // register registers for FW access
+    {% for entry in register_items -%}
+    regs.addRegister({{entry.offset}}, {{entry.size}}, "{{entry.port_name}}", &{{entry.name}} );
+    {% endfor -%}
+    {% endif -%}
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
 '''

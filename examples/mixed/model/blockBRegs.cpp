@@ -23,10 +23,11 @@ blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBase
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
-    // register memories and registers for FW access
+    // register memories for FW access
     regs.addMemory( 0x0, 0x50, std::string(this->name()) + ".blockBTable1", &blockBTable1_adapter);
     regs.addMemory( 0x80, 0x50, std::string(this->name()) + ".blockBTable37Bit", &blockBTable37Bit_adapter);
     regs.addMemory( 0xd0, 0x28, std::string(this->name()) + ".blockBTableExt", &blockBTableExt_adapter);
+    // register registers for FW access
     regs.addRegister( 0xf8, 1, "rwD", &rwD );
     regs.addRegister( 0x100, 1, "roBsize", &roBsize );
     SC_THREAD(regHandler);
