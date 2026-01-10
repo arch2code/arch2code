@@ -142,7 +142,6 @@ def constructorInit(args, prj, data):
                 out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]})')
         
         # Initialize LOCAL memory registers
-        # Note: registerDecode already computed at line 27
         if registerDecode:
             for reg, regData in data['registers'].items():
                 if regData['regType'] == 'memory':
