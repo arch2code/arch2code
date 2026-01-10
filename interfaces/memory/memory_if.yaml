@@ -20,4 +20,5 @@ interface_defs:
     sc_channel :
       type : 'memory'
       multicycle_types : []
+    mappedFrom : ['reg_memory']
 

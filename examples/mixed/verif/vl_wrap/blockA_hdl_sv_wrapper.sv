@@ -6,6 +6,7 @@
 
 module blockA_hdl_sv_wrapper
     // Generated Import package statement(s)
+    import mixedInclude_package::*;
     import mixedBlockC_package::*;
     import mixed_package::*;
 (

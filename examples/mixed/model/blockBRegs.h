@@ -39,6 +39,7 @@ public:
     hwRegister< bSizeRegSt, 4 > roBsize; // A Read Only register with a structure that has a definition from an included context
     hwMemoryPort< bSizeSt, bigSt > blockBTable1_adapter;
     hwMemoryPort< bSizeSt, seeSt > blockBTableExt_adapter;
+    hwMemoryPort< bSizeSt, test37BitRegSt > blockBTable37Bit_adapter;
 
     blockBRegs(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~blockBRegs() override = default;

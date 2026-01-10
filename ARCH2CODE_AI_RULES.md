@@ -1091,6 +1091,7 @@ registers:
     regType: <rw|ro|ext>
     block: <owner_block_name>
     structure: <structure_name>
+    addressStruct: <structure_name> # Optional structure for memory reg
     desc: "<description>"
 ```
 
@@ -1233,6 +1234,14 @@ registers:
     block: dma_controller
     structure: dma_external_t
     desc: "External control register"
+
+  - register: lookup_table
+    regType: memory
+    block: lut_core
+    structure: lut_entry_t
+    addressStruct: lut_addr_t
+    wordLines: 256
+    desc: "Lookup table memory register"
 
 # 4. Connect CPU to your manual decoder
 connections:

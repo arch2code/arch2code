@@ -34,6 +34,7 @@ public:
     // block implementation members
 private:
     void fwTest(void);
+    void test_mem_37bit_cpu_rw(void);
    
 };
 

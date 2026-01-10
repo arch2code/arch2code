@@ -17,10 +17,12 @@ public:
     // src ports
     // blockB->reg(rwD) A Read Write register
     status_out< dRegSt > rwD;
+    // blockB->reg(blockBTableExt) Memory register - firmware accessible memory-mapped storage
+    memory_out< bSizeSt, seeSt > blockBTableExt;
+    // blockB->reg(blockBTable37Bit) External 37-bit memory register - firmware accessible with 8-byte stride
+    memory_out< bSizeSt, test37BitRegSt > blockBTable37Bit;
     // blockB->mem(blockBTable1) Dual Port with one connection
     memory_out< bSizeSt, bigSt > blockBTable1;
-    // blockB->mem(blockBTableExt) External memory - interfaces created, hardware not instantiated
-    memory_out< bSizeSt, seeSt > blockBTableExt;
 
     // dst ports
     // External->apbReg: CPU access to SoC registers in the design
@@ -31,16 +33,18 @@ public:
 
     blockBRegsBase(std::string name, const char * variant) :
         rwD("rwD")
-        ,blockBTable1("blockBTable1")
         ,blockBTableExt("blockBTableExt")
+        ,blockBTable37Bit("blockBTable37Bit")
+        ,blockBTable1("blockBTable1")
         ,apbReg("apbReg")
         ,roBsize("roBsize")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
         rwD->setTimed(nsec, mode);
-        blockBTable1->setTimed(nsec, mode);
         blockBTableExt->setTimed(nsec, mode);
+        blockBTable37Bit->setTimed(nsec, mode);
+        blockBTable1->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
@@ -48,8 +52,9 @@ public:
     void setLogging(verbosity_e verbosity) override
     {
         rwD->setLogging(verbosity);
-        blockBTable1->setLogging(verbosity);
         blockBTableExt->setLogging(verbosity);
+        blockBTable37Bit->setLogging(verbosity);
+        blockBTable1->setLogging(verbosity);
         apbReg->setLogging(verbosity);
         roBsize->setLogging(verbosity);
     };
@@ -60,10 +65,12 @@ public:
     // src ports
     // blockB->reg(rwD) A Read Write register
     status_in< dRegSt > rwD;
+    // blockB->reg(blockBTableExt) Memory register - firmware accessible memory-mapped storage
+    memory_in< bSizeSt, seeSt > blockBTableExt;
+    // blockB->reg(blockBTable37Bit) External 37-bit memory register - firmware accessible with 8-byte stride
+    memory_in< bSizeSt, test37BitRegSt > blockBTable37Bit;
     // blockB->mem(blockBTable1) Dual Port with one connection
     memory_in< bSizeSt, bigSt > blockBTable1;
-    // blockB->mem(blockBTableExt) External memory - interfaces created, hardware not instantiated
-    memory_in< bSizeSt, seeSt > blockBTableExt;
 
     // dst ports
     // External->apbReg: CPU access to SoC registers in the design
@@ -74,16 +81,18 @@ public:
 
     blockBRegsInverted(std::string name) :
         rwD(("rwD"+name).c_str())
-        ,blockBTable1(("blockBTable1"+name).c_str())
         ,blockBTableExt(("blockBTableExt"+name).c_str())
+        ,blockBTable37Bit(("blockBTable37Bit"+name).c_str())
+        ,blockBTable1(("blockBTable1"+name).c_str())
         ,apbReg(("apbReg"+name).c_str())
         ,roBsize(("roBsize"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
         rwD->setTimed(nsec, mode);
-        blockBTable1->setTimed(nsec, mode);
         blockBTableExt->setTimed(nsec, mode);
+        blockBTable37Bit->setTimed(nsec, mode);
+        blockBTable1->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         roBsize->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
@@ -91,8 +100,9 @@ public:
     void setLogging(verbosity_e verbosity) override
     {
         rwD->setLogging(verbosity);
-        blockBTable1->setLogging(verbosity);
         blockBTableExt->setLogging(verbosity);
+        blockBTable37Bit->setLogging(verbosity);
+        blockBTable1->setLogging(verbosity);
         apbReg->setLogging(verbosity);
         roBsize->setLogging(verbosity);
     };
@@ -103,10 +113,12 @@ public:
     // src ports
     // A Read Write register
     status_channel< dRegSt > rwD;
+    // Memory register - firmware accessible memory-mapped storage
+    memory_channel< bSizeSt, seeSt > blockBTableExt;
+    // External 37-bit memory register - firmware accessible with 8-byte stride
+    memory_channel< bSizeSt, test37BitRegSt > blockBTable37Bit;
     // Dual Port with one connection
     memory_channel< bSizeSt, bigSt > blockBTable1;
-    // External memory - interfaces created, hardware not instantiated
-    memory_channel< bSizeSt, seeSt > blockBTableExt;
 
     // dst ports
     // CPU access to SoC registers in the design
@@ -117,8 +129,9 @@ public:
 
     blockBRegsChannels(std::string name, std::string srcName) :
     rwD(("rwD"+name).c_str(), srcName)
-    ,blockBTable1(("blockBTable1"+name).c_str(), srcName)
     ,blockBTableExt(("blockBTableExt"+name).c_str(), srcName)
+    ,blockBTable37Bit(("blockBTable37Bit"+name).c_str(), srcName)
+    ,blockBTable1(("blockBTable1"+name).c_str(), srcName)
     ,apbReg(("apbReg"+name).c_str(), srcName)
     ,roBsize(("roBsize"+name).c_str(), srcName)
     {};
@@ -126,10 +139,12 @@ public:
     {
         a->rwD( rwD );
         b->rwD( rwD );
-        a->blockBTable1( blockBTable1 );
-        b->blockBTable1( blockBTable1 );
         a->blockBTableExt( blockBTableExt );
         b->blockBTableExt( blockBTableExt );
+        a->blockBTable37Bit( blockBTable37Bit );
+        b->blockBTable37Bit( blockBTable37Bit );
+        a->blockBTable1( blockBTable1 );
+        b->blockBTable1( blockBTable1 );
         a->apbReg( apbReg );
         b->apbReg( apbReg );
         a->roBsize( roBsize );

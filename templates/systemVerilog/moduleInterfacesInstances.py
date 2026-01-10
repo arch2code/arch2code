@@ -109,12 +109,6 @@ def render(args, prj, data):
     if data['memories']:
         out.append("// Memory Instances")
     for mem_key, mem_data in data['memories'].items():
-        # Skip hardware instantiation for external memories
-        if mem_data['memoryType'] == 'external':
-            out.append(f"// Memory '{mem_data['memory']}' is external - no hardware instantiation")
-            out.append(f"// Interfaces created above must be manually connected to external memory\n")
-            continue
-        
         # memories are currenlty all parameterized behavioral memories
         isLocal = mem_data['local']
         memory_type = 'memory_dp' if mem_data['memoryType'] == 'dualPort' else 'memory_sp'
