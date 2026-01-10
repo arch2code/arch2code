@@ -168,40 +168,62 @@ def constructorBody(args, prj, data):
     first = True
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
     if registerDecode:
-        # loop through the memories in offset order
+        # Collect all register-accessible items and sort by offset
+        mem_reg_items = []
+        
+        # Add memories
         mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():
-            if first:
-                first=False
-                out.append(f'    // register memories for FW access')
             width = intf_gen_utils.get_struct_width(memData["structureKey"], prj.data["structures"])
             memSize = roundup_pow2min4((width + 7) >> 3) * intf_gen_utils.get_const(memData['wordLinesKey'], prj.data['constants'])
-            if data['blockInfo'].get('isRegHandler'):
-                    out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}", &{memData["memory"]}_adapter);')
-            else:
-                out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}", &{memData["memory"]});')
+            mem_reg_items.append({
+                'type': 'memory',
+                'offset': memData["offset"],
+                'name': memData["memory"],
+                'size': memSize,
+                'is_reg_handler': data['blockInfo'].get('isRegHandler')
+            })
         
-        # Handle memory registers
+        # Add memory registers
         for reg, regData in data['registers'].items():
             if regData.get('regType') == 'memory':
-                if first:
-                    first=False
-                    out.append(f'    // register memory registers for FW access')
                 width = intf_gen_utils.get_struct_width(regData["structureKey"], prj.data["structures"])
                 memSize = roundup_pow2min4((width + 7) >> 3) * intf_gen_utils.get_const(regData['wordLinesKey'], prj.data['constants'])
-                out.append(f'    regs.addMemory( 0x{regData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{regData["register"]}", &{regData["register"]}_adapter);')
-
-        first = True
-        regs = dict(sorted(data["registers"].items(), key=lambda item: item[1]["offset"]))
-        for reg, regData in regs.items():
-            # Skip memory registers - they're only registered as memories
-            if regData['regType'] == 'memory':
-                continue
+                mem_reg_items.append({
+                    'type': 'memory_register',
+                    'offset': regData["offset"],
+                    'name': regData["register"],
+                    'size': memSize
+                })
+        
+        # Add regular registers
+        for reg, regData in data['registers'].items():
+            if regData.get('regType') != 'memory':
+                mem_reg_items.append({
+                    'type': 'register',
+                    'offset': regData["offset"],
+                    'name': regData["register"],
+                    'size': regData["bytes"]
+                })
+        
+        # Sort all items by offset
+        mem_reg_items.sort(key=lambda x: x['offset'])
+        
+        # Generate addMemory and addRegister calls in sorted order
+        for item in mem_reg_items:
             if first:
-                first=False
-                out.append(f'    // register registers for FW access')
-
-            out.append(f'    regs.addRegister( 0x{regData["offset"]:0x}, {regData["bytes"]}, "{ regData["register"] }", &{ regData["register"] } );')
+                first = False
+                out.append(f'    // register memories and registers for FW access')
+            
+            if item['type'] == 'memory':
+                if item['is_reg_handler']:
+                    out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                else:
+                    out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
+            elif item['type'] == 'memory_register':
+                out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+            else:  # regular register
+                out.append(f'    regs.addRegister( 0x{item["offset"]:0x}, {item["size"]}, "{item["name"]}", &{item["name"]} );')
 
         first = True
     for key, value in data["connectionMaps"].items():

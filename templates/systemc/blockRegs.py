@@ -1,6 +1,6 @@
 import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils
-from pysrc.arch2codeHelper import roundup_multiple
+from pysrc.arch2codeHelper import roundup_multiple, roundup_pow2min4
 
 from jinja2 import Template
 
@@ -45,7 +45,9 @@ def get_reghandler_properties(prj, data):
 def get_hwregs(prj, data):
     hwregs = []
     regs = dict()
-    for reg in data['registerPorts'].values():
+    # Sort registerPorts by offset to ensure addRegister/addMemory calls are in address order
+    sorted_regs = sorted(data['registerPorts'].values(), key=lambda x: x['offset'])
+    for reg in sorted_regs:
         if reg['register'] in regs:
             continue
         regs[reg['register']] = 0
@@ -60,6 +62,7 @@ def get_hwregs(prj, data):
                 "size": reg['bytes'],
                 "is_memory": True,
                 "word_lines": reg['wordLines'],
+                "memory_size": roundup_pow2min4(reg['bytes']) * reg['wordLines'],
                 "offset": hex(reg['offset']),
                 "port_name": reg['register'],
                 "descr": reg['desc']
@@ -174,7 +177,7 @@ block_regs_body_section_template = '''\
     // register registers for FW access
     {% for entry in hwregs -%}
     {% if entry.is_memory -%}
-    regs.addMemory({{entry.offset}}, {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
+    regs.addMemory({{entry.offset}}, {{entry.memory_size}}, "{{entry.port_name}}", &{{entry.name}} );
     {% else -%}
     regs.addRegister({{entry.offset}}, {{entry.size}}, "{{entry.port_name}}", &{{entry.name}} );
     {% endif -%}

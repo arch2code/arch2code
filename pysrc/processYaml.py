@@ -2505,7 +2505,8 @@ class projectCreate:
                         # memory size alignment simplifies HW address decode
                         offset = ((blockAddressCurrent[currentBlock] + size - 1) // size ) * size
                         blockAddressCurrent[currentBlock] = offset + size
-                blockAddressCurrent[currentBlock] = offset + size
+                else:
+                    blockAddressCurrent[currentBlock] = offset + size
                 sql = f"UPDATE {addressType} SET offset = {offset} WHERE \"{keyField}\" = '{row[keyField]}'" # field is quoted to allow for sql reserved words
                 g.cur.execute(sql)
 
@@ -3498,7 +3499,7 @@ class projectCreate:
                 parsed_val = self.qualConstParse(item['wordLinesKey'])
                 if parsed_val == 0:
                     self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{itemkey}' has wordLines=0, must be non-zero")
-            except:
+            except Exception:
                 # If parsing fails, let it pass - the constParse validation will catch it
                 pass
             

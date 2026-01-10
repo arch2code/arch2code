@@ -153,10 +153,7 @@ def section_01_regs(reg_data):
 def section_01_memregs(reg_data):
     """Handle memory register declarations similar to external memories"""
     mem_intf = reg_data['register']
-    
-    # Memory registers need segment information similar to memories
-    segments_enum = list(enumerate(reg_data['segments']))
-    
+        
     t = Template(section_01_mem_j2_template)
     
     return(t.render(
@@ -164,7 +161,7 @@ def section_01_memregs(reg_data):
         mem_datatype=reg_data['structure'],
         mem_addrtype=reg_data['addressStruct'],
         segments=reg_data['segments'],
-        paddr_l = clog2(len(reg_data['segments']) * REG_BUS_WIDTH_BYTES),
+        paddr_l = reg_data['rowwidth'],
         seg_last = len(reg_data['segments']) - 1
     ))
 
@@ -424,7 +421,6 @@ def section_03b_mems(mem_data):
 def section_03b_memregs(reg_data):
     """Read case decode for memory registers"""
     mem_intf = reg_data['register']
-    data_local = 'nxt_' + reg_data['register'] + '_data'
     
     segments_enum = list(enumerate(reg_data['segments']))
     
@@ -437,7 +433,7 @@ def section_03b_memregs(reg_data):
     s_1 += [ f"[32'h{addr_l:x}:32'h{addr_h:x}]: begin" ]
     s_1 += [ f"    case (apb_addr[{rowwidth}-1:0])" ]
     for seg in segments_enum:
-        n, (o, u, l, w, _) = seg
+        _, (o, u, l, w, _) = seg
         o_rel = o - addr_l  # offset relative to base of mem mod bus width
         s_1 += [ f"        {rowwidth}'h{o_rel:x}: begin" ]
         s_1 += [ f"            if ({mem_intf}_rd_capture) begin" ]

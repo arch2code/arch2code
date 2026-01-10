@@ -39,6 +39,11 @@ public:
     // This services register accesses to blockBTableExt through the memory port.
     void blockBTableExtModel(void);
     std::vector<seeSt> blockBTableExt_shadow_;
+    
+    // Memory register handler for blockBTable37Bit.
+    // This services register accesses to blockBTable37Bit through the memory port.
+    void blockBTable37BitModel(void);
+    std::vector<test37BitRegSt> blockBTable37Bit_shadow_;
 };
 
 #endif //BLOCKD_H

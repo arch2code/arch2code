@@ -28,6 +28,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,rwD("blockB_rwD", "blockB", dRegSt::_packedSt(0x0))
         ,roBsize("blockB_roBsize", "blockB", bSizeRegSt::_packedSt(0x0))
         ,blockBTableExt("blockB_blockBTableExt", "blockB")
+        ,blockBTable37Bit("blockB_blockBTable37Bit", "blockB")
         ,uBlockD(std::dynamic_pointer_cast<blockDBase>( instanceFactory::createInstance(name(), "uBlockD", "blockD", "")))
         ,uBlockF0(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0")))
         ,uBlockF1(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1")))
@@ -73,6 +74,8 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     uBlockBRegs->roBsize(roBsize);
     uBlockD->blockBTableExt(blockBTableExt);
     uBlockBRegs->blockBTableExt(blockBTableExt);
+    uBlockD->blockBTable37Bit(blockBTable37Bit);
+    uBlockBRegs->blockBTable37Bit(blockBTable37Bit);
     // memory connections
     uBlockD->blockBTable1(blockBTable1_port1);
     blockBTable1.bindPort(blockBTable1_port1);

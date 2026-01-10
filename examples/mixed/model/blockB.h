@@ -59,6 +59,8 @@ public:
     status_channel< bSizeRegSt > roBsize;
     // Memory register - firmware accessible memory-mapped storage
     memory_channel< bSizeSt, seeSt > blockBTableExt;
+    // External 37-bit memory register - firmware accessible with 8-byte stride
+    memory_channel< bSizeSt, test37BitRegSt > blockBTable37Bit;
 
     //instances contained in block
     std::shared_ptr<blockDBase> uBlockD;

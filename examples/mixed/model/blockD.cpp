@@ -19,10 +19,19 @@ blockD::blockD(sc_module_name blockName, const char * variant, blockBaseMode bbM
     // GENERATED_CODE_END
     SC_THREAD(memoryTest);
     SC_THREAD(blockBTableExtModel);
+    SC_THREAD(blockBTable37BitModel);
     
     // Model-backed storage for memory register blockBTableExt (BSIZE wordlines).
     // Default init: all zeros.
     blockBTableExt_shadow_.assign(BSIZE, seeSt());
+    
+    // Model-backed storage for memory register blockBTable37Bit (BSIZE wordlines).
+    // Initialize with test pattern (index << 32) | index
+    blockBTable37Bit_shadow_.assign(BSIZE, test37BitRegSt());
+    for (uint32_t i = 0; i < BSIZE; i++) {
+        uint64_t val = (static_cast<uint64_t>(i) << 32) | i;
+        blockBTable37Bit_shadow_[i].value37 = val & 0x1FFFFFFFFF;
+    }
 }
 
 void blockD::memoryTest(void)
@@ -91,6 +100,37 @@ void blockD::blockBTableExtModel(void)
         } else {
             // Complete reads with the current model value.
             blockBTableExt->complete(blockBTableExt_shadow_[idx]);
+        }
+    }
+}
+
+void blockD::blockBTable37BitModel(void)
+{
+    while (true) {
+        bool isWrite = false;
+        bSizeSt addr;
+        test37BitRegSt data;
+
+        // Wait for a request from the memory register port.
+        blockBTable37Bit->reqReceive(isWrite, addr, data);
+
+        const uint32_t idx = static_cast<uint32_t>(addr.index);
+        if (idx >= blockBTable37Bit_shadow_.size()) {
+            log_.logPrint(std::format("blockBTable37BitModel: addr out of range idx={}", idx), LOG_ALWAYS);
+            if (!isWrite) {
+                blockBTable37Bit->complete(test37BitRegSt());
+            }
+            continue;
+        }
+
+        if (isWrite) {
+            // Store write data to shadow storage
+            blockBTable37Bit_shadow_[idx] = data;
+            log_.logPrint(std::format("blockBTable37BitModel: Write idx={} val=0x{:x}", idx, data.value37), LOG_DEBUG);
+        } else {
+            // Complete reads with the current model value.
+            blockBTable37Bit->complete(blockBTable37Bit_shadow_[idx]);
+            log_.logPrint(std::format("blockBTable37BitModel: Read idx={} val=0x{:x}", idx, blockBTable37Bit_shadow_[idx].value37), LOG_DEBUG);
         }
     }
 }

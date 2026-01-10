@@ -11,12 +11,13 @@ module blockARegs
         apb_if.dst apbReg,
         status_if.dst roA,
         memory_if.src blockATableLocal,
+        memory_if.src blockATable37Bit,
         input clk,
         input rst_n
     );
 
     apbAddrSt apb_addr;
-    assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h3f;
+    assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h7f;
 
     aRegSt roA_reg;
     assign roA_reg = roA.data;
@@ -41,6 +42,28 @@ module blockARegs
     assign blockATableLocal.addr        = blockATableLocal_addr;
     assign blockATableLocal.write_data  = blockATableLocal_data;
 
+    // blockATable37Bit
+    test37BitRegSt nxt_blockATable37Bit_data, blockATable37Bit_data;
+    bSizeSt blockATable37Bit_addr;
+
+    logic blockATable37Bit_update_0;
+    logic blockATable37Bit_update_1;
+    logic nxt_blockATable37Bit_rd_enable, blockATable37Bit_rd_enable, blockATable37Bit_rd_capture;
+    logic blockATable37Bit_wr_enable;
+
+    `DFF(blockATable37Bit_addr, bSizeSt'(apb_addr[31:3]))
+    `DFF(blockATable37Bit_wr_enable, blockATable37Bit_update_1)
+    `DFF(blockATable37Bit_rd_enable, nxt_blockATable37Bit_rd_enable)
+    `DFF(blockATable37Bit_rd_capture, blockATable37Bit_rd_enable)
+
+    `DFFEN(blockATable37Bit_data[31:0], nxt_blockATable37Bit_data[31:0], blockATable37Bit_update_0)
+    `DFFEN(blockATable37Bit_data[36:32], nxt_blockATable37Bit_data[36:32], blockATable37Bit_update_1)
+
+    assign blockATable37Bit.enable      = blockATable37Bit_rd_enable | blockATable37Bit_wr_enable;
+    assign blockATable37Bit.wr_en       = blockATable37Bit_wr_enable;
+    assign blockATable37Bit.addr        = blockATable37Bit_addr;
+    assign blockATable37Bit.write_data  = blockATable37Bit_data;
+
     logic wr_select;
     logic rd_select;
     assign wr_select = apbReg.psel & apbReg.penable & apbReg.pwrite & rst_n;
@@ -53,13 +76,29 @@ module blockARegs
         nxt_wr_ready = 1'b0;
         blockATableLocal_update_0 = 1'b0;
         nxt_blockATableLocal_data = blockATableLocal_data;
+        blockATable37Bit_update_0 = 1'b0;
+        blockATable37Bit_update_1 = 1'b0;
+        nxt_blockATable37Bit_data = blockATable37Bit_data;
         if (wr_select) begin
             case (apb_addr) inside
-                [32'h0:32'h24]: begin
+                [32'h50:32'h74]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             blockATableLocal_update_0 = 1'b1;
                             nxt_blockATableLocal_data[6:0] = apbReg.pwdata[6:0];
+                        end
+                        default: ;
+                    endcase
+                end
+                [32'h0:32'h4c]: begin
+                    case (apb_addr[3-1:0])
+                        3'h0: begin
+                            blockATable37Bit_update_0 = 1'b1;
+                            nxt_blockATable37Bit_data[31:0] = apbReg.pwdata[31:0];
+                        end
+                        3'h4: begin
+                            blockATable37Bit_update_1 = 1'b1;
+                            nxt_blockATable37Bit_data[36:32] = apbReg.pwdata[4:0];
                         end
                         default: ;
                     endcase
@@ -80,13 +119,14 @@ module blockARegs
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
         nxt_blockATableLocal_rd_enable = 1'b0;
+        nxt_blockATable37Bit_rd_enable = 1'b0;
         if (rd_select) begin
             case (apb_addr) inside
-                32'h28 : begin
+                32'h78 : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roA_reg[6:0]);
                 end
-                [32'h0:32'h24]: begin
+                [32'h50:32'h74]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             if (blockATableLocal_rd_capture) begin
@@ -97,6 +137,24 @@ module blockARegs
                         default: ;
                     endcase
                     nxt_blockATableLocal_rd_enable = ~blockATableLocal_rd_capture;
+                end
+                [32'h0:32'h4c]: begin
+                    case (apb_addr[3-1:0])
+                        3'h0: begin
+                            if (blockATable37Bit_rd_capture) begin
+                                nxt_rd_ready = 1'b1;
+                                nxt_rd_data = apbDataSt'(blockATable37Bit.read_data[31:0]);
+                            end
+                        end
+                        3'h4: begin
+                            if (blockATable37Bit_rd_capture) begin
+                                nxt_rd_ready = 1'b1;
+                                nxt_rd_data = apbDataSt'(blockATable37Bit.read_data[36:32]);
+                            end
+                        end
+                        default: ;
+                    endcase
+                    nxt_blockATable37Bit_rd_enable = ~blockATable37Bit_rd_capture;
                 end
                 default: begin
                     nxt_rd_data = apbDataSt'(32'hBADD_C0DE);

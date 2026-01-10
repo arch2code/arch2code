@@ -26,6 +26,7 @@ import mixed_package::*;
     status_if #(.data_t(dRegSt)) rwD();
     status_if #(.data_t(bSizeRegSt)) roBsize();
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTableExt();
+    memory_if #(.data_t(test37BitRegSt), .addr_t(bSizeSt)) blockBTable37Bit();
 
     // Memory Interfaces
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable0();
@@ -52,6 +53,7 @@ blockD uBlockD (
     .rwD (rwD),
     .roBsize (roBsize),
     .blockBTableExt (blockBTableExt),
+    .blockBTable37Bit (blockBTable37Bit),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -90,6 +92,7 @@ blockBRegs uBlockBRegs (
     .rwD (rwD),
     .roBsize (roBsize),
     .blockBTableExt (blockBTableExt),
+    .blockBTable37Bit (blockBTable37Bit),
     .clk (clk),
     .rst_n (rst_n)
 );

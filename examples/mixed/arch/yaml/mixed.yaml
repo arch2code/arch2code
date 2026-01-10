@@ -154,6 +154,9 @@ types:
   bigT:
     width: 64
     desc: "64-bit type for mixed testing"
+  test37BitT:
+    width: 37
+    desc: "37-bit type for testing non-power-of-2 memory address calculations (5 bytes, rounds to 8-byte stride)"
 
 
 # variables used as members of structures, only structures are attached to interfaces
@@ -258,6 +261,8 @@ structures:
   mixedArraySignedSt:
     signedVals: {varType: signed5bit_t, arraySize: 4, desc: "Array of 4 non-byte-aligned signed values"}
     unsignedVals: {varType: unsigned5bit_t, arraySize: 3, desc: "Array of 3 non-byte-aligned unsigned values"}
+  test37BitRegSt:
+    value37: {varType: test37BitT, generator: register}
 
 # interfaces are needed to make any connection from one instance of a block to another block's instance
 ## interfacename: is the interface's name and key for usage by any other dictionary doing a lookup, required
@@ -453,6 +458,8 @@ registers:
 #  - {register: extA,     regType: ext, block: blockA,   structure: aRegSt,     desc: An External register}
   - {register: blockATableLocal, regType: memory, block: blockA, structure: aRegSt, addressStruct: bSizeSt, wordLines: BSIZE, desc: Local memory register - serviced directly by blockA}
   - {register: blockBTableExt, regType: memory, block: blockB, structure: seeSt, addressStruct: bSizeSt, wordLines: BSIZE, desc: Memory register - firmware accessible memory-mapped storage}
+  - {register: blockATable37Bit, regType: memory, block: blockA, structure: test37BitRegSt, addressStruct: bSizeSt, wordLines: BSIZE, desc: Local 37-bit memory register - serviced directly by blockA with 8-byte stride}
+  - {register: blockBTable37Bit, regType: memory, block: blockB, structure: test37BitRegSt, addressStruct: bSizeSt, wordLines: BSIZE, desc: External 37-bit memory register - firmware accessible with 8-byte stride}
 
 registerConnections:
   - {register: rwD,     block: blockB, instance: uBlockF0 }
@@ -460,6 +467,7 @@ registerConnections:
   - {register: rwD,     block: blockB, instance: uBlockD }
   - {register: roBsize, block: blockB, instance: uBlockD }
   - {register: blockBTableExt, block: blockB, instance: uBlockD }
+  - {register: blockBTable37Bit, block: blockB, instance: uBlockD }
 #  - {register: extD,    block: blockB, instance: uBlockD }
 
 # flows, are very similar to a plantuml sequence diagram, a filename is taken and optionally

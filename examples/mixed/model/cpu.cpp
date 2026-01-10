@@ -20,6 +20,7 @@ cpu::cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(fwTest);
+    SC_THREAD(test_mem_37bit_cpu_rw);
 
 }
 
@@ -214,6 +215,146 @@ void cpu::fwTest(void)
     }
 
     controller.test_complete(test_local);
+}
+
+void cpu::test_mem_37bit_cpu_rw(void)
+{
+    testController &controller = testController::GetInstance();
+    std::string test_37bit = "test_mem_37bit_cpu_rw";
+    controller.register_test_name(test_37bit);
+    
+    controller.wait_test(test_37bit, sc_core::sc_time(1, sc_core::SC_NS));
+    
+    apbAddrSt addr;
+    apbDataSt data;
+    
+    const uint64_t MASK_37BIT = 0x1FFFFFFFFF;
+    const uint32_t test_indices[] = {0, 5, 9};
+    
+    // Test blockBTable37Bit (hierarchical access via uBlockD)
+    log_.logPrint("Testing blockBTable37Bit (37-bit external memory)", LOG_ALWAYS);
+    
+    // First verify initial pattern from shadow initialization
+    for (uint32_t idx : test_indices) {
+        uint64_t expected_val = (static_cast<uint64_t>(idx) << 32) | idx;
+        expected_val &= MASK_37BIT;
+        
+        addr.address = BASE_ADDR_UBLOCKB + REG_BLOCKB_BLOCKBTABLE37BIT + 0x8 * idx;
+        cpu_main->request(false, addr, data);
+        uint64_t read_val = data.data;
+        
+        addr.address = BASE_ADDR_UBLOCKB + REG_BLOCKB_BLOCKBTABLE37BIT + 0x8 * idx + 0x4;
+        cpu_main->request(false, addr, data);
+        read_val |= (static_cast<uint64_t>(data.data) << 32);
+        read_val &= MASK_37BIT;
+        
+        if (read_val != expected_val) {
+            log_.logPrint(std::format("blockBTable37Bit INITIAL read FAILED idx={} expected=0x{:x} got=0x{:x}", 
+                                     idx, expected_val, read_val), LOG_ALWAYS);
+        }
+    }
+    
+    // Now write NEW pattern (inverted)
+    for (uint32_t idx : test_indices) {
+        uint64_t write_val = ((static_cast<uint64_t>(idx) << 32) | idx) ^ 0x1FFFFFFFFF;
+        write_val &= MASK_37BIT;
+        
+        // Write pattern
+        addr.address = BASE_ADDR_UBLOCKB + REG_BLOCKB_BLOCKBTABLE37BIT + 0x8 * idx;
+        data.data = static_cast<uint32_t>(write_val);
+        cpu_main->request(true, addr, data);
+        
+        data.data = static_cast<uint32_t>(write_val >> 32);
+        addr.address = BASE_ADDR_UBLOCKB + REG_BLOCKB_BLOCKBTABLE37BIT + 0x8 * idx + 0x4;
+        cpu_main->request(true, addr, data);
+    }
+    
+    // Read back and verify NEW values
+    for (uint32_t idx : test_indices) {
+        uint64_t expected_val = ((static_cast<uint64_t>(idx) << 32) | idx) ^ 0x1FFFFFFFFF;
+        expected_val &= MASK_37BIT;
+        
+        addr.address = BASE_ADDR_UBLOCKB + REG_BLOCKB_BLOCKBTABLE37BIT + 0x8 * idx;
+        cpu_main->request(false, addr, data);
+        uint64_t read_val = data.data;
+        
+        addr.address = BASE_ADDR_UBLOCKB + REG_BLOCKB_BLOCKBTABLE37BIT + 0x8 * idx + 0x4;
+        cpu_main->request(false, addr, data);
+        read_val |= (static_cast<uint64_t>(data.data) << 32);
+        read_val &= MASK_37BIT;
+        
+        if (read_val != expected_val) {
+            log_.logPrint(std::format("blockBTable37Bit WRITE verify FAILED idx={} expected=0x{:x} got=0x{:x}", 
+                                     idx, expected_val, read_val), LOG_ALWAYS);
+        }
+    }
+    
+    // Test blockATable37Bit (local memory)
+    log_.logPrint("Testing blockATable37Bit (37-bit local memory)", LOG_ALWAYS);
+    
+    // First verify initial pattern from shadow initialization
+    bool all_passed = true;
+    for (uint32_t idx : test_indices) {
+        uint64_t expected_val = (static_cast<uint64_t>(idx) << 32) | idx;
+        expected_val &= MASK_37BIT;
+        
+        addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLE37BIT + 0x8 * idx;
+        cpu_main->request(false, addr, data);
+        uint64_t read_val = data.data;
+        
+        addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLE37BIT + 0x8 * idx + 0x4;
+        cpu_main->request(false, addr, data);
+        read_val |= (static_cast<uint64_t>(data.data) << 32);
+        read_val &= MASK_37BIT;
+        
+        if (read_val != expected_val) {
+            log_.logPrint(std::format("blockATable37Bit INITIAL read FAILED idx={} expected=0x{:x} got=0x{:x}", 
+                                     idx, expected_val, read_val), LOG_ALWAYS);
+            all_passed = false;
+        }
+    }
+    
+    // Now write NEW pattern (inverted)
+    for (uint32_t idx : test_indices) {
+        uint64_t write_val = ((static_cast<uint64_t>(idx) << 32) | idx) ^ 0x1FFFFFFFFF;
+        write_val &= MASK_37BIT;
+        
+        // Write pattern
+        addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLE37BIT + 0x8 * idx;
+        data.data = static_cast<uint32_t>(write_val);
+        cpu_main->request(true, addr, data);
+        
+        data.data = static_cast<uint32_t>(write_val >> 32);
+        addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLE37BIT + 0x8 * idx + 0x4;
+        cpu_main->request(true, addr, data);
+    }
+    
+    // Read back and verify NEW values
+    for (uint32_t idx : test_indices) {
+        uint64_t expected_val = ((static_cast<uint64_t>(idx) << 32) | idx) ^ 0x1FFFFFFFFF;
+        expected_val &= MASK_37BIT;
+        
+        addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLE37BIT + 0x8 * idx;
+        cpu_main->request(false, addr, data);
+        uint64_t read_val = data.data;
+        
+        addr.address = BASE_ADDR_UBLOCKA + REG_BLOCKA_BLOCKATABLE37BIT + 0x8 * idx + 0x4;
+        cpu_main->request(false, addr, data);
+        read_val |= (static_cast<uint64_t>(data.data) << 32);
+        read_val &= MASK_37BIT;
+        
+        if (read_val != expected_val) {
+            log_.logPrint(std::format("blockATable37Bit WRITE verify FAILED idx={} expected=0x{:x} got=0x{:x}", 
+                                     idx, expected_val, read_val), LOG_ALWAYS);
+            all_passed = false;
+        }
+    }
+    
+    if (all_passed) {
+        log_.logPrint("37-bit memory register test PASSED", LOG_ALWAYS);
+    }
+    
+    controller.test_complete(test_37bit);
 }
 
 
