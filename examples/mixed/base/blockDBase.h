@@ -38,6 +38,10 @@ public:
     req_ack_in< aSt, aASt > btod;
     // blockB->reg(rwD) A Read Write register
     status_in< dRegSt > rwD;
+    // blockB->reg(blockBTableExt) Memory register - firmware accessible memory-mapped storage
+    memory_in< bSizeSt, seeSt > blockBTableExt;
+    // blockB->reg(blockBTable37Bit) External 37-bit memory register - firmware accessible with 8-byte stride
+    memory_in< bSizeSt, test37BitRegSt > blockBTable37Bit;
 
 
     blockDBase(std::string name, const char * variant) :
@@ -51,6 +55,8 @@ public:
         ,inD("inD")
         ,btod("btod")
         ,rwD("rwD")
+        ,blockBTableExt("blockBTableExt")
+        ,blockBTable37Bit("blockBTable37Bit")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -64,6 +70,8 @@ public:
         inD->setTimed(nsec, mode);
         btod->setTimed(nsec, mode);
         rwD->setTimed(nsec, mode);
+        blockBTableExt->setTimed(nsec, mode);
+        blockBTable37Bit->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -78,6 +86,8 @@ public:
         inD->setLogging(verbosity);
         btod->setLogging(verbosity);
         rwD->setLogging(verbosity);
+        blockBTableExt->setLogging(verbosity);
+        blockBTable37Bit->setLogging(verbosity);
     };
 };
 class blockDInverted : public virtual blockPortBase
@@ -106,6 +116,10 @@ public:
     req_ack_out< aSt, aASt > btod;
     // blockB->reg(rwD) A Read Write register
     status_out< dRegSt > rwD;
+    // blockB->reg(blockBTableExt) Memory register - firmware accessible memory-mapped storage
+    memory_out< bSizeSt, seeSt > blockBTableExt;
+    // blockB->reg(blockBTable37Bit) External 37-bit memory register - firmware accessible with 8-byte stride
+    memory_out< bSizeSt, test37BitRegSt > blockBTable37Bit;
 
 
     blockDInverted(std::string name) :
@@ -119,6 +133,8 @@ public:
         ,inD(("inD"+name).c_str())
         ,btod(("btod"+name).c_str())
         ,rwD(("rwD"+name).c_str())
+        ,blockBTableExt(("blockBTableExt"+name).c_str())
+        ,blockBTable37Bit(("blockBTable37Bit"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -132,6 +148,8 @@ public:
         inD->setTimed(nsec, mode);
         btod->setTimed(nsec, mode);
         rwD->setTimed(nsec, mode);
+        blockBTableExt->setTimed(nsec, mode);
+        blockBTable37Bit->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -146,6 +164,8 @@ public:
         inD->setLogging(verbosity);
         btod->setLogging(verbosity);
         rwD->setLogging(verbosity);
+        blockBTableExt->setLogging(verbosity);
+        blockBTable37Bit->setLogging(verbosity);
     };
 };
 class blockDChannels
@@ -174,6 +194,10 @@ public:
     req_ack_channel< aSt, aASt > btod;
     // A Read Write register
     status_channel< dRegSt > rwD;
+    // Memory register - firmware accessible memory-mapped storage
+    memory_channel< bSizeSt, seeSt > blockBTableExt;
+    // External 37-bit memory register - firmware accessible with 8-byte stride
+    memory_channel< bSizeSt, test37BitRegSt > blockBTable37Bit;
 
 
     blockDChannels(std::string name, std::string srcName) :
@@ -187,6 +211,8 @@ public:
     ,inD(("inD"+name).c_str(), srcName)
     ,btod(("btod"+name).c_str(), srcName)
     ,rwD(("rwD"+name).c_str(), srcName)
+    ,blockBTableExt(("blockBTableExt"+name).c_str(), srcName)
+    ,blockBTable37Bit(("blockBTable37Bit"+name).c_str(), srcName)
     {};
     void bind( blockDBase *a, blockDInverted *b)
     {
@@ -210,6 +236,10 @@ public:
         b->btod( btod );
         a->rwD( rwD );
         b->rwD( rwD );
+        a->blockBTableExt( blockBTableExt );
+        b->blockBTableExt( blockBTableExt );
+        a->blockBTable37Bit( blockBTable37Bit );
+        b->blockBTable37Bit( blockBTable37Bit );
     };
 };
 

@@ -64,6 +64,7 @@ typedef int16_t signed11bit_t; // [11] Signed 11-bit type (-1024 to 1023) non-by
 typedef uint8_t unsigned5bit_t; // [5] Unsigned 5-bit type for mixed testing
 typedef uint16_t unsigned9bit_t; // [9] Unsigned 9-bit type for mixed testing
 typedef uint64_t bigT; // [64] 64-bit type for mixed testing
+typedef uint64_t test37BitT; // [37] 37-bit type for testing non-power-of-2 memory address calculations (5 bytes, rounds to 8-byte stride)
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums 
@@ -1189,6 +1190,49 @@ struct mixedArraySignedSt {
         memcpy(&signedVals, &signedVals_, sizeof(signedVals));
     }
     explicit mixedArraySignedSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct test37BitRegSt {
+    test37BitT value37; //
+
+    test37BitRegSt() {}
+
+    static constexpr uint16_t _bitWidth = 37;
+    static constexpr uint16_t _byteWidth = 5;
+    typedef uint64_t _packedSt;
+    bool operator == (const test37BitRegSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const test37BitRegSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.value37, NAME + ".value37");
+    }
+    inline friend ostream& operator << ( ostream& os,  test37BitRegSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    // register functions
+    inline int _size(void) {return( (37 + 7) >> 4 ); }
+    uint64_t _getValue(void)
+    {
+        uint64_t ret =
+        ( value37 & ((1ULL<<37 )-1) << 0);
+        return( ret );
+    }
+    void _setValue(uint64_t value)
+    {
+        value37 = ( test37BitT ) (( value >> 0 ) & (( (uint64_t)1 << 37 ) - 1)) ;
+        }
+    sc_bv<37> sc_pack(void) const;
+    void sc_unpack(sc_bv<37> packed_data);
+    explicit test37BitRegSt(sc_bv<37> packed_data) { sc_unpack(packed_data); }
+    explicit test37BitRegSt(
+        test37BitT value37_) :
+        value37(value37_)
+    {}
+    explicit test37BitRegSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
 
