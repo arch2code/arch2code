@@ -23,7 +23,7 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // register memories for FW access
-    regs.addMemory( 0x0, 0x150, std::string(this->name()) + ".blockBTable", &blockBTable);
+    regs.addMemory( 0x0, bMemSt::_byteWidth, MEMORYB_WORDS, std::string(this->name()) + ".blockBTable", &blockBTable);
     // register registers for FW access
     regs.addRegister( 0x200, 3, "rwUn0B", &rwUn0B );
     regs.addRegister( 0x208, 4, "roB", &roB );
