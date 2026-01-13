@@ -173,26 +173,24 @@ def constructorBody(args, prj, data):
         # Add memories
         mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():
-            width = intf_gen_utils.get_struct_width(memData["structureKey"], prj.data["structures"])
-            memSize = roundup_pow2min4((width + 7) >> 3) * intf_gen_utils.get_const(memData['wordLinesKey'], prj.data['constants'])
             mem_reg_items.append({
                 'type': 'memory',
                 'offset': memData["offset"],
                 'name': memData["memory"],
-                'size': memSize,
+                'structure': memData["structure"],
+                'wordLines': memData["wordLines"],
                 'is_reg_handler': data['blockInfo'].get('isRegHandler')
             })
         
         # Add memory registers
         for reg, regData in data['registers'].items():
             if regData.get('regType') == 'memory':
-                width = intf_gen_utils.get_struct_width(regData["structureKey"], prj.data["structures"])
-                memSize = roundup_pow2min4((width + 7) >> 3) * intf_gen_utils.get_const(regData['wordLinesKey'], prj.data['constants'])
                 mem_reg_items.append({
                     'type': 'memory_register',
                     'offset': regData["offset"],
                     'name': regData["register"],
-                    'size': memSize
+                    'structure': regData["structure"],
+                    'wordLines': regData["wordLines"]
                 })
         
         # Add regular registers
@@ -218,11 +216,11 @@ def constructorBody(args, prj, data):
                     out.append(f'    // register memories for FW access')
                 if item['type'] == 'memory':
                     if item['is_reg_handler']:
-                        out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                        out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
                     else:
-                        out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
+                        out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
                 else:  # memory_register
-                    out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, 0x{item["size"]:0x}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                    out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
             else:  # regular register
                 if not register_comment_written:
                     register_comment_written = True

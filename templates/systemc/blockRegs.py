@@ -62,7 +62,6 @@ def get_hwregs(prj, data):
                 "size": reg['bytes'],
                 "is_memory": True,
                 "word_lines": reg['wordLines'],
-                "memory_size": roundup_pow2min4(reg['bytes']) * reg['wordLines'],
                 "offset": hex(reg['offset']),
                 "port_name": reg['register'],
                 "descr": reg['desc']
@@ -178,7 +177,7 @@ block_regs_body_section_template = '''\
     {% if memory_items -%}
     // register memories for FW access
     {% for entry in memory_items -%}
-    regs.addMemory({{entry.offset}}, {{entry.memory_size}}, "{{entry.port_name}}", &{{entry.name}} );
+    regs.addMemory({{entry.offset}}, {{entry.datatype}}::_byteWidth, {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
     {% endfor -%}
     {% endif -%}
     {% set register_items = hwregs | rejectattr('is_memory', 'equalto', true) | list -%}
