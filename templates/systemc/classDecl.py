@@ -1,5 +1,5 @@
 
-from pysrc.arch2codeHelper import printError, warningAndErrorReport, roundup_multiple, roundup_pow2
+from pysrc.arch2codeHelper import warningAndErrorReport, roundup_multiple
 
 import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils

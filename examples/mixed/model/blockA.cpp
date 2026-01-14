@@ -27,8 +27,8 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // register memories for FW access
-    regs.addMemory( 0x0, 0x50, std::string(this->name()) + ".blockATable37Bit", &blockATable37Bit_adapter);
-    regs.addMemory( 0x50, 0x28, std::string(this->name()) + ".blockATableLocal", &blockATableLocal_adapter);
+    regs.addMemory( 0x0, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATable37Bit", &blockATable37Bit_adapter);
+    regs.addMemory( 0x50, aRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATableLocal", &blockATableLocal_adapter);
     // register registers for FW access
     regs.addRegister( 0x78, 1, "roA", &roA );
     // bind local memory register ports to channels

@@ -1,4 +1,3 @@
-from xml.etree.ElementTree import indent
 from pysrc.systemVerilogGeneratorHelper import importPackages
 from pysrc.arch2codeHelper import printError, warningAndErrorReport, clog2
 

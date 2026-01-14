@@ -26,8 +26,8 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // register memories for FW access
-    regs.addMemory( 0x0, 0x98, std::string(this->name()) + ".blockATable0", &blockATable0);
-    regs.addMemory( 0x100, 0x98, std::string(this->name()) + ".blockATable1", &blockATable1);
+    regs.addMemory( 0x0, aMemSt::_byteWidth, MEMORYA_WORDS, std::string(this->name()) + ".blockATable0", &blockATable0);
+    regs.addMemory( 0x100, aMemSt::_byteWidth, MEMORYA_WORDS, std::string(this->name()) + ".blockATable1", &blockATable1);
     // register registers for FW access
     regs.addRegister( 0x200, 5, "roA", &roA );
     regs.addRegister( 0x208, 6, "rwUn0A", &rwUn0A );
