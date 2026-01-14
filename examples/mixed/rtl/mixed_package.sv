@@ -49,6 +49,7 @@ typedef logic signed[11-1:0] signed11bit_t; //Signed 11-bit type (-1024 to 1023)
 typedef logic[5-1:0] unsigned5bit_t; //Unsigned 5-bit type for mixed testing
 typedef logic[9-1:0] unsigned9bit_t; //Unsigned 9-bit type for mixed testing
 typedef logic[64-1:0] bigT; //64-bit type for mixed testing
+typedef logic[37-1:0] test37BitT; //37-bit type for testing non-power-of-2 memory address calculations (5 bytes, rounds to 8-byte stride)
 
 // enums
 typedef enum logic[2-1:0] {           //a test enum
@@ -216,6 +217,10 @@ typedef struct packed {
     signed5bit_t [4-1:0] signedVals; //Array of 4 non-byte-aligned signed values
     unsigned5bit_t [3-1:0] unsignedVals; //Array of 3 non-byte-aligned unsigned values
 } mixedArraySignedSt;
+
+typedef struct packed {
+    test37BitT value37; //
+} test37BitRegSt;
 
 endpackage : mixed_package
 // GENERATED_CODE_END

@@ -1,3 +1,6 @@
+ifndef A2C_INCLUDE_MAKE_A2C_CURSOR_MK_INCLUDED
+A2C_INCLUDE_MAKE_A2C_CURSOR_MK_INCLUDED := 1
+
 #------------------------------------------------------------------------
 # Check mandatory variables are set when including this makefile
 #------------------------------------------------------------------------
@@ -63,4 +66,6 @@ cursor_clean cursor-clean:
 help::
 	@echo "  cursor-setup - Setup Cursor AI rules and guidelines"
 	@echo "  cursor-clean - Remove Cursor AI setup files"
+
+endif # A2C_INCLUDE_MAKE_A2C_CURSOR_MK_INCLUDED
 

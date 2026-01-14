@@ -27,6 +27,8 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,loopFD("blockD_loopFD", "blockF")
         ,rwD("blockB_rwD", "blockB", dRegSt::_packedSt(0x0))
         ,roBsize("blockB_roBsize", "blockB", bSizeRegSt::_packedSt(0x0))
+        ,blockBTableExt("blockB_blockBTableExt", "blockB")
+        ,blockBTable37Bit("blockB_blockBTable37Bit", "blockB")
         ,uBlockD(std::dynamic_pointer_cast<blockDBase>( instanceFactory::createInstance(name(), "uBlockD", "blockD", "")))
         ,uBlockF0(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0")))
         ,uBlockF1(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1")))
@@ -41,7 +43,6 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockBTable1_port1("blockBTable1_port1", "blockB")
         ,blockBTableSP_bob("blockBTableSP_bob", "blockB")
         ,blockBTable1_reg("blockBTable1_reg", "blockB")
-        ,blockBTableExt_reg("blockBTableExt_reg", "blockB")
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
@@ -71,6 +72,10 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     uBlockD->rwD(rwD);
     uBlockD->roBsize(roBsize);
     uBlockBRegs->roBsize(roBsize);
+    uBlockD->blockBTableExt(blockBTableExt);
+    uBlockBRegs->blockBTableExt(blockBTableExt);
+    uBlockD->blockBTable37Bit(blockBTable37Bit);
+    uBlockBRegs->blockBTable37Bit(blockBTable37Bit);
     // memory connections
     uBlockD->blockBTable1(blockBTable1_port1);
     blockBTable1.bindPort(blockBTable1_port1);
@@ -78,15 +83,9 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     blockBTableSP.bindPort(blockBTableSP_bob);
     uBlockBRegs->blockBTable1(blockBTable1_reg);
     blockBTable1.bindPort(blockBTable1_reg);
-    uBlockBRegs->blockBTableExt(blockBTableExt_reg);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(doneTest);
-    SC_THREAD(blockBTableExtModel);
-
-    // Model-backed storage for external memory blockBTableExt (BSIZE wordlines).
-    // Default init: all zeros.
-    blockBTableExt_shadow_.assign(BSIZE, seeSt());
 }
 
 void blockB::doneTest(void)
@@ -100,34 +99,4 @@ void blockB::doneTest(void)
     // late tests like test_mem_hier_cpu_read run.
     testController::GetInstance().wait_all_tests_complete();
     eot.setEndOfTest(true);
-}
-
-
-void blockB::blockBTableExtModel(void)
-{
-    while (true) {
-        bool isWrite = false;
-        bSizeSt addr;
-        seeSt data;
-
-        // Wait for a request from blockBRegs (FW APB accesses).
-        blockBTableExt_reg.reqReceive(isWrite, addr, data);
-
-        const uint32_t idx = static_cast<uint32_t>(addr.index);
-        if (idx >= blockBTableExt_shadow_.size()) {
-            log_.logPrint(std::format("blockBTableExtModel: addr out of range idx={}", idx), LOG_ALWAYS);
-            if (!isWrite) {
-                blockBTableExt_reg.complete(seeSt());
-            }
-            continue;
-        }
-
-        if (isWrite) {
-            // Writes are acknowledged inside reqReceive(); we just update the model state.
-            blockBTableExt_shadow_[idx] = data;
-        } else {
-            // Complete reads with the current model value.
-            blockBTableExt_reg.complete(blockBTableExt_shadow_[idx]);
-        }
-    }
 }

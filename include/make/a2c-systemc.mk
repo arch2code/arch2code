@@ -27,6 +27,7 @@ ifndef LD_BOOST
 $(error LD_BOOST is not set - please set to boost library (.so) path)
 endif
 
+include $(A2C_ROOT)/include/make/a2c-cursor.mk
 
 ifndef VERILATOR_ROOT
 VERILATOR_ROOT=/usr/local/share/verilator

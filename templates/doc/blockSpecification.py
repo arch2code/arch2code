@@ -7,8 +7,7 @@ and structure definitions using the new getBlockData() output format.
 
 from pysrc.asciidoc_structures import (
     render_adoc_table,
-    render_structure_tables_for_block,
-    collect_referenced_struct_keys
+    render_structure_tables_for_block
 )
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 

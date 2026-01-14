@@ -25,6 +25,8 @@ import mixed_package::*;
     rdy_vld_if #(.data_t(dSt)) loopFD();
     status_if #(.data_t(dRegSt)) rwD();
     status_if #(.data_t(bSizeRegSt)) roBsize();
+    memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTableExt();
+    memory_if #(.data_t(test37BitRegSt), .addr_t(bSizeSt)) blockBTable37Bit();
 
     // Memory Interfaces
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable0();
@@ -37,7 +39,6 @@ import mixed_package::*;
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTable3_write();
     memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTableSP0();
     memory_if #(.data_t(nestedSt), .addr_t(bSizeSt)) blockBTableSP_bob();
-    memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) blockBTableExt_reg();
 
 // Instances
 blockD uBlockD (
@@ -51,6 +52,8 @@ blockD uBlockD (
     .inD (loopFD),
     .rwD (rwD),
     .roBsize (roBsize),
+    .blockBTableExt (blockBTableExt),
+    .blockBTable37Bit (blockBTable37Bit),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -86,9 +89,10 @@ threeCs uThreeCs (
 blockBRegs uBlockBRegs (
     .apbReg (apbReg),
     .blockBTable1 (blockBTable1_reg),
-    .blockBTableExt (blockBTableExt_reg),
     .rwD (rwD),
     .roBsize (roBsize),
+    .blockBTableExt (blockBTableExt),
+    .blockBTable37Bit (blockBTable37Bit),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -129,9 +133,6 @@ memory_sp #(.DEPTH(BSIZE), .data_t(nestedSt)) uBlockBTableSP (
     .mem_port (blockBTableSP_bob),
     .clk (clk)
 );
-
-// Memory 'blockBTableExt' is external - no hardware instantiation
-// Interfaces created above must be manually connected to external memory
 
 // GENERATED_CODE_END
 

@@ -9,6 +9,7 @@
 #include "req_ack_channel.h"
 #include "mixedIncludes.h"
 #include "mixedBlockCIncludes.h"
+#include "mixedIncludeIncludes.h"
 
 class blockABase : public virtual blockPortBase
 {

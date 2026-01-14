@@ -57,6 +57,10 @@ public:
     status_channel< dRegSt > rwD;
     // A Read Only register with a structure that has a definition from an included context
     status_channel< bSizeRegSt > roBsize;
+    // Memory register - firmware accessible memory-mapped storage
+    memory_channel< bSizeSt, seeSt > blockBTableExt;
+    // External 37-bit memory register - firmware accessible with 8-byte stride
+    memory_channel< bSizeSt, test37BitRegSt > blockBTable37Bit;
 
     //instances contained in block
     std::shared_ptr<blockDBase> uBlockD;
@@ -73,11 +77,9 @@ public:
     hwMemory< seeSt > blockBTable3;
     hwMemory< seeSt > blockBTableSP0;
     hwMemory< nestedSt > blockBTableSP;
-    // Memory blockBTableExt is external - declare manually
     memory_channel<bSizeSt, bigSt> blockBTable1_port1;
     memory_channel<bSizeSt, nestedSt> blockBTableSP_bob;
     memory_channel<bSizeSt, bigSt> blockBTable1_reg;
-    memory_channel<bSizeSt, seeSt> blockBTableExt_reg;
 
     blockB(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~blockB() override = default;
@@ -90,12 +92,6 @@ public:
     // GENERATED_CODE_END
     // block implementation members
     void doneTest(void);
-
-    // External memory model responder for blockBTableExt_reg.
-    // This services uBlockBRegs -> blockBTableExt transactions directly in the model
-    // (no hwMemory instantiation for this external memory).
-    void blockBTableExtModel(void);
-    std::vector<seeSt> blockBTableExt_shadow_;
 };
 
 #endif //BLOCKB_H

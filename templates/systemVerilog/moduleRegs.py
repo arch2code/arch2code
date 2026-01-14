@@ -1,4 +1,3 @@
-from xml.etree.ElementTree import indent
 from pysrc.systemVerilogGeneratorHelper import importPackages
 from pysrc.arch2codeHelper import printError, warningAndErrorReport, clog2
 
@@ -36,7 +35,16 @@ def render(args, prj, data):
     # Pre-conditioning of the register data
     for reg_key, reg_data in data['registers'].items():
         reg_data['bitwidth'] = intf_gen_utils.get_struct_width(reg_data['structureKey'], prj.data['structures'])
-        reg_data['segments'] = list(segment_register_gen(reg_data, REG_BUS_WIDTH_BYTES, prj.getConst(reg_data['defaultValue'])))
+        reg_data['segments'] = list(segment_register_gen(reg_data, REG_BUS_WIDTH_BYTES, prj.getConst(reg_data['defaultValue']) if reg_data.get('regType') == 'rw' else 0))
+        
+        # For memory registers, compute memory-specific fields
+        if reg_data.get('regType') == 'memory':
+            reg_data['rowwidth'] = clog2(len(reg_data['segments']) * REG_BUS_WIDTH_BYTES)
+            wordLines = prj.getConst(reg_data['wordLinesKey'])
+            reg_data['memsize'] = wordLines * (2** reg_data['rowwidth'])
+            addr_l = reg_data['offset']
+            addr_h = addr_l + reg_data['memsize'] - REG_BUS_WIDTH_BYTES
+            reg_data['address_range'] = (addr_l, addr_h)
 
     # Pre-conditioning of the memory data, when existing
     if 'memoriesParent' in data:
@@ -101,9 +109,14 @@ def section_address_mask(prj, data):
 
 # Signals declarations, flops and continous assignments
 def section_01(data):
+    # Separate regular registers from memory registers
+    regular_regs = {k: v for k, v in data['registers'].items() if v.get('regType') != 'memory'}
+    memory_regs = {k: v for k, v in data['registers'].items() if v.get('regType') == 'memory'}
+    
     return (string_joiner(
-            [section_01_regs(reg_data) for _, reg_data in data['registers'].items()] +
-            [section_01_mems(mem_data) for _, mem_data in data['memories'].items()], '\n\n')
+            [section_01_regs(reg_data) for _, reg_data in regular_regs.items()] +
+            [section_01_mems(mem_data) for _, mem_data in data['memories'].items()] +
+            [section_01_memregs(reg_data) for _, reg_data in memory_regs.items()], '\n\n')
     )
 
 def section_01_regs(reg_data):
@@ -120,6 +133,11 @@ def section_01_regs(reg_data):
         s_2 = [ f"assign {reg_intf}.data = {reg_local};" ]
     elif reg_data['regType'] == 'ext':
         s_2 = [ f"assign {reg_local} = {reg_intf}.rdata;" ]
+    elif reg_data['regType'] == 'memory':
+        # Memory registers are handled separately, no assignment needed
+        s_2 = []
+    else:
+        s_2 = []
 
     s_3, s_4 = [], []
     for seg in segments_enum:
@@ -130,6 +148,21 @@ def section_01_regs(reg_data):
             s_4 += [ f"`DFFREN({reg_local}[{u}:{l}], {regs_intf}.pwdata[{w-1}:0], {update_sig}, {w}'h{d:08x})" ]
 
     return string_joiner(s_1 + s_3 + s_2 + s_4, '\n')
+
+def section_01_memregs(reg_data):
+    """Handle memory register declarations similar to external memories"""
+    mem_intf = reg_data['register']
+        
+    t = Template(section_01_mem_j2_template)
+    
+    return(t.render(
+        mem_intf=mem_intf,
+        mem_datatype=reg_data['structure'],
+        mem_addrtype=reg_data['addressStruct'],
+        segments=reg_data['segments'],
+        paddr_l = reg_data['rowwidth'],
+        seg_last = len(reg_data['segments']) - 1
+    ))
 
 def section_01_mems(mem_data):
 
@@ -146,9 +179,14 @@ def section_01_mems(mem_data):
 
 # write comb case init
 def section_02a(data):
+    # Separate regular registers from memory registers
+    regular_regs = {k: v for k, v in data['registers'].items() if v.get('regType') != 'memory'}
+    memory_regs = {k: v for k, v in data['registers'].items() if v.get('regType') == 'memory'}
+    
     return (string_joiner(
-            [section_02a_regs(reg_data) for _, reg_data in data['registers'].items()] +
-            [section_02a_mems(mem_data) for _, mem_data in data['memories'].items()], '\n')
+            [section_02a_regs(reg_data) for _, reg_data in regular_regs.items()] +
+            [section_02a_mems(mem_data) for _, mem_data in data['memories'].items()] +
+            [section_02a_memregs(reg_data) for _, reg_data in memory_regs.items()], '\n')
     )
 
 def section_02a_regs(reg_data):
@@ -171,6 +209,24 @@ def section_02a_regs(reg_data):
 
     return string_joiner(s_1, '\n')
 
+def section_02a_memregs(reg_data):
+    """Init logic for memory registers"""
+    mem_intf = reg_data['register']
+    data_local = reg_data['register'] + '_data'
+    
+    segments_enum = list(enumerate(reg_data['segments']))
+    
+    s_1 = []
+    
+    for seg in segments_enum:
+        n, (o, u, l, w, _) = seg
+        update_sig = f"{mem_intf}_update_{n}"
+        s_1 += [ f"{update_sig} = 1'b0;" ]
+    
+    s_1 += [ f"nxt_{data_local} = {data_local};" ]
+    
+    return string_joiner(s_1, '\n')
+
 def section_02a_mems(mem_data):
     mem_intf = mem_data['memory']
     data_local = mem_data['memory'] + '_data'
@@ -190,9 +246,14 @@ def section_02a_mems(mem_data):
 
 # write comb case core
 def section_02b(data):
+    # Separate regular registers from memory registers
+    regular_regs = {k: v for k, v in data['registers'].items() if v.get('regType') != 'memory'}
+    memory_regs = {k: v for k, v in data['registers'].items() if v.get('regType') == 'memory'}
+    
     return (string_joiner(
-            [section_02b_regs(reg_data) for _, reg_data in data['registers'].items()] +
-            [section_02b_mems(mem_data) for _, mem_data in data['memories'].items()], '\n')
+            [section_02b_regs(reg_data) for _, reg_data in regular_regs.items()] +
+            [section_02b_mems(mem_data) for _, mem_data in data['memories'].items()] +
+            [section_02b_memregs(reg_data) for _, reg_data in memory_regs.items()], '\n')
     )
 
 def section_02b_regs(reg_data):
@@ -219,6 +280,33 @@ def section_02b_regs(reg_data):
                     s_1 += [ f"    {reg_intf}.wdata[{s_u}:{s_l}] = {reg_intf}.rdata[{s_u}:{s_l}];" ]
             s_1 += [ "end" ]
 
+    return string_joiner(s_1, '\n')
+
+def section_02b_memregs(reg_data):
+    """Write case decode for memory registers"""
+    mem_intf = reg_data['register']
+    data_local = 'nxt_' + reg_data['register'] + '_data'
+    
+    segments_enum = list(enumerate(reg_data['segments']))
+    
+    addr_l, addr_h = reg_data['address_range']
+    rowwidth = reg_data['rowwidth']
+    
+    s_1 = []
+    
+    s_1 += [ f"[32'h{addr_l:x}:32'h{addr_h:x}]: begin" ]
+    s_1 += [ f"    case (apb_addr[{rowwidth}-1:0])" ]
+    for seg in segments_enum:
+        n, (o, u, l, w, _) = seg
+        o_rel = o - addr_l  # offset relative to base of mem mod bus width
+        s_1 += [ f"        {rowwidth}'h{o_rel:x}: begin" ]
+        s_1 += [ f"            {mem_intf}_update_{n} = 1'b1;" ]
+        s_1 += [ f"            {data_local}[{u}:{l}] = {regs_intf}.pwdata[{w-1}:0];" ]
+        s_1 += [ f"        end" ]
+    s_1 +=     [ f"        default: ;" ]
+    s_1 += [ f"    endcase" ]
+    s_1 += [ f"end" ]
+    
     return string_joiner(s_1, '\n')
 
 def section_02b_mems(mem_data):
@@ -248,8 +336,11 @@ def section_02b_mems(mem_data):
 
 # read comb case init
 def section_03a(data):
+    memory_regs = {k: v for k, v in data['registers'].items() if v.get('regType') == 'memory'}
+    
     return (string_joiner(
-            [section_03a_mems(mem_data) for _, mem_data in data['memories'].items()], '\n')
+            [section_03a_mems(mem_data) for _, mem_data in data['memories'].items()] +
+            [section_03a_memregs(reg_data) for _, reg_data in memory_regs.items()], '\n')
     )
 
 def section_03a_mems(mem_data):
@@ -260,11 +351,24 @@ def section_03a_mems(mem_data):
 
     return string_joiner(s_1, '\n')
 
+def section_03a_memregs(reg_data):
+    """Read init for memory registers"""
+    mem_intf = reg_data['register']
+    enable_sig = f"nxt_{mem_intf}_rd_enable"
+    
+    s_1 = [ f"{enable_sig} = 1'b0;" ]
+    
+    return string_joiner(s_1, '\n')
+
 # read comb case core
 def section_03b(data):
+    regular_regs = {k: v for k, v in data['registers'].items() if v.get('regType') != 'memory'}
+    memory_regs = {k: v for k, v in data['registers'].items() if v.get('regType') == 'memory'}
+    
     return (string_joiner(
-            [section_03b_regs(reg_data) for _, reg_data in data['registers'].items()] +
-            [section_03b_mems(mem_data) for _, mem_data in data['memories'].items()], '\n')
+            [section_03b_regs(reg_data) for _, reg_data in regular_regs.items()] +
+            [section_03b_mems(mem_data) for _, mem_data in data['memories'].items()] +
+            [section_03b_memregs(reg_data) for _, reg_data in memory_regs.items()], '\n')
     )
 
 def section_03b_regs(reg_data):
@@ -311,6 +415,36 @@ def section_03b_mems(mem_data):
     s_1 += [ f"    nxt_{mem_intf}_rd_enable = ~{mem_intf}_rd_capture;" ]
     s_1 += [ f"end" ]
 
+    return string_joiner(s_1, '\n')
+
+def section_03b_memregs(reg_data):
+    """Read case decode for memory registers"""
+    mem_intf = reg_data['register']
+    
+    segments_enum = list(enumerate(reg_data['segments']))
+    
+    # Use preprocessed address range and rowwidth
+    addr_l, addr_h = reg_data['address_range']
+    rowwidth = reg_data['rowwidth']
+    
+    s_1 = []
+    
+    s_1 += [ f"[32'h{addr_l:x}:32'h{addr_h:x}]: begin" ]
+    s_1 += [ f"    case (apb_addr[{rowwidth}-1:0])" ]
+    for seg in segments_enum:
+        _, (o, u, l, w, _) = seg
+        o_rel = o - addr_l  # offset relative to base of mem mod bus width
+        s_1 += [ f"        {rowwidth}'h{o_rel:x}: begin" ]
+        s_1 += [ f"            if ({mem_intf}_rd_capture) begin" ]
+        s_1 += [ f"                nxt_rd_ready = 1'b1;" ]
+        s_1 += [ f"                nxt_rd_data = {regs_data_t}'({mem_intf}.read_data[{u}:{l}]);" ]
+        s_1 += [ f"            end" ]
+        s_1 += [ f"        end" ]
+    s_1 +=     [ f"        default: ;" ]
+    s_1 += [ f"    endcase" ]
+    s_1 += [ f"    nxt_{mem_intf}_rd_enable = ~{mem_intf}_rd_capture;" ]
+    s_1 += [ f"end" ]
+    
     return string_joiner(s_1, '\n')
 
 # generator yields quadruplets segments split at bus_width_bytes
