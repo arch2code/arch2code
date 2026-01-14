@@ -153,7 +153,7 @@ endif
 clean::
 	$(RM) -r $(BIN_DIR)
 	$(RM) -rf simx.*
-	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap clean
+	@test -d $(REPO_ROOT)/verif/vl_wrap && $(MAKE) -C $(REPO_ROOT)/verif/vl_wrap clean || true
 
 help::
 	@echo "  all     	- Build the project binary"
