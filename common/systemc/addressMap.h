@@ -48,13 +48,13 @@ public:
         m_addressMap.emplace_back(addressElement(address, size, addressElementType::MEM, name, nullptr, nullptr));
     }
     // Overload that takes structure byte width and word lines, calculates size internally
-    void addMemory(uint64_t address, int structByteWidth, uint64_t wordLines, std::string name, addressBase *ptr)
+    void addMemory(uint64_t address, uint16_t structByteWidth, uint64_t wordLines, std::string name, addressBase *ptr)
     {
         uint64_t size = nextPowerOf2min4(structByteWidth) * wordLines;
         Q_ASSERT_CTX(m_addressMap.size()==0 || (address >= m_addressMap.back().m_address + m_addressMap.back().m_size), name, "Address overlap");
         m_addressMap.emplace_back(addressElement(address, size, addressElementType::MEM, name, ptr, nullptr));
     }
-    void addMemory(uint64_t address, int structByteWidth, uint64_t wordLines, std::string name)
+    void addMemory(uint64_t address, uint16_t structByteWidth, uint64_t wordLines, std::string name)
     {
         uint64_t size = nextPowerOf2min4(structByteWidth) * wordLines;
         Q_ASSERT_CTX(m_addressMap.size()==0 || (address >= m_addressMap.back().m_address + m_addressMap.back().m_size), name, "Address overlap");
