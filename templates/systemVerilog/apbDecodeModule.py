@@ -1,5 +1,4 @@
-from pysrc.processYaml import existsLoad, getPortChannelName
-from pysrc.arch2codeHelper import printError, warningAndErrorReport, clog2
+from pysrc.arch2codeHelper import printError, warningAndErrorReport
 from pathlib import Path
 from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck, importPackages
 import pysrc.intf_gen_utils as intf_gen_utils

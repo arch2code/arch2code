@@ -1,14 +1,11 @@
-# args from generator line
-# prj object
-# data set dict
-from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport, printIfDebug, roundup_pow2, roundup_pow2min4
-
-import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils
 
 # Does not alter the rendering
 intf_gen_utils.LEGACY_COMPAT_MODE = True
 
+# args from generator line
+# prj object
+# data set dict
 def render(args, prj, data):
     match args.section:
         case 'init':
