@@ -1,6 +1,6 @@
 import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils
-from pysrc.arch2codeHelper import roundup_multiple, roundup_pow2min4
+from pysrc.arch2codeHelper import roundup_multiple
 
 from jinja2 import Template
 
