@@ -42,12 +42,12 @@ endif
 
 # Compile verilator common objects (verilated_dpi.o, verilated_vcd_c.o, verilated_threads.o)
 obj_dir/Vvl_dummy: $(VL_GEN_SV_FILES) $(GEN_DEPS)
-	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) vl_dummy.sv --top vl_dummy -exe
+	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) $(A2C_ROOT)/common/verilator/vl_dummy.sv $(A2C_ROOT)/common/verilator/vl_dummy.cpp --top vl_dummy -exe
 
-$(VL_OBJ_FILES): $(VL_GEN_SV_FILES) 
+$(VL_OBJ_FILES): $(VL_GEN_SV_FILES)
 	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(REPO_ROOT)/rtl/rtl.f $(subst obj_dir/V,, $(patsubst %.o, %.sv, $@)) -top $(notdir $(subst obj_dir/V,, $(patsubst %.o,%, $@)))
 
-lib$(PROJECTNAME)vl_s_wrap.a: obj_dir/Vvl_dummy $(VL_OBJ_FILES) 
+lib$(PROJECTNAME)vl_s_wrap.a: obj_dir/Vvl_dummy $(VL_OBJ_FILES)
 	ar -rcs $@ $(VL_LIB_OBJ_FILES) obj_dir/V*_hdl_sv_wrapper*.o
 
 #------------------------------------------------------------------------
