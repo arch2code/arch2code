@@ -8,9 +8,9 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockD_base.h"
-#include "mixedBlockCIncludes.h"
+#include "blockDBase.h"
 #include "mixedIncludes.h"
+#include "mixedBlockCIncludes.h"
 #include "mixedIncludeIncludes.h"
 
 SC_MODULE(blockD), public blockBase, public blockDBase
@@ -33,7 +33,17 @@ public:
 
     // GENERATED_CODE_END
     // block implementation members
-   
+    void memoryTest(void);
+    
+    // Memory register handler for blockBTableExt.
+    // This services register accesses to blockBTableExt through the memory port.
+    void blockBTableExtModel(void);
+    std::vector<seeSt> blockBTableExt_shadow_;
+    
+    // Memory register handler for blockBTable37Bit.
+    // This services register accesses to blockBTable37Bit through the memory port.
+    void blockBTable37BitModel(void);
+    std::vector<test37BitRegSt> blockBTable37Bit_shadow_;
 };
 
 #endif //BLOCKD_H

@@ -4,7 +4,7 @@
 // GENERATED_CODE_PARAM --block=threeCs
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "threeCs.h"
-#include "blockC_base.h"
+#include "blockCBase.h"
 SC_HAS_PROCESS(threeCs);
 
 threeCs::registerBlock threeCs::registerBlock_; //register the block with the factory

@@ -45,7 +45,8 @@ def get_intf_data(data, prj_data):
             ret =  {'structures': [{'structureType': 'data_t', 'structure': data['structure'], 'structureKey': data['structureKey']}],
                     'interfaceType': data['interfaceType'],
                     'desc': data.get('desc', '')}
-            if 'addressStruct' in data:
+            # Only add addressStruct if exists
+            if data['addressStruct']:
                 ret['structures'].append({'structureType': 'addr_t', 'structure': data['addressStruct'], 'structureKey': data['addressStructKey']})
             return ret
 def get_channel_name(data):
@@ -333,8 +334,8 @@ def sc_gen_block_channels(conn_data, prj, block_data):
         struct_data = list(filter(lambda item: item['structureType'] == param, intf_structs))
         if len(struct_data) == 0:
             print(f"Interface {chnl_name} is {intf_type} and expected structure types {param} not found")
-        assert(len(struct_data) == 1); # the structure type on your interface is not the expected type
-        intf_param[param] = struct_data[0];
+        assert(len(struct_data) == 1) # the structure type on your interface is not the expected type
+        intf_param[param] = struct_data[0]
 
     # Interface parameters declaration
     chnl_params = ', '.join(["{}".format(intf_param[param]['structure']) for param in parameters])
@@ -386,6 +387,15 @@ def lookup_const(const_key, const_dict):
 def get_const(const_key, const_dict):
     const = lookup_const(const_key, const_dict)
     return const['value'] if const else 0
+
+def get_sorted_memories(data):
+    if 'memoriesParent' in data:
+        memoryKey = 'memoriesParent'
+    else:
+        memoryKey = 'memories'
+    mems = dict(filter(lambda x: x[1]['regAccess'], data[memoryKey].items()))
+    mems = dict(sorted(mems.items(), key=lambda item: item[1]["offset"]))
+    return mems
 
 def get_intf_defs(intf_type, block_data):
     """Get interface definition for given interface type

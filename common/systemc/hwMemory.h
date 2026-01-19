@@ -8,6 +8,9 @@
 #include "timedDelay.h"
 #include "synchLock.h"
 
+#include "memory_channel.h"
+#include <systemc>
+
 // A:64 D:32 CPU Register access bus
 // N : size of CPU D-Bus aligned data entry, in bytes
 
@@ -177,6 +180,38 @@ public:
             }
         }
     }
+
+    // Binds a channel (passed by reference) to a new service thread
+    template <class ADDR>
+    void bindPort(sc_core::memory_in_if<ADDR, MEM_DATA>& port) {
+        // sc_bind creates a callback to serviceThread, passing '&port' as the argument.
+        // sc_spawn creates a new SystemC process to run that callback.
+        sc_core::sc_spawn(sc_core::sc_bind(&hwMemory::serviceThread<ADDR>, this, &port));
+    }
+
+    // The thread loop that services the specific channel
+    template <class ADDR>
+    void serviceThread(sc_core::memory_in_if<ADDR, MEM_DATA>* port) {
+        bool isWrite;
+        ADDR addrStruct;
+        MEM_DATA data;
+        while(true) {
+             // Wait for a request on this channel
+             port->reqReceive(isWrite, addrStruct, data);
+             
+             // Process request
+             uint64_t addrVal = addrStruct._getAddress();
+             if (isWrite) {
+                 write(addrVal, data);
+             } else {
+                 data = read(addrVal);
+                // Send completion/data back
+                port->complete(data);
+             }
+             
+        }
+    }
+
 private:
     std::vector<MEM_DATA> m_mem;
     uint64_t rows;
@@ -189,5 +224,52 @@ private:
     hwMemoryType m_memType;
 };
 
+template <class ADDR, class DATA>
+class hwMemoryPort : public memBase
+{
+public:
+    hwMemoryPort(memory_out<ADDR, DATA> &port) : m_port(port) {}
+
+    void cpu_write(uint64_t address, uint32_t val) override {
+        uint32_t index = address/_size();
+        uint32_t n = address%_size();
+        ADDR addr_obj;
+        addr_obj.unpack((typename ADDR::_packedSt)index);
+        DATA data_obj;
+
+        // RMW
+        m_port->request(false, addr_obj, data_obj);
+
+        m_val_sc = data_obj.sc_pack();
+        m_val_sc.range(8*n+31, 8*n) = val;
+        data_obj.sc_unpack(m_val_sc);
+        
+        m_port->request(true, addr_obj, data_obj);
+    }
+    uint32_t cpu_read(uint64_t address) override {
+        uint32_t index = address/_size();
+        uint32_t n = address%_size();
+        ADDR addr_obj;
+        addr_obj.unpack((typename ADDR::_packedSt)index);
+        DATA data_obj;
+
+        m_port->request(false, addr_obj, data_obj);
+        
+        m_val_sc = data_obj.sc_pack();
+        return (uint32_t) m_val_sc.range(8*n+31, 8*n).to_uint64();
+    }
+    
+    constexpr int _size(void) {
+        return nextPowerOf2min4(DATA::_byteWidth);
+    }
+
+    void setTimed(uint64_t nsec, timedDelayMode mode) override
+    {
+    }
+
+private:
+    memory_out<ADDR, DATA> &m_port;
+    sc_bv<nextPowerOf2min4(DATA::_byteWidth) * 8> m_val_sc;
+};
 
 #endif //(HWMEMORY_H)

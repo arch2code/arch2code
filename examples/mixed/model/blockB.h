@@ -3,13 +3,14 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
+#include <vector>
 #include "mixedIncludes.h"
 
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockB_base.h"
+#include "blockBBase.h"
 #include "addressMap.h"
 #include "hwMemory.h"
 #include "mixedIncludes.h"
@@ -56,6 +57,10 @@ public:
     status_channel< dRegSt > rwD;
     // A Read Only register with a structure that has a definition from an included context
     status_channel< bSizeRegSt > roBsize;
+    // Memory register - firmware accessible memory-mapped storage
+    memory_channel< bSizeSt, seeSt > blockBTableExt;
+    // External 37-bit memory register - firmware accessible with 8-byte stride
+    memory_channel< bSizeSt, test37BitRegSt > blockBTable37Bit;
 
     //instances contained in block
     std::shared_ptr<blockDBase> uBlockD;
@@ -67,11 +72,14 @@ public:
     memories mems;
     //memories
     hwMemory< seeSt > blockBTable0;
-    hwMemory< seeSt > blockBTable1;
+    hwMemory< bigSt > blockBTable1;
     hwMemory< seeSt > blockBTable2;
     hwMemory< seeSt > blockBTable3;
     hwMemory< seeSt > blockBTableSP0;
     hwMemory< nestedSt > blockBTableSP;
+    memory_channel<bSizeSt, bigSt> blockBTable1_port1;
+    memory_channel<bSizeSt, nestedSt> blockBTableSP_bob;
+    memory_channel<bSizeSt, bigSt> blockBTable1_reg;
 
     blockB(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~blockB() override = default;

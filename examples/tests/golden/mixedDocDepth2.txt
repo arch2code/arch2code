@@ -1,4 +1,5 @@
-instance uTop is of type top
+instance mixed_tb is of type mixed_tb
+instance u_mixed is of type mixed
 instance uCPU is of type cpu
 instance uBlockA is of type blockA
 instance uAPBDecode is of type apbDecode
@@ -13,8 +14,19 @@ instance uBlockC1 is of type blockC
 instance uBlockC2 is of type blockC
 instance uBlockBRegs is of type blockBRegs
 instance uBlockARegs is of type blockARegs
+Block: mixed
+Connection: uCPU -> u_mixed
+Interface: apbReg
+CPU access to SoC registers in the design
+
+Structure: apbAddrSt
+Var:  address  for addressing register via APB
+
+Structure: apbDataSt
+Var:  data  for the data sent or recieved via APB
+
 Block: cpu
-Connection: uCPU -> uAPBDecode
+Connection: uCPU -> u_mixed
 Interface: apbReg
 CPU access to SoC registers in the design
 
@@ -67,16 +79,6 @@ Structure: apbDataSt
 Var:  data  for the data sent or recieved via APB
 
 Block: apbDecode
-Connection: uCPU -> uAPBDecode
-Interface: apbReg
-CPU access to SoC registers in the design
-
-Structure: apbAddrSt
-Var:  address  for addressing register via APB
-
-Structure: apbDataSt
-Var:  data  for the data sent or recieved via APB
-
 Connection: uAPBDecode -> uBlockA
 Interface: apbReg
 CPU access to SoC registers in the design
@@ -140,137 +142,3 @@ Var:  address  for addressing register via APB
 Structure: apbDataSt
 Var:  data  for the data sent or recieved via APB
 
-Block: blockARegs
-Block: blockD
-Connection: uBlockD -> uThreeCs
-Interface: cStuffIf
-An interface for C
-
-Structure: seeSt
-Var:  variablec Two bits of C Two bits of C
-Var:  variablec2 Three bits of C Three bits of C
-
-Connection: uBlockD -> uBlockF0
-Interface: dStuffIf
-An interface for D
-
-Structure: dSt
-Var:  variabled Three bits of D Three bits of D
-Var:  variabled2 Four bits of D Four bits of D
-
-Connection: uBlockD -> uBlockF1
-Interface: dStuffIf
-An interface for D
-
-Structure: dSt
-Var:  variabled Three bits of D Three bits of D
-Var:  variabled2 Four bits of D Four bits of D
-
-Connection: uBlockD -> uBlockF0
-Interface: dStuffIf
-An interface for D
-
-Structure: dSt
-Var:  variabled Three bits of D Three bits of D
-Var:  variabled2 Four bits of D Four bits of D
-
-Connection: uBlockF1 -> uBlockD
-Interface: dStuffIf
-An interface for D
-
-Structure: dSt
-Var:  variabled Three bits of D Three bits of D
-Var:  variabled2 Four bits of D Four bits of D
-
-Block: blockF
-Connection: uBlockF0 -> uThreeCs
-Interface: cStuffIf
-An interface for C
-
-Structure: seeSt
-Var:  variablec Two bits of C Two bits of C
-Var:  variablec2 Three bits of C Three bits of C
-
-Connection: uBlockD -> uBlockF0
-Interface: dStuffIf
-An interface for D
-
-Structure: dSt
-Var:  variabled Three bits of D Three bits of D
-Var:  variabled2 Four bits of D Four bits of D
-
-Connection: uBlockD -> uBlockF0
-Interface: dStuffIf
-An interface for D
-
-Structure: dSt
-Var:  variabled Three bits of D Three bits of D
-Var:  variabled2 Four bits of D Four bits of D
-
-Connection: uBlockF0 -> uBlockF1
-Interface: dStuffIf
-An interface for D
-
-Structure: dSt
-Var:  variabled Three bits of D Three bits of D
-Var:  variabled2 Four bits of D Four bits of D
-
-Block: blockF
-Connection: uBlockF1 -> uThreeCs
-Interface: cStuffIf
-An interface for C
-
-Structure: seeSt
-Var:  variablec Two bits of C Two bits of C
-Var:  variablec2 Three bits of C Three bits of C
-
-Connection: uBlockD -> uBlockF1
-Interface: dStuffIf
-An interface for D
-
-Structure: dSt
-Var:  variabled Three bits of D Three bits of D
-Var:  variabled2 Four bits of D Four bits of D
-
-Connection: uBlockF0 -> uBlockF1
-Interface: dStuffIf
-An interface for D
-
-Structure: dSt
-Var:  variabled Three bits of D Three bits of D
-Var:  variabled2 Four bits of D Four bits of D
-
-Connection: uBlockF1 -> uBlockD
-Interface: dStuffIf
-An interface for D
-
-Structure: dSt
-Var:  variabled Three bits of D Three bits of D
-Var:  variabled2 Four bits of D Four bits of D
-
-Block: threeCs
-Connection: uBlockD -> uThreeCs
-Interface: cStuffIf
-An interface for C
-
-Structure: seeSt
-Var:  variablec Two bits of C Two bits of C
-Var:  variablec2 Three bits of C Three bits of C
-
-Connection: uBlockF0 -> uThreeCs
-Interface: cStuffIf
-An interface for C
-
-Structure: seeSt
-Var:  variablec Two bits of C Two bits of C
-Var:  variablec2 Three bits of C Three bits of C
-
-Connection: uBlockF1 -> uThreeCs
-Interface: cStuffIf
-An interface for C
-
-Structure: seeSt
-Var:  variablec Two bits of C Two bits of C
-Var:  variablec2 Three bits of C Three bits of C
-
-Block: blockBRegs

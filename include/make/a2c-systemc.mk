@@ -27,6 +27,7 @@ ifndef LD_BOOST
 $(error LD_BOOST is not set - please set to boost library (.so) path)
 endif
 
+include $(A2C_ROOT)/include/make/a2c-cursor.mk
 
 ifndef VERILATOR_ROOT
 VERILATOR_ROOT=/usr/local/share/verilator
@@ -36,7 +37,7 @@ endif
 # Systemc build global variables
 #------------------------------------------------------------------------
 
-CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK -DSC_CPLUSPLUS=201703L
+CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
 LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 

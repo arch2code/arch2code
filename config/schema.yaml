@@ -408,6 +408,7 @@ memories:
         port: required
 
 registers:
+  _attribs: [post(registers)]
   register: required
   regType:
     _type: required
@@ -416,6 +417,7 @@ registers:
         - ro
         - rw
         - ext
+        - memory
   block:
     _type: required
     _validate:
@@ -427,6 +429,12 @@ registers:
     _validate:
       section: structures
       field: structure
+  addressStruct:
+    _type: optional
+    _validate:
+      section: structures
+      field: structure
+  wordLines: optionalConst(0)
   offset: optional(0)
   defaultValue: optional(0)
   registerBlock:

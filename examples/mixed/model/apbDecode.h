@@ -10,7 +10,7 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "apbDecode_base.h"
+#include "apbDecodeBase.h"
 #include "mixedIncludes.h"
 #include "apbBusDecode.h"
 

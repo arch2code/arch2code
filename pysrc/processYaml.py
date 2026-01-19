@@ -1433,8 +1433,15 @@ class projectOpen:
                                 # for a regHandler we only want memories that have regAccess
                                 data.pop(obj)
 
-                    else:
+                    else:  # registers
                         data[obj]['bytes'] = (self.data['structures'][objInfo['structureKey']]['width'] + 7) >> 3 # round up to whole byte
+                        # Check if this is a memory register
+                        if objInfo.get('regType') == 'memory':
+                            # Memory registers need additional metadata
+                            if objInfo.get('wordLinesKey'):
+                                ret['temp']['consts'][objInfo['wordLinesKey']] = 0
+                            if objInfo.get('addressStructKey'):
+                                ret['temp']['structs'][objInfo['addressStructKey']] = 0
                         ret['addressDecode']['hasDecoder'] = True #register = AddressDecoder
             ret[designObject] = data
 
@@ -1521,13 +1528,13 @@ class projectOpen:
             ret['memoriesParent'] = ret['memories']
             ret['memories'] = dict()
         
-        # Add memory interface type only once if we have any memory ports or connections
+        # Add memory interface type if we have any memory ports or connections
         if ret['memoryPorts'] or ret['memoryConnections']:
             ret['interfaceTypes']['memory'] = self._lookupInterfaceTypeKey('memory')
 
     # register connections
-    regMapReg   = { 'rw': 'src', 'ro': 'dst', 'ext': 'src' } # mapping of the register type to the registerBlock port direction
-    regMapBlock = { 'rw': 'dst', 'ro': 'src', 'ext': 'dst' } # mapping of the register type to the block port direction
+    regMapReg   = { 'rw': 'src', 'ro': 'dst', 'ext': 'src', 'memory': 'src' } # mapping of the register type to the registerBlock port direction
+    regMapBlock = { 'rw': 'dst', 'ro': 'src', 'ext': 'dst', 'memory': 'dst' } # mapping of the register type to the block port direction
     def getBDRegisterConnections(self, ret):
         block = ret['qualBlock']
         qualBlockInstances = ret['instances']
@@ -1585,8 +1592,19 @@ class projectOpen:
         implied_reg = dict()
         for reg_key, reg_data in ret['registers'].items():
             reg = reg_data['register']
+            regType = reg_data['regType']
+            
+            # Extra memory registers handling
+            if regType == 'memory':
+                # Track structs and consts for memory registers
+                ret['temp']['structs'][reg_data['structureKey']] = 0
+                if reg_data.get('addressStructKey'):
+                    ret['temp']['structs'][reg_data['addressStructKey']] = 0
+                if reg_data.get('wordLinesKey'):
+                    ret['temp']['consts'][reg_data['wordLinesKey']] = 0
+            
+            # Handle regular registers
             if reg not in connected_regs:
-                regType = reg_data['regType']
                 ifType = 'reg_' + regType
                 implied_reg[reg] = dict(reg_data)
                 implied_reg[reg]['interfaceType'] = ifType
@@ -2463,9 +2481,18 @@ class projectCreate:
                     if currentBlock not in blockAddressCurrent:
                         blockAddressCurrent[currentBlock] = 0
                 if addressType == 'registers':
-                    # width is in bits so convert to bytes and ensure alignment
-                    #        bits to bytes              round up to alignment
-                    size = ((((row['width'] + 7) >> 3 ) + alignment - 1 ) // alignment ) * alignment
+                    # Check if this is a memory register
+                    if row['regType'] == 'memory':
+                        # Memory register: calculate exactly like memories
+                        size = roundup_pow2min4((row['width'] + 7) >> 3) * self.qualConstParse(row['wordLinesKey'])
+                        if sizeRoundUpPowerOf2:
+                            size = roundup_pow2min4(size)
+                        if alignmentModeValue:
+                            size = ((size + alignment - 1) // alignment ) * alignment
+                    else:
+                        # Regular register: width is in bits so convert to bytes and ensure alignment
+                        #        bits to bytes              round up to alignment
+                        size = ((((row['width'] + 7) >> 3 ) + alignment - 1 ) // alignment ) * alignment
                 if addressType == 'memories':
                     # memories can be aligned to an alignment value or to memory sized boundaries.
                     # memory size is based on the next rounded power of 2 of the data width, due to address decoding requirements
@@ -2482,7 +2509,8 @@ class projectCreate:
                 size = allocateOrder[row[keyField]]
                 currentBlock = row['blockKey']
                 offset = blockAddressCurrent[currentBlock]
-                if addressType == 'memories':
+                # Memory registers and memories use similar alignment logic
+                if addressType == 'memories' or (addressType == 'registers' and row['regType'] == 'memory'):
                     if alignmentModeValue:
                         size = ((size + alignment - 1) // alignment ) * alignment
                         offset = ((offset + alignment - 1) // alignment ) * alignment
@@ -2491,7 +2519,8 @@ class projectCreate:
                         # memory size alignment simplifies HW address decode
                         offset = ((blockAddressCurrent[currentBlock] + size - 1) // size ) * size
                         blockAddressCurrent[currentBlock] = offset + size
-                blockAddressCurrent[currentBlock] = offset + size
+                else:
+                    blockAddressCurrent[currentBlock] = offset + size
                 sql = f"UPDATE {addressType} SET offset = {offset} WHERE \"{keyField}\" = '{row[keyField]}'" # field is quoted to allow for sql reserved words
                 g.cur.execute(sql)
 
@@ -3468,6 +3497,31 @@ class projectCreate:
         if ret:
             return ret
         return self.yamlDir
+
+    def _post_registers(self, itemkey, item, yamlFile):
+        """Validate memory register constraints after processing"""
+        regType = item.get('regType', None)
+        
+        if regType == 'memory':
+            # Memory registers must have non-empty wordLines
+            if not item.get('wordLines') or item.get('wordLines') == "":
+                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{itemkey}' must have wordLines field")
+                return item
+            
+            # Validate wordLines resolves to non-zero value
+            try:
+                parsed_val = self.qualConstParse(item['wordLinesKey'])
+                if parsed_val == 0:
+                    self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{itemkey}' has wordLines=0, must be non-zero")
+            except Exception:
+                # If parsing fails, let it pass - the constParse validation will catch it
+                pass
+            
+            # Memory registers must have addressStruct
+            if not item.get('addressStruct') or item.get('addressStruct') == "":
+                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{itemkey}' must have addressStruct field")
+        
+        return item
 
     # connections: connection: key, instance: auto, direction: auto, port: optional, connCount: optional
     # this is a complete custom handler, as the key is derived from other fields

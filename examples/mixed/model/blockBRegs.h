@@ -9,9 +9,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockBRegs_base.h"
+#include "blockBRegsBase.h"
 #include "addressMap.h"
 #include "hwRegister.h"
+#include "hwMemory.h"
 #include "mixedIncludes.h"
 #include "mixedBlockCIncludes.h"
 #include "mixedIncludeIncludes.h"
@@ -36,6 +37,9 @@ public:
     //registers
     hwRegister< dRegSt, 4 > rwD; // A Read Write register
     hwRegister< bSizeRegSt, 4 > roBsize; // A Read Only register with a structure that has a definition from an included context
+    hwMemoryPort< bSizeSt, bigSt > blockBTable1_adapter;
+    hwMemoryPort< bSizeSt, seeSt > blockBTableExt_adapter;
+    hwMemoryPort< bSizeSt, test37BitRegSt > blockBTable37Bit_adapter;
 
     blockBRegs(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~blockBRegs() override = default;

@@ -1,14 +1,11 @@
-# args from generator line
-# prj object
-# data set dict
-from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport, printIfDebug, roundup_pow2, roundup_pow2min4
-
-import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils
 
 # Does not alter the rendering
 intf_gen_utils.LEGACY_COMPAT_MODE = True
 
+# args from generator line
+# prj object
+# data set dict
 def render(args, prj, data):
     match args.section:
         case 'init':
@@ -117,16 +114,46 @@ def constructorInit(args, prj, data):
     for key, value in data['subBlockInstances'].items():
         out.append(f'        ,{ value["instance"] }(std::dynamic_pointer_cast<{ value["instanceType"] }Base>( instanceFactory::createInstance(name(), "{ value["instance"]}", "{value["instanceType"]}", "{value["variant"]}")))')
     for reg, regData in data['registers'].items():
+        # Skip memory registers - they only have adapters, not hwRegister objects
+        if regData['regType'] == 'memory':
+            continue
         if regData['regType'] == 'rw':
             defaultValue = hex(prj.getConst(regData["defaultValue"]))
             out.append(f'        ,{ regData["register"] }({regData["structure"]}::_packedSt({defaultValue}))')
         else:
             out.append(f'        ,{ regData["register"] }()')
-    for mem, memData in data['memories'].items():
-        if memData["local"]:
-            out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')
-        else:
-            out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]})')
+    if data['blockInfo'].get('isRegHandler'):
+        # For register handlers, use hwMemoryPort for all register-accessible memories
+        mems = intf_gen_utils.get_sorted_memories(data)
+        for mem, memData in mems.items():
+            out.append(f'        ,{ memData["memory"] }_adapter({memData["memory"]})')
+        # Also handle memory registers - connect adapter to base class port
+        for reg, regData in data['registers'].items():
+            if regData.get('regType') == 'memory':
+                out.append(f'        ,{ regData["register"] }_adapter({ baseClassName }::{ regData["register"] })')
+    else:
+        for mem, memData in data['memories'].items():
+            if memData["local"]:
+                out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')
+            else:
+                out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]})')
+        
+        # Initialize LOCAL memory registers
+        if registerDecode:
+            for reg, regData in data['registers'].items():
+                if regData['regType'] == 'memory':
+                    # LOCAL memory register - initialize channel, port, and adapter
+                    channelName = f'{data["blockName"]}_{regData["register"]}'
+                    out.append(f'        ,{ regData["register"] }_channel("{ channelName }", "{ data["blockName"] }")')
+                    out.append(f'        ,{ regData["register"] }_port("{ regData["register"] }_port")')
+                    out.append(f'        ,{ regData["register"] }_adapter({ regData["register"] }_port)')
+
+    # Memory connections (channel initialization would happen here if variables declared in header)
+    if len(data['memoryConnections']) > 0:
+        for key, val in data['memoryConnections'].items():
+            channelName = f'{val["interfaceName"]}'
+            out.append(f'        ,{ channelName }("{ channelName }", "{ data["blockName"] }")')
+
     # take the list and return a string
     return("\n".join(out))
 
@@ -137,33 +164,65 @@ def constructorBody(args, prj, data):
     first = True
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
     if registerDecode:
-        # loop through the memories in offset order
-        if 'memoriesParent' in data:
-            memoryKey = 'memoriesParent'
-        else:
-            memoryKey = 'memories'
-        mems = dict(filter(lambda x: x[1]['regAccess'], data[memoryKey].items()))
-        mems = dict(sorted(mems.items(), key=lambda item: item[1]["offset"]))
+        # Collect all register-accessible items and sort by offset
+        mem_reg_items = []
+        
+        # Add memories
+        mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():
-            if first:
-                first=False
-                out.append(f'    // register memories for FW access')
-            if memData["regAccess"]:
-                width = intf_gen_utils.get_struct_width(memData["structureKey"], prj.data["structures"])
-                memSize = roundup_pow2min4((width + 7) >> 3) * intf_gen_utils.get_const(memData['wordLinesKey'], prj.data['constants'])
-                if memoryKey == 'memoriesParent':
-                    out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}");') # TODO add access function
-                else:
-                    out.append(f'    regs.addMemory( 0x{memData["offset"]:0x}, 0x{memSize:0x}, std::string(this->name()) + ".{memData["memory"]}", &{memData["memory"]});')
-
-        first = True
-        regs = dict(sorted(data["registers"].items(), key=lambda item: item[1]["offset"]))
-        for reg, regData in regs.items():
-            if first:
-                first=False
-                out.append(f'    // register registers for FW access')
-
-            out.append(f'    regs.addRegister( 0x{regData["offset"]:0x}, {regData["bytes"]}, "{ regData["register"] }", &{ regData["register"] } );')
+            mem_reg_items.append({
+                'type': 'memory',
+                'offset': memData["offset"],
+                'name': memData["memory"],
+                'structure': memData["structure"],
+                'wordLines': memData["wordLines"],
+                'is_reg_handler': data['blockInfo'].get('isRegHandler')
+            })
+        
+        # Add memory registers
+        for reg, regData in data['registers'].items():
+            if regData.get('regType') == 'memory':
+                mem_reg_items.append({
+                    'type': 'memory_register',
+                    'offset': regData["offset"],
+                    'name': regData["register"],
+                    'structure': regData["structure"],
+                    'wordLines': regData["wordLines"]
+                })
+        
+        # Add regular registers
+        for reg, regData in data['registers'].items():
+            if regData.get('regType') != 'memory':
+                mem_reg_items.append({
+                    'type': 'register',
+                    'offset': regData["offset"],
+                    'name': regData["register"],
+                    'size': regData["bytes"]
+                })
+        
+        # Sort all items by offset
+        mem_reg_items.sort(key=lambda x: x['offset'])
+        
+        # Generate addMemory and addRegister calls in sorted order
+        memory_comment_written = False
+        register_comment_written = False
+        for item in mem_reg_items:
+            if item['type'] in ['memory', 'memory_register']:
+                if not memory_comment_written:
+                    memory_comment_written = True
+                    out.append(f'    // register memories for FW access')
+                if item['type'] == 'memory':
+                    if item['is_reg_handler']:
+                        out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                    else:
+                        out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
+                else:  # memory_register
+                    out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+            else:  # regular register
+                if not register_comment_written:
+                    register_comment_written = True
+                    out.append(f'    // register registers for FW access')
+                out.append(f'    regs.addRegister( 0x{item["offset"]:0x}, {item["size"]}, "{item["name"]}", &{item["name"]} );')
 
         first = True
     for key, value in data["connectionMaps"].items():
@@ -178,6 +237,25 @@ def constructorBody(args, prj, data):
     if connections:
         out.append(f'    // instance to instance connections via channel')
         out += connections
+
+    # Memory connections
+    if len(data['memoryConnections']) > 0:
+        out.append(f'    // memory connections')
+        for key, val in data['memoryConnections'].items():
+            channelName = f'{val["interfaceName"]}'
+            out.append(f'    {val["instance"]}->{val["memory"]}({channelName});')
+            out.append(f'    {val["memory"]}.bindPort({channelName});')
+    
+    # Bind LOCAL memory register ports to channels
+    if registerDecode and not data['blockInfo'].get('isRegHandler'):
+        hasLocalMemReg = False
+        for reg, regData in data['registers'].items():
+            if regData['regType'] == 'memory':
+                if not hasLocalMemReg:
+                    out.append(f'    // bind local memory register ports to channels')
+                    hasLocalMemReg = True
+                out.append(f'    {regData["register"]}_port({regData["register"]}_channel);')
+
     first = True
 
     if data['addressDecode']['isApbRouter']:
@@ -227,4 +305,3 @@ def addressDecoder(args, prj, data):
         last = last[:-1] + '})'
         out.append(last)
     return out
-

@@ -1,13 +1,14 @@
 //copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
-
+#include "endOfTest.h"
+#include "testController.h"
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "blockB.h"
-#include "blockD_base.h"
-#include "blockF_base.h"
-#include "threeCs_base.h"
-#include "blockBRegs_base.h"
+#include "blockDBase.h"
+#include "blockFBase.h"
+#include "threeCsBase.h"
+#include "blockBRegsBase.h"
 SC_HAS_PROCESS(blockB);
 
 blockB::registerBlock blockB::registerBlock_; //register the block with the factory
@@ -26,6 +27,8 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,loopFD("blockD_loopFD", "blockF")
         ,rwD("blockB_rwD", "blockB", dRegSt::_packedSt(0x0))
         ,roBsize("blockB_roBsize", "blockB", bSizeRegSt::_packedSt(0x0))
+        ,blockBTableExt("blockB_blockBTableExt", "blockB")
+        ,blockBTable37Bit("blockB_blockBTable37Bit", "blockB")
         ,uBlockD(std::dynamic_pointer_cast<blockDBase>( instanceFactory::createInstance(name(), "uBlockD", "blockD", "")))
         ,uBlockF0(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0")))
         ,uBlockF1(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1")))
@@ -37,6 +40,9 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockBTable3(name(), "blockBTable3", mems, BSIZE)
         ,blockBTableSP0(name(), "blockBTableSP0", mems, BSIZE)
         ,blockBTableSP(name(), "blockBTableSP", mems, BSIZE)
+        ,blockBTable1_port1("blockBTable1_port1", "blockB")
+        ,blockBTableSP_bob("blockBTableSP_bob", "blockB")
+        ,blockBTable1_reg("blockBTable1_reg", "blockB")
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
@@ -66,6 +72,17 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
     uBlockD->rwD(rwD);
     uBlockD->roBsize(roBsize);
     uBlockBRegs->roBsize(roBsize);
+    uBlockD->blockBTableExt(blockBTableExt);
+    uBlockBRegs->blockBTableExt(blockBTableExt);
+    uBlockD->blockBTable37Bit(blockBTable37Bit);
+    uBlockBRegs->blockBTable37Bit(blockBTable37Bit);
+    // memory connections
+    uBlockD->blockBTable1(blockBTable1_port1);
+    blockBTable1.bindPort(blockBTable1_port1);
+    uBlockD->blockBTableSP(blockBTableSP_bob);
+    blockBTableSP.bindPort(blockBTableSP_bob);
+    uBlockBRegs->blockBTable1(blockBTable1_reg);
+    blockBTable1.bindPort(blockBTable1_reg);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(doneTest);
@@ -73,6 +90,13 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
 
 void blockB::doneTest(void)
 {
+    endOfTest eot;
+    eot.registerVoter();
     startDone->waitNotify();
     startDone->ack();
+    // Do not end the simulation until all registered tests have completed.
+    // This prevents premature sc_stop() (see mixedExternal::eotThread) before
+    // late tests like test_mem_hier_cpu_read run.
+    testController::GetInstance().wait_all_tests_complete();
+    eot.setEndOfTest(true);
 }
