@@ -53,7 +53,7 @@ class newModule:
         # load the template file
         templateProg = processYaml.expandDirMacros(fileGenerationConfig['template'])
         templateDefinition = { 'templates': { 'fileGen': templateProg } }
-        self.renderer = renderer(prj, '', docType='', directTemplate=templateDefinition)
+        self.renderer = renderer(prj, docType='', directTemplate=templateDefinition)
         blockFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'block'}
         for block, blockData in prj.blocks.items():
             data = dict()
