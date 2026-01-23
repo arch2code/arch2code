@@ -817,11 +817,12 @@ class projectOpen:
                             ret[object][key] = value
                     if object=='constants':
                         ret[object][key] = value
-                        if isinstance(value["value"], int):
-                            isSigned = value["value"] < 0
-                            if not isSigned and abs(value["value"]) <= 0xFFFFFFFF:
+                        safeValue = self.getConst(value["value"])
+                        if isinstance(safeValue, int):
+                            isSigned = safeValue < 0
+                            if not isSigned and abs(safeValue) <= 0xFFFFFFFF:
                                 ret[object][key]['valueType'] = 'uint32_t'
-                            elif isSigned and abs(value["value"]) <= 0x7FFFFFFF:
+                            elif isSigned and abs(safeValue) <= 0x7FFFFFFF:
                                 ret[object][key]['valueType'] = 'int32_t'
                             else:
                                 ret[object][key]['valueType'] = 'int64_t' if isSigned else 'uint64_t'
