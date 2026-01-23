@@ -3,7 +3,9 @@
 **Version:** 1.0  
 **Purpose:** Enable AI agents to assist users in creating YAML architecture files and implementing SystemVerilog/SystemC modules using the arch2code toolchain.
 
-**Documentation Reference:** https://github.com/arch2code/arch2code/wiki
+**Documentation References:**
+- **Architecture & Code Generation:** https://github.com/arch2code/arch2code/wiki
+- **SystemC User APIs:** `SYSTEMC_API_USER_REFERENCE.md` (for C++ implementation guidance)
 
 ---
 
@@ -1856,6 +1858,10 @@ endmodule
 
 ### SystemC Implementation
 
+**For detailed SystemC API documentation, see `SYSTEMC_API_USER_REFERENCE.md`**
+
+This section covers code generation workflow. For user-facing SystemC APIs (registers, memory, channels, logging, etc.), refer to the dedicated SystemC API reference.
+
 #### Auto-Generated Files
 
 1. **Base Classes** (`<Module>Base.h`)
@@ -1940,6 +1946,7 @@ public:
 - Implement behavior in derived module classes
 - Use channel abstractions (e.g., `apb_channel`, `rdy_vld_channel`)
 - For Verilator integration, use generated `*_hdl_sc_wrapper.h` files
+- **For SystemC API usage details:** See `SYSTEMC_API_USER_REFERENCE.md` for complete reference on logging, register/memory access, channels, trackers, and implementation patterns
 
 ---
 
@@ -3190,6 +3197,12 @@ graph TB
 ### H. Additional Resources
 
 - **Arch2Code Wiki**: https://github.com/arch2code/arch2code/wiki
+- **SystemC API Reference**: `SYSTEMC_API_USER_REFERENCE.md` - Complete user-facing SystemC API documentation
+  - Module logging (`log_` member)
+  - Register and memory access
+  - Communication channels (rdy_vld, APB, req_ack, etc.)
+  - Transaction tracking and debugging
+  - Implementation patterns and best practices
 - **Example Projects**: `builder/base/examples/`
   - `helloWorld`: Minimal example
   - `simple`: Basic project structure
