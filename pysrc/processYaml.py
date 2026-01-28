@@ -2298,7 +2298,7 @@ class projectCreate:
                 f"Template configuration has changed. The following keys are no longer supported: {', '.join(found_deprecated)}.\n"
                 f"Please migrate your template mappings to a unified 'templates:' section in your project.yaml file.\n"
                 f"For most projects this means just delete these keys to get the default system template mappings.\n"
-                f"Only add user-defined template mappings if you need to add oroverride the defaults.\n"
+                f"Only add user-defined template mappings if you need to add or override the defaults.\n"
                 f"See the base config files (builder/base/config/project.yaml or builder/config/project.yaml) for examples.\n"
                 f"The 'templates:' section should combine all template mappings from cppConfig, svConfig, and docConfig\n"
                 f"into a single dictionary with template name as key and template file path as value."
