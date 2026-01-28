@@ -8,20 +8,18 @@ import argparse
 # simple helper class to take care of the jinja interfaces
 class renderer:
     docType = ""
-    configFile = ""
     config = None
     templates = dict()
     pythonTemplate = dict()
-    def __init__(self, prj, configFileKey, docType = 'asciidoctor', directTemplate = None) -> None:
+    def __init__(self, prj, docType = 'asciidoctor', directTemplate = None) -> None:
         self.docType = docType
         # initialze using a user provided mapping between templates and template files
         if directTemplate is None:
-            templateConfig = prj.config.getConfig('TEMPLATE_CONFIGS')
-            self.config = templateConfig.get(configFileKey, {})
+            self.config = prj.config.getConfig('TEMPLATES')
         else:
             self.config = directTemplate
         if 'templates' not in self.config:
-            printError(f"templates: key does not exist in config file {self.configFile}")
+            printError(f"templates: key does not exist in project configuration")
             exit(warningAndErrorReport())
         self.loadTemplates()
 
@@ -66,7 +64,7 @@ class renderer:
             else:
                 msg = pythonTemplate.render(data['args'], data['prj'], data['block'])
         else:
-            printError(f"Template {template} does not exist in config file {self.configFile}")
+            printError(f"Template {template} does not exist in project configuration")
             exit(warningAndErrorReport())
         return msg
         
@@ -74,7 +72,7 @@ class renderer:
     def get(self, item):
         ret = self.config.get(item, None)
         if ret is None:
-            printError(f"Item {item} does not exist in config file {self.configFile}")
+            printError(f"Item {item} does not exist in project configuration")
             exit(warningAndErrorReport())
 
         return (ret)
@@ -82,7 +80,7 @@ class renderer:
     def loadTemplates(self):
         for template, templateFile in self.config['templates'].items():
             if not os.path.exists(templateFile):
-                self.pythonTemplate[template] = f"ERROR: Unable to find {templateFile} in {templateFile} referenced by {template} in config file {self.configFile}"
+                self.pythonTemplate[template] = f"ERROR: Unable to find {templateFile} referenced by template '{template}' in project configuration"
                 continue
             if os.path.splitext(templateFile)[1] != '.py':
                 with open(templateFile) as f:

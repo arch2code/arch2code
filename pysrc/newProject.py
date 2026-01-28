@@ -36,10 +36,8 @@ addressControl: {{data.addressControlFile}}
 
 topInstance: testbench
 
-# uncomment to use custom templates, otherwise the default templates are used
-#docConfig : config/docConfig.yaml
-#cppConfig : config/cppConfig.yaml
-#svConfig : config/svConfig.yaml
+#templates: # uncomment to use custom templates or to override base templates
+#  testbench: templates/systemc/testbench_custom.py
 
 # this is a list of locations, orthogonal to design hierarchy, that maps out the functional layout of the project
 # $xxx is a macro that is replaced by the directory. Note macro replacement only works as first character 

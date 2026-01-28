@@ -1,0 +1,14 @@
+---
+description: YAML architecture rules for arch2code
+globs: arch/yaml/**/*.yaml
+alwaysApply: false
+---
+
+See `builder/base/rules/architecture-yaml.md` for YAML architecture guidance.
+
+Key points:
+- YAML is the Single Source of Truth
+- Define in order: constants → types → structures → interfaces → blocks → instances → connections
+- Width is REQUIRED for non-enum types
+- Manually create top-level bus decoders (block-level `_regs` are auto-generated)
+- Connections only work within the SAME container

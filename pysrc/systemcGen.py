@@ -21,7 +21,7 @@ class genSystemC:
     def __init__(self, prj, args):
         # get name of file containing renderer configuration
         # initialize the render object ready for later use
-        self.renderer = renderer(prj, 'cppConfig', docType='cpp' )
+        self.renderer = renderer(prj, docType='cpp' )
         # file containing list of instances to include in the generation was provided on the command line
         if args.instances:
             printWarning("The --instances option is not supported for systemC generation")

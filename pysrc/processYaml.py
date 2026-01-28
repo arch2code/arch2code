@@ -817,11 +817,12 @@ class projectOpen:
                             ret[object][key] = value
                     if object=='constants':
                         ret[object][key] = value
-                        if isinstance(value["value"], int):
-                            isSigned = value["value"] < 0
-                            if not isSigned and abs(value["value"]) <= 0xFFFFFFFF:
+                        safeValue = self.getConst(value["value"])
+                        if isinstance(safeValue, int):
+                            isSigned = safeValue < 0
+                            if not isSigned and abs(safeValue) <= 0xFFFFFFFF:
                                 ret[object][key]['valueType'] = 'uint32_t'
-                            elif isSigned and abs(value["value"]) <= 0x7FFFFFFF:
+                            elif isSigned and abs(safeValue) <= 0x7FFFFFFF:
                                 ret[object][key]['valueType'] = 'int32_t'
                             else:
                                 ret[object][key]['valueType'] = 'int64_t' if isSigned else 'uint64_t'
@@ -2127,6 +2128,8 @@ class projectCreate:
         # Merge fileMap at the key level (base and pro keys combined),
         # but keep each individual map entry shallow.
         ("fileGeneration", "fileMap"): "dict_shallow",
+        # Templates are merged shallow - pro/user can override base templates.
+        ("templates",): "dict_shallow",
     }
 
     def __init__(self, projFile, dbFile):
@@ -2274,7 +2277,7 @@ class projectCreate:
 
     def createProjectConfig(self):
         # save anything in project file to config except named items
-        notConfig = {"projectFiles", "dirs", "systemFiles"}
+        notConfig = {"projectFiles", "dirs", "systemFiles", "templates"}
         toSave = {'TOPINSTANCE': '_top', "PROJECTNAME": "Nameless"} #initialize to some defaults as appropriate
         for item in self.proj:
             # to allow later processing of nested project files we need to ensure the lower level parser ignores them by adding them to the set
@@ -2286,50 +2289,39 @@ class projectCreate:
         for item in self.a2cProj:
             self.ignoreSections.add(item)
 
-    def parseTemplateFile(self, templateType, project):
-        ret = dict()
-        if templateType in project:
-            configFile = expandDirMacros(project[templateType])
-            a2cTemplates = existsLoad(configFile)
-            # Empty YAML files (or files containing only comments) load as None.
-            # Treat that as an empty config so template merging can proceed.
-            if not a2cTemplates:
-                a2cTemplates = {}
-            # copy everything but the templates to return dict
-            ret = {k: v for k, v in a2cTemplates.items() if k != 'templates'}
-            # manually process the templates to expand any macros
-            if 'templates' in a2cTemplates:
-                ret['templates'] = dict()
-                for template, fileName in (a2cTemplates.get('templates') or {}).items():
-                    fileNameExpanded = expandDirMacros(fileName)
-                    ret['templates'][template] = os.path.abspath(fileNameExpanded)
-        return ret
-
     def configTemplates(self):
-        templateConfig = dict()
-        for templateType in self.generatorTemplates:
-            # Template config precedence: user > pro > base.
-            # Note: a2cProj is already merged (pro overrides base), but for
-            # templates we need to load both config files and merge them so we
-            # keep base defaults that pro doesn't override.
-            baseTemplates = self.parseTemplateFile(templateType, self._a2cBaseProj)
-            proTemplates = self.parseTemplateFile(templateType, self._a2cProProj)
-            userTemplates = self.parseTemplateFile(templateType, self._userProjRaw)
+        # Check for deprecated config file references and provide migration guidance
+        deprecated_keys = {'cppConfig', 'svConfig', 'docConfig'}
+        found_deprecated = deprecated_keys & self._userProjRaw.keys()
+        if found_deprecated:
+            self.logError(
+                f"Template configuration has changed. The following keys are no longer supported: {', '.join(found_deprecated)}.\n"
+                f"Please migrate your template mappings to a unified 'templates:' section in your project.yaml file.\n"
+                f"For most projects this means just delete these keys to get the default system template mappings.\n"
+                f"Only add user-defined template mappings if you need to add or override the defaults.\n"
+                f"See the base config files (builder/base/config/project.yaml or builder/config/project.yaml) for examples.\n"
+                f"The 'templates:' section should combine all template mappings from cppConfig, svConfig, and docConfig\n"
+                f"into a single dictionary with template name as key and template file path as value."
+            )
+            return
 
-            merged = baseTemplates
-            if 'templates' not in merged:
-                merged['templates'] = dict()
-
-            # Merge pro on top of base.
-            merged.update({k: v for k, v in proTemplates.items() if k != 'templates'})
-            merged['templates'].update(proTemplates.get('templates', {}))
-
-            # Merge user on top of pro/base.
-            merged.update({k: v for k, v in userTemplates.items() if k != 'templates'})
-            merged['templates'].update(userTemplates.get('templates', {}))
-
-            templateConfig[templateType] = merged
-        self.config.setConfig('TEMPLATE_CONFIGS', templateConfig)
+        # Extract unified templates from merged project config
+        # The templates have already been merged via merge_with_spec (base -> pro -> user)
+        templates = self.proj.get('templates', {})
+        
+        if not templates:
+            self.logWarning("No templates defined in project configuration. Code generation may fail.")
+            templateConfig = {'templates': {}}
+        else:
+            # Expand macros in template file paths
+            expanded_templates = {}
+            for template_name, template_path in templates.items():
+                expanded_path = expandDirMacros(template_path)
+                expanded_templates[template_name] = os.path.abspath(expanded_path)
+            
+            templateConfig = {'templates': expanded_templates}
+        
+        self.config.setConfig('TEMPLATES', templateConfig)
 
     def logError(self, msg):
         self.errorState = True

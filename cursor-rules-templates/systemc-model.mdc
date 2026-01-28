@@ -1,0 +1,14 @@
+---
+description: SystemC model implementation rules
+globs: 
+  - model/**/*.cpp
+  - model/**/*.h
+alwaysApply: false
+---
+
+See `builder/base/rules/systemc-model.md` for model-specific guidance.
+
+Key points:
+- Implement behavior in derived `*.cpp` files
+- Prefer `m_val` for register access
+- Use `writeNoDelay()` for streaming with clocked interfaces

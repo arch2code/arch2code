@@ -5,7 +5,7 @@
 #include "encoderBase.h"
 
 // GENERATED_CODE_PARAM --context=mixed.yaml
-// GENERATED_CODE_BEGIN --template=encoder
+// GENERATED_CODE_BEGIN --template=cpp_encoder
 class encoderOpcodeEnA : public encoderBase< opcodeTagT, opcodeEnumT >
 {
 public:

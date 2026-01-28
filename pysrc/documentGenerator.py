@@ -14,7 +14,7 @@ class documentGenerator:
         pass
 
         self.prj = prj
-        self.renderer = renderer(prj, 'docConfig', docType='asciidoctor')
+        self.renderer = renderer(prj, docType='asciidoctor')
 
         # otherwise use the list of instances from the database
         self.instances = dict.fromkeys(prj.data['instances'], 0)
