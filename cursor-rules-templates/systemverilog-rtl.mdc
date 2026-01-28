@@ -1,0 +1,14 @@
+---
+description: SystemVerilog RTL rules
+globs: rtl/**/*.sv
+alwaysApply: false
+---
+
+See `builder/base/rules/systemverilog-rtl.md` for RTL guidance.
+
+Key points:
+- NEVER edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END`
+- Use `logic` over `reg/wire`
+- Use `always_ff` for sequential, `always_comb` for combinational
+- Import packages: `import <module>_package::*;`
+- Lint with `make lint` in rtl directory

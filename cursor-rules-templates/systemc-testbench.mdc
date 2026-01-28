@@ -1,0 +1,16 @@
+---
+description: SystemC testbench rules
+globs: 
+  - tb/**/*.cpp
+  - tb/**/*.h
+alwaysApply: false
+---
+
+See `builder/base/rules/systemc-testbench.md` for testbench-specific guidance.
+
+Key points:
+- Separate stimulus generation from checking
+- Use scoreboards for out-of-order completion
+- Log important events at `LOG_IMPORTANT`, pass/fail at `LOG_ALWAYS`
+- Use random seeds for reproducibility
+- Initialize all DUT state before starting stimulus
