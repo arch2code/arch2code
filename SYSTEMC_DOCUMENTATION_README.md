@@ -16,7 +16,7 @@ This package provides complete documentation for implementing hardware blocks us
 
 ## Document Descriptions
 
-### SYSTEMC_API_USER_REFERENCE.md (1,960 lines)
+### SYSTEMC_API_USER_REFERENCE.md
 
 **Audience:** C++ developers implementing hardware blocks
 
@@ -61,7 +61,7 @@ This package provides complete documentation for implementing hardware blocks us
 - Comprehensive API coverage
 - Practical implementation patterns
 
-### SYSTEMC_DOCUMENTATION_GAPS.md (446 lines)
+### SYSTEMC_DOCUMENTATION_GAPS.md
 
 **Audience:** Framework maintainers and documentation authors
 
@@ -169,67 +169,6 @@ This package provides complete documentation for implementing hardware blocks us
 
 ---
 
-## Document Statistics
-
-| Document | Lines | Size | Sections | Examples |
-|----------|-------|------|----------|----------|
-| SYSTEMC_API_USER_REFERENCE.md | 1,960 | ~100KB | 9 major | 50+ |
-| SYSTEMC_DOCUMENTATION_GAPS.md | 446 | ~25KB | 5 major | 20+ |
-| **Total** | **2,406** | **~125KB** | **14** | **70+** |
-
----
-
-## Coverage Checklist
-
-### User APIs (Complete ✅)
-- [x] Module logging (log_)
-- [x] Register access (m_val, read, write)
-- [x] Memory access (read, write, RMW)
-- [x] rdy_vld_channel
-- [x] apb_channel
-- [x] memory_channel
-- [x] req_ack_channel
-- [x] push_ack_channel
-- [x] pop_ack_channel
-- [x] notify_ack_channel
-- [x] status_channel
-- [x] Transaction tracking (prt, info, getString, getBackdoorPtr)
-
-### Framework Reference (Complete ✅)
-- [x] blockBase
-- [x] interfaceBase
-- [x] portBase
-- [x] addressMap
-- [x] instanceFactory
-- [x] hwRegister/hwMemory constructors
-
-### Advanced Topics (Complete ✅)
-- [x] Multi-cycle patterns
-- [x] synchLock
-- [x] encoderBase
-- [x] ThreadSafeEvent
-- [x] Backdoor access
-
-### Implementation Patterns (Complete ✅)
-- [x] Basic module structure
-- [x] Producer pattern
-- [x] Consumer pattern
-- [x] APB master
-- [x] APB slave/register handler
-- [x] Multi-cycle bursts
-- [x] Register/memory access
-- [x] Pipeline stages
-
-### Best Practices (Complete ✅)
-- [x] Thread design
-- [x] Channel usage
-- [x] Logging
-- [x] Error handling
-- [x] Performance
-- [x] Debugging
-
----
-
 ## Maintenance Notes
 
 ### Keeping Documentation Current
@@ -246,12 +185,6 @@ This package provides complete documentation for implementing hardware blocks us
 - New files added to framework
 - Documentation templates change
 - Priorities shift
-
-### Version History
-
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0 | 2026-01-22 | Initial comprehensive documentation |
 
 ---
 
@@ -321,7 +254,7 @@ void myBlock::regHandler() {
 ## Contact and Support
 
 For questions or issues:
-1. Check SYSTEMC_API_REFERENCE.md first
+1. Check SYSTEMC_API_USER_REFERENCE.md first
 2. Review example code in `builder/base/examples/`
 3. Check ARCH2CODE_AI_RULES.md for generation issues
 4. Consult source code with SYSTEMC_DOCUMENTATION_GAPS.md as guide

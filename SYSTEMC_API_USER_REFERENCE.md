@@ -383,7 +383,7 @@ void myModule::atomicUpdate() {
 
 | Method | Timing | Thread-Safe | Use Case |
 |--------|--------|-------------|----------|
-| `[index]` | None | ⚠️ No | Fast functional access |
+| `[index]` | None | ⚠️ No | Backdoor (test init / verification only) |
 | `read(index)` | Yes | ⚠️ No | Timed single-thread |
 | `write(index, value)` | Yes | ⚠️ No | Timed single-thread |
 | `readRMW()` | Yes | ✅ Yes | Multi-threaded access |
