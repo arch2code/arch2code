@@ -1,0 +1,18 @@
+---
+description: Shared SystemC rules for model and testbench
+globs: 
+  - model/**/*.cpp
+  - model/**/*.h
+  - tb/**/*.cpp
+  - tb/**/*.h
+alwaysApply: false
+---
+
+See `builder/base/rules/systemc-shared.md` for common SystemC patterns.
+
+Key points:
+- NEVER edit `*Base.h` files or `GENERATED_CODE` sections
+- Use `log_.logPrint()` for logging with levels: `LOG_ALWAYS`, `LOG_IMPORTANT`, `LOG_NORMAL`, `LOG_DEBUG`
+- Register access: `reg.m_val` 
+- Memory access: `read()`/`write()` (timed), `[]` (backdoor only)
+- Thread pattern: `wait(SC_ZERO_TIME)` at start, `while(true)` loop

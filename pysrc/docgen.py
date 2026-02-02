@@ -16,7 +16,7 @@ class makeDoc:
         instanceTop = args.instance
         docDepth = args.depth
         self.prj = prj
-        self.renderer = renderer(prj, 'docConfig', docType='asciidoctor')
+        self.renderer = renderer(prj, docType='asciidoctor')
 
         qualTop = prj.getQualTop(instanceTop)
 

@@ -148,3 +148,8 @@ help::
 	@echo "  newmodule	- Create a new module in the project database"
 	@echo "  clean    	- Clean generated files and project database"
 	@echo "  help     	- Show this help message"
+
+#------------------------------------------------------------------------
+# Include AI agent setup targets
+#------------------------------------------------------------------------
+include $(A2C_ROOT)/include/make/a2c-agents.mk

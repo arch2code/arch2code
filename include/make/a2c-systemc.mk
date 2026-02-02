@@ -27,8 +27,6 @@ ifndef LD_BOOST
 $(error LD_BOOST is not set - please set to boost library (.so) path)
 endif
 
-include $(A2C_ROOT)/include/make/a2c-cursor.mk
-
 ifndef VERILATOR_ROOT
 VERILATOR_ROOT=/usr/local/share/verilator
 endif
@@ -155,7 +153,7 @@ endif
 clean::
 	$(RM) -r $(BIN_DIR)
 	$(RM) -rf simx.*
-	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap clean
+	@test -d $(REPO_ROOT)/verif/vl_wrap && $(MAKE) -C $(REPO_ROOT)/verif/vl_wrap clean || true
 
 help::
 	@echo "  all     	- Build the project binary"
