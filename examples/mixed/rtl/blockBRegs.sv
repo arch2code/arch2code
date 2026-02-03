@@ -131,7 +131,7 @@ module blockBRegs
                         default: ;
                     endcase
                 end
-                [32'hd0:32'hf4]: begin
+                [32'h100:32'h124]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             blockBTableExt_update_0 = 1'b1;
@@ -199,7 +199,7 @@ module blockBRegs
                     endcase
                     nxt_blockBTable1_rd_enable = ~blockBTable1_rd_capture;
                 end
-                [32'hd0:32'hf4]: begin
+                [32'h100:32'h124]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             if (blockBTableExt_rd_capture) begin

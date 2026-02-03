@@ -81,7 +81,7 @@ module blockARegs
         nxt_blockATable37Bit_data = blockATable37Bit_data;
         if (wr_select) begin
             case (apb_addr) inside
-                [32'h50:32'h74]: begin
+                [32'h80:32'ha4]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             blockATableLocal_update_0 = 1'b1;
@@ -126,7 +126,7 @@ module blockARegs
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roA_reg[6:0]);
                 end
-                [32'h50:32'h74]: begin
+                [32'h80:32'ha4]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             if (blockATableLocal_rd_capture) begin
