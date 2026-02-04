@@ -1,6 +1,8 @@
 # args from generator line
 # prj object
 # data set dict
+from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport, printIfDebug
+
 def render(args, prj, data):
     match args.section:
         case 'init':

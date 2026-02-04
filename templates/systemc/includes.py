@@ -1,6 +1,9 @@
 # args from generator line
 # prj object
 # data set dict
+from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport, printIfDebug, roundup_pow2
+from pysrc.intf_gen_utils import get_struct_width, get_const
+
 def render(args, prj, data):
     match args.section:
         case 'constants':

@@ -3,7 +3,7 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_connect_channel_type, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir
 
 from jinja2 import Template
 

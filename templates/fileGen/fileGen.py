@@ -1,4 +1,6 @@
 
+from pysrc.arch2codeHelper import printError, warningAndErrorReport
+
 from jinja2 import Template as J2Template
 from string import Template
 
