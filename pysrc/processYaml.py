@@ -19,19 +19,6 @@ continueOnError = False
 # yaml = YAML(typ='safe', pure=True)
 yaml = YAMLRAW.YAML(typ='rt')
 
-def calculate_aligned_address(memsize, base_offset):
-    """Calculate aligned address for memory based on its actual size.
-    Rounds up to the next power-of-2 boundary that can accommodate the memory size."""
-    # Find the next power of 2 that can accommodate the memory size
-    # This ensures proper alignment and clean address boundaries
-
-    # Round memsize up to next power of 2 for alignment
-    alignment_boundary = 1 << clog2(memsize)
-
-    # Calculate which alignment boundary this memory should start at
-    alignment_index = (base_offset + alignment_boundary - 1) // alignment_boundary
-    return alignment_index * alignment_boundary
-
 def dict_factory(cursor, row):
     d = {}
     for idx, col in enumerate(cursor.description):
