@@ -45,43 +45,48 @@ def get_reghandler_properties(prj, data):
 def get_hwregs(prj, data):
     hwregs = []
     regs = dict()
-    # Sort registerPorts by offset to ensure addRegister/addMemory calls are in address order
-    sorted_regs = sorted(data['registerPorts'].values(), key=lambda x: x['offset'])
-    for reg in sorted_regs:
-        if reg['register'] in regs:
-            continue
-        regs[reg['register']] = 0
-        
-        # Handle memory registers differently
-        if reg.get('regType') == 'memory':
+
+    sorted_insts = sorted(list(data['memoryPorts'].values()) + list(data['registerPorts'].values()), key=lambda x: x['offset'])
+
+    for inst in sorted_insts:
+        if 'memory' in inst:
             hwregs.append({
-                "name": reg['register'] + '_adapter',
-                "datatype": reg['structure'],
-                "addresstype": reg['addressStruct'],
-                "size_rounded": roundup_multiple(reg['bytes'], 4),
-                "size": reg['bytes'],
                 "is_memory": True,
-                "word_lines": reg['wordLines'],
-                "offset": hex(reg['offset']),
-                "port_name": reg['register'],
-                "descr": reg['desc']
+                "name": inst['memory'] + '_adapter',
+                "datatype": inst['structure'],
+                "addresstype": inst['addressStruct'],
+                "word_lines": inst['wordLines'],
+                "offset": hex(inst['offset']),
+                "port_name": inst['memory'],
+                "descr": inst['desc']
+            })
+        elif inst.get('regType') == 'memory':
+            hwregs.append({
+                "is_memory": True,
+                "name": inst['register'] + '_adapter',
+                "datatype": inst['structure'],
+                "addresstype": inst['addressStruct'],
+                "word_lines": inst['wordLines'],
+                "offset": hex(inst['offset']),
+                "port_name": inst['register'],
+                "descr": inst['desc']
             })
         else:
-            port_type = intf_gen_utils.get_intf_type(reg['interfaceType'], data)
-            direction = "_out" if reg['direction'] == 'src' else "_in"
+            port_type = intf_gen_utils.get_intf_type(inst['interfaceType'], data)
+            direction = "_out" if inst['direction'] == 'src' else "_in"
             port_type = port_type + direction
             hwregs.append({
-                "name": reg['register'] + '_reg',
-                "datatype": reg['structure'],
-                "size_rounded": roundup_multiple(reg['bytes'], 4),
-                "size": reg['bytes'],
-                "ro" : 'true' if reg['regType'] == 'ro' else 'false',
                 "is_memory": False,
-                "offset": hex(reg['offset']),
+                "name": inst['register'] + '_reg',
+                "datatype": inst['structure'],
+                "size_rounded": roundup_multiple(inst['bytes'], 4),
+                "size": inst['bytes'],
+                "ro" : 'true' if inst['regType'] == 'ro' else 'false',
+                "offset": hex(inst['offset']),
                 "port_type": port_type,
-                "port_name": reg['register'],
-                "default": hex(prj.getConst(reg['defaultValue'])) if reg['regType'] == 'rw' else None,
-                "descr": reg['desc']
+                "port_name": inst['register'],
+                "default": hex(prj.getConst(inst['defaultValue'])) if inst['regType'] == 'rw' else None,
+                "descr": inst['desc']
             })
     return hwregs
 
