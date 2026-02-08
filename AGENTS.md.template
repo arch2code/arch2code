@@ -8,17 +8,23 @@ To provide the best assistance, you **must** consult the specific skill files lo
 | User Intent | Primary Skill File |
 | :--- | :--- |
 | **Start/Config** | `setup-project.md` (Project init, `project.yaml`) |
+| **Address/Mem** | `manage-address-space.md` (Address map, decoding, FW headers) |
 | **Architecture** | `design-architecture.md` (YAML blocks, interfaces) |
 | **Build/Run** | `manage-build.md` (`make` targets, `gen`, `db`) |
+| **Docs** | `doc-generation.md` (Generate diagrams, register maps) |
 | **SystemC Core** | `systemc-core.md` (Modules, threads, logging) |
 | **SystemC Sync** | `systemc-synchronization.md` (Locking, arbitration, events) |
 | **SystemC Data** | `systemc-resources.md` (Registers, memories, trackers) |
 | **SystemC Ports** | `systemc-interfaces.md` (AXI, Rdy/Vld, Push/Ack) |
+| **SystemC Patterns** | `systemc-patterns.md` (Producer-Consumer, Register Handler, Multi-Cycle) |
 | **RTL Core** | `rtl-core.md` (Modules, FSMs, resets) |
+| **RTL Regs** | `rtl-registers.md` (Decoder architecture, external regs) |
 | **RTL Arbiter** | `rtl-arbitration.md` (`memArb`, `vldAckArb`) |
 | **RTL Datapath** | `rtl-datapath.md` (FIFOs, `inPlaceList`, Capture) |
 | **RTL Ports** | `rtl-interfaces.md` (Interface usage) |
+| **RTL Patterns** | `rtl-patterns.md` (Streaming, Req-Resp, Arbitration) |
 | **Verification** | `verify-testbench.md` (Testbenches, scoreboards) |
+| **Co-Sim** | `verify-cosimulation.md` (Verilator wrappers, Tandem) |
 
 ## Core Principles
 1.  **Conventions First:** Always follow the project's existing style and patterns.
