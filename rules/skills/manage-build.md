@@ -10,7 +10,8 @@ Guide the user on how to build, simulate, and manage the project using the `make
     *   `make db`: Loads the project configuration and architecture into the database. Useful for validation without full generation.
     *   `make clean`: Cleans generated files and build artifacts.
     *   `make help`: Lists available targets.
-    *   `make`: Runs full build
+    *   `make`: Runs full build with just the model
+    *   `make VL_DUT=1`: Runs full build with model and RTL
 
 2.  **Module Creation:**
     *   Use `make newmodule` to scaffold a new block (interactive).

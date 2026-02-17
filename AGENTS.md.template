@@ -25,6 +25,7 @@ To provide the best assistance, you **must** consult the specific skill files lo
 | **RTL Patterns** | `rtl-patterns.md` (Streaming, Req-Resp, Arbitration) |
 | **Verification** | `verify-testbench.md` (Testbenches, scoreboards) |
 | **Co-Sim** | `verify-cosimulation.md` (Verilator wrappers, Tandem) |
+| **Tandem** | `run-tandem.md` (Build/run tandem verification for leaf blocks) |
 
 ## Core Principles
 1.  **Conventions First:** Always follow the project's existing style and patterns.
