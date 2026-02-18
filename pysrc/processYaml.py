@@ -740,27 +740,40 @@ class projectOpen:
                                 qual_enum_name = f"{enum_name}/{context}"
                                 self._enum_lookup[qual_enum_name] = enum_value
     
-    def getConst(self, value):
+    def getConst(self, value, require_int=False, context_msg=None):
         try:
             ret = int(value)
-        except:
+        except (ValueError, TypeError):
             ret = None
-            
-            # First, try to look up in constants table using qualified key
-            if 'constants' in self.data and value in self.data['constants']:
+
+            # Try float literal
+            try:
+                ret = float(value)
+            except (ValueError, TypeError):
+                pass
+
+            # Look up in constants table using qualified key
+            if ret is None and 'constants' in self.data and value in self.data['constants']:
                 const_data = self.data['constants'][value]
                 if isinstance(const_data, dict):
                     ret = const_data.get('value', None)
-            
+
             # If not found in constants, look up in enum lookup dictionary
             if ret is None:
-                # Build enum lookup on first use (lazy initialization)
                 self._build_enum_lookup()
                 ret = self._enum_lookup.get(value, None)
-            
+
             if ret is None:
                 printError(f"Unknown constant '{value}'")
                 exit(warningAndErrorReport())
+
+        if require_int and isinstance(ret, float):
+            msg = f"Constant '{value}' resolves to floating-point value ({ret})"
+            if context_msg:
+                msg += f", but {context_msg} requires an integer"
+            printError(msg)
+            exit(warningAndErrorReport())
+
         return ret
 
 
@@ -818,17 +831,29 @@ class projectOpen:
                     if object=='constants':
                         ret[object][key] = value
                         safeValue = self.getConst(value["value"])
-                        if isinstance(safeValue, int):
-                            isSigned = safeValue < 0
-                            if not isSigned and abs(safeValue) <= 0xFFFFFFFF:
-                                ret[object][key]['valueType'] = 'uint32_t'
-                            elif isSigned and abs(safeValue) <= 0x7FFFFFFF:
-                                ret[object][key]['valueType'] = 'int32_t'
-                            else:
-                                ret[object][key]['valueType'] = 'int64_t' if isSigned else 'uint64_t'
-                        else:
-                            printError(f"Invalid constant type for {key}")
-                            exit(warningAndErrorReport())
+                        declaredType = value['valueType']
+                        loc = f"{value['_context']}:{value['lc'].line + 1}" if 'lc' in value else value.get('_context', '?')
+
+                        if declaredType == 'real':
+                            if isinstance(safeValue, int):
+                                safeValue = float(safeValue)
+                                ret[object][key]['value'] = safeValue
+                            elif not isinstance(safeValue, float):
+                                printError(f"In {loc}, constant '{key}': valueType is 'real' but value is not numeric")
+                                exit(warningAndErrorReport())
+                        elif declaredType in ('int', 'uint'):
+                            if isinstance(safeValue, float):
+                                printError(f"In {loc}, constant '{key}': valueType is '{declaredType}' but eval produced a float ({safeValue}). "
+                                           f"Use // for integer division, or set valueType: real")
+                                exit(warningAndErrorReport())
+                            if not isinstance(safeValue, int):
+                                printError(f"In {loc}, constant '{key}': valueType is '{declaredType}' but value is not an integer")
+                                exit(warningAndErrorReport())
+                            if declaredType == 'uint' and safeValue < 0:
+                                printError(f"In {loc}, constant '{key}': valueType is 'uint' but value is negative ({safeValue}). "
+                                           f"Use valueType: int for signed constants")
+                                exit(warningAndErrorReport())
+                        ret[object][key]['valueType'] = declaredType
                     if object=='types':
                         if value['enum']:
                             enums[key] = value
@@ -3089,12 +3114,28 @@ class projectCreate:
 
     # AUTO SECTIONS begin here
     #
-    #constants: constant: key, value: eval, desc: required
+    #constants: constant: key, value: eval, desc: required, valueType: optional(uint)
     def _constants(self, itemkey, item, yamlFile):
         ret = self.processSimple('constants', itemkey, item, yamlFile)
         # constants require special section handling as we want to save the const's in dict to allow later
         if 'value' not in ret:
             self.logError(f"Processing constants in {yamlFile}:{ret['lc'].line + 1} and constant:{itemkey} does not have a 'value' or 'eval' field")
+        else:
+            # Validate that the value matches the declared valueType
+            declaredType = ret['valueType']
+            val = ret['value']
+            if declaredType == 'uint':
+                if isinstance(val, float):
+                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'uint' (default) but eval produced a float ({val}). "
+                                  f"Use // for integer division, or set valueType: real")
+                elif isinstance(val, int) and val < 0:
+                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'uint' but value is negative ({val}). "
+                                  f"Use valueType: int for signed constants")
+            elif declaredType == 'int':
+                if isinstance(val, float):
+                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'int' but eval produced a float ({val}). "
+                                  f"Use // for integer division in eval expressions")
+            # 'real' accepts int or float — no validation needed
         self.const[yamlFile][itemkey] = ret['value']
         self.qualConst[itemkey+'/'+yamlFile] = ret['value']
         return ret
@@ -3264,6 +3305,7 @@ class projectCreate:
         #(varInfo, varContext) = self.getFromContext('types', yamlFile, ret['encoderType'], NotFoundFatal=True)
         encoderType = ret['encoderType']
         newEncoderType = OrderedDict()
+        newEncoderType['lc'] = ret['lc']
         newEncoderType['desc'] = ret['encoderTypeDesc']
         newEncoderType['width'] = ret['encoderTypeWidth']
         encoderTypeBits = self.constParse(newEncoderType['width'], yamlFile, value=True)
@@ -3299,6 +3341,7 @@ class projectCreate:
         # generate new type to hold the enum and optional constants
         # iterate through the items to generate dictionary to allow the type to be generated
         newType = OrderedDict()
+        newType['lc'] = ret['lc']
         newType['enum'] = list()
         newConstants = OrderedDict()
         addConstants = False
@@ -3318,7 +3361,7 @@ class projectCreate:
             thisEnum['value'] = ret['items'][item]['itemOrder']
             newType['enum'].append(thisEnum)
             if addConstants:
-                newConstants[baseConstPrefix+item.upper()] = {'value': ret['items'][item]['encodingValue'], 'desc': 'base value for ' + ret['items'][item]['desc'] }
+                newConstants[baseConstPrefix+item.upper()] = {'value': ret['items'][item]['encodingValue'], 'desc': 'base value for ' + ret['items'][item]['desc'], 'lc': ret['lc'] }
         if not ret['zeroBased'] and ret['extendedRangeItem'] != "":
             thisEnum = OrderedDict()
             # add the type
@@ -3460,6 +3503,11 @@ class projectCreate:
             ret, retContext = self.constParse(item[field], yamlFile, value=False)
             if retContext is not None:
                 # constParse determined the value was a named constant. So lets use the context version
+                # Verify the constant resolves to an integer (floats are not valid bit widths)
+                actualValue = self.constParse(item[field], yamlFile, value=True)
+                if isinstance(actualValue, float):
+                    self.logError(f"In {yamlFile}:{processed['lc'].line}, constant '{item[field]}' resolves to floating-point value ({actualValue}), "
+                                  f"but type width for '{itemkey}' requires an integer")
                 ret = retContext
         return ret
 
@@ -3565,11 +3613,18 @@ class projectCreate:
     def constParse(self, data, context, value=True):
         found = False
         try:
-            #see if its already a number
             ret = int(data)
             retContext = None
             found = True
-        except: ValueError
+        except (ValueError, TypeError):
+            pass
+        if not found:
+            try:
+                ret = float(data)
+                retContext = None
+                found = True
+            except (ValueError, TypeError):
+                pass
         if not found:
             # now check from dependancies
             for myContext in self.yamlContext[context]:
