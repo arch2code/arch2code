@@ -24,31 +24,51 @@ def includeConstants(args, prj, data):
 
     for const, value in data['constants'].items():
         match value['valueType']:
-            case 'int32_t' | 'uint32_t':
+            case 'uint':
+                if value['value'] <= 0xFFFFFFFF:
+                    type_str = 'uint32_t'
+                    value_str = f"{value['value']}"
+                else:
+                    type_str = 'uint64_t'
+                    value_str = f"{hex(value['value']).upper()}UL"
+            case 'int':
+                if abs(value['value']) <= 0x7FFFFFFF:
+                    type_str = 'int32_t'
+                    value_str = f"{value['value']}"
+                else:
+                    type_str = 'int64_t'
+                    value_str = f"{hex(value['value']).upper()}L"
+            case 'real':
+                type_str = 'double'
                 value_str = f"{value['value']}"
-            case 'int64_t':
-                value_str = f"{hex(value['value']).upper()}L"
-            case 'uint64_t':
-                value_str = f"{hex(value['value']).upper()}UL"
             case _:
+                type_str = value['valueType']
                 value_str = f"{value['value']}"
-        out.append(f"const {value['valueType']} { value['constant'] } = { value_str };  // {value['desc']}")
+        out.append(f"const {type_str} { value['constant'] } = { value_str };  // {value['desc']}")
 
     out.append("")
     return("\n".join(out))
+
 
 def includeTypes(args, prj, data):
     out = list()
 
-    out.append(f"// types")
+    out.append("// types")
     for type, value in data['types'].items():
+        ctx_msg = f"type width '{value['type']}'"
+        width_val = prj.getConst(value['width'], require_int=True, context_msg=ctx_msg)
         if value['typeArraySize'] == 1:
-            out.append(f"typedef { value['platformDataType'] } { value['type'] }; // [{prj.getConst( value['width'] )}] {value['desc']}")
+            out.append(
+                f"typedef { value['platformDataType'] } { value['type'] }; // [{width_val}] {value['desc']}"
+            )
         else:
-            out.append(f"struct { value['type'] } {{ { value['platformDataType'] } word[ {value['typeArraySize']} ]; }}; // [{prj.getConst( value['width'] )}] {value['desc']}")
+            out.append(
+                f"struct { value['type'] } {{ { value['platformDataType'] } word[ {value['typeArraySize']} ]; }}; // [{width_val}] {value['desc']}"
+            )
 
     out.append("")
     return("\n".join(out))
+
 
 def includeEnum(args, prj, data):
     out = list()
@@ -78,16 +98,16 @@ def includeEnum(args, prj, data):
     out.append("")
     return("\n".join(out))
 
+
 def includeAddresses(args, prj, data):
     out = list()
     out.append("//instance base addresses")
-
-
 
     for key, value in prj.data['instances'].items():
         out.append(f"#define BASE_ADDR_{ value['instance'].upper() } {  ' ' * ( 20 - (len(value['instance']) ))}0x{int(value['offset']):x}")
 
     return("\n".join(out))
+
 
 def includeRegAddresses(args, prj, data):
     out = list()

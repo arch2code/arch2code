@@ -70,6 +70,13 @@ constants:
   constant: key
   value: eval
   desc: required
+  valueType:
+    _type: optional(uint)
+    _validate:
+      values:
+        - uint
+        - int
+        - real
 
 variables:
   variable: key

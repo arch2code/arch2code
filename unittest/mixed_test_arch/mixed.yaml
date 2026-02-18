@@ -32,9 +32,9 @@ constants:
   ASIZE : {value: 1, desc: "The size of A"}
   ASIZE2: {eval: "$ASIZE+1", desc: "The size of A+1"}
   INTP: {value: 0xFFFFFC00, desc: "Test constant for numbers of unsigned integer type "}
-  INTN: {value: -0x7FFFFC00, desc: "Test constant for numbers of signed integer type (two's complement negative)"}
+  INTN: {value: -0x7FFFFC00, valueType: int, desc: "Test constant for numbers of signed integer type (two's complement negative)"}
   LONGP: {value: 0x1FFFFFFFFFFFFC00, desc: "Test constant for numbers unsigned long type "}
-  LONGN: {value: -0xFFFFFC00, desc: "Test constant for numbers signed long type (two's complement negative)"}
+  LONGN: {value: -0xFFFFFC00, valueType: int, desc: "Test constant for numbers signed long type (two's complement negative)"}
   BIGE33: {value: 0x1FFFFFFFF, desc: "Test constant for numbers slightly bigger than 32 bits"}
   BIGE53: {value: 0x3FFFFFFFFFFFFF, desc: "Test constant for numbers slightly bigger than 32 bits"}
 # Test constant for https://arch2code.atlassian.net/browse/A2C-89
@@ -46,6 +46,8 @@ constants:
   BOB1  : {value: 15, desc: "Memory size for instance 1"}
   TESTCONST1 : {value: 1, desc: "A test constant"}
   TESTCONST2 : {eval: "$TEST1_C+4", desc: "A test constant using an enum value"}
+  REAL_PI    : {value: 3.14159, valueType: real, desc: "Test constant for floating point (real) type"}
+  REAL_HALF  : {eval: "$DWORD / 2.0", valueType: real, desc: "Test constant for real from eval expression"}
 
 encoders:
   opcodeEnA:

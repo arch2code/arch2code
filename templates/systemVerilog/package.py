@@ -19,24 +19,29 @@ def render(args, prj, data):
     # Generate constants as localparam[s]
     for unusedKey, value in data['constants'].items():
         match value['valueType']:
-            case 'int32_t':
-                type_str = 'int'
-                if value['value'] < 0:
-                    value_str = f"-32'sh{abs(value['value']):09_X}"
+            case 'uint':
+                if value['value'] <= 0xFFFFFFFF:
+                    type_str = 'int unsigned'
+                    value_str = f"32'h{value['value']:09_X}"
                 else:
-                    value_str = f"32'sh{value['value']:09_X}"
-            case 'uint32_t':
-                type_str = 'int unsigned'
-                value_str = f"32'h{value['value']:09_X}"
-            case 'int64_t':
-                type_str = 'longint'
-                if value['value'] < 0:
-                    value_str = f"-64'sh{abs(value['value']):019_X}"
+                    type_str = 'longint unsigned'
+                    value_str = f"64'h{value['value']:019_X}"
+            case 'int':
+                if abs(value['value']) <= 0x7FFFFFFF:
+                    type_str = 'int'
+                    if value['value'] < 0:
+                        value_str = f"-32'sh{abs(value['value']):09_X}"
+                    else:
+                        value_str = f"32'sh{value['value']:09_X}"
                 else:
-                    value_str = f"64'sh{value['value']:019_X}"
-            case 'uint64_t':
-                type_str = 'longint unsigned'
-                value_str = f"64'h{value['value']:019_X}"
+                    type_str = 'longint'
+                    if value['value'] < 0:
+                        value_str = f"-64'sh{abs(value['value']):019_X}"
+                    else:
+                        value_str = f"64'sh{value['value']:019_X}"
+            case 'real':
+                type_str = 'real'
+                value_str = f"{value['value']}"
             case _:
                 type_str = value['valueType']
                 value_str = f"{value['value']}"
