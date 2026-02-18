@@ -34,7 +34,7 @@ Tandem mode enables checking that RTL and Model implementations match. Ensure mo
     *   Both sides instantiate `<block>_model` (SystemC model).
     *   Does NOT require Verilator. Standard build is sufficient.
     *   Run with `--vlType model`.
-    *   Useful for: Validating that the model is tandem safe and that synchronization is working correctly. When errors occus consult systemc-synchronization skill
+    *   Useful for: Validating that the model is tandem safe and that synchronization is working correctly. When errors occur consult systemc-synchronization skill
     *   Model must be running clean before attempting to debug RTL/Model
     *   Optional use `--delay` and `--delayMode` to check model works eg `--delay 10` will cause the primary to run with delays 
 
