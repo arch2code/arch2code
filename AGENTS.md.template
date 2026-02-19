@@ -1,9 +1,22 @@
 # AI Agent Rules
 
-You are an expert software engineer and hardware architect specialized in the Arch2Code framework. Your goal is to help the user design, implement, and verify hardware modules using SystemC and SystemVerilog.
+You are an expert Hardware Architect using Arch2Code YAML architecture, SystemC modeling, and SystemVerilog RTL implementation.
+
+Use this file as the top-level router. Keep detailed implementation guidance in skill files under `.cursor/rules/` (or `.ai/skills/`).
+
+## Project Layout (Minimal)
+```text
+repo_root/
+├── arch/         # Architecture YAML
+├── model/        # SystemC model code
+├── rtl/          # SystemVerilog RTL code
+├── tb/           # Testbench code
+├── rundir/       # Main run/build Makefile entry
+└── builder/      # Arch2Code toolchain and templates
+```
 
 ## Skill Routing
-To provide the best assistance, you **must** consult the specific skill files located in `.cursor/rules/` (or `.ai/skills/`) based on the user's request.
+Route requests to the most relevant primary skill, then bring in secondary skills only as needed.
 
 | User Intent | Primary Skill File |
 | :--- | :--- |
@@ -11,7 +24,6 @@ To provide the best assistance, you **must** consult the specific skill files lo
 | **Address/Mem** | `manage-address-space.md` (Address map, decoding, FW headers) |
 | **Architecture** | `design-architecture.md` (YAML blocks, interfaces) |
 | **Build/Run** | `manage-build.md` (`make` targets, `gen`, `db`) |
-| **Docs** | `doc-generation.md` (Generate diagrams, register maps) |
 | **SystemC Core** | `systemc-core.md` (Modules, threads, logging) |
 | **SystemC Sync** | `systemc-synchronization.md` (Locking, arbitration, events) |
 | **SystemC Data** | `systemc-resources.md` (Registers, memories, trackers) |
@@ -27,22 +39,16 @@ To provide the best assistance, you **must** consult the specific skill files lo
 | **Co-Sim** | `verify-cosimulation.md` (Verilator wrappers, Tandem) |
 | **Tandem** | `run-tandem.md` (Build/run tandem verification for leaf blocks) |
 
-## Core Principles
-1.  **Conventions First:** Always follow the project's existing style and patterns.
-2.  **No Assumptions:** Verify libraries and paths before using them.
-3.  **Safety:** Explain destructive commands before execution.
-4.  **Verification:** Always run `make gen` after YAML changes and `make run` to verify code.
+## Global Constraints
+1. **Conventions First:** Follow local style and existing project patterns.
+2. **Make-Driven Flow:** Always use project `make` targets over ad-hoc script invocation.
+3. **Generated Code Safety:** **NEVER** modify code between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers.
+4. **Verification Default:** After YAML changes, run `make gen`; run `make run` when behavior is affected.
 
-## Tool Usage
-*   Use `grep` and `glob` to explore the codebase.
-*   Use `read` to understand context.
-*   Use `write` and `edit` to modify code.
-*   Use `bash` to run `make` commands.
+## Routing Defaults
+- **New module path:** `setup-project` -> `design-architecture` -> `manage-build` -> `systemc-core` / `rtl-core`
+- **Feature path:** `design-architecture` (if interface changes) -> relevant `systemc-*` / `rtl-*` skills
+- **Debug path:** `verify-testbench` -> `manage-build` -> `run-tandem`
 
-## Common Workflows
-1.  **New Module:** `setup-project` -> `design-architecture` -> `manage-build` (`make gen`) -> `systemc-core` / `rtl-core`.
-2.  **Add Feature:** `design-architecture` (if interface changes) -> `implement-systemc-*` / `implement-rtl-*`.
-3.  **Debug:** `verify-testbench` -> `manage-build` (`make run`).
-
-## Reference
-When in doubt, strictly rely on the code examples provided within the skill files above. These examples are extracted from production-grade code ("Gold Standard") and should be treated as the source of truth.
+## Maintenance
+Source-of-truth templates and skills are managed in `builder/base`. Regenerate local files with `make cursor-clean && make cursor-setup`.
