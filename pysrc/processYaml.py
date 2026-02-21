@@ -3581,20 +3581,35 @@ class projectCreate:
         else:
             widthField = 'widthLog2minus1' if hasWidthLog2minus1 else 'width'  # width for enum-derived case
 
-        # For enum-derived width (integer already set), validate directly
-        if isinstance(item[widthField], int):
-            if item[widthField] == 0:
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' {widthField} resolves to zero, which is not a valid width")
+        # Resolve the raw value to an integer
+        rawValue = item[widthField]
+        if isinstance(rawValue, int):
+            n = rawValue
         else:
-            # Resolve named constant or string literal to check it
-            rawValue = item[widthField]
             resolvedValue = self.constParse(rawValue, yamlFile, value=True)
             if isinstance(resolvedValue, float):
                 self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' {widthField} '{rawValue}' resolves to floating-point value ({resolvedValue}), "
                               f"but type width requires an integer")
                 return item
-            if int(resolvedValue) == 0:
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' {widthField} resolves to zero, which is not a valid width")
+            n = int(resolvedValue)
+
+        # Compute the actual bit width
+        if hasWidthLog2:
+            if n < 0:
+                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' widthLog2 resolves to negative value ({n}), which is not valid")
+                return item
+            computedWidth = n.bit_length()
+        elif hasWidthLog2minus1:
+            if n <= 0:
+                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' widthLog2minus1 resolves to {n}, "
+                              f"which is not valid (requires a positive value to index 0..N-1)")
+                return item
+            computedWidth = (n - 1).bit_length()
+        else:
+            computedWidth = n
+
+        if computedWidth == 0:
+            self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' {widthField} resolves to zero width, which is not valid")
 
         return item
 

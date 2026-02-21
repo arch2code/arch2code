@@ -437,6 +437,112 @@ instances:
     )
 
 
+def test_widthLog2_zero():
+    """Test: widthLog2: 0 produces zero width (0.bit_length() == 0)"""
+    yaml = """types:
+  badType:
+    widthLog2: 0
+    desc: "widthLog2 of 0 gives zero width"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["zero width", "badType", "widthLog2"],
+        "widthLog2: 0 produces zero width"
+    )
+
+
+def test_widthLog2minus1_one():
+    """Test: widthLog2minus1: 1 produces zero width ((1-1).bit_length() == 0)"""
+    yaml = """types:
+  badType:
+    widthLog2minus1: 1
+    desc: "widthLog2minus1 of 1 gives zero width"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["zero width", "badType", "widthLog2minus1"],
+        "widthLog2minus1: 1 produces zero width"
+    )
+
+
+def test_widthLog2minus1_zero():
+    """Test: widthLog2minus1: 0 is semantically invalid (cannot index 0..N-1 when N=0)"""
+    yaml = """types:
+  badType:
+    widthLog2minus1: 0
+    desc: "widthLog2minus1 of 0 is invalid"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["badType", "widthLog2minus1", "not valid"],
+        "widthLog2minus1: 0 is semantically invalid"
+    )
+
+
+def test_widthLog2_negative():
+    """Test: widthLog2 with negative value should fail"""
+    yaml = """constants:
+  NEG_VAL: {value: -5, valueType: int, desc: "Negative value"}
+
+types:
+  badType:
+    widthLog2: NEG_VAL
+    desc: "widthLog2 with negative constant"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["badType", "widthLog2", "negative"],
+        "widthLog2 with negative value"
+    )
+
+
+def test_widthLog2minus1_negative():
+    """Test: widthLog2minus1 with negative value should fail"""
+    yaml = """constants:
+  NEG_VAL: {value: -3, valueType: int, desc: "Negative value"}
+
+types:
+  badType:
+    widthLog2minus1: NEG_VAL
+    desc: "widthLog2minus1 with negative constant"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["badType", "widthLog2minus1", "not valid"],
+        "widthLog2minus1 with negative value"
+    )
+
+
 def test_uint_constant_with_negative_value():
     """Test: Default uint constant with a negative value"""
     yaml = """constants:
@@ -497,6 +603,11 @@ def run_all_tests():
         ("test_mutual_exclusion_width_and_widthLog2minus1", test_mutual_exclusion_width_and_widthLog2minus1),
         ("test_mutual_exclusion_widthLog2_and_widthLog2minus1", test_mutual_exclusion_widthLog2_and_widthLog2minus1),
         ("test_mutual_exclusion_all_three_width_fields", test_mutual_exclusion_all_three_width_fields),
+        ("test_widthLog2_zero", test_widthLog2_zero),
+        ("test_widthLog2minus1_one", test_widthLog2minus1_one),
+        ("test_widthLog2minus1_zero", test_widthLog2minus1_zero),
+        ("test_widthLog2_negative", test_widthLog2_negative),
+        ("test_widthLog2minus1_negative", test_widthLog2minus1_negative),
         ("test_uint_constant_with_negative_value", test_uint_constant_with_negative_value),
         ("test_uint_constant_with_float_eval", test_uint_constant_with_float_eval),
     ]
