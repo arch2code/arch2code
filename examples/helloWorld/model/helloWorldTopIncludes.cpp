@@ -31,13 +31,13 @@ void test_st::unpack(const _packedSt &_src)
 {
     a = (byteT)((_src));
 }
-sc_bv<8> test_st::sc_pack(void) const
+sc_bv<test_st::_bitWidth> test_st::sc_pack(void) const
 {
-    sc_bv<8> packed_data;
+    sc_bv<test_st::_bitWidth> packed_data;
     packed_data.range(7, 0) = a;
     return packed_data;
 }
-void test_st::sc_unpack(sc_bv<8> packed_data)
+void test_st::sc_unpack(sc_bv<test_st::_bitWidth> packed_data)
 {
     a = (byteT) packed_data.range(7, 0).to_uint64();
 }
@@ -61,13 +61,13 @@ void test_no_tracker_st::unpack(const _packedSt &_src)
 {
     a = (byteT)((_src));
 }
-sc_bv<8> test_no_tracker_st::sc_pack(void) const
+sc_bv<test_no_tracker_st::_bitWidth> test_no_tracker_st::sc_pack(void) const
 {
-    sc_bv<8> packed_data;
+    sc_bv<test_no_tracker_st::_bitWidth> packed_data;
     packed_data.range(7, 0) = a;
     return packed_data;
 }
-void test_no_tracker_st::sc_unpack(sc_bv<8> packed_data)
+void test_no_tracker_st::sc_unpack(sc_bv<test_no_tracker_st::_bitWidth> packed_data)
 {
     a = (byteT) packed_data.range(7, 0).to_uint64();
 }
@@ -91,13 +91,13 @@ void data_st::unpack(const _packedSt &_src)
 {
     b = (qwordT)((_src));
 }
-sc_bv<64> data_st::sc_pack(void) const
+sc_bv<data_st::_bitWidth> data_st::sc_pack(void) const
 {
-    sc_bv<64> packed_data;
+    sc_bv<data_st::_bitWidth> packed_data;
     packed_data.range(63, 0) = b;
     return packed_data;
 }
-void data_st::sc_unpack(sc_bv<64> packed_data)
+void data_st::sc_unpack(sc_bv<data_st::_bitWidth> packed_data)
 {
     b = (qwordT) packed_data.range(63, 0).to_uint64();
 }

@@ -159,6 +159,22 @@ types:
   test37BitT:
     width: 37
     desc: "37-bit type for testing non-power-of-2 memory address calculations (5 bytes, rounds to 8-byte stride)"
+  bSizeCountT:
+    widthLog2: BSIZE
+    desc: "Type wide enough to count 0..BSIZE (widthLog2 with constant)"
+  bSizeIndexT:
+    widthLog2minus1: BSIZE
+    desc: "Type wide enough to index 0..BSIZE-1 (widthLog2minus1 with constant)"
+  log2LiteralT:
+    widthLog2: 16
+    desc: "Type wide enough to count 0..16 using widthLog2 with literal (5 bits)"
+  log2minus1LiteralT:
+    widthLog2minus1: 8
+    desc: "Type wide enough to index 0..7 using widthLog2minus1 with literal (3 bits)"
+  signedLog2T:
+    widthLog2: BSIZE
+    isSigned: true
+    desc: "Signed type using widthLog2 — gets +1 bit for sign"
 
 
 # variables used as members of structures, only structures are attached to interfaces
@@ -178,6 +194,9 @@ variables:
   variabled2:
     type: fourBitT
     desc: Four bits of D
+  variableLog2:
+    type: bSizeCountT
+    desc: "Variable using widthLog2 type"
 
 # structures are collections of variables, or other structures, structures are the main communication tool from block to block on any interface
 ## structureName: is the structure's name and key for usage by any other dictionary doing a lookup, required
@@ -265,6 +284,24 @@ structures:
     unsignedVals: {varType: unsigned5bit_t, arraySize: 3, desc: "Array of 3 non-byte-aligned unsigned values"}
   test37BitRegSt:
     value37: {varType: test37BitT, generator: register}
+  log2TestSt:
+    count: {varType: bSizeCountT, desc: "Count field using widthLog2 type"}
+    index: {varType: bSizeIndexT, desc: "Index field using widthLog2minus1 type"}
+    signedCount: {varType: signedLog2T, desc: "Signed count field using widthLog2+isSigned"}
+  nestedLog2St:
+    tag: {varType: threeBitT, desc: "A plain 3-bit tag"}
+    log2Data: {subStruct: log2TestSt, desc: "Nested struct with widthLog2 fields"}
+  wideLog2St:
+    countA: {varType: bSizeCountT, desc: "Count field A"}
+    countB: {varType: bSizeCountT, desc: "Count field B"}
+    indexA: {varType: bSizeIndexT, arraySize: ASIZE2, desc: "Index field A"}
+    indexB: {varType: bSizeIndexT, desc: "Index field B"}
+    signedA: {varType: signedLog2T, desc: "Signed count A"}
+    signedB: {varType: signedLog2T, desc: "Signed count B"}
+    tag: {varType: threeBitT, desc: "Tag"}
+    flags: {varType: fourBitT, desc: "Flags"}
+    addr: {varType: apbAddrT, desc: "Address"}
+    nested: {subStruct: log2TestSt, desc: "Nested log2 struct"}
 
 # interfaces are needed to make any connection from one instance of a block to another block's instance
 ## interfacename: is the interface's name and key for usage by any other dictionary doing a lookup, required

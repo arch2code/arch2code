@@ -11,6 +11,7 @@
 #include "mixedIncludeIncludes.h"
 #include "mixedNestedIncludeIncludes.h"
 #include "mixedBlockCIncludes.h"
+#include "bitTwiddling.h"
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -67,6 +68,11 @@ typedef uint8_t unsigned5bit_t; // [5] Unsigned 5-bit type for mixed testing
 typedef uint16_t unsigned9bit_t; // [9] Unsigned 9-bit type for mixed testing
 typedef uint64_t bigT; // [64] 64-bit type for mixed testing
 typedef uint64_t test37BitT; // [37] 37-bit type for testing non-power-of-2 memory address calculations (5 bytes, rounds to 8-byte stride)
+typedef uint8_t bSizeCountT; // [4] Type wide enough to count 0..BSIZE (widthLog2 with constant)
+typedef uint8_t bSizeIndexT; // [4] Type wide enough to index 0..BSIZE-1 (widthLog2minus1 with constant)
+typedef uint8_t log2LiteralT; // [5] Type wide enough to count 0..16 using widthLog2 with literal (5 bits)
+typedef uint8_t log2minus1LiteralT; // [3] Type wide enough to index 0..7 using widthLog2minus1 with literal (3 bits)
+typedef int8_t signedLog2T; // [5] Signed type using widthLog2 — gets +1 bit for sign
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums 
@@ -175,8 +181,8 @@ struct aSt {
 
     aSt() {}
 
-    static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _bitWidth = 2 + ASIZE*ASIZE2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const aSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const aSt & v, const std::string & NAME ) {
@@ -194,9 +200,9 @@ struct aSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<4> sc_pack(void) const;
-    void sc_unpack(sc_bv<4> packed_data);
-    explicit aSt(sc_bv<4> packed_data) { sc_unpack(packed_data); }
+    sc_bv<aSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<aSt::_bitWidth> packed_data);
+    explicit aSt(sc_bv<aSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit aSt(
         twoBitT variablea2_,
         aSizeT variablea_[ASIZE2]) :
@@ -212,8 +218,8 @@ struct aASt {
 
     aASt() {}
 
-    static constexpr uint16_t _bitWidth = 1;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _bitWidth = ASIZE;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const aASt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const aASt & v, const std::string & NAME ) {
@@ -230,7 +236,7 @@ struct aASt {
     void unpack(const _packedSt &_src);
     bool sc_pack(void) const;
     void sc_unpack(bool packed_data);
-    void sc_unpack(sc_bv<1> packed_data);
+    void sc_unpack(sc_bv<aASt::_bitWidth> packed_data);
     explicit aASt(bool packed_data) { sc_unpack(packed_data); }
     explicit aASt(
         aSizeT variablea_) :
@@ -245,7 +251,7 @@ struct aRegSt {
     aRegSt() {}
 
     static constexpr uint16_t _bitWidth = 7;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const aRegSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const aRegSt & v, const std::string & NAME ) {
@@ -261,7 +267,7 @@ struct aRegSt {
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
     // register functions
-    inline int _size(void) {return( (7 + 7) >> 4 ); }
+    inline int _size(void) {return( (_bitWidth + 7) >> 4 ); }
     uint64_t _getValue(void)
     {
         uint64_t ret =
@@ -272,9 +278,9 @@ struct aRegSt {
     {
         a = ( sevenBitT ) (( value >> 0 ) & (( (uint64_t)1 << 7 ) - 1)) ;
         }
-    sc_bv<7> sc_pack(void) const;
-    void sc_unpack(sc_bv<7> packed_data);
-    explicit aRegSt(sc_bv<7> packed_data) { sc_unpack(packed_data); }
+    sc_bv<aRegSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<aRegSt::_bitWidth> packed_data);
+    explicit aRegSt(sc_bv<aRegSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit aRegSt(
         sevenBitT a_) :
         a(a_)
@@ -288,7 +294,7 @@ struct dRegSt {
     dRegSt() {}
 
     static constexpr uint16_t _bitWidth = 7;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const dRegSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const dRegSt & v, const std::string & NAME ) {
@@ -304,7 +310,7 @@ struct dRegSt {
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
     // register functions
-    inline int _size(void) {return( (7 + 7) >> 4 ); }
+    inline int _size(void) {return( (_bitWidth + 7) >> 4 ); }
     uint64_t _getValue(void)
     {
         uint64_t ret =
@@ -315,9 +321,9 @@ struct dRegSt {
     {
         d = ( sevenBitT ) (( value >> 0 ) & (( (uint64_t)1 << 7 ) - 1)) ;
         }
-    sc_bv<7> sc_pack(void) const;
-    void sc_unpack(sc_bv<7> packed_data);
-    explicit dRegSt(sc_bv<7> packed_data) { sc_unpack(packed_data); }
+    sc_bv<dRegSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<dRegSt::_bitWidth> packed_data);
+    explicit dRegSt(sc_bv<dRegSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit dRegSt(
         sevenBitT d_) :
         d(d_)
@@ -331,8 +337,8 @@ struct dSt {
 
     dSt() {}
 
-    static constexpr uint16_t _bitWidth = 7;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _bitWidth = 4 + 3;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const dSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const dSt & v, const std::string & NAME ) {
@@ -348,9 +354,9 @@ struct dSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<7> sc_pack(void) const;
-    void sc_unpack(sc_bv<7> packed_data);
-    explicit dSt(sc_bv<7> packed_data) { sc_unpack(packed_data); }
+    sc_bv<dSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<dSt::_bitWidth> packed_data);
+    explicit dSt(sc_bv<dSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit dSt(
         fourBitT variabled2_,
         threeBitT variabled_) :
@@ -366,7 +372,7 @@ struct bigSt {
     bigSt() {}
 
     static constexpr uint16_t _bitWidth = 64;
-    static constexpr uint16_t _byteWidth = 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     bool operator == (const bigSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const bigSt & v, const std::string & NAME ) {
@@ -381,9 +387,9 @@ struct bigSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<64> sc_pack(void) const;
-    void sc_unpack(sc_bv<64> packed_data);
-    explicit bigSt(sc_bv<64> packed_data) { sc_unpack(packed_data); }
+    sc_bv<bigSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<bigSt::_bitWidth> packed_data);
+    explicit bigSt(sc_bv<bigSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit bigSt(
         bigT big_) :
         big(big_)
@@ -398,8 +404,8 @@ struct nestedSt {
 
     nestedSt() {}
 
-    static constexpr uint16_t _bitWidth = 18;
-    static constexpr uint16_t _byteWidth = 3;
+    static constexpr uint16_t _bitWidth = seeSt::_bitWidth*2 + dSt::_bitWidth + ASIZE;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint32_t _packedSt;
     bool operator == (const nestedSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const nestedSt & v, const std::string & NAME ) {
@@ -418,9 +424,9 @@ struct nestedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<18> sc_pack(void) const;
-    void sc_unpack(sc_bv<18> packed_data);
-    explicit nestedSt(sc_bv<18> packed_data) { sc_unpack(packed_data); }
+    sc_bv<nestedSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<nestedSt::_bitWidth> packed_data);
+    explicit nestedSt(sc_bv<nestedSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit nestedSt(
         seeSt joe_[2],
         dSt bob_,
@@ -438,8 +444,8 @@ struct bSizeRegSt {
 
     bSizeRegSt() {}
 
-    static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _bitWidth = BSIZE_LOG2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const bSizeRegSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const bSizeRegSt & v, const std::string & NAME ) {
@@ -455,7 +461,7 @@ struct bSizeRegSt {
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
     // register functions
-    inline int _size(void) {return( (4 + 7) >> 4 ); }
+    inline int _size(void) {return( (_bitWidth + 7) >> 4 ); }
     uint64_t _getValue(void)
     {
         uint64_t ret =
@@ -466,9 +472,9 @@ struct bSizeRegSt {
     {
         index = ( bSizeT ) (( value >> 0 ) & (( (uint64_t)1 << 4 ) - 1)) ;
         }
-    sc_bv<4> sc_pack(void) const;
-    void sc_unpack(sc_bv<4> packed_data);
-    explicit bSizeRegSt(sc_bv<4> packed_data) { sc_unpack(packed_data); }
+    sc_bv<bSizeRegSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<bSizeRegSt::_bitWidth> packed_data);
+    explicit bSizeRegSt(sc_bv<bSizeRegSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit bSizeRegSt(
         bSizeT index_) :
         index(index_)
@@ -481,8 +487,8 @@ struct bSizeSt {
 
     bSizeSt() {}
 
-    static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _bitWidth = BSIZE_LOG2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const bSizeSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const bSizeSt & v, const std::string & NAME ) {
@@ -498,9 +504,9 @@ struct bSizeSt {
     inline bSizeT _getAddress(void) { return( index); }
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<4> sc_pack(void) const;
-    void sc_unpack(sc_bv<4> packed_data);
-    explicit bSizeSt(sc_bv<4> packed_data) { sc_unpack(packed_data); }
+    sc_bv<bSizeSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<bSizeSt::_bitWidth> packed_data);
+    explicit bSizeSt(sc_bv<bSizeSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit bSizeSt(
         bSizeT index_) :
         index(index_)
@@ -513,8 +519,8 @@ struct apbAddrSt {
 
     apbAddrSt() {}
 
-    static constexpr uint16_t _bitWidth = 32;
-    static constexpr uint16_t _byteWidth = 4;
+    static constexpr uint16_t _bitWidth = DWORD;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint32_t _packedSt;
     bool operator == (const apbAddrSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const apbAddrSt & v, const std::string & NAME ) {
@@ -530,9 +536,9 @@ struct apbAddrSt {
     inline apbAddrT _getAddress(void) { return( address); }
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<32> sc_pack(void) const;
-    void sc_unpack(sc_bv<32> packed_data);
-    explicit apbAddrSt(sc_bv<32> packed_data) { sc_unpack(packed_data); }
+    sc_bv<apbAddrSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<apbAddrSt::_bitWidth> packed_data);
+    explicit apbAddrSt(sc_bv<apbAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit apbAddrSt(
         apbAddrT address_) :
         address(address_)
@@ -545,8 +551,8 @@ struct apbDataSt {
 
     apbDataSt() {}
 
-    static constexpr uint16_t _bitWidth = 32;
-    static constexpr uint16_t _byteWidth = 4;
+    static constexpr uint16_t _bitWidth = DWORD;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint32_t _packedSt;
     bool operator == (const apbDataSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const apbDataSt & v, const std::string & NAME ) {
@@ -563,9 +569,9 @@ struct apbDataSt {
     inline void _setData(apbDataT value) { data = value; }
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<32> sc_pack(void) const;
-    void sc_unpack(sc_bv<32> packed_data);
-    explicit apbDataSt(sc_bv<32> packed_data) { sc_unpack(packed_data); }
+    sc_bv<apbDataSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<apbDataSt::_bitWidth> packed_data);
+    explicit apbDataSt(sc_bv<apbDataSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit apbDataSt(
         apbDataT data_) :
         data(data_)
@@ -578,8 +584,8 @@ struct cSt {
 
     cSt() {}
 
-    static constexpr uint16_t _bitWidth = 35;
-    static constexpr uint16_t _byteWidth = 5;
+    static constexpr uint16_t _bitWidth = 7*5;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     bool operator == (const cSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const cSt & v, const std::string & NAME ) {
@@ -596,9 +602,9 @@ struct cSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<35> sc_pack(void) const;
-    void sc_unpack(sc_bv<35> packed_data);
-    explicit cSt(sc_bv<35> packed_data) { sc_unpack(packed_data); }
+    sc_bv<cSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<cSt::_bitWidth> packed_data);
+    explicit cSt(sc_bv<cSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit cSt(
         sevenBitT sevenBitArray_[5])
     {
@@ -613,8 +619,8 @@ struct test1St {
 
     test1St() {}
 
-    static constexpr uint16_t _bitWidth = 70;
-    static constexpr uint16_t _byteWidth = 9;
+    static constexpr uint16_t _bitWidth = 7*5 + 7*5;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[2];
     bool operator == (const test1St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test1St & v, const std::string & NAME ) {
@@ -634,9 +640,9 @@ struct test1St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<70> sc_pack(void) const;
-    void sc_unpack(sc_bv<70> packed_data);
-    explicit test1St(sc_bv<70> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test1St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test1St::_bitWidth> packed_data);
+    explicit test1St(sc_bv<test1St::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test1St(
         sevenBitT sevenBitArray2_[5],
         sevenBitT sevenBitArray_[5])
@@ -652,8 +658,8 @@ struct test2St {
 
     test2St() {}
 
-    static constexpr uint16_t _bitWidth = 175;
-    static constexpr uint16_t _byteWidth = 22;
+    static constexpr uint16_t _bitWidth = cSt::_bitWidth*5;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[3];
     bool operator == (const test2St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test2St & v, const std::string & NAME ) {
@@ -670,9 +676,9 @@ struct test2St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<175> sc_pack(void) const;
-    void sc_unpack(sc_bv<175> packed_data);
-    explicit test2St(sc_bv<175> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test2St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test2St::_bitWidth> packed_data);
+    explicit test2St(sc_bv<test2St::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test2St(
         cSt thirtyFiveBitArray_[5])
     {
@@ -686,8 +692,8 @@ struct test3St {
 
     test3St() {}
 
-    static constexpr uint16_t _bitWidth = 35;
-    static constexpr uint16_t _byteWidth = 5;
+    static constexpr uint16_t _bitWidth = aRegSt::_bitWidth*5;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     bool operator == (const test3St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test3St & v, const std::string & NAME ) {
@@ -704,9 +710,9 @@ struct test3St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<35> sc_pack(void) const;
-    void sc_unpack(sc_bv<35> packed_data);
-    explicit test3St(sc_bv<35> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test3St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test3St::_bitWidth> packed_data);
+    explicit test3St(sc_bv<test3St::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test3St(
         aRegSt sevenBitArray_[5])
     {
@@ -720,8 +726,8 @@ struct test4St {
 
     test4St() {}
 
-    static constexpr uint16_t _bitWidth = 7;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _bitWidth = aRegSt::_bitWidth;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const test4St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test4St & v, const std::string & NAME ) {
@@ -736,9 +742,9 @@ struct test4St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<7> sc_pack(void) const;
-    void sc_unpack(sc_bv<7> packed_data);
-    explicit test4St(sc_bv<7> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test4St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test4St::_bitWidth> packed_data);
+    explicit test4St(sc_bv<test4St::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test4St(
         aRegSt sevenBitArray_) :
         sevenBitArray(sevenBitArray_)
@@ -751,8 +757,8 @@ struct test5St {
 
     test5St() {}
 
-    static constexpr uint16_t _bitWidth = 70;
-    static constexpr uint16_t _byteWidth = 9;
+    static constexpr uint16_t _bitWidth = aRegSt::_bitWidth*10;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[2];
     bool operator == (const test5St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test5St & v, const std::string & NAME ) {
@@ -769,9 +775,9 @@ struct test5St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<70> sc_pack(void) const;
-    void sc_unpack(sc_bv<70> packed_data);
-    explicit test5St(sc_bv<70> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test5St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test5St::_bitWidth> packed_data);
+    explicit test5St(sc_bv<test5St::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test5St(
         aRegSt sevenBitArray_[10])
     {
@@ -785,8 +791,8 @@ struct test6St {
 
     test6St() {}
 
-    static constexpr uint16_t _bitWidth = 70;
-    static constexpr uint16_t _byteWidth = 9;
+    static constexpr uint16_t _bitWidth = test1St::_bitWidth;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[2];
     bool operator == (const test6St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test6St & v, const std::string & NAME ) {
@@ -801,9 +807,9 @@ struct test6St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<70> sc_pack(void) const;
-    void sc_unpack(sc_bv<70> packed_data);
-    explicit test6St(sc_bv<70> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test6St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test6St::_bitWidth> packed_data);
+    explicit test6St(sc_bv<test6St::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test6St(
         test1St largeStruct_) :
         largeStruct(largeStruct_)
@@ -816,8 +822,8 @@ struct test7St {
 
     test7St() {}
 
-    static constexpr uint16_t _bitWidth = 350;
-    static constexpr uint16_t _byteWidth = 44;
+    static constexpr uint16_t _bitWidth = test1St::_bitWidth*5;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[6];
     bool operator == (const test7St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test7St & v, const std::string & NAME ) {
@@ -834,9 +840,9 @@ struct test7St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<350> sc_pack(void) const;
-    void sc_unpack(sc_bv<350> packed_data);
-    explicit test7St(sc_bv<350> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test7St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test7St::_bitWidth> packed_data);
+    explicit test7St(sc_bv<test7St::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test7St(
         test1St largeStruct_[5])
     {
@@ -850,8 +856,8 @@ struct test8St {
 
     test8St() {}
 
-    static constexpr uint16_t _bitWidth = 48;
-    static constexpr uint16_t _byteWidth = 6;
+    static constexpr uint16_t _bitWidth = 16*3;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     bool operator == (const test8St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test8St & v, const std::string & NAME ) {
@@ -868,9 +874,9 @@ struct test8St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<48> sc_pack(void) const;
-    void sc_unpack(sc_bv<48> packed_data);
-    explicit test8St(sc_bv<48> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test8St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test8St::_bitWidth> packed_data);
+    explicit test8St(sc_bv<test8St::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test8St(
         wordT words_[3])
     {
@@ -884,8 +890,8 @@ struct test9St {
 
     test9St() {}
 
-    static constexpr uint16_t _bitWidth = 192;
-    static constexpr uint16_t _byteWidth = 24;
+    static constexpr uint16_t _bitWidth = test8St::_bitWidth*4;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[3];
     bool operator == (const test9St & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test9St & v, const std::string & NAME ) {
@@ -902,9 +908,9 @@ struct test9St {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<192> sc_pack(void) const;
-    void sc_unpack(sc_bv<192> packed_data);
-    explicit test9St(sc_bv<192> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test9St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test9St::_bitWidth> packed_data);
+    explicit test9St(sc_bv<test9St::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test9St(
         test8St wordArray_[4])
     {
@@ -919,8 +925,8 @@ struct signedTestSt {
 
     signedTestSt() {}
 
-    static constexpr uint16_t _bitWidth = 10;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _bitWidth = 2 + 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     bool operator == (const signedTestSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const signedTestSt & v, const std::string & NAME ) {
@@ -936,9 +942,9 @@ struct signedTestSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<10> sc_pack(void) const;
-    void sc_unpack(sc_bv<10> packed_data);
-    explicit signedTestSt(sc_bv<10> packed_data) { sc_unpack(packed_data); }
+    sc_bv<signedTestSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<signedTestSt::_bitWidth> packed_data);
+    explicit signedTestSt(sc_bv<signedTestSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit signedTestSt(
         twoBitT unsignedValue_,
         signedByte_t signedValue_) :
@@ -955,8 +961,8 @@ struct mixedSignedSt {
 
     mixedSignedSt() {}
 
-    static constexpr uint16_t _bitWidth = 28;
-    static constexpr uint16_t _byteWidth = 4;
+    static constexpr uint16_t _bitWidth = 4 + 8 + 16;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint32_t _packedSt;
     bool operator == (const mixedSignedSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const mixedSignedSt & v, const std::string & NAME ) {
@@ -973,9 +979,9 @@ struct mixedSignedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<28> sc_pack(void) const;
-    void sc_unpack(sc_bv<28> packed_data);
-    explicit mixedSignedSt(sc_bv<28> packed_data) { sc_unpack(packed_data); }
+    sc_bv<mixedSignedSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<mixedSignedSt::_bitWidth> packed_data);
+    explicit mixedSignedSt(sc_bv<mixedSignedSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit mixedSignedSt(
         fourBitT flags_,
         signedByte_t offset_,
@@ -992,8 +998,8 @@ struct signedArraySt {
 
     signedArraySt() {}
 
-    static constexpr uint16_t _bitWidth = 12;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _bitWidth = 4*3;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     bool operator == (const signedArraySt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const signedArraySt & v, const std::string & NAME ) {
@@ -1010,9 +1016,9 @@ struct signedArraySt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<12> sc_pack(void) const;
-    void sc_unpack(sc_bv<12> packed_data);
-    explicit signedArraySt(sc_bv<12> packed_data) { sc_unpack(packed_data); }
+    sc_bv<signedArraySt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<signedArraySt::_bitWidth> packed_data);
+    explicit signedArraySt(sc_bv<signedArraySt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit signedArraySt(
         signedNibble_t values_[3])
     {
@@ -1029,8 +1035,8 @@ struct nonByteAlignedSignedSt {
 
     nonByteAlignedSignedSt() {}
 
-    static constexpr uint16_t _bitWidth = 16;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _bitWidth = 3 + 5 + 5 + 3;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     bool operator == (const nonByteAlignedSignedSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const nonByteAlignedSignedSt & v, const std::string & NAME ) {
@@ -1048,9 +1054,9 @@ struct nonByteAlignedSignedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<16> sc_pack(void) const;
-    void sc_unpack(sc_bv<16> packed_data);
-    explicit nonByteAlignedSignedSt(sc_bv<16> packed_data) { sc_unpack(packed_data); }
+    sc_bv<nonByteAlignedSignedSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<nonByteAlignedSignedSt::_bitWidth> packed_data);
+    explicit nonByteAlignedSignedSt(sc_bv<nonByteAlignedSignedSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit nonByteAlignedSignedSt(
         threeBitT field4_,
         signed5bit_t field3_,
@@ -1073,8 +1079,8 @@ struct complexMixedSt {
 
     complexMixedSt() {}
 
-    static constexpr uint16_t _bitWidth = 39;
-    static constexpr uint16_t _byteWidth = 5;
+    static constexpr uint16_t _bitWidth = 8 + 4 + 11 + 9 + 7;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     bool operator == (const complexMixedSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const complexMixedSt & v, const std::string & NAME ) {
@@ -1093,9 +1099,9 @@ struct complexMixedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<39> sc_pack(void) const;
-    void sc_unpack(sc_bv<39> packed_data);
-    explicit complexMixedSt(sc_bv<39> packed_data) { sc_unpack(packed_data); }
+    sc_bv<complexMixedSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<complexMixedSt::_bitWidth> packed_data);
+    explicit complexMixedSt(sc_bv<complexMixedSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit complexMixedSt(
         signedByte_t signedE_,
         fourBitT unsignedD_,
@@ -1119,8 +1125,8 @@ struct edgeCaseSignedSt {
 
     edgeCaseSignedSt() {}
 
-    static constexpr uint16_t _bitWidth = 34;
-    static constexpr uint16_t _byteWidth = 5;
+    static constexpr uint16_t _bitWidth = 16 + 11 + 4 + 3;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     bool operator == (const edgeCaseSignedSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const edgeCaseSignedSt & v, const std::string & NAME ) {
@@ -1138,9 +1144,9 @@ struct edgeCaseSignedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<34> sc_pack(void) const;
-    void sc_unpack(sc_bv<34> packed_data);
-    explicit edgeCaseSignedSt(sc_bv<34> packed_data) { sc_unpack(packed_data); }
+    sc_bv<edgeCaseSignedSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<edgeCaseSignedSt::_bitWidth> packed_data);
+    explicit edgeCaseSignedSt(sc_bv<edgeCaseSignedSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit edgeCaseSignedSt(
         signedWord_t largeVal_,
         signed11bit_t mediumVal_,
@@ -1160,8 +1166,8 @@ struct mixedArraySignedSt {
 
     mixedArraySignedSt() {}
 
-    static constexpr uint16_t _bitWidth = 35;
-    static constexpr uint16_t _byteWidth = 5;
+    static constexpr uint16_t _bitWidth = 5*3 + 5*4;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     bool operator == (const mixedArraySignedSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const mixedArraySignedSt & v, const std::string & NAME ) {
@@ -1181,9 +1187,9 @@ struct mixedArraySignedSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<35> sc_pack(void) const;
-    void sc_unpack(sc_bv<35> packed_data);
-    explicit mixedArraySignedSt(sc_bv<35> packed_data) { sc_unpack(packed_data); }
+    sc_bv<mixedArraySignedSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<mixedArraySignedSt::_bitWidth> packed_data);
+    explicit mixedArraySignedSt(sc_bv<mixedArraySignedSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit mixedArraySignedSt(
         unsigned5bit_t unsignedVals_[3],
         signed5bit_t signedVals_[4])
@@ -1200,7 +1206,7 @@ struct test37BitRegSt {
     test37BitRegSt() {}
 
     static constexpr uint16_t _bitWidth = 37;
-    static constexpr uint16_t _byteWidth = 5;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     bool operator == (const test37BitRegSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test37BitRegSt & v, const std::string & NAME ) {
@@ -1216,7 +1222,7 @@ struct test37BitRegSt {
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
     // register functions
-    inline int _size(void) {return( (37 + 7) >> 4 ); }
+    inline int _size(void) {return( (_bitWidth + 7) >> 4 ); }
     uint64_t _getValue(void)
     {
         uint64_t ret =
@@ -1227,14 +1233,159 @@ struct test37BitRegSt {
     {
         value37 = ( test37BitT ) (( value >> 0 ) & (( (uint64_t)1 << 37 ) - 1)) ;
         }
-    sc_bv<37> sc_pack(void) const;
-    void sc_unpack(sc_bv<37> packed_data);
-    explicit test37BitRegSt(sc_bv<37> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test37BitRegSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test37BitRegSt::_bitWidth> packed_data);
+    explicit test37BitRegSt(sc_bv<test37BitRegSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test37BitRegSt(
         test37BitT value37_) :
         value37(value37_)
     {}
     explicit test37BitRegSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct log2TestSt {
+    signedLog2T signedCount; //Signed count field using widthLog2+isSigned
+    bSizeIndexT index; //Index field using widthLog2minus1 type
+    bSizeCountT count; //Count field using widthLog2 type
+
+    log2TestSt() {}
+
+    static constexpr uint16_t _bitWidth = clog2(BSIZE+1)+1 + clog2(BSIZE) + clog2(BSIZE+1);
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint16_t _packedSt;
+    bool operator == (const log2TestSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const log2TestSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.count, NAME + ".count");
+        sc_trace(tf,v.index, NAME + ".index");
+        sc_trace(tf,v.signedCount, NAME + ".signedCount");
+    }
+    inline friend ostream& operator << ( ostream& os,  log2TestSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<log2TestSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<log2TestSt::_bitWidth> packed_data);
+    explicit log2TestSt(sc_bv<log2TestSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit log2TestSt(
+        signedLog2T signedCount_,
+        bSizeIndexT index_,
+        bSizeCountT count_) :
+        signedCount(signedCount_),
+        index(index_),
+        count(count_)
+    {}
+    explicit log2TestSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct nestedLog2St {
+    log2TestSt log2Data; //Nested struct with widthLog2 fields
+    threeBitT tag; //A plain 3-bit tag
+
+    nestedLog2St() {}
+
+    static constexpr uint16_t _bitWidth = log2TestSt::_bitWidth + 3;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint16_t _packedSt;
+    bool operator == (const nestedLog2St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const nestedLog2St & v, const std::string & NAME ) {
+        sc_trace(tf,v.tag, NAME + ".tag");
+        sc_trace(tf,v.log2Data, NAME + ".log2Data");
+    }
+    inline friend ostream& operator << ( ostream& os,  nestedLog2St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<nestedLog2St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<nestedLog2St::_bitWidth> packed_data);
+    explicit nestedLog2St(sc_bv<nestedLog2St::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit nestedLog2St(
+        log2TestSt log2Data_,
+        threeBitT tag_) :
+        log2Data(log2Data_),
+        tag(tag_)
+    {}
+    explicit nestedLog2St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct wideLog2St {
+    log2TestSt nested; //Nested log2 struct
+    apbAddrT addr; //Address
+    fourBitT flags; //Flags
+    threeBitT tag; //Tag
+    signedLog2T signedB; //Signed count B
+    signedLog2T signedA; //Signed count A
+    bSizeIndexT indexB; //Index field B
+    bSizeIndexT indexA[ASIZE2]; //Index field A
+    bSizeCountT countB; //Count field B
+    bSizeCountT countA; //Count field A
+
+    wideLog2St() {}
+
+    static constexpr uint16_t _bitWidth = log2TestSt::_bitWidth + DWORD + 4 + 3 + clog2(BSIZE+1)+1 + clog2(BSIZE+1)+1
+                                          + clog2(BSIZE) + clog2(BSIZE)*ASIZE2 + clog2(BSIZE+1) + clog2(BSIZE+1);
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint64_t _packedSt[2];
+    bool operator == (const wideLog2St & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const wideLog2St & v, const std::string & NAME ) {
+        sc_trace(tf,v.countA, NAME + ".countA");
+        sc_trace(tf,v.countB, NAME + ".countB");
+        for(unsigned int i=0; i<ASIZE2; i++) {
+            sc_trace(tf,v.indexA[i], NAME + ".indexA[i]");
+        }
+        sc_trace(tf,v.indexB, NAME + ".indexB");
+        sc_trace(tf,v.signedA, NAME + ".signedA");
+        sc_trace(tf,v.signedB, NAME + ".signedB");
+        sc_trace(tf,v.tag, NAME + ".tag");
+        sc_trace(tf,v.flags, NAME + ".flags");
+        sc_trace(tf,v.addr, NAME + ".addr");
+        sc_trace(tf,v.nested, NAME + ".nested");
+    }
+    inline friend ostream& operator << ( ostream& os,  wideLog2St const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<wideLog2St::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<wideLog2St::_bitWidth> packed_data);
+    explicit wideLog2St(sc_bv<wideLog2St::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit wideLog2St(
+        log2TestSt nested_,
+        apbAddrT addr_,
+        fourBitT flags_,
+        threeBitT tag_,
+        signedLog2T signedB_,
+        signedLog2T signedA_,
+        bSizeIndexT indexB_,
+        bSizeIndexT indexA_[ASIZE2],
+        bSizeCountT countB_,
+        bSizeCountT countA_) :
+        nested(nested_),
+        addr(addr_),
+        flags(flags_),
+        tag(tag_),
+        signedB(signedB_),
+        signedA(signedA_),
+        indexB(indexB_),
+        countB(countB_),
+        countA(countA_)
+    {
+        memcpy(&indexA, &indexA_, sizeof(indexA));
+    }
+    explicit wideLog2St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
 

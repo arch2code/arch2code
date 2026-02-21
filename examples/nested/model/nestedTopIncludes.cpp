@@ -30,13 +30,13 @@ void test_st::unpack(const _packedSt &_src)
 {
     a = (cmdidT)((_src) & ((1ULL << 10) - 1));
 }
-sc_bv<10> test_st::sc_pack(void) const
+sc_bv<test_st::_bitWidth> test_st::sc_pack(void) const
 {
-    sc_bv<10> packed_data;
+    sc_bv<test_st::_bitWidth> packed_data;
     packed_data.range(9, 0) = a;
     return packed_data;
 }
-void test_st::sc_unpack(sc_bv<10> packed_data)
+void test_st::sc_unpack(sc_bv<test_st::_bitWidth> packed_data)
 {
     a = (cmdidT) packed_data.range(9, 0).to_uint64();
 }
@@ -65,14 +65,14 @@ void bigSt::unpack(const _packedSt &_src)
     _pos += 64;
     b.word[1] = ((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 32) - 1));
 }
-sc_bv<96> bigSt::sc_pack(void) const
+sc_bv<bigSt::_bitWidth> bigSt::sc_pack(void) const
 {
-    sc_bv<96> packed_data;
+    sc_bv<bigSt::_bitWidth> packed_data;
     packed_data.range(63, 0) = b.word[0];
     packed_data.range(95, 64) = b.word[1];
     return packed_data;
 }
-void bigSt::sc_unpack(sc_bv<96> packed_data)
+void bigSt::sc_unpack(sc_bv<bigSt::_bitWidth> packed_data)
 {
     b.word[0] = (uint64_t) packed_data.range(63, 0).to_uint64();
     b.word[1] = (uint64_t) packed_data.range(95, 64).to_uint64();
@@ -102,14 +102,14 @@ void testDataSt::unpack(const _packedSt &_src)
     _pos += 64;
     data.word[1] = ((_src[ _pos >> 6 ] >> (_pos & 63)));
 }
-sc_bv<128> testDataSt::sc_pack(void) const
+sc_bv<testDataSt::_bitWidth> testDataSt::sc_pack(void) const
 {
-    sc_bv<128> packed_data;
+    sc_bv<testDataSt::_bitWidth> packed_data;
     packed_data.range(63, 0) = data.word[0];
     packed_data.range(127, 64) = data.word[1];
     return packed_data;
 }
-void testDataSt::sc_unpack(sc_bv<128> packed_data)
+void testDataSt::sc_unpack(sc_bv<testDataSt::_bitWidth> packed_data)
 {
     data.word[0] = (uint64_t) packed_data.range(63, 0).to_uint64();
     data.word[1] = (uint64_t) packed_data.range(127, 64).to_uint64();
@@ -134,13 +134,13 @@ void testDataHdrSt::unpack(const _packedSt &_src)
 {
     cmdid = (cmdidT)((_src) & ((1ULL << 10) - 1));
 }
-sc_bv<10> testDataHdrSt::sc_pack(void) const
+sc_bv<testDataHdrSt::_bitWidth> testDataHdrSt::sc_pack(void) const
 {
-    sc_bv<10> packed_data;
+    sc_bv<testDataHdrSt::_bitWidth> packed_data;
     packed_data.range(9, 0) = cmdid;
     return packed_data;
 }
-void testDataHdrSt::sc_unpack(sc_bv<10> packed_data)
+void testDataHdrSt::sc_unpack(sc_bv<testDataHdrSt::_bitWidth> packed_data)
 {
     cmdid = (cmdidT) packed_data.range(9, 0).to_uint64();
 }
@@ -164,13 +164,13 @@ void lengthHdrSt::unpack(const _packedSt &_src)
 {
     length = (lengthT)((_src));
 }
-sc_bv<16> lengthHdrSt::sc_pack(void) const
+sc_bv<lengthHdrSt::_bitWidth> lengthHdrSt::sc_pack(void) const
 {
-    sc_bv<16> packed_data;
+    sc_bv<lengthHdrSt::_bitWidth> packed_data;
     packed_data.range(15, 0) = length;
     return packed_data;
 }
-void lengthHdrSt::sc_unpack(sc_bv<16> packed_data)
+void lengthHdrSt::sc_unpack(sc_bv<lengthHdrSt::_bitWidth> packed_data)
 {
     length = (lengthT) packed_data.range(15, 0).to_uint64();
 }
@@ -194,13 +194,13 @@ void cmdidHdrSt::unpack(const _packedSt &_src)
 {
     cmdid = (cmdidT)((_src) & ((1ULL << 10) - 1));
 }
-sc_bv<10> cmdidHdrSt::sc_pack(void) const
+sc_bv<cmdidHdrSt::_bitWidth> cmdidHdrSt::sc_pack(void) const
 {
-    sc_bv<10> packed_data;
+    sc_bv<cmdidHdrSt::_bitWidth> packed_data;
     packed_data.range(9, 0) = cmdid;
     return packed_data;
 }
-void cmdidHdrSt::sc_unpack(sc_bv<10> packed_data)
+void cmdidHdrSt::sc_unpack(sc_bv<cmdidHdrSt::_bitWidth> packed_data)
 {
     cmdid = (cmdidT) packed_data.range(9, 0).to_uint64();
 }

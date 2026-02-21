@@ -41,7 +41,7 @@ struct data_t1_t {
     data_t1_t() { memset(this, 0, sizeof(data_t1_t)); }
 
     static constexpr uint16_t _bitWidth = 256;
-    static constexpr uint16_t _byteWidth = 32;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[4];
     inline void pack(_packedSt &_ret) const
     {
@@ -71,7 +71,7 @@ struct tid_t1_t {
     tid_t1_t() { memset(this, 0, sizeof(tid_t1_t)); }
 
     static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
@@ -94,7 +94,7 @@ struct tdest_t1_t {
     tdest_t1_t() { memset(this, 0, sizeof(tdest_t1_t)); }
 
     static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
@@ -117,7 +117,7 @@ struct tuser_t1_t {
     tuser_t1_t() { memset(this, 0, sizeof(tuser_t1_t)); }
 
     static constexpr uint16_t _bitWidth = 16;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
@@ -140,7 +140,7 @@ struct data_t2_t {
     data_t2_t() { memset(this, 0, sizeof(data_t2_t)); }
 
     static constexpr uint16_t _bitWidth = 64;
-    static constexpr uint16_t _byteWidth = 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
@@ -163,7 +163,7 @@ struct tid_t2_t {
     tid_t2_t() { memset(this, 0, sizeof(tid_t2_t)); }
 
     static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
@@ -186,7 +186,7 @@ struct tdest_t2_t {
     tdest_t2_t() { memset(this, 0, sizeof(tdest_t2_t)); }
 
     static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
@@ -209,7 +209,7 @@ struct tuser_t2_t {
     tuser_t2_t() { memset(this, 0, sizeof(tuser_t2_t)); }
 
     static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {

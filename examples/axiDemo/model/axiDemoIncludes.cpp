@@ -30,13 +30,13 @@ void axiAddrSt::unpack(const _packedSt &_src)
 {
     addr = (axiAddrT)((_src));
 }
-sc_bv<32> axiAddrSt::sc_pack(void) const
+sc_bv<axiAddrSt::_bitWidth> axiAddrSt::sc_pack(void) const
 {
-    sc_bv<32> packed_data;
+    sc_bv<axiAddrSt::_bitWidth> packed_data;
     packed_data.range(31, 0) = addr;
     return packed_data;
 }
-void axiAddrSt::sc_unpack(sc_bv<32> packed_data)
+void axiAddrSt::sc_unpack(sc_bv<axiAddrSt::_bitWidth> packed_data)
 {
     addr = (axiAddrT) packed_data.range(31, 0).to_uint64();
 }
@@ -60,13 +60,13 @@ void axiDataSt::unpack(const _packedSt &_src)
 {
     data = (axiDataT)((_src));
 }
-sc_bv<32> axiDataSt::sc_pack(void) const
+sc_bv<axiDataSt::_bitWidth> axiDataSt::sc_pack(void) const
 {
-    sc_bv<32> packed_data;
+    sc_bv<axiDataSt::_bitWidth> packed_data;
     packed_data.range(31, 0) = data;
     return packed_data;
 }
-void axiDataSt::sc_unpack(sc_bv<32> packed_data)
+void axiDataSt::sc_unpack(sc_bv<axiDataSt::_bitWidth> packed_data)
 {
     data = (axiDataT) packed_data.range(31, 0).to_uint64();
 }
@@ -90,13 +90,13 @@ void axiStrobeSt::unpack(const _packedSt &_src)
 {
     strobe = (axiStrobeT)((_src) & ((1ULL << 4) - 1));
 }
-sc_bv<4> axiStrobeSt::sc_pack(void) const
+sc_bv<axiStrobeSt::_bitWidth> axiStrobeSt::sc_pack(void) const
 {
-    sc_bv<4> packed_data;
+    sc_bv<axiStrobeSt::_bitWidth> packed_data;
     packed_data.range(3, 0) = strobe;
     return packed_data;
 }
-void axiStrobeSt::sc_unpack(sc_bv<4> packed_data)
+void axiStrobeSt::sc_unpack(sc_bv<axiStrobeSt::_bitWidth> packed_data)
 {
     strobe = (axiStrobeT) packed_data.range(3, 0).to_uint64();
 }

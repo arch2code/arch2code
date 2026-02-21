@@ -628,6 +628,29 @@ class Schema:
         
         # Process all sections recursively, starting with no parent keys
         self._validate_sections(schema_yaml, schema_file, '', valid_field_types, reserved_keys, custom_checker)
+
+        # Verify the types section has the required fields and post function for widthLog2 support
+        self._validateTypesSchema(schema_file)
+
+    def _validateTypesSchema(self, schema_file: str):
+        """Verify the schema's types section has the required fields and post function.
+
+        If a user has an outdated schema that predates widthLog2 support, the code
+        would silently produce incorrect results. This check catches that early.
+        """
+        types_node = self.get_section('types')
+        if types_node is None:
+            return  # no types section at all — nothing to check
+        required_fields = ['width', 'widthLog2', 'widthLog2minus1']
+        for field_name in required_fields:
+            if types_node.get_field(field_name) is None:
+                printError(f"Schema {schema_file} is missing required field '{field_name}' in the 'types' section. "
+                           f"Please update your schema to include: {field_name}: optionalConst()")
+                exit(warningAndErrorReport())
+        if types_node.post_function != '_post_validateTypeWidth':
+            printError(f"Schema {schema_file} is missing required post function 'validateTypeWidth' in the 'types' section. "
+                       f"Please update your schema to include: _attribs: [post(validateTypeWidth)]")
+            exit(warningAndErrorReport())
                 
     def _validate_sections(self, schema: dict, schema_file: str, context: str,
                           valid_field_types: set, reserved_keys: set, custom_checker: set, 

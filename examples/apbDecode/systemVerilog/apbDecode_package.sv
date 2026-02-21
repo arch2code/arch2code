@@ -13,12 +13,12 @@ localparam int unsigned MEMORYB_WORDS_LOG2 = 32'h0000_0005;  // Address wordline
 
 // types
 typedef logic[37-1:0] thirtySevenBitT; //Used as a thirty seven bit register structure
-typedef logic[29-1:0] aSizeT; //type of width ASIZE sizing from constant ASIZE
-typedef logic[32-1:0] apbAddrT; //for addressing register via APB sizing from constant DWORD
-typedef logic[32-1:0] apbDataT; //for the data sent or recieved via APB sizing from constant DWORD
-typedef logic[5-1:0] aAddrBitsT; //size of memory A address in bits sizing from constant MEMORYA_WORDS_LOG2
-typedef logic[63-1:0] aDataBitsT; //size of memory A data in bits sizing from constant MEMORYA_WIDTH
-typedef logic[5-1:0] bAddrBitsT; //size of memory B address in bits sizing from constant MEMORYB_WORDS_LOG2
+typedef logic[ASIZE-1:0] aSizeT; //type of width ASIZE
+typedef logic[DWORD-1:0] apbAddrT; //for addressing register via APB
+typedef logic[DWORD-1:0] apbDataT; //for the data sent or recieved via APB
+typedef logic[MEMORYA_WORDS_LOG2-1:0] aAddrBitsT; //size of memory A address in bits
+typedef logic[MEMORYA_WIDTH-1:0] aDataBitsT; //size of memory A data in bits
+typedef logic[MEMORYB_WORDS_LOG2-1:0] bAddrBitsT; //size of memory B address in bits
 typedef logic[8-1:0] u8T; //Byte integral type
 typedef logic[16-1:0] u16T; //sixteen bit integral type
 typedef logic[32-1:0] u32T; //thirty two bit integral type

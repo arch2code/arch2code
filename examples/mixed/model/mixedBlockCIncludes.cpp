@@ -36,14 +36,14 @@ void seeSt::unpack(const _packedSt &_src)
     _pos += 3;
     variablec = (cSizeT)((_src >> (_pos & 7)) & ((1ULL << 2) - 1));
 }
-sc_bv<5> seeSt::sc_pack(void) const
+sc_bv<seeSt::_bitWidth> seeSt::sc_pack(void) const
 {
-    sc_bv<5> packed_data;
+    sc_bv<seeSt::_bitWidth> packed_data;
     packed_data.range(2, 0) = variablec2;
     packed_data.range(4, 3) = variablec;
     return packed_data;
 }
-void seeSt::sc_unpack(sc_bv<5> packed_data)
+void seeSt::sc_unpack(sc_bv<seeSt::_bitWidth> packed_data)
 {
     variablec2 = (cSizePlusT) packed_data.range(2, 0).to_uint64();
     variablec = (cSizeT) packed_data.range(4, 3).to_uint64();
@@ -68,13 +68,13 @@ void cHeaderSt::unpack(const _packedSt &_src)
 {
     hdr = (cBiggerT)((_src) & ((1ULL << 13) - 1));
 }
-sc_bv<13> cHeaderSt::sc_pack(void) const
+sc_bv<cHeaderSt::_bitWidth> cHeaderSt::sc_pack(void) const
 {
-    sc_bv<13> packed_data;
+    sc_bv<cHeaderSt::_bitWidth> packed_data;
     packed_data.range(12, 0) = hdr;
     return packed_data;
 }
-void cHeaderSt::sc_unpack(sc_bv<13> packed_data)
+void cHeaderSt::sc_unpack(sc_bv<cHeaderSt::_bitWidth> packed_data)
 {
     hdr = (cBiggerT) packed_data.range(12, 0).to_uint64();
 }

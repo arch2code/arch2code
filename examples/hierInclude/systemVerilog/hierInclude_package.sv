@@ -8,10 +8,10 @@ localparam int unsigned ASIZE = 32'h0000_0007;  // The size of A
 localparam int unsigned ASIZE2 = 32'h0000_000B;  // The size of A + included constant another size
 
 // types
-typedef logic[7-1:0] aSizeT; //type of width ASIZE sizing from constant ASIZE
-typedef logic[11-1:0] aBiggerT; //yet another type sizing from constant ASIZE2
-typedef logic[4-1:0] anotherSizeT; //A type with an included constant sizing from constant ANOTHER_SIZE
-typedef logic[8-1:0] yetAnotherSizeT; //A type with a nested included constant sizing from constant YET_ANOTHER_SIZE
+typedef logic[ASIZE-1:0] aSizeT; //type of width ASIZE
+typedef logic[ASIZE2-1:0] aBiggerT; //yet another type
+typedef logic[ANOTHER_SIZE-1:0] anotherSizeT; //A type with an included constant
+typedef logic[YET_ANOTHER_SIZE-1:0] yetAnotherSizeT; //A type with a nested included constant
 
 // enums
 

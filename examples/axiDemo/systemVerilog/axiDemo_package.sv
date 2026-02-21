@@ -10,9 +10,9 @@ localparam int unsigned AXI_DATA_WIDTH = 32'h0000_0020;  // The width of the AXI
 localparam int unsigned AXI_STROBE_WIDTH = 32'h0000_0004;  // The width of the AXI strobe signals
 
 // types
-typedef logic[32-1:0] axiAddrT; //Address Width sizing from constant AXI_ADDRESS_WIDTH
-typedef logic[32-1:0] axiDataT; //Width of the data bus. sizing from constant AXI_DATA_WIDTH
-typedef logic[4-1:0] axiStrobeT; //Width of the strobe bus. sizing from constant AXI_STROBE_WIDTH
+typedef logic[AXI_ADDRESS_WIDTH-1:0] axiAddrT; //Address Width
+typedef logic[AXI_DATA_WIDTH-1:0] axiDataT; //Width of the data bus.
+typedef logic[AXI_STROBE_WIDTH-1:0] axiStrobeT; //Width of the strobe bus.
 
 // enums
 

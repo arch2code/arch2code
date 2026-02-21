@@ -34,12 +34,12 @@ typedef logic[2-1:0] twoBitT; //this is a 2 bit type
 typedef logic[3-1:0] threeBitT; //this is a 3 bit type
 typedef logic[4-1:0] fourBitT; //this is a 4 bit type
 typedef logic[7-1:0] sevenBitT; //Used as a threeBitT plus a fourBitT for the register structure dRegSt
-typedef logic[1-1:0] aSizeT; //type of width ASIZE sizing from constant ASIZE
-typedef logic[2-1:0] aBiggerT; //yet another type sizing from constant ASIZE2
-typedef logic[4-1:0] bSizeT; //for addressing memory sizing from constant BSIZE_LOG2
+typedef logic[ASIZE-1:0] aSizeT; //type of width ASIZE
+typedef logic[ASIZE2-1:0] aBiggerT; //yet another type
+typedef logic[BSIZE_LOG2-1:0] bSizeT; //for addressing memory
 typedef logic[16-1:0] wordT; //a word type, used for test
-typedef logic[32-1:0] apbAddrT; //for addressing register via APB sizing from constant DWORD
-typedef logic[32-1:0] apbDataT; //for the data sent or recieved via APB sizing from constant DWORD
+typedef logic[DWORD-1:0] apbAddrT; //for addressing register via APB
+typedef logic[DWORD-1:0] apbDataT; //for the data sent or recieved via APB
 typedef logic signed[8-1:0] signedByte_t; //Signed 8-bit type (-128 to 127)
 typedef logic signed[16-1:0] signedWord_t; //Signed 16-bit type (-32768 to 32767)
 typedef logic signed[32-1:0] signedDword_t; //Signed 32-bit type
@@ -52,6 +52,11 @@ typedef logic[5-1:0] unsigned5bit_t; //Unsigned 5-bit type for mixed testing
 typedef logic[9-1:0] unsigned9bit_t; //Unsigned 9-bit type for mixed testing
 typedef logic[64-1:0] bigT; //64-bit type for mixed testing
 typedef logic[37-1:0] test37BitT; //37-bit type for testing non-power-of-2 memory address calculations (5 bytes, rounds to 8-byte stride)
+typedef logic[$clog2(BSIZE+1)-1:0] bSizeCountT; //Type wide enough to count 0..BSIZE (widthLog2 with constant)
+typedef logic[$clog2(BSIZE)-1:0] bSizeIndexT; //Type wide enough to index 0..BSIZE-1 (widthLog2minus1 with constant)
+typedef logic[$clog2(16+1)-1:0] log2LiteralT; //Type wide enough to count 0..16 using widthLog2 with literal (5 bits)
+typedef logic[$clog2(8)-1:0] log2minus1LiteralT; //Type wide enough to index 0..7 using widthLog2minus1 with literal (3 bits)
+typedef logic signed[$clog2(BSIZE+1)+1-1:0] signedLog2T; //Signed type using widthLog2 — gets +1 bit for sign
 
 // enums
 typedef enum logic[2-1:0] {           //a test enum
@@ -223,6 +228,30 @@ typedef struct packed {
 typedef struct packed {
     test37BitT value37; //
 } test37BitRegSt;
+
+typedef struct packed {
+    bSizeCountT count; //Count field using widthLog2 type
+    bSizeIndexT index; //Index field using widthLog2minus1 type
+    signedLog2T signedCount; //Signed count field using widthLog2+isSigned
+} log2TestSt;
+
+typedef struct packed {
+    threeBitT tag; //A plain 3-bit tag
+    log2TestSt log2Data; //Nested struct with widthLog2 fields
+} nestedLog2St;
+
+typedef struct packed {
+    bSizeCountT countA; //Count field A
+    bSizeCountT countB; //Count field B
+    bSizeIndexT [ASIZE2-1:0] indexA; //Index field A
+    bSizeIndexT indexB; //Index field B
+    signedLog2T signedA; //Signed count A
+    signedLog2T signedB; //Signed count B
+    threeBitT tag; //Tag
+    fourBitT flags; //Flags
+    apbAddrT addr; //Address
+    log2TestSt nested; //Nested log2 struct
+} wideLog2St;
 
 endpackage : mixed_package
 // GENERATED_CODE_END
