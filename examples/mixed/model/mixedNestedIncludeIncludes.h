@@ -35,7 +35,7 @@ struct dupTestSt {
     dupTestSt() {}
 
     static constexpr uint16_t _bitWidth = 13;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     bool operator == (const dupTestSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const dupTestSt & v, const std::string & NAME ) {
@@ -50,9 +50,9 @@ struct dupTestSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<13> sc_pack(void) const;
-    void sc_unpack(sc_bv<13> packed_data);
-    explicit dupTestSt(sc_bv<13> packed_data) { sc_unpack(packed_data); }
+    sc_bv<dupTestSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<dupTestSt::_bitWidth> packed_data);
+    explicit dupTestSt(sc_bv<dupTestSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit dupTestSt(
         dupTestT bob_) :
         bob(bob_)

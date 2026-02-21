@@ -352,6 +352,91 @@ instances:
     )
 
 
+def test_mutual_exclusion_width_and_widthLog2():
+    """Test: Specifying both width and widthLog2 should fail"""
+    yaml = """types:
+  badType:
+    width: 8
+    widthLog2: 256
+    desc: "Type with both width and widthLog2 - should fail"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["multiple", "width", "badType"],
+        "Mutual exclusion: width + widthLog2"
+    )
+
+
+def test_mutual_exclusion_width_and_widthLog2minus1():
+    """Test: Specifying both width and widthLog2minus1 should fail"""
+    yaml = """types:
+  badType:
+    width: 8
+    widthLog2minus1: 256
+    desc: "Type with both width and widthLog2minus1 - should fail"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["multiple", "width", "badType"],
+        "Mutual exclusion: width + widthLog2minus1"
+    )
+
+
+def test_mutual_exclusion_widthLog2_and_widthLog2minus1():
+    """Test: Specifying both widthLog2 and widthLog2minus1 should fail"""
+    yaml = """types:
+  badType:
+    widthLog2: 256
+    widthLog2minus1: 256
+    desc: "Type with both widthLog2 and widthLog2minus1 - should fail"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["multiple", "width", "badType"],
+        "Mutual exclusion: widthLog2 + widthLog2minus1"
+    )
+
+
+def test_mutual_exclusion_all_three_width_fields():
+    """Test: Specifying all three width fields should fail"""
+    yaml = """types:
+  badType:
+    width: 8
+    widthLog2: 256
+    widthLog2minus1: 256
+    desc: "Type with all three width fields - should fail"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["multiple", "width", "badType"],
+        "Mutual exclusion: all three width fields"
+    )
+
+
 def test_uint_constant_with_negative_value():
     """Test: Default uint constant with a negative value"""
     yaml = """constants:
@@ -408,6 +493,10 @@ def run_all_tests():
         ("test_eval_expression_syntax_error", test_eval_expression_syntax_error),
         ("test_eval_expression_undefined_name", test_eval_expression_undefined_name),
         ("test_float_constant_used_as_type_width", test_float_constant_used_as_type_width),
+        ("test_mutual_exclusion_width_and_widthLog2", test_mutual_exclusion_width_and_widthLog2),
+        ("test_mutual_exclusion_width_and_widthLog2minus1", test_mutual_exclusion_width_and_widthLog2minus1),
+        ("test_mutual_exclusion_widthLog2_and_widthLog2minus1", test_mutual_exclusion_widthLog2_and_widthLog2minus1),
+        ("test_mutual_exclusion_all_three_width_fields", test_mutual_exclusion_all_three_width_fields),
         ("test_uint_constant_with_negative_value", test_uint_constant_with_negative_value),
         ("test_uint_constant_with_float_eval", test_uint_constant_with_float_eval),
     ]

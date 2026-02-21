@@ -88,8 +88,8 @@ struct test_st {
 
     test_st() {}
 
-    static constexpr uint16_t _bitWidth = 10;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _bitWidth = NUM_COMMANDS_LOG2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     bool operator == (const test_st & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const test_st & v, const std::string & NAME ) {
@@ -104,9 +104,9 @@ struct test_st {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<10> sc_pack(void) const;
-    void sc_unpack(sc_bv<10> packed_data);
-    explicit test_st(sc_bv<10> packed_data) { sc_unpack(packed_data); }
+    sc_bv<test_st::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<test_st::_bitWidth> packed_data);
+    explicit test_st(sc_bv<test_st::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit test_st(
         cmdidT a_) :
         a(a_)
@@ -119,8 +119,8 @@ struct bigSt {
 
     bigSt() {}
 
-    static constexpr uint16_t _bitWidth = 96;
-    static constexpr uint16_t _byteWidth = 12;
+    static constexpr uint16_t _bitWidth = BIG_WIDTH;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[2];
     bool operator == (const bigSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const bigSt & v, const std::string & NAME ) {
@@ -136,9 +136,9 @@ struct bigSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<96> sc_pack(void) const;
-    void sc_unpack(sc_bv<96> packed_data);
-    explicit bigSt(sc_bv<96> packed_data) { sc_unpack(packed_data); }
+    sc_bv<bigSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<bigSt::_bitWidth> packed_data);
+    explicit bigSt(sc_bv<bigSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit bigSt(
         bigT b_) :
         b(b_)
@@ -152,7 +152,7 @@ struct testDataSt {
     testDataSt() {}
 
     static constexpr uint16_t _bitWidth = 128;
-    static constexpr uint16_t _byteWidth = 16;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[2];
     bool operator == (const testDataSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const testDataSt & v, const std::string & NAME ) {
@@ -168,9 +168,9 @@ struct testDataSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<128> sc_pack(void) const;
-    void sc_unpack(sc_bv<128> packed_data);
-    explicit testDataSt(sc_bv<128> packed_data) { sc_unpack(packed_data); }
+    sc_bv<testDataSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<testDataSt::_bitWidth> packed_data);
+    explicit testDataSt(sc_bv<testDataSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit testDataSt(
         dataT data_) :
         data(data_)
@@ -183,8 +183,8 @@ struct testDataHdrSt {
 
     testDataHdrSt() {}
 
-    static constexpr uint16_t _bitWidth = 10;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _bitWidth = NUM_COMMANDS_LOG2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     bool operator == (const testDataHdrSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const testDataHdrSt & v, const std::string & NAME ) {
@@ -199,9 +199,9 @@ struct testDataHdrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<10> sc_pack(void) const;
-    void sc_unpack(sc_bv<10> packed_data);
-    explicit testDataHdrSt(sc_bv<10> packed_data) { sc_unpack(packed_data); }
+    sc_bv<testDataHdrSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<testDataHdrSt::_bitWidth> packed_data);
+    explicit testDataHdrSt(sc_bv<testDataHdrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit testDataHdrSt(
         cmdidT cmdid_) :
         cmdid(cmdid_)
@@ -215,7 +215,7 @@ struct lengthHdrSt {
     lengthHdrSt() {}
 
     static constexpr uint16_t _bitWidth = 16;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     bool operator == (const lengthHdrSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const lengthHdrSt & v, const std::string & NAME ) {
@@ -230,9 +230,9 @@ struct lengthHdrSt {
     inline uint64_t getStructValue(void) const { return( length );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<16> sc_pack(void) const;
-    void sc_unpack(sc_bv<16> packed_data);
-    explicit lengthHdrSt(sc_bv<16> packed_data) { sc_unpack(packed_data); }
+    sc_bv<lengthHdrSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<lengthHdrSt::_bitWidth> packed_data);
+    explicit lengthHdrSt(sc_bv<lengthHdrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit lengthHdrSt(
         lengthT length_) :
         length(length_)
@@ -245,8 +245,8 @@ struct cmdidHdrSt {
 
     cmdidHdrSt() {}
 
-    static constexpr uint16_t _bitWidth = 10;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _bitWidth = NUM_COMMANDS_LOG2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     bool operator == (const cmdidHdrSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const cmdidHdrSt & v, const std::string & NAME ) {
@@ -261,9 +261,9 @@ struct cmdidHdrSt {
     inline uint64_t getStructValue(void) const { return( cmdid );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<10> sc_pack(void) const;
-    void sc_unpack(sc_bv<10> packed_data);
-    explicit cmdidHdrSt(sc_bv<10> packed_data) { sc_unpack(packed_data); }
+    sc_bv<cmdidHdrSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<cmdidHdrSt::_bitWidth> packed_data);
+    explicit cmdidHdrSt(sc_bv<cmdidHdrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit cmdidHdrSt(
         cmdidT cmdid_) :
         cmdid(cmdid_)

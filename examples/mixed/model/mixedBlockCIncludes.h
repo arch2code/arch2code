@@ -38,8 +38,8 @@ struct seeSt {
 
     seeSt() {}
 
-    static constexpr uint16_t _bitWidth = 5;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _bitWidth = CSIZE_PLUS + CSIZE;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const seeSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const seeSt & v, const std::string & NAME ) {
@@ -55,9 +55,9 @@ struct seeSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<5> sc_pack(void) const;
-    void sc_unpack(sc_bv<5> packed_data);
-    explicit seeSt(sc_bv<5> packed_data) { sc_unpack(packed_data); }
+    sc_bv<seeSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<seeSt::_bitWidth> packed_data);
+    explicit seeSt(sc_bv<seeSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit seeSt(
         cSizePlusT variablec2_,
         cSizeT variablec_) :
@@ -73,7 +73,7 @@ struct cHeaderSt {
     cHeaderSt() {}
 
     static constexpr uint16_t _bitWidth = 13;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     bool operator == (const cHeaderSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const cHeaderSt & v, const std::string & NAME ) {
@@ -88,9 +88,9 @@ struct cHeaderSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<13> sc_pack(void) const;
-    void sc_unpack(sc_bv<13> packed_data);
-    explicit cHeaderSt(sc_bv<13> packed_data) { sc_unpack(packed_data); }
+    sc_bv<cHeaderSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<cHeaderSt::_bitWidth> packed_data);
+    explicit cHeaderSt(sc_bv<cHeaderSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit cHeaderSt(
         cBiggerT hdr_) :
         hdr(hdr_)
