@@ -88,7 +88,7 @@ def typeWidthExpression_cpp(value, prj):
     if widthKey:
         constName = prj.data['constants'][widthKey]['constant']
         return constName
-    return str(value['realwidth'])
+    return str(prj.resolveTypeWidth(value))
 
 
 def includeTypes(args, prj, data):

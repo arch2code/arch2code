@@ -37,7 +37,7 @@ struct data_t1_t {
     data_t1_t() {}
 
     static constexpr uint16_t _bitWidth = 256;
-    static constexpr uint16_t _byteWidth = 32;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[4];
     bool operator == (const data_t1_t & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const data_t1_t & v, const std::string & NAME ) {
@@ -55,9 +55,9 @@ struct data_t1_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<256> sc_pack(void) const;
-    void sc_unpack(sc_bv<256> packed_data);
-    explicit data_t1_t(sc_bv<256> packed_data) { sc_unpack(packed_data); }
+    sc_bv<data_t1_t::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<data_t1_t::_bitWidth> packed_data);
+    explicit data_t1_t(sc_bv<data_t1_t::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit data_t1_t(
         bv256_t data_) :
         data(data_)
@@ -71,7 +71,7 @@ struct tid_t1_t {
     tid_t1_t() {}
 
     static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const tid_t1_t & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const tid_t1_t & v, const std::string & NAME ) {
@@ -86,9 +86,9 @@ struct tid_t1_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<4> sc_pack(void) const;
-    void sc_unpack(sc_bv<4> packed_data);
-    explicit tid_t1_t(sc_bv<4> packed_data) { sc_unpack(packed_data); }
+    sc_bv<tid_t1_t::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<tid_t1_t::_bitWidth> packed_data);
+    explicit tid_t1_t(sc_bv<tid_t1_t::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit tid_t1_t(
         bv4_t tid_) :
         tid(tid_)
@@ -102,7 +102,7 @@ struct tdest_t1_t {
     tdest_t1_t() {}
 
     static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const tdest_t1_t & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const tdest_t1_t & v, const std::string & NAME ) {
@@ -117,9 +117,9 @@ struct tdest_t1_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<4> sc_pack(void) const;
-    void sc_unpack(sc_bv<4> packed_data);
-    explicit tdest_t1_t(sc_bv<4> packed_data) { sc_unpack(packed_data); }
+    sc_bv<tdest_t1_t::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<tdest_t1_t::_bitWidth> packed_data);
+    explicit tdest_t1_t(sc_bv<tdest_t1_t::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit tdest_t1_t(
         bv4_t tid_) :
         tid(tid_)
@@ -133,7 +133,7 @@ struct tuser_t1_t {
     tuser_t1_t() {}
 
     static constexpr uint16_t _bitWidth = 16;
-    static constexpr uint16_t _byteWidth = 2;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint16_t _packedSt;
     bool operator == (const tuser_t1_t & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const tuser_t1_t & v, const std::string & NAME ) {
@@ -148,9 +148,9 @@ struct tuser_t1_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<16> sc_pack(void) const;
-    void sc_unpack(sc_bv<16> packed_data);
-    explicit tuser_t1_t(sc_bv<16> packed_data) { sc_unpack(packed_data); }
+    sc_bv<tuser_t1_t::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<tuser_t1_t::_bitWidth> packed_data);
+    explicit tuser_t1_t(sc_bv<tuser_t1_t::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit tuser_t1_t(
         bv16_t parity_) :
         parity(parity_)
@@ -164,7 +164,7 @@ struct data_t2_t {
     data_t2_t() {}
 
     static constexpr uint16_t _bitWidth = 64;
-    static constexpr uint16_t _byteWidth = 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     bool operator == (const data_t2_t & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const data_t2_t & v, const std::string & NAME ) {
@@ -179,9 +179,9 @@ struct data_t2_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<64> sc_pack(void) const;
-    void sc_unpack(sc_bv<64> packed_data);
-    explicit data_t2_t(sc_bv<64> packed_data) { sc_unpack(packed_data); }
+    sc_bv<data_t2_t::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<data_t2_t::_bitWidth> packed_data);
+    explicit data_t2_t(sc_bv<data_t2_t::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit data_t2_t(
         bv64_t data_) :
         data(data_)
@@ -195,7 +195,7 @@ struct tid_t2_t {
     tid_t2_t() {}
 
     static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const tid_t2_t & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const tid_t2_t & v, const std::string & NAME ) {
@@ -210,9 +210,9 @@ struct tid_t2_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<4> sc_pack(void) const;
-    void sc_unpack(sc_bv<4> packed_data);
-    explicit tid_t2_t(sc_bv<4> packed_data) { sc_unpack(packed_data); }
+    sc_bv<tid_t2_t::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<tid_t2_t::_bitWidth> packed_data);
+    explicit tid_t2_t(sc_bv<tid_t2_t::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit tid_t2_t(
         bv4_t tid_) :
         tid(tid_)
@@ -226,7 +226,7 @@ struct tdest_t2_t {
     tdest_t2_t() {}
 
     static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const tdest_t2_t & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const tdest_t2_t & v, const std::string & NAME ) {
@@ -241,9 +241,9 @@ struct tdest_t2_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<4> sc_pack(void) const;
-    void sc_unpack(sc_bv<4> packed_data);
-    explicit tdest_t2_t(sc_bv<4> packed_data) { sc_unpack(packed_data); }
+    sc_bv<tdest_t2_t::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<tdest_t2_t::_bitWidth> packed_data);
+    explicit tdest_t2_t(sc_bv<tdest_t2_t::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit tdest_t2_t(
         bv4_t tid_) :
         tid(tid_)
@@ -257,7 +257,7 @@ struct tuser_t2_t {
     tuser_t2_t() {}
 
     static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const tuser_t2_t & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const tuser_t2_t & v, const std::string & NAME ) {
@@ -272,9 +272,9 @@ struct tuser_t2_t {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<4> sc_pack(void) const;
-    void sc_unpack(sc_bv<4> packed_data);
-    explicit tuser_t2_t(sc_bv<4> packed_data) { sc_unpack(packed_data); }
+    sc_bv<tuser_t2_t::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<tuser_t2_t::_bitWidth> packed_data);
+    explicit tuser_t2_t(sc_bv<tuser_t2_t::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit tuser_t2_t(
         bv4_t parity_) :
         parity(parity_)

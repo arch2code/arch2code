@@ -48,15 +48,15 @@ void aSt::unpack(const _packedSt &_src)
         }
     }
 }
-sc_bv<2> aSt::sc_pack(void) const
+sc_bv<aSt::_bitWidth> aSt::sc_pack(void) const
 {
-    sc_bv<2> packed_data;
+    sc_bv<aSt::_bitWidth> packed_data;
     for(unsigned int i=0; i<ASIZE2; i++) {
         packed_data.range(0+(i+1)*1-1, 0+i*1) = variablea[i];
     }
     return packed_data;
 }
-void aSt::sc_unpack(sc_bv<2> packed_data)
+void aSt::sc_unpack(sc_bv<aSt::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<ASIZE2; i++) {
         variablea[i] = (aSizeT) packed_data.range(0+(i+1)*1-1, 0+i*1).to_uint64();
@@ -82,13 +82,13 @@ void bSt::unpack(const _packedSt &_src)
 {
     variableb = (bSizeT)((_src) & ((1ULL << 5) - 1));
 }
-sc_bv<5> bSt::sc_pack(void) const
+sc_bv<bSt::_bitWidth> bSt::sc_pack(void) const
 {
-    sc_bv<5> packed_data;
+    sc_bv<bSt::_bitWidth> packed_data;
     packed_data.range(4, 0) = variableb;
     return packed_data;
 }
-void bSt::sc_unpack(sc_bv<5> packed_data)
+void bSt::sc_unpack(sc_bv<bSt::_bitWidth> packed_data)
 {
     variableb = (bSizeT) packed_data.range(4, 0).to_uint64();
 }
@@ -122,7 +122,7 @@ void bBSt::sc_unpack(bool packed_data)
 {
     ready = (readyT) packed_data;
 }
-void bBSt::sc_unpack(sc_bv<1> packed_data)
+void bBSt::sc_unpack(sc_bv<bBSt::_bitWidth> packed_data)
 {
     ready = (readyT) packed_data.range(0, 0).to_uint64();
 }
@@ -152,14 +152,14 @@ void seeSt::unpack(const _packedSt &_src)
     _pos += 3;
     variablec = (twoBitT)((_src >> (_pos & 7)) & ((1ULL << 2) - 1));
 }
-sc_bv<5> seeSt::sc_pack(void) const
+sc_bv<seeSt::_bitWidth> seeSt::sc_pack(void) const
 {
-    sc_bv<5> packed_data;
+    sc_bv<seeSt::_bitWidth> packed_data;
     packed_data.range(2, 0) = variablec2;
     packed_data.range(4, 3) = variablec;
     return packed_data;
 }
-void seeSt::sc_unpack(sc_bv<5> packed_data)
+void seeSt::sc_unpack(sc_bv<seeSt::_bitWidth> packed_data)
 {
     variablec2 = (threeBitT) packed_data.range(2, 0).to_uint64();
     variablec = (twoBitT) packed_data.range(4, 3).to_uint64();
@@ -190,14 +190,14 @@ void dSt::unpack(const _packedSt &_src)
     _pos += 4;
     variabled = (threeBitT)((_src >> (_pos & 7)) & ((1ULL << 3) - 1));
 }
-sc_bv<7> dSt::sc_pack(void) const
+sc_bv<dSt::_bitWidth> dSt::sc_pack(void) const
 {
-    sc_bv<7> packed_data;
+    sc_bv<dSt::_bitWidth> packed_data;
     packed_data.range(3, 0) = variabled2;
     packed_data.range(6, 4) = variabled;
     return packed_data;
 }
-void dSt::sc_unpack(sc_bv<7> packed_data)
+void dSt::sc_unpack(sc_bv<dSt::_bitWidth> packed_data)
 {
     variabled2 = (fourBitT) packed_data.range(3, 0).to_uint64();
     variabled = (threeBitT) packed_data.range(6, 4).to_uint64();
@@ -257,9 +257,9 @@ void eNestedSt::unpack(const _packedSt &_src)
     _pos += 7;
     variablea = (aSizeT)((_src >> (_pos & 31)) & 1);
 }
-sc_bv<18> eNestedSt::sc_pack(void) const
+sc_bv<eNestedSt::_bitWidth> eNestedSt::sc_pack(void) const
 {
-    sc_bv<18> packed_data;
+    sc_bv<eNestedSt::_bitWidth> packed_data;
     for(unsigned int i=0; i<2; i++) {
         packed_data.range(0+(i+1)*5-1, 0+i*5) = joe[i].sc_pack();
     }
@@ -267,7 +267,7 @@ sc_bv<18> eNestedSt::sc_pack(void) const
     packed_data.range(17, 17) = variablea;
     return packed_data;
 }
-void eNestedSt::sc_unpack(sc_bv<18> packed_data)
+void eNestedSt::sc_unpack(sc_bv<eNestedSt::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<2; i++) {
         joe[i].sc_unpack(packed_data.range(0+(i+1)*5-1, 0+i*5));
@@ -295,13 +295,13 @@ void bSizeSt::unpack(const _packedSt &_src)
 {
     index = (bSizeT)((_src) & ((1ULL << 5) - 1));
 }
-sc_bv<5> bSizeSt::sc_pack(void) const
+sc_bv<bSizeSt::_bitWidth> bSizeSt::sc_pack(void) const
 {
-    sc_bv<5> packed_data;
+    sc_bv<bSizeSt::_bitWidth> packed_data;
     packed_data.range(4, 0) = index;
     return packed_data;
 }
-void bSizeSt::sc_unpack(sc_bv<5> packed_data)
+void bSizeSt::sc_unpack(sc_bv<bSizeSt::_bitWidth> packed_data)
 {
     index = (bSizeT) packed_data.range(4, 0).to_uint64();
 }
@@ -325,13 +325,13 @@ void eHeaderSt::unpack(const _packedSt &_src)
 {
     hdr = (aBiggerT)((_src) & ((1ULL << 2) - 1));
 }
-sc_bv<2> eHeaderSt::sc_pack(void) const
+sc_bv<eHeaderSt::_bitWidth> eHeaderSt::sc_pack(void) const
 {
-    sc_bv<2> packed_data;
+    sc_bv<eHeaderSt::_bitWidth> packed_data;
     packed_data.range(1, 0) = hdr;
     return packed_data;
 }
-void eHeaderSt::sc_unpack(sc_bv<2> packed_data)
+void eHeaderSt::sc_unpack(sc_bv<eHeaderSt::_bitWidth> packed_data)
 {
     hdr = (aBiggerT) packed_data.range(1, 0).to_uint64();
 }

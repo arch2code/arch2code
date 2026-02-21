@@ -11,6 +11,7 @@
 #include "mixedIncludeIncludes.h"
 #include "mixedNestedIncludeIncludes.h"
 #include "mixedBlockCIncludes.h"
+#include "bitTwiddling.h"
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
