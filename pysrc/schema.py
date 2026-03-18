@@ -376,6 +376,26 @@ class Node:
         if self.parent_storage_key_field:
             return self.parent_storage_key_field + 'Key'
         return None
+
+    def get_context_key_source(self, context_key_field_name: str) -> Optional[tuple]:
+        """Resolve the source field for a contextKey field from existing node state.
+
+        Returns:
+            Tuple of (source_field_name, source_field_type), or None if unresolved.
+        """
+        storage_key = self.get_storage_key_field_name()
+        if storage_key and self.get_storage_key_field_name_qualified() == context_key_field_name:
+            storage_field = self.get_field(storage_key)
+            storage_ftype = storage_field.field_type if storage_field else 'unknown'
+            return storage_key, storage_ftype
+
+        for candidate_name, candidate_field in self.fields.items():
+            if candidate_name == context_key_field_name:
+                continue
+            if candidate_field.field_type in {'key', 'listkey', 'anchor'} and (candidate_name + 'Key') == context_key_field_name:
+                return candidate_name, candidate_field.field_type
+
+        return None
         
     def has_field(self, field_name: str) -> bool:
         """Check if a field exists (case-insensitive)"""
@@ -631,6 +651,21 @@ class Schema:
 
         # Verify the types section has the required fields and post function for widthLog2 support
         self._validateTypesSchema(schema_file)
+        self._validate_context_key_sources(schema_file)
+
+    def _validate_context_key_sources(self, schema_file: str):
+        """Validate that each contextKey field has a resolvable source producer."""
+        for node in self.nodes.values():
+            for field_name, field in node.fields.items():
+                if field.field_type != 'contextKey':
+                    continue
+                if node.get_context_key_source(field_name) is None:
+                    printError(
+                        f"Bad schema detected in {schema_file}. "
+                        f"Section {node.full_path}, field '{field_name}' is declared as contextKey "
+                        f"but no source field (key/listkey/anchor/storage key) can produce it."
+                    )
+                    exit(warningAndErrorReport())
 
     def _validateTypesSchema(self, schema_file: str):
         """Verify the schema's types section has the required fields and post function.

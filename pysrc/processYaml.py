@@ -118,11 +118,23 @@ def getKeyPriority(data, prioritylist):
         ret = data.get(key, None)
         # filter out empty strings or missing values
         if ret:
-            return ret
-    return None
+            return key, ret
+    return None, None
 
 def getPortChannelName(row, portKeyName = 'port'):
-    return getKeyPriority(row, [portKeyName, 'name', 'interface'])
+    _, value = getKeyPriority(row, [portKeyName, 'name', 'interface'])
+    return value
+
+def getTypeWidthContext(typeInfo):
+    """Return (mode, key) for active width field."""
+    mode, _ = getKeyPriority(typeInfo, ['widthLog2', 'widthLog2minus1', 'width'])
+    if not mode:
+        mode = 'width'
+
+    key = typeInfo.get(f"{mode}Key", None)
+    if not key:
+        key = None
+    return mode, key
 
 def loadModule(filename):
     module = None
@@ -784,26 +796,20 @@ class projectOpen:
         Schema validation guarantees all width fields exist in typeInfo.
         """
         isSigned = typeInfo['isSigned']
+        mode, key = getTypeWidthContext(typeInfo)
+        rawValue = self.getConst(key, require_int=True, context_msg="type width") if key else typeInfo[mode]
+        n = int(rawValue)
 
-        if typeInfo['widthLog2'] != '':
-            key = typeInfo['widthLog2Key']
-            n = self.getConst(key) if key else int(typeInfo['widthLog2'])
-            width = int(n).bit_length()
+        if mode == 'widthLog2':
+            width = n.bit_length()
             if isSigned:
                 width += 1
-        elif typeInfo['widthLog2minus1'] != '':
-            key = typeInfo['widthLog2minus1Key']
-            n = self.getConst(key) if key else int(typeInfo['widthLog2minus1'])
+        elif mode == 'widthLog2minus1':
             width = int(n - 1).bit_length()
             if isSigned:
                 width += 1
         else:
-            # Direct width — use widthKey if available, else try raw value
-            key = typeInfo['widthKey']
-            if key:
-                width = self.getConst(key)
-            else:
-                width = int(typeInfo['width'])
+            width = n
         return width
 
 
@@ -1734,7 +1740,7 @@ class projectOpen:
                 ret['interfaceTypes'][intf_type] = intfInfo.get('interfaceTypeKey', None)
         for conn, connVal in connections.items():
             # create jinja friendly names
-            connVal['interfaceName'] = getKeyPriority(connVal, ['interfaceName', 'srcport', 'name', 'interface'])
+            _, connVal['interfaceName'] = getKeyPriority(connVal, ['interfaceName', 'srcport', 'name', 'interface'])
             intfInfo = self.data['interfaces'][connVal['interfaceKey']]
             self.getBDGetIntfStructs(ret, intfData=intfInfo)
             connVal['interfaceType'] = intfInfo['interfaceType']
@@ -2976,8 +2982,12 @@ class projectCreate:
                     # key/anchor/listkey field is processed (see immediate population after each type)
                     # If not already populated, this is a bug that needs investigation
                     if field not in ret:
-                        base_field = field[:-3] if field.endswith('Key') else field
-                        base_ftype = schema.get(base_field, 'unknown')
+                        node = self.schema.get_node(context + section)
+                        source_info = node.get_context_key_source(field) if node else None
+                        if source_info is not None:
+                            base_field, base_ftype = source_info
+                        else:
+                            base_field, base_ftype = '<unknown>', 'unknown'
                         self.logError(f"In file {yamlFile}:{myLineNumber}, section {context}{section}, contextKey field '{field}' was not pre-populated by its base field '{base_field}' (type={base_ftype}). This is a bug in processYaml.")
                         exit(warningAndErrorReport())
                     # else: correctly pre-populated, no action needed
@@ -3144,27 +3154,23 @@ class projectCreate:
         Uses qualConstParse for qualified key resolution.
         """
         isSigned = typeInfo['isSigned']
+        mode, key = getTypeWidthContext(typeInfo)
+        raw = key if key else typeInfo[mode]
+        parse_mode = 'qualified' if key else 'literal'
+        n = self._resolve_width_int(raw, f"{mode}Key" if key else mode, context=key, parse_mode=parse_mode)
+        if n is None:
+            return 0
 
-        if typeInfo['widthLog2'] != '':
-            # Use widthLog2Key if available (qualified constant), else try raw value
-            key = typeInfo['widthLog2Key']
-            n = self.qualConstParse(key) if key else int(typeInfo['widthLog2'])
+        if mode == 'widthLog2':
             width = int(n).bit_length()
             if isSigned:
                 width += 1
-        elif typeInfo['widthLog2minus1'] != '':
-            key = typeInfo['widthLog2minus1Key']
-            n = self.qualConstParse(key) if key else int(typeInfo['widthLog2minus1'])
+        elif mode == 'widthLog2minus1':
             width = int(n - 1).bit_length()
             if isSigned:
                 width += 1
         else:
-            # Direct width — use widthKey if available, else try raw value
-            key = typeInfo['widthKey']
-            if key:
-                width = self.qualConstParse(key)
-            else:
-                width = int(typeInfo['width'])
+            width = n
         return width
 
     # AUTO SECTIONS begin here
@@ -3538,6 +3544,54 @@ class projectCreate:
         ret=item.get(field, 1)
         return ret
 
+    def _resolve_width_int(self, rawValue, fieldName, yamlFile=None, item=None, context=None, parse_mode='literal'):
+        """Resolve a width-related value and enforce integer semantics.
+
+        Rejects float values (literal or resolved constant/enum) to avoid silent truncation.
+        Returns int on success, otherwise returns None after reporting an error.
+        """
+        loc = "?"
+        if yamlFile is not None:
+            line = item.get('lc').line + 1 if isinstance(item, dict) and item.get('lc') else '?'
+            loc = f"{yamlFile}:{line}"
+        elif context:
+            loc = context
+
+        # Literal float in YAML (e.g. width: 1.5) would otherwise be silently int-truncated.
+        if isinstance(rawValue, float):
+            self.logError(f"In {loc}, {fieldName} '{rawValue}' resolves to floating-point value ({rawValue}), but type width requires an integer")
+            return None
+
+        if parse_mode not in {'literal', 'qualified'}:
+            raise ValueError(f"Invalid parse_mode '{parse_mode}' for _resolve_width_int")
+
+        resolvedValue = rawValue
+        if not isinstance(rawValue, int):
+            if yamlFile is not None:
+                resolvedValue = self.constParse(rawValue, yamlFile, value=True)
+            elif parse_mode == 'qualified' and isinstance(rawValue, str):
+                resolvedValue = self.qualConstParse(rawValue)
+            else:
+                try:
+                    resolvedValue = int(rawValue)
+                except (TypeError, ValueError):
+                    self.logError(f"In {loc}, {fieldName} '{rawValue}' is not a valid integer width value")
+                    return None
+
+        if isinstance(resolvedValue, float):
+            self.logError(f"In {loc}, {fieldName} '{rawValue}' resolves to floating-point value ({resolvedValue}), but type width requires an integer")
+            return None
+
+        if resolvedValue is None:
+            self.logError(f"In {loc}, {fieldName} '{rawValue}' is unresolved")
+            return None
+
+        try:
+            return int(resolvedValue)
+        except (TypeError, ValueError):
+            self.logError(f"In {loc}, {fieldName} '{rawValue}' resolves to non-integer value '{resolvedValue}'")
+            return None
+
     def _post_validateTypeWidth(self, itemkey, item, yamlFile):
         """Validate type width fields after processing.
 
@@ -3557,18 +3611,25 @@ class projectCreate:
                           f"Only one of width, widthLog2, widthLog2minus1 may be specified")
             return item
 
+        enum = item.get('enum', None)
+        enumMax = 1
+        if enum:
+            for val, valItem in enum.items():
+                if 'value' not in valItem:
+                    self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' enum entry missing 'value' field")
+                    return item
+                valActual = self._resolve_width_int(valItem['value'], f"enum '{val}' value", yamlFile=yamlFile, item=item)
+                if valActual is None:
+                    return item
+                if valActual < 0:
+                    self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' enum '{val}' has negative value ({valActual}), but signed enums are not supported")
+                    return item
+                enumMax = max(enumMax, valActual)
+
         if widthCount == 0:
-            # No explicit width — try to derive from enum
-            enum = item.get('enum', None)
+            # No explicit width — derive from enum values if available.
             if enum:
-                valMax = 1
-                for val, valItem in enum.items():
-                    if 'value' not in valItem:
-                        self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' enum entry missing 'value' field")
-                        return item
-                    valActual = self.constParse(valItem['value'], yamlFile, value=True)
-                    valMax = max(valMax, valActual)
-                item['width'] = int(valMax).bit_length()
+                item['width'] = int(enumMax).bit_length()
             else:
                 self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' is missing width — must specify one of width, widthLog2, or widthLog2minus1 (or provide an enum)")
                 return item
@@ -3583,15 +3644,9 @@ class projectCreate:
 
         # Resolve the raw value to an integer
         rawValue = item[widthField]
-        if isinstance(rawValue, int):
-            n = rawValue
-        else:
-            resolvedValue = self.constParse(rawValue, yamlFile, value=True)
-            if isinstance(resolvedValue, float):
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' {widthField} '{rawValue}' resolves to floating-point value ({resolvedValue}), "
-                              f"but type width requires an integer")
-                return item
-            n = int(resolvedValue)
+        n = self._resolve_width_int(rawValue, widthField, yamlFile=yamlFile, item=item)
+        if n is None:
+            return item
 
         # Compute the actual bit width
         if hasWidthLog2:
