@@ -29,7 +29,7 @@ const uint32_t MEMORYB_WORDS_LOG2 = 5;  // Address wordlines for memory B log2
 typedef uint64_t thirtySevenBitT; // [37] Used as a thirty seven bit register structure
 typedef uint32_t aSizeT; // [29] type of width ASIZE
 typedef uint32_t apbAddrT; // [32] for addressing register via APB
-typedef uint32_t apbDataT; // [32] for the data sent or recieved via APB
+typedef uint32_t apbDataT; // [32] for the data sent or received via APB
 typedef uint8_t aAddrBitsT; // [5] size of memory A address in bits
 typedef uint64_t aDataBitsT; // [63] size of memory A data in bits
 typedef uint8_t bAddrBitsT; // [5] size of memory B address in bits

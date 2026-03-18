@@ -15,7 +15,7 @@ localparam int unsigned MEMORYB_WORDS_LOG2 = 32'h0000_0005;  // Address wordline
 typedef logic[37-1:0] thirtySevenBitT; //Used as a thirty seven bit register structure
 typedef logic[ASIZE-1:0] aSizeT; //type of width ASIZE
 typedef logic[DWORD-1:0] apbAddrT; //for addressing register via APB
-typedef logic[DWORD-1:0] apbDataT; //for the data sent or recieved via APB
+typedef logic[DWORD-1:0] apbDataT; //for the data sent or received via APB
 typedef logic[MEMORYA_WORDS_LOG2-1:0] aAddrBitsT; //size of memory A address in bits
 typedef logic[MEMORYA_WIDTH-1:0] aDataBitsT; //size of memory A data in bits
 typedef logic[MEMORYB_WORDS_LOG2-1:0] bAddrBitsT; //size of memory B address in bits

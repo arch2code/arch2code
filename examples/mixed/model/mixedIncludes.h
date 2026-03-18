@@ -55,7 +55,7 @@ typedef uint8_t aBiggerT; // [2] yet another type
 typedef uint8_t bSizeT; // [4] for addressing memory
 typedef uint16_t wordT; // [16] a word type, used for test
 typedef uint32_t apbAddrT; // [32] for addressing register via APB
-typedef uint32_t apbDataT; // [32] for the data sent or recieved via APB
+typedef uint32_t apbDataT; // [32] for the data sent or received via APB
 typedef int8_t signedByte_t; // [8] Signed 8-bit type (-128 to 127)
 typedef int16_t signedWord_t; // [16] Signed 16-bit type (-32768 to 32767)
 typedef int32_t signedDword_t; // [32] Signed 32-bit type

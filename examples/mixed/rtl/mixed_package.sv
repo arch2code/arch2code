@@ -39,7 +39,7 @@ typedef logic[ASIZE2-1:0] aBiggerT; //yet another type
 typedef logic[BSIZE_LOG2-1:0] bSizeT; //for addressing memory
 typedef logic[16-1:0] wordT; //a word type, used for test
 typedef logic[DWORD-1:0] apbAddrT; //for addressing register via APB
-typedef logic[DWORD-1:0] apbDataT; //for the data sent or recieved via APB
+typedef logic[DWORD-1:0] apbDataT; //for the data sent or received via APB
 typedef logic signed[8-1:0] signedByte_t; //Signed 8-bit type (-128 to 127)
 typedef logic signed[16-1:0] signedWord_t; //Signed 16-bit type (-32768 to 32767)
 typedef logic signed[32-1:0] signedDword_t; //Signed 32-bit type

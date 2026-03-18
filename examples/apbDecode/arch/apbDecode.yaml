@@ -20,7 +20,7 @@ types:
     desc: for addressing register via APB
   apbDataT:
     width: DWORD
-    desc: for the data sent or recieved via APB
+    desc: for the data sent or received via APB
   aAddrBitsT:
     width: MEMORYA_WORDS_LOG2
     desc: size of memory A address in bits

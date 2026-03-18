@@ -114,7 +114,7 @@ types:
     desc: for addressing register via APB
   apbDataT:
     width: DWORD
-    desc: for the data sent or recieved via APB
+    desc: for the data sent or received via APB
   signedByte_t:
     width: 8
     isSigned: true

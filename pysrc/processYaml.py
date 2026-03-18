@@ -3599,6 +3599,7 @@ class projectCreate:
         - Exactly one of width, widthLog2, widthLog2minus1 must be specified (unless enum provides width)
         - Resolved width must be non-zero
         - Float constants are not valid as widths
+        - Signed log2-derived widths include sign bit adjustment (+1)
         """
         # Count which width fields are specified (non-empty)
         hasWidth = item['width'] != ''
@@ -3649,17 +3650,22 @@ class projectCreate:
             return item
 
         # Compute the actual bit width
+        isSigned = bool(item.get('isSigned', False))
         if hasWidthLog2:
             if n < 0:
                 self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' widthLog2 resolves to negative value ({n}), which is not valid")
                 return item
             computedWidth = n.bit_length()
+            if isSigned:
+                computedWidth += 1
         elif hasWidthLog2minus1:
             if n <= 0:
                 self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' widthLog2minus1 resolves to {n}, "
                               f"which is not valid (requires a positive value to index 0..N-1)")
                 return item
             computedWidth = (n - 1).bit_length()
+            if isSigned:
+                computedWidth += 1
         else:
             computedWidth = n
 
