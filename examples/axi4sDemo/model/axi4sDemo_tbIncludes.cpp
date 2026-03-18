@@ -43,16 +43,16 @@ void data_t1_t::unpack(const _packedSt &_src)
     _pos += 64;
     data.word[3] = ((_src[ _pos >> 6 ] >> (_pos & 63)));
 }
-sc_bv<256> data_t1_t::sc_pack(void) const
+sc_bv<data_t1_t::_bitWidth> data_t1_t::sc_pack(void) const
 {
-    sc_bv<256> packed_data;
+    sc_bv<data_t1_t::_bitWidth> packed_data;
     packed_data.range(63, 0) = data.word[0];
     packed_data.range(127, 64) = data.word[1];
     packed_data.range(191, 128) = data.word[2];
     packed_data.range(255, 192) = data.word[3];
     return packed_data;
 }
-void data_t1_t::sc_unpack(sc_bv<256> packed_data)
+void data_t1_t::sc_unpack(sc_bv<data_t1_t::_bitWidth> packed_data)
 {
     data.word[0] = (uint64_t) packed_data.range(63, 0).to_uint64();
     data.word[1] = (uint64_t) packed_data.range(127, 64).to_uint64();
@@ -79,13 +79,13 @@ void tid_t1_t::unpack(const _packedSt &_src)
 {
     tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
 }
-sc_bv<4> tid_t1_t::sc_pack(void) const
+sc_bv<tid_t1_t::_bitWidth> tid_t1_t::sc_pack(void) const
 {
-    sc_bv<4> packed_data;
+    sc_bv<tid_t1_t::_bitWidth> packed_data;
     packed_data.range(3, 0) = tid;
     return packed_data;
 }
-void tid_t1_t::sc_unpack(sc_bv<4> packed_data)
+void tid_t1_t::sc_unpack(sc_bv<tid_t1_t::_bitWidth> packed_data)
 {
     tid = (bv4_t) packed_data.range(3, 0).to_uint64();
 }
@@ -109,13 +109,13 @@ void tdest_t1_t::unpack(const _packedSt &_src)
 {
     tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
 }
-sc_bv<4> tdest_t1_t::sc_pack(void) const
+sc_bv<tdest_t1_t::_bitWidth> tdest_t1_t::sc_pack(void) const
 {
-    sc_bv<4> packed_data;
+    sc_bv<tdest_t1_t::_bitWidth> packed_data;
     packed_data.range(3, 0) = tid;
     return packed_data;
 }
-void tdest_t1_t::sc_unpack(sc_bv<4> packed_data)
+void tdest_t1_t::sc_unpack(sc_bv<tdest_t1_t::_bitWidth> packed_data)
 {
     tid = (bv4_t) packed_data.range(3, 0).to_uint64();
 }
@@ -139,13 +139,13 @@ void tuser_t1_t::unpack(const _packedSt &_src)
 {
     parity = (bv16_t)((_src));
 }
-sc_bv<16> tuser_t1_t::sc_pack(void) const
+sc_bv<tuser_t1_t::_bitWidth> tuser_t1_t::sc_pack(void) const
 {
-    sc_bv<16> packed_data;
+    sc_bv<tuser_t1_t::_bitWidth> packed_data;
     packed_data.range(15, 0) = parity;
     return packed_data;
 }
-void tuser_t1_t::sc_unpack(sc_bv<16> packed_data)
+void tuser_t1_t::sc_unpack(sc_bv<tuser_t1_t::_bitWidth> packed_data)
 {
     parity = (bv16_t) packed_data.range(15, 0).to_uint64();
 }
@@ -169,13 +169,13 @@ void data_t2_t::unpack(const _packedSt &_src)
 {
     data = (bv64_t)((_src));
 }
-sc_bv<64> data_t2_t::sc_pack(void) const
+sc_bv<data_t2_t::_bitWidth> data_t2_t::sc_pack(void) const
 {
-    sc_bv<64> packed_data;
+    sc_bv<data_t2_t::_bitWidth> packed_data;
     packed_data.range(63, 0) = data;
     return packed_data;
 }
-void data_t2_t::sc_unpack(sc_bv<64> packed_data)
+void data_t2_t::sc_unpack(sc_bv<data_t2_t::_bitWidth> packed_data)
 {
     data = (bv64_t) packed_data.range(63, 0).to_uint64();
 }
@@ -199,13 +199,13 @@ void tid_t2_t::unpack(const _packedSt &_src)
 {
     tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
 }
-sc_bv<4> tid_t2_t::sc_pack(void) const
+sc_bv<tid_t2_t::_bitWidth> tid_t2_t::sc_pack(void) const
 {
-    sc_bv<4> packed_data;
+    sc_bv<tid_t2_t::_bitWidth> packed_data;
     packed_data.range(3, 0) = tid;
     return packed_data;
 }
-void tid_t2_t::sc_unpack(sc_bv<4> packed_data)
+void tid_t2_t::sc_unpack(sc_bv<tid_t2_t::_bitWidth> packed_data)
 {
     tid = (bv4_t) packed_data.range(3, 0).to_uint64();
 }
@@ -229,13 +229,13 @@ void tdest_t2_t::unpack(const _packedSt &_src)
 {
     tid = (bv4_t)((_src) & ((1ULL << 4) - 1));
 }
-sc_bv<4> tdest_t2_t::sc_pack(void) const
+sc_bv<tdest_t2_t::_bitWidth> tdest_t2_t::sc_pack(void) const
 {
-    sc_bv<4> packed_data;
+    sc_bv<tdest_t2_t::_bitWidth> packed_data;
     packed_data.range(3, 0) = tid;
     return packed_data;
 }
-void tdest_t2_t::sc_unpack(sc_bv<4> packed_data)
+void tdest_t2_t::sc_unpack(sc_bv<tdest_t2_t::_bitWidth> packed_data)
 {
     tid = (bv4_t) packed_data.range(3, 0).to_uint64();
 }
@@ -259,13 +259,13 @@ void tuser_t2_t::unpack(const _packedSt &_src)
 {
     parity = (bv4_t)((_src) & ((1ULL << 4) - 1));
 }
-sc_bv<4> tuser_t2_t::sc_pack(void) const
+sc_bv<tuser_t2_t::_bitWidth> tuser_t2_t::sc_pack(void) const
 {
-    sc_bv<4> packed_data;
+    sc_bv<tuser_t2_t::_bitWidth> packed_data;
     packed_data.range(3, 0) = parity;
     return packed_data;
 }
-void tuser_t2_t::sc_unpack(sc_bv<4> packed_data)
+void tuser_t2_t::sc_unpack(sc_bv<tuser_t2_t::_bitWidth> packed_data)
 {
     parity = (bv4_t) packed_data.range(3, 0).to_uint64();
 }

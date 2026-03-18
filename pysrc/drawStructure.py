@@ -107,15 +107,16 @@ def structureAndLabel(prj, contextPlusStructure, bitColors, addPort=None):
             # variable has to have a type
             typeKey = prj.data['types'][v['varTypeKey']]
             typeName = prj.data['types'][v['varTypeKey']]['type']
-            constKeyOrWidth = typeKey['width']
-            if isinstance(constKeyOrWidth, int):
-                width = constKeyOrWidth
-                constName = constKeyOrWidth
-                colorForConstRow = globals.bgcolor
-            else:
-                width = prj.data['constants'][constKeyOrWidth]['value']
-                constName = f"{prj.data['constants'][constKeyOrWidth]['constant']} ({width})"
-                colorForConstRow = constColor
+            width = prj.resolveTypeWidth(typeKey)
+            # Build display name: show constant name if width comes from a constant
+            constName = width
+            colorForConstRow = globals.bgcolor
+            for wfield, wkey in [('widthLog2', 'widthLog2Key'), ('widthLog2minus1', 'widthLog2minus1Key'), ('width', 'widthKey')]:
+                qkey = typeKey[wkey]
+                if qkey and qkey in prj.data['constants']:
+                    constName = f"{prj.data['constants'][qkey]['constant']} ({width})"
+                    colorForConstRow = constColor
+                    break
             if arraySize:
                 for i in range(arraySize-1, -1, -1):
                     name = f'{v["variable"]}[{i}]'

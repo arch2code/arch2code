@@ -37,8 +37,8 @@ struct axiAddrSt {
 
     axiAddrSt() {}
 
-    static constexpr uint16_t _bitWidth = 32;
-    static constexpr uint16_t _byteWidth = 4;
+    static constexpr uint16_t _bitWidth = AXI_ADDRESS_WIDTH;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint32_t _packedSt;
     bool operator == (const axiAddrSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const axiAddrSt & v, const std::string & NAME ) {
@@ -53,9 +53,9 @@ struct axiAddrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<32> sc_pack(void) const;
-    void sc_unpack(sc_bv<32> packed_data);
-    explicit axiAddrSt(sc_bv<32> packed_data) { sc_unpack(packed_data); }
+    sc_bv<axiAddrSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<axiAddrSt::_bitWidth> packed_data);
+    explicit axiAddrSt(sc_bv<axiAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit axiAddrSt(
         axiAddrT addr_) :
         addr(addr_)
@@ -68,8 +68,8 @@ struct axiDataSt {
 
     axiDataSt() {}
 
-    static constexpr uint16_t _bitWidth = 32;
-    static constexpr uint16_t _byteWidth = 4;
+    static constexpr uint16_t _bitWidth = AXI_DATA_WIDTH;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint32_t _packedSt;
     bool operator == (const axiDataSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const axiDataSt & v, const std::string & NAME ) {
@@ -84,9 +84,9 @@ struct axiDataSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<32> sc_pack(void) const;
-    void sc_unpack(sc_bv<32> packed_data);
-    explicit axiDataSt(sc_bv<32> packed_data) { sc_unpack(packed_data); }
+    sc_bv<axiDataSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<axiDataSt::_bitWidth> packed_data);
+    explicit axiDataSt(sc_bv<axiDataSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit axiDataSt(
         axiDataT data_) :
         data(data_)
@@ -99,8 +99,8 @@ struct axiStrobeSt {
 
     axiStrobeSt() {}
 
-    static constexpr uint16_t _bitWidth = 4;
-    static constexpr uint16_t _byteWidth = 1;
+    static constexpr uint16_t _bitWidth = AXI_STROBE_WIDTH;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint8_t _packedSt;
     bool operator == (const axiStrobeSt & rhs) const;
     inline friend void sc_trace(sc_trace_file *tf, const axiStrobeSt & v, const std::string & NAME ) {
@@ -115,9 +115,9 @@ struct axiStrobeSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     void pack(_packedSt &_ret) const;
     void unpack(const _packedSt &_src);
-    sc_bv<4> sc_pack(void) const;
-    void sc_unpack(sc_bv<4> packed_data);
-    explicit axiStrobeSt(sc_bv<4> packed_data) { sc_unpack(packed_data); }
+    sc_bv<axiStrobeSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<axiStrobeSt::_bitWidth> packed_data);
+    explicit axiStrobeSt(sc_bv<axiStrobeSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit axiStrobeSt(
         axiStrobeT strobe_) :
         strobe(strobe_)

@@ -73,17 +73,10 @@ def get_field_width(prj: Any, field_data: Dict[str, Any], yamlFile: str) -> int:
         # Reserved field has explicit width in 'align'
         width = field_data['align']
     else:  # NamedVar or NamedType
-        # Look up type width
+        # Look up type width using resolveTypeWidth to handle width/widthLog2/widthLog2minus1
         type_key = field_data['varTypeKey']
         type_info = prj.data['types'][type_key]
-        type_width = type_info['width']
-        
-        # Handle constant or literal width
-        if isinstance(type_width, int):
-            width = type_width
-        else:
-            # It's a constant key
-            width = prj.data['constants'][type_width]['value']
+        width = prj.resolveTypeWidth(type_info)
     
     # Handle array size
     array_size_key = field_data.get('arraySizeKey', '')

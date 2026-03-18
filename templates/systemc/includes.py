@@ -50,20 +50,61 @@ def includeConstants(args, prj, data):
     return("\n".join(out))
 
 
+def typeWidthExpression_cpp(value, prj):
+    """Build a C++ constexpr-compatible expression for a type's bit width.
+
+    For widthLog2 with constant C:       clog2(C+1)
+    For widthLog2minus1 with constant C: clog2(C)
+    For width with constant C:           C
+    For literal integer N:               N
+    If isSigned + log2: appends +1
+
+    Returns: string expression suitable for use in constexpr calculations.
+    # TODO: handle variable size parameters (parameterized widths)
+    """
+    isSigned = value['isSigned']
+    signedExtra = '+1' if isSigned else ''
+
+    # Check widthLog2
+    wl2Key = value['widthLog2Key']
+    if wl2Key:
+        constName = prj.data['constants'][wl2Key]['constant']
+        return f"clog2({constName}+1){signedExtra}"
+    wl2 = value['widthLog2']
+    if wl2 != '':
+        return f"clog2({wl2}+1){signedExtra}"
+
+    # Check widthLog2minus1
+    wl2m1Key = value['widthLog2minus1Key']
+    if wl2m1Key:
+        constName = prj.data['constants'][wl2m1Key]['constant']
+        return f"clog2({constName}){signedExtra}"
+    wl2m1 = value['widthLog2minus1']
+    if wl2m1 != '':
+        return f"clog2({wl2m1}){signedExtra}"
+
+    # Direct width — check widthKey for constant, else literal
+    widthKey = value['widthKey']
+    if widthKey:
+        constName = prj.data['constants'][widthKey]['constant']
+        return constName
+    return str(prj.resolveTypeWidth(value))
+
+
 def includeTypes(args, prj, data):
     out = list()
 
     out.append("// types")
     for type, value in data['types'].items():
-        ctx_msg = f"type width '{value['type']}'"
-        width_val = prj.getConst(value['width'], require_int=True, context_msg=ctx_msg)
+        # Comments show resolved integer bit width, not symbolic expression
+        widthComment = str(value['realwidth'])
         if value['typeArraySize'] == 1:
             out.append(
-                f"typedef { value['platformDataType'] } { value['type'] }; // [{width_val}] {value['desc']}"
+                f"typedef { value['platformDataType'] } { value['type'] }; // [{widthComment}] {value['desc']}"
             )
         else:
             out.append(
-                f"struct { value['type'] } {{ { value['platformDataType'] } word[ {value['typeArraySize']} ]; }}; // [{width_val}] {value['desc']}"
+                f"struct { value['type'] } {{ { value['platformDataType'] } word[ {value['typeArraySize']} ]; }}; // [{widthComment}] {value['desc']}"
             )
 
     out.append("")

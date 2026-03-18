@@ -6,7 +6,7 @@ localparam int unsigned D_SIZE = 32'h0000_0003;  // The size for d
 
 // types
 typedef logic[4-1:0] cStateT; //A state machine type for blockC
-typedef logic[3-1:0] dT; //D Type sizing from constant D_SIZE
+typedef logic[D_SIZE-1:0] dT; //D Type
 
 // enums
 

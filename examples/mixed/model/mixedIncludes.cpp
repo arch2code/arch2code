@@ -53,16 +53,16 @@ void aSt::unpack(const _packedSt &_src)
         }
     }
 }
-sc_bv<4> aSt::sc_pack(void) const
+sc_bv<aSt::_bitWidth> aSt::sc_pack(void) const
 {
-    sc_bv<4> packed_data;
+    sc_bv<aSt::_bitWidth> packed_data;
     packed_data.range(1, 0) = variablea2;
     for(unsigned int i=0; i<ASIZE2; i++) {
         packed_data.range(2+(i+1)*1-1, 2+i*1) = variablea[i];
     }
     return packed_data;
 }
-void aSt::sc_unpack(sc_bv<4> packed_data)
+void aSt::sc_unpack(sc_bv<aSt::_bitWidth> packed_data)
 {
     variablea2 = (twoBitT) packed_data.range(1, 0).to_uint64();
     for(unsigned int i=0; i<ASIZE2; i++) {
@@ -99,7 +99,7 @@ void aASt::sc_unpack(bool packed_data)
 {
     variablea = (aSizeT) packed_data;
 }
-void aASt::sc_unpack(sc_bv<1> packed_data)
+void aASt::sc_unpack(sc_bv<aASt::_bitWidth> packed_data)
 {
     variablea = (aSizeT) packed_data.range(0, 0).to_uint64();
 }
@@ -123,13 +123,13 @@ void aRegSt::unpack(const _packedSt &_src)
 {
     a = (sevenBitT)((_src) & ((1ULL << 7) - 1));
 }
-sc_bv<7> aRegSt::sc_pack(void) const
+sc_bv<aRegSt::_bitWidth> aRegSt::sc_pack(void) const
 {
-    sc_bv<7> packed_data;
+    sc_bv<aRegSt::_bitWidth> packed_data;
     packed_data.range(6, 0) = a;
     return packed_data;
 }
-void aRegSt::sc_unpack(sc_bv<7> packed_data)
+void aRegSt::sc_unpack(sc_bv<aRegSt::_bitWidth> packed_data)
 {
     a = (sevenBitT) packed_data.range(6, 0).to_uint64();
 }
@@ -153,13 +153,13 @@ void dRegSt::unpack(const _packedSt &_src)
 {
     d = (sevenBitT)((_src) & ((1ULL << 7) - 1));
 }
-sc_bv<7> dRegSt::sc_pack(void) const
+sc_bv<dRegSt::_bitWidth> dRegSt::sc_pack(void) const
 {
-    sc_bv<7> packed_data;
+    sc_bv<dRegSt::_bitWidth> packed_data;
     packed_data.range(6, 0) = d;
     return packed_data;
 }
-void dRegSt::sc_unpack(sc_bv<7> packed_data)
+void dRegSt::sc_unpack(sc_bv<dRegSt::_bitWidth> packed_data)
 {
     d = (sevenBitT) packed_data.range(6, 0).to_uint64();
 }
@@ -189,14 +189,14 @@ void dSt::unpack(const _packedSt &_src)
     _pos += 4;
     variabled = (threeBitT)((_src >> (_pos & 7)) & ((1ULL << 3) - 1));
 }
-sc_bv<7> dSt::sc_pack(void) const
+sc_bv<dSt::_bitWidth> dSt::sc_pack(void) const
 {
-    sc_bv<7> packed_data;
+    sc_bv<dSt::_bitWidth> packed_data;
     packed_data.range(3, 0) = variabled2;
     packed_data.range(6, 4) = variabled;
     return packed_data;
 }
-void dSt::sc_unpack(sc_bv<7> packed_data)
+void dSt::sc_unpack(sc_bv<dSt::_bitWidth> packed_data)
 {
     variabled2 = (fourBitT) packed_data.range(3, 0).to_uint64();
     variabled = (threeBitT) packed_data.range(6, 4).to_uint64();
@@ -221,13 +221,13 @@ void bigSt::unpack(const _packedSt &_src)
 {
     big = (bigT)((_src));
 }
-sc_bv<64> bigSt::sc_pack(void) const
+sc_bv<bigSt::_bitWidth> bigSt::sc_pack(void) const
 {
-    sc_bv<64> packed_data;
+    sc_bv<bigSt::_bitWidth> packed_data;
     packed_data.range(63, 0) = big;
     return packed_data;
 }
-void bigSt::sc_unpack(sc_bv<64> packed_data)
+void bigSt::sc_unpack(sc_bv<bigSt::_bitWidth> packed_data)
 {
     big = (bigT) packed_data.range(63, 0).to_uint64();
 }
@@ -286,9 +286,9 @@ void nestedSt::unpack(const _packedSt &_src)
     _pos += 7;
     variablea = (aSizeT)((_src >> (_pos & 31)) & 1);
 }
-sc_bv<18> nestedSt::sc_pack(void) const
+sc_bv<nestedSt::_bitWidth> nestedSt::sc_pack(void) const
 {
-    sc_bv<18> packed_data;
+    sc_bv<nestedSt::_bitWidth> packed_data;
     for(unsigned int i=0; i<2; i++) {
         packed_data.range(0+(i+1)*5-1, 0+i*5) = joe[i].sc_pack();
     }
@@ -296,7 +296,7 @@ sc_bv<18> nestedSt::sc_pack(void) const
     packed_data.range(17, 17) = variablea;
     return packed_data;
 }
-void nestedSt::sc_unpack(sc_bv<18> packed_data)
+void nestedSt::sc_unpack(sc_bv<nestedSt::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<2; i++) {
         joe[i].sc_unpack(packed_data.range(0+(i+1)*5-1, 0+i*5));
@@ -324,13 +324,13 @@ void bSizeRegSt::unpack(const _packedSt &_src)
 {
     index = (bSizeT)((_src) & ((1ULL << 4) - 1));
 }
-sc_bv<4> bSizeRegSt::sc_pack(void) const
+sc_bv<bSizeRegSt::_bitWidth> bSizeRegSt::sc_pack(void) const
 {
-    sc_bv<4> packed_data;
+    sc_bv<bSizeRegSt::_bitWidth> packed_data;
     packed_data.range(3, 0) = index;
     return packed_data;
 }
-void bSizeRegSt::sc_unpack(sc_bv<4> packed_data)
+void bSizeRegSt::sc_unpack(sc_bv<bSizeRegSt::_bitWidth> packed_data)
 {
     index = (bSizeT) packed_data.range(3, 0).to_uint64();
 }
@@ -354,13 +354,13 @@ void bSizeSt::unpack(const _packedSt &_src)
 {
     index = (bSizeT)((_src) & ((1ULL << 4) - 1));
 }
-sc_bv<4> bSizeSt::sc_pack(void) const
+sc_bv<bSizeSt::_bitWidth> bSizeSt::sc_pack(void) const
 {
-    sc_bv<4> packed_data;
+    sc_bv<bSizeSt::_bitWidth> packed_data;
     packed_data.range(3, 0) = index;
     return packed_data;
 }
-void bSizeSt::sc_unpack(sc_bv<4> packed_data)
+void bSizeSt::sc_unpack(sc_bv<bSizeSt::_bitWidth> packed_data)
 {
     index = (bSizeT) packed_data.range(3, 0).to_uint64();
 }
@@ -384,13 +384,13 @@ void apbAddrSt::unpack(const _packedSt &_src)
 {
     address = (apbAddrT)((_src));
 }
-sc_bv<32> apbAddrSt::sc_pack(void) const
+sc_bv<apbAddrSt::_bitWidth> apbAddrSt::sc_pack(void) const
 {
-    sc_bv<32> packed_data;
+    sc_bv<apbAddrSt::_bitWidth> packed_data;
     packed_data.range(31, 0) = address;
     return packed_data;
 }
-void apbAddrSt::sc_unpack(sc_bv<32> packed_data)
+void apbAddrSt::sc_unpack(sc_bv<apbAddrSt::_bitWidth> packed_data)
 {
     address = (apbAddrT) packed_data.range(31, 0).to_uint64();
 }
@@ -414,13 +414,13 @@ void apbDataSt::unpack(const _packedSt &_src)
 {
     data = (apbDataT)((_src));
 }
-sc_bv<32> apbDataSt::sc_pack(void) const
+sc_bv<apbDataSt::_bitWidth> apbDataSt::sc_pack(void) const
 {
-    sc_bv<32> packed_data;
+    sc_bv<apbDataSt::_bitWidth> packed_data;
     packed_data.range(31, 0) = data;
     return packed_data;
 }
-void apbDataSt::sc_unpack(sc_bv<32> packed_data)
+void apbDataSt::sc_unpack(sc_bv<apbDataSt::_bitWidth> packed_data)
 {
     data = (apbDataT) packed_data.range(31, 0).to_uint64();
 }
@@ -462,15 +462,15 @@ void cSt::unpack(const _packedSt &_src)
         }
     }
 }
-sc_bv<35> cSt::sc_pack(void) const
+sc_bv<cSt::_bitWidth> cSt::sc_pack(void) const
 {
-    sc_bv<35> packed_data;
+    sc_bv<cSt::_bitWidth> packed_data;
     for(unsigned int i=0; i<5; i++) {
         packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray[i];
     }
     return packed_data;
 }
-void cSt::sc_unpack(sc_bv<35> packed_data)
+void cSt::sc_unpack(sc_bv<cSt::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<5; i++) {
         sevenBitArray[i] = (sevenBitT) packed_data.range(0+(i+1)*7-1, 0+i*7).to_uint64();
@@ -534,9 +534,9 @@ void test1St::unpack(const _packedSt &_src)
         }
     }
 }
-sc_bv<70> test1St::sc_pack(void) const
+sc_bv<test1St::_bitWidth> test1St::sc_pack(void) const
 {
-    sc_bv<70> packed_data;
+    sc_bv<test1St::_bitWidth> packed_data;
     for(unsigned int i=0; i<5; i++) {
         packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray2[i];
     }
@@ -545,7 +545,7 @@ sc_bv<70> test1St::sc_pack(void) const
     }
     return packed_data;
 }
-void test1St::sc_unpack(sc_bv<70> packed_data)
+void test1St::sc_unpack(sc_bv<test1St::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<5; i++) {
         sevenBitArray2[i] = (sevenBitT) packed_data.range(0+(i+1)*7-1, 0+i*7).to_uint64();
@@ -592,15 +592,15 @@ void test2St::unpack(const _packedSt &_src)
         _pos += 35;
     }
 }
-sc_bv<175> test2St::sc_pack(void) const
+sc_bv<test2St::_bitWidth> test2St::sc_pack(void) const
 {
-    sc_bv<175> packed_data;
+    sc_bv<test2St::_bitWidth> packed_data;
     for(unsigned int i=0; i<5; i++) {
         packed_data.range(0+(i+1)*35-1, 0+i*35) = thirtyFiveBitArray[i].sc_pack();
     }
     return packed_data;
 }
-void test2St::sc_unpack(sc_bv<175> packed_data)
+void test2St::sc_unpack(sc_bv<test2St::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<5; i++) {
         thirtyFiveBitArray[i].sc_unpack(packed_data.range(0+(i+1)*35-1, 0+i*35));
@@ -644,15 +644,15 @@ void test3St::unpack(const _packedSt &_src)
         _pos += 7;
     }
 }
-sc_bv<35> test3St::sc_pack(void) const
+sc_bv<test3St::_bitWidth> test3St::sc_pack(void) const
 {
-    sc_bv<35> packed_data;
+    sc_bv<test3St::_bitWidth> packed_data;
     for(unsigned int i=0; i<5; i++) {
         packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray[i].sc_pack();
     }
     return packed_data;
 }
-void test3St::sc_unpack(sc_bv<35> packed_data)
+void test3St::sc_unpack(sc_bv<test3St::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<5; i++) {
         sevenBitArray[i].sc_unpack(packed_data.range(0+(i+1)*7-1, 0+i*7));
@@ -682,13 +682,13 @@ void test4St::unpack(const _packedSt &_src)
         sevenBitArray.unpack(*(aRegSt::_packedSt*)&_src);
     }
 }
-sc_bv<7> test4St::sc_pack(void) const
+sc_bv<test4St::_bitWidth> test4St::sc_pack(void) const
 {
-    sc_bv<7> packed_data;
+    sc_bv<test4St::_bitWidth> packed_data;
     packed_data.range(6, 0) = sevenBitArray.sc_pack();
     return packed_data;
 }
-void test4St::sc_unpack(sc_bv<7> packed_data)
+void test4St::sc_unpack(sc_bv<test4St::_bitWidth> packed_data)
 {
     sevenBitArray.sc_unpack(packed_data.range(6, 0));
 }
@@ -730,15 +730,15 @@ void test5St::unpack(const _packedSt &_src)
         _pos += 7;
     }
 }
-sc_bv<70> test5St::sc_pack(void) const
+sc_bv<test5St::_bitWidth> test5St::sc_pack(void) const
 {
-    sc_bv<70> packed_data;
+    sc_bv<test5St::_bitWidth> packed_data;
     for(unsigned int i=0; i<10; i++) {
         packed_data.range(0+(i+1)*7-1, 0+i*7) = sevenBitArray[i].sc_pack();
     }
     return packed_data;
 }
-void test5St::sc_unpack(sc_bv<70> packed_data)
+void test5St::sc_unpack(sc_bv<test5St::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<10; i++) {
         sevenBitArray[i].sc_unpack(packed_data.range(0+(i+1)*7-1, 0+i*7));
@@ -769,13 +769,13 @@ void test6St::unpack(const _packedSt &_src)
         largeStruct.unpack(*(test1St::_packedSt*)&_src[ _pos >> 6 ]);
     }
 }
-sc_bv<70> test6St::sc_pack(void) const
+sc_bv<test6St::_bitWidth> test6St::sc_pack(void) const
 {
-    sc_bv<70> packed_data;
+    sc_bv<test6St::_bitWidth> packed_data;
     packed_data.range(69, 0) = largeStruct.sc_pack();
     return packed_data;
 }
-void test6St::sc_unpack(sc_bv<70> packed_data)
+void test6St::sc_unpack(sc_bv<test6St::_bitWidth> packed_data)
 {
     largeStruct.sc_unpack(packed_data.range(69, 0));
 }
@@ -817,15 +817,15 @@ void test7St::unpack(const _packedSt &_src)
         _pos += 70;
     }
 }
-sc_bv<350> test7St::sc_pack(void) const
+sc_bv<test7St::_bitWidth> test7St::sc_pack(void) const
 {
-    sc_bv<350> packed_data;
+    sc_bv<test7St::_bitWidth> packed_data;
     for(unsigned int i=0; i<5; i++) {
         packed_data.range(0+(i+1)*70-1, 0+i*70) = largeStruct[i].sc_pack();
     }
     return packed_data;
 }
-void test7St::sc_unpack(sc_bv<350> packed_data)
+void test7St::sc_unpack(sc_bv<test7St::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<5; i++) {
         largeStruct[i].sc_unpack(packed_data.range(0+(i+1)*70-1, 0+i*70));
@@ -869,15 +869,15 @@ void test8St::unpack(const _packedSt &_src)
         }
     }
 }
-sc_bv<48> test8St::sc_pack(void) const
+sc_bv<test8St::_bitWidth> test8St::sc_pack(void) const
 {
-    sc_bv<48> packed_data;
+    sc_bv<test8St::_bitWidth> packed_data;
     for(unsigned int i=0; i<3; i++) {
         packed_data.range(0+(i+1)*16-1, 0+i*16) = words[i];
     }
     return packed_data;
 }
-void test8St::sc_unpack(sc_bv<48> packed_data)
+void test8St::sc_unpack(sc_bv<test8St::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<3; i++) {
         words[i] = (wordT) packed_data.range(0+(i+1)*16-1, 0+i*16).to_uint64();
@@ -921,15 +921,15 @@ void test9St::unpack(const _packedSt &_src)
         _pos += 48;
     }
 }
-sc_bv<192> test9St::sc_pack(void) const
+sc_bv<test9St::_bitWidth> test9St::sc_pack(void) const
 {
-    sc_bv<192> packed_data;
+    sc_bv<test9St::_bitWidth> packed_data;
     for(unsigned int i=0; i<4; i++) {
         packed_data.range(0+(i+1)*48-1, 0+i*48) = wordArray[i].sc_pack();
     }
     return packed_data;
 }
-void test9St::sc_unpack(sc_bv<192> packed_data)
+void test9St::sc_unpack(sc_bv<test9St::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<4; i++) {
         wordArray[i].sc_unpack(packed_data.range(0+(i+1)*48-1, 0+i*48));
@@ -966,14 +966,14 @@ void signedTestSt::unpack(const _packedSt &_src)
         signedValue = (signedByte_t)(signedValue | ~((1ULL << 8) - 1));
     }
 }
-sc_bv<10> signedTestSt::sc_pack(void) const
+sc_bv<signedTestSt::_bitWidth> signedTestSt::sc_pack(void) const
 {
-    sc_bv<10> packed_data;
+    sc_bv<signedTestSt::_bitWidth> packed_data;
     packed_data.range(1, 0) = unsignedValue;
     packed_data.range(9, 2) = signedValue;
     return packed_data;
 }
-void signedTestSt::sc_unpack(sc_bv<10> packed_data)
+void signedTestSt::sc_unpack(sc_bv<signedTestSt::_bitWidth> packed_data)
 {
     unsignedValue = (twoBitT) packed_data.range(1, 0).to_uint64();
     signedValue = (signedByte_t) packed_data.range(9, 2).to_uint64();
@@ -1022,15 +1022,15 @@ void mixedSignedSt::unpack(const _packedSt &_src)
         temp = (signedWord_t)(temp | ~((1ULL << 16) - 1));
     }
 }
-sc_bv<28> mixedSignedSt::sc_pack(void) const
+sc_bv<mixedSignedSt::_bitWidth> mixedSignedSt::sc_pack(void) const
 {
-    sc_bv<28> packed_data;
+    sc_bv<mixedSignedSt::_bitWidth> packed_data;
     packed_data.range(3, 0) = flags;
     packed_data.range(11, 4) = offset;
     packed_data.range(27, 12) = temp;
     return packed_data;
 }
-void mixedSignedSt::sc_unpack(sc_bv<28> packed_data)
+void mixedSignedSt::sc_unpack(sc_bv<mixedSignedSt::_bitWidth> packed_data)
 {
     flags = (fourBitT) packed_data.range(3, 0).to_uint64();
     offset = (signedByte_t) packed_data.range(11, 4).to_uint64();
@@ -1086,15 +1086,15 @@ void signedArraySt::unpack(const _packedSt &_src)
         }
     }
 }
-sc_bv<12> signedArraySt::sc_pack(void) const
+sc_bv<signedArraySt::_bitWidth> signedArraySt::sc_pack(void) const
 {
-    sc_bv<12> packed_data;
+    sc_bv<signedArraySt::_bitWidth> packed_data;
     for(unsigned int i=0; i<3; i++) {
         packed_data.range(0+(i+1)*4-1, 0+i*4) = values[i];
     }
     return packed_data;
 }
-void signedArraySt::sc_unpack(sc_bv<12> packed_data)
+void signedArraySt::sc_unpack(sc_bv<signedArraySt::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<3; i++) {
         values[i] = (signedNibble_t) packed_data.range(0+(i+1)*4-1, 0+i*4).to_uint64();
@@ -1149,16 +1149,16 @@ void nonByteAlignedSignedSt::unpack(const _packedSt &_src)
         field1 = (signed3bit_t)(field1 | ~((1ULL << 3) - 1));
     }
 }
-sc_bv<16> nonByteAlignedSignedSt::sc_pack(void) const
+sc_bv<nonByteAlignedSignedSt::_bitWidth> nonByteAlignedSignedSt::sc_pack(void) const
 {
-    sc_bv<16> packed_data;
+    sc_bv<nonByteAlignedSignedSt::_bitWidth> packed_data;
     packed_data.range(2, 0) = field4;
     packed_data.range(7, 3) = field3;
     packed_data.range(12, 8) = field2;
     packed_data.range(15, 13) = field1;
     return packed_data;
 }
-void nonByteAlignedSignedSt::sc_unpack(sc_bv<16> packed_data)
+void nonByteAlignedSignedSt::sc_unpack(sc_bv<nonByteAlignedSignedSt::_bitWidth> packed_data)
 {
     field4 = (threeBitT) packed_data.range(2, 0).to_uint64();
     field3 = (signed5bit_t) packed_data.range(7, 3).to_uint64();
@@ -1227,9 +1227,9 @@ void complexMixedSt::unpack(const _packedSt &_src)
         signedA = (signed7bit_t)(signedA | ~((1ULL << 7) - 1));
     }
 }
-sc_bv<39> complexMixedSt::sc_pack(void) const
+sc_bv<complexMixedSt::_bitWidth> complexMixedSt::sc_pack(void) const
 {
-    sc_bv<39> packed_data;
+    sc_bv<complexMixedSt::_bitWidth> packed_data;
     packed_data.range(7, 0) = signedE;
     packed_data.range(11, 8) = unsignedD;
     packed_data.range(22, 12) = signedC;
@@ -1237,7 +1237,7 @@ sc_bv<39> complexMixedSt::sc_pack(void) const
     packed_data.range(38, 32) = signedA;
     return packed_data;
 }
-void complexMixedSt::sc_unpack(sc_bv<39> packed_data)
+void complexMixedSt::sc_unpack(sc_bv<complexMixedSt::_bitWidth> packed_data)
 {
     signedE = (signedByte_t) packed_data.range(7, 0).to_uint64();
     // Sign extension for signed type
@@ -1310,16 +1310,16 @@ void edgeCaseSignedSt::unpack(const _packedSt &_src)
         tiny = (signed3bit_t)(tiny | ~((1ULL << 3) - 1));
     }
 }
-sc_bv<34> edgeCaseSignedSt::sc_pack(void) const
+sc_bv<edgeCaseSignedSt::_bitWidth> edgeCaseSignedSt::sc_pack(void) const
 {
-    sc_bv<34> packed_data;
+    sc_bv<edgeCaseSignedSt::_bitWidth> packed_data;
     packed_data.range(15, 0) = largeVal;
     packed_data.range(26, 16) = mediumVal;
     packed_data.range(30, 27) = smallVal;
     packed_data.range(33, 31) = tiny;
     return packed_data;
 }
-void edgeCaseSignedSt::sc_unpack(sc_bv<34> packed_data)
+void edgeCaseSignedSt::sc_unpack(sc_bv<edgeCaseSignedSt::_bitWidth> packed_data)
 {
     largeVal = (signedWord_t) packed_data.range(15, 0).to_uint64();
     // Sign extension for signed type
@@ -1404,9 +1404,9 @@ void mixedArraySignedSt::unpack(const _packedSt &_src)
         }
     }
 }
-sc_bv<35> mixedArraySignedSt::sc_pack(void) const
+sc_bv<mixedArraySignedSt::_bitWidth> mixedArraySignedSt::sc_pack(void) const
 {
-    sc_bv<35> packed_data;
+    sc_bv<mixedArraySignedSt::_bitWidth> packed_data;
     for(unsigned int i=0; i<3; i++) {
         packed_data.range(0+(i+1)*5-1, 0+i*5) = unsignedVals[i];
     }
@@ -1415,7 +1415,7 @@ sc_bv<35> mixedArraySignedSt::sc_pack(void) const
     }
     return packed_data;
 }
-void mixedArraySignedSt::sc_unpack(sc_bv<35> packed_data)
+void mixedArraySignedSt::sc_unpack(sc_bv<mixedArraySignedSt::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<3; i++) {
         unsignedVals[i] = (unsigned5bit_t) packed_data.range(0+(i+1)*5-1, 0+i*5).to_uint64();
@@ -1448,15 +1448,246 @@ void test37BitRegSt::unpack(const _packedSt &_src)
 {
     value37 = (test37BitT)((_src) & ((1ULL << 37) - 1));
 }
-sc_bv<37> test37BitRegSt::sc_pack(void) const
+sc_bv<test37BitRegSt::_bitWidth> test37BitRegSt::sc_pack(void) const
 {
-    sc_bv<37> packed_data;
+    sc_bv<test37BitRegSt::_bitWidth> packed_data;
     packed_data.range(36, 0) = value37;
     return packed_data;
 }
-void test37BitRegSt::sc_unpack(sc_bv<37> packed_data)
+void test37BitRegSt::sc_unpack(sc_bv<test37BitRegSt::_bitWidth> packed_data)
 {
     value37 = (test37BitT) packed_data.range(36, 0).to_uint64();
+}
+bool log2TestSt::operator == (const log2TestSt & rhs) const {
+    bool ret = true;
+    ret = ret && (count == rhs.count);
+    ret = ret && (index == rhs.index);
+    ret = ret && (signedCount == rhs.signedCount);
+    return ( ret );
+    }
+std::string log2TestSt::prt(bool all) const
+{
+    return (std::format("count:0x{:01x} index:0x{:01x} signedCount:0x{:02x}",
+       (uint64_t) count,
+       (uint64_t) index,
+       (uint64_t) signedCount
+    ));
+}
+void log2TestSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, log2TestSt::_byteWidth);
+    _ret = signedCount & ((1ULL << 5) - 1);
+    _ret |= (uint16_t)index << (5 & 15);
+    _ret |= (uint16_t)count << (9 & 15);
+}
+void log2TestSt::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    signedCount = (signedLog2T)((_src >> (_pos & 15)) & ((1ULL << 5) - 1));
+    _pos += 5;
+    // Sign extension for signed type
+    if (signedCount & (1ULL << (5 - 1))) {
+        signedCount = (signedLog2T)(signedCount | ~((1ULL << 5) - 1));
+    }
+    index = (bSizeIndexT)((_src >> (_pos & 15)) & ((1ULL << 4) - 1));
+    _pos += 4;
+    count = (bSizeCountT)((_src >> (_pos & 15)) & ((1ULL << 4) - 1));
+}
+sc_bv<log2TestSt::_bitWidth> log2TestSt::sc_pack(void) const
+{
+    sc_bv<log2TestSt::_bitWidth> packed_data;
+    packed_data.range(4, 0) = signedCount;
+    packed_data.range(8, 5) = index;
+    packed_data.range(12, 9) = count;
+    return packed_data;
+}
+void log2TestSt::sc_unpack(sc_bv<log2TestSt::_bitWidth> packed_data)
+{
+    signedCount = (signedLog2T) packed_data.range(4, 0).to_uint64();
+    // Sign extension for signed type
+    if (signedCount & (1ULL << (5 - 1))) {
+        signedCount = (signedLog2T)(signedCount | ~((1ULL << 5) - 1));
+    }
+    index = (bSizeIndexT) packed_data.range(8, 5).to_uint64();
+    count = (bSizeCountT) packed_data.range(12, 9).to_uint64();
+}
+bool nestedLog2St::operator == (const nestedLog2St & rhs) const {
+    bool ret = true;
+    ret = ret && (tag == rhs.tag);
+    ret = ret && (log2Data == rhs.log2Data);
+    return ( ret );
+    }
+std::string nestedLog2St::prt(bool all) const
+{
+    return (std::format("tag:0x{:01x} log2Data:<{}>",
+       (uint64_t) tag,
+       log2Data.prt(all)
+    ));
+}
+void nestedLog2St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, nestedLog2St::_byteWidth);
+    {
+        log2Data.pack(*(log2TestSt::_packedSt*)&_ret);
+    }
+    _ret |= (uint16_t)tag << (13 & 15);
+}
+void nestedLog2St::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    {
+        log2Data.unpack(*(log2TestSt::_packedSt*)&_src);
+    }
+    _pos += 13;
+    tag = (threeBitT)((_src >> (_pos & 15)) & ((1ULL << 3) - 1));
+}
+sc_bv<nestedLog2St::_bitWidth> nestedLog2St::sc_pack(void) const
+{
+    sc_bv<nestedLog2St::_bitWidth> packed_data;
+    packed_data.range(12, 0) = log2Data.sc_pack();
+    packed_data.range(15, 13) = tag;
+    return packed_data;
+}
+void nestedLog2St::sc_unpack(sc_bv<nestedLog2St::_bitWidth> packed_data)
+{
+    log2Data.sc_unpack(packed_data.range(12, 0));
+    tag = (threeBitT) packed_data.range(15, 13).to_uint64();
+}
+bool wideLog2St::operator == (const wideLog2St & rhs) const {
+    bool ret = true;
+    ret = ret && (countA == rhs.countA);
+    ret = ret && (countB == rhs.countB);
+    for(unsigned int i=0; i<ASIZE2; i++) {
+        ret = ret && (indexA[i] == rhs.indexA[i]);
+    }
+    ret = ret && (indexB == rhs.indexB);
+    ret = ret && (signedA == rhs.signedA);
+    ret = ret && (signedB == rhs.signedB);
+    ret = ret && (tag == rhs.tag);
+    ret = ret && (flags == rhs.flags);
+    ret = ret && (addr == rhs.addr);
+    ret = ret && (nested == rhs.nested);
+    return ( ret );
+    }
+std::string wideLog2St::prt(bool all) const
+{
+    return (std::format("countA:0x{:01x} countB:0x{:01x} indexA[0:1]: {} indexB:0x{:01x} signedA:0x{:02x} signedB:0x{:02x} tag:0x{:01x} flags:0x{:01x} addr:0x{:08x} nested:<{}>",
+       (uint64_t) countA,
+       (uint64_t) countB,
+       staticArrayPrt<bSizeIndexT, ASIZE2>(indexA, all),
+       (uint64_t) indexB,
+       (uint64_t) signedA,
+       (uint64_t) signedB,
+       (uint64_t) tag,
+       (uint64_t) flags,
+       (uint64_t) addr,
+       nested.prt(all)
+    ));
+}
+void wideLog2St::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, wideLog2St::_byteWidth);
+    {
+        nested.pack(*(log2TestSt::_packedSt*)&_ret);
+    }
+    _ret[ 0 ] |= (uint64_t)addr << (13 & 63);
+    _ret[ 0 ] |= (uint64_t)flags << (45 & 63);
+    _ret[ 0 ] |= (uint64_t)tag << (49 & 63);
+    _ret[ 0 ] |= ((uint64_t)(signedB & ((1ULL << 5) - 1))) << (52 & 63);
+    _ret[ 0 ] |= ((uint64_t)(signedA & ((1ULL << 5) - 1))) << (57 & 63);
+    pack_bits((uint64_t *)&_ret, 62, indexB, 4);
+    uint16_t _pos{66};
+    for(unsigned int i=0; i<ASIZE2; i++) {
+        pack_bits((uint64_t *)&_ret, _pos, indexA[i], 4);
+        _pos += 4;
+    }
+    pack_bits((uint64_t *)&_ret, 74, countB, 4);
+    pack_bits((uint64_t *)&_ret, 78, countA, 4);
+}
+void wideLog2St::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    {
+        nested.unpack(*(log2TestSt::_packedSt*)&_src[ _pos >> 6 ]);
+    }
+    _pos += 13;
+    addr = (apbAddrT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 32) - 1));
+    _pos += 32;
+    flags = (fourBitT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 4) - 1));
+    _pos += 4;
+    tag = (threeBitT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 3) - 1));
+    _pos += 3;
+    signedB = (signedLog2T)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 5) - 1));
+    _pos += 5;
+    // Sign extension for signed type
+    if (signedB & (1ULL << (5 - 1))) {
+        signedB = (signedLog2T)(signedB | ~((1ULL << 5) - 1));
+    }
+    signedA = (signedLog2T)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 5) - 1));
+    _pos += 5;
+    // Sign extension for signed type
+    if (signedA & (1ULL << (5 - 1))) {
+        signedA = (signedLog2T)(signedA | ~((1ULL << 5) - 1));
+    }
+    indexB = (bSizeIndexT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 4) - 1));
+    _pos += 2;
+    indexB = (bSizeIndexT)(indexB | ((_src[ _pos >> 6 ] << 2) & ((1ULL << 4) - 1)));
+    _pos += 2;
+    for(unsigned int i=0; i<ASIZE2; i++) {
+        uint16_t _bits = 4;
+        uint16_t _consume;
+        _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
+        indexA[i] = (bSizeIndexT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 4) - 1));
+        _pos += _consume;
+        _bits -= _consume;
+        if ((_bits > 0) && (_consume != 64)) {
+            indexA[i] = (bSizeIndexT)(indexA[i] | ((_src[ _pos >> 6 ] << _consume) & ((1ULL << 4) - 1)));
+            _pos += _bits;
+        }
+    }
+    countB = (bSizeCountT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 4) - 1));
+    _pos += 4;
+    countA = (bSizeCountT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 4) - 1));
+}
+sc_bv<wideLog2St::_bitWidth> wideLog2St::sc_pack(void) const
+{
+    sc_bv<wideLog2St::_bitWidth> packed_data;
+    packed_data.range(12, 0) = nested.sc_pack();
+    packed_data.range(44, 13) = addr;
+    packed_data.range(48, 45) = flags;
+    packed_data.range(51, 49) = tag;
+    packed_data.range(56, 52) = signedB;
+    packed_data.range(61, 57) = signedA;
+    packed_data.range(65, 62) = indexB;
+    for(unsigned int i=0; i<ASIZE2; i++) {
+        packed_data.range(66+(i+1)*4-1, 66+i*4) = indexA[i];
+    }
+    packed_data.range(77, 74) = countB;
+    packed_data.range(81, 78) = countA;
+    return packed_data;
+}
+void wideLog2St::sc_unpack(sc_bv<wideLog2St::_bitWidth> packed_data)
+{
+    nested.sc_unpack(packed_data.range(12, 0));
+    addr = (apbAddrT) packed_data.range(44, 13).to_uint64();
+    flags = (fourBitT) packed_data.range(48, 45).to_uint64();
+    tag = (threeBitT) packed_data.range(51, 49).to_uint64();
+    signedB = (signedLog2T) packed_data.range(56, 52).to_uint64();
+    // Sign extension for signed type
+    if (signedB & (1ULL << (5 - 1))) {
+        signedB = (signedLog2T)(signedB | ~((1ULL << 5) - 1));
+    }
+    signedA = (signedLog2T) packed_data.range(61, 57).to_uint64();
+    // Sign extension for signed type
+    if (signedA & (1ULL << (5 - 1))) {
+        signedA = (signedLog2T)(signedA | ~((1ULL << 5) - 1));
+    }
+    indexB = (bSizeIndexT) packed_data.range(65, 62).to_uint64();
+    for(unsigned int i=0; i<ASIZE2; i++) {
+        indexA[i] = (bSizeIndexT) packed_data.range(66+(i+1)*4-1, 66+i*4).to_uint64();
+    }
+    countB = (bSizeCountT) packed_data.range(77, 74).to_uint64();
+    countA = (bSizeCountT) packed_data.range(81, 78).to_uint64();
 }
 
 // GENERATED_CODE_END
@@ -2652,6 +2883,129 @@ void test_mixed_structs::test(void) {
                 cout << a.prt();
                 cout << b.prt();
                 Q_ASSERT(false,"test37BitRegSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : signedPatterns) {
+        log2TestSt::_packedSt packed;
+        memset(&packed, pattern, log2TestSt::_byteWidth);
+        sc_bv<log2TestSt::_bitWidth> aInit;
+        sc_bv<log2TestSt::_bitWidth> aTest;
+        for (int i = 0; i < log2TestSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, log2TestSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        log2TestSt a;
+        a.sc_unpack(aInit);
+        log2TestSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"log2TestSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"log2TestSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = log2TestSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"log2TestSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : signedPatterns) {
+        nestedLog2St::_packedSt packed;
+        memset(&packed, pattern, nestedLog2St::_byteWidth);
+        sc_bv<nestedLog2St::_bitWidth> aInit;
+        sc_bv<nestedLog2St::_bitWidth> aTest;
+        for (int i = 0; i < nestedLog2St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, nestedLog2St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        nestedLog2St a;
+        a.sc_unpack(aInit);
+        nestedLog2St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"nestedLog2St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"nestedLog2St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = nestedLog2St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"nestedLog2St fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : signedPatterns) {
+        wideLog2St::_packedSt packed;
+        memset(&packed, pattern, wideLog2St::_byteWidth);
+        sc_bv<wideLog2St::_bitWidth> aInit;
+        sc_bv<wideLog2St::_bitWidth> aTest;
+        for (int i = 0; i < wideLog2St::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, wideLog2St::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        wideLog2St a;
+        a.sc_unpack(aInit);
+        wideLog2St b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"wideLog2St fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"wideLog2St fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = wideLog2St::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"wideLog2St fail");
             }
             bitsLeft -= bits;
             ptr++;

@@ -376,6 +376,26 @@ class Node:
         if self.parent_storage_key_field:
             return self.parent_storage_key_field + 'Key'
         return None
+
+    def get_context_key_source(self, context_key_field_name: str) -> Optional[tuple]:
+        """Resolve the source field for a contextKey field from existing node state.
+
+        Returns:
+            Tuple of (source_field_name, source_field_type), or None if unresolved.
+        """
+        storage_key = self.get_storage_key_field_name()
+        if storage_key and self.get_storage_key_field_name_qualified() == context_key_field_name:
+            storage_field = self.get_field(storage_key)
+            storage_ftype = storage_field.field_type if storage_field else 'unknown'
+            return storage_key, storage_ftype
+
+        for candidate_name, candidate_field in self.fields.items():
+            if candidate_name == context_key_field_name:
+                continue
+            if candidate_field.field_type in {'key', 'listkey', 'anchor'} and (candidate_name + 'Key') == context_key_field_name:
+                return candidate_name, candidate_field.field_type
+
+        return None
         
     def has_field(self, field_name: str) -> bool:
         """Check if a field exists (case-insensitive)"""
@@ -628,6 +648,44 @@ class Schema:
         
         # Process all sections recursively, starting with no parent keys
         self._validate_sections(schema_yaml, schema_file, '', valid_field_types, reserved_keys, custom_checker)
+
+        # Verify the types section has the required fields and post function for widthLog2 support
+        self._validateTypesSchema(schema_file)
+        self._validate_context_key_sources(schema_file)
+
+    def _validate_context_key_sources(self, schema_file: str):
+        """Validate that each contextKey field has a resolvable source producer."""
+        for node in self.nodes.values():
+            for field_name, field in node.fields.items():
+                if field.field_type != 'contextKey':
+                    continue
+                if node.get_context_key_source(field_name) is None:
+                    printError(
+                        f"Bad schema detected in {schema_file}. "
+                        f"Section {node.full_path}, field '{field_name}' is declared as contextKey "
+                        f"but no source field (key/listkey/anchor/storage key) can produce it."
+                    )
+                    exit(warningAndErrorReport())
+
+    def _validateTypesSchema(self, schema_file: str):
+        """Verify the schema's types section has the required fields and post function.
+
+        If a user has an outdated schema that predates widthLog2 support, the code
+        would silently produce incorrect results. This check catches that early.
+        """
+        types_node = self.get_section('types')
+        if types_node is None:
+            return  # no types section at all — nothing to check
+        required_fields = ['width', 'widthLog2', 'widthLog2minus1']
+        for field_name in required_fields:
+            if types_node.get_field(field_name) is None:
+                printError(f"Schema {schema_file} is missing required field '{field_name}' in the 'types' section. "
+                           f"Please update your schema to include: {field_name}: optionalConst()")
+                exit(warningAndErrorReport())
+        if types_node.post_function != '_post_validateTypeWidth':
+            printError(f"Schema {schema_file} is missing required post function 'validateTypeWidth' in the 'types' section. "
+                       f"Please update your schema to include: _attribs: [post(validateTypeWidth)]")
+            exit(warningAndErrorReport())
                 
     def _validate_sections(self, schema: dict, schema_file: str, context: str,
                           valid_field_types: set, reserved_keys: set, custom_checker: set, 

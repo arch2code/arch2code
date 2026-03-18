@@ -3,6 +3,50 @@ from pysrc.systemVerilogGeneratorHelper import importPackages
 # args from generator line
 # prj object
 # data set dict
+def typeWidthExpression_sv(value, prj_data):
+    """Build a SystemVerilog bit-range expression for a type's width.
+
+    For widthLog2 with constant C:       $clog2(C+1)
+    For widthLog2minus1 with constant C: $clog2(C)
+    For width with constant C:           C
+    For literal integer N:               N
+    If isSigned + log2: appends +1
+
+    Returns: (widthExpr, descExtra) where widthExpr goes in [expr-1:0]
+    and descExtra is an optional description suffix.
+    # TODO: handle variable size parameters (parameterized widths)
+    """
+    isSigned = value['isSigned']
+    signedExtra = '+1' if isSigned else ''
+    descExtra = ''
+    constants = prj_data if isinstance(prj_data, dict) else prj_data.data['constants']
+
+    # Check widthLog2
+    wl2Key = value['widthLog2Key']
+    if wl2Key:
+        constName = constants[wl2Key]['constant']
+        return f"$clog2({constName}+1){signedExtra}", descExtra
+    wl2 = value['widthLog2']
+    if wl2 != '':
+        return f"$clog2({wl2}+1){signedExtra}", descExtra
+
+    # Check widthLog2minus1
+    wl2m1Key = value['widthLog2minus1Key']
+    if wl2m1Key:
+        constName = constants[wl2m1Key]['constant']
+        return f"$clog2({constName}){signedExtra}", descExtra
+    wl2m1 = value['widthLog2minus1']
+    if wl2m1 != '':
+        return f"$clog2({wl2m1}){signedExtra}", descExtra
+
+    # Direct width — check widthKey for constant, else literal
+    widthKey = value['widthKey']
+    if widthKey:
+        constName = constants[widthKey]['constant']
+        return constName, descExtra
+    return str(value['realwidth']), descExtra
+
+
 def render(args, prj, data):
     out     = ''
     indent  = ' ' *4
@@ -49,12 +93,12 @@ def render(args, prj, data):
     # Generate types
     out += f"\n// types\n"
     for unusedKey, value in data['types'].items():
-        if value['width'] in prj.data['constants']:
-            value['desc'] += f" sizing from constant {prj.data['constants'][value['width']]['constant']}"
+        widthExpr, descExtra = typeWidthExpression_sv(value, prj.data['constants'])
+        desc = value['desc'] + descExtra
         # Check if type is signed
-        isSigned = value.get('isSigned', False)
+        isSigned = value['isSigned']
         signedStr = " signed" if isSigned else ""
-        out += f"typedef logic{signedStr}[{value['realwidth']}-1:0] {value['type']}; //{value['desc']}\n"
+        out += f"typedef logic{signedStr}[{widthExpr}-1:0] {value['type']}; //{desc}\n"
 
     # Generate enums
     out += f"\n// enums\n"

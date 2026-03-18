@@ -1,4 +1,5 @@
 from pysrc.intf_gen_utils import get_const
+from templates.systemc.includes import typeWidthExpression_cpp
 import os.path
 dataTypeMappings = [
     {'maxSize': 1, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
@@ -81,6 +82,47 @@ def convertToType(bitwidth, name="_packedSt", isSigned=False):
             #if we found something terminate the list as we want the smallest type
             break
     return retType, rowType, baseSize
+
+def structBitWidthExpression_cpp(value, prj):
+    """Build a C++ constexpr expression for a structure's _bitWidth.
+
+    Iterates over vars and emits terms for each:
+    - NamedVar/NamedType: uses symbolic expression from typeWidthExpression_cpp
+    - NamedStruct: uses subStructName::_bitWidth reference
+    - Reserved: uses integer align value
+    Array vars multiply by array size.
+    Terms are joined with ' + '.
+    # TODO: handle variable size parameters (parameterized widths)
+    """
+    terms = []
+    for var, vardata in reversed(value['vars'].items()):
+        arraySizeValue = vardata.get('arraySizeValue', 1)
+        isArray = vardata.get('isArray', False)
+
+        if vardata['entryType'] == 'NamedVar' or vardata['entryType'] == 'NamedType':
+            typeInfo = prj.data['types'].get(vardata['varTypeKey'])
+            if typeInfo:
+                expr = typeWidthExpression_cpp(typeInfo, prj)
+            else:
+                expr = str(vardata['bitwidth'])
+        elif vardata['entryType'] == 'NamedStruct':
+            expr = f"{vardata['subStruct']}::_bitWidth"
+        elif vardata['entryType'] == 'Reserved':
+            expr = str(vardata['bitwidth'])
+        else:
+            expr = str(vardata['bitwidth'])
+
+        if isArray and arraySizeValue > 1:
+            # Wrap non-trivial expressions in parens before multiplying
+            if '+' in expr or '-' in expr:
+                expr = f"({expr})"
+            # Use symbolic constant name if available, else literal integer
+            arraySizeExpr = vardata.get('arraySize', arraySizeValue)
+            expr = f"{expr}*{arraySizeExpr}"
+
+        terms.append(expr)
+
+    return ' + '.join(terms) if terms else '0'
 
 def printOneVar(prefix, space, varName, vardata, prtoss=True):
     out = list()
@@ -221,8 +263,28 @@ def oneStruct(args, prj, data, struct, value):
         else:
             out.append(f"\n{indent}{structName}() {{}}\n")
         # consts
-        out.append(f"{indent}static constexpr uint16_t _bitWidth = {value['width']};")
-        out.append(f"{indent}static constexpr uint16_t _byteWidth = {(value['width']+7) >> 3};")
+        bitWidthExpr = structBitWidthExpression_cpp(value, prj)
+        prefix = f"{indent}static constexpr uint16_t _bitWidth = "
+        maxLineLen = 120
+        fullLine = f"{prefix}{bitWidthExpr};"
+        if len(fullLine) <= maxLineLen:
+            out.append(fullLine)
+        else:
+            # Wrap at ' + ' term boundaries
+            terms = bitWidthExpr.split(' + ')
+            contIndent = ' ' * len(prefix)
+            lines = []
+            curLine = prefix + terms[0]
+            for term in terms[1:]:
+                candidate = curLine + ' + ' + term
+                if len(candidate) > maxLineLen and curLine != prefix + terms[0]:
+                    lines.append(curLine)
+                    curLine = contIndent + '+ ' + term
+                else:
+                    curLine = candidate
+            lines.append(curLine + ';')
+            out.extend(lines)
+        out.append(f"{indent}static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;")
         retType, rowType, baseSize = convertToType(value['width'])
         out.append(f"{indent}typedef {retType};")
 
@@ -259,7 +321,7 @@ def oneStruct(args, prj, data, struct, value):
             case 'sc_unpack':
                 if value['width'] == 1:
                     out.extend(sc_unpack(handle, args, "bool", value, indent))
-                out.extend(sc_unpack(handle, args, f"sc_bv<{value['width']}>", value, indent))
+                out.extend(sc_unpack(handle, args, f"sc_bv<{structName}::_bitWidth>", value, indent))
             case 'constuctor_bv':
                 out.extend(constuctor_bv(structName, value, indent)) if not isCpp else None
             case 'constructor':
@@ -511,7 +573,7 @@ def getSet(vars, indent):
 def registerFeatures(vars, indent):
     out = list()
     out.append(f"{indent}// register functions")
-    out.append(f"{indent}inline int _size(void) {{return( ({ vars['width'] } + 7) >> 4 ); }}")
+    out.append(f"{indent}inline int _size(void) {{return( (_bitWidth + 7) >> 4 ); }}")
     out.append(f"{indent}uint64_t _getValue(void)")
     out.append(f"{indent}{{")
     indent = ' '*8
@@ -565,8 +627,9 @@ def registerFeatures(vars, indent):
 # sc_pack
 def sc_pack(handle, args, vars, indent):
     out = list()
+    structName = vars['structure']
     if vars['width'] > 1:
-        structType = f"sc_bv<{vars['width']}>"
+        structType = f"sc_bv<{structName}::_bitWidth>"
     else:
         structType = 'bool'
     if args.section == 'header' and handle == 'inline':
@@ -696,7 +759,7 @@ def sc_unpack(handle, args, structType, vars, indent):
                     else:
                         out.append(f'{indent}{varName}{varIndex} = ({varType}) packed_data.range({rng_high}, {rng_low}).to_uint64();')
                         # Add sign extension for signed types
-                        isSigned = data.get('isSigned', False)
+                        isSigned = data['isSigned']
                         out.extend(get_sign_extension_code(varName, varIndex, varType, data['bitwidth'], indent, isSigned))
                 else :
                     out.append(f'{indent}{varName}{varIndex} = ({varType}) packed_data;')
@@ -717,7 +780,7 @@ def sc_unpack(handle, args, structType, vars, indent):
 def constuctor_bv(structName, vars, indent):
     out = list()
     if vars['width'] > 1:
-        structType = f"sc_bv<{vars['width']}>"
+        structType = f"sc_bv<{structName}::_bitWidth>"
     else:
         structType = 'bool'
     out.append(f"{indent}explicit {structName}({structType} packed_data) {{ sc_unpack(packed_data); }}")
@@ -913,7 +976,7 @@ def fw_unpack(handle, args, vars, indent):
                     out.append(f'{indent}{varName}{varIndex} = ({varType})({varName}{varIndex} | (({src} << {consumeBits}){srcMask}));')
                     out.append(f'{indent}_pos += {bitsLeft};') if usePos else None
                 # Add sign extension for signed types
-                isSigned = data.get('isSigned', False)
+                isSigned = data['isSigned']
                 out.extend(get_sign_extension_code(varName, varIndex, varType, data['bitwidth'], indent, isSigned))
         elif data['entryType'] == 'NamedStruct':
             # nested structure, declare a tmp variable to hold the value and copy it to the destination
@@ -981,7 +1044,7 @@ def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
     else:
         ret = "_ret"
     isArray = data['isArray']
-    isSigned = data.get('isSigned', False)
+    isSigned = data['isSigned']
     baseMask = fw_pack_vars['baseSize'] - 1
     if isArray:
         srcPos = '_pos'
@@ -1166,7 +1229,7 @@ def structContainsSignedTypes(structValue, prj, data):
         if varData['entryType'] == 'NamedVar' or varData['entryType'] == 'NamedType':
             # Check if the type is signed
             typeInfo = prj.data['types'].get(varData['varTypeKey'])
-            if typeInfo and typeInfo.get('isSigned', False):
+            if typeInfo and typeInfo['isSigned']:
                 return True
         elif varData['entryType'] == 'NamedStruct':
             # Recursively check nested structures

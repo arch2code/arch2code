@@ -30,13 +30,13 @@ void aRegSt::unpack(const _packedSt &_src)
 {
     a = (thirtySevenBitT)((_src) & ((1ULL << 37) - 1));
 }
-sc_bv<37> aRegSt::sc_pack(void) const
+sc_bv<aRegSt::_bitWidth> aRegSt::sc_pack(void) const
 {
-    sc_bv<37> packed_data;
+    sc_bv<aRegSt::_bitWidth> packed_data;
     packed_data.range(36, 0) = a;
     return packed_data;
 }
-void aRegSt::sc_unpack(sc_bv<37> packed_data)
+void aRegSt::sc_unpack(sc_bv<aRegSt::_bitWidth> packed_data)
 {
     a = (thirtySevenBitT) packed_data.range(36, 0).to_uint64();
 }
@@ -66,14 +66,14 @@ void un0BRegSt::unpack(const _packedSt &_src)
     _pos += 16;
     fa = (u8T)((_src >> (_pos & 31)) & ((1ULL << 8) - 1));
 }
-sc_bv<24> un0BRegSt::sc_pack(void) const
+sc_bv<un0BRegSt::_bitWidth> un0BRegSt::sc_pack(void) const
 {
-    sc_bv<24> packed_data;
+    sc_bv<un0BRegSt::_bitWidth> packed_data;
     packed_data.range(15, 0) = fb;
     packed_data.range(23, 16) = fa;
     return packed_data;
 }
-void un0BRegSt::sc_unpack(sc_bv<24> packed_data)
+void un0BRegSt::sc_unpack(sc_bv<un0BRegSt::_bitWidth> packed_data)
 {
     fb = (u16T) packed_data.range(15, 0).to_uint64();
     fa = (u8T) packed_data.range(23, 16).to_uint64();
@@ -109,15 +109,15 @@ void un0ARegSt::unpack(const _packedSt &_src)
     _pos += 32;
     fa = (u8T)((_src >> (_pos & 63)) & ((1ULL << 8) - 1));
 }
-sc_bv<48> un0ARegSt::sc_pack(void) const
+sc_bv<un0ARegSt::_bitWidth> un0ARegSt::sc_pack(void) const
 {
-    sc_bv<48> packed_data;
+    sc_bv<un0ARegSt::_bitWidth> packed_data;
     packed_data.range(7, 0) = fc;
     packed_data.range(39, 8) = fb;
     packed_data.range(47, 40) = fa;
     return packed_data;
 }
-void un0ARegSt::sc_unpack(sc_bv<48> packed_data)
+void un0ARegSt::sc_unpack(sc_bv<un0ARegSt::_bitWidth> packed_data)
 {
     fc = (u8T) packed_data.range(7, 0).to_uint64();
     fb = (u32T) packed_data.range(39, 8).to_uint64();
@@ -143,13 +143,13 @@ void aSizeRegSt::unpack(const _packedSt &_src)
 {
     index = (aSizeT)((_src) & ((1ULL << 29) - 1));
 }
-sc_bv<29> aSizeRegSt::sc_pack(void) const
+sc_bv<aSizeRegSt::_bitWidth> aSizeRegSt::sc_pack(void) const
 {
-    sc_bv<29> packed_data;
+    sc_bv<aSizeRegSt::_bitWidth> packed_data;
     packed_data.range(28, 0) = index;
     return packed_data;
 }
-void aSizeRegSt::sc_unpack(sc_bv<29> packed_data)
+void aSizeRegSt::sc_unpack(sc_bv<aSizeRegSt::_bitWidth> packed_data)
 {
     index = (aSizeT) packed_data.range(28, 0).to_uint64();
 }
@@ -173,13 +173,13 @@ void apbAddrSt::unpack(const _packedSt &_src)
 {
     address = (apbAddrT)((_src));
 }
-sc_bv<32> apbAddrSt::sc_pack(void) const
+sc_bv<apbAddrSt::_bitWidth> apbAddrSt::sc_pack(void) const
 {
-    sc_bv<32> packed_data;
+    sc_bv<apbAddrSt::_bitWidth> packed_data;
     packed_data.range(31, 0) = address;
     return packed_data;
 }
-void apbAddrSt::sc_unpack(sc_bv<32> packed_data)
+void apbAddrSt::sc_unpack(sc_bv<apbAddrSt::_bitWidth> packed_data)
 {
     address = (apbAddrT) packed_data.range(31, 0).to_uint64();
 }
@@ -203,13 +203,13 @@ void apbDataSt::unpack(const _packedSt &_src)
 {
     data = (apbDataT)((_src));
 }
-sc_bv<32> apbDataSt::sc_pack(void) const
+sc_bv<apbDataSt::_bitWidth> apbDataSt::sc_pack(void) const
 {
-    sc_bv<32> packed_data;
+    sc_bv<apbDataSt::_bitWidth> packed_data;
     packed_data.range(31, 0) = data;
     return packed_data;
 }
-void apbDataSt::sc_unpack(sc_bv<32> packed_data)
+void apbDataSt::sc_unpack(sc_bv<apbDataSt::_bitWidth> packed_data)
 {
     data = (apbDataT) packed_data.range(31, 0).to_uint64();
 }
@@ -233,13 +233,13 @@ void aMemAddrSt::unpack(const _packedSt &_src)
 {
     address = (aAddrBitsT)((_src) & ((1ULL << 5) - 1));
 }
-sc_bv<5> aMemAddrSt::sc_pack(void) const
+sc_bv<aMemAddrSt::_bitWidth> aMemAddrSt::sc_pack(void) const
 {
-    sc_bv<5> packed_data;
+    sc_bv<aMemAddrSt::_bitWidth> packed_data;
     packed_data.range(4, 0) = address;
     return packed_data;
 }
-void aMemAddrSt::sc_unpack(sc_bv<5> packed_data)
+void aMemAddrSt::sc_unpack(sc_bv<aMemAddrSt::_bitWidth> packed_data)
 {
     address = (aAddrBitsT) packed_data.range(4, 0).to_uint64();
 }
@@ -263,13 +263,13 @@ void aMemSt::unpack(const _packedSt &_src)
 {
     data = (aDataBitsT)((_src) & ((1ULL << 63) - 1));
 }
-sc_bv<63> aMemSt::sc_pack(void) const
+sc_bv<aMemSt::_bitWidth> aMemSt::sc_pack(void) const
 {
-    sc_bv<63> packed_data;
+    sc_bv<aMemSt::_bitWidth> packed_data;
     packed_data.range(62, 0) = data;
     return packed_data;
 }
-void aMemSt::sc_unpack(sc_bv<63> packed_data)
+void aMemSt::sc_unpack(sc_bv<aMemSt::_bitWidth> packed_data)
 {
     data = (aDataBitsT) packed_data.range(62, 0).to_uint64();
 }
@@ -293,13 +293,13 @@ void bMemAddrSt::unpack(const _packedSt &_src)
 {
     address = (bAddrBitsT)((_src) & ((1ULL << 5) - 1));
 }
-sc_bv<5> bMemAddrSt::sc_pack(void) const
+sc_bv<bMemAddrSt::_bitWidth> bMemAddrSt::sc_pack(void) const
 {
-    sc_bv<5> packed_data;
+    sc_bv<bMemAddrSt::_bitWidth> packed_data;
     packed_data.range(4, 0) = address;
     return packed_data;
 }
-void bMemAddrSt::sc_unpack(sc_bv<5> packed_data)
+void bMemAddrSt::sc_unpack(sc_bv<bMemAddrSt::_bitWidth> packed_data)
 {
     address = (bAddrBitsT) packed_data.range(4, 0).to_uint64();
 }
@@ -341,15 +341,15 @@ void bMemSt::unpack(const _packedSt &_src)
         }
     }
 }
-sc_bv<96> bMemSt::sc_pack(void) const
+sc_bv<bMemSt::_bitWidth> bMemSt::sc_pack(void) const
 {
-    sc_bv<96> packed_data;
+    sc_bv<bMemSt::_bitWidth> packed_data;
     for(unsigned int i=0; i<3; i++) {
         packed_data.range(0+(i+1)*32-1, 0+i*32) = data[i];
     }
     return packed_data;
 }
-void bMemSt::sc_unpack(sc_bv<96> packed_data)
+void bMemSt::sc_unpack(sc_bv<bMemSt::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<3; i++) {
         data[i] = (u32T) packed_data.range(0+(i+1)*32-1, 0+i*32).to_uint64();

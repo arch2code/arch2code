@@ -23,7 +23,7 @@ Structure: apbAddrSt
 Var:  address  for addressing register via APB
 
 Structure: apbDataSt
-Var:  data  for the data sent or recieved via APB
+Var:  data  for the data sent or received via APB
 
 Block: cpu
 Connection: uCPU -> u_mixed
@@ -34,7 +34,7 @@ Structure: apbAddrSt
 Var:  address  for addressing register via APB
 
 Structure: apbDataSt
-Var:  data  for the data sent or recieved via APB
+Var:  data  for the data sent or received via APB
 
 Block: blockA
 Connection: uBlockA -> uBlockB
@@ -76,7 +76,7 @@ Structure: apbAddrSt
 Var:  address  for addressing register via APB
 
 Structure: apbDataSt
-Var:  data  for the data sent or recieved via APB
+Var:  data  for the data sent or received via APB
 
 Block: apbDecode
 Connection: uAPBDecode -> uBlockA
@@ -87,7 +87,7 @@ Structure: apbAddrSt
 Var:  address  for addressing register via APB
 
 Structure: apbDataSt
-Var:  data  for the data sent or recieved via APB
+Var:  data  for the data sent or received via APB
 
 Connection: uAPBDecode -> uBlockB
 Interface: apbReg
@@ -97,7 +97,7 @@ Structure: apbAddrSt
 Var:  address  for addressing register via APB
 
 Structure: apbDataSt
-Var:  data  for the data sent or recieved via APB
+Var:  data  for the data sent or received via APB
 
 Block: blockC
 Connection: uBlockA -> uBlockC
@@ -140,7 +140,7 @@ Structure: apbAddrSt
 Var:  address  for addressing register via APB
 
 Structure: apbDataSt
-Var:  data  for the data sent or recieved via APB
+Var:  data  for the data sent or received via APB
 
 Block: blockARegs
 Block: blockD

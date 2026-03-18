@@ -88,6 +88,7 @@ variables:
       field: type
 
 types:
+  _attribs: [post(validateTypeWidth)]
   type: key
   desc: required
   isSigned: optional(false)
@@ -96,7 +97,9 @@ types:
     enumName: key
     desc: optional
     value: eval
-  width: auto(width) #allows width field to be autocalculate in the case that an enum is provided. Must be after enum field
+  width: optionalConst()
+  widthLog2: optionalConst()
+  widthLog2minus1: optionalConst()
 
 enums:
   _mapto: types # this section maps to the types section to allow user to define two types sections as yaml does not allow multiple sections with same name

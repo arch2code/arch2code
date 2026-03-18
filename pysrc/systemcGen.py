@@ -138,10 +138,11 @@ class genSystemC:
                         varData['isSigned'] = False  # Structures are not signed
                     else:
                         typeInfo = prj.data['types'][varData['varTypeKey']]
-                        bitwidth = typeInfo['width']
-                        # Capture isSigned status from type (defaults to False)
-                        varData['isSigned'] = typeInfo.get('isSigned', False)
-                    bitwidth = prj.getConst( bitwidth )
+                        bitwidth = prj.resolveTypeWidth(typeInfo)
+                        # Capture isSigned status from type
+                        varData['isSigned'] = typeInfo['isSigned']
+                    if not isinstance(bitwidth, int):
+                        bitwidth = prj.getConst( bitwidth )
                     varData['bitwidth'] = bitwidth
                     varData['arraywidth'] = bitwidth * arraySize if varData['isArray'] else bitwidth
                     varData['bitshift'] = offset
