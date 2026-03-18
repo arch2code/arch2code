@@ -8,7 +8,12 @@ test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
 sys.path.insert(0, base_dir)
 
+import pysrc.arch2codeGlobals as g
 from pysrc.schema import Schema
+
+# Disable ANSI colorized warnings/errors in this test to avoid
+# color-state spill in aggregated test logs.
+g.disableColors = True
 
 
 def test_valid_context_key_source():
