@@ -63,6 +63,12 @@ echo "Test Suite 8: Duplicate Interface Handling"
 echo "------------------------------------------------------------------------"
 python3 test_duplicate_interface.py || FAILED=1
 
+# Test 9: ContextKey schema validation
+echo ""
+echo "Test Suite 9: ContextKey Validation"
+echo "------------------------------------------------------------------------"
+python3 test_contextkey_validation.py || FAILED=1
+
 echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then

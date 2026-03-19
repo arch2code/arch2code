@@ -12,8 +12,8 @@ localparam longint unsigned BIGE53 = 64'h003F_FFFF_FFFF_FFFF;  // Test constant 
 typedef logic[2-1:0] twoBitT; //this is a 2 bit type
 typedef logic[3-1:0] threeBitT; //this is a 3 bit type
 typedef logic[4-1:0] fourBitT; //this is a 4 bit type
-typedef logic[1-1:0] aSizeT; //type of width ASIZE sizing from constant ASIZE
-typedef logic[2-1:0] aBiggerT; //yet another type sizing from constant ASIZE2
+typedef logic[ASIZE-1:0] aSizeT; //type of width ASIZE
+typedef logic[ASIZE2-1:0] aBiggerT; //yet another type
 typedef logic[5-1:0] bSizeT; //for addressing memory, temp, unused
 
 // enums

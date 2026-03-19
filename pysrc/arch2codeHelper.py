@@ -31,6 +31,28 @@ def confirmConnection(inDictionary, interfaceKey, src, dst):
     printError(f"The interfaceKey {interfaceKey} with source {src} and destination {dst} can not be found.")
     return False
 
+'''
+convert an input value in heterogenous type/format to the most appropriate output type
+if no conversion possible, raise ValueError
+'''
+def convert_value(value):
+    if isinstance(value, int):
+        return int(value)
+    elif isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            pass
+        try:
+            return hex(int(value, 16))
+        except ValueError:
+            pass
+        if value == 'null':
+            return None
+        else:
+            return value
+    raise ValueError
+
 import subprocess
 
 # TODO to remove subprocess and never create output svg files a build option would be needed to create the flow diagrams

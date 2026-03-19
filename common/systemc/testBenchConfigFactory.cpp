@@ -27,6 +27,16 @@ std::shared_ptr< testBenchConfigBase > testBenchConfigFactory::createTestBench(c
     if(it != map.end()) {
         testBench = it->second(testBenchLocal.c_str());
         return testBench;
+    } else {
+        if (testBenchLocal.empty()) {
+            std::cout << "TestBench not set and no defaultTestBench" << std::endl;
+        } else {
+            std::cout << "TestBench " << testBenchLocal << " not found" << std::endl;
+        }
+        std::cout << "TestBenches available:" << std::endl;
+        for (auto it2 = map.cbegin(); it2 != map.cend(); ++it2) {
+            std::cout << "\t" << it2->first << std::endl;
+        }
     }
     return nullptr;
 }

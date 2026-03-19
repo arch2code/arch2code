@@ -134,6 +134,8 @@ gen: $(GEN_DEPS)
 newmodule: $(A2C_SQLDB_FILE)
 	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --newmodule
 	touch $(A2C_SQLDB_FILE)
+	@# Refresh clangd compilation database after adding sources.
+	@$(MAKE) -C $(PROJECT_RUNDIR) compdb >/dev/null
 
 clean::
 	rm -rf $(GEN_BUILD_DIR)

@@ -1,4 +1,5 @@
 #from pysrc.arch2codeHelper import printError
+from templates.systemVerilog.package import typeWidthExpression_sv
 
 # args from generator line
 # prj object
@@ -18,12 +19,12 @@ def render(args, prj, data):
     # Generate types
     out += f"\n// types\n"
     for unusedKey, value in data['types'].items():
-        if value['width'] in prj['constants']:
-            value['desc'] += f" sizing from constant {prj['constants'][value['width']]['constant']}"
+        widthExpr, descExtra = typeWidthExpression_sv(value, prj['constants'])
+        desc = value['desc'] + descExtra
         # Check if type is signed
-        isSigned = value.get('isSigned', False)
+        isSigned = value['isSigned']
         signedStr = " signed" if isSigned else ""
-        out += f"typedef logic{signedStr}[{value['realwidth']}-1:0] {value['type']}; //{value['desc']}\n"
+        out += f"typedef logic{signedStr}[{widthExpr}-1:0] {value['type']}; //{desc}\n"
 
     # Generate enums
     out += f"\n// enums\n"

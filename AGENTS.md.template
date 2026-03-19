@@ -1,88 +1,48 @@
-# arch2code Project Rules
+# AI Agent Rules
 
-## Role
-You are an expert Hardware Architect and SystemVerilog/SystemC engineer using the **arch2code** toolchain. Your goal is to help define hardware architecture in YAML and implement it using the generated skeletons.
+You are an expert software engineer and hardware architect specialized in the Arch2Code framework. Your goal is to help the user design, implement, and verify hardware modules using SystemC and SystemVerilog.
 
-## Technology Stack
+## Skill Routing
+To provide the best assistance, you **must** consult the specific skill files located in `.cursor/rules/` (or `.ai/skills/`) based on the user's request.
 
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| **Architecture** | YAML | Define hardware blocks, interfaces, connections, registers |
-| **Models** | SystemC (C++) | Functional simulation, behavioral modeling |
-| **RTL** | SystemVerilog | Synthesizable hardware implementation |
-| **Tooling** | Python | Code generation (arch2code toolchain) |
-| **Build** | Make | Build orchestration, dependency management |
-| **Co-simulation** | Verilator | RTL/SystemC tandem simulation |
+| User Intent | Primary Skill File |
+| :--- | :--- |
+| **Start/Config** | `setup-project.md` (Project init, `project.yaml`) |
+| **Address/Mem** | `manage-address-space.md` (Address map, decoding, FW headers) |
+| **Architecture** | `design-architecture.md` (YAML blocks, interfaces) |
+| **Build/Run** | `manage-build.md` (`make` targets, `gen`, `db`) |
+| **Docs** | `doc-generation.md` (Generate diagrams, register maps) |
+| **SystemC Core** | `systemc-core.md` (Modules, threads, logging) |
+| **SystemC Sync** | `systemc-synchronization.md` (Locking, arbitration, events) |
+| **SystemC Data** | `systemc-resources.md` (Registers, memories, trackers) |
+| **SystemC Ports** | `systemc-interfaces.md` (AXI, Rdy/Vld, Push/Ack) |
+| **SystemC Patterns** | `systemc-patterns.md` (Producer-Consumer, Register Handler, Multi-Cycle) |
+| **RTL Core** | `rtl-core.md` (Modules, FSMs, resets) |
+| **RTL Regs** | `rtl-registers.md` (Decoder architecture, external regs) |
+| **RTL Arbiter** | `rtl-arbitration.md` (`memArb`, `vldAckArb`) |
+| **RTL Datapath** | `rtl-datapath.md` (FIFOs, `inPlaceList`, Capture) |
+| **RTL Ports** | `rtl-interfaces.md` (Interface usage) |
+| **RTL Patterns** | `rtl-patterns.md` (Streaming, Req-Resp, Arbitration) |
+| **Verification** | `verify-testbench.md` (Testbenches, scoreboards) |
+| **Co-Sim** | `verify-cosimulation.md` (Verilator wrappers, Tandem) |
+| **Tandem** | `run-tandem.md` (Build/run tandem verification for leaf blocks) |
 
-### Languages & Standards
-- **YAML**: Architecture definitions following arch2code schema
-- **C++23**: SystemC models using IEEE 1666 SystemC standard
-- **SystemVerilog**: IEEE 1800-2017 for RTL and packages
-- **Python 3.8+**: arch2code generators (do not run directly)
-- **GNU Make**: Build system
+## Core Principles
+1.  **Conventions First:** Always follow the project's existing style and patterns.
+2.  **No Assumptions:** Verify libraries and paths before using them.
+3.  **Safety:** Explain destructive commands before execution.
+4.  **Verification:** Always run `make gen` after YAML changes and `make run` to verify code.
 
-### Key Libraries & Frameworks
-- **SystemC 2.3+**: Behavioral modeling and simulation
-- **Verilator**: Open-source Verilog/SystemVerilog simulator
-- **arch2code**: Code generation from YAML architecture
+## Tool Usage
+*   Use `grep` and `glob` to explore the codebase.
+*   Use `read` to understand context.
+*   Use `write` and `edit` to modify code.
+*   Use `bash` to run `make` commands.
 
-## Project Structure
-- `arch/yaml/` - Architecture definitions (YAML) - Single Source of Truth
-- `model/` - SystemC models
-- `tb/` - SystemC testbenches  
-- `rtl/` - SystemVerilog RTL
-- `base/` - Generated base classes (DO NOT EDIT)
-- `builder/` - arch2code toolchain (submodule)
-- `rundir/` - **Primary working directory** (run most `make` commands here)
+## Common Workflows
+1.  **New Module:** `setup-project` -> `design-architecture` -> `manage-build` (`make gen`) -> `systemc-core` / `rtl-core`.
+2.  **Add Feature:** `design-architecture` (if interface changes) -> `implement-systemc-*` / `implement-rtl-*`.
+3.  **Debug:** `verify-testbench` -> `manage-build` (`make run`).
 
-## Critical Constraints
-
-### 1. Command Execution
-- **ALWAYS** use `make` targets from `rundir/`:
-  - `make gen` - Generate code from YAML
-  - `make db` - Update project database
-  - `make newmodule` - Create new modules (interactive)
-  - `make run` - Execute the model with default testbench
-  - `make clean` - Clean generated files
-- RTL linting: `make lint` in the `rtl/` directory
-- **NEVER** run `python arch2code.py` directly
-
-### 2. Generated Code Protection
-- **NEVER** edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END` markers
-- If generated code needs changing, modify the YAML and rerun generators
-- Only edit outside of these regions
-
-### 3. File Creation
-- **NEVER** manually create new implementation files (.sv, .cpp, .h)
-- **ALWAYS** use `make newmodule` for new blocks/files
-
-### 4. File Deletion
-- **NEVER** delete implementation files unless explicitly requested by the user
-- Files use in-place generation and will not be regenerated
-
-## Naming Conventions
-| Element | Convention | Example |
-|---------|------------|---------|
-| Constants | `UPPER_SNAKE_CASE` | `BUFFER_SIZE`, `DATA_WIDTH` |
-| Types/Structures | `snake_case_t` | `byte_t`, `packet_t` |
-| Blocks/Interfaces | `snake_case` | `dma_controller`, `data_stream` |
-| Instances | `u_snake_case` | `u_fifo`, `u_cpu` |
-| Enums | `UPPER_SNAKE_CASE` | `STATUS_IDLE`, `OPCODE_READ` |
-
-## Task-Specific Guidance
-
-Read the appropriate rules file for your current task:
-
-| Task | Rules File |
-|------|------------|
-| **YAML Architecture** | `builder/base/rules/architecture-yaml.md` |
-| **SystemC Models** | `builder/base/rules/systemc-shared.md` + `builder/base/rules/systemc-model.md` |
-| **SystemC Testbenches** | `builder/base/rules/systemc-shared.md` + `builder/base/rules/systemc-testbench.md` |
-| **SystemVerilog RTL** | `builder/base/rules/systemverilog-rtl.md` |
-
-## Reference Documentation
-
-For comprehensive details, consult:
-- **Architecture & YAML**: `builder/base/ARCH2CODE_AI_RULES.md`
-- **SystemC API**: `builder/base/SYSTEMC_API_USER_REFERENCE.md`
-- **Schema Validation**: `builder/base/config/schema.yaml`
+## Reference
+When in doubt, strictly rely on the code examples provided within the skill files above. These examples are extracted from production-grade code ("Gold Standard") and should be treated as the source of truth.

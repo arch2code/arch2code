@@ -30,13 +30,13 @@ void dupTestSt::unpack(const _packedSt &_src)
 {
     bob = (dupTestT)((_src) & ((1ULL << 13) - 1));
 }
-sc_bv<13> dupTestSt::sc_pack(void) const
+sc_bv<dupTestSt::_bitWidth> dupTestSt::sc_pack(void) const
 {
-    sc_bv<13> packed_data;
+    sc_bv<dupTestSt::_bitWidth> packed_data;
     packed_data.range(12, 0) = bob;
     return packed_data;
 }
-void dupTestSt::sc_unpack(sc_bv<13> packed_data)
+void dupTestSt::sc_unpack(sc_bv<dupTestSt::_bitWidth> packed_data)
 {
     bob = (dupTestT) packed_data.range(12, 0).to_uint64();
 }

@@ -5,8 +5,8 @@ localparam int unsigned CSIZE = 32'h0000_0002;  // The size of C
 localparam int unsigned CSIZE_PLUS = 32'h0000_0003;  // The size of C plus 1
 
 // types
-typedef logic[2-1:0] cSizeT; //size of c sizing from constant CSIZE
-typedef logic[3-1:0] cSizePlusT; //size of c plus 1 sizing from constant CSIZE_PLUS
+typedef logic[CSIZE-1:0] cSizeT; //size of c
+typedef logic[CSIZE_PLUS-1:0] cSizePlusT; //size of c plus 1
 typedef logic[13-1:0] cBiggerT; //yet another type
 
 // enums

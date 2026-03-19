@@ -1,7 +1,7 @@
 from typing import Dict, OrderedDict
 import pysrc.arch2codeGlobals as g
 from pysrc.yamlInclude import YAML
-from pysrc.arch2codeHelper import printError, printWarning, printTracebackStack, warningAndErrorReport, printIfDebug, roundup_pow2min4
+from pysrc.arch2codeHelper import printError, printWarning, printTracebackStack, warningAndErrorReport, printIfDebug, roundup_pow2min4, clog2, convert_value
 from pysrc.schema import Schema
 import ruamel.yaml as YAMLRAW
 import sqlite3
@@ -118,11 +118,23 @@ def getKeyPriority(data, prioritylist):
         ret = data.get(key, None)
         # filter out empty strings or missing values
         if ret:
-            return ret
-    return None
+            return key, ret
+    return None, None
 
 def getPortChannelName(row, portKeyName = 'port'):
-    return getKeyPriority(row, [portKeyName, 'name', 'interface'])
+    _, value = getKeyPriority(row, [portKeyName, 'name', 'interface'])
+    return value
+
+def getTypeWidthContext(typeInfo):
+    """Return (mode, key) for active width field."""
+    mode, _ = getKeyPriority(typeInfo, ['widthLog2', 'widthLog2minus1', 'width'])
+    if not mode:
+        mode = 'width'
+
+    key = typeInfo.get(f"{mode}Key", None)
+    if not key:
+        key = None
+    return mode, key
 
 def loadModule(filename):
     module = None
@@ -315,14 +327,14 @@ class projectOpen:
         self.loadData()
         self.generateHierarchy()
         printIfDebug("Project loaded")
-    
+
     def getSchemaNode(self, table_name):
         """
         Get the schema Node object for a given table name.
-        
+
         Args:
             table_name: Full table name (e.g., 'interface_defs', 'interface_defsmodports')
-        
+
         Returns:
             Node object or None if not found
         """
@@ -347,33 +359,33 @@ class projectOpen:
                 self._loadSubTablesRecursive(table, self.schema.data['schema'][table], keyName)
 
             self.loadTable(table, self.schema.data['schema'][table], keyName)
-    
+
     def _loadSubTablesRecursive(self, parentTable, parentSchema, parentKeyName, parent_key_chain=None):
         """Recursively load all subtables depth-first
-        
+
         Args:
             parent_key_chain: List of parent qualified key field names (e.g., ['interface_typeKey', 'modportKey'])
         """
         if parentTable not in self.schema.data['subTable']:
             return
-        
+
         for subTable in self.schema.data['subTable'][parentTable]:
             printIfDebug(f"  Loading sub table: {subTable}")
-            
+
             # Get the field name that holds this subtable in the parent schema
             subTableFieldName = self.schema.data['subTable'][parentTable][subTable]
             subTableSchema = parentSchema[subTableFieldName]
-            
+
             # Get the key for this subtable
             subTableKey = self.schema.data['key'][subTable]
-            
+
             # Build the extended parent key chain for this subtable
             # Use the auto-derived parent_key_chain from schema (should always be available after _finalize_schema)
             extended_chain = self.schema.data.get('parentKeyChain', {}).get(subTable, [])
-            
+
             # Recursively load any nested subtables first (depth-first)
             self._loadSubTablesRecursive(subTable, subTableSchema, subTableKey, extended_chain)
-            
+
             # Now load this subtable with the full parent key chain
             self.loadTable(subTable, subTableSchema, subTableKey, parent_key_chain=extended_chain)
 
@@ -381,24 +393,24 @@ class projectOpen:
         """
         Reconstruct the nested dictionary structure by attaching loaded subtables
         back to their parent tables.
-        
+
         This runs after all tables are loaded. For each top-level table, we walk
         through and attach its nested tables.
         """
         printIfDebug("Reconstructing nested structure...")
         print(f"DEBUG: Schema tables = {self.schema.tables}")
         print(f"DEBUG: Schema subTable keys = {list(self.schema.data['subTable'].keys())}")
-        
+
         # Process each top-level table
         for table in self.schema.tables:
             if table in self.schema.data['subTable']:
                 print(f"DEBUG: Processing top-level table '{table}' with subtables: {list(self.schema.data['subTable'][table].keys())}")
                 self._attach_subtables_recursive(table, self.data[table], self.schema.data['schema'][table])
-    
+
     def _attach_subtables_recursive(self, parentTable, parentData, parentSchema):
         """
         Recursively attach subtables to their parent entries.
-        
+
         Args:
             parentTable: Name of the parent table
             parentData: Dict of parent table entries
@@ -406,21 +418,21 @@ class projectOpen:
         """
         if parentTable not in self.schema.data['subTable']:
             return
-        
+
         for subTable in self.schema.data['subTable'][parentTable]:
             subTableFieldName = self.schema.data['subTable'][parentTable][subTable]
             subTableSchema = parentSchema[subTableFieldName]
             subTableData = self.data.get(subTable, {})
-            
+
             if not subTableData:
                 continue
-            
+
             # For each parent entry, find and attach its child entries
             for parentKey, parentEntry in parentData.items():
                 # Build the grouping key for this parent
                 # Get the parent's qualified key fields that children reference
                 parent_key_chain = self.schema.data.get('parentKeyChain', {}).get(subTable, [])
-                
+
                 if parent_key_chain:
                     # Build the composite grouping key from parent's qualified key fields
                     # Example: for modportGroups with parent_key_chain=['modportKey'],
@@ -432,7 +444,7 @@ class projectOpen:
                         else:
                             # Parent doesn't have this key field, skip
                             break
-                    
+
                     if len(composite_parts) == len(parent_key_chain):
                         grouping_key = '/'.join(composite_parts)
                     else:
@@ -440,7 +452,7 @@ class projectOpen:
                 else:
                     # No parent key chain, use parent's own key
                     grouping_key = parentKey
-                
+
                 # Find all child entries that belong to this parent
                 # Child entries were grouped by composite key during loading
                 children = {}
@@ -448,7 +460,7 @@ class projectOpen:
                     # Skip if childEntry is not a dict (shouldn't happen but be defensive)
                     if not isinstance(childEntry, dict):
                         continue
-                    
+
                     # Check if this child belongs to this parent
                     # The child's grouping key should match or start with parent's grouping_key
                     if parent_key_chain:
@@ -457,7 +469,7 @@ class projectOpen:
                         for pk_field in parent_key_chain:
                             if pk_field in childEntry:
                                 child_composite_parts.append(str(childEntry[pk_field]))
-                        
+
                         if child_composite_parts:
                             child_grouping_key = '/'.join(child_composite_parts)
                             if child_grouping_key == grouping_key:
@@ -472,16 +484,16 @@ class projectOpen:
                             if field_type == 'outerkey':
                                 outerkey_field = field_name
                                 break
-                        
+
                         if outerkey_field and childEntry.get(outerkey_field) == parentEntry.get(outerkey_field):
                             child_own_key = childEntry.get(self.schema.data['key'][subTable])
                             if child_own_key:
                                 children[child_own_key] = childEntry
-                
+
                 # Attach children to parent if any found
                 if children:
                     parentEntry[subTableFieldName] = children
-                    
+
                     # Recursively process these children's subtables
                     self._attach_subtables_recursive(subTable, children, subTableSchema)
 
@@ -490,7 +502,7 @@ class projectOpen:
     def loadTable(self, tableName, schema, keyName, parent_key_chain=None):
         """
         Load table from database and build dict structure
-        
+
         Args:
             tableName: Name of the table to load
             schema: Schema definition for this table
@@ -498,7 +510,7 @@ class projectOpen:
             parent_key_chain: List of qualified parent key fields for composite grouping
                              (e.g., ['interface_typeKey', 'modportKey'])
         """
-        
+
         attrib = self.schema.data['attrib'].get(tableName, [])
         columns = schema.copy()
         # figure out which mode to use
@@ -535,7 +547,7 @@ class projectOpen:
                 f"node.storage_key_field_qualified not configured. "
                 f"This indicates a schema configuration error."
             )
-            
+
         g.cur.execute(sql)
         data = g.cur.fetchall()
         firstRow = True
@@ -543,14 +555,14 @@ class projectOpen:
         myList = list()
         myMulti = OrderedDict()
         myRow = dict()
-        
+
         for row in data:
             # Build the composite key for storing this row
-            
+
             # Use Node's method to build storage key for nested tables with parent chains
             # For top-level tables (parent_key_chain is None), use simple key
             newKey = node.build_storage_key(row)
-                
+
             #to deal with lists/nested dicts we need to create record only when the key changes
             if newKey != previousKey:
                 if not firstRow:
@@ -571,7 +583,7 @@ class projectOpen:
                 if isinstance(columns[col], dict):
                     # this is a subtable - need to look it up from the already-loaded subtable data
                     subtable_name = tableName + col
-                    
+
                     # Use parent-indexed structure if available
                     if subtable_name in self.data_by_parent:
                         # data_by_parent is always indexed by the qualified parent storage key
@@ -588,36 +600,36 @@ class projectOpen:
                         myRow[col] = self.data[subtable_name].get(subtable_lookup_key, None)
                 else:
                     myRow[col] = row[col]
-            
+
             # For multi-entry tables, ensure the innerKey is in myRow
             # (it might have been excluded from columns if it was myKeyName)
             if multi and innerKey and innerKey not in myRow:
                 myRow[innerKey] = row[innerKey]
-                
+
             if listMode:
                 myList.append(myRow)
                 myRow = dict()
             if multi:
                 # For multi-entry tables, store individual entries in myTable using qualified keys
                 # and also build grouped structure for nested access
-                
+
                 # Determine the qualified key for top-level storage (use row, not myRow)
                 top_level_key = row[node.storage_key_field_qualified]
-                
+
                 # Store individual entry in top-level table
                 myTable[top_level_key] = myRow
-                
+
                 # Also build parent-indexed structure if this is a nested table
                 if parent_key_field:
                     # Check if the parent key field exists in the row (try-except for sqlite3.Row compatibility)
                     try:
                         parent_storage_key = row[parent_key_field]
-                        
+
                         if tableName not in self.data_by_parent:
                             self.data_by_parent[tableName] = {}
                         if parent_storage_key not in self.data_by_parent[tableName]:
                             self.data_by_parent[tableName][parent_storage_key] = {}
-                        
+
                         # Index by anchor field for user-friendly nested access (e.g., 'src', 'dst')
                         # or by storage key for combo/collapsed tables (e.g., 'blockAaStuffIf')
                         if node and node.anchor_field:
@@ -633,7 +645,7 @@ class projectOpen:
                             f"parent_key_field='{parent_key_field}', "
                             f"This indicates a schema configuration error or missing parent key in row."
                         )
-                
+
                 myRow = dict()
         # the last record may need to be added
         if not firstRow:
@@ -721,9 +733,9 @@ class projectOpen:
         """Build a lookup dictionary for enum values (lazy initialization)"""
         if hasattr(self, '_enum_lookup'):
             return
-        
+
         self._enum_lookup = {}
-        
+
         # Build lookup from typesenum table
         # typesenum is organized as: {'enumType/file.yaml': [list of enum entries]}
         # Each enum entry has 'enumName' and 'value' fields
@@ -735,33 +747,70 @@ class projectOpen:
                             enum_name = enum_entry.get('enumName')
                             enum_value = enum_entry.get('value')
                             context = enum_entry.get('_context', '')
-                            
+
                             if enum_name and context and enum_value is not None:
                                 qual_enum_name = f"{enum_name}/{context}"
                                 self._enum_lookup[qual_enum_name] = enum_value
     
-    def getConst(self, value):
+    def getConst(self, value, require_int=False, context_msg=None):
         try:
             ret = int(value)
-        except:
+        except (ValueError, TypeError):
             ret = None
-            
-            # First, try to look up in constants table using qualified key
-            if 'constants' in self.data and value in self.data['constants']:
+
+            # Try float literal
+            try:
+                ret = float(value)
+            except (ValueError, TypeError):
+                pass
+
+            # Look up in constants table using qualified key
+            if ret is None and 'constants' in self.data and value in self.data['constants']:
                 const_data = self.data['constants'][value]
                 if isinstance(const_data, dict):
                     ret = const_data.get('value', None)
-            
+
             # If not found in constants, look up in enum lookup dictionary
             if ret is None:
-                # Build enum lookup on first use (lazy initialization)
                 self._build_enum_lookup()
                 ret = self._enum_lookup.get(value, None)
-            
+
             if ret is None:
                 printError(f"Unknown constant '{value}'")
                 exit(warningAndErrorReport())
+
+        if require_int and isinstance(ret, float):
+            msg = f"Constant '{value}' resolves to floating-point value ({ret})"
+            if context_msg:
+                msg += f", but {context_msg} requires an integer"
+            printError(msg)
+            exit(warningAndErrorReport())
+
         return ret
+
+    def resolveTypeWidth(self, typeInfo):
+        """Resolve type width to integer from whichever width field is present.
+
+        Handles width, widthLog2, widthLog2minus1, and isSigned adjustment.
+        Uses getConst for resolution (projectOpen context).
+        Schema validation guarantees all width fields exist in typeInfo.
+        """
+        isSigned = typeInfo['isSigned']
+        mode, key = getTypeWidthContext(typeInfo)
+        rawValue = self.getConst(key, require_int=True, context_msg="type width") if key else typeInfo[mode]
+        n = int(rawValue)
+
+        if mode == 'widthLog2':
+            width = n.bit_length()
+            if isSigned:
+                width += 1
+        elif mode == 'widthLog2minus1':
+            width = int(n - 1).bit_length()
+            if isSigned:
+                width += 1
+        else:
+            width = n
+        return width
 
 
     # based on a block get the sub hier tree
@@ -826,17 +875,29 @@ class projectOpen:
                     if object=='constants':
                         ret[object][key] = value
                         safeValue = self.getConst(value["value"])
-                        if isinstance(safeValue, int):
-                            isSigned = safeValue < 0
-                            if not isSigned and abs(safeValue) <= 0xFFFFFFFF:
-                                ret[object][key]['valueType'] = 'uint32_t'
-                            elif isSigned and abs(safeValue) <= 0x7FFFFFFF:
-                                ret[object][key]['valueType'] = 'int32_t'
-                            else:
-                                ret[object][key]['valueType'] = 'int64_t' if isSigned else 'uint64_t'
-                        else:
-                            printError(f"Invalid constant type for {key}")
-                            exit(warningAndErrorReport())
+                        declaredType = value['valueType']
+                        loc = f"{value['_context']}:{value['lc'].line + 1}" if 'lc' in value else value.get('_context', '?')
+
+                        if declaredType == 'real':
+                            if isinstance(safeValue, int):
+                                safeValue = float(safeValue)
+                                ret[object][key]['value'] = safeValue
+                            elif not isinstance(safeValue, float):
+                                printError(f"In {loc}, constant '{key}': valueType is 'real' but value is not numeric")
+                                exit(warningAndErrorReport())
+                        elif declaredType in ('int', 'uint'):
+                            if isinstance(safeValue, float):
+                                printError(f"In {loc}, constant '{key}': valueType is '{declaredType}' but eval produced a float ({safeValue}). "
+                                           f"Use // for integer division, or set valueType: real")
+                                exit(warningAndErrorReport())
+                            if not isinstance(safeValue, int):
+                                printError(f"In {loc}, constant '{key}': valueType is '{declaredType}' but value is not an integer")
+                                exit(warningAndErrorReport())
+                            if declaredType == 'uint' and safeValue < 0:
+                                printError(f"In {loc}, constant '{key}': valueType is 'uint' but value is negative ({safeValue}). "
+                                           f"Use valueType: int for signed constants")
+                                exit(warningAndErrorReport())
+                        ret[object][key]['valueType'] = declaredType
                     if object=='types':
                         if value['enum']:
                             enums[key] = value
@@ -846,8 +907,8 @@ class projectOpen:
                                 myEnum['descSpaces'] = max(0, 20-enumLen)
                         else:
                             ret[object][key] = value
-                            bitwidth = self.getConst( value['width'] )
-                            isSigned = value.get('isSigned', False)
+                            bitwidth = self.resolveTypeWidth(value)
+                            isSigned = value['isSigned']
                             # loop through ordered list
                             thisType = None
                             typeArraySize = 1
@@ -1274,7 +1335,7 @@ class projectOpen:
     def getBlockData(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
         blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts',
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
-                        'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings', 
+                        'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
                         'interface_type_mappings_qualified'}
         ret = dict()
         # create some of the simple returns
@@ -1320,18 +1381,18 @@ class projectOpen:
         return ret
 
     def _lookupInterfaceTypeKey(self, intf_type):
-        """Simple lookup for interface type qualified key when not from interfaces table        
+        """Simple lookup for interface type qualified key when not from interfaces table
         For types like 'memory' etc. that are constructed, not from interfaces table.
         """
         all_interface_defs = self.data.get('interface_defs', {})
-        
+
         if intf_type in all_interface_defs:
             return intf_type
         for parent_key, mappings_dict in all_interface_defs.items():
             if mappings_dict['interface_type'] == intf_type:
                 return parent_key
         return None
-    
+
     def getBlockDataHier(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
         def recurse_block(block, trimRegLeafInstance, excludeInstances, visited=None):
             if visited is None:
@@ -1528,7 +1589,7 @@ class projectOpen:
         if isRegHandler:
             ret['memoriesParent'] = ret['memories']
             ret['memories'] = dict()
-        
+
         # Add memory interface type if we have any memory ports or connections
         if ret['memoryPorts'] or ret['memoryConnections']:
             ret['interfaceTypes']['memory'] = self._lookupInterfaceTypeKey('memory')
@@ -1594,7 +1655,7 @@ class projectOpen:
         for reg_key, reg_data in ret['registers'].items():
             reg = reg_data['register']
             regType = reg_data['regType']
-            
+
             # Extra memory registers handling
             if regType == 'memory':
                 # Track structs and consts for memory registers
@@ -1603,7 +1664,7 @@ class projectOpen:
                     ret['temp']['structs'][reg_data['addressStructKey']] = 0
                 if reg_data.get('wordLinesKey'):
                     ret['temp']['consts'][reg_data['wordLinesKey']] = 0
-            
+
             # Handle regular registers
             if reg not in connected_regs:
                 ifType = 'reg_' + regType
@@ -1687,7 +1748,7 @@ class projectOpen:
                 ret['interfaceTypes'][intf_type] = intfInfo.get('interfaceTypeKey', None)
         for conn, connVal in connections.items():
             # create jinja friendly names
-            connVal['interfaceName'] = getKeyPriority(connVal, ['interfaceName', 'srcport', 'name', 'interface'])
+            _, connVal['interfaceName'] = getKeyPriority(connVal, ['interfaceName', 'srcport', 'name', 'interface'])
             intfInfo = self.data['interfaces'][connVal['interfaceKey']]
             self.getBDGetIntfStructs(ret, intfData=intfInfo)
             connVal['interfaceType'] = intfInfo['interfaceType']
@@ -1803,13 +1864,13 @@ class projectOpen:
 
     def getBDInterfaceDefs(self, ret):
         """Collect interface definitions for all interface types used in the block
-        
+
         Creates a simple mapping from interface type aliases to canonical interface types.
         This allows 'reg_ro' to map to 'status', etc.
         """
         # Get interface_defs from loaded data
         all_interface_defs = self.data.get('interface_defs', {})
-        
+
         # Build simple mapping: alias -> qualified canonical interface type
         # by filtering interface_defs that have mappedFrom data
         # Example: {'reg_ro': 'status/_a2csystem', 'reg_rw': 'control/_a2csystem', ...}
@@ -1825,7 +1886,7 @@ class projectOpen:
                             type_mappings[mapped_type] = intf_def['interface_type']
                             type_mappings_qualified[mapped_type] = qual_key
                             ret['interfaceTypes'][intf_def['interface_type']] = qual_key
-        
+
         ret['interface_type_mappings'] = type_mappings
         for intf_type, qual_key in ret['interfaceTypes'].items():
             ret['interface_defs'][intf_type] = all_interface_defs[qual_key]
@@ -2213,10 +2274,10 @@ class projectCreate:
         if "systemFiles" in self.a2cProj:
             # Use a2cRoot directly as the base path since it's already set correctly
             systemFiles = self.getFileList(self.a2cProj, self.a2cRoot)[0]
-        
+
         # Then load user project files
         userFiles = self.getFileList(self.proj, g.yamlBasePath)[0]
-        
+
         # Combine with system files first (so they process with priority)
         self.yamlUnread = systemFiles + userFiles
         self.systemFiles = set(systemFiles)  # Track which are system files
@@ -2316,7 +2377,7 @@ class projectCreate:
         # Extract unified templates from merged project config
         # The templates have already been merged via merge_with_spec (base -> pro -> user)
         templates = self.proj.get('templates', {})
-        
+
         if not templates:
             self.logWarning("No templates defined in project configuration. Code generation may fail.")
             templateConfig = {'templates': {}}
@@ -2326,9 +2387,9 @@ class projectCreate:
             for template_name, template_path in templates.items():
                 expanded_path = expandDirMacros(template_path)
                 expanded_templates[template_name] = os.path.abspath(expanded_path)
-            
+
             templateConfig = {'templates': expanded_templates}
-        
+
         self.config.setConfig('TEMPLATES', templateConfig)
 
     def logError(self, msg):
@@ -2447,14 +2508,7 @@ class projectCreate:
         blockAddressCurrent = dict()
         # loop through address generating objects
         for addressType, addressInfo in self.addressObjects.items():
-            # alignment can be a number or special key
-            try:
-                alignment = int(addressInfo['alignment'])
-                alignmentModeValue = True
-            except ValueError:
-                alignmentModeValue = False
             sortDescending = addressInfo.get('sortDescending', False)
-            sizeRoundUpPowerOf2 = addressInfo.get('sizeRoundUpPowerOf2', False)
             allocateOrder = dict()
             # get everything that needs an address, sorted by block type then entry order. Entry order is maintained
             # to allow engineers to keep consistency of address generation and ensure addresses only change when intended
@@ -2472,20 +2526,11 @@ class projectCreate:
                     currentBlock = row['blockKey']
                     if currentBlock not in blockAddressCurrent:
                         blockAddressCurrent[currentBlock] = 0
-                if addressType == 'registers':
-                    # Check if this is a memory register
-                    if row['regType'] == 'memory':
-                        # Memory register: calculate exactly like memories
-                        size = roundup_pow2min4((row['width'] + 7) >> 3) * self.qualConstParse(row['wordLinesKey'])
-                        if sizeRoundUpPowerOf2:
-                            size = roundup_pow2min4(size)
-                        if alignmentModeValue:
-                            size = ((size + alignment - 1) // alignment ) * alignment
-                    else:
-                        # Regular register: width is in bits so convert to bytes and ensure alignment
-                        #        bits to bytes              round up to alignment
-                        size = ((((row['width'] + 7) >> 3 ) + alignment - 1 ) // alignment ) * alignment
-                if addressType == 'memories':
+                # for register memory type, use the memory objects alignment settings
+                if addressType == 'memories' or (addressType == 'registers' and row['regType'] == 'memory'):
+                    alignment = convert_value(self.addressObjects['memories'].get('alignment', 1))
+                    alignmentModeValue = True if isinstance(alignment, int) else False
+                    sizeRoundUpPowerOf2 = self.addressObjects['memories'].get('sizeRoundUpPowerOf2', False)
                     # memories can be aligned to an alignment value or to memory sized boundaries.
                     # memory size is based on the next rounded power of 2 of the data width, due to address decoding requirements
                     size = roundup_pow2min4((row['width'] + 7) >> 3) * self.qualConstParse(row['wordLinesKey'])
@@ -2493,6 +2538,14 @@ class projectCreate:
                         size = roundup_pow2min4(size)
                     if alignmentModeValue:
                         size = ((size + alignment - 1) // alignment ) * alignment
+                elif addressType == 'registers':
+                    alignment = convert_value(self.addressObjects['registers'].get('alignment', 1))
+                    alignmentModeValue = True if isinstance(alignment, int) else False
+                    # Regular register: width is in bits so convert to bytes and ensure alignment
+                    #        bits to bytes              round up to alignment
+                    size = ((((row['width'] + 7) >> 3 ) + alignment - 1 ) // alignment ) * alignment
+                else:
+                    continue
                 allocateOrder[row[keyField]] = size
             if sortDescending:
                 # sort data list in ascending order of size
@@ -2503,6 +2556,9 @@ class projectCreate:
                 offset = blockAddressCurrent[currentBlock]
                 # Memory registers and memories use similar alignment logic
                 if addressType == 'memories' or (addressType == 'registers' and row['regType'] == 'memory'):
+                    alignment = convert_value(self.addressObjects['memories'].get('alignment', 1))
+                    alignmentModeValue = True if isinstance(alignment, int) else False
+                    sizeRoundUpPowerOf2 = self.addressObjects['memories'].get('sizeRoundUpPowerOf2', False)
                     if alignmentModeValue:
                         size = ((size + alignment - 1) // alignment ) * alignment
                         offset = ((offset + alignment - 1) // alignment ) * alignment
@@ -2841,7 +2897,7 @@ class projectCreate:
         if not schema:
             # default schema for non nested uses
             schema = self.schema.get_section(section).get_fields_dict() if self.schema.get_section(section) else {}
-        
+
         # handle singular case and convert item to a dict
         if not isinstance(item, dict):
             if context+section in self.schema.data['singular']:
@@ -2921,7 +2977,7 @@ class projectCreate:
                 else:
                     # anchor was not supplied but field is in item - use the item value
                     ret[field] = item.get(field)
-                
+
                 # Immediately populate the qualified key field if it exists in schema
                 qualified_field = field + 'Key'
                 if qualified_field in schema and qualified_field not in ret and field in ret:
@@ -2930,7 +2986,7 @@ class projectCreate:
                 if ftype == 'listkey':
                     # For singleEntryList, the list item value is passed as anchor, not in item dict
                     ret[field] = anchor
-                    
+
                     # Immediately populate the qualified key field if it exists in schema
                     qualified_field = field + 'Key'
                     if qualified_field in schema and qualified_field not in ret and field in ret:
@@ -2940,8 +2996,12 @@ class projectCreate:
                     # key/anchor/listkey field is processed (see immediate population after each type)
                     # If not already populated, this is a bug that needs investigation
                     if field not in ret:
-                        base_field = field[:-3] if field.endswith('Key') else field
-                        base_ftype = schema.get(base_field, 'unknown')
+                        node = self.schema.get_node(context + section)
+                        source_info = node.get_context_key_source(field) if node else None
+                        if source_info is not None:
+                            base_field, base_ftype = source_info
+                        else:
+                            base_field, base_ftype = '<unknown>', 'unknown'
                         self.logError(f"In file {yamlFile}:{myLineNumber}, section {context}{section}, contextKey field '{field}' was not pre-populated by its base field '{base_field}' (type={base_ftype}). This is a bug in processYaml.")
                         exit(warningAndErrorReport())
                     # else: correctly pre-populated, no action needed
@@ -2954,7 +3014,7 @@ class projectCreate:
                     elif field in item:
                         # List table with natural key - get the key value from item data
                         ret[field] = item[field]
-                    
+
                     # Immediately populate the qualified key field if it exists in schema
                     qualified_field = field + 'Key'
                     if qualified_field in schema and qualified_field not in ret and field in ret:
@@ -3076,7 +3136,7 @@ class projectCreate:
             funct = self.schema.data['post'][context+section]
             # getattr is used to call the function specified in the string funct in the self object
             ret = getattr(self, funct)(anchor, ret, yamlFile)
-        
+
         return ret
 
     def varWidth(self, varInfo, yamlFile):
@@ -3092,7 +3152,7 @@ class projectCreate:
             width = varInfo['align']
         else:
             (typeInfo, typeContext) = self.getFromContext('types', yamlFile, varInfo['varType'], NotFoundFatal=True)
-            typeWidth = self.qualConstParse(typeInfo['width'])
+            typeWidth = self.resolveTypeWidthCreate(typeInfo)
             try:
                 arraySize = int(varInfo['arraySize'])
             except ValueError:
@@ -3101,14 +3161,56 @@ class projectCreate:
             width = typeWidth * arraySize if arraySize else typeWidth
         return width
 
+    def resolveTypeWidthCreate(self, typeInfo):
+        """Resolve type width to integer during project creation (projectCreate context).
+
+        Checks which of width/widthLog2/widthLog2minus1 is present, resolves to integer.
+        Uses qualConstParse for qualified key resolution.
+        """
+        isSigned = typeInfo['isSigned']
+        mode, key = getTypeWidthContext(typeInfo)
+        raw = key if key else typeInfo[mode]
+        parse_mode = 'qualified' if key else 'literal'
+        n = self._resolve_width_int(raw, f"{mode}Key" if key else mode, context=key, parse_mode=parse_mode)
+        if n is None:
+            return 0
+
+        if mode == 'widthLog2':
+            width = int(n).bit_length()
+            if isSigned:
+                width += 1
+        elif mode == 'widthLog2minus1':
+            width = int(n - 1).bit_length()
+            if isSigned:
+                width += 1
+        else:
+            width = n
+        return width
+
     # AUTO SECTIONS begin here
     #
-    #constants: constant: key, value: eval, desc: required
+    #constants: constant: key, value: eval, desc: required, valueType: optional(uint)
     def _constants(self, itemkey, item, yamlFile):
         ret = self.processSimple('constants', itemkey, item, yamlFile)
         # constants require special section handling as we want to save the const's in dict to allow later
         if 'value' not in ret:
             self.logError(f"Processing constants in {yamlFile}:{ret['lc'].line + 1} and constant:{itemkey} does not have a 'value' or 'eval' field")
+        else:
+            # Validate that the value matches the declared valueType
+            declaredType = ret['valueType']
+            val = ret['value']
+            if declaredType == 'uint':
+                if isinstance(val, float):
+                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'uint' (default) but eval produced a float ({val}). "
+                                  f"Use // for integer division, or set valueType: real")
+                elif isinstance(val, int) and val < 0:
+                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'uint' but value is negative ({val}). "
+                                  f"Use valueType: int for signed constants")
+            elif declaredType == 'int':
+                if isinstance(val, float):
+                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'int' but eval produced a float ({val}). "
+                                  f"Use // for integer division in eval expressions")
+            # 'real' accepts int or float — no validation needed
         self.const[yamlFile][itemkey] = ret['value']
         self.qualConst[itemkey+'/'+yamlFile] = ret['value']
         return ret
@@ -3131,7 +3233,7 @@ class projectCreate:
 
     def _post_validate_interface_structures(self, itemkey, item, yamlFile):
         """Validate that structureType values match parameters defined in interface_defs
-        
+
         This performs bidirectional validation:
         1. Each structureType must be a valid parameter in interface_defs
         2. All struct-type parameters from interface_defs must be present
@@ -3139,17 +3241,17 @@ class projectCreate:
         # Only validate if interface has interfaceType
         if 'interfaceType' not in item:
             return item
-        
+
         intf_type = item['interfaceType']
-        
+
         # Get the interface_defs for this interfaceType
         # Use yamlFile as context to allow user-defined interfaces, with _a2csystem as fallback
         (intf_def, intf_context) = self.getFromContext('interface_defs', yamlFile, intf_type, NotFoundFatal=False)
-        
+
         if not intf_def:
             # If interface_defs not found, the interfaceType validation will catch this
             return item
-        
+
         # Extract valid parameter names from interface_defs
         if 'parameters' not in intf_def:
             # No parameters defined, so no structure types are expected
@@ -3158,36 +3260,36 @@ class projectCreate:
                 self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}' "
                             f"has structures defined, but interface_defs '{intf_type}' does not define any parameters")
             return item
-        
+
         # Get all valid structure types and required struct parameters
         all_params = intf_def['parameters']
         valid_structure_types = set(all_params.keys())
-        
+
         # Filter to only struct-type parameters (these are the ones that need structures defined)
         required_struct_params = {
             param_name for param_name, param_info in all_params.items()
             if param_info.get('datatype') == 'struct'
         }
-        
+
         # Get the structureTypes that are defined in the interface
         defined_structure_types = set()
         structures = item.get('structures', {})
-        
+
         # Validation 1: Check each defined structureType is valid
         for struct_key, struct_data in structures.items():
             if 'structureType' not in struct_data:
                 continue  # This will be caught by required field validation
-            
+
             structure_type = struct_data['structureType']
             defined_structure_types.add(structure_type)
-            
+
             if structure_type not in valid_structure_types:
                 line_num = struct_data['lc'].line + 1 if hasattr(struct_data, 'lc') else '?'
                 valid_types_str = "', '".join(sorted(valid_structure_types))
                 self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}': "
                             f"structureType '{structure_type}' is not valid. "
                             f"Valid structureTypes for '{intf_type}' are: '{valid_types_str}'")
-        
+
         # Validation 2: Check all required struct parameters are present
         missing_params = required_struct_params - defined_structure_types
         if missing_params:
@@ -3196,7 +3298,7 @@ class projectCreate:
             self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}': "
                         f"missing required structureType(s): '{missing_params_str}'. "
                         f"All struct-type parameters from interface_defs must have corresponding structures.")
-        
+
         return item
 
     #interfaces: interface: key, interfaceType: required, desc: required, structname: subkey,  structureType: auto,
@@ -3278,6 +3380,7 @@ class projectCreate:
         #(varInfo, varContext) = self.getFromContext('types', yamlFile, ret['encoderType'], NotFoundFatal=True)
         encoderType = ret['encoderType']
         newEncoderType = OrderedDict()
+        newEncoderType['lc'] = ret['lc']
         newEncoderType['desc'] = ret['encoderTypeDesc']
         newEncoderType['width'] = ret['encoderTypeWidth']
         encoderTypeBits = self.constParse(newEncoderType['width'], yamlFile, value=True)
@@ -3313,6 +3416,7 @@ class projectCreate:
         # generate new type to hold the enum and optional constants
         # iterate through the items to generate dictionary to allow the type to be generated
         newType = OrderedDict()
+        newType['lc'] = ret['lc']
         newType['enum'] = list()
         newConstants = OrderedDict()
         addConstants = False
@@ -3332,7 +3436,7 @@ class projectCreate:
             thisEnum['value'] = ret['items'][item]['itemOrder']
             newType['enum'].append(thisEnum)
             if addConstants:
-                newConstants[baseConstPrefix+item.upper()] = {'value': ret['items'][item]['encodingValue'], 'desc': 'base value for ' + ret['items'][item]['desc'] }
+                newConstants[baseConstPrefix+item.upper()] = {'value': ret['items'][item]['encodingValue'], 'desc': 'base value for ' + ret['items'][item]['desc'], 'lc': ret['lc'] }
         if not ret['zeroBased'] and ret['extendedRangeItem'] != "":
             thisEnum = OrderedDict()
             # add the type
@@ -3454,28 +3558,135 @@ class projectCreate:
         ret=item.get(field, 1)
         return ret
 
-    def _auto_width(self, section, itemkey, item, field, yamlFile, processed):
-        # width can be a number, a constant, or calculated from enum size
-        userWidth = item.get(field, None)
-        enum = processed.get('enum', None)
-        if enum and (userWidth is None):
-            valMax = 1
+    def _resolve_width_int(self, rawValue, fieldName, yamlFile=None, item=None, context=None, parse_mode='literal'):
+        """Resolve a width-related value and enforce integer semantics.
+
+        Rejects float values (literal or resolved constant/enum) to avoid silent truncation.
+        Returns int on success, otherwise returns None after reporting an error.
+        """
+        loc = "?"
+        if yamlFile is not None:
+            line = item.get('lc').line + 1 if isinstance(item, dict) and item.get('lc') else '?'
+            loc = f"{yamlFile}:{line}"
+        elif context:
+            loc = context
+
+        # Literal float in YAML (e.g. width: 1.5) would otherwise be silently int-truncated.
+        if isinstance(rawValue, float):
+            self.logError(f"In {loc}, {fieldName} '{rawValue}' resolves to floating-point value ({rawValue}), but type width requires an integer")
+            return None
+
+        if parse_mode not in {'literal', 'qualified'}:
+            raise ValueError(f"Invalid parse_mode '{parse_mode}' for _resolve_width_int")
+
+        resolvedValue = rawValue
+        if not isinstance(rawValue, int):
+            if yamlFile is not None:
+                resolvedValue = self.constParse(rawValue, yamlFile, value=True)
+            elif parse_mode == 'qualified' and isinstance(rawValue, str):
+                resolvedValue = self.qualConstParse(rawValue)
+            else:
+                try:
+                    resolvedValue = int(rawValue)
+                except (TypeError, ValueError):
+                    self.logError(f"In {loc}, {fieldName} '{rawValue}' is not a valid integer width value")
+                    return None
+
+        if isinstance(resolvedValue, float):
+            self.logError(f"In {loc}, {fieldName} '{rawValue}' resolves to floating-point value ({resolvedValue}), but type width requires an integer")
+            return None
+
+        if resolvedValue is None:
+            self.logError(f"In {loc}, {fieldName} '{rawValue}' is unresolved")
+            return None
+
+        try:
+            return int(resolvedValue)
+        except (TypeError, ValueError):
+            self.logError(f"In {loc}, {fieldName} '{rawValue}' resolves to non-integer value '{resolvedValue}'")
+            return None
+
+    def _post_validateTypeWidth(self, itemkey, item, yamlFile):
+        """Validate type width fields after processing.
+
+        Enforces:
+        - Exactly one of width, widthLog2, widthLog2minus1 must be specified (unless enum provides width)
+        - Resolved width must be non-zero
+        - Float constants are not valid as widths
+        - Signed log2-derived widths include sign bit adjustment (+1)
+        """
+        # Count which width fields are specified (non-empty)
+        hasWidth = item['width'] != ''
+        hasWidthLog2 = item['widthLog2'] != ''
+        hasWidthLog2minus1 = item['widthLog2minus1'] != ''
+        widthCount = sum([hasWidth, hasWidthLog2, hasWidthLog2minus1])
+
+        if widthCount > 1:
+            self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' specifies multiple width fields. "
+                          f"Only one of width, widthLog2, widthLog2minus1 may be specified")
+            return item
+
+        enum = item.get('enum', None)
+        enumMax = 1
+        if enum:
             for val, valItem in enum.items():
                 if 'value' not in valItem:
-                    printError(f"Error: Missing 'value' field in {section}:{itemkey} in {yamlFile}:{processed['lc'].line}")
-                    exit(warningAndErrorReport())
-                valActual = self.constParse(valItem['value'], yamlFile, value=True)
-                valMax = max(valMax, valActual)
-            ret = (valMax).bit_length()
+                    self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' enum entry missing 'value' field")
+                    return item
+                valActual = self._resolve_width_int(valItem['value'], f"enum '{val}' value", yamlFile=yamlFile, item=item)
+                if valActual is None:
+                    return item
+                if valActual < 0:
+                    self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' enum '{val}' has negative value ({valActual}), but signed enums are not supported")
+                    return item
+                enumMax = max(enumMax, valActual)
+
+        if widthCount == 0:
+            # No explicit width — derive from enum values if available.
+            if enum:
+                item['width'] = int(enumMax).bit_length()
+            else:
+                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' is missing width — must specify one of width, widthLog2, or widthLog2minus1 (or provide an enum)")
+                return item
+
+        # Validate the specified width field resolves to a non-zero integer
+        if hasWidth:
+            widthField = 'width'
+        elif hasWidthLog2:
+            widthField = 'widthLog2'
         else:
-            if field not in item:
-                printError(f"Error: Missing {field} field in {section}:{itemkey} in {yamlFile}:{processed['lc'].line}")
-                exit(warningAndErrorReport())
-            ret, retContext = self.constParse(item[field], yamlFile, value=False)
-            if retContext is not None:
-                # constParse determined the value was a named constant. So lets use the context version
-                ret = retContext
-        return ret
+            widthField = 'widthLog2minus1' if hasWidthLog2minus1 else 'width'  # width for enum-derived case
+
+        # Resolve the raw value to an integer
+        rawValue = item[widthField]
+        n = self._resolve_width_int(rawValue, widthField, yamlFile=yamlFile, item=item)
+        if n is None:
+            return item
+
+        # Compute the actual bit width
+        isSigned = bool(item.get('isSigned', False))
+        if hasWidthLog2:
+            if n < 0:
+                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' widthLog2 resolves to negative value ({n}), which is not valid")
+                return item
+            computedWidth = n.bit_length()
+            if isSigned:
+                computedWidth += 1
+        elif hasWidthLog2minus1:
+            if n <= 0:
+                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' widthLog2minus1 resolves to {n}, "
+                              f"which is not valid (requires a positive value to index 0..N-1)")
+                return item
+            computedWidth = (n - 1).bit_length()
+            if isSigned:
+                computedWidth += 1
+        else:
+            computedWidth = n
+
+        if computedWidth == 0:
+            self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' {widthField} resolves to zero width, which is not valid")
+
+        return item
 
     def _auto_structWidth(self, section, itemkey, item, field, yamlFile, processed):
         width = 0
@@ -3493,13 +3704,13 @@ class projectCreate:
     def _post_registers(self, itemkey, item, yamlFile):
         """Validate memory register constraints after processing"""
         regType = item.get('regType', None)
-        
+
         if regType == 'memory':
             # Memory registers must have non-empty wordLines
             if not item.get('wordLines') or item.get('wordLines') == "":
                 self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{itemkey}' must have wordLines field")
                 return item
-            
+
             # Validate wordLines resolves to non-zero value
             try:
                 parsed_val = self.qualConstParse(item['wordLinesKey'])
@@ -3508,11 +3719,11 @@ class projectCreate:
             except Exception:
                 # If parsing fails, let it pass - the constParse validation will catch it
                 pass
-            
+
             # Memory registers must have addressStruct
             if not item.get('addressStruct') or item.get('addressStruct') == "":
                 self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{itemkey}' must have addressStruct field")
-        
+
         return item
 
     # connections: connection: key, instance: auto, direction: auto, port: optional, connCount: optional
@@ -3558,7 +3769,7 @@ class projectCreate:
                 # the channel is declared based on the src port
                 if entry['channel'] == '' and dir=='src':
                     entry['channel'] = portName
-                
+
                 endRow = self.processSimple('ends', 'dummy', row, yamlFile, schema=self.schema.data['schema']['connections']['ends'],context='connections', outer = row )
 
                 entry['ends'][endRow['portId']]=endRow
@@ -3579,11 +3790,18 @@ class projectCreate:
     def constParse(self, data, context, value=True):
         found = False
         try:
-            #see if its already a number
             ret = int(data)
             retContext = None
             found = True
-        except: ValueError
+        except (ValueError, TypeError):
+            pass
+        if not found:
+            try:
+                ret = float(data)
+                retContext = None
+                found = True
+            except (ValueError, TypeError):
+                pass
         if not found:
             # now check from dependancies
             for myContext in self.yamlContext[context]:
@@ -3672,7 +3890,7 @@ class projectCreate:
                         found = True
                         break
                     except: KeyError
-                
+
                 # If not found in regular context, also search _a2csystem context
                 if not found and '_a2csystem' in self.yamlContext:
                     # System files are all stored under '_a2csystem' qualification
@@ -3701,20 +3919,20 @@ class projectCreate:
             self.data[nestedContext][yamlFile] = OrderedDict()
         attribs = self.schema.data['attrib'].get(nestedContext, {})
         comboKey = self.schema.data['comboKey'].get(nestedContext, None)
-        
+
         if 'list' in attribs:
             # if nested is a list of dictionaries then we will enumerate and process, however if it just a single enty, then it is just a key on its own
             if isinstance(nested[0], (dict, list)):
                 # All list tables now have explicit keys defined in schema
                 # The key value comes from item data, not from YAML anchor
                 node = self.schema.get_node(nestedContext)
-                
+
                 for index, item in enumerate(nested):
                     # No anchor provided - key will come from item data
                     anchor = None
-                    
+
                     processed = self.processSimple(section, anchor, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
-                    
+
                     # Get the key from the processed item's key field
                     key_field = node.storage_key_field if node else None
                     if not key_field:
@@ -3724,7 +3942,7 @@ class projectCreate:
                         self.logError(f"In file {yamlFile}, section {context}{section}, list table key field '{key_field}' not found in processed item. This is a processing bug.")
                         exit(warningAndErrorReport())
                     itemkey = processed[key_field]
-                    
+
                     ret[itemkey] = processed
                     self.data[nestedContext][yamlFile][itemkey] = processed
             else:
@@ -3733,7 +3951,7 @@ class projectCreate:
                     itemkey = item
                     ret[itemkey] = self.processSimple(section, itemkey, {}, yamlFile, schema=nestedSchema, context=context, outer=outer)
                     self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
-        
+
         elif 'singleEntryList' in attribs:
             # Handle singleEntryList separately - items from a list become individual records
             for item in nested:

@@ -56,22 +56,20 @@ agents-setup agents_setup:
 	else \
 		echo "  ℹ .cursorrules already exists"; \
 	fi
-	@# Create .cursor/rules directory and wrapper files
+	@# Create .cursor/rules and .ai/skills directories
 	@mkdir -p $(REPO_ROOT)/.cursor/rules
-	@if [ -d "$(A2C_ROOT)/base/cursor-rules-templates" ]; then \
-		for f in $(A2C_ROOT)/base/cursor-rules-templates/*.mdc; do \
+	@mkdir -p $(REPO_ROOT)/.ai/skills
+	@if [ -d "$(A2C_ROOT)/base/rules/skills" ]; then \
+		for f in $(A2C_ROOT)/base/rules/skills/*.md; do \
 			if [ -f "$$f" ]; then \
 				fname=$$(basename $$f); \
-				if [ ! -e "$(REPO_ROOT)/.cursor/rules/$$fname" ]; then \
-					cp $$f $(REPO_ROOT)/.cursor/rules/$$fname && \
-					echo "  ✓ Created .cursor/rules/$$fname"; \
-				else \
-					echo "  ℹ .cursor/rules/$$fname already exists"; \
-				fi \
+				cp "$$f" "$(REPO_ROOT)/.cursor/rules/$$fname" && \
+				cp "$$f" "$(REPO_ROOT)/.ai/skills/$$fname" && \
+				echo "  ✓ Installed skill: $$fname"; \
 			fi \
 		done \
 	else \
-		echo "  ℹ No cursor-rules-templates found - create .cursor/rules/*.mdc manually if needed"; \
+		echo "  ℹ No skills found in builder/base/rules/skills"; \
 	fi
 	@# Create symlink to ARCH2CODE_AI_RULES.md in project root (for easy access)
 	@if [ ! -L "$(REPO_ROOT)/ARCH2CODE_AI_RULES.md" ] && [ ! -e "$(REPO_ROOT)/ARCH2CODE_AI_RULES.md" ]; then \
@@ -115,6 +113,14 @@ agents-clean agents_clean:
 	@if [ -d "$(REPO_ROOT)/.cursor/rules" ]; then \
 		rm -rf $(REPO_ROOT)/.cursor/rules && \
 		echo "  ✓ Removed .cursor/rules directory"; \
+	fi
+	@if [ -d "$(REPO_ROOT)/.ai/skills" ]; then \
+		rm -rf $(REPO_ROOT)/.ai/skills && \
+		echo "  ✓ Removed .ai/skills directory"; \
+	fi
+	@if [ -d "$(REPO_ROOT)/.ai" ] && [ -z "$$(ls -A $(REPO_ROOT)/.ai 2>/dev/null)" ]; then \
+		rmdir $(REPO_ROOT)/.ai && \
+		echo "  ✓ Removed empty .ai directory"; \
 	fi
 	@if [ -d "$(REPO_ROOT)/.cursor" ] && [ -z "$$(ls -A $(REPO_ROOT)/.cursor 2>/dev/null)" ]; then \
 		rmdir $(REPO_ROOT)/.cursor && \

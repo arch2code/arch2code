@@ -329,6 +329,257 @@ instances:
     )
 
 
+def test_float_constant_used_as_type_width():
+    """Test: Type width references a float constant (must be integer)"""
+    yaml = """constants:
+  FLOAT_WIDTH: {value: 3.14, valueType: real, desc: "A float constant"}
+
+types:
+  badType:
+    width: FLOAT_WIDTH
+    desc: "Type using float as width - should fail"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["FLOAT_WIDTH", "floating-point", "integer"],
+        "Float constant used as type width"
+    )
+
+
+def test_mutual_exclusion_width_and_widthLog2():
+    """Test: Specifying both width and widthLog2 should fail"""
+    yaml = """types:
+  badType:
+    width: 8
+    widthLog2: 256
+    desc: "Type with both width and widthLog2 - should fail"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["multiple", "width", "badType"],
+        "Mutual exclusion: width + widthLog2"
+    )
+
+
+def test_mutual_exclusion_width_and_widthLog2minus1():
+    """Test: Specifying both width and widthLog2minus1 should fail"""
+    yaml = """types:
+  badType:
+    width: 8
+    widthLog2minus1: 256
+    desc: "Type with both width and widthLog2minus1 - should fail"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["multiple", "width", "badType"],
+        "Mutual exclusion: width + widthLog2minus1"
+    )
+
+
+def test_mutual_exclusion_widthLog2_and_widthLog2minus1():
+    """Test: Specifying both widthLog2 and widthLog2minus1 should fail"""
+    yaml = """types:
+  badType:
+    widthLog2: 256
+    widthLog2minus1: 256
+    desc: "Type with both widthLog2 and widthLog2minus1 - should fail"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["multiple", "width", "badType"],
+        "Mutual exclusion: widthLog2 + widthLog2minus1"
+    )
+
+
+def test_mutual_exclusion_all_three_width_fields():
+    """Test: Specifying all three width fields should fail"""
+    yaml = """types:
+  badType:
+    width: 8
+    widthLog2: 256
+    widthLog2minus1: 256
+    desc: "Type with all three width fields - should fail"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["multiple", "width", "badType"],
+        "Mutual exclusion: all three width fields"
+    )
+
+
+def test_widthLog2_zero():
+    """Test: widthLog2: 0 produces zero width (0.bit_length() == 0)"""
+    yaml = """types:
+  badType:
+    widthLog2: 0
+    desc: "widthLog2 of 0 gives zero width"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["zero width", "badType", "widthLog2"],
+        "widthLog2: 0 produces zero width"
+    )
+
+
+def test_widthLog2minus1_one():
+    """Test: widthLog2minus1: 1 produces zero width ((1-1).bit_length() == 0)"""
+    yaml = """types:
+  badType:
+    widthLog2minus1: 1
+    desc: "widthLog2minus1 of 1 gives zero width"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["zero width", "badType", "widthLog2minus1"],
+        "widthLog2minus1: 1 produces zero width"
+    )
+
+
+def test_widthLog2minus1_zero():
+    """Test: widthLog2minus1: 0 is semantically invalid (cannot index 0..N-1 when N=0)"""
+    yaml = """types:
+  badType:
+    widthLog2minus1: 0
+    desc: "widthLog2minus1 of 0 is invalid"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["badType", "widthLog2minus1", "not valid"],
+        "widthLog2minus1: 0 is semantically invalid"
+    )
+
+
+def test_widthLog2_negative():
+    """Test: widthLog2 with negative value should fail"""
+    yaml = """constants:
+  NEG_VAL: {value: -5, valueType: int, desc: "Negative value"}
+
+types:
+  badType:
+    widthLog2: NEG_VAL
+    desc: "widthLog2 with negative constant"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["badType", "widthLog2", "negative"],
+        "widthLog2 with negative value"
+    )
+
+
+def test_widthLog2minus1_negative():
+    """Test: widthLog2minus1 with negative value should fail"""
+    yaml = """constants:
+  NEG_VAL: {value: -3, valueType: int, desc: "Negative value"}
+
+types:
+  badType:
+    widthLog2minus1: NEG_VAL
+    desc: "widthLog2minus1 with negative constant"
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["badType", "widthLog2minus1", "not valid"],
+        "widthLog2minus1 with negative value"
+    )
+
+
+def test_uint_constant_with_negative_value():
+    """Test: Default uint constant with a negative value"""
+    yaml = """constants:
+  BAD_NEG: {value: -42, desc: "Negative value without valueType: int"}
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["BAD_NEG", "uint", "negative"],
+        "Uint constant with negative value"
+    )
+
+
+def test_uint_constant_with_float_eval():
+    """Test: Default uint constant with eval that produces a float"""
+    yaml = """constants:
+  WIDTH: {value: 7, desc: "An odd width"}
+  BAD_HALF: {eval: "$WIDTH / 2", desc: "Eval using / produces float"}
+
+blocks:
+  top: {desc: "Top"}
+
+instances:
+  uTop: {instanceType: top, container: top}
+"""
+    return test_error_case(
+        yaml,
+        ["BAD_HALF", "uint", "float"],
+        "Uint constant with float eval result"
+    )
+
+
 def run_all_tests():
     """Run all tests and report results."""
     print("\n" + "="*70)
@@ -347,6 +598,18 @@ def run_all_tests():
         ("test_eval_expression_runtime_error", test_eval_expression_runtime_error),
         ("test_eval_expression_syntax_error", test_eval_expression_syntax_error),
         ("test_eval_expression_undefined_name", test_eval_expression_undefined_name),
+        ("test_float_constant_used_as_type_width", test_float_constant_used_as_type_width),
+        ("test_mutual_exclusion_width_and_widthLog2", test_mutual_exclusion_width_and_widthLog2),
+        ("test_mutual_exclusion_width_and_widthLog2minus1", test_mutual_exclusion_width_and_widthLog2minus1),
+        ("test_mutual_exclusion_widthLog2_and_widthLog2minus1", test_mutual_exclusion_widthLog2_and_widthLog2minus1),
+        ("test_mutual_exclusion_all_three_width_fields", test_mutual_exclusion_all_three_width_fields),
+        ("test_widthLog2_zero", test_widthLog2_zero),
+        ("test_widthLog2minus1_one", test_widthLog2minus1_one),
+        ("test_widthLog2minus1_zero", test_widthLog2minus1_zero),
+        ("test_widthLog2_negative", test_widthLog2_negative),
+        ("test_widthLog2minus1_negative", test_widthLog2minus1_negative),
+        ("test_uint_constant_with_negative_value", test_uint_constant_with_negative_value),
+        ("test_uint_constant_with_float_eval", test_uint_constant_with_float_eval),
     ]
     
     results = {}
