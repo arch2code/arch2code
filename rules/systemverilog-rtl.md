@@ -142,6 +142,59 @@ Fix all lint errors before committing.
 5. **Reset all sequential elements** - Explicit reset values
 6. **Lint before commit** - `make lint` catches common issues
 
+## FSM Macros (`fsmDefs.svh`)
+
+Do NOT write raw `case` statements for state machines. Use `fsmDefs.svh` macros:
+
+```systemverilog
+typedef enum logic [1:0] {RDY, WORK, DONE} statesT;
+`include "fsmDefs.svh"
+
+always_comb begin
+    nState = state;
+    out_vld = 1'b0;
+
+    `fsmCase
+        `fsmState(RDY) begin
+            if (start) `nxtState(WORK)
+        end
+        `fsmState(WORK) begin
+            out_vld = 1'b1;
+            if (out_ack) `nxtState(DONE)
+        end
+        `fsmState(DONE) begin
+            `nxtState(RDY)
+        end
+        default: `qAssertFatal(0, "Default clause should not be reached")
+    `fsmEndCase
+end
+```
+
+## Flip-Flop Macros
+
+Use macros instead of explicit `always_ff` blocks for standard registers:
+
+- `` `DFF(q, d) `` -- Standard register (no reset)
+- `` `DFFR(q, d, RESET_VAL) `` -- Register with reset value
+
+```systemverilog
+`DFF(data_q, data_d)
+`DFFR(counter_q, counter_d, '0)
+```
+
+Only write explicit `always_ff` for complex reset logic not covered by macros.
+
+## Assertions
+
+Use `qAssert` / `qAssertFatal` for runtime checks:
+
+```systemverilog
+`qAssert(index < MAX_SIZE, "Index out of range")
+`qAssertFatal(state != ILLEGAL, "Illegal state reached")
+```
+
+`qAssertFatal` halts simulation immediately; `qAssert` logs an error but continues.
+
 ## Common Patterns
 
 ### Pipeline Stage

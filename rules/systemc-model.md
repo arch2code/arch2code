@@ -101,6 +101,36 @@ void consumer::processData() {
 }
 ```
 
+## Multi-Cycle Burst Pattern
+
+For transferring large data structures over narrow interfaces using `maxTransferSize`:
+
+```cpp
+// Writer - send multi-beat burst
+void myBlock::burstWrite() {
+    wait(SC_ZERO_TIME);
+    while (true) {
+        largeSt payload;
+        inputPort->read(payload);
+        
+        burstPort->writeClocked(payload);  // Automatically splits into beats
+    }
+}
+
+// Reader - receive multi-beat burst
+void myBlock::burstRead() {
+    wait(SC_ZERO_TIME);
+    while (true) {
+        largeSt payload;
+        burstPort->readClocked(payload);  // Automatically reassembles beats
+        
+        outputPort->write(payload);
+    }
+}
+```
+
+For zero-copy buffer access on high-throughput paths, use `getReadPtr()` / `getWritePtr()`.
+
 ## Best Practices
 
 1. **Always start threads with `wait(SC_ZERO_TIME)`**

@@ -1,3 +1,9 @@
+---
+name: systemc-core
+description: Guide for writing core SystemC modules including module structure, threading, and logging
+globs: "model/**/*.cpp, model/**/*.h"
+alwaysApply: false
+---
 # Skill: SystemC Core
 
 ## Purpose
@@ -63,5 +69,11 @@ Guide the user in writing core SystemC modules, focusing on module structure, th
     log_.logPrint([&]() { return std::format("complex info: {}", some_complex_calculation()); }, LOG_DEBUG);
     ```
 
-4.  **Status Reporting:**
+4.  **Hardware Registers & Memories:**
+    *   **Definition:** Registers and memories must be defined in the **YAML architecture files**, not manually in C++.
+    *   **Auto-Generation:** The `hwRegister` and `hwMemory` member declarations and their registration (`regs.addRegister`, `regs.addMemory`) are **auto-generated** inside the `GENERATED_CODE` blocks.
+    *   **Access:** Access these resources in your manual code using the generated member names (e.g., `myReg.m_val.field`).
+    *   **Trackers:** For detailed instructions on using `tracker<T>` for lifecycle monitoring and debugging, refer to the **Debug** skill.
+
+5.  **Status Reporting:**
     *   **See 'Debug' Skill:** For detailed instructions on implementing `statusPrint(void)` to debug simulation hangs, refer to the **Debug** skill.

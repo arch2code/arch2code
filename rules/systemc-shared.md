@@ -116,6 +116,38 @@ myPort->reqReceive(req);
 myPort->ack(ack);
 ```
 
+### push_ack (Push with Acknowledge)
+```cpp
+// Source (push side)
+data_st data;
+myPort->push(data);  // Blocks until ack
+
+// Destination (receive side)
+myPort->pushReceive(data);
+myPort->ack();
+```
+
+### pop_ack (Pop with Acknowledge)
+```cpp
+// Initiator (pop side)
+data_st data;
+myPort->pop(data);  // Blocks until ack with data
+
+// Target (serve side)
+myPort->popReceive();
+myPort->ack(data);
+```
+
+### notify_ack (Event Notification)
+```cpp
+// Source
+myPort->notify();  // Blocks until ack
+
+// Destination
+myPort->waitNotify();
+myPort->ack();
+```
+
 ## Thread Structure
 
 ```cpp

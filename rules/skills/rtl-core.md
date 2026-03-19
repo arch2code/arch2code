@@ -1,3 +1,9 @@
+---
+name: rtl-core
+description: Guide for writing core RTL modules in SystemVerilog including module structure, FSMs, reset logic, and flip-flop macros
+globs: "rtl/**/*.sv, rtl/**/*.svh"
+alwaysApply: false
+---
 # Skill: RTL Core
 
 ## Purpose
@@ -72,3 +78,13 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
 4.  **Combinational Logic:**
     *   Always use `always_comb`.
     *   Assign default values at the top of the block to prevent latches.
+
+5.  **Assertions (`qAssert` / `qAssertFatal`):**
+    *   Use for runtime verification of internal invariants.
+    *   `qAssert(condition, "message")` -- logs error but continues simulation.
+    *   `qAssertFatal(condition, "message")` -- halts simulation immediately.
+
+    ```systemverilog
+    `qAssert(count <= MAX_COUNT, "Counter overflow detected")
+    `qAssertFatal(state != ILLEGAL_STATE, "Illegal state reached")
+    ```

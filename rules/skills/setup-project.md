@@ -1,3 +1,9 @@
+---
+name: setup-project
+description: Guide for initializing a new arch2code project, setting up directory structure, and configuring project.yaml
+globs: arch/yaml/**/*.yaml
+alwaysApply: false
+---
 # Skill: Setup Project
 
 ## Purpose

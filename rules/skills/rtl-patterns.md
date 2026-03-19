@@ -1,3 +1,9 @@
+---
+name: rtl-patterns
+description: Reference for common RTL implementation patterns including FSMs, pipelines, arbitration, and buffering
+globs: "rtl/**/*.sv, rtl/**/*.svh"
+alwaysApply: false
+---
 # Skill: RTL Patterns
 
 ## Purpose

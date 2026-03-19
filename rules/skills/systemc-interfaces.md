@@ -1,3 +1,9 @@
+---
+name: systemc-interfaces
+description: Guide for using communication interfaces (rdy_vld, push_ack, axi, apb, req_ack) in SystemC models
+globs: "model/**/*.cpp, model/**/*.h"
+alwaysApply: false
+---
 # Skill: SystemC Interfaces
 
 ## Purpose

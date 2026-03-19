@@ -1,3 +1,9 @@
+---
+name: verify-testbench
+description: Guide for creating testbenches, configuring verification components, and using scoreboards in SystemC
+globs: "tb/**/*.cpp, tb/**/*.h"
+alwaysApply: false
+---
 # Skill: Verify Testbench
 
 ## Purpose
