@@ -108,7 +108,7 @@ cursor-setup cursor_setup:
 	@if [ ! -e "$(REPO_ROOT)/.cursorrules" ]; then \
 		echo "# arch2code Project Rules" > $(REPO_ROOT)/.cursorrules && \
 		echo "" >> $(REPO_ROOT)/.cursorrules && \
-		echo "See AGENTS.md for comprehensive project rules and guidelines." >> $(REPO_ROOT)/.cursorrules && \
+		echo "See .cursor/rules/ for project rules and skill files." >> $(REPO_ROOT)/.cursorrules && \
 		echo "  + Created .cursorrules"; \
 	else \
 		echo "  = .cursorrules already exists"; \

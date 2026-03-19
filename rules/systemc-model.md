@@ -2,7 +2,7 @@
 
 These rules apply specifically to files in `model/` directory.
 
-**Also read:** `builder/base/rules/systemc-shared.md` for common patterns.
+**Also read:** `systemc-shared.md` for common patterns.
 
 ## File Structure
 
