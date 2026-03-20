@@ -29,10 +29,11 @@ endif
 #------------------------------------------------------------------------
 agents-setup agents_setup:
 	@echo "Setting up AI agent rules (OpenCode, Claude Code, Gemini CLI)..."
-	@# Create AGENTS.md from template
+	@# Create AGENTS.md from template and record its checksum
 	@if [ ! -e "$(REPO_ROOT)/AGENTS.md" ]; then \
 		if [ -f "$(A2C_ROOT)/base/AGENTS.md.template" ]; then \
 			cp $(A2C_ROOT)/base/AGENTS.md.template $(REPO_ROOT)/AGENTS.md && \
+			(cd "$(REPO_ROOT)" && md5sum AGENTS.md > .agents-setup.md5) && \
 			echo "  + Created AGENTS.md from template"; \
 		else \
 			echo "  ! Warning: AGENTS.md.template not found - create AGENTS.md manually"; \
@@ -167,8 +168,20 @@ agents-clean agents_clean:
 		echo "  - Removed empty .opencode directory"; \
 	fi
 	@if [ -f "$(REPO_ROOT)/AGENTS.md" ]; then \
-		rm $(REPO_ROOT)/AGENTS.md && \
-		echo "  - Removed AGENTS.md"; \
+		if [ "$(FORCE)" = "1" ]; then \
+			rm "$(REPO_ROOT)/AGENTS.md" && \
+			echo "  - Removed AGENTS.md (forced)"; \
+		elif [ -f "$(REPO_ROOT)/.agents-setup.md5" ] && \
+		   (cd "$(REPO_ROOT)" && md5sum --status -c .agents-setup.md5 2>/dev/null); then \
+			rm "$(REPO_ROOT)/AGENTS.md" && \
+			echo "  - Removed AGENTS.md (unchanged since setup)"; \
+		else \
+			echo "  ! Skipping AGENTS.md (modified or no checksum; use FORCE=1 to override)"; \
+		fi \
+	fi
+	@if [ -f "$(REPO_ROOT)/.agents-setup.md5" ]; then \
+		rm "$(REPO_ROOT)/.agents-setup.md5" && \
+		echo "  - Removed .agents-setup.md5"; \
 	fi
 	@echo "Agent cleanup complete!"
 
@@ -193,7 +206,7 @@ cursor-clean cursor_clean:
 
 help::
 	@echo "  agents-setup - Setup OpenCode/Claude Code/Gemini CLI rules (AGENTS.md, .opencode/skills/)"
-	@echo "  agents-clean - Remove OpenCode/generic agent setup files"
+	@echo "  agents-clean - Remove OpenCode/generic agent setup files (FORCE=1 to remove modified AGENTS.md)"
 	@echo "  cursor-setup - Setup Cursor IDE rules (.cursorrules, .cursor/rules/)"
 	@echo "  cursor-clean - Remove Cursor IDE setup files"
 
