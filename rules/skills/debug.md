@@ -1,3 +1,9 @@
+---
+name: debug
+description: Guide for using debugging tools in SystemC including trackers, assertions, logging, and status reporting
+globs: "model/**/*.cpp, model/**/*.h, tb/**/*.cpp, tb/**/*.h"
+alwaysApply: false
+---
 # Skill: Debugging
 
 ## Purpose

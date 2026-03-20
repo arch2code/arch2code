@@ -1,3 +1,9 @@
+---
+name: run-tandem
+description: Guide for building and running tandem verification for leaf blocks covering RTL/model and model/model configurations
+globs: "tb/**/*.cpp, tb/**/*.h"
+alwaysApply: false
+---
 # Skill: Run Tandem Mode
 
 ## Purpose

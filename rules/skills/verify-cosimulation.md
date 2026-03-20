@@ -1,3 +1,9 @@
+---
+name: verify-cosimulation
+description: Guide for performing co-simulation of RTL and SystemC models using Verilator for tandem verification
+globs: "tb/**/*.cpp, tb/**/*.h"
+alwaysApply: false
+---
 # Skill: Verify Co-Simulation
 
 ## Purpose
@@ -66,3 +72,6 @@ Guide the user on performing co-simulation of RTL and SystemC models using Veril
     *   **Signal Mismatches:** Ensure RTL port types match SystemC interface types.
     *   **Clocking:** Verilator models require explicit clocking. The wrapper usually handles pin connections, but ensure your testbench drives `clk`.
     *   **Build Errors:** Check `hasVl: true` is set and `make gen` ran successfully.
+
+7.  **Running Tandem Mode:**
+    *   For detailed operational instructions on building and running tandem verification (model/model and RTL/model), see the **run-tandem** skill.

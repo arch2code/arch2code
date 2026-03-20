@@ -22,7 +22,9 @@ To provide the best assistance, you **must** consult the specific skill files lo
 | **RTL Arbiter** | `rtl-arbitration.md` (`memArb`, `vldAckArb`) |
 | **RTL Datapath** | `rtl-datapath.md` (FIFOs, `inPlaceList`, Capture) |
 | **RTL Ports** | `rtl-interfaces.md` (Interface usage) |
-| **RTL Patterns** | `rtl-patterns.md` (Streaming, Req-Resp, Arbitration) |
+| **RTL Patterns** | `rtl-patterns.md` (Pipelines, Interpolation, Saturation, Memory FSMs) |
+| **SC->RTL** | `systemc-to-rtl.md` (Model to RTL conversion) |
+| **RTL->SC** | `rtl-to-systemc.md` (RTL to model conversion) |
 | **Verification** | `verify-testbench.md` (Testbenches, scoreboards) |
 | **Co-Sim** | `verify-cosimulation.md` (Verilator wrappers, Tandem) |
 | **Tandem** | `run-tandem.md` (Build/run tandem verification for leaf blocks) |
@@ -43,6 +45,8 @@ To provide the best assistance, you **must** consult the specific skill files lo
 1.  **New Module:** `setup-project` -> `design-architecture` -> `manage-build` (`make gen`) -> `systemc-core` / `rtl-core`.
 2.  **Add Feature:** `design-architecture` (if interface changes) -> `implement-systemc-*` / `implement-rtl-*`.
 3.  **Debug:** `verify-testbench` -> `manage-build` (`make run`).
+4.  **Convert Model->RTL:** `systemc-to-rtl` -> `rtl-core` / `rtl-patterns` -> `run-tandem`.
+5.  **Convert RTL->Model:** `rtl-to-systemc` -> `systemc-core` / `systemc-patterns` -> `verify-testbench`.
 
 ## Reference
 When in doubt, strictly rely on the code examples provided within the skill files above. These examples are extracted from production-grade code ("Gold Standard") and should be treated as the source of truth.

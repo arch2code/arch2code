@@ -2,7 +2,7 @@
 
 These rules apply specifically to files in `tb/` directory.
 
-**Also read:** `builder/base/rules/systemc-shared.md` for common patterns.
+**Also read:** `systemc-shared.md` for common patterns.
 
 ## File Structure
 
@@ -173,6 +173,15 @@ void myTestbench::reportResults() {
     }
 }
 ```
+
+## Tandem Verification
+
+For comparing RTL against the SystemC golden model, see the **run-tandem** skill in `run-tandem.md`. Key points:
+
+- Tandem mode only works on **leaf blocks** (no sub-instances)
+- Start with **model/model** (`--vlType model`) to validate synchronization
+- Then move to **RTL/model** (`--vlType verif`) with `VL_DUT=1` build
+- The block must have `hasVl: true`, `hasRtl: true`, and `hasMdl: true` in YAML
 
 ## Best Practices
 

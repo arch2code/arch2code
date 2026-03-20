@@ -1,3 +1,9 @@
+---
+name: rtl-datapath
+description: Guide for using datapath components (fifo, inPlaceList, rdyVldCapture, incDec) in SystemVerilog
+globs: "rtl/**/*.sv, rtl/**/*.svh"
+alwaysApply: false
+---
 # Skill: RTL Datapath
 
 ## Purpose

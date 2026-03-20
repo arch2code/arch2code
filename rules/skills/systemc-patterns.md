@@ -1,3 +1,9 @@
+---
+name: systemc-patterns
+description: Reference for common SystemC implementation patterns including producer-consumer, register handler, and multi-interface handling
+globs: "model/**/*.cpp, model/**/*.h"
+alwaysApply: false
+---
 # Skill: SystemC Patterns
 
 ## Purpose

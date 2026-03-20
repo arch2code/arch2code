@@ -65,6 +65,46 @@ connections:
   - {interface: data_channel, src: u_producer, dst: u_consumer}
 ```
 
+### Include Directives
+
+Split architecture across files using `include:`:
+
+```yaml
+include:
+  - shared/shared_types.yaml
+  - dma/dma_block.yaml
+```
+
+Paths are relative to the including file. Include order matters -- define dependencies before dependents. Top-level file listing is in `project.yaml` under `projectFiles`.
+
+### Connection Maps
+
+Use `connectionMaps` to route interfaces across hierarchy boundaries:
+
+```yaml
+connectionMaps:
+  - {interface: data_channel, block: subsystem, direction: src, instance: u_producer}
+  - {interface: data_channel, block: subsystem, direction: dst, instance: u_consumer}
+```
+
+- `block`: The parent block whose boundary is being crossed
+- `direction`: `src` if the internal instance is the source, `dst` if it is the destination
+- `instance`: The internal instance to route to
+- `port`: (Optional) Must match `srcport`/`dstport` if used in connection
+
+### Eval Expressions in Constants
+
+Constants support Python `eval` expressions referencing other constants with `$`:
+
+```yaml
+constants:
+  DEPTH: {value: 256, desc: "Queue depth"}
+  DEPTH_BITS: {eval: '($DEPTH-1).bit_length()', desc: "Bits for depth"}
+  TOTAL_SIZE: {eval: '$DEPTH * 64', desc: "Total bytes"}
+```
+
+The `$CONSTANT_NAME` syntax references previously defined constants. Expressions are evaluated in definition order.
+
 ## Common Pitfalls
 
 ### 1. Missing Width on Types
