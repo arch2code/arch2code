@@ -25,7 +25,7 @@ endif
 define find_cpp_sources
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find $$dir -type f \( -name '*.cpp' -or -name '*.h' \) ; \
+			find -L $$dir -type f \( -name '*.cpp' -or -name '*.h' \) ; \
 		fi \
 	done)
 endef
@@ -33,7 +33,7 @@ endef
 define find_sv_sources
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find $$dir -type f \( -name '*.sv' -or -name '*.svh' \) ; \
+			find -L $$dir -type f \( -name '*.sv' -or -name '*.svh' \) ; \
 		fi \
 	done)
 endef
@@ -41,7 +41,7 @@ endef
 define find_gen_cpp_sources
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find $$dir -type f \( -name '*.cpp' -or -name '*.h' \) -exec grep -l 'GENERATED_CODE_' {} \; ; \
+			find -L $$dir -type f \( -name '*.cpp' -or -name '*.h' \) -exec grep -l 'GENERATED_CODE_' {} \; ; \
 		fi \
 	done)
 endef
@@ -49,7 +49,7 @@ endef
 define find_gen_sv_sources
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find $$dir -type f \( -name '*.sv' -or -name '*.svh' \) -exec grep -l 'GENERATED_CODE_' {} \; ; \
+			find -L $$dir -type f \( -name '*.sv' -or -name '*.svh' \) -exec grep -l 'GENERATED_CODE_' {} \; ; \
 		fi \
 	done)
 endef
@@ -57,7 +57,7 @@ endef
 define find_cpp_source_directories
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find $$dir -type f \( -name '*.cpp' -or -name '*.h' \) -exec dirname {} \; | sort -u ; \
+			find -L $$dir -type f \( -name '*.cpp' -or -name '*.h' \) -exec dirname {} \; | sort -u ; \
 		fi \
 	done)
 endef
@@ -65,7 +65,7 @@ endef
 define find_sv_source_directories
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find $$dir -type f \( -name '*.sv' -or -name '*.svh' \) -exec dirname {} \; | sort -u ; \
+			find -L $$dir -type f \( -name '*.sv' -or -name '*.svh' \) -exec dirname {} \; | sort -u ; \
 		fi \
 	done)
 endef

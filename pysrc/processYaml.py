@@ -845,11 +845,19 @@ class projectOpen:
         ret['includeContext'] = dict()
         includes = self.config.getConfig('INCLUDEFILES')
         ret['includeFiles'] = includes
+        tmpContexts = contexts.copy()
+        for context in tmpContexts:
+            if context not in self.yamlContext:
+                # perform a search based on context hierarchy
+                for key in self.yamlContext:
+                    if context in os.path.basename(key):
+                        contexts.remove(context)
+                        contexts.append(key)
+                        break
         for context in contexts:
             if context not in self.yamlContext:
-                printError(f"The context specified in GENERATED_CODE_PARAM: {context} is not a known context.\nPossible valid contexts are:")
-                for myContext in self.yamlContext:
-                    printWarning(myContext)
+                printError("The context specified in GENERATED_CODE_PARAM: {} is not a known context.\n" \
+                    "Possible valid contexts are: {}".format(context, list(self.yamlContext.keys())))
                 exit(warningAndErrorReport())
             for k in self.yamlContext[context]:
                 ret['includeContext'][k] = 0
@@ -2442,9 +2450,12 @@ class projectCreate:
         self.instanceContainer = instanceContainer
         self.blocks = blocks
 
-    def getFileList(self, data, basePath):
+    def getFileList(self, data, basePath, dependencies=None):
         todoNorm = list()
         incNorm = list()
+        dep_set = set()
+        if dependencies:
+            dep_set = set(sum(dependencies.values(), []))
         if not data:
             return (todoNorm, incNorm)
         # Handle systemFiles (needs macro expansion)
@@ -2461,7 +2472,10 @@ class projectCreate:
         if "include" in data:
             inc = data["include"]
             for f in inc:
-                incNorm.append(os.path.relpath(os.path.join(basePath, f), g.yamlBasePath))
+                if os.path.basename(f) == f and f in dep_set:
+                    incNorm.append(f)
+                else:
+                    incNorm.append(os.path.relpath(os.path.join(basePath, f), g.yamlBasePath))
             todoNorm.extend(incNorm)
         return(todoNorm, incNorm)
 
@@ -2474,7 +2488,7 @@ class projectCreate:
                 if f not in self.yamlAllFiles:
                     self.yamlAllFiles[f] = None
                     self.yamlRaw[f] = existsLoad(f)
-                    (todo, include) = self.getFileList(self.yamlRaw[f], myBase)
+                    (todo, include) = self.getFileList(self.yamlRaw[f], myBase, self.yamlDependancies)
                     if self.yamlRaw[f] and "includeName" in self.yamlRaw[f]:
                         self.includeName[f] = self.yamlRaw[f]["includeName"]
                     else:
