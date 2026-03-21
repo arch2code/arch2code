@@ -2450,12 +2450,12 @@ class projectCreate:
         self.instanceContainer = instanceContainer
         self.blocks = blocks
 
-    def getFileList(self, data, basePath, dependancies=None):
+    def getFileList(self, data, basePath, dependencies=None):
         todoNorm = list()
         incNorm = list()
         dep_set = set()
-        if dependancies:
-            dep_set = set(sum(dependancies.values(), []))
+        if dependencies:
+            dep_set = set(sum(dependencies.values(), []))
         if not data:
             return (todoNorm, incNorm)
         # Handle systemFiles (needs macro expansion)
