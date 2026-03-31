@@ -1250,7 +1250,8 @@ def structContainsSignedTypes(structValue, prj, data):
 
 def structTest(args, prj, data):
     out = list()
-    fn = os.path.splitext(os.path.basename(data['context']))[0] + '_structs'
+    cn = os.path.splitext(os.path.basename(data['context']))[0]
+    fn = cn + '_structs'
     if args.section == 'testStructsHeader':
         out.append(f'class test_{fn} {{')
         out.append(f'public:')
@@ -1263,6 +1264,7 @@ def structTest(args, prj, data):
     out.append(f'std::string test_{fn}::name(void) {{ return "test_{fn}"; }}')
     out.append(f'void test_{fn}::test(void) {{')
     indent = ' '*4
+    out.append(f'{indent}using namespace {cn}_ns;')
     out.append(f'{indent}std::vector<uint8_t> patterns{{0x6a, 0xa6}};')
     out.append(f'{indent}std::vector<uint8_t> signedPatterns{{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF}};')
     out.append(f'{indent}cout << "Running " << name() << endl;')
