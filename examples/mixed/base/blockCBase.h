@@ -5,6 +5,7 @@
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "rdy_vld_channel.h"
 #include "mixedBlockCIncludes.h"
+using namespace mixedBlockC_ns;
 
 class blockCBase : public virtual blockPortBase
 {

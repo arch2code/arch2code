@@ -12,6 +12,7 @@
 #include "instanceFactory.h"
 #include "axi4sDemoBase.h"
 #include "axi4sDemo_tbIncludes.h"
+using namespace axi4sDemo_tb_ns;
 
 SC_MODULE(axi4sDemo), public blockBase, public axi4sDemoBase
 {

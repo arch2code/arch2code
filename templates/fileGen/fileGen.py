@@ -414,6 +414,7 @@ include_hdrTemplate = \
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
 // GENERATED_CODE_END
+} // namespace
 #endif //__HEADERGUARD___
 """
 def include_hdr(args, prj, data):

@@ -12,6 +12,9 @@
 #include "mixedIncludes.h"
 #include "mixedBlockCIncludes.h"
 #include "mixedIncludeIncludes.h"
+using namespace mixed_ns;
+using namespace mixedBlockC_ns;
+using namespace mixedInclude_ns;
 
 SC_MODULE(blockD), public blockBase, public blockDBase
 {

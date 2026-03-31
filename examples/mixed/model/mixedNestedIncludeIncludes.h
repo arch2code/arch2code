@@ -7,6 +7,7 @@
 
 // GENERATED_CODE_PARAM --context=mixedNestedInclude.yaml
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
+namespace mixedNestedInclude_ns {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -62,4 +63,6 @@ struct dupTestSt {
 };
 
 // GENERATED_CODE_END
+} // namespace mixedNestedInclude_ns
+
 #endif //MIXEDNESTEDINCLUDEINCLUDES_H

@@ -9,6 +9,7 @@
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
 #include "apbDecodeIncludes.h"
+using namespace apbDecode_ns;
 
 class apbDecodeBase : public virtual blockPortBase
 {

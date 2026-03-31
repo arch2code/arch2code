@@ -8,6 +8,7 @@
 
 // GENERATED_CODE_PARAM --context=mixedBlockC.yaml
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
+namespace mixedBlockC_ns {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -100,5 +101,7 @@ struct cHeaderSt {
 };
 
 // GENERATED_CODE_END
+
+} // namespace mixedBlockC_ns
 
 #endif //MIXEDBLOCKCINCLUDES_H

@@ -12,6 +12,7 @@
 #include "axi_read_channel.h"
 #include "axi_write_channel.h"
 #include "axiDemoIncludes.h"
+using namespace axiDemo_ns;
 
 class consumerBase : public virtual blockPortBase
 {

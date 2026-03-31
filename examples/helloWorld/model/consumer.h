@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "consumer_base.h"
 #include "helloWorldTopIncludes.h"
+using namespace helloWorldTop_ns;
 
 SC_MODULE(consumer), public blockBase, public consumerBase
 {

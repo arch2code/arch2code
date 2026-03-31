@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "nestedL2_base.h"
 #include "nestedTopIncludes.h"
+using namespace nestedTop_ns;
 //contained instances forward class declaration
 class nestedL3Base;
 

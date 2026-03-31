@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "top_base.h"
 #include "apbDecodeIncludes.h"
+using namespace apbDecode_ns;
 //contained instances forward class declaration
 class cpuBase;
 class someRapperBase;

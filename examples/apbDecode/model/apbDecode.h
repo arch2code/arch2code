@@ -12,6 +12,7 @@
 #include "instanceFactory.h"
 #include "apbDecode_base.h"
 #include "apbDecodeIncludes.h"
+using namespace apbDecode_ns;
 #include "apbBusDecode.h"
 
 SC_MODULE(apbDecode), public blockBase, public apbDecodeBase

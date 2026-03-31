@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "top_base.h"
 #include "helloWorldTopIncludes.h"
+using namespace helloWorldTop_ns;
 //contained instances forward class declaration
 class producerBase;
 class consumerBase;

@@ -5,6 +5,7 @@
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
 #include "mixedIncludes.h"
+using namespace mixed_ns;
 
 class apbDecodeBase : public virtual blockPortBase
 {

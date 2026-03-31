@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "top_base.h"
 #include "axiDemoIncludes.h"
+using namespace axiDemo_ns;
 //contained instances forward class declaration
 class producerBase;
 class consumerBase;

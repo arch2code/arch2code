@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "producer_base.h"
 #include "axiDemoIncludes.h"
+using namespace axiDemo_ns;
 
 SC_MODULE(producer), public blockBase, public producerBase
 {

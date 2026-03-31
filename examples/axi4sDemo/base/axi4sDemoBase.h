@@ -9,6 +9,7 @@
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "axi4_stream_channel.h"
 #include "axi4sDemo_tbIncludes.h"
+using namespace axi4sDemo_tb_ns;
 
 class axi4sDemoBase : public virtual blockPortBase
 {

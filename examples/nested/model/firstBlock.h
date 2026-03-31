@@ -10,6 +10,7 @@
 #include "instanceFactory.h"
 #include "firstBlock_base.h"
 #include "nestedTopIncludes.h"
+using namespace nestedTop_ns;
 
 SC_MODULE(firstBlock), public blockBase, public firstBlockBase
 {

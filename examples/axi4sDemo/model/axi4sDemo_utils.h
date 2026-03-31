@@ -3,6 +3,8 @@
 
 #include "axi4sDemo_tbIncludes.h"
 
+using namespace axi4sDemo_tb_ns;
+
 inline bv16_t calc_parity_t1(bv256_t data) {
     bv16_t parity = 0;
     uint16_t* data_ptr = reinterpret_cast<uint16_t*>(&data.word[0]);

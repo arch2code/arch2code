@@ -21,4 +21,6 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
 // GENERATED_CODE_END
+} // namespace pipe_ns
+
 #endif //PIPEINCLUDES_H_

@@ -7,6 +7,7 @@
 
 // GENERATED_CODE_PARAM --context=axi4sDemo_tb.yaml
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
+namespace axi4sDemo_tb_ns {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -284,4 +285,6 @@ struct tuser_t2_t {
 };
 
 // GENERATED_CODE_END
+} // namespace axi4sDemo_tb_ns
+
 #endif //AXI4SDEMO_TBINCLUDES_H_

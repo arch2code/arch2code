@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "cpu_base.h"
 #include "apbDecodeIncludes.h"
+using namespace apbDecode_ns;
 
 SC_MODULE(cpu), public blockBase, public cpuBase
 {

@@ -8,6 +8,8 @@
 // GENERATED_CODE_PARAM --context=mixedInclude.yaml
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
 #include "mixedNestedIncludeIncludes.h"
+namespace mixedInclude_ns {
+    using namespace mixedNestedInclude_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -30,5 +32,7 @@ const uint32_t BSIZE_LOG2 = 4;  // The size of B, used for memory wordlines log 
 // GENERATED_CODE_BEGIN --template=structures
 
 // GENERATED_CODE_END
+
+} // namespace mixedInclude_ns
 
 #endif //MIXEDINCLUDEINCLUDES_H

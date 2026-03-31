@@ -14,6 +14,7 @@
 #include "hwRegister.h"
 #include "hwMemory.h"
 #include "apbDecodeIncludes.h"
+using namespace apbDecode_ns;
 
 SC_MODULE(blockB), public blockBase, public blockBBase
 {

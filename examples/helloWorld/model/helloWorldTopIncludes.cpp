@@ -8,6 +8,8 @@
 #include <algorithm>
 #include "bitTwiddling.h"
 
+using namespace helloWorldTop_ns;
+
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
 // structures

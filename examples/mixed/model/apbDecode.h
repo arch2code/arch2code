@@ -12,6 +12,7 @@
 #include "instanceFactory.h"
 #include "apbDecodeBase.h"
 #include "mixedIncludes.h"
+using namespace mixed_ns;
 #include "apbBusDecode.h"
 
 SC_MODULE(apbDecode), public blockBase, public apbDecodeBase

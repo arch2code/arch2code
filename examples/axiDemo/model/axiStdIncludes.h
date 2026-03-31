@@ -11,6 +11,7 @@
 
 // GENERATED_CODE_PARAM --context=axiStd.yaml
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
+namespace axiStd_ns {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
@@ -112,4 +113,6 @@ inline const char* _axiWrCacheT_prt( _axiWrCacheT val )
 // GENERATED_CODE_BEGIN --template=structures
 
 // GENERATED_CODE_END
+} // namespace axiStd_ns
+
 #endif //AXISTDINCLUDES_H_

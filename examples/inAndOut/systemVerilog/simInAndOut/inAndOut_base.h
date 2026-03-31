@@ -9,6 +9,7 @@
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 #include "inAndOutIncludes.h"
+using namespace inAndOut_ns;
 
 class inAndOutBase : public virtual blockPortBase
 {

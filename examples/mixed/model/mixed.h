@@ -13,6 +13,8 @@
 #include "mixedBase.h"
 #include "mixedIncludes.h"
 #include "mixedBlockCIncludes.h"
+using namespace mixed_ns;
+using namespace mixedBlockC_ns;
 //contained instances forward class declaration
 class blockABase;
 class apbDecodeBase;

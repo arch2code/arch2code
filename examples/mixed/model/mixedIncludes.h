@@ -12,6 +12,10 @@
 #include "mixedNestedIncludeIncludes.h"
 #include "mixedBlockCIncludes.h"
 #include "bitTwiddling.h"
+namespace mixed_ns {
+    using namespace mixedInclude_ns;
+    using namespace mixedNestedInclude_ns;
+    using namespace mixedBlockC_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -1399,5 +1403,7 @@ public:
 };
 
 // GENERATED_CODE_END
+
+} // namespace mixed_ns
 
 #endif //MIXEDINCLUDES_H

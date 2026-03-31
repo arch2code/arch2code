@@ -29,7 +29,9 @@ def render(args, prj, data):
     for context in data['includeContext']:
         if context in data['includeFiles'][fileMapKey]:
             out.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
-
+    for context in data['includeContext']:
+        if context in data['includeFiles'][fileMapKey]:
+            out.append(f'using namespace {prj.includeName[context]}_ns;')
 
     out.append('')
     blockName = data["blockName"]

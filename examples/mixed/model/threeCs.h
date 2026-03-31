@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "threeCsBase.h"
 #include "mixedBlockCIncludes.h"
+using namespace mixedBlockC_ns;
 //contained instances forward class declaration
 class blockCBase;
 

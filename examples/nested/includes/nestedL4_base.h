@@ -9,6 +9,7 @@
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "rdy_vld_channel.h"
 #include "nestedTopIncludes.h"
+using namespace nestedTop_ns;
 
 class nestedL4Base : public virtual blockPortBase
 {

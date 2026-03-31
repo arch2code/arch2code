@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "blockCBase.h"
 #include "mixedBlockCIncludes.h"
+using namespace mixedBlockC_ns;
 
 SC_MODULE(blockC), public blockBase, public blockCBase
 {

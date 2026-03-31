@@ -4,6 +4,8 @@
 #include "mixedIncludes.h"
 #include "encoderBase.h"
 
+using namespace mixed_ns;
+
 // GENERATED_CODE_PARAM --context=mixed.yaml
 // GENERATED_CODE_BEGIN --template=cpp_encoder
 class encoderOpcodeEnA : public encoderBase< opcodeTagT, opcodeEnumT >

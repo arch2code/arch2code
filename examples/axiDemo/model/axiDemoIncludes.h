@@ -6,7 +6,8 @@
 #include <cstdint>
 
 // GENERATED_CODE_PARAM --context=axiDemo.yaml
-// GENERATED_DISABLE_CODE_BEGIN --template=headers
+// GENERATED_DISABLE_CODE_BEGIN --template=headers --fileMapKey=include_hdr
+namespace axiDemo_ns {
 
 // GENERATED_DISABLE_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -127,6 +128,8 @@ struct axiStrobeSt {
 };
 
 // GENERATED_CODE_END
+
+} // namespace axiDemo_ns
 
 #endif //AXIDEMOINCLUDES_H
 

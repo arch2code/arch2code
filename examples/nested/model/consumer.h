@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "consumer_base.h"
 #include "nestedTopIncludes.h"
+using namespace nestedTop_ns;
 
 SC_MODULE(consumer), public blockBase, public consumerBase
 {

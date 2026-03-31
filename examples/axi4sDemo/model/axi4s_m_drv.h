@@ -12,6 +12,7 @@
 #include "instanceFactory.h"
 #include "axi4s_m_drvBase.h"
 #include "axi4sDemo_tbIncludes.h"
+using namespace axi4sDemo_tb_ns;
 
 SC_MODULE(axi4s_m_drv), public blockBase, public axi4s_m_drvBase
 {

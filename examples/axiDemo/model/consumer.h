@@ -10,6 +10,7 @@
 #include "instanceFactory.h"
 #include "consumer_base.h"
 #include "axiDemoIncludes.h"
+using namespace axiDemo_ns;
 
 SC_MODULE(consumer), public blockBase, public consumerBase
 {

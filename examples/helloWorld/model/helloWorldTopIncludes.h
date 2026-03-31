@@ -8,6 +8,7 @@
 
 // GENERATED_CODE_PARAM --context=helloWorldTop.yaml
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
+namespace helloWorldTop_ns {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -125,6 +126,8 @@ struct data_st {
 };
 
 // GENERATED_CODE_END
+
+} // namespace helloWorldTop_ns
 
 #endif //HELLOWORLDTOPINCLUDES_H
 

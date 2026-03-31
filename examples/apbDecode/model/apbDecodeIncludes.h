@@ -8,6 +8,7 @@
 
 // GENERATED_CODE_PARAM --context=apbDecode.yaml
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
+namespace apbDecode_ns {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -438,6 +439,8 @@ struct bMemSt {
 };
 
 // GENERATED_CODE_END
+
+} // namespace apbDecode_ns
 
 #endif //HELLOWORLDTOPINCLUDES_H
 

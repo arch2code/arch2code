@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "nestedL6_base.h"
 #include "nestedTopIncludes.h"
+using namespace nestedTop_ns;
 
 SC_MODULE(nestedL6), public blockBase, public nestedL6Base
 {

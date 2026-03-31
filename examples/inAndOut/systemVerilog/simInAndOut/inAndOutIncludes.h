@@ -6,6 +6,7 @@
 // GENERATED_CODE_PARAM --block=inAndOut --context=inAndOut.yaml
 
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
+namespace inAndOut_ns {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -320,4 +321,6 @@ struct eHeaderSt {
 };
 
 // GENERATED_CODE_END
+} // namespace inAndOut_ns
+
 #endif

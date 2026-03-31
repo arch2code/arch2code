@@ -7,6 +7,8 @@
 #include "status_channel.h"
 #include "mixedBlockCIncludes.h"
 #include "mixedIncludes.h"
+using namespace mixedBlockC_ns;
+using namespace mixed_ns;
 
 class blockFBase : public virtual blockPortBase
 {

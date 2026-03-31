@@ -13,6 +13,8 @@
 #include "hwMemory.h"
 #include "mixedBlockCIncludes.h"
 #include "mixedIncludes.h"
+using namespace mixedBlockC_ns;
+using namespace mixed_ns;
 
 SC_MODULE(blockF), public blockBase, public blockFBase
 {

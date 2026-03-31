@@ -1,4 +1,5 @@
 from pysrc.intf_gen_utils import get_const
+from templates.systemc.headers import _resolve_context_key
 from templates.systemc.includes import typeWidthExpression_cpp
 import os.path
 dataTypeMappings = [
@@ -33,6 +34,14 @@ def render(args, prj, data):
     # handle system includes
     if (args.section == 'headerIncludes' or args.section == 'cppIncludes'):
         out.extend(systemIncludes(args))
+        if args.section == 'cppIncludes' and getattr(args, 'mode', '') != 'fw':
+            ctx_list = getattr(args, 'context', None)
+            if ctx_list and prj is not None:
+                ctx_key = _resolve_context_key(prj, ctx_list[0])
+                if ctx_key in prj.includeName:
+                    if out:
+                        out.append('')
+                    out.append(f'using namespace {prj.includeName[ctx_key]}_ns;')
     if (args.section == 'testStructsHeader' or args.section == 'testStructsCPP'):
         out.extend(structTest(args, prj, data))
     out.append("")

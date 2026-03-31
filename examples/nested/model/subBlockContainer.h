@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "subBlockContainer_base.h"
 #include "nestedTopIncludes.h"
+using namespace nestedTop_ns;
 //contained instances forward class declaration
 class subBlockBase;
 

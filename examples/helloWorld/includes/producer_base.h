@@ -12,6 +12,7 @@
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 #include "helloWorldTopIncludes.h"
+using namespace helloWorldTop_ns;
 
 class producerBase : public virtual blockPortBase
 {

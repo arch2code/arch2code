@@ -11,6 +11,7 @@
 #include "instanceFactory.h"
 #include "testBlock_base.h"
 #include "nestedTopIncludes.h"
+using namespace nestedTop_ns;
 
 SC_MODULE(testBlock), public blockBase, public testBlockBase
 {

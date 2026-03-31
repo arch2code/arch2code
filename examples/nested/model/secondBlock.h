@@ -10,6 +10,7 @@
 #include "instanceFactory.h"
 #include "secondBlock_base.h"
 #include "nestedTopIncludes.h"
+using namespace nestedTop_ns;
 //contained instances forward class declaration
 class secondSubABase;
 class secondSubBBase;

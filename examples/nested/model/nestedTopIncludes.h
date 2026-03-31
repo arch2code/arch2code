@@ -7,6 +7,7 @@
 
 // GENERATED_CODE_PARAM --context=nestedTop.yaml
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
+namespace nestedTop_ns {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -273,6 +274,8 @@ struct cmdidHdrSt {
 };
 
 // GENERATED_CODE_END
+
+} // namespace nestedTop_ns
 
 #endif //NESTEDTOPINCLUDES_H
 
