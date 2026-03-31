@@ -1698,6 +1698,7 @@ void wideLog2St::sc_unpack(sc_bv<wideLog2St::_bitWidth> packed_data)
 #include "q_assert.h"
 std::string test_mixed_structs::name(void) { return "test_mixed_structs"; }
 void test_mixed_structs::test(void) {
+    using namespace mixed_ns;
     std::vector<uint8_t> patterns{0x6a, 0xa6};
     std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
