@@ -74,7 +74,7 @@ endef
 # Project global variables
 #------------------------------------------------------------------------
 
-YAML_FILES = $(shell find $(REPO_ROOT)/arch/yaml/ -type f -name '*.yaml')
+YAML_FILES = $(shell find -L $(REPO_ROOT)/arch/yaml/ -type f -name '*.yaml')
 A2C_PRJ_YAML = $(REPO_ROOT)/arch/yaml/project.yaml
 A2C_SQLDB_FILE = $(REPO_ROOT)/$(PROJECTNAME).db
 A2C_SQLDB_DOTFILE = $(REPO_ROOT)/.$(PROJECTNAME).db
