@@ -1,0 +1,19 @@
+//
+
+// GENERATED_CODE_PARAM --block=dut
+// GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
+//module as defined by block: dut
+module dut
+// Generated Import package statement(s)
+import pySocket_package::*;
+(
+    req_ack_if.dst test_req_ack,
+    input clk, rst_n
+);
+
+    // Interface Instances, needed for between instanced modules inside this module
+
+// Instances
+// GENERATED_CODE_END
+
+endmodule: dut
