@@ -4,12 +4,14 @@
 //
 
 #include "systemc.h"
+#include <list>
 
 // GENERATED_CODE_PARAM --block=pySocket
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
 #include "pySocketBase.h"
+#include "pySocketIncludes.h"
 
 SC_MODULE(pySocket), public blockBase, public pySocketBase
 {
@@ -31,7 +33,12 @@ public:
 
     // GENERATED_CODE_END
     // block implementation members
-    void socketTest(void);
+    void python2SystemCTest(void);
+    void systemC2PythonTest(void);
+    void python2SystemCEventThread(void);
+    sc_event p2s_dataReadyEvent;
+    sc_event p2s_startEvent;
+    std::list<p2s_message_st> p2s_message_list;
 };
 
 #endif //PYSOCKET_H

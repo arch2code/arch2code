@@ -1,25 +1,25 @@
-#ifndef PYSOCKET_HDL_SC_WRAPPER_H_
-#define PYSOCKET_HDL_SC_WRAPPER_H_
+#ifndef DUT_HDL_SC_WRAPPER_H_
+#define DUT_HDL_SC_WRAPPER_H_
 
 #include "systemc.h"
 #include "instanceFactory.h"
 
-// GENERATED_CODE_PARAM --block=pySocket
+// GENERATED_CODE_PARAM --block=dut
 
-#include "pySocketBase.h"
+#include "dutBase.h"
 
 // Verilated RTL top (SystemC)
 #if !defined(VERILATOR) && defined(VCS)
-#include "pySocket_hdl_sv_wrapper.h"
+#include "dut_hdl_sv_wrapper.h"
 #else
-#include "VpySocket_hdl_sv_wrapper.h"
+#include "Vdut_hdl_sv_wrapper.h"
 #endif
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
 #include "req_ack_bfm.h"
 
-class pySocket_hdl_sc_wrapper: public sc_module, public blockBase, public pySocketBase {
+class dut_hdl_sc_wrapper: public sc_module, public blockBase, public dutBase {
 
 public:
 
@@ -29,8 +29,8 @@ public:
         {
             // lamda function to construct the block
             instanceFactory::registerBlock(
-                "pySocket_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < pySocket_hdl_sc_wrapper > (blockName, variant, bbMode));
+                "dut_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < dut_hdl_sc_wrapper > (blockName, variant, bbMode));
                 });
         }
     };
@@ -38,29 +38,29 @@ public:
     static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
-    pySocket_hdl_sv_wrapper *dut_hdl;
+    dut_hdl_sv_wrapper *dut_hdl;
 #else
-    VpySocket_hdl_sv_wrapper *dut_hdl;
+    Vdut_hdl_sv_wrapper *dut_hdl;
 #endif
 
     sc_clock clk;
 
-    req_ack_src_bfm<p2s_message_st, p2s_response_st, sc_bv<64>, sc_bv<32>> test_req_ack_bfm;
+    req_ack_dst_bfm<p2s_message_st, p2s_response_st, sc_bv<64>, sc_bv<32>> test_req_ack_bfm;
 
-    SC_HAS_PROCESS (pySocket_hdl_sc_wrapper);
+    SC_HAS_PROCESS (dut_hdl_sc_wrapper);
 
-    pySocket_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
+    dut_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
-        blockBase("pySocket_hdl_sc_wrapper", name(), bbMode),
-        pySocketBase(name(), variant),
+        blockBase("dut_hdl_sc_wrapper", name(), bbMode),
+        dutBase(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         test_req_ack_bfm("test_req_ack_bfm"),
         rst_n(0)
     {
 #if !defined(VERILATOR) && defined(VCS)
-        dut_hdl = new pySocket_hdl_sv_wrapper("dut_hdl");
+        dut_hdl = new dut_hdl_sv_wrapper("dut_hdl");
 #else
-        dut_hdl = new VpySocket_hdl_sv_wrapper("dut_hdl");
+        dut_hdl = new Vdut_hdl_sv_wrapper("dut_hdl");
 #endif
 
         dut_hdl->test_req_ack_req(test_req_ack_hdl_if.req);
@@ -109,4 +109,4 @@ private:
 
 };
 
-#endif // PYSOCKET_HDL_SC_WRAPPER_H_
+#endif // DUT_HDL_SC_WRAPPER_H_

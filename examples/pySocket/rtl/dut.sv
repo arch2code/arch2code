@@ -1,13 +1,13 @@
 //
 
-// GENERATED_CODE_PARAM --block=pySocket
+// GENERATED_CODE_PARAM --block=dut
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: pySocket
-module pySocket
+//module as defined by block: dut
+module dut
 // Generated Import package statement(s)
 import pySocket_package::*;
 (
-    req_ack_if.src test_req_ack,
+    req_ack_if.dst test_req_ack,
     input clk, rst_n
 );
 
@@ -16,4 +16,4 @@ import pySocket_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: pySocket
+endmodule: dut

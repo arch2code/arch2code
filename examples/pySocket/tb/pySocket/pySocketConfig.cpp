@@ -65,18 +65,28 @@ public:
     bool createTestBench(void) override
     {
         //create hierarchy
-        std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "pySocketTestbench", "");
+        std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "");
 
-        std::uint16_t port_sc_to_py = 0;
-        std::uint16_t port_py_to_sc = 0;
-        if (!pySocketIpc::start_servers(port_sc_to_py, port_py_to_sc)) {
+        std::uint16_t port_py2sc_request = 0;
+        std::uint16_t port_py2sc_response = 0;
+        std::uint16_t port_sc2py_request = 0;
+        std::uint16_t port_sc2py_response = 0;
+        if (!pySocketIpc::start_servers(port_py2sc_request, port_py2sc_response, port_sc2py_request, port_sc2py_response)) {
             return false;
         }
-        if (setenv("PYSOCKET_SC2PY_PORT", std::to_string(port_sc_to_py).c_str(), 1) != 0) {
+        if (setenv("PYSOCKET_PY2SC_REQUEST_PORT", std::to_string(port_py2sc_request).c_str(), 1) != 0) {
             pySocketIpc::close_channels();
             return false;
         }
-        if (setenv("PYSOCKET_PY2SC_PORT", std::to_string(port_py_to_sc).c_str(), 1) != 0) {
+        if (setenv("PYSOCKET_PY2SC_RESPONSE_PORT", std::to_string(port_py2sc_response).c_str(), 1) != 0) {
+            pySocketIpc::close_channels();
+            return false;
+        }
+        if (setenv("PYSOCKET_SC2PY_REQUEST_PORT", std::to_string(port_sc2py_request).c_str(), 1) != 0) {
+            pySocketIpc::close_channels();
+            return false;
+        }
+        if (setenv("PYSOCKET_SC2PY_RESPONSE_PORT", std::to_string(port_sc2py_response).c_str(), 1) != 0) {
             pySocketIpc::close_channels();
             return false;
         }
@@ -102,7 +112,8 @@ public:
 
         testController &controller = testController::GetInstance();
         controller.set_test_names({
-            "test_socket_rw"
+            "python2SystemCTest",
+            "systemC2PythonTest"
         });
 
         return true;
