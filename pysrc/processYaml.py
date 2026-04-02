@@ -751,7 +751,7 @@ class projectOpen:
                             if enum_name and context and enum_value is not None:
                                 qual_enum_name = f"{enum_name}/{context}"
                                 self._enum_lookup[qual_enum_name] = enum_value
-    
+
     def getConst(self, value, require_int=False, context_msg=None):
         try:
             ret = int(value)
@@ -848,12 +848,22 @@ class projectOpen:
         tmpContexts = contexts.copy()
         for context in tmpContexts:
             if context not in self.yamlContext:
-                # perform a search based on context hierarchy
+                # perform a search based on context hierarchy using exact basename matches
+                matching_keys = []
                 for key in self.yamlContext:
-                    if context in os.path.basename(key):
-                        contexts.remove(context)
-                        contexts.append(key)
-                        break
+                    base = os.path.basename(key)
+                    base_no_ext, _ = os.path.splitext(base)
+                    if context == base or context == base_no_ext:
+                        matching_keys.append(key)
+                if len(matching_keys) == 1:
+                    contexts.remove(context)
+                    contexts.append(matching_keys[0])
+                elif len(matching_keys) > 1:
+                    printError(
+                        "The context name '{}' is ambiguous; it matches multiple known contexts: {}"
+                        .format(context, matching_keys)
+                    )
+                    exit(warningAndErrorReport())
         for context in contexts:
             if context not in self.yamlContext:
                 printError("The context specified in GENERATED_CODE_PARAM: {} is not a known context.\n" \
