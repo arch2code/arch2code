@@ -107,6 +107,17 @@ struct axi4StreamInfoSt
         os << v.tdata << " " << v.tid << " " << v.tlast << " " << v.tdest << " " << v.tuser;
         return os;
     }
+
+    inline friend bool operator == ( axi4StreamInfoSt<TDATA, TID, TDEST, TUSER> const & a, axi4StreamInfoSt<TDATA, TID, TDEST, TUSER> const & b ) {
+        return (a.tdata.getStructValue() == b.tdata.getStructValue() &&
+                a.tstrb.sc_pack() == b.tstrb.sc_pack() &&
+                a.tkeep.sc_pack() == b.tkeep.sc_pack() &&
+                a.tid.getStructValue() == b.tid.getStructValue() &&
+                a.tlast == b.tlast &&
+                a.tdest.getStructValue() == b.tdest.getStructValue() &&
+                a.tuser.getStructValue() == b.tuser.getStructValue());
+    }
+
 };
 
 // sendInfo( T )
