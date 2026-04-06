@@ -2,6 +2,8 @@
 
 #include "systemc.h"
 #include <string>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include "instanceFactory.h"
 #include "pySocketIpc.h"
@@ -22,6 +24,7 @@ std::string resolvePySocketScriptPath()
         }
     }
 
+    // get the full path of the current executable
     char self_path[PATH_MAX];
     const ssize_t n = readlink("/proc/self/exe", self_path, sizeof(self_path) - 1);
     if (n < 0) {
@@ -35,11 +38,15 @@ std::string resolvePySocketScriptPath()
     }
     build_dir.resize(slash);
 
+    // build the path to the pySocket.py script relative to the executable
     const std::string candidate = build_dir + "/../../pySocket.py";
+    // resolve the path to the pySocket.py script if it exists
     char resolved[PATH_MAX];
     if (realpath(candidate.c_str(), resolved) != nullptr) {
+        // python code found, return the path
         return std::string(resolved);
     }
+    // python code not found, return an empty string
     return {};
 }
 
@@ -71,26 +78,30 @@ public:
         std::uint16_t port_py2sc_response = 0;
         std::uint16_t port_sc2py_request = 0;
         std::uint16_t port_sc2py_response = 0;
-        if (!pySocketIpc::start_servers(port_py2sc_request, port_py2sc_response, port_sc2py_request, port_sc2py_response)) {
+        if (!pySocketIpc::start_servers_py2sc(port_py2sc_request, port_py2sc_response)) {
+            return false;
+        }
+        if (!pySocketIpc::start_servers_sc2py(port_sc2py_request, port_sc2py_response)) {
             return false;
         }
         if (setenv("PYSOCKET_PY2SC_REQUEST_PORT", std::to_string(port_py2sc_request).c_str(), 1) != 0) {
-            pySocketIpc::close_channels();
+            pySocketIpc::close_all_channels();
             return false;
         }
         if (setenv("PYSOCKET_PY2SC_RESPONSE_PORT", std::to_string(port_py2sc_response).c_str(), 1) != 0) {
-            pySocketIpc::close_channels();
+            pySocketIpc::close_all_channels();
             return false;
         }
         if (setenv("PYSOCKET_SC2PY_REQUEST_PORT", std::to_string(port_sc2py_request).c_str(), 1) != 0) {
-            pySocketIpc::close_channels();
+            pySocketIpc::close_all_channels();
             return false;
         }
         if (setenv("PYSOCKET_SC2PY_RESPONSE_PORT", std::to_string(port_sc2py_response).c_str(), 1) != 0) {
-            pySocketIpc::close_channels();
+            pySocketIpc::close_all_channels();
             return false;
         }
 
+        std::string temp_script_path = resolvePySocketScriptPath();
         pid_t pid = fork();
         if (pid == 0) {
             const std::string script_path = resolvePySocketScriptPath();
@@ -101,15 +112,17 @@ public:
             _exit(127);
         }
         if (pid < 0) {
-            pySocketIpc::close_channels();
+            pySocketIpc::close_all_channels();
             return false;
         }
-
-        if (!pySocketIpc::accept_clients()) {
-            pySocketIpc::close_channels();
+        if (!pySocketIpc::accept_clients_py2sc()) {
+            pySocketIpc::close_all_channels();
             return false;
         }
-
+        if (!pySocketIpc::accept_clients_sc2py()) {
+            pySocketIpc::close_all_channels();
+            return false;
+        }
         testController &controller = testController::GetInstance();
         controller.set_test_names({
             "python2SystemCTest",

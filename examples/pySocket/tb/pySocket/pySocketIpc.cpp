@@ -15,14 +15,16 @@ namespace pySocketIpc {
 
 namespace {
 
-int g_listen_py2sc_request = -1;
-int g_listen_py2sc_response = -1;
-int g_listen_sc2py_request = -1;
-int g_listen_sc2py_response = -1;
-int g_fd_py2sc_request = -1;
-int g_fd_py2sc_response = -1;
-int g_fd_sc2py_request = -1;
-int g_fd_sc2py_response = -1;
+    struct listen_pair_t {
+        int listen_request;
+        int listen_response;
+        int request_fd;
+        int response_fd;
+    };
+    listen_pair_t g_py2sc_pair = {-1, -1, -1, -1};
+    listen_pair_t g_sc2py_pair = {-1, -1, -1, -1};
+
+
 
 bool bind_listen_loopback(int &listen_fd, std::uint16_t &out_port)
 {
@@ -64,56 +66,49 @@ bool bind_listen_loopback(int &listen_fd, std::uint16_t &out_port)
 
 } // namespace
 
-bool start_servers(std::uint16_t &port_py2sc_request, std::uint16_t &port_py2sc_response, std::uint16_t &port_sc2py_request, std::uint16_t &port_sc2py_response)
+
+bool start_servers_pair(listen_pair_t &pair, std::uint16_t &port_request, std::uint16_t &port_response)
 {
-    close_channels();
-    // TODO: cleanup flow and error handling
-    if (!bind_listen_loopback(g_listen_py2sc_request, port_py2sc_request)) {
+    if (!bind_listen_loopback(pair.listen_request, port_request)) {
         return false;
     }
-    if (!bind_listen_loopback(g_listen_py2sc_response, port_py2sc_response)) {
-        close(g_listen_py2sc_request);
-        g_listen_py2sc_request = -1;
-        return false;
-    }
-    if (!bind_listen_loopback(g_listen_sc2py_request, port_sc2py_request)) {
-        close(g_listen_py2sc_request);
-        g_listen_py2sc_request = -1;
-        close(g_listen_py2sc_response);
-        g_listen_py2sc_response = -1;
-        return false;
-    }
-    if (!bind_listen_loopback(g_listen_sc2py_response, port_sc2py_response)) {
-        close(g_listen_py2sc_request);
-        g_listen_py2sc_request = -1;
-        close(g_listen_py2sc_response);
-        g_listen_py2sc_response = -1;
-        close(g_listen_sc2py_request);
-        g_listen_sc2py_request = -1;
+    if (!bind_listen_loopback(pair.listen_response, port_response)) {
+        close(pair.listen_request);
+        pair.listen_request = -1;
+        pair.request_fd = -1;
         return false;
     }
     return true;
 }
 
-bool accept_clients()
+bool start_servers_py2sc(std::uint16_t &port_request, std::uint16_t &port_response)
 {
-    if (g_listen_py2sc_request < 0 || g_listen_py2sc_response < 0 || g_listen_sc2py_request < 0 || g_listen_sc2py_response < 0) {
+    close_channels_py2sc();
+    return start_servers_pair(g_py2sc_pair, port_request, port_response);
+}
+
+bool start_servers_sc2py(std::uint16_t &port_request, std::uint16_t &port_response)
+{
+    close_channels_sc2py();
+    return start_servers_pair(g_sc2py_pair, port_request, port_response);
+}
+
+
+bool accept_clients_pair(listen_pair_t &pair)
+{
+    if (pair.listen_request < 0 || pair.listen_response < 0) {
         return false;
     }
 
     int n_done = 0;
-    while (n_done < 4) {
-        pollfd pfds[4]{};
-        pfds[0].fd = g_listen_py2sc_request;
+    while (n_done < 2) {
+        pollfd pfds[2]{};
+        pfds[0].fd = pair.listen_request;
         pfds[0].events = POLLIN;
-        pfds[1].fd = g_listen_py2sc_response;
+        pfds[1].fd = pair.listen_response;
         pfds[1].events = POLLIN;
-        pfds[2].fd = g_listen_sc2py_request;
-        pfds[2].events = POLLIN;
-        pfds[3].fd = g_listen_sc2py_response;
-        pfds[3].events = POLLIN;
 
-        int pr = poll(pfds, 4, -1);
+        int pr = poll(pfds, 2, -1);
         if (pr < 0) {
             if (errno == EINTR) {
                 continue;
@@ -132,70 +127,62 @@ bool accept_clients()
                 }
                 return false;
             }
-            if (p.fd == g_listen_py2sc_request) {
-                if (g_fd_py2sc_request >= 0) {
+            if (p.fd == pair.listen_request) {
+                if (pair.request_fd >= 0) {
                     close(c);
                     return false;
                 }
-                g_fd_py2sc_request = c;
+                pair.request_fd = c;
                 ++n_done;
-            } else if (p.fd == g_listen_py2sc_response) {
-                if (g_fd_py2sc_response >= 0) {
+            } else if (p.fd == pair.listen_response) {
+                if (pair.response_fd >= 0) {
                     close(c);
                     return false;
                 }
-                g_fd_py2sc_response = c;
+                pair.response_fd = c;
                 ++n_done;
-            } else if (p.fd == g_listen_sc2py_request) {
-                if (g_fd_sc2py_request >= 0) {
-                    close(c);
-                    return false;
-                }
-                g_fd_sc2py_request = c;
-                ++n_done;
-            } else if (p.fd == g_listen_sc2py_response) {
-                if (g_fd_sc2py_response >= 0) {
-                    close(c);
-                    return false;
-                }
-                g_fd_sc2py_response = c;
-                ++n_done;
-            }
+            } 
         }
     }
 
-    close(g_listen_py2sc_request);
-    g_listen_py2sc_request = -1;
-    close(g_listen_py2sc_response);
-    g_listen_py2sc_response = -1;
-    close(g_listen_sc2py_request);
-    g_listen_sc2py_request = -1;
-    close(g_listen_sc2py_response);
-    g_listen_sc2py_response = -1;
+    close(pair.listen_request);
+    pair.listen_request = -1;
+    close(pair.listen_response);
+    pair.listen_response = -1;
     return true;
+}
+
+bool accept_clients_py2sc()
+{
+    return accept_clients_pair(g_py2sc_pair);
+}
+
+bool accept_clients_sc2py()
+{
+    return accept_clients_pair(g_sc2py_pair);
 }
 
 int fd_py2sc_request()
 {
-    return g_fd_py2sc_request;
+    return g_py2sc_pair.request_fd;
 }
 
 int fd_py2sc_response()
 {
-    return g_fd_py2sc_response;
+    return g_py2sc_pair.response_fd;
 }
 
 int fd_sc2py_request()
 {
-    return g_fd_sc2py_request;
+    return g_sc2py_pair.request_fd;
 }
 
 int fd_sc2py_response()
 {
-    return g_fd_sc2py_response;
+    return g_sc2py_pair.response_fd;
 }
 
-void close_channels()
+void close_channels_pair(listen_pair_t &pair)
 {
     auto close_fd = [](int &fd) {
         if (fd >= 0) {
@@ -203,14 +190,26 @@ void close_channels()
             fd = -1;
         }
     };
-    close_fd(g_listen_py2sc_request);
-    close_fd(g_listen_py2sc_response);
-    close_fd(g_listen_sc2py_request);
-    close_fd(g_listen_sc2py_response);
-    close_fd(g_fd_py2sc_request);
-    close_fd(g_fd_py2sc_response);
-    close_fd(g_fd_sc2py_request);
-    close_fd(g_fd_sc2py_response);
+    close_fd(pair.listen_request);
+    close_fd(pair.listen_response);
+    close_fd(pair.request_fd);
+    close_fd(pair.response_fd);
+}
+
+void close_channels_py2sc()
+{
+    close_channels_pair(g_py2sc_pair);
+}
+
+void close_channels_sc2py()
+{
+    close_channels_pair(g_sc2py_pair);
+}
+
+void close_all_channels()
+{
+    close_channels_py2sc();
+    close_channels_sc2py();
 }
 
 } // namespace pySocketIpc
