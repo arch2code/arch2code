@@ -71,13 +71,11 @@ def ext_sec_init(args, prj, data):
 
     for channelType in data['connectDouble']:
         for connKey,data_ in data['connectDouble'][channelType].items():
-            srcInst = None
-            for k, v in data_['ends'].items():
-                if v.get('direction') in ['src', 'out']:
-                    srcInst = v.get('instance')
-            if not srcInst:
-                printError(f"No valid instance source found for connection {connKey!r} ({channelType})")
+            srcInstances = [v.get('instance') for v in data_['ends'].values() if v.get('direction') == "src"]
+            if len(srcInstances) != 1:
+                printError(f"Expected exactly one src instance for connection {connKey!r} ({channelType}), found {len(srcInstances)}")
                 exit(warningAndErrorReport())
+            srcInst = srcInstances[0]
             chnlData = sc_gen_block_channels(data_, prj, data)
             s = '   ,{chnlName}("{chnlName}", "{instName}")'
             out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst))
