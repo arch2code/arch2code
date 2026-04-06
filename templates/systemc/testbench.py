@@ -2,7 +2,7 @@
 import textwrap
 
 from pysrc.processYaml import getPortChannelName
-from pysrc.arch2codeHelper import printError
+from pysrc.arch2codeHelper import printError, warningAndErrorReport
 from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir
 
 from jinja2 import Template
@@ -70,8 +70,14 @@ def ext_sec_init(args, prj, data):
         out.append(s.format(blockName=data_['instanceType'], instName=data_['instance']))
 
     for channelType in data['connectDouble']:
-        for _,data_ in data['connectDouble'][channelType].items():
-            srcInst = data_['src']
+        for connKey,data_ in data['connectDouble'][channelType].items():
+            srcInst = None
+            for k, v in data_['ends'].items():
+                if v.get('direction') in ['src', 'out']:
+                    srcInst = v.get('instance')
+            if not srcInst:
+                printError(f"No valid instance source found for connection {connKey!r} ({channelType})")
+                exit(warningAndErrorReport())
             chnlData = sc_gen_block_channels(data_, prj, data)
             s = '   ,{chnlName}("{chnlName}", "{instName}")'
             out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst))
