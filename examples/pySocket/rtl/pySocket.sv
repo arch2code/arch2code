@@ -8,6 +8,8 @@ module pySocket
 import pySocket_package::*;
 (
     req_ack_if.src test_req_ack,
+    req_ack_if.src test2Python_req_ack,
+    req_ack_if.dst dut2Python_req_ack,
     input clk, rst_n
 );
 

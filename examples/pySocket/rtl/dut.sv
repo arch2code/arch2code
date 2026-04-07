@@ -8,6 +8,8 @@ module dut
 import pySocket_package::*;
 (
     req_ack_if.dst test_req_ack,
+    req_ack_if.dst test2Python_req_ack,
+    req_ack_if.src dut2Python_req_ack,
     input clk, rst_n
 );
 

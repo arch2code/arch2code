@@ -17,6 +17,7 @@ dut::dut(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(dutListener);
+    SC_THREAD(dut2PythonListener);
 };
 
 void dut::dutListener(void)
@@ -30,5 +31,25 @@ void dut::dutListener(void)
         log_.logPrint(std::format("received message: {}", message.param1), LOG_IMPORTANT );
         response.response = message.param1 + message.param2;
         test_req_ack->ack(response);
+    }
+}
+
+void dut::dut2PythonListener(void)
+{
+    log_.logPrint(std::format("started dut2PythonListener"), LOG_IMPORTANT );
+    while (true)
+    {
+        p2s_message_st test_message;
+        p2s_response_st test_response;
+        // wait for a request from the test code
+        test2Python_req_ack->reqReceive(test_message);
+
+        // make a request to the python code
+        p2s_response_st dut_response;
+        dut2Python_req_ack->req(test_message, dut_response);
+
+        // send the response back to the test code
+        test_response.response = dut_response.response;
+        test2Python_req_ack->ack(test_response);
     }
 }

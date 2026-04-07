@@ -23,9 +23,11 @@ pySocket::pySocket(sc_module_name blockName, const char * variant, blockBaseMode
     // GENERATED_CODE_END
     SC_THREAD(python2SystemCTest);
     SC_THREAD(systemC2PythonTest);
-    SC_THREAD(python2SystemCEventThread)
+    SC_THREAD(python2SystemCEventThread);
+    SC_THREAD(dut2PythonListener);
 };
 
+//  TODO: improve this code to avoid the clunky event handoff
 void pySocket::python2SystemCEventThread(void)
 {
     while (true) {
@@ -56,6 +58,7 @@ void pySocket::python2SystemCTest(void)
         char buf[256];
         int count = 0;
         ssize_t n = 0;
+        ssize_t m = 0;
         pollfd pfd;
         pfd.fd = pySocketIpc::fd_py2sc_request();
         pfd.events = POLLIN;
@@ -64,8 +67,11 @@ void pySocket::python2SystemCTest(void)
             wait(p2s_dataReadyEvent);
             n = 0;
             do {
-                n = read(pySocketIpc::fd_py2sc_request(), buf, sizeof(buf));
-            } while (n==0);
+                m = read(pySocketIpc::fd_py2sc_request(), buf + n, sizeof(buf) - n);
+                if (m > 0) {
+                    n += m;
+                }
+            } while (n < (ssize_t)sizeof(p2s_message_st));
             p2s_message_st message;
             message.param1 = *reinterpret_cast<uint32_t*>(buf);
             message.param2 = *reinterpret_cast<uint32_t*>(buf + 4);
@@ -94,20 +100,45 @@ void pySocket::systemC2PythonTest(void)
     // Wait for socket test
     controller.wait_test(test_socket, sc_time(1, SC_NS));
 
+    // test makes a request to the dut
+    // dut will then make a request to the python code which will get processed in dut2PythonListener
+    // the python code will then send a response back to the dut which will also be processed in dut2PythonListener
+    // dut2PythonListener will then send a response back to the dut
+    // the dut will respond to this test
     {
-        uint32_t val = 0xcafef00d;
-        write(pySocketIpc::fd_sc2py_request(), &val, 4);
-        uint32_t response = 0;
-        read(pySocketIpc::fd_sc2py_response(), &response, 4);
-        if (response != 0xdeadbeef) {
-            std::cout << "pySocket.cpp: systemC2PythonTest: response mismatch: " << response << " != 0xdeadbeef" << std::endl;
-        }
+        p2s_message_st message;
+        message.param1 = 0xcafef00d;
+        message.param2 = 0x12345678;
+        p2s_response_st response;
+        test2Python_req_ack->req(message, response);
+        Q_ASSERT(response.response == 0xdeadbeef, "response.response != 0xdeadbeef");
 
         // write 0 to request socket to indicate the end of the test
-        val = 0x00000000;
-        write(pySocketIpc::fd_sc2py_request(), &val, 4);
+        message.param1 = 0x00000000;
+        message.param2 = 0x00000000;
+        test2Python_req_ack->req(message, response);
+        Q_ASSERT(response.response == 0, "response.response != 0");
     }
 
     controller.test_complete(test_socket);
     eot.setEndOfTest(true);
+}
+
+void pySocket::dut2PythonListener(void)
+{
+    while (true) {
+        p2s_message_st message;
+        p2s_response_st response;
+        dut2Python_req_ack->reqReceive(message);
+
+        // write to python through socket
+        write(pySocketIpc::fd_sc2py_request(), &message, sizeof(p2s_message_st));
+        uint32_t response_value = 0;
+        // read response from python through socket
+        read(pySocketIpc::fd_sc2py_response(), &response_value, 4);
+
+        // send response back to dut
+        response.response = response_value;
+        dut2Python_req_ack->ack(response);
+    }
 }

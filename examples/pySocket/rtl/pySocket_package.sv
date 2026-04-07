@@ -9,13 +9,24 @@ localparam int unsigned P2S_MESSAGE_LIST_LOG2 = 32'h0000_0004;  // Log2 of the p
 // types
 typedef logic[P2S_MESSAGE_LIST_LOG2-1:0] p2s_message_tag_t; //Tag type
 typedef logic[32-1:0] param_t; //Parameter type
+typedef logic[16-1:0] word16_t; //Parameter type
 
 // enums
+typedef enum logic[1-1:0] {     //Message ID
+    P2S_MESSAGE_TYPE_REQUEST = 0, // Request
+    P2S_MESSAGE_TYPE_RESPONSE = 1 // Response
+} p2s_message_ID_t;
 
 // structures
 typedef struct packed {
-    param_t param1; //Parameter 1
+    word16_t length; //Message payload length
+    word16_t ID; //Message ID
+    word16_t tag; //Tag
+} message_header_st;
+
+typedef struct packed {
     param_t param2; //Parameter 2
+    param_t param1; //Parameter 1
 } p2s_message_st;
 
 typedef struct packed {

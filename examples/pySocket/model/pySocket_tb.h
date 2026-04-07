@@ -32,6 +32,10 @@ public:
     // channels
     // Req Ack Test interface
     req_ack_channel< p2s_message_st, p2s_response_st > test_req_ack;
+    // Req Ack Test2Python interface
+    req_ack_channel< p2s_message_st, p2s_response_st > test2Python_req_ack;
+    // Req Ack Dut2Python interface
+    req_ack_channel< p2s_message_st, p2s_response_st > dut2Python_req_ack;
 
     //instances contained in block
     std::shared_ptr<pySocketBase> u_pySocket;

@@ -36,8 +36,11 @@ public:
     void python2SystemCTest(void);
     void systemC2PythonTest(void);
     void python2SystemCEventThread(void);
+    void dut2PythonListener(void);
+
     sc_event p2s_dataReadyEvent;
     sc_event p2s_startEvent;
+    
     std::list<p2s_message_st> p2s_message_list;
 };
 

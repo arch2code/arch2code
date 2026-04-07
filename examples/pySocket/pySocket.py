@@ -25,36 +25,26 @@ class PyTransaction:
     def to_bytes(self):
         return self.packer.pack(self.param1, self.param2)
 
+def connect_pair(request_port, response_port):
+    print(f"connect_pair: {request_port}, {response_port}", flush=True)
+    try:
+        p_request = int(os.environ[request_port])
+        p_response = int(os.environ[response_port])
+    except (KeyError, ValueError) as exc:
+        print("pySocket.py: missing or invalid PYSOCKET_*_PORT", exc, file=sys.stderr)
+        sys.exit(1)
+
+    s_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s_response = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s_request.connect(("127.0.0.1", p_request))
+    s_response.connect(("127.0.0.1", p_response))
+    return s_request, s_response
+
 def connect_pair_py2sc():
-    print("connect_pair_py2sc", flush=True)
-    try:
-        p_py2sc_request = int(os.environ["PYSOCKET_PY2SC_REQUEST_PORT"])
-        p_py2sc_response = int(os.environ["PYSOCKET_PY2SC_RESPONSE_PORT"])
-    except (KeyError, ValueError) as exc:
-        print("pySocket.py: missing or invalid PYSOCKET_*_PORT", exc, file=sys.stderr)
-        sys.exit(1)
+    return connect_pair("PYSOCKET_PY2SC_REQUEST_PORT", "PYSOCKET_PY2SC_RESPONSE_PORT")
 
-    s_py2sc_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s_py2sc_response = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s_py2sc_request.connect(("127.0.0.1", p_py2sc_request))
-    s_py2sc_response.connect(("127.0.0.1", p_py2sc_response))
-    return s_py2sc_request, s_py2sc_response
-
-# TODO: functionalise to take environment variable or prefix
 def connect_pair_sc2py():
-    print("connect_pair_sc2py", flush=True)
-    try:
-        p_sc2py_request = int(os.environ["PYSOCKET_SC2PY_REQUEST_PORT"])
-        p_sc2py_response = int(os.environ["PYSOCKET_SC2PY_RESPONSE_PORT"])
-    except (KeyError, ValueError) as exc:
-        print("pySocket.py: missing or invalid PYSOCKET_*_PORT", exc, file=sys.stderr)
-        sys.exit(1)
-
-    s_sc2py_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s_sc2py_response = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s_sc2py_request.connect(("127.0.0.1", p_sc2py_request))
-    s_sc2py_response.connect(("127.0.0.1", p_sc2py_response))
-    return s_sc2py_request, s_sc2py_response
+    return connect_pair("PYSOCKET_SC2PY_REQUEST_PORT", "PYSOCKET_SC2PY_RESPONSE_PORT")
 
 # send a transaction from python to SystemC as a stream of bytes in a single call
 def send_transaction(sock: socket.socket, transaction: PyTransaction) -> None:
@@ -84,12 +74,12 @@ async def python2SystemC_transaction_loop(s_request: socket.socket, s_response: 
     s_response.close()
 
 # wait for a command sent from SystemC
-async def wait_for_command(sock: socket.socket) -> int:
+async def wait_for_command(sock: socket.socket) -> bytes:
     loop = asyncio.get_running_loop()
-    chunk = await loop.sock_recv(sock, 4)
-    if len(chunk) != 4:
-        raise ValueError("pySocket.py: expected 4 bytes, got %d", len(chunk))
-    return struct.unpack('I', chunk)[0]
+    chunk = await loop.sock_recv(sock, 8)
+    if len(chunk) != 8:
+        raise ValueError("pySocket.py: expected 8 bytes, got %d", len(chunk))
+    return chunk
 
 # send response to a command received from SystemC
 def send_response(sock: socket.socket, response: int) -> None:
@@ -98,17 +88,22 @@ def send_response(sock: socket.socket, response: int) -> None:
 # loop to wait for commands from SystemC and send responses from python
 async def systemC2Python_command_loop(s_request: socket.socket, s_response: socket.socket) -> None:
     print("systemC2Python_command_loop: starting")
-    while True:
-        command = await wait_for_command(s_request)
-        print(f"systemC2Python_command_loop: SC→Py: command = {command:#08x}", flush=True)
-        if (command == 0xcafef00d):
+    notEndOfTest = True
+    while notEndOfTest:
+        chunk = await wait_for_command(s_request)
+        param1 = struct.unpack('I', chunk[:4])[0]
+        param2 = struct.unpack('I', chunk[4:])[0]
+        print(f"systemC2Python_command_loop: SC→Py: command = {param1:#08x} {param2:#08x}", flush=True)
+        if (param1 == 0xcafef00d):
             response = 0xdeadbeef
-        elif (command == 0x00000000):
-            print("systemC2Python_command_loop: SC→Py: exit", flush=True)
-            return
-        else:
+        elif (param1 == 0x00000000):
             response = 0
+            notEndOfTest = False
+        else:
+            response = param1
+        print(f"systemC2Python_command_loop: SC→Py: response = {response:#08x}", flush=True)
         send_response(s_response, response)
+    print("systemC2Python_command_loop: SC→Py: exit", flush=True)
 
 async def main() -> None:
     s_py2sc_request, s_py2sc_response = connect_pair_py2sc()

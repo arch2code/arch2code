@@ -33,6 +33,7 @@ public:
     // GENERATED_CODE_END
     // block implementation members
     void dutListener(void);
+    void dut2PythonListener(void);
 };
 
 #endif //DUT_H

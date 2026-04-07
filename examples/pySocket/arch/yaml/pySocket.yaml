@@ -9,11 +9,28 @@ types:
   param_t:
     width: 32
     desc: "Parameter type"
+  word16_t:
+    width: 16
+    desc: "Parameter type"
+
+enums:
+  p2s_message_ID_t:
+    desc: "Message ID"
+    enum:
+      - {enumName: P2S_MESSAGE_TYPE_REQUEST, value: 0, desc: "Request"}
+      - {enumName: P2S_MESSAGE_TYPE_RESPONSE, value: 1, desc: "Response"}
+
+
+#  TODO: add framing to the message with a header containing the message length, message ID and tag
 
 structures:
+  message_header_st:
+    length: {varType: word16_t, desc: "Message payload length"}
+    ID:     {varType: word16_t, desc: "Message ID"}
+    tag:    {varType: word16_t, desc: "Tag"}
   p2s_message_st:
-    param1: {varType: param_t, desc: "Parameter 1"}
     param2: {varType: param_t, desc: "Parameter 2"}
+    param1: {varType: param_t, desc: "Parameter 1"}
   p2s_response_st:
     response: {varType: param_t, desc: "response"}
   p2s_message_tag_st:
@@ -69,6 +86,18 @@ interfaces:
     structures:
       - {structure: p2s_message_st, structureType: data_t}
       - {structure: p2s_response_st, structureType: rdata_t}
+  test2Python_req_ack:
+    interfaceType: req_ack
+    desc: "Req Ack Test2Python interface"
+    structures:
+      - {structure: p2s_message_st, structureType: data_t}
+      - {structure: p2s_response_st, structureType: rdata_t}
+  dut2Python_req_ack:
+    interfaceType: req_ack
+    desc: "Req Ack Dut2Python interface"
+    structures:
+      - {structure: p2s_message_st, structureType: data_t}
+      - {structure: p2s_response_st, structureType: rdata_t}
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries
@@ -84,5 +113,7 @@ interfaces:
 ###          for this connection, optional (currently does not work in diagram generation code)
 connections:
   - { interface: test_req_ack, src: u_pySocket, dst: u_dut }
+  - { interface: test2Python_req_ack, src: u_pySocket, dst: u_dut }
+  - { interface: dut2Python_req_ack, src: u_dut, dst: u_pySocket }
 
 

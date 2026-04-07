@@ -14,6 +14,18 @@ module pySocket_hdl_sv_wrapper
     input bit test_req_ack_ack,
     input bit [31:0] test_req_ack_rdata,
 
+    // req_ack_if.src
+    output bit test2Python_req_ack_req,
+    output bit [63:0] test2Python_req_ack_data,
+    input bit test2Python_req_ack_ack,
+    input bit [31:0] test2Python_req_ack_rdata,
+
+    // req_ack_if.dst
+    input bit dut2Python_req_ack_req,
+    input bit [63:0] dut2Python_req_ack_data,
+    output bit dut2Python_req_ack_ack,
+    output bit [31:0] dut2Python_req_ack_rdata,
+
     input clk,
     input rst_n
 );
@@ -25,8 +37,26 @@ module pySocket_hdl_sv_wrapper
     assign #0 test_req_ack.ack = test_req_ack_ack;
     assign #0 test_req_ack.rdata = test_req_ack_rdata;
 
+    // req_ack_if.src
+    req_ack_if #(.data_t(p2s_message_st), .rdata_t(p2s_response_st)) test2Python_req_ack();
+
+    assign #0 test2Python_req_ack_req = test2Python_req_ack.req;
+    assign #0 test2Python_req_ack_data = test2Python_req_ack.data;
+    assign #0 test2Python_req_ack.ack = test2Python_req_ack_ack;
+    assign #0 test2Python_req_ack.rdata = test2Python_req_ack_rdata;
+
+    // req_ack_if.dst
+    req_ack_if #(.data_t(p2s_message_st), .rdata_t(p2s_response_st)) dut2Python_req_ack();
+
+    assign #0 dut2Python_req_ack.req = dut2Python_req_ack_req;
+    assign #0 dut2Python_req_ack.data = dut2Python_req_ack_data;
+    assign #0 dut2Python_req_ack_ack = dut2Python_req_ack.ack;
+    assign #0 dut2Python_req_ack_rdata = dut2Python_req_ack.rdata;
+
     pySocket dut (
         .test_req_ack(test_req_ack), // req_ack_if.src
+        .test2Python_req_ack(test2Python_req_ack), // req_ack_if.src
+        .dut2Python_req_ack(dut2Python_req_ack), // req_ack_if.dst
         .clk(clk),
         .rst_n(rst_n)
     );
