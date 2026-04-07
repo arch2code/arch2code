@@ -1,4 +1,5 @@
 import pysrc.intf_gen_utils as intf_gen_utils
+from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport
 
 # Does not alter the rendering
 intf_gen_utils.LEGACY_COMPAT_MODE = True
@@ -56,11 +57,17 @@ def constructorInit(args, prj, data):
             chnl_table[chnl] = intf_gen_utils.sc_gen_block_channels(chnlInfo, prj, data)
 
             channelBase = chnl_table[chnl]['chnl_name']
-            for k, v in chnlInfo["ends"].items():
-                if v["direction"] == "src":
-                    src = v.get("instanceType") or chnlInfo.get("block", "")
-                else:
-                    dst = v.get("instanceType") or chnlInfo.get("block", "")
+            srcInstances = [v.get("instanceType") or chnlInfo.get("block", "") for v in chnlInfo["ends"].values() if v["direction"] == "src"]
+            dstInstances = [v.get("instanceType") or chnlInfo.get("block", "") for v in chnlInfo["ends"].values() if v["direction"] == "dst"]
+            if len(srcInstances) != 1 or len(dstInstances) == 0:
+                printError(f"connection {chnl!r} ({channelType}) needs exactly one src and at least one dst end")
+                exit(warningAndErrorReport())
+            src, dst = srcInstances[0], dstInstances[0]
+            if len(dstInstances) > 1:
+                printWarning(
+                    f"connection {chnl!r} ({channelType}) has multiple dst ends ({dstInstances}). "
+                    f"Channel naming will be arbitrarily using {dst!r} as the destination instance"
+                )
             channelTitle = dst + "_" + channelBase
             extra = ''
             # we may have a multicycle interface
