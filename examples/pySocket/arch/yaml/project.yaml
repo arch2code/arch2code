@@ -1,0 +1,49 @@
+
+# Example project file that defines project level information
+
+projectName: pySocket
+
+# project files can be regular input files, regular input files with additional projectFiles sections, or additional ProjectFiles.
+# note in the case of additional project files any top level controls (such as schema:) are ignored
+# relative path names are resolved based on location of project file (this includes sub projects)
+projectFiles:
+  - pySocket.yaml
+
+# uncomment to use a custom schema file, otherwise the default schema is used
+#dbSchema: config/schema.yaml
+
+addressControl: config/addressControl.yaml
+
+# This key indicates the top level block of the design
+topInstance: pySocket_tb
+
+# uncomment to use custom templates, otherwise the default templates are used
+#docConfig : config/docConfig.yaml
+#cppConfig : config/cppConfig.yaml
+#svConfig : config/svConfig.yaml
+
+# this is a list of locations, orthogonal to design hierarchy, that maps out the functional layout of the project
+# $xxx is a macro that is replaced by the directory. Note macro replacement only works as first character
+# root defines the top level directory for the project, and other directories are defined relative to this.
+# note that $a2c is automatically created by the system and points to the a2c directory
+dirs:
+  root: ../..                  # project root directory relative to project file - required
+  base: $root/base             # for block base classes
+  model: $root/model           # systemC model implementation
+  rtl: $root/rtl               # RTL implementation
+  vl_wrap: $root/verif/vl_wrap # rtl wrapper files
+  tb: $root/tb                 # testbench definition files
+  fwInc: $root/fw/include      # firmware include files
+
+# information about project directory structure to enable simplified maintenance
+# and generation of file for new blocks. Note that directory structure will mirror
+# architecture hierarchy.
+fileGeneration:
+  template: $a2c/templates/fileGen/fileGen.py
+  # fileMap:
+  #   includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
+  # standard copyright statement to be added to all generated files - change to suite your company
+  fileCopyrightStatement: "copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE"
+postProcess:
+  - $a2c/config/postParseRegister.py
+  - $a2c/config/postParseChecks.py
