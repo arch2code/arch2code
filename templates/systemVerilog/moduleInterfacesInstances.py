@@ -1,7 +1,9 @@
 from pathlib import Path
-from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck, importPackages
+from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck, importPackages, getImportPackages
 from pysrc.processYaml import camelCase
 import pysrc.intf_gen_utils as intf_gen_utils
+
+import pysrc.sv_model as svm
 
 # args from generator line
 # prj object
@@ -13,35 +15,54 @@ def render(args, prj, data):
     # Pass in the stem of fileName and the blockName
     out.append(fileNameBlockCheck(Path(data['fileName']).resolve().stem, data['blockName']))
 
+    m = svm.ModuleDecl(name=data['blockName'])
+
     # Packages
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
     out.append(importPackages(args, prj, startingContext, data))
+
+    m.imports = [f"{pkg}::*" for pkg in getImportPackages(args, prj, startingContext, data)]
 
     # Parameters
     if ( prj.data['blocks'][data['qualBlock']]['params'] ):
         out.append('#(')
         out.append(",\n".join([f"{indent}parameter {param['param']}" for param in prj.data['blocks'][data['qualBlock']]['params']]))
         out.append(')')
+        for param in prj.data['blocks'][data['qualBlock']]['params']:
+            m.parameters.append(svm.ParamDecl(name=param['param']))
 
     out.append("(")
 
     # Ports
+    m.ports = intf_gen_utils.sv_gen_ports_svm(data, prj, indent, data)
+    m.ports += [svm.PortDecl(name='clk', direction='input'), svm.PortDecl(name='rst_n', direction='input')]
     out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
 
     #// Interface Instances, needed for between instanced modules inside this module
+    m.body.append(svm.CommentBlock(text="Interface Instances, needed for between instanced modules inside this module"))
+
     out.append(f"{indent}// Interface Instances, needed for between instanced modules inside this module")
+
     for channelType in data["connectDouble"]:
         for key, value in data["connectDouble"][channelType].items():
             intf_type = intf_gen_utils.get_intf_type(value['interfaceType'], data)
             intf_data = intf_gen_utils.get_intf_data(value, prj)
             s = f"{indent}{intf_type}_if #("
             params = list()
-            if intf_data['structures']:
-                for item in intf_data['structures']:
-                    params.append(f".{item['structureType']}({item['structure']})")
+            if not intf_data['structures']:
+                intf_data['structures'] = []
+            for item in intf_data['structures']:
+                params.append(f".{item['structureType']}({item['structure']})")
             s += ', '.join(params)
             s += f") {intf_gen_utils.get_channel_name(value)}();"
             out.append(s)
+            m.body.append(svm.InterfaceInst(
+                    instance_name=intf_gen_utils.get_channel_name(value),
+                    interface_name=intf_type + '_if',
+                    parameters=[svm.ParamConn(param=item['structureType'], value=item['structure']) for item in intf_data['structures']]
+                )
+            )
+
     out.append("")
 
     #// Memory Interfaces if they exist
@@ -77,6 +98,8 @@ def render(args, prj, data):
 
         qualBlockInst = prj.getQualBlock(value['instanceType'])
 
+        inst = svm.ModuleInst(instance_name=value['instance'], module_name=value['instanceType'])
+
         if qualBlockInst in prj.data['parameters'].keys():
             variant_data = [v for _,v in prj.data['parameters'][qualBlockInst]['variants'].items() if v['variant'] == value['variant']]
         else:
@@ -87,23 +110,40 @@ def render(args, prj, data):
             inst_params += '#('
             inst_params += ", ".join([f".{param['param']}({param['value']})" for param in variant_data])
             inst_params += ') '
+            inst.parameters = [svm.ParamConn(param=param['param'], value=str(param['value'])) for param in variant_data]
+
 
         out.append(f"{value['instanceType']}{inst_params}{value['instance']} (")
         # Declare connectionMaps that connect to this instance
         for unusedKey2, value2 in data['connectionMaps'].items():
             if (value['instance'] == value2['instance']):
                 out.append(f"{indent}.{value2['instancePortName']} ({value2['parentPortName']}),")
+                inst.ports.append(
+                    svm.PortConn(port=value2['instancePortName'], expression=svm.InterfaceRef(name=value2['parentPortName']))
+                )
         # loop through the memory connections that connect to this instance
         for unusedKey2, memValue in data['memoryConnections'].items():
             if (value['instance'] == memValue['instance']):
                 out.append(f"{indent}.{memValue['memory']} ({intf_gen_utils.get_channel_name(memValue)}),")
+                inst.ports.append(
+                    svm.PortConn(port=memValue['memory'], expression=svm.InterfaceRef(name=intf_gen_utils.get_channel_name(memValue)))
+                )
         # loop through the register connections that connect to this instance
         for sourceType in data['connectDouble']:
             for connKey, connValue in data['connectDouble'][sourceType].items():
                 for end, endValue in connValue['ends'].items():
                     if (value['instance'] == endValue['instance']):
                         out.append(f"{indent}.{endValue['portName']} ({intf_gen_utils.get_channel_name(connValue)}),")
+                        inst.ports.append(
+                            svm.PortConn(port=endValue['portName'], expression=svm.InterfaceRef(name=intf_gen_utils.get_channel_name(connValue)))
+                        )
+        inst.ports.append(svm.PortConn(port='clk', expression=svm.SignalRef(name='clk')))
+        inst.ports.append(svm.PortConn(port='rst_n', expression=svm.SignalRef(name='rst_n')))
         out.append(f"{indent}.clk (clk),\n{indent}.rst_n (rst_n)\n);\n")
+
+        m.body.append(inst)
+
+    #print(m.render())
 
     #// Memory Instances if they exist
     if data['memories']:

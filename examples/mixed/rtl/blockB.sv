@@ -2,7 +2,6 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockB
 module blockB
-// Generated Import package statement(s)
 import mixedInclude_package::*;
 import mixedBlockC_package::*;
 import mixed_package::*;

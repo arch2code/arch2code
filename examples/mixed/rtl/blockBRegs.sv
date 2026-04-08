@@ -1,7 +1,6 @@
 // GENERATED_CODE_PARAM --block=blockBRegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
 module blockBRegs
-    // Generated Import package statement(s)
     import mixedInclude_package::*;
     import mixedBlockC_package::*;
     import mixed_package::*;

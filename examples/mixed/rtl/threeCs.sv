@@ -2,7 +2,6 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: threeCs
 module threeCs
-// Generated Import package statement(s)
 import mixedBlockC_package::*;
 (
     rdy_vld_if.dst see0,

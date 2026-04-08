@@ -5,7 +5,6 @@
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
 module consumer_hdl_sv_wrapper
-    // Generated Import package statement(s)
     import axiDemo_package::*;
 (
     // axi_read_if.dst

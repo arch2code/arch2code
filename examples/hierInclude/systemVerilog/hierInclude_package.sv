@@ -1,7 +1,6 @@
 // GENERATED_CODE_PARAM --context hierInclude.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package hierInclude_package;
-// Generated Import package statement(s)
 import hierIncludeNestedTop_package::*;
 import hierIncludeTop_package::*;
 localparam int unsigned ASIZE = 32'h0000_0007;  // The size of A

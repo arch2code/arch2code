@@ -2,7 +2,6 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockA
 module blockA
-// Generated Import package statement(s)
 import hierInclude_package::*;
 (
     rdy_vld_if.src anInterfaceB,

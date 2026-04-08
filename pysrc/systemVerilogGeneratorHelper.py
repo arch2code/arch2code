@@ -15,13 +15,13 @@ def fileNameBlockCheck(f, b):
 
 # Takes a project file prj, a starting context sc, and a dictionary for code param passed in user defined packages up
 #   excludeSelf is used to exclude self context references, used when importing packages inside a package
-#   returns a string of text that imports automatic packages and user defined packages
-def importPackages(args, prj, sc, data, excludeSelf=False):
-    out = []
+#   returns a list of packages to import
+
+def getImportPackages(args, prj, sc, data, excludeSelf=False):
     moduleSelf = ''
     if excludeSelf:
         moduleSelf = Path(data['fileName']).stem
-    
+
     packageList = []
     if args.fileMapKey:
         fileMapKey = args.fileMapKey
@@ -36,13 +36,19 @@ def importPackages(args, prj, sc, data, excludeSelf=False):
             # https://stackoverflow.com/a/45866399
             if not (packageName == moduleSelf and excludeSelf):
                 packageList.insert(0, packageName)
-    if packageList:
-        out.append(f"// Generated Import package statement(s)")
-        for item in packageList:
-            out.append(f'import {item}::*;')
+
     if data['importPackages']:
-        out.append(f"// User supplied Import package statement(s)")
         for item in data['importPackages'][0]:
-            out.append(f'import {item}::*;')
-            #out.append(f'export {item}::*;')
+            packageList.append(item)
+
+    return packageList
+
+# Takes a project file prj, a starting context sc, and a dictionary for code param passed in user defined packages up
+#   excludeSelf is used to exclude self context references, used when importing packages inside a package
+#   returns a string of text that imports automatic packages and user defined packages
+def importPackages(args, prj, sc, data, excludeSelf=False):
+    out = []
+    packageList = getImportPackages(args, prj, sc, data, excludeSelf)
+    for item in packageList:
+        out.append(f'import {item}::*;')
     return "\n".join(out)

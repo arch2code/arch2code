@@ -2,7 +2,6 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockC
 module blockC
-// Generated Import package statement(s)
 import hierIncludeC_package::*;
 import hierInclude_package::*;
 (

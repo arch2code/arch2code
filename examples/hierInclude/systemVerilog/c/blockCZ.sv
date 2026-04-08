@@ -2,7 +2,6 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockCZ
 module blockCZ
-// Generated Import package statement(s)
 import hierIncludeC_package::*;
 (
     rdy_vld_if.dst x,

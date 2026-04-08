@@ -2,10 +2,8 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: blockCX
 module blockCX
-// Generated Import package statement(s)
 import hierIncludeC_package::*;
 import hierInclude_package::*;
-// User supplied Import package statement(s)
 import hierIncludeCInclude_package::*;
 (
     rdy_vld_if.src cx2y,

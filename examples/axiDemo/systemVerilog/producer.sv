@@ -2,7 +2,6 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: producer
 module producer
-// Generated Import package statement(s)
 import axiDemo_package::*;
 (
     axi_read_if.src axiRd0,

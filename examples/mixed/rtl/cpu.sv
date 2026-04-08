@@ -2,7 +2,6 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: cpu
 module cpu
-// Generated Import package statement(s)
 import mixed_package::*;
 (
     apb_if.src cpu_main,

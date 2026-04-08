@@ -2,7 +2,6 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: inAndOut
 module inAndOut
-// Generated Import package statement(s)
 import inAndOut_package::*;
 (
     rdy_vld_if.src aOut,

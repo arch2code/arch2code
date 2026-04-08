@@ -5,14 +5,15 @@
 LEGACY_COMPAT_MODE = False
 
 from pysrc.arch2codeHelper import printError
+import pysrc.sv_model as svm
 
 def get_set_intf_types(ifType, block_data):
     """Get set of interface names, resolving any type aliases
-    
+
     Args:
         ifType: Interface type or collection of interface types
         block_data: Block data dict containing interface_type_mappings
-    
+
     Returns:
         Set of canonical interface type names
     """
@@ -20,11 +21,11 @@ def get_set_intf_types(ifType, block_data):
 
 def get_intf_type(ifType, block_data):
     """Resolve interface type alias to canonical interface type
-    
+
     Args:
         ifType: Interface type (may be an alias like 'reg_ro')
         block_data: Block data dict containing interface_type_mappings
-    
+
     Returns:
         Canonical interface type (e.g., 'reg_ro' -> 'status')
     """
@@ -158,6 +159,22 @@ def sv_gen_ports(data, prj, indent, block_data):
     out.append(f"{indent}input clk, rst_n")
     out.append(");\n")
     return out
+
+def sv_gen_ports_svm(data, prj, indent, block_data):
+    port_objects = []
+    for sourceType in data['ports']:
+        for port, port_data in data['ports'][sourceType].items():
+            connectionData = port_data.get('connection', {})
+            intf_data = get_intf_data(connectionData, prj)
+            intf_type = get_intf_type(intf_data['interfaceType'], block_data)
+            port_objects.append(
+                svm.InterfacePortDecl(
+                    name=port_data['name'],
+                    interface_name=intf_type + '_if',
+                    modport_name=port_data['direction']
+                )
+            )
+    return port_objects
 
 def sc_connect_channels(data, indent, block_data):
     out = []
@@ -399,11 +416,11 @@ def get_sorted_memories(data):
 
 def get_intf_defs(intf_type, block_data):
     """Get interface definition for given interface type
-    
+
     Args:
         intf_type: Interface type name
         block_data: Block data dict containing interface_defs
-    
+
     Returns:
         Interface definition dict or None if not found
     """

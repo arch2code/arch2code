@@ -1,7 +1,6 @@
 // GENERATED_CODE_PARAM --context mixed.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package mixed_package;
-// Generated Import package statement(s)
 import mixedBlockC_package::*;
 import mixedNestedInclude_package::*;
 import mixedInclude_package::*;

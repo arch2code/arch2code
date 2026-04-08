@@ -4,7 +4,6 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: axi4sDemo
 module axi4sDemo
-// Generated Import package statement(s)
 import axi4sDemo_tb_package::*;
 (
     axi4_stream_if.dst axis4_t1,

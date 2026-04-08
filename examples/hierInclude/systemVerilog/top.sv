@@ -2,7 +2,6 @@
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
 //module as defined by block: top
 module top
-// Generated Import package statement(s)
 import hierInclude_package::*;
 (
     input clk, rst_n

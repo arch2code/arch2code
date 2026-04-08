@@ -2,7 +2,6 @@
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
 //module as defined by block: apbDecode
 module apbDecode
-// Generated Import package statement(s)
 import apbDecode_package::*;
 (
     apb_if.src apb_uBlockA,

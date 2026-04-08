@@ -5,7 +5,6 @@
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
 module axi4sDemo_hdl_sv_wrapper
-    // Generated Import package statement(s)
     import axi4sDemo_tb_package::*;
 (
     // axi4_stream_if.dst

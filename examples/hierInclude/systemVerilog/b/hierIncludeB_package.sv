@@ -1,7 +1,6 @@
 // GENERATED_CODE_PARAM --context b/hierIncludeB.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package hierIncludeB_package;
-// Generated Import package statement(s)
 import hierIncludeTop_package::*;
 import hierInclude_package::*;
 import hierIncludeBInclude_package::*;
