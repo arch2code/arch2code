@@ -1,8 +1,7 @@
 // GENERATED_CODE_PARAM --block=consumer
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: consumer
 module consumer
-import axiDemo_package::*;
+    import axiDemo_package::*;
 (
     axi_read_if.dst axiRd0,
     axi_read_if.dst axiRd1,
@@ -14,12 +13,14 @@ import axiDemo_package::*;
     axi_write_if.dst axiWr3,
     axi4_stream_if.dst axiStr0,
     axi4_stream_if.dst axiStr1,
-    input clk, rst_n
+    input logic clk,
+    input logic rst_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
 
-// Instances
+    // Instances
+
 // GENERATED_CODE_END
 
 endmodule: consumer

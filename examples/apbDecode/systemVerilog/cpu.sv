@@ -1,16 +1,17 @@
 // GENERATED_CODE_PARAM --block=cpu
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: cpu
 module cpu
-import apbDecode_package::*;
+    import apbDecode_package::*;
 (
     apb_if.src apbReg,
-    input clk, rst_n
+    input logic clk,
+    input logic rst_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
 
-// Instances
+    // Instances
+
 // GENERATED_CODE_END
 
 endmodule : cpu

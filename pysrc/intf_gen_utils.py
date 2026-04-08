@@ -160,7 +160,7 @@ def sv_gen_ports(data, prj, indent, block_data):
     out.append(");\n")
     return out
 
-def sv_gen_ports_svm(data, prj, indent, block_data):
+def sv_gen_ports_svm(data, prj, block_data):
     port_objects = []
     for sourceType in data['ports']:
         for port, port_data in data['ports'][sourceType].items():

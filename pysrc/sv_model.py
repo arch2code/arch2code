@@ -1577,6 +1577,7 @@ class ModuleDecl(SvNode):
     ports: List[ModulePortItem] = []
     body: List[ModuleBodyItem] = []
     end_label: bool = True  # emit `: name` after endmodule per LRM §A.1.2
+    emit_end: bool = True
 
     def render(self, indent: int = 0) -> str:
         pad = _ind(indent)
@@ -1649,10 +1650,12 @@ class ModuleDecl(SvNode):
         # ── endmodule [ : identifier ] ────────────────────────────────────────
         if self.body:
             lines.append("")
-        footer = f"{pad}endmodule"
-        if self.end_label:
-            footer += f" : {self.name}"
-        lines.append(footer)
+
+        if self.emit_end:
+            footer = f"{pad}endmodule"
+            if self.end_label:
+                footer += f" : {self.name}"
+                lines.append(footer)
 
         return "\n".join(lines)
 
