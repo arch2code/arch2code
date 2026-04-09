@@ -23,16 +23,14 @@ module top
         .tid_t(axiAddrSt),
         .tdest_t(axiAddrSt),
         .tuser_t(axiAddrSt)
-    ) axiStr0 (
-    );
+    ) axiStr0 ();
 
     axi4_stream_if #(
         .tdata_t(axiDataSt),
         .tid_t(axiAddrSt),
         .tdest_t(axiAddrSt),
         .tuser_t(axiAddrSt)
-    ) axiStr1 (
-    );
+    ) axiStr1 ();
 
 
     // Instances

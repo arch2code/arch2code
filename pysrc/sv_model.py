@@ -81,18 +81,23 @@ def _render_inst(
 
     # ── multi-line fallback ──────────────────────────────────────────────────
     lines: list[str] = []
+    tmp_str: str = ""
     if params:
         lines.append(f"{pad}{type_name} #(")
         for i, p in enumerate(params):
             sep = "," if i < len(params) - 1 else ""
             lines.append(_with_sep(p.render(indent + 1), sep))
-        lines.append(f"{pad}) {inst_label} (")
+        tmp_str = f"{pad}) {inst_label} ("
     else:
-        lines.append(f"{pad}{type_name} {inst_label} (")
+        tmp_str = f"{pad}{type_name} {inst_label} ("
+    if not ports:
+        tmp_str += ");"
+    lines.append(tmp_str)
     for i, p in enumerate(ports):
         sep = "," if i < len(ports) - 1 else ""
         lines.append(_with_sep(p.render(indent + 1), sep))
-    lines.append(f"{pad});")
+    if ports:
+        lines.append(f"{pad});")
     return comment_prefix + "\n".join(lines)
 
 
