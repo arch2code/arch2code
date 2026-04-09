@@ -28,8 +28,11 @@ def render(args, prj, data):
     indentSize = 4
     indent = ' ' * indentSize
 
-    # Pass in the stem of fileName and the blockName
-    out.append(fileNameBlockCheck(Path(data['fileName']).resolve().stem, data['blockName']))
+    # check file name and block name match
+    fileNameBlockCheck(data)
+
+    # Module declaration
+    out.append(f"module {data['blockName']}")
 
     # Packages
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']

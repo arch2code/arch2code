@@ -1,5 +1,5 @@
 from pathlib import Path
-from pysrc.systemVerilogGeneratorHelper import getImportPackages
+from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck,getImportPackages
 from pysrc.processYaml import camelCase
 import pysrc.intf_gen_utils as intf_gen_utils
 import pysrc.sv_model as svm
@@ -8,6 +8,11 @@ import pysrc.sv_model as svm
 # prj object
 # data set dict
 def render(args, prj, data):
+
+    # check file name and block name match
+    fileNameBlockCheck(data)
+
+    # Module declaration
     module = svm.ModuleDecl(name=data['blockName'], emit_end=False)
 
     # Packages

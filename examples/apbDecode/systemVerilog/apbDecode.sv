@@ -1,6 +1,5 @@
 // GENERATED_CODE_PARAM --block=apbDecode
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
-//module as defined by block: apbDecode
 module apbDecode
 import apbDecode_package::*;
 (

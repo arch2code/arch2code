@@ -4,14 +4,14 @@ from pathlib import Path
 from pysrc.arch2codeHelper import printWarning
 
 # Takes a file name f and a block b, checks if they match
-#   returns a string of text modulename
-def fileNameBlockCheck(f, b):
-    out = ''
-    if f != b:
-        printWarning(f'The file name {f} does not match the block name {b}')
-    out += f"//module as defined by block: {b}\n"
-    out += f"module {b}"
-    return out
+#   returns True if they match, prints a warning and returns False if they don't match
+def fileNameBlockCheck(data):
+    moduleSelf = Path(data['fileName']).resolve().stem
+    if moduleSelf != data['blockName']:
+        printWarning(f'The file name {moduleSelf} does not match the block name {data["blockName"]}.'
+            f' This may cause issues with some tools. Consider changing the file name or block name to match.')
+        return False
+    return True
 
 # Takes a project file prj, a starting context sc, and a dictionary for code param passed in user defined packages up
 #   excludeSelf is used to exclude self context references, used when importing packages inside a package
