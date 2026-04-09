@@ -16,22 +16,9 @@ module blockA
 
     // Interface Instances, needed for between instanced modules inside this module
 
-    status_if #(
-        .data_t(aRegSt)
-    ) roA (
-    );
-
-    memory_if #(
-        .data_t(aRegSt),
-        .addr_t(bSizeSt)
-    ) blockATableLocal (
-    );
-
-    memory_if #(
-        .data_t(test37BitRegSt),
-        .addr_t(bSizeSt)
-    ) blockATable37Bit (
-    );
+    status_if #(.data_t(aRegSt)) roA ();
+    memory_if #(.data_t(aRegSt), .addr_t(bSizeSt)) blockATableLocal ();
+    memory_if #(.data_t(test37BitRegSt), .addr_t(bSizeSt)) blockATable37Bit ();
 
 
     // Instances

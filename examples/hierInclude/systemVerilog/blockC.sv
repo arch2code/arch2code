@@ -12,15 +12,8 @@ module blockC
 
     // Interface Instances, needed for between instanced modules inside this module
 
-    rdy_vld_if #(
-        .data_t(cSt)
-    ) cx2y (
-    );
-
-    rdy_vld_if #(
-        .data_t(cSt)
-    ) cx2z (
-    );
+    rdy_vld_if #(.data_t(cSt)) cx2y ();
+    rdy_vld_if #(.data_t(cSt)) cx2z ();
 
 
     // Instances
@@ -34,17 +27,8 @@ module blockC
         .rst_n(rst_n)
     );
 
-    blockCY uBlockCY (
-        .x(cx2y),
-        .clk(clk),
-        .rst_n(rst_n)
-    );
-
-    blockCZ uBlockCZ (
-        .x(cx2z),
-        .clk(clk),
-        .rst_n(rst_n)
-    );
+    blockCY uBlockCY (.x(cx2y), .clk(clk), .rst_n(rst_n));
+    blockCZ uBlockCZ (.x(cx2z), .clk(clk), .rst_n(rst_n));
 
 // GENERATED_CODE_END
 

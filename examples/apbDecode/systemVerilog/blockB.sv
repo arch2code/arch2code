@@ -10,30 +10,14 @@ module blockB
 
     // Interface Instances, needed for between instanced modules inside this module
 
-    status_if #(
-        .data_t(un0BRegSt)
-    ) rwUn0B (
-    );
-
-    status_if #(
-        .data_t(aSizeRegSt)
-    ) roB (
-    );
+    status_if #(.data_t(un0BRegSt)) rwUn0B ();
+    status_if #(.data_t(aSizeRegSt)) roB ();
 
 
     // Memory Interfaces
 
-    memory_if #(
-        .data_t(bMemSt),
-        .addr_t(bMemAddrSt)
-    ) blockBTable (
-    );
-
-    memory_if #(
-        .data_t(bMemSt),
-        .addr_t(bMemAddrSt)
-    ) blockBTable_reg (
-    );
+    memory_if #(.data_t(bMemSt), .addr_t(bMemAddrSt)) blockBTable ();
+    memory_if #(.data_t(bMemSt), .addr_t(bMemAddrSt)) blockBTable_reg ();
 
     // Instances
 

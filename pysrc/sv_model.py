@@ -11,7 +11,7 @@ to emit LRM-compliant SystemVerilog source text.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Callable, List, Literal, Optional, Union
+from typing import Annotated, Any, List, Literal, Optional, Union
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 
@@ -35,6 +35,65 @@ def _with_sep(rendered: str, sep: str) -> str:
         idx = rendered.index(marker)
         return rendered[:idx] + sep + rendered[idx:]
     return rendered + sep
+
+
+_COMPACT_LINE_MAX: int = 100
+
+
+def set_compact_line_max(n: int) -> None:
+    """Set the column limit used by _render_inst when deciding between a
+    compact one-liner and the standard multi-line format."""
+    global _COMPACT_LINE_MAX
+    _COMPACT_LINE_MAX = n
+
+
+def _render_inst(
+    indent: int,
+    type_name: str,
+    params: list,
+    inst_label: str,
+    ports: list,
+    comment: Optional[str],
+) -> str:
+    """Render a module/interface instantiation.
+
+    When ``comment`` is set it is emitted as a ``// …`` line immediately
+    before the instantiation (at the same indentation level).
+
+    Emits a one-liner when no sub-item carries its own comment and the
+    resulting line fits within ``_COMPACT_LINE_MAX``; otherwise falls back
+    to the standard multi-line format.
+    """
+    pad = _ind(indent)
+    comment_prefix = f"{pad}// {comment}\n" if comment else ""
+
+    # ── attempt compact one-liner ────────────────────────────────────────────
+    no_sub_comments = not any(item.comment for item in list(params) + list(ports))
+    if no_sub_comments:
+        params_str = ", ".join(p.render(0) for p in params)
+        ports_str = ", ".join(p.render(0) for p in ports)
+        if params_str:
+            candidate = f"{pad}{type_name} #({params_str}) {inst_label} ({ports_str});"
+        else:
+            candidate = f"{pad}{type_name} {inst_label} ({ports_str});"
+        if len(candidate) <= _COMPACT_LINE_MAX:
+            return comment_prefix + candidate
+
+    # ── multi-line fallback ──────────────────────────────────────────────────
+    lines: list[str] = []
+    if params:
+        lines.append(f"{pad}{type_name} #(")
+        for i, p in enumerate(params):
+            sep = "," if i < len(params) - 1 else ""
+            lines.append(_with_sep(p.render(indent + 1), sep))
+        lines.append(f"{pad}) {inst_label} (")
+    else:
+        lines.append(f"{pad}{type_name} {inst_label} (")
+    for i, p in enumerate(ports):
+        sep = "," if i < len(ports) - 1 else ""
+        lines.append(_with_sep(p.render(indent + 1), sep))
+    lines.append(f"{pad});")
+    return comment_prefix + "\n".join(lines)
 
 
 def _begin_end(
@@ -95,68 +154,17 @@ class SvNode(BaseModel):
 
     - ``comment``: optional inline ``// comment`` appended to the node's
       primary output line.
-    - ``render_engine``: optional custom render callable invoked *instead of*
-      the built-in renderer.  Signature::
-
-          def my_renderer(node: SvNode, indent: int) -> str: ...
-
-      The callable receives the fully-populated node object (``node``) so it
-      has access to every field as context, and the current indentation level
-      (``indent``).  Set this field programmatically; it is excluded from
-      JSON/YAML serialisation.
     - ``render(indent)`` emits the BNF construct as LRM-formatted text.
     """
 
-    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(extra="forbid")
 
     comment: Optional[str] = Field(
         default=None,
         description="Inline // comment appended to this node's primary line.",
     )
-    render_engine: Optional[Callable[["SvNode", int], str]] = Field(
-        default=None,
-        exclude=True,
-        repr=False,
-        description=(
-            "Optional custom render callable invoked instead of the built-in "
-            "renderer.  Signature: ``(node: SvNode, indent: int) -> str``. "
-            "Set programmatically; excluded from serialisation."
-        ),
-    )
-
-    @field_validator("render_engine", mode="before")
-    @classmethod
-    def _validate_render_engine(cls, v: object) -> object:
-        if v is None or callable(v):
-            return v
-        raise ValueError(
-            "render_engine must be a callable with signature "
-            "(node: SvNode, indent: int) -> str, or None"
-        )
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        """
-        Wrap every subclass ``render`` implementation so that when
-        ``render_engine`` is set on an instance it is called transparently
-        in place of the built-in method — no per-subclass changes required.
-        """
-        super().__init_subclass__(**kwargs)
-        original = cls.__dict__.get("render")
-        if original is not None:
-            def _make_wrapped(f: Any) -> Any:
-                def _wrapped(self: "SvNode", indent: int = 0) -> str:
-                    if self.render_engine is not None:
-                        return self.render_engine(self, indent)
-                    return f(self, indent)
-                _wrapped.__doc__ = f.__doc__
-                _wrapped.__name__ = f.__name__
-                _wrapped.__qualname__ = f.__qualname__
-                return _wrapped
-            cls.render = _make_wrapped(original)  # type: ignore[method-assign]
 
     def render(self, indent: int = 0) -> str:  # pragma: no cover
-        if self.render_engine is not None:
-            return self.render_engine(self, indent)
         raise NotImplementedError(type(self).__name__)
 
 
@@ -738,31 +746,10 @@ class ModuleInst(SvNode):
     ports: List[PortConn] = []
 
     def render(self, indent: int = 0) -> str:
-        pad = _ind(indent)
-        lines: list[str] = []
-
-        # ── name_of_instance ::= instance_identifier { unpacked_dimension } ──
         inst_label = self.instance_name
         if self.instance_dims:
             inst_label += " " + " ".join(d.render() for d in self.instance_dims)
-
-        # ── type + optional #( parameter_value_assignment ) ──────────────────
-        if self.parameters:
-            lines.append(f"{pad}{self.module_name} #(")
-            for i, p in enumerate(self.parameters):
-                sep = "," if i < len(self.parameters) - 1 else ""
-                lines.append(_with_sep(p.render(indent + 1), sep))
-            lines.append(f"{pad}) {inst_label} (")
-        else:
-            lines.append(f"{pad}{self.module_name} {inst_label} (")
-
-        # ── list_of_port_connections ──────────────────────────────────────────
-        for i, p in enumerate(self.ports):
-            sep = "," if i < len(self.ports) - 1 else ""
-            lines.append(_with_sep(p.render(indent + 1), sep))
-
-        lines.append(f"{pad});" + _inline_comment(self.comment))
-        return "\n".join(lines)
+        return _render_inst(indent, self.module_name, self.parameters, inst_label, self.ports, self.comment)
 
 
 class InterfaceInst(SvNode):
@@ -783,28 +770,10 @@ class InterfaceInst(SvNode):
     ports: List[PortConn] = []
 
     def render(self, indent: int = 0) -> str:
-        pad = _ind(indent)
-        lines: list[str] = []
-
         inst_label = self.instance_name
         if self.instance_dims:
             inst_label += " " + " ".join(d.render() for d in self.instance_dims)
-
-        if self.parameters:
-            lines.append(f"{pad}{self.interface_name} #(")
-            for i, p in enumerate(self.parameters):
-                sep = "," if i < len(self.parameters) - 1 else ""
-                lines.append(_with_sep(p.render(indent + 1), sep))
-            lines.append(f"{pad}) {inst_label} (")
-        else:
-            lines.append(f"{pad}{self.interface_name} {inst_label} (")
-
-        for i, p in enumerate(self.ports):
-            sep = "," if i < len(self.ports) - 1 else ""
-            lines.append(_with_sep(p.render(indent + 1), sep))
-
-        lines.append(f"{pad});" + _inline_comment(self.comment))
-        return "\n".join(lines)
+        return _render_inst(indent, self.interface_name, self.parameters, inst_label, self.ports, self.comment)
 
 
 # ─── Escape hatches ───────────────────────────────────────────────────────────
@@ -1436,7 +1405,8 @@ class InterfaceDecl(SvNode):
     parameters: List[ParamDecl] = []
     ports: List[PortDecl] = []
     body: List[InterfaceBodyItem] = []
-    end_label: bool = True
+    emit_end: bool = True # emit `endinterface` per LRM §A.1.3
+    end_label: bool = True # emit `endinterface : {self.name}` per LRM §A.1.3
 
     def render(self, indent: int = 0) -> str:
         pad = _ind(indent)
@@ -1509,10 +1479,8 @@ class InterfaceDecl(SvNode):
 
         if self.body:
             lines.append("")
-        footer = f"{pad}endinterface"
-        if self.end_label:
-            footer += f" : {self.name}"
-        lines.append(footer)
+        if self.emit_end:
+            lines.append(f"{pad}endinterface : {self.name}" if self.end_label else f"{pad}endinterface")
 
         return "\n".join(lines)
 
@@ -1576,8 +1544,8 @@ class ModuleDecl(SvNode):
     parameters: List[ParamDecl] = []
     ports: List[ModulePortItem] = []
     body: List[ModuleBodyItem] = []
+    emit_end: bool = True # emit `endmodule` per LRM §A.1.2
     end_label: bool = True  # emit `: name` after endmodule per LRM §A.1.2
-    emit_end: bool = True
 
     def render(self, indent: int = 0) -> str:
         pad = _ind(indent)
@@ -1640,22 +1608,31 @@ class ModuleDecl(SvNode):
         )
         if self.body:
             lines.append("")
-            for i, item in enumerate(self.body):
-                lines.append(item.render(indent + 1))
+            rendered_body = [item.render(indent + 1) for item in self.body]
+            for i, (item, rendered) in enumerate(zip(self.body, rendered_body)):
+                lines.append(rendered)
                 if i < len(self.body) - 1:
                     next_item = self.body[i + 1]
+                    next_rendered = rendered_body[i + 1]
                     if isinstance(item, _BLOCK_TYPES) or isinstance(next_item, _BLOCK_TYPES):
-                        lines.append("")
+                        # Omit blank line between consecutive compact (single-line,
+                        # no comment) instances; keep it in all other cases.
+                        curr_compact = (
+                            isinstance(item, (ModuleInst, InterfaceInst))
+                            and "\n" not in rendered
+                        )
+                        next_compact = (
+                            isinstance(next_item, (ModuleInst, InterfaceInst))
+                            and "\n" not in next_rendered
+                        )
+                        if not (curr_compact and next_compact):
+                            lines.append("")
 
         # ── endmodule [ : identifier ] ────────────────────────────────────────
         if self.body:
             lines.append("")
-
         if self.emit_end:
-            footer = f"{pad}endmodule"
-            if self.end_label:
-                footer += f" : {self.name}"
-                lines.append(footer)
+            lines.append(f"{pad}endmodule : {self.name}" if self.end_label else f"{pad}endmodule")
 
         return "\n".join(lines)
 

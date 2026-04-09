@@ -14,23 +14,9 @@ module threeCs
 
     // Instances
 
-    blockC uBlockC0 (
-        .see(see0),
-        .clk(clk),
-        .rst_n(rst_n)
-    );
-
-    blockC uBlockC1 (
-        .see(see1),
-        .clk(clk),
-        .rst_n(rst_n)
-    );
-
-    blockC uBlockC2 (
-        .see(see2),
-        .clk(clk),
-        .rst_n(rst_n)
-    );
+    blockC uBlockC0 (.see(see0), .clk(clk), .rst_n(rst_n));
+    blockC uBlockC1 (.see(see1), .clk(clk), .rst_n(rst_n));
+    blockC uBlockC2 (.see(see2), .clk(clk), .rst_n(rst_n));
 
 // GENERATED_CODE_END
 

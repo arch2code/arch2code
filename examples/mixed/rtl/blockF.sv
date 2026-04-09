@@ -20,17 +20,8 @@ module blockF
 
     // Memory Interfaces
 
-    memory_if #(
-        .data_t(seeSt),
-        .addr_t(bSizeSt)
-    ) test (
-    );
-
-    memory_if #(
-        .data_t(seeSt),
-        .addr_t(bSizeSt)
-    ) test_unused (
-    );
+    memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) test ();
+    memory_if #(.data_t(seeSt), .addr_t(bSizeSt)) test_unused ();
 
     // Instances
     // Memory Instances

@@ -10,64 +10,20 @@ module blockA
 
     // Interface Instances, needed for between instanced modules inside this module
 
-    status_if #(
-        .data_t(aRegSt)
-    ) roA (
-    );
-
-    status_if #(
-        .data_t(un0ARegSt)
-    ) rwUn0A (
-    );
-
-    status_if #(
-        .data_t(un0ARegSt)
-    ) roUn0A (
-    );
-
-    external_reg_if #(
-        .data_t(un0ARegSt)
-    ) extA (
-    );
+    status_if #(.data_t(aRegSt)) roA ();
+    status_if #(.data_t(un0ARegSt)) rwUn0A ();
+    status_if #(.data_t(un0ARegSt)) roUn0A ();
+    external_reg_if #(.data_t(un0ARegSt)) extA ();
 
 
     // Memory Interfaces
 
-    memory_if #(
-        .data_t(aMemSt),
-        .addr_t(aMemAddrSt)
-    ) blockATable0 (
-    );
-
-    memory_if #(
-        .data_t(aMemSt),
-        .addr_t(aMemAddrSt)
-    ) blockATable0_reg (
-    );
-
-    memory_if #(
-        .data_t(aMemSt),
-        .addr_t(aMemAddrSt)
-    ) blockATableX (
-    );
-
-    memory_if #(
-        .data_t(aMemSt),
-        .addr_t(aMemAddrSt)
-    ) blockATableX_unused (
-    );
-
-    memory_if #(
-        .data_t(aMemSt),
-        .addr_t(aMemAddrSt)
-    ) blockATable1 (
-    );
-
-    memory_if #(
-        .data_t(aMemSt),
-        .addr_t(aMemAddrSt)
-    ) blockATable1_reg (
-    );
+    memory_if #(.data_t(aMemSt), .addr_t(aMemAddrSt)) blockATable0 ();
+    memory_if #(.data_t(aMemSt), .addr_t(aMemAddrSt)) blockATable0_reg ();
+    memory_if #(.data_t(aMemSt), .addr_t(aMemAddrSt)) blockATableX ();
+    memory_if #(.data_t(aMemSt), .addr_t(aMemAddrSt)) blockATableX_unused ();
+    memory_if #(.data_t(aMemSt), .addr_t(aMemAddrSt)) blockATable1 ();
+    memory_if #(.data_t(aMemSt), .addr_t(aMemAddrSt)) blockATable1_reg ();
 
     // Instances
 

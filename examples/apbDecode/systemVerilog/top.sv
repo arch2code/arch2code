@@ -9,26 +9,13 @@ module top
 
     // Interface Instances, needed for between instanced modules inside this module
 
-    apb_if #(
-        .addr_t(apbAddrSt),
-        .data_t(apbDataSt)
-    ) apbReg (
-    );
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg ();
 
 
     // Instances
 
-    cpu uCPU (
-        .apbReg(apbReg),
-        .clk(clk),
-        .rst_n(rst_n)
-    );
-
-    someRapper uSomeRapper (
-        .apbReg(apbReg),
-        .clk(clk),
-        .rst_n(rst_n)
-    );
+    cpu uCPU (.apbReg(apbReg), .clk(clk), .rst_n(rst_n));
+    someRapper uSomeRapper (.apbReg(apbReg), .clk(clk), .rst_n(rst_n));
 
 // GENERATED_CODE_END
 

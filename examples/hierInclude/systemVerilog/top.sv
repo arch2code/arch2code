@@ -9,21 +9,9 @@ module top
 
     // Interface Instances, needed for between instanced modules inside this module
 
-    rdy_vld_if #(
-        .data_t(aSt)
-    ) anInterfaceB (
-    );
-
-    rdy_vld_if #(
-        .data_t(aSt)
-    ) anInterfaceC (
-    );
-
-    req_ack_if #(
-        .data_t(anotherSt),
-        .rdata_t(yetAnotherSt)
-    ) b2C (
-    );
+    rdy_vld_if #(.data_t(aSt)) anInterfaceB ();
+    rdy_vld_if #(.data_t(aSt)) anInterfaceC ();
+    req_ack_if #(.data_t(anotherSt), .rdata_t(yetAnotherSt)) b2C ();
 
 
     // Instances
@@ -35,19 +23,8 @@ module top
         .rst_n(rst_n)
     );
 
-    blockB uBlockB (
-        .eh2b(anInterfaceB),
-        .b2C(b2C),
-        .clk(clk),
-        .rst_n(rst_n)
-    );
-
-    blockC uBlockC (
-        .eh2c(anInterfaceC),
-        .b2C(b2C),
-        .clk(clk),
-        .rst_n(rst_n)
-    );
+    blockB uBlockB (.eh2b(anInterfaceB), .b2C(b2C), .clk(clk), .rst_n(rst_n));
+    blockC uBlockC (.eh2c(anInterfaceC), .b2C(b2C), .clk(clk), .rst_n(rst_n));
 
 // GENERATED_CODE_END
 
