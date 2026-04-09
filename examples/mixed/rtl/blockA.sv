@@ -1,34 +1,36 @@
 // GENERATED_CODE_PARAM --block=blockA
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockA
 module blockA
-// Generated Import package statement(s)
-import mixedInclude_package::*;
-import mixedBlockC_package::*;
-import mixed_package::*;
+    import mixedInclude_package::*;
+    import mixedBlockC_package::*;
+    import mixed_package::*;
 (
     req_ack_if.src aStuffIf,
     rdy_vld_if.src cStuffIf,
     notify_ack_if.src startDone,
     rdy_vld_if.src dupIf,
     apb_if.dst apbReg,
-    input clk, rst_n
+    input logic clk,
+    input logic rst_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-    status_if #(.data_t(aRegSt)) roA();
-    memory_if #(.data_t(aRegSt), .addr_t(bSizeSt)) blockATableLocal();
-    memory_if #(.data_t(test37BitRegSt), .addr_t(bSizeSt)) blockATable37Bit();
 
-// Instances
-blockARegs uBlockARegs (
-    .apbReg (apbReg),
-    .roA (roA),
-    .blockATableLocal (blockATableLocal),
-    .blockATable37Bit (blockATable37Bit),
-    .clk (clk),
-    .rst_n (rst_n)
-);
+    status_if #(.data_t(aRegSt)) roA ();
+    memory_if #(.data_t(aRegSt), .addr_t(bSizeSt)) blockATableLocal ();
+    memory_if #(.data_t(test37BitRegSt), .addr_t(bSizeSt)) blockATable37Bit ();
+
+
+    // Instances
+
+    blockARegs uBlockARegs (
+        .apbReg(apbReg),
+        .roA(roA),
+        .blockATableLocal(blockATableLocal),
+        .blockATable37Bit(blockATable37Bit),
+        .clk(clk),
+        .rst_n(rst_n)
+    );
 
 // GENERATED_CODE_END
 

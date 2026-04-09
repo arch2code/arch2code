@@ -1,11 +1,9 @@
 // GENERATED_CODE_PARAM --block=blockD
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockD
 module blockD
-// Generated Import package statement(s)
-import mixedInclude_package::*;
-import mixedBlockC_package::*;
-import mixed_package::*;
+    import mixedInclude_package::*;
+    import mixedBlockC_package::*;
+    import mixed_package::*;
 (
     rdy_vld_if.src cStuffIf,
     rdy_vld_if.src dee0,
@@ -19,12 +17,14 @@ import mixed_package::*;
     memory_if.dst blockBTable37Bit,
     memory_if.src blockBTable1,
     memory_if.src blockBTableSP,
-    input clk, rst_n
+    input logic clk,
+    input logic rst_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
 
-// Instances
+    // Instances
+
 // GENERATED_CODE_END
 
 // Memory storage for blockBTable37Bit (external listener)

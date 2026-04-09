@@ -2,19 +2,19 @@
 
 // GENERATED_CODE_PARAM --block=axi4sDemo
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: axi4sDemo
 module axi4sDemo
-// Generated Import package statement(s)
-import axi4sDemo_tb_package::*;
+    import axi4sDemo_tb_package::*;
 (
     axi4_stream_if.dst axis4_t1,
     axi4_stream_if.src axis4_t2,
-    input clk, rst_n
+    input logic clk,
+    input logic rst_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
 
-// Instances
+    // Instances
+
 // GENERATED_CODE_END
 
     localparam int SRC_DATA_WIDTH = 256;

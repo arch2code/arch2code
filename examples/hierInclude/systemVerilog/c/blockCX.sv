@@ -1,23 +1,22 @@
 // GENERATED_CODE_PARAM --block=blockCX --importPackage=hierIncludeCInclude_package
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockCX
 module blockCX
-// Generated Import package statement(s)
-import hierIncludeC_package::*;
-import hierInclude_package::*;
-// User supplied Import package statement(s)
-import hierIncludeCInclude_package::*;
+    import hierIncludeC_package::*;
+    import hierInclude_package::*;
+    import hierIncludeCInclude_package::*;
 (
     rdy_vld_if.src cx2y,
     rdy_vld_if.src cx2z,
     rdy_vld_if.dst anInterface,
     req_ack_if.dst b2C,
-    input clk, rst_n
+    input logic clk,
+    input logic rst_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
 
-// Instances
+    // Instances
+
 // GENERATED_CODE_END
 
 

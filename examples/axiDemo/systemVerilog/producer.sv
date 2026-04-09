@@ -1,9 +1,7 @@
 // GENERATED_CODE_PARAM --block=producer
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: producer
 module producer
-// Generated Import package statement(s)
-import axiDemo_package::*;
+    import axiDemo_package::*;
 (
     axi_read_if.src axiRd0,
     axi_read_if.src axiRd1,
@@ -15,12 +13,14 @@ import axiDemo_package::*;
     axi_write_if.src axiWr3,
     axi4_stream_if.src axiStr0,
     axi4_stream_if.src axiStr1,
-    input clk, rst_n
+    input logic clk,
+    input logic rst_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
 
-// Instances
+    // Instances
+
 // GENERATED_CODE_END
 
 endmodule: producer

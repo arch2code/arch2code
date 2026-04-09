@@ -1,53 +1,56 @@
-from pathlib import Path
-from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck, importPackages
+from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck,getImportPackages
 from pysrc.processYaml import camelCase
 import pysrc.intf_gen_utils as intf_gen_utils
+import pysrc.sv_model as svm
 
 # args from generator line
 # prj object
 # data set dict
 def render(args, prj, data):
-    out = []
-    indent = ' ' * 4
 
-    # Pass in the stem of fileName and the blockName
-    out.append(fileNameBlockCheck(Path(data['fileName']).resolve().stem, data['blockName']))
+    # check file name and block name match
+    fileNameBlockCheck(data)
+
+    # Module declaration
+    module = svm.ModuleDecl(name=data['blockName'], emit_end=False)
 
     # Packages
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
-    out.append(importPackages(args, prj, startingContext, data))
+
+    module.imports = [f"{pkg}::*" for pkg in getImportPackages(args, prj, startingContext, data)]
 
     # Parameters
     if ( prj.data['blocks'][data['qualBlock']]['params'] ):
-        out.append('#(')
-        out.append(",\n".join([f"{indent}parameter {param['param']}" for param in prj.data['blocks'][data['qualBlock']]['params']]))
-        out.append(')')
-
-    out.append("(")
+        for param in prj.data['blocks'][data['qualBlock']]['params']:
+            module.parameters.append(svm.ParamDecl(name=param['param']))
 
     # Ports
-    out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
+    module.ports = intf_gen_utils.sv_gen_ports_svm(data, prj, data)
+    module.ports += [svm.PortDecl(name='clk', direction='input'), svm.PortDecl(name='rst_n', direction='input')]
 
     #// Interface Instances, needed for between instanced modules inside this module
-    out.append(f"{indent}// Interface Instances, needed for between instanced modules inside this module")
+    module.body.append(svm.CommentBlock(text="Interface Instances, needed for between instanced modules inside this module"))
+
     for channelType in data["connectDouble"]:
         for key, value in data["connectDouble"][channelType].items():
             intf_type = intf_gen_utils.get_intf_type(value['interfaceType'], data)
             intf_data = intf_gen_utils.get_intf_data(value, prj)
-            s = f"{indent}{intf_type}_if #("
-            params = list()
-            if intf_data['structures']:
-                for item in intf_data['structures']:
-                    params.append(f".{item['structureType']}({item['structure']})")
-            s += ', '.join(params)
-            s += f") {intf_gen_utils.get_channel_name(value)}();"
-            out.append(s)
-    out.append("")
+            if not intf_data['structures']:
+                intf_data['structures'] = []
+            module.body.append(svm.InterfaceInst(
+                    instance_name=intf_gen_utils.get_channel_name(value),
+                    interface_name=intf_type + '_if',
+                    parameters=[svm.ParamConn(param=item['structureType'], value=item['structure']) for item in intf_data['structures']]
+                )
+            )
+
+    module.body.append(svm.CommentBlock(text=""))
 
     #// Memory Interfaces if they exist
     memory_ports = {}
     if data['memories']:
-        out.append(f"{indent}// Memory Interfaces")
+        module.body.append(svm.CommentBlock(text="Memory Interfaces"))
+
         for mem_key, mem_info in data['memories'].items():
             # dualPort with no connection is one with name
             #   and one with Unused
@@ -67,47 +70,64 @@ def render(args, prj, data):
             if mem_info['regAccess']:
                 ports[portCount-1] = mem_info['memory']+'_reg'
             for portName in ports.values():
-                out.append(f"{indent}memory_if #(.data_t({mem_info['structure']}), .addr_t({mem_info['addressStruct']})) {portName}();")
+                module.body.append(
+                    svm.InterfaceInst(
+                        instance_name=portName,
+                        interface_name='memory_if',
+                        parameters=[
+                            svm.ParamConn(param='data_t', value=mem_info['structure']),
+                            svm.ParamConn(param='addr_t', value=mem_info['addressStruct'])
+                        ]
+                    )
+                )
             memory_ports[mem_key] = ports
-        out.append("")
 
     #// Instances
-    out.append("// Instances")
+    module.body.append(svm.CommentBlock(text="Instances"))
+
     for unusedKey, value in data['subBlockInstances'].items():
 
         qualBlockInst = prj.getQualBlock(value['instanceType'])
+
+        inst = svm.ModuleInst(instance_name=value['instance'], module_name=value['instanceType'])
 
         if qualBlockInst in prj.data['parameters'].keys():
             variant_data = [v for _,v in prj.data['parameters'][qualBlockInst]['variants'].items() if v['variant'] == value['variant']]
         else:
             variant_data = None
 
-        inst_params = ' '
         if ( variant_data ):
-            inst_params += '#('
-            inst_params += ", ".join([f".{param['param']}({param['value']})" for param in variant_data])
-            inst_params += ') '
+            inst.parameters = [svm.ParamConn(param=param['param'], value=str(param['value'])) for param in variant_data]
 
-        out.append(f"{value['instanceType']}{inst_params}{value['instance']} (")
+
         # Declare connectionMaps that connect to this instance
         for unusedKey2, value2 in data['connectionMaps'].items():
             if (value['instance'] == value2['instance']):
-                out.append(f"{indent}.{value2['instancePortName']} ({value2['parentPortName']}),")
+                inst.ports.append(
+                    svm.PortConn(port=value2['instancePortName'], expression=svm.InterfaceRef(name=value2['parentPortName']))
+                )
         # loop through the memory connections that connect to this instance
         for unusedKey2, memValue in data['memoryConnections'].items():
             if (value['instance'] == memValue['instance']):
-                out.append(f"{indent}.{memValue['memory']} ({intf_gen_utils.get_channel_name(memValue)}),")
+                inst.ports.append(
+                    svm.PortConn(port=memValue['memory'], expression=svm.InterfaceRef(name=intf_gen_utils.get_channel_name(memValue)))
+                )
         # loop through the register connections that connect to this instance
         for sourceType in data['connectDouble']:
             for connKey, connValue in data['connectDouble'][sourceType].items():
                 for end, endValue in connValue['ends'].items():
                     if (value['instance'] == endValue['instance']):
-                        out.append(f"{indent}.{endValue['portName']} ({intf_gen_utils.get_channel_name(connValue)}),")
-        out.append(f"{indent}.clk (clk),\n{indent}.rst_n (rst_n)\n);\n")
+                        inst.ports.append(
+                            svm.PortConn(port=endValue['portName'], expression=svm.InterfaceRef(name=intf_gen_utils.get_channel_name(connValue)))
+                        )
+        inst.ports.append(svm.PortConn(port='clk', expression=svm.SignalRef(name='clk')))
+        inst.ports.append(svm.PortConn(port='rst_n', expression=svm.SignalRef(name='rst_n')))
+
+        module.body.append(inst)
 
     #// Memory Instances if they exist
     if data['memories']:
-        out.append("// Memory Instances")
+        module.body.append(svm.CommentBlock(text="Memory Instances"))
     for mem_key, mem_data in data['memories'].items():
         # memories are currenlty all parameterized behavioral memories
         isLocal = mem_data['local']
@@ -115,13 +135,35 @@ def render(args, prj, data):
         if isLocal:
             memory_type += '_ext'
             localMemInst =f"{mem_data['memory']}Mem"
-            out.append(f"{mem_data['structure']} {localMemInst} [{mem_data['wordLines']}-1:0];")
+            module.body.append(svm.TypedVarDecl(
+                name=localMemInst,
+                user_type=mem_data['structure'],
+                unpacked_dims=[svm.UnpackedDim(msb=f"{mem_data['wordLines']}-1", lsb="0")])
+            )
         memInstName = camelCase('u', mem_data['memory'])
-        out.append(f"{memory_type} #(.DEPTH({mem_data['wordLines']}), .data_t({mem_data['structure']})) {memInstName} (")
+        mem_inst = svm.ModuleInst(
+            instance_name=memInstName,
+            module_name=memory_type,
+            parameters=[
+                svm.ParamConn(param="DEPTH", value=mem_data['wordLines']),
+                svm.ParamConn(param="data_t", value=mem_data['structure'])
+            ]
+        )
+
         for port_key, port_data in memory_ports[mem_key].items():
             port = chr(int(port_key) + ord('A')) if mem_data['memoryType'] == 'dualPort' else ''
-            out.append(f"{indent}.mem_port{port} ({port_data}),")
+            mem_inst.ports.append(
+                svm.PortConn(port=f"mem_port{port}", expression=svm.InterfaceRef(name=port_data))
+            )
         if isLocal:
-            out.append(f"{indent}.mem ({localMemInst}),")
-        out.append(f"{indent}.clk (clk)\n);\n")
-    return "\n".join(out)
+            mem_inst.ports.append(
+                svm.PortConn(port=f"mem", expression=svm.SignalRef(name=localMemInst))
+            )
+
+        mem_inst.ports.append(
+            svm.PortConn(port=f"clk", expression=svm.SignalRef(name="clk"))
+        )
+
+        module.body.append(mem_inst)
+
+    return module.render()

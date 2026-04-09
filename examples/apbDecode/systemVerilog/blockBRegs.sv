@@ -1,7 +1,6 @@
 // GENERATED_CODE_PARAM --block=blockBRegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
 module blockBRegs
-    // Generated Import package statement(s)
     import apbDecode_package::*;
     #(
         parameter bit APB_READY_1WS = 0

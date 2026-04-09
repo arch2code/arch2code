@@ -5,7 +5,6 @@
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
 module blockF_variant0_hdl_sv_wrapper
-    // Generated Import package statement(s)
     import mixed_package::*;
     import mixedBlockC_package::*;
 (
