@@ -1,4 +1,3 @@
-from pathlib import Path
 from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck,getImportPackages
 from pysrc.processYaml import camelCase
 import pysrc.intf_gen_utils as intf_gen_utils
