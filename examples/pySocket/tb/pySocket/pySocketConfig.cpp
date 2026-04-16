@@ -1,12 +1,15 @@
-// 
+//
 
 #include "systemc.h"
 #include <string>
 #include <stdlib.h>
 #include <unistd.h>
+#include <limits.h>
+#include <sys/wait.h>
 
 #include "instanceFactory.h"
-#include "pySocketIpc.h"
+#include "socketFactory.h"
+#include "socketTransport.h"
 #include "testBenchConfigFactory.h"
 #include "endOfTest.h"
 #include "testController.h"
@@ -69,71 +72,92 @@ public:
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
 // GENERATED_CODE_END
 
+private:
+    pid_t python_pid_ = -1;
+
+public:
     bool createTestBench(void) override
     {
-        //create hierarchy
+        instanceFactory::registerInstance("pySocket_tb.u_pySocket", "socket");
+
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "");
 
-        std::uint16_t port_py2sc_request = 0;
-        std::uint16_t port_py2sc_response = 0;
-        std::uint16_t port_sc2py_request = 0;
-        std::uint16_t port_sc2py_response = 0;
-        if (!pySocketIpc::start_servers_py2sc(port_py2sc_request, port_py2sc_response)) {
+        if (socketFactory::registerInterface("test_req_ack") == 0) {
             return false;
         }
-        if (!pySocketIpc::start_servers_sc2py(port_sc2py_request, port_sc2py_response)) {
+        if (socketFactory::registerInterface("test2Python_req_ack") == 0) {
+            socketFactory::shutdownAll();
             return false;
         }
-        if (setenv("PYSOCKET_PY2SC_REQUEST_PORT", std::to_string(port_py2sc_request).c_str(), 1) != 0) {
-            pySocketIpc::close_all_channels();
-            return false;
-        }
-        if (setenv("PYSOCKET_PY2SC_RESPONSE_PORT", std::to_string(port_py2sc_response).c_str(), 1) != 0) {
-            pySocketIpc::close_all_channels();
-            return false;
-        }
-        if (setenv("PYSOCKET_SC2PY_REQUEST_PORT", std::to_string(port_sc2py_request).c_str(), 1) != 0) {
-            pySocketIpc::close_all_channels();
-            return false;
-        }
-        if (setenv("PYSOCKET_SC2PY_RESPONSE_PORT", std::to_string(port_sc2py_response).c_str(), 1) != 0) {
-            pySocketIpc::close_all_channels();
+        if (socketFactory::registerInterface("dut2Python_req_ack") == 0) {
+            socketFactory::shutdownAll();
             return false;
         }
 
-        std::string temp_script_path = resolvePySocketScriptPath();
+        if (setenv("PYSOCKET_PORTS", socketFactory::getPortString().c_str(), 1) != 0) {
+            socketFactory::shutdownAll();
+            return false;
+        }
+
+        const std::string script_path = resolvePySocketScriptPath();
+        if (script_path.empty()) {
+            socketFactory::shutdownAll();
+            return false;
+        }
+
         pid_t pid = fork();
         if (pid == 0) {
-            const std::string script_path = resolvePySocketScriptPath();
-            if (script_path.empty()) {
-                _exit(126);
-            }
-            execlp("python3", "python3", script_path.c_str(), NULL);
+            execlp("python3", "python3", script_path.c_str(), nullptr);
             _exit(127);
         }
         if (pid < 0) {
-            pySocketIpc::close_all_channels();
+            socketFactory::shutdownAll();
             return false;
         }
-        if (!pySocketIpc::accept_clients_py2sc()) {
-            pySocketIpc::close_all_channels();
+        python_pid_ = pid;
+
+        socketFactory::acceptAll();
+
+        if (socketFactory::getFd("test_req_ack") < 0 || socketFactory::getFd("test2Python_req_ack") < 0
+            || socketFactory::getFd("dut2Python_req_ack") < 0) {
+            socketFactory::shutdownAll();
             return false;
         }
-        if (!pySocketIpc::accept_clients_sc2py()) {
-            pySocketIpc::close_all_channels();
-            return false;
-        }
+
         testController &controller = testController::GetInstance();
         controller.set_test_names({
             "python2SystemCTest",
             "systemC2PythonTest"
         });
 
+        (void)tb;
         return true;
+    }
+
+    void beforeFullSim(void) override
+    {
+        // Do not call set_test_names here: coordinator SC_THREADs may have already run during
+        // zero-time enumeration; set_test_names resets registration counts and leaves
+        // m_outstanding_completions inconsistent with threads that already registered.
+
+        // Release Python sidecar to send transactions only after enumeration and startup barrier.
+        for (const char *ifc : {"test_req_ack", "test2Python_req_ack", "dut2Python_req_ack"}) {
+            const int fd = socketFactory::getFd(ifc);
+            if (fd < 0 || !socket_send_msg(fd, MSG_SYNC, nullptr, 0)) {
+                return;
+            }
+        }
     }
 
     void final(void) override
     {
+        // Close sockets first so the Python sidecar can unblock from recv, then reap the child.
+        socketFactory::shutdownAll();
+        if (python_pid_ > 0) {
+            int status = 0;
+            (void)waitpid(python_pid_, &status, 0);
+            python_pid_ = -1;
+        }
         // Final cleanup if needed
         Q_ASSERT_CTX(endOfTestState::GetInstance().isEndOfTest(), "final", "Premature end of test detected");
         errorCode::pass();

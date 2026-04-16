@@ -23,8 +23,8 @@ dut::dut(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
 void dut::dutListener(void)
 {
     log_.logPrint(std::format("started dutListener"), LOG_IMPORTANT );
-    while (true)
-    {
+    // Finite workload: pySocket.py sends two requests then shuts down the initiator socket.
+    while (true) {
         p2s_message_st message;
         p2s_response_st response;
         test_req_ack->reqReceive(message);
@@ -32,13 +32,16 @@ void dut::dutListener(void)
         response.response = message.param1 + message.param2;
         test_req_ack->ack(response);
     }
+    while (true) {
+        wait(sc_time(1, SC_MS));
+    }
 }
 
 void dut::dut2PythonListener(void)
 {
     log_.logPrint(std::format("started dut2PythonListener"), LOG_IMPORTANT );
-    while (true)
-    {
+    // Two rounds to match pySocket.py (systemc2python_test + dut2python_target replies).
+    while (true) {
         p2s_message_st test_message;
         p2s_response_st test_response;
         // wait for a request from the test code
@@ -51,5 +54,8 @@ void dut::dut2PythonListener(void)
         // send the response back to the test code
         test_response.response = dut_response.response;
         test2Python_req_ack->ack(test_response);
+    }
+    while (true) {
+        wait(sc_time(1, SC_MS));
     }
 }
