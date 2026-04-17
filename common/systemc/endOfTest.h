@@ -26,7 +26,6 @@ public:
     void resetForNewScRun(void)
     {
         endOfTestCounter = 0;
-        voters = 0;
         done = false;
     }
 

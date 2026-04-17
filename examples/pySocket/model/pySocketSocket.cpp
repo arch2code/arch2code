@@ -25,6 +25,8 @@ void pySocketSocket::dut2Python_req_ackSocket(void)
 
 void pySocketSocket::python2SystemCTestComplete(void)
 {
+    endOfTest eot;
+    eot.registerVoter();
     testController &controller = testController::GetInstance();
     const std::string test_socket = "python2SystemCTest";
     controller.register_test_name(test_socket);
@@ -34,6 +36,7 @@ void pySocketSocket::python2SystemCTestComplete(void)
         sc_core::wait(ev->default_event());
     }
     controller.test_complete(test_socket);
+    eot.setEndOfTest(true);
 }
 
 void pySocketSocket::simHeartbeat(void)
@@ -47,13 +50,18 @@ void pySocketSocket::eotStopSim(void)
 {
     endOfTestState &eotState = endOfTestState::GetInstance();
     testController::GetInstance().wait_all_tests_complete();
-    // we are not using voters, so we just force the end of test
-    eotState.forceEndOfTest();
+    endOfTestState &eot = endOfTestState::GetInstance();
+    // Avoid missing eotEvent.notify() if it fires before this thread first waits.
+    while (!eot.isEndOfTest()) {
+        wait(eot.eotEvent);
+    }
     sc_stop();
 }
 
 void pySocketSocket::systemC2PythonTestComplete(void)
 {
+    endOfTest eot;
+    eot.registerVoter();
     testController &controller = testController::GetInstance();
     const std::string test_socket = "systemC2PythonTest";
     controller.register_test_name(test_socket);
@@ -63,6 +71,7 @@ void pySocketSocket::systemC2PythonTestComplete(void)
         sc_core::wait(ev->default_event());
     }
     controller.test_complete(test_socket);
+    eot.setEndOfTest(true);
 }
 
 pySocketSocket::pySocketSocket(sc_module_name blockName, const char *variant, blockBaseMode bbMode)
