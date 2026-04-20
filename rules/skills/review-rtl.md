@@ -26,7 +26,7 @@ Before reviewing, understand how tandem mode affects what to look for:
 
 1.  **Assertions are often intentionally sparse in RTL.** Tandem mode catches functional mismatches (wrong output values, wrong transaction ordering, missing transactions) by comparing RTL outputs against the model. Adding redundant `qAssertError` or `qAssertWarning` checks for conditions that tandem already covers adds simulation overhead without additional safety. Only flag missing assertions when they guard structural invariants that tandem cannot observe (e.g., internal FSM illegal states, FIFO pointer corruption).
 
-2.  **Algorithmic correctness is not the reviewer's burden.** If the math, rounding, or saturation logic produces wrong results, tandem mode will catch it. The reviewer should focus on whether the RTL is *well-structured* and *synthesizable*, not whether the algorithm is correct.
+2.  **Algorithmic correctness should be reviewed.** The reviewer should check that the RTL algorithm (math, rounding, saturation, interpolation, etc.) is logically correct and matches the design intent. Tandem mode proves that model and RTL *agree*, but if both implementations share the same algorithmic mistake, tandem will not catch it. The reviewer adds value by independently reasoning about the algorithm.
 
 3.  **Interface-level behavior is the contract.** Tandem mode compares at interface boundaries (`rdy_vld_if`, `memory_if`, `status_if`). Internal pipeline structure, number of stages, and intermediate signal values are implementation details -- they only matter if they affect the interface contract.
 
@@ -81,7 +81,7 @@ Before reviewing, understand how tandem mode affects what to look for:
 *   **Read the Model:** Open the corresponding `model/<block>.cpp` alongside the RTL.
 *   **Naming Consistency:** RTL signal names should be recognizable counterparts of model variable names (e.g., model `pos_x` maps to RTL `pos_x`, model `gain_factor` maps to RTL `gain_factor`).
 *   **Type/Width Alignment:** RTL types should use arch2code package typedefs that correspond to the model's C++ types. Flag raw `logic [N:0]` declarations where a package typedef exists. Check for silent truncation or sign mismatch between the RTL types and the model's C++ types.
-*   **Scope:** Functional equivalence (algorithm correctness, rounding behavior, transaction ordering) is proven by tandem mode. Do not duplicate that verification here.
+*   **Scope:** Tandem mode proves that model and RTL *agree* on outputs. It does not prove the algorithm itself is correct -- if both share the same bug, tandem will not catch it. The reviewer should verify algorithmic correctness independently and flag model-RTL conformity issues that could indicate divergence.
 
 ### 5. Review Output Format
 
@@ -100,5 +100,5 @@ Summarize with a count: `X PASS, Y FAIL, Z WARN, W N/A`.
 ## Constraints
 *   This review is for **RTL code only** (`rtl/**/*.sv`). For model code, use the **review-model** skill.
 *   Do not modify generated code zones.
-*   Do not flag missing algorithmic assertions -- tandem mode proves functional equivalence.
+*   Do not flag missing assertions for conditions that tandem mode directly observes (e.g., "output value in range"). Tandem proves model-RTL agreement, not algorithmic correctness.
 *   Flag items as `[WARN]` rather than `[FAIL]` when the issue is stylistic rather than functional.
