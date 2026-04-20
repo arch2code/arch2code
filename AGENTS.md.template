@@ -28,6 +28,8 @@ To provide the best assistance, you **must** consult the specific skill files lo
 | **Verification** | `verify-testbench.md` (Testbenches, scoreboards) |
 | **Co-Sim** | `verify-cosimulation.md` (Verilator wrappers, Tandem) |
 | **Tandem** | `run-tandem.md` (Build/run tandem verification for leaf blocks) |
+| **Review RTL** | `review-rtl.md` (RTL review: conventions, best practices, FUSA, tandem) |
+| **Review Model** | `review-model.md` (Model review: conventions, correctness, tandem, quality) |
 
 ## Core Principles
 1.  **Conventions First:** Always follow the project's existing style and patterns.
@@ -47,6 +49,7 @@ To provide the best assistance, you **must** consult the specific skill files lo
 3.  **Debug:** `verify-testbench` -> `manage-build` (`make run`).
 4.  **Convert Model->RTL:** `systemc-to-rtl` -> `rtl-core` / `rtl-patterns` -> `run-tandem`.
 5.  **Convert RTL->Model:** `rtl-to-systemc` -> `systemc-core` / `systemc-patterns` -> `verify-testbench`.
+6.  **Review:** `review-rtl` (RTL code review) / `review-model` (model code review).
 
 ## Reference
 When in doubt, strictly rely on the code examples provided within the skill files above. These examples are extracted from production-grade code ("Gold Standard") and should be treated as the source of truth.
