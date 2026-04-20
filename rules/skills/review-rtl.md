@@ -24,7 +24,7 @@ Perform a structured code review of a SystemVerilog RTL module within the arch2c
 
 Before reviewing, understand how tandem mode affects what to look for:
 
-1.  **Assertions are often intentionally sparse in RTL.** Tandem mode catches functional mismatches (wrong output values, wrong transaction ordering, missing transactions) by comparing RTL outputs against the model. Adding redundant `qAssert` checks for conditions that tandem already covers adds simulation overhead without additional safety. Only flag missing assertions when they guard structural invariants that tandem cannot observe (e.g., internal FSM illegal states, FIFO pointer corruption).
+1.  **Assertions are often intentionally sparse in RTL.** Tandem mode catches functional mismatches (wrong output values, wrong transaction ordering, missing transactions) by comparing RTL outputs against the model. Adding redundant `qAssertError` or `qAssertWarning` checks for conditions that tandem already covers adds simulation overhead without additional safety. Only flag missing assertions when they guard structural invariants that tandem cannot observe (e.g., internal FSM illegal states, FIFO pointer corruption).
 
 2.  **Algorithmic correctness is not the reviewer's burden.** If the math, rounding, or saturation logic produces wrong results, tandem mode will catch it. The reviewer should focus on whether the RTL is *well-structured* and *synthesizable*, not whether the algorithm is correct.
 
@@ -48,6 +48,7 @@ Before reviewing, understand how tandem mode affects what to look for:
     *   Next-state (`_INST` macros): `n_<name>`. Next-state (raw macros): `nxt_<name>`.
     *   Pipeline stages: `stgN_` or `sN_` prefix. Generate blocks: `gen_<desc>` label.
 *   **Type Usage:** All signals declared with `logic`. No `reg` or `wire`.
+*   **Arch2code Types:** Signals should use typedefs from the block package (`<block>_package`) or shared packages rather than raw `logic [N:0]` declarations. Flag any locally defined types (e.g., `logic [15:0] my_data;` or local `typedef logic [N:0] my_type;`) when an equivalent arch2code-generated type already exists in the package. Local typedefs are acceptable only for module-internal intermediates that have no package counterpart (e.g., accumulator widths derived from `localparam` arithmetic).
 *   **Module End Label:** Module ends with `endmodule: <module_name>`.
 *   **Package Imports:** Block package imported via `import <block>_package::*;`.
 
@@ -57,7 +58,7 @@ Before reviewing, understand how tandem mode affects what to look for:
 *   **Combinational Only:** All procedural logic uses `always_comb`. No `always @*` or `always @(posedge ...)` outside of macros.
 *   **Width Matching:** Expressions have matching bit-widths, or intentional mismatches are guarded by Verilator lint pragmas (`WIDTHTRUNC`, `WIDTHEXPAND`).
 *   **No X/Z Propagation Risks:** Reset values are explicit. Uninitialized signals do not propagate to outputs.
-*   **Parameterized Constants:** No magic numbers in logic. Use `localparam` or package constants.
+*   **No Magic Numbers:** Flag hardcoded numeric literals in logic expressions, comparisons, bit-slicing bounds, and shift amounts. Every such value should be a `localparam`, a package constant, or derived from one. Acceptable exceptions: `'0`, `'1`, `1'b0`, `1'b1`, single-bit literals in increment/decrement (`+ 1'b1`), and `32'hBADD_C0DE` (the standard invalid-address read-data sentinel).
 *   **No Combinational Loops:** No signal driven by an `always_comb` block that also reads itself without a flop in the path.
 *   **Functions:** Use `automatic` keyword. No side effects.
 *   **Generate Blocks:** All generate blocks have `gen_<desc>` labels. Use `genvar` for generate loops, `int` for procedural loops.
@@ -67,7 +68,7 @@ Before reviewing, understand how tandem mode affects what to look for:
 *   **Reset Coverage:** Every flop has a defined reset value via `DFF_INST` (resets to `'0`), `DFFR_INST` (explicit value), or `DFFEN_INST`. Use of `DFFNR_INST` (no reset) must be justified (e.g., datapath-only, non-safety-critical).
 *   **FSM Default Clauses:** Every FSM has a `default:` case with `` `qAssertFatal(0, "...") ``. This is required even though tandem mode catches functional mismatches -- a silent illegal state causes hangs that are hard to diagnose.
 *   **No Unreachable States:** FSM state encoding has no unused states, or unused states transition to a known-good state.
-*   **Structural Assertions Only:** Assertions (`qAssert`/`qAssertFatal`) should guard structural invariants that tandem mode cannot directly observe:
+*   **Structural Assertions Only:** Assertions (for example, `` `qAssertFatal` ``, `` `qAssertError` ``, or `` `qAssertWarning` ``) should guard structural invariants that tandem mode cannot directly observe:
     *   FIFO pointer corruption or overflow.
     *   Arbiter grant conflicts (multiple simultaneous grants).
     *   Counter overflow where the counter controls flow (e.g., credit counters).
@@ -79,7 +80,7 @@ Before reviewing, understand how tandem mode affects what to look for:
 
 *   **Read the Model:** Open the corresponding `model/<block>.cpp` alongside the RTL.
 *   **Naming Consistency:** RTL signal names should be recognizable counterparts of model variable names (e.g., model `pos_x` maps to RTL `pos_x`, model `gain_factor` maps to RTL `gain_factor`).
-*   **Type/Width Alignment:** RTL `logic [N:0]` and struct types should correspond to the model's C++ types without silent truncation or sign mismatch.
+*   **Type/Width Alignment:** RTL types should use arch2code package typedefs that correspond to the model's C++ types. Flag raw `logic [N:0]` declarations where a package typedef exists. Check for silent truncation or sign mismatch between the RTL types and the model's C++ types.
 *   **Scope:** Functional equivalence (algorithm correctness, rounding behavior, transaction ordering) is proven by tandem mode. Do not duplicate that verification here.
 
 ### 5. Review Output Format

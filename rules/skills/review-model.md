@@ -60,6 +60,7 @@ Perform a structured code review of a SystemC model module within the arch2code 
 *   **Lazy Logging:** Use lambda form for expensive debug formatting: `log_.logPrint([&]() { return std::format(...); }, LOG_DEBUG);`.
 *   **Assertions:** Use `Q_ASSERT(condition, "message")` for internal invariants (index bounds, queue capacity, state validity).
 *   **Status Reporting:** `statusPrint(void)` is recommended and should be flagged as `[WARN]` (not `[FAIL]`) if missing. When present, it should be registered via `logging::GetInstance().registerStatus(name(), ...)` in the constructor and dump internal state (queues, counters, flags) useful for diagnosing simulation hangs.
+*   **No Magic Numbers:** Flag hardcoded numeric literals in logic expressions, comparisons, shift amounts, array sizes, and loop bounds. Every such value should be a `constexpr`, a `localparam`-equivalent constant from the package, or derived from one. Acceptable exceptions: `0`, `1`, `-1` in simple increments/decrements, and `bool` literals (`true`/`false`).
 *   **No C++ Undefined Behavior:** No out-of-bounds array access, no use-after-free, no signed integer overflow in intermediate calculations.
 *   **Tracker Info Struct:** If trackers are used, the info struct has a `prt()` method for human-readable output.
 
