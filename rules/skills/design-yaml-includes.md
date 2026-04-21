@@ -1,8 +1,6 @@
 ---
 name: design-yaml-includes
 description: Guide for using YAML include directives and managing multi-file architecture definitions in arch2code
-globs: arch/yaml/**/*.yaml
-alwaysApply: false
 ---
 # Skill: YAML Include & Multi-File Management
 

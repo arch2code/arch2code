@@ -1,8 +1,6 @@
 ---
 name: manage-address-space
 description: Guide for configuring address maps, address groups, and firmware header generation using addressControl.yaml and project.yaml
-globs: arch/yaml/**/*.yaml, **/addressControl.yaml
-alwaysApply: false
 ---
 # Skill: Manage Address Space
 

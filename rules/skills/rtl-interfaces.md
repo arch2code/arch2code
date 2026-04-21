@@ -1,8 +1,6 @@
 ---
 name: rtl-interfaces
 description: Guide for using standard interface protocols (rdy_vld, push_ack, axi, status_if, external_reg_if, memory_if) in SystemVerilog RTL
-globs: "rtl/**/*.sv, rtl/**/*.svh"
-alwaysApply: false
 ---
 # Skill: RTL Interfaces
 

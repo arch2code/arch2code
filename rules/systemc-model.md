@@ -1,3 +1,8 @@
+---
+description: SystemC model conventions for files in model/ directory
+globs: "model/**/*.cpp, model/**/*.h"
+alwaysApply: false
+---
 # SystemC Model Rules
 
 These rules apply specifically to files in `model/` directory.

@@ -1,3 +1,8 @@
+---
+description: SystemVerilog RTL conventions and skill references for rtl/ directory
+globs: "rtl/**/*.sv, rtl/**/*.svh"
+alwaysApply: false
+---
 # SystemVerilog RTL Rules
 
 These rules apply to files in `rtl/` directory.

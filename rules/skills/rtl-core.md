@@ -1,8 +1,6 @@
 ---
 name: rtl-core
 description: Guide for writing core RTL modules in SystemVerilog including module structure, FSMs, reset logic, flip-flop macros, naming conventions, and coding idioms
-globs: "rtl/**/*.sv, rtl/**/*.svh"
-alwaysApply: false
 ---
 # Skill: RTL Core
 

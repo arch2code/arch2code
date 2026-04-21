@@ -1,8 +1,6 @@
 ---
 name: review-model
 description: Checklist-driven review of SystemC model code for arch2code conventions, behavioral correctness, tandem readiness, model-RTL conformity, and code quality
-globs: "model/**/*.cpp, model/**/*.h"
-alwaysApply: false
 ---
 # Skill: Review Model
 
@@ -57,7 +55,7 @@ Perform a structured code review of a SystemC model module within the arch2code 
 ### 5. Code Quality Checks
 
 *   **Logging:** Use `log_.logPrint` with `std::format` for all output. No `printf`, `std::cout`, or `std::cerr`.
-*   **Lazy Logging:** Use lambda form for expensive debug formatting: `log_.logPrint([&]() { return std::format(...); }, LOG_DEBUG);`.
+*   **Lazy Logging:** Use lambda form for expensive debug formatting: `log_.logPrint([&]() { return std::format(...); }, LOG_DEBUG);`. **Context matters:** only flag direct `std::format` calls that execute on hot paths (e.g., per-pixel, per-transaction, or inside tight loops). Logging in rarely executed paths -- such as configuration listeners, initialization, start-of-frame handlers, or error/warning branches -- does not benefit from the lazy form and should be marked `[N/A]` or ignored, not `[WARN]`.
 *   **Assertions:** Use `Q_ASSERT(condition, "message")` for internal invariants (index bounds, queue capacity, state validity).
 *   **Status Reporting:** `statusPrint(void)` is recommended and should be flagged as `[WARN]` (not `[FAIL]`) if missing. When present, it should be registered via `logging::GetInstance().registerStatus(name(), ...)` in the constructor and dump internal state (queues, counters, flags) useful for diagnosing simulation hangs.
 *   **No Magic Numbers:** Flag hardcoded numeric literals in logic expressions, comparisons, shift amounts, array sizes, and loop bounds. Every such value should be a `constexpr`, a `localparam`-equivalent constant from the package, or derived from one. Acceptable exceptions: `0`, `1`, `-1` in simple increments/decrements, and `bool` literals (`true`/`false`).
