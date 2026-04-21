@@ -1,3 +1,8 @@
+---
+description: Architecture YAML conventions for defining hardware blocks, interfaces, connections, and types
+globs: "arch/yaml/**/*.yaml"
+alwaysApply: false
+---
 # Architecture YAML Rules
 
 ## Overview

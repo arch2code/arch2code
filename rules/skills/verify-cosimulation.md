@@ -1,8 +1,6 @@
 ---
 name: verify-cosimulation
 description: Guide for performing co-simulation of RTL and SystemC models using Verilator for tandem verification
-globs: "tb/**/*.cpp, tb/**/*.h"
-alwaysApply: false
 ---
 # Skill: Verify Co-Simulation
 

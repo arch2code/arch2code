@@ -1,8 +1,6 @@
 ---
 name: systemc-to-rtl
 description: Convert a SystemC behavioral model to a SystemVerilog RTL implementation following arch2code patterns. Use when implementing RTL from a model or converting C++ to SV.
-globs: "rtl/**/*.sv, model/**/*.cpp"
-alwaysApply: false
 ---
 # Skill: SystemC to RTL Conversion
 

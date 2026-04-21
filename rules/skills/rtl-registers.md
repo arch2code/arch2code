@@ -1,8 +1,6 @@
 ---
 name: rtl-registers
 description: Guide for implementing register logic in SystemVerilog including decoder architecture and external register handling
-globs: "rtl/**/*.sv, rtl/**/*.svh"
-alwaysApply: false
 ---
 # Skill: RTL Registers
 

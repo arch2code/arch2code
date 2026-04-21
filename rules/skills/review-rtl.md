@@ -1,8 +1,6 @@
 ---
 name: review-rtl
 description: Checklist-driven review of SystemVerilog RTL for arch2code conventions, industry best practices, FUSA, and model-RTL conformity, with awareness of tandem mode's role
-globs: "rtl/**/*.sv, rtl/**/*.svh"
-alwaysApply: false
 ---
 # Skill: Review RTL
 

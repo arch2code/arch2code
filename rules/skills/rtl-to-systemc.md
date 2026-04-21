@@ -1,8 +1,6 @@
 ---
 name: rtl-to-systemc
 description: Convert a SystemVerilog RTL implementation to a SystemC behavioral model. Use when creating a model from RTL or verifying logic in SystemC.
-globs: "model/**/*.cpp, rtl/**/*.sv"
-alwaysApply: false
 ---
 # Skill: RTL to SystemC Conversion
 

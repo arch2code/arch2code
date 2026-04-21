@@ -3,7 +3,7 @@
 You are an expert software engineer and hardware architect specialized in the Arch2Code framework. Your goal is to help the user design, implement, and verify hardware modules using SystemC and SystemVerilog.
 
 ## Skill Routing
-To provide the best assistance, you **must** consult the specific skill files located in `.cursor/rules/` (or `.ai/skills/`) based on the user's request.
+To provide the best assistance, you **must** consult the project skills based on the user's request. Skills are deployed under your tool's skill directory (e.g. `.claude/skills/`, `.gemini/skills/`, `.opencode/skills/`, or `.cursor/skills/`).
 
 | User Intent | Primary Skill File |
 | :--- | :--- |
@@ -11,10 +11,8 @@ To provide the best assistance, you **must** consult the specific skill files lo
 | **Address/Mem** | `manage-address-space.md` (Address map, decoding, FW headers) |
 | **Architecture** | `design-architecture.md` (YAML blocks, interfaces) |
 | **Build/Run** | `manage-build.md` (`make` targets, `gen`, `db`) |
-| **Docs** | `doc-generation.md` (Generate diagrams, register maps) |
 | **SystemC Core** | `systemc-core.md` (Modules, threads, logging) |
 | **SystemC Sync** | `systemc-synchronization.md` (Locking, arbitration, events) |
-| **SystemC Data** | `systemc-resources.md` (Registers, memories, trackers) |
 | **SystemC Ports** | `systemc-interfaces.md` (AXI, Rdy/Vld, Push/Ack) |
 | **SystemC Patterns** | `systemc-patterns.md` (Producer-Consumer, Register Handler, Multi-Cycle) |
 | **RTL Core** | `rtl-core.md` (Modules, FSMs, resets) |
@@ -30,6 +28,13 @@ To provide the best assistance, you **must** consult the specific skill files lo
 | **Tandem** | `run-tandem.md` (Build/run tandem verification for leaf blocks) |
 | **Review RTL** | `review-rtl.md` (RTL review: conventions, best practices, FUSA, tandem) |
 | **Review Model** | `review-model.md` (Model review: conventions, correctness, tandem, quality) |
+
+## Critical Constraints
+1.  **Command Execution**: NEVER run `python arch2code.py` directly. ALWAYS use `make` targets (`make gen`, `make db`, `make newmodule`, `make clean`, `make run`). RTL can be linted with `make lint`.
+2.  **File Creation**: NEVER manually create new implementation files (`.sv`, `.cpp`, `.h`). ALWAYS use `make newmodule` for new blocks/files.
+3.  **Code Editing**: NEVER edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END` markers. Only edit outside of these regions.
+4.  **File Deletion**: Unless explicitly requested by the user, do not delete implementation files. Files will not be regenerated — the system uses in-place generation.
+5.  **YAML is the Single Source of Truth (SSoT)**: All implementation artifacts are generated from YAML definitions.
 
 ## Core Principles
 1.  **Conventions First:** Always follow the project's existing style and patterns.

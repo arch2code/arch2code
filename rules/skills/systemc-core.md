@@ -1,8 +1,6 @@
 ---
 name: systemc-core
 description: Guide for writing core SystemC modules including module structure, threading, and logging
-globs: "model/**/*.cpp, model/**/*.h"
-alwaysApply: false
 ---
 # Skill: SystemC Core
 

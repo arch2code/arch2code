@@ -1,3 +1,8 @@
+---
+description: SystemC testbench conventions for files in tb/ directory
+globs: "tb/**/*.cpp, tb/**/*.h"
+alwaysApply: false
+---
 # SystemC Testbench Rules
 
 These rules apply specifically to files in `tb/` directory.

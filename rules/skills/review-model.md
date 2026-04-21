@@ -1,8 +1,6 @@
 ---
 name: review-model
 description: Checklist-driven review of SystemC model code for arch2code conventions, behavioral correctness, tandem readiness, model-RTL conformity, and code quality
-globs: "model/**/*.cpp, model/**/*.h"
-alwaysApply: false
 ---
 # Skill: Review Model
 

@@ -1,3 +1,8 @@
+---
+description: SystemC conventions shared across model/ and tb/ directories
+globs: "model/**/*.cpp, model/**/*.h, tb/**/*.cpp, tb/**/*.h"
+alwaysApply: false
+---
 # SystemC Shared Rules
 
 These rules apply to **both** `model/` and `tb/` directories.

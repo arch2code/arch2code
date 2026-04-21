@@ -1,8 +1,6 @@
 ---
 name: rtl-arbitration
 description: Guide for using arbitration modules (memArb, vldAckArb, lockLocation) in SystemVerilog
-globs: "rtl/**/*.sv, rtl/**/*.svh"
-alwaysApply: false
 ---
 # Skill: RTL Arbitration
 

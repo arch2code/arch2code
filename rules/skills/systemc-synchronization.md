@@ -1,8 +1,6 @@
 ---
 name: systemc-synchronization
 description: Guide for using synchLock, events, and arbitration patterns in SystemC for concurrency and shared resources
-globs: "model/**/*.cpp, model/**/*.h"
-alwaysApply: false
 ---
 # Skill: SystemC Synchronization
 
