@@ -21,7 +21,7 @@ Every generated structure has `_bitWidth` and `_byteWidth` constants that repres
 - **`sizeof(struct)`** — C++ reality: multi-cycle burst sizing, `memcpy`, buffer allocation
 - **`_packedSt`** — C++ type that holds the bit-packed HW representation via `pack()` / `unpack()`
 
-Never assume `sizeof(T)` equals `T::_byteWidth`. See `SYSTEMC_API_USER_REFERENCE.md` §1 "HW Dimensions vs. C++ Dimensions" for details.
+Never assume `sizeof(T)` equals `T::_byteWidth`. See `SYSTEMC_API_USER_REFERENCE.md`: Introduction → HW Dimensions vs. C++ Dimensions for details.
 
 ## Module Logging
 
