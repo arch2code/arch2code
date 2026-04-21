@@ -1,6 +1,6 @@
 ---
 description: Core arch2code project conventions, naming rules, design checklist, and critical constraints
-globs: "**/*.{yaml,sv,cpp,h}"
+globs: "**/*.yaml, **/*.sv, **/*.svh, **/*.cpp, **/*.h"
 alwaysApply: false
 ---
 # Project Conventions
