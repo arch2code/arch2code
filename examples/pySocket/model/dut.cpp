@@ -32,9 +32,6 @@ void dut::dutListener(void)
         response.response = message.param1 + message.param2;
         test_req_ack->ack(response);
     }
-    while (true) {
-        wait(sc_time(1, SC_MS));
-    }
 }
 
 void dut::dut2PythonListener(void)
@@ -54,8 +51,5 @@ void dut::dut2PythonListener(void)
         // send the response back to the test code
         test_response.response = dut_response.response;
         test2Python_req_ack->ack(test_response);
-    }
-    while (true) {
-        wait(sc_time(1, SC_MS));
     }
 }

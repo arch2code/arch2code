@@ -55,9 +55,11 @@ void port_socket(req_ack_out<R, A> &port, const std::string &interface_name)
     });
     socketFactory::registerThread(interface_name, std::move(rx_thread));
 
+    bool should_shutdown = false;
     while (running->load(std::memory_order_acquire)) {
         sc_core::wait(req_event->default_event());
         if (!running->load(std::memory_order_acquire)) {
+            should_shutdown = true;
             break;
         }
 
@@ -67,8 +69,12 @@ void port_socket(req_ack_out<R, A> &port, const std::string &interface_name)
 
         if (!socket_send_msg(fd, MSG_ACK, &ack_data, static_cast<uint16_t>(sizeof(A)))) {
             running->store(false, std::memory_order_release);
+            should_shutdown = true;
             break;
         }
+    }
+    if (should_shutdown) {
+        socketFactory::shutdownByName(interface_name);
     }
 }
 
@@ -115,6 +121,7 @@ void port_socket(req_ack_in<R, A> &port, const std::string &interface_name)
     });
     socketFactory::registerThread(interface_name, std::move(rx_thread));
 
+    bool should_shutdown = false;
     while (running->load(std::memory_order_acquire)) {
         R req_data{};
         port->reqReceive(req_data);
@@ -124,8 +131,10 @@ void port_socket(req_ack_in<R, A> &port, const std::string &interface_name)
 
         if (!socket_send_msg(fd, MSG_REQ, &req_data, static_cast<uint16_t>(sizeof(R)))) {
             running->store(false, std::memory_order_release);
+            should_shutdown = true;
             break;
         }
+
 
         sc_core::wait(ack_event->default_event());
         if (!running->load(std::memory_order_acquire)) {
@@ -134,6 +143,10 @@ void port_socket(req_ack_in<R, A> &port, const std::string &interface_name)
 
         A ack_data = ack_buf;
         port->ack(ack_data);
+    }
+
+    if (should_shutdown) {
+        socketFactory::shutdownByName(interface_name);
     }
 
     port->bindSocketBridgeLiveness(nullptr);

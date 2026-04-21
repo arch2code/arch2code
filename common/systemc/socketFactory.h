@@ -34,6 +34,8 @@ public:
 
     static void notifyPeerClosed(const std::string &name);
 
+    static void shutdownByName(const std::string &name);
+
     static void shutdownAll();
 
 private:
@@ -47,6 +49,7 @@ private:
     };
 
     static std::map<std::string, SocketEntry> &getMap();
+    static void shutdown_socket(SocketEntry &e);
 };
 
 #endif // SOCKET_FACTORY_H

@@ -176,6 +176,16 @@ void socketFactory::notifyPeerClosed(const std::string &name)
     }
 }
 
+void socketFactory::shutdownByName(const std::string &name)
+{
+    auto it = getMap().find(name);
+    if (it == getMap().end()) {
+        return;
+    }
+    shutdown_socket(it->second);
+    notifyPeerClosed(it->first);
+}
+
 void socketFactory::shutdownAll()
 {
     auto &map = getMap();
@@ -198,4 +208,22 @@ void socketFactory::shutdownAll()
         notifyPeerClosed(kv.first);
     }
     map.clear();
+}
+
+void socketFactory::shutdown_socket(SocketEntry &e)
+{
+    if (e.conn_fd >= 0) {
+        (void)socket_send_msg(e.conn_fd, MSG_SHUTDOWN, nullptr, 0);
+        shutdown(e.conn_fd, SHUT_RDWR);
+        close(e.conn_fd);
+        e.conn_fd = -1;
+    }
+    if (e.listen_fd >= 0) {
+        close(e.listen_fd);
+        e.listen_fd = -1;
+    }
+    if (e.has_thread && e.rx_thread.joinable()) {
+        e.rx_thread.join();
+        e.has_thread = false;
+    }
 }
