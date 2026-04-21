@@ -1,8 +1,6 @@
 ---
 name: manage-build
 description: Guide for building, simulating, and managing the arch2code project using make targets
-globs: "**/Makefile, **/*.mk"
-alwaysApply: false
 ---
 # Skill: Manage Build
 

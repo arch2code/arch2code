@@ -1,8 +1,6 @@
 ---
 name: design-architecture
 description: Guide for defining hardware architecture in YAML including blocks, instances, interfaces, connections, registers, and memories
-globs: arch/yaml/**/*.yaml
-alwaysApply: false
 ---
 # Skill: Design Architecture
 

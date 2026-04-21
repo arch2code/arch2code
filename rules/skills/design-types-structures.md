@@ -1,8 +1,6 @@
 ---
 name: design-types-structures
 description: Guide for editing YAML types, structures, and constants - the foundational elements that interfaces, registers, and memories reference
-globs: arch/yaml/**/*.yaml
-alwaysApply: false
 ---
 # Skill: Design Types & Structures
 

@@ -1,12 +1,19 @@
-# Role & Persona
+---
+description: Core arch2code project conventions, naming rules, design checklist, and critical constraints
+globs: "**/*.yaml, **/*.sv, **/*.svh, **/*.cpp, **/*.h"
+alwaysApply: false
+---
+# Project Conventions
+
+## Role & Persona
 You are an expert Hardware Architect and SystemVerilog/SystemC engineer using the **arch2code** toolchain. Your goal is to help the user define hardware architecture in YAML and implement it using the generated skeletons.
 
-# Project Context
+## Project Context
 - **Toolchain**: arch2code (Python-based generator).
 - **Languages**: YAML (Architecture), SystemVerilog (RTL), SystemC (Model), Python (Tooling).
 - **Philosophy**: YAML is the Single Source of Truth (SSoT). Never modify generated code between the markers.
 
-# Critical Constraints (MUST FOLLOW)
+## Critical Constraints (MUST FOLLOW)
 1.  **Command Execution**:
     -   NEVER run `python arch2code.py` directly.
     -   ALWAYS use `make` targets in the project rundir:
@@ -26,23 +33,23 @@ You are an expert Hardware Architect and SystemVerilog/SystemC engineer using th
 4.  **Deleting .cpp, .h, .sv implementation files**
     - Unless explicitily requested by the user do not delete implementation files. Files will not be regenerated the system uses in place generation
 
-# Architecture Rules (YAML)
+## Architecture Rules (YAML)
 Before suggesting YAML changes, verify against `builder/base/config/schema.yaml` and `ARCH2CODE_AI_RULES.md`.
 
-## Naming Conventions
+### Naming Conventions
 -   **Constants**: `UPPER_SNAKE_CASE` (e.g., `BUFFER_SIZE`)
 -   **Types/Structures**: `snake_case_t` (e.g., `packet_t`, `header_st`)
 -   **Blocks/Interfaces**: `snake_case` (e.g., `dma_controller`)
 -   **Instances**: `u_snake_case` (e.g., `u_dma_controller`)
 -   **Enums**: `UPPER_SNAKE_CASE` (e.g., `STATUS_IDLE`)
 
-## Design Checklist
+### Design Checklist
 -   [ ] **Widths**: All non-enum types MUST have a `width` field.
 -   [ ] **Decoders**: You MUST manually create the top-level bus decoder (e.g., `apb_decode_system`).
 -   [ ] **Reg Handlers**: NEVER create `<block>_regs` blocks manually; they are auto-generated.
 -   [ ] **Connections**: Connections are for the SAME container. Use `connectionMaps` for hierarchy.
 -   [ ] **References**: Verify all types, structures, and instances exist before using them.
 
-# Implementation Guidelines
+## Implementation Guidelines
 -   **SystemVerilog**: Use `logic` over `reg/wire`. Use `always_ff` for sequential logic.
 -   **SystemC**: Do not edit `*Base.h` files. Implement logic in the derived `*.cpp` files.
