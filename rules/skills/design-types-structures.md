@@ -122,6 +122,16 @@ structures:
 *   `data` -- marks the field as data (used by register bus generation)
 *   `tracker(name)` -- links to a debug tracker for transaction tracing
 
+## How YAML Width Maps to Generated C++
+
+The YAML `width` on a type becomes the type's hardware bit width in generated code. Each generated C++ structure carries:
+
+*   `_bitWidth` — **HW bit width**, the sum of all field widths from YAML. Used for `sc_bv<>` sizing, pack/unpack, and address-map calculations.
+*   `_byteWidth` — **HW byte width**, `(_bitWidth + 7) >> 3`. Used for register/memory byte footprint.
+*   `_packedSt` — C++ type for the bit-packed HW representation (selected to fit `_bitWidth`).
+
+These are **not** the same as C++ `sizeof(struct)`. C++ storage types are typically wider than the HW fields they model (e.g., a 1-bit YAML type becomes `uint8_t` in C++). A structure with three 1-bit fields has `_byteWidth = 1` but `sizeof = 3`. The `pack()` / `unpack()` methods bridge between C++ layout and HW-accurate bit packing.
+
 ## Common Pitfalls
 
 1.  **Referencing undefined types:** Types must be defined before use. If in a separate file, use `include:` to pull in dependencies.

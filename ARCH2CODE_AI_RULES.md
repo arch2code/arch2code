@@ -1862,6 +1862,10 @@ endmodule
 
 This section covers code generation workflow. For user-facing SystemC APIs (registers, memory, channels, logging, etc.), refer to the dedicated SystemC API reference.
 
+#### HW Dimensions vs. C++ Dimensions
+
+Generated structures carry `_bitWidth` and `_byteWidth` constants that represent the **hardware** bit/byte width (derived from YAML `width` definitions). These differ from the C++ `sizeof` of the same struct — C++ storage types are typically wider than the HW fields they model (e.g., a 1-bit type becomes `uint8_t`). `_packedSt` is the C++ type for the bit-packed HW representation; `pack()` / `unpack()` convert between the two domains. Never assume `sizeof(T)` equals `T::_byteWidth`. See `SYSTEMC_API_USER_REFERENCE.md` for the full explanation.
+
 #### Auto-Generated Files
 
 1. **Base Classes** (`<Module>Base.h`)
