@@ -270,7 +270,6 @@ int sc_main(int argc, char* argv[])
     if (try_sc_start(false, SC_ZERO_TIME) != 0) {
         goto exit_goto;
     }
-    endOfTestState::GetInstance().resetForNewScRun();
     simController::setTimingMode();
     if (instVerbosity != VERBOSITY_UNKNOWN) {
         instanceFactory::setLogging(instVerbosity);

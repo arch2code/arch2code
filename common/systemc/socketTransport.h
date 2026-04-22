@@ -5,15 +5,23 @@
 #include <cstdint>
 #include <cstddef>
 
-constexpr uint8_t MSG_REQ = 0x01;
-constexpr uint8_t MSG_ACK = 0x02;
-constexpr uint8_t MSG_PUSH = 0x03;
-constexpr uint8_t MSG_PUSH_ACK = 0x04;
-constexpr uint8_t MSG_VLD = 0x05;
-constexpr uint8_t MSG_RDY = 0x06;
-constexpr uint8_t MSG_SYNC = 0x07; // TB → Python: simulation ready (startup handshake)
-constexpr uint8_t MSG_SHUTDOWN = 0xFE;
-constexpr uint8_t MSG_ERROR = 0xFF;
+enum _socketMsgTypeT{ MSG_REQ=0x01, MSG_ACK=0x02, MSG_PUSH=0x03, MSG_PUSH_ACK=0x04, MSG_VLD=0x05, MSG_RDY=0x06, MSG_SYNC=0x07, MSG_SHUTDOWN=0xFE, MSG_ERROR=0xFF };
+inline const char* _socketMsgTypeT_prt( _socketMsgTypeT val )
+{
+    switch( val )
+    {
+        case MSG_REQ: return( "MSG_REQ" );
+        case MSG_ACK: return( "MSG_ACK" );
+        case MSG_PUSH: return( "MSG_PUSH" );
+        case MSG_PUSH_ACK: return( "MSG_PUSH_ACK" );
+        case MSG_VLD: return( "MSG_VLD" );
+        case MSG_RDY: return( "MSG_RDY" );
+        case MSG_SYNC: return( "MSG_SYNC" );
+        case MSG_SHUTDOWN: return( "MSG_SHUTDOWN" );
+        case MSG_ERROR: return( "MSG_ERROR" );
+    }
+    return("!!!BADENUM!!!");
+}
 
 #pragma pack(push, 1)
 struct SocketMsgHeader {
