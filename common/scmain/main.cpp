@@ -14,6 +14,7 @@
 #include "testBenchConfigFactory.h"
 #include "synchLock.h"
 #include "simController.h"
+#include "endOfTest.h"
 
 #if defined(VERILATOR) || defined(VCS)
 #include "vl_wrap.h"
@@ -293,6 +294,7 @@ int sc_main(int argc, char* argv[])
     while (simController::getStartupPhase() < STARTUP_SIMSTART) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    testBench->beforeFullSim();
     // start simulation
     if ( simController::maxRuntimeUS ) {
         sc_time scMaxRunTime = sc_time(simController::maxRuntimeUS, SC_US);
