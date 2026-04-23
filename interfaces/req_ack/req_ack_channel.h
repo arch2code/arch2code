@@ -7,7 +7,6 @@
 #include "sysc/kernel/sc_event.h"
 #include "sysc/kernel/sc_simcontext.h"
 #include "sysc/tracing/sc_trace.h"
-#include <atomic>
 #include <typeinfo>
 #include <iostream>
 #include "portBase.h"
@@ -33,11 +32,6 @@ public:
     virtual bool isActive() = 0;
     virtual bool isNotActive() = 0;
     virtual void setExternalEvent( sc_event *event ) = 0;
-
-    /// Optional: socket bridge sets liveness; reqReceive returns early when *flag is false.
-    virtual void bindSocketBridgeLiveness(std::atomic<bool> * /*live_flag*/) {}
-    /// Optional: unblock reqReceive wait (safe from non-SystemC threads via async_request_update).
-    virtual void requestReaderWakeFromExternalThread() {}
 
 protected:
     // constructor
@@ -137,10 +131,6 @@ public:
         m_external_arb = true;
     }
 
-    void bindSocketBridgeLiveness(std::atomic<bool> *live_flag) override { m_socket_bridge_liveness = live_flag; }
-
-    void requestReaderWakeFromExternalThread() override { async_request_update(); }
-
     // portBase overrides
     void setMultiDriver(std::string name, std::function<std::string(const uint64_t &value)> prt = nullptr) override
     {
@@ -154,13 +144,6 @@ public:
     virtual sc_prim_channel* getChannel(void) override { return this; }
 
 protected:
-    void update() override
-    {
-        if (m_waiting && !m_active) {
-            m_channel_req_event_ptr->notify(SC_ZERO_TIME);
-        }
-    }
-
     R   m_req_data;
     A   m_ack_data;
     // for reqAck we can have trackers on both sides so instead of inheritance we use composition
@@ -180,7 +163,6 @@ protected:
     bool m_value_written = false; // m_value contain valid data when true
     bool m_multi_writer = false; //detect multiple writers
     bool m_external_arb = false;
-    std::atomic<bool> *m_socket_bridge_liveness = nullptr;
 
 private:
     // disabled
@@ -223,13 +205,8 @@ template <class R, class A>
 inline void req_ack_channel<R, A>::reqReceive( R& req_ )
 {
     m_waiting = true;
-    while (!m_active) {
-        if (m_socket_bridge_liveness != nullptr
-            && !m_socket_bridge_liveness->load(std::memory_order_acquire)) {
-            // Socket bridge cleared liveness (peer closed / shutdown).
-            m_waiting = false;
-            return;
-        }
+    if (!m_active)
+    {
         sc_core::wait(*m_channel_req_event_ptr);
     }
     req_ = m_req_data;

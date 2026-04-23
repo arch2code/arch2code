@@ -91,21 +91,17 @@ void port_socket(req_ack_in<R, A> &port, const std::string &interface_name)
     A ack_buf{};
     auto running = std::make_shared<std::atomic<bool>>(true);
 
-    port->bindSocketBridgeLiveness(running.get());
-
-    std::thread rx_thread([running, fd, &ack_buf, ack_event, &port, interface_name]() {
+    std::thread rx_thread([running, fd, &ack_buf, ack_event, interface_name]() {
         uint8_t msg_type = 0;
         uint16_t len = 0;
         while (running->load(std::memory_order_acquire)) {
             if (!socket_recv_msg(fd, msg_type, &ack_buf, len, static_cast<uint16_t>(sizeof(A)))) {
                 running->store(false, std::memory_order_release);
-                port->requestReaderWakeFromExternalThread();
                 socketFactory::notifyPeerClosed(interface_name);
                 break;
             }
             if (msg_type == MSG_SHUTDOWN) {
                 running->store(false, std::memory_order_release);
-                port->requestReaderWakeFromExternalThread();
                 socketFactory::notifyPeerClosed(interface_name);
                 break;
             }
@@ -148,8 +144,6 @@ void port_socket(req_ack_in<R, A> &port, const std::string &interface_name)
     if (should_shutdown) {
         socketFactory::shutdownByName(interface_name);
     }
-
-    port->bindSocketBridgeLiveness(nullptr);
 }
 
 #endif // REQ_ACK_PORT_SOCKET_H
