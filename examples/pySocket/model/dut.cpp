@@ -28,7 +28,7 @@ void dut::dutListener(void)
         p2s_message_st message;
         p2s_response_st response;
         test_req_ack->reqReceive(message);
-        log_.logPrint(std::format("received message: {}", message.param1), LOG_IMPORTANT );
+        log_.logPrint(std::format("received message: {} {}", message.param1, message.param2), LOG_IMPORTANT );
         response.response = message.param1 + message.param2;
         test_req_ack->ack(response);
     }

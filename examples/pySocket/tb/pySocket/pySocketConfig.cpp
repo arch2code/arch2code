@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <sys/wait.h>
+#include <cstdio>
 
 #include "instanceFactory.h"
 #include "socketFactory.h"
@@ -99,22 +100,37 @@ public:
             return false;
         }
 
-        const std::string script_path = resolvePySocketScriptPath();
-        if (script_path.empty()) {
-            socketFactory::shutdownAll();
-            return false;
+        const char *ports_file = getenv("PYSOCKET_PORTS_FILE");
+        if (ports_file != nullptr && ports_file[0] != '\0') {
+            FILE *fp = std::fopen(ports_file, "w");
+            if (fp != nullptr) {
+                std::fprintf(fp, "export PYSOCKET_PORTS=%s\n", socketFactory::getPortString().c_str());
+                std::fclose(fp);
+            }
         }
 
-        pid_t pid = fork();
-        if (pid == 0) {
-            execlp("python3", "python3", script_path.c_str(), nullptr);
-            _exit(127);
+        const bool skip_python = getenv("PYSOCKET_SKIP_PYTHON_SIDECAR") != nullptr;
+
+        if (!skip_python) {
+            const std::string script_path = resolvePySocketScriptPath();
+            if (script_path.empty()) {
+                socketFactory::shutdownAll();
+                return false;
+            }
+
+            pid_t pid = fork();
+            if (pid == 0) {
+                execlp("python3", "python3", script_path.c_str(), nullptr);
+                _exit(127);
+            }
+            if (pid < 0) {
+                socketFactory::shutdownAll();
+                return false;
+            }
+            python_pid_ = pid;
+        } else {
+            python_pid_ = -1;
         }
-        if (pid < 0) {
-            socketFactory::shutdownAll();
-            return false;
-        }
-        python_pid_ = pid;
 
         socketFactory::acceptAll();
 
