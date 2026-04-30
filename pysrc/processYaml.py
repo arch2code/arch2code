@@ -2176,7 +2176,7 @@ class projectCreate:
     #simple sections dont need any special handling - no auto fields
     simpleSections = {"types", "blocks", "variables", "interfaces", "instances", 'connectionMaps', "structures", "memories", "registers", "memoryConnections", "registerConnections", "parameters" }
     #custom section require complete custom section handling including the main loop
-    customSections = {"connections"}
+    customSections = {"connections", "ipParameters"}
     # any section inbetween has a per entry handler
     ignoreSections = {"include", "flows", "includeName", "blockDir" } # note all project file field are added later
     generatorTemplates = {"cppConfig", "svConfig", "docConfig" }
@@ -2232,8 +2232,18 @@ class projectCreate:
         # for some settings the user project setting overrides the a2c defaults - eg schema is either user defined or a2c defined
         # for other settings they may be additive, eg template mappings are additive ie you get all the a2c defaults
         # however an individual template definition can be overridden by the user
-        # pro vs base is simplier, pro overrides any base settings
-        if (os.path.exists(os.path.join(self.a2cRoot, "../pro"))):
+        # pro vs base is simpler, pro overrides any base settings.
+        # Only promote a2cRoot to the parent (so pro/config is merged) when the
+        # user project does NOT live inside the current (base) a2cRoot. A
+        # project under builder/base/ is base-only; promoting would silently
+        # pull in a sibling pro tree on disk (e.g. base examples sitting next
+        # to a checked-out pro) and contaminate the build.
+        baseRootAbs = os.path.abspath(self.a2cRoot)
+        userProjAbs = os.path.abspath(projFile)
+        userIsUnderBase = (userProjAbs == baseRootAbs or
+                           userProjAbs.startswith(baseRootAbs + os.sep))
+        if (os.path.exists(os.path.join(self.a2cRoot, "../pro")) and
+                not userIsUnderBase):
             self.a2cRoot = os.path.join(self.a2cRoot, "../")
         self.a2cRoot = os.path.abspath(self.a2cRoot)
         dirMacros = { "a2c" : self.a2cRoot }
@@ -2814,14 +2824,14 @@ class projectCreate:
                 section = self.schema.data['mapto'][section]
             # some sections need to be ignored (eg in case this is a nested project file)
             if section not in self.ignoreSections:
-                if (section in self.schema.data['schema']):
-                    # does this section have a custom section handler
-                    if section in self.customSections:
-                        funct = '_process_'+ section
-                        # getattr is used to call the function specified in the string funct in the self object
-                        getattr(self, funct)(sectData, contextFile)
-                    else:
-                        self.processSection(section, sectData, contextFile)
+                # custom sections are checked first - they may not have a schema entry of their own
+                # (e.g. ipParameters delegates to the schemas of its sub-sections)
+                if section in self.customSections:
+                    funct = '_process_'+ section
+                    # getattr is used to call the function specified in the string funct in the self object
+                    getattr(self, funct)(sectData, contextFile)
+                elif (section in self.schema.data['schema']):
+                    self.processSection(section, sectData, contextFile)
                 else:
                     printError(f"Unknown section: {section} found in {yamlFile}:{sectData.lc.line}")
                     exit(warningAndErrorReport())
@@ -3792,6 +3802,27 @@ class projectCreate:
             self.data['connections'][yamlFile][myKey] = entry
 
         return
+
+    # ipParameters: container section that delegates to existing section schemas (constants, types).
+    # Entries from ipParameters are merged into the same self.data['constants']/self.data['types']
+    # dictionaries as regular entries, but stamped with isParameterizable=True for later processing.
+    # Transitive propagation (F2) and worst-case sizing (F3) are NOT performed here.
+    def _process_ipParameters(self, data, yamlFile):
+        for section, sectData in data.items():
+            if section in self.schema.data['mapto']:
+                section = self.schema.data['mapto'][section]
+            if section in self.schema.data['schema']:
+                # Snapshot existing keys to identify new entries created by this call
+                existing_keys = set(self.data[section].get(yamlFile, {}).keys())
+                # Process through normal section pipeline - same schema, same validation
+                self.processSection(section, sectData, yamlFile)
+                # Stamp new entries as parameterizable
+                new_keys = set(self.data[section].get(yamlFile, {}).keys()) - existing_keys
+                for key in new_keys:
+                    self.data[section][yamlFile][key]['isParameterizable'] = True
+            else:
+                printError(f"Unknown sub-section '{section}' in ipParameters in {yamlFile}")
+                exit(warningAndErrorReport())
 
     def re_constReplace(self, myStr):
         return(str(self.constParse(myStr.group(2), self.currentContext, value=True)))

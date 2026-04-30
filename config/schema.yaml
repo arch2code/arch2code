@@ -70,6 +70,7 @@ constants:
   constant: key
   value: eval
   desc: required
+  maxValue: optional(0)
   valueType:
     _type: optional(uint)
     _validate:
@@ -92,6 +93,7 @@ types:
   type: key
   desc: required
   isSigned: optional(false)
+  maxBitwidth: optional(0)
   enum:
     _attribs: [optional, list, post(add_enum)] # post allows performing custom handling after entry is processed
     enumName: key

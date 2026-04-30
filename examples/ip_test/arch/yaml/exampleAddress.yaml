@@ -1,0 +1,46 @@
+# Example Address control file that manages how addresses are generated, and ID's are generated
+# for addresses, it is assumed that there could be multiple levels of decode. For this purpose
+# address groups enable addresses to be generated in overlapping range offsets
+#
+# Layout for ip_test:
+#   top                0x00000000   (ip_top, decoded by uAPBDecode)
+#     ip               0x00000000   (uIp0, uIp1)
+#       uIp0           0x00000000
+#       uIp1           0x00100000
+
+AddressGroups:
+    top:
+        addressIncrement: 0x01000000
+        maxAddressSpaces: 16
+        varType: addr_id_top
+        varTypeContext: ip_top.yaml
+        enumPrefix: ADDR_ID_TOP_
+        primaryDecode: True
+        decoderInstance: uAPBDecode # what instance is used to decode and route the address bus for this address group
+    ip:
+        addressIncrement: 0x00100000
+        maxAddressSpaces: 16
+        varType: addr_id_ip
+        varTypeContext: ip_top.yaml
+        enumPrefix: ADDR_ID_IP_
+
+# Specify the register bus interface, this is used to define the address and data types used for register access
+# This interface definition must exist in the context of the register decoder instance specified in the address group
+RegisterBusInterface: apbReg
+
+InstanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+AddressObjects:
+    memories: # note order is important as it controls address generation. Memories first as they are typically bigger and have alignment restrictions
+        alignment: memsize #options are memsize or number of bytes memsize means always aligned to memory size ie internally can decode the lower bits directly
+        sizeRoundUpPowerOf2: True
+        sortDescending: True
+    registers:
+        alignment: 8
+        sortDescending: True
