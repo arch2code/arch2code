@@ -63,6 +63,9 @@ std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierar
     if (inst == INSTANCE_FACTORY_DEFAULT)
     {
         auto instIt = getInstMap().find(qualifiedName);
+        if (instIt == getInstMap().end()) {
+            instIt = getInstMap().find(getQualName(qualifiedName));
+        }
         if (instIt != getInstMap().end()) {
             instMode = instIt->second;
             blockType = std::string(blockTypeUser) + "_" + instIt->second;
