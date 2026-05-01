@@ -8,7 +8,7 @@ SC_HAS_PROCESS(ip);
 ip::registerBlock ip::registerBlock_; //register the block with the factory
 
 void ip::regHandler(void) { //handle register decode
-    registerHandler< apbAddrSt, apbDataSt >(regs, apbReg, (1<<(4))-1); }
+    registerHandler< apbAddrSt, apbDataSt >(regs, apbReg, (1<<(9))-1); }
 
 ip::ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
@@ -17,12 +17,26 @@ ip::ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
         ,regs(log_)
         ,ipCfg(ipCfgSt::_packedSt(0x0))
         ,ipLastData()
+        ,ipMem(name(), "ipMem", mems, IP_MEM_DEPTH)
+        ,ipFixedMem(name(), "ipFixedMem", mems, IP_MEM_DEPTH)
+        ,ipNonConstMem(name(), "ipNonConstMem", mems, IP_NONCONST_DEPTH)
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
+    // Generated register/memory address offsets
+    constexpr uint64_t REG_ADDR_IP_IPMEM = 0x0;
+    constexpr uint64_t REG_ADDR_IP_IPFIXEDMEM = 0x80;
+    constexpr uint64_t REG_ADDR_IP_IPNONCONSTMEM = 0x100;
+    constexpr uint64_t REG_ADDR_IP_IPCFG = 0x180;
+    constexpr uint64_t REG_ADDR_IP_IPLASTDATA = 0x188;
+
+    // register memories for FW access
+    regs.addMemory( REG_ADDR_IP_IPMEM, ipMemSt::_byteWidth, IP_MEM_DEPTH, std::string(this->name()) + ".ipMem", &ipMem);
+    regs.addMemory( REG_ADDR_IP_IPFIXEDMEM, ipFixedSt::_byteWidth, IP_MEM_DEPTH, std::string(this->name()) + ".ipFixedMem", &ipFixedMem);
+    regs.addMemory( REG_ADDR_IP_IPNONCONSTMEM, ipFixedSt::_byteWidth, IP_NONCONST_DEPTH, std::string(this->name()) + ".ipNonConstMem", &ipNonConstMem);
     // register registers for FW access
-    regs.addRegister( 0x0, 2, "ipCfg", &ipCfg );
-    regs.addRegister( 0x8, 1, "ipLastData", &ipLastData );
+    regs.addRegister( REG_ADDR_IP_IPCFG, 2, "ipCfg", &ipCfg );
+    regs.addRegister( REG_ADDR_IP_IPLASTDATA, 1, "ipLastData", &ipLastData );
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

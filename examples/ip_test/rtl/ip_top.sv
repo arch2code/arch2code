@@ -34,14 +34,14 @@ src uSrc (
     .rst_n (rst_n)
 );
 
-ip #(.IP_DATA_WIDTH(8), .IP_MEM_DEPTH(16)) uIp0 (
+ip #(.IP_DATA_WIDTH(8), .IP_MEM_DEPTH(16), .IP_NONCONST_DEPTH(24)) uIp0 (
     .ipDataIf (out0),
     .apbReg (apb_uIp0),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-ip #(.IP_DATA_WIDTH(12), .IP_MEM_DEPTH(8)) uIp1 (
+ip #(.IP_DATA_WIDTH(12), .IP_MEM_DEPTH(8), .IP_NONCONST_DEPTH(12)) uIp1 (
     .ipDataIf (out1),
     .apbReg (apb_uIp1),
     .clk (clk),

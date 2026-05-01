@@ -4,6 +4,10 @@ from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorRepor
 # Does not alter the rendering
 intf_gen_utils.LEGACY_COMPAT_MODE = True
 
+def addressConstName(data, item):
+    blockName = item.get('block', data['blockName'])
+    return f"REG_ADDR_{blockName.upper()}_{item['name'].upper()}"
+
 # args from generator line
 # prj object
 # data set dict
@@ -180,7 +184,9 @@ def constructorBody(args, prj, data):
             mem_reg_items.append({
                 'type': 'memory',
                 'offset': memData["offset"],
+                'offset_value': f'0x{memData["offset"]:0x}',
                 'name': memData["memory"],
+                'block': memData["block"],
                 'structure': memData["structure"],
                 'wordLines': memData["wordLines"],
                 'is_reg_handler': data['blockInfo'].get('isRegHandler')
@@ -192,7 +198,9 @@ def constructorBody(args, prj, data):
                 mem_reg_items.append({
                     'type': 'memory_register',
                     'offset': regData["offset"],
+                    'offset_value': f'0x{regData["offset"]:0x}',
                     'name': regData["register"],
+                    'block': regData["block"],
                     'structure': regData["structure"],
                     'wordLines': regData["wordLines"]
                 })
@@ -203,7 +211,9 @@ def constructorBody(args, prj, data):
                 mem_reg_items.append({
                     'type': 'register',
                     'offset': regData["offset"],
+                    'offset_value': f'0x{regData["offset"]:0x}',
                     'name': regData["register"],
+                    'block': regData["block"],
                     'size': regData["bytes"]
                 })
         
@@ -211,25 +221,31 @@ def constructorBody(args, prj, data):
         mem_reg_items.sort(key=lambda x: x['offset'])
         
         # Generate addMemory and addRegister calls in sorted order
+        if mem_reg_items:
+            out.append(f'    // Generated register/memory address offsets')
+            for item in mem_reg_items:
+                out.append(f'    constexpr uint64_t {addressConstName(data, item)} = {item["offset_value"]};')
+            out.append('')
         memory_comment_written = False
         register_comment_written = False
         for item in mem_reg_items:
+            constName = addressConstName(data, item)
             if item['type'] in ['memory', 'memory_register']:
                 if not memory_comment_written:
                     memory_comment_written = True
                     out.append(f'    // register memories for FW access')
                 if item['type'] == 'memory':
                     if item['is_reg_handler']:
-                        out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                        out.append(f'    regs.addMemory( {constName}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
                     else:
-                        out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
+                        out.append(f'    regs.addMemory( {constName}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
                 else:  # memory_register
-                    out.append(f'    regs.addMemory( 0x{item["offset"]:0x}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                    out.append(f'    regs.addMemory( {constName}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
             else:  # regular register
                 if not register_comment_written:
                     register_comment_written = True
                     out.append(f'    // register registers for FW access')
-                out.append(f'    regs.addRegister( 0x{item["offset"]:0x}, {item["size"]}, "{item["name"]}", &{item["name"]} );')
+                out.append(f'    regs.addRegister( {constName}, {item["size"]}, "{item["name"]}", &{item["name"]} );')
 
         first = True
     for key, value in data["connectionMaps"].items():

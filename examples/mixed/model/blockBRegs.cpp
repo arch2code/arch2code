@@ -23,13 +23,20 @@ blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBase
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
+    // Generated register/memory address offsets
+    constexpr uint64_t REG_ADDR_BLOCKB_BLOCKBTABLE1 = 0x0;
+    constexpr uint64_t REG_ADDR_BLOCKB_BLOCKBTABLE37BIT = 0x80;
+    constexpr uint64_t REG_ADDR_BLOCKB_BLOCKBTABLEEXT = 0x100;
+    constexpr uint64_t REG_ADDR_BLOCKB_RWD = 0x140;
+    constexpr uint64_t REG_ADDR_BLOCKB_ROBSIZE = 0x148;
+
     // register memories for FW access
-    regs.addMemory( 0x0, bigSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTable1", &blockBTable1_adapter);
-    regs.addMemory( 0x80, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTable37Bit", &blockBTable37Bit_adapter);
-    regs.addMemory( 0x100, seeSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTableExt", &blockBTableExt_adapter);
+    regs.addMemory( REG_ADDR_BLOCKB_BLOCKBTABLE1, bigSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTable1", &blockBTable1_adapter);
+    regs.addMemory( REG_ADDR_BLOCKB_BLOCKBTABLE37BIT, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTable37Bit", &blockBTable37Bit_adapter);
+    regs.addMemory( REG_ADDR_BLOCKB_BLOCKBTABLEEXT, seeSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTableExt", &blockBTableExt_adapter);
     // register registers for FW access
-    regs.addRegister( 0x140, 1, "rwD", &rwD );
-    regs.addRegister( 0x148, 1, "roBsize", &roBsize );
+    regs.addRegister( REG_ADDR_BLOCKB_RWD, 1, "rwD", &rwD );
+    regs.addRegister( REG_ADDR_BLOCKB_ROBSIZE, 1, "roBsize", &roBsize );
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

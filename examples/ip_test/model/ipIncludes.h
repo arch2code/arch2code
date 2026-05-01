@@ -17,6 +17,7 @@
 //constants
 const uint32_t IP_DATA_WIDTH = 8;  // Per-instance data width
 const uint32_t IP_MEM_DEPTH = 16;  // Per-instance memory depth
+const uint32_t IP_DATA_WIDTH_X2 = 16;  // Derived width, 2x data (maxValue auto-derived)
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
@@ -24,6 +25,8 @@ const uint32_t IP_MEM_DEPTH = 16;  // Per-instance memory depth
 typedef uint8_t ipDataT; // [8] IP data word, parameterizable
 typedef uint8_t enableT; // [1] Single enable bit
 typedef uint8_t ipMemAddrT; // [4] Index into ipMem (0 .. IP_MEM_DEPTH-1)
+typedef uint8_t ipFixedT; // [8] Fixed 8-bit byte (non-parameterizable)
+typedef uint8_t ipFixedAddrT; // [8] Fixed 8-bit address index (non-parameterizable)
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
@@ -176,6 +179,102 @@ struct ipMemAddrSt {
         address(address_)
     {}
     explicit ipMemAddrSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct ipBurstSt {
+    ipDataT samples[IP_MEM_DEPTH]; //Burst of parameterizable samples
+
+    ipBurstSt() {}
+
+    static constexpr uint16_t _bitWidth = IP_DATA_WIDTH*IP_MEM_DEPTH;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint64_t _packedSt[2];
+    bool operator == (const ipBurstSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const ipBurstSt & v, const std::string & NAME ) {
+        for(unsigned int i=0; i<IP_MEM_DEPTH; i++) {
+            sc_trace(tf,v.samples[i], NAME + ".samples[i]");
+        }
+    }
+    inline friend ostream& operator << ( ostream& os,  ipBurstSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<ipBurstSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<ipBurstSt::_bitWidth> packed_data);
+    explicit ipBurstSt(sc_bv<ipBurstSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit ipBurstSt(
+        ipDataT samples_[IP_MEM_DEPTH])
+    {
+        memcpy(&samples, &samples_, sizeof(samples));
+    }
+    explicit ipBurstSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct ipFixedSt {
+    ipFixedT b; //Fixed byte
+
+    ipFixedSt() {}
+
+    static constexpr uint16_t _bitWidth = 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint8_t _packedSt;
+    bool operator == (const ipFixedSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const ipFixedSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.b, NAME + ".b");
+    }
+    inline friend ostream& operator << ( ostream& os,  ipFixedSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<ipFixedSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<ipFixedSt::_bitWidth> packed_data);
+    explicit ipFixedSt(sc_bv<ipFixedSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit ipFixedSt(
+        ipFixedT b_) :
+        b(b_)
+    {}
+    explicit ipFixedSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct ipFixedAddrSt {
+    ipFixedAddrT a; //Fixed-width address
+
+    ipFixedAddrSt() {}
+
+    static constexpr uint16_t _bitWidth = 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint8_t _packedSt;
+    bool operator == (const ipFixedAddrSt & rhs) const;
+    inline friend void sc_trace(sc_trace_file *tf, const ipFixedAddrSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.a, NAME + ".a");
+    }
+    inline friend ostream& operator << ( ostream& os,  ipFixedAddrSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const;
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    void pack(_packedSt &_ret) const;
+    void unpack(const _packedSt &_src);
+    sc_bv<ipFixedAddrSt::_bitWidth> sc_pack(void) const;
+    void sc_unpack(sc_bv<ipFixedAddrSt::_bitWidth> packed_data);
+    explicit ipFixedAddrSt(sc_bv<ipFixedAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit ipFixedAddrSt(
+        ipFixedAddrT a_) :
+        a(a_)
+    {}
+    explicit ipFixedAddrSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
 

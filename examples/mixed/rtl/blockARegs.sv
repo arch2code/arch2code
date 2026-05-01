@@ -18,6 +18,12 @@ module blockARegs
 
     apbAddrSt apb_addr;
     assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'hff;
+    // Register/memory address offsets for decode documentation
+    localparam int unsigned REG_BLOCKA_BLOCKATABLE37BIT = 32'h00000000; // Local 37-bit memory register - serviced directly by blockA with 8-byte stride
+    localparam int unsigned REG_BLOCKA_BLOCKATABLE37BIT_SIZE = 32'h00000050; // Decode range size
+    localparam int unsigned REG_BLOCKA_BLOCKATABLELOCAL = 32'h00000080; // Local memory register - serviced directly by blockA
+    localparam int unsigned REG_BLOCKA_BLOCKATABLELOCAL_SIZE = 32'h00000028; // Decode range size
+    localparam int unsigned REG_BLOCKA_ROA = 32'h000000c0; // A Read Only register
 
     aRegSt roA_reg;
     assign roA_reg = roA.data;
@@ -81,7 +87,7 @@ module blockARegs
         nxt_blockATable37Bit_data = blockATable37Bit_data;
         if (wr_select) begin
             case (apb_addr) inside
-                [32'h80:32'ha4]: begin
+                [REG_BLOCKA_BLOCKATABLELOCAL:REG_BLOCKA_BLOCKATABLELOCAL + REG_BLOCKA_BLOCKATABLELOCAL_SIZE - 32'd4]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             blockATableLocal_update_0 = 1'b1;
@@ -90,7 +96,7 @@ module blockARegs
                         default: ;
                     endcase
                 end
-                [32'h0:32'h4c]: begin
+                [REG_BLOCKA_BLOCKATABLE37BIT:REG_BLOCKA_BLOCKATABLE37BIT + REG_BLOCKA_BLOCKATABLE37BIT_SIZE - 32'd4]: begin
                     case (apb_addr[3-1:0])
                         3'h0: begin
                             blockATable37Bit_update_0 = 1'b1;
@@ -122,11 +128,11 @@ module blockARegs
         nxt_blockATable37Bit_rd_enable = 1'b0;
         if (rd_select) begin
             case (apb_addr) inside
-                32'hc0 : begin
+                REG_BLOCKA_ROA : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roA_reg[6:0]);
                 end
-                [32'h80:32'ha4]: begin
+                [REG_BLOCKA_BLOCKATABLELOCAL:REG_BLOCKA_BLOCKATABLELOCAL + REG_BLOCKA_BLOCKATABLELOCAL_SIZE - 32'd4]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             if (blockATableLocal_rd_capture) begin
@@ -138,7 +144,7 @@ module blockARegs
                     endcase
                     nxt_blockATableLocal_rd_enable = ~blockATableLocal_rd_capture;
                 end
-                [32'h0:32'h4c]: begin
+                [REG_BLOCKA_BLOCKATABLE37BIT:REG_BLOCKA_BLOCKATABLE37BIT + REG_BLOCKA_BLOCKATABLE37BIT_SIZE - 32'd4]: begin
                     case (apb_addr[3-1:0])
                         3'h0: begin
                             if (blockATable37Bit_rd_capture) begin

@@ -18,6 +18,7 @@ public:
     virtual ~ipBase() = default;
     const uint64_t IP_DATA_WIDTH;
     const uint64_t IP_MEM_DEPTH;
+    const uint64_t IP_NONCONST_DEPTH;
     // dst ports
     // uSrc->ipDataIf: IP data push/ack stream
     push_ack_in< ipDataSt > ipDataIf;
@@ -28,6 +29,7 @@ public:
     ipBase(std::string name, const char * variant) :
         IP_DATA_WIDTH(instanceFactory::getParam("ip", variant, "IP_DATA_WIDTH"))
         ,IP_MEM_DEPTH(instanceFactory::getParam("ip", variant, "IP_MEM_DEPTH"))
+        ,IP_NONCONST_DEPTH(instanceFactory::getParam("ip", variant, "IP_NONCONST_DEPTH"))
         ,ipDataIf("ipDataIf")
         ,apbReg("apbReg")
     {};

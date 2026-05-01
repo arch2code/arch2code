@@ -46,7 +46,7 @@ module ip_variant1_hdl_sv_wrapper
     assign #0 apbReg_prdata = apbReg.prdata;
     assign #0 apbReg_pslverr = apbReg.pslverr;
 
-    ip #(.IP_DATA_WIDTH(12), .IP_MEM_DEPTH(8)) dut (
+    ip #(.IP_DATA_WIDTH(12), .IP_MEM_DEPTH(8), .IP_NONCONST_DEPTH(12)) dut (
         .ipDataIf(ipDataIf), // push_ack_if.dst
         .apbReg(apbReg), // apb_if.dst
         .clk(clk),

@@ -42,6 +42,10 @@ def get_reghandler_properties(prj, data):
     }
     return reghandler
 
+def address_const_name(data, inst, name_field):
+    block_name = inst.get('block', data['blockName'])
+    return f"REG_ADDR_{block_name.upper()}_{inst[name_field].upper()}"
+
 def get_hwregs(prj, data):
     hwregs = []
     regs = dict()
@@ -50,28 +54,36 @@ def get_hwregs(prj, data):
 
     for inst in sorted_insts:
         if 'memory' in inst:
+            const_name = address_const_name(data, inst, 'memory')
             hwregs.append({
                 "is_memory": True,
                 "name": inst['memory'] + '_adapter',
                 "datatype": inst['structure'],
                 "addresstype": inst['addressStruct'],
                 "word_lines": inst['wordLines'],
-                "offset": hex(inst['offset']),
+                "offset": const_name,
+                "offset_value": hex(inst['offset']),
+                "const_name": const_name,
                 "port_name": inst['memory'],
                 "descr": inst['desc']
             })
         elif inst.get('regType') == 'memory':
+            const_name = address_const_name(data, inst, 'register')
             hwregs.append({
                 "is_memory": True,
                 "name": inst['register'] + '_adapter',
                 "datatype": inst['structure'],
                 "addresstype": inst['addressStruct'],
                 "word_lines": inst['wordLines'],
-                "offset": hex(inst['offset']),
+                "offset": const_name,
+                "offset_value": hex(inst['offset']),
+                "const_name": const_name,
                 "port_name": inst['register'],
                 "descr": inst['desc']
             })
         else:
+            const_name = address_const_name(data, inst, 'register')
+            effective_bytes = inst.get('maxBytes', inst['bytes'])
             port_type = intf_gen_utils.get_intf_type(inst['interfaceType'], data)
             direction = "_out" if inst['direction'] == 'src' else "_in"
             port_type = port_type + direction
@@ -79,10 +91,12 @@ def get_hwregs(prj, data):
                 "is_memory": False,
                 "name": inst['register'] + '_reg',
                 "datatype": inst['structure'],
-                "size_rounded": roundup_multiple(inst['bytes'], 4),
+                "size_rounded": roundup_multiple(effective_bytes, 4),
                 "size": inst['bytes'],
                 "ro" : 'true' if inst['regType'] == 'ro' else 'false',
-                "offset": hex(inst['offset']),
+                "offset": const_name,
+                "offset_value": hex(inst['offset']),
+                "const_name": const_name,
                 "port_type": port_type,
                 "port_name": inst['register'],
                 "default": hex(prj.getConst(inst['defaultValue'])) if inst['regType'] == 'rw' else None,
@@ -178,6 +192,12 @@ void {{blockname}}::regHandler(void) { //handle register decode
 
 block_regs_body_section_template = '''\
 {
+    {% if hwregs -%}
+    // Generated register/memory address offsets
+    {% for entry in hwregs -%}
+    constexpr uint64_t {{entry.const_name}} = {{entry.offset_value}};
+    {% endfor %}
+    {% endif -%}
     {% set memory_items = hwregs | selectattr('is_memory', 'equalto', true) | list -%}
     {% if memory_items -%}
     // register memories for FW access

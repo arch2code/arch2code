@@ -145,5 +145,117 @@ void ipMemAddrSt::sc_unpack(sc_bv<ipMemAddrSt::_bitWidth> packed_data)
 {
     address = (ipMemAddrT) packed_data.range(3, 0).to_uint64();
 }
+bool ipBurstSt::operator == (const ipBurstSt & rhs) const {
+    bool ret = true;
+    for(unsigned int i=0; i<IP_MEM_DEPTH; i++) {
+        ret = ret && (samples[i] == rhs.samples[i]);
+    }
+    return ( ret );
+    }
+std::string ipBurstSt::prt(bool all) const
+{
+    return (std::format("samples[0:15]: {}",
+       staticArrayPrt<ipDataT, IP_MEM_DEPTH>(samples, all)
+    ));
+}
+void ipBurstSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, ipBurstSt::_byteWidth);
+    uint16_t _pos{0};
+    for(unsigned int i=0; i<IP_MEM_DEPTH; i++) {
+        pack_bits((uint64_t *)&_ret, _pos, samples[i], 8);
+        _pos += 8;
+    }
+}
+void ipBurstSt::unpack(const _packedSt &_src)
+{
+    uint16_t _pos{0};
+    for(unsigned int i=0; i<IP_MEM_DEPTH; i++) {
+        uint16_t _bits = 8;
+        uint16_t _consume;
+        _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
+        samples[i] = (ipDataT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 8) - 1));
+        _pos += _consume;
+        _bits -= _consume;
+        if ((_bits > 0) && (_consume != 64)) {
+            samples[i] = (ipDataT)(samples[i] | ((_src[ _pos >> 6 ] << _consume) & ((1ULL << 8) - 1)));
+            _pos += _bits;
+        }
+    }
+}
+sc_bv<ipBurstSt::_bitWidth> ipBurstSt::sc_pack(void) const
+{
+    sc_bv<ipBurstSt::_bitWidth> packed_data;
+    for(unsigned int i=0; i<IP_MEM_DEPTH; i++) {
+        packed_data.range(0+(i+1)*8-1, 0+i*8) = samples[i];
+    }
+    return packed_data;
+}
+void ipBurstSt::sc_unpack(sc_bv<ipBurstSt::_bitWidth> packed_data)
+{
+    for(unsigned int i=0; i<IP_MEM_DEPTH; i++) {
+        samples[i] = (ipDataT) packed_data.range(0+(i+1)*8-1, 0+i*8).to_uint64();
+    }
+}
+bool ipFixedSt::operator == (const ipFixedSt & rhs) const {
+    bool ret = true;
+    ret = ret && (b == rhs.b);
+    return ( ret );
+    }
+std::string ipFixedSt::prt(bool all) const
+{
+    return (std::format("b:0x{:02x}",
+       (uint64_t) b
+    ));
+}
+void ipFixedSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, ipFixedSt::_byteWidth);
+    _ret = b;
+}
+void ipFixedSt::unpack(const _packedSt &_src)
+{
+    b = (ipFixedT)((_src));
+}
+sc_bv<ipFixedSt::_bitWidth> ipFixedSt::sc_pack(void) const
+{
+    sc_bv<ipFixedSt::_bitWidth> packed_data;
+    packed_data.range(7, 0) = b;
+    return packed_data;
+}
+void ipFixedSt::sc_unpack(sc_bv<ipFixedSt::_bitWidth> packed_data)
+{
+    b = (ipFixedT) packed_data.range(7, 0).to_uint64();
+}
+bool ipFixedAddrSt::operator == (const ipFixedAddrSt & rhs) const {
+    bool ret = true;
+    ret = ret && (a == rhs.a);
+    return ( ret );
+    }
+std::string ipFixedAddrSt::prt(bool all) const
+{
+    return (std::format("a:0x{:02x}",
+       (uint64_t) a
+    ));
+}
+void ipFixedAddrSt::pack(_packedSt &_ret) const
+{
+    memset(&_ret, 0, ipFixedAddrSt::_byteWidth);
+    _ret = a;
+}
+void ipFixedAddrSt::unpack(const _packedSt &_src)
+{
+    a = (ipFixedAddrT)((_src));
+}
+sc_bv<ipFixedAddrSt::_bitWidth> ipFixedAddrSt::sc_pack(void) const
+{
+    sc_bv<ipFixedAddrSt::_bitWidth> packed_data;
+    packed_data.range(7, 0) = a;
+    return packed_data;
+}
+void ipFixedAddrSt::sc_unpack(sc_bv<ipFixedAddrSt::_bitWidth> packed_data)
+{
+    a = (ipFixedAddrT) packed_data.range(7, 0).to_uint64();
+}
 
 // GENERATED_CODE_END

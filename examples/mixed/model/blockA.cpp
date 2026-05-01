@@ -26,11 +26,16 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
+    // Generated register/memory address offsets
+    constexpr uint64_t REG_ADDR_BLOCKA_BLOCKATABLE37BIT = 0x0;
+    constexpr uint64_t REG_ADDR_BLOCKA_BLOCKATABLELOCAL = 0x80;
+    constexpr uint64_t REG_ADDR_BLOCKA_ROA = 0xc0;
+
     // register memories for FW access
-    regs.addMemory( 0x0, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATable37Bit", &blockATable37Bit_adapter);
-    regs.addMemory( 0x80, aRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATableLocal", &blockATableLocal_adapter);
+    regs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLE37BIT, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATable37Bit", &blockATable37Bit_adapter);
+    regs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLELOCAL, aRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATableLocal", &blockATableLocal_adapter);
     // register registers for FW access
-    regs.addRegister( 0xc0, 1, "roA", &roA );
+    regs.addRegister( REG_ADDR_BLOCKA_ROA, 1, "roA", &roA );
     // bind local memory register ports to channels
     blockATableLocal_port(blockATableLocal_channel);
     blockATable37Bit_port(blockATable37Bit_channel);

@@ -12,6 +12,7 @@
 #include "ipBase.h"
 #include "addressMap.h"
 #include "hwRegister.h"
+#include "hwMemory.h"
 #include "ipIncludes.h"
 #include "ip_topIncludes.h"
 
@@ -29,8 +30,10 @@ private:
             instanceFactory::addParam({
                 { "ip.variant0.IP_DATA_WIDTH", 8 },
                 { "ip.variant0.IP_MEM_DEPTH", 16 },
+                { "ip.variant0.IP_NONCONST_DEPTH", 24 },
                 { "ip.variant1.IP_DATA_WIDTH", 12 },
                 { "ip.variant1.IP_MEM_DEPTH", 8 },
+                { "ip.variant1.IP_NONCONST_DEPTH", 12 },
             });
             // lamda function to construct the block
             instanceFactory::registerBlock("ip_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<ip>(blockName, variant, bbMode));}, "" );
@@ -43,8 +46,19 @@ public:
     hwRegister< ipCfgSt, 4 > ipCfg; // IP configuration
     hwRegister< ipDataSt, 4 > ipLastData; // Last data word received on ipDataIf
 
+    memories mems;
+    //memories
+    hwMemory< ipMemSt > ipMem;
+    hwMemory< ipFixedSt > ipFixedMem;
+    hwMemory< ipFixedSt > ipNonConstMem;
+
     ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ip() override = default;
+    void setTimed(int nsec, timedDelayMode mode) override
+    {
+        ipBase::setTimed(nsec, mode);
+        mems.setTimed(nsec, mode);
+    }
 
     // GENERATED_CODE_END
     // block implementation members
