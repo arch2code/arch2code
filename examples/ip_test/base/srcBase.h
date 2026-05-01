@@ -7,7 +7,7 @@
 
 // GENERATED_CODE_PARAM --block=src
 // GENERATED_CODE_BEGIN --template=baseClassDecl
-#include "rdy_vld_channel.h"
+#include "push_ack_channel.h"
 #include "ipIncludes.h"
 
 class srcBase : public virtual blockPortBase
@@ -15,10 +15,10 @@ class srcBase : public virtual blockPortBase
 public:
     virtual ~srcBase() = default;
     // src ports
-    // ipDataIf->uIp0: IP data stream
-    rdy_vld_out< ipDataSt > out0;
-    // ipDataIf->uIp1: IP data stream
-    rdy_vld_out< ipDataSt > out1;
+    // ipDataIf->uIp0: IP data push/ack stream
+    push_ack_out< ipDataSt > out0;
+    // ipDataIf->uIp1: IP data push/ack stream
+    push_ack_out< ipDataSt > out1;
 
 
     srcBase(std::string name, const char * variant) :
@@ -41,10 +41,10 @@ class srcInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // ipDataIf->uIp0: IP data stream
-    rdy_vld_in< ipDataSt > out0;
-    // ipDataIf->uIp1: IP data stream
-    rdy_vld_in< ipDataSt > out1;
+    // ipDataIf->uIp0: IP data push/ack stream
+    push_ack_in< ipDataSt > out0;
+    // ipDataIf->uIp1: IP data push/ack stream
+    push_ack_in< ipDataSt > out1;
 
 
     srcInverted(std::string name) :
@@ -67,10 +67,10 @@ class srcChannels
 {
 public:
     // src ports
-    // IP data stream
-    rdy_vld_channel< ipDataSt > out0;
-    // IP data stream
-    rdy_vld_channel< ipDataSt > out1;
+    // IP data push/ack stream
+    push_ack_channel< ipDataSt > out0;
+    // IP data push/ack stream
+    push_ack_channel< ipDataSt > out1;
 
 
     srcChannels(std::string name, std::string srcName) :

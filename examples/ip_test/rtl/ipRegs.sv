@@ -12,17 +12,21 @@ module ipRegs
     (
         apb_if.dst apbReg,
         status_if.src ipCfg,
+        status_if.dst ipLastData,
         input clk,
         input rst_n
     );
 
     apbAddrSt apb_addr;
-    assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h7;
+    assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'hf;
 
     ipCfgSt ipCfg_reg;
     logic ipCfg_reg_update_0;
     assign ipCfg.data = ipCfg_reg;
     `DFFREN(ipCfg_reg[10:0], apbReg.pwdata[10:0], ipCfg_reg_update_0, 11'h00000000)
+
+    ipDataSt ipLastData_reg;
+    assign ipLastData_reg = ipLastData.data;
 
     logic wr_select;
     logic rd_select;
@@ -61,6 +65,10 @@ module ipRegs
                 32'h0 : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(ipCfg_reg[10:0]);
+                end
+                32'h8 : begin
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = apbDataSt'(ipLastData_reg[7:0]);
                 end
                 default: begin
                     nxt_rd_data = apbDataSt'(32'hBADD_C0DE);

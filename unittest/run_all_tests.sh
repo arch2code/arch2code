@@ -69,6 +69,15 @@ echo "Test Suite 9: ContextKey Validation"
 echo "------------------------------------------------------------------------"
 python3 test_contextkey_validation.py || FAILED=1
 
+# Test 10: Error handling - parameterizable constants (F2/F3)
+echo ""
+echo "Test Suite 10: Error Handling (Parameterizable Constants)"
+echo "------------------------------------------------------------------------"
+if ! python3 test_error_parameterizable.py; then
+    FAILED=1
+    echo "Note: Some parameterizable-constant error tests failed"
+fi
+
 echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then

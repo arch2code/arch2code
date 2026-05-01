@@ -5,16 +5,14 @@
 #include "systemc.h"
 #include "logging.h"
 
-// GENERATED_CODE_PARAM --block=ip_top
+// GENERATED_CODE_PARAM --block=ip_top_tb --excludeInst=u_ip_top
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
 #include "ip_topBase.h"
 #include "endOfTest.h"
 
 //contained instances forward class declaration
-class apbDecodeBase;
-class ipBase;
-class srcBase;
+class cpuBase;
 
 class ip_topExternal: public sc_module, public ip_topInverted {
 
@@ -22,23 +20,11 @@ class ip_topExternal: public sc_module, public ip_topInverted {
 
 public:
 
-    std::shared_ptr<apbDecodeBase> uAPBDecode;
-    std::shared_ptr<srcBase> uSrc;
-    std::shared_ptr<ipBase> uIp0;
-    std::shared_ptr<ipBase> uIp1;
+    std::shared_ptr<cpuBase> uCPU;
 
     SC_HAS_PROCESS (ip_topExternal);
 
     ip_topExternal(sc_module_name modulename);
-
-    // IP data stream
-    rdy_vld_channel< ipDataSt > out0;
-    // IP data stream
-    rdy_vld_channel< ipDataSt > out1;
-    // CPU access to IP registers via APB
-    apb_channel< apbAddrSt, apbDataSt > apb_uIp0;
-    // CPU access to IP registers via APB
-    apb_channel< apbAddrSt, apbDataSt > apb_uIp1;
 
     // Thread monitoring the end of test event to stop simulation
     void eotThread(void) {

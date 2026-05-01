@@ -309,6 +309,8 @@ constants:
   CONSTANT_NAME: {value: <number>, desc: "<description>"}
   # OR with evaluation
   CALCULATED_CONST: {eval: '<expression>', desc: "<description>"}
+  # Optional parameterizable maximum
+  PARAM_CONST: {value: <nominal>, maxValue: <worst_case>, desc: "<description>"}
 ```
 
 #### Rules
@@ -319,6 +321,11 @@ constants:
 4. **Math Expressions**: Supports `+`, `-`, `*`, `/`, parentheses
 5. **References**: Use `$CONSTANT_NAME` to reference other constants
 6. **Python Expressions**: Eval is based on std Python methods like `.bit_length()`
+7. **Parameterizable Maximums**: Use `maxValue` for constants whose value can vary per instance or variant
+   - `maxValue` must be a positive integer and must be greater than or equal to the nominal `value`
+   - A constant declared under `ipParameters.constants` is parameterizable and must provide `maxValue` unless it is derived from another parameterizable constant
+   - A regular constant can also be marked parameterizable with `isParameterizable: true` or by providing a non-zero `maxValue`
+   - For `eval` constants that reference parameterizable constants, arch2code auto-derives `maxValue`; do **not** hand-write `maxValue` on those derived constants
 
 #### Examples
 
@@ -335,6 +342,12 @@ constants:
   
   # Complex expression
   FIFO_DEPTH: {eval: '($BUFFER_SIZE + 15) / 16', desc: "FIFO depth in 16-word blocks"}
+
+  # Direct parameterizable constant
+  DATA_WIDTH: {value: 8, maxValue: 16, desc: "Per-instance data width"}
+
+  # Derived parameterizable constant; maxValue is auto-derived as 32
+  DATA_WIDTH_X2: {eval: '$DATA_WIDTH * 2', desc: "Double data width"}
 ```
 
 **AI Agent Guidance:**
@@ -352,9 +365,11 @@ Types define bit widths and optional enumerations for data elements.
 ```yaml
 types:
   type_name:
-    width: <number_or_constant>  # Required if no enum; auto-calculated if enum provided
-    desc: "<description>"         # Required
-    enum:                         # Optional
+    width: <number_or_constant>          # Required if no enum; auto-calculated if enum provided
+    # OR widthLog2 / widthLog2minus1
+    maxBitwidth: <worst_case_bit_width>  # Required for direct parameterizable types
+    desc: "<description>"                # Required
+    enum:                                # Optional
       - {enumName: <NAME>, value: <number>, desc: "<description>"}
 ```
 
@@ -365,9 +380,16 @@ types:
    - **Required** for non-enum types (error if omitted)
    - **Auto-calculated** for enum types (calculated from largest enum value)
    - Can be a number or reference a constant name directly
+   - `widthLog2` stores the bit width needed for values up to the referenced size
+   - `widthLog2minus1` stores the bit width needed to index `0..N-1`
 3. **Enumerations**: Optional list of named values
 4. **Enum Naming**: Use UPPER_CASE for enumeration names
 5. **Description**: Required for all types and enum values
+6. **Parameterizable Maximums**:
+   - Use `maxBitwidth` when a type has a literal width but can vary by instance
+   - If the type width references a parameterizable constant, arch2code auto-derives `maxBitwidth`
+   - A type declared under `ipParameters.types`, or with `isParameterizable: true`, must have either an explicit `maxBitwidth` or a width expression that references a parameterizable constant
+   - `maxBitwidth` must be greater than or equal to the resolved nominal width
 
 #### Examples
 
@@ -386,6 +408,17 @@ types:
   datapath_t:
     width: DATAPATH_WIDTH  # References constant
     desc: "Main datapath width"
+
+  # Type whose nominal and maximum width come from a parameterizable constant
+  ip_data_t:
+    width: DATA_WIDTH
+    desc: "Per-instance data word"
+
+  # Direct parameterizable type with literal nominal width
+  ip_literal_t:
+    width: 8
+    maxBitwidth: 16
+    desc: "Literal-width type with larger worst-case width"
   
   # Type with enumeration
   opcode_t:
@@ -435,9 +468,11 @@ structures:
 1. **Naming Convention**: Use snake_case ending with `_t` or `_st`
 2. **Field Types**: Use `varType` for types OR `subStruct` for nested structures (not both)
 3. **Arrays**: Use `arraySize` for fixed-size arrays
-4. **Generator Tags**: Optional tags for code generation (e.g., `address`, `data`, `tracker(name)`)
-5. **Packing**: Structures are packed in generated code (SystemVerilog `packed`, SystemC `sc_bv`)
-6. **Field Order**: Fields are packed in the order defined (top field is MSB)
+4. **Parameterizable Propagation**: Structures are marked parameterizable automatically when any field uses a parameterizable type, sub-structure, or `arraySize` constant
+5. **Maximum Width**: `maxBitwidth` for structures is auto-computed; users should not write it directly in YAML
+6. **Generator Tags**: Optional tags for code generation (e.g., `address`, `data`, `tracker(name)`)
+7. **Packing**: Structures are packed in generated code (SystemVerilog `packed`, SystemC `sc_bv`)
+8. **Field Order**: Fields are packed in the order defined (top field is MSB)
 
 #### Examples
 
@@ -462,6 +497,10 @@ structures:
     data: {varType: datapath_t, desc: "Data payload"}
     strb: {varType: bit_t, arraySize: 4, desc: "Byte strobe signals"}
     last: {varType: bit_t, desc: "Last transfer flag"}
+
+  # Structure becomes parameterizable through both field width and array size
+  ip_burst_t:
+    samples: {varType: ip_data_t, arraySize: BUFFER_SIZE, desc: "Sample burst"}
   
   # Nested structure
   full_packet_t:
@@ -481,6 +520,58 @@ structures:
 - Use `generator: tracker(name)` to enable transaction tracking in verification
 - Arrays are useful for byte strobes, multi-beat data, or fixed-size buffers
 - Nested structures help organize complex data types hierarchically
+- Do not hand-write generated metadata fields such as structure `isParameterizable` or `maxBitwidth`; arch2code derives them
+
+---
+
+### Parameterizable IP Parameters
+
+Use `ipParameters` in an IP block's own YAML file when constants or types can vary per instance/variant. The section delegates to the existing `constants` and `types` schemas, then marks those entries as parameterizable.
+
+```yaml
+ipParameters:
+  constants:
+    IP_DATA_WIDTH: {value: 8, maxValue: 16, desc: "Per-instance data width"}
+    IP_MEM_DEPTH:  {value: 16, maxValue: 32, desc: "Per-instance memory depth"}
+    IP_DATA_WIDTH_X2:
+      eval: "$IP_DATA_WIDTH * 2"
+      desc: "Derived width; maxValue is auto-derived"
+  types:
+    ip_data_t:
+      width: IP_DATA_WIDTH
+      desc: "Data type whose maxBitwidth is auto-derived"
+    ip_literal_t:
+      width: 8
+      maxBitwidth: 16
+      desc: "Literal-width parameterizable type"
+```
+
+#### Rules
+
+1. `ipParameters` may contain `constants`, `types`, or `_mapto` aliases such as `enums`.
+2. `ipParameters` belongs in the IP-root YAML file that declares the block, not in a shared include file that only defines common constants/types/structures.
+3. Direct parameterizable constants require `maxValue`; direct parameterizable types require `maxBitwidth`.
+4. Derived constants/types inherit parameterizability when they reference parameterizable constants.
+5. `blocks.<block>.params` lists the names that can be bound per variant under the top-level `parameters:` section.
+6. A `params` entry can be backed by an `ipParameters` constant, or it can be a pure block parameter with values supplied only in `parameters:`.
+
+```yaml
+blocks:
+  ip:
+    desc: "Parameterized IP"
+    params: [IP_DATA_WIDTH, IP_MEM_DEPTH, IP_NONCONST_DEPTH]
+
+parameters:
+  ip:
+    - {variant: variant0, param: IP_DATA_WIDTH, value: 8}
+    - {variant: variant0, param: IP_MEM_DEPTH, value: 16}
+    - {variant: variant0, param: IP_NONCONST_DEPTH, value: 24}
+    - {variant: variant1, param: IP_DATA_WIDTH, value: 12}
+    - {variant: variant1, param: IP_MEM_DEPTH, value: 8}
+    - {variant: variant1, param: IP_NONCONST_DEPTH, value: 12}
+```
+
+`IP_NONCONST_DEPTH` above is a pure block parameter. If it is used as memory `wordLines`, arch2code sizes address space from the maximum bound value across variants.
 
 ---
 
@@ -681,11 +772,15 @@ blocks:
 4. **Special Flags**:
    - `isRegHandler: true`: Indicates this is a register decoder block (auto-generated blocks have this)
    - **Do not manually set** `isRegHandler` - it's set automatically for `<blockname>_regs` blocks
-5. **Default Values** (from schema):
+5. **Parameters**:
+   - `params` names block parameters that can be bound by variant under the project-level `parameters:` section
+   - Parameters that affect type widths, structure widths, or memory depth should be declared in `ipParameters` when they have a backing constant/type
+   - Pure block parameters are allowed for variant-bound values that do not have a backing constant; when used as memory `wordLines`, address sizing uses the maximum bound value across variants
+6. **Default Values** (from schema):
    - `hasRtl`: defaults to `true` (most blocks have RTL)
    - `hasMdl`: defaults to `true` (most blocks have model)
    - `hasVl`: defaults to `false` (Verilator is optional)
-   - `hasTb`: defaults to `false` (only top-level needs testbench)
+   - `hasTb`: defaults to `false` (set on the DUT block, not the `_tb` wrapper)
    - `isRegHandler`: defaults to `false` (only for register handler blocks)
 
 #### Examples
@@ -706,15 +801,20 @@ blocks:
     desc: "Physical layer (RTL only)"
     hasMdl: false
   
-  # Top-level testbench
-  top_tb:
-    desc: "System testbench"
+  # DUT block with testbench (hasTb on the DUT, not the _tb wrapper)
+  my_dut:
+    desc: "DUT block to be tested"
     hasTb: true
   
   # Block with Verilator co-simulation
   dma_tandem:
     desc: "DMA with RTL/model co-sim"
     hasVl: true
+
+  # Parameterized IP
+  ip:
+    desc: "IP with variant-bound parameters"
+    params: [IP_DATA_WIDTH, IP_MEM_DEPTH]
 ```
 
 **AI Agent Guidance:**
@@ -722,7 +822,8 @@ blocks:
 - Set `hasRtl: false` for model-only blocks (e.g., behavioral CPU models)
 - Set `hasMdl: false` for RTL-only blocks (e.g., physical layer, analog interfaces)
 - Set `hasVl: true` when you want to co-simulate RTL with SystemC (Verilator)
-- Set `hasTb: true` only for top-level testbench containers
+- Set `hasTb: true` on the **DUT block** (not on the `_tb` wrapper block). This triggers generation of `*Testbench`, `*External`, and `*Config` files. The `_tb` wrapper block itself has `hasTb: false`
+- Use `params` for values that will be assigned by variant under `parameters:`
 - **Block register handlers are auto-generated**: If a block has registers or FW-accessible memories, arch2code automatically creates a `<blockname>_regs` block to handle register access within that block
 
 ### Instances
@@ -1090,10 +1191,11 @@ Registers are memory-mapped control and status elements.
 ```yaml
 registers:
   - register: <register_name>
-    regType: <rw|ro|ext>
+    regType: <rw|ro|ext|memory>
     block: <owner_block_name>
     structure: <structure_name>
     addressStruct: <structure_name> # Optional structure for memory reg
+    wordLines: <depth_or_param>      # Required for regType: memory
     desc: "<description>"
 ```
 
@@ -1103,9 +1205,12 @@ registers:
    - `rw`: Read-write register
    - `ro`: Read-only register (status)
    - `ext`: External register (control handled by user logic, eg for registers that create actions on write)
+   - `memory`: Memory-style register with `wordLines` and `addressStruct`
 2. **Block**: The block that owns this register
 3. **Structure**: Data structure defining register fields
-4. **Description**: Required for documentation
+4. **Memory Register Depth**: For `regType: memory`, `wordLines` may be a literal integer, a constant, an `ipParameters` constant, or a pure block parameter listed in `blocks.<block>.params`
+5. **Worst-Case Sizing**: Parameterizable registers are allocated using the structure's worst-case `maxBitwidth`; generated `maxBytes` is internal metadata and should not be written by users
+6. **Description**: Required for documentation
 
 #### Automatic Block-Level Register Handler Generation
 
@@ -1316,7 +1421,7 @@ memories:
     block: <owner_block_name>
     structure: <data_structure_name>
     addressStruct: <address_structure_name>
-    wordLines: <size_or_constant>
+    wordLines: <size_constant_or_param>
     desc: "<description>"
     regAccess: <true|false>     # Optional, defaults to false
     local: <true|false>          # Optional, defaults to false
@@ -1337,7 +1442,10 @@ memories:
 4. **Block**: The block that owns/implements this memory
 5. **Structure**: Data structure defining memory data format
 6. **addressStruct**: Address structure for memory addressing
-7. **wordLines**: Number of addressable locations (can be constant reference)
+7. **wordLines**: Number of addressable locations
+   - May be a literal integer, a constant, an `ipParameters` constant, or a pure block parameter listed in `blocks.<block>.params`
+   - If the structure or `wordLines` is parameterizable, address allocation uses worst-case sizing (`maxBitwidth`, `maxValue`, or max bound variant value)
+   - Misspelled or out-of-scope bare names are errors; arch2code does not search unrelated YAML contexts for `wordLines`
 
 #### Example with Firmware Access
 
@@ -1353,8 +1461,25 @@ memories:
     regAccess: true  # Makes it FW-accessible, triggers dma_controller_regs generation
     memoryType: dualPort
 
-# Local flop-based memory (no FW access)
-memories:
+  # Parameterized FW-accessible memory
+  - memory: ip_mem
+    block: ip
+    structure: ip_data_st
+    addressStruct: ip_mem_addr_st
+    wordLines: IP_MEM_DEPTH  # Uses IP_MEM_DEPTH.maxValue for address sizing
+    desc: "Parameterized IP memory"
+    regAccess: true
+
+  # Pure block-param wordLines; sizing uses max variant binding
+  - memory: ip_nonconst_mem
+    block: ip
+    structure: ip_data_st
+    addressStruct: ip_mem_addr_st
+    wordLines: IP_NONCONST_DEPTH
+    desc: "Memory depth supplied only by parameters variants"
+    regAccess: true
+
+  # Local flop-based memory (no FW access)
   - memory: fifo_storage
     block: fifo
     structure: fifo_entry_t
@@ -2237,28 +2362,486 @@ instances:
 | Instances | u_snake_case | `u_fifo`, `u_cpu`, `u_uart_0` |
 | Registers | snake_case | `config`, `status`, `control` |
 
-### 9. Code Generation Markers
+### 9. Code Generation Markers — Comprehensive Reference
 
-Understanding generated code markers:
+Arch2code uses three marker types to manage generated vs. user code in implementation files:
 
-```systemverilog
-// GENERATED_CODE_PARAM --context=module.yaml
-// This marks the source YAML context
+- **`GENERATED_CODE_PARAM`** — File-level parameters (block name, context, variant, etc.)
+- **`GENERATED_CODE_BEGIN` / `GENERATED_CODE_END`** — Delimit a generated section with template and section arguments
 
-// GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-// ... generated content ...
-// GENERATED_CODE_END
-// Do not edit between BEGIN and END
+The generator reads these markers, re-renders the content between BEGIN/END using the specified template, and preserves everything outside those regions.
 
-// IMPLEMENTATION_BEGIN
-// Safe zone for manual code
-// IMPLEMENTATION_END
+#### Core Rules
+
+1. **Never edit** between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END` — regeneration overwrites this content
+2. **Add user code** outside generated regions (after `GENERATED_CODE_END`, between two generated blocks, etc.)
+3. **Re-running generators** preserves all user code outside markers
+4. **PARAM must appear before any BEGIN** in the file — it sets file-level defaults inherited by all sections
+5. **Every BEGIN must have a matching END** — unpaired markers cause a parse error
+
+#### File Scoping Modes
+
+Files fall into three scoping categories based on which `GENERATED_CODE_PARAM` option they use:
+
+| Mode | PARAM Option | What It Generates From | Example Files |
+|------|-------------|----------------------|---------------|
+| **Block-scoped** | `--block=<name>` | A single block's ports, instances, registers | `*.h`, `*.cpp`, `*.sv`, `*Base.h`, TB files |
+| **Context-scoped** | `--context=<yaml_file>` | All types/structures in a YAML file | `*Includes.h/cpp`, `*_package.sv`, `rtl.f` |
+| **Hierarchy-scoped** | `--hierarchy` | Entire design hierarchy | `vl_wrap.h/cpp` (Verilator factory) |
+
+---
+
+#### `GENERATED_CODE_PARAM` — File-Level Parameters
+
+One line per file, sets defaults for all `GENERATED_CODE_BEGIN` sections in that file.
+
+**Syntax:** `// GENERATED_CODE_PARAM [options]`
+
+| Option | Type | Description | Example |
+|--------|------|-------------|---------|
+| `--block=<name>` or `-b <name>` | string | Block name — used for block-scoped files | `--block=dma_controller` |
+| `--context=<yaml_file>` | string (repeatable) | YAML file context — used for context-scoped files. Can appear multiple times for multi-context files | `--context=ip.yaml` |
+| `--variant=<name>` | string | Block variant for parameterized blocks | `--variant=variant0` |
+| `--hierarchy` | flag | Generate in hierarchy mode (whole design) | `--hierarchy` |
+| `--excludeInst=<name>` | string | Exclude an instance (DUT) from the External module in testbenches | `--excludeInst=u_debayer` |
+| `--inst=<name>` | string | Target a specific instance | `--inst=u_dma` |
+| `--scope=<name>` | string | Hierarchy scope (e.g., top-level name) | `--scope=top` |
+| `--mode=<mode>` | string | File-level mode modifier (e.g., `fw` for firmware headers) | `--mode=fw` |
+| `--importPackages <pkg ...>` | list | SystemVerilog packages to import (SV files only) | `--importPackages shared_pkg` |
+| `--project <name ...>` | list | Project filter — file is skipped if project doesn't match | `--project myProject` |
+
+##### Block-Scoped Examples
+
+```cpp
+// Model implementation — generates constructor, ports, register init
+// GENERATED_CODE_PARAM --block=dma_controller
+
+// RTL module — generates module declaration, ports, instances
+// GENERATED_CODE_PARAM --block=dma_controller
+
+// Base class — generates pure virtual base with port declarations
+// GENERATED_CODE_PARAM --block=dma_controller
+
+// Testbench External — excludes the DUT instance
+// GENERATED_CODE_PARAM --block=dma_tb --excludeInst=u_dma
+
+// Verilator variant wrapper
+// GENERATED_CODE_PARAM --block=ip --variant=variant0
 ```
 
-**Rules:**
-- Never edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END`
-- Add custom code in `IMPLEMENTATION` regions or after all generated sections
-- Re-running arch2code will regenerate GENERATED sections but preserve IMPLEMENTATION
+##### Context-Scoped Examples
+
+```cpp
+// SystemC includes — generates types, structures, enums from YAML file
+// GENERATED_CODE_PARAM --context=ip.yaml
+
+// SystemVerilog package — generates package with types and structures
+// GENERATED_CODE_PARAM --context=ip.yaml
+
+// Firmware includes — generates FW-safe headers in fw_ns namespace
+// GENERATED_CODE_PARAM --context=dma.yaml --mode=fw
+```
+
+##### Hierarchy-Scoped Examples
+
+```cpp
+// Verilator factory registration — covers all VL-enabled blocks
+// GENERATED_CODE_PARAM --hierarchy
+```
+
+---
+
+#### `GENERATED_CODE_BEGIN` — Section-Level Parameters
+
+Marks the start of a generated section within a file. Each file can have multiple BEGIN/END pairs.
+
+**Syntax:** `// GENERATED_CODE_BEGIN [options]`
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `--template=<name>` | string (**required**) | Template to render for this section |
+| `--section=<name>` | string | Sub-section within the template (e.g., `init`, `body`, `header`) |
+| `--fileMapKey=<key>` | string | Must match a key in `project.yaml` → `fileGeneration.fileMap` |
+| `--namespace=<ns>` | string | C++ namespace wrapper (SystemC only, e.g., `fw_ns`) |
+| `--handler=<name>` | string | Generator handler function (default: `generic`) |
+| `--noExternalComments` | flag | Suppress comments for external blocks (multi-project) |
+| `--noDestructor` | flag | Omit destructor from class declaration (SystemC only) |
+
+---
+
+#### Template + Section Reference by File Type
+
+##### SystemC Base Classes (`base/*Base.h`)
+
+```
+PARAM: --block=<block>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `baseClassDecl` | *(none)* | Pure virtual base class with ports, virtual methods |
+
+##### SystemC Base Constructor (`base/*Base.cpp` — if exists)
+
+```
+PARAM: --block=<block>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `baseConstructor` | `init` | Base constructor initialization list |
+| `baseConstructor` | `body` | Base constructor body |
+
+##### SystemC Class Declaration (`model/*.h`)
+
+```
+PARAM: --block=<block>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `classDecl` | *(none)* | Derived class: members, registers, memories, ports |
+
+User code goes **after** `GENERATED_CODE_END` inside the class body for manual member variables and method declarations.
+
+##### SystemC Constructor (`model/*.cpp`)
+
+```
+PARAM: --block=<block>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `constructor` | `init` | Constructor initialization list (base classes, registers, memories) |
+| `constructor` | `body` | Constructor body (addRegister, addMemory, regHandler thread) |
+
+**User code insertion points:**
+- **Between `init` END and `body` BEGIN:** Add manual member initializers (starting with `,`)
+- **After `body` END:** Add `SC_THREAD` registrations and other constructor logic
+
+```cpp
+// GENERATED_CODE_PARAM --block=myBlock
+// GENERATED_CODE_BEGIN --template=constructor --section=init
+myBlock::myBlock(...)
+    : sc_module(name)
+    ,blockBase("myBlock", name(), bbMode)
+    ,myBlockBase(name(), variant)
+    ,configReg()                    // generated register init
+// GENERATED_CODE_END
+    ,myUserVar(0)                   // <-- USER: manual initializer
+// GENERATED_CODE_BEGIN --template=constructor --section=body
+{
+    regs.addRegister(0x100, 4, "configReg", &configReg);
+    SC_THREAD(regHandler);
+// GENERATED_CODE_END
+    SC_THREAD(mainProcess);         // <-- USER: manual thread
+}
+```
+
+##### SystemC Includes (`model/*Includes.h`)
+
+```
+PARAM: --context=<yaml_file>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `headers` | *(none)* | Include guards and header includes (use `--fileMapKey=include_hdr`) |
+| `structures` | `headerIncludes` | Forward declarations and structure dependencies |
+| `includes` | `constants` | `constexpr` constant definitions |
+| `includes` | `types` | Typedef definitions |
+| `includes` | `enums` | Enum definitions |
+| `structures` | *(none)* | Full structure class definitions |
+
+##### SystemC Includes (`model/*Includes.cpp`)
+
+```
+PARAM: --context=<yaml_file>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `structures` | `cppIncludes` | Implementation includes |
+| `structures` | `cpp` | Structure method implementations |
+
+##### SystemC Firmware Includes (`fw/include/*IncludesFW.h/.cpp`)
+
+```
+PARAM: --context=<yaml_file> --mode=fw
+```
+
+Same templates as regular Includes, but with:
+- `--fileMapKey=includeFW_hdr` on the header `headers` section
+- `--namespace=fw_ns` on the `structures` `cpp` section
+- Content wrapped in `namespace fw_ns { ... }`
+
+##### SystemC Register Handler (`model/*Regs.h` / `*Regs.cpp` — auto-generated blocks)
+
+```
+PARAM: --block=<block>Regs
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `blockRegs` | `header` | Register handler class declaration |
+| `blockRegs` | `init` | Register handler constructor init list |
+| `blockRegs` | `body` | Register handler constructor body |
+
+##### SystemC Address Constants (`model/regAddresses.h`)
+
+```
+PARAM: --block=<top_block>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `includes` | `addresses` | Address offset constants |
+| `includes` | `regAddresses` | Register address map |
+
+##### SystemC Testbench Files
+
+The testbench framework involves **two YAML blocks**: the DUT block (has `hasTb: true`) and a `_tb` wrapper block that contains the DUT instance alongside surrounding test blocks. The `--excludeInst` option controls how the generator splits the wrapper into a Testbench module and an External module.
+
+**With `--excludeInst` (standard pattern — DUT has surrounding blocks):**
+
+```mermaid
+graph TB
+    subgraph YAML ["YAML: debayer_tb (wrapper block)"]
+        DUT_Y["u_debayer<br/>(DUT instance)"]
+        SRC_Y["u_raw_src"]
+        SINK_Y["u_rgb_sink"]
+        CPU_Y["u_cpu"]
+        DEC_Y["u_apb_decode"]
+    end
+
+    subgraph GEN ["Generator splits into two modules"]
+        direction LR
+        subgraph TB_MOD ["Testbench module<br/>--block=debayer"]
+            DUT["u_debayer<br/>(DUT)"]
+            EXT_REF["external<br/>(External obj)"]
+            DUT --- EXT_REF
+        end
+        subgraph EXT_MOD ["External module<br/>--block=debayer_tb<br/>--excludeInst=u_debayer"]
+            SRC["u_raw_src"]
+            SINK["u_rgb_sink"]
+            CPU["u_cpu"]
+            DEC["u_apb_decode"]
+        end
+        EXT_REF -. "ports from cross-<br/>instance connections" .-> EXT_MOD
+    end
+
+    YAML --> GEN
+```
+
+The External gets all instances from `debayer_tb` **except** `u_debayer`. Connections between `u_debayer` and the other instances become the External's ports, which the Testbench binds.
+
+**Without `--excludeInst` (no surrounding blocks):**
+
+```mermaid
+graph TB
+    subgraph YAML2 ["YAML: simple_tb (wrapper block)"]
+        DUT_Y2["u_simple<br/>(DUT instance — only child)"]
+    end
+
+    subgraph GEN2 ["Generator produces"]
+        direction LR
+        subgraph TB_MOD2 ["Testbench module<br/>--block=simple"]
+            DUT2["u_simple<br/>(DUT)"]
+            EXT_REF2["external<br/>(External obj)"]
+            DUT2 --- EXT_REF2
+        end
+        subgraph EXT_MOD2 ["External module<br/>--block=simple_tb<br/>(no --excludeInst)"]
+            EMPTY["(no sub-instances)"]
+        end
+        EXT_REF2 -. "DUT's external<br/>ports exposed" .-> EXT_MOD2
+    end
+
+    YAML2 --> GEN2
+```
+
+When the `_tb` wrapper holds only the DUT instance and nothing else, `--excludeInst` is not needed — the External has no sub-instances to manage. This is uncommon; most real testbenches have surrounding blocks.
+
+**File-to-PARAM mapping:**
+
+| File | `--block` | `--excludeInst` | Template | Section |
+|------|-----------|------------------|----------|---------|
+| `*Testbench.h` | DUT block | *(none)* | `testbench` | `header` |
+| `*Testbench.cpp` | DUT block | *(none)* | `testbench` | `init` |
+| `*Config.cpp` | DUT block | *(none)* | `tbConfig` | *(none)* |
+| `*External.h` | TB wrapper block | DUT instance | `tbExternal` | `header` |
+| `*External.cpp` | TB wrapper block | DUT instance | `tbExternal` | `init`, `body` |
+
+##### SystemVerilog Package (`rtl/*_package.sv`)
+
+```
+PARAM: --context=<yaml_file>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `package` | *(none)* | Full package: constants, types, enums, structures (use `--fileMapKey=package_sv`) |
+
+##### SystemVerilog Module (`rtl/*.sv`)
+
+```
+PARAM: --block=<block>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `moduleInterfacesInstances` | *(none)* | Module declaration, ports, interface instances |
+
+User code goes **after** `GENERATED_CODE_END`, before `endmodule`.
+
+##### SystemVerilog Register Decoder (`rtl/*Regs.sv`)
+
+```
+PARAM: --block=<block>Regs
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `moduleRegs` | *(none)* | Register decoder with address decode, read/write logic |
+
+##### SystemVerilog File List (`rtl/rtl.f`)
+
+```
+PARAM: --context=<top_yaml_file>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `rtlDotF` | *(none)* | Simulation file list |
+
+##### Verilator SV Wrapper (`verif/vl_wrap/*_hdl_sv_wrapper.sv`)
+
+```
+PARAM: --block=<block>                       (standard)
+PARAM: --block=<block> --variant=<variant>   (variant)
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `module_hdl_sv_wrapper` | *(none)* | SystemVerilog wrapper module for Verilator |
+
+##### Verilator SC Wrapper (`verif/vl_wrap/*_hdl_sc_wrapper.h`)
+
+```
+PARAM: --block=<block>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `module_hdl_sc_wrapper` | `hdl_sc_wrapper_class` | SC wrapper class definition |
+| `module_hdl_sc_wrapper` | `variant_include_sv_wrapper_header` | Variant SV wrapper includes (if variants exist) |
+| `module_hdl_sc_wrapper` | `variant_class_template_spec` | Variant template specializations (if variants exist) |
+
+##### Verilator Factory Registration (`verif/vl_wrap/vl_wrap.h` / `vl_wrap.cpp`)
+
+```
+PARAM: --hierarchy
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `module_hdl_sc_wrapper` | `factory_register_vl_incl` | Factory include directives |
+| `module_hdl_sc_wrapper` | `factory_register_vl_decl` | Factory registration declarations |
+
+##### Tandem Verification Files
+
+**Tandem Header:**
+```
+PARAM: --block=<block>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `tandem` | `tandem` | Tandem comparison class |
+
+**Tandem Source:**
+```
+PARAM: --block=<block>
+```
+
+| Template | Section | Content |
+|----------|---------|---------|
+| `tandemConstructor` | `initTandem` | Tandem constructor init list |
+| `tandemConstructor` | `bodyTandem` | Tandem constructor body |
+
+---
+
+#### `--excludeInst` — Concrete Example
+
+Given this YAML:
+
+```yaml
+blocks:
+  debayer:                              # DUT — the block being tested
+    desc: "Debayer processor"
+    hasTb: true                         # triggers testbench file generation
+  debayer_tb:                           # TB wrapper — holds DUT + surrounding blocks
+    desc: "Testbench container"
+    hasMdl: false
+    hasRtl: false
+
+instances:
+  debayer_tb: { container: debayer_tb, instanceType: debayer_tb,     instGroup: top }
+  u_debayer:  { container: debayer_tb, instanceType: debayer,        instGroup: top }
+  u_raw_src:  { container: debayer_tb, instanceType: raw_video_src,  instGroup: top }
+  u_rgb_sink: { container: debayer_tb, instanceType: rgb_video_sink, instGroup: top }
+  u_cpu:      { container: debayer_tb, instanceType: cpu,            instGroup: top }
+  u_apb_decode: { container: debayer_tb, instanceType: apb_decode,   instGroup: top }
+```
+
+The five testbench files use these PARAM lines:
+
+```cpp
+// debayerTestbench.h   — GENERATED_CODE_PARAM --block=debayer
+// debayerTestbench.cpp — GENERATED_CODE_PARAM --block=debayer
+// debayerConfig.cpp    — GENERATED_CODE_PARAM --block=debayer
+// debayerExternal.h    — GENERATED_CODE_PARAM --block=debayer_tb --excludeInst=u_debayer
+// debayerExternal.cpp  — GENERATED_CODE_PARAM --block=debayer_tb --excludeInst=u_debayer
+```
+
+**Result:**
+- **Testbench** instantiates `debayer` (the DUT) and creates an `external` object
+- **External** instantiates `u_raw_src`, `u_rgb_sink`, `u_cpu`, `u_apb_decode` — everything from `debayer_tb` *except* `u_debayer`
+- Connections that cross between `u_debayer` and the other instances become External's ports, bound by the Testbench
+
+See the **verify-testbench** skill for additional detail on the `--excludeInst` mechanism.
+
+---
+
+#### Quick Decision Guide
+
+```
+What kind of file am I working with?
+│
+├─ Types, structures, enums (shared definitions)
+│  └─ Use --context=<yaml_file>
+│     ├─ SystemC: *Includes.h/cpp
+│     ├─ SystemVerilog: *_package.sv
+│     └─ Firmware: *IncludesFW.h/cpp (add --mode=fw)
+│
+├─ A single block's implementation
+│  └─ Use --block=<block_name>
+│     ├─ SystemC model: *.h (classDecl), *.cpp (constructor)
+│     ├─ SystemC base: *Base.h (baseClassDecl)
+│     ├─ SystemVerilog: *.sv (moduleInterfacesInstances)
+│     ├─ Register handler: *Regs.sv (moduleRegs)
+│     └─ Has variants? Add --variant=<name>
+│
+├─ Testbench files
+│  └─ Testbench/Config: --block=<dut_block>
+│     External: --block=<tb_block> --excludeInst=<dut_instance>
+│
+├─ Verilator wrappers for a block
+│  └─ Use --block=<block_name>
+│     Has variants? Add --variant=<name>
+│
+└─ Verilator factory (whole hierarchy)
+   └─ Use --hierarchy
+```
 
 ---
 
@@ -3242,6 +3825,8 @@ When helping a user create arch2code files:
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2025-12-16 | Initial comprehensive release |
+| 1.1 | 2026-04-30 | Expanded Section 9 (Code Generation Markers) with comprehensive GENERATED_CODE_PARAM/BEGIN reference |
+| 1.2 | 2026-05-01 | Documented `ipParameters`, parameterizable max bounds, and worst-case register/memory address sizing |
 
 ---
 

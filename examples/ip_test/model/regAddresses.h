@@ -18,6 +18,7 @@
 // GENERATED_CODE_BEGIN --template=includes --section=regAddresses
 //register addresses
 #define REG_IP_IPCFG                        0x0
+#define REG_IP_IPLASTDATA                   0x8
 //memories base addresses
 // GENERATED_CODE_END
 

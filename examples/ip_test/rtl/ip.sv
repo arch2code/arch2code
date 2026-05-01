@@ -12,22 +12,39 @@ import ip_package::*;
     parameter IP_MEM_DEPTH
 )
 (
-    rdy_vld_if.dst ipDataIf,
+    push_ack_if.dst ipDataIf,
     apb_if.dst apbReg,
     input clk, rst_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
     status_if #(.data_t(ipCfgSt)) ipCfg();
+    status_if #(.data_t(ipDataSt)) ipLastData();
 
 // Instances
 ipRegs uIpRegs (
     .apbReg (apbReg),
     .ipCfg (ipCfg),
+    .ipLastData (ipLastData),
     .clk (clk),
     .rst_n (rst_n)
 );
 
 // GENERATED_CODE_END
+
+    // Capture incoming push data into ipLastData (status_if to ipRegs).
+    // Ack on the same cycle a push is observed.
+    `DFF_INST(ipDataSt, lastData)
+
+    always_comb begin
+        n_lastData = lastData;
+        ipDataIf.ack = 1'b0;
+        if (ipDataIf.push) begin
+            n_lastData = ipDataIf.data;
+            ipDataIf.ack = 1'b1;
+        end
+    end
+
+    assign ipLastData.data = lastData;
 
 endmodule: ip

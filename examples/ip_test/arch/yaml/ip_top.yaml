@@ -65,7 +65,7 @@ blocks:
         hasRtl: true
     src:
         desc: "ipDataIf stimulus driver feeding both IP instances"
-        hasVl: false
+        hasVl: true
         hasMdl: true
         hasTb: false
         hasRtl: true
@@ -121,5 +121,7 @@ parameters:
     ip:
         - { variant: variant0, param: IP_DATA_WIDTH, value: 8 }
         - { variant: variant0, param: IP_MEM_DEPTH, value: 16 }
+        - { variant: variant0, param: IP_NONCONST_DEPTH, value: 24 }
         - { variant: variant1, param: IP_DATA_WIDTH, value: 12 }
         - { variant: variant1, param: IP_MEM_DEPTH, value: 8 }
+        - { variant: variant1, param: IP_NONCONST_DEPTH, value: 12 }

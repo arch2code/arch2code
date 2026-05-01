@@ -9,6 +9,7 @@ Guide the user in writing core SystemC modules, focusing on module structure, th
 
 ## References
 *   **API Reference:** `SYSTEMC_API_USER_REFERENCE.md` (See "Module Logging")
+*   **Code Generation Markers:** `ARCH2CODE_AI_RULES.md` (Section 9 — "Code Generation Markers — Comprehensive Reference") for all `GENERATED_CODE_PARAM` and `GENERATED_CODE_BEGIN` options, templates, and sections.
 
 ## Instructions
 

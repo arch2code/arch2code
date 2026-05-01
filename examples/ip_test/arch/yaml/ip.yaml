@@ -12,8 +12,9 @@ blockDir: .
 # constants/types sections below for the Step 3 baseline).
 ipParameters:
     constants:
-        IP_DATA_WIDTH: { value: 8,  maxValue: 16, desc: "Per-instance data width" }
-        IP_MEM_DEPTH:  { value: 16, maxValue: 32, desc: "Per-instance memory depth" }
+        IP_DATA_WIDTH:    { value: 8,  maxValue: 16, desc: "Per-instance data width" }
+        IP_MEM_DEPTH:     { value: 16, maxValue: 32, desc: "Per-instance memory depth" }
+        IP_DATA_WIDTH_X2: { eval: "$IP_DATA_WIDTH * 2", desc: "Derived width, 2x data (maxValue auto-derived)" }
     types:
         ipDataT:
             width: IP_DATA_WIDTH
@@ -33,6 +34,14 @@ types:
     ipMemAddrT:
         widthLog2minus1: IP_MEM_DEPTH
         desc: "Index into ipMem (0 .. IP_MEM_DEPTH-1)"
+    # Fixed-width type used to exercise the F2.4 case where a memory's
+    # structure is NOT parameterizable but its wordLines IS a block parameter.
+    ipFixedT:
+        width: 8
+        desc: "Fixed 8-bit byte (non-parameterizable)"
+    ipFixedAddrT:
+        width: 8
+        desc: "Fixed 8-bit address index (non-parameterizable)"
 
 structures:
     ipDataSt:
@@ -45,18 +54,30 @@ structures:
         data: { varType: ipDataT, desc: "Data word" }
     ipMemAddrSt:
         address: { varType: ipMemAddrT, desc: "Memory address" }
+    ipBurstSt:
+        samples: { varType: ipDataT, arraySize: IP_MEM_DEPTH, desc: "Burst of parameterizable samples" }
+    # Non-parameterizable structure: wordLines block-param is the only thing
+    # that should make ipFixedMem (below) parameterizable for sizing.
+    ipFixedSt:
+        b: { varType: ipFixedT, desc: "Fixed byte" }
+    ipFixedAddrSt:
+        a: { varType: ipFixedAddrT, desc: "Fixed-width address" }
 
 interfaces:
     ipDataIf:
-        desc: "IP data stream"
-        interfaceType: rdy_vld
+        desc: "IP data push/ack stream"
+        interfaceType: push_ack
         structures:
             - { structure: ipDataSt, structureType: data_t }
 
 blocks:
     ip:
         desc: "Parameterizable IP under test"
-        params: [IP_DATA_WIDTH, IP_MEM_DEPTH]
+        # IP_DATA_WIDTH and IP_MEM_DEPTH are also ipParameters constants.
+        # IP_NONCONST_DEPTH is a pure block param (no backing constant) used
+        # to exercise calcAddresses' worst-case sizing of block-param wordLines
+        # via parametersvariants. Bound values: variant0=24, variant1=12.
+        params: [IP_DATA_WIDTH, IP_MEM_DEPTH, IP_NONCONST_DEPTH]
         hasVl: true
         hasMdl: true
         hasTb: false
@@ -64,6 +85,17 @@ blocks:
 
 registers:
     - { register: ipCfg, regType: rw, block: ip, structure: ipCfgSt, desc: "IP configuration" }
+    - { register: ipLastData, regType: ro, block: ip, structure: ipDataSt, desc: "Last data word received on ipDataIf" }
 
 #memories:
 #    - { memory: ipMem, block: ip, structure: ipMemSt, addressStruct: ipMemAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "IP scratch memory (FW-accessible)" }
+memories:
+    - { memory: ipMem, block: ip, structure: ipMemSt, addressStruct: ipMemAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "IP scratch memory (FW-accessible)" }
+    # F2.4 regression: non-parameterizable structure + block-param wordLines.
+    # Memory MUST still be marked isParameterizable so calcAddresses sizes
+    # from IP_MEM_DEPTH.maxValue, not its nominal value.
+    - { memory: ipFixedMem, block: ip, structure: ipFixedSt, addressStruct: ipFixedAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "Fixed-struct memory with block-param wordLines (F2.4 regression)" }
+    # F2/F3 regression: wordLines is a pure block param (no backing constant).
+    # Exercises calcAddresses' _resolveBlockParamMaxWordLines helper, which
+    # must return max(variant0=24, variant1=12) = 24 wordLines for sizing.
+    - { memory: ipNonConstMem, block: ip, structure: ipFixedSt, addressStruct: ipFixedAddrSt, wordLines: IP_NONCONST_DEPTH, regAccess: true, desc: "Block-param wordLines with no backing constant (worst-case sizing regression)" }

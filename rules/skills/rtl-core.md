@@ -7,6 +7,9 @@ description: Guide for writing core RTL modules in SystemVerilog including modul
 ## Purpose
 Guide the user in writing core RTL modules in SystemVerilog, focusing on module structure, FSMs, flip-flop macros, naming conventions, and coding idioms.
 
+## References
+*   **Code Generation Markers:** `ARCH2CODE_AI_RULES.md` (Section 9 — "Code Generation Markers — Comprehensive Reference") for all `GENERATED_CODE_PARAM` and `GENERATED_CODE_BEGIN` options, templates, and sections.
+
 ## Instructions
 
 1.  **Module Structure & Generated Code:**

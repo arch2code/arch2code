@@ -33,7 +33,9 @@ public:
 
     // block implementation members
 private:
-
+    void checkUIp0(void);
+    void checkUIp1(void);
+    void endOfTestThread(void);
 };
 
 #endif //CPU_H

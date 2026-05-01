@@ -13,8 +13,8 @@ import ip_top_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-    rdy_vld_if #(.data_t(ipDataSt)) out0();
-    rdy_vld_if #(.data_t(ipDataSt)) out1();
+    push_ack_if #(.data_t(ipDataSt)) out0();
+    push_ack_if #(.data_t(ipDataSt)) out1();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uIp0();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uIp1();
 

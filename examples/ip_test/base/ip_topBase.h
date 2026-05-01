@@ -8,7 +8,7 @@
 // GENERATED_CODE_PARAM --block=ip_top
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
-#include "rdy_vld_channel.h"
+#include "push_ack_channel.h"
 #include "ip_topIncludes.h"
 #include "ipIncludes.h"
 

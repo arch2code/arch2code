@@ -22,7 +22,7 @@
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
 #include "apb_bfm.h"
-#include "rdy_vld_bfm.h"
+#include "push_ack_bfm.h"
 
 template <typename DUT_T>
 class ip_hdl_sc_wrapper: public sc_module, public blockBase, public ipBase {
@@ -47,7 +47,7 @@ public:
 
     sc_clock clk;
 
-    rdy_vld_dst_bfm<ipDataSt, sc_bv<8>> ipDataIf_bfm;
+    push_ack_dst_bfm<ipDataSt, sc_bv<8>> ipDataIf_bfm;
     apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
 
     SC_HAS_PROCESS (ip_hdl_sc_wrapper<DUT_T>);
@@ -63,9 +63,9 @@ public:
     {
         dut_hdl = new DUT_T("dut_hdl");
 
-        dut_hdl->ipDataIf_vld(ipDataIf_hdl_if.vld);
+        dut_hdl->ipDataIf_push(ipDataIf_hdl_if.push);
         dut_hdl->ipDataIf_data(ipDataIf_hdl_if.data);
-        dut_hdl->ipDataIf_rdy(ipDataIf_hdl_if.rdy);
+        dut_hdl->ipDataIf_ack(ipDataIf_hdl_if.ack);
         dut_hdl->apbReg_paddr(apbReg_hdl_if.paddr);
         dut_hdl->apbReg_psel(apbReg_hdl_if.psel);
         dut_hdl->apbReg_penable(apbReg_hdl_if.penable);
@@ -103,7 +103,7 @@ public:
 
 private:
 
-    rdy_vld_hdl_if<sc_bv<8>> ipDataIf_hdl_if;
+    push_ack_hdl_if<sc_bv<8>> ipDataIf_hdl_if;
     apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
 
     sc_signal<bool> rst_n;

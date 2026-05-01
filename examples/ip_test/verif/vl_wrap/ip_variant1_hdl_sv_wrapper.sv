@@ -9,10 +9,10 @@ module ip_variant1_hdl_sv_wrapper
     import ip_top_package::*;
     import ip_package::*;
 (
-    // rdy_vld_if.dst
-    input bit ipDataIf_vld,
+    // push_ack_if.dst
+    input bit ipDataIf_push,
     input bit [7:0] ipDataIf_data,
-    output bit ipDataIf_rdy,
+    output bit ipDataIf_ack,
 
     // apb_if.dst
     input bit [31:0] apbReg_paddr,
@@ -27,12 +27,12 @@ module ip_variant1_hdl_sv_wrapper
     input clk,
     input rst_n
 );
-    // rdy_vld_if.dst
-    rdy_vld_if #(.data_t(ipDataSt)) ipDataIf();
+    // push_ack_if.dst
+    push_ack_if #(.data_t(ipDataSt)) ipDataIf();
 
-    assign #0 ipDataIf.vld = ipDataIf_vld;
+    assign #0 ipDataIf.push = ipDataIf_push;
     assign #0 ipDataIf.data = ipDataIf_data;
-    assign #0 ipDataIf_rdy = ipDataIf.rdy;
+    assign #0 ipDataIf_ack = ipDataIf.ack;
 
     // apb_if.dst
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
@@ -47,7 +47,7 @@ module ip_variant1_hdl_sv_wrapper
     assign #0 apbReg_pslverr = apbReg.pslverr;
 
     ip #(.IP_DATA_WIDTH(12), .IP_MEM_DEPTH(8)) dut (
-        .ipDataIf(ipDataIf), // rdy_vld_if.dst
+        .ipDataIf(ipDataIf), // push_ack_if.dst
         .apbReg(apbReg), // apb_if.dst
         .clk(clk),
         .rst_n(rst_n)

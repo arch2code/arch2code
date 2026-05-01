@@ -8,7 +8,7 @@
 // GENERATED_CODE_PARAM --block=ip
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
-#include "rdy_vld_channel.h"
+#include "push_ack_channel.h"
 #include "ipIncludes.h"
 #include "ip_topIncludes.h"
 
@@ -19,8 +19,8 @@ public:
     const uint64_t IP_DATA_WIDTH;
     const uint64_t IP_MEM_DEPTH;
     // dst ports
-    // uSrc->ipDataIf: IP data stream
-    rdy_vld_in< ipDataSt > ipDataIf;
+    // uSrc->ipDataIf: IP data push/ack stream
+    push_ack_in< ipDataSt > ipDataIf;
     // uAPBDecode->apbReg: CPU access to IP registers via APB
     apb_in< apbAddrSt, apbDataSt > apbReg;
 
@@ -47,8 +47,8 @@ class ipInverted : public virtual blockPortBase
 {
 public:
     // dst ports
-    // uSrc->ipDataIf: IP data stream
-    rdy_vld_out< ipDataSt > ipDataIf;
+    // uSrc->ipDataIf: IP data push/ack stream
+    push_ack_out< ipDataSt > ipDataIf;
     // uAPBDecode->apbReg: CPU access to IP registers via APB
     apb_out< apbAddrSt, apbDataSt > apbReg;
 
@@ -73,8 +73,8 @@ class ipChannels
 {
 public:
     // dst ports
-    // IP data stream
-    rdy_vld_channel< ipDataSt > ipDataIf;
+    // IP data push/ack stream
+    push_ack_channel< ipDataSt > ipDataIf;
     // CPU access to IP registers via APB
     apb_channel< apbAddrSt, apbDataSt > apbReg;
 

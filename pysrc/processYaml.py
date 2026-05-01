@@ -955,389 +955,6 @@ class projectOpen:
         ret['context'] = context
         return ret
 
-    # do some preproccessing to assemble subset of data easily accessed by Jinja
-    # from perspective of qualBlock
-    # subBlocks will be referenced if in the set of instances
-    # this would be easier in SQL..
-    def getBlockDataOld(self, qualBlock, instances, trimRegLeafInstance=False):
-        blockDataSet = {'subBlockInstances', 'ports', 'registers', 'memories', 'memoryConnections', 'registerConnections', 'regPorts', 'connections', 'connectionMaps', 'subBlocks', 'includeContext', 'addressDecode', 'variants'}
-        regDirection = { 'blk': { 'ro': 'src', 'rw': 'dst', 'ext': 'dst'}, 'reg': { 'ro': 'dst', 'rw': 'src', 'ext': 'src'}}
-        ret = dict()
-        structs = dict() # to capture where all the objects are defined
-        consts = dict() # to capture where all the objects are defined
-        # create allthe output containers
-        includes = self.config.getConfig('INCLUDEFILES')
-        ret['includeFiles'] = includes
-        for k in blockDataSet:
-            ret[k] = dict()
-        ret['qualBlock'] = qualBlock
-        ret['blockInfo'] = self.data['blocks'][qualBlock]
-        ports = dict()
-        regPorts = dict()
-        addressDecoder = False # does the block need any address decode logic
-        # identify which of the callers instances are instances of qualBlock and build a dict of them
-        # also build the dict of all the contained instances
-        qualBlockInstances = dict()
-        qualBlockLeafInstance = None
-        qualBlockLeafInstanceContainer = None
-
-        # FIXME Until global code refactoring, we define the legacy 'registerLeafInstance' flag,
-        #       based on the block based 'isRegHandler' flag of each instance
-        for inst in instances:
-            instBlock = self.data['instances'][inst]['instanceTypeKey']
-            self.data['instances'][inst]['registerLeafInstance'] = self.data['blocks'][instBlock]['isRegHandler']
-
-        for inst in instances:
-            if self.data['instances'][inst]['instanceTypeKey'] == qualBlock:
-                parentBlock = self.data['instances'][inst]['containerKey']
-                qualBlockInstances[inst] = None
-                qualBlockLeafInstance = self.data['instances'][inst]['registerLeafInstance']
-                qualBlockLeafInstanceContainer = self.data['instances'][inst]['container']
-                if self.data['instances'][inst]['variant'] != '':
-                    filtered_variants_data = {k: v for k, v in self.data['parametersvariants'][qualBlock].items() if v.get('variant') == self.data['instances'][inst]['variant']}
-                    ret['variants'][self.data['instances'][inst]['variant']] = filtered_variants_data
-            if qualBlock in self.hierKey and inst in self.hierKey[qualBlock]:
-                ret['subBlockInstances'][inst] = self.hierKey[qualBlock][inst]
-        if len(qualBlockInstances) == 0:
-            # there is no instance of the of type qualblock
-            return None
-
-        for mem, memInfo in self.data['memories'].items():
-            if memInfo['blockKey'] == qualBlock:
-                ret['memories'][mem] = memInfo
-                structs[memInfo['structureKey']] = 0
-                consts[memInfo['wordLinesKey']] = 0
-                if memInfo['regAccess']:
-                    addressDecoder = True # we have memories that need FW access
-
-        for reg, regInfo in self.data['registers'].items():
-            if regInfo['blockKey'] == qualBlock:
-                ret['registers'][reg] = regInfo
-                ret['registers'][reg]['bytes'] = (self.data['structures'][regInfo['structureKey']]['width'] + 7) >> 3 # round up to whole byte
-                structs[regInfo['structureKey']] = 0
-                addressDecoder = True #register = AddressDecoder
-
-        # is this block a special apbDecode block type that performs abp bus routing
-        isApbRouter = False
-        addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
-        if addressConfig:
-            for addressGroup, addressGroupData in addressConfig.get('AddressGroups', {}).items():
-                decoder = addressGroupData.get('decoderInstance', None)
-                if decoder is not None:
-                    qualDecoder = self.getQualInstance(decoder)
-                    if qualDecoder in qualBlockInstances:
-                        instanceWithRegApb = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
-                        if instanceWithRegApb is None:
-                            printError('No instances with register interface found in db: missing or invalid register post processing script')
-                            exit(warningAndErrorReport())
-                        isApbRouter = True
-                        ret['addressDecode']['addressGroupData'] = addressGroupData
-                        ret['addressDecode']['addressGroup'] = addressGroup
-                        ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
-                        ret['addressDecode']['instanceWithRegApb'] = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
-        ret['addressDecode']['isApbRouter'] = isApbRouter
-        # go through memory connections and collect if either src or dest
-        for memConn, val in self.data['memoryConnections'].items():
-            if val['blockKey'] == qualBlock:
-                ret['memoryConnections'][memConn] = val
-                if (val['instance'] != ''):
-                    ret['memoryConnections'][memConn]['instanceTypeKey'] = self.data['instances'][val['instanceKey']]['instanceType']
-                else:
-                    ret['memoryConnections'][memConn]['instanceTypeKey'] = ''
-                structs[self.data['memories'][val['memoryBlock']]['structureKey']] = 0
-                consts[self.data['memories'][val['memoryBlock']]['wordLinesKey']] = 0
-            if val['instanceKey'] in qualBlockInstances:
-                ret['memoryConnections'][memConn] = val
-                if (val['instance'] != ''):
-                    ret['memoryConnections'][memConn]['instanceTypeKey'] = self.data['instances'][val['instanceKey']]['instanceType']
-                else:
-                    ret['memoryConnections'][memConn]['instanceTypeKey'] = ''
-                structs[self.data['memories'][val['memoryBlock']]['structureKey']] = 0
-                consts[self.data['memories'][val['memoryBlock']]['wordLinesKey']] = 0
-
-        for regConn, val in self.data['registerConnections'].items():
-            if val['blockKey'] == qualBlock:
-                ret['registerConnections'][regConn] = val
-                structs[regInfo['structureKey']] = 0
-            if val['instanceKey'] in qualBlockInstances:
-                ret['registerConnections'][regConn] = val
-                structs[regInfo['structureKey']] = 0
-
-        interfaces = OrderedDict()
-
-        #connection are managed by the parent so we need to build the dict of connections contained within the qualBlock
-        # loop through all the contained instances, and the in scope connections and copy the connection info
-        for inst in ret['subBlockInstances']:
-            for conn in self.connections[inst]:
-                # is this connection to be considered in scope?
-                if conn not in self.connections['_external']:
-                    this = self.data['connections'][conn]
-                    ret['connections'][conn] = this
-                    # create jinja friendly names
-                    # channel name is based on src port
-                    if this['interfaceName']=='':
-                        this['interfaceName'] = this['channel']
-                    this['channelName'] = this['interfaceName']
-                    this['interfaceType'] = self.data['interfaces'][this['interfaceKey']]['interfaceType']
-                    for end, endVal in this['ends'].items():
-                        endVal['name'] = endVal['portName']
-                    if self.data['interfaces'][this['interfaceKey']]['structures']:
-                        for structInfo in self.data['interfaces'][this['interfaceKey']]['structures']:
-                            structs[structInfo['structureKey']] = 0
-            if self.data['instances'][inst]['registerLeafInstance']:
-                # create connection for apb leaf register module from registers
-                #  that are in the qualBlock's register dict()
-                #  these were already put into reg['registres']
-                for reg, regInfo in ret['registers'].items():
-                    conKey = inst+regInfo['register']
-                    if conKey not in ret['connections']:
-                        ret['connections'][conKey] = dict()
-                    ret['connections'][conKey]['interfaceName'] = regInfo['register']
-                    ret['connections'][conKey]['interface'] = regInfo['register']
-                    ret['connections'][conKey]['channelName'] = regInfo['register']
-                    ret['connections'][conKey]['struct'] = regInfo['structure']
-                    ret['connections'][conKey]['channelCount'] = 1
-                    if(regInfo['regType'] == 'ext'):
-                        ret['connections'][conKey]['interfaceType'] = 'external_reg'
-                    else:
-                        ret['connections'][conKey]['interfaceType'] = 'status'
-                    ret['connections'][conKey]['registerLeaf'] = None
-                    ret['connections'][conKey]['ends'] = dict()
-                    ret['connections'][conKey]['ends'][inst] = dict()
-                    ret['connections'][conKey]['ends'][inst]['instance'] = self.data['instances'][inst]['instance']
-                    ret['connections'][conKey]['ends'][inst]['portName'] = regInfo['register']
-                    ret['connections'][conKey]['ends'][inst]['name'] = regInfo['register']
-                    ret['connections'][conKey]['ends'][inst]['interfaceName'] = regInfo['register']
-                    ret['connections'][conKey]['ends'][inst]['direction'] = regDirection['reg'].get(regInfo['regType'], None)
-                    ret['connections'][conKey]['ends'][inst]['instanceType'] = self.data['instances'][inst]['instanceType']
-                    structs[regInfo['structureKey']] = 0
-                for mem, memInfo in self.data['memories'].items():
-                    if memInfo['block'] == self.data['instances'][inst]['container'] and memInfo['regAccess']:
-                        conKey = inst+memInfo['memory']
-                        ret['connections'][conKey] = dict()
-                        ret['connections'][conKey]['interfaceName'] = memInfo['memory']+'Regs'
-                        ret['connections'][conKey]['interfaceType'] = 'memory'
-                        ret['connections'][conKey]['registerLeaf'] = None
-                        ret['connections'][conKey]['ends'] = dict()
-                        ret['connections'][conKey]['ends'][inst] = dict()
-                        ret['connections'][conKey]['ends'][inst]['instance'] = self.data['instances'][inst]['instance']
-                        ret['connections'][conKey]['ends'][inst]['portName'] = memInfo['memory']
-                        ret['connections'][conKey]['ends'][inst]['interfaceName'] = memInfo['memory']+'Regs'
-                        structs[memInfo['structureKey']] = 0
-                        consts[memInfo['wordLinesKey']] = 0
-        channelCounter = dict()
-        channelTotal = dict()
-        channelDisambiguate = dict()
-        # for hw use case we need to ensure the channel is unique or create an array
-        # first idenify the array cases
-        for conn,connVal in ret['connections'].items():
-            channel = connVal['interfaceName']
-            if channel in channelDisambiguate:
-                # only duplicate channels will get here
-                channelDisambiguate[channel] = True
-                channelCounter[channel] = 0
-                channelTotal[channel] += 1
-            else:
-                # unique channel (for now)
-                channelDisambiguate[channel] = False
-                channelTotal[channel] = 1
-        # now we have a dict of special cases, create the names
-        for conn,connVal in ret['connections'].items():
-            channel = connVal['interfaceName']
-            connVal['channelCount'] = channelTotal[channel]
-            if channelDisambiguate[channel]:
-                connVal['channelIndex'] = channelCounter[channel]
-                if channelCounter[channel]==0:
-                    # we want to ensure in the jinga we only declare the channel on the first encounter
-                    connVal['channelDeclare'] = True
-                else:
-                    connVal['channelDeclare'] = False
-                channelCounter[channel] += 1
-            else:
-                connVal['channelDeclare'] = True
-
-        # create jinja friendly names
-        for connMapKey, connMapValue in self.connectionMaps[qualBlock].items():
-            if connMapValue['instanceKey'] in instances:
-                ret['connectionMaps'][connMapKey] = connMapValue
-                connMapValue['parentPortName'] = connMapValue['portName'] # portName in the block is already pre calculated
-                connMapValue['instancePortName'] = getPortChannelName(connMapValue, 'instancePort') # on the instance side it depends on any instancePort set
-                connMapValue['interfaceType'] = self.data['interfaces'][connMapValue['interfaceKey']]['interfaceType']
-
-        # the definition of the ports is based on the superset of the connections
-        # defined for the instances of the qualBlock
-        # so we need to loop through and collect that superset of information
-        # if a connection is to a block outside of the instances of interest then
-        # we still want to capture it but its going to be commented out or shown as external
-        for inst in qualBlockInstances:
-            # loop through all the connections defined for this instance
-            for conn, connVal in self.connections[inst].items():
-                # is this connection to be considered in scope?
-                if conn in self.connections['_external']:
-                    inScope = False
-                    # TODO make this language specific
-                    commentOut = '//'
-                else:
-                    inScope = True
-                    commentOut = ''
-                # assume interface uniqueness is based on portName
-                interface = connVal['interfaceKey'] + getPortChannelName(connVal)
-                # add it for later iteration to calc superset
-                interfaces[interface] = None
-
-                if interface not in ports:
-                    ports[interface] = dict()
-                if inst not in ports[interface]:
-                    ports[interface][inst] = dict()
-                ports[interface][inst][conn] = connVal
-                ports[interface][inst][conn]['inScope'] = inScope
-                ports[interface][inst][conn]['commentOut'] = commentOut
-                if connVal['_context'] == '_global':
-                    # this is a generated interface
-                    if connVal['interface'] == 'apb':
-                        ret['addressDecode']['portName'] = connVal['portName']
-
-        # port also may be defined by a connectionMap from parent
-        # however this is not true for the top block as it has no parent so check if its in the connectionMap first
-        if parentBlock in self.connectionMaps:
-            # lets review all the parents connectionMaps to see if one of them is about us
-            for connMapKey, connMapValue in self.connectionMaps[parentBlock].items():
-                inst = connMapValue['instanceKey']
-                # is this one of us?
-                if inst in qualBlockInstances:
-                    interface = connMapValue['interfaceKey'] + getPortChannelName(connMapValue, 'instancePort')
-                    interfaces[interface] = None
-
-                    if interface not in ports:
-                        ports[interface] = dict()
-                    if inst not in ports[interface]:
-                        ports[interface][inst] = dict()
-                    ports[interface][inst][connMapKey] = connMapValue.copy()
-                    ports[interface][inst][connMapKey]['port'] = getPortChannelName(connMapValue, 'instancePort')
-                    ports[interface][inst][connMapKey]['inScope'] = True
-                    ports[interface][inst][connMapKey]['commentOut'] = ''
-
-        # loop through interfaces to create the superset
-        ret['ports'] = ports
-        for interface in interfaces:
-            count = 0
-            for inst in ports[interface]:
-                # how many instances of this interface are needed
-                count = max(len(ports[interface][inst]), count)
-                # ref for later use, will point to last one
-            this = ports[interface][inst][next(iter(ports[interface][inst]))]
-            portNameThis = getPortChannelName(this)
-            ret['ports'][interface]['count'] = count
-            ret['ports'][interface]['name'] = portNameThis
-            ret['ports'][interface]['channelName'] = portNameThis
-            ret['ports'][interface]['direction'] = this['direction']
-            ret['ports'][interface]['port'] = this['port']
-            ret['ports'][interface]['commentOut'] = this['commentOut']
-
-            interfaceKey = this['interfaceKey']
-
-            ret['ports'][interface]["interfaceData"] = self.data['interfaces'][interfaceKey]
-            ret['ports'][interface]["connectionData"] = this
-            if self.data['interfaces'][interfaceKey]['structures']:
-                for structInfo in self.data['interfaces'][interfaceKey]['structures']:
-                    structs[structInfo['structureKey']] = 0
-
-        for reg, regConn in ret['registerConnections'].items():
-            myReg = dict()
-            myReg['name'] = regConn['register']
-            myReg['commentOut'] = ''
-            myReg['interfaceData'] = regConn
-            regInfo = self.data['registers'][regConn['registerBlock']]
-            myReg['interfaceData']['desc'] = regInfo['desc']
-            myReg['interfaceData']['structures'] = list()
-            myReg['interfaceData']['structures'].append({'structure': regInfo['structure'], 'structureKey': regInfo['structureKey'], 'structureType': 'data_t'})
-            myReg['connectionData'] = dict()
-            if regInfo['regType'] == 'ext':
-                interfaceType = 'external_reg'
-            else:
-                interfaceType = 'status'
-            myReg['direction'] = regDirection['blk'].get(regInfo['regType'], None)
-            if myReg['direction'] is None:
-                printError(f"Unknown register type {regInfo['regType']} for register {reg}")
-                exit(warningAndErrorReport())
-            myReg['interfaceData']['interfaceType'] = interfaceType
-            myReg['connectionData']['direction'] = myReg['direction']
-            myReg['interfaceData']['interface'] = regInfo['register']
-            ret['regPorts'][reg] = myReg
-            structs[regInfo['structureKey']] = 0
-
-        # Test and if this qualBlock has a leafInstance set meaning that it is a register / apb leaf register decode block
-        #   then we want to include the registers inside this block as well for generation
-        if qualBlockLeafInstance and len(qualBlockInstances) == 1:
-            parentBlock = self.getQualBlock(qualBlockLeafInstanceContainer)
-            regPorts['ports'] = dict()
-            for reg, regInfo in self.data['registers'].items():
-                if regInfo['blockKey'] == parentBlock:
-                    regPorts['ports'][reg] = regInfo
-                    regPorts['ports'][reg]['name'] = regInfo['register']
-                    regPorts['ports'][reg]['commentOut'] = ''
-                    regPorts['ports'][reg]['interfaceData'] = regInfo
-                    regPorts['ports'][reg]['interfaceData']['structures'] = list()
-                    regPorts['ports'][reg]['interfaceData']['structures'].append({'structure': regInfo['structure'], 'structureKey': regInfo['structureKey'], 'structureType': 'data_t'})
-                    regPorts['ports'][reg]['interfaceData']['connectionData'] = dict()
-                    if regInfo['regType'] == 'rw':
-                        regPorts['ports'][reg]['interfaceData']['interfaceType'] = 'status'
-                        regPorts['ports'][reg]['direction'] = 'src'
-                    elif regInfo['regType'] == 'ro':
-                        regPorts['ports'][reg]['interfaceData']['interfaceType'] = 'status'
-                        regPorts['ports'][reg]['direction'] = 'dst'
-                    elif regInfo['regType'] == 'ext':
-                        regPorts['ports'][reg]['interfaceData']['interfaceType'] = 'external_reg'
-                        regPorts['ports'][reg]['direction'] = 'src'
-                    else:
-                        assert(0)
-                    regPorts['ports'][reg]['interfaceData']['connectionData']['direction'] = regPorts['ports'][reg]['direction']
-                    regPorts['ports'][reg]['interfaceData']['interface'] = regInfo['register']
-                    structs[regInfo['structureKey']] = 0
-            ret['ports'].update(regPorts['ports'])
-            # for ease of SystemVerilog generation make a dictionary that indicates a registerLeafInstance
-            #  exists and what it's container is for later processing
-            ret['registerLeafInstance'] = {'container': qualBlockLeafInstanceContainer}
-        elif qualBlockLeafInstance and len(qualBlockInstances) > 1:
-            printError(f"Instances with registerLeafInstance set can only be instantiated once! Block = {qualBlock} instantiated more than once")
-            exit(warningAndErrorReport())
-
-        ret['addressDecode']['hasDecoder'] = addressDecoder
-        if addressDecoder:
-            #addressConfig = self.config.getConfig('ADDRESS_CONFIG')
-            instanceInfo = self.data['instances'][next(iter(qualBlockInstances))]
-            addressGroup = instanceInfo['addressGroup']
-            ret['addressDecode']['addressBits'] = (addressConfig['AddressGroups'][addressGroup]['addressIncrement'] * instanceInfo['addressMultiples']).bit_length()
-            ret['addressDecode']['addressGroup'] = addressGroup
-            #ret['addressDecode']['decodePort'] =
-
-        if isApbRouter or addressDecoder:
-            # search for the interface definition in block ports
-            ret['addressDecode']['registerBusStructs'] = dict()
-            for apbIfPort in filter(lambda x: x['interfaceData']['interfaceType'] == 'apb', ret['ports'].values()):
-                for item in filter(lambda x: x['interface'] == addressConfig['RegisterBusInterface'], apbIfPort['interfaceData']['structures']):
-                    ret['addressDecode']['registerBusStructs'].update( { item['structureType'] : item['structure'] } )
-                    ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
-            # if we have found no register bus structs then report an error
-            if not ret['addressDecode']['registerBusStructs']:
-                printError(f"Register Bus Interface {addressConfig['RegisterBusInterface']} not found in ports of block {qualBlock}")
-                exit(warningAndErrorReport())
-
-
-        sourceContexts = self.extractContext(structs, consts)
-        for sourceContext in sourceContexts:
-            if sourceContext not in self.specialContexts:
-                ret['includeContext'][sourceContext] = 0
-
-        ret['hierKey'] = self.hierKey[qualBlock]
-        ret['blockName'] = self.data['blocks'][qualBlock]['block']
-        # get all the blocks referenced, note that as this will reduce to one entry per block type
-        # hierKey contains all the instance info
-        for inst, instVal in self.hierKey[qualBlock].items():
-            if inst in instances:
-                ret['subBlocks'][instVal['instanceTypeKey']] = instVal['instanceType']
-
-        return ret
     # do some preproccessing to assemble subset of data easily accessed by templates
     # from perspective of qualBlock
     # subBlocks will be referenced if in the set of instances
@@ -1507,6 +1124,12 @@ class projectOpen:
 
                     else:  # registers
                         data[obj]['bytes'] = (self.data['structures'][objInfo['structureKey']]['width'] + 7) >> 3 # round up to whole byte
+                        # Surface worst-case bytes alongside nominal bytes for parameterized structures.
+                        _struct = self.data['structures'][objInfo['structureKey']]
+                        if _struct.get('isParameterizable') and _struct.get('maxBitwidth'):
+                            data[obj]['maxBytes'] = (_struct['maxBitwidth'] + 7) >> 3
+                        else:
+                            data[obj]['maxBytes'] = data[obj]['bytes']
                         # Check if this is a memory register
                         if objInfo.get('regType') == 'memory':
                             # Memory registers need additional metadata
@@ -2533,9 +2156,9 @@ class projectCreate:
             # get everything that needs an address, sorted by block type then entry order. Entry order is maintained
             # to allow engineers to keep consistency of address generation and ensure addresses only change when intended
             if addressType == 'memories':
-                sql = f"select a.*, a.ROWID, s.width from {addressType} as a, structures as s where a.structureKey = s.structureKey and a.regAccess = 1 order by blockKey, a.ROWID"
+                sql = f"select a.*, a.ROWID, s.width, s.maxBitwidth, s.isParameterizable as structIsParam, a.isParameterizable as rowIsParam from {addressType} as a, structures as s where a.structureKey = s.structureKey and a.regAccess = 1 order by blockKey, a.ROWID"
             else:
-                sql = f"select a.*, a.ROWID, s.width from {addressType} as a, structures as s where a.structureKey = s.structureKey order by blockKey, a.ROWID"
+                sql = f"select a.*, a.ROWID, s.width, s.maxBitwidth, s.isParameterizable as structIsParam, a.isParameterizable as rowIsParam from {addressType} as a, structures as s where a.structureKey = s.structureKey order by blockKey, a.ROWID"
             g.cur.execute(sql)
             data = g.cur.fetchall()
             currentBlock = ""
@@ -2546,14 +2169,43 @@ class projectCreate:
                     currentBlock = row['blockKey']
                     if currentBlock not in blockAddressCurrent:
                         blockAddressCurrent[currentBlock] = 0
+                # Pick worst-case width when row is parameterizable.
+                isParam = bool(row['rowIsParam'])
+                width = row['maxBitwidth'] if (isParam and row['maxBitwidth']) else row['width']
                 # for register memory type, use the memory objects alignment settings
                 if addressType == 'memories' or (addressType == 'registers' and row['regType'] == 'memory'):
                     alignment = convert_value(self.addressObjects['memories'].get('alignment', 1))
                     alignmentModeValue = True if isinstance(alignment, int) else False
                     sizeRoundUpPowerOf2 = self.addressObjects['memories'].get('sizeRoundUpPowerOf2', False)
                     # memories can be aligned to an alignment value or to memory sized boundaries.
-                    # memory size is based on the next rounded power of 2 of the data width, due to address decoding requirements
-                    size = roundup_pow2min4((row['width'] + 7) >> 3) * self.qualConstParse(row['wordLinesKey'])
+                    # memory size is based on the next rounded power of 2 of the data width, due to address decoding requirements.
+                    # Worst-case wordLines uses maxValue when constant is parameterizable.
+                    wlConst = self._resolveWordLinesConst(row)
+                    if isParam and wlConst and wlConst['isParameterizable'] and wlConst['maxValue']:
+                        wordLines = wlConst['maxValue']
+                    elif wlConst and wlConst['value'] is not None:
+                        wordLines = wlConst['value']
+                    else:
+                        # Bare-name block-param wordLines (no backing constant):
+                        # bound values live in parametersvariants. Worst-case =
+                        # max bound value across variants.
+                        wordLines = self._resolveBlockParamMaxWordLines(row)
+                        if wordLines is None:
+                            # Reaching here means wlConst is None AND the row is
+                            # not a non-const block param. The only remaining
+                            # cases (empty wordLines, malformed blockKey, etc.)
+                            # are user/generator bugs; silently defaulting to 1
+                            # under-sizes the address space.
+                            keyField = 'memoryKey' if addressType == 'memories' else 'registerKey'
+                            printError(f"Cannot determine wordLines for "
+                                       f"{addressType[:-1]} '{row[keyField]}' "
+                                       f"(blockKey='{row['blockKey']}', "
+                                       f"wordLines='{row['wordLines']}', "
+                                       f"wordLinesKey='{row['wordLinesKey']}'). "
+                                       f"Address sizing requires a resolvable "
+                                       f"wordLines value.")
+                            exit(warningAndErrorReport())
+                    size = roundup_pow2min4((width + 7) >> 3) * wordLines
                     if sizeRoundUpPowerOf2:
                         size = roundup_pow2min4(size)
                     if alignmentModeValue:
@@ -2563,7 +2215,7 @@ class projectCreate:
                     alignmentModeValue = True if isinstance(alignment, int) else False
                     # Regular register: width is in bits so convert to bytes and ensure alignment
                     #        bits to bytes              round up to alignment
-                    size = ((((row['width'] + 7) >> 3 ) + alignment - 1 ) // alignment ) * alignment
+                    size = ((((width + 7) >> 3 ) + alignment - 1 ) // alignment ) * alignment
                 else:
                     continue
                 allocateOrder[row[keyField]] = size
@@ -3093,6 +2745,17 @@ class projectCreate:
                     elif 'eval' in item:
                         # no named field, use eval
                         self.currentContext = yamlFile
+                        for match in self.constFind.finditer(item['eval']):
+                            token = match.group(2)
+                            foundToken = False
+                            for myContext in self.yamlContext.get(yamlFile, {}):
+                                if token in self.const.get(myContext, {}) or token in self.enums.get(myContext, {}):
+                                    foundToken = True
+                                    break
+                            if not foundToken:
+                                self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} "
+                                              f"eval expression references unresolved constant or enum '{token}'")
+                                return ret
                         # look for $XXX and if found search within context to replace symbol
                         myVal = self.constFind.sub(self.re_constReplace, item['eval'])
                         # Execute the user-provided expression with proper error handling
@@ -3231,9 +2894,338 @@ class projectCreate:
                     self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'int' but eval produced a float ({val}). "
                                   f"Use // for integer division in eval expressions")
             # 'real' accepts int or float — no validation needed
+        # Parameterizable constant propagation.
+        # Determine if this constant is parameterizable, by:
+        #   (a) derived: its eval expression references another parameterizable
+        #       constant -> isParameterizable + maxValue auto-derived. This is
+        #       the authoritative source whenever it applies; user must NOT
+        #       hand-write maxValue on a derived constant.
+        #   (b) direct: declared inside an ipParameters block, or user wrote a
+        #       non-default maxValue on a literal-valued (non-eval) constant.
+        # Referenced constants must already be finalized in self.data['constants'].
+        lineNo = (ret['lc'].line + 1) if 'lc' in ret else '?'
+        ipActive = getattr(self, '_ipParametersActive', False)
+        rawMaxValue = item.get('maxValue', 0) if isinstance(item, dict) else 0
+        # Validate maxValue is a clean integer before any arithmetic. YAML
+        # can deliver strings, lists, dicts, floats, bools — all of which
+        # would crash downstream comparisons with an opaque TypeError.
+        userMaxProvided = rawMaxValue not in (0, None, '')
+        if userMaxProvided:
+            # Reject bool explicitly (bool is a subclass of int in Python).
+            if isinstance(rawMaxValue, bool) or not isinstance(rawMaxValue, int):
+                # Allow string forms of integers ("16", "0x10") for consistency
+                # with how YAML often quotes hex; reject anything else.
+                coerced = None
+                if isinstance(rawMaxValue, str):
+                    try:
+                        coerced = int(rawMaxValue, 0)
+                    except (TypeError, ValueError):
+                        coerced = None
+                if coerced is None:
+                    self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                                  f"maxValue must be an integer, got "
+                                  f"{type(rawMaxValue).__name__}={rawMaxValue!r}")
+                    rawMaxValue = 0
+                    userMaxProvided = False
+                else:
+                    rawMaxValue = coerced
+        userMaxValue = rawMaxValue if userMaxProvided else 0
+        userParamFlag = bool(item.get('isParameterizable', False)) if isinstance(item, dict) else False
+        evalStr = item.get('eval', None) if isinstance(item, dict) else None
+
+        derivedParam = False
+        derivedMaxValue = 0
+        if evalStr is not None and isinstance(evalStr, str):
+            # Walk every $TOKEN in the original eval string and look up the referent.
+            # If any referent is parameterizable, this constant is too.
+            for m in self.constFind.finditer(evalStr):
+                tok = m.group(2)
+                referent = self._lookupConstByName(tok, yamlFile, lineNo, itemkey)
+                if referent.get('isParameterizable'):
+                    derivedParam = True
+                    break
+            if derivedParam:
+                # Recompute eval with each referent's maxValue (parameterizable) or
+                # value (non-parameterizable) to obtain the worst-case maxValue.
+                def _replaceMax(matchObj):
+                    tok = matchObj.group(2)
+                    ref = self._lookupConstByName(tok, yamlFile, lineNo, itemkey)
+                    if ref.get('isParameterizable') and ref.get('maxValue'):
+                        return str(ref['maxValue'])
+                    return str(ref['value'])
+                substituted = self.constFind.sub(_replaceMax, evalStr)
+                try:
+                    evalResult = eval(substituted, {}, {})
+                except Exception as e:
+                    self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}' "
+                                  f"maxValue eval failed: '{evalStr}' (after substitution: '{substituted}'). "
+                                  f"Error: {type(e).__name__}: {str(e)}")
+                    evalResult = 0
+                # eval() can yield non-numeric results (string concat, tuples,
+                # etc.) if the expression is malformed; coerce defensively.
+                if isinstance(evalResult, bool) or not isinstance(evalResult, (int, float)):
+                    self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                                  f"derived maxValue must evaluate to a number, got "
+                                  f"{type(evalResult).__name__}={evalResult!r} "
+                                  f"(eval='{evalStr}', substituted='{substituted}')")
+                    derivedMaxValue = 0
+                else:
+                    derivedMaxValue = int(evalResult)
+
+        # Direct path applies only when there is no derived path: literal value
+        # (no eval) inside ipParameters, user-set isParameterizable: true, or
+        # any literal with explicit maxValue.
+        directParam = (not derivedParam) and (bool(ipActive) or userParamFlag or userMaxProvided)
+
+        if derivedParam:
+            ret['isParameterizable'] = True
+            ret['maxValue'] = derivedMaxValue
+            if userMaxProvided:
+                # Reject: user-supplied maxValue on a derived constant is
+                # redundant at best and a likely consistency hazard at worst.
+                self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                              f"maxValue is auto-derived from eval expression "
+                              f"(=> {derivedMaxValue}); do not hand-write maxValue "
+                              f"on derived parameterizable constants")
+            if derivedMaxValue <= 0:
+                self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                              f"derived maxValue must be > 0, got {derivedMaxValue}")
+            if 'value' in ret and isinstance(ret['value'], (int, float)) and ret['value'] > derivedMaxValue:
+                self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                              f"value ({ret['value']}) exceeds derived maxValue ({derivedMaxValue})")
+        elif directParam:
+            ret['isParameterizable'] = True
+            if not userMaxProvided:
+                # Direct parameterizable constant (ipParameters or explicit
+                # isParameterizable: true) MUST declare maxValue. Without it
+                # downstream worst-case sizing is meaningless.
+                origin = ("declared in ipParameters" if ipActive
+                          else "marked isParameterizable: true")
+                self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                              f"{origin} but maxValue is missing; maxValue is "
+                              f"required for parameterizable constants")
+            else:
+                # User-provided maxValue is authoritative for direct case.
+                if userMaxValue <= 0:
+                    self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                                  f"maxValue must be > 0 when parameterizable, got {userMaxValue}")
+                if 'value' in ret and isinstance(ret['value'], (int, float)) and ret['value'] > userMaxValue:
+                    self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
+                                  f"value ({ret['value']}) exceeds maxValue ({userMaxValue})")
+                # ret['maxValue'] already populated from schema/user input
+        else:
+            ret['isParameterizable'] = False
+
         self.const[yamlFile][itemkey] = ret['value']
         self.qualConst[itemkey+'/'+yamlFile] = ret['value']
         return ret
+
+    def _lookupConstByName(self, name, yamlFile, lineNo, refererName):
+        """Look up a constant by short name in the dependency context of yamlFile.
+        Used by parameterizable propagation. Missing user references are reported
+        as YAML errors; unfinalized internal records are reported as internal errors."""
+        for myContext in self.yamlContext.get(yamlFile, {}):
+            entry = self.data.get('constants', {}).get(myContext, {}).get(name)
+            if entry is not None:
+                if 'isParameterizable' not in entry:
+                    printError(f"Internal error: constant '{name}' referenced by "
+                               f"'{refererName}' in {yamlFile}:{lineNo} is not finalized "
+                               f"(missing isParameterizable).")
+                    exit(warningAndErrorReport())
+                return entry
+        # Not found. Could legitimately be an enum or builtin. Re-resolve via constParse,
+        # which handles enums/numerics. If that fails, it's a real error.
+        # Try enum
+        for myContext in self.yamlContext.get(yamlFile, {}):
+            enumVal = self.enums.get(myContext, {}).get(name)
+            if enumVal is not None:
+                # Synthesize a non-parameterizable record
+                return {'value': enumVal['value'], 'isParameterizable': False, 'maxValue': 0}
+        self.logError(f"In file {yamlFile}:{lineNo}, constant '{refererName}' "
+                      f"eval expression references unresolved constant or enum '{name}'")
+        return {'value': 0, 'isParameterizable': False, 'maxValue': 0}
+
+    def _lookupConstByQualKey(self, qualKey):
+        """Look up a constant by its qualified key 'name/yamlFile'.
+        Returns the entry dict, or hard-errors on miss.
+        Hard-errors on malformed input (empty / missing '/'); a malformed
+        qualKey is always a generator bug because the schema guarantees
+        qualified keys, and silently returning None would mask it."""
+        if not qualKey or '/' not in qualKey:
+            printError(f"Internal error: malformed qualified constant key "
+                       f"'{qualKey}' (expected 'name/yamlFile').")
+            exit(warningAndErrorReport())
+        name, ctx = qualKey.split('/', 1)
+        entry = self.data.get('constants', {}).get(ctx, {}).get(name)
+        if entry is None:
+            # Could be an enum
+            enumVal = self.enums.get(ctx, {}).get(name)
+            if enumVal is not None:
+                return {'value': enumVal['value'], 'isParameterizable': False, 'maxValue': 0}
+            printError(f"Internal error: qualified constant '{qualKey}' "
+                       f"is not present in self.data['constants'].")
+            exit(warningAndErrorReport())
+        return entry
+
+    def _resolveWordLinesConst(self, row):
+        """Resolve a memory/register row's wordLines constant entry.
+        Handles both qualified-key (regular constant) and bare-name (block param)
+        cases, returning a constant entry dict or None.
+        Accepts a sqlite3.Row or dict.
+
+        Lookup precedence:
+          1. wordLinesKey qualified ('name/file')             -> direct constant lookup
+          2. wordLines is a literal int                       -> synthesized non-param entry
+          3. wordLines is a bare name + block has context     -> per-block-context lookup
+                                                                 (constants table)
+          4. wordLines is a bare name + matches block 'params' list (legit
+             non-const block param bound per-variant) -> returns None
+
+        No global fallback: searching every context risks picking a same-named
+        constant from an unrelated block and would mask scope/typo errors.
+        Bare-name miss in both constants AND block params is a hard error.
+
+        Returns None for: empty wordLines, or non-const block param (the caller
+        treats None as non-parameterizable for sizing)."""
+        def _get(r, key):
+            try:
+                return r[key]
+            except (KeyError, IndexError):
+                return None
+        wlKey = _get(row, 'wordLinesKey') or ''
+        if wlKey and '/' in wlKey:
+            return self._lookupConstByQualKey(wlKey)
+        # Bare-name (param) case: search for a constant by name within the block's
+        # owning context (row['blockKey'] = 'block/yamlFile').
+        wl = _get(row, 'wordLines') or ''
+        if not wl:
+            # Empty wordLines: caller decides (e.g. non-memory registers have
+            # wordLines defaulted to 0). Surface as None rather than erroring.
+            return None
+        try:
+            return {'value': int(wl), 'isParameterizable': False, 'maxValue': 0}
+        except (TypeError, ValueError):
+            pass
+        blockKey = _get(row, 'blockKey') or ''
+        if '/' not in blockKey:
+            printError(f"Generator bug: memory/register row references wordLines="
+                       f"'{wl}' but blockKey '{blockKey}' lacks a context "
+                       f"(expected 'block/yamlFile'). Cannot resolve scope.")
+            exit(warningAndErrorReport())
+        ctx = blockKey.split('/', 1)[1]
+        blockName = blockKey.split('/', 1)[0]
+        entry = self.data.get('constants', {}).get(ctx, {}).get(wl)
+        if entry is not None:
+            return entry
+        # Not in constants. Legit if it's a declared block param (values bound
+        # per-variant via 'parameters:'); we surface that to the caller as None
+        # (no constant entry => non-parameterizable for sizing).
+        if self.checkIsParam(blockName, wl, ctx):
+            return None
+        # Otherwise: typo, missing ipParameters entry, or scope violation.
+        printError(f"In context '{ctx}', block '{blockName}': wordLines references "
+                   f"'{wl}' but no constant or block parameter named '{wl}' is "
+                   f"declared in this block (typo, missing ipParameters entry, "
+                   f"or scope violation).")
+        exit(warningAndErrorReport())
+
+    def _resolveBlockParamMaxWordLines(self, row):
+        """For a memory/register row whose wordLines is a non-const block param
+        (declared in 'block.params' and bound per-variant via 'parameters:'),
+        return the worst-case (maximum) bound value across all variants.
+
+        Used by calcAddresses when _resolveWordLinesConst returns None because
+        wordLines is a block param without a backing constant entry. Without
+        this, sizing would fall back to wordLines=1 -> silent under-allocation.
+
+        Returns an int (worst-case wordLines) or None if not applicable
+        (e.g. wordLines is not a bare-name block param, or no variant
+        bindings exist). On bound-value resolution failure, hard-errors."""
+        def _get(r, key):
+            try:
+                return r[key]
+            except (KeyError, IndexError):
+                return None
+        wlKey = _get(row, 'wordLinesKey') or ''
+        if wlKey:
+            return None  # qualified-constant case, not our concern
+        wl = _get(row, 'wordLines') or ''
+        if not wl:
+            return None
+        try:
+            int(wl)
+            return None  # literal int case, not our concern
+        except (TypeError, ValueError):
+            pass
+        blockKey = _get(row, 'blockKey') or ''
+        if '/' not in blockKey:
+            printError(f"Internal error: memory/register row references wordLines="
+                       f"'{wl}' but blockKey '{blockKey}' lacks a context "
+                       f"(expected 'block/yamlFile'). Cannot resolve scope.")
+            exit(warningAndErrorReport())
+        # Query parametersvariants for all bound values of this (blockKey, param).
+        # The valueKey column is a qualified constant ref (e.g. 'BOB0/mixed.yaml').
+        sql = ("SELECT valueKey, value FROM parametersvariants "
+               "WHERE blockKey = ? AND param = ?")
+        try:
+            g.cur.execute(sql, (blockKey, wl))
+            rows = g.cur.fetchall()
+        except Exception as e:
+            printError(f"Generator bug: failed to query parametersvariants for "
+                       f"blockKey='{blockKey}' param='{wl}': {e}")
+            exit(warningAndErrorReport())
+        if not rows:
+            # Block param declared but no variants bind it. This is a user error:
+            # the param appears in block.params but has no parameters: rows.
+            blockName = blockKey.split('/', 1)[0]
+            printError(f"Block '{blockName}': memory wordLines references block "
+                       f"parameter '{wl}' but no variant bindings exist in "
+                       f"'parameters:' for this param. Cannot determine "
+                       f"worst-case sizing.")
+            exit(warningAndErrorReport())
+        maxVal = 0
+        for r in rows:
+            valKey = r['valueKey'] or ''
+            rawVal = r['value']
+            resolved = None
+            # Prefer qualified-key resolution; fall back to literal int parse of value.
+            if valKey and '/' in valKey:
+                cEntry = self._lookupConstByQualKey(valKey)
+                if cEntry:
+                    # Use maxValue if the bound constant is itself parameterizable,
+                    # else its nominal value.
+                    if cEntry.get('isParameterizable') and cEntry.get('maxValue'):
+                        resolved = cEntry['maxValue']
+                    elif cEntry.get('value') is not None:
+                        resolved = cEntry['value']
+            if resolved is None and rawVal is not None:
+                try:
+                    resolved = int(rawVal)
+                except (TypeError, ValueError):
+                    resolved = None
+            if resolved is None:
+                blockName = blockKey.split('/', 1)[0]
+                printError(f"Block '{blockName}': cannot resolve bound value "
+                           f"'{rawVal}' (key='{valKey}') for param '{wl}'. "
+                           f"Worst-case wordLines sizing requires resolvable "
+                           f"integer bound values.")
+                exit(warningAndErrorReport())
+            if resolved <= 0:
+                blockName = blockKey.split('/', 1)[0]
+                printError(f"Block '{blockName}': bound value for param '{wl}' "
+                           f"resolved to {resolved} (key='{valKey}', raw="
+                           f"'{rawVal}'). wordLines must be a positive integer.")
+                exit(warningAndErrorReport())
+            if resolved > maxVal:
+                maxVal = resolved
+        if maxVal <= 0:
+            # Defensive: should not be reachable given per-row check above, but
+            # guard against an empty-rows path slipping through future edits.
+            blockName = blockKey.split('/', 1)[0]
+            printError(f"Block '{blockName}': worst-case wordLines for param "
+                       f"'{wl}' resolved to {maxVal}. wordLines must be > 0.")
+            exit(warningAndErrorReport())
+        return maxVal
 
     def _post_add_enum(self, itemkey, item, yamlFile):
         if 'enumName' in item:
@@ -3706,6 +3698,109 @@ class projectCreate:
         if computedWidth == 0:
             self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' {widthField} resolves to zero width, which is not valid")
 
+        # Parameterizable type propagation.
+        # Two paths to be parameterizable:
+        #   (a) direct: declared inside ipParameters block, user explicitly set
+        #       isParameterizable: true, or user wrote a non-default maxBitwidth.
+        #   (b) derived: width/widthLog2/widthLog2minus1 references a
+        #       parameterizable constant.
+        lineNo = (item.get('lc').line + 1) if item.get('lc') else '?'
+        ipActive = getattr(self, '_ipParametersActive', False)
+        rawMaxBitwidth = item.get('maxBitwidth', 0)
+        userMaxBitwidthProvided = rawMaxBitwidth not in (0, None, '', '0')
+        if userMaxBitwidthProvided:
+            if isinstance(rawMaxBitwidth, bool):
+                self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                              f"maxBitwidth must be an integer, got "
+                              f"bool={rawMaxBitwidth!r}")
+                return item
+            try:
+                userMaxBitwidth = int(rawMaxBitwidth, 0) if isinstance(rawMaxBitwidth, str) else int(rawMaxBitwidth)
+            except (TypeError, ValueError):
+                self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                              f"maxBitwidth must be an integer, got "
+                              f"{type(rawMaxBitwidth).__name__}={rawMaxBitwidth!r}")
+                return item
+            if isinstance(rawMaxBitwidth, float) and rawMaxBitwidth != userMaxBitwidth:
+                self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                              f"maxBitwidth must be an integer, got "
+                              f"float={rawMaxBitwidth!r}")
+                return item
+            item['maxBitwidth'] = userMaxBitwidth
+        else:
+            userMaxBitwidth = 0
+        userParamFlag = bool(item.get('isParameterizable', False))
+        directParam = bool(ipActive) or userParamFlag or userMaxBitwidthProvided
+
+        # Identify referenced constant. It must already be finalized.
+        derivedParam = False
+        derivedMaxBitwidth = 0
+        widthMode = None
+        if hasWidth:
+            widthMode = 'width'
+        elif hasWidthLog2:
+            widthMode = 'widthLog2'
+        elif hasWidthLog2minus1:
+            widthMode = 'widthLog2minus1'
+        if widthMode:
+            qualKey = item.get(widthMode + 'Key', '')
+            if qualKey:
+                refConst = self._lookupConstByQualKey(qualKey)
+                if refConst and refConst.get('isParameterizable'):
+                    derivedParam = True
+                    refMax = refConst.get('maxValue', 0) or 0
+                    if widthMode == 'widthLog2':
+                        derivedMaxBitwidth = int(refMax).bit_length()
+                        if isSigned:
+                            derivedMaxBitwidth += 1
+                    elif widthMode == 'widthLog2minus1':
+                        if refMax > 0:
+                            derivedMaxBitwidth = int(refMax - 1).bit_length()
+                        else:
+                            derivedMaxBitwidth = 0
+                        if isSigned:
+                            derivedMaxBitwidth += 1
+                    else:  # width
+                        derivedMaxBitwidth = int(refMax)
+
+        if directParam or derivedParam:
+            item['isParameterizable'] = True
+            if directParam and userMaxBitwidthProvided:
+                # User-provided maxBitwidth takes precedence (worst case).
+                # Validate it is at least the resolved width.
+                if userMaxBitwidth <= 0:
+                    self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                                  f"maxBitwidth must be > 0 when parameterizable, got {userMaxBitwidth}")
+                if userMaxBitwidth < computedWidth:
+                    self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                                  f"maxBitwidth ({userMaxBitwidth}) is less than resolved width ({computedWidth})")
+                # already in item['maxBitwidth']
+            elif directParam:
+                # ipParameters type or user-set isParameterizable: true with no
+                # explicit maxBitwidth. Accept only when a derived path supplies
+                # one; otherwise hard-error (silently falling back to the nominal
+                # width would cause downstream worst-case sizing to under-allocate).
+                if derivedParam and derivedMaxBitwidth > 0:
+                    item['maxBitwidth'] = derivedMaxBitwidth
+                else:
+                    origin = ("declared in ipParameters" if ipActive
+                              else "marked isParameterizable: true")
+                    self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                                  f"{origin} but maxBitwidth is missing and "
+                                  f"the {widthMode or 'width'} expression does not "
+                                  f"reference a parameterizable constant; "
+                                  f"explicit maxBitwidth is required")
+                    return item
+            elif derivedParam:
+                # Pure derived case
+                item['maxBitwidth'] = derivedMaxBitwidth
+                if derivedMaxBitwidth < computedWidth:
+                    self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
+                                  f"derived maxBitwidth ({derivedMaxBitwidth}) is less than width ({computedWidth})")
+        else:
+            item['isParameterizable'] = False
+            # leave maxBitwidth as 0
+
         return item
 
     def _auto_structWidth(self, section, itemkey, item, field, yamlFile, processed):
@@ -3714,6 +3809,149 @@ class projectCreate:
             width = width + self.varWidth(varinfo, yamlFile)
         return (width)
 
+    def _auto_structIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
+        # A structure is parameterizable iff any field references a
+        # parameterizable type, sub-structure, or array-size constant.
+        lineNo = (processed.get('lc').line + 1) if processed.get('lc') else '?'
+        for var, varinfo in processed['vars'].items():
+            # Type field
+            varTypeKey = varinfo.get('varTypeKey') or ''
+            if varTypeKey and '/' in varTypeKey:
+                tname, tctx = varTypeKey.split('/', 1)
+                tEntry = self.data.get('types', {}).get(tctx, {}).get(tname)
+                if not tEntry:
+                    printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                               f"references type '{varTypeKey}' for field '{var}', "
+                               f"but it is not present in self.data['types'].")
+                    exit(warningAndErrorReport())
+                if tEntry and tEntry.get('isParameterizable'):
+                    return True
+            elif varTypeKey:
+                printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                           f"has malformed varTypeKey '{varTypeKey}' for field '{var}' "
+                           f"(expected 'name/yamlFile').")
+                exit(warningAndErrorReport())
+            # Sub-structure
+            subKey = varinfo.get('subStructKey') or ''
+            if subKey and '/' in subKey:
+                sname, sctx = subKey.split('/', 1)
+                sEntry = self.data.get('structures', {}).get(sctx, {}).get(sname)
+                if not sEntry:
+                    printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                               f"references sub-structure '{subKey}' for field '{var}', "
+                               f"but it is not present in self.data['structures'].")
+                    exit(warningAndErrorReport())
+                if sEntry and sEntry.get('isParameterizable'):
+                    return True
+            elif subKey:
+                printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                           f"has malformed subStructKey '{subKey}' for field '{var}' "
+                           f"(expected 'name/yamlFile').")
+                exit(warningAndErrorReport())
+            # Array size: arraySizeKey may be qualified ('NAME/file')
+            arrKey = varinfo.get('arraySizeKey') or ''
+            if arrKey and '/' in arrKey:
+                cEntry = self._lookupConstByQualKey(arrKey)
+                if cEntry and cEntry.get('isParameterizable'):
+                    return True
+        return False
+
+    def _auto_structMaxBitwidth(self, section, itemkey, item, field, yamlFile, processed):
+        # Worst-case bit sum across fields. Returns 0 if structure is
+        # not parameterizable (callers consult isParameterizable first).
+        if not processed.get('isParameterizable'):
+            return 0
+        total = 0
+        lineNo = (processed.get('lc').line + 1) if processed.get('lc') else '?'
+        for var, varinfo in processed['vars'].items():
+            # Per-element width: from type or sub-struct.
+            perElem = 0
+            if varinfo.get('entryType') == 'NamedStruct':
+                subKey = varinfo.get('subStructKey') or ''
+                if subKey and '/' in subKey:
+                    sname, sctx = subKey.split('/', 1)
+                    sEntry = self.data.get('structures', {}).get(sctx, {}).get(sname)
+                    if sEntry:
+                        if sEntry.get('isParameterizable') and sEntry.get('maxBitwidth'):
+                            perElem = sEntry['maxBitwidth']
+                        else:
+                            perElem = sEntry.get('width', 0)
+                    else:
+                        printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                                   f"references sub-structure '{subKey}' for field '{var}', "
+                                   f"but it is not present in self.data['structures'].")
+                        exit(warningAndErrorReport())
+                else:
+                    printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                               f"has malformed subStructKey '{subKey}' for field '{var}' "
+                               f"(expected 'name/yamlFile').")
+                    exit(warningAndErrorReport())
+            elif varinfo.get('entryType') == 'Reserved':
+                perElem = varinfo.get('align', 0)
+            else:
+                varTypeKey = varinfo.get('varTypeKey') or ''
+                if varTypeKey and '/' in varTypeKey:
+                    tname, tctx = varTypeKey.split('/', 1)
+                    tEntry = self.data.get('types', {}).get(tctx, {}).get(tname)
+                    if tEntry:
+                        if tEntry.get('isParameterizable') and tEntry.get('maxBitwidth'):
+                            perElem = tEntry['maxBitwidth']
+                        else:
+                            perElem = self.resolveTypeWidthCreate(tEntry)
+                    else:
+                        printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                                   f"references type '{varTypeKey}' for field '{var}', "
+                                   f"but it is not present in self.data['types'].")
+                        exit(warningAndErrorReport())
+                else:
+                    printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                               f"has malformed varTypeKey '{varTypeKey}' for field '{var}' "
+                               f"(expected 'name/yamlFile').")
+                    exit(warningAndErrorReport())
+            if not isinstance(perElem, int) or perElem <= 0:
+                printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                           f"field '{var}' resolved to invalid element width {perElem!r}.")
+                exit(warningAndErrorReport())
+            # Multiplier: arraySize.
+            mult = 1
+            arrSizeRaw = varinfo.get('arraySize', 0)
+            arrKey = varinfo.get('arraySizeKey') or ''
+            try:
+                arrInt = int(arrSizeRaw)
+            except (TypeError, ValueError):
+                arrInt = None
+            if arrKey and '/' in arrKey:
+                cEntry = self._lookupConstByQualKey(arrKey)
+                if cEntry:
+                    nominal = cEntry.get('value', 1)
+                    if isinstance(nominal, bool) or not isinstance(nominal, int) or nominal <= 0:
+                        self.logError(f"In {yamlFile}:{lineNo}, structure '{itemkey}' field '{var}': "
+                                      f"arraySize must resolve to a positive integer, got {nominal!r}")
+                        return total
+                    if cEntry.get('isParameterizable'):
+                        maxValue = cEntry.get('maxValue', 0)
+                        if isinstance(maxValue, bool) or not isinstance(maxValue, int) or maxValue <= 0:
+                            self.logError(f"In {yamlFile}:{lineNo}, structure '{itemkey}' field '{var}': "
+                                          f"arraySize maxValue must resolve to a positive integer, got {maxValue!r}")
+                            return total
+                        mult = maxValue
+                    else:
+                        mult = nominal
+            elif arrInt is not None and arrInt > 0:
+                mult = arrInt
+            if isinstance(mult, bool) or not isinstance(mult, int) or mult <= 0:
+                self.logError(f"In {yamlFile}:{lineNo}, structure '{itemkey}' field '{var}': "
+                              f"arraySize must resolve to a positive integer, got {mult!r}")
+                return total
+            total += perElem * mult
+        # Validate: maxBitwidth >= width
+        existingWidth = processed.get('width', 0) or 0
+        if total < existingWidth:
+            lineNo = (processed.get('lc').line + 1) if processed.get('lc') else '?'
+            self.logError(f"In {yamlFile}:{lineNo}, structure '{itemkey}': "
+                          f"computed maxBitwidth ({total}) is less than width ({existingWidth})")
+        return total
+
     def _auto_blockDir(self, section, itemkey, item, field, yamlFile, processed):
         # check if user provided an override
         ret = item.get(field, None)
@@ -3721,28 +3959,124 @@ class projectCreate:
             return ret
         return self.yamlDir
 
+    def _auto_memIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
+        # Memory is parameterizable iff its structure is parameterizable,
+        # OR its wordLines constant is parameterizable, OR its wordLines is a
+        # pure block parameter (no backing constant). The pure-block-param case
+        # is parameterizable by definition: bound values vary per variant, so
+        # calcAddresses must size for the worst case via parametersvariants.
+        structKey = processed.get('structureKey') or ''
+        structIsParam = False
+        if structKey and '/' in structKey:
+            sname, sctx = structKey.split('/', 1)
+            sEntry = self.data.get('structures', {}).get(sctx, {}).get(sname)
+            structIsParam = bool(sEntry and sEntry.get('isParameterizable'))
+        wlConst = self._resolveWordLinesConst(processed)
+        wlIsParam = bool(wlConst and wlConst.get('isParameterizable'))
+        # Pure block-param fallback (wlConst is None because wordLines is in
+        # block.params but has no backing constant entry).
+        if not wlIsParam and not wlConst:
+            wl = processed.get('wordLines') or ''
+            wlKey = processed.get('wordLinesKey') or ''
+            if wl and not wlKey:
+                try:
+                    int(wl)
+                except (TypeError, ValueError):
+                    blockKey = processed.get('blockKey') or ''
+                    if '/' in blockKey:
+                        block, ctx = blockKey.split('/', 1)
+                        if self.checkIsParam(block, wl, ctx):
+                            wlIsParam = True
+        return structIsParam or wlIsParam
+
+    def _auto_regIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
+        # Register is parameterizable iff its structure is parameterizable,
+        # plus (for memory-type registers) its wordLines constant or pure
+        # block-param. Mirrors _auto_memIsParameterizable.
+        structKey = processed.get('structureKey') or ''
+        structIsParam = False
+        if structKey and '/' in structKey:
+            sname, sctx = structKey.split('/', 1)
+            sEntry = self.data.get('structures', {}).get(sctx, {}).get(sname)
+            structIsParam = bool(sEntry and sEntry.get('isParameterizable'))
+        if processed.get('regType') == 'memory':
+            wlConst = self._resolveWordLinesConst(processed)
+            if wlConst and wlConst.get('isParameterizable'):
+                return True
+            # Pure block-param fallback.
+            if not wlConst:
+                wl = processed.get('wordLines') or ''
+                wlKey = processed.get('wordLinesKey') or ''
+                if wl and not wlKey:
+                    try:
+                        int(wl)
+                    except (TypeError, ValueError):
+                        blockKey = processed.get('blockKey') or ''
+                        if '/' in blockKey:
+                            block, ctx = blockKey.split('/', 1)
+                            if self.checkIsParam(block, wl, ctx):
+                                return True
+        return structIsParam
+
+    def _auto_regMaxBytes(self, section, itemkey, item, field, yamlFile, processed):
+        # Worst-case byte size for a register, derived from its structure.
+        # Hard-error on any failure path: a silent 0 propagates downstream as a
+        # zero-sized register, corrupting address allocation without warning.
+        structKey = processed.get('structureKey') or ''
+        if not structKey or '/' not in structKey:
+            printError(f"Register '{itemkey}' in {yamlFile}: structureKey "
+                       f"'{structKey}' is missing or malformed (expected "
+                       f"'name/yamlFile'). Cannot derive maxBytes.")
+            exit(warningAndErrorReport())
+        sname, sctx = structKey.split('/', 1)
+        sEntry = self.data.get('structures', {}).get(sctx, {}).get(sname)
+        if not sEntry:
+            printError(f"Internal error: register '{itemkey}' in "
+                       f"{yamlFile} references structure '{structKey}' but it "
+                       f"is not present in self.data['structures'].")
+            exit(warningAndErrorReport())
+        if sEntry.get('isParameterizable') and sEntry.get('maxBitwidth'):
+            width = sEntry['maxBitwidth']
+        else:
+            width = sEntry.get('width')
+        if not isinstance(width, int) or width <= 0:
+            paramFlag = sEntry.get('isParameterizable')
+            printError(f"Register '{itemkey}' in {yamlFile}: structure "
+                       f"'{structKey}' has invalid width "
+                       f"(isParameterizable={paramFlag}, "
+                       f"maxBitwidth={sEntry.get('maxBitwidth')}, "
+                       f"width={sEntry.get('width')}). Cannot derive maxBytes.")
+            exit(warningAndErrorReport())
+        return (width + 7) >> 3
+
     def _post_registers(self, itemkey, item, yamlFile):
         """Validate memory register constraints after processing"""
         regType = item.get('regType', None)
+        registerName = item.get('register', itemkey)
 
         if regType == 'memory':
             # Memory registers must have non-empty wordLines
             if not item.get('wordLines') or item.get('wordLines') == "":
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{itemkey}' must have wordLines field")
+                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{registerName}' must have wordLines field")
                 return item
 
             # Validate wordLines resolves to non-zero value
-            try:
-                parsed_val = self.qualConstParse(item['wordLinesKey'])
-                if parsed_val == 0:
-                    self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{itemkey}' has wordLines=0, must be non-zero")
-            except Exception:
-                # If parsing fails, let it pass - the constParse validation will catch it
+            wlConst = self._resolveWordLinesConst(item)
+            if wlConst is not None:
+                parsed_val = wlConst.get('maxValue') if wlConst.get('isParameterizable') and wlConst.get('maxValue') else wlConst.get('value')
+                if isinstance(parsed_val, bool) or not isinstance(parsed_val, int) or parsed_val <= 0:
+                    self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{registerName}' "
+                                  f"wordLines must resolve to a positive integer, got {parsed_val!r}")
+                    return item
+            else:
+                # Non-const block params are bound through the parameters section,
+                # which may not have been processed yet. calcAddresses validates
+                # those bindings once all YAML has been loaded.
                 pass
 
             # Memory registers must have addressStruct
             if not item.get('addressStruct') or item.get('addressStruct') == "":
-                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{itemkey}' must have addressStruct field")
+                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{registerName}' must have addressStruct field")
 
         return item
 
@@ -3805,24 +4139,38 @@ class projectCreate:
 
     # ipParameters: container section that delegates to existing section schemas (constants, types).
     # Entries from ipParameters are merged into the same self.data['constants']/self.data['types']
-    # dictionaries as regular entries, but stamped with isParameterizable=True for later processing.
-    # Transitive propagation (F2) and worst-case sizing (F3) are NOT performed here.
+    # dictionaries as regular entries. Per-entry handlers stamp them as parameterizable.
+    # Transitive propagation and worst-case sizing are performed by those handlers.
     def _process_ipParameters(self, data, yamlFile):
-        for section, sectData in data.items():
-            if section in self.schema.data['mapto']:
-                section = self.schema.data['mapto'][section]
-            if section in self.schema.data['schema']:
-                # Snapshot existing keys to identify new entries created by this call
-                existing_keys = set(self.data[section].get(yamlFile, {}).keys())
-                # Process through normal section pipeline - same schema, same validation
-                self.processSection(section, sectData, yamlFile)
-                # Stamp new entries as parameterizable
-                new_keys = set(self.data[section].get(yamlFile, {}).keys()) - existing_keys
-                for key in new_keys:
-                    self.data[section][yamlFile][key]['isParameterizable'] = True
-            else:
-                printError(f"Unknown sub-section '{section}' in ipParameters in {yamlFile}")
-                exit(warningAndErrorReport())
+        # ipParameters may only appear in an IP-root YAML, not in a pure shared
+        # type/structure/constant include. A shared include is included by another
+        # file and does not itself declare any blocks.
+        isIncludedElsewhere = any(yamlFile in deps for deps in self.yamlDependancies.values())
+        rawSections = self.yamlRaw.get(yamlFile, {}) or {}
+        hasBlocks = 'blocks' in rawSections
+        if isIncludedElsewhere and not hasBlocks:
+            printError(f"ipParameters is not allowed in shared include file {yamlFile}; "
+                       f"shared includes (no 'blocks:' section) cannot declare ipParameters "
+                       f"because parameter bounds are tied to the IP root")
+            exit(warningAndErrorReport())
+        # Set a flag so per-section handlers (constants, types) can stamp
+        # isParameterizable=True immediately as each entry is processed,
+        # preserving finalized referents when later entries reference them.
+        prev = getattr(self, '_ipParametersActive', False)
+        self._ipParametersActive = True
+        try:
+            for section, sectData in data.items():
+                if section in self.schema.data['mapto']:
+                    section = self.schema.data['mapto'][section]
+                if section in self.schema.data['schema']:
+                    # Process through normal section pipeline - same schema, same validation.
+                    # Per-entry handlers consult self._ipParametersActive to stamp isParameterizable.
+                    self.processSection(section, sectData, yamlFile)
+                else:
+                    printError(f"Unknown sub-section '{section}' in ipParameters in {yamlFile}")
+                    exit(warningAndErrorReport())
+        finally:
+            self._ipParametersActive = prev
 
     def re_constReplace(self, myStr):
         return(str(self.constParse(myStr.group(2), self.currentContext, value=True)))
@@ -4071,11 +4419,3 @@ class projectCreate:
                 print(f"  Values: {valueList}")
                 print(f"  Value types: {[type(v) for v in valueList]}")
                 raise
-
-
-
-
-
-
-
-

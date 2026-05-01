@@ -32,7 +32,9 @@ public:
 
     // GENERATED_CODE_END
     // block implementation members
-
+private:
+    void driveOut0(void);
+    void driveOut1(void);
 };
 
 #endif //SRC_H

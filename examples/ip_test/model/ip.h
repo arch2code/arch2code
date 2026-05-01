@@ -41,13 +41,15 @@ public:
 
     //registers
     hwRegister< ipCfgSt, 4 > ipCfg; // IP configuration
+    hwRegister< ipDataSt, 4 > ipLastData; // Last data word received on ipDataIf
 
     ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ip() override = default;
 
     // GENERATED_CODE_END
     // block implementation members
-
+private:
+    void dataHandler(void);
 };
 
 #endif //IP_H

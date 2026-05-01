@@ -32,10 +32,10 @@ private:
     static registerBlock registerBlock_;
 public:
     // channels
-    // IP data stream
-    rdy_vld_channel< ipDataSt > out0;
-    // IP data stream
-    rdy_vld_channel< ipDataSt > out1;
+    // IP data push/ack stream
+    push_ack_channel< ipDataSt > out0;
+    // IP data push/ack stream
+    push_ack_channel< ipDataSt > out1;
     // CPU access to IP registers via APB
     apb_channel< apbAddrSt, apbDataSt > apb_uIp0;
     // CPU access to IP registers via APB
