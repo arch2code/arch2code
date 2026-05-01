@@ -37,8 +37,12 @@ def struct_bytes(obj: ctypes.Structure) -> bytes:
     return ctypes.string_at(ctypes.byref(obj), ctypes.sizeof(obj))
 
 
-def parse_ports() -> dict[str, int]:
-    raw = os.environ.get("PYSOCKET_PORTS", "")
+def parse_ports(ports_file: str | None) -> dict[str, int]:
+    if ports_file is not None:
+        with open(ports_file, "r") as f:
+            raw = f.read()
+    else:
+        raw = os.environ.get("PYSOCKET_PORTS", "")
     out: dict[str, int] = {}
     for part in raw.split(","):
         part = part.strip()
@@ -158,8 +162,12 @@ async def dut2python_target(t: SocketTransport) -> None:
         await t.send_msg(MSG_ACK, struct_bytes(rsp))
 
 
-async def main() -> None:
-    ports = parse_ports()
+async def main(argv: list[str]) -> None:
+    if len(argv) >= 1:
+        ports_file = argv[0]
+    else:
+        ports_file = None
+    ports = parse_ports(ports_file)
     required = ("test_req_ack", "test2Python_req_ack", "dut2Python_req_ack")
     for name in required:
         if name not in ports:
@@ -191,4 +199,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(sys.argv[1:]))

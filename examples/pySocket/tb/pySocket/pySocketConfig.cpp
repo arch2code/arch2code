@@ -75,6 +75,9 @@ public:
 
 private:
     pid_t python_pid_ = -1;
+    std::string ports_file_ = "";
+    std::string ports_env_file_ = "";
+    bool skip_sidecar_ = false;
 
 public:
     bool createTestBench(void) override
@@ -100,27 +103,48 @@ public:
             return false;
         }
 
-        const char *ports_file = getenv("PYSOCKET_PORTS_FILE");
-        if (ports_file != nullptr && ports_file[0] != '\0') {
-            FILE *fp = std::fopen(ports_file, "w");
+        if (ports_file_.empty() && getenv("PYSOCKET_PORTS_FILE") != nullptr) {
+            ports_file_ = getenv("PYSOCKET_PORTS_FILE");
+        }
+        if (!ports_file_.empty()) {
+            FILE *fp = std::fopen(ports_file_.c_str(), "w");
+            if (fp != nullptr) {
+                std::fprintf(fp, "%s\n", socketFactory::getPortString().c_str());
+                std::fclose(fp);
+            }
+        }
+
+        if (ports_env_file_.empty() && getenv("PYSOCKET_PORTS_ENV_FILE") != nullptr) {
+            ports_env_file_ = getenv("PYSOCKET_PORTS_ENV_FILE");
+        }
+        if (!ports_env_file_.empty()) {
+            FILE *fp = std::fopen(ports_env_file_.c_str(), "w");
             if (fp != nullptr) {
                 std::fprintf(fp, "export PYSOCKET_PORTS=%s\n", socketFactory::getPortString().c_str());
                 std::fclose(fp);
             }
         }
 
-        const bool skip_python = getenv("PYSOCKET_SKIP_PYTHON_SIDECAR") != nullptr;
-
-        if (!skip_python) {
+        if (getenv("PYSOCKET_SKIP_PYTHON_SIDECAR") != nullptr) {
+            skip_sidecar_ = true;
+        }
+        std::string sc_ports_file = "";
+        if (!skip_sidecar_) {
             const std::string script_path = resolvePySocketScriptPath();
             if (script_path.empty()) {
                 socketFactory::shutdownAll();
                 return false;
             }
-
+            pid_t sc_pid = getpid();
+            sc_ports_file = "/tmp/pysocket_ports_" + std::to_string(sc_pid) + ".env";
+            FILE *fp = std::fopen(sc_ports_file.c_str(), "w");
+            if (fp != nullptr) {
+                std::fprintf(fp, "%s", socketFactory::getPortString().c_str());
+                std::fclose(fp);
+            }
             pid_t pid = fork();
             if (pid == 0) {
-                execlp("python3", "python3", script_path.c_str(), nullptr);
+                execlp("python3", "python3", script_path.c_str(), sc_ports_file.c_str(), nullptr);
                 _exit(127);
             }
             if (pid < 0) {
@@ -140,6 +164,10 @@ public:
             return false;
         }
 
+        // Remove the ports file if it exists since we have already connected
+        if (!sc_ports_file.empty()) {
+            std::remove(sc_ports_file.c_str());
+        }
         testController &controller = testController::GetInstance();
         controller.set_test_names({
             "python2SystemCTest",
@@ -148,6 +176,14 @@ public:
 
         (void)tb;
         return true;
+    }
+
+    void addProgramOptions(po::options_description &options) override
+    {
+        options.add_options()
+            ("PYSOCKET_PORTS_FILE", po::value<std::string>(&ports_file_)->default_value(""), "File to write the ports to")
+            ("PYSOCKET_PORTS_ENV_FILE", po::value<std::string>(&ports_env_file_)->default_value(""), "File to write the ports environment variables to")
+            ("PYSOCKET_SKIP_PYTHON_SIDECAR", po::value<bool>(&skip_sidecar_)->default_value(false), "Skip the Python sidecar");
     }
 
     void beforeFullSim(void) override
