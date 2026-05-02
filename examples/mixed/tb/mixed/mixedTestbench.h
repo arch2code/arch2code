@@ -1,6 +1,6 @@
 #ifndef MIXED_TESTBENCH_H
 #define MIXED_TESTBENCH_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=testbench --section=header

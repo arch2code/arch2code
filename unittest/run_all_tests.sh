@@ -78,6 +78,12 @@ if ! python3 test_error_parameterizable.py; then
     echo "Note: Some parameterizable-constant error tests failed"
 fi
 
+# Test 11: Config template generation
+echo ""
+echo "Test Suite 11: Config Template Generation"
+echo "------------------------------------------------------------------------"
+python3 test_config_template.py || FAILED=1
+
 echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then

@@ -1,6 +1,6 @@
 #ifndef MIXED_EXTERNAL_H
 #define MIXED_EXTERNAL_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 #include "logging.h"
