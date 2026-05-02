@@ -21,6 +21,15 @@ module blockBRegs
 
     apbAddrSt apb_addr;
     assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h1ff;
+    // Register/memory address offsets for decode documentation
+    localparam int unsigned REG_BLOCKB_BLOCKBTABLE1 = 32'h00000000; // Dual Port with one connection
+    localparam int unsigned REG_BLOCKB_BLOCKBTABLE1_SIZE = 32'h00000050; // Decode range size
+    localparam int unsigned REG_BLOCKB_BLOCKBTABLE37BIT = 32'h00000080; // External 37-bit memory register - firmware accessible with 8-byte stride
+    localparam int unsigned REG_BLOCKB_BLOCKBTABLE37BIT_SIZE = 32'h00000050; // Decode range size
+    localparam int unsigned REG_BLOCKB_BLOCKBTABLEEXT = 32'h00000100; // Memory register - firmware accessible memory-mapped storage
+    localparam int unsigned REG_BLOCKB_BLOCKBTABLEEXT_SIZE = 32'h00000028; // Decode range size
+    localparam int unsigned REG_BLOCKB_RWD = 32'h00000140; // A Read Write register
+    localparam int unsigned REG_BLOCKB_ROBSIZE = 32'h00000148; // A Read Only register with a structure that has a definition from an included context
 
     dRegSt rwD_reg;
     logic rwD_reg_update_0;
@@ -115,10 +124,10 @@ module blockBRegs
         nxt_blockBTable37Bit_data = blockBTable37Bit_data;
         if (wr_select) begin
             case (apb_addr) inside
-                32'h140 : begin
+                REG_BLOCKB_RWD : begin
                     rwD_reg_update_0 = 1'b1;
                 end
-                [32'h0:32'h4c]: begin
+                [REG_BLOCKB_BLOCKBTABLE1:REG_BLOCKB_BLOCKBTABLE1 + REG_BLOCKB_BLOCKBTABLE1_SIZE - 32'd4]: begin
                     case (apb_addr[2:0])
                         3'h0: begin
                             blockBTable1_update_0 = 1'b1;
@@ -131,7 +140,7 @@ module blockBRegs
                         default: ;
                     endcase
                 end
-                [32'h100:32'h124]: begin
+                [REG_BLOCKB_BLOCKBTABLEEXT:REG_BLOCKB_BLOCKBTABLEEXT + REG_BLOCKB_BLOCKBTABLEEXT_SIZE - 32'd4]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             blockBTableExt_update_0 = 1'b1;
@@ -140,7 +149,7 @@ module blockBRegs
                         default: ;
                     endcase
                 end
-                [32'h80:32'hcc]: begin
+                [REG_BLOCKB_BLOCKBTABLE37BIT:REG_BLOCKB_BLOCKBTABLE37BIT + REG_BLOCKB_BLOCKBTABLE37BIT_SIZE - 32'd4]: begin
                     case (apb_addr[3-1:0])
                         3'h0: begin
                             blockBTable37Bit_update_0 = 1'b1;
@@ -173,15 +182,15 @@ module blockBRegs
         nxt_blockBTable37Bit_rd_enable = 1'b0;
         if (rd_select) begin
             case (apb_addr) inside
-                32'h140 : begin
+                REG_BLOCKB_RWD : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(rwD_reg[6:0]);
                 end
-                32'h148 : begin
+                REG_BLOCKB_ROBSIZE : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roBsize_reg[3:0]);
                 end
-                [32'h0:32'h4c]: begin
+                [REG_BLOCKB_BLOCKBTABLE1:REG_BLOCKB_BLOCKBTABLE1 + REG_BLOCKB_BLOCKBTABLE1_SIZE - 32'd4]: begin
                     case (apb_addr[2:0])
                         3'h0: begin
                             if (blockBTable1_rd_capture) begin
@@ -199,7 +208,7 @@ module blockBRegs
                     endcase
                     nxt_blockBTable1_rd_enable = ~blockBTable1_rd_capture;
                 end
-                [32'h100:32'h124]: begin
+                [REG_BLOCKB_BLOCKBTABLEEXT:REG_BLOCKB_BLOCKBTABLEEXT + REG_BLOCKB_BLOCKBTABLEEXT_SIZE - 32'd4]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             if (blockBTableExt_rd_capture) begin
@@ -211,7 +220,7 @@ module blockBRegs
                     endcase
                     nxt_blockBTableExt_rd_enable = ~blockBTableExt_rd_capture;
                 end
-                [32'h80:32'hcc]: begin
+                [REG_BLOCKB_BLOCKBTABLE37BIT:REG_BLOCKB_BLOCKBTABLE37BIT + REG_BLOCKB_BLOCKBTABLE37BIT_SIZE - 32'd4]: begin
                     case (apb_addr[3-1:0])
                         3'h0: begin
                             if (blockBTable37Bit_rd_capture) begin

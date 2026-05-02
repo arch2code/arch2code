@@ -81,3 +81,35 @@ Guide the user in configuring the project's address map, managing address groups
         alignment: 8
         sortDescending: true
     ```
+
+7.  **Parameterizable Register/Memory Sizing:**
+    *   Register and firmware-accessible memory offsets are allocated from worst-case sizes when the referenced structure or `wordLines` is parameterizable.
+    *   Structure width uses generated `maxBitwidth`; `wordLines` uses a parameterizable constant's `maxValue` or the maximum value bound in `parameters:` for pure block params.
+    *   YAML authors should provide explicit bounds (`maxValue` for constants, `maxBitwidth` for literal-width types) so the address map reserves enough space for every variant.
+
+    ```yaml
+    ipParameters:
+      constants:
+        IP_MEM_DEPTH: {value: 16, maxValue: 32, desc: "Per-instance memory depth"}
+
+    blocks:
+      ip:
+        desc: "Parameterized IP"
+        params: [IP_MEM_DEPTH, IP_NONCONST_DEPTH]
+
+    memories:
+      - memory: ip_mem
+        block: ip
+        structure: ip_data_st
+        addressStruct: ip_mem_addr_st
+        wordLines: IP_MEM_DEPTH   # Address sizing uses maxValue=32
+        regAccess: true
+        desc: "Parameterized memory"
+      - memory: ip_variant_mem
+        block: ip
+        structure: ip_data_st
+        addressStruct: ip_mem_addr_st
+        wordLines: IP_NONCONST_DEPTH  # Uses max variant binding
+        regAccess: true
+        desc: "Pure block-param memory depth"
+    ```

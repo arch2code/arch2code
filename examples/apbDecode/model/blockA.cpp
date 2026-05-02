@@ -1,4 +1,4 @@
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 // GENERATED_CODE_PARAM --block=blockA
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -25,14 +25,22 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
+    // Generated register/memory address offsets
+    constexpr uint64_t REG_ADDR_BLOCKA_BLOCKATABLE0 = 0x0;
+    constexpr uint64_t REG_ADDR_BLOCKA_BLOCKATABLE1 = 0x100;
+    constexpr uint64_t REG_ADDR_BLOCKA_ROA = 0x200;
+    constexpr uint64_t REG_ADDR_BLOCKA_RWUN0A = 0x208;
+    constexpr uint64_t REG_ADDR_BLOCKA_ROUN0A = 0x210;
+    constexpr uint64_t REG_ADDR_BLOCKA_EXTA = 0x218;
+
     // register memories for FW access
-    regs.addMemory( 0x0, aMemSt::_byteWidth, MEMORYA_WORDS, std::string(this->name()) + ".blockATable0", &blockATable0);
-    regs.addMemory( 0x100, aMemSt::_byteWidth, MEMORYA_WORDS, std::string(this->name()) + ".blockATable1", &blockATable1);
+    regs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLE0, aMemSt::_byteWidth, MEMORYA_WORDS, std::string(this->name()) + ".blockATable0", &blockATable0);
+    regs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLE1, aMemSt::_byteWidth, MEMORYA_WORDS, std::string(this->name()) + ".blockATable1", &blockATable1);
     // register registers for FW access
-    regs.addRegister( 0x200, 5, "roA", &roA );
-    regs.addRegister( 0x208, 6, "rwUn0A", &rwUn0A );
-    regs.addRegister( 0x210, 6, "roUn0A", &roUn0A );
-    regs.addRegister( 0x218, 6, "extA", &extA );
+    regs.addRegister( REG_ADDR_BLOCKA_ROA, 5, "roA", &roA );
+    regs.addRegister( REG_ADDR_BLOCKA_RWUN0A, 6, "rwUn0A", &rwUn0A );
+    regs.addRegister( REG_ADDR_BLOCKA_ROUN0A, 6, "roUn0A", &roUn0A );
+    regs.addRegister( REG_ADDR_BLOCKA_EXTA, 6, "extA", &extA );
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

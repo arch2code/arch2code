@@ -1,0 +1,127 @@
+# ip_test - top-level integration for the parameterizable IP fixture
+#
+# The 'ip' block (defined in ip.yaml) is instantiated twice with different
+# parameter values:
+#   uIp0  variant0  IP_DATA_WIDTH=8   IP_MEM_DEPTH=16
+#   uIp1  variant1  IP_DATA_WIDTH=12  IP_MEM_DEPTH=8
+#
+# The 'src' block provides stimulus to both IP instances. The 'cpu' block
+# accesses IP registers via APB through 'apbDecode'.
+
+blockDir: .
+
+include:
+    - ip.yaml
+
+constants:
+    DWORD: { value: 32, desc: "Width of an APB dword" }
+
+types:
+    apbAddrT:
+        width: DWORD
+        desc: "APB address"
+    apbDataT:
+        width: DWORD
+        desc: "APB data"
+
+structures:
+    apbAddrSt:
+        address: { varType: apbAddrT, generator: address }
+    apbDataSt:
+        data: { varType: apbDataT, generator: data }
+
+interfaces:
+    apbReg:
+        desc: "CPU access to IP registers via APB"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+
+blocks:
+    ip_top:
+        desc: "Top container holding the two IP instances and the APB decoder"
+        hasVl: false
+        hasMdl: true
+        hasTb: true
+        hasRtl: true
+    ip_top_tb:
+        desc: "Testbench container for ip_top"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+    cpu:
+        desc: "APB master / CPU"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+    apbDecode:
+        desc: "APB address decoder"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+    src:
+        desc: "ipDataIf stimulus driver feeding both IP instances"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+
+instances:
+    ip_top_tb:
+        container: ip_top_tb # self reference
+        instanceType: ip_top_tb
+        instGroup: top
+    u_ip_top: { container: ip_top_tb, instanceType: ip_top, instGroup: top }
+    uCPU:
+        { container: ip_top_tb, instanceType: cpu, instGroup: top, color: pink }
+    uAPBDecode:
+        {
+            container: ip_top,
+            instanceType: apbDecode,
+            instGroup: top,
+            color: pink,
+        }
+    uSrc: { container: ip_top, instanceType: src, instGroup: top, color: green }
+    uIp0:
+        {
+            container: ip_top,
+            instanceType: ip,
+            instGroup: top,
+            addressGroup: top,
+            variant: variant0,
+        }
+    uIp1:
+        {
+            container: ip_top,
+            instanceType: ip,
+            instGroup: top,
+            addressGroup: top,
+            variant: variant1,
+        }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: u_ip_top, name: cpu_main }
+    - { interface: ipDataIf, src: uSrc, srcport: out0, dst: uIp0 }
+    - { interface: ipDataIf, src: uSrc, srcport: out1, dst: uIp1 }
+
+connectionMaps:
+    - {
+          interface: apbReg,
+          block: ip_top,
+          direction: dst,
+          instance: uAPBDecode,
+          name: cpu_main,
+      }
+
+parameters:
+    ip:
+        - { variant: variant0, param: IP_DATA_WIDTH, value: 8 }
+        - { variant: variant0, param: IP_MEM_DEPTH, value: 16 }
+        - { variant: variant0, param: IP_NONCONST_DEPTH, value: 24 }
+        - { variant: variant1, param: IP_DATA_WIDTH, value: 12 }
+        - { variant: variant1, param: IP_MEM_DEPTH, value: 8 }
+        - { variant: variant1, param: IP_NONCONST_DEPTH, value: 12 }

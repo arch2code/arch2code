@@ -104,7 +104,7 @@ def render_default(args, prj, data):
             out.append( indent + f'//registers')
             first = False
         # Register data size from cpu is always 4-bytes aligned
-        size = roundup_multiple(regData["bytes"], 4)
+        size = roundup_multiple(regData.get("maxBytes", regData["bytes"]), 4)
         out.append( indent + f'hwRegister< { regData["structure"] }, {size} > { regData["register"] }; // { regData["desc"] }')
 
     if len(data["memories"]):

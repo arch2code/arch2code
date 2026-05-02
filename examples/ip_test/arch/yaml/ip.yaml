@@ -1,0 +1,101 @@
+# ip - parameterizable IP block
+#
+# Self-contained definition of the 'ip' block: its parameters, types,
+# structures, interface, register set, and per-variant parameter values.
+# Top-level integration (instances, connections, APB plumbing) lives in
+# ip_top.yaml.
+
+blockDir: .
+
+# F1 ipParameters (additive; without F1 schema support this section is rejected,
+# in which case move IP_DATA_WIDTH / IP_MEM_DEPTH / ipDataT to the regular
+# constants/types sections below for the Step 3 baseline).
+ipParameters:
+    constants:
+        IP_DATA_WIDTH:    { value: 8,  maxValue: 16, desc: "Per-instance data width" }
+        IP_MEM_DEPTH:     { value: 16, maxValue: 32, desc: "Per-instance memory depth" }
+        IP_DATA_WIDTH_X2: { eval: "$IP_DATA_WIDTH * 2", desc: "Derived width, 2x data (maxValue auto-derived)" }
+    types:
+        ipDataT:
+            width: IP_DATA_WIDTH
+            maxBitwidth: 16
+            desc: "IP data word, parameterizable"
+
+types:
+    ipModeT:
+        desc: "IP operating mode"
+        enum:
+            - { enumName: IP_MODE_OFF, value: 0, desc: "Off" }
+            - { enumName: IP_MODE_LOW, value: 1, desc: "Low power" }
+            - { enumName: IP_MODE_HIGH, value: 2, desc: "High performance" }
+    enableT:
+        width: 1
+        desc: "Single enable bit"
+    ipMemAddrT:
+        widthLog2minus1: IP_MEM_DEPTH
+        desc: "Index into ipMem (0 .. IP_MEM_DEPTH-1)"
+    # Fixed-width type used to exercise the F2.4 case where a memory's
+    # structure is NOT parameterizable but its wordLines IS a block parameter.
+    ipFixedT:
+        width: 8
+        desc: "Fixed 8-bit byte (non-parameterizable)"
+    ipFixedAddrT:
+        width: 8
+        desc: "Fixed 8-bit address index (non-parameterizable)"
+
+structures:
+    ipDataSt:
+        data: { varType: ipDataT, desc: "Data word" }
+    ipCfgSt:
+        enable: { varType: enableT, desc: "Enable bit" }
+        mode: { varType: ipModeT, desc: "Operating mode" }
+        threshold: { varType: ipDataT, desc: "Threshold value" }
+    ipMemSt:
+        data: { varType: ipDataT, desc: "Data word" }
+    ipMemAddrSt:
+        address: { varType: ipMemAddrT, desc: "Memory address" }
+    ipBurstSt:
+        samples: { varType: ipDataT, arraySize: IP_MEM_DEPTH, desc: "Burst of parameterizable samples" }
+    # Non-parameterizable structure: wordLines block-param is the only thing
+    # that should make ipFixedMem (below) parameterizable for sizing.
+    ipFixedSt:
+        b: { varType: ipFixedT, desc: "Fixed byte" }
+    ipFixedAddrSt:
+        a: { varType: ipFixedAddrT, desc: "Fixed-width address" }
+
+interfaces:
+    ipDataIf:
+        desc: "IP data push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: ipDataSt, structureType: data_t }
+
+blocks:
+    ip:
+        desc: "Parameterizable IP under test"
+        # IP_DATA_WIDTH and IP_MEM_DEPTH are also ipParameters constants.
+        # IP_NONCONST_DEPTH is a pure block param (no backing constant) used
+        # to exercise calcAddresses' worst-case sizing of block-param wordLines
+        # via parametersvariants. Bound values: variant0=24, variant1=12.
+        params: [IP_DATA_WIDTH, IP_MEM_DEPTH, IP_NONCONST_DEPTH]
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+
+registers:
+    - { register: ipCfg, regType: rw, block: ip, structure: ipCfgSt, desc: "IP configuration" }
+    - { register: ipLastData, regType: ro, block: ip, structure: ipDataSt, desc: "Last data word received on ipDataIf" }
+
+#memories:
+#    - { memory: ipMem, block: ip, structure: ipMemSt, addressStruct: ipMemAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "IP scratch memory (FW-accessible)" }
+memories:
+    - { memory: ipMem, block: ip, structure: ipMemSt, addressStruct: ipMemAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "IP scratch memory (FW-accessible)" }
+    # F2.4 regression: non-parameterizable structure + block-param wordLines.
+    # Memory MUST still be marked isParameterizable so calcAddresses sizes
+    # from IP_MEM_DEPTH.maxValue, not its nominal value.
+    - { memory: ipFixedMem, block: ip, structure: ipFixedSt, addressStruct: ipFixedAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "Fixed-struct memory with block-param wordLines (F2.4 regression)" }
+    # F2/F3 regression: wordLines is a pure block param (no backing constant).
+    # Exercises calcAddresses' _resolveBlockParamMaxWordLines helper, which
+    # must return max(variant0=24, variant1=12) = 24 wordLines for sizing.
+    - { memory: ipNonConstMem, block: ip, structure: ipFixedSt, addressStruct: ipFixedAddrSt, wordLines: IP_NONCONST_DEPTH, regAccess: true, desc: "Block-param wordLines with no backing constant (worst-case sizing regression)" }

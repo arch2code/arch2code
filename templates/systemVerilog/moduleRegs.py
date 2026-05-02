@@ -40,11 +40,16 @@ def render(args, prj, data):
         # For memory registers, compute memory-specific fields
         if reg_data.get('regType') == 'memory':
             reg_data['rowwidth'] = clog2(len(reg_data['segments']) * REG_BUS_WIDTH_BYTES)
-            wordLines = prj.getConst(reg_data['wordLinesKey'])
+            wordLines = resolve_word_lines(prj, reg_data)
             reg_data['memsize'] = wordLines * (2** reg_data['rowwidth'])
             addr_l = reg_data['offset']
             addr_h = addr_l + reg_data['memsize'] - REG_BUS_WIDTH_BYTES
             reg_data['address_range'] = (addr_l, addr_h)
+            reg_data['addr_const_name'] = address_const_name(data, reg_data, 'register')
+            reg_data['size_const_name'] = reg_data['addr_const_name'] + '_SIZE'
+            reg_data['decode_size'] = reg_data['memsize']
+        else:
+            reg_data['addr_const_name'] = address_const_name(data, reg_data, 'register')
 
     # Pre-conditioning of the memory data, when existing
     if 'memoriesParent' in data:
@@ -54,8 +59,11 @@ def render(args, prj, data):
             entry['bitwidth'] = intf_gen_utils.get_struct_width(mem_data['structureKey'], prj.data['structures'])
             entry['segments'] = list(segment_register_gen(entry, REG_BUS_WIDTH_BYTES, 0))
             entry['rowwidth'] = clog2(len(entry['segments']) * REG_BUS_WIDTH_BYTES)
-            entry['memsize'] = prj.getConst(entry['wordLinesKey']) * (2** entry['rowwidth'])
+            entry['memsize'] = resolve_word_lines(prj, entry) * (2** entry['rowwidth'])
             entry['address_range'] = ( entry['segments'][0][0], entry['segments'][0][0] + entry['memsize'] - REG_BUS_WIDTH_BYTES )
+            entry['addr_const_name'] = address_const_name(data, entry, 'memory')
+            entry['size_const_name'] = entry['addr_const_name'] + '_SIZE'
+            entry['decode_size'] = entry['memsize']
             ctxt_memories[mem_key] = entry
         data['memories'] = ctxt_memories
 
@@ -75,6 +83,7 @@ def render(args, prj, data):
         packages_imports=section_package_imports(args, prj, data),
         interfaces_ports=section_intf_ports(prj, data),
         address_mask=section_address_mask(prj, data),
+        address_constants=section_address_constants(data),
         regs_intf=regs_intf,
         regs_addr_t=regs_addr_t,
         regs_data_t=regs_data_t,
@@ -84,6 +93,32 @@ def render(args, prj, data):
         section_03a=section_03a(data),
         section_03b=section_03b(data)
     ))
+
+def address_const_name(data, entry, name_field):
+    block_name = entry.get('block', data['blockName'])
+    return f"REG_{block_name.upper()}_{entry[name_field].upper()}"
+
+def sv_hex(value):
+    return f"32'h{value:08x}"
+
+def resolve_word_lines(prj, entry):
+    word_lines_key = entry.get('wordLinesKey', '')
+    if word_lines_key:
+        return prj.getConst(word_lines_key)
+
+    word_lines = entry.get('wordLines', '')
+    try:
+        return int(word_lines)
+    except (TypeError, ValueError):
+        pass
+
+    values = [v['value'] for v in prj.data.get('parametersvariants', {}).values()
+              if v.get('blockKey') == entry.get('blockKey') and v.get('param') == word_lines]
+    if values:
+        return max(values)
+
+    printError(f"Cannot determine wordLines for {entry.get('memory', entry.get('register', '<unknown>'))}: {word_lines}")
+    exit(warningAndErrorReport())
 
 def section_package_imports(args, prj, data):
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
@@ -106,6 +141,32 @@ def section_intf_ports(prj, data):
 def section_address_mask(prj, data):
     mask = (1<<(int(data['addressDecode']['addressBits'])))-1
     return f"32'h{mask:_x}"
+
+def section_address_constants(data):
+    entries = []
+    for reg_data in data['registers'].values():
+        entries.append((reg_data['offset'], reg_data['addr_const_name'], sv_hex(reg_data['offset']), reg_data.get('desc', '')))
+        if reg_data.get('regType') == 'memory':
+            entries.append((reg_data['offset'], reg_data['size_const_name'], sv_hex(reg_data['decode_size']), 'Decode range size'))
+    for mem_data in data['memories'].values():
+        entries.append((mem_data['offset'], mem_data['addr_const_name'], sv_hex(mem_data['offset']), mem_data.get('desc', '')))
+        entries.append((mem_data['offset'], mem_data['size_const_name'], sv_hex(mem_data['decode_size']), 'Decode range size'))
+
+    out = []
+    seen = set()
+    for _, name, value, desc in sorted(entries, key=lambda item: (item[0], item[1])):
+        if name in seen:
+            continue
+        seen.add(name)
+        comment = f" // {desc}" if desc else ""
+        out.append(f"localparam int unsigned {name} = {value};{comment}")
+    return string_joiner(out, '\n')
+
+def segment_addr_expr(addr_const_name, base_offset, segment_offset):
+    delta = segment_offset - base_offset
+    if delta == 0:
+        return addr_const_name
+    return f"{addr_const_name} + 32'd{delta}"
 
 # Signals declarations, flops and continous assignments
 def section_01(data):
@@ -265,12 +326,13 @@ def section_02b_regs(reg_data):
     s_1 = []
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
+        addr_expr = segment_addr_expr(reg_data['addr_const_name'], reg_data['offset'], o)
         if reg_data['regType'] == 'rw':
-            s_1 += [ f"32'h{o:x} : begin" ]
+            s_1 += [ f"{addr_expr} : begin" ]
             s_1 += [ f"    {reg_local}_update_{n} = 1'b1;" ]
             s_1 += [ "end" ]
         elif reg_data['regType'] == 'ext':
-            s_1 += [ f"32'h{o:x} : begin" ]
+            s_1 += [ f"{addr_expr} : begin" ]
             s_1 += [ f"    {reg_intf}.write = {1<<n};" ]
             for s_seg in segments_enum:
                 _, (_, s_u, s_l, _, _) = s_seg
@@ -289,12 +351,12 @@ def section_02b_memregs(reg_data):
     
     segments_enum = list(enumerate(reg_data['segments']))
     
-    addr_l, addr_h = reg_data['address_range']
+    addr_l, _ = reg_data['address_range']
     rowwidth = reg_data['rowwidth']
     
     s_1 = []
     
-    s_1 += [ f"[32'h{addr_l:x}:32'h{addr_h:x}]: begin" ]
+    s_1 += [ f"[{reg_data['addr_const_name']}:{reg_data['addr_const_name']} + {reg_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
     s_1 += [ f"    case (apb_addr[{rowwidth}-1:0])" ]
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
@@ -315,11 +377,11 @@ def section_02b_mems(mem_data):
 
     segments_enum = list(enumerate(mem_data['segments']))
 
-    addr_l, addr_h = mem_data['address_range']
+    addr_l, _ = mem_data['address_range']
 
     s_1 = []
 
-    s_1 += [ f"[32'h{addr_l:x}:32'h{addr_h:x}]: begin" ]
+    s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
     s_1 += [ f"    case (apb_addr[{mem_data['rowwidth']-1}:0])" ]
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
@@ -381,8 +443,9 @@ def section_03b_regs(reg_data):
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
         update_sig = f"{reg_local}_update_{n}"
+        addr_expr = segment_addr_expr(reg_data['addr_const_name'], reg_data['offset'], o)
         if reg_data['regType'] in [ 'ro', 'rw', 'ext' ]:
-            s_1 += [ f"32'h{o:x} : begin" ]
+            s_1 += [ f"{addr_expr} : begin" ]
             s_1 += [ f"    nxt_rd_ready = 1'b1;" ]
             s_1 += [ f"    nxt_rd_data = {regs_data_t}'({reg_local}[{u}:{l}]);" ]
             s_1 += [ "end" ]
@@ -395,11 +458,11 @@ def section_03b_mems(mem_data):
 
     segments_enum = list(enumerate(mem_data['segments']))
 
-    addr_l, addr_h = mem_data['address_range']
+    addr_l, _ = mem_data['address_range']
 
     s_1 = []
 
-    s_1 += [ f"[32'h{addr_l:x}:32'h{addr_h:x}]: begin" ]
+    s_1 += [ f"[{mem_data['addr_const_name']}:{mem_data['addr_const_name']} + {mem_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
     s_1 += [ f"    case (apb_addr[{mem_data['rowwidth']-1}:0])" ]
     for seg in segments_enum:
         n, (o, u, l, w, _) = seg
@@ -424,12 +487,12 @@ def section_03b_memregs(reg_data):
     segments_enum = list(enumerate(reg_data['segments']))
     
     # Use preprocessed address range and rowwidth
-    addr_l, addr_h = reg_data['address_range']
+    addr_l, _ = reg_data['address_range']
     rowwidth = reg_data['rowwidth']
     
     s_1 = []
     
-    s_1 += [ f"[32'h{addr_l:x}:32'h{addr_h:x}]: begin" ]
+    s_1 += [ f"[{reg_data['addr_const_name']}:{reg_data['addr_const_name']} + {reg_data['size_const_name']} - 32'd{REG_BUS_WIDTH_BYTES}]: begin" ]
     s_1 += [ f"    case (apb_addr[{rowwidth}-1:0])" ]
     for seg in segments_enum:
         _, (o, u, l, w, _) = seg
@@ -491,6 +554,11 @@ module {{ modulename }}
 
     {{regs_addr_t}} apb_addr;
     assign apb_addr = {{regs_addr_t}}'({{regs_intf}}.paddr) & {{ address_mask }};
+
+    {%- if address_constants %}
+    // Register/memory address offsets for decode documentation
+    {{ address_constants | indent(4) }}
+    {%- endif %}
 
     {{ section_01 | indent(4) }}
 

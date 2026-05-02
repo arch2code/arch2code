@@ -553,6 +553,14 @@ prj.data['interface_defs']['apb/_a2csystem']['sc_channel'] = {
    - `anchor` = YAML key for this entry
    - `item` = YAML value (dict or scalar)
 
+#### Custom Sections:
+Some YAML root sections are handled before schema lookup because they need custom dispatch instead of their own table schema.
+
+- `connections`: custom connection expansion and endpoint handling.
+- `ipParameters`: IP-local parameterization container. Its child sections (`constants`, `types`, and `_mapto` aliases such as `enums`) are processed through their normal schemas, then marked parameterizable by the section handlers.
+
+Custom sections may not have a top-level schema entry. When adding one, register it in `processYaml.py` and document whether it delegates to existing schemas or owns all processing itself.
+
 #### `processSimple` Flow:
 1. **Schema Lookup**: Get field definitions for this section
 2. **Singular Conversion**: If single value, wrap in dict

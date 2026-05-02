@@ -12,8 +12,8 @@ YAML files in `arch/yaml/` define the hardware architecture. YAML is the **Singl
 
 ### Definition Order
 Define elements in dependency order:
-1. **Constants** - Parameters and sizing
-2. **Types** - Bit widths and enums
+1. **Constants / ipParameters constants** - Parameters and sizing
+2. **Types / ipParameters types** - Bit widths and enums
 3. **Structures** - Data packets (use defined types)
 4. **Interfaces** - Communication protocols (use defined structures)
 5. **Blocks** - Reusable components
@@ -28,9 +28,17 @@ constants:
   BUFFER_SIZE: {value: 1024, desc: "Buffer size"}
   ADDR_WIDTH: {eval: '($BUFFER_SIZE-1).bit_length()', desc: "Address width"}
 
+# IP-local parameterizable constants/types
+ipParameters:
+  constants:
+    IP_DATA_WIDTH: {value: 8, maxValue: 16, desc: "Per-instance data width"}
+  types:
+    ip_data_t: {width: IP_DATA_WIDTH, desc: "IP data word"}
+
 # Types - width REQUIRED for non-enum types
 types:
   byte_t: {width: 8, desc: "8-bit byte"}
+  literal_param_t: {width: 8, maxBitwidth: 16, desc: "Literal-width parameterized type"}
   status_t:
     desc: "Status enum"  # width auto-calculated for enums
     enum:
@@ -57,6 +65,7 @@ blocks:
     desc: "My block"
     hasRtl: true   # Default true
     hasMdl: true   # Default true
+    params: [IP_DATA_WIDTH]  # Optional variant-bound parameters
 
 # Instances
 instances:
@@ -68,6 +77,12 @@ instances:
 # Connections (same container only)
 connections:
   - {interface: data_channel, src: u_producer, dst: u_consumer}
+
+# Variant parameter bindings
+parameters:
+  my_block:
+    - {variant: variant0, param: IP_DATA_WIDTH, value: 8}
+    - {variant: variant1, param: IP_DATA_WIDTH, value: 12}
 ```
 
 ### Include Directives
@@ -110,6 +125,16 @@ constants:
 
 The `$CONSTANT_NAME` syntax references previously defined constants. Expressions are evaluated in definition order.
 
+### Parameterizable Values
+
+Use `ipParameters` in the IP-root YAML for constants/types that vary by instance or variant:
+
+- Direct parameterizable constants require `maxValue > 0`.
+- Direct literal-width parameterizable types require `maxBitwidth`.
+- Derived constants/types inherit maximums from referenced parameterizable constants.
+- Do not put `ipParameters` in shared include files that only define common constants/types/structures.
+- If memory `wordLines` is an `ipParameters` constant or pure block param, address allocation uses the worst-case value.
+
 ## Common Pitfalls
 
 ### 1. Missing Width on Types
@@ -148,6 +173,19 @@ instances:
     container: top
     instanceType: my_block
     addressGroup: system  # Required for register access
+```
+
+### 5. Missing Worst-Case Bounds for Parameterizable Values
+```yaml
+# BAD - direct parameterizable constant without maxValue
+ipParameters:
+  constants:
+    IP_DATA_WIDTH: {value: 8, desc: "Missing maxValue"}
+
+# GOOD
+ipParameters:
+  constants:
+    IP_DATA_WIDTH: {value: 8, maxValue: 16, desc: "Bounded width"}
 ```
 
 ## Interface Types Quick Reference

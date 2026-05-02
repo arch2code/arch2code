@@ -18,6 +18,16 @@ These rules apply to **both** `model/` and `tb/` directories.
 - `*.cpp` implementation files (outside generated markers)
 - Your `SC_THREAD` and `SC_METHOD` implementations
 
+## Structure Sizing: HW Width vs. C++ Width
+
+Every generated structure has `_bitWidth` and `_byteWidth` constants that represent the **hardware** dimensions (total bits on the wire). These are different from the C++ `sizeof` — C++ storage types are typically wider than the HW fields they model (e.g., a 1-bit flag stored in `uint8_t`).
+
+- **`_bitWidth` / `_byteWidth`** — HW reality: pack/unpack, `sc_bv` sizing, address-map byte widths
+- **`sizeof(struct)`** — C++ reality: multi-cycle burst sizing, `memcpy`, buffer allocation
+- **`_packedSt`** — C++ type that holds the bit-packed HW representation via `pack()` / `unpack()`
+
+Never assume `sizeof(T)` equals `T::_byteWidth`. See `SYSTEMC_API_USER_REFERENCE.md`: Introduction → HW Dimensions vs. C++ Dimensions for details.
+
 ## Module Logging
 
 Every module has a `log_` member for hierarchical logging:
