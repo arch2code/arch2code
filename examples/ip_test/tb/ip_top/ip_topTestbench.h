@@ -1,6 +1,6 @@
 #ifndef IP_TOP_TANDEM_H
 #define IP_TOP_TANDEM_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 // GENERATED_CODE_PARAM --block=ip_top
 // GENERATED_CODE_BEGIN --template=testbench --section=header
@@ -10,7 +10,7 @@
 #include "ip_topBase.h"
 #include "ip_topExternal.h"
 
-class ip_topTestbench: public sc_module, public blockBase, public ip_topChannels {
+class ip_topTestbench: public sc_module, public blockBase, public ip_topChannels<ipDefaultConfig> {
 
     private:
 
@@ -26,7 +26,7 @@ class ip_topTestbench: public sc_module, public blockBase, public ip_topChannels
 
 public:
 
-    std::shared_ptr<ip_topBase> ip_top;
+    std::shared_ptr<ip_topBase<ipDefaultConfig>> ip_top;
     ip_topExternal external;
 
     ip_topTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

@@ -1,7 +1,7 @@
 #ifndef IP_H
 #define IP_H
 
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
@@ -13,10 +13,15 @@
 #include "addressMap.h"
 #include "hwRegister.h"
 #include "hwMemory.h"
-#include "ipIncludes.h"
-#include "ip_topIncludes.h"
+#include "ipConfig.h"
+#include "ip_topConfig.h"
+import ip;
+using namespace ip_ns;
+import ip_top;
+using namespace ip_top_ns;
 
-SC_MODULE(ip), public blockBase, public ipBase
+template<typename Config>
+SC_MODULE(ip), public blockBase, public ipBase<Config>
 {
 private:
     void regHandler(void);
@@ -36,19 +41,22 @@ private:
                 { "ip.variant1.IP_NONCONST_DEPTH", 12 },
             });
             // lamda function to construct the block
-            instanceFactory::registerBlock("ip_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<ip>(blockName, variant, bbMode));}, "" );
+            instanceFactory::registerBlock("ip_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<ip<ipDefaultConfig>>(blockName, variant, bbMode));}, "variant0" );
+            instanceFactory::registerBlock("ip_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<ip<ipDefaultConfig>>(blockName, variant, bbMode));}, "variant1" );
         }
     };
     static registerBlock registerBlock_;
 public:
+    SC_HAS_PROCESS(ip);
+
 
     //registers
-    hwRegister< ipCfgSt, 4 > ipCfg; // IP configuration
-    hwRegister< ipDataSt, 4 > ipLastData; // Last data word received on ipDataIf
+    hwRegister< ipCfgSt<Config>, 4 > ipCfg; // IP configuration
+    hwRegister< ipDataSt<Config>, 4 > ipLastData; // Last data word received on ipDataIf
 
     memories mems;
     //memories
-    hwMemory< ipMemSt > ipMem;
+    hwMemory< ipMemSt<Config> > ipMem;
     hwMemory< ipFixedSt > ipFixedMem;
     hwMemory< ipFixedSt > ipNonConstMem;
 
@@ -56,7 +64,7 @@ public:
     ~ip() override = default;
     void setTimed(int nsec, timedDelayMode mode) override
     {
-        ipBase::setTimed(nsec, mode);
+        ipBase<Config>::setTimed(nsec, mode);
         mems.setTimed(nsec, mode);
     }
 

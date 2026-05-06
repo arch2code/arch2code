@@ -1,7 +1,7 @@
 #ifndef APBDECODE_H
 #define APBDECODE_H
 
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
@@ -10,7 +10,8 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "apbDecodeBase.h"
-#include "ip_topIncludes.h"
+import ip_top;
+using namespace ip_top_ns;
 #include "apbBusDecode.h"
 
 SC_MODULE(apbDecode), public blockBase, public apbDecodeBase

@@ -3,7 +3,7 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, block_uses_config, block_config_arg, block_default_config_type
 
 from jinja2 import Template
 
@@ -44,30 +44,40 @@ def tb_sec_init(args, prj, data):
     t = Template(sec_tb_class_init_template)
     blockName=data['blockName']
     instName=blockName
-    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external")
+    usesConfig = block_uses_config(data, prj)
+    defaultConfig = block_default_config_type(data, prj) if usesConfig else ''
+    cfg = f'<{defaultConfig}>' if usesConfig else ''
+    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external", uses_config=usesConfig, cfg=cfg, default_config=defaultConfig)
     return s
 
 def tb_sec_header(args, prj, data):
     t = Template(sec_tb_class_header_template)
     blockName=data['blockName']
     instName=blockName
-    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external")
+    usesConfig = block_uses_config(data, prj)
+    defaultConfig = block_default_config_type(data, prj) if usesConfig else ''
+    cfg = f'<{defaultConfig}>' if usesConfig else ''
+    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external", uses_config=usesConfig, cfg=cfg, default_config=defaultConfig)
     return s
 
 def ext_sec_init(args, prj, data):
 
     out = []
     out += sc_instance_includes(data, prj)
+    usesConfig = block_uses_config(data, prj)
+    defaultConfig = block_default_config_type(data, prj) if usesConfig else ''
+    cfg = f'<{defaultConfig}>' if usesConfig else ''
 
     s = """
 {blockName}External::{blockName}External(sc_module_name modulename) :
-    {blockName}Inverted("Chnl"),
+    {blockName}Inverted{cfg}("Chnl"),
     log_(name())\n"""
-    out.append(s.format(blockName=data['blockName']))
+    out.append(s.format(blockName=data['blockName'], cfg=cfg))
 
     for data_ in data['subBlockInstances'].values():
-        s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base>( instanceFactory::createInstance(name(), "{instName}", "{blockName}", "")))'
-        out.append(s.format(blockName=data_['instanceType'], instName=data_['instance']))
+        instCfg = cfg if block_uses_config(prj.getBlockData(data_['instanceTypeKey']), prj) else ''
+        s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base{instCfg}>( instanceFactory::createInstance(name(), "{instName}", "{blockName}", "{variant}")))'
+        out.append(s.format(blockName=data_['instanceType'], instName=data_['instance'], instCfg=instCfg, variant=data_.get('variant', '')))
 
     for channelType in data['connectDouble']:
         for connKey,data_ in data['connectDouble'][channelType].items():
@@ -123,19 +133,37 @@ def ext_sec_header(args, prj, data):
 
     ext_fwd_decl_s = []
     external_blocks = sorted(data['subBlocks'].values())
-    for blockName in external_blocks:
-        ext_fwd_decl_s.append(f'class {blockName}Base;')
+    usesConfig = block_uses_config(data, prj)
+    defaultConfig = block_default_config_type(data, prj) if usesConfig else ''
+    cfg = f'<{defaultConfig}>' if usesConfig else ''
+    for blockKey, blockName in sorted(data['subBlocks'].items(), key=lambda item: item[1]):
+        if block_uses_config(prj.getBlockData(blockKey), prj):
+            ext_fwd_decl_s.append(f'template<typename Config> class {blockName}Base;')
+        else:
+            ext_fwd_decl_s.append(f'class {blockName}Base;')
 
     ext_inst_decl_s = []
     external_insts = [v for v in data['subBlockInstances'].values() ]
     for data_ in external_insts:
-        ext_inst_decl_s.append(f'std::shared_ptr<{data_["instanceType"]}Base> {data_["instance"]};')
+        instCfg = cfg if block_uses_config(prj.getBlockData(data_['instanceTypeKey']), prj) else ''
+        ext_inst_decl_s.append(f'std::shared_ptr<{data_["instanceType"]}Base{instCfg}> {data_["instance"]};')
 
     ext_chnl_decl_s = sc_declare_channels(data, prj, ' '*4, data)
+    if usesConfig:
+        ext_chnl_decl_s = [line.replace('<Config>', f'<{defaultConfig}>') for line in ext_chnl_decl_s]
 
     t = Template(sec_tb_external_header_template)
+    config_includes = []
+    if usesConfig:
+        for context in data['includeContext']:
+            if context in data['includeFiles'].get('config_hdr', {}):
+                config_includes.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
     s = t.render(
         blockname=data['blockName'],
+        uses_config=usesConfig,
+        cfg=cfg,
+        default_config=defaultConfig,
+        config_includes='\n'.join(config_includes),
         ext_fwd_decl='\n'.join(ext_fwd_decl_s),
         ext_inst_decl='\n'.join(ext_inst_decl_s),
         ext_chnl_decl='\n'.join(ext_chnl_decl_s)
@@ -160,7 +188,7 @@ sec_tb_class_header_template = """\
 #include "{{blockname}}Base.h"
 #include "{{blockname}}External.h"
 
-class {{blockname}}Testbench: public sc_module, public blockBase, public {{blockname}}Channels {
+class {{blockname}}Testbench: public sc_module, public blockBase, public {{blockname}}Channels{{cfg}} {
 
     private:
 
@@ -176,7 +204,7 @@ class {{blockname}}Testbench: public sc_module, public blockBase, public {{block
 
 public:
 
-    std::shared_ptr<{{blockname}}Base> {{dutinstname}};
+    std::shared_ptr<{{blockname}}Base{{cfg}}> {{dutinstname}};
     {{blockname}}External {{extinstname}};
 
     {{blockname}}Testbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
@@ -200,8 +228,8 @@ sec_tb_class_init_template = """\
 
 {{blockname}}Testbench::{{blockname}}Testbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("{{blockname}}Testbench", name(), bbMode)
-        ,{{blockname}}Channels("Chnl", "tb")
-        ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base>( instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "")))
+        ,{{blockname}}Channels{{cfg}}("Chnl", "tb")
+        ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>( instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "")))
         ,{{extinstname}}("{{extinstname}}")
 {
     bind({{dutinstname}}.get(), &{{extinstname}});
@@ -211,6 +239,9 @@ sec_tb_class_init_template = """\
 sec_tb_external_header_template = """\
 
 #include "{{blockname}}Base.h"
+{%- if config_includes %}
+{{config_includes}}
+{%- endif %}
 #include "endOfTest.h"
 
 {%- if ext_fwd_decl %}
@@ -219,7 +250,7 @@ sec_tb_external_header_template = """\
 {{ext_fwd_decl}}
 {%- endif %}
 
-class {{blockname}}External: public sc_module, public {{blockname}}Inverted {
+class {{blockname}}External: public sc_module, public {{blockname}}Inverted{{cfg}} {
 
     logBlock log_;
 

@@ -27,8 +27,8 @@ def get_include_deps(prj, data):
     include_deps = []
     include_deps.append(prj.getModuleFilename('blockBase', data["blockName"], 'hdr'))
     for context in data['includeContext']:
-        if context in data['includeFiles']['include_hdr']:
-            include_deps.append(data["includeFiles"]["include_hdr"][context]["baseName"])
+        if context in data['includeFiles'].get('include_cppm', {}):
+            include_deps.append(data["includeFiles"]["include_cppm"][context]["baseName"])
     return include_deps
 
 def get_reghandler_properties(prj, data):

@@ -61,6 +61,10 @@ def render(args, prj, data):
             return(include_src(args, prj, data))
         case 'include_hdr':
             return(include_hdr(args, prj, data))
+        case 'include_cppm':
+            return(include_cppm(args, prj, data))
+        case 'config_hdr':
+            return(config_hdr(args, prj, data))
         case 'includeFW_src':
             return(includeFW_src(args, prj, data))
         case 'includeFW_hdr':
@@ -418,6 +422,57 @@ include_hdrTemplate = \
 """
 def include_hdr(args, prj, data):
     t = TemplateCustom(include_hdrTemplate)
+    return(t.substitute({
+        'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
+        'context':data["context"],
+        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+
+include_cppmTemplate = \
+"""
+// GENERATED_CODE_PARAM --context=__context__ --mode=module
+// __copyright__
+
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=headers
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=constants
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=types
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=enums
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=structures
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
+// GENERATED_CODE_END
+"""
+
+config_hdrTemplate = \
+"""
+#ifndef __HEADERGUARD___CONFIG_H
+#define __HEADERGUARD___CONFIG_H
+// __copyright__
+
+#include <cstdint>
+
+// GENERATED_CODE_PARAM --context=__context__
+// GENERATED_CODE_BEGIN --template=includes --section=config
+// GENERATED_CODE_END
+
+#endif //__HEADERGUARD___CONFIG_H
+"""
+
+def include_cppm(args, prj, data):
+    t = TemplateCustom(include_cppmTemplate)
+    return(t.substitute({
+        'context':data["context"],
+        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+
+def config_hdr(args, prj, data):
+    t = TemplateCustom(config_hdrTemplate)
     return(t.substitute({
         'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
         'context':data["context"],

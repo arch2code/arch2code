@@ -1,14 +1,15 @@
 #ifndef APBDECODE_BASE_H
 #define APBDECODE_BASE_H
 
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
 // GENERATED_CODE_PARAM --block=apbDecode
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
-#include "ip_topIncludes.h"
+import ip_top;
+using namespace ip_top_ns;
 
 class apbDecodeBase : public virtual blockPortBase
 {

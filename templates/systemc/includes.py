@@ -1,3 +1,5 @@
+from pysrc.intf_gen_utils import wrap_module_namespace
+
 # args from generator line
 # prj object
 # data set dict
@@ -13,6 +15,8 @@ def render(args, prj, data):
             return(includeAddresses(args, prj, data))
         case 'regAddresses':
             return(includeRegAddresses(args, prj, data))
+        case 'config':
+            return(includeConfig(args, prj, data))
         case _:
             print("error missing section, valid values are constants, types, enums")
             exit()
@@ -23,6 +27,8 @@ def includeConstants(args, prj, data):
     out.append("//constants")
 
     for const, value in data['constants'].items():
+        if value.get('isParameterizable', False):
+            continue
         match value['valueType']:
             case 'uint':
                 if value['value'] <= 0xFFFFFFFF:
@@ -47,10 +53,17 @@ def includeConstants(args, prj, data):
         out.append(f"const {type_str} { value['constant'] } = { value_str };  // {value['desc']}")
 
     out.append("")
-    return("\n".join(out))
+    return("\n".join(wrap_module_namespace(args, data, out)))
 
 
-def typeWidthExpression_cpp(value, prj):
+def constReference_cpp(constKey, prj, useConfig=False):
+    constName = prj.data['constants'][constKey]['constant']
+    if useConfig and prj.data['constants'][constKey].get('isParameterizable', False):
+        return f"Config::{constName}"
+    return constName
+
+
+def typeWidthExpression_cpp(value, prj, useConfig=False):
     """Build a C++ constexpr-compatible expression for a type's bit width.
 
     For widthLog2 with constant C:       clog2(C+1)
@@ -68,7 +81,7 @@ def typeWidthExpression_cpp(value, prj):
     # Check widthLog2
     wl2Key = value['widthLog2Key']
     if wl2Key:
-        constName = prj.data['constants'][wl2Key]['constant']
+        constName = constReference_cpp(wl2Key, prj, useConfig)
         return f"clog2({constName}+1){signedExtra}"
     wl2 = value['widthLog2']
     if wl2 != '':
@@ -77,7 +90,7 @@ def typeWidthExpression_cpp(value, prj):
     # Check widthLog2minus1
     wl2m1Key = value['widthLog2minus1Key']
     if wl2m1Key:
-        constName = prj.data['constants'][wl2m1Key]['constant']
+        constName = constReference_cpp(wl2m1Key, prj, useConfig)
         return f"clog2({constName}){signedExtra}"
     wl2m1 = value['widthLog2minus1']
     if wl2m1 != '':
@@ -86,8 +99,7 @@ def typeWidthExpression_cpp(value, prj):
     # Direct width — check widthKey for constant, else literal
     widthKey = value['widthKey']
     if widthKey:
-        constName = prj.data['constants'][widthKey]['constant']
-        return constName
+        return constReference_cpp(widthKey, prj, useConfig)
     return str(prj.resolveTypeWidth(value))
 
 
@@ -98,6 +110,11 @@ def includeTypes(args, prj, data):
     for type, value in data['types'].items():
         # Comments show resolved integer bit width, not symbolic expression
         widthComment = str(value['realwidth'])
+        if value.get('isParameterizable', False):
+            out.append(
+                f"template<typename Config> using { value['type'] } = uint64_t; // [max:{value['maxBitwidth']}] {value['desc']}"
+            )
+            continue
         if value['typeArraySize'] == 1:
             out.append(
                 f"typedef { value['platformDataType'] } { value['type'] }; // [{widthComment}] {value['desc']}"
@@ -108,7 +125,37 @@ def includeTypes(args, prj, data):
             )
 
     out.append("")
+    return("\n".join(wrap_module_namespace(args, data, out)))
+
+
+def includeConfig(args, prj, data):
+    out = []
+    params = [value for value in data['constants'].values() if value.get('isParameterizable', False)]
+    if not params:
+        return ""
+    configName = data.get('configName', '')
+    if not configName:
+        configName = data['context'].rsplit('/', 1)[-1].rsplit('.', 1)[0].replace('-', '_') + 'DefaultConfig'
+    out.append(f"struct {configName} {{")
+    for value in params:
+        type_str = _config_type(value)
+        out.append(f"    static constexpr {type_str} {value['constant']} = {value['value']};")
+    out.append("};")
+    out.append("")
     return("\n".join(out))
+
+
+def _config_type(value):
+    valueType = value['valueType']
+    if valueType == 'uint':
+        maxValue = max(value['value'], value.get('maxValue', value['value']))
+        return 'uint32_t' if maxValue <= 0xFFFFFFFF else 'uint64_t'
+    if valueType == 'int':
+        maxAbs = max(abs(value['value']), abs(value.get('maxValue', value['value'])))
+        return 'int32_t' if maxAbs <= 0x7FFFFFFF else 'int64_t'
+    if valueType == 'real':
+        return 'double'
+    return valueType
 
 
 def includeEnum(args, prj, data):
@@ -137,7 +184,7 @@ def includeEnum(args, prj, data):
         out.append("}")
 
     out.append("")
-    return("\n".join(out))
+    return("\n".join(wrap_module_namespace(args, data, out)))
 
 
 def includeAddresses(args, prj, data):

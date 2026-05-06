@@ -24,12 +24,17 @@ def render(args, prj, data):
     if args.fileMapKey:
         fileMapKey = args.fileMapKey
     else:
-        fileMapKey = 'include_hdr'
+        fileMapKey = 'include_cppm'
 
     for context in data['includeContext']:
-        if context in data['includeFiles'][fileMapKey]:
-            out.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
+        if context in data['includeFiles'].get(fileMapKey, {}):
+            includeName = data["includeFiles"][fileMapKey][context]["baseName"]
+            moduleName = intf_gen_utils.module_name_from_include(includeName)
+            out.append(f'import {moduleName};')
+            out.append(f'using namespace {intf_gen_utils.namespace_name_from_include(includeName)};')
 
+
+    usesConfig = intf_gen_utils.block_uses_config(data, prj)
 
     out.append('')
     blockName = data["blockName"]
@@ -44,7 +49,7 @@ def render(args, prj, data):
         'addConsts' : True
     }
 
-    out.extend( renderClass(args, prj, data, blockName, ifMapping) )
+    out.extend( renderClass(args, prj, data, blockName, ifMapping, usesConfig) )
     blockName = data["blockName"]
     ifMapping = {
         'classNamePostfix' : 'Inverted',
@@ -56,17 +61,19 @@ def render(args, prj, data):
         'ctorStringHasParam' : True,
         'addConsts' : False
     }
-    out.extend( renderClass(args, prj, data, blockName, ifMapping) )
+    out.extend( renderClass(args, prj, data, blockName, ifMapping, usesConfig) )
 
-    out.extend( renderChannels(args, prj, data) )
+    out.extend( renderChannels(args, prj, data, usesConfig) )
     if warningAndErrorReport() != 0:
         exit(1)
     return("\n".join(out))
 
 
-def renderClass(args, prj, data, blockName, ifMapping):
+def renderClass(args, prj, data, blockName, ifMapping, usesConfig=False):
     out = list()
     className = blockName + ifMapping['classNamePostfix']
+    if usesConfig:
+        out.append('template<typename Config>')
     out.append(f'class { className } : public virtual blockPortBase')
     out.append('{')
     out.append('public:')
@@ -189,9 +196,11 @@ def renderClass(args, prj, data, blockName, ifMapping):
     out.append( '};')
     return out
 
-def renderChannels(args, prj, data):
+def renderChannels(args, prj, data, usesConfig=False):
     out = list()
     className = data["blockName"] + 'Channels'
+    if usesConfig:
+        out.append('template<typename Config>')
     out.append(f'class { className }')
     out.append('{')
     out.append('public:')
@@ -242,7 +251,8 @@ def renderChannels(args, prj, data):
                     out.append(indent + comma + channelConstructor(args, prj, data, value, mp_sig[port]['multicycle_types']) )
                     comma = ','
     out.append( indent + '{};')
-    out.append( indent + f'void bind( {data["blockName"]}Base *a, {data["blockName"]}Inverted *b)')
+    cfg = '<Config>' if usesConfig else ''
+    out.append( indent + f'void bind( {data["blockName"]}Base{cfg} *a, {data["blockName"]}Inverted{cfg} *b)')
     out.append( indent + '{')
     indent = indent + ' '*4
     for direction in ['src', 'dst']:

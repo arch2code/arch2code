@@ -16,7 +16,6 @@ cpu::cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
         ,blockBase("cpu", name(), bbMode)
         ,cpuBase(name(), variant)
 // GENERATED_CODE_END
-
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );

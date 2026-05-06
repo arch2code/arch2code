@@ -21,6 +21,12 @@ ipParameters:
             maxBitwidth: 16
             desc: "IP data word, parameterizable"
 
+constants:
+    IP_FIXED_NIBBLE_COUNT: { value: 5, desc: "Fixed array length for non-parameterized type tests" }
+    IP_FIXED_PAIR_COUNT:   { value: 2, desc: "Fixed nested-structure array length" }
+    IP_FIXED_WORD_COUNT:   { eval: "$IP_FIXED_NIBBLE_COUNT + 1", desc: "Derived fixed array length" }
+    IP_FIXED_DEPTH:        { value: 9, desc: "Fixed depth for widthLog2 and widthLog2minus1 tests" }
+
 types:
     ipModeT:
         desc: "IP operating mode"
@@ -42,6 +48,48 @@ types:
     ipFixedAddrT:
         width: 8
         desc: "Fixed 8-bit address index (non-parameterizable)"
+    ipNibbleT:
+        width: 4
+        desc: "Fixed unsigned nibble"
+    ipSignedNibbleT:
+        width: 4
+        isSigned: true
+        desc: "Fixed signed nibble"
+    ipSigned3T:
+        width: 3
+        isSigned: true
+        desc: "Fixed signed 3-bit value"
+    ipUnsigned5T:
+        width: 5
+        desc: "Fixed unsigned 5-bit value"
+    ipUnsigned9T:
+        width: 9
+        desc: "Fixed unsigned 9-bit value"
+    ipWordT:
+        width: 16
+        desc: "Fixed 16-bit word"
+    ipWide37T:
+        width: 37
+        desc: "Fixed 37-bit value crossing a 32-bit boundary"
+    ipFixedCountT:
+        widthLog2: IP_FIXED_DEPTH
+        desc: "Fixed count field wide enough for 0..IP_FIXED_DEPTH"
+    ipFixedIndexT:
+        widthLog2minus1: IP_FIXED_DEPTH
+        desc: "Fixed index field wide enough for 0..IP_FIXED_DEPTH-1"
+    ipFixedStatusT:
+        desc: "Fixed status enum"
+        enum:
+            - { enumName: IP_STATUS_IDLE, value: 0, desc: "Idle" }
+            - { enumName: IP_STATUS_BUSY, value: 1, desc: "Busy" }
+            - { enumName: IP_STATUS_DONE, value: 4, desc: "Done" }
+    ipFixedOpcodeT:
+        width: 8
+        desc: "Fixed-width opcode enum"
+        enum:
+            - { enumName: IP_OP_NOP, value: 0, desc: "No operation" }
+            - { enumName: IP_OP_LOAD, value: 3, desc: "Load" }
+            - { enumName: IP_OP_STORE, value: 9, desc: "Store" }
 
 structures:
     ipDataSt:
@@ -62,6 +110,27 @@ structures:
         b: { varType: ipFixedT, desc: "Fixed byte" }
     ipFixedAddrSt:
         a: { varType: ipFixedAddrT, desc: "Fixed-width address" }
+    ipFixedHeaderSt:
+        opcode: { varType: ipFixedOpcodeT, desc: "Fixed opcode" }
+        status: { varType: ipFixedStatusT, desc: "Fixed status" }
+        tag: { varType: ipNibbleT, desc: "Fixed packet tag" }
+    ipFixedSignedSt:
+        tiny: { varType: ipSigned3T, desc: "Signed 3-bit field" }
+        offset: { varType: ipSignedNibbleT, desc: "Signed 4-bit field" }
+        magnitude: { varType: ipUnsigned5T, desc: "Unsigned 5-bit field" }
+        lane: { varType: ipUnsigned9T, desc: "Unsigned 9-bit field" }
+    ipFixedArraySt:
+        nibbles: { varType: ipNibbleT, arraySize: IP_FIXED_NIBBLE_COUNT, desc: "Fixed nibble array" }
+        words: { varType: ipWordT, arraySize: IP_FIXED_PAIR_COUNT, desc: "Fixed word array" }
+    ipFixedLog2St:
+        count: { varType: ipFixedCountT, desc: "Fixed widthLog2 count" }
+        index: { varType: ipFixedIndexT, desc: "Fixed widthLog2minus1 index" }
+    ipFixedNestedSt:
+        header: { subStruct: ipFixedHeaderSt, desc: "Nested fixed header" }
+        signedFields: { subStruct: ipFixedSignedSt, desc: "Nested signed and narrow fields" }
+        arrays: { subStruct: ipFixedArraySt, arraySize: IP_FIXED_PAIR_COUNT, desc: "Nested fixed arrays" }
+        log2Fields: { subStruct: ipFixedLog2St, desc: "Nested fixed log2 fields" }
+        wideValue: { varType: ipWide37T, desc: "Wide fixed value" }
 
 interfaces:
     ipDataIf:

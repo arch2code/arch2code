@@ -5,6 +5,7 @@
 LEGACY_COMPAT_MODE = False
 
 from pysrc.arch2codeHelper import printError
+import os.path
 
 def get_set_intf_types(ifType, block_data):
     """Get set of interface names, resolving any type aliases
@@ -190,6 +191,94 @@ def sc_instance_includes(data, prj):
         out.append(f'#include "{baseInclude}"')
     return out
 
+def sc_struct_type_name(struct_name, struct_key, prj, use_config=True):
+    if use_config and struct_key and prj.data['structures'].get(struct_key, {}).get('isParameterizable', False):
+        return f"{struct_name}<Config>"
+    return struct_name
+
+def sc_structure_field_type(row, field_name, key_field_name, prj, use_config=True):
+    return sc_struct_type_name(row[field_name], row.get(key_field_name, ''), prj, use_config)
+
+def block_uses_config(data, prj):
+    def _struct_is_param(struct_key):
+        return bool(struct_key and prj.data['structures'].get(struct_key, {}).get('isParameterizable', False))
+
+    for port_type in data.get('ports', {}).values():
+        for port_data in port_type.values():
+            for struct_info in get_intf_data(port_data['connection'], prj).get('structures', []):
+                if _struct_is_param(struct_info.get('structureKey', '')):
+                    return True
+
+    for conn_type in data.get('connectDouble', {}).values():
+        for conn_data in conn_type.values():
+            for struct_info in get_intf_data(conn_data, prj).get('structures', []):
+                if _struct_is_param(struct_info.get('structureKey', '')):
+                    return True
+
+    for row_set in ['registers', 'memories', 'memoriesParent', 'memoryConnections', 'memoryPorts', 'registerPorts']:
+        for row in data.get(row_set, {}).values():
+            for key_field in ['structureKey', 'addressStructKey']:
+                if _struct_is_param(row.get(key_field, '')):
+                    return True
+
+    return False
+
+def block_config_decl(uses_config):
+    return 'template<typename Config>' if uses_config else ''
+
+def block_config_arg(uses_config):
+    return '<Config>' if uses_config else ''
+
+def context_default_config_name(context):
+    base = os.path.splitext(os.path.basename(context))[0]
+    return base.replace('-', '_').replace('.', '_') + 'DefaultConfig'
+
+def module_name_from_include(baseName):
+    name = baseName
+    if name.endswith('.cppm'):
+        name = name[:-5]
+    if name.endswith('Includes'):
+        name = name[:-8]
+    return name.replace('-', '_').replace('.', '_')
+
+def namespace_name_from_include(baseName):
+    return f'{module_name_from_include(baseName)}_ns'
+
+def wrap_module_namespace(args, data, lines):
+    if args.mode != 'module':
+        return lines
+    namespaceName = namespace_name_from_include(data['fileNameBase'])
+    return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
+
+def block_default_config_type(data, prj):
+    contexts = []
+
+    def _add_struct_context(struct_key):
+        struct = prj.data['structures'].get(struct_key, {})
+        if struct.get('isParameterizable', False):
+            context = struct.get('_context', '')
+            if context and context not in contexts:
+                contexts.append(context)
+
+    for port_type in data.get('ports', {}).values():
+        for port_data in port_type.values():
+            for struct_info in get_intf_data(port_data['connection'], prj).get('structures', []):
+                _add_struct_context(struct_info.get('structureKey', ''))
+
+    for conn_type in data.get('connectDouble', {}).values():
+        for conn_data in conn_type.values():
+            for struct_info in get_intf_data(conn_data, prj).get('structures', []):
+                _add_struct_context(struct_info.get('structureKey', ''))
+
+    for row_set in ['registers', 'memories', 'memoriesParent', 'memoryConnections', 'memoryPorts', 'registerPorts']:
+        for row in data.get(row_set, {}).values():
+            _add_struct_context(row.get('structureKey', ''))
+            _add_struct_context(row.get('addressStructKey', ''))
+
+    if not contexts:
+        return data['blockName'] + 'DefaultConfig'
+    return context_default_config_name(contexts[0])
+
 def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     out = {}
@@ -224,7 +313,7 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
         intf_param[param] = struct_data[0]
 
     # Interface parameters declaration
-    chnl_params = ', '.join(["{}".format(intf_param[param]['structure']) for param in params])
+    chnl_params = ', '.join([sc_structure_field_type(intf_param[param], 'structure', 'structureKey', prj) for param in params])
 
     if intf_def['sc_channel']['param_cast']:
         if LEGACY_COMPAT_MODE:
@@ -272,7 +361,7 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     out['hdl_if_decl'] = f"{hdl_intf_type}<{hdl_if_params}> {hdl_intf_name};"
 
-    chnl_params = ', '.join(["{}".format(intf_param[param]['structure']) for param in params] + hdl_if_bv_types)
+    chnl_params = ', '.join([sc_structure_field_type(intf_param[param], 'structure', 'structureKey', prj) for param in params] + hdl_if_bv_types)
 
     chnl_dir = intf_modp
     chnl_type = intf_def['sc_channel']['type'] + '_' + chnl_dir + '_bfm'
@@ -338,7 +427,7 @@ def sc_gen_block_channels(conn_data, prj, block_data):
         intf_param[param] = struct_data[0]
 
     # Interface parameters declaration
-    chnl_params = ', '.join(["{}".format(intf_param[param]['structure']) for param in parameters])
+    chnl_params = ', '.join([sc_structure_field_type(intf_param[param], 'structure', 'structureKey', prj) for param in parameters])
 
     if intf_def['sc_channel']['param_cast']:
         if LEGACY_COMPAT_MODE:

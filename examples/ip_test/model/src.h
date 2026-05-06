@@ -1,7 +1,7 @@
 #ifndef SRC_H
 #define SRC_H
 
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
@@ -10,9 +10,12 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "srcBase.h"
-#include "ipIncludes.h"
+#include "ipConfig.h"
+import ip;
+using namespace ip_ns;
 
-SC_MODULE(src), public blockBase, public srcBase
+template<typename Config>
+SC_MODULE(src), public blockBase, public srcBase<Config>
 {
 private:
 
@@ -21,11 +24,13 @@ private:
         registerBlock()
         {
             // lamda function to construct the block
-            instanceFactory::registerBlock("src_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<src>(blockName, variant, bbMode));}, "" );
+            instanceFactory::registerBlock("src_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<src<ipDefaultConfig>>(blockName, variant, bbMode));}, "" );
         }
     };
     static registerBlock registerBlock_;
 public:
+    SC_HAS_PROCESS(src);
+
 
     src(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~src() override = default;

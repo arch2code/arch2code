@@ -19,7 +19,7 @@
 
 #include "push_ack_bfm.h"
 
-class src_hdl_sc_wrapper: public sc_module, public blockBase, public srcBase {
+class src_hdl_sc_wrapper: public sc_module, public blockBase, public srcBase<ipDefaultConfig> {
 
 public:
 
@@ -45,15 +45,15 @@ public:
 
     sc_clock clk;
 
-    push_ack_src_bfm<ipDataSt, sc_bv<8>> out0_bfm;
-    push_ack_src_bfm<ipDataSt, sc_bv<8>> out1_bfm;
+    push_ack_src_bfm<ipDataSt<ipDefaultConfig>, sc_bv<8>> out0_bfm;
+    push_ack_src_bfm<ipDataSt<ipDefaultConfig>, sc_bv<8>> out1_bfm;
 
     SC_HAS_PROCESS (src_hdl_sc_wrapper);
 
     src_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
         blockBase("src_hdl_sc_wrapper", name(), bbMode),
-        srcBase(name(), variant),
+        srcBase<ipDefaultConfig>(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         out0_bfm("out0_bfm"),
         out1_bfm("out1_bfm"),

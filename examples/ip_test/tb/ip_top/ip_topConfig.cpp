@@ -1,4 +1,4 @@
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 #include <string>
@@ -6,7 +6,10 @@
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
 #include "endOfTest.h"
-#include "testController.h"
+#include "ipConfig.h"
+
+import ip;
+using namespace ip_ns;
 
 // GENERATED_CODE_PARAM --block=ip_top
 // GENERATED_CODE_BEGIN --template=tbConfig
@@ -29,12 +32,7 @@ public:
 
     bool createTestBench(void) override
     {
-        testController &controller = testController::GetInstance();
-        controller.set_test_names({
-            "test_ip_uIp0_check",
-            "test_ip_uIp1_check"
-        });
-
+        test_ip_structs<ipDefaultConfig>::test();
         //create hierarchy
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "ip_topTestbench", "");
         return true;
@@ -44,7 +42,6 @@ public:
     {
         // Final cleanup if needed
         Q_ASSERT_CTX(endOfTestState::GetInstance().isEndOfTest(), "final", "Premature end of test detected");
-        Q_ASSERT_CTX(testController::GetInstance().are_all_tests_complete(), "final", "Not all tests completed");
         errorCode::pass();
     }
 

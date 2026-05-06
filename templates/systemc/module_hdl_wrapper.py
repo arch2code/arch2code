@@ -13,6 +13,9 @@ def render(args, prj, data):
 
 
 def render_sc(args, prj, data):
+    usesConfig = intf_gen_utils.block_uses_config(data, prj)
+    defaultConfig = intf_gen_utils.block_default_config_type(data, prj) if usesConfig else ''
+    cfg = f'<{defaultConfig}>' if usesConfig else ''
 
     def sec_channel_decl(args, prj, data):
         s = []
@@ -95,6 +98,9 @@ def render_sc(args, prj, data):
         t = Template(sec_hdl_sc_wrapper_class_template)
         s = t.render(
             blockname=data['blockName'], variants=data['variants'],
+            uses_config=usesConfig,
+            cfg=cfg,
+            default_config=defaultConfig,
             sec_bfm_includes=sec_bfm_includes(args, prj, data),
             sec_bfm_decl=sec_bfm_decl(args, prj, data),
             sec_bfm_ctor_init=sec_bfm_ctor_init(args, prj, data),
@@ -142,6 +148,9 @@ def render_sc(args, prj, data):
         for port_type in data['ports']:
             for port in data['ports'][port_type] if not args.hierarchy else []:
                 mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port_type][port], prj, data)
+                if usesConfig:
+                    for key in ['bfm_decl', 'hdl_if_decl']:
+                        mp_sig[port][key] = mp_sig[port][key].replace('<Config>', f'<{defaultConfig}>')
 
     match args.section:
         case 'hdl_sc_wrapper_class' : return sec_hdl_sc_wrapper_class(args, prj, data)
@@ -191,7 +200,7 @@ sec_hdl_sc_wrapper_class_template = """\
 {%- if variants %}
 template <typename DUT_T>
 {%- endif %}
-class {{blockname}}_hdl_sc_wrapper: public sc_module, public blockBase, public {{blockname}}Base {
+class {{blockname}}_hdl_sc_wrapper: public sc_module, public blockBase, public {{blockname}}Base{{cfg}} {
 
 public:
 
@@ -244,7 +253,7 @@ public:
     {{blockname}}_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
         blockBase("{{blockname}}_hdl_sc_wrapper", name(), bbMode),
-        {{blockname}}Base(name(), variant),
+        {{blockname}}Base{{cfg}}(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         {{ sec_bfm_ctor_init | indent(8) }}
         rst_n(0)

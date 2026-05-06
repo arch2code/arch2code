@@ -6,8 +6,8 @@ ip_topTestbench::registerBlock ip_topTestbench::registerBlock_; //register the b
 
 ip_topTestbench::ip_topTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("ip_topTestbench", name(), bbMode)
-        ,ip_topChannels("Chnl", "tb")
-        ,ip_top(std::dynamic_pointer_cast<ip_topBase>( instanceFactory::createInstance(name(), "ip_top", "ip_top", "")))
+        ,ip_topChannels<ipDefaultConfig>("Chnl", "tb")
+        ,ip_top(std::dynamic_pointer_cast<ip_topBase<ipDefaultConfig>>( instanceFactory::createInstance(name(), "ip_top", "ip_top", "")))
         ,external("external")
 {
     bind(ip_top.get(), &external);

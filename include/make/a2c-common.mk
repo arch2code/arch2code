@@ -25,7 +25,7 @@ endif
 define find_cpp_sources
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find -L $$dir -type f \( -name '*.cpp' -or -name '*.h' \) ; \
+			find -L $$dir -type f \( -name '*.cpp' -or -name '*.h' -or -name '*.cppm' \) ; \
 		fi \
 	done)
 endef
@@ -41,7 +41,7 @@ endef
 define find_gen_cpp_sources
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find -L $$dir -type f \( -name '*.cpp' -or -name '*.h' \) -exec grep -l 'GENERATED_CODE_' {} \; ; \
+			find -L $$dir -type f \( -name '*.cpp' -or -name '*.h' -or -name '*.cppm' \) -exec grep -l 'GENERATED_CODE_' {} \; ; \
 		fi \
 	done)
 endef
@@ -57,7 +57,7 @@ endef
 define find_cpp_source_directories
 	$(shell for dir in $(1); do \
 		if [ -d "$$dir" ]; then \
-			find -L $$dir -type f \( -name '*.cpp' -or -name '*.h' \) -exec dirname {} \; | sort -u ; \
+			find -L $$dir -type f \( -name '*.cpp' -or -name '*.h' -or -name '*.cppm' \) -exec dirname {} \; | sort -u ; \
 		fi \
 	done)
 endef
@@ -86,7 +86,7 @@ GEN_BUILD_DIR = $(REPO_ROOT)/.gen
 SC_GEN_FILES =  $(call find_gen_cpp_sources, $(REPO_ROOT)/base/ $(REPO_ROOT)/model/ $(REPO_ROOT)/tb/ $(REPO_ROOT)/verif/vl_wrap $(REPO_ROOT)/fw/)
 SC_GEN_DOT_FILES = $(SC_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 
-SV_GEN_FILES =  $(call find_gen_sv_sources, $(REPO_ROOT)/rtl/ $(REPO_ROOT)/verif/vl_wrap) $(REPO_ROOT)/rtl/rtl.f
+SV_GEN_FILES =  $(call find_gen_sv_sources, $(REPO_ROOT)/rtl/ $(REPO_ROOT)/verif/vl_wrap) $(wildcard $(REPO_ROOT)/rtl/rtl.f)
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
 ifndef SKIP_GEN

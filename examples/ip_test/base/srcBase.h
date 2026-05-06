@@ -1,24 +1,26 @@
 #ifndef SRC_BASE_H
 #define SRC_BASE_H
 
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
 // GENERATED_CODE_PARAM --block=src
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "push_ack_channel.h"
-#include "ipIncludes.h"
+import ip;
+using namespace ip_ns;
 
+template<typename Config>
 class srcBase : public virtual blockPortBase
 {
 public:
     virtual ~srcBase() = default;
     // src ports
     // ipDataIf->uIp0: IP data push/ack stream
-    push_ack_out< ipDataSt > out0;
+    push_ack_out< ipDataSt<Config> > out0;
     // ipDataIf->uIp1: IP data push/ack stream
-    push_ack_out< ipDataSt > out1;
+    push_ack_out< ipDataSt<Config> > out1;
 
 
     srcBase(std::string name, const char * variant) :
@@ -37,14 +39,15 @@ public:
         out1->setLogging(verbosity);
     };
 };
+template<typename Config>
 class srcInverted : public virtual blockPortBase
 {
 public:
     // src ports
     // ipDataIf->uIp0: IP data push/ack stream
-    push_ack_in< ipDataSt > out0;
+    push_ack_in< ipDataSt<Config> > out0;
     // ipDataIf->uIp1: IP data push/ack stream
-    push_ack_in< ipDataSt > out1;
+    push_ack_in< ipDataSt<Config> > out1;
 
 
     srcInverted(std::string name) :
@@ -63,21 +66,22 @@ public:
         out1->setLogging(verbosity);
     };
 };
+template<typename Config>
 class srcChannels
 {
 public:
     // src ports
     // IP data push/ack stream
-    push_ack_channel< ipDataSt > out0;
+    push_ack_channel< ipDataSt<Config> > out0;
     // IP data push/ack stream
-    push_ack_channel< ipDataSt > out1;
+    push_ack_channel< ipDataSt<Config> > out1;
 
 
     srcChannels(std::string name, std::string srcName) :
     out0(("out0"+name).c_str(), srcName)
     ,out1(("out1"+name).c_str(), srcName)
     {};
-    void bind( srcBase *a, srcInverted *b)
+    void bind( srcBase<Config> *a, srcInverted<Config> *b)
     {
         a->out0( out0 );
         b->out0( out0 );

@@ -1,7 +1,7 @@
 #ifndef IP_BASE_H
 #define IP_BASE_H
 
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
@@ -9,9 +9,12 @@
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
 #include "push_ack_channel.h"
-#include "ipIncludes.h"
-#include "ip_topIncludes.h"
+import ip;
+using namespace ip_ns;
+import ip_top;
+using namespace ip_top_ns;
 
+template<typename Config>
 class ipBase : public virtual blockPortBase
 {
 public:
@@ -21,7 +24,7 @@ public:
     const uint64_t IP_NONCONST_DEPTH;
     // dst ports
     // uSrc->ipDataIf: IP data push/ack stream
-    push_ack_in< ipDataSt > ipDataIf;
+    push_ack_in< ipDataSt<Config> > ipDataIf;
     // uAPBDecode->apbReg: CPU access to IP registers via APB
     apb_in< apbAddrSt, apbDataSt > apbReg;
 
@@ -45,12 +48,13 @@ public:
         apbReg->setLogging(verbosity);
     };
 };
+template<typename Config>
 class ipInverted : public virtual blockPortBase
 {
 public:
     // dst ports
     // uSrc->ipDataIf: IP data push/ack stream
-    push_ack_out< ipDataSt > ipDataIf;
+    push_ack_out< ipDataSt<Config> > ipDataIf;
     // uAPBDecode->apbReg: CPU access to IP registers via APB
     apb_out< apbAddrSt, apbDataSt > apbReg;
 
@@ -71,12 +75,13 @@ public:
         apbReg->setLogging(verbosity);
     };
 };
+template<typename Config>
 class ipChannels
 {
 public:
     // dst ports
     // IP data push/ack stream
-    push_ack_channel< ipDataSt > ipDataIf;
+    push_ack_channel< ipDataSt<Config> > ipDataIf;
     // CPU access to IP registers via APB
     apb_channel< apbAddrSt, apbDataSt > apbReg;
 
@@ -85,7 +90,7 @@ public:
     ipDataIf(("ipDataIf"+name).c_str(), srcName)
     ,apbReg(("apbReg"+name).c_str(), srcName)
     {};
-    void bind( ipBase *a, ipInverted *b)
+    void bind( ipBase<Config> *a, ipInverted<Config> *b)
     {
         a->ipDataIf( ipDataIf );
         b->ipDataIf( ipDataIf );

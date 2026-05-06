@@ -76,6 +76,28 @@ LD_FLAGS     += $(EXTRA_LD_FLAGS)
 CPP_SRC += $(foreach dir, $(A2C_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 
+# Generated C++20 module interface units.  Consumers import these by module
+# name, so precompile them before compiling any C++ translation units and pass
+# the resulting PCM files explicitly to Clang.
+CPP_MODULE_SRC = $(filter %.cppm,$(SC_GEN_FILES))
+cpp_module_name = $(basename $(notdir $(1:Includes.cppm=.cppm)))
+cpp_module_pcm = $(BUILD_DIR)/$(1:%.cppm=%.pcm)
+cpp_module_src_for = $(firstword $(foreach src,$(CPP_MODULE_SRC),$(if $(filter $(1),$(call cpp_module_name,$(src))),$(src))))
+cpp_module_import_names = $(shell test -f "$(1)" && sed -n 's/^[[:space:]]*import[[:space:]]\+\([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*;.*/\1/p' "$(1)" || true)
+cpp_module_import_pcms = $(foreach module,$(call cpp_module_import_names,$(1)),$(if $(call cpp_module_src_for,$(module)),$(call cpp_module_pcm,$(call cpp_module_src_for,$(module)))))
+CPP_MODULE_PCM = $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.pcm)
+CPP_MODULE_OBJ = $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.module.o)
+CPP_MODULE_FLAGS = $(foreach src,$(CPP_MODULE_SRC),-fmodule-file=$(call cpp_module_name,$(src))=$(call cpp_module_pcm,$(src)))
+CPP_MODULE_OBJ_FLAGS = $(filter-out -I%,$(CXX_FLAGS))
+
+ifneq ($(strip $(CPP_MODULE_SRC)),)
+ifndef USE_GCC
+CXX_FLAGS += $(CPP_MODULE_FLAGS)
+else
+$(error Generated C++20 module interface units require Clang; unset USE_GCC)
+endif
+endif
+
 ifdef VL_DUT
 CPP_SRC += $(REPO_ROOT)/verif/vl_wrap/vl_wrap.cpp
 CPP_INCLUDES += $(foreach dir, $(call find_cpp_source_directories, $(REPO_ROOT)/verif/vl_wrap), -I$(dir))
@@ -111,8 +133,10 @@ endif
 
 # All .o files go to build dir.
 OBJ = $(CPP_SRC:%.cpp=$(BUILD_DIR)/%.o)
+OBJ += $(CPP_MODULE_OBJ)
 # Gcc/Clang will create these .d files containing dependencies.
 DEP = $(OBJ:%.o=%.d)
+DEP += $(CPP_MODULE_PCM:%.pcm=%.d)
 
 # Actual target of the binary - depends on all .o files.
 $(BIN_DIR)/$(BIN) : $(OBJ)
@@ -130,9 +154,24 @@ $(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp
 
 # Rule to compile all other .cpp files
 # The -MMD flags additionaly creates a .d file with the same name as the .o file.
-$(BUILD_DIR)/%.o : %.cpp $(GEN_DB_DEPS)
+$(BUILD_DIR)/%.o : %.cpp $(GEN_DB_DEPS) $(CPP_MODULE_PCM)
 	mkdir -p $(@D)
 	$(CXX) $(CXX_FLAGS) -MMD -c $< -o $@
+
+# Rules to precompile generated C++20 module interfaces and compile PCMs to
+# linkable objects.  The module flags are supplied at both stages because an
+# interface may import another generated interface.
+$(BUILD_DIR)/%.pcm : %.cppm $(GEN_DB_DEPS)
+	mkdir -p $(@D)
+	$(CXX) $(CXX_FLAGS) -MMD --precompile -x c++-module $< -o $@
+
+$(foreach src,$(CPP_MODULE_SRC),$(eval $(call cpp_module_pcm,$(src)): $(call cpp_module_import_pcms,$(src))))
+
+.SECONDARY: $(CPP_MODULE_PCM)
+
+$(BUILD_DIR)/%.module.o : $(BUILD_DIR)/%.pcm
+	mkdir -p $(@D)
+	$(CXX) $(CPP_MODULE_OBJ_FLAGS) -c $< -o $@
 
 # Include all .d files
 -include $(DEP)

@@ -1,7 +1,7 @@
 #ifndef IP_TOP_BASE_H
 #define IP_TOP_BASE_H
 
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
@@ -9,9 +9,12 @@
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
 #include "push_ack_channel.h"
-#include "ip_topIncludes.h"
-#include "ipIncludes.h"
+import ip_top;
+using namespace ip_top_ns;
+import ip;
+using namespace ip_ns;
 
+template<typename Config>
 class ip_topBase : public virtual blockPortBase
 {
 public:
@@ -34,6 +37,7 @@ public:
         cpu_main->setLogging(verbosity);
     };
 };
+template<typename Config>
 class ip_topInverted : public virtual blockPortBase
 {
 public:
@@ -55,6 +59,7 @@ public:
         cpu_main->setLogging(verbosity);
     };
 };
+template<typename Config>
 class ip_topChannels
 {
 public:
@@ -66,7 +71,7 @@ public:
     ip_topChannels(std::string name, std::string srcName) :
     cpu_main(("cpu_main"+name).c_str(), srcName)
     {};
-    void bind( ip_topBase *a, ip_topInverted *b)
+    void bind( ip_topBase<Config> *a, ip_topInverted<Config> *b)
     {
         a->cpu_main( cpu_main );
         b->cpu_main( cpu_main );

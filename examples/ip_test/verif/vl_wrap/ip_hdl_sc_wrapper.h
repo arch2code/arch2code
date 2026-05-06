@@ -25,7 +25,7 @@
 #include "push_ack_bfm.h"
 
 template <typename DUT_T>
-class ip_hdl_sc_wrapper: public sc_module, public blockBase, public ipBase {
+class ip_hdl_sc_wrapper: public sc_module, public blockBase, public ipBase<ipDefaultConfig> {
 
 public:
 
@@ -47,7 +47,7 @@ public:
 
     sc_clock clk;
 
-    push_ack_dst_bfm<ipDataSt, sc_bv<8>> ipDataIf_bfm;
+    push_ack_dst_bfm<ipDataSt<ipDefaultConfig>, sc_bv<8>> ipDataIf_bfm;
     apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
 
     SC_HAS_PROCESS (ip_hdl_sc_wrapper<DUT_T>);
@@ -55,7 +55,7 @@ public:
     ip_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
         blockBase("ip_hdl_sc_wrapper", name(), bbMode),
-        ipBase(name(), variant),
+        ipBase<ipDefaultConfig>(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         ipDataIf_bfm("ipDataIf_bfm"),
         apbReg_bfm("apbReg_bfm"),

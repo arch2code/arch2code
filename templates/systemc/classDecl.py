@@ -15,7 +15,10 @@ def render(args, prj, data):
 def render_default(args, prj, data):
     out = list()
     className = f'{ data["blockName"] }'
-    baseClassName = f'{ data["blockName"] }Base' 
+    usesConfig = intf_gen_utils.block_uses_config(data, prj)
+    cfg = intf_gen_utils.block_config_arg(usesConfig)
+    defaultConfig = intf_gen_utils.block_default_config_type(data, prj) if usesConfig else ''
+    baseClassName = f'{ data["blockName"] }Base{cfg}' 
     out.append('#include "logging.h"')
     out.append('#include "instanceFactory.h"')
     baseInclude = prj.getModuleFilename('blockBase', data["blockName"], 'hdr')
@@ -36,24 +39,36 @@ def render_default(args, prj, data):
                 break
     if needsHwMemory:
         out.append('#include "hwMemory.h"')
+    if usesConfig:
+        for context in data['includeContext']:
+            if context in data['includeFiles'].get('config_hdr', {}):
+                out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
     
     if args.fileMapKey:
         fileMapKey = args.fileMapKey
     else:
-        fileMapKey = 'include_hdr'
+        fileMapKey = 'include_cppm'
 
     for context in data['includeContext']:
-        if context in data['includeFiles'][fileMapKey]:
-            out.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
+        if context in data['includeFiles'].get(fileMapKey, {}):
+            includeName = data["includeFiles"][fileMapKey][context]["baseName"]
+            moduleName = intf_gen_utils.module_name_from_include(includeName)
+            out.append(f'import {moduleName};')
+            out.append(f'using namespace {intf_gen_utils.namespace_name_from_include(includeName)};')
     if data['addressDecode']['isApbRouter']:
         out.append(f'#include "apbBusDecode.h"')
 
     if data["subBlocks"]:
         out.append(f'//contained instances forward class declaration')
         for key, value in data["subBlocks"].items():
-            out.append(f'class { value }Base;')
+            if intf_gen_utils.block_uses_config(prj.getBlockData(key), prj):
+                out.append(f'template<typename Config> class { value }Base;')
+            else:
+                out.append(f'class { value }Base;')
     out.append('')
 
+    if usesConfig:
+        out.append(intf_gen_utils.block_config_decl(usesConfig))
     out.append(f'SC_MODULE({ className }), public blockBase, public { baseClassName }')
     out.append('{')
     out.append('private:')
@@ -73,11 +88,21 @@ def render_default(args, prj, data):
     if data['variants']:
         out.append(textwrap.indent(addParams(args, prj, data), indent*2))
     out.append(indent + '        // lamda function to construct the block')
-    out.append(indent + f'        instanceFactory::registerBlock("{ className }_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{ className }>(blockName, variant, bbMode));}}, "" );')
+    if usesConfig:
+        if data['variants']:
+            for variant in sorted(data['variants']):
+                out.append(indent + f'        instanceFactory::registerBlock("{ className }_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{ className }<{defaultConfig}>>(blockName, variant, bbMode));}}, "{variant}" );')
+        else:
+            out.append(indent + f'        instanceFactory::registerBlock("{ className }_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{ className }<{defaultConfig}>>(blockName, variant, bbMode));}}, "" );')
+    else:
+        out.append(indent + f'        instanceFactory::registerBlock("{ className }_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{ className }>(blockName, variant, bbMode));}}, "" );')
     out.append(indent + '    }')
     out.append(indent + '};')
     out.append(indent + 'static registerBlock registerBlock_;')
     out.append('public:')
+    if usesConfig:
+        out.append(indent + f'SC_HAS_PROCESS({ className });')
+        out.append('')
 
     channels = intf_gen_utils.sc_declare_channels(data, prj, indent, data)
     if len(channels):
@@ -92,7 +117,9 @@ def render_default(args, prj, data):
             out.append( indent + f'//instances contained in block')
             first = False
 
-        out.append( indent + f'std::shared_ptr<{ instData["instanceType"] }Base> { instData["instance"] };')
+        instUsesConfig = intf_gen_utils.block_uses_config(prj.getBlockData(instData['instanceTypeKey']), prj)
+        instCfg = cfg if instUsesConfig else ''
+        out.append( indent + f'std::shared_ptr<{ instData["instanceType"] }Base{instCfg}> { instData["instance"] };')
     first = True
 
     for reg, regData in data["registers"].items():
@@ -105,7 +132,8 @@ def render_default(args, prj, data):
             first = False
         # Register data size from cpu is always 4-bytes aligned
         size = roundup_multiple(regData.get("maxBytes", regData["bytes"]), 4)
-        out.append( indent + f'hwRegister< { regData["structure"] }, {size} > { regData["register"] }; // { regData["desc"] }')
+        regType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
+        out.append( indent + f'hwRegister< { regType }, {size} > { regData["register"] }; // { regData["desc"] }')
 
     if len(data["memories"]):
         out.append('')
@@ -116,14 +144,19 @@ def render_default(args, prj, data):
         # For register handlers, use hwMemoryPort for all register-accessible memories
         mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():
-            out.append( indent + f'hwMemoryPort< { memData["addressStruct"] }, { memData["structure"] } > { memData["memory"] }_adapter;')
+            addrType = intf_gen_utils.sc_structure_field_type(memData, 'addressStruct', 'addressStructKey', prj)
+            dataType = intf_gen_utils.sc_structure_field_type(memData, 'structure', 'structureKey', prj)
+            out.append( indent + f'hwMemoryPort< { addrType }, { dataType } > { memData["memory"] }_adapter;')
         # Also handle memory registers
         for reg, regData in data['registers'].items():
             if regData.get('regType') == 'memory':
-                out.append( indent + f'hwMemoryPort< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_adapter;')
+                addrType = intf_gen_utils.sc_structure_field_type(regData, 'addressStruct', 'addressStructKey', prj)
+                dataType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
+                out.append( indent + f'hwMemoryPort< { addrType }, { dataType } > { regData["register"] }_adapter;')
     else:
         for mem, memData in data["memories"].items():
-            out.append( indent + f'hwMemory< { memData["structure"] } > { memData["memory"] };')
+            dataType = intf_gen_utils.sc_structure_field_type(memData, 'structure', 'structureKey', prj)
+            out.append( indent + f'hwMemory< { dataType } > { memData["memory"] };')
         
         # Handle LOCAL memory registers (block has registerDecode but not isRegHandler)
         if registerDecode:
@@ -135,9 +168,11 @@ def render_default(args, prj, data):
                         out.append('')
                         out.append( indent + f'//local memory register infrastructure')
                         first = False
-                    out.append( indent + f'memory_channel< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_channel;')
-                    out.append( indent + f'memory_out< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_port;')
-                    out.append( indent + f'hwMemoryPort< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_adapter;')
+                    addrType = intf_gen_utils.sc_structure_field_type(regData, 'addressStruct', 'addressStructKey', prj)
+                    dataType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
+                    out.append( indent + f'memory_channel< { addrType }, { dataType } > { regData["register"] }_channel;')
+                    out.append( indent + f'memory_out< { addrType }, { dataType } > { regData["register"] }_port;')
+                    out.append( indent + f'hwMemoryPort< { addrType }, { dataType } > { regData["register"] }_adapter;')
 
     # Memory connections (channel declarations)
     if 'memoryConnections' in data:
@@ -145,8 +180,8 @@ def render_default(args, prj, data):
             channelName = f'{val["interfaceName"]}'
             memKey = val['memoryBlockKey']
             memData = data['memories'][memKey]
-            addrStruct = memData['addressStruct']
-            dataStruct = memData['structure']
+            addrStruct = intf_gen_utils.sc_structure_field_type(memData, 'addressStruct', 'addressStructKey', prj)
+            dataStruct = intf_gen_utils.sc_structure_field_type(memData, 'structure', 'structureKey', prj)
             out.append( indent + f'memory_channel<{addrStruct}, {dataStruct}> {channelName};')
 
     out.append('')
@@ -156,7 +191,7 @@ def render_default(args, prj, data):
     if len(data["memories"]):
         out.append( indent + f'void setTimed(int nsec, timedDelayMode mode) override')
         out.append( indent + f'{{')
-        out.append( indent + f'    { className }Base::setTimed(nsec, mode);')
+        out.append( indent + f'    { baseClassName }::setTimed(nsec, mode);')
         out.append( indent + f'    mems.setTimed(nsec, mode);')
         out.append( indent + f'}}')
 #    else:

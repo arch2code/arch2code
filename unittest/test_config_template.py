@@ -9,6 +9,8 @@ from types import SimpleNamespace
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
+if base_dir not in sys.path:
+    sys.path.insert(0, base_dir)
 
 
 def load_includes_template():

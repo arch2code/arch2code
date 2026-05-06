@@ -1,15 +1,17 @@
 #ifndef CPU_H
 #define CPU_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
 // GENERATED_CODE_PARAM --block=cpu
-// GENERATED_CODE_BEGIN --template=classDecl 
+// GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
 #include "cpuBase.h"
-#include "ip_topIncludes.h"
+import ip_top;
+using namespace ip_top_ns;
 
 SC_MODULE(cpu), public blockBase, public cpuBase
 {
@@ -30,7 +32,6 @@ public:
     ~cpu() override = default;
 
     // GENERATED_CODE_END
-
     // block implementation members
 private:
     void checkUIp0(void);

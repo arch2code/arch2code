@@ -8,6 +8,21 @@ def addressConstName(data, item):
     blockName = item.get('block', data['blockName'])
     return f"REG_ADDR_{blockName.upper()}_{item['name'].upper()}"
 
+def wordLinesExpr(item, prj, useConfig=False, blockData=None):
+    wordLines = item['wordLines']
+    wordLinesKey = item.get('wordLinesKey', '')
+    if useConfig and wordLinesKey and prj.data['constants'].get(wordLinesKey, {}).get('isParameterizable', False):
+        return f"Config::{wordLines}"
+    if useConfig:
+        for constData in prj.data.get('constants', {}).values():
+            if constData.get('constant') == wordLines and constData.get('isParameterizable', False):
+                return f"Config::{wordLines}"
+        if blockData:
+            for param in blockData.get('blockInfo', {}).get('params', []):
+                if param.get('param') == wordLines:
+                    return f'instanceFactory::getParam("{blockData["blockName"]}", variant, "{wordLines}")'
+    return wordLines
+
 # args from generator line
 # prj object
 # data set dict
@@ -25,27 +40,39 @@ def render(args, prj, data):
 def constructorInit(args, prj, data):
     out = list()
     className = data["blockName"]
-    baseClassName = f'{ className }Base'
+    usesConfig = intf_gen_utils.block_uses_config(data, prj)
+    cfg = intf_gen_utils.block_config_arg(usesConfig)
+    templateDecl = intf_gen_utils.block_config_decl(usesConfig)
+    qualClassName = f'{className}{cfg}'
+    baseClassName = f'{ className }Base{cfg}'
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
     out.append(f'#include "{className}.h"')
 
     out += intf_gen_utils.sc_instance_includes(data, prj)
 
-    out.append(f'SC_HAS_PROCESS({ className });\n')
-    out.append(f'{ className }::registerBlock { className }::registerBlock_; //register the block with the factory\n')
+    if not usesConfig:
+        out.append(f'SC_HAS_PROCESS({ className });\n')
+        out.append(f'{ className }::registerBlock { className }::registerBlock_; //register the block with the factory\n')
 
     if data['addressDecode']['isApbRouter']:
-        out.append(f'void { className }::routerDecode(void) //handle apb routing for register\n{{')
+        if usesConfig:
+            out.append(templateDecl)
+        out.append(f'void { qualClassName }::routerDecode(void) //handle apb routing for register\n{{')
         out.append(f'    log_.logPrint(std::format("SystemC Thread:{{}} started", __func__));')
         out.append(f'    decoder.decodeThread();\n}}\n')
 
     if registerDecode:
         busInterface = data["addressDecode"]["registerBusInterface"]
+        busInterfaceRef = f'this->{busInterface}' if usesConfig else busInterface
         busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
-        out.append(f'void { className }::regHandler(void) {{ //handle register decode')
-        out.append(f'    registerHandler< {busStructs} >(regs, {busInterface}, (1<<({data["addressDecode"]["addressBits"]}))-1); }}\n')
+        if usesConfig:
+            out.append(templateDecl)
+        out.append(f'void { qualClassName }::regHandler(void) {{ //handle register decode')
+        out.append(f'    registerHandler< {busStructs} >(regs, {busInterfaceRef}, (1<<({data["addressDecode"]["addressBits"]}))-1); }}\n')
 
-    out.append(f'{ className }::{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode)')
+    if usesConfig:
+        out.append(templateDecl)
+    out.append(f'{ qualClassName }::{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode)')
     out.append(f'       : sc_module(blockName)')
     out.append(f'        ,blockBase("{ className }", name(), bbMode)')
     out.append(f'        ,{ baseClassName}(name(), variant)')
@@ -115,7 +142,8 @@ def constructorInit(args, prj, data):
                     if interfaceSize != "0" or trackerType:
                         print(f"warning: interface {chnlInfo['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
             if chnl_table[chnl]['set_initial_value']:
-                defaultValue = f", {chnlInfo['structure']}::_packedSt({hex(prj.getConst(chnl_table[chnl]['default_value']))})"
+                channelStruct = intf_gen_utils.sc_structure_field_type(chnlInfo, 'structure', 'structureKey', prj)
+                defaultValue = f", {channelStruct}::_packedSt({hex(prj.getConst(chnl_table[chnl]['default_value']))})"
             else:
                 defaultValue = ''
 
@@ -123,14 +151,17 @@ def constructorInit(args, prj, data):
 
 
     for key, value in data['subBlockInstances'].items():
-        out.append(f'        ,{ value["instance"] }(std::dynamic_pointer_cast<{ value["instanceType"] }Base>( instanceFactory::createInstance(name(), "{ value["instance"]}", "{value["instanceType"]}", "{value["variant"]}")))')
+        instUsesConfig = intf_gen_utils.block_uses_config(prj.getBlockData(value['instanceTypeKey']), prj)
+        instCfg = cfg if instUsesConfig else ''
+        out.append(f'        ,{ value["instance"] }(std::dynamic_pointer_cast<{ value["instanceType"] }Base{instCfg}>( instanceFactory::createInstance(name(), "{ value["instance"]}", "{value["instanceType"]}", "{value["variant"]}")))')
     for reg, regData in data['registers'].items():
         # Skip memory registers - they only have adapters, not hwRegister objects
         if regData['regType'] == 'memory':
             continue
         if regData['regType'] == 'rw':
             defaultValue = hex(prj.getConst(regData["defaultValue"]))
-            out.append(f'        ,{ regData["register"] }({regData["structure"]}::_packedSt({defaultValue}))')
+            regType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
+            out.append(f'        ,{ regData["register"] }({regType}::_packedSt({defaultValue}))')
         else:
             out.append(f'        ,{ regData["register"] }()')
     if data['blockInfo'].get('isRegHandler'):
@@ -144,10 +175,11 @@ def constructorInit(args, prj, data):
                 out.append(f'        ,{ regData["register"] }_adapter({ baseClassName }::{ regData["register"] })')
     else:
         for mem, memData in data['memories'].items():
+            linesExpr = wordLinesExpr(memData, prj, usesConfig, data)
             if memData["local"]:
-                out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]}, HWMEMORYTYPE_LOCAL)')
+                out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {linesExpr}, HWMEMORYTYPE_LOCAL)')
             else:
-                out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {memData["wordLines"]})')
+                out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {linesExpr})')
         
         # Initialize LOCAL memory registers
         if registerDecode:
@@ -170,6 +202,7 @@ def constructorInit(args, prj, data):
 
 def constructorBody(args, prj, data):
     out = list()
+    usesConfig = intf_gen_utils.block_uses_config(data, prj)
 
     out.append('{')
     first = True
@@ -188,7 +221,9 @@ def constructorBody(args, prj, data):
                 'name': memData["memory"],
                 'block': memData["block"],
                 'structure': memData["structure"],
+                'structureKey': memData["structureKey"],
                 'wordLines': memData["wordLines"],
+                'wordLinesKey': memData.get("wordLinesKey", ""),
                 'is_reg_handler': data['blockInfo'].get('isRegHandler')
             })
         
@@ -202,7 +237,9 @@ def constructorBody(args, prj, data):
                     'name': regData["register"],
                     'block': regData["block"],
                     'structure': regData["structure"],
-                    'wordLines': regData["wordLines"]
+                    'structureKey': regData["structureKey"],
+                    'wordLines': regData["wordLines"],
+                    'wordLinesKey': regData.get("wordLinesKey", "")
                 })
         
         # Add regular registers
@@ -235,12 +272,15 @@ def constructorBody(args, prj, data):
                     memory_comment_written = True
                     out.append(f'    // register memories for FW access')
                 if item['type'] == 'memory':
+                    memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
+                    linesExpr = wordLinesExpr(item, prj, usesConfig, data)
                     if item['is_reg_handler']:
-                        out.append(f'    regs.addMemory( {constName}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                        out.append(f'    regs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
                     else:
-                        out.append(f'    regs.addMemory( {constName}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
+                        out.append(f'    regs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
                 else:  # memory_register
-                    out.append(f'    regs.addMemory( {constName}, {item["structure"]}::_byteWidth, {item["wordLines"]}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                    memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
+                    out.append(f'    regs.addMemory( {constName}, {memType}::_byteWidth, {wordLinesExpr(item, prj, usesConfig, data)}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
             else:  # regular register
                 if not register_comment_written:
                     register_comment_written = True
@@ -253,7 +293,8 @@ def constructorBody(args, prj, data):
             first=False
             out.append(f'// hierarchical connections: instance port->parent port (dst->dst, src-src without channels)')
 
-        out.append(f'    { value["instance"] }->{ value["instancePortName"]}({ value["parentPortName"] });')
+        parentPortName = f'this->{value["parentPortName"]}' if usesConfig else value["parentPortName"]
+        out.append(f'    { value["instance"] }->{ value["instancePortName"]}({ parentPortName });')
 
 
     connections = intf_gen_utils.sc_connect_channels(data, ' '*4, data)
