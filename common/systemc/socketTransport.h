@@ -5,8 +5,8 @@
 #include <cstdint>
 #include <cstddef>
 
-enum _socketMsgTypeT{ MSG_REQ=0x01, MSG_ACK=0x02, MSG_PUSH=0x03, MSG_PUSH_ACK=0x04, MSG_VLD=0x05, MSG_RDY=0x06, MSG_SYNC=0x07, MSG_SHUTDOWN=0xFE, MSG_ERROR=0xFF };
-inline const char* _socketMsgTypeT_prt( _socketMsgTypeT val )
+enum socketMsgTypeT{ MSG_REQ=0x01, MSG_ACK=0x02, MSG_PUSH=0x03, MSG_PUSH_ACK=0x04, MSG_VLD=0x05, MSG_RDY=0x06, MSG_SYNC=0x07, MSG_SHUTDOWN=0xFE, MSG_ERROR=0xFF };
+inline const char* socketMsgTypeT_prt( socketMsgTypeT val )
 {
     switch( val )
     {

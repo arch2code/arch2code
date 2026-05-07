@@ -48,7 +48,6 @@ void pySocketSocket::simHeartbeat(void)
 
 void pySocketSocket::eotStopSim(void)
 {
-    endOfTestState &eotState = endOfTestState::GetInstance();
     testController::GetInstance().wait_all_tests_complete();
     endOfTestState &eot = endOfTestState::GetInstance();
     // Avoid missing eotEvent.notify() if it fires before this thread first waits.

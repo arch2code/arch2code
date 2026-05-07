@@ -11,6 +11,8 @@
 #include <atomic>
 #include <cstring>
 #include <memory>
+#include <mutex>
+#include <queue>
 #include <string>
 #include <thread>
 
@@ -24,14 +26,16 @@ void port_socket(req_ack_out<R, A> &port, const std::string &interface_name)
 
     auto req_event = ThreadSafeEventFactory::newEvent((interface_name + "_req").c_str());
 
-    R req_buf{};
+    std::mutex req_mutex;
+    std::queue<R> req_queue;
     auto running = std::make_shared<std::atomic<bool>>(true);
 
-    std::thread rx_thread([running, fd, &req_buf, req_event, interface_name]() {
+    std::thread rx_thread([running, fd, &req_mutex, &req_queue, req_event, interface_name]() {
         uint8_t msg_type = 0;
         uint16_t len = 0;
+        R recv_buf{};
         while (running->load(std::memory_order_acquire)) {
-            if (!socket_recv_msg(fd, msg_type, &req_buf, len, static_cast<uint16_t>(sizeof(R)))) {
+            if (!socket_recv_msg(fd, msg_type, &recv_buf, len, static_cast<uint16_t>(sizeof(R)))) {
                 // Peer closed the TCP stream (often right after MSG_SHUTDOWN). Coordinators wait on
                 // peerClosed; treat EOF like shutdown for lifecycle.
                 running->store(false, std::memory_order_release);
@@ -47,6 +51,10 @@ void port_socket(req_ack_out<R, A> &port, const std::string &interface_name)
                 continue;
             }
             if (msg_type == MSG_REQ && len == sizeof(R)) {
+                {
+                    std::lock_guard<std::mutex> lock(req_mutex);
+                    req_queue.push(recv_buf);
+                }
                 req_event->notify();
             }
         }
@@ -63,13 +71,30 @@ void port_socket(req_ack_out<R, A> &port, const std::string &interface_name)
             break;
         }
 
-        R req_data = req_buf;
-        A ack_data{};
-        port->req(req_data, ack_data);
+        for (;;) {
+            R req_data{};
+            bool have_req = false;
+            {
+                std::lock_guard<std::mutex> lock(req_mutex);
+                if (!req_queue.empty()) {
+                    req_data = std::move(req_queue.front());
+                    req_queue.pop();
+                    have_req = true;
+                }
+            }
+            if (!have_req) {
+                break;
+            }
+            A ack_data{};
+            port->req(req_data, ack_data);
 
-        if (!socket_send_msg(fd, MSG_ACK, &ack_data, static_cast<uint16_t>(sizeof(A)))) {
-            running->store(false, std::memory_order_release);
-            should_shutdown = true;
+            if (!socket_send_msg(fd, MSG_ACK, &ack_data, static_cast<uint16_t>(sizeof(A)))) {
+                running->store(false, std::memory_order_release);
+                should_shutdown = true;
+                break;
+            }
+        }
+        if (should_shutdown) {
             break;
         }
     }
@@ -88,14 +113,16 @@ void port_socket(req_ack_in<R, A> &port, const std::string &interface_name)
 
     auto ack_event = ThreadSafeEventFactory::newEvent((interface_name + "_ack").c_str());
 
-    A ack_buf{};
+    std::mutex ack_mutex;
+    std::queue<A> ack_queue;
     auto running = std::make_shared<std::atomic<bool>>(true);
 
-    std::thread rx_thread([running, fd, &ack_buf, ack_event, interface_name]() {
+    std::thread rx_thread([running, fd, &ack_mutex, &ack_queue, ack_event, interface_name]() {
         uint8_t msg_type = 0;
         uint16_t len = 0;
+        A recv_buf{};
         while (running->load(std::memory_order_acquire)) {
-            if (!socket_recv_msg(fd, msg_type, &ack_buf, len, static_cast<uint16_t>(sizeof(A)))) {
+            if (!socket_recv_msg(fd, msg_type, &recv_buf, len, static_cast<uint16_t>(sizeof(A)))) {
                 running->store(false, std::memory_order_release);
                 socketFactory::notifyPeerClosed(interface_name);
                 break;
@@ -109,6 +136,10 @@ void port_socket(req_ack_in<R, A> &port, const std::string &interface_name)
                 continue;
             }
             if (msg_type == MSG_ACK && len == sizeof(A)) {
+                {
+                    std::lock_guard<std::mutex> lock(ack_mutex);
+                    ack_queue.push(recv_buf);
+                }
                 ack_event->notify();
             }
         }
@@ -131,14 +162,29 @@ void port_socket(req_ack_in<R, A> &port, const std::string &interface_name)
             break;
         }
 
-
-        sc_core::wait(ack_event->default_event());
+        for (;;) {
+            sc_core::wait(ack_event->default_event());
+            if (!running->load(std::memory_order_acquire)) {
+                break;
+            }
+            A ack_data{};
+            bool have_ack = false;
+            {
+                std::lock_guard<std::mutex> lock(ack_mutex);
+                if (!ack_queue.empty()) {
+                    ack_data = std::move(ack_queue.front());
+                    ack_queue.pop();
+                    have_ack = true;
+                }
+            }
+            if (have_ack) {
+                port->ack(ack_data);
+                break;
+            }
+        }
         if (!running->load(std::memory_order_acquire)) {
             break;
         }
-
-        A ack_data = ack_buf;
-        port->ack(ack_data);
     }
 
     if (should_shutdown) {

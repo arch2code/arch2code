@@ -2,6 +2,7 @@
 
 #include "systemc.h"
 #include <string>
+#include <cstring>
 #include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
@@ -125,8 +126,12 @@ public:
             }
         }
 
-        if (getenv("PYSOCKET_SKIP_PYTHON_SIDECAR") != nullptr) {
-            skip_sidecar_ = true;
+        if (const char *skip_env = getenv("PYSOCKET_SKIP_PYTHON_SIDECAR")) {
+            if (std::strcmp(skip_env, "true") == 0 || std::strcmp(skip_env, "1") == 0) {
+                skip_sidecar_ = true;
+            } else if (std::strcmp(skip_env, "false") == 0 || std::strcmp(skip_env, "0") == 0) {
+                skip_sidecar_ = false;
+            }
         }
         std::string sc_ports_file = "";
         if (!skip_sidecar_) {
@@ -183,7 +188,7 @@ public:
         options.add_options()
             ("PYSOCKET_PORTS_FILE", po::value<std::string>(&ports_file_)->default_value(""), "File to write the ports to")
             ("PYSOCKET_PORTS_ENV_FILE", po::value<std::string>(&ports_env_file_)->default_value(""), "File to write the ports environment variables to")
-            ("PYSOCKET_SKIP_PYTHON_SIDECAR", po::value<bool>(&skip_sidecar_)->default_value(false), "Skip the Python sidecar");
+            ("PYSOCKET_SKIP_PYTHON_SIDECAR", po::bool_switch(&skip_sidecar_)->default_value(false), "Skip the Python sidecar");
     }
 
     void beforeFullSim(void) override

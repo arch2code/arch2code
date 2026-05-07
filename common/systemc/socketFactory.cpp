@@ -60,6 +60,11 @@ static bool bind_listen_loopback(int &listen_fd, uint16_t &out_port)
 uint16_t socketFactory::registerInterface(const std::string &name)
 {
     auto &map = getMap();
+    auto it = map.find(name);
+    if (it != map.end()) {
+        // We should not be registering an interface twice
+        return 0;
+    }
     SocketEntry ent;
     int lf = -1;
     uint16_t p = 0;
