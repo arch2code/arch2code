@@ -1,11 +1,5 @@
-constants:
-  P2S_MESSAGE_LIST_SIZE: {value: 16, desc: "Size of the p2s message list"}
-  P2S_MESSAGE_LIST_LOG2: {eval: "($P2S_MESSAGE_LIST_SIZE-1).bit_length()", desc: "Log2 of the p2s message list size"}
 
 types:
-  p2s_message_tag_t:
-    width: P2S_MESSAGE_LIST_LOG2
-    desc: "Tag type"
   param_t:
     width: 32
     desc: "Parameter type"
@@ -21,8 +15,6 @@ enums:
       - {enumName: P2S_MESSAGE_TYPE_RESPONSE, value: 1, desc: "Response"}
 
 
-#  TODO: add framing to the message with a header containing the message length, message ID and tag
-
 structures:
   message_header_st:
     length: {varType: word16_t, desc: "Message payload length"}
@@ -33,8 +25,6 @@ structures:
     param1: {varType: param_t, desc: "Parameter 1"}
   p2s_response_st:
     response: {varType: param_t, desc: "response"}
-  p2s_message_tag_st:
-    tag: {varType: p2s_message_tag_t, desc: "Tag"}
 
 blocks:
   pySocket_tb:
@@ -62,8 +52,6 @@ instances:
   u_dut:        { container: pySocket_tb, instanceType: dut,             instGroup: top  }
 
 
-# memories:
-#   - {memory: p2s_message_mem, block: pySocket, structure: p2s_message_st, wordLines: P2S_MESSAGE_LIST_SIZE, addressStruct: p2s_message_tag_st, desc: "memory for p2s messages"}
 
 # interfaces are needed to make any connection from one instance of a block to another block's instance
 ## interfacename: is the interface's name and key for usage by any other dictionary doing a lookup, required

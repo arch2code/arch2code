@@ -123,35 +123,5 @@ void p2s_response_st::sc_unpack(sc_bv<p2s_response_st::_bitWidth> packed_data)
 {
     response = (param_t) packed_data.range(31, 0).to_uint64();
 }
-bool p2s_message_tag_st::operator == (const p2s_message_tag_st & rhs) const {
-    bool ret = true;
-    ret = ret && (tag == rhs.tag);
-    return ( ret );
-    }
-std::string p2s_message_tag_st::prt(bool all) const
-{
-    return (std::format("tag:0x{:01x}",
-       (uint64_t) tag
-    ));
-}
-void p2s_message_tag_st::pack(_packedSt &_ret) const
-{
-    memset(&_ret, 0, p2s_message_tag_st::_byteWidth);
-    _ret = tag;
-}
-void p2s_message_tag_st::unpack(const _packedSt &_src)
-{
-    tag = (p2s_message_tag_t)((_src) & ((1ULL << 4) - 1));
-}
-sc_bv<p2s_message_tag_st::_bitWidth> p2s_message_tag_st::sc_pack(void) const
-{
-    sc_bv<p2s_message_tag_st::_bitWidth> packed_data;
-    packed_data.range(3, 0) = tag;
-    return packed_data;
-}
-void p2s_message_tag_st::sc_unpack(sc_bv<p2s_message_tag_st::_bitWidth> packed_data)
-{
-    tag = (p2s_message_tag_t) packed_data.range(3, 0).to_uint64();
-}
 
 // GENERATED_CODE_END
