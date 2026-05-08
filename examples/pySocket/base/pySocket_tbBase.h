@@ -8,7 +8,7 @@
 // GENERATED_CODE_PARAM --block=pySocket_tb
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "req_ack_channel.h"
-#include "pySocketIncludes.h"
+#include "pySocket_tbIncludes.h"
 
 class pySocket_tbBase : public virtual blockPortBase
 {

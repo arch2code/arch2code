@@ -5,7 +5,7 @@
 //module as defined by block: dut
 module dut
 // Generated Import package statement(s)
-import pySocket_package::*;
+import pySocket_tb_package::*;
 (
     req_ack_if.dst test_req_ack,
     req_ack_if.dst test2Python_req_ack,

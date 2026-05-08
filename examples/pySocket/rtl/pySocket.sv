@@ -5,7 +5,7 @@
 //module as defined by block: pySocket
 module pySocket
 // Generated Import package statement(s)
-import pySocket_package::*;
+import pySocket_tb_package::*;
 (
     req_ack_if.src test_req_ack,
     req_ack_if.src test2Python_req_ack,

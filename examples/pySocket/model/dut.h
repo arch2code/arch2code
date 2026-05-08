@@ -10,7 +10,7 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "dutBase.h"
-#include "pySocketIncludes.h"
+#include "pySocket_tbIncludes.h"
 
 SC_MODULE(dut), public blockBase, public dutBase
 {

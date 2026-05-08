@@ -3,5 +3,5 @@
 // GENERATED_CODE_BEGIN --template=rtlDotF
 +incdir+.
 -y .
-pySocket_package.sv
+pySocket_tb_package.sv
 // GENERATED_CODE_END

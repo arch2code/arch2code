@@ -11,7 +11,7 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "pySocketBase.h"
-#include "pySocketIncludes.h"
+#include "pySocket_tbIncludes.h"
 
 SC_MODULE(pySocket), public blockBase, public pySocketBase
 {

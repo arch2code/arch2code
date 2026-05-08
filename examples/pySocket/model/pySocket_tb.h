@@ -10,7 +10,7 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "pySocket_tbBase.h"
-#include "pySocketIncludes.h"
+#include "pySocket_tbIncludes.h"
 //contained instances forward class declaration
 class pySocketBase;
 class dutBase;

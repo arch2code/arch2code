@@ -7,7 +7,7 @@ projectName: pySocket
 # note in the case of additional project files any top level controls (such as schema:) are ignored
 # relative path names are resolved based on location of project file (this includes sub projects)
 projectFiles:
-  - pySocket.yaml
+  - pySocket_tb.yaml
 
 # uncomment to use a custom schema file, otherwise the default schema is used
 #dbSchema: config/schema.yaml
@@ -40,10 +40,10 @@ dirs:
 # architecture hierarchy.
 fileGeneration:
   template: $a2c/templates/fileGen/fileGen.py
-  # fileMap:
-  #   includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
+  fileMap:
+    includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
   # standard copyright statement to be added to all generated files - change to suite your company
-  fileCopyrightStatement: "copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE"
+  fileCopyrightStatement: ""
 postProcess:
   - $a2c/config/postParseRegister.py
   - $a2c/config/postParseChecks.py

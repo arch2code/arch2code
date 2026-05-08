@@ -6,7 +6,7 @@
 
 module pySocket_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import pySocket_package::*;
+    import pySocket_tb_package::*;
 (
     // req_ack_if.src
     output bit test_req_ack_req,
