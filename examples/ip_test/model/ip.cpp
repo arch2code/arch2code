@@ -3,6 +3,16 @@
 // GENERATED_CODE_PARAM --block=ip
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "ip.h"
+// === Block factory registration (ip) ===
+namespace {
+[[maybe_unused]] int _ip_registered = []() -> int {
+    instanceFactory::registerBlock("ip_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant0Config>>(blockName, variant, bbMode)); }, "variant0");
+    instanceFactory::registerBlock("ip_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant1Config>>(blockName, variant, bbMode)); }, "variant1");
+    return 0;
+}();
+} // namespace
+// === End block factory registration ===
+
 template<typename Config>
 void ip<Config>::regHandler(void) { //handle register decode
     registerHandler< apbAddrSt, apbDataSt >(regs, this->apbReg, (1<<(9))-1); }
@@ -13,11 +23,11 @@ ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockBase("ip", name(), bbMode)
         ,ipBase<Config>(name(), variant)
         ,regs(log_)
-        ,ipCfg(ipCfgSt<Config>::_packedSt(0x0))
+        ,ipCfg(typename ipCfgSt<Config>::_packedSt(0x0))
         ,ipLastData()
         ,ipMem(name(), "ipMem", mems, Config::IP_MEM_DEPTH)
         ,ipFixedMem(name(), "ipFixedMem", mems, Config::IP_MEM_DEPTH)
-        ,ipNonConstMem(name(), "ipNonConstMem", mems, instanceFactory::getParam("ip", variant, "IP_NONCONST_DEPTH"))
+        ,ipNonConstMem(name(), "ipNonConstMem", mems, Config::IP_NONCONST_DEPTH)
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
@@ -31,7 +41,7 @@ ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbM
     // register memories for FW access
     regs.addMemory( REG_ADDR_IP_IPMEM, ipMemSt<Config>::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipMem", &ipMem);
     regs.addMemory( REG_ADDR_IP_IPFIXEDMEM, ipFixedSt::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipFixedMem", &ipFixedMem);
-    regs.addMemory( REG_ADDR_IP_IPNONCONSTMEM, ipFixedSt::_byteWidth, instanceFactory::getParam("ip", variant, "IP_NONCONST_DEPTH"), std::string(this->name()) + ".ipNonConstMem", &ipNonConstMem);
+    regs.addMemory( REG_ADDR_IP_IPNONCONSTMEM, ipFixedSt::_byteWidth, Config::IP_NONCONST_DEPTH, std::string(this->name()) + ".ipNonConstMem", &ipNonConstMem);
     // register registers for FW access
     regs.addRegister( REG_ADDR_IP_IPCFG, 2, "ipCfg", &ipCfg );
     regs.addRegister( REG_ADDR_IP_IPLASTDATA, 1, "ipLastData", &ipLastData );

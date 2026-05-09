@@ -27,6 +27,7 @@ templates:
   constructor: $a2c/templates/systemc/constructor.py
   baseConstructor: $a2c/templates/systemc/baseConstructor.py
   blockRegs: $a2c/templates/systemc/blockRegs.py
+  blockRegistrar: $a2c/templates/systemc/blockRegistrar.py
   moduleScaffold: $a2c/templates/systemc/moduleScaffold.py
   headers: $a2c/templates/systemc/headers.py
   includes: $a2c/templates/systemc/includes.py
@@ -85,6 +86,12 @@ fileGeneration:
     # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
     blockBase   : { name : "Base",            ext: {hdr: "h"},             cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    desc: "Module Base class header file"}
     block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
+    # blockRegistrar emits the per-block trampoline TU described in
+    # plan-block-registration.md. The cond predicate is OR semantics —
+    # the file is generated if the block uses Config (parameterized
+    # SC) or has a Verilated wrapper. Pure non-templated SC-only
+    # blocks self-register from their own .cpp and gain no trampoline.
+    blockRegistrar : { name : "Registrar",    ext: {src: "cpp"},           cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: block, basePath: model, desc: "Per-block trampoline registrar TU"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
     vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}

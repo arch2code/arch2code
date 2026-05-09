@@ -3,7 +3,7 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, block_uses_config, block_config_arg, block_default_config_type
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, block_has_own_params, resolve_instance_config_arg
 
 from jinja2 import Template
 
@@ -44,29 +44,45 @@ def tb_sec_init(args, prj, data):
     t = Template(sec_tb_class_init_template)
     blockName=data['blockName']
     instName=blockName
-    usesConfig = block_uses_config(data, prj)
-    defaultConfig = block_default_config_type(data, prj) if usesConfig else ''
-    cfg = f'<{defaultConfig}>' if usesConfig else ''
-    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external", uses_config=usesConfig, cfg=cfg, default_config=defaultConfig)
+    isParameterizable = data['isParameterizable']
+    # Stage 3.2 of plan-variant-config-unification.md: the testbench harness
+    # holds a `<DUT>Base{cfg}` shared_ptr and inherits `<DUT>Channels{cfg}`.
+    # Both companions are class templates only when the DUT block has its
+    # own `params:`. Containers like `ip_top` (no own params) become
+    # non-templated, so the testbench's `cfg` is empty.
+    hasOwnParams = block_has_own_params(prj, data['qualBlock'])
+    defaultConfig = data['defaultConfig'] if isParameterizable else ''
+    cfg = f'<{defaultConfig}>' if hasOwnParams else ''
+    # Stage 3.2: the DUT's force-link function is emitted for any block
+    # without its own params (templated leaf blocks do not need it). The
+    # template branch that omits the force-link call is therefore gated on
+    # hasOwnParams, not on isParameterizable.
+    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external",
+                 is_parameterizable=isParameterizable, cfg=cfg, default_config=defaultConfig,
+                 dut_is_parameterizable=hasOwnParams)
     return s
 
 def tb_sec_header(args, prj, data):
     t = Template(sec_tb_class_header_template)
     blockName=data['blockName']
     instName=blockName
-    usesConfig = block_uses_config(data, prj)
-    defaultConfig = block_default_config_type(data, prj) if usesConfig else ''
-    cfg = f'<{defaultConfig}>' if usesConfig else ''
-    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external", uses_config=usesConfig, cfg=cfg, default_config=defaultConfig)
+    isParameterizable = data['isParameterizable']
+    hasOwnParams = block_has_own_params(prj, data['qualBlock'])
+    defaultConfig = data['defaultConfig'] if isParameterizable else ''
+    cfg = f'<{defaultConfig}>' if hasOwnParams else ''
+    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external", is_parameterizable=isParameterizable, cfg=cfg, default_config=defaultConfig)
     return s
 
 def ext_sec_init(args, prj, data):
 
     out = []
     out += sc_instance_includes(data, prj)
-    usesConfig = block_uses_config(data, prj)
-    defaultConfig = block_default_config_type(data, prj) if usesConfig else ''
-    cfg = f'<{defaultConfig}>' if usesConfig else ''
+    isParameterizable = data['isParameterizable']
+    # Stage 3.2: the External pseudo-block inherits `<DUT>Inverted{cfg}`,
+    # which loses its template head when the DUT has no own params.
+    hasOwnParams = block_has_own_params(prj, data['qualBlock'])
+    defaultConfig = data['defaultConfig'] if isParameterizable else ''
+    cfg = f'<{defaultConfig}>' if hasOwnParams else ''
 
     s = """
 {blockName}External::{blockName}External(sc_module_name modulename) :
@@ -75,8 +91,25 @@ def ext_sec_init(args, prj, data):
     out.append(s.format(blockName=data['blockName'], cfg=cfg))
 
     for data_ in data['subBlockInstances'].values():
-        instCfg = cfg if block_uses_config(prj.getBlockData(data_['instanceTypeKey']), prj) else ''
-        s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base{instCfg}>( instanceFactory::createInstance(name(), "{instName}", "{blockName}", "{variant}")))'
+        childData = prj.getBlockConfigView(data_['instanceTypeKey'])
+        instIsParameterizable = childData['isParameterizable']
+        # Stage 3.1: child instance's cast target is its per-variant Config,
+        # not the parent's defaultConfig. Falls back to the child's legacy
+        # defaultConfig for empty descriptors.
+        instCfg = resolve_instance_config_arg(prj, data_)
+        # Generated createInstance passes the variant string only.
+        # Under variant ≅ Config (Stage 2 of
+        # plan-variant-config-unification.md) the factory key is
+        # `(blockType, variant)`. Non-templated children additionally
+        # emit an active force_link_<child>() call before the lookup.
+        # See plan-block-registration.md "Force-Link Function".
+        createCall = (
+            'instanceFactory::createInstance(name(), "{instName}", '
+            '"{blockName}", "{variant}")'
+        )
+        if not instIsParameterizable:
+            createCall = f'(force_link_{{blockName}}(), {createCall})'
+        s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base{instCfg}>(' + createCall + '))'
         out.append(s.format(blockName=data_['instanceType'], instName=data_['instance'], instCfg=instCfg, variant=data_.get('variant', '')))
 
     for channelType in data['connectDouble']:
@@ -133,11 +166,17 @@ def ext_sec_header(args, prj, data):
 
     ext_fwd_decl_s = []
     external_blocks = sorted(data['subBlocks'].values())
-    usesConfig = block_uses_config(data, prj)
-    defaultConfig = block_default_config_type(data, prj) if usesConfig else ''
-    cfg = f'<{defaultConfig}>' if usesConfig else ''
+    isParameterizable = data['isParameterizable']
+    # Stage 3.2: External pseudo-block inherits `<DUT>Inverted{cfg}`. Drop
+    # template arg when the DUT has no own params.
+    hasOwnParams = block_has_own_params(prj, data['qualBlock'])
+    defaultConfig = data['defaultConfig'] if isParameterizable else ''
+    cfg = f'<{defaultConfig}>' if hasOwnParams else ''
+    # Stage 3.2: child Base forward decls are class templates only when
+    # the child has its own params.
     for blockKey, blockName in sorted(data['subBlocks'].items(), key=lambda item: item[1]):
-        if block_uses_config(prj.getBlockData(blockKey), prj):
+        childHasOwnParams = block_has_own_params(prj, blockKey)
+        if childHasOwnParams:
             ext_fwd_decl_s.append(f'template<typename Config> class {blockName}Base;')
         else:
             ext_fwd_decl_s.append(f'class {blockName}Base;')
@@ -145,22 +184,33 @@ def ext_sec_header(args, prj, data):
     ext_inst_decl_s = []
     external_insts = [v for v in data['subBlockInstances'].values() ]
     for data_ in external_insts:
-        instCfg = cfg if block_uses_config(prj.getBlockData(data_['instanceTypeKey']), prj) else ''
+        # Stage 3.1: per-instance Config for parameterizable children.
+        instCfg = resolve_instance_config_arg(prj, data_)
         ext_inst_decl_s.append(f'std::shared_ptr<{data_["instanceType"]}Base{instCfg}> {data_["instance"]};')
 
+    # Stage 3.3: channel types derive from the connected child's per-variant
+    # Config inside sc_gen_block_channels' connection-walk. The post-hoc
+    # `replace('<Config>', f'<{defaultConfig}>')` substitution that
+    # previously mapped the parent's template parameter onto the parent's
+    # defaultConfig is therefore obsolete for the typical case. We retain
+    # the substitution as a fallback for channels whose endpoints are not
+    # parameterizable child instances but still reference parameterizable
+    # structures (e.g., the parent itself surfaces `<Config>`); under
+    # Stage 3.2 those parents are non-templated and the literal `<Config>`
+    # would otherwise leak through as an undeclared name.
     ext_chnl_decl_s = sc_declare_channels(data, prj, ' '*4, data)
-    if usesConfig:
+    if isParameterizable:
         ext_chnl_decl_s = [line.replace('<Config>', f'<{defaultConfig}>') for line in ext_chnl_decl_s]
 
     t = Template(sec_tb_external_header_template)
     config_includes = []
-    if usesConfig:
+    if isParameterizable:
         for context in data['includeContext']:
             if context in data['includeFiles'].get('config_hdr', {}):
                 config_includes.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
     s = t.render(
         blockname=data['blockName'],
-        uses_config=usesConfig,
+        is_parameterizable=isParameterizable,
         cfg=cfg,
         default_config=defaultConfig,
         config_includes='\n'.join(config_includes),
@@ -188,19 +238,11 @@ sec_tb_class_header_template = """\
 #include "{{blockname}}Base.h"
 #include "{{blockname}}External.h"
 
+// Force-link function (active modules-mode anchor) for the testbench
+// class. See plan-block-registration.md "Force-Link Function".
+void force_link_{{blockname}}Testbench();
+
 class {{blockname}}Testbench: public sc_module, public blockBase, public {{blockname}}Channels{{cfg}} {
-
-    private:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("{{blockname}}Testbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{{blockname}}Testbench>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 
 public:
 
@@ -224,12 +266,28 @@ public:
 sec_tb_class_init_template = """\
 #include "{{blockname}}Testbench.h"
 
-{{blockname}}Testbench::registerBlock {{blockname}}Testbench::registerBlock_; //register the block with the factory
+// === Block factory registration ({{blockname}}Testbench) ===
+// Force-link function. Declaration in {{blockname}}Testbench.h.
+// See plan-block-registration.md "Force-Link Function".
+void force_link_{{blockname}}Testbench() {}
+
+void register_{{blockname}}Testbench_variants() {
+    instanceFactory::registerBlock("{{blockname}}Testbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{{blockname}}Testbench>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _{{blockname}}Testbench_registered = (register_{{blockname}}Testbench_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 {{blockname}}Testbench::{{blockname}}Testbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("{{blockname}}Testbench", name(), bbMode)
         ,{{blockname}}Channels{{cfg}}("Chnl", "tb")
+{%- if dut_is_parameterizable %}
         ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>( instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "")))
+{%- else %}
+        ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>((force_link_{{blockname}}(), instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", ""))))
+{%- endif %}
         ,{{extinstname}}("{{extinstname}}")
 {
     bind({{dutinstname}}.get(), &{{extinstname}});

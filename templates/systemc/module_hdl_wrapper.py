@@ -13,9 +13,13 @@ def render(args, prj, data):
 
 
 def render_sc(args, prj, data):
-    usesConfig = intf_gen_utils.block_uses_config(data, prj)
-    defaultConfig = intf_gen_utils.block_default_config_type(data, prj) if usesConfig else ''
-    cfg = f'<{defaultConfig}>' if usesConfig else ''
+    # `data` is per-block when this template renders block-mode files
+    # (`<block>_hdl_sc_wrapper.h`) and project/hierarchy-level when it
+    # renders `vl_wrap.cpp`. Per-block keys are absent in the latter,
+    # so defaults keep hierarchy-mode rendering working.
+    isParameterizable = data.get('isParameterizable', False)
+    defaultConfig = data.get('defaultConfig', '') if isParameterizable else ''
+    cfg = f'<{defaultConfig}>' if isParameterizable else ''
 
     def sec_channel_decl(args, prj, data):
         s = []
@@ -98,7 +102,7 @@ def render_sc(args, prj, data):
         t = Template(sec_hdl_sc_wrapper_class_template)
         s = t.render(
             blockname=data['blockName'], variants=data['variants'],
-            uses_config=usesConfig,
+            is_parameterizable=isParameterizable,
             cfg=cfg,
             default_config=defaultConfig,
             sec_bfm_includes=sec_bfm_includes(args, prj, data),
@@ -148,7 +152,7 @@ def render_sc(args, prj, data):
         for port_type in data['ports']:
             for port in data['ports'][port_type] if not args.hierarchy else []:
                 mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port_type][port], prj, data)
-                if usesConfig:
+                if isParameterizable:
                     for key in ['bfm_decl', 'hdl_if_decl']:
                         mp_sig[port][key] = mp_sig[port][key].replace('<Config>', f'<{defaultConfig}>')
 

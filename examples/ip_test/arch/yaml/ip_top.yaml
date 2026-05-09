@@ -12,6 +12,7 @@ blockDir: .
 
 include:
     - ip.yaml
+    - ipLeaf.yaml
 
 constants:
     DWORD: { value: 32, desc: "Width of an APB dword" }
@@ -71,37 +72,14 @@ blocks:
         hasRtl: true
 
 instances:
-    ip_top_tb:
-        container: ip_top_tb # self reference
-        instanceType: ip_top_tb
-        instGroup: top
-    u_ip_top: { container: ip_top_tb, instanceType: ip_top, instGroup: top }
-    uCPU:
-        { container: ip_top_tb, instanceType: cpu, instGroup: top, color: pink }
-    uAPBDecode:
-        {
-            container: ip_top,
-            instanceType: apbDecode,
-            instGroup: top,
-            color: pink,
-        }
-    uSrc: { container: ip_top, instanceType: src, instGroup: top, color: green }
-    uIp0:
-        {
-            container: ip_top,
-            instanceType: ip,
-            instGroup: top,
-            addressGroup: top,
-            variant: variant0,
-        }
-    uIp1:
-        {
-            container: ip_top,
-            instanceType: ip,
-            instGroup: top,
-            addressGroup: top,
-            variant: variant1,
-        }
+    ip_top_tb:  { container: ip_top_tb, instanceType: ip_top_tb, instGroup: top }
+    u_ip_top:   { container: ip_top_tb, instanceType: ip_top,    instGroup: top }
+    uCPU:       { container: ip_top_tb, instanceType: cpu,       instGroup: top }
+    uAPBDecode: { container: ip_top,    instanceType: apbDecode, instGroup: top }
+    uSrc:       { container: ip_top,    instanceType: src,       instGroup: top }
+    uIp0:       { container: ip_top,    instanceType: ip,        instGroup: top, addressGroup: top, variant: variant0 }
+    uIp1:       { container: ip_top,    instanceType: ip,        instGroup: top, addressGroup: top, variant: variant1 }
+    uLeaf:      { container: src,       instanceType: ipLeaf,    instGroup: top, variant: variantLeaf0 }
 
 connections:
     - { interface: apbReg, src: uCPU, dst: u_ip_top, name: cpu_main }
@@ -109,13 +87,7 @@ connections:
     - { interface: ipDataIf, src: uSrc, srcport: out1, dst: uIp1 }
 
 connectionMaps:
-    - {
-          interface: apbReg,
-          block: ip_top,
-          direction: dst,
-          instance: uAPBDecode,
-          name: cpu_main,
-      }
+    - { interface: apbReg, block: ip_top, direction: dst, instance: uAPBDecode, name: cpu_main }
 
 parameters:
     ip:
@@ -125,3 +97,6 @@ parameters:
         - { variant: variant1, param: IP_DATA_WIDTH, value: 12 }
         - { variant: variant1, param: IP_MEM_DEPTH, value: 8 }
         - { variant: variant1, param: IP_NONCONST_DEPTH, value: 12 }
+    ipLeaf:
+        - { variant: variantLeaf0, param: LEAF_DATA_WIDTH, value: 4 }
+        - { variant: variantLeaf0, param: LEAF_MEM_DEPTH,  value: 4 }

@@ -32,6 +32,8 @@ def render(args, prj, data):
             else:
                 return(block_src(args, prj, data))
             return(block_src(args, prj, data))
+        case 'blockRegistrar_src':
+            return(blockRegistrar_src(args, prj, data))
         case 'rtlModule_sv':
             if isRegHandler:
                 return(rtlModuleRegs(args, prj, data))
@@ -130,6 +132,21 @@ def block_src(args, prj, data):
     out.append('// GENERATED_CODE_BEGIN --template=constructor --section=body\n')
     out.append('    // GENERATED_CODE_END\n')
     out.append('};\n\n')
+    return("".join(out))
+
+# Per-block trampoline registrar TU. The body is emitted by
+# templates/systemc/blockRegistrar.py. The trampoline owns project-
+# specific factory registration concerns for the block (parameterized
+# SC lambdas with their per-Config tags, and verilated wrapper
+# registrations under the _verif suffix). Pure non-templated SC-only
+# blocks gain no trampoline (the cond predicate filters them out at
+# file-generation time).
+def blockRegistrar_src(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=blockRegistrar\n')
+    out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 
 def blockRegs_hdr(args, prj, data):
@@ -299,6 +316,15 @@ tbConfigTemplate = \
 #include "testBenchConfigFactory.h"
 #include "endOfTest.h"
 
+// Forward declaration of the active force-link function emitted by
+// the testbench class. Calling it from createTestBench() creates a
+// real symbol reference into __modulename__Testbench.cpp so the
+// linker pulls that TU into the program even when nothing else
+// references its symbols. This is required under C++20 modules and
+// static-archive linking. See plan-block-registration.md
+// "Force-Link Function".
+void force_link___modulename__Testbench();
+
 // GENERATED_CODE_PARAM --block=__modulename__
 // GENERATED_CODE_BEGIN --template=tbConfig
 // GENERATED_CODE_END
@@ -306,6 +332,7 @@ tbConfigTemplate = \
     bool createTestBench(void) override
     {
         //create hierarchy
+        force_link___modulename__Testbench();
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "__modulename__Testbench", "");
         return true;
     }

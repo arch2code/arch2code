@@ -18,9 +18,16 @@ def wordLinesExpr(item, prj, useConfig=False, blockData=None):
             if constData.get('constant') == wordLines and constData.get('isParameterizable', False):
                 return f"Config::{wordLines}"
         if blockData:
+            # Stage 4.2 of plan-variant-config-unification.md: block
+            # params with no backing constant (the "IP_NONCONST_DEPTH"
+            # pattern) are now Config fields, not runtime addParam
+            # entries. Read them from `Config::*` like any other
+            # parameterizable constant. Stage 4.3 ensures the per-variant
+            # Config struct carries the field with the variant's
+            # override value.
             for param in blockData.get('blockInfo', {}).get('params', []):
                 if param.get('param') == wordLines:
-                    return f'instanceFactory::getParam("{blockData["blockName"]}", variant, "{wordLines}")'
+                    return f"Config::{wordLines}"
     return wordLines
 
 # args from generator line
@@ -40,22 +47,45 @@ def render(args, prj, data):
 def constructorInit(args, prj, data):
     out = list()
     className = data["blockName"]
-    usesConfig = intf_gen_utils.block_uses_config(data, prj)
-    cfg = intf_gen_utils.block_config_arg(usesConfig)
-    templateDecl = intf_gen_utils.block_config_decl(usesConfig)
+    isParameterizable = data['isParameterizable']
+    # Stage 3.2 of plan-variant-config-unification.md: only leaf
+    # parameterizable blocks (those with their own `params:`) remain class
+    # templates. Non-leaf containers — flagged isParameterizable solely
+    # because parameterizable structures transit their surface — are emitted
+    # as non-templated classes.
+    hasOwnParams = intf_gen_utils.block_has_own_params(prj, data['qualBlock'])
+    cfg = intf_gen_utils.block_config_arg(hasOwnParams)
+    templateDecl = intf_gen_utils.block_config_decl(hasOwnParams)
     qualClassName = f'{className}{cfg}'
     baseClassName = f'{ className }Base{cfg}'
+    defaultConfig = data['defaultConfig'] if isParameterizable else ''
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
     out.append(f'#include "{className}.h"')
 
     out += intf_gen_utils.sc_instance_includes(data, prj)
 
-    if not usesConfig:
+    if not hasOwnParams:
         out.append(f'SC_HAS_PROCESS({ className });\n')
-        out.append(f'{ className }::registerBlock { className }::registerBlock_; //register the block with the factory\n')
+
+    # Block registration trigger.
+    #
+    # Non-templated blocks: a free helper function plus a self-registering
+    # static at namespace scope replaces the in-class struct registerBlock
+    # / static registerBlock_ pattern. An active force-link function is
+    # also emitted so generated parent / testbench code can guarantee that
+    # the implementation TU is linked into the program under C++20 modules
+    # and static-archive linking. See plan-block-registration.md
+    # "Force-Link Function" for the rationale.
+    #
+    # Parameterized blocks: a self-registering static is emitted that
+    # registers <className><DefaultConfig> for each variant the block
+    # declares. Multi-Config-per-project bindings are deferred to a later
+    # iteration that propagates per-instance Config tuples in
+    # processYaml.py and emits a per-project trampoline TU.
+    out.extend(blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOwnParams, defaultConfig))
 
     if data['addressDecode']['isApbRouter']:
-        if usesConfig:
+        if hasOwnParams:
             out.append(templateDecl)
         out.append(f'void { qualClassName }::routerDecode(void) //handle apb routing for register\n{{')
         out.append(f'    log_.logPrint(std::format("SystemC Thread:{{}} started", __func__));')
@@ -63,14 +93,14 @@ def constructorInit(args, prj, data):
 
     if registerDecode:
         busInterface = data["addressDecode"]["registerBusInterface"]
-        busInterfaceRef = f'this->{busInterface}' if usesConfig else busInterface
+        busInterfaceRef = f'this->{busInterface}' if hasOwnParams else busInterface
         busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
-        if usesConfig:
+        if hasOwnParams:
             out.append(templateDecl)
         out.append(f'void { qualClassName }::regHandler(void) {{ //handle register decode')
         out.append(f'    registerHandler< {busStructs} >(regs, {busInterfaceRef}, (1<<({data["addressDecode"]["addressBits"]}))-1); }}\n')
 
-    if usesConfig:
+    if hasOwnParams:
         out.append(templateDecl)
     out.append(f'{ qualClassName }::{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode)')
     out.append(f'       : sc_module(blockName)')
@@ -142,8 +172,20 @@ def constructorInit(args, prj, data):
                     if interfaceSize != "0" or trackerType:
                         print(f"warning: interface {chnlInfo['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
             if chnl_table[chnl]['set_initial_value']:
-                channelStruct = intf_gen_utils.sc_structure_field_type(chnlInfo, 'structure', 'structureKey', prj)
-                defaultValue = f", {channelStruct}::_packedSt({hex(prj.getConst(chnl_table[chnl]['default_value']))})"
+                # The structure type for the channel's default-value
+                # initializer must match the channel's own template
+                # arguments. Stage 3.3 derives those arguments from the
+                # connected child's per-variant Config; pass the same
+                # override here so the `_packedSt` qualified-id agrees.
+                channelStruct = intf_gen_utils.sc_structure_field_type(
+                    chnlInfo, 'structure', 'structureKey', prj,
+                    config_override=chnl_table[chnl].get('config_override'))
+                # `typename` is required when the qualified-id depends on
+                # the enclosing class template parameter Config — without
+                # it C++ rejects the dependent type name in the
+                # mem-initializer.
+                typenameKw = 'typename ' if '<Config>' in channelStruct else ''
+                defaultValue = f", {typenameKw}{channelStruct}::_packedSt({hex(prj.getConst(chnl_table[chnl]['default_value']))})"
             else:
                 defaultValue = ''
 
@@ -151,9 +193,32 @@ def constructorInit(args, prj, data):
 
 
     for key, value in data['subBlockInstances'].items():
-        instUsesConfig = intf_gen_utils.block_uses_config(prj.getBlockData(value['instanceTypeKey']), prj)
-        instCfg = cfg if instUsesConfig else ''
-        out.append(f'        ,{ value["instance"] }(std::dynamic_pointer_cast<{ value["instanceType"] }Base{instCfg}>( instanceFactory::createInstance(name(), "{ value["instance"]}", "{value["instanceType"]}", "{value["variant"]}")))')
+        childData = prj.getBlockConfigView(value['instanceTypeKey'])
+        instIsParameterizable = childData['isParameterizable']
+        # Stage 3.1 of plan-variant-config-unification.md (D4 Option (a)):
+        # the cast target uses the child's per-variant Config so it matches
+        # the factory's variant-specific instantiation. Without this, the
+        # cast would resolve to the parent's `<Config>` (or the parent's
+        # defaultConfig) and dynamic_pointer_cast would return nullptr at
+        # runtime — the latent bug fixed in this stage.
+        instCfg = intf_gen_utils.resolve_instance_config_arg(prj, value)
+        # Generated createInstance passes the variant string only. Under
+        # variant ≅ Config (Stage 2) the factory key is
+        # `(blockType, variant)`; the variant string identifies the
+        # per-variant Config policy unambiguously. Non-templated children
+        # additionally emit an active force_link_<child>() call before the
+        # lookup so the linker pulls the child implementation TU into the
+        # program. See plan-block-registration.md "Force-Link Function".
+        createCall = (
+            f'instanceFactory::createInstance(name(), "{value["instance"]}", '
+            f'"{value["instanceType"]}", "{value["variant"]}")'
+        )
+        if not instIsParameterizable:
+            createCall = f'(force_link_{value["instanceType"]}(), {createCall})'
+        out.append(
+            f'        ,{ value["instance"] }(std::dynamic_pointer_cast'
+            f'<{ value["instanceType"] }Base{instCfg}>({createCall}))'
+        )
     for reg, regData in data['registers'].items():
         # Skip memory registers - they only have adapters, not hwRegister objects
         if regData['regType'] == 'memory':
@@ -161,7 +226,11 @@ def constructorInit(args, prj, data):
         if regData['regType'] == 'rw':
             defaultValue = hex(prj.getConst(regData["defaultValue"]))
             regType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
-            out.append(f'        ,{ regData["register"] }({regType}::_packedSt({defaultValue}))')
+            # `typename` is required when the qualified-id depends on the
+            # enclosing class template parameter Config — without it C++
+            # rejects the dependent type name in the mem-initializer.
+            typenameKw = 'typename ' if '<Config>' in regType else ''
+            out.append(f'        ,{ regData["register"] }({typenameKw}{regType}::_packedSt({defaultValue}))')
         else:
             out.append(f'        ,{ regData["register"] }()')
     if data['blockInfo'].get('isRegHandler'):
@@ -175,7 +244,7 @@ def constructorInit(args, prj, data):
                 out.append(f'        ,{ regData["register"] }_adapter({ baseClassName }::{ regData["register"] })')
     else:
         for mem, memData in data['memories'].items():
-            linesExpr = wordLinesExpr(memData, prj, usesConfig, data)
+            linesExpr = wordLinesExpr(memData, prj, isParameterizable, data)
             if memData["local"]:
                 out.append(f'        ,{ memData["memory"] }(name(), "{ memData["memory"] }", mems, {linesExpr}, HWMEMORYTYPE_LOCAL)')
             else:
@@ -202,7 +271,12 @@ def constructorInit(args, prj, data):
 
 def constructorBody(args, prj, data):
     out = list()
-    usesConfig = intf_gen_utils.block_uses_config(data, prj)
+    isParameterizable = data['isParameterizable']
+    # Stage 3.2 of plan-variant-config-unification.md: only leaf
+    # parameterizable blocks remain class templates. The body emits
+    # `this->` qualifiers for dependent base-class member names, which is
+    # only required inside class templates.
+    hasOwnParams = intf_gen_utils.block_has_own_params(prj, data['qualBlock'])
 
     out.append('{')
     first = True
@@ -273,14 +347,14 @@ def constructorBody(args, prj, data):
                     out.append(f'    // register memories for FW access')
                 if item['type'] == 'memory':
                     memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
-                    linesExpr = wordLinesExpr(item, prj, usesConfig, data)
+                    linesExpr = wordLinesExpr(item, prj, isParameterizable, data)
                     if item['is_reg_handler']:
                         out.append(f'    regs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
                     else:
                         out.append(f'    regs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
                 else:  # memory_register
                     memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
-                    out.append(f'    regs.addMemory( {constName}, {memType}::_byteWidth, {wordLinesExpr(item, prj, usesConfig, data)}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                    out.append(f'    regs.addMemory( {constName}, {memType}::_byteWidth, {wordLinesExpr(item, prj, isParameterizable, data)}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
             else:  # regular register
                 if not register_comment_written:
                     register_comment_written = True
@@ -293,7 +367,11 @@ def constructorBody(args, prj, data):
             first=False
             out.append(f'// hierarchical connections: instance port->parent port (dst->dst, src-src without channels)')
 
-        parentPortName = f'this->{value["parentPortName"]}' if usesConfig else value["parentPortName"]
+        # `this->` qualifier is required only when the surrounding class
+        # is itself a template (so the inherited member is a dependent
+        # name). Stage 3.2 keeps the template head only on blocks with
+        # their own params; non-leaf parents no longer need the qualifier.
+        parentPortName = f'this->{value["parentPortName"]}' if hasOwnParams else value["parentPortName"]
         out.append(f'    { value["instance"] }->{ value["instancePortName"]}({ parentPortName });')
 
 
@@ -329,6 +407,151 @@ def constructorBody(args, prj, data):
     out.append(f'    log_.logPrint(std::format("Instance {{}} initialized.", this->name()), LOG_IMPORTANT );')
     # take the list and return a string
     return("\n".join(out))
+
+def blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOwnParams, defaultConfig):
+    """Emit SC block registration lines at namespace scope, immediately
+    following the SC_HAS_PROCESS line.
+
+    Two registration triggers coexist in the interim shape:
+
+    * **Parameterized SC blocks** are registered by the per-block
+      trampoline TU emitted via `<block>Registrar.cpp` (see
+      `templates/systemc/blockRegistrar.py`). The trampoline owns the
+      project-specific `(blockType, variant)` pairs that generated
+      callers look up. Under variant ≅ Config (Stage 2 of
+      plan-variant-config-unification.md) the variant string
+      identifies the per-variant Config policy unambiguously.
+
+      A self-registering static is *additionally* emitted in this TU
+      for parameterized blocks. Its purpose is the load-bearing
+      trigger for *implicit* template instantiation of every
+      per-variant `<B><PerVariantConfig>` in this TU. The
+      self-registering lambda's `make_shared<<B><Config>>(...)` forces
+      the compiler to instantiate the constructor body, regHandler
+      body, and any other template members defined later in this
+      `.cpp`. The trampoline TU sees only declarations from
+      `<block>.h`; without this implicit instantiation the
+      trampoline's `make_shared` would be an unresolved external at
+      link time. The factory keys used by these in-block lambdas
+      shadow the trampoline-registered entries — `std::map::emplace`
+      keeps the first insertion, so whichever static initialises
+      first wins; both lambdas construct the same target type, so
+      either ordering is functionally equivalent. Once modules-mode
+      lets the trampoline `import <block>;` and see the full template
+      definitions directly (long-term plan), this in-block static is
+      removed and the trampoline becomes the sole registration
+      trigger.
+
+    * **Non-templated SC blocks** continue to register themselves via
+      a free helper plus a self-registering static at namespace scope
+      in this TU, with an active force-link function declared in
+      `<block>Base.h`. See plan-block-registration.md "Force-Link
+      Function".
+    """
+    out = list()
+
+    # Stage 4.1 of plan-variant-config-unification.md: the in-block
+    # self-registering static no longer emits `instanceFactory::addParam`
+    # calls. Block constructors read parameter values from `Config::*`
+    # directly (Stage 4.2); the runtime parameter table is decommissioned
+    # in Stage 4.4.
+
+    # Per-variant Config descriptors (Stage 1.1 of
+    # plan-variant-config-unification.md). The in-block static's job is
+    # to force implicit template instantiation of every per-variant
+    # `<B><PerVariantConfig>` so the trampoline TU's `make_shared` does
+    # not become an unresolved external at link time. We therefore emit
+    # one lambda per variant, each targeting its own per-variant Config
+    # (or the legacy <context>DefaultConfig when no descriptor is
+    # available). The factory keys here use `(blockType, variant)`,
+    # matching the trampoline-registered entries.
+    #
+    # Stage 3.2 caveat: only leaf parameterizable blocks (hasOwnParams)
+    # are class templates. Non-leaf parents that are flagged
+    # isParameterizable solely because parameterizable structures transit
+    # their surface are emitted as a single non-templated class; the
+    # registration lambda omits the template argument list.
+    variantConfigName = dict()
+    if hasOwnParams:
+        for desc in data.get('variantConfigs', []):
+            if desc.get('values'):
+                variantConfigName[desc['variant']] = desc['configName']
+            else:
+                variantConfigName[desc['variant']] = defaultConfig
+
+    def _targetClass(variant):
+        if not hasOwnParams:
+            return className
+        configName = variantConfigName.get(variant, defaultConfig)
+        return f'{className}<{configName}>'
+
+    if data['variants']:
+        registerCalls = []
+        for variant in sorted(data['variants']):
+            targetClass = _targetClass(variant)
+            registerCalls.append(
+                f'    instanceFactory::registerBlock("{className}_model", '
+                f'[](const char * blockName, const char * variant, blockBaseMode bbMode) '
+                f'-> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>>'
+                f'(std::make_shared<{targetClass}>(blockName, variant, bbMode)); }}, '
+                f'"{variant}");'
+            )
+    else:
+        targetClass = _targetClass('')
+        registerCalls = [
+            f'    instanceFactory::registerBlock("{className}_model", '
+            f'[](const char * blockName, const char * variant, blockBaseMode bbMode) '
+            f'-> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>>'
+            f'(std::make_shared<{targetClass}>(blockName, variant, bbMode)); }}, '
+            f'"");'
+        ]
+
+    out.append(f'// === Block factory registration ({className}) ===')
+    if not hasOwnParams:
+        # Active force-link function. Declaration lives in <block>Base.h.
+        # Generated parent / testbench code calls force_link_<B>() before
+        # any factory lookup that may construct this block. The call
+        # creates a real symbol reference into this TU, forcing the
+        # linker to pull this object into the program even when nothing
+        # else references symbols from it. This is required under C++20
+        # modules and static-archive linking, where importing a base
+        # interface or using string-keyed factory lookup does not
+        # guarantee that this TU's static initializers run. Without the
+        # active call, the self-registering static below can remain
+        # unfired and instanceFactory::createInstance can fail at runtime.
+        # See plan-block-registration.md "Force-Link Function".
+        #
+        # Stage 3.2 of plan-variant-config-unification.md broadens the
+        # predicate from "non-parameterizable" to "non-templated" so that
+        # parent containers that are flagged isParameterizable solely
+        # because parameterizable structures transit their surface (e.g.,
+        # `ip_top`) also receive the force-link anchor.
+        out.append(f'void force_link_{className}() {{}}')
+        out.append('')
+        out.append(f'void register_{className}_variants() {{')
+        out.extend(registerCalls)
+        out.append('}')
+        out.append('')
+        out.append('namespace {')
+        out.append(f'[[maybe_unused]] int _{className}_registered = '
+                   f'(register_{className}_variants(), 0);')
+        out.append('} // namespace')
+    else:
+        # Parameterized block: in-block static whose make_shared
+        # forces the compiler to instantiate the template constructor
+        # body and other template members defined later in this TU,
+        # so the trampoline (which only sees declarations) can link.
+        # The factory key is `(blockType, variant)` — see the
+        # docstring above.
+        out.append('namespace {')
+        out.append(f'[[maybe_unused]] int _{className}_registered = []() -> int {{')
+        out.extend(registerCalls)
+        out.append('    return 0;')
+        out.append('}();')
+        out.append('} // namespace')
+    out.append('// === End block factory registration ===')
+    out.append('')
+    return out
 
 def addressDecoder(args, prj, data):
     out = list()

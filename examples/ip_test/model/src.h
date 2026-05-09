@@ -13,24 +13,16 @@
 #include "ipConfig.h"
 import ip;
 using namespace ip_ns;
+//contained instances forward class declaration
+template<typename Config> class ipLeafBase;
 
-template<typename Config>
-SC_MODULE(src), public blockBase, public srcBase<Config>
+SC_MODULE(src), public blockBase, public srcBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("src_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<src<ipDefaultConfig>>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
-    SC_HAS_PROCESS(src);
-
+    //instances contained in block
+    std::shared_ptr<ipLeafBase<ipLeafVariantLeaf0Config>> uLeaf;
 
     src(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~src() override = default;

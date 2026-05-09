@@ -119,6 +119,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_consumer();
 // GENERATED_CODE_END
 
 #endif //CONSUMER_BASE_H

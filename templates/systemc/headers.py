@@ -30,14 +30,21 @@ def _file_map_key(args):
 
 
 def _include_context_modules(fileMapKey, data):
-    out = list()
+    # In C++20 module-interface units (cppm) every `import` must
+    # precede any other declaration in the module purview. With more
+    # than one imported context the `using namespace` directives must
+    # follow the import block, not be interleaved with it; collect
+    # the two groups separately and concatenate.
+    imports = list()
+    usings = list()
+    others = list()
     for name in data['includeContext']:
         if name and name in data['includeFiles'][fileMapKey]:
             includeName = data['includeFiles'][fileMapKey][name]['baseName']
             if includeName != data['fileNameBase']:
                 if fileMapKey == 'include_cppm':
-                    out.append(f'import {module_name_from_include(includeName)};')
-                    out.append(f'using namespace {namespace_name_from_include(includeName)};')
+                    imports.append(f'import {module_name_from_include(includeName)};')
+                    usings.append(f'using namespace {namespace_name_from_include(includeName)};')
                 else:
-                    out.append(f'#include "{includeName}"')
-    return out
+                    others.append(f'#include "{includeName}"')
+    return imports + usings + others

@@ -239,6 +239,8 @@ blocks:
   mdlLeafNode: optional(false)
   dir: auto(blockDir)
   maxAddress: optional(0) # filled out by address generation
+  isParameterizable: optional(false) # filled out by block config post-processing
+  defaultConfig: optional("") # filled out by block config post-processing
   params:
     _attribs: [optional, list]
     param: key

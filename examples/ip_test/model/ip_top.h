@@ -18,31 +18,19 @@ import ip;
 using namespace ip_ns;
 //contained instances forward class declaration
 class apbDecodeBase;
-template<typename Config> class srcBase;
+class srcBase;
 template<typename Config> class ipBase;
 
-template<typename Config>
-SC_MODULE(ip_top), public blockBase, public ip_topBase<Config>
+SC_MODULE(ip_top), public blockBase, public ip_topBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("ip_top_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<ip_top<ipDefaultConfig>>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
-    SC_HAS_PROCESS(ip_top);
-
     // channels
     // IP data push/ack stream
-    push_ack_channel< ipDataSt<Config> > out0;
+    push_ack_channel< ipDataSt<ipVariant0Config> > out0;
     // IP data push/ack stream
-    push_ack_channel< ipDataSt<Config> > out1;
+    push_ack_channel< ipDataSt<ipVariant1Config> > out1;
     // CPU access to IP registers via APB
     apb_channel< apbAddrSt, apbDataSt > apb_uIp0;
     // CPU access to IP registers via APB
@@ -50,9 +38,9 @@ public:
 
     //instances contained in block
     std::shared_ptr<apbDecodeBase> uAPBDecode;
-    std::shared_ptr<srcBase<Config>> uSrc;
-    std::shared_ptr<ipBase<Config>> uIp0;
-    std::shared_ptr<ipBase<Config>> uIp1;
+    std::shared_ptr<srcBase> uSrc;
+    std::shared_ptr<ipBase<ipVariant0Config>> uIp0;
+    std::shared_ptr<ipBase<ipVariant1Config>> uIp1;
 
     ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ip_top() override = default;

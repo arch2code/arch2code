@@ -30,9 +30,9 @@ public:
 
 
     ipBase(std::string name, const char * variant) :
-        IP_DATA_WIDTH(instanceFactory::getParam("ip", variant, "IP_DATA_WIDTH"))
-        ,IP_MEM_DEPTH(instanceFactory::getParam("ip", variant, "IP_MEM_DEPTH"))
-        ,IP_NONCONST_DEPTH(instanceFactory::getParam("ip", variant, "IP_NONCONST_DEPTH"))
+        IP_DATA_WIDTH(Config::IP_DATA_WIDTH)
+        ,IP_MEM_DEPTH(Config::IP_MEM_DEPTH)
+        ,IP_NONCONST_DEPTH(Config::IP_NONCONST_DEPTH)
         ,ipDataIf("ipDataIf")
         ,apbReg("apbReg")
     {};

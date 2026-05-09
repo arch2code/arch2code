@@ -1,0 +1,47 @@
+# ipLeaf - templated grandchild block (Step 9 regression for the per-block
+# trampoline registrar pass).
+#
+# ipLeaf is its own IP with its own parameter (LEAF_DATA_WIDTH), its own
+# parameterizable type / structure, and a private (non-FW-accessible)
+# memory that anchors the block as parameterizable through processYaml's
+# `add_struct_context` walk over `memories`.
+#
+# ipLeaf is instantiated as a child of `ip` (see ip_top.yaml) so that the
+# project block walk encounters a parameterized grandchild. The walk emits
+# `model/ipLeafRegistrar.cpp` directly, with no per-block recursion in the
+# trampoline pass.
+
+blockDir: .
+
+ipParameters:
+    constants:
+        LEAF_DATA_WIDTH: { value: 4, maxValue: 8,  desc: "ipLeaf per-instance data width" }
+        LEAF_MEM_DEPTH:  { value: 4, maxValue: 8,  desc: "ipLeaf per-instance memory depth" }
+    types:
+        ipLeafDataT:
+            width: LEAF_DATA_WIDTH
+            maxBitwidth: 8
+            desc: "ipLeaf data word, parameterizable"
+
+types:
+    ipLeafMemAddrT:
+        widthLog2minus1: LEAF_MEM_DEPTH
+        desc: "Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)"
+
+structures:
+    ipLeafMemSt:
+        data: { varType: ipLeafDataT, desc: "Leaf memory word" }
+    ipLeafMemAddrSt:
+        address: { varType: ipLeafMemAddrT, desc: "Leaf memory address" }
+
+blocks:
+    ipLeaf:
+        desc: "Templated grandchild block instantiated as a child of ip"
+        params: [LEAF_DATA_WIDTH, LEAF_MEM_DEPTH]
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+
+memories:
+    - { memory: ipLeafMem, block: ipLeaf, structure: ipLeafMemSt, addressStruct: ipLeafMemAddrSt, wordLines: LEAF_MEM_DEPTH, regAccess: false, desc: "Private leaf scratch memory (no FW access)" }

@@ -9,13 +9,13 @@
 #include "ipBase.h"
 
 ip_topExternal::ip_topExternal(sc_module_name modulename) :
-    ip_topInverted<ipDefaultConfig>("Chnl"),
+    ip_topInverted("Chnl"),
     log_(name())
 
-   ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>( instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "")))
-   ,uSrc(std::dynamic_pointer_cast<srcBase<ipDefaultConfig>>( instanceFactory::createInstance(name(), "uSrc", "src", "")))
-   ,uIp0(std::dynamic_pointer_cast<ipBase<ipDefaultConfig>>( instanceFactory::createInstance(name(), "uIp0", "ip", "variant0")))
-   ,uIp1(std::dynamic_pointer_cast<ipBase<ipDefaultConfig>>( instanceFactory::createInstance(name(), "uIp1", "ip", "variant1")))
+   ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>((force_link_apbDecode(), instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", ""))))
+   ,uSrc(std::dynamic_pointer_cast<srcBase>(instanceFactory::createInstance(name(), "uSrc", "src", "")))
+   ,uIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0")))
+   ,uIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1")))
    ,out0("out0", "uSrc")
    ,out1("out1", "uSrc")
    ,apb_uIp0("apb_uIp0", "uAPBDecode")

@@ -10,23 +10,15 @@
 #include "ip_topBase.h"
 #include "ip_topExternal.h"
 
-class ip_topTestbench: public sc_module, public blockBase, public ip_topChannels<ipDefaultConfig> {
+// Force-link function (active modules-mode anchor) for the testbench
+// class. See plan-block-registration.md "Force-Link Function".
+void force_link_ip_topTestbench();
 
-    private:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("ip_topTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<ip_topTestbench>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
+class ip_topTestbench: public sc_module, public blockBase, public ip_topChannels {
 
 public:
 
-    std::shared_ptr<ip_topBase<ipDefaultConfig>> ip_top;
+    std::shared_ptr<ip_topBase> ip_top;
     ip_topExternal external;
 
     ip_topTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

@@ -15,6 +15,11 @@ import ip_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
+ipLeaf #(.LEAF_DATA_WIDTH(4), .LEAF_MEM_DEPTH(4)) uLeaf (
+    .clk (clk),
+    .rst_n (rst_n)
+);
+
 // GENERATED_CODE_END
 
     // One-shot stimulus: after reset, push a fixed value on each output

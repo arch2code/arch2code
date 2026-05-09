@@ -3,11 +3,26 @@
 // GENERATED_CODE_PARAM --block=src
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "src.h"
-template<typename Config>
-src<Config>::src(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+#include "ipLeafBase.h"
+SC_HAS_PROCESS(src);
+
+// === Block factory registration (src) ===
+void force_link_src() {}
+
+void register_src_variants() {
+    instanceFactory::registerBlock("src_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _src_registered = (register_src_variants(), 0);
+} // namespace
+// === End block factory registration ===
+
+src::src(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("src", name(), bbMode)
-        ,srcBase<Config>(name(), variant)
+        ,srcBase(name(), variant)
+        ,uLeaf(std::dynamic_pointer_cast<ipLeafBase<ipLeafVariantLeaf0Config>>(instanceFactory::createInstance(name(), "uLeaf", "ipLeaf", "variantLeaf0")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

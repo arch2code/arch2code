@@ -5,7 +5,6 @@
 LEGACY_COMPAT_MODE = False
 
 from pysrc.arch2codeHelper import printError
-import os.path
 
 def get_set_intf_types(ifType, block_data):
     """Get set of interface names, resolving any type aliases
@@ -191,47 +190,123 @@ def sc_instance_includes(data, prj):
         out.append(f'#include "{baseInclude}"')
     return out
 
-def sc_struct_type_name(struct_name, struct_key, prj, use_config=True):
+def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_override=None):
+    # config_override: when supplied (and the structure is parameterizable),
+    # the named Config replaces the literal `Config` template parameter in
+    # the emitted type. Stage 3.3 of plan-variant-config-unification.md uses
+    # this to type channels by the connected child's per-variant Config so
+    # the parent does not need to be a class template.
     if use_config and struct_key and prj.data['structures'].get(struct_key, {}).get('isParameterizable', False):
-        return f"{struct_name}<Config>"
+        suffix = config_override if config_override else 'Config'
+        return f"{struct_name}<{suffix}>"
     return struct_name
 
-def sc_structure_field_type(row, field_name, key_field_name, prj, use_config=True):
-    return sc_struct_type_name(row[field_name], row.get(key_field_name, ''), prj, use_config)
+def sc_structure_field_type(row, field_name, key_field_name, prj, use_config=True, config_override=None):
+    return sc_struct_type_name(row[field_name], row.get(key_field_name, ''), prj, use_config, config_override)
 
-def block_uses_config(data, prj):
-    def _struct_is_param(struct_key):
-        return bool(struct_key and prj.data['structures'].get(struct_key, {}).get('isParameterizable', False))
+def block_config_decl(is_parameterizable):
+    return 'template<typename Config>' if is_parameterizable else ''
 
-    for port_type in data.get('ports', {}).values():
-        for port_data in port_type.values():
-            for struct_info in get_intf_data(port_data['connection'], prj).get('structures', []):
-                if _struct_is_param(struct_info.get('structureKey', '')):
-                    return True
+def block_config_arg(is_parameterizable):
+    return '<Config>' if is_parameterizable else ''
 
-    for conn_type in data.get('connectDouble', {}).values():
-        for conn_data in conn_type.values():
-            for struct_info in get_intf_data(conn_data, prj).get('structures', []):
-                if _struct_is_param(struct_info.get('structureKey', '')):
-                    return True
+def block_has_own_params(prj, qual_block):
+    # Predicate for Stage 3.2 of plan-variant-config-unification.md. A block
+    # is "leaf parameterizable" — and thus emitted as `template<typename
+    # Config> class B {...};` — only when it declares its own `params:`.
+    # Containers that are flagged isParameterizable solely because a
+    # parameterizable structure transits their interface surface (e.g.,
+    # `ip_top` carrying `ipDataSt<Config>`) are NOT leaf-parameterizable; they
+    # become non-templated under Stage 3.2.
+    return bool(prj.data['blocks'].get(qual_block, {}).get('params'))
 
-    for row_set in ['registers', 'memories', 'memoriesParent', 'memoryConnections', 'memoryPorts', 'registerPorts']:
-        for row in data.get(row_set, {}).values():
-            for key_field in ['structureKey', 'addressStructKey']:
-                if _struct_is_param(row.get(key_field, '')):
-                    return True
+def resolve_instance_config_name(prj, instance_data):
+    # Stage 3.1 of plan-variant-config-unification.md (D4 Option (a)):
+    # resolve the per-variant Config struct name for a parameterizable child
+    # instance. Returns '' for non-parameterizable children. Falls back to
+    # the child block's legacy `<context>DefaultConfig` when the descriptor's
+    # `values` is empty (e.g., intra-block dedup folded onto an empty
+    # canonical) or when no descriptor matches the instance's variant.
+    type_key = instance_data.get('instanceTypeKey')
+    if not type_key:
+        return ''
+    view = prj.getBlockConfigView(type_key)
+    if not view['isParameterizable']:
+        return ''
+    variant = instance_data.get('variant', '') or ''
+    for desc in view['variantConfigs']:
+        if desc['variant'] == variant:
+            if desc.get('values'):
+                return desc['configName']
+            break
+    return view['defaultConfig']
 
-    return False
+def resolve_instance_config_arg(prj, instance_data):
+    # Convenience wrapper that returns either '<ConfigName>' or '' so callers
+    # can substitute directly into emitted text.
+    #
+    # The template-argument suffix is emitted only when the child block is
+    # itself a class template (Stage 3.2 predicate: the child has its own
+    # `params:`). Non-leaf parameterizable children (e.g., `src`) become
+    # non-templated under Stage 3.2; emitting `srcBase<ipDefaultConfig>`
+    # at the parent's cast site would refer to a class template that no
+    # longer exists. Returning '' here keeps the cast consistent with the
+    # child's emitted class shape and surfaces the canonical Option-B
+    # failure at the child's own port declarations.
+    type_key = instance_data.get('instanceTypeKey')
+    if type_key and not block_has_own_params(prj, type_key):
+        return ''
+    name = resolve_instance_config_name(prj, instance_data)
+    return f'<{name}>' if name else ''
 
-def block_config_decl(uses_config):
-    return 'template<typename Config>' if uses_config else ''
-
-def block_config_arg(uses_config):
-    return '<Config>' if uses_config else ''
-
-def context_default_config_name(context):
-    base = os.path.splitext(os.path.basename(context))[0]
-    return base.replace('-', '_').replace('.', '_') + 'DefaultConfig'
+def _resolve_channel_config_override(conn_data, prj):
+    # Stage 3.3 connection-walk derivation. Inspect a connection's `ends`
+    # and pick the per-variant Config of the leaf parameterizable end.
+    #
+    # Selection priority (D5):
+    #   1. An end whose bound block has its own `params:` (a leaf
+    #      parameterizable block such as `ip` or `ipLeaf`). This is the
+    #      authoritative source of the variant's Config. When two leaf
+    #      ends disagree (cross-Config bind), the `dst` end wins; the
+    #      resulting channel type will not bind to the disagreeing peer
+    #      and the build fails with a precise error — the documented
+    #      Stage 3 failure mode that Stages 6 and 7 (Q10/R2 thunker)
+    #      ultimately bridge.
+    #   2. An end whose bound block is flagged isParameterizable but has
+    #      no own params (e.g., `src` carrying `ipDataSt<Config>`). Such
+    #      a block is itself non-templated under Stage 3.2, so naming
+    #      its `defaultConfig` here is a fallback and not a precise
+    #      typing. We prefer (1) over (2) for that reason.
+    # Returns None when no end is parameterizable; the caller then emits
+    # the literal `Config` placeholder (correct inside leaf parents that
+    # remain class templates) or — for non-leaf parents — the testbench
+    # external's post-hoc `replace('<Config>', ...)` substitution applies.
+    ends = conn_data.get('ends', {}) or {}
+    leaf_choice = None
+    transit_choice = None
+    for end_data in ends.values():
+        inst_key = end_data.get('instanceKey')
+        if not inst_key:
+            continue
+        inst_data = prj.data['instances'].get(inst_key)
+        if not inst_data:
+            continue
+        type_key = inst_data.get('instanceTypeKey')
+        if not type_key:
+            continue
+        name = resolve_instance_config_name(prj, inst_data)
+        if not name:
+            continue
+        if block_has_own_params(prj, type_key):
+            # Prefer the dst end on cross-Config binds; we accept the
+            # last leaf-parameterizable end seen, which under the dict's
+            # insertion order is the dst when both src and dst are leaf.
+            if leaf_choice is None or end_data.get('direction') == 'dst':
+                leaf_choice = name
+        else:
+            if transit_choice is None:
+                transit_choice = name
+    return leaf_choice or transit_choice
 
 def module_name_from_include(baseName):
     name = baseName
@@ -249,35 +324,6 @@ def wrap_module_namespace(args, data, lines):
         return lines
     namespaceName = namespace_name_from_include(data['fileNameBase'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
-
-def block_default_config_type(data, prj):
-    contexts = []
-
-    def _add_struct_context(struct_key):
-        struct = prj.data['structures'].get(struct_key, {})
-        if struct.get('isParameterizable', False):
-            context = struct.get('_context', '')
-            if context and context not in contexts:
-                contexts.append(context)
-
-    for port_type in data.get('ports', {}).values():
-        for port_data in port_type.values():
-            for struct_info in get_intf_data(port_data['connection'], prj).get('structures', []):
-                _add_struct_context(struct_info.get('structureKey', ''))
-
-    for conn_type in data.get('connectDouble', {}).values():
-        for conn_data in conn_type.values():
-            for struct_info in get_intf_data(conn_data, prj).get('structures', []):
-                _add_struct_context(struct_info.get('structureKey', ''))
-
-    for row_set in ['registers', 'memories', 'memoriesParent', 'memoryConnections', 'memoryPorts', 'registerPorts']:
-        for row in data.get(row_set, {}).values():
-            _add_struct_context(row.get('structureKey', ''))
-            _add_struct_context(row.get('addressStructKey', ''))
-
-    if not contexts:
-        return data['blockName'] + 'DefaultConfig'
-    return context_default_config_name(contexts[0])
 
 def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
@@ -417,6 +463,15 @@ def sc_gen_block_channels(conn_data, prj, block_data):
     out['set_initial_value'] = intf_def['sc_channel'].get('set_initial_value', False) and 'register' in conn_data
     out['default_value'] = conn_data.get('defaultValue', 0)
 
+    # Stage 3.3 of plan-variant-config-unification.md: the channel's struct
+    # template arguments are typed by the connected child's per-variant
+    # Config (D5). The override is None when no end of the connection is
+    # parameterizable; in that case sc_struct_type_name falls back to its
+    # legacy `<Config>` placeholder, which is appropriate inside leaf
+    # parameterizable parents that remain class templates.
+    config_override = _resolve_channel_config_override(conn_data, prj)
+    out['config_override'] = config_override
+
     # Parameter
     parameters = intf_def.get('parameters', {}) or {}
     for param in filter(lambda item: parameters[item]['datatype'] == 'struct', parameters):
@@ -427,7 +482,7 @@ def sc_gen_block_channels(conn_data, prj, block_data):
         intf_param[param] = struct_data[0]
 
     # Interface parameters declaration
-    chnl_params = ', '.join([sc_structure_field_type(intf_param[param], 'structure', 'structureKey', prj) for param in parameters])
+    chnl_params = ', '.join([sc_structure_field_type(intf_param[param], 'structure', 'structureKey', prj, config_override=config_override) for param in parameters])
 
     if intf_def['sc_channel']['param_cast']:
         if LEGACY_COMPAT_MODE:

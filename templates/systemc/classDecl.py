@@ -15,10 +15,17 @@ def render(args, prj, data):
 def render_default(args, prj, data):
     out = list()
     className = f'{ data["blockName"] }'
-    usesConfig = intf_gen_utils.block_uses_config(data, prj)
-    cfg = intf_gen_utils.block_config_arg(usesConfig)
-    defaultConfig = intf_gen_utils.block_default_config_type(data, prj) if usesConfig else ''
-    baseClassName = f'{ data["blockName"] }Base{cfg}' 
+    isParameterizable = data['isParameterizable']
+    # Stage 3.2 of plan-variant-config-unification.md: the parent class is
+    # itself a class template only when the block has its own `params:`
+    # (a "leaf parameterizable" block such as `ip` or `ipLeaf`). Containers
+    # that are flagged isParameterizable solely because parameterizable
+    # structures transit their interface surface (e.g., `ip_top`) become
+    # non-templated.
+    hasOwnParams = intf_gen_utils.block_has_own_params(prj, data['qualBlock'])
+    cfg = intf_gen_utils.block_config_arg(hasOwnParams)
+    defaultConfig = data['defaultConfig'] if isParameterizable else ''
+    baseClassName = f'{ data["blockName"] }Base{cfg}'
     out.append('#include "logging.h"')
     out.append('#include "instanceFactory.h"')
     baseInclude = prj.getModuleFilename('blockBase', data["blockName"], 'hdr')
@@ -39,7 +46,7 @@ def render_default(args, prj, data):
                 break
     if needsHwMemory:
         out.append('#include "hwMemory.h"')
-    if usesConfig:
+    if isParameterizable:
         for context in data['includeContext']:
             if context in data['includeFiles'].get('config_hdr', {}):
                 out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
@@ -52,23 +59,37 @@ def render_default(args, prj, data):
     for context in data['includeContext']:
         if context in data['includeFiles'].get(fileMapKey, {}):
             includeName = data["includeFiles"][fileMapKey][context]["baseName"]
-            moduleName = intf_gen_utils.module_name_from_include(includeName)
-            out.append(f'import {moduleName};')
-            out.append(f'using namespace {intf_gen_utils.namespace_name_from_include(includeName)};')
+            if fileMapKey == 'include_cppm':
+                moduleName = intf_gen_utils.module_name_from_include(includeName)
+                out.append(f'import {moduleName};')
+                out.append(f'using namespace {intf_gen_utils.namespace_name_from_include(includeName)};')
+            else:
+                out.append(f'#include "{includeName}"')
+        elif fileMapKey == 'include_cppm' and context in data['includeFiles'].get('include_hdr', {}):
+            # Header-mode fallback: projects that publish only
+            # `include_hdr` entries (no `include_cppm`) still need the
+            # context's struct types reachable from this TU.
+            includeName = data["includeFiles"]['include_hdr'][context]["baseName"]
+            out.append(f'#include "{includeName}"')
     if data['addressDecode']['isApbRouter']:
         out.append(f'#include "apbBusDecode.h"')
 
     if data["subBlocks"]:
         out.append(f'//contained instances forward class declaration')
         for key, value in data["subBlocks"].items():
-            if intf_gen_utils.block_uses_config(prj.getBlockData(key), prj):
+            # Stage 3.2 of plan-variant-config-unification.md: a child's
+            # Base class is itself a class template only when the child has
+            # its own params. Children flagged isParameterizable solely
+            # because parameterizable structures transit their surface are
+            # forward-declared as plain classes.
+            if intf_gen_utils.block_has_own_params(prj, key):
                 out.append(f'template<typename Config> class { value }Base;')
             else:
                 out.append(f'class { value }Base;')
     out.append('')
 
-    if usesConfig:
-        out.append(intf_gen_utils.block_config_decl(usesConfig))
+    if hasOwnParams:
+        out.append(intf_gen_utils.block_config_decl(hasOwnParams))
     out.append(f'SC_MODULE({ className }), public blockBase, public { baseClassName }')
     out.append('{')
     out.append('private:')
@@ -81,26 +102,15 @@ def render_default(args, prj, data):
         out.append(f'    abpBusDecode< {busStructs} > decoder;')
     out.append('')
     indent = ' '*4
-    out.append(indent + 'struct registerBlock')
-    out.append(indent + '{')
-    out.append(indent + '    registerBlock()')
-    out.append(indent + '    {')
-    if data['variants']:
-        out.append(textwrap.indent(addParams(args, prj, data), indent*2))
-    out.append(indent + '        // lamda function to construct the block')
-    if usesConfig:
-        if data['variants']:
-            for variant in sorted(data['variants']):
-                out.append(indent + f'        instanceFactory::registerBlock("{ className }_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{ className }<{defaultConfig}>>(blockName, variant, bbMode));}}, "{variant}" );')
-        else:
-            out.append(indent + f'        instanceFactory::registerBlock("{ className }_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{ className }<{defaultConfig}>>(blockName, variant, bbMode));}}, "" );')
-    else:
-        out.append(indent + f'        instanceFactory::registerBlock("{ className }_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{ className }>(blockName, variant, bbMode));}}, "" );')
-    out.append(indent + '    }')
-    out.append(indent + '};')
-    out.append(indent + 'static registerBlock registerBlock_;')
+    # Registration moved out of the class body. Parameterized and
+    # non-templated blocks reach the factory through a self-registering
+    # static emitted by templates/systemc/constructor.py. Non-templated
+    # blocks additionally carry an active force-link function in
+    # <block>Base.h so that modules-mode and static-archive linking pull
+    # the implementation TU into the program. See plan-block-registration.md
+    # "Force-Link Function" for the rationale.
     out.append('public:')
-    if usesConfig:
+    if hasOwnParams:
         out.append(indent + f'SC_HAS_PROCESS({ className });')
         out.append('')
 
@@ -117,8 +127,12 @@ def render_default(args, prj, data):
             out.append( indent + f'//instances contained in block')
             first = False
 
-        instUsesConfig = intf_gen_utils.block_uses_config(prj.getBlockData(instData['instanceTypeKey']), prj)
-        instCfg = cfg if instUsesConfig else ''
+        # Stage 3.1 of plan-variant-config-unification.md (D4 Option (a)):
+        # the child shared_ptr is typed by the child's per-variant Config
+        # (e.g., `ipBase<ipVariant0Config>`), not the parent's `Config`.
+        # Falls back to the child block's legacy `<context>DefaultConfig`
+        # when the descriptor's values are empty.
+        instCfg = intf_gen_utils.resolve_instance_config_arg(prj, instData)
         out.append( indent + f'std::shared_ptr<{ instData["instanceType"] }Base{instCfg}> { instData["instance"] };')
     first = True
 
@@ -202,12 +216,3 @@ def render_default(args, prj, data):
     out.append('')
     return("\n".join(out))
 
-def addParams(args, prj, data):
-    out = list()
-    out.append('    // Register parameter variants with factory')
-    out.append('    instanceFactory::addParam({')
-    for variantKey, variantData in data["variants"].items():
-        for key, value in variantData.items():
-            out.append(f'        {{ "{data["blockName"]}.{value["variant"]}.{value["param"]}", {value["value"]} }},')
-    out.append('    });')
-    return("\n".join(out))

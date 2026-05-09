@@ -14,7 +14,6 @@ using namespace ip_top_ns;
 import ip;
 using namespace ip_ns;
 
-template<typename Config>
 class ip_topBase : public virtual blockPortBase
 {
 public:
@@ -37,7 +36,6 @@ public:
         cpu_main->setLogging(verbosity);
     };
 };
-template<typename Config>
 class ip_topInverted : public virtual blockPortBase
 {
 public:
@@ -59,7 +57,6 @@ public:
         cpu_main->setLogging(verbosity);
     };
 };
-template<typename Config>
 class ip_topChannels
 {
 public:
@@ -71,12 +68,15 @@ public:
     ip_topChannels(std::string name, std::string srcName) :
     cpu_main(("cpu_main"+name).c_str(), srcName)
     {};
-    void bind( ip_topBase<Config> *a, ip_topInverted<Config> *b)
+    void bind( ip_topBase *a, ip_topInverted *b)
     {
         a->cpu_main( cpu_main );
         b->cpu_main( cpu_main );
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_ip_top();
 // GENERATED_CODE_END
 #endif //IP_TOP_BASE_H

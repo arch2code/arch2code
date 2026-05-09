@@ -13,6 +13,20 @@ struct ipDefaultConfig {
     static constexpr uint32_t IP_DATA_WIDTH_X2 = 16;
 };
 
+struct ipVariant0Config {
+    static constexpr uint32_t IP_DATA_WIDTH = 8;
+    static constexpr uint32_t IP_MEM_DEPTH = 16;
+    static constexpr uint32_t IP_DATA_WIDTH_X2 = 16;
+    static constexpr uint32_t IP_NONCONST_DEPTH = 24;
+};
+
+struct ipVariant1Config {
+    static constexpr uint32_t IP_DATA_WIDTH = 12;
+    static constexpr uint32_t IP_MEM_DEPTH = 8;
+    static constexpr uint32_t IP_DATA_WIDTH_X2 = 16;
+    static constexpr uint32_t IP_NONCONST_DEPTH = 12;
+};
+
 // GENERATED_CODE_END
 
 #endif //IPCONFIG_H_CONFIG_H

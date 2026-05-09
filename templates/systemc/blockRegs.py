@@ -139,15 +139,6 @@ private:
     void regHandler(void);
     addressMap regs;
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("{{blockname}}_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{{blockname}}>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
 
     {{blockname}}(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
@@ -168,7 +159,19 @@ block_regs_init_section_template = '''\
 
 SC_HAS_PROCESS({{blockname}});
 
-{{blockname}}::registerBlock {{blockname}}::registerBlock_; //register the block with the factory
+// === Block factory registration ({{blockname}}) ===
+// Force-link function. Declaration in {{blockname}}Base.h.
+// See plan-block-registration.md "Force-Link Function".
+void force_link_{{blockname}}() {}
+
+void register_{{blockname}}_variants() {
+    instanceFactory::registerBlock("{{blockname}}_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{{blockname}}>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _{{blockname}}_registered = (register_{{blockname}}_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 void {{blockname}}::regHandler(void) { //handle register decode
     registerHandler< {{reghandler.addr_type}}, {{reghandler.data_type}} >(regs, {{reghandler.port_name}}, {{reghandler.addressmask}});

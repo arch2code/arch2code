@@ -1003,9 +1003,158 @@ class projectOpen:
         self.getBDIncludes(ret)
         # collect interface definitions for all interface types used in the block
         self.getBDInterfaceDefs(ret)
+        self.getBDConfigInfo(ret)
         ret.pop('temp') # remove temp data
 
         return ret
+
+    def getBDConfigInfo(self, ret):
+        # View assembly: read persisted truths and derive view-side fields.
+        # Persisted by projectCreate.calcBlockConfigInfo(); see
+        # plan-block-config-postprocess.md.
+        qualBlock = ret['blockInfo']['blockKey']
+        block_row = self.data['blocks'][qualBlock]
+        ret['isParameterizable'] = bool(block_row.get('isParameterizable', False))
+        ret['defaultConfig'] = block_row.get('defaultConfig', '')
+        # Pass ret['variants'] through so the descriptor builder reuses the
+        # bound-parameter rows getBDInstances has already attached, instead
+        # of re-walking parametersvariants.
+        ret['variantConfigs'] = self._buildVariantConfigDescriptors(
+            qualBlock, variantBindings=ret.get('variants')
+        ) if ret['isParameterizable'] else []
+
+    def getBlockConfigView(self, qualBlock):
+        # Constant-time per-block bundle of the config-info fields. Use this
+        # instead of getBlockData(qualBlock) when only isParameterizable /
+        # defaultConfig / variantConfigs are required.
+        block_row = self.data['blocks'][qualBlock]
+        defaultConfig = block_row.get('defaultConfig', '')
+        is_parameterizable = bool(block_row.get('isParameterizable', False))
+        variant_configs = self._buildVariantConfigDescriptors(qualBlock) \
+            if is_parameterizable else []
+        return {
+            'isParameterizable': is_parameterizable,
+            'defaultConfig':     defaultConfig,
+            'variantConfigs':    variant_configs,
+        }
+
+    def _buildVariantConfigDescriptors(self, qualBlock, variantBindings=None):
+        # Per-variant Config descriptors for a parameterizable block. Stage 1.1
+        # of plan-variant-config-unification.md: each instance-bound variant
+        # maps to one Config struct. Naming follows D1 (anonymous variant ->
+        # <block>Config; named variant -> <block><Variant>Config). Direct
+        # overrides from parametersvariants are applied; eval re-resolution
+        # under variant overrides is deferred (D2).
+        #
+        # variantBindings is optional. When provided (typically ret['variants']
+        # from getBDInstances), its rows are used as the bound-parameter source
+        # so we do not re-walk parametersvariants. When None, this method walks
+        # self.data['parameters'] directly.
+        #
+        # The variant set is always derived from self.data['instances'] so the
+        # descriptor list mirrors the project's instance tree binds — not the
+        # declared-but-unbound variant set returned by getQualBlockVariants.
+        # This aligns the Config-emission and trampoline-emission variant sets.
+        #
+        # Each descriptor:
+        #   {'variant': str, 'configName': str,
+        #    'values': {constName: resolvedValue, ...},
+        #    'duplicateOf': str | None}
+        #
+        # 'duplicateOf' names the canonical sibling descriptor when intra-block
+        # dedup folds byte-identical variants onto a single struct; the canonical
+        # descriptor itself has duplicateOf=None. Templates emit the struct only
+        # for canonical descriptors but use 'configName' on every descriptor (the
+        # duplicate's configName equals the canonical's name).
+        block_row = self.data['blocks'].get(qualBlock)
+        if block_row is None or not bool(block_row.get('isParameterizable', False)):
+            return []
+        block_name = block_row['block']
+        block_context = block_row.get('_context', '')
+        # Instance-bound variant set. A block declared parameterizable but
+        # unreferenced by any instance produces no Config (and no trampoline).
+        instance_bound = set()
+        for inst_data in self.data['instances'].values():
+            if inst_data.get('instanceTypeKey') == qualBlock:
+                instance_bound.add(inst_data.get('variant', '') or '')
+        if not instance_bound:
+            return []
+        variants = sorted(instance_bound)
+        # Bound-parameter overrides keyed by (variant, paramName).
+        overrides = dict()
+        if variantBindings is not None:
+            # Caller passed ret['variants'] (variant -> {rowKey: row}).
+            for rows in variantBindings.values():
+                for row in rows.values():
+                    overrides[(row['variant'], row['param'])] = row['value']
+        else:
+            variant_data = self.data['parameters'].get(qualBlock, {}).get('variants', {})
+            for row in variant_data.values():
+                overrides[(row['variant'], row['param'])] = row['value']
+        # Parameterizable constants in the block's primary context. These are
+        # the Config struct's fields. Eval-derived constants appear here too;
+        # they retain their default-resolved 'value' since variant-aware eval
+        # re-resolution is deferred (D2).
+        param_constants = []
+        for const_data in self.data['constants'].values():
+            if const_data.get('_context') != block_context:
+                continue
+            if not const_data.get('isParameterizable', False):
+                continue
+            param_constants.append(const_data)
+        param_constant_names = {const_data['constant'] for const_data in param_constants}
+        # Stage 4.3 of plan-variant-config-unification.md: block params
+        # declared via `params:` but with no backing constant in the
+        # context's parameterizable-constants table (the
+        # IP_NONCONST_DEPTH pattern) are folded into the Config struct
+        # as plain fields. Their value source is the variant override;
+        # there is no constant default. Variants that do not override
+        # such a field receive 0 — deliberately a "tripwire" for any
+        # caller that reads through the legacy default fallback.
+        block_param_names = []
+        for param_row in block_row.get('params', []) or []:
+            name = param_row.get('param')
+            if not name or name in param_constant_names:
+                continue
+            block_param_names.append(name)
+
+        descriptors = []
+        canonical_by_signature = dict()
+        for variant in variants:
+            values = dict()
+            for const_data in param_constants:
+                const_name = const_data['constant']
+                if (variant, const_name) in overrides:
+                    values[const_name] = overrides[(variant, const_name)]
+                else:
+                    values[const_name] = const_data['value']
+            for name in block_param_names:
+                values[name] = overrides.get((variant, name), 0)
+            if variant == '':
+                config_name = f'{block_name}Config'
+            else:
+                config_name = f'{block_name}{variant[:1].upper()}{variant[1:]}Config'
+            # Intra-block dedup. Identical-value signatures share the
+            # canonical struct; non-canonical descriptors record the
+            # canonical's name in 'duplicateOf'.
+            signature = tuple(sorted(values.items()))
+            canonical = canonical_by_signature.get(signature)
+            if canonical is None:
+                canonical_by_signature[signature] = config_name
+                descriptors.append({
+                    'variant':     variant,
+                    'configName':  config_name,
+                    'values':      values,
+                    'duplicateOf': None,
+                })
+            else:
+                descriptors.append({
+                    'variant':     variant,
+                    'configName':  canonical,
+                    'values':      values,
+                    'duplicateOf': canonical,
+                })
+        return descriptors
 
     def _lookupInterfaceTypeKey(self, intf_type):
         """Simple lookup for interface type qualified key when not from interfaces table
@@ -1934,6 +2083,9 @@ class projectCreate:
         self.generateIndexes()
         # perform all address calculations
         self.calcAddresses()
+        # derive per-block config info (isParameterizable, defaultConfig)
+        # from a one-shot structure walk and persist on the blocks row
+        self.calcBlockConfigInfo()
         # generate address enums and types
         self.generateAddressEnums()
         # check include files are valid
@@ -2256,6 +2408,180 @@ class projectCreate:
                         exit(warningAndErrorReport())
         for blockKey, address in blockAddressCurrent.items():
             sql = f"UPDATE blocks SET maxAddress = {address-1} WHERE blockKey = '{blockKey}'"
+            g.cur.execute(sql)
+
+
+    def calcBlockConfigInfo(self):
+        # One-shot post-processing pass: for each block, walk every
+        # structure it references through registers, memories, connections,
+        # and connection maps. Persist isParameterizable and defaultConfig
+        # on the blocks row. See plan-block-config-postprocess.md.
+        # Walks raw SQL tables rather than the per-block view assembled by
+        # getBlockData(); the result is read back via the slim
+        # getBDConfigInfo() and getBlockConfigView() in projectOpen.
+        # Note: a block carries isParameterizable: true when at least one
+        # structure on its reachable surface is itself isParameterizable;
+        # the same flag name as on structures and registers/memories,
+        # one scope up.
+
+        # Pre-fetch lookup tables.
+        g.cur.execute("SELECT structureKey, isParameterizable, _context FROM structures")
+        structures = {}
+        for r in g.cur.fetchall():
+            structures[r['structureKey']] = {
+                'isParameterizable': bool(r['isParameterizable']),
+                '_context': r['_context'] or '',
+            }
+
+        g.cur.execute("SELECT instanceKey, instanceTypeKey, containerKey FROM instances")
+        instances_by_type = dict()
+        instances_by_container = dict()
+        instance_container = dict()
+        for r in g.cur.fetchall():
+            instances_by_type.setdefault(r['instanceTypeKey'], list()).append(r['instanceKey'])
+            cont = r['containerKey']
+            if cont:
+                instances_by_container.setdefault(cont, list()).append(r['instanceKey'])
+                instance_container[r['instanceKey']] = cont
+
+        g.cur.execute("SELECT interfaceKey, structureKey FROM interfacesstructures")
+        iface_structs = dict()
+        for r in g.cur.fetchall():
+            iface_structs.setdefault(r['interfaceKey'], list()).append(r['structureKey'])
+
+        g.cur.execute("SELECT connectionKey, instanceKey FROM connectionsends")
+        conn_end_instances = dict()
+        for r in g.cur.fetchall():
+            conn_end_instances.setdefault(r['connectionKey'], list()).append(r['instanceKey'])
+
+        g.cur.execute("SELECT connectionKey, interfaceKey FROM connections")
+        connections = list(g.cur.fetchall())
+
+        g.cur.execute("SELECT registerBlockKey, blockKey, structureKey, addressStructKey FROM registers")
+        registers = list(g.cur.fetchall())
+        registers_by_block = dict()
+        registers_by_key = dict()
+        for r in registers:
+            registers_by_block.setdefault(r['blockKey'], list()).append(r)
+            registers_by_key[r['registerBlockKey']] = r
+
+        g.cur.execute("SELECT memoryBlockKey, blockKey, structureKey, addressStructKey FROM memories")
+        memories = list(g.cur.fetchall())
+        memories_by_block = dict()
+        memories_by_key = dict()
+        for r in memories:
+            memories_by_block.setdefault(r['blockKey'], list()).append(r)
+            memories_by_key[r['memoryBlockKey']] = r
+
+        g.cur.execute("SELECT blockKey, instanceKey, memoryBlockKey FROM memoryConnections")
+        memory_connections = list(g.cur.fetchall())
+
+        g.cur.execute("SELECT blockKey, instanceKey, registerBlockKey FROM registerConnections")
+        register_connections = list(g.cur.fetchall())
+
+        g.cur.execute("SELECT blockKey, instanceKey, interfaceKey FROM connectionMaps")
+        connection_maps = list(g.cur.fetchall())
+
+        g.cur.execute("SELECT blockKey, block, isRegHandler FROM blocks")
+        block_rows = list(g.cur.fetchall())
+
+        for block_row in block_rows:
+            qualBlock = block_row['blockKey']
+            blockName = block_row['block']
+            is_reg_handler = bool(block_row['isRegHandler'])
+
+            # For regHandler blocks, registers and memories live on the
+            # parent block; mirror getBDRegistersMemories' parent lookup.
+            register_block = qualBlock
+            if is_reg_handler:
+                for inst_key in instances_by_type.get(qualBlock, list()):
+                    cont = instance_container.get(inst_key)
+                    if cont:
+                        register_block = cont
+                        break
+
+            qual_block_inst_set = set(instances_by_type.get(qualBlock, list()))
+            contained_inst_set = set(instances_by_container.get(qualBlock, list()))
+
+            contexts = list()
+            is_parameterizable = False
+
+            def add_struct(struct_key):
+                nonlocal is_parameterizable
+                if not struct_key:
+                    return
+                struct = structures.get(struct_key)
+                if struct is None or not struct['isParameterizable']:
+                    return
+                is_parameterizable = True
+                ctx = struct['_context']
+                if ctx and ctx not in contexts:
+                    contexts.append(ctx)
+
+            # 1. Connections that touch a port-owner instance of this block.
+            for conn in connections:
+                ends = conn_end_instances.get(conn['connectionKey'], list())
+                if any(e in qual_block_inst_set for e in ends):
+                    for sk in iface_structs.get(conn['interfaceKey'], list()):
+                        add_struct(sk)
+
+            # 2. Connections contained in this block (connectDouble).
+            for conn in connections:
+                ends = conn_end_instances.get(conn['connectionKey'], list())
+                if any(e in contained_inst_set for e in ends):
+                    for sk in iface_structs.get(conn['interfaceKey'], list()):
+                        add_struct(sk)
+
+            # 3. Connection maps belonging to or terminating at this block.
+            for cm in connection_maps:
+                if cm['blockKey'] == qualBlock or cm['instanceKey'] in qual_block_inst_set:
+                    for sk in iface_structs.get(cm['interfaceKey'], list()):
+                        add_struct(sk)
+
+            # 4. Registers owned by this block (or parent block when this is
+            #    a regHandler).
+            for reg in registers_by_block.get(register_block, list()):
+                add_struct(reg['structureKey'])
+                add_struct(reg['addressStructKey'])
+
+            # 5. Memories owned by this block (or parent block when this is
+            #    a regHandler).
+            for mem in memories_by_block.get(register_block, list()):
+                add_struct(mem['structureKey'])
+                add_struct(mem['addressStructKey'])
+
+            # 6. Memory connections touching this block (container or port).
+            for mc in memory_connections:
+                if mc['blockKey'] == qualBlock or mc['instanceKey'] in qual_block_inst_set:
+                    mem_row = memories_by_key.get(mc['memoryBlockKey'])
+                    if mem_row is not None:
+                        add_struct(mem_row['structureKey'])
+                        add_struct(mem_row['addressStructKey'])
+
+            # 7. Register connections touching this block (container or port).
+            for rc in register_connections:
+                if rc['blockKey'] == register_block or rc['instanceKey'] in qual_block_inst_set:
+                    reg_row = registers_by_key.get(rc['registerBlockKey'])
+                    if reg_row is not None:
+                        add_struct(reg_row['structureKey'])
+                        add_struct(reg_row['addressStructKey'])
+
+            # Derive defaultConfig from contexts[0] (file-name basename
+            # sanitised) when present, otherwise from the block name.
+            if is_parameterizable:
+                if contexts:
+                    base = os.path.splitext(os.path.basename(contexts[0]))[0]
+                    default_config = base.replace('-', '_').replace('.', '_') + 'DefaultConfig'
+                else:
+                    default_config = blockName + 'DefaultConfig'
+            else:
+                default_config = ''
+
+            sql_param = 1 if is_parameterizable else 0
+            sql_default = default_config.replace("'", "''")
+            sql = (f"UPDATE blocks SET isParameterizable = {sql_param}, "
+                   f"defaultConfig = '{sql_default}' "
+                   f"WHERE blockKey = '{qualBlock}'")
             g.cur.execute(sql)
 
 

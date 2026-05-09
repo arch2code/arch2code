@@ -20,15 +20,6 @@ private:
     void routerDecode(void);
     abpBusDecode< apbAddrSt, apbDataSt > decoder;
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("apbDecode_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<apbDecode>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
 
     apbDecode(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

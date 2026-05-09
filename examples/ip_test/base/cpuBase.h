@@ -72,5 +72,8 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_cpu();
 // GENERATED_CODE_END
 #endif //CPU_BASE_H

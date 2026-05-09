@@ -6,24 +6,37 @@
 #include "apbDecodeBase.h"
 #include "srcBase.h"
 #include "ipBase.h"
-template<typename Config>
-ip_top<Config>::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+SC_HAS_PROCESS(ip_top);
+
+// === Block factory registration (ip_top) ===
+void force_link_ip_top() {}
+
+void register_ip_top_variants() {
+    instanceFactory::registerBlock("ip_top_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_top>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _ip_top_registered = (register_ip_top_variants(), 0);
+} // namespace
+// === End block factory registration ===
+
+ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("ip_top", name(), bbMode)
-        ,ip_topBase<Config>(name(), variant)
+        ,ip_topBase(name(), variant)
         ,out0("ip_out0", "src")
         ,out1("ip_out1", "src")
         ,apb_uIp0("ip_apb_uIp0", "apbDecode")
         ,apb_uIp1("ip_apb_uIp1", "apbDecode")
-        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>( instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "")))
-        ,uSrc(std::dynamic_pointer_cast<srcBase<Config>>( instanceFactory::createInstance(name(), "uSrc", "src", "")))
-        ,uIp0(std::dynamic_pointer_cast<ipBase<Config>>( instanceFactory::createInstance(name(), "uIp0", "ip", "variant0")))
-        ,uIp1(std::dynamic_pointer_cast<ipBase<Config>>( instanceFactory::createInstance(name(), "uIp1", "ip", "variant1")))
+        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>((force_link_apbDecode(), instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", ""))))
+        ,uSrc(std::dynamic_pointer_cast<srcBase>(instanceFactory::createInstance(name(), "uSrc", "src", "")))
+        ,uIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0")))
+        ,uIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
-    uAPBDecode->cpu_main(this->cpu_main);
+    uAPBDecode->cpu_main(cpu_main);
     // instance to instance connections via channel
     uSrc->out0(out0);
     uIp0->ipDataIf(out0);

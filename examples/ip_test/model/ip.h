@@ -27,25 +27,6 @@ private:
     void regHandler(void);
     addressMap regs;
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // Register parameter variants with factory
-            instanceFactory::addParam({
-                { "ip.variant0.IP_DATA_WIDTH", 8 },
-                { "ip.variant0.IP_MEM_DEPTH", 16 },
-                { "ip.variant0.IP_NONCONST_DEPTH", 24 },
-                { "ip.variant1.IP_DATA_WIDTH", 12 },
-                { "ip.variant1.IP_MEM_DEPTH", 8 },
-                { "ip.variant1.IP_NONCONST_DEPTH", 12 },
-            });
-            // lamda function to construct the block
-            instanceFactory::registerBlock("ip_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<ip<ipDefaultConfig>>(blockName, variant, bbMode));}, "variant0" );
-            instanceFactory::registerBlock("ip_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<ip<ipDefaultConfig>>(blockName, variant, bbMode));}, "variant1" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
     SC_HAS_PROCESS(ip);
 

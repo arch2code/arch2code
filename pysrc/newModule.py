@@ -27,6 +27,16 @@ class newModule:
                 exit(warningAndErrorReport())
         if not prj.data.get("blocks"):
             return
+        # File-map conditions can use raw block schema fields plus
+        # derived fields exposed by getBlockConfigView(), such as
+        # isParameterizable. Keep the derived view local instead of
+        # mutating prj.data['blocks'].
+        blockCondData = {}
+        for qualBlock in list(prj.data['blocks'].keys()):
+            configView = prj.getBlockConfigView(qualBlock)
+            blockCondData[qualBlock] = dict(prj.data['blocks'][qualBlock])
+            for field in ['isParameterizable', 'defaultConfig']:
+                blockCondData[qualBlock][field] = configView[field]
         someBlock = next(iter(prj.data["blocks"])) # any random entry
         for fileKey, fileDefinition in fileGenerationConfig['fileMap'].items():
             mode = fileDefinition.get('mode', 'block') 
@@ -42,8 +52,8 @@ class newModule:
                 for field, value in both.items():
                     if isinstance(value, bool):
                         both[field] = int(value)
-                    if mode == 'block' and field not in prj.data["blocks"][someBlock]:
-                        printError(f"field {field} in cond does not exist in block schemafile")
+                    if mode == 'block' and field not in blockCondData[someBlock]:
+                        printError(f"field {field} in cond does not exist in block file-generation data")
             basePathKey = fileDefinition.get('basePath', '')
             if not basePathKey in processYaml.dirMacros:
                 printError(f"A basePath of {basePathKey} is not defined in the dirs section of the project file")
@@ -71,12 +81,12 @@ class newModule:
                 # if there is both or and and cond, then we will make the file if any of the or cond is true and all of the and cond are true
                 if cond:
                     for field, value in cond.items():
-                        if prj.data["blocks"][qualBlock][field] == value:
+                        if blockCondData[qualBlock][field] == value:
                             makeFile = True 
                             break
                 if condAnd:
                     for field, value in condAnd.items():
-                        if prj.data["blocks"][qualBlock][field] != value:
+                        if blockCondData[qualBlock][field] != value:
                             makeFile = False
                             break
                 if makeFile:

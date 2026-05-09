@@ -11,7 +11,6 @@
 import ip;
 using namespace ip_ns;
 
-template<typename Config>
 class srcBase : public virtual blockPortBase
 {
 public:
@@ -39,7 +38,6 @@ public:
         out1->setLogging(verbosity);
     };
 };
-template<typename Config>
 class srcInverted : public virtual blockPortBase
 {
 public:
@@ -66,7 +64,6 @@ public:
         out1->setLogging(verbosity);
     };
 };
-template<typename Config>
 class srcChannels
 {
 public:
@@ -81,7 +78,7 @@ public:
     out0(("out0"+name).c_str(), srcName)
     ,out1(("out1"+name).c_str(), srcName)
     {};
-    void bind( srcBase<Config> *a, srcInverted<Config> *b)
+    void bind( srcBase *a, srcInverted *b)
     {
         a->out0( out0 );
         b->out0( out0 );
@@ -90,5 +87,8 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_src();
 // GENERATED_CODE_END
 #endif //SRC_BASE_H
