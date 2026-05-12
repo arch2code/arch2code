@@ -19,51 +19,44 @@
 
 #include "push_ack_bfm.h"
 
-class src_hdl_sc_wrapper: public sc_module, public blockBase, public srcBase<ipDefaultConfig> {
+template <typename DUT_T>
+class src_hdl_sc_wrapper: public sc_module, public blockBase, public srcBase<srcDefaultConfig> {
 
 public:
 
     struct registerBlock
     {
-        registerBlock()
+        registerBlock(const char *variant_)
         {
             // lamda function to construct the block
             instanceFactory::registerBlock(
                 "src_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < src_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
+                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < src_hdl_sc_wrapper<DUT_T> > (blockName, variant, bbMode));
+                }, variant_);
         }
     };
 
     static registerBlock registerBlock_;
 
-#if !defined(VERILATOR) && defined(VCS)
-    src_hdl_sv_wrapper *dut_hdl;
-#else
-    Vsrc_hdl_sv_wrapper *dut_hdl;
-#endif
+    DUT_T *dut_hdl;
 
     sc_clock clk;
 
-    push_ack_src_bfm<ipDataSt<ipDefaultConfig>, sc_bv<8>> out0_bfm;
-    push_ack_src_bfm<ipDataSt<ipDefaultConfig>, sc_bv<8>> out1_bfm;
+    push_ack_src_bfm<srcOut0St<srcDefaultConfig>, sc_bv<8>> out0_bfm;
+    push_ack_src_bfm<srcOut1St<srcDefaultConfig>, sc_bv<12>> out1_bfm;
 
-    SC_HAS_PROCESS (src_hdl_sc_wrapper);
+    SC_HAS_PROCESS (src_hdl_sc_wrapper<DUT_T>);
 
     src_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
         blockBase("src_hdl_sc_wrapper", name(), bbMode),
-        srcBase<ipDefaultConfig>(name(), variant),
+        srcBase<srcDefaultConfig>(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         out0_bfm("out0_bfm"),
         out1_bfm("out1_bfm"),
         rst_n(0)
     {
-#if !defined(VERILATOR) && defined(VCS)
-        dut_hdl = new src_hdl_sv_wrapper("dut_hdl");
-#else
-        dut_hdl = new Vsrc_hdl_sv_wrapper("dut_hdl");
-#endif
+        dut_hdl = new DUT_T("dut_hdl");
 
         dut_hdl->out0_push(out0_hdl_if.push);
         dut_hdl->out0_data(out0_hdl_if.data);
@@ -101,7 +94,7 @@ public:
 private:
 
     push_ack_hdl_if<sc_bv<8>> out0_hdl_if;
-    push_ack_hdl_if<sc_bv<8>> out1_hdl_if;
+    push_ack_hdl_if<sc_bv<12>> out1_hdl_if;
 
     sc_signal<bool> rst_n;
 

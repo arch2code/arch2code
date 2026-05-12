@@ -72,10 +72,17 @@ private:
             DownR reqOut;
             DownA ackIn;
             UpA   ackOut;
+            typename UpR::_packedSt   reqPacked;
+            typename DownA::_packedSt ackPacked;
             up->reqReceive( reqIn );
-            reqOut.unpack( static_cast<typename DownR::_packedSt>( reqIn.pack() ) );
+            // Generated payload structs expose pack() via an out
+            // parameter (`void pack(_packedSt& _ret) const`); stage the
+            // packed value into a local before the cross-width cast.
+            reqIn.pack( reqPacked );
+            reqOut.unpack( static_cast<typename DownR::_packedSt>( reqPacked ) );
             m_chDown.req( reqOut, ackIn );
-            ackOut.unpack( static_cast<typename UpA::_packedSt>( ackIn.pack() ) );
+            ackIn.pack( ackPacked );
+            ackOut.unpack( static_cast<typename UpA::_packedSt>( ackPacked ) );
             up->ack( ackOut );
         }
     }

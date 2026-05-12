@@ -10,17 +10,23 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "srcBase.h"
-#include "ipConfig.h"
-import ip;
-using namespace ip_ns;
+#include "srcConfig.h"
+#include "ipLeafConfig.h"
+import src;
+using namespace src_ns;
+import ipLeaf;
+using namespace ipLeaf_ns;
 //contained instances forward class declaration
 template<typename Config> class ipLeafBase;
 
-SC_MODULE(src), public blockBase, public srcBase
+template<typename Config>
+SC_MODULE(src), public blockBase, public srcBase<Config>
 {
 private:
 
 public:
+    SC_HAS_PROCESS(src);
+
     //instances contained in block
     std::shared_ptr<ipLeafBase<ipLeafVariantLeaf0Config>> uLeaf;
 

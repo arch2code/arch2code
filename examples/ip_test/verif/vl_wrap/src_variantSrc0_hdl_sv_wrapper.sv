@@ -1,10 +1,10 @@
-`ifndef _SRC_HDL_SV_WRAPPER_SV_GUARD_
-`define _SRC_HDL_SV_WRAPPER_SV_GUARD_
+`ifndef _SRC_VARIANTSRC0_HDL_SV_WRAPPER_SV_GUARD_
+`define _SRC_VARIANTSRC0_HDL_SV_WRAPPER_SV_GUARD_
 
-// GENERATED_CODE_PARAM --block=src
+// GENERATED_CODE_PARAM --block=src --variant=variantSrc0
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
-module src_hdl_sv_wrapper
+module src_variantSrc0_hdl_sv_wrapper
     // Generated Import package statement(s)
     import ipLeaf_package::*;
     import src_package::*;
@@ -36,7 +36,7 @@ module src_hdl_sv_wrapper
     assign #0 out1_data = out1.data;
     assign #0 out1.ack = out1_ack;
 
-    src dut (
+    src #(.OUT0_DATA_WIDTH(8), .OUT1_DATA_WIDTH(12)) dut (
         .out0(out0), // push_ack_if.src
         .out1(out1), // push_ack_if.src
         .clk(clk),
@@ -49,8 +49,8 @@ module src_hdl_sv_wrapper
     end
     `endif
 
-endmodule : src_hdl_sv_wrapper
+endmodule : src_variantSrc0_hdl_sv_wrapper
 
 // GENERATED_CODE_END
 
-`endif // _SRC_HDL_SV_WRAPPER_SV_GUARD_
+`endif // _SRC_VARIANTSRC0_HDL_SV_WRAPPER_SV_GUARD_

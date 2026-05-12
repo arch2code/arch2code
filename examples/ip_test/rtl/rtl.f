@@ -3,6 +3,7 @@
 // GENERATED_CODE_BEGIN --template=rtlDotF
 +incdir+.
 -y .
+src_package.sv
 ipLeaf_package.sv
 ip_package.sv
 ip_top_package.sv

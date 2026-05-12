@@ -37,6 +37,9 @@
 # binding — multi-Config-per-project propagation lives in the deferred
 # `processYaml.py` per-instance walk.
 
+import pysrc.intf_gen_utils as intf_gen_utils
+
+
 def render(args, prj, data):
     return render_default(args, prj, data)
 
@@ -47,6 +50,13 @@ def render_default(args, prj, data):
     qualBlock = data.get('qualBlock', '')
     blockInfo = data['blockInfo']
     isParameterizable = data['isParameterizable']
+    # Stage 3.2 of plan-variant-config-unification.md: only leaf
+    # parameterizable blocks (those with their own `params:`) are class
+    # templates. Non-leaf containers flagged isParameterizable solely
+    # because parameterizable structures transit their surface remain
+    # non-templated and must NOT receive a `<Config>` template argument
+    # in the trampoline's `make_shared` call.
+    hasOwnParams = intf_gen_utils.block_has_own_params(prj, qualBlock) if qualBlock else False
     defaultConfig = data['defaultConfig'] if isParameterizable else ''
 
     # The variant set is the project's instance-bound variant set for
@@ -109,24 +119,30 @@ def render_default(args, prj, data):
     # per (blockType, variant) pair. Stage 1.1 of
     # plan-variant-config-unification.md threads the per-variant Config
     # struct name from the descriptor list when one is available; under
-    # variant ≅ Config the variant string is the factory key.
+    # variant ≅ Config the variant string is the factory key. Non-leaf
+    # parameterizable blocks (hasOwnParams=False) are non-templated, so
+    # `make_shared<B>` rather than `make_shared<B<Config>>` is emitted.
     if isParameterizable:
+        def _target(variant):
+            if not hasOwnParams:
+                return blockName
+            perVariantConfig = variantConfigName.get(variant, defaultConfig)
+            return f'{blockName}<{perVariantConfig}>'
+
         if variants:
             for variant in variants:
-                perVariantConfig = variantConfigName.get(variant, defaultConfig)
                 out.extend(_emit_register_call(
                     suffix='model',
                     blockName=blockName,
-                    targetClass=f'{blockName}<{perVariantConfig}>',
+                    targetClass=_target(variant),
                     variant=variant,
                     indent='        ',
                 ))
         else:
-            anonConfig = variantConfigName.get('', defaultConfig)
             out.extend(_emit_register_call(
                 suffix='model',
                 blockName=blockName,
-                targetClass=f'{blockName}<{anonConfig}>',
+                targetClass=_target(''),
                 variant='',
                 indent='        ',
             ))

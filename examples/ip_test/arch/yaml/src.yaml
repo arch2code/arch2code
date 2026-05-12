@@ -1,0 +1,56 @@
+# src - producer block with Q11 per-port-parameterised outputs.
+#
+# Step 7.2 of plan-variant-config-unification.md migrates the existing
+# ip_test fixture to the Path-C / Q11 shape. The producer block exposes
+# two outputs whose payloads carry independently-parameterised widths
+# (OUT0_DATA_WIDTH and OUT1_DATA_WIDTH) so the two cross-Config consumers
+# (uIp0 with IP_DATA_WIDTH=8 and uIp1 with IP_DATA_WIDTH=12) each see a
+# producer-side payload that matches their bit width under the Stage 6.2
+# packed-form compatibility check. The cross-interface binds on the
+# consumer's destination ports go through the push_ack thunker.
+
+blockDir: .
+
+ipParameters:
+    constants:
+        OUT0_DATA_WIDTH: { value: 8,  maxValue: 16, desc: "Width fed to uIp0" }
+        OUT1_DATA_WIDTH: { value: 12, maxValue: 16, desc: "Width fed to uIp1" }
+    types:
+        srcOut0DataT:
+            width: OUT0_DATA_WIDTH
+            maxBitwidth: 16
+            desc: "src out0 data word, parameterizable"
+        srcOut1DataT:
+            width: OUT1_DATA_WIDTH
+            maxBitwidth: 16
+            desc: "src out1 data word, parameterizable"
+
+structures:
+    srcOut0St:
+        data: { varType: srcOut0DataT, desc: "src out0 payload" }
+    srcOut1St:
+        data: { varType: srcOut1DataT, desc: "src out1 payload" }
+
+interfaces:
+    srcOut0If:
+        desc: "src out0 push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: srcOut0St, structureType: data_t }
+    srcOut1If:
+        desc: "src out1 push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: srcOut1St, structureType: data_t }
+
+blocks:
+    src:
+        desc: "Producer with two per-port-parameterised outputs feeding uIp0 and uIp1"
+        params: [OUT0_DATA_WIDTH, OUT1_DATA_WIDTH]
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            out0: { interface: srcOut0If, direction: src }
+            out1: { interface: srcOut1If, direction: src }

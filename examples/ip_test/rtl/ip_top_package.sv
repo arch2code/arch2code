@@ -4,6 +4,7 @@
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package ip_top_package;
 // Generated Import package statement(s)
+import src_package::*;
 import ipLeaf_package::*;
 import ip_package::*;
 localparam int unsigned DWORD = 32'h0000_0020;  // Width of an APB dword

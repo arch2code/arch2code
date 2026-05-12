@@ -13,6 +13,7 @@ blockDir: .
 include:
     - ip.yaml
     - ipLeaf.yaml
+    - src.yaml
 
 constants:
     DWORD: { value: 32, desc: "Width of an APB dword" }
@@ -64,27 +65,21 @@ blocks:
         hasMdl: true
         hasTb: false
         hasRtl: true
-    src:
-        desc: "ipDataIf stimulus driver feeding both IP instances"
-        hasVl: true
-        hasMdl: true
-        hasTb: false
-        hasRtl: true
 
 instances:
     ip_top_tb:  { container: ip_top_tb, instanceType: ip_top_tb, instGroup: top }
     u_ip_top:   { container: ip_top_tb, instanceType: ip_top,    instGroup: top }
     uCPU:       { container: ip_top_tb, instanceType: cpu,       instGroup: top }
     uAPBDecode: { container: ip_top,    instanceType: apbDecode, instGroup: top }
-    uSrc:       { container: ip_top,    instanceType: src,       instGroup: top }
+    uSrc:       { container: ip_top,    instanceType: src,       instGroup: top, variant: variantSrc0 }
     uIp0:       { container: ip_top,    instanceType: ip,        instGroup: top, addressGroup: top, variant: variant0 }
     uIp1:       { container: ip_top,    instanceType: ip,        instGroup: top, addressGroup: top, variant: variant1 }
     uLeaf:      { container: src,       instanceType: ipLeaf,    instGroup: top, variant: variantLeaf0 }
 
 connections:
     - { interface: apbReg, src: uCPU, dst: u_ip_top, name: cpu_main }
-    - { interface: ipDataIf, src: uSrc, srcport: out0, dst: uIp0 }
-    - { interface: ipDataIf, src: uSrc, srcport: out1, dst: uIp1 }
+    - { interface: srcOut0If, src: uSrc, srcport: out0, dst: uIp0, dstport: ipDataIf }
+    - { interface: srcOut1If, src: uSrc, srcport: out1, dst: uIp1, dstport: ipDataIf }
 
 connectionMaps:
     - { interface: apbReg, block: ip_top, direction: dst, instance: uAPBDecode, name: cpu_main }
@@ -100,3 +95,6 @@ parameters:
     ipLeaf:
         - { variant: variantLeaf0, param: LEAF_DATA_WIDTH, value: 4 }
         - { variant: variantLeaf0, param: LEAF_MEM_DEPTH,  value: 4 }
+    src:
+        - { variant: variantSrc0, param: OUT0_DATA_WIDTH, value: 8 }
+        - { variant: variantSrc0, param: OUT1_DATA_WIDTH, value: 12 }

@@ -130,6 +130,10 @@ def render_interfaces(interface_type, parent_name, child_name):
         structures = """    structures:
       - {structure: data_st, structureType: data_t}
       - {structure: data_st, structureType: rdata_t}"""
+    elif interface_type == 'apb':
+        structures = """    structures:
+      - {structure: data_st, structureType: addr_t}
+      - {structure: data_st, structureType: data_t}"""
     else:
         structures = """    structures:
       - {structure: data_st, structureType: data_t}"""
@@ -174,8 +178,11 @@ def test_parameter_order(interface_type, expected_types):
 
 def test_missing_thunker_support():
     print("\nTesting unsupported thunker diagnostic")
+    # Pick a meta-protocol that is still not declared as thunker-supporting
+    # in interfaces/<proto>/<proto>_if.yaml. apb retains the transitional
+    # `sc_channel.thunker: true` gate until Stage 10.3.
     db_path, project_path, arch_path, result = build_database(
-        build_arch('push_ack', 'parentPushIf', 'childPushIf'),
+        build_arch('apb', 'parentApbIf', 'childApbIf'),
         expect_success=False)
     try:
         output = result.stdout + result.stderr
@@ -193,6 +200,7 @@ def run_all_tests():
     tests = [
         lambda: test_parameter_order('rdy_vld', ['data_t', 'data_t']),
         lambda: test_parameter_order('req_ack', ['data_t', 'rdata_t', 'data_t', 'rdata_t']),
+        lambda: test_parameter_order('push_ack', ['data_t', 'data_t']),
         test_missing_thunker_support,
     ]
     return 0 if all(test() for test in tests) else 1

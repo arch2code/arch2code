@@ -1594,10 +1594,17 @@ class projectOpen:
                     break
             return blockRow.get('defaultConfig', '')
 
-        def resolveConnectionConfigName(connVal):
+        def resolveConnectionConfigName(connVal, excludeEndKey=''):
+            # When annotating a cross-interface bind, the "parent" payload
+            # of the thunker is the producer's (up-side) typing. Skip the
+            # consumer end being annotated so the surviving leaf end (the
+            # producer) governs the parent-side Config. With no exclude
+            # key supplied the historical dst-prefer behaviour applies.
             leafChoice = None
             transitChoice = None
-            for endData in (connVal.get('ends', {}) or {}).values():
+            for endKey, endData in (connVal.get('ends', {}) or {}).items():
+                if excludeEndKey and endKey == excludeEndKey:
+                    continue
                 instKey = endData.get('instanceKey')
                 if not instKey:
                     continue
@@ -1720,7 +1727,16 @@ class projectOpen:
                 exit(warningAndErrorReport())
             childInterface = self.data['interfaces'][childInterfaceKey]
             childConfigName = resolveInstanceConfigName(instanceData)
-            parentConfigName = resolveConnectionConfigName(connVal)
+            parentConfigName = resolveConnectionConfigName(connVal, excludeEndKey=endKey)
+            # Stage 7.2 of plan-variant-config-unification.md: the
+            # thunker member types reference the child interface's
+            # structures, so the surrounding container must include the
+            # child interface's defining context. getBDConnections only
+            # gathers structures from the connection's parent interface;
+            # absent this annotation, generated containers carrying
+            # cross-interface thunker members would miss the
+            # <childContext>Config.h include.
+            self.getBDGetIntfStructs(ret, intfData=childInterface)
             return {
                 'endKey': endKey,
                 'instanceKey': instanceKey,
@@ -1758,6 +1774,33 @@ class projectOpen:
                     endVal['crossInterface'] = bind
                     crossInterfaceEnds.append(bind)
             if crossInterfaceEnds:
+                connVal['crossInterfaceEnds'] = crossInterfaceEnds
+
+        # Also walk connection-port views so block views whose only
+        # exposure to a cross-interface bind is via the boundary port
+        # (i.e. the consumer-side end appears only in connectionPorts,
+        # not in `connections`) still observe the annotation. Without
+        # this pass the consumer's port generation in getBDPorts cannot
+        # detect that the port should be typed by the child's declared
+        # interface rather than the parent connection's interface.
+        for connVal in ret.get('connectionPorts', {}).values():
+            crossInterfaceEnds = []
+            for endKey, endVal in connVal.get('ends', {}).items():
+                if 'crossInterface' in endVal:
+                    crossInterfaceEnds.append(endVal['crossInterface'])
+                    continue
+                bind = annotate(
+                    connVal,
+                    endKey,
+                    endVal.get('instanceKey') or '',
+                    endVal.get('portName') or '',
+                    endVal.get('instance') or '',
+                    endVal.get('direction') or '',
+                )
+                if bind:
+                    endVal['crossInterface'] = bind
+                    crossInterfaceEnds.append(bind)
+            if crossInterfaceEnds and not connVal.get('crossInterfaceEnds'):
                 connVal['crossInterfaceEnds'] = crossInterfaceEnds
 
         for connMap in ret['connectionMaps'].values():
@@ -1824,8 +1867,22 @@ class projectOpen:
                 portName = endVal['portName']
                 self.getBDAddPort(ports, newPorts, portName, endVal)
                 temp = dict(connVal, **ports[portName])
-                temp['connection']['interfaceKey'] = connVal['interfaceKey']
-                self.getBDGetIntfStructs(ret, intfKey=connVal['interfaceKey'])
+                # Stage 7.2 of plan-variant-config-unification.md: when
+                # this end has a bottom-up declared port whose interface
+                # differs from the connection's (a cross-interface bind),
+                # the port itself is typed by the child's declared
+                # interface. Channel typing remains the connection's
+                # parent interface; the per-protocol thunker bridges the
+                # two. Without this swap, the consumer's port would emit
+                # with the producer's structure type (the canonical Q11
+                # misemission).
+                crossBind = endVal.get('crossInterface')
+                if crossBind and crossBind.get('childInterfaceKey'):
+                    temp['connection']['interfaceKey'] = crossBind['childInterfaceKey']
+                    self.getBDGetIntfStructs(ret, intfKey=crossBind['childInterfaceKey'])
+                else:
+                    temp['connection']['interfaceKey'] = connVal['interfaceKey']
+                    self.getBDGetIntfStructs(ret, intfKey=connVal['interfaceKey'])
                 ports[portName] = temp
         ret['ports']['connections'] = dict(ports)
         portTypes = {'connectionMapPorts': {'dest': 'connectionMaps', 'portName': 'instancePortName'},
@@ -1873,6 +1930,26 @@ class projectOpen:
         for sourceContext in sourceContexts:
             if sourceContext not in self.specialContexts:
                 ret['includeContext'][sourceContext] = 0
+        # Stage 3.1 of plan-variant-config-unification.md: child instance
+        # shared_ptr declarations name the child's per-variant Config
+        # (e.g., `ipLeafBase<ipLeafVariantLeaf0Config>`). The defining
+        # `<childContext>Config.h` lives alongside the child block, in the
+        # child block's context. Without aggregating those contexts here
+        # the parent's class-declaration TU cannot resolve the Config
+        # struct name. The aggregation is bounded by subBlockInstances
+        # whose child block is itself parameterizable.
+        for inst_data in (ret.get('subBlockInstances') or {}).values():
+            type_key = inst_data.get('instanceTypeKey')
+            if not type_key:
+                continue
+            child_block = self.data.get('blocks', {}).get(type_key)
+            if not child_block:
+                continue
+            if not child_block.get('isParameterizable', False):
+                continue
+            child_context = child_block.get('_context')
+            if child_context and child_context not in self.specialContexts:
+                ret['includeContext'][child_context] = 0
 
     def getBDInterfaceDefs(self, ret):
         """Collect interface definitions for all interface types used in the block

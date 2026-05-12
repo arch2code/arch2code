@@ -25,11 +25,13 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockBase("ip_top", name(), bbMode)
         ,ip_topBase(name(), variant)
         ,out0("ip_out0", "src")
+        ,thunker_out0_uIp0("thunker_out0_uIp0", out0, uIp0->ipDataIf, name())
         ,out1("ip_out1", "src")
+        ,thunker_out1_uIp1("thunker_out1_uIp1", out1, uIp1->ipDataIf, name())
         ,apb_uIp0("ip_apb_uIp0", "apbDecode")
         ,apb_uIp1("ip_apb_uIp1", "apbDecode")
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>((force_link_apbDecode(), instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", ""))))
-        ,uSrc(std::dynamic_pointer_cast<srcBase>(instanceFactory::createInstance(name(), "uSrc", "src", "")))
+        ,uSrc(std::dynamic_pointer_cast<srcBase<srcVariantSrc0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "variantSrc0")))
         ,uIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0")))
         ,uIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1")))
 // GENERATED_CODE_END
@@ -39,9 +41,7 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
     uAPBDecode->cpu_main(cpu_main);
     // instance to instance connections via channel
     uSrc->out0(out0);
-    uIp0->ipDataIf(out0);
     uSrc->out1(out1);
-    uIp1->ipDataIf(out1);
     uAPBDecode->apb_uIp0(apb_uIp0);
     uIp0->apbReg(apb_uIp0);
     uAPBDecode->apb_uIp1(apb_uIp1);

@@ -3,7 +3,7 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, block_has_own_params, resolve_instance_config_arg
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, block_has_own_params, resolve_instance_config_arg, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name
 
 from jinja2 import Template
 
@@ -122,6 +122,34 @@ def ext_sec_init(args, prj, data):
             chnlData = sc_gen_block_channels(data_, prj, data)
             s = '   ,{chnlName}("{chnlName}", "{instName}")'
             out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst))
+            # Stage 7.2 of plan-variant-config-unification.md: mirror the
+            # DUT's cross-interface thunker emission inside the external
+            # pseudo-block. Without these entries the consumer-side port
+            # whose interface is bridged by a thunker in the DUT would
+            # remain unbound during external elaboration.
+            for flagged in _resolve_cross_interface_ends(data_, prj):
+                memberName = _thunker_member_name(flagged, data_, is_connection_map=False)
+                out.append(
+                    f'   ,{memberName}("{memberName}", {chnlData["chnl_name"]}, '
+                    f'{flagged["instance"]}->{flagged["portName"]}, name())'
+                )
+
+    # Stage 7.2: emit a local-only channel for each connectionMap port
+    # carried by a contained instance. The external pseudo-block
+    # inherits ip_topInverted's parent port for the same interface, but
+    # the inverted direction means it cannot serve as the binding target
+    # for the contained instance's port. The local channel satisfies SC
+    # port binding for the contained instance without disturbing the
+    # testbench harness's parent-port wiring.
+    for key, value in data.get('connectionMaps', dict()).items():
+        if _resolve_cross_interface_ends(value, prj):
+            continue
+        instName = value.get('instance', '')
+        instPort = value.get('instancePortName', '')
+        out.append(
+            f'   ,_ext_cm_{instName}_{instPort}('
+            f'"_ext_cm_{instName}_{instPort}", "{instName}")'
+        )
 
     return "\n".join(out)
 
@@ -153,10 +181,22 @@ def ext_sec_body(args, prj, data):
     # channels outside of any that include the excluded instances
     connections = sc_connect_channels(data, indent, data)
 
-    if connections or prunedConnections:
+    # Stage 7.2: bind the contained instance's connectionMap port to
+    # the local-only channel declared in ext_sec_header.
+    cm_binds = []
+    for key, value in data.get('connectionMaps', dict()).items():
+        if _resolve_cross_interface_ends(value, prj):
+            continue
+        instName = value.get('instance', '')
+        instPort = value.get('instancePortName', '')
+        memberName = f'_ext_cm_{instName}_{instPort}'
+        cm_binds.append(f'{indent}{instName}->{instPort}({memberName});')
+
+    if connections or prunedConnections or cm_binds:
         out.append(indent +'// instance to instance connections via channel')
         out += connections
         out += prunedConnections
+        out += cm_binds
 
     out.append('\n' + indent +'SC_THREAD(eotThread);')
 
@@ -202,6 +242,38 @@ def ext_sec_header(args, prj, data):
     if isParameterizable:
         ext_chnl_decl_s = [line.replace('<Config>', f'<{defaultConfig}>') for line in ext_chnl_decl_s]
 
+    # Stage 7.2: declare local-only channels for connectionMap ports on
+    # contained instances. See ext_sec_init for the matching member-init
+    # and ext_sec_body for the bind to the contained instance.
+    for key, value in data.get('connectionMaps', dict()).items():
+        if _resolve_cross_interface_ends(value, prj):
+            continue
+        instName = value.get('instance', '')
+        instPort = value.get('instancePortName', '')
+        intfInfo = prj.data['interfaces'].get(value.get('interfaceKey', ''))
+        if not intfInfo:
+            continue
+        synth_conn = dict(value)
+        synth_conn['interfaceType'] = intfInfo['interfaceType']
+        synth_conn['interfaceName'] = intfInfo['interface']
+        synth_conn['maxTransferSize'] = intfInfo.get('maxTransferSize', '0')
+        chnlData = sc_gen_block_channels(synth_conn, prj, data)
+        chnl_decl = chnlData["channel_decl"]
+        # channel_decl is "<type><params> <name>;"; replace the
+        # auto-derived name with the local-only name.
+        memberName = f'_ext_cm_{instName}_{instPort}'
+        local_decl = chnl_decl.rsplit(' ', 1)[0] + f' {memberName};'
+        ext_chnl_decl_s.append(f'    {local_decl}')
+
+    # Stage 7.2 of plan-variant-config-unification.md: when the DUT
+    # contains cross-interface thunker members the external pseudo-block
+    # must mirror them so its consumer-side ports complete binding
+    # during elaboration. The decls and the matching header include both
+    # remain off when no cross-interface ends are flagged.
+    ext_thunker_decl_s = sc_declare_thunkers(data, prj, ' '*4, data)
+    thunker_includes = sorted(sc_thunker_protocols(data, prj))
+    thunker_include_lines = [f'#include "{proto}_port_thunker.h"' for proto in thunker_includes]
+
     t = Template(sec_tb_external_header_template)
     config_includes = []
     if isParameterizable:
@@ -214,9 +286,11 @@ def ext_sec_header(args, prj, data):
         cfg=cfg,
         default_config=defaultConfig,
         config_includes='\n'.join(config_includes),
+        thunker_includes='\n'.join(thunker_include_lines),
         ext_fwd_decl='\n'.join(ext_fwd_decl_s),
         ext_inst_decl='\n'.join(ext_inst_decl_s),
-        ext_chnl_decl='\n'.join(ext_chnl_decl_s)
+        ext_chnl_decl='\n'.join(ext_chnl_decl_s),
+        ext_thunker_decl='\n'.join(ext_thunker_decl_s)
     )
     return(s)
 
@@ -300,6 +374,9 @@ sec_tb_external_header_template = """\
 {%- if config_includes %}
 {{config_includes}}
 {%- endif %}
+{%- if thunker_includes %}
+{{thunker_includes}}
+{%- endif %}
 #include "endOfTest.h"
 
 {%- if ext_fwd_decl %}
@@ -326,6 +403,11 @@ public:
 {%- if ext_chnl_decl %}
 
 {{ ext_chnl_decl }}
+{%- endif %}
+{%- if ext_thunker_decl %}
+
+    // cross-interface thunkers
+{{ ext_thunker_decl }}
 {%- endif %}
 
     // Thread monitoring the end of test event to stop simulation

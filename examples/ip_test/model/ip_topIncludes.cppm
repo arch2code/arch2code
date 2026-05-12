@@ -15,8 +15,10 @@ export module ip_top;
 // GENERATED_CODE_BEGIN --template=headers
 import ip;
 import ipLeaf;
+import src;
 using namespace ip_ns;
 using namespace ipLeaf_ns;
+using namespace src_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants

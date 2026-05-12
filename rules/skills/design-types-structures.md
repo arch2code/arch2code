@@ -1,11 +1,11 @@
 ---
 name: design-types-structures
-description: Guide for editing YAML types, structures, and constants - the foundational elements that interfaces, registers, and memories reference
+description: Guide for editing regular YAML constants, types, and structures - the foundational elements that interfaces, registers, and memories reference. For ipParameters and variant-bound types, use design-parameterizable-blocks.
 ---
 # Skill: Design Types & Structures
 
 ## Purpose
-Guide the user in defining constants, types, and structures in arch2code YAML. These are the foundational elements referenced by interfaces, registers, and memories.
+Guide the user in defining regular constants, types, and structures in arch2code YAML. These are the foundational elements referenced by interfaces, registers, and memories. For `ipParameters`, parameterizable types, and variant-bound structures, use `design-parameterizable-blocks.md`.
 
 ## References
 *   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Low-Level Architecture Elements")
@@ -26,8 +26,7 @@ Fixed parameters used for sizing, addresses, and configuration.
 **Properties:**
 *   `value`: Literal integer. **Use `value` OR `eval`, not both.**
 *   `eval`: Python expression string. Reference other constants with `$NAME`.
-*   `maxValue`: Optional worst-case integer for parameterizable constants.
-*   `isParameterizable`: Optional explicit flag; normally use `ipParameters` instead.
+*   `maxValue`: Optional worst-case integer for parameterizable constants; prefer `ipParameters` in `design-parameterizable-blocks.md` for variant-bound values.
 *   `desc`: **(Required)** Description.
 
 ```yaml
@@ -36,7 +35,6 @@ constants:
   DEPTH: {value: 256, desc: "Queue depth"}
   DEPTH_BITS: {eval: '($DEPTH-1).bit_length()', desc: "Bits for depth index"}
   TOTAL_SIZE: {eval: '$DEPTH * $DATA_WIDTH // 8', desc: "Total bytes"}
-  IP_DATA_WIDTH: {value: 8, maxValue: 16, desc: "Per-instance data width"}
 ```
 
 **Eval rules:**
@@ -52,8 +50,7 @@ Define bit-vector widths and enumerations.
 **Properties:**
 *   `width`: **(Required for non-enum types)** Bit width (integer or constant name).
 *   `widthLog2` / `widthLog2minus1`: Alternatives for address/index widths.
-*   `maxBitwidth`: Optional worst-case bit width for parameterizable types.
-*   `isParameterizable`: Optional explicit flag; normally use `ipParameters` instead.
+*   `maxBitwidth`: Optional worst-case bit width for parameterizable types; prefer `ipParameters` in `design-parameterizable-blocks.md` for variant-bound types.
 *   `desc`: **(Required)** Description.
 *   `enum`: (Optional) List of enum values. Width is auto-calculated from max value.
 
@@ -62,8 +59,6 @@ types:
   # Simple bit-vector types
   byte_t: {width: 8, desc: "8-bit byte"}
   addr_t: {width: ADDR_WIDTH, desc: "Address type (width from constant)"}
-  ip_data_t: {width: IP_DATA_WIDTH, desc: "Width derives maxBitwidth from parameter"}
-  ip_literal_t: {width: 8, maxBitwidth: 16, desc: "Literal width with worst-case max"}
   
   # Enum types (width auto-calculated)
   opcode_t:
@@ -85,27 +80,7 @@ types:
   data_t: {width: 32, desc: "Data"}
 ```
 
-### 3. Parameterizable IP Parameters (`ipParameters` dictionary)
-
-Use `ipParameters` in an IP block's own YAML file for constants and types that vary by instance or variant. Entries are processed through the normal `constants` and `types` schemas, then marked parameterizable.
-
-```yaml
-ipParameters:
-  constants:
-    IP_DATA_WIDTH: {value: 8, maxValue: 16, desc: "Per-instance data width"}
-    IP_MEM_DEPTH: {value: 16, maxValue: 32, desc: "Per-instance memory depth"}
-    IP_DATA_WIDTH_X2: {eval: "$IP_DATA_WIDTH * 2", desc: "Derived max auto-computed"}
-  types:
-    ip_data_t: {width: IP_DATA_WIDTH, desc: "Data type"}
-```
-
-**Rules:**
-*   Direct parameterizable constants require `maxValue > 0`.
-*   Direct parameterizable types require `maxBitwidth`, unless their width references a parameterizable constant.
-*   Derived constants/types inherit parameterizability from referenced constants.
-*   Do not place `ipParameters` in shared include files that only define common constants/types/structures.
-
-### 4. Structures (`structures` dictionary)
+### 3. Structures (`structures` dictionary)
 
 Composite data types built from types or other structures.
 
@@ -139,8 +114,6 @@ structures:
   full_packet_t:
     header: {subStruct: packet_header_t, desc: "Packet header"}
     payload: {varType: byte_t, arraySize: 256, desc: "Payload data"}
-  ip_burst_t:
-    samples: {varType: ip_data_t, arraySize: IP_MEM_DEPTH, desc: "Parameterized burst"}
   
   # Structure with tracker for debug
   command_t:
@@ -163,7 +136,7 @@ The YAML `width` on a type becomes the type's hardware bit width in generated co
 
 These are **not** the same as C++ `sizeof(struct)`. C++ storage types are typically wider than the HW fields they model (e.g., a 1-bit YAML type becomes `uint8_t` in C++). A structure with three 1-bit fields has `_byteWidth = 1` but `sizeof = 3`. The `pack()` / `unpack()` methods bridge between C++ layout and HW-accurate bit packing.
 
-For parameterizable structures, arch2code also computes worst-case metadata (`isParameterizable`, `maxBitwidth`) from parameterizable field types, sub-structures, and `arraySize` constants. Users should not write those structure metadata fields directly.
+For parameterizable structures, arch2code computes worst-case metadata from parameterizable field types, sub-structures, and `arraySize` constants. Users should not write those structure metadata fields directly; use `design-parameterizable-blocks.md`.
 
 ## Common Pitfalls
 
@@ -171,7 +144,7 @@ For parameterizable structures, arch2code also computes worst-case metadata (`is
 2.  **Using `varType` and `subStruct` together:** Choose one per field, not both.
 3.  **Forgetting `desc`:** Required on every element (constants, types, structures, fields).
 4.  **Missing `width` on non-enum types:** Only enums auto-calculate width.
-5.  **Missing `maxValue` / `maxBitwidth`:** Direct parameterizable constants/types need explicit worst-case bounds unless the bound can be derived from another parameterizable constant.
+5.  **Putting variant-specific sizing in shared files:** Use `ipParameters` in the owning block's YAML when values vary by instance.
 
 ## Validation
 *   Run `make db` to parse and validate all YAML definitions.

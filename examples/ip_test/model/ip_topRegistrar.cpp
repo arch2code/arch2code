@@ -5,6 +5,7 @@
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "ip_topConfig.h"
+#include "srcConfig.h"
 #include "ipConfig.h"
 #include "ip_top.h"
 
@@ -14,7 +15,7 @@ struct _ip_top_registrar {
         instanceFactory::registerBlock(
             "ip_top_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_top<ipDefaultConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_top>(blockName, variant, bbMode));
             },
             "");
     }

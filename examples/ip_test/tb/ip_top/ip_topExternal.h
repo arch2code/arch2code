@@ -10,13 +10,15 @@
 
 #include "ip_topBase.h"
 #include "ip_topConfig.h"
+#include "srcConfig.h"
 #include "ipConfig.h"
+#include "push_ack_port_thunker.h"
 #include "endOfTest.h"
 
 //contained instances forward class declaration
 class apbDecodeBase;
 template<typename Config> class ipBase;
-class srcBase;
+template<typename Config> class srcBase;
 
 class ip_topExternal: public sc_module, public ip_topInverted {
 
@@ -25,7 +27,7 @@ class ip_topExternal: public sc_module, public ip_topInverted {
 public:
 
     std::shared_ptr<apbDecodeBase> uAPBDecode;
-    std::shared_ptr<srcBase> uSrc;
+    std::shared_ptr<srcBase<srcVariantSrc0Config>> uSrc;
     std::shared_ptr<ipBase<ipVariant0Config>> uIp0;
     std::shared_ptr<ipBase<ipVariant1Config>> uIp1;
 
@@ -33,14 +35,19 @@ public:
 
     ip_topExternal(sc_module_name modulename);
 
-    // IP data push/ack stream
-    push_ack_channel< ipDataSt<ipVariant0Config> > out0;
-    // IP data push/ack stream
-    push_ack_channel< ipDataSt<ipVariant1Config> > out1;
+    // src out0 push/ack stream
+    push_ack_channel< srcOut0St<srcVariantSrc0Config> > out0;
+    // src out1 push/ack stream
+    push_ack_channel< srcOut1St<srcVariantSrc0Config> > out1;
     // CPU access to IP registers via APB
     apb_channel< apbAddrSt, apbDataSt > apb_uIp0;
     // CPU access to IP registers via APB
     apb_channel< apbAddrSt, apbDataSt > apb_uIp1;
+    apb_channel< apbAddrSt, apbDataSt > _ext_cm_uAPBDecode_cpu_main;
+
+    // cross-interface thunkers
+    push_ack_port_thunker<srcOut0St<srcVariantSrc0Config>, ipDataSt<ipVariant0Config>> thunker_out0_uIp0;
+    push_ack_port_thunker<srcOut1St<srcVariantSrc0Config>, ipDataSt<ipVariant1Config>> thunker_out1_uIp1;
 
     // Thread monitoring the end of test event to stop simulation
     void eotThread(void) {

@@ -5,7 +5,12 @@
 //module as defined by block: src
 module src
 // Generated Import package statement(s)
-import ip_package::*;
+import ipLeaf_package::*;
+import src_package::*;
+#(
+    parameter OUT0_DATA_WIDTH,
+    parameter OUT1_DATA_WIDTH
+)
 (
     push_ack_if.src out0,
     push_ack_if.src out1,

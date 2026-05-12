@@ -11,6 +11,8 @@
 #include "push_ack_channel.h"
 import ip_top;
 using namespace ip_top_ns;
+import src;
+using namespace src_ns;
 import ip;
 using namespace ip_ns;
 

@@ -302,10 +302,26 @@ def _resolve_channel_config_override(conn_data, prj):
     # the literal `Config` placeholder (correct inside leaf parents that
     # remain class templates) or — for non-leaf parents — the testbench
     # external's post-hoc `replace('<Config>', ...)` substitution applies.
+    #
+    # Stage 6.3 / Q11 refinement: when the connection has at least one
+    # cross-interface bind, the parent channel carries the producer's
+    # interface structure and must therefore be typed by the producer's
+    # Config. The thunker owns its own downstream channel that resolves
+    # the consumer's Config separately. We treat ends whose `endKey`
+    # appears in `crossInterfaceEnds` as the consumer side and skip
+    # them, leaving the surviving leaf end (the producer) as the
+    # channel's typing.
     ends = conn_data.get('ends', {}) or {}
+    cross_keys = {
+        flagged.get('endKey')
+        for flagged in (conn_data.get('crossInterfaceEnds') or [])
+        if flagged.get('endKey')
+    }
     leaf_choice = None
     transit_choice = None
-    for end_data in ends.values():
+    for end_key, end_data in ends.items():
+        if end_key in cross_keys:
+            continue
         inst_key = end_data.get('instanceKey')
         if not inst_key:
             continue

@@ -6,6 +6,7 @@
 module ip_top
 // Generated Import package statement(s)
 import ip_package::*;
+import src_package::*;
 import ip_top_package::*;
 (
     apb_if.dst cpu_main,
@@ -13,8 +14,8 @@ import ip_top_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-    push_ack_if #(.data_t(ipDataSt)) out0();
-    push_ack_if #(.data_t(ipDataSt)) out1();
+    push_ack_if #(.data_t(srcOut0St)) out0();
+    push_ack_if #(.data_t(srcOut1St)) out1();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uIp0();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uIp1();
 
@@ -27,7 +28,7 @@ apbDecode uAPBDecode (
     .rst_n (rst_n)
 );
 
-src uSrc (
+src #(.OUT0_DATA_WIDTH(8), .OUT1_DATA_WIDTH(12)) uSrc (
     .out0 (out0),
     .out1 (out1),
     .clk (clk),

@@ -16,5 +16,6 @@ interface_defs:
         outputs: ['ack']
     sc_channel :
       type : 'push_ack'
+      thunker : true
       multicycle_types : []
 
