@@ -84,7 +84,8 @@ axi4sDemo:
 
 .PHONY : hello-world
 hello-world:
-	make -C $(HELLO_DIR)/model run -j
+	make -C $(HELLO_DIR)/rundir -j all
+	make -C $(HELLO_DIR)/rundir -j run
 
 .PHONY : apbDecode
 apbDecode:
