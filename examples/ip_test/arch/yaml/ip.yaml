@@ -151,6 +151,12 @@ blocks:
         hasMdl: true
         hasTb: false
         hasRtl: true
+        # Stage 5.2 of plan-variant-config-unification.md: bottom-up port
+        # declaration (D10). Matches the top-down inferred shape so the
+        # generator output is unchanged; exercises the Step 5.2 success
+        # path of getBDPortsDeclaredCheck.
+        ports:
+            ipDataIf: { interface: ipDataIf, direction: dst }
 
 registers:
     - { register: ipCfg, regType: rw, block: ip, structure: ipCfgSt, desc: "IP configuration" }

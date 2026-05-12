@@ -995,6 +995,8 @@ class projectOpen:
         self.getBDConnectionMaps(ret)
         # regular connections
         self.getBDConnections(ret, allowSingleEnded=(len(excludeInstances)!=0))
+        # annotate cross-interface binds in the language-agnostic view
+        self.getBDCrossInterfaceBinds(ret)
         # build final connection info
         self.getBDConnectionsFinal(ret)
         # deduplicate the ports
@@ -1542,6 +1544,234 @@ class projectOpen:
 
         ret['connections'] = connections
         ret['connectionPorts'] = ports
+
+    def getBDCrossInterfaceBinds(self, ret):
+        # projectCreate.validatePorts() performs the expensive structural
+        # compatibility checks. This view pass only records already-valid
+        # semantic facts so language templates do not need to re-walk raw
+        # project tables to discover cross-interface binds.
+        def structureMap(interfaceRow):
+            structs = dict()
+            structures = interfaceRow.get('structures', []) or []
+            if isinstance(structures, dict):
+                structures = structures.values()
+            for item in structures:
+                structureType = item.get('structureType')
+                if structureType is None:
+                    continue
+                structs[structureType] = {
+                    'structure': item.get('structure', ''),
+                    'structureKey': item.get('structureKey', ''),
+                }
+            return structs
+
+        def blockHasOwnParams(typeKey):
+            return bool((self.data['blocks'].get(typeKey, {}) or {}).get('params'))
+
+        def resolveInterfaceKey(interfaceName, preferredContext):
+            if not interfaceName:
+                return ''
+            interfaceKey = f"{interfaceName}/{preferredContext}" if preferredContext else ''
+            if interfaceKey in self.data['interfaces']:
+                return interfaceKey
+            for key, row in self.data['interfaces'].items():
+                if row.get('interface') == interfaceName:
+                    return key
+            return ''
+
+        def resolveInstanceConfigName(instanceData):
+            typeKey = instanceData.get('instanceTypeKey')
+            if not typeKey:
+                return ''
+            blockRow = self.data['blocks'].get(typeKey, {})
+            if not blockRow.get('isParameterizable', False):
+                return ''
+            variant = instanceData.get('variant', '') or ''
+            for desc in self._buildVariantConfigDescriptors(typeKey):
+                if desc['variant'] == variant:
+                    if desc.get('values'):
+                        return desc['configName']
+                    break
+            return blockRow.get('defaultConfig', '')
+
+        def resolveConnectionConfigName(connVal):
+            leafChoice = None
+            transitChoice = None
+            for endData in (connVal.get('ends', {}) or {}).values():
+                instKey = endData.get('instanceKey')
+                if not instKey:
+                    continue
+                instData = self.data['instances'].get(instKey)
+                if not instData:
+                    continue
+                typeKey = instData.get('instanceTypeKey')
+                if not typeKey:
+                    continue
+                name = resolveInstanceConfigName(instData)
+                if not name:
+                    continue
+                if blockHasOwnParams(typeKey):
+                    # Match channel typing: prefer dst when both ends are
+                    # leaf-parameterizable and therefore disagree.
+                    if leafChoice is None or endData.get('direction') == 'dst':
+                        leafChoice = name
+                elif transitChoice is None:
+                    transitChoice = name
+            return leafChoice or transitChoice
+
+        def resolveInterfaceDef(interfaceRow):
+            interfaceType = interfaceRow.get('interfaceType', '')
+            context = interfaceRow.get('_context', '')
+            if not interfaceType:
+                return None
+            qualifiedKey = f"{interfaceType}/{context}" if context else ''
+            if qualifiedKey in self.data.get('interface_defs', {}):
+                return self.data['interface_defs'][qualifiedKey]
+            for intfDef in self.data.get('interface_defs', {}).values():
+                if intfDef.get('interface_type') == interfaceType:
+                    return intfDef
+            return None
+
+        def buildThunkerView(parentInterface, childInterface, parentConfigName, childConfigName):
+            parentStructures = structureMap(parentInterface)
+            childStructures = structureMap(childInterface)
+            interfaceType = parentInterface.get('interfaceType', '')
+            interfaceDef = resolveInterfaceDef(parentInterface)
+            if not interfaceDef:
+                printError("Unable to build cross-interface thunker view: "
+                           f"interface_defs entry for '{interfaceType}' was not found.")
+                exit(warningAndErrorReport())
+            scChannel = interfaceDef.get('sc_channel') or {}
+            if not scChannel.get('thunker', False):
+                printError(
+                    "Unable to build cross-interface thunker view: "
+                    f"interfaceType '{interfaceType}' does not declare "
+                    "sc_channel.thunker: true.")
+                exit(warningAndErrorReport())
+            channelType = scChannel.get('type') or interfaceType
+            parameters = interfaceDef.get('parameters') or {}
+            structureTypes = [
+                param for param, paramInfo in parameters.items()
+                if paramInfo.get('datatype') == 'struct'
+            ]
+
+            if not interfaceType or not structureTypes:
+                printError("Unable to build cross-interface thunker view: "
+                           "missing protocol or payload structure metadata.")
+                exit(warningAndErrorReport())
+
+            payloads = []
+            for side, structures, configName in [
+                ('parent', parentStructures, parentConfigName),
+                ('child', childStructures, childConfigName),
+            ]:
+                for structureType in structureTypes:
+                    structure = structures.get(structureType)
+                    if not structure:
+                        printError(
+                            "Unable to build cross-interface thunker view: "
+                            f"{side} interface '{structureType}' payload is missing.")
+                        exit(warningAndErrorReport())
+                    payloads.append({
+                        'side': side,
+                        'structureType': structureType,
+                        'structure': structure.get('structure', ''),
+                        'structureKey': structure.get('structureKey', ''),
+                        'configName': configName,
+                    })
+
+            return {
+                'protocol': interfaceType,
+                'channelType': channelType,
+                'payloads': payloads,
+            }
+
+        def annotate(connVal, endKey, instanceKey, portName, instanceName, inferredDirection):
+            if connVal.get('_context') == '_global':
+                return None
+            parentInterfaceKey = connVal.get('interfaceKey') or ''
+            parentInterface = self.data['interfaces'].get(parentInterfaceKey)
+            if not parentInterface:
+                return None
+            parentInterfaceName = parentInterface.get('interface')
+            if not parentInterfaceName:
+                return None
+            instanceData = self.data['instances'].get(instanceKey)
+            if not instanceData:
+                return None
+            childBlockKey = instanceData.get('instanceTypeKey') or ''
+            childBlock = self.data['blocks'].get(childBlockKey)
+            if not childBlock:
+                return None
+            declaredPort = (childBlock.get('ports') or {}).get(portName)
+            if not declaredPort:
+                return None
+            childInterfaceName = declaredPort.get('interface')
+            if not childInterfaceName or childInterfaceName == parentInterfaceName:
+                return None
+            childInterfaceKey = resolveInterfaceKey(
+                childInterfaceName,
+                declaredPort.get('_context') or childBlock.get('_context') or '')
+            if not childInterfaceKey:
+                printError(
+                    f"Block {ret['qualBlock']} binds {instanceName}.{portName} "
+                    f"to interface '{childInterfaceName}', but the interface "
+                    f"could not be resolved while building the block view.")
+                exit(warningAndErrorReport())
+            childInterface = self.data['interfaces'][childInterfaceKey]
+            childConfigName = resolveInstanceConfigName(instanceData)
+            parentConfigName = resolveConnectionConfigName(connVal)
+            return {
+                'endKey': endKey,
+                'instanceKey': instanceKey,
+                'instance': instanceName,
+                'childBlockKey': childBlockKey,
+                'childBlock': childBlock.get('block', ''),
+                'portName': portName,
+                'direction': declaredPort.get('direction') or inferredDirection,
+                'parentInterfaceKey': parentInterfaceKey,
+                'parentInterface': parentInterfaceName,
+                'parentInterfaceType': parentInterface.get('interfaceType', ''),
+                'parentStructures': structureMap(parentInterface),
+                'childInterfaceKey': childInterfaceKey,
+                'childInterface': childInterfaceName,
+                'childInterfaceType': childInterface.get('interfaceType', ''),
+                'childStructures': structureMap(childInterface),
+                'childVariant': instanceData.get('variant', '') or '',
+                'childConfigName': childConfigName,
+                'thunker': buildThunkerView(
+                    parentInterface, childInterface, parentConfigName, childConfigName),
+            }
+
+        for connVal in ret['connections'].values():
+            crossInterfaceEnds = []
+            for endKey, endVal in connVal.get('ends', {}).items():
+                bind = annotate(
+                    connVal,
+                    endKey,
+                    endVal.get('instanceKey') or '',
+                    endVal.get('portName') or '',
+                    endVal.get('instance') or '',
+                    endVal.get('direction') or '',
+                )
+                if bind:
+                    endVal['crossInterface'] = bind
+                    crossInterfaceEnds.append(bind)
+            if crossInterfaceEnds:
+                connVal['crossInterfaceEnds'] = crossInterfaceEnds
+
+        for connMap in ret['connectionMaps'].values():
+            bind = annotate(
+                connMap,
+                '',
+                connMap.get('instanceKey') or '',
+                connMap.get('instancePortName') or '',
+                connMap.get('instance') or '',
+                connMap.get('direction') or '',
+            )
+            if bind:
+                connMap['crossInterface'] = bind
+                connMap['crossInterfaceEnds'] = [bind]
 
     connMapping = { 'connectDouble': ['connections', 'registerConnections'],
                     'connectSingle': ['connectionMaps', 'memoryConnections'] }
@@ -2709,9 +2939,785 @@ class projectCreate:
                             exit(warningAndErrorReport())
         self.config.setConfig("ADDRESS_CONFIG", addressControl, bin=True)
 
+    def validateDeclaredPorts(self, blocks_flat, instances_flat, interfaces_flat,
+                              connections_flat, connection_maps_flat,
+                              memory_connections_flat, register_connections_flat,
+                              memories_flat, registers_flat):
+        # Stage 5.2 / 5.3 of plan-variant-config-unification.md. Keep this
+        # create-time so bad YAML fails while building the DB, not later when a
+        # generator happens to request a block view.
+        instances_by_type = dict()
+        for instKey, instRow in instances_flat.items():
+            instances_by_type.setdefault(
+                instRow['instanceTypeKey'], set()).add(instKey)
+
+        def _resolveInterfaceByName(name, preferredContext):
+            if not name:
+                return None
+            key = f"{name}/{preferredContext}" if preferredContext else ''
+            if key in interfaces_flat:
+                return interfaces_flat[key]
+            for row in interfaces_flat.values():
+                if row['interface'] == name:
+                    return row
+            return None
+
+        def _addInferred(inferred, portName, sourceType, row, interfaceKey='',
+                         direction=''):
+            if not portName:
+                return
+            interfaceName = None
+            if interfaceKey != '':
+                interfaceName = interfaces_flat[interfaceKey]['interface']
+            inferred.setdefault(portName, {
+                'sourceType': sourceType,
+                'interface': interfaceName,
+                'interfaceKey': interfaceKey,
+                'direction': direction,
+                '_context': row['_context'],
+            })
+
+        regMapBlock = {'rw': 'dst', 'ro': 'src', 'ext': 'dst', 'memory': 'dst'}
+
+        for blockKey, blockRow in blocks_flat.items():
+            if 'ports' not in blockRow:
+                continue
+            declared = blockRow['ports']
+
+            inferred = dict()
+            qual_block_instances = instances_by_type.get(blockKey, set())
+
+            for _connKey, conn in connections_flat.items():
+                interfaceKey = conn['interfaceKey']
+                for endRow in conn['ends'].values():
+                    if endRow['instanceKey'] in qual_block_instances:
+                        _addInferred(
+                            inferred,
+                            endRow['portName'],
+                            'connections',
+                            conn,
+                            interfaceKey,
+                            endRow['direction'],
+                        )
+
+            for _cmKey, connMap in connection_maps_flat.items():
+                if connMap['instanceKey'] in qual_block_instances:
+                    _addInferred(
+                        inferred,
+                        connMap['instancePortName'],
+                        'connectionMaps',
+                        connMap,
+                        connMap['interfaceKey'],
+                        connMap['direction'],
+                    )
+
+            for _memConnKey, memConn in memory_connections_flat.items():
+                if memConn['instanceKey'] not in qual_block_instances:
+                    continue
+                _addInferred(
+                    inferred,
+                    memConn['memory'],
+                    'memories',
+                    memConn,
+                    '',
+                    'src',
+                )
+
+            for _regConnKey, regConn in register_connections_flat.items():
+                if regConn['instanceKey'] not in qual_block_instances:
+                    continue
+                regInfo = registers_flat[regConn['registerBlockKey']]
+                regType = regInfo['regType']
+                _addInferred(
+                    inferred,
+                    regConn['register'],
+                    'registers',
+                    regConn,
+                    '',
+                    regMapBlock[regType],
+                )
+
+            block = blockRow['block']
+            declaringContext = blockRow['_context']
+
+            for portName, portRow in declared.items():
+                portContext = portRow['_context']
+                if portName not in inferred:
+                    printError(
+                        f"Block {block} declares port '{portName}' in ports: "
+                        f"(file {portContext}) but no connection, connectionMap, "
+                        f"register, or memory entry produces port '{portName}'.")
+                    exit(warningAndErrorReport())
+
+                portEntry = inferred[portName]
+                declaredIfName = portRow['interface']
+                inferredIfName = portEntry['interface']
+                if declaredIfName != inferredIfName:
+                    declaredIf = _resolveInterfaceByName(declaredIfName, portContext)
+                    inferredIf = interfaces_flat.get(portEntry['interfaceKey'])
+                    if inferredIf is None:
+                        inferredIf = _resolveInterfaceByName(
+                            inferredIfName, portEntry['_context'])
+                    declaredProto = declaredIf.get('interfaceType') if declaredIf else None
+                    inferredProto = inferredIf.get('interfaceType') if inferredIf else None
+                    if not declaredProto or not inferredProto or declaredProto != inferredProto:
+                        printError(
+                            f"Block {block} port '{portName}' declares interface "
+                            f"'{declaredIfName}' in ports: (file {portContext}) but is "
+                            f"bound to interface '{inferredIfName}' by "
+                            f"{portEntry['sourceType']} (file "
+                            f"{portEntry['_context']}). Cross-interface ports "
+                            f"are only valid when both interfaces resolve and share "
+                            f"the same interfaceType; got '{declaredProto}' and "
+                            f"'{inferredProto}'.")
+                        exit(warningAndErrorReport())
+
+                declaredDir = portRow['direction']
+                inferredDir = portEntry['direction']
+                if declaredDir and inferredDir and declaredDir != inferredDir:
+                    printError(
+                        f"Block {block} port '{portName}' declares direction "
+                        f"'{declaredDir}' in ports: (file {portContext}) but is "
+                        f"bound with direction '{inferredDir}' by "
+                        f"{portEntry['sourceType']} (file "
+                        f"{portEntry['_context']}).")
+                    exit(warningAndErrorReport())
+
+            missing = set()
+            for portName in (set(inferred.keys()) - set(declared.keys())):
+                if inferred[portName]['_context'] == '_global':
+                    continue
+                missing.add(portName)
+            if missing:
+                for portName in sorted(missing):
+                    portEntry = inferred[portName]
+                    inferredIfName = portEntry['interface'] or '<unknown>'
+                    inferredDir = portEntry['direction'] or '<unknown>'
+                    printError(
+                        f"Block {block} partial ports: declaration in "
+                        f"{declaringContext} omits port '{portName}' (interface "
+                        f"{inferredIfName}, direction {inferredDir}), which is "
+                        f"implied by {portEntry['sourceType']} at "
+                        f"{portEntry['_context']}. Either add '{portName}: "
+                        f"{{ interface: {inferredIfName}, direction: "
+                        f"{inferredDir} }}' to the ports: map, or remove the "
+                        f"partial declaration to fall back to top-down inference.")
+                exit(warningAndErrorReport())
+
     def validatePorts(self):
-        pass
-        # todo
+        # Stage 6.2 of plan-variant-config-unification.md. Cross-interface
+        # bind barrier: every connection end or connectionMap whose
+        # declared interface differs from the child block's bottom-up
+        # `ports:` declaration is checked for packed-form compatibility
+        # under the bound variant. The check is purely a gate; it writes
+        # nothing back to the DB and persists no state. The projectOpen
+        # consumer (Step 6.3) recomputes the cheap cross-interface
+        # predicate from the same persisted data.
+        #
+        # Packed-form compatibility per
+        # research-multi-config-bindings.md lines 854-1001:
+        #   1. Same interface meta-protocol (interfaceType).
+        #   2. Same `structures` list paired by structureType.
+        #   3. For each paired structure: same field count, same field
+        #      order and names, exact per-field _bitWidth under the
+        #      bound variant, exact bit offsets.
+        #
+        # Synthesised binds (carrying _context == '_global') are exempt
+        # — they are produced by post-parse scripts such as
+        # config/postParseRegister.py and are not user-controlled
+        # (mirrors the Stage 5.3 exemption in validateDeclaredPorts()).
+
+        # ------------------------------------------------------------
+        # Pre-fetch helper tables from in-memory self.data dictionaries.
+        # In projectCreate the data is keyed by yamlFile then by
+        # entry key. Flatten by (qualified) key for fast lookup.
+        # ------------------------------------------------------------
+        instances_flat = dict()
+        for ctx, group in self.data.get('instances', {}).items():
+            for inst, row in group.items():
+                row.setdefault('_context', ctx)
+                instances_flat[row.get('instanceKey', f"{inst}/{ctx}")] = row
+
+        blocks_flat = dict()
+        for ctx, group in self.data.get('blocks', {}).items():
+            for block, row in group.items():
+                row.setdefault('_context', ctx)
+                if 'ports' in row:
+                    for portRow in row['ports'].values():
+                        portRow.setdefault('_context', ctx)
+                blocks_flat[row.get('blockKey', f"{block}/{ctx}")] = row
+
+        interfaces_flat = dict()
+        for ctx, group in self.data.get('interfaces', {}).items():
+            for iface, row in group.items():
+                row.setdefault('_context', ctx)
+                interfaces_flat[row.get('interfaceKey', f"{iface}/{ctx}")] = row
+
+        interface_defs_flat = dict()
+        for ctx, group in self.data.get('interface_defs', {}).items():
+            for intf_type, row in group.items():
+                row.setdefault('_context', ctx)
+                key = row.get('interface_typeKey') or f"{intf_type}/{ctx}"
+                interface_defs_flat[key] = row
+
+        structures_flat = dict()
+        for ctx, group in self.data.get('structures', {}).items():
+            for struct, row in group.items():
+                row.setdefault('_context', ctx)
+                structures_flat[row.get('structureKey', f"{struct}/{ctx}")] = row
+
+        constants_flat = dict()
+        for ctx, group in self.data.get('constants', {}).items():
+            for const, row in group.items():
+                row.setdefault('_context', ctx)
+                qkey = row.get('constantKey') or f"{const}/{ctx}"
+                constants_flat[qkey] = row
+
+        types_flat = dict()
+        for ctx, group in self.data.get('types', {}).items():
+            for tname, row in group.items():
+                row.setdefault('_context', ctx)
+                qkey = row.get('typeKey') or f"{tname}/{ctx}"
+                types_flat[qkey] = row
+
+        def _flatten(section, keyField=''):
+            flattened = dict()
+            for ctx, group in self.data.get(section, {}).items():
+                for name, row in group.items():
+                    row.setdefault('_context', ctx)
+                    key = row.get(keyField) if keyField else None
+                    flattened[key or name] = row
+            return flattened
+
+        connections_flat = _flatten('connections', 'connectionKey')
+        connection_maps_flat = _flatten('connectionMaps', 'portId')
+        memory_connections_flat = _flatten('memoryConnections', 'memoryConnectionKey')
+        register_connections_flat = _flatten('registerConnections', 'registerConnectionKey')
+        memories_flat = _flatten('memories', 'memoryBlockKey')
+        registers_flat = _flatten('registers', 'registerBlockKey')
+
+        self.validateDeclaredPorts(
+            blocks_flat,
+            instances_flat,
+            interfaces_flat,
+            connections_flat,
+            connection_maps_flat,
+            memory_connections_flat,
+            register_connections_flat,
+            memories_flat,
+            registers_flat,
+        )
+
+        # Variant overrides: (blockKey, variant, paramName) -> int value.
+        variant_overrides = dict()
+        try:
+            g.cur.execute(
+                "SELECT blockKey, variant, param, value FROM parametersvariants")
+            for r in g.cur.fetchall():
+                try:
+                    val = int(r['value']) if r['value'] not in (None, '') else None
+                except (TypeError, ValueError):
+                    val = None
+                if val is not None:
+                    variant_overrides[(r['blockKey'], r['variant'], r['param'])] = val
+        except Exception:
+            # Table may not exist if YAML had no parameters section. Safe
+            # to proceed; cross-interface binds on non-parameterizable
+            # structures do not need overrides.
+            pass
+
+        # ------------------------------------------------------------
+        # Helper: resolve a type's bitwidth under a variant binding.
+        # ------------------------------------------------------------
+        def _resolveConstValue(constEntry, blockKey, variant):
+            """Return the int value of a constant under a (blockKey, variant)
+            binding. Falls back to the constant's default value when no
+            override applies. Hard-errors when no resolvable integer is
+            available."""
+            constName = constEntry.get('constant')
+            if blockKey and variant is not None:
+                ov = variant_overrides.get((blockKey, variant, constName))
+                if ov is not None:
+                    return ov
+            raw = constEntry.get('value')
+            if raw is None:
+                printError(
+                    f"Internal error: constant '{constName}' has no value "
+                    f"resolvable for variant '{variant}' under blockKey "
+                    f"'{blockKey}'. Cross-interface bind validation requires "
+                    f"a resolvable integer.")
+                exit(warningAndErrorReport())
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
+                printError(
+                    f"Internal error: constant '{constName}' value '{raw}' is "
+                    f"not an integer; cross-interface bind validation requires "
+                    f"resolvable integer widths.")
+                exit(warningAndErrorReport())
+
+        def _resolveTypeWidth(typeKey, blockKey, variant):
+            """Return the integer width of a type qualified by typeKey under
+            the (blockKey, variant) binding."""
+            typeEntry = types_flat.get(typeKey)
+            if typeEntry is None:
+                printError(
+                    f"Internal error: cross-interface validation cannot find "
+                    f"type with qualified key '{typeKey}'.")
+                exit(warningAndErrorReport())
+            isSigned = bool(typeEntry.get('isSigned', False))
+            # Pick whichever of width/widthLog2/widthLog2minus1 is populated
+            # (the schema guarantees exactly one).
+            for mode in ('width', 'widthLog2', 'widthLog2minus1'):
+                key = typeEntry.get(mode + 'Key') or ''
+                raw = typeEntry.get(mode)
+                if key or (raw not in (None, '', 0)):
+                    if key and '/' in key:
+                        c = constants_flat.get(key)
+                        if c is None:
+                            printError(
+                                f"Internal error: cross-interface validation "
+                                f"cannot find constant '{key}' for type "
+                                f"'{typeKey}'.")
+                            exit(warningAndErrorReport())
+                        n = _resolveConstValue(c, blockKey, variant)
+                    else:
+                        try:
+                            n = int(raw)
+                        except (TypeError, ValueError):
+                            printError(
+                                f"Internal error: type '{typeKey}' {mode} "
+                                f"value '{raw}' is not an integer.")
+                            exit(warningAndErrorReport())
+                    if mode == 'widthLog2':
+                        width = int(n).bit_length()
+                        if isSigned:
+                            width += 1
+                    elif mode == 'widthLog2minus1':
+                        width = int(n - 1).bit_length()
+                        if isSigned:
+                            width += 1
+                    else:
+                        width = n
+                    return width
+            # No populated width field is a schema invariant violation.
+            printError(
+                f"Internal error: type '{typeKey}' has no width / widthLog2 / "
+                f"widthLog2minus1 populated; cross-interface bind validation "
+                f"cannot resolve its bit width.")
+            exit(warningAndErrorReport())
+
+        def _resolveArraySize(varRow, blockKey, variant):
+            """Return the integer array size for a structuresvars row. A
+            zero or missing arraySize indicates a non-array var (return 1)."""
+            akey = varRow.get('arraySizeKey') or ''
+            araw = varRow.get('arraySize')
+            if akey and '/' in akey:
+                c = constants_flat.get(akey)
+                if c is None:
+                    printError(
+                        f"Internal error: cross-interface validation cannot "
+                        f"find arraySize constant '{akey}'.")
+                    exit(warningAndErrorReport())
+                n = _resolveConstValue(c, blockKey, variant)
+                return n if n > 0 else 1
+            try:
+                n = int(araw)
+                return n if n > 0 else 1
+            except (TypeError, ValueError):
+                return 1
+
+        def _walkStructFields(structKey, blockKey, variant, _visiting=None):
+            """Walk a structure's vars in declared order and return a list of
+            (fieldName, bitWidth, bitOffset) tuples resolved under the given
+            (blockKey, variant) binding. Recurses into substructs."""
+            if _visiting is None:
+                _visiting = set()
+            if structKey in _visiting:
+                printError(
+                    f"Internal error: structure '{structKey}' recursively "
+                    f"references itself during cross-interface bind "
+                    f"validation.")
+                exit(warningAndErrorReport())
+            structEntry = structures_flat.get(structKey)
+            if structEntry is None:
+                printError(
+                    f"Internal error: cross-interface validation cannot find "
+                    f"structure with qualified key '{structKey}'.")
+                exit(warningAndErrorReport())
+            fields = []
+            offset = 0
+            _visiting = _visiting | {structKey}
+            for varName, varRow in (structEntry.get('vars') or {}).items():
+                entryType = varRow.get('entryType')
+                arraySize = _resolveArraySize(varRow, blockKey, variant)
+                if entryType == 'NamedStruct':
+                    subKey = varRow.get('subStructKey') or ''
+                    if not subKey or '/' not in subKey:
+                        printError(
+                            f"Internal error: NamedStruct field '{varName}' in "
+                            f"structure '{structKey}' has malformed "
+                            f"subStructKey '{subKey}'.")
+                        exit(warningAndErrorReport())
+                    # Recurse to obtain the subStruct's total width.
+                    subFields = _walkStructFields(
+                        subKey, blockKey, variant, _visiting)
+                    subWidth = sum(w for (_n, w, _o) in subFields)
+                    elemWidth = subWidth
+                elif entryType == 'Reserved':
+                    elemWidth = int(varRow.get('align') or 0)
+                else:
+                    # NamedVar / NamedType
+                    typeKey = varRow.get('varTypeKey') or ''
+                    if typeKey and '/' in typeKey:
+                        elemWidth = _resolveTypeWidth(
+                            typeKey, blockKey, variant)
+                    else:
+                        # Fall back to a literal bitwidth column if present.
+                        try:
+                            elemWidth = int(varRow.get('bitwidth') or 0)
+                        except (TypeError, ValueError):
+                            elemWidth = 0
+                width = elemWidth * arraySize
+                fields.append((varName, width, offset))
+                offset += width
+            return fields
+
+        # ------------------------------------------------------------
+        # Helper: emit a diagnostic and halt.
+        # ------------------------------------------------------------
+        def _ctxOf(row):
+            if not row:
+                return '<unknown>'
+            return row.get('_context') or '<unknown>'
+
+        def _blockHasOwnParams(blockRow):
+            return bool((blockRow or {}).get('params'))
+
+        def _connectionBinding(conn):
+            """Return the (blockKey, variant) binding used to resolve the
+            connection-side packed form. This mirrors Stage 3.3 channel type
+            derivation: prefer a leaf parameterizable end, with dst winning
+            when more than one leaf participates."""
+            leaf_choice = None
+            transit_choice = None
+            for endRow in (conn.get('ends') or {}).values():
+                instRow = instances_flat.get(endRow.get('instanceKey') or '')
+                if not instRow:
+                    continue
+                blockKey = instRow.get('instanceTypeKey') or ''
+                blockRow = blocks_flat.get(blockKey)
+                if not blockRow:
+                    continue
+                choice = (blockKey, instRow.get('variant') or '')
+                if _blockHasOwnParams(blockRow):
+                    if leaf_choice is None or endRow.get('direction') == 'dst':
+                        leaf_choice = choice
+                elif blockRow.get('isParameterizable') and transit_choice is None:
+                    transit_choice = choice
+            return leaf_choice or transit_choice or ('', '')
+
+        def _mapParentBinding(cm):
+            """Best-effort binding for a connectionMap parent interface. The
+            parent side is often non-parameterized; when the mapped block has
+            its own params, using its binding matches the generated channel
+            type for Stage 6's supported destination-side bridge."""
+            instRow = instances_flat.get(cm.get('instanceKey') or '')
+            if not instRow:
+                return ('', '')
+            blockKey = instRow.get('instanceTypeKey') or ''
+            blockRow = blocks_flat.get(blockKey)
+            if not blockRow or not _blockHasOwnParams(blockRow):
+                return ('', '')
+            return (blockKey, instRow.get('variant') or '')
+
+        def _structureRows(interfaceRow):
+            structures = interfaceRow.get('structures') or []
+            if isinstance(structures, dict):
+                return structures.values()
+            return structures
+
+        def _resolveInterfaceDef(interfaceType, preferredContext):
+            if not interfaceType:
+                return None
+            qualifiedKey = f"{interfaceType}/{preferredContext}" if preferredContext else ''
+            if qualifiedKey in interface_defs_flat:
+                return interface_defs_flat[qualifiedKey]
+            for intfDef in interface_defs_flat.values():
+                if intfDef.get('interface_type') == interfaceType:
+                    return intfDef
+            return None
+
+        def _checkThunkerSupport(interfaceType, parentContext, locationStr):
+            interfaceDef = _resolveInterfaceDef(interfaceType, parentContext)
+            if interfaceDef is None:
+                printError(
+                    f"{locationStr}: cross-interface bind requires "
+                    f"interface_defs entry for interfaceType "
+                    f"'{interfaceType}', but none was found.")
+                exit(warningAndErrorReport())
+            scChannel = interfaceDef.get('sc_channel') or {}
+            if not scChannel.get('thunker', False):
+                printError(
+                    f"{locationStr}: cross-interface bind requires "
+                    f"interfaceType '{interfaceType}' to declare "
+                    "sc_channel.thunker: true.")
+                exit(warningAndErrorReport())
+
+        # ------------------------------------------------------------
+        # Compare two qualified interface keys under a (blockKey, variant)
+        # variant binding owned by the child end.
+        # ------------------------------------------------------------
+        def _checkPair(parentIfaceKey, childIfaceKey, childBlockKey,
+                       childVariant, locationStr, parentContext,
+                       childContext, parentBlockKey='', parentVariant=''):
+            """Run all four packed-form checks. Each failure category
+            emits its own printError; after all relevant diagnostics for
+            this bind have been emitted, halt via warningAndErrorReport."""
+            parentIface = interfaces_flat.get(parentIfaceKey)
+            childIface = interfaces_flat.get(childIfaceKey)
+            if parentIface is None or childIface is None:
+                # Cannot validate; missing interface is reported elsewhere.
+                return
+            parentName = parentIface.get('interface', parentIfaceKey)
+            childName = childIface.get('interface', childIfaceKey)
+            # 1. Same meta-protocol.
+            parentProto = parentIface.get('interfaceType', '')
+            childProto = childIface.get('interfaceType', '')
+            if parentProto != childProto:
+                printError(
+                    f"{locationStr}: cross-interface bind requires the same "
+                    f"interface meta-protocol on both ends, but parent "
+                    f"interface {parentName} has interfaceType "
+                    f"'{parentProto}' (file {parentContext}) while child "
+                    f"interface {childName} has interfaceType "
+                    f"'{childProto}' (file {childContext}).")
+                exit(warningAndErrorReport())
+            _checkThunkerSupport(parentProto, parentContext, locationStr)
+            # 2. Pair structures by structureType.
+            parentStructs = _structureRows(parentIface)
+            childStructs = _structureRows(childIface)
+            parentByType = {s.get('structureType'): s for s in parentStructs}
+            childByType = {s.get('structureType'): s for s in childStructs}
+            allTypes = set(parentByType.keys()) | set(childByType.keys())
+            anyError = False
+            for stype in sorted(t for t in allTypes if t is not None):
+                if stype not in parentByType:
+                    printError(
+                        f"{locationStr}: cross-interface bind requires both "
+                        f"interfaces to carry the same structureTypes, but "
+                        f"parent interface {parentName} (file "
+                        f"{parentContext}) is missing structureType "
+                        f"'{stype}' that child interface {childName} (file "
+                        f"{childContext}) carries.")
+                    anyError = True
+                    continue
+                if stype not in childByType:
+                    printError(
+                        f"{locationStr}: cross-interface bind requires both "
+                        f"interfaces to carry the same structureTypes, but "
+                        f"child interface {childName} (file {childContext}) "
+                        f"is missing structureType '{stype}' that parent "
+                        f"interface {parentName} (file {parentContext}) "
+                        f"carries.")
+                    anyError = True
+                    continue
+                parentStructKey = parentByType[stype].get('structureKey') or ''
+                childStructKey = childByType[stype].get('structureKey') or ''
+                parentStruct = parentByType[stype].get('structure', parentStructKey)
+                childStruct = childByType[stype].get('structure', childStructKey)
+                # Walk both sides under the bindings that will be used for
+                # their generated C++ types. The parent/connection side may
+                # be non-parameterized; empty binding falls back to default
+                # constant values in that case.
+                parentFields = _walkStructFields(
+                    parentStructKey, parentBlockKey, parentVariant or '')
+                childFields = _walkStructFields(
+                    childStructKey, childBlockKey, childVariant or '')
+                # 3a. Same field count.
+                if len(parentFields) != len(childFields):
+                    printError(
+                        f"{locationStr}: cross-interface bind requires the "
+                        f"same field count in each paired structure, but "
+                        f"{parentName}/{parentStruct} has "
+                        f"{len(parentFields)} fields (file {parentContext}) "
+                        f"while {childName}/{childStruct} has "
+                        f"{len(childFields)} fields (file {childContext}).")
+                    anyError = True
+                    continue
+                # 3b/3c/3d. Per-field name, width, offset.
+                for (pname, pwidth, poff), (cname, cwidth, coff) in zip(
+                        parentFields, childFields):
+                    if pname != cname:
+                        printError(
+                            f"{locationStr}: cross-interface bind requires "
+                            f"matching field names in declared order, but "
+                            f"field at offset {poff} in "
+                            f"{parentName}/{parentStruct} is named "
+                            f"'{pname}' (file {parentContext}) while the "
+                            f"corresponding field at offset {coff} in "
+                            f"{childName}/{childStruct} is named '{cname}' "
+                            f"(file {childContext}).")
+                        anyError = True
+                        continue
+                    if pwidth != cwidth:
+                        printError(
+                            f"{locationStr}: cross-interface bind requires "
+                            f"per-field _bitWidth to agree, but field "
+                            f"'{pname}' of {parentName}/{parentStruct} has "
+                            f"_bitWidth {pwidth} (file {parentContext}) "
+                            f"while field '{cname}' of "
+                            f"{childName}/{childStruct} has _bitWidth "
+                            f"{cwidth} (file {childContext}). Adjust one "
+                            f"side so per-field _bitWidth agrees, or split "
+                            f"the connection.")
+                        anyError = True
+                        continue
+                    if poff != coff:
+                        printError(
+                            f"{locationStr}: cross-interface bind requires "
+                            f"matching bit offsets in declared order, but "
+                            f"field '{pname}' of {parentName}/{parentStruct} "
+                            f"sits at bit offset {poff} (file "
+                            f"{parentContext}) while field '{cname}' of "
+                            f"{childName}/{childStruct} sits at bit offset "
+                            f"{coff} (file {childContext}).")
+                        anyError = True
+            if anyError:
+                exit(warningAndErrorReport())
+
+        # ------------------------------------------------------------
+        # Iterate connections. Each end may be a cross-interface bind.
+        # ------------------------------------------------------------
+        for ctx, group in self.data.get('connections', {}).items():
+            for connName, conn in group.items():
+                # Skip synthesised entries (Stage 5.3 exemption).
+                connContext = conn.get('_context') or ctx
+                if connContext == '_global':
+                    continue
+                parentIfaceKey = conn.get('interfaceKey') or ''
+                if not parentIfaceKey:
+                    continue
+                ends = conn.get('ends') or {}
+                for endDir, endRow in ends.items():
+                    instanceKey = endRow.get('instanceKey') or ''
+                    if not instanceKey:
+                        continue
+                    instRow = instances_flat.get(instanceKey)
+                    if instRow is None:
+                        continue
+                    instTypeKey = instRow.get('instanceTypeKey') or ''
+                    if not instTypeKey:
+                        continue
+                    blockRow = blocks_flat.get(instTypeKey)
+                    if blockRow is None:
+                        continue
+                    declaredPorts = blockRow.get('ports') or {}
+                    portName = endRow.get('portName') or ''
+                    portEntry = declaredPorts.get(portName)
+                    if not portEntry:
+                        # No bottom-up declaration; top-down inference
+                        # governs and there is no cross-interface bind
+                        # to check.
+                        continue
+                    portIface = portEntry.get('interface')
+                    if not portIface:
+                        continue
+                    parentIfaceRow = interfaces_flat.get(parentIfaceKey)
+                    if parentIfaceRow is None:
+                        continue
+                    parentIfaceName = parentIfaceRow.get('interface')
+                    if portIface == parentIfaceName:
+                        # Names agree; not a cross-interface bind.
+                        continue
+                    # Resolve the child interface qualified key. The
+                    # port declaration carries only the unqualified
+                    # interface name; pair it with the block's _context.
+                    blockContext = blockRow.get('_context') or ''
+                    childIfaceKey = f"{portIface}/{blockContext}"
+                    if childIfaceKey not in interfaces_flat:
+                        # Fall back: search every context for a matching
+                        # interface name. The Stage 5.2 declared-check
+                        # catches genuinely unresolved references; here
+                        # we just need the qualified key to walk it.
+                        for ifk, ifr in interfaces_flat.items():
+                            if ifr.get('interface') == portIface:
+                                childIfaceKey = ifk
+                                break
+                    childContext = (
+                        interfaces_flat.get(childIfaceKey, {}).get('_context')
+                        or '<unknown>')
+                    parentContext = parentIfaceRow.get('_context') or ctx
+                    childVariant = instRow.get('variant') or ''
+                    locationStr = (
+                        f"Block {blockRow.get('block')} connection "
+                        f"'{connName}' (file {connContext}) binds external "
+                        f"interface {parentIfaceName} to child "
+                        f"{instRow.get('instance')}.{portName} declared as "
+                        f"{portIface} (file {blockRow.get('_context') or '<unknown>'})")
+                    parentBlockKey, parentVariant = _connectionBinding(conn)
+                    _checkPair(parentIfaceKey, childIfaceKey, instTypeKey,
+                               childVariant, locationStr, parentContext,
+                               childContext, parentBlockKey, parentVariant)
+
+        # ------------------------------------------------------------
+        # Iterate connectionMaps. The child port is the local end.
+        # ------------------------------------------------------------
+        for ctx, group in self.data.get('connectionMaps', {}).items():
+            for cmName, cm in group.items():
+                cmContext = cm.get('_context') or ctx
+                if cmContext == '_global':
+                    # Synthesised maps (Stage 5.3 exemption).
+                    continue
+                parentIfaceKey = cm.get('interfaceKey') or ''
+                if not parentIfaceKey:
+                    continue
+                instanceKey = cm.get('instanceKey') or ''
+                if not instanceKey:
+                    continue
+                instRow = instances_flat.get(instanceKey)
+                if instRow is None:
+                    continue
+                instTypeKey = instRow.get('instanceTypeKey') or ''
+                blockRow = blocks_flat.get(instTypeKey)
+                if blockRow is None:
+                    continue
+                declaredPorts = blockRow.get('ports') or {}
+                instPortName = cm.get('instancePortName') or ''
+                portEntry = declaredPorts.get(instPortName)
+                if not portEntry:
+                    continue
+                portIface = portEntry.get('interface')
+                if not portIface:
+                    continue
+                parentIfaceRow = interfaces_flat.get(parentIfaceKey)
+                if parentIfaceRow is None:
+                    continue
+                parentIfaceName = parentIfaceRow.get('interface')
+                if portIface == parentIfaceName:
+                    continue
+                blockContext = blockRow.get('_context') or ''
+                childIfaceKey = f"{portIface}/{blockContext}"
+                if childIfaceKey not in interfaces_flat:
+                    for ifk, ifr in interfaces_flat.items():
+                        if ifr.get('interface') == portIface:
+                            childIfaceKey = ifk
+                            break
+                childContext = (
+                    interfaces_flat.get(childIfaceKey, {}).get('_context')
+                    or '<unknown>')
+                parentContext = parentIfaceRow.get('_context') or ctx
+                childVariant = instRow.get('variant') or ''
+                locationStr = (
+                    f"Block {cm.get('block')} connectionMap '{cmName}' "
+                    f"(file {cmContext}) binds external interface "
+                    f"{parentIfaceName} to child "
+                    f"{instRow.get('instance')}.{instPortName} declared as "
+                    f"{portIface} (file {blockRow.get('_context') or '<unknown>'})")
+                parentBlockKey, parentVariant = _mapParentBinding(cm)
+                _checkPair(parentIfaceKey, childIfaceKey, instTypeKey,
+                           childVariant, locationStr, parentContext,
+                           childContext, parentBlockKey, parentVariant)
 
     def processYamls(self):
         # main outer loop for processing

@@ -18,5 +18,6 @@ interface_defs:
         outputs: ['ack', 'rdata']
     sc_channel :
       type : 'req_ack'
+      thunker : true
       multicycle_types : []
 

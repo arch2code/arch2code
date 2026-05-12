@@ -159,13 +159,17 @@ def sv_gen_ports(data, prj, indent, block_data):
     out.append(");\n")
     return out
 
-def sc_connect_channels(data, indent, block_data):
+def sc_connect_channels(data, indent, block_data, prj=None):
+    # Stage 6.3 of plan-variant-config-unification.md: cross-interface
+    # child-end binds are annotated in the language-agnostic block view.
+    # The thunker emitted in the constructor's initialiser list performs
+    # the equivalent bind internally via downPort(m_chDown).
     out = []
     for channelType in data["connectDouble"]:
-        out.extend(sc_connect_channel_type(data["connectDouble"][channelType], indent, block_data))
+        out.extend(sc_connect_channel_type(data["connectDouble"][channelType], indent, block_data, prj=prj))
     return out
 
-def sc_connect_channel_type(data, indent, block_data):
+def sc_connect_channel_type(data, indent, block_data, prj=None):
     out = []
     interface_defs = block_data.get('interface_defs', {})
     for key, value in data.items():
@@ -175,7 +179,16 @@ def sc_connect_channel_type(data, indent, block_data):
             multiDst = interface_defs.get(intf_type, {}).get('multiDst', False)
             if not multiDst:
                 printError(f"connection {key} has more than 2 ends. Only status interfaces (including ro registers) can have multiple dst connections")
+        # Stage 6.3: suppress direct child binds already marked by
+        # getBDCrossInterfaceBinds(). The generator consumes the view
+        # annotation; it does not re-discover cross-interface semantics.
+        suppressed = set()
+        for flagged in _resolve_cross_interface_ends(value, prj):
+            if flagged['endKey']:
+                suppressed.add(flagged['endKey'])
         for end, endvalue in value["ends"].items():
+            if end in suppressed:
+                continue
             out.append(f'{indent}{ endvalue["instance"] }->{ endvalue["portName"]}({ channelBase });')
     return out
 
@@ -258,6 +271,14 @@ def resolve_instance_config_arg(prj, instance_data):
         return ''
     name = resolve_instance_config_name(prj, instance_data)
     return f'<{name}>' if name else ''
+
+def _resolve_cross_interface_ends(conn_data, prj):
+    # Cross-interface semantics are part of the block-data view assembled
+    # by processYaml.projectOpen.getBDCrossInterfaceBinds(). Keep this
+    # accessor intentionally dumb so templates do not duplicate validation
+    # or discovery logic.
+    return conn_data.get('crossInterfaceEnds', []) or []
+
 
 def _resolve_channel_config_override(conn_data, prj):
     # Stage 3.3 connection-walk derivation. Inspect a connection's `ends`
@@ -513,6 +534,87 @@ def sc_declare_channels(data, prj, indent, block_data):
                 out.append(f'{indent}// {chnlInfo["desc"]}')
                 out.append(indent + chnlInfo['channel_decl'])
     return out
+
+
+def _thunker_member_type(flagged, prj):
+    # View creation resolves protocol payload ordering and Config ownership.
+    # Keep this helper limited to SystemC spelling of that already-valid view.
+    thunker = flagged['thunker']
+    channel_type = thunker['channelType']
+    payloads = thunker['payloads']
+    args = [
+        sc_struct_type_name(payload.get('structure', ''),
+                            payload.get('structureKey', ''),
+                            prj,
+                            config_override=payload.get('configName') or None)
+        for payload in payloads
+    ]
+    return f"{channel_type}_port_thunker<{', '.join(args)}>"
+
+
+def _thunker_member_name(flagged, conn_data, is_connection_map):
+    # Naming per Stage 6.3 brief:
+    #   * connectionMap (one child end per map): thunker_<instanceName>
+    #   * connection (peer-to-peer): thunker_<channelName>_<endInstance>
+    inst = flagged.get('instance') or ''
+    if is_connection_map:
+        return f"thunker_{inst}"
+    return f"thunker_{get_channel_name(conn_data)}_{inst}"
+
+
+def sc_declare_thunkers(data, prj, indent, block_data):
+    # Stage 6.3 of plan-variant-config-unification.md. Emit one thunker
+    # member declaration per flagged cross-interface end across both
+    # connections (data['connectDouble']) and connectionMaps. Returns []
+    # when no flagged ends exist — the off-by-default invariant required
+    # by the brief: byte-identical output for projects with no cross-
+    # interface binds.
+    out = []
+    if prj is None:
+        return out
+    # Peer-to-peer channel connections.
+    for channelType in data.get("connectDouble", {}):
+        for key, value in data["connectDouble"][channelType].items():
+            flagged_ends = _resolve_cross_interface_ends(value, prj)
+            if not flagged_ends:
+                continue
+            for flagged in flagged_ends:
+                member_type = _thunker_member_type(flagged, prj)
+                member_name = _thunker_member_name(flagged, value, is_connection_map=False)
+                out.append(f"{indent}{member_type} {member_name};")
+    # connectionMap binds: the child end is the local end of the map.
+    for key, value in data.get("connectionMaps", {}).items():
+        flagged_ends = _resolve_cross_interface_ends(value, prj)
+        if not flagged_ends:
+            continue
+        for flagged in flagged_ends:
+            member_type = _thunker_member_type(flagged, prj)
+            member_name = _thunker_member_name(flagged, value, is_connection_map=True)
+            out.append(f"{indent}{member_type} {member_name};")
+    return out
+
+
+def sc_thunker_protocols(data, prj):
+    # Stage 6.3 helper: return the set of SystemC channel type stems
+    # (e.g. 'rdy_vld', 'req_ack') for which this container emits at
+    # least one thunker. Callers use the set to emit the matching
+    # `<channel_type>_port_thunker.h` include. Empty set means no thunker
+    # include is required — the off-by-default invariant.
+    protocols = set()
+    if prj is None:
+        return protocols
+    for channelType in data.get("connectDouble", {}):
+        for value in data["connectDouble"][channelType].values():
+            for flagged in _resolve_cross_interface_ends(value, prj):
+                protocol = (flagged.get('thunker') or {}).get('channelType')
+                if protocol:
+                    protocols.add(protocol)
+    for value in data.get("connectionMaps", {}).values():
+        for flagged in _resolve_cross_interface_ends(value, prj):
+            protocol = (flagged.get('thunker') or {}).get('channelType')
+            if protocol:
+                protocols.add(protocol)
+    return protocols
 
 def inverse_portdir(port):
     assert(port in ['src', 'dst'])

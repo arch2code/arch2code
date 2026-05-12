@@ -106,7 +106,7 @@ public:
     virtual void register_port( sc_port_base&, const char* ) override;
 
     // initiator interface
-    virtual void req( const R&, A&, uint64_t userMagic ) override;
+    virtual void req( const R&, A&, uint64_t userMagic = (uint64_t)-1 ) override;
     // target interface
     virtual void reqReceive( R& ) override;
     virtual void ack(const A&) override;
@@ -114,7 +114,7 @@ public:
     virtual bool isNotActive() override { return(!m_active); }
 
     // non-blocking variant for tee use case
-    virtual void reqNonBlocking( const R& req_, uint64_t userMagic) override;
+    virtual void reqNonBlocking( const R& req_, uint64_t userMagic = (uint64_t)-1) override;
     virtual void waitAck( A& ack_  ) override;
 
     void trace( sc_trace_file* tf ) const override;

@@ -191,6 +191,23 @@ def constructorInit(args, prj, data):
 
             out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{extra}{autoMode}{defaultValue})')
 
+            # Stage 6.3 of plan-variant-config-unification.md: emit one
+            # thunker initialiser-list entry per flagged cross-interface
+            # end. The thunker constructor receives (name, parent-side
+            # channel, child port reference, block name). Member-init
+            # order in C++ follows declaration order in the class body;
+            # the thunker member is declared after the child instance
+            # pointer in classDecl.py so the child->port reference is
+            # valid by the time this entry runs. Off-by-default: when no
+            # ends are flagged, no entry is emitted and the generated
+            # output is byte-identical to pre-Stage-6.3.
+            for flagged in intf_gen_utils._resolve_cross_interface_ends(chnlInfo, prj):
+                memberName = intf_gen_utils._thunker_member_name(flagged, chnlInfo, is_connection_map=False)
+                out.append(
+                    f'        ,{memberName}("{memberName}", {channelBase}, '
+                    f'{flagged["instance"]}->{flagged["portName"]}, name())'
+                )
+
 
     for key, value in data['subBlockInstances'].items():
         childData = prj.getBlockConfigView(value['instanceTypeKey'])
@@ -219,6 +236,26 @@ def constructorInit(args, prj, data):
             f'        ,{ value["instance"] }(std::dynamic_pointer_cast'
             f'<{ value["instanceType"] }Base{instCfg}>({createCall}))'
         )
+
+    # Stage 6.3 of plan-variant-config-unification.md: connectionMap
+    # thunker initialiser-list entries. A connectionMap binds an external
+    # parent port to a child instance port; when the two interfaces
+    # differ, the thunker bridges them. The thunker is declared after
+    # the child instance pointer in classDecl.py so the
+    # `instance->port` reference is well-formed when this entry runs.
+    # Off-by-default: an empty flagged list emits nothing.
+    for key, value in data["connectionMaps"].items():
+        flagged_ends = intf_gen_utils._resolve_cross_interface_ends(value, prj)
+        if not flagged_ends:
+            continue
+        parentPort = f'this->{value["parentPortName"]}' if hasOwnParams else value["parentPortName"]
+        for flagged in flagged_ends:
+            memberName = intf_gen_utils._thunker_member_name(flagged, value, is_connection_map=True)
+            out.append(
+                f'        ,{memberName}("{memberName}", {parentPort}, '
+                f'{flagged["instance"]}->{flagged["portName"]}, name())'
+            )
+
     for reg, regData in data['registers'].items():
         # Skip memory registers - they only have adapters, not hwRegister objects
         if regData['regType'] == 'memory':
@@ -372,10 +409,17 @@ def constructorBody(args, prj, data):
         # name). Stage 3.2 keeps the template head only on blocks with
         # their own params; non-leaf parents no longer need the qualifier.
         parentPortName = f'this->{value["parentPortName"]}' if hasOwnParams else value["parentPortName"]
+        # Stage 6.3: getBDCrossInterfaceBinds() marks maps whose direct
+        # child bind is replaced by the thunker's downPort(m_chDown)
+        # bind. The thunker initialiser is emitted earlier in the
+        # constructor's init list. The off-by-default invariant: an empty
+        # flagged list leaves this loop's emission untouched.
+        if intf_gen_utils._resolve_cross_interface_ends(value, prj):
+            continue
         out.append(f'    { value["instance"] }->{ value["instancePortName"]}({ parentPortName });')
 
 
-    connections = intf_gen_utils.sc_connect_channels(data, ' '*4, data)
+    connections = intf_gen_utils.sc_connect_channels(data, ' '*4, data, prj=prj)
     if connections:
         out.append(f'    // instance to instance connections via channel')
         out += connections

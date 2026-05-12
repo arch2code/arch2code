@@ -163,6 +163,7 @@ interface_defs:
     _attribs: [dataGroup]
     type: required
     param_cast: optional
+    thunker: optional(false)
     set_initial_value: optional(false)
     multicycle_types:
       _attribs: [optional, singleEntryList, multiple]
@@ -244,6 +245,20 @@ blocks:
   params:
     _attribs: [optional, list]
     param: key
+  ports:
+    _attribs: [optional, multiple]
+    port: key
+    interface:
+      _type: required
+      _validate:
+        section: interfaces
+        field: interface
+    direction:
+      _type: required
+      _validate:
+        values:
+          - src
+          - dst
 
 parameters:
   block:

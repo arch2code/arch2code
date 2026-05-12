@@ -84,6 +84,21 @@ echo "Test Suite 11: Config Template Generation"
 echo "------------------------------------------------------------------------"
 python3 test_config_template.py || FAILED=1
 
+# Test 12: Error handling - declared ports
+echo ""
+echo "Test Suite 12: Error Handling (Declared Ports)"
+echo "------------------------------------------------------------------------"
+if ! python3 test_error_declared_ports.py; then
+    FAILED=1
+    echo "Note: Some declared-port error tests failed"
+fi
+
+# Test 13: Thunker view derivation
+echo ""
+echo "Test Suite 13: Thunker View Derivation"
+echo "------------------------------------------------------------------------"
+python3 test_thunker_view.py || FAILED=1
+
 echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then

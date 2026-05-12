@@ -46,6 +46,16 @@ def render_default(args, prj, data):
                 break
     if needsHwMemory:
         out.append('#include "hwMemory.h"')
+    # Stage 6.3 of plan-variant-config-unification.md (Q10 / R2):
+    # protocol-specific thunker headers. Emitted exactly when this
+    # container declares at least one cross-interface thunker member
+    # (sc_declare_thunkers below). The set is computed once and emitted
+    # in sorted order so the generated text is deterministic.
+    # Off-by-default: an empty protocol set emits no include.
+    thunker_protocols = intf_gen_utils.sc_thunker_protocols(data, prj)
+    for proto in sorted(thunker_protocols):
+        out.append(f'#include "{proto}_port_thunker.h"')
+
     if isParameterizable:
         for context in data['includeContext']:
             if context in data['includeFiles'].get('config_hdr', {}):
@@ -134,6 +144,20 @@ def render_default(args, prj, data):
         # when the descriptor's values are empty.
         instCfg = intf_gen_utils.resolve_instance_config_arg(prj, instData)
         out.append( indent + f'std::shared_ptr<{ instData["instanceType"] }Base{instCfg}> { instData["instance"] };')
+
+    # Stage 6.3 of plan-variant-config-unification.md (Q10 / R2):
+    # cross-interface thunker member declarations. Emitted AFTER the
+    # subBlockInstances loop so the thunker's mem-init can reference
+    # `instance->port` (C++ runs mem-inits in declaration order). When
+    # no cross-interface ends are flagged, sc_declare_thunkers returns
+    # [] and no line is emitted — the off-by-default invariant required
+    # by the brief.
+    thunkers = intf_gen_utils.sc_declare_thunkers(data, prj, indent, data)
+    if thunkers:
+        out.append('')
+        out.append(indent + '// cross-interface thunkers')
+        out.extend(thunkers)
+
     first = True
 
     for reg, regData in data["registers"].items():
