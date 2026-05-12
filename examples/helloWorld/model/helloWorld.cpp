@@ -1,21 +1,18 @@
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
-#include <memory>
-#include "instanceFactory.h"
-
-// GENERATED_CODE_PARAM --block=top
+// GENERATED_CODE_PARAM --block=helloWorld
 // GENERATED_CODE_BEGIN --template=constructor --section=init
-#include "top.h"
-#include "producer_base.h"
-#include "consumer_base.h"
-SC_HAS_PROCESS(top);
+#include "helloWorld.h"
+#include "producerBase.h"
+#include "consumerBase.h"
+SC_HAS_PROCESS(helloWorld);
 
-top::registerBlock top::registerBlock_; //register the block with the factory
+helloWorld::registerBlock helloWorld::registerBlock_; //register the block with the factory
 
-top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+helloWorld::helloWorld(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
-        ,blockBase("top", name(), bbMode)
-        ,topBase(name(), variant)
+        ,blockBase("helloWorld", name(), bbMode)
+        ,helloWorldBase(name(), variant)
         ,test_rdy_vld("consumer_test_rdy_vld", "producer")
         ,test_req_ack("consumer_test_req_ack", "producer")
         ,test_push_ack("consumer_test_push_ack", "producer")
@@ -36,6 +33,5 @@ top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     uConsumer->test_pop_ack(test_pop_ack);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
-    //auto baseInstance = instanceFactory::createInstance("uProducer");
-    //uProducer2 = (producer *) baseInstance.get();
-}
+};
+

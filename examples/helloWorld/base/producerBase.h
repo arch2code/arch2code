@@ -1,11 +1,11 @@
-#ifndef CONSUMER_BASE_H
-#define CONSUMER_BASE_H
+#ifndef PRODUCER_BASE_H
+#define PRODUCER_BASE_H
 
 //copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
 
-// GENERATED_CODE_PARAM --block=consumer
+// GENERATED_CODE_PARAM --block=producer
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "pop_ack_channel.h"
 #include "push_ack_channel.h"
@@ -13,22 +13,22 @@
 #include "req_ack_channel.h"
 #include "helloWorldTopIncludes.h"
 
-class consumerBase : public virtual blockPortBase
+class producerBase : public virtual blockPortBase
 {
 public:
-    virtual ~consumerBase() = default;
-    // dst ports
-    // uProducer->test_rdy_vld: Ready Valid Test interface
-    rdy_vld_in< data_st > test_rdy_vld;
-    // uProducer->test_req_ack: Req Ack Test interface
-    req_ack_in< data_st, data_st > test_req_ack;
-    // uProducer->test_push_ack: Valid Ack Test interface
-    push_ack_in< data_st > test_push_ack;
-    // uProducer->test_pop_ack: Ready Ack Test interface
-    pop_ack_in< data_st > test_pop_ack;
+    virtual ~producerBase() = default;
+    // src ports
+    // test_rdy_vld->uConsumer: Ready Valid Test interface
+    rdy_vld_out< data_st > test_rdy_vld;
+    // test_req_ack->uConsumer: Req Ack Test interface
+    req_ack_out< data_st, data_st > test_req_ack;
+    // test_push_ack->uConsumer: Valid Ack Test interface
+    push_ack_out< data_st > test_push_ack;
+    // test_pop_ack->uConsumer: Ready Ack Test interface
+    pop_ack_out< data_st > test_pop_ack;
 
 
-    consumerBase(std::string name, const char * variant) :
+    producerBase(std::string name, const char * variant) :
         test_rdy_vld("test_rdy_vld")
         ,test_req_ack("test_req_ack")
         ,test_push_ack("test_push_ack")
@@ -50,21 +50,21 @@ public:
         test_pop_ack->setLogging(verbosity);
     };
 };
-class consumerInverted : public virtual blockPortBase
+class producerInverted : public virtual blockPortBase
 {
 public:
-    // dst ports
-    // uProducer->test_rdy_vld: Ready Valid Test interface
-    rdy_vld_out< data_st > test_rdy_vld;
-    // uProducer->test_req_ack: Req Ack Test interface
-    req_ack_out< data_st, data_st > test_req_ack;
-    // uProducer->test_push_ack: Valid Ack Test interface
-    push_ack_out< data_st > test_push_ack;
-    // uProducer->test_pop_ack: Ready Ack Test interface
-    pop_ack_out< data_st > test_pop_ack;
+    // src ports
+    // test_rdy_vld->uConsumer: Ready Valid Test interface
+    rdy_vld_in< data_st > test_rdy_vld;
+    // test_req_ack->uConsumer: Req Ack Test interface
+    req_ack_in< data_st, data_st > test_req_ack;
+    // test_push_ack->uConsumer: Valid Ack Test interface
+    push_ack_in< data_st > test_push_ack;
+    // test_pop_ack->uConsumer: Ready Ack Test interface
+    pop_ack_in< data_st > test_pop_ack;
 
 
-    consumerInverted(std::string name) :
+    producerInverted(std::string name) :
         test_rdy_vld(("test_rdy_vld"+name).c_str())
         ,test_req_ack(("test_req_ack"+name).c_str())
         ,test_push_ack(("test_push_ack"+name).c_str())
@@ -86,10 +86,10 @@ public:
         test_pop_ack->setLogging(verbosity);
     };
 };
-class consumerChannels
+class producerChannels
 {
 public:
-    // dst ports
+    // src ports
     // Ready Valid Test interface
     rdy_vld_channel< data_st > test_rdy_vld;
     // Req Ack Test interface
@@ -100,13 +100,13 @@ public:
     pop_ack_channel< data_st > test_pop_ack;
 
 
-    consumerChannels(std::string name, std::string srcName) :
+    producerChannels(std::string name, std::string srcName) :
     test_rdy_vld(("test_rdy_vld"+name).c_str(), srcName)
     ,test_req_ack(("test_req_ack"+name).c_str(), srcName)
     ,test_push_ack(("test_push_ack"+name).c_str(), srcName)
     ,test_pop_ack(("test_pop_ack"+name).c_str(), srcName)
     {};
-    void bind( consumerBase *a, consumerInverted *b)
+    void bind( producerBase *a, producerInverted *b)
     {
         a->test_rdy_vld( test_rdy_vld );
         b->test_rdy_vld( test_rdy_vld );
@@ -120,5 +120,4 @@ public:
 };
 
 // GENERATED_CODE_END
-
-#endif //CONSUMER_BASE_H
+#endif //PRODUCER_BASE_H

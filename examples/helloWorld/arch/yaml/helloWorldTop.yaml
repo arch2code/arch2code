@@ -87,8 +87,9 @@ interfaces:
 #### count: number that indicates how many of these portname exist and can be connected, optional
 ####          numbered from 0 upto count - 1
 blocks:
-  top:
-    desc: top
+  helloWorld:
+    desc: Hello World Testbench
+    hasTb: true
   producer:
     desc: Producer
   consumer:
@@ -101,16 +102,16 @@ blocks:
 ### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
 ###          for this instance, optional (currently does not work in diagram generation code)
 instances:
-  uTop:
-    container: top # self referential
-    instanceType: top
+  helloWorld:
+    container: helloWorld # self referential
+    instanceType: helloWorld
     instGroup: top
   uProducer:
-    container: top 
+    container: helloWorld 
     instanceType: producer
     instGroup: top
   uConsumer:
-    container: top 
+    container: helloWorld 
     instanceType: consumer
     instGroup: top
 

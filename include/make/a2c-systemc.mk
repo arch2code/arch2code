@@ -32,6 +32,14 @@ VERILATOR_ROOT=/usr/local/share/verilator
 endif
 
 #------------------------------------------------------------------------
+# Locate pysrc directory (supports both layouts)
+#------------------------------------------------------------------------
+A2C_PYSRC := $(firstword $(wildcard $(A2C_ROOT)/base/pysrc $(A2C_ROOT)/pysrc))
+ifeq ($(A2C_PYSRC),)
+$(error Could not find pysrc in $(A2C_ROOT)/base/pysrc or $(A2C_ROOT)/pysrc)
+endif
+
+#------------------------------------------------------------------------
 # Systemc build global variables
 #------------------------------------------------------------------------
 
@@ -171,7 +179,7 @@ compdb:
 	@mkdir -p $(GEN_BUILD_DIR)
 	@$(MAKE) -n -B all > $(GEN_BUILD_DIR)/compdb.model.make-n.txt
 	@$(MAKE) -n -B all VL_DUT=1 > $(GEN_BUILD_DIR)/compdb.vl.make-n.txt
-	@python3 $(A2C_ROOT)/base/pysrc/gen_compile_commands.py \
+	@python3 $(A2C_PYSRC)/gen_compile_commands.py \
 		$(GEN_BUILD_DIR)/compdb.model.make-n.txt \
 		$(GEN_BUILD_DIR)/compdb.vl.make-n.txt \
 		$(REPO_ROOT)/compile_commands.json \

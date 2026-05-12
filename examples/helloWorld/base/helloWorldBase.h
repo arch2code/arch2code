@@ -1,11 +1,11 @@
-#ifndef TOP_BASE_H
-#define TOP_BASE_H
+#ifndef HELLOWORLD_BASE_H
+#define HELLOWORLD_BASE_H
 
 //copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 
 #include "systemc.h"
 
-// GENERATED_CODE_PARAM --block=top
+// GENERATED_CODE_PARAM --block=helloWorld
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "pop_ack_channel.h"
 #include "push_ack_channel.h"
@@ -13,13 +13,13 @@
 #include "req_ack_channel.h"
 #include "helloWorldTopIncludes.h"
 
-class topBase : public virtual blockPortBase
+class helloWorldBase : public virtual blockPortBase
 {
 public:
-    virtual ~topBase() = default;
+    virtual ~helloWorldBase() = default;
 
 
-    topBase(std::string name, const char * variant) 
+    helloWorldBase(std::string name, const char * variant) 
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -29,12 +29,12 @@ public:
     {
     };
 };
-class topInverted : public virtual blockPortBase
+class helloWorldInverted : public virtual blockPortBase
 {
 public:
 
 
-    topInverted(std::string name) 
+    helloWorldInverted(std::string name) 
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -44,18 +44,17 @@ public:
     {
     };
 };
-class topChannels
+class helloWorldChannels
 {
 public:
 
 
-    topChannels(std::string name, std::string srcName) 
+    helloWorldChannels(std::string name, std::string srcName) 
     {};
-    void bind( topBase *a, topInverted *b)
+    void bind( helloWorldBase *a, helloWorldInverted *b)
     {
     };
 };
 
 // GENERATED_CODE_END
-
-#endif //TOP_BASE_H
+#endif //HELLOWORLD_BASE_H

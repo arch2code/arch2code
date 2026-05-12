@@ -9,7 +9,7 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "producer_base.h"
+#include "producerBase.h"
 #include "helloWorldTopIncludes.h"
 
 SC_MODULE(producer), public blockBase, public producerBase

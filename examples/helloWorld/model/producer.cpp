@@ -1,6 +1,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 #include "testController.h"
 #include "tagTrackers.h"
+#include "endOfTest.h"
 
 // GENERATED_CODE_PARAM --block=producer
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -48,8 +49,8 @@ void producer::producerOutRdyVld(void)
     test_rdy_vld->write(data);
     log_.logPrint("RV5");
     controller.test_complete(test_name);
-
 }
+
 void producer::producerOutReqAck(void)
 {
     std::string test_name = "test_req_ack";
@@ -75,8 +76,8 @@ void producer::producerOutReqAck(void)
     test_req_ack->req(reqData, ackData);
     log_.logPrint("RQA5");
     controller.test_complete(test_name);
-
 }
+
 void producer::producerOutPushAck(void)
 {
     std::string test_name = "test_push_ack";
@@ -124,5 +125,4 @@ void producer::producerOutPopAck(void)
     test_pop_ack->pop(ackData);
     log_.logPrint("RDA5");
     controller.test_complete(test_name);
-
 }
