@@ -39,9 +39,6 @@ public:
     static bool isTandemMode(void);
     static void setTimed(int nsec, bool all, timedDelayMode mode);
     static void setLogging(verbosity_e verbosity);
-    static void addParam(const std::initializer_list<std::pair<std::string, uint64_t> > & params);
-    static void addParam(std::string name, uint64_t value);
-    static uint64_t getParam(const char * blockName, const std::string variant, std::string param);
     static std::string dumpInstances(void);
     // de-tandemise provided name and remove any extra hierarchy levels
     static std::string getHierarchyName(const std::string name, blockBaseMode bbMode);
@@ -70,7 +67,6 @@ private:
     // this contains pointers to the instances that have been created
     static std::vector<std::string> & getInstanceModeString();
     static bool & tandemMode();
-    static std::map<std::string, uint64_t> & getVariantParams();
     static std::vector<std::pair<std::string, std::string>> & getRemapStrings();
     static std::string getQualName(const std::string name) {return testBenchQualStr + name;};
 };

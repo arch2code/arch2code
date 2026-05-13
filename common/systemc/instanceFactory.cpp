@@ -190,26 +190,6 @@ void instanceFactory::setLogging(verbosity_e verbosity)
         }
 
 }
-void instanceFactory::addParam(const std::initializer_list<std::pair<std::string, uint64_t> > & params)
-{
-    for (auto param : params)
-    {
-        getVariantParams().emplace(param.first, param.second);
-    }
-}
-void instanceFactory::addParam(std::string name, uint64_t value)
-{
-    getVariantParams().emplace(name, value);
-}
-uint64_t instanceFactory::getParam(const char * blockName, const std::string variant, std::string param)
-{
-    auto it = getVariantParams().find(std::string(blockName) + '.' + variant + '.' + param);
-    if (it != getVariantParams().end()) {
-            return it->second;
-    }
-    Q_ASSERT_CTX_NODUMP(false, "", std::format("Attempted to get a parameter {} that does not exist in variant {}", variant, blockName) );
-    return 0;
-}
 std::string instanceFactory::dumpInstances(void)
 {
     std::string ret;
@@ -288,11 +268,6 @@ bool & instanceFactory::tandemMode()
 {
     static bool mode = false;
     return mode;
-}
-std::map<std::string, uint64_t> & instanceFactory::getVariantParams()
-{
-    static std::map<std::string, uint64_t> map;
-    return map;
 }
 std::vector<std::pair<std::string, std::string>> & instanceFactory::getRemapStrings()
 {

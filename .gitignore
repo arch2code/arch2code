@@ -41,3 +41,8 @@ tests/out/*
 *.scgen
 *.svgen
 .clangd
+compile_commands.json
+.gen/
+**/.gen/**
+.cache/
+**/.cache/**

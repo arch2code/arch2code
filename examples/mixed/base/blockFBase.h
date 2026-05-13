@@ -5,9 +5,12 @@
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "rdy_vld_channel.h"
 #include "status_channel.h"
-#include "mixedBlockCIncludes.h"
-#include "mixedIncludes.h"
+import mixedBlockC;
+using namespace mixedBlockC_ns;
+import mixed;
+using namespace mixed_ns;
 
+template<typename Config>
 class blockFBase : public virtual blockPortBase
 {
 public:
@@ -30,8 +33,8 @@ public:
 
 
     blockFBase(std::string name, const char * variant) :
-        bob(instanceFactory::getParam("blockF", variant, "bob"))
-        ,fred(instanceFactory::getParam("blockF", variant, "fred"))
+        bob(Config::bob)
+        ,fred(Config::fred)
         ,cStuffIf("cStuffIf")
         ,dSout("dSout")
         ,dStuffIf("dStuffIf")
@@ -56,6 +59,7 @@ public:
         rwD->setLogging(verbosity);
     };
 };
+template<typename Config>
 class blockFInverted : public virtual blockPortBase
 {
 public:
@@ -99,6 +103,7 @@ public:
         rwD->setLogging(verbosity);
     };
 };
+template<typename Config>
 class blockFChannels
 {
 public:
@@ -124,7 +129,7 @@ public:
     ,dSin(("dSin"+name).c_str(), srcName)
     ,rwD(("rwD"+name).c_str(), srcName)
     {};
-    void bind( blockFBase *a, blockFInverted *b)
+    void bind( blockFBase<Config> *a, blockFInverted<Config> *b)
     {
         a->cStuffIf( cStuffIf );
         b->cStuffIf( cStuffIf );

@@ -5,11 +5,16 @@
 #include "ip.h"
 // === Block factory registration (ip) ===
 namespace {
-[[maybe_unused]] int _ip_registered = []() -> int {
-    instanceFactory::registerBlock("ip_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant0Config>>(blockName, variant, bbMode)); }, "variant0");
-    instanceFactory::registerBlock("ip_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant1Config>>(blockName, variant, bbMode)); }, "variant1");
-    return 0;
-}();
+[[gnu::used]] std::shared_ptr<blockBase> _ip_instantiate_variant_0(
+    const char * blockName, const char * variant, blockBaseMode bbMode) {
+    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant0Config>>(blockName, variant, bbMode));
+}
+[[maybe_unused, gnu::used]] auto _ip_instantiate_variant_0_anchor = &_ip_instantiate_variant_0;
+[[gnu::used]] std::shared_ptr<blockBase> _ip_instantiate_variant_1(
+    const char * blockName, const char * variant, blockBaseMode bbMode) {
+    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant1Config>>(blockName, variant, bbMode));
+}
+[[maybe_unused, gnu::used]] auto _ip_instantiate_variant_1_anchor = &_ip_instantiate_variant_1;
 } // namespace
 // === End block factory registration ===
 

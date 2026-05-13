@@ -83,12 +83,10 @@ def render_default(args, prj, data):
     out.append('#include "blockBase.h"')
 
     # Per-context Config-policy headers must be reachable for the
-    # parameterized lambda body. These headers carry the
-    # `<context>DefaultConfig` struct that the lambda names.
-    if isParameterizable:
-        for context in data['includeContext']:
-            if context in data['includeFiles'].get('config_hdr', {}):
-                out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
+    # parameterized lambda body. The block view owns this selection.
+    for context in sorted(data.get('configIncludeContext', {})):
+        if context in data['includeFiles'].get('config_hdr', {}):
+            out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
 
     # Block class header. Pulled in unconditionally for the
     # parameterized-block branch so the lambda can construct

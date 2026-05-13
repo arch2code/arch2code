@@ -6,10 +6,11 @@
 #include "ipLeafBase.h"
 // === Block factory registration (src) ===
 namespace {
-[[maybe_unused]] int _src_registered = []() -> int {
-    instanceFactory::registerBlock("src_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcVariantSrc0Config>>(blockName, variant, bbMode)); }, "variantSrc0");
-    return 0;
-}();
+[[gnu::used]] std::shared_ptr<blockBase> _src_instantiate_variant_0(
+    const char * blockName, const char * variant, blockBaseMode bbMode) {
+    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcVariantSrc0Config>>(blockName, variant, bbMode));
+}
+[[maybe_unused, gnu::used]] auto _src_instantiate_variant_0_anchor = &_src_instantiate_variant_0;
 } // namespace
 // === End block factory registration ===
 

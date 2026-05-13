@@ -5,7 +5,17 @@
 #include "blockBRegs.h"
 SC_HAS_PROCESS(blockBRegs);
 
-blockBRegs::registerBlock blockBRegs::registerBlock_; //register the block with the factory
+// === Block factory registration (blockBRegs) ===
+void force_link_blockBRegs() {}
+
+void register_blockBRegs_variants() {
+    instanceFactory::registerBlock("blockBRegs_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockBRegs>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _blockBRegs_registered = (register_blockBRegs_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 void blockBRegs::regHandler(void) { //handle register decode
     registerHandler< apbAddrSt, apbDataSt >(regs, apbReg, (1<<(9))-1); }

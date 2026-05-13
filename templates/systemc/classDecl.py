@@ -56,10 +56,10 @@ def render_default(args, prj, data):
     for proto in sorted(thunker_protocols):
         out.append(f'#include "{proto}_port_thunker.h"')
 
-    if isParameterizable:
-        for context in data['includeContext']:
-            if context in data['includeFiles'].get('config_hdr', {}):
-                out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
+    # Config policy include contexts are prepared by getBDIncludes().
+    for context in sorted(data.get('configIncludeContext', {})):
+        if context in data['includeFiles'].get('config_hdr', {}):
+            out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
     
     if args.fileMapKey:
         fileMapKey = args.fileMapKey

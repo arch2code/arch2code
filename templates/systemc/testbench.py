@@ -276,10 +276,9 @@ def ext_sec_header(args, prj, data):
 
     t = Template(sec_tb_external_header_template)
     config_includes = []
-    if isParameterizable:
-        for context in data['includeContext']:
-            if context in data['includeFiles'].get('config_hdr', {}):
-                config_includes.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
+    for context in sorted(data.get('configIncludeContext', {})):
+        if context in data['includeFiles'].get('config_hdr', {}):
+            config_includes.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
     s = t.render(
         blockname=data['blockName'],
         is_parameterizable=isParameterizable,

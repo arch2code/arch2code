@@ -21,9 +21,9 @@
 //constants
 const uint32_t ASIZE = 1;  // The size of A
 const uint32_t ASIZE2 = 2;  // The size of A+1
-const uint32_t INTP = 4294966272;  // Test constant for numbers of unsigned integer type 
+const uint32_t INTP = 4294966272;  // Test constant for numbers of unsigned integer type
 const int32_t INTN = -2147482624;  // Test constant for numbers of signed integer type (two's complement negative)
-const uint64_t LONGP = 0X1FFFFFFFFFFFFC00UL;  // Test constant for numbers unsigned long type 
+const uint64_t LONGP = 0X1FFFFFFFFFFFFC00UL;  // Test constant for numbers unsigned long type
 const int64_t LONGN = -0XFFFFFC00L;  // Test constant for numbers signed long type (two's complement negative)
 const uint64_t BIGE33 = 0X1FFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
 const uint64_t BIGE53 = 0X3FFFFFFFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits

@@ -21,6 +21,7 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#include "ipConfig.h"
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
 

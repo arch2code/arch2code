@@ -50,7 +50,7 @@ def includeConstants(args, prj, data):
             case _:
                 type_str = value['valueType']
                 value_str = f"{value['value']}"
-        out.append(f"const {type_str} { value['constant'] } = { value_str };  // {value['desc']}")
+        out.append(f"const {type_str} { value['constant'] } = { value_str };  // {value['desc'].strip()}")
 
     out.append("")
     return("\n".join(wrap_module_namespace(args, data, out)))

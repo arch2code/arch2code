@@ -17,6 +17,8 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#include "ipLeafConfig.h"
+#include "srcConfig.h"
 #include "push_ack_bfm.h"
 
 template <typename DUT_T>

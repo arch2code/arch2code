@@ -11,30 +11,20 @@
 #include "blockFBase.h"
 #include "addressMap.h"
 #include "hwMemory.h"
-#include "mixedBlockCIncludes.h"
-#include "mixedIncludes.h"
+#include "mixedConfig.h"
+import mixedBlockC;
+using namespace mixedBlockC_ns;
+import mixed;
+using namespace mixed_ns;
 
-SC_MODULE(blockF), public blockBase, public blockFBase
+template<typename Config>
+SC_MODULE(blockF), public blockBase, public blockFBase<Config>
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // Register parameter variants with factory
-            instanceFactory::addParam({
-                { "blockF.variant0.bob", BOB0 },
-                { "blockF.variant0.fred", 0 },
-                { "blockF.variant1.bob", BOB1 },
-                { "blockF.variant1.fred", 1 },
-            });
-            // lamda function to construct the block
-            instanceFactory::registerBlock("blockF_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<blockF>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
+    SC_HAS_PROCESS(blockF);
+
 
     memories mems;
     //memories
@@ -44,7 +34,7 @@ public:
     ~blockF() override = default;
     void setTimed(int nsec, timedDelayMode mode) override
     {
-        blockFBase::setTimed(nsec, mode);
+        blockFBase<Config>::setTimed(nsec, mode);
         mems.setTimed(nsec, mode);
     }
 

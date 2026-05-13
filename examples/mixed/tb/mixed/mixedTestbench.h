@@ -10,19 +10,11 @@
 #include "mixedBase.h"
 #include "mixedExternal.h"
 
+// Force-link function (active modules-mode anchor) for the testbench
+// class. See plan-block-registration.md "Force-Link Function".
+void force_link_mixedTestbench();
+
 class mixedTestbench: public sc_module, public blockBase, public mixedChannels {
-
-    private:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("mixedTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<mixedTestbench>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 
 public:
 

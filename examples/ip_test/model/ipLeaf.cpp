@@ -5,10 +5,11 @@
 #include "ipLeaf.h"
 // === Block factory registration (ipLeaf) ===
 namespace {
-[[maybe_unused]] int _ipLeaf_registered = []() -> int {
-    instanceFactory::registerBlock("ipLeaf_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipLeaf<ipLeafVariantLeaf0Config>>(blockName, variant, bbMode)); }, "variantLeaf0");
-    return 0;
-}();
+[[gnu::used]] std::shared_ptr<blockBase> _ipLeaf_instantiate_variant_0(
+    const char * blockName, const char * variant, blockBaseMode bbMode) {
+    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipLeaf<ipLeafVariantLeaf0Config>>(blockName, variant, bbMode));
+}
+[[maybe_unused, gnu::used]] auto _ipLeaf_instantiate_variant_0_anchor = &_ipLeaf_instantiate_variant_0;
 } // namespace
 // === End block factory registration ===
 

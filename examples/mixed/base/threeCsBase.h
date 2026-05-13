@@ -4,7 +4,8 @@
 // GENERATED_CODE_PARAM --block=threeCs
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "rdy_vld_channel.h"
-#include "mixedBlockCIncludes.h"
+import mixedBlockC;
+using namespace mixedBlockC_ns;
 
 class threeCsBase : public virtual blockPortBase
 {
@@ -97,6 +98,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_threeCs();
 // GENERATED_CODE_END
 
 #endif // THREECS_BASE_H

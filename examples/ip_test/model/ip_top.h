@@ -11,9 +11,8 @@
 #include "instanceFactory.h"
 #include "ip_topBase.h"
 #include "push_ack_port_thunker.h"
-#include "ip_topConfig.h"
-#include "srcConfig.h"
 #include "ipConfig.h"
+#include "srcConfig.h"
 import ip_top;
 using namespace ip_top_ns;
 import src;

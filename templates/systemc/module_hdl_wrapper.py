@@ -21,6 +21,42 @@ def render_sc(args, prj, data):
     defaultConfig = data.get('defaultConfig', '') if isParameterizable else ''
     cfg = f'<{defaultConfig}>' if isParameterizable else ''
 
+    # Stage 9.3 of plan-variant-config-unification.md: when the block
+    # has its own `params:` AND none of its port structures depend on
+    # Config (so BFM/HDL_IF declarations don't carry `<Config>`), the
+    # per-variant wrapper typedef must bind the variant's own Config
+    # struct. The block default Config would lack the per-variant
+    # override fields and the wrapper instantiation would fail at
+    # compile time (the canonical mismatch for `blockF` in
+    # examples/mixed). Blocks with cross-Config or own-Config port
+    # structures (ip_test's `ip`, `src`) continue to use `defaultConfig`
+    # because their BFM declarations bind the same Config consistently
+    # across inheritance and BFM types.
+    qualBlock = data.get('qualBlock', '')
+    useOwnVariantConfig = False
+    if (isParameterizable and qualBlock
+            and intf_gen_utils.block_has_own_params(prj, qualBlock)):
+        portStructsParameterized = False
+        for port_type in data.get('ports', {}):
+            if portStructsParameterized:
+                break
+            for port_name in data['ports'][port_type]:
+                port_blast = intf_gen_utils.sc_gen_modport_signal_blast(
+                    data['ports'][port_type][port_name], prj, data)
+                if '<Config>' in port_blast.get('bfm_decl', ''):
+                    portStructsParameterized = True
+                    break
+        if not portStructsParameterized:
+            useOwnVariantConfig = True
+    variantConfigForName = dict()
+    if useOwnVariantConfig:
+        for desc in data.get('variantConfigs', []):
+            if desc.get('values'):
+                variantConfigForName[desc['variant']] = desc['configName']
+            else:
+                variantConfigForName[desc['variant']] = defaultConfig
+    wrapperCfgTemplateArg = 'Config' if useOwnVariantConfig else ''
+
     def sec_channel_decl(args, prj, data):
         s = []
         for port_type in data['ports']:
@@ -33,6 +69,9 @@ def render_sc(args, prj, data):
 
     def sec_bfm_includes(args, prj, data):
         s = []
+        for context in sorted(data.get('configIncludeContext', {})):
+            if context in data['includeFiles'].get('config_hdr', {}):
+                s.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
         block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'], data)
         for intf_type in sorted(block_intf_set):
             intf_def = intf_gen_utils.get_intf_defs(intf_type, data)
@@ -100,11 +139,20 @@ def render_sc(args, prj, data):
 
     def sec_hdl_sc_wrapper_class(args, prj, data):
         t = Template(sec_hdl_sc_wrapper_class_template)
+        # When the wrapper exposes Config as a second template
+        # parameter, the base-class binding uses that template name
+        # rather than the block default. Verifies at compile time that
+        # each variant typedef provides a Config with the per-variant
+        # override fields.
+        variants = data.get('variants', {})
+        useOwnVariantTemplateArg = useOwnVariantConfig and bool(variants)
+        baseCfg = f'<{wrapperCfgTemplateArg}>' if useOwnVariantTemplateArg else cfg
         s = t.render(
-            blockname=data['blockName'], variants=data['variants'],
+            blockname=data['blockName'], variants=variants,
             is_parameterizable=isParameterizable,
-            cfg=cfg,
+            cfg=baseCfg,
             default_config=defaultConfig,
+            use_own_variant_config=useOwnVariantTemplateArg,
             sec_bfm_includes=sec_bfm_includes(args, prj, data),
             sec_bfm_decl=sec_bfm_decl(args, prj, data),
             sec_bfm_ctor_init=sec_bfm_ctor_init(args, prj, data),
@@ -120,7 +168,12 @@ def render_sc(args, prj, data):
 
     def sec_variant_class_template_spec(args, prj, data):
         t = Template(sec_variant_class_template_spec_template)
-        return(t.render(blockname=data['blockName'], variants=data['variants']))
+        return(t.render(
+            blockname=data['blockName'], variants=data['variants'],
+            use_own_variant_config=useOwnVariantConfig,
+            variant_cfg=variantConfigForName,
+            default_config=defaultConfig,
+        ))
 
     def factory_register_vl_decl(args, prj, data):
         s = []
@@ -188,11 +241,19 @@ sec_var_include_sv_wrap_header_template = """\
 sec_variant_class_template_spec_template = """\
 #if !defined(VERILATOR) && defined(VCS)
 {% for var in variants -%}
+{% if use_own_variant_config -%}
+using {{blockname}}_{{var}}_hdl_sc_wrapper = {{blockname}}_hdl_sc_wrapper<{{blockname}}_{{var}}_hdl_sv_wrapper, {{variant_cfg.get(var, default_config)}}>;
+{% else -%}
 using {{blockname}}_{{var}}_hdl_sc_wrapper = {{blockname}}_hdl_sc_wrapper<{{blockname}}_{{var}}_hdl_sv_wrapper>;
+{% endif -%}
 {% endfor -%}
 #else
 {% for var in variants -%}
+{% if use_own_variant_config -%}
+using {{blockname}}_{{var}}_hdl_sc_wrapper = {{blockname}}_hdl_sc_wrapper<V{{blockname}}_{{var}}_hdl_sv_wrapper, {{variant_cfg.get(var, default_config)}}>;
+{% else -%}
 using {{blockname}}_{{var}}_hdl_sc_wrapper = {{blockname}}_hdl_sc_wrapper<V{{blockname}}_{{var}}_hdl_sv_wrapper>;
+{% endif -%}
 {% endfor -%}
 #endif\
 """
@@ -202,7 +263,11 @@ sec_hdl_sc_wrapper_class_template = """\
 {{ sec_bfm_includes }}
 {% endif %}
 {%- if variants %}
+{%- if use_own_variant_config %}
+template <typename DUT_T, typename Config>
+{%- else %}
 template <typename DUT_T>
+{%- endif %}
 {%- endif %}
 class {{blockname}}_hdl_sc_wrapper: public sc_module, public blockBase, public {{blockname}}Base{{cfg}} {
 
@@ -224,9 +289,15 @@ public:
         {
             // lamda function to construct the block
             instanceFactory::registerBlock(
+{%- if use_own_variant_config %}
+                "{{blockname}}_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < {{blockname}}_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
+                }, variant_);
+{%- else %}
                 "{{blockname}}_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < {{blockname}}_hdl_sc_wrapper<DUT_T> > (blockName, variant, bbMode));
                 }, variant_);
+{%- endif %}
         }
 {%- endif %}
     };
@@ -251,7 +322,9 @@ public:
     SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper);
 {%- else %}
 
-    SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper<DUT_T>);
+{% if use_own_variant_config %}    SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper<DUT_T, Config>);
+{%- else %}    SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper<DUT_T>);
+{%- endif %}
 {%- endif %}
 
     {{blockname}}_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :

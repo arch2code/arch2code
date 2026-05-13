@@ -237,6 +237,8 @@ def printOneArray(prefix, space, varName, varData, prj, isModel, prtoss=True, us
     else:
         start = f'{space}{varName}[0:{arraySize-1}]: '
     if not isModel:
+        if not prtoss:
+            start += 'Not printed'
         varPrint = '"Not printed"'
     else:
         decorators = ' << ' if prtoss else '{}'
@@ -555,7 +557,7 @@ def prt(handle, args, vars, indent, prj):
             prefix = f'{indent}    '
         varName = vardata['variable']
         if vardata['isArray'] and not vardata['subStruct']:
-            isModel = (args.mode == 'model')
+            isModel = (args.mode in ('model', 'module'))
             out.extend(convertToList(*printOneArray(prefix, space, varName, vardata, prj, isModel, useConfig=useConfig)))
         elif vardata['isArray'] and vardata['subStruct']:
             out.extend(convertToList(*printOneSubstructArray(prefix, space, varName, vardata, prj, useConfig=useConfig)))
@@ -591,7 +593,7 @@ def prtFmt(handle, args, vars, indent, prj):
     for var, vardata in vars['vars'].items():
         varName = vardata['variable']
         if vardata['isArray'] and not vardata['subStruct']:
-            isModel = (args.mode == 'model')
+            isModel = (args.mode in ('model', 'module'))
             varList.append(printOneArray(prefix, space, varName, vardata, prj, isModel, False, useConfig))
         elif vardata['isArray'] and vardata['subStruct']:
             varList.append(printOneSubstructArray(prefix, space, varName, vardata, prj, False, useConfig))
@@ -608,12 +610,20 @@ def prtFmt(handle, args, vars, indent, prj):
                 varOut.append(f'{indent}   {var},')
         else:
             fmt += item[0] + item[1]
-            varOut.append(f'{indent}   {item[2]},')
-    # add semicolon to the last item in the list
-    varOut[-1] = varOut[-1][:-1]
-    out.append(f'{indent}return (std::format("{fmt}",')
-    out.extend(varOut)
-    out.append(f"{indent}));")
+            # Non-model arrays intentionally emit a literal "Not printed"
+            # label with no replacement field. Keep that special case from
+            # adding an unused argument while preserving args for fields such
+            # as enums whose format specifier is embedded in item[0].
+            if item[1] or item[2] != '"Not printed"':
+                varOut.append(f'{indent}   {item[2]},')
+    if varOut:
+        # add semicolon to the last item in the list
+        varOut[-1] = varOut[-1][:-1]
+        out.append(f'{indent}return (std::format("{fmt}",')
+        out.extend(varOut)
+        out.append(f"{indent}));")
+    else:
+        out.append(f'{indent}return ("{fmt}");')
     indent = indent[:-4]
     out.append(f"{indent}}}")
     return out
@@ -693,7 +703,7 @@ def registerFeatures(vars, indent):
     for var, vardata in vars['vars'].items():
         varName = vardata['variable']
         if vardata['isArray']:
-            myArray= f"[{cppArraySize(vardata, prj, useConfig) if prj else vardata['arraySize']}]"
+            myArray= f"[{vardata['arraySize']}]"
             myArrayLoopIndex= '[i]'
         else:
             myArray= ''

@@ -10,7 +10,7 @@ mixedExternal::mixedExternal(sc_module_name modulename) :
     mixedInverted("Chnl"),
     log_(name())
 
-   ,uCPU(std::dynamic_pointer_cast<cpuBase>( instanceFactory::createInstance(name(), "uCPU", "cpu", "")))
+   ,uCPU(std::dynamic_pointer_cast<cpuBase>((force_link_cpu(), instanceFactory::createInstance(name(), "uCPU", "cpu", ""))))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=tbExternal --section=body
 {

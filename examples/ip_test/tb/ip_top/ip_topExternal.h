@@ -9,9 +9,8 @@
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
 #include "ip_topBase.h"
-#include "ip_topConfig.h"
-#include "srcConfig.h"
 #include "ipConfig.h"
+#include "srcConfig.h"
 #include "push_ack_port_thunker.h"
 #include "endOfTest.h"
 

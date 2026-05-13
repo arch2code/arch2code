@@ -14,7 +14,6 @@
 #include "hwRegister.h"
 #include "hwMemory.h"
 #include "ipConfig.h"
-#include "ip_topConfig.h"
 import ip;
 using namespace ip_ns;
 import ip_top;

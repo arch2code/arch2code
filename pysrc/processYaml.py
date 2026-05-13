@@ -962,6 +962,7 @@ class projectOpen:
     def getBlockData(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
         blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts',
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
+                        'configIncludeContext',
                         'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
                         'interface_type_mappings_qualified'}
         ret = dict()
@@ -1083,16 +1084,32 @@ class projectOpen:
             return []
         variants = sorted(instance_bound)
         # Bound-parameter overrides keyed by (variant, paramName).
+        def _resolve_override(row):
+            # parametersvariants 'value' may be either a literal (int) or
+            # the unresolved name of a constant the user referenced from
+            # the `parameters:` section. When the latter, 'valueKey' is
+            # the qualified constant key; resolve through self.data['constants']
+            # so downstream emission gets a numeric literal. Per-variant
+            # Config emission inlines the resolved value (matching the
+            # ip_test reference shape).
+            value = row['value']
+            value_key = row.get('valueKey', '') or ''
+            if value_key:
+                const_data = self.data['constants'].get(value_key)
+                if const_data is not None:
+                    return const_data.get('value', value)
+            return value
+
         overrides = dict()
         if variantBindings is not None:
             # Caller passed ret['variants'] (variant -> {rowKey: row}).
             for rows in variantBindings.values():
                 for row in rows.values():
-                    overrides[(row['variant'], row['param'])] = row['value']
+                    overrides[(row['variant'], row['param'])] = _resolve_override(row)
         else:
             variant_data = self.data['parameters'].get(qualBlock, {}).get('variants', {})
             for row in variant_data.values():
-                overrides[(row['variant'], row['param'])] = row['value']
+                overrides[(row['variant'], row['param'])] = _resolve_override(row)
         # Parameterizable constants in the block's primary context. These are
         # the Config struct's fields. Eval-derived constants appear here too;
         # they retain their default-resolved 'value' since variant-aware eval
@@ -1925,6 +1942,15 @@ class projectOpen:
         for sourceContext in sourceContexts:
             if sourceContext not in self.specialContexts:
                 ret['includeContext'][sourceContext] = 0
+        # Config headers are a distinct include surface from structure/type
+        # context includes. Class declarations, trampolines, testbenches, and
+        # Verilated wrappers spell concrete Config policy names; collect those
+        # contexts once in the block view so templates do not need to re-query
+        # project-wide data.
+        if ret['blockInfo'].get('params'):
+            block_context = ret['blockInfo'].get('_context')
+            if block_context and block_context not in self.specialContexts:
+                ret['configIncludeContext'][block_context] = 0
         # Stage 3.1 of plan-variant-config-unification.md: child instance
         # shared_ptr declarations name the child's per-variant Config
         # (e.g., `ipLeafBase<ipLeafVariantLeaf0Config>`). The defining
@@ -1945,6 +1971,7 @@ class projectOpen:
             child_context = child_block.get('_context')
             if child_context and child_context not in self.specialContexts:
                 ret['includeContext'][child_context] = 0
+                ret['configIncludeContext'][child_context] = 0
 
     def getBDInterfaceDefs(self, ret):
         """Collect interface definitions for all interface types used in the block
@@ -2787,6 +2814,16 @@ class projectCreate:
         g.cur.execute("SELECT blockKey, block, isRegHandler FROM blocks")
         block_rows = list(g.cur.fetchall())
 
+        # Stage 4.4 of plan-variant-config-unification.md: a block that
+        # declares its own `params:` is leaf-parameterizable and must
+        # carry isParameterizable=true so getBlockConfigView surfaces
+        # the per-variant Config descriptors that emit
+        # `<block><Variant>Config` structs and feed the trampoline.
+        g.cur.execute("SELECT blockKey, _context FROM blocksparams")
+        blocks_with_own_params = dict()
+        for r in g.cur.fetchall():
+            blocks_with_own_params.setdefault(r['blockKey'], r['_context'] or '')
+
         for block_row in block_rows:
             qualBlock = block_row['blockKey']
             blockName = block_row['block']
@@ -2868,6 +2905,21 @@ class projectCreate:
                         add_struct(reg_row['structureKey'])
                         add_struct(reg_row['addressStructKey'])
 
+            # 8. Stage 4.4 of plan-variant-config-unification.md: a
+            #    block that declares its own `params:` is leaf-
+            #    parameterizable even if no structure on its surface is
+            #    itself parameterizable. The per-variant Config emission
+            #    in includes.py and the trampoline in blockRegistrar.py
+            #    both key on isParameterizable; without this flag the
+            #    `<block><Variant>Config` structs and `<block>Registrar.cpp`
+            #    are skipped. Primary context is the block's own context
+            #    (where its `params:` are declared).
+            own_param_context = blocks_with_own_params.get(qualBlock)
+            if own_param_context is not None and not is_parameterizable:
+                is_parameterizable = True
+                if own_param_context and own_param_context not in contexts:
+                    contexts.append(own_param_context)
+
             # Derive defaultConfig from contexts[0] (file-name basename
             # sanitised) when present, otherwise from the block name.
             if is_parameterizable:
@@ -2933,11 +2985,19 @@ class projectCreate:
                         files[fileType] = fileInfo
 
         includeFiles = dict()
+        config_contexts = self._configHeaderContexts()
         for fileType, fileData in files.items():
             smartInclude = fileData['cond']['smartInclude']
             for include, includeData in self.includeValid.items():
                 includeName = self.includeName[include]
-                if not(smartInclude and not includeData['valid']):
+                valid = includeData['valid']
+                if fileType == 'config':
+                    # Config headers are a narrower surface than ordinary
+                    # context includes. A YAML file with only fixed
+                    # structures/types still needs Includes.{h,cppm}, but it
+                    # should not grow an empty *Config.h.
+                    valid = include in config_contexts
+                if not(smartInclude and not valid):
                     fileName = expandNewModulePath(fileData, includeData['dir'], includeName, includeName, missingDirOk=True)
                     for ext in fileData['ext']:
                         fileNameExt = fileName + "." + fileData['ext'][ext]
@@ -2948,6 +3008,27 @@ class projectCreate:
                         includeFiles.setdefault(expandedType, {})[include] = {'baseName': baseName, 'fileName': fileNameExt}
 
         self.config.setConfig('INCLUDEFILES', includeFiles)
+
+    def _configHeaderContexts(self):
+        contexts = set()
+        g.cur.execute("SELECT DISTINCT _context FROM constants WHERE isParameterizable = 1")
+        for r in g.cur.fetchall():
+            if r['_context']:
+                contexts.add(r['_context'])
+
+        # Blocks with own params but no backing parameterizable constant
+        # still emit per-variant Config structs when the project binds an
+        # instance of the block.
+        g.cur.execute("""
+            SELECT DISTINCT b._context
+            FROM blocks b
+            JOIN blocksparams bp ON bp.blockKey = b.blockKey
+            JOIN instances i ON i.instanceTypeKey = b.blockKey
+        """)
+        for r in g.cur.fetchall():
+            if r['_context']:
+                contexts.add(r['_context'])
+        return contexts
 
 
     def validateAddressControl(self, addressControl, addressControlFile):

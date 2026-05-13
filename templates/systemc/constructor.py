@@ -581,17 +581,19 @@ def blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOw
                    f'(register_{className}_variants(), 0);')
         out.append('} // namespace')
     else:
-        # Parameterized block: in-block static whose make_shared
-        # forces the compiler to instantiate the template constructor
-        # body and other template members defined later in this TU,
-        # so the trampoline (which only sees declarations) can link.
-        # The factory key is `(blockType, variant)` — see the
-        # docstring above.
+        # Parameterized block: the per-block trampoline owns the factory
+        # registrations. This implementation TU keeps factory-shaped anchor
+        # functions so the compiler instantiates the same block specializations
+        # without inserting duplicate factory keys.
+        instantiationVariants = sorted(data['variants']) if data['variants'] else ['']
         out.append('namespace {')
-        out.append(f'[[maybe_unused]] int _{className}_registered = []() -> int {{')
-        out.extend(registerCalls)
-        out.append('    return 0;')
-        out.append('}();')
+        for index, variant in enumerate(instantiationVariants):
+            targetClass = _targetClass(variant)
+            out.append(f'[[gnu::used]] std::shared_ptr<blockBase> _{className}_instantiate_variant_{index}(')
+            out.append('    const char * blockName, const char * variant, blockBaseMode bbMode) {')
+            out.append(f'    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{targetClass}>(blockName, variant, bbMode));')
+            out.append('}')
+            out.append(f'[[maybe_unused, gnu::used]] auto _{className}_instantiate_variant_{index}_anchor = &_{className}_instantiate_variant_{index};')
         out.append('} // namespace')
     out.append('// === End block factory registration ===')
     out.append('')

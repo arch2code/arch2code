@@ -8,8 +8,10 @@ def render(args, prj, data):
     # to effectively backup
     out = list()
     fileMapKey = _file_map_key(args)
-    if fileMapKey not in data['includeFiles']:
-        out.append(f'Error {fileMapKey} must match option in project file')
+    # Some legacy generated regions still request retired include maps
+    # (for example include_hdr after a context moved to include_cppm).
+    # Treat the missing map as an empty include set; generation should not
+    # emit diagnostic text into C++ output.
     out.extend(_include_context_modules(fileMapKey, data))
     # Include bitTwiddling.h when any type in the accessible contexts uses clog2
     contexts = set(data['includeContext'].keys())
@@ -38,9 +40,22 @@ def _include_context_modules(fileMapKey, data):
     imports = list()
     usings = list()
     others = list()
+    fileMap = data['includeFiles'].get(fileMapKey, {})
+    if not fileMap and fileMapKey == 'include_hdr':
+        # Legacy generated headers may still request include_hdr after the
+        # project moved context includes to C++20 module interfaces. The
+        # sibling .h files still exist for non-module compilation paths, so
+        # derive their names from the active include_cppm map.
+        fileMap = {
+            name: {
+                **info,
+                'baseName': info['baseName'].removesuffix('.cppm') + '.h',
+            }
+            for name, info in data['includeFiles'].get('include_cppm', {}).items()
+        }
     for name in data['includeContext']:
-        if name and name in data['includeFiles'][fileMapKey]:
-            includeName = data['includeFiles'][fileMapKey][name]['baseName']
+        if name and name in fileMap:
+            includeName = fileMap[name]['baseName']
             if includeName != data['fileNameBase']:
                 if fileMapKey == 'include_cppm':
                     imports.append(f'import {module_name_from_include(includeName)};')

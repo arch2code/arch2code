@@ -3,14 +3,14 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
-#include "mixedIncludes.h"
 
 // GENERATED_CODE_PARAM --block=threeCs
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
 #include "threeCsBase.h"
-#include "mixedBlockCIncludes.h"
+import mixedBlockC;
+using namespace mixedBlockC_ns;
 //contained instances forward class declaration
 class blockCBase;
 
@@ -18,15 +18,6 @@ SC_MODULE(threeCs), public blockBase, public threeCsBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("threeCs_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<threeCs>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
     //instances contained in block
     std::shared_ptr<blockCBase> uBlockC0;

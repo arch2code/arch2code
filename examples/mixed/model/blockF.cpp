@@ -4,15 +4,27 @@
 // GENERATED_CODE_PARAM --block=blockF
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "blockF.h"
-SC_HAS_PROCESS(blockF);
+// === Block factory registration (blockF) ===
+namespace {
+[[gnu::used]] std::shared_ptr<blockBase> _blockF_instantiate_variant_0(
+    const char * blockName, const char * variant, blockBaseMode bbMode) {
+    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockF<blockFVariant0Config>>(blockName, variant, bbMode));
+}
+[[maybe_unused, gnu::used]] auto _blockF_instantiate_variant_0_anchor = &_blockF_instantiate_variant_0;
+[[gnu::used]] std::shared_ptr<blockBase> _blockF_instantiate_variant_1(
+    const char * blockName, const char * variant, blockBaseMode bbMode) {
+    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockF<blockFVariant1Config>>(blockName, variant, bbMode));
+}
+[[maybe_unused, gnu::used]] auto _blockF_instantiate_variant_1_anchor = &_blockF_instantiate_variant_1;
+} // namespace
+// === End block factory registration ===
 
-blockF::registerBlock blockF::registerBlock_; //register the block with the factory
-
-blockF::blockF(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+template<typename Config>
+blockF<Config>::blockF(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("blockF", name(), bbMode)
-        ,blockFBase(name(), variant)
-        ,test(name(), "test", mems, bob)
+        ,blockFBase<Config>(name(), variant)
+        ,test(name(), "test", mems, Config::bob)
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

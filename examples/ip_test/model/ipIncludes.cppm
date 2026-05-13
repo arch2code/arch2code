@@ -469,8 +469,8 @@ struct ipBurstSt {
     }
     std::string prt(bool all=false) const
     {
-        return (std::format("samples[0:15]: ",
-           "Not printed"
+        return (std::format("samples[0:15]: {}",
+           static2DArrayPrt<ipDataT<Config>, uint64_t, Config::IP_MEM_DEPTH, 2>(samples, all)
         ));
     }
     static const char* getValueType(void) { return( "" );}
@@ -862,9 +862,9 @@ struct ipFixedArraySt {
     }
     std::string prt(bool all=false) const
     {
-        return (std::format("nibbles[0:4]:  words[0:1]: ",
-           "Not printed",
-           "Not printed"
+        return (std::format("nibbles[0:4]: {} words[0:1]: {}",
+           staticArrayPrt<ipNibbleT, IP_FIXED_NIBBLE_COUNT>(nibbles, all),
+           staticArrayPrt<ipWordT, IP_FIXED_PAIR_COUNT>(words, all)
         ));
     }
     static const char* getValueType(void) { return( "" );}

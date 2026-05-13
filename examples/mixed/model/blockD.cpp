@@ -6,7 +6,17 @@
 #include "blockD.h"
 SC_HAS_PROCESS(blockD);
 
-blockD::registerBlock blockD::registerBlock_; //register the block with the factory
+// === Block factory registration (blockD) ===
+void force_link_blockD() {}
+
+void register_blockD_variants() {
+    instanceFactory::registerBlock("blockD_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockD>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _blockD_registered = (register_blockD_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 blockD::blockD(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
