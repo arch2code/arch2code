@@ -18,12 +18,12 @@
 
 // GENERATED_CODE_BEGIN --template=includes --section=regAddresses
 //register addresses
-#define REG_IP_IPCFG                        0x180
-#define REG_IP_IPLASTDATA                   0x188
+#define REG_IP_IPCFG                        0x300
+#define REG_IP_IPLASTDATA                   0x318
 //memories base addresses
 #define REG_IP_IPMEM                        0x0
-#define REG_IP_IPFIXEDMEM                   0x80
-#define REG_IP_IPNONCONSTMEM                0x100
+#define REG_IP_IPFIXEDMEM                   0x200
+#define REG_IP_IPNONCONSTMEM                0x280
 // GENERATED_CODE_END
 
 #endif //REGADDRESSES_H

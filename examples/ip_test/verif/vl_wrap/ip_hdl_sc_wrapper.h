@@ -47,7 +47,7 @@ public:
 
     sc_clock clk;
 
-    push_ack_dst_bfm<ipDataSt<srcDefaultConfig>, sc_bv<8>> ipDataIf_bfm;
+    push_ack_dst_bfm<ipDataSt<srcDefaultConfig>, sc_bv<71>> ipDataIf_bfm;
     apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
 
     SC_HAS_PROCESS (ip_hdl_sc_wrapper<DUT_T>);
@@ -103,7 +103,7 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<8>> ipDataIf_hdl_if;
+    push_ack_hdl_if<sc_bv<71>> ipDataIf_hdl_if;
     apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
 
     sc_signal<bool> rst_n;

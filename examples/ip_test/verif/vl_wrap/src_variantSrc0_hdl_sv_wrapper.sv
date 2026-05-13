@@ -11,12 +11,12 @@ module src_variantSrc0_hdl_sv_wrapper
 (
     // push_ack_if.src
     output bit out0_push,
-    output bit [7:0] out0_data,
+    output bit [8:0] out0_data,
     input bit out0_ack,
 
     // push_ack_if.src
     output bit out1_push,
-    output bit [11:0] out1_data,
+    output bit [70:0] out1_data,
     input bit out1_ack,
 
     input clk,
@@ -36,7 +36,7 @@ module src_variantSrc0_hdl_sv_wrapper
     assign #0 out1_data = out1.data;
     assign #0 out1.ack = out1_ack;
 
-    src #(.OUT0_DATA_WIDTH(8), .OUT1_DATA_WIDTH(12)) dut (
+    src #(.OUT0_DATA_WIDTH(8), .OUT1_DATA_WIDTH(70)) dut (
         .out0(out0), // push_ack_if.src
         .out1(out1), // push_ack_if.src
         .clk(clk),

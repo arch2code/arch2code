@@ -11,12 +11,12 @@ module src_hdl_sv_wrapper
 (
     // push_ack_if.src
     output bit out0_push,
-    output bit [7:0] out0_data,
+    output bit [8:0] out0_data,
     input bit out0_ack,
 
     // push_ack_if.src
     output bit out1_push,
-    output bit [11:0] out1_data,
+    output bit [70:0] out1_data,
     input bit out1_ack,
 
     input clk,

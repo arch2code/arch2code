@@ -1649,12 +1649,6 @@ class projectOpen:
                            f"interface_defs entry for '{interfaceType}' was not found.")
                 exit(warningAndErrorReport())
             scChannel = interfaceDef.get('sc_channel') or {}
-            if not scChannel.get('thunker', False):
-                printError(
-                    "Unable to build cross-interface thunker view: "
-                    f"interfaceType '{interfaceType}' does not declare "
-                    "sc_channel.thunker: true.")
-                exit(warningAndErrorReport())
             channelType = scChannel.get('type') or interfaceType
             parameters = interfaceDef.get('parameters') or {}
             structureTypes = [
@@ -1662,10 +1656,8 @@ class projectOpen:
                 if paramInfo.get('datatype') == 'struct'
             ]
 
-            if not interfaceType or not structureTypes:
-                printError("Unable to build cross-interface thunker view: "
-                           "missing protocol or payload structure metadata.")
-                exit(warningAndErrorReport())
+            if not structureTypes:
+                return None
 
             payloads = []
             for side, structures, configName in [
@@ -1728,6 +1720,10 @@ class projectOpen:
             childInterface = self.data['interfaces'][childInterfaceKey]
             childConfigName = resolveInstanceConfigName(instanceData)
             parentConfigName = resolveConnectionConfigName(connVal, excludeEndKey=endKey)
+            thunkerView = buildThunkerView(
+                parentInterface, childInterface, parentConfigName, childConfigName)
+            if not thunkerView:
+                return None
             # Stage 7.2 of plan-variant-config-unification.md: the
             # thunker member types reference the child interface's
             # structures, so the surrounding container must include the
@@ -1755,8 +1751,7 @@ class projectOpen:
                 'childStructures': structureMap(childInterface),
                 'childVariant': instanceData.get('variant', '') or '',
                 'childConfigName': childConfigName,
-                'thunker': buildThunkerView(
-                    parentInterface, childInterface, parentConfigName, childConfigName),
+                'thunker': thunkerView,
             }
 
         for connVal in ret['connections'].values():
@@ -2955,7 +2950,6 @@ class projectCreate:
         self.config.setConfig('INCLUDEFILES', includeFiles)
 
 
-
     def validateAddressControl(self, addressControl, addressControlFile):
         validGen = {'AddressGroups': {'addressIncrement': None, 'maxAddressSpaces': None, 'varType': None, 'varTypeContext': None, 'enumPrefix': None, 'decoderInstance': None, 'primaryDecode': None},
                     'RegisterBusInterface' : None,
@@ -3525,22 +3519,6 @@ class projectCreate:
                     return intfDef
             return None
 
-        def _checkThunkerSupport(interfaceType, parentContext, locationStr):
-            interfaceDef = _resolveInterfaceDef(interfaceType, parentContext)
-            if interfaceDef is None:
-                printError(
-                    f"{locationStr}: cross-interface bind requires "
-                    f"interface_defs entry for interfaceType "
-                    f"'{interfaceType}', but none was found.")
-                exit(warningAndErrorReport())
-            scChannel = interfaceDef.get('sc_channel') or {}
-            if not scChannel.get('thunker', False):
-                printError(
-                    f"{locationStr}: cross-interface bind requires "
-                    f"interfaceType '{interfaceType}' to declare "
-                    "sc_channel.thunker: true.")
-                exit(warningAndErrorReport())
-
         # ------------------------------------------------------------
         # Compare two qualified interface keys under a (blockKey, variant)
         # variant binding owned by the child end.
@@ -3570,7 +3548,6 @@ class projectCreate:
                     f"interface {childName} has interfaceType "
                     f"'{childProto}' (file {childContext}).")
                 exit(warningAndErrorReport())
-            _checkThunkerSupport(parentProto, parentContext, locationStr)
             # 2. Pair structures by structureType.
             parentStructs = _structureRows(parentIface)
             childStructs = _structureRows(childIface)

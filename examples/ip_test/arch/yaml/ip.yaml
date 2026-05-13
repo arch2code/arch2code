@@ -12,13 +12,13 @@ blockDir: .
 # constants/types sections below for the Step 3 baseline).
 ipParameters:
     constants:
-        IP_DATA_WIDTH:    { value: 8,  maxValue: 16, desc: "Per-instance data width" }
+        IP_DATA_WIDTH:    { value: 70, maxValue: 128, desc: "Per-instance data width" }
         IP_MEM_DEPTH:     { value: 16, maxValue: 32, desc: "Per-instance memory depth" }
         IP_DATA_WIDTH_X2: { eval: "$IP_DATA_WIDTH * 2", desc: "Derived width, 2x data (maxValue auto-derived)" }
     types:
         ipDataT:
             width: IP_DATA_WIDTH
-            maxBitwidth: 16
+            maxBitwidth: 128
             desc: "IP data word, parameterizable"
 
 constants:
@@ -93,6 +93,7 @@ types:
 
 structures:
     ipDataSt:
+        marker: { varType: enableT, desc: "Marker bit expected after the data payload" }
         data: { varType: ipDataT, desc: "Data word" }
     ipCfgSt:
         enable: { varType: enableT, desc: "Enable bit" }

@@ -3,9 +3,9 @@
 // GENERATED_CODE_PARAM --context=ip.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package ip_package;
-localparam int unsigned IP_DATA_WIDTH = 32'h0000_0008;  // Per-instance data width
+localparam int unsigned IP_DATA_WIDTH = 32'h0000_0046;  // Per-instance data width
 localparam int unsigned IP_MEM_DEPTH = 32'h0000_0010;  // Per-instance memory depth
-localparam int unsigned IP_DATA_WIDTH_X2 = 32'h0000_0010;  // Derived width, 2x data (maxValue auto-derived)
+localparam int unsigned IP_DATA_WIDTH_X2 = 32'h0000_008C;  // Derived width, 2x data (maxValue auto-derived)
 localparam int unsigned IP_FIXED_NIBBLE_COUNT = 32'h0000_0005;  // Fixed array length for non-parameterized type tests
 localparam int unsigned IP_FIXED_PAIR_COUNT = 32'h0000_0002;  // Fixed nested-structure array length
 localparam int unsigned IP_FIXED_WORD_COUNT = 32'h0000_0006;  // Derived fixed array length
@@ -46,6 +46,7 @@ typedef enum logic[8-1:0] {       //Fixed-width opcode enum
 
 // structures
 typedef struct packed {
+    enableT marker; //Marker bit expected after the data payload
     ipDataT data; //Data word
 } ipDataSt;
 

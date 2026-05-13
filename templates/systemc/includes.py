@@ -111,9 +111,15 @@ def includeTypes(args, prj, data):
         # Comments show resolved integer bit width, not symbolic expression
         widthComment = str(value['realwidth'])
         if value.get('isParameterizable', False):
-            out.append(
-                f"template<typename Config> using { value['type'] } = uint64_t; // [max:{value['maxBitwidth']}] {value['desc']}"
-            )
+            if value['maxBitwidth'] <= 64:
+                out.append(
+                    f"template<typename Config> using { value['type'] } = uint64_t; // [max:{value['maxBitwidth']}] {value['desc']}"
+                )
+            else:
+                typeArraySize = (value['maxBitwidth'] + 63) // 64
+                out.append(
+                    f"template<typename Config> struct { value['type'] } {{ uint64_t word[ {typeArraySize} ]; }}; // [max:{value['maxBitwidth']}] {value['desc']}"
+                )
             continue
         if value['typeArraySize'] == 1:
             out.append(

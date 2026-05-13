@@ -9,12 +9,12 @@
 // GENERATED_CODE_BEGIN --template=includes --section=config
 struct srcDefaultConfig {
     static constexpr uint32_t OUT0_DATA_WIDTH = 8;
-    static constexpr uint32_t OUT1_DATA_WIDTH = 12;
+    static constexpr uint32_t OUT1_DATA_WIDTH = 70;
 };
 
 struct srcVariantSrc0Config {
     static constexpr uint32_t OUT0_DATA_WIDTH = 8;
-    static constexpr uint32_t OUT1_DATA_WIDTH = 12;
+    static constexpr uint32_t OUT1_DATA_WIDTH = 70;
 };
 
 // GENERATED_CODE_END

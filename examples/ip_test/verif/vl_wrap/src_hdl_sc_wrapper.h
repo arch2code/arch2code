@@ -42,8 +42,8 @@ public:
 
     sc_clock clk;
 
-    push_ack_src_bfm<srcOut0St<srcDefaultConfig>, sc_bv<8>> out0_bfm;
-    push_ack_src_bfm<srcOut1St<srcDefaultConfig>, sc_bv<12>> out1_bfm;
+    push_ack_src_bfm<srcOut0St<srcDefaultConfig>, sc_bv<9>> out0_bfm;
+    push_ack_src_bfm<srcOut1St<srcDefaultConfig>, sc_bv<71>> out1_bfm;
 
     SC_HAS_PROCESS (src_hdl_sc_wrapper<DUT_T>);
 
@@ -93,8 +93,8 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<8>> out0_hdl_if;
-    push_ack_hdl_if<sc_bv<12>> out1_hdl_if;
+    push_ack_hdl_if<sc_bv<9>> out0_hdl_if;
+    push_ack_hdl_if<sc_bv<71>> out1_hdl_if;
 
     sc_signal<bool> rst_n;
 

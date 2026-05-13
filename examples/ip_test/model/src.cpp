@@ -33,7 +33,8 @@ void src<Config>::driveOut0(void)
 {
     srcOut0St<Config> d{};
     d.data = 0xA5;
-    log_.logPrint(std::format("{} pushing 0x{:x} on out0", this->name(), (uint64_t)d.data), LOG_IMPORTANT);
+    d.marker = 1;
+    log_.logPrint(std::format("{} pushing 0x{:x} marker {} on out0", this->name(), (uint64_t)d.data, (uint64_t)d.marker), LOG_IMPORTANT);
     this->out0->push(d);
 }
 
@@ -41,7 +42,9 @@ template<typename Config>
 void src<Config>::driveOut1(void)
 {
     srcOut1St<Config> d{};
-    d.data = 0x5A;
-    log_.logPrint(std::format("{} pushing 0x{:x} on out1", this->name(), (uint64_t)d.data), LOG_IMPORTANT);
+    d.data.word[0] = 0x5A;
+    d.data.word[1] = 0x2A;
+    d.marker = 1;
+    log_.logPrint(std::format("{} pushing 0x{:x}{:016x} marker {} on out1", this->name(), d.data.word[1], d.data.word[0], (uint64_t)d.marker), LOG_IMPORTANT);
     this->out1->push(d);
 }

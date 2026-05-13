@@ -31,6 +31,13 @@ uint16_t log2ofPowerOf2(uint64_t v)
 // copy bits from src at offset srcPos to dest at offset destPos
 // this handles arbitrary bit offsets and lengths
 // destPos and srcPos are bit offsets within the destination and source words respectively
+//
+// This helper intentionally ORs shifted source words into the destination
+// without masking to the requested chunk width or clearing destination words.
+// The modelling platform relies on that behavior: if a user leaves oversized
+// storage uninitialized, or stores non-zero bits above the declared HW width,
+// those bits should remain visible and make pack/unpack self-tests fail
+// noisily instead of being silently sanitized here.
 void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits)
 {
     while (bits > 0) {

@@ -2,6 +2,7 @@
 #ifndef REQ_ACK_PORT_THUNKER_H
 #define REQ_ACK_PORT_THUNKER_H
 
+#include "../../common/systemc/bitTwiddling.h"
 #include "req_ack_channel.h"
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <string>
@@ -14,7 +15,7 @@
 // when the two pairs are per-field _bitWidth equivalent but differ in
 // nested _packedSt width. The per-field equivalence is validated
 // separately in Step 6.2; this class performs the runtime packed-value
-// bridge via static_cast in both directions.
+// bridge via copy_packed_bits() in both directions.
 //
 // Two construction shapes are supported:
 //   * connectionMap shape — the up side is a parent port
@@ -73,16 +74,19 @@ private:
             DownA ackIn;
             UpA   ackOut;
             typename UpR::_packedSt   reqPacked;
+            typename DownR::_packedSt reqOutPacked;
             typename DownA::_packedSt ackPacked;
+            typename UpA::_packedSt   ackOutPacked;
             up->reqReceive( reqIn );
             // Generated payload structs expose pack() via an out
-            // parameter (`void pack(_packedSt& _ret) const`); stage the
-            // packed value into a local before the cross-width cast.
+            // parameter (`void pack(_packedSt& _ret) const`).
             reqIn.pack( reqPacked );
-            reqOut.unpack( static_cast<typename DownR::_packedSt>( reqPacked ) );
+            copy_packed_bits( reqOutPacked, reqPacked, DownR::_bitWidth );
+            reqOut.unpack( reqOutPacked );
             m_chDown.req( reqOut, ackIn );
             ackIn.pack( ackPacked );
-            ackOut.unpack( static_cast<typename UpA::_packedSt>( ackPacked ) );
+            copy_packed_bits( ackOutPacked, ackPacked, UpA::_bitWidth );
+            ackOut.unpack( ackOutPacked );
             up->ack( ackOut );
         }
     }

@@ -28,7 +28,7 @@ const uint32_t IP_FIXED_DEPTH = 9;  // Fixed depth for widthLog2 and widthLog2mi
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace ip_ns {
 // types
-template<typename Config> using ipDataT = uint64_t; // [max:16] IP data word, parameterizable
+template<typename Config> struct ipDataT { uint64_t word[ 2 ]; }; // [max:128] IP data word, parameterizable
 typedef uint8_t enableT; // [1] Single enable bit
 template<typename Config> using ipMemAddrT = uint64_t; // [max:5] Index into ipMem (0 .. IP_MEM_DEPTH-1)
 typedef uint8_t ipFixedT; // [8] Fixed 8-bit byte (non-parameterizable)
@@ -99,19 +99,24 @@ export namespace ip_ns {
 template<typename Config>
 struct ipDataSt {
     ipDataT<Config> data; //Data word
+    enableT marker; //Marker bit expected after the data payload
 
     ipDataSt() {}
 
-    static constexpr uint16_t _bitWidth = Config::IP_DATA_WIDTH;
+    static constexpr uint16_t _bitWidth = Config::IP_DATA_WIDTH + 1;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
-    typedef uint64_t _packedSt;
+    typedef uint64_t _packedSt[3];
     inline bool operator == (const ipDataSt<Config> & rhs) const {
         bool ret = true;
-        ret = ret && (data == rhs.data);
+        ret = ret && (marker == rhs.marker);
+        ret = ret && (data.word[ 0 ] == rhs.data.word[ 0 ]);
+        ret = ret && (data.word[ 1 ] == rhs.data.word[ 1 ]);
         return ( ret );
         }
     inline friend void sc_trace(sc_trace_file *tf, const ipDataSt<Config> & v, const std::string & NAME ) {
-        sc_trace(tf,v.data, NAME + ".data");
+        sc_trace(tf,v.marker, NAME + ".marker");
+        sc_trace(tf,v.data.word[ 0 ], NAME + ".data.word[ 0 ]");
+        sc_trace(tf,v.data.word[ 1 ], NAME + ".data.word[ 1 ]");
     }
     inline friend ostream& operator << ( ostream& os,  ipDataSt const & v ) {
         os << v.prt();
@@ -119,8 +124,10 @@ struct ipDataSt {
     }
     std::string prt(bool all=false) const
     {
-        return (std::format("data:0x{:02x}",
-           (uint64_t) data
+        return (std::format("marker:0x{:01x} data:0x{:02x}{:016x}",
+           (uint64_t) marker,
+           data.word[1],
+           data.word[0]
         ));
     }
     static const char* getValueType(void) { return( "" );}
@@ -129,31 +136,56 @@ struct ipDataSt {
     {
         memset(&_ret, 0, ipDataSt<Config>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::IP_DATA_WIDTH);
+        pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&data, Config::IP_DATA_WIDTH);
         _pos += Config::IP_DATA_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, marker, 1);
+        _pos += 1;
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (ipDataT<Config>)((_src) & ((1ULL << Config::IP_DATA_WIDTH) - 1));
+        uint16_t _pos{0};
+        pack_bits((uint64_t *)&data, 0, (uint64_t *)&_src, _pos, Config::IP_DATA_WIDTH);
+        _pos += Config::IP_DATA_WIDTH;
+        marker = (enableT)((_src[ _pos >> 6 ] >> (_pos & 63)) & 1);
     }
     inline sc_bv<ipDataSt<Config>::_bitWidth> sc_pack(void) const
     {
         sc_bv<ipDataSt<Config>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::IP_DATA_WIDTH-1, _pos) = data;
+        if (Config::IP_DATA_WIDTH > 0) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
+            packed_data.range(_pos + 0 + _bits - 1, _pos + 0) = data.word[0];
+        }
+        if (Config::IP_DATA_WIDTH > 64) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 64));
+            packed_data.range(_pos + 64 + _bits - 1, _pos + 64) = data.word[1];
+        }
         _pos += Config::IP_DATA_WIDTH;
+        packed_data.range(_pos+1-1, _pos) = marker;
+        _pos += 1;
         return packed_data;
     }
     inline void sc_unpack(sc_bv<ipDataSt<Config>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (ipDataT<Config>) packed_data.range(_pos+Config::IP_DATA_WIDTH-1, _pos).to_uint64();
+        if (Config::IP_DATA_WIDTH > 0) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
+            data.word[0] = (uint64_t) packed_data.range(_pos + 0 + _bits - 1, _pos + 0).to_uint64();
+        }
+        if (Config::IP_DATA_WIDTH > 64) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 64));
+            data.word[1] = (uint64_t) packed_data.range(_pos + 64 + _bits - 1, _pos + 64).to_uint64();
+        }
         _pos += Config::IP_DATA_WIDTH;
+        marker = (enableT) packed_data.range(_pos+1-1, _pos).to_uint64();
+        _pos += 1;
     }
     explicit ipDataSt(sc_bv<ipDataSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit ipDataSt(
-        ipDataT<Config> data_) :
-        data(data_)
+        ipDataT<Config> data_,
+        enableT marker_) :
+        data(data_),
+        marker(marker_)
     {}
     explicit ipDataSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
@@ -168,18 +200,20 @@ struct ipCfgSt {
 
     static constexpr uint16_t _bitWidth = Config::IP_DATA_WIDTH + 2 + 1;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
-    typedef uint64_t _packedSt;
+    typedef uint64_t _packedSt[3];
     inline bool operator == (const ipCfgSt<Config> & rhs) const {
         bool ret = true;
         ret = ret && (enable == rhs.enable);
         ret = ret && (mode == rhs.mode);
-        ret = ret && (threshold == rhs.threshold);
+        ret = ret && (threshold.word[ 0 ] == rhs.threshold.word[ 0 ]);
+        ret = ret && (threshold.word[ 1 ] == rhs.threshold.word[ 1 ]);
         return ( ret );
         }
     inline friend void sc_trace(sc_trace_file *tf, const ipCfgSt<Config> & v, const std::string & NAME ) {
         sc_trace(tf,v.enable, NAME + ".enable");
         sc_trace(tf,v.mode, NAME + ".mode");
-        sc_trace(tf,v.threshold, NAME + ".threshold");
+        sc_trace(tf,v.threshold.word[ 0 ], NAME + ".threshold.word[ 0 ]");
+        sc_trace(tf,v.threshold.word[ 1 ], NAME + ".threshold.word[ 1 ]");
     }
     inline friend ostream& operator << ( ostream& os,  ipCfgSt const & v ) {
         os << v.prt();
@@ -187,10 +221,11 @@ struct ipCfgSt {
     }
     std::string prt(bool all=false) const
     {
-        return (std::format("enable:0x{:01x} mode:{} threshold:0x{:02x}",
+        return (std::format("enable:0x{:01x} mode:{} threshold:0x{:02x}{:016x}",
            (uint64_t) enable,
            ipModeT_prt( mode ),
-           (uint64_t) threshold
+           threshold.word[1],
+           threshold.word[0]
         ));
     }
     static const char* getValueType(void) { return( "" );}
@@ -199,7 +234,7 @@ struct ipCfgSt {
     {
         memset(&_ret, 0, ipCfgSt<Config>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, threshold, Config::IP_DATA_WIDTH);
+        pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&threshold, Config::IP_DATA_WIDTH);
         _pos += Config::IP_DATA_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, mode, 2);
         _pos += 2;
@@ -209,17 +244,24 @@ struct ipCfgSt {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        threshold = (ipDataT<Config>)((_src >> (_pos & 63)) & ((1ULL << Config::IP_DATA_WIDTH) - 1));
+        pack_bits((uint64_t *)&threshold, 0, (uint64_t *)&_src, _pos, Config::IP_DATA_WIDTH);
         _pos += Config::IP_DATA_WIDTH;
-        mode = (ipModeT)((_src >> (_pos & 63)) & ((1ULL << 2) - 1));
+        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 2) - 1));
         _pos += 2;
-        enable = (enableT)((_src >> (_pos & 63)) & 1);
+        enable = (enableT)((_src[ _pos >> 6 ] >> (_pos & 63)) & 1);
     }
     inline sc_bv<ipCfgSt<Config>::_bitWidth> sc_pack(void) const
     {
         sc_bv<ipCfgSt<Config>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::IP_DATA_WIDTH-1, _pos) = threshold;
+        if (Config::IP_DATA_WIDTH > 0) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
+            packed_data.range(_pos + 0 + _bits - 1, _pos + 0) = threshold.word[0];
+        }
+        if (Config::IP_DATA_WIDTH > 64) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 64));
+            packed_data.range(_pos + 64 + _bits - 1, _pos + 64) = threshold.word[1];
+        }
         _pos += Config::IP_DATA_WIDTH;
         packed_data.range(_pos+2-1, _pos) = mode;
         _pos += 2;
@@ -230,7 +272,14 @@ struct ipCfgSt {
     inline void sc_unpack(sc_bv<ipCfgSt<Config>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        threshold = (ipDataT<Config>) packed_data.range(_pos+Config::IP_DATA_WIDTH-1, _pos).to_uint64();
+        if (Config::IP_DATA_WIDTH > 0) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
+            threshold.word[0] = (uint64_t) packed_data.range(_pos + 0 + _bits - 1, _pos + 0).to_uint64();
+        }
+        if (Config::IP_DATA_WIDTH > 64) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 64));
+            threshold.word[1] = (uint64_t) packed_data.range(_pos + 64 + _bits - 1, _pos + 64).to_uint64();
+        }
         _pos += Config::IP_DATA_WIDTH;
         mode = (ipModeT) packed_data.range(_pos+2-1, _pos).to_uint64();
         _pos += 2;
@@ -257,14 +306,16 @@ struct ipMemSt {
 
     static constexpr uint16_t _bitWidth = Config::IP_DATA_WIDTH;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
-    typedef uint64_t _packedSt;
+    typedef uint64_t _packedSt[2];
     inline bool operator == (const ipMemSt<Config> & rhs) const {
         bool ret = true;
-        ret = ret && (data == rhs.data);
+        ret = ret && (data.word[ 0 ] == rhs.data.word[ 0 ]);
+        ret = ret && (data.word[ 1 ] == rhs.data.word[ 1 ]);
         return ( ret );
         }
     inline friend void sc_trace(sc_trace_file *tf, const ipMemSt<Config> & v, const std::string & NAME ) {
-        sc_trace(tf,v.data, NAME + ".data");
+        sc_trace(tf,v.data.word[ 0 ], NAME + ".data.word[ 0 ]");
+        sc_trace(tf,v.data.word[ 1 ], NAME + ".data.word[ 1 ]");
     }
     inline friend ostream& operator << ( ostream& os,  ipMemSt const & v ) {
         os << v.prt();
@@ -272,8 +323,9 @@ struct ipMemSt {
     }
     std::string prt(bool all=false) const
     {
-        return (std::format("data:0x{:02x}",
-           (uint64_t) data
+        return (std::format("data:0x{:02x}{:016x}",
+           data.word[1],
+           data.word[0]
         ));
     }
     static const char* getValueType(void) { return( "" );}
@@ -282,25 +334,40 @@ struct ipMemSt {
     {
         memset(&_ret, 0, ipMemSt<Config>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::IP_DATA_WIDTH);
+        pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&data, Config::IP_DATA_WIDTH);
         _pos += Config::IP_DATA_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (ipDataT<Config>)((_src) & ((1ULL << Config::IP_DATA_WIDTH) - 1));
+        uint16_t _pos{0};
+        pack_bits((uint64_t *)&data, 0, (uint64_t *)&_src, _pos, Config::IP_DATA_WIDTH);
     }
     inline sc_bv<ipMemSt<Config>::_bitWidth> sc_pack(void) const
     {
         sc_bv<ipMemSt<Config>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::IP_DATA_WIDTH-1, _pos) = data;
+        if (Config::IP_DATA_WIDTH > 0) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
+            packed_data.range(_pos + 0 + _bits - 1, _pos + 0) = data.word[0];
+        }
+        if (Config::IP_DATA_WIDTH > 64) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 64));
+            packed_data.range(_pos + 64 + _bits - 1, _pos + 64) = data.word[1];
+        }
         _pos += Config::IP_DATA_WIDTH;
         return packed_data;
     }
     inline void sc_unpack(sc_bv<ipMemSt<Config>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (ipDataT<Config>) packed_data.range(_pos+Config::IP_DATA_WIDTH-1, _pos).to_uint64();
+        if (Config::IP_DATA_WIDTH > 0) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
+            data.word[0] = (uint64_t) packed_data.range(_pos + 0 + _bits - 1, _pos + 0).to_uint64();
+        }
+        if (Config::IP_DATA_WIDTH > 64) {
+            uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 64));
+            data.word[1] = (uint64_t) packed_data.range(_pos + 64 + _bits - 1, _pos + 64).to_uint64();
+        }
         _pos += Config::IP_DATA_WIDTH;
     }
     explicit ipMemSt(sc_bv<ipMemSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
@@ -381,17 +448,19 @@ struct ipBurstSt {
 
     static constexpr uint16_t _bitWidth = Config::IP_DATA_WIDTH*Config::IP_MEM_DEPTH;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
-    typedef uint64_t _packedSt[8];
+    typedef uint64_t _packedSt[64];
     inline bool operator == (const ipBurstSt<Config> & rhs) const {
         bool ret = true;
         for(unsigned int i=0; i<Config::IP_MEM_DEPTH; i++) {
-            ret = ret && (samples[i] == rhs.samples[i]);
+            ret = ret && (samples[i].word[ 0 ] == rhs.samples[i].word[ 0 ]);
+            ret = ret && (samples[i].word[ 1 ] == rhs.samples[i].word[ 1 ]);
         }
         return ( ret );
         }
     inline friend void sc_trace(sc_trace_file *tf, const ipBurstSt<Config> & v, const std::string & NAME ) {
         for(unsigned int i=0; i<Config::IP_MEM_DEPTH; i++) {
-            sc_trace(tf,v.samples[i], NAME + ".samples[i]");
+            sc_trace(tf,v.samples[i].word[ 0 ], NAME + ".samples[i].word[ 0 ]");
+            sc_trace(tf,v.samples[i].word[ 1 ], NAME + ".samples[i].word[ 1 ]");
         }
     }
     inline friend ostream& operator << ( ostream& os,  ipBurstSt const & v ) {
@@ -411,7 +480,7 @@ struct ipBurstSt {
         memset(&_ret, 0, ipBurstSt<Config>::_byteWidth);
         uint16_t _pos{0};
         for(unsigned int i=0; i<Config::IP_MEM_DEPTH; i++) {
-            pack_bits((uint64_t *)&_ret, _pos, samples[i], Config::IP_DATA_WIDTH);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&samples[i], Config::IP_DATA_WIDTH);
             _pos += Config::IP_DATA_WIDTH;
         }
     }
@@ -421,14 +490,8 @@ struct ipBurstSt {
         for(unsigned int i=0; i<Config::IP_MEM_DEPTH; i++) {
             uint16_t _bits = Config::IP_DATA_WIDTH;
             uint16_t _consume;
-            _consume = std::min(_bits, (uint16_t)(64-(_pos & 63)));
-            samples[i] = (ipDataT<Config>)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << Config::IP_DATA_WIDTH) - 1));
-            _pos += _consume;
-            _bits -= _consume;
-            if ((_bits > 0) && (_consume != 64)) {
-                samples[i] = (ipDataT<Config>)(samples[i] | ((_src[ _pos >> 6 ] << _consume) & ((1ULL << Config::IP_DATA_WIDTH) - 1)));
-                _pos += _bits;
-            }
+            pack_bits((uint64_t *)&samples[i], 0, (uint64_t *)&_src, _pos, Config::IP_DATA_WIDTH);
+            _pos += Config::IP_DATA_WIDTH;
         }
     }
     inline sc_bv<ipBurstSt<Config>::_bitWidth> sc_pack(void) const
@@ -436,7 +499,14 @@ struct ipBurstSt {
         sc_bv<ipBurstSt<Config>::_bitWidth> packed_data;
         uint16_t _pos{0};
         for(unsigned int i=0; i<Config::IP_MEM_DEPTH; i++) {
-            packed_data.range(_pos+Config::IP_DATA_WIDTH-1, _pos) = samples[i];
+            if (Config::IP_DATA_WIDTH > 0) {
+                uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
+                packed_data.range(_pos + 0 + _bits - 1, _pos + 0) = samples[i].word[0];
+            }
+            if (Config::IP_DATA_WIDTH > 64) {
+                uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 64));
+                packed_data.range(_pos + 64 + _bits - 1, _pos + 64) = samples[i].word[1];
+            }
             _pos += Config::IP_DATA_WIDTH;
         }
         return packed_data;
@@ -445,7 +515,14 @@ struct ipBurstSt {
     {
     uint16_t _pos{0};
         for(unsigned int i=0; i<Config::IP_MEM_DEPTH; i++) {
-            samples[i] = (ipDataT<Config>) packed_data.range(_pos+Config::IP_DATA_WIDTH-1, _pos).to_uint64();
+            if (Config::IP_DATA_WIDTH > 0) {
+                uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
+                samples[i].word[0] = (uint64_t) packed_data.range(_pos + 0 + _bits - 1, _pos + 0).to_uint64();
+            }
+            if (Config::IP_DATA_WIDTH > 64) {
+                uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 64));
+                samples[i].word[1] = (uint64_t) packed_data.range(_pos + 64 + _bits - 1, _pos + 64).to_uint64();
+            }
             _pos += Config::IP_DATA_WIDTH;
         }
     }

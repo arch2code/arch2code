@@ -210,7 +210,7 @@ compdb:
 	@mkdir -p $(GEN_BUILD_DIR)
 	@$(MAKE) -n -B all > $(GEN_BUILD_DIR)/compdb.model.make-n.txt
 	@$(MAKE) -n -B all VL_DUT=1 > $(GEN_BUILD_DIR)/compdb.vl.make-n.txt
-	@python3 $(A2C_ROOT)/base/pysrc/gen_compile_commands.py \
+	@python3 $(A2C_ROOT)/pysrc/gen_compile_commands.py \
 		$(GEN_BUILD_DIR)/compdb.model.make-n.txt \
 		$(GEN_BUILD_DIR)/compdb.vl.make-n.txt \
 		$(REPO_ROOT)/compile_commands.json \
@@ -221,7 +221,7 @@ compdb:
 # Generate .clangd configuration for IDE
 #------------------------------------------------------------------------
 .PHONY: clangd
-clangd:
+clangd: compdb
 	@echo "Generating .clangd configuration..."
 	@( \
 		echo "# Auto-generated from Makefile - DO NOT EDIT MANUALLY"; \
@@ -241,6 +241,8 @@ clangd:
 		echo "    - -W*fatal-errors"; \
 		echo ""; \
 		echo "Diagnostics:"; \
+		echo "  Suppress:"; \
+		echo "    - module_unimported_use"; \
 		echo "  UnusedIncludes: None"; \
 		echo ""; \
 		echo "InlayHints:"; \

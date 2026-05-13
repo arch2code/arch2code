@@ -773,7 +773,14 @@ def sc_pack(handle, args, vars, indent, prj=None):
                     rng_high, rng_low  = f"{high}", f"{low}"
             if data['entryType'] == 'NamedVar' or data['entryType'] == 'NamedType' or data['entryType'] == 'Reserved':
                 if structType != 'bool':
-                    if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1:
+                    if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1 and isParam:
+                        widthExpr = cppVarBitwidth(data, prj, True)
+                        for wix in range(data['varLoopCount']):
+                            out.append(f'{indent}if ({widthExpr} > {wix * 64}) {{')
+                            out.append(f'{indent}    uint16_t _bits = std::min((uint16_t)64, (uint16_t)({widthExpr} - {wix * 64}));')
+                            out.append(f'{indent}    packed_data.range(_pos + {wix * 64} + _bits - 1, _pos + {wix * 64}) = {varName}{varIndex}.word[{wix}];')
+                            out.append(f'{indent}}}')
+                    elif data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1:
                         if not data['isArray']:
                             loop_stride = 64
                         else:
@@ -864,7 +871,14 @@ def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False)
                     rng_high, rng_low  = f"{high}", f"{low}"
             if data['entryType'] == 'NamedVar' or data['entryType'] == 'NamedType' or data['entryType'] == 'Reserved':
                 if structType != 'bool':
-                    if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1 and not useConfig:
+                    if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1 and useConfig:
+                        widthExpr = cppVarBitwidth(data, prj, useConfig) if prj else data['bitwidth']
+                        for wix in range(data['varLoopCount']):
+                            out.append(f'{indent}if ({widthExpr} > {wix * 64}) {{')
+                            out.append(f'{indent}    uint16_t _bits = std::min((uint16_t)64, (uint16_t)({widthExpr} - {wix * 64}));')
+                            out.append(f'{indent}    {varName}{varIndex}.word[{wix}] = (uint64_t) packed_data.range(_pos + {wix * 64} + _bits - 1, _pos + {wix * 64}).to_uint64();')
+                            out.append(f'{indent}}}')
+                    elif data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1:
                         if not data['isArray']:
                             loop_stride = 64
                         else:
@@ -1057,7 +1071,10 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
             out.append(f"{indent}uint16_t _bits = {bitwidthExpr};")
             out.append(f"{indent}uint16_t _consume;")
         if data['entryType'] == 'NamedVar' or data['entryType'] == 'NamedType' or data['entryType'] == 'Reserved':
-            if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1 and not useConfig:
+            if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1 and useConfig:
+                out.append(f'{indent}pack_bits((uint64_t *)&{varName}{varIndex}, 0, (uint64_t *)&_src, _pos, {bitwidthExpr});')
+                out.append(f'{indent}_pos += {bitwidthExpr};') if usePos else None
+            elif data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1:
                 if not data['isArray']:
                     loop_stride = 64
                 else:
@@ -1226,7 +1243,7 @@ def fw_pack_oneVar(fw_pack_vars, pos, args, data, indent):
             else:
                 out.append(f"{indent}{ret} |= {fw_pack_vars['cast']}{data['variable']}{arrayIndex} << ({srcPos} & {baseMask});")
     else:
-        if data['bitwidth'] <= 64 or useConfig:
+        if data['bitwidth'] <= 64:
             if data['bitwidth'] == 1 and not isArray and not useConfig:
                 out.append(f"{indent}{ret} |= ({fw_pack_vars['cast']}{data['variable']} << ({srcPos} & {baseMask}));")
             else:

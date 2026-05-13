@@ -3,7 +3,7 @@
 # The 'ip' block (defined in ip.yaml) is instantiated twice with different
 # parameter values:
 #   uIp0  variant0  IP_DATA_WIDTH=8   IP_MEM_DEPTH=16
-#   uIp1  variant1  IP_DATA_WIDTH=12  IP_MEM_DEPTH=8
+#   uIp1  variant1  IP_DATA_WIDTH=70  IP_MEM_DEPTH=8
 #
 # The 'src' block provides stimulus to both IP instances. The 'cpu' block
 # accesses IP registers via APB through 'apbDecode'.
@@ -89,7 +89,7 @@ parameters:
         - { variant: variant0, param: IP_DATA_WIDTH, value: 8 }
         - { variant: variant0, param: IP_MEM_DEPTH, value: 16 }
         - { variant: variant0, param: IP_NONCONST_DEPTH, value: 24 }
-        - { variant: variant1, param: IP_DATA_WIDTH, value: 12 }
+        - { variant: variant1, param: IP_DATA_WIDTH, value: 70 }
         - { variant: variant1, param: IP_MEM_DEPTH, value: 8 }
         - { variant: variant1, param: IP_NONCONST_DEPTH, value: 12 }
     ipLeaf:
@@ -97,4 +97,4 @@ parameters:
         - { variant: variantLeaf0, param: LEAF_MEM_DEPTH,  value: 4 }
     src:
         - { variant: variantSrc0, param: OUT0_DATA_WIDTH, value: 8 }
-        - { variant: variantSrc0, param: OUT1_DATA_WIDTH, value: 12 }
+        - { variant: variantSrc0, param: OUT1_DATA_WIDTH, value: 70 }

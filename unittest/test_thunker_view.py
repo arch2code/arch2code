@@ -130,10 +130,12 @@ def render_interfaces(interface_type, parent_name, child_name):
         structures = """    structures:
       - {structure: data_st, structureType: data_t}
       - {structure: data_st, structureType: rdata_t}"""
-    elif interface_type == 'apb':
+    elif interface_type in ('apb', 'axi_read'):
         structures = """    structures:
       - {structure: data_st, structureType: addr_t}
       - {structure: data_st, structureType: data_t}"""
+    elif interface_type == 'notify_ack':
+        structures = ""
     else:
         structures = """    structures:
       - {structure: data_st, structureType: data_t}"""
@@ -176,19 +178,19 @@ def test_parameter_order(interface_type, expected_types):
         cleanup((db_path, project_path, arch_path))
 
 
-def test_missing_thunker_support():
-    print("\nTesting unsupported thunker diagnostic")
-    # Pick a meta-protocol that is still not declared as thunker-supporting
-    # in interfaces/<proto>/<proto>_if.yaml. apb retains the transitional
-    # `sc_channel.thunker: true` gate until Stage 10.3.
-    db_path, project_path, arch_path, result = build_database(
-        build_arch('apb', 'parentApbIf', 'childApbIf'),
-        expect_success=False)
+def test_no_struct_parameter_not_thunked():
+    print("\nTesting no-struct protocol does not create a thunker")
+    # Protocols with no struct parameters have no parameterized payload to
+    # bridge. They should not take the thunker path at all; ordinary
+    # same-protocol binding semantics decide whether the connection is valid.
+    db_path, project_path, arch_path = build_database(
+        build_arch('notify_ack', 'parentNotifyIf', 'childNotifyIf'))
     try:
-        output = result.stdout + result.stderr
-        if "sc_channel.thunker: true" not in output:
-            print("FAIL: expected sc_channel.thunker diagnostic")
-            print(output)
+        block_data = get_top_block_data(db_path)
+        conn = next(iter(block_data['connectDouble']['connections'].values()))
+        if conn.get('crossInterfaceEnds'):
+            print("FAIL: no-struct protocol unexpectedly produced a thunker")
+            print(conn['crossInterfaceEnds'])
             return False
         print("PASS")
         return True
@@ -201,7 +203,8 @@ def run_all_tests():
         lambda: test_parameter_order('rdy_vld', ['data_t', 'data_t']),
         lambda: test_parameter_order('req_ack', ['data_t', 'rdata_t', 'data_t', 'rdata_t']),
         lambda: test_parameter_order('push_ack', ['data_t', 'data_t']),
-        test_missing_thunker_support,
+        lambda: test_parameter_order('apb', ['addr_t', 'data_t', 'addr_t', 'data_t']),
+        test_no_struct_parameter_not_thunked,
     ]
     return 0 if all(test() for test in tests) else 1
 

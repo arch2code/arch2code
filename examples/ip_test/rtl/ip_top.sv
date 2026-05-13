@@ -28,7 +28,7 @@ apbDecode uAPBDecode (
     .rst_n (rst_n)
 );
 
-src #(.OUT0_DATA_WIDTH(8), .OUT1_DATA_WIDTH(12)) uSrc (
+src #(.OUT0_DATA_WIDTH(8), .OUT1_DATA_WIDTH(70)) uSrc (
     .out0 (out0),
     .out1 (out1),
     .clk (clk),
@@ -42,7 +42,7 @@ ip #(.IP_DATA_WIDTH(8), .IP_MEM_DEPTH(16), .IP_NONCONST_DEPTH(24)) uIp0 (
     .rst_n (rst_n)
 );
 
-ip #(.IP_DATA_WIDTH(12), .IP_MEM_DEPTH(8), .IP_NONCONST_DEPTH(12)) uIp1 (
+ip #(.IP_DATA_WIDTH(70), .IP_MEM_DEPTH(8), .IP_NONCONST_DEPTH(12)) uIp1 (
     .ipDataIf (out1),
     .apbReg (apb_uIp1),
     .clk (clk),
