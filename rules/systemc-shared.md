@@ -18,6 +18,18 @@ These rules apply to **both** `model/` and `tb/` directories.
 - `*.cpp` implementation files (outside generated markers)
 - Your `SC_THREAD` and `SC_METHOD` implementations
 
+## Structure Sizing: HW Width vs. C++ Width
+
+Generated structures carry hardware dimensions and a packed-form conversion
+contract that intentionally differ from C++ object storage.
+
+- Never assume `sizeof(T)` equals `T::_byteWidth`.
+- Do not call internal bit-twiddling helpers (`pack_bits`, `unpack_bits`, `copy_packed_bits`) from user model/testbench code.
+- Use typed generated structures, channels, ports, and register/memory APIs in user code.
+
+See `STRUCTURES_AND_DATA_TYPES_REFERENCE.md` for the definitive representation
+contract and `SYSTEMC_API_USER_REFERENCE.md` for user-facing SystemC APIs.
+
 ## Module Logging
 
 Every module has a `log_` member for hierarchical logging:

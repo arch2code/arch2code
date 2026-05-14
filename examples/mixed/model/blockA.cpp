@@ -1,4 +1,4 @@
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 
 // GENERATED_CODE_PARAM --block=blockA
@@ -6,7 +6,17 @@
 #include "blockA.h"
 SC_HAS_PROCESS(blockA);
 
-blockA::registerBlock blockA::registerBlock_; //register the block with the factory
+// === Block factory registration (blockA) ===
+void force_link_blockA() {}
+
+void register_blockA_variants() {
+    instanceFactory::registerBlock("blockA_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockA>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _blockA_registered = (register_blockA_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 void blockA::regHandler(void) { //handle register decode
     registerHandler< apbAddrSt, apbDataSt >(regs, apbReg, (1<<(8))-1); }
@@ -26,11 +36,16 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
+    // Generated register/memory address offsets
+    constexpr uint64_t REG_ADDR_BLOCKA_BLOCKATABLE37BIT = 0x0;
+    constexpr uint64_t REG_ADDR_BLOCKA_BLOCKATABLELOCAL = 0x80;
+    constexpr uint64_t REG_ADDR_BLOCKA_ROA = 0xc0;
+
     // register memories for FW access
-    regs.addMemory( 0x0, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATable37Bit", &blockATable37Bit_adapter);
-    regs.addMemory( 0x80, aRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATableLocal", &blockATableLocal_adapter);
+    regs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLE37BIT, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATable37Bit", &blockATable37Bit_adapter);
+    regs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLELOCAL, aRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATableLocal", &blockATableLocal_adapter);
     // register registers for FW access
-    regs.addRegister( 0xc0, 1, "roA", &roA );
+    regs.addRegister( REG_ADDR_BLOCKA_ROA, 1, "roA", &roA );
     // bind local memory register ports to channels
     blockATableLocal_port(blockATableLocal_channel);
     blockATable37Bit_port(blockATable37Bit_channel);

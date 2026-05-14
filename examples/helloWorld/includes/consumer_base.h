@@ -1,7 +1,7 @@
 #ifndef CONSUMER_BASE_H
 #define CONSUMER_BASE_H
 
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
@@ -119,6 +119,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_consumer();
 // GENERATED_CODE_END
 
 #endif //CONSUMER_BASE_H

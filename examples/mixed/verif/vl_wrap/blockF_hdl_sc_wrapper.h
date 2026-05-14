@@ -23,11 +23,12 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#include "mixedConfig.h"
 #include "rdy_vld_bfm.h"
 #include "status_bfm.h"
 
-template <typename DUT_T>
-class blockF_hdl_sc_wrapper: public sc_module, public blockBase, public blockFBase {
+template <typename DUT_T, typename Config>
+class blockF_hdl_sc_wrapper: public sc_module, public blockBase, public blockFBase<Config> {
 
 public:
 
@@ -38,7 +39,7 @@ public:
             // lamda function to construct the block
             instanceFactory::registerBlock(
                 "blockF_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < blockF_hdl_sc_wrapper<DUT_T> > (blockName, variant, bbMode));
+                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < blockF_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
                 }, variant_);
         }
     };
@@ -55,12 +56,12 @@ public:
     rdy_vld_src_bfm<dSt, sc_bv<7>> dSout_bfm;
     status_dst_bfm<dRegSt, sc_bv<7>> rwD_bfm;
 
-    SC_HAS_PROCESS (blockF_hdl_sc_wrapper<DUT_T>);
+    SC_HAS_PROCESS (blockF_hdl_sc_wrapper<DUT_T, Config>);
 
     blockF_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
         blockBase("blockF_hdl_sc_wrapper", name(), bbMode),
-        blockFBase(name(), variant),
+        blockFBase<Config>(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         cStuffIf_bfm("cStuffIf_bfm"),
         dStuffIf_bfm("dStuffIf_bfm"),
@@ -152,11 +153,11 @@ private:
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
 #if !defined(VERILATOR) && defined(VCS)
-using blockF_variant0_hdl_sc_wrapper = blockF_hdl_sc_wrapper<blockF_variant0_hdl_sv_wrapper>;
-using blockF_variant1_hdl_sc_wrapper = blockF_hdl_sc_wrapper<blockF_variant1_hdl_sv_wrapper>;
+using blockF_variant0_hdl_sc_wrapper = blockF_hdl_sc_wrapper<blockF_variant0_hdl_sv_wrapper, blockFVariant0Config>;
+using blockF_variant1_hdl_sc_wrapper = blockF_hdl_sc_wrapper<blockF_variant1_hdl_sv_wrapper, blockFVariant1Config>;
 #else
-using blockF_variant0_hdl_sc_wrapper = blockF_hdl_sc_wrapper<VblockF_variant0_hdl_sv_wrapper>;
-using blockF_variant1_hdl_sc_wrapper = blockF_hdl_sc_wrapper<VblockF_variant1_hdl_sv_wrapper>;
+using blockF_variant0_hdl_sc_wrapper = blockF_hdl_sc_wrapper<VblockF_variant0_hdl_sv_wrapper, blockFVariant0Config>;
+using blockF_variant1_hdl_sc_wrapper = blockF_hdl_sc_wrapper<VblockF_variant1_hdl_sv_wrapper, blockFVariant1Config>;
 #endif
 // GENERATED_CODE_END
 

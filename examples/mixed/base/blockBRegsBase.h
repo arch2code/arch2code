@@ -6,9 +6,12 @@
 #include "apb_channel.h"
 #include "memory_channel.h"
 #include "status_channel.h"
-#include "mixedIncludes.h"
-#include "mixedBlockCIncludes.h"
-#include "mixedIncludeIncludes.h"
+import mixed;
+using namespace mixed_ns;
+import mixedBlockC;
+using namespace mixedBlockC_ns;
+import mixedInclude;
+using namespace mixedInclude_ns;
 
 class blockBRegsBase : public virtual blockPortBase
 {
@@ -152,6 +155,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_blockBRegs();
 // GENERATED_CODE_END
 
 #endif // BLOCKBREGS_BASE_H

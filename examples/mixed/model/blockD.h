@@ -1,6 +1,6 @@
 #ifndef BLOCKD_H
 #define BLOCKD_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
@@ -9,23 +9,17 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "blockDBase.h"
-#include "mixedIncludes.h"
-#include "mixedBlockCIncludes.h"
-#include "mixedIncludeIncludes.h"
+import mixed;
+using namespace mixed_ns;
+import mixedBlockC;
+using namespace mixedBlockC_ns;
+import mixedInclude;
+using namespace mixedInclude_ns;
 
 SC_MODULE(blockD), public blockBase, public blockDBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("blockD_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<blockD>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
 
     blockD(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

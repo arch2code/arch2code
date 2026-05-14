@@ -32,6 +32,8 @@ def render(args, prj, data):
             else:
                 return(block_src(args, prj, data))
             return(block_src(args, prj, data))
+        case 'blockRegistrar_src':
+            return(blockRegistrar_src(args, prj, data))
         case 'rtlModule_sv':
             if isRegHandler:
                 return(rtlModuleRegs(args, prj, data))
@@ -61,6 +63,10 @@ def render(args, prj, data):
             return(include_src(args, prj, data))
         case 'include_hdr':
             return(include_hdr(args, prj, data))
+        case 'include_cppm':
+            return(include_cppm(args, prj, data))
+        case 'config_hdr':
+            return(config_hdr(args, prj, data))
         case 'includeFW_src':
             return(includeFW_src(args, prj, data))
         case 'includeFW_hdr':
@@ -126,6 +132,21 @@ def block_src(args, prj, data):
     out.append('// GENERATED_CODE_BEGIN --template=constructor --section=body\n')
     out.append('    // GENERATED_CODE_END\n')
     out.append('};\n\n')
+    return("".join(out))
+
+# Per-block trampoline registrar TU. The body is emitted by
+# templates/systemc/blockRegistrar.py. The trampoline owns project-
+# specific factory registration concerns for the block (parameterized
+# SC lambdas with their per-Config tags, and verilated wrapper
+# registrations under the _verif suffix). Pure non-templated SC-only
+# blocks gain no trampoline (the cond predicate filters them out at
+# file-generation time).
+def blockRegistrar_src(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=blockRegistrar\n')
+    out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 
 def blockRegs_hdr(args, prj, data):
@@ -295,6 +316,15 @@ tbConfigTemplate = \
 #include "testBenchConfigFactory.h"
 #include "endOfTest.h"
 
+// Forward declaration of the active force-link function emitted by
+// the testbench class. Calling it from createTestBench() creates a
+// real symbol reference into __modulename__Testbench.cpp so the
+// linker pulls that TU into the program even when nothing else
+// references its symbols. This is required under C++20 modules and
+// static-archive linking. See plan-block-registration.md
+// "Force-Link Function".
+void force_link___modulename__Testbench();
+
 // GENERATED_CODE_PARAM --block=__modulename__
 // GENERATED_CODE_BEGIN --template=tbConfig
 // GENERATED_CODE_END
@@ -302,6 +332,7 @@ tbConfigTemplate = \
     bool createTestBench(void) override
     {
         //create hierarchy
+        force_link___modulename__Testbench();
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "__modulename__Testbench", "");
         return true;
     }
@@ -418,6 +449,57 @@ include_hdrTemplate = \
 """
 def include_hdr(args, prj, data):
     t = TemplateCustom(include_hdrTemplate)
+    return(t.substitute({
+        'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
+        'context':data["context"],
+        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+
+include_cppmTemplate = \
+"""
+// GENERATED_CODE_PARAM --context=__context__ --mode=module
+// __copyright__
+
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=headers
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=constants
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=types
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=enums
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=structures
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
+// GENERATED_CODE_END
+"""
+
+config_hdrTemplate = \
+"""
+#ifndef __HEADERGUARD___CONFIG_H
+#define __HEADERGUARD___CONFIG_H
+// __copyright__
+
+#include <cstdint>
+
+// GENERATED_CODE_PARAM --context=__context__
+// GENERATED_CODE_BEGIN --template=includes --section=config
+// GENERATED_CODE_END
+
+#endif //__HEADERGUARD___CONFIG_H
+"""
+
+def include_cppm(args, prj, data):
+    t = TemplateCustom(include_cppmTemplate)
+    return(t.substitute({
+        'context':data["context"],
+        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+
+def config_hdr(args, prj, data):
+    t = TemplateCustom(config_hdrTemplate)
     return(t.substitute({
         'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
         'context':data["context"],

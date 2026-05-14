@@ -1,5 +1,6 @@
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
+#include "mixedConfig.h"
 
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -10,7 +11,17 @@
 #include "blockBBase.h"
 SC_HAS_PROCESS(mixed);
 
-mixed::registerBlock mixed::registerBlock_; //register the block with the factory
+// === Block factory registration (mixed) ===
+void force_link_mixed() {}
+
+void register_mixed_variants() {
+    instanceFactory::registerBlock("mixed_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<mixed>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _mixed_registered = (register_mixed_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
@@ -22,10 +33,10 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
         ,dupIf("blockB_dupIf", "blockA")
         ,apb_uBlockA("blockA_apb_uBlockA", "apbDecode")
         ,apb_uBlockB("blockB_apb_uBlockB", "apbDecode")
-        ,uBlockA(std::dynamic_pointer_cast<blockABase>( instanceFactory::createInstance(name(), "uBlockA", "blockA", "")))
-        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>( instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "")))
-        ,uBlockC(std::dynamic_pointer_cast<blockCBase>( instanceFactory::createInstance(name(), "uBlockC", "blockC", "")))
-        ,uBlockB(std::dynamic_pointer_cast<blockBBase>( instanceFactory::createInstance(name(), "uBlockB", "blockB", "")))
+        ,uBlockA(std::dynamic_pointer_cast<blockABase>((force_link_blockA(), instanceFactory::createInstance(name(), "uBlockA", "blockA", ""))))
+        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>((force_link_apbDecode(), instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", ""))))
+        ,uBlockC(std::dynamic_pointer_cast<blockCBase>((force_link_blockC(), instanceFactory::createInstance(name(), "uBlockC", "blockC", ""))))
+        ,uBlockB(std::dynamic_pointer_cast<blockBBase>((force_link_blockB(), instanceFactory::createInstance(name(), "uBlockB", "blockB", ""))))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
@@ -47,7 +58,7 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 
-    test_mixed_structs::test(); // Run the test for structures
+    test_mixed_structs<mixedDefaultConfig>::test(); // Run the test for structures
     log_.logPrint(std::format("Instance {} test completed.", this->name()), LOG_IMPORTANT );
 
 }

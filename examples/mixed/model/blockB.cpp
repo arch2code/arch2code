@@ -1,4 +1,4 @@
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "endOfTest.h"
 #include "testController.h"
@@ -11,7 +11,17 @@
 #include "blockBRegsBase.h"
 SC_HAS_PROCESS(blockB);
 
-blockB::registerBlock blockB::registerBlock_; //register the block with the factory
+// === Block factory registration (blockB) ===
+void force_link_blockB() {}
+
+void register_blockB_variants() {
+    instanceFactory::registerBlock("blockB_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockB>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _blockB_registered = (register_blockB_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
@@ -29,11 +39,11 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,roBsize("blockB_roBsize", "blockB", bSizeRegSt::_packedSt(0x0))
         ,blockBTableExt("blockB_blockBTableExt", "blockB")
         ,blockBTable37Bit("blockB_blockBTable37Bit", "blockB")
-        ,uBlockD(std::dynamic_pointer_cast<blockDBase>( instanceFactory::createInstance(name(), "uBlockD", "blockD", "")))
-        ,uBlockF0(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0")))
-        ,uBlockF1(std::dynamic_pointer_cast<blockFBase>( instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1")))
-        ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>( instanceFactory::createInstance(name(), "uThreeCs", "threeCs", "")))
-        ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>( instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "")))
+        ,uBlockD(std::dynamic_pointer_cast<blockDBase>((force_link_blockD(), instanceFactory::createInstance(name(), "uBlockD", "blockD", ""))))
+        ,uBlockF0(std::dynamic_pointer_cast<blockFBase<blockFVariant0Config>>(instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0")))
+        ,uBlockF1(std::dynamic_pointer_cast<blockFBase<blockFVariant1Config>>(instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1")))
+        ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>((force_link_threeCs(), instanceFactory::createInstance(name(), "uThreeCs", "threeCs", ""))))
+        ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>((force_link_blockBRegs(), instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", ""))))
         ,blockBTable0(name(), "blockBTable0", mems, BSIZE, HWMEMORYTYPE_LOCAL)
         ,blockBTable1(name(), "blockBTable1", mems, BSIZE)
         ,blockBTable2(name(), "blockBTable2", mems, BSIZE)

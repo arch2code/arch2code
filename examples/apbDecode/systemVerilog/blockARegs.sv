@@ -20,6 +20,15 @@ module blockARegs
 
     apbAddrSt apb_addr;
     assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h3ff;
+    // Register/memory address offsets for decode documentation
+    localparam int unsigned REG_BLOCKA_BLOCKATABLE0 = 32'h00000000; // Table0 to test memory access from cpu
+    localparam int unsigned REG_BLOCKA_BLOCKATABLE0_SIZE = 32'h00000098; // Decode range size
+    localparam int unsigned REG_BLOCKA_BLOCKATABLE1 = 32'h00000100; // Table1 to test memory access from cpu
+    localparam int unsigned REG_BLOCKA_BLOCKATABLE1_SIZE = 32'h00000098; // Decode range size
+    localparam int unsigned REG_BLOCKA_ROA = 32'h00000200; // A Read Only register
+    localparam int unsigned REG_BLOCKA_RWUN0A = 32'h00000208; // A unaligned Read Write register
+    localparam int unsigned REG_BLOCKA_ROUN0A = 32'h00000210; // A unaligned Read Only register
+    localparam int unsigned REG_BLOCKA_EXTA = 32'h00000218; // A unaligned Read Only register defined externally
 
     aRegSt roA_reg;
     assign roA_reg = roA.data;
@@ -103,23 +112,23 @@ module blockARegs
         nxt_blockATable1_data = blockATable1_data;
         if (wr_select) begin
             case (apb_addr) inside
-                32'h208 : begin
+                REG_BLOCKA_RWUN0A : begin
                     rwUn0A_reg_update_0 = 1'b1;
                 end
-                32'h20c : begin
+                REG_BLOCKA_RWUN0A + 32'd4 : begin
                     rwUn0A_reg_update_1 = 1'b1;
                 end
-                32'h218 : begin
+                REG_BLOCKA_EXTA : begin
                     extA.write = 1;
                     extA.wdata[31:0] = apbReg.pwdata[31:0];
                     extA.wdata[47:32] = extA.rdata[47:32];
                 end
-                32'h21c : begin
+                REG_BLOCKA_EXTA + 32'd4 : begin
                     extA.write = 2;
                     extA.wdata[31:0] = extA.rdata[31:0];
                     extA.wdata[47:32] = apbReg.pwdata[15:0];
                 end
-                [32'h0:32'h94]: begin
+                [REG_BLOCKA_BLOCKATABLE0:REG_BLOCKA_BLOCKATABLE0 + REG_BLOCKA_BLOCKATABLE0_SIZE - 32'd4]: begin
                     case (apb_addr[2:0])
                         3'h0: begin
                             blockATable0_update_0 = 1'b1;
@@ -132,7 +141,7 @@ module blockARegs
                         default: ;
                     endcase
                 end
-                [32'h100:32'h194]: begin
+                [REG_BLOCKA_BLOCKATABLE1:REG_BLOCKA_BLOCKATABLE1 + REG_BLOCKA_BLOCKATABLE1_SIZE - 32'd4]: begin
                     case (apb_addr[2:0])
                         3'h0: begin
                             blockATable1_update_0 = 1'b1;
@@ -164,39 +173,39 @@ module blockARegs
         nxt_blockATable1_rd_enable = 1'b0;
         if (rd_select) begin
             case (apb_addr) inside
-                32'h200 : begin
+                REG_BLOCKA_ROA : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roA_reg[31:0]);
                 end
-                32'h204 : begin
+                REG_BLOCKA_ROA + 32'd4 : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roA_reg[36:32]);
                 end
-                32'h208 : begin
+                REG_BLOCKA_RWUN0A : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(rwUn0A_reg[31:0]);
                 end
-                32'h20c : begin
+                REG_BLOCKA_RWUN0A + 32'd4 : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(rwUn0A_reg[47:32]);
                 end
-                32'h210 : begin
+                REG_BLOCKA_ROUN0A : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roUn0A_reg[31:0]);
                 end
-                32'h214 : begin
+                REG_BLOCKA_ROUN0A + 32'd4 : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roUn0A_reg[47:32]);
                 end
-                32'h218 : begin
+                REG_BLOCKA_EXTA : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(extA_reg[31:0]);
                 end
-                32'h21c : begin
+                REG_BLOCKA_EXTA + 32'd4 : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(extA_reg[47:32]);
                 end
-                [32'h0:32'h94]: begin
+                [REG_BLOCKA_BLOCKATABLE0:REG_BLOCKA_BLOCKATABLE0 + REG_BLOCKA_BLOCKATABLE0_SIZE - 32'd4]: begin
                     case (apb_addr[2:0])
                         3'h0: begin
                             if (blockATable0_rd_capture) begin
@@ -214,7 +223,7 @@ module blockARegs
                     endcase
                     nxt_blockATable0_rd_enable = ~blockATable0_rd_capture;
                 end
-                [32'h100:32'h194]: begin
+                [REG_BLOCKA_BLOCKATABLE1:REG_BLOCKA_BLOCKATABLE1 + REG_BLOCKA_BLOCKATABLE1_SIZE - 32'd4]: begin
                     case (apb_addr[2:0])
                         3'h0: begin
                             if (blockATable1_rd_capture) begin

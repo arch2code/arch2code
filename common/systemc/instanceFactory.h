@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <tuple>
 #include <memory>
 
 #include "blockBase.h"
@@ -21,8 +22,8 @@ class instanceFactory
 {
 public:
     instanceFactory();
-    static constexpr const char* testBenchStr = "tb";    
-    static constexpr const char* testBenchQualStr = "tb.";    
+    static constexpr const char* testBenchStr = "tb";
+    static constexpr const char* testBenchQualStr = "tb.";
     // allow implementation to register thier constructors
     static void registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction);
     // for variant specific initialization
@@ -38,16 +39,24 @@ public:
     static bool isTandemMode(void);
     static void setTimed(int nsec, bool all, timedDelayMode mode);
     static void setLogging(verbosity_e verbosity);
-    static void addParam(const std::initializer_list<std::pair<std::string, uint64_t> > & params);
-    static void addParam(std::string name, uint64_t value);
-    static uint64_t getParam(const char * blockName, const std::string variant, std::string param);
     static std::string dumpInstances(void);
     // de-tandemise provided name and remove any extra hierarchy levels
     static std::string getHierarchyName(const std::string name, blockBaseMode bbMode);
 private:
-    // map[blockType] = function to create block of type blockType
+    // Composite key: (blockType, variant). The variant string identifies
+    // the Config policy unambiguously under variant ≅ Config; the empty
+    // variant covers blocks with no declared variants.
+    struct Key {
+        std::string blockType;
+        std::string variant;
+        bool operator<(const Key & rhs) const {
+            return std::tie(blockType, variant) <
+                   std::tie(rhs.blockType, rhs.variant);
+        }
+    };
+    // map[Key] = function to create block of type Key.blockType
     // this map is used to instanitate blocks
-    static std::map<std::string, blockFactoryFunctionType >& getMap();
+    static std::map<Key, blockFactoryFunctionType >& getMap();
     // map[instanceName] = blockType
     // this contains any special case mappings where the instance is not of default type
     static std::map<std::string, std::string>& getInstMap();
@@ -58,7 +67,6 @@ private:
     // this contains pointers to the instances that have been created
     static std::vector<std::string> & getInstanceModeString();
     static bool & tandemMode();
-    static std::map<std::string, uint64_t> & getVariantParams();
     static std::vector<std::pair<std::string, std::string>> & getRemapStrings();
     static std::string getQualName(const std::string name) {return testBenchQualStr + name;};
 };

@@ -1,7 +1,7 @@
 #ifndef PRODUCER_BASE_H
 #define PRODUCER_BASE_H
 
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
@@ -119,6 +119,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_producer();
 // GENERATED_CODE_END
 
 #endif //PRODUCER_BASE_H

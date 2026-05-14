@@ -4,7 +4,8 @@
 // GENERATED_CODE_PARAM --block=cpu
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
-#include "mixedIncludes.h"
+import mixed;
+using namespace mixed_ns;
 
 class cpuBase : public virtual blockPortBase
 {
@@ -67,6 +68,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_cpu();
 // GENERATED_CODE_END
 
 #endif // CPU_BASE_H

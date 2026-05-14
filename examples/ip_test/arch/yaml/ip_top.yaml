@@ -1,0 +1,131 @@
+# ip_test - top-level integration for the parameterizable IP fixture
+#
+# The 'ip' block (defined in ip.yaml) is instantiated twice with different
+# parameter values:
+#   uIp0  variant0  IP_DATA_WIDTH=8   IP_MEM_DEPTH=16
+#   uIp1  variant1  IP_DATA_WIDTH=70  IP_MEM_DEPTH=8
+#
+# The 'src' block provides stimulus to both IP instances. The 'cpu' block
+# accesses IP registers via APB through 'apbDecode'.
+
+blockDir: .
+
+include:
+    - ip.yaml
+    - ipLeaf.yaml
+    - src.yaml
+    - ipBridge.yaml
+
+constants:
+    DWORD: { value: 32, desc: "Width of an APB dword" }
+
+types:
+    apbAddrT:
+        width: DWORD
+        desc: "APB address"
+    apbDataT:
+        width: DWORD
+        desc: "APB data"
+
+structures:
+    apbAddrSt:
+        address: { varType: apbAddrT, generator: address }
+    apbDataSt:
+        data: { varType: apbDataT, generator: data }
+
+interfaces:
+    apbReg:
+        desc: "CPU access to IP registers via APB"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+
+blocks:
+    ip_top:
+        desc: "Top container holding the two IP instances and the APB decoder"
+        hasVl: true
+        hasMdl: true
+        hasTb: true
+        hasRtl: true
+    ip_top_tb:
+        desc: "Testbench container for ip_top"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+    cpu:
+        desc: "APB master / CPU"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+    apbDecode:
+        desc: "APB address decoder"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+
+instances:
+    ip_top_tb:     { container: ip_top_tb, instanceType: ip_top_tb,   instGroup: top }
+    u_ip_top:      { container: ip_top_tb, instanceType: ip_top,      instGroup: top }
+    uCPU:          { container: ip_top_tb, instanceType: cpu,         instGroup: top }
+    uAPBDecode:    { container: ip_top,    instanceType: apbDecode,   instGroup: top }
+    uSrc:          { container: ip_top,    instanceType: src,         instGroup: top, variant: variantSrc0 }
+    uIp0:          { container: ip_top,    instanceType: ip,          instGroup: top, addressGroup: top, variant: variant0 }
+    uIp1:          { container: ip_top,    instanceType: ip,          instGroup: top, addressGroup: top, variant: variant1 }
+    uLeaf:         { container: src,       instanceType: ipLeaf,      instGroup: top, variant: variantLeaf0 }
+    # Stage 8.2 of plan-variant-config-unification.md: Q10 cross-interface
+    # bridge fixture. uBridgeDriver produces the two non-parameterized
+    # bridge interfaces; uBridge is the container whose parent boundary
+    # binds them via connectionMaps to two ip children (variant0 and
+    # variant1) — exercising the parent-boundary thunker path that
+    # Stage 7.2's sibling-connection fixture does not cover.
+    # uBridgeAPBDecode is the bridge container's own register-bus
+    # decoder. Its presence under the `bridge` addressGroup satisfies
+    # postParseRegister.py's "same level as decoder" constraint for
+    # uBridgeIp0/uBridgeIp1, and postParseRegister auto-wires the parent
+    # register bus from uAPBDecode down through ipBridge.apbReg.
+    uBridgeDriver:    { container: ip_top,    instanceType: bridgeDriver,    instGroup: top }
+    # uBridge takes one slot in the top addressGroup so uAPBDecode includes
+    # &apb_uBridge in its abpBusDecode list. Inside uBridge, uBridgeAPBDecode
+    # subdivides that slot for uBridgeIp0/uBridgeIp1 in the `bridge` group.
+    uBridge:          { container: ip_top,    instanceType: ipBridge,        instGroup: top, addressGroup: top }
+    uBridgeAPBDecode: { container: ipBridge,  instanceType: bridgeApbDecode, instGroup: top }
+    uBridgeIp0:       { container: ipBridge,  instanceType: ip,           instGroup: top, addressGroup: bridge, variant: variant0 }
+    uBridgeIp1:       { container: ipBridge,  instanceType: ip,           instGroup: top, addressGroup: bridge, variant: variant1 }
+
+connections:
+    - { interface: apbReg, src: uCPU, dst: u_ip_top, name: cpu_main }
+    - { interface: srcOut0If, src: uSrc, srcport: out0, dst: uIp0, dstport: ipDataIf }
+    - { interface: srcOut1If, src: uSrc, srcport: out1, dst: uIp1, dstport: ipDataIf }
+    # Stage 8.2 sibling-level connections (non-cross-interface): the
+    # Q10 cross-interface bridge sits one level deeper, inside uBridge.
+    - { interface: data8If,  src: uBridgeDriver, srcport: out8,  dst: uBridge, dstport: data8In }
+    - { interface: data70If, src: uBridgeDriver, srcport: out70, dst: uBridge, dstport: data70In }
+
+connectionMaps:
+    - { interface: apbReg, block: ip_top, direction: dst, instance: uAPBDecode, name: cpu_main }
+    # Stage 8.2 Q10 boundary: parent ipBridge.data8In / data70In bind via
+    # connectionMap to differently-Configed ip children. Each map's parent
+    # interface (data8If / data70If) differs from the child's declared port
+    # interface (ipDataIf), so the generator emits one push_ack_port_thunker
+    # member per map inside ipBridge.
+    - { interface: data8If,  block: ipBridge, port: data8In,  direction: dst, instance: uBridgeIp0, instancePort: ipDataIf }
+    - { interface: data70If, block: ipBridge, port: data70In, direction: dst, instance: uBridgeIp1, instancePort: ipDataIf }
+
+parameters:
+    ip:
+        - { variant: variant0, param: IP_DATA_WIDTH, value: 8 }
+        - { variant: variant0, param: IP_MEM_DEPTH, value: 16 }
+        - { variant: variant0, param: IP_NONCONST_DEPTH, value: 24 }
+        - { variant: variant1, param: IP_DATA_WIDTH, value: 70 }
+        - { variant: variant1, param: IP_MEM_DEPTH, value: 8 }
+        - { variant: variant1, param: IP_NONCONST_DEPTH, value: 12 }
+    ipLeaf:
+        - { variant: variantLeaf0, param: LEAF_DATA_WIDTH, value: 4 }
+        - { variant: variantLeaf0, param: LEAF_MEM_DEPTH,  value: 4 }
+    src:
+        - { variant: variantSrc0, param: OUT0_DATA_WIDTH, value: 8 }
+        - { variant: variantSrc0, param: OUT1_DATA_WIDTH, value: 70 }

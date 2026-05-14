@@ -1,6 +1,6 @@
 ---
 name: manage-build
-description: Guide for building, simulating, and managing the arch2code project using make targets
+description: Guide for building, simulating, creating implementation file scaffolds, and managing the arch2code project using make targets
 ---
 # Skill: Manage Build
 
@@ -17,9 +17,11 @@ Guide the user on how to build, simulate, and manage the project using the `make
     *   `make`: Runs full build with just the model
     *   `make VL_DUT=1`: Runs full build with model and RTL
 
-2.  **Module Creation:**
-    *   Use `make newmodule` to scaffold a new block (interactive).
-    *   This creates the directory structure, initial YAML, and empty implementation files in `model/` and `rtl/`.
+2.  **Module and Implementation File Creation:**
+    *   Use `make newmodule` before creating any implementation file (`.sv`, `.cpp`, `.h`) that arch2code should scaffold.
+    *   This applies to new blocks and to existing blocks that are gaining a previously skipped artifact, such as changing `hasRtl: false` to `hasRtl: true`.
+    *   `make newmodule` creates the directory structure, initial YAML when needed, and implementation skeletons in `model/`, `rtl/`, and related generated locations.
+    *   Do not use a direct file write for these scaffolds. Edit only the user-owned body regions after `make newmodule` and `make gen` have produced the file.
 
 3.  **Simulation:**
     *   `make run`: Runs the compiled SystemC simulation.

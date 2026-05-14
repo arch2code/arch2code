@@ -16,6 +16,8 @@ APBDECODE_DB_FILE = $(APBDECODE_DIR)/apbDecode.db
 
 AXI4SDEMO_DIR = examples/axi4sDemo
 
+IP_TEST_DIR = examples/ip_test
+
 IN_OUT_DIR = examples/inAndOut
 IN_OUT_DOT_DB_FILE = $(IN_OUT_DIR)/.inAndOut.db
 IN_OUT_DB_FILE = $(IN_OUT_DIR)/inAndOut.db
@@ -81,6 +83,12 @@ axiDemo:
 axi4sDemo:
 	make -C $(AXI4SDEMO_DIR)/rundir -j all VL_DUT=1
 	make -C $(AXI4SDEMO_DIR)/rundir -j run VL_DUT=1
+
+.PHONY : ip-test
+ip-test:
+	make -C $(IP_TEST_DIR) gen
+	make -C $(IP_TEST_DIR)/rundir -j run
+	make -C $(IP_TEST_DIR)/rundir -j run-vl
 
 .PHONY : hello-world
 hello-world:
@@ -166,11 +174,12 @@ clean :
 	make -C $(APBDECODE_DIR) clean
 	make -C $(AXI_DIR) clean
 	make -C $(AXI4SDEMO_DIR) clean
+	make -C $(IP_TEST_DIR) clean
 
 .PHONY : unittest
 unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo
+pipeline-test: diagram-and-doc nested hello-world mixed in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo ip-test
 push-test: clean unittest pipeline-test

@@ -2,12 +2,24 @@
 // GENERATED_CODE_BEGIN --template=testbench --section=init
 #include "mixedTestbench.h"
 
-mixedTestbench::registerBlock mixedTestbench::registerBlock_; //register the block with the factory
+// === Block factory registration (mixedTestbench) ===
+// Force-link function. Declaration in mixedTestbench.h.
+// See plan-block-registration.md "Force-Link Function".
+void force_link_mixedTestbench() {}
+
+void register_mixedTestbench_variants() {
+    instanceFactory::registerBlock("mixedTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<mixedTestbench>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _mixedTestbench_registered = (register_mixedTestbench_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 mixedTestbench::mixedTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("mixedTestbench", name(), bbMode)
         ,mixedChannels("Chnl", "tb")
-        ,mixed(std::dynamic_pointer_cast<mixedBase>( instanceFactory::createInstance(name(), "mixed", "mixed", "")))
+        ,mixed(std::dynamic_pointer_cast<mixedBase>((force_link_mixed(), instanceFactory::createInstance(name(), "mixed", "mixed", ""))))
         ,external("external")
 {
     bind(mixed.get(), &external);

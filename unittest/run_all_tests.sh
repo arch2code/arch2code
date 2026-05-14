@@ -69,6 +69,45 @@ echo "Test Suite 9: ContextKey Validation"
 echo "------------------------------------------------------------------------"
 python3 test_contextkey_validation.py || FAILED=1
 
+# Test 10: Error handling - parameterizable constants (F2/F3)
+echo ""
+echo "Test Suite 10: Error Handling (Parameterizable Constants)"
+echo "------------------------------------------------------------------------"
+if ! python3 test_error_parameterizable.py; then
+    FAILED=1
+    echo "Note: Some parameterizable-constant error tests failed"
+fi
+
+# Test 11: Config template generation
+echo ""
+echo "Test Suite 11: Config Template Generation"
+echo "------------------------------------------------------------------------"
+python3 test_config_template.py || FAILED=1
+
+# Test 12: Error handling - declared ports
+echo ""
+echo "Test Suite 12: Error Handling (Declared Ports)"
+echo "------------------------------------------------------------------------"
+if ! python3 test_error_declared_ports.py; then
+    FAILED=1
+    echo "Note: Some declared-port error tests failed"
+fi
+
+# Test 13: Thunker view derivation
+echo ""
+echo "Test Suite 13: Thunker View Derivation"
+echo "------------------------------------------------------------------------"
+python3 test_thunker_view.py || FAILED=1
+
+# Test 14: Error handling - RTL hierarchy implementation
+echo ""
+echo "Test Suite 14: Error Handling (RTL Hierarchy)"
+echo "------------------------------------------------------------------------"
+if ! python3 test_error_rtl_hierarchy.py; then
+    FAILED=1
+    echo "Note: Some RTL hierarchy error tests failed"
+fi
+
 echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then

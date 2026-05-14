@@ -1,0 +1,177 @@
+# ip - parameterizable IP block
+#
+# Self-contained definition of the 'ip' block: its parameters, types,
+# structures, interface, register set, and per-variant parameter values.
+# Top-level integration (instances, connections, APB plumbing) lives in
+# ip_top.yaml.
+
+blockDir: .
+
+# F1 ipParameters (additive; without F1 schema support this section is rejected,
+# in which case move IP_DATA_WIDTH / IP_MEM_DEPTH / ipDataT to the regular
+# constants/types sections below for the Step 3 baseline).
+ipParameters:
+    constants:
+        IP_DATA_WIDTH:    { value: 70, maxValue: 128, desc: "Per-instance data width" }
+        IP_MEM_DEPTH:     { value: 16, maxValue: 32, desc: "Per-instance memory depth" }
+        IP_DATA_WIDTH_X2: { eval: "$IP_DATA_WIDTH * 2", desc: "Derived width, 2x data (maxValue auto-derived)" }
+    types:
+        ipDataT:
+            width: IP_DATA_WIDTH
+            maxBitwidth: 128
+            desc: "IP data word, parameterizable"
+
+constants:
+    IP_FIXED_NIBBLE_COUNT: { value: 5, desc: "Fixed array length for non-parameterized type tests" }
+    IP_FIXED_PAIR_COUNT:   { value: 2, desc: "Fixed nested-structure array length" }
+    IP_FIXED_WORD_COUNT:   { eval: "$IP_FIXED_NIBBLE_COUNT + 1", desc: "Derived fixed array length" }
+    IP_FIXED_DEPTH:        { value: 9, desc: "Fixed depth for widthLog2 and widthLog2minus1 tests" }
+
+types:
+    ipModeT:
+        desc: "IP operating mode"
+        enum:
+            - { enumName: IP_MODE_OFF, value: 0, desc: "Off" }
+            - { enumName: IP_MODE_LOW, value: 1, desc: "Low power" }
+            - { enumName: IP_MODE_HIGH, value: 2, desc: "High performance" }
+    enableT:
+        width: 1
+        desc: "Single enable bit"
+    ipMemAddrT:
+        widthLog2minus1: IP_MEM_DEPTH
+        desc: "Index into ipMem (0 .. IP_MEM_DEPTH-1)"
+    # Fixed-width type used to exercise the F2.4 case where a memory's
+    # structure is NOT parameterizable but its wordLines IS a block parameter.
+    ipFixedT:
+        width: 8
+        desc: "Fixed 8-bit byte (non-parameterizable)"
+    ipFixedAddrT:
+        width: 8
+        desc: "Fixed 8-bit address index (non-parameterizable)"
+    ipNibbleT:
+        width: 4
+        desc: "Fixed unsigned nibble"
+    ipSignedNibbleT:
+        width: 4
+        isSigned: true
+        desc: "Fixed signed nibble"
+    ipSigned3T:
+        width: 3
+        isSigned: true
+        desc: "Fixed signed 3-bit value"
+    ipUnsigned5T:
+        width: 5
+        desc: "Fixed unsigned 5-bit value"
+    ipUnsigned9T:
+        width: 9
+        desc: "Fixed unsigned 9-bit value"
+    ipWordT:
+        width: 16
+        desc: "Fixed 16-bit word"
+    ipWide37T:
+        width: 37
+        desc: "Fixed 37-bit value crossing a 32-bit boundary"
+    ipFixedCountT:
+        widthLog2: IP_FIXED_DEPTH
+        desc: "Fixed count field wide enough for 0..IP_FIXED_DEPTH"
+    ipFixedIndexT:
+        widthLog2minus1: IP_FIXED_DEPTH
+        desc: "Fixed index field wide enough for 0..IP_FIXED_DEPTH-1"
+    ipFixedStatusT:
+        desc: "Fixed status enum"
+        enum:
+            - { enumName: IP_STATUS_IDLE, value: 0, desc: "Idle" }
+            - { enumName: IP_STATUS_BUSY, value: 1, desc: "Busy" }
+            - { enumName: IP_STATUS_DONE, value: 4, desc: "Done" }
+    ipFixedOpcodeT:
+        width: 8
+        desc: "Fixed-width opcode enum"
+        enum:
+            - { enumName: IP_OP_NOP, value: 0, desc: "No operation" }
+            - { enumName: IP_OP_LOAD, value: 3, desc: "Load" }
+            - { enumName: IP_OP_STORE, value: 9, desc: "Store" }
+
+structures:
+    ipDataSt:
+        marker: { varType: enableT, desc: "Marker bit expected after the data payload" }
+        data: { varType: ipDataT, desc: "Data word" }
+    ipCfgSt:
+        enable: { varType: enableT, desc: "Enable bit" }
+        mode: { varType: ipModeT, desc: "Operating mode" }
+        threshold: { varType: ipDataT, desc: "Threshold value" }
+    ipMemSt:
+        data: { varType: ipDataT, desc: "Data word" }
+    ipMemAddrSt:
+        address: { varType: ipMemAddrT, desc: "Memory address" }
+    ipBurstSt:
+        samples: { varType: ipDataT, arraySize: IP_MEM_DEPTH, desc: "Burst of parameterizable samples" }
+    # Non-parameterizable structure: wordLines block-param is the only thing
+    # that should make ipFixedMem (below) parameterizable for sizing.
+    ipFixedSt:
+        b: { varType: ipFixedT, desc: "Fixed byte" }
+    ipFixedAddrSt:
+        a: { varType: ipFixedAddrT, desc: "Fixed-width address" }
+    ipFixedHeaderSt:
+        opcode: { varType: ipFixedOpcodeT, desc: "Fixed opcode" }
+        status: { varType: ipFixedStatusT, desc: "Fixed status" }
+        tag: { varType: ipNibbleT, desc: "Fixed packet tag" }
+    ipFixedSignedSt:
+        tiny: { varType: ipSigned3T, desc: "Signed 3-bit field" }
+        offset: { varType: ipSignedNibbleT, desc: "Signed 4-bit field" }
+        magnitude: { varType: ipUnsigned5T, desc: "Unsigned 5-bit field" }
+        lane: { varType: ipUnsigned9T, desc: "Unsigned 9-bit field" }
+    ipFixedArraySt:
+        nibbles: { varType: ipNibbleT, arraySize: IP_FIXED_NIBBLE_COUNT, desc: "Fixed nibble array" }
+        words: { varType: ipWordT, arraySize: IP_FIXED_PAIR_COUNT, desc: "Fixed word array" }
+    ipFixedLog2St:
+        count: { varType: ipFixedCountT, desc: "Fixed widthLog2 count" }
+        index: { varType: ipFixedIndexT, desc: "Fixed widthLog2minus1 index" }
+    ipFixedNestedSt:
+        header: { subStruct: ipFixedHeaderSt, desc: "Nested fixed header" }
+        signedFields: { subStruct: ipFixedSignedSt, desc: "Nested signed and narrow fields" }
+        arrays: { subStruct: ipFixedArraySt, arraySize: IP_FIXED_PAIR_COUNT, desc: "Nested fixed arrays" }
+        log2Fields: { subStruct: ipFixedLog2St, desc: "Nested fixed log2 fields" }
+        wideValue: { varType: ipWide37T, desc: "Wide fixed value" }
+
+interfaces:
+    ipDataIf:
+        desc: "IP data push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: ipDataSt, structureType: data_t }
+
+blocks:
+    ip:
+        desc: "Parameterizable IP under test"
+        # IP_DATA_WIDTH and IP_MEM_DEPTH are also ipParameters constants.
+        # IP_NONCONST_DEPTH is a pure block param (no backing constant) used
+        # to exercise calcAddresses' worst-case sizing of block-param wordLines
+        # via parametersvariants. Bound values: variant0=24, variant1=12.
+        params: [IP_DATA_WIDTH, IP_MEM_DEPTH, IP_NONCONST_DEPTH]
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        # Stage 5.2 of plan-variant-config-unification.md: bottom-up port
+        # declaration (D10). Matches the top-down inferred shape so the
+        # generator output is unchanged; exercises the Step 5.2 success
+        # path of projectCreate.validateDeclaredPorts.
+        ports:
+            ipDataIf: { interface: ipDataIf, direction: dst }
+
+registers:
+    - { register: ipCfg, regType: rw, block: ip, structure: ipCfgSt, desc: "IP configuration" }
+    - { register: ipLastData, regType: ro, block: ip, structure: ipDataSt, desc: "Last data word received on ipDataIf" }
+
+#memories:
+#    - { memory: ipMem, block: ip, structure: ipMemSt, addressStruct: ipMemAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "IP scratch memory (FW-accessible)" }
+memories:
+    - { memory: ipMem, block: ip, structure: ipMemSt, addressStruct: ipMemAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "IP scratch memory (FW-accessible)" }
+    # F2.4 regression: non-parameterizable structure + block-param wordLines.
+    # Memory MUST still be marked isParameterizable so calcAddresses sizes
+    # from IP_MEM_DEPTH.maxValue, not its nominal value.
+    - { memory: ipFixedMem, block: ip, structure: ipFixedSt, addressStruct: ipFixedAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "Fixed-struct memory with block-param wordLines (F2.4 regression)" }
+    # F2/F3 regression: wordLines is a pure block param (no backing constant).
+    # Exercises calcAddresses' _resolveBlockParamMaxWordLines helper, which
+    # must return max(variant0=24, variant1=12) = 24 wordLines for sizing.
+    - { memory: ipNonConstMem, block: ip, structure: ipFixedSt, addressStruct: ipFixedAddrSt, wordLines: IP_NONCONST_DEPTH, regAccess: true, desc: "Block-param wordLines with no backing constant (worst-case sizing regression)" }

@@ -1,6 +1,6 @@
 #ifndef CPU_H
 #define CPU_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 
@@ -9,21 +9,13 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "cpuBase.h"
-#include "mixedIncludes.h"
+import mixed;
+using namespace mixed_ns;
 
 SC_MODULE(cpu), public blockBase, public cpuBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("cpu_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<cpu>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
 
     cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

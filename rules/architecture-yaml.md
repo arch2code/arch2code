@@ -12,8 +12,8 @@ YAML files in `arch/yaml/` define the hardware architecture. YAML is the **Singl
 
 ### Definition Order
 Define elements in dependency order:
-1. **Constants** - Parameters and sizing
-2. **Types** - Bit widths and enums
+1. **Constants / ipParameters constants** - Parameters and sizing
+2. **Types / ipParameters types** - Bit widths and enums
 3. **Structures** - Data packets (use defined types)
 4. **Interfaces** - Communication protocols (use defined structures)
 5. **Blocks** - Reusable components
@@ -28,9 +28,17 @@ constants:
   BUFFER_SIZE: {value: 1024, desc: "Buffer size"}
   ADDR_WIDTH: {eval: '($BUFFER_SIZE-1).bit_length()', desc: "Address width"}
 
+# IP-local parameterizable constants/types
+ipParameters:
+  constants:
+    IP_DATA_WIDTH: {value: 8, maxValue: 16, desc: "Per-instance data width"}
+  types:
+    ip_data_t: {width: IP_DATA_WIDTH, desc: "IP data word"}
+
 # Types - width REQUIRED for non-enum types
 types:
   byte_t: {width: 8, desc: "8-bit byte"}
+  literal_param_t: {width: 8, maxBitwidth: 16, desc: "Literal-width parameterized type"}
   status_t:
     desc: "Status enum"  # width auto-calculated for enums
     enum:
@@ -57,6 +65,7 @@ blocks:
     desc: "My block"
     hasRtl: true   # Default true
     hasMdl: true   # Default true
+    params: [IP_DATA_WIDTH]  # Optional variant-bound parameters
 
 # Instances
 instances:
@@ -68,7 +77,18 @@ instances:
 # Connections (same container only)
 connections:
   - {interface: data_channel, src: u_producer, dst: u_consumer}
+
+# Variant parameter bindings
+parameters:
+  my_block:
+    - {variant: variant0, param: IP_DATA_WIDTH, value: 8}
+    - {variant: variant1, param: IP_DATA_WIDTH, value: 12}
 ```
+
+If a block is RTL-enabled (`hasRtl: true`), every block instantiated inside it
+must also be RTL-enabled. Model-only blocks (`hasRtl: false`) may only appear
+under model-only parents; otherwise generated RTL will instantiate modules that
+do not exist.
 
 ### Include Directives
 
@@ -110,6 +130,16 @@ constants:
 
 The `$CONSTANT_NAME` syntax references previously defined constants. Expressions are evaluated in definition order.
 
+### Parameterizable Values
+
+Use `ipParameters` in the IP-root YAML for constants/types that vary by instance or variant:
+
+- Direct parameterizable constants require `maxValue > 0`.
+- Direct literal-width parameterizable types require `maxBitwidth`.
+- Derived constants/types inherit maximums from referenced parameterizable constants.
+- Do not put `ipParameters` in shared include files that only define common constants/types/structures.
+- If memory `wordLines` is an `ipParameters` constant or pure block param, address allocation uses the worst-case value.
+
 ## Common Pitfalls
 
 ### 1. Missing Width on Types
@@ -140,7 +170,21 @@ Block-level `<blockname>_regs` are auto-generated, but the top-level decoder is 
 ### 3. Connections Across Containers
 Connections only work within the **same container**. Use `connectionMaps` for hierarchy.
 
-### 4. Missing addressGroup for Registers
+### 4. Model-Only Child Under RTL Parent
+```yaml
+# BAD - rtl_top.sv would instantiate model_only_child, but no RTL exists
+blocks:
+  rtl_top: {desc: "RTL top", hasRtl: true}
+  model_only_child: {desc: "Behavioral model", hasRtl: false}
+
+instances:
+  u_top: {container: rtl_top, instanceType: rtl_top}
+  u_child: {container: rtl_top, instanceType: model_only_child}
+
+# GOOD - create RTL for the child, or make the parent model-only too
+```
+
+### 5. Missing addressGroup for Registers
 Instances with registers need `addressGroup`:
 ```yaml
 instances:
@@ -148,6 +192,19 @@ instances:
     container: top
     instanceType: my_block
     addressGroup: system  # Required for register access
+```
+
+### 6. Missing Worst-Case Bounds for Parameterizable Values
+```yaml
+# BAD - direct parameterizable constant without maxValue
+ipParameters:
+  constants:
+    IP_DATA_WIDTH: {value: 8, desc: "Missing maxValue"}
+
+# GOOD
+ipParameters:
+  constants:
+    IP_DATA_WIDTH: {value: 8, maxValue: 16, desc: "Bounded width"}
 ```
 
 ## Interface Types Quick Reference
@@ -161,4 +218,7 @@ instances:
 | `pop_ack` | Pop with ack | FIFO reads |
 
 ## Reference
-For complete documentation: `builder/base/ARCH2CODE_AI_RULES.md`
+For complete YAML guidance: `builder/base/ARCH2CODE_AI_RULES.md`
+
+For the definitive structure/data-type representation contract:
+`builder/base/STRUCTURES_AND_DATA_TYPES_REFERENCE.md`

@@ -1,0 +1,78 @@
+# src - producer block with Q11 per-port-parameterised outputs.
+#
+# Step 7.2 of plan-variant-config-unification.md migrates the existing
+# ip_test fixture to the Path-C / Q11 shape. The producer block exposes
+# two outputs whose payloads carry independently-parameterised widths
+# (OUT0_DATA_WIDTH and OUT1_DATA_WIDTH) so the two cross-Config consumers
+# (uIp0 with IP_DATA_WIDTH=8 and uIp1 with IP_DATA_WIDTH=70) each see a
+# producer-side payload that matches their bit width under the Stage 6.2
+# packed-form compatibility check. The max bounds are intentionally over
+# 64 bits so generated _packedSt storage is array-backed while the bound
+# variants remain scalar-width. The cross-interface binds on the consumer's
+# destination ports go through the push_ack thunker.
+#
+# Stage 8.3 of plan-variant-config-unification.md elevates this fixture
+# to the maintained Q11 producer-with-per-port-parameters regression.
+# The regression is the make-driven end-to-end execution:
+# examples/ip_test/model/src.cpp's hand-written driveOut0 / driveOut1
+# emit an explicit [Stage 8.3] marker log line and Q_ASSERT
+# parameter consistency (Config::OUT0_DATA_WIDTH == 8,
+# Config::OUT1_DATA_WIDTH == 70) before pushing on each output, and
+# the receiving ipBase<Config>::dataHandler Q_ASSERTs the marker bit
+# and (for the 70-bit variant) the high data word survive the
+# thunker. make -C examples/ip_test/rundir run is the regression
+# check: failures surface as a hard Q_ASSERT rather than as a silent
+# thunker truncation or generator-shape regression.
+
+blockDir: .
+
+ipParameters:
+    constants:
+        OUT0_DATA_WIDTH: { value: 8,  maxValue: 16, desc: "Width fed to uIp0" }
+        OUT1_DATA_WIDTH: { value: 70, maxValue: 128, desc: "Width fed to uIp1" }
+    types:
+        srcOut0DataT:
+            width: OUT0_DATA_WIDTH
+            maxBitwidth: 16
+            desc: "src out0 data word, parameterizable"
+        srcOut1DataT:
+            width: OUT1_DATA_WIDTH
+            maxBitwidth: 128
+            desc: "src out1 data word, parameterizable"
+
+types:
+    srcMarkerT:
+        width: 1
+        desc: "src high-word marker bit"
+
+structures:
+    srcOut0St:
+        marker: { varType: srcMarkerT, desc: "marker bit copied through the thunker" }
+        data: { varType: srcOut0DataT, desc: "src out0 payload" }
+    srcOut1St:
+        marker: { varType: srcMarkerT, desc: "marker bit above bit 64 for the 70-bit variant" }
+        data: { varType: srcOut1DataT, desc: "src out1 payload" }
+
+interfaces:
+    srcOut0If:
+        desc: "src out0 push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: srcOut0St, structureType: data_t }
+    srcOut1If:
+        desc: "src out1 push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: srcOut1St, structureType: data_t }
+
+blocks:
+    src:
+        desc: "Producer with two per-port-parameterised outputs feeding uIp0 and uIp1"
+        params: [OUT0_DATA_WIDTH, OUT1_DATA_WIDTH]
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            out0: { interface: srcOut0If, direction: src }
+            out1: { interface: srcOut1If, direction: src }

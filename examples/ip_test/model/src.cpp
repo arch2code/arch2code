@@ -1,0 +1,65 @@
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
+
+// GENERATED_CODE_PARAM --block=src
+// GENERATED_CODE_BEGIN --template=constructor --section=init
+#include "src.h"
+#include "ipLeafBase.h"
+// === Block factory registration (src) ===
+namespace {
+[[gnu::used]] std::shared_ptr<blockBase> _src_instantiate_variant_0(
+    const char * blockName, const char * variant, blockBaseMode bbMode) {
+    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcVariantSrc0Config>>(blockName, variant, bbMode));
+}
+[[maybe_unused, gnu::used]] auto _src_instantiate_variant_0_anchor = &_src_instantiate_variant_0;
+} // namespace
+// === End block factory registration ===
+
+template<typename Config>
+src<Config>::src(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+       : sc_module(blockName)
+        ,blockBase("src", name(), bbMode)
+        ,srcBase<Config>(name(), variant)
+        ,uLeaf(std::dynamic_pointer_cast<ipLeafBase<ipLeafVariantLeaf0Config>>(instanceFactory::createInstance(name(), "uLeaf", "ipLeaf", "variantLeaf0")))
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=constructor --section=body
+{
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    // GENERATED_CODE_END
+    SC_THREAD(driveOut0);
+    SC_THREAD(driveOut1);
+};
+
+// Stage 8.3 of plan-variant-config-unification.md: the maintained
+// Q11 producer-with-per-port-parameters regression. The producer's
+// variantSrc0 binding fixes OUT0_DATA_WIDTH=8 and OUT1_DATA_WIDTH=70;
+// each per-port parameter must match the receiving consumer's
+// IP_DATA_WIDTH (uIp0 -> variant0=8, uIp1 -> variant1=70) for the
+// push_ack thunker on each cross-Config bind to round-trip cleanly.
+// The runtime checks below assert that contract at simulation start so
+// any future regression that decouples producer per-port widths from
+// the bound consumer Configs surfaces here rather than as a silent
+// thunker truncation.
+template<typename Config>
+void src<Config>::driveOut0(void)
+{
+    log_.logPrint(std::format("{} [Stage 8.3] Q11 out0 per-port width = {} bits", this->name(), Config::OUT0_DATA_WIDTH), LOG_IMPORTANT);
+    Q_ASSERT(Config::OUT0_DATA_WIDTH == 8, "Stage 8.3: producer OUT0_DATA_WIDTH must match uIp0 variant0 IP_DATA_WIDTH=8");
+    srcOut0St<Config> d{};
+    d.data = 0xA5;
+    d.marker = 1;
+    log_.logPrint(std::format("{} pushing 0x{:x} marker {} on out0", this->name(), (uint64_t)d.data, (uint64_t)d.marker), LOG_IMPORTANT);
+    this->out0->push(d);
+}
+
+template<typename Config>
+void src<Config>::driveOut1(void)
+{
+    log_.logPrint(std::format("{} [Stage 8.3] Q11 out1 per-port width = {} bits", this->name(), Config::OUT1_DATA_WIDTH), LOG_IMPORTANT);
+    Q_ASSERT(Config::OUT1_DATA_WIDTH == 70, "Stage 8.3: producer OUT1_DATA_WIDTH must match uIp1 variant1 IP_DATA_WIDTH=70");
+    srcOut1St<Config> d{};
+    d.data.word[0] = 0x5A;
+    d.data.word[1] = 0x2A;
+    d.marker = 1;
+    log_.logPrint(std::format("{} pushing 0x{:x}{:016x} marker {} on out1", this->name(), d.data.word[1], d.data.word[0], (uint64_t)d.marker), LOG_IMPORTANT);
+    this->out1->push(d);
+}

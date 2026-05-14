@@ -62,6 +62,17 @@ All tests are **self-contained** within the `unittest/` directory. Tests do not 
   - **Result:** 5/5 tests pass ✅ (2 bugs found and fixed: enum value validation, eval error handling)
   - **Self-contained:** Creates temporary YAML files for each test case
 
+- **test_error_parameterizable.py** - Tests error handling for parameterizable constants and types
+  - Validates clear errors for missing `maxValue` / `maxBitwidth`
+  - Tests derived-constant `maxValue` rules and value-vs-maximum validation
+  - Tests malformed `maxValue` inputs produce clean errors instead of Python stack traces
+  - **Self-contained:** Creates temporary YAML files for each test case
+
+- **test_error_rtl_hierarchy.py** - Tests error handling for invalid RTL hierarchy
+  - Validates that `hasRtl: true` parents cannot instantiate `hasRtl: false` children
+  - Ensures the diagnostic is a clean YAML error, not a Python stack trace
+  - **Self-contained:** Creates temporary YAML files for the failing hierarchy
+
 ### Test Data
 
 - **mixed_test_arch/** - Self-contained copy of mixed project YAML files
@@ -89,6 +100,8 @@ python3 test_data_by_parent_logic.py
 python3 test_mixed_project.py
 python3 test_error_missing_fields.py      # Error handling: missing fields
 python3 test_error_auto_functions.py      # Error handling: auto functions
+python3 test_error_parameterizable.py     # Error handling: parameterizable bounds
+python3 test_error_rtl_hierarchy.py      # Error handling: RTL hierarchy
 ```
 
 ## Test Coverage
@@ -101,11 +114,12 @@ These tests verify:
 - ✅ Node pickling and unpickling
 - ✅ sqlite3.Row compatibility
 - ✅ Error handling for missing keys
+- ✅ Error handling for RTL hierarchy implementation mismatches
 - ✅ Interface collision detection
 - ✅ Schema section validation
 - ✅ Project build from YAML
 - ✅ Database creation and cleanup
-- ✅ **User-friendly error messages** (13/13 cases validated)
+- ✅ **User-friendly error messages** (23/23 cases validated)
   - **Missing required fields (8 tests)**:
     - Types missing width
     - Constants missing value/eval
@@ -121,6 +135,17 @@ These tests verify:
     - Enum missing value/eval (eval field type - bug found and fixed)
     - Type missing width with no enum (_auto_width)
     - Eval expression runtime errors (eval try-catch - bug found and fixed)
+  - **Parameterizable bounds (10 tests)**:
+    - `ipParameters` constant missing `maxValue`
+    - Explicit `isParameterizable` constant missing `maxValue`
+    - Derived parameterizable constant with hand-written `maxValue`
+    - Parameterizable constant with zero `maxValue`
+    - Nominal constant value exceeding `maxValue`
+    - `ipParameters` type missing `maxBitwidth`
+    - Explicit `isParameterizable` type missing `maxBitwidth`
+    - Type `maxBitwidth` less than resolved width
+    - Malformed string `maxValue`
+    - Malformed list `maxValue`
 
 ## Important Notes
 

@@ -4,7 +4,8 @@
 // GENERATED_CODE_PARAM --block=blockC
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "rdy_vld_channel.h"
-#include "mixedBlockCIncludes.h"
+import mixedBlockC;
+using namespace mixedBlockC_ns;
 
 class blockCBase : public virtual blockPortBase
 {
@@ -67,6 +68,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_blockC();
 // GENERATED_CODE_END
 
 #endif // BLOCKC_BASE_H

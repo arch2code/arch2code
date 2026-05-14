@@ -17,6 +17,11 @@ module blockBRegs
 
     apbAddrSt apb_addr;
     assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h3ff;
+    // Register/memory address offsets for decode documentation
+    localparam int unsigned REG_BLOCKB_BLOCKBTABLE = 32'h00000000; // Table to test memory access from cpu
+    localparam int unsigned REG_BLOCKB_BLOCKBTABLE_SIZE = 32'h00000150; // Decode range size
+    localparam int unsigned REG_BLOCKB_RWUN0B = 32'h00000200; // A unaligned four bytes Read Write register
+    localparam int unsigned REG_BLOCKB_ROB = 32'h00000208; // A Read Only register
 
     un0BRegSt rwUn0B_reg;
     logic rwUn0B_reg_update_0;
@@ -67,10 +72,10 @@ module blockBRegs
         nxt_blockBTable_data = blockBTable_data;
         if (wr_select) begin
             case (apb_addr) inside
-                32'h200 : begin
+                REG_BLOCKB_RWUN0B : begin
                     rwUn0B_reg_update_0 = 1'b1;
                 end
-                [32'h0:32'h14c]: begin
+                [REG_BLOCKB_BLOCKBTABLE:REG_BLOCKB_BLOCKBTABLE + REG_BLOCKB_BLOCKBTABLE_SIZE - 32'd4]: begin
                     case (apb_addr[3:0])
                         4'h0: begin
                             blockBTable_update_0 = 1'b1;
@@ -105,15 +110,15 @@ module blockBRegs
         nxt_blockBTable_rd_enable = 1'b0;
         if (rd_select) begin
             case (apb_addr) inside
-                32'h200 : begin
+                REG_BLOCKB_RWUN0B : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(rwUn0B_reg[23:0]);
                 end
-                32'h208 : begin
+                REG_BLOCKB_ROB : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roB_reg[28:0]);
                 end
-                [32'h0:32'h14c]: begin
+                [REG_BLOCKB_BLOCKBTABLE:REG_BLOCKB_BLOCKBTABLE + REG_BLOCKB_BLOCKBTABLE_SIZE - 32'd4]: begin
                     case (apb_addr[3:0])
                         4'h0: begin
                             if (blockBTable_rd_capture) begin

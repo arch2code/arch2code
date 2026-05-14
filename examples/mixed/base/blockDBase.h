@@ -7,9 +7,12 @@
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 #include "status_channel.h"
-#include "mixedIncludes.h"
-#include "mixedBlockCIncludes.h"
-#include "mixedIncludeIncludes.h"
+import mixed;
+using namespace mixed_ns;
+import mixedBlockC;
+using namespace mixedBlockC_ns;
+import mixedInclude;
+using namespace mixedInclude_ns;
 
 class blockDBase : public virtual blockPortBase
 {
@@ -243,6 +246,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+void force_link_blockD();
 // GENERATED_CODE_END
 
 #endif // BLOCKD_BASE_H

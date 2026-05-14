@@ -77,7 +77,8 @@ fileGeneration:
     testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
     tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench config files"}
     tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench external files"}
-    include     : { name : "Includes",        ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include file"}
+    include     : { name : "Includes",        ext: {cppm: "cppm"},           cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include module interface"}
+    config      : { name : "Config",          ext: {hdr: "h"},               cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based default config header"}
     includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
     package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     desc: "yaml based package file"}
   # standard copyright statement to be added to all generated files - change to suite your company

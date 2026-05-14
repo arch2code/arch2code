@@ -1,10 +1,9 @@
 #ifndef BLOCKB_H
 #define BLOCKB_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 #include <vector>
-#include "mixedIncludes.h"
 
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=classDecl 
@@ -13,12 +12,16 @@
 #include "blockBBase.h"
 #include "addressMap.h"
 #include "hwMemory.h"
-#include "mixedIncludes.h"
-#include "mixedBlockCIncludes.h"
-#include "mixedIncludeIncludes.h"
+#include "mixedConfig.h"
+import mixed;
+using namespace mixed_ns;
+import mixedBlockC;
+using namespace mixedBlockC_ns;
+import mixedInclude;
+using namespace mixedInclude_ns;
 //contained instances forward class declaration
 class blockDBase;
-class blockFBase;
+template<typename Config> class blockFBase;
 class threeCsBase;
 class blockBRegsBase;
 
@@ -26,15 +29,6 @@ SC_MODULE(blockB), public blockBase, public blockBBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("blockB_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<blockB>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
     // channels
     // An interface for C
@@ -64,8 +58,8 @@ public:
 
     //instances contained in block
     std::shared_ptr<blockDBase> uBlockD;
-    std::shared_ptr<blockFBase> uBlockF0;
-    std::shared_ptr<blockFBase> uBlockF1;
+    std::shared_ptr<blockFBase<blockFVariant0Config>> uBlockF0;
+    std::shared_ptr<blockFBase<blockFVariant1Config>> uBlockF1;
     std::shared_ptr<threeCsBase> uThreeCs;
     std::shared_ptr<blockBRegsBase> uBlockBRegs;
 

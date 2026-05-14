@@ -1,14 +1,15 @@
 ---
 name: design-types-structures
-description: Guide for editing YAML types, structures, and constants - the foundational elements that interfaces, registers, and memories reference
+description: Guide for editing regular YAML constants, types, and structures - the foundational elements that interfaces, registers, and memories reference. For ipParameters and variant-bound types, use design-parameterizable-blocks.
 ---
 # Skill: Design Types & Structures
 
 ## Purpose
-Guide the user in defining constants, types, and structures in arch2code YAML. These are the foundational elements referenced by interfaces, registers, and memories.
+Guide the user in defining regular constants, types, and structures in arch2code YAML. These are the foundational elements referenced by interfaces, registers, and memories. For `ipParameters`, parameterizable types, and variant-bound structures, use `design-parameterizable-blocks.md`.
 
 ## References
 *   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Low-Level Architecture Elements")
+*   **Definitive Representation Reference:** `STRUCTURES_AND_DATA_TYPES_REFERENCE.md` for YAML field ordering, generated SystemVerilog packed structs, generated SystemC storage, `_packedSt`, pack/unpack, and thunkers.
 
 ## Definition Order
 
@@ -26,6 +27,7 @@ Fixed parameters used for sizing, addresses, and configuration.
 **Properties:**
 *   `value`: Literal integer. **Use `value` OR `eval`, not both.**
 *   `eval`: Python expression string. Reference other constants with `$NAME`.
+*   `maxValue`: Optional worst-case integer for parameterizable constants; prefer `ipParameters` in `design-parameterizable-blocks.md` for variant-bound values.
 *   `desc`: **(Required)** Description.
 
 ```yaml
@@ -40,6 +42,7 @@ constants:
 *   `$CONSTANT_NAME` references previously defined constants
 *   Expressions are Python and evaluated in definition order
 *   Standard Python operators and builtins are available (e.g., `bit_length()`, `//`, `**`)
+*   If an `eval` references a parameterizable constant, `maxValue` is auto-derived; do not hand-write it
 
 ### 2. Types (`types` dictionary)
 
@@ -47,6 +50,8 @@ Define bit-vector widths and enumerations.
 
 **Properties:**
 *   `width`: **(Required for non-enum types)** Bit width (integer or constant name).
+*   `widthLog2` / `widthLog2minus1`: Alternatives for address/index widths.
+*   `maxBitwidth`: Optional worst-case bit width for parameterizable types; prefer `ipParameters` in `design-parameterizable-blocks.md` for variant-bound types.
 *   `desc`: **(Required)** Description.
 *   `enum`: (Optional) List of enum values. Width is auto-calculated from max value.
 
@@ -122,12 +127,25 @@ structures:
 *   `data` -- marks the field as data (used by register bus generation)
 *   `tracker(name)` -- links to a debug tracker for transaction tracing
 
+## Representation Reference
+
+Keep this skill focused on YAML authoring. For how YAML widths map to generated
+SystemVerilog and SystemC, including `_bitWidth`, `_byteWidth`, `_packedSt`,
+`sizeof(T)` differences, field order, pack/unpack behavior, and thunkers, read
+`STRUCTURES_AND_DATA_TYPES_REFERENCE.md`.
+
+For parameterizable structures, arch2code computes worst-case metadata from
+parameterizable field types, sub-structures, and `arraySize` constants. Users
+should not write those structure metadata fields directly; use
+`design-parameterizable-blocks.md`.
+
 ## Common Pitfalls
 
 1.  **Referencing undefined types:** Types must be defined before use. If in a separate file, use `include:` to pull in dependencies.
 2.  **Using `varType` and `subStruct` together:** Choose one per field, not both.
 3.  **Forgetting `desc`:** Required on every element (constants, types, structures, fields).
 4.  **Missing `width` on non-enum types:** Only enums auto-calculate width.
+5.  **Putting variant-specific sizing in shared files:** Use `ipParameters` in the owning block's YAML when values vary by instance.
 
 ## Validation
 *   Run `make db` to parse and validate all YAML definitions.

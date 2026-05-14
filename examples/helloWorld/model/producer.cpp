@@ -1,4 +1,4 @@
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 #include "testController.h"
 #include "tagTrackers.h"
 
@@ -7,7 +7,17 @@
 #include "producer.h"
 SC_HAS_PROCESS(producer);
 
-producer::registerBlock producer::registerBlock_; //register the block with the factory
+// === Block factory registration (producer) ===
+void force_link_producer() {}
+
+void register_producer_variants() {
+    instanceFactory::registerBlock("producer_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<producer>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _producer_registered = (register_producer_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 producer::producer(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)

@@ -1,18 +1,18 @@
 #ifndef MIXED_H
 #define MIXED_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
-#include "mixedIncludes.h"
-#include "mixedEncoders.h"
 
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
 #include "mixedBase.h"
-#include "mixedIncludes.h"
-#include "mixedBlockCIncludes.h"
+import mixed;
+using namespace mixed_ns;
+import mixedBlockC;
+using namespace mixedBlockC_ns;
 //contained instances forward class declaration
 class blockABase;
 class apbDecodeBase;
@@ -23,15 +23,6 @@ SC_MODULE(mixed), public blockBase, public mixedBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("mixed_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<mixed>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
     // channels
     // An interface for A
