@@ -29,9 +29,21 @@ src<Config>::src(sc_module_name blockName, const char * variant, blockBaseMode b
     SC_THREAD(driveOut1);
 };
 
+// Stage 8.3 of plan-variant-config-unification.md: the maintained
+// Q11 producer-with-per-port-parameters regression. The producer's
+// variantSrc0 binding fixes OUT0_DATA_WIDTH=8 and OUT1_DATA_WIDTH=70;
+// each per-port parameter must match the receiving consumer's
+// IP_DATA_WIDTH (uIp0 -> variant0=8, uIp1 -> variant1=70) for the
+// push_ack thunker on each cross-Config bind to round-trip cleanly.
+// The runtime checks below assert that contract at simulation start so
+// any future regression that decouples producer per-port widths from
+// the bound consumer Configs surfaces here rather than as a silent
+// thunker truncation.
 template<typename Config>
 void src<Config>::driveOut0(void)
 {
+    log_.logPrint(std::format("{} [Stage 8.3] Q11 out0 per-port width = {} bits", this->name(), Config::OUT0_DATA_WIDTH), LOG_IMPORTANT);
+    Q_ASSERT(Config::OUT0_DATA_WIDTH == 8, "Stage 8.3: producer OUT0_DATA_WIDTH must match uIp0 variant0 IP_DATA_WIDTH=8");
     srcOut0St<Config> d{};
     d.data = 0xA5;
     d.marker = 1;
@@ -42,6 +54,8 @@ void src<Config>::driveOut0(void)
 template<typename Config>
 void src<Config>::driveOut1(void)
 {
+    log_.logPrint(std::format("{} [Stage 8.3] Q11 out1 per-port width = {} bits", this->name(), Config::OUT1_DATA_WIDTH), LOG_IMPORTANT);
+    Q_ASSERT(Config::OUT1_DATA_WIDTH == 70, "Stage 8.3: producer OUT1_DATA_WIDTH must match uIp1 variant1 IP_DATA_WIDTH=70");
     srcOut1St<Config> d{};
     d.data.word[0] = 0x5A;
     d.data.word[1] = 0x2A;

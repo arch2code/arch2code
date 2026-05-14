@@ -10,6 +10,19 @@
 # 64 bits so generated _packedSt storage is array-backed while the bound
 # variants remain scalar-width. The cross-interface binds on the consumer's
 # destination ports go through the push_ack thunker.
+#
+# Stage 8.3 of plan-variant-config-unification.md elevates this fixture
+# to the maintained Q11 producer-with-per-port-parameters regression.
+# The regression is the make-driven end-to-end execution:
+# examples/ip_test/model/src.cpp's hand-written driveOut0 / driveOut1
+# emit an explicit [Stage 8.3] marker log line and Q_ASSERT
+# parameter consistency (Config::OUT0_DATA_WIDTH == 8,
+# Config::OUT1_DATA_WIDTH == 70) before pushing on each output, and
+# the receiving ipBase<Config>::dataHandler Q_ASSERTs the marker bit
+# and (for the 70-bit variant) the high data word survive the
+# thunker. make -C examples/ip_test/rundir run is the regression
+# check: failures surface as a hard Q_ASSERT rather than as a silent
+# thunker truncation or generator-shape regression.
 
 blockDir: .
 
