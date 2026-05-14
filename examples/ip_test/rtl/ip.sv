@@ -71,7 +71,14 @@ memory_dp #(.DEPTH(IP_NONCONST_DEPTH), .data_t(ipFixedSt)) uIpNonConstMem (
         n_lastData = lastData;
         ipDataIf.ack = 1'b0;
         if (ipDataIf.push) begin
-            n_lastData = ipDataIf.data;
+            // TODO(SV parameterization): remove this field-wise widening once
+            // parameterizable package types become module-local types driven by
+            // this instance's IP_DATA_WIDTH parameter. Today ipDataSt/ipDataT
+            // come from ip_package at the max/default width, so variant0's
+            // narrower push_ack payload must be widened without moving marker.
+            n_lastData = '0;
+            n_lastData.marker = ipDataIf.data.marker;
+            n_lastData.data = ipDataT'(ipDataIf.data.data);
             ipDataIf.ack = 1'b1;
         end
     end
