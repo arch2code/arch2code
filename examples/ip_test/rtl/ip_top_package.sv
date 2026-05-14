@@ -4,6 +4,7 @@
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package ip_top_package;
 // Generated Import package statement(s)
+import ipBridge_package::*;
 import src_package::*;
 import ipLeaf_package::*;
 import ip_package::*;
@@ -14,9 +15,10 @@ typedef logic[DWORD-1:0] apbAddrT; //APB address
 typedef logic[DWORD-1:0] apbDataT; //APB data
 
 // enums
-typedef enum logic[1-1:0] {          //Generated type for addressing top instances
+typedef enum logic[2-1:0] {          //Generated type for addressing top instances
     ADDR_ID_TOP_UIP0 = 0,    // uIp0 instance address
-    ADDR_ID_TOP_UIP1 = 1    // uIp1 instance address
+    ADDR_ID_TOP_UIP1 = 1,    // uIp1 instance address
+    ADDR_ID_TOP_UBRIDGE = 2 // uBridge instance address
 } addr_id_top;
 
 // structures

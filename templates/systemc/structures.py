@@ -1082,7 +1082,14 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
             out.append(f"{indent}uint16_t _consume;")
         if data['entryType'] == 'NamedVar' or data['entryType'] == 'NamedType' or data['entryType'] == 'Reserved':
             if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1 and useConfig:
-                out.append(f'{indent}pack_bits((uint64_t *)&{varName}{varIndex}, 0, (uint64_t *)&_src, _pos, {bitwidthExpr});')
+                # Templated array-backed field. Zero the destination so the
+                # subsequent OR-based copy lands cleanly, and use unpack_bits
+                # (masking variant of pack_bits) so adjacent packed-form
+                # fields' bits cannot propagate into this field's storage.
+                # See common/systemc/bitTwiddling.h for the pack_bits /
+                # unpack_bits contract.
+                out.append(f'{indent}memset((uint64_t *)&{varName}{varIndex}, 0, sizeof({varName}{varIndex}));')
+                out.append(f'{indent}unpack_bits((uint64_t *)&{varName}{varIndex}, 0, (uint64_t *)&_src, _pos, {bitwidthExpr});')
                 out.append(f'{indent}_pos += {bitwidthExpr};') if usePos else None
             elif data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1:
                 if not data['isArray']:
@@ -1166,8 +1173,13 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
                     out.append(f"{indent}{varType}::_packedSt _tmp{{0}};")
                     unpackCast = f"_tmp"
                 if (bitwidth >= 64):
-                    # src is using 64 bit words so use pass by pointer
-                    out.append(f"{indent}pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {bitwidthExpr});")
+                    # src is using 64 bit words so use pass by pointer.
+                    # _tmp is value-initialised above (line ~1166), so the
+                    # "dest is clean" half of the unpack_bits contract is
+                    # already satisfied; this rename only adds the source
+                    # mask so adjacent parent-struct fields' bits do not
+                    # leak into the nested struct's _tmp staging area.
+                    out.append(f"{indent}unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {bitwidthExpr});")
                 else:
                     # src is using < 64 bit so we can just use bit shifting
                     out.append(f"{indent}_tmp = (_src >> _pos) & ((1ULL << {bitwidthExpr}) - 1);")

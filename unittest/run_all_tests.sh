@@ -99,6 +99,15 @@ echo "Test Suite 13: Thunker View Derivation"
 echo "------------------------------------------------------------------------"
 python3 test_thunker_view.py || FAILED=1
 
+# Test 14: Error handling - RTL hierarchy implementation
+echo ""
+echo "Test Suite 14: Error Handling (RTL Hierarchy)"
+echo "------------------------------------------------------------------------"
+if ! python3 test_error_rtl_hierarchy.py; then
+    FAILED=1
+    echo "Note: Some RTL hierarchy error tests failed"
+fi
+
 echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then

@@ -298,6 +298,12 @@ structures:
 
 All types, consts, structs should be managed in the yaml, not in the user code
 
+For the definitive representation contract for YAML types/structures, generated
+SystemVerilog packed structs, generated SystemC C++ storage, `_packedSt`,
+pack/unpack behavior, and thunker compatibility, see
+`STRUCTURES_AND_DATA_TYPES_REFERENCE.md`. This section is an authoring summary;
+do not duplicate low-level representation semantics here.
+
 ### Constants
 
 Constants define architectural parameters used throughout the design.
@@ -471,8 +477,8 @@ structures:
 4. **Parameterizable Propagation**: Structures are marked parameterizable automatically when any field uses a parameterizable type, sub-structure, or `arraySize` constant
 5. **Maximum Width**: `maxBitwidth` for structures is auto-computed; users should not write it directly in YAML
 6. **Generator Tags**: Optional tags for code generation (e.g., `address`, `data`, `tracker(name)`)
-7. **Packing**: Structures are packed in generated code (SystemVerilog `packed`, SystemC `sc_bv`)
-8. **Field Order**: Fields are packed in the order defined (top field is MSB)
+7. **Representation**: SystemVerilog and SystemC representations are generated from the same YAML structure contract; see `STRUCTURES_AND_DATA_TYPES_REFERENCE.md`
+8. **Field Order**: Field order is hardware-significant; the first YAML field is the MSB side of the SystemVerilog packed struct. See `STRUCTURES_AND_DATA_TYPES_REFERENCE.md` for the matching SystemC packed-form behavior.
 
 #### Examples
 
@@ -767,8 +773,9 @@ blocks:
 3. **Implementation Flags**: Control code generation
    - `hasRtl: true`: Generate SystemVerilog module skeleton
    - `hasMdl: true`: Generate SystemC class skeleton
-   - `hasVl: true`: Generate Verilator wrapper
+   - `hasVl: true`: Generate Verilator wrapper. Recommended for user-authored blocks that have `hasRtl: true`
    - `hasTb: true`: Generate testbench skeleton
+   - RTL hierarchy is closed: if a parent block has `hasRtl: true`, every block instantiated inside it must also have `hasRtl: true`. A `hasRtl: false` child is only valid under a model-only parent.
 4. **Special Flags**:
    - `isRegHandler: true`: Indicates this is a register decoder block (auto-generated blocks have this)
    - **Do not manually set** `isRegHandler` - it's set automatically for `<blockname>_regs` blocks
@@ -779,17 +786,22 @@ blocks:
 6. **Default Values** (from schema):
    - `hasRtl`: defaults to `true` (most blocks have RTL)
    - `hasMdl`: defaults to `true` (most blocks have model)
-   - `hasVl`: defaults to `false` (Verilator is optional)
+   - `hasVl`: defaults to `false`; explicitly set it to `true` for normal user-authored RTL blocks
    - `hasTb`: defaults to `false` (set on the DUT block, not the `_tb` wrapper)
    - `isRegHandler`: defaults to `false` (only for register handler blocks)
+7. **RTL/Verilator Guidance**:
+   - Prefer `hasRtl: true` and `hasVl: true` together for user-authored RTL blocks.
+   - `hasRtl: true` with `hasVl: false` is legal but unusual; use it only when a block intentionally should not get a Verilator wrapper.
+   - Auto-generated register handler blocks are the common exception: they have RTL but no Verilator wrapper and are created by arch2code, not handwritten in YAML.
 
 #### Examples
 
 ```yaml
 blocks:
-  # Simple block (hasRtl=true, hasMdl=true by default)
+  # Simple RTL block (hasRtl=true, hasMdl=true by schema default; set hasVl=true explicitly)
   fifo:
     desc: "FIFO buffer"
+    hasVl: true
   
   # Model-only block (no RTL)
   cpu:
@@ -799,11 +811,13 @@ blocks:
   # RTL-only block (no model)
   physical_phy:
     desc: "Physical layer (RTL only)"
+    hasVl: true
     hasMdl: false
   
   # DUT block with testbench (hasTb on the DUT, not the _tb wrapper)
   my_dut:
     desc: "DUT block to be tested"
+    hasVl: true
     hasTb: true
   
   # Block with Verilator co-simulation
@@ -815,13 +829,16 @@ blocks:
   ip:
     desc: "IP with variant-bound parameters"
     params: [IP_DATA_WIDTH, IP_MEM_DEPTH]
+    hasVl: true
 ```
 
 **AI Agent Guidance:**
 - By default, blocks have both RTL and model (`hasRtl: true`, `hasMdl: true`)
+- For new user-authored RTL blocks, explicitly set both `hasRtl: true` and `hasVl: true`; the schema default for `hasVl` is false, so do not rely on omission
 - Set `hasRtl: false` for model-only blocks (e.g., behavioral CPU models)
+- Do not instantiate a `hasRtl: false` block under a `hasRtl: true` parent. Either generate RTL for the child or make the parent model-only too.
 - Set `hasMdl: false` for RTL-only blocks (e.g., physical layer, analog interfaces)
-- Set `hasVl: true` when you want to co-simulate RTL with SystemC (Verilator)
+- Keeping RTL without VL is allowed but unusual; leave `hasVl: false` only for intentional no-wrapper cases. Auto-generated register handlers are the normal RTL/no-VL exception
 - Set `hasTb: true` on the **DUT block** (not on the `_tb` wrapper block). This triggers generation of `*Testbench`, `*External`, and `*Config` files. The `_tb` wrapper block itself has `hasTb: false`
 - Use `params` for values that will be assigned by variant under `parameters:`
 - **Block register handlers are auto-generated**: If a block has registers or FW-accessible memories, arch2code automatically creates a `<blockname>_regs` block to handle register access within that block
@@ -1989,7 +2006,7 @@ This section covers code generation workflow. For user-facing SystemC APIs (regi
 
 #### HW Dimensions vs. C++ Dimensions
 
-Generated structures carry `_bitWidth` and `_byteWidth` constants that represent the **hardware** bit/byte width (derived from YAML `width` definitions). These differ from the C++ `sizeof` of the same struct — C++ storage types are typically wider than the HW fields they model (e.g., a 1-bit type becomes `uint8_t`). `_packedSt` is the C++ type for the bit-packed HW representation; `pack()` / `unpack()` convert between the two domains. Never assume `sizeof(T)` equals `T::_byteWidth`. See `SYSTEMC_API_USER_REFERENCE.md` for the full explanation.
+Generated structures carry hardware dimensions and a packed-form conversion contract that intentionally differ from C++ object storage. Never assume `sizeof(T)` equals `T::_byteWidth`. See `STRUCTURES_AND_DATA_TYPES_REFERENCE.md` for the definitive structure/data-type representation contract and `SYSTEMC_API_USER_REFERENCE.md` for user-facing SystemC API usage.
 
 #### Auto-Generated Files
 

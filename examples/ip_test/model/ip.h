@@ -16,8 +16,6 @@
 #include "ipConfig.h"
 import ip;
 using namespace ip_ns;
-import ip_top;
-using namespace ip_top_ns;
 
 template<typename Config>
 SC_MODULE(ip), public blockBase, public ipBase<Config>

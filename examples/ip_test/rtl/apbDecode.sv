@@ -9,6 +9,7 @@ import ip_top_package::*;
 (
     apb_if.src apb_uIp0,
     apb_if.src apb_uIp1,
+    apb_if.src apb_uBridge,
     apb_if.dst cpu_main,
     input clk, rst_n
 );

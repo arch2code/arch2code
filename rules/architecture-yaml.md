@@ -85,6 +85,11 @@ parameters:
     - {variant: variant1, param: IP_DATA_WIDTH, value: 12}
 ```
 
+If a block is RTL-enabled (`hasRtl: true`), every block instantiated inside it
+must also be RTL-enabled. Model-only blocks (`hasRtl: false`) may only appear
+under model-only parents; otherwise generated RTL will instantiate modules that
+do not exist.
+
 ### Include Directives
 
 Split architecture across files using `include:`:
@@ -165,7 +170,21 @@ Block-level `<blockname>_regs` are auto-generated, but the top-level decoder is 
 ### 3. Connections Across Containers
 Connections only work within the **same container**. Use `connectionMaps` for hierarchy.
 
-### 4. Missing addressGroup for Registers
+### 4. Model-Only Child Under RTL Parent
+```yaml
+# BAD - rtl_top.sv would instantiate model_only_child, but no RTL exists
+blocks:
+  rtl_top: {desc: "RTL top", hasRtl: true}
+  model_only_child: {desc: "Behavioral model", hasRtl: false}
+
+instances:
+  u_top: {container: rtl_top, instanceType: rtl_top}
+  u_child: {container: rtl_top, instanceType: model_only_child}
+
+# GOOD - create RTL for the child, or make the parent model-only too
+```
+
+### 5. Missing addressGroup for Registers
 Instances with registers need `addressGroup`:
 ```yaml
 instances:
@@ -175,7 +194,7 @@ instances:
     addressGroup: system  # Required for register access
 ```
 
-### 5. Missing Worst-Case Bounds for Parameterizable Values
+### 6. Missing Worst-Case Bounds for Parameterizable Values
 ```yaml
 # BAD - direct parameterizable constant without maxValue
 ipParameters:
@@ -199,4 +218,7 @@ ipParameters:
 | `pop_ack` | Pop with ack | FIFO reads |
 
 ## Reference
-For complete documentation: `builder/base/ARCH2CODE_AI_RULES.md`
+For complete YAML guidance: `builder/base/ARCH2CODE_AI_RULES.md`
+
+For the definitive structure/data-type representation contract:
+`builder/base/STRUCTURES_AND_DATA_TYPES_REFERENCE.md`

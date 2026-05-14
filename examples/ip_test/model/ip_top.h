@@ -13,16 +13,20 @@
 #include "push_ack_port_thunker.h"
 #include "ipConfig.h"
 #include "srcConfig.h"
-import ip_top;
-using namespace ip_top_ns;
 import src;
 using namespace src_ns;
 import ip;
 using namespace ip_ns;
+import ipBridge;
+using namespace ipBridge_ns;
+import ip_top;
+using namespace ip_top_ns;
 //contained instances forward class declaration
 class apbDecodeBase;
 template<typename Config> class srcBase;
 template<typename Config> class ipBase;
+class bridgeDriverBase;
+class ipBridgeBase;
 
 SC_MODULE(ip_top), public blockBase, public ip_topBase
 {
@@ -34,16 +38,24 @@ public:
     push_ack_channel< srcOut0St<srcVariantSrc0Config> > out0;
     // src out1 push/ack stream
     push_ack_channel< srcOut1St<srcVariantSrc0Config> > out1;
+    // Non-parameterized 8-bit Q10 bridge data interface
+    push_ack_channel< data8St > out8;
+    // Non-parameterized 70-bit Q10 bridge data interface
+    push_ack_channel< data70St > out70;
     // CPU access to IP registers via APB
     apb_channel< apbAddrSt, apbDataSt > apb_uIp0;
     // CPU access to IP registers via APB
     apb_channel< apbAddrSt, apbDataSt > apb_uIp1;
+    // CPU access to IP registers via APB
+    apb_channel< apbAddrSt, apbDataSt > apb_uBridge;
 
     //instances contained in block
     std::shared_ptr<apbDecodeBase> uAPBDecode;
     std::shared_ptr<srcBase<srcVariantSrc0Config>> uSrc;
     std::shared_ptr<ipBase<ipVariant0Config>> uIp0;
     std::shared_ptr<ipBase<ipVariant1Config>> uIp1;
+    std::shared_ptr<bridgeDriverBase> uBridgeDriver;
+    std::shared_ptr<ipBridgeBase> uBridge;
 
     // cross-interface thunkers
     push_ack_port_thunker<srcOut0St<srcVariantSrc0Config>, ipDataSt<ipVariant0Config>> thunker_out0_uIp0;

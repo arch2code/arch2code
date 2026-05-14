@@ -962,7 +962,7 @@ class projectOpen:
     def getBlockData(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
         blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts',
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
-                        'configIncludeContext',
+                        'classIncludeContext', 'configIncludeContext',
                         'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
                         'interface_type_mappings_qualified'}
         ret = dict()
@@ -1213,6 +1213,25 @@ class projectOpen:
         intf_type = intfData['interfaceType']
         intf_type_key = intfData.get('interfaceTypeKey', None)
         ret['interfaceTypes'][intf_type] = intf_type_key
+
+    def getBDDeclaredPortInterfaceKey(self, instanceKey, portName):
+        instData = self.data['instances'].get(instanceKey, {})
+        blockKey = instData.get('instanceTypeKey')
+        blockData = self.data['blocks'].get(blockKey, {})
+        declaredPort = (blockData.get('ports') or {}).get(portName)
+        if not declaredPort:
+            return ''
+        interfaceName = declaredPort.get('interface')
+        if not interfaceName:
+            return ''
+        preferredContext = declaredPort.get('_context') or blockData.get('_context') or ''
+        interfaceKey = f"{interfaceName}/{preferredContext}" if preferredContext else ''
+        if interfaceKey in self.data['interfaces']:
+            return interfaceKey
+        for key, row in self.data['interfaces'].items():
+            if row.get('interface') == interfaceName:
+                return key
+        return ''
 
     def getBDInstances(self, qualBlock, ret, trimRegLeafInstance, excludeInstances):
         qualBlockInstances = dict()
@@ -1501,8 +1520,17 @@ class projectOpen:
             if connMap['instanceKey'] in qualBlockInstances:
                 # use portName as the key to deduplicate the port definitions
                 portName = connMap['instancePortName']
-                ret['connectionMapPorts'][portName] = dict(connMap)
-                self.getBDGetIntfStructs(ret, intfKey=connMap['interfaceKey'])
+                portView = dict(connMap)
+                declaredInterfaceKey = self.getBDDeclaredPortInterfaceKey(connMap['instanceKey'], portName)
+                if declaredInterfaceKey:
+                    # The child side of a cross-interface connectionMap is
+                    # typed by the child's declared port interface. Keeping
+                    # the parent interface here leaks parent-only contexts
+                    # into reusable leaf block headers.
+                    portView['interfaceKey'] = declaredInterfaceKey
+                    portView['interface'] = self.data['interfaces'][declaredInterfaceKey]['interface']
+                ret['connectionMapPorts'][portName] = portView
+                self.getBDGetIntfStructs(ret, intfKey=portView['interfaceKey'])
 
     # regular connections
     def getBDConnections(self, ret, allowSingleEnded=False):
@@ -1942,6 +1970,71 @@ class projectOpen:
         for sourceContext in sourceContexts:
             if sourceContext not in self.specialContexts:
                 ret['includeContext'][sourceContext] = 0
+
+        classStructs = dict()
+        classConsts = dict()
+
+        def addStructKey(structKey):
+            if structKey:
+                classStructs[structKey] = 0
+
+        def addConstKey(constKey):
+            if constKey:
+                classConsts[constKey] = 0
+
+        def addInterfaceStructs(intfKey):
+            if not intfKey:
+                return
+            intfData = self.data['interfaces'].get(intfKey)
+            if not intfData:
+                return
+            for structInfo in intfData.get('structures', []) or []:
+                addStructKey(structInfo.get('structureKey'))
+
+        for regData in ret.get('registers', {}).values():
+            if regData.get('regType') != 'memory':
+                addStructKey(regData.get('structureKey'))
+            else:
+                addStructKey(regData.get('structureKey'))
+                addStructKey(regData.get('addressStructKey'))
+                addConstKey(regData.get('wordLinesKey'))
+
+        for memData in ret.get('memories', {}).values():
+            addStructKey(memData.get('structureKey'))
+            addConstKey(memData.get('wordLinesKey'))
+
+        for memData in ret.get('memoryConnections', {}).values():
+            addStructKey(memData.get('structureKey'))
+            addStructKey(memData.get('addressStructKey'))
+
+        for channelGroup in ret.get('connectDouble', {}).values():
+            for connData in channelGroup.values():
+                addInterfaceStructs(connData.get('interfaceKey'))
+                addStructKey(connData.get('structureKey'))
+                addStructKey(connData.get('addressStructKey'))
+                for crossBind in connData.get('crossInterfaceEnds', []) or []:
+                    for payload in (crossBind.get('thunker') or {}).get('payloads', []) or []:
+                        addStructKey(payload.get('structureKey'))
+
+        for connMapData in ret.get('connectionMaps', {}).values():
+            for crossBind in connMapData.get('crossInterfaceEnds', []) or []:
+                for payload in (crossBind.get('thunker') or {}).get('payloads', []) or []:
+                    addStructKey(payload.get('structureKey'))
+
+        if ret['addressDecode'].get('isApbRouter'):
+            addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
+            if addressConfig:
+                regBusInterface = addressConfig.get('RegisterBusInterface')
+                for intfData in self.data['interfaces'].values():
+                    if intfData.get('interface') == regBusInterface:
+                        for item in intfData.get('structures', []) or []:
+                            addStructKey(item.get('structureKey'))
+
+        classContexts = self.extractContext(classStructs, classConsts)
+        for sourceContext in classContexts:
+            if sourceContext not in self.specialContexts:
+                ret['classIncludeContext'][sourceContext] = 0
+
         # Config headers are a distinct include surface from structure/type
         # context includes. Class declarations, trampolines, testbenches, and
         # Verilated wrappers spell concrete Config policy names; collect those
@@ -3256,6 +3349,34 @@ class projectCreate:
                         f"partial declaration to fall back to top-down inference.")
                 exit(warningAndErrorReport())
 
+    def validateRtlHierarchy(self, blocks_flat, instances_flat):
+        for instName, instRow in instances_flat.items():
+            parentBlockKey = instRow.get('containerKey') or ''
+            if parentBlockKey == '_topInstance':
+                continue
+            parentBlock = blocks_flat.get(parentBlockKey)
+            if not parentBlock or not bool(parentBlock.get('hasRtl', True)):
+                continue
+
+            childBlockKey = instRow.get('instanceTypeKey') or ''
+            childBlock = blocks_flat.get(childBlockKey)
+            if not childBlock or bool(childBlock.get('hasRtl', True)):
+                continue
+
+            instanceName = instRow.get('instance') or instName
+            parentName = parentBlock.get('block') or parentBlockKey
+            childName = childBlock.get('block') or childBlockKey
+            instContext = instRow.get('_context') or '<unknown>'
+            line = instRow.get('lc').line + 1 if instRow.get('lc') else '?'
+            printError(
+                f"In {instContext}:{line}, RTL block '{parentName}' contains "
+                f"instance '{instanceName}' of block '{childName}', but "
+                f"'{childName}' has hasRtl: false. RTL hierarchy requires every "
+                f"subblock of an RTL block to have an RTL implementation. Set "
+                f"blocks.{childName}.hasRtl: true, or set "
+                f"blocks.{parentName}.hasRtl: false if the parent is model-only.")
+            exit(warningAndErrorReport())
+
     def validatePorts(self):
         # Stage 6.2 of plan-variant-config-unification.md. Cross-interface
         # bind barrier: every connection end or connectionMap whose
@@ -3359,6 +3480,7 @@ class projectCreate:
             memories_flat,
             registers_flat,
         )
+        self.validateRtlHierarchy(blocks_flat, instances_flat)
 
         # Variant overrides: (blockKey, variant, paramName) -> int value.
         variant_overrides = dict()

@@ -16,7 +16,9 @@
 
 //contained instances forward class declaration
 class apbDecodeBase;
+class bridgeDriverBase;
 template<typename Config> class ipBase;
+class ipBridgeBase;
 template<typename Config> class srcBase;
 
 class ip_topExternal: public sc_module, public ip_topInverted {
@@ -29,6 +31,8 @@ public:
     std::shared_ptr<srcBase<srcVariantSrc0Config>> uSrc;
     std::shared_ptr<ipBase<ipVariant0Config>> uIp0;
     std::shared_ptr<ipBase<ipVariant1Config>> uIp1;
+    std::shared_ptr<bridgeDriverBase> uBridgeDriver;
+    std::shared_ptr<ipBridgeBase> uBridge;
 
     SC_HAS_PROCESS (ip_topExternal);
 
@@ -38,10 +42,16 @@ public:
     push_ack_channel< srcOut0St<srcVariantSrc0Config> > out0;
     // src out1 push/ack stream
     push_ack_channel< srcOut1St<srcVariantSrc0Config> > out1;
+    // Non-parameterized 8-bit Q10 bridge data interface
+    push_ack_channel< data8St > out8;
+    // Non-parameterized 70-bit Q10 bridge data interface
+    push_ack_channel< data70St > out70;
     // CPU access to IP registers via APB
     apb_channel< apbAddrSt, apbDataSt > apb_uIp0;
     // CPU access to IP registers via APB
     apb_channel< apbAddrSt, apbDataSt > apb_uIp1;
+    // CPU access to IP registers via APB
+    apb_channel< apbAddrSt, apbDataSt > apb_uBridge;
     apb_channel< apbAddrSt, apbDataSt > _ext_cm_uAPBDecode_cpu_main;
 
     // cross-interface thunkers

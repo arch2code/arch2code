@@ -26,6 +26,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
         *   `hasVl`: (Optional) Generate Verilator wrapper. **Default: `false`**
         *   `hasTb`: (Optional) Generate Testbench. **Default: `false`**
         *   `ports`: (Optional) Explicit port map keyed by port name. Each entry names an `interface` and `direction`.
+    *   **RTL hierarchy rule:** If a block has `hasRtl: true`, every block it instantiates must also have `hasRtl: true`. A model-only subblock (`hasRtl: false`) is only valid under a model-only parent.
 
     ```yaml
     blocks:
@@ -151,3 +152,4 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
     *   Missing `addressStruct` in memories (Required).
     *   Assuming `regAccess` is true (Default is `false`).
     *   Nesting `instances` inside `blocks`.
+    *   Placing a `hasRtl: false` block inside a `hasRtl: true` parent. Either generate RTL for the child or make the parent model-only.

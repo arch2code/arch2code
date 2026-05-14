@@ -66,7 +66,7 @@ def render_default(args, prj, data):
     else:
         fileMapKey = 'include_cppm'
 
-    for context in data['includeContext']:
+    for context in data['classIncludeContext']:
         if context in data['includeFiles'].get(fileMapKey, {}):
             includeName = data["includeFiles"][fileMapKey][context]["baseName"]
             if fileMapKey == 'include_cppm':

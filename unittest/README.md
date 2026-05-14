@@ -68,6 +68,11 @@ All tests are **self-contained** within the `unittest/` directory. Tests do not 
   - Tests malformed `maxValue` inputs produce clean errors instead of Python stack traces
   - **Self-contained:** Creates temporary YAML files for each test case
 
+- **test_error_rtl_hierarchy.py** - Tests error handling for invalid RTL hierarchy
+  - Validates that `hasRtl: true` parents cannot instantiate `hasRtl: false` children
+  - Ensures the diagnostic is a clean YAML error, not a Python stack trace
+  - **Self-contained:** Creates temporary YAML files for the failing hierarchy
+
 ### Test Data
 
 - **mixed_test_arch/** - Self-contained copy of mixed project YAML files
@@ -96,6 +101,7 @@ python3 test_mixed_project.py
 python3 test_error_missing_fields.py      # Error handling: missing fields
 python3 test_error_auto_functions.py      # Error handling: auto functions
 python3 test_error_parameterizable.py     # Error handling: parameterizable bounds
+python3 test_error_rtl_hierarchy.py      # Error handling: RTL hierarchy
 ```
 
 ## Test Coverage
@@ -108,6 +114,7 @@ These tests verify:
 - ✅ Node pickling and unpickling
 - ✅ sqlite3.Row compatibility
 - ✅ Error handling for missing keys
+- ✅ Error handling for RTL hierarchy implementation mismatches
 - ✅ Interface collision detection
 - ✅ Schema section validation
 - ✅ Project build from YAML

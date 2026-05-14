@@ -17,6 +17,13 @@ intentional: do validation, normalization, and expensive project-wide
 derivations once while creating the database, then expose simple read-only
 views when opening it for generation.
 
+Because this codebase is self-contained, do not add generator-side fallback
+paths for "backwards compatibility" unless the compatibility concern comes from
+user-authored YAML accepted by `projectCreate`. YAML parsing and migration
+belong in the database creation step. Once `projectOpen` is serving DB-backed
+rows and views, generators and templates should treat those views as the
+contract.
+
 ## Two-Step Model
 
 1. `projectCreate` builds the database.
@@ -54,7 +61,10 @@ Template mappings are selected during `projectCreate` by
 `projectCreate.configTemplates()`. The merged `templates:` section in
 `project.yaml` is expanded to absolute paths and saved in the project config as
 `TEMPLATES`. Later generator invocations do not re-merge project YAML to find
-templates; they load this saved mapping from the DB-backed config.
+templates, search alternate template directories, or synthesize missing
+template mappings. They load this saved mapping from the DB-backed config. If
+an expected template mapping is absent, fix `projectCreate` validation or
+configuration instead of adding a generator fallback.
 
 For in-place generated files, the path is:
 
@@ -95,15 +105,23 @@ For in-place generated files, the path is:
 - If a template needs a new input, first check whether the input already exists
   in `prj.data` or an existing view. Avoid reparsing YAML or recomputing global
   derivations inside template modules.
+- Do not preserve compatibility with old internal generator data shapes by
+  layering fallback lookups into templates or generators. If the current branch
+  changes a DB-backed view contract, update its producers and consumers
+  together. The compatibility boundary is user YAML, not intermediate Python
+  dictionaries.
 - Templates and template utility functions must stay simple: select fields,
   iterate, apply language-specific local formatting, and emit text. Extensive
   data manipulation, validation, cross-object lookup logic, caching, or
   expensive computation in templates or their helpers is expressly prohibited;
   move that work into `projectCreate` or a language-neutral `projectOpen` view
   helper instead.
-- Data-related error checks in view creation or template functions are a bad
-  code smell. They usually indicate that `projectCreate` validation is missing
-  a required invariant or diagnostic.
+- Avoid defensive programming in view creation and template functions for
+  fields that are guaranteed by the DB/view contract. Generators may branch on
+  whether optional rows or relationships exist, but individual fields on
+  existing rows should be treated as present by design. If a field is missing,
+  the fix belongs in `projectCreate` validation, schema/config creation, or the
+  view helper that defines the contract.
 - Do not edit generated regions by hand. Change the data creation, view helper,
   or template, then rerun the normal make target.
 

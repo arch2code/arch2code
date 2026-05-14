@@ -20,13 +20,15 @@ These rules apply to **both** `model/` and `tb/` directories.
 
 ## Structure Sizing: HW Width vs. C++ Width
 
-Every generated structure has `_bitWidth` and `_byteWidth` constants that represent the **hardware** dimensions (total bits on the wire). These are different from the C++ `sizeof` — C++ storage types are typically wider than the HW fields they model (e.g., a 1-bit flag stored in `uint8_t`).
+Generated structures carry hardware dimensions and a packed-form conversion
+contract that intentionally differ from C++ object storage.
 
-- **`_bitWidth` / `_byteWidth`** — HW reality: pack/unpack, `sc_bv` sizing, address-map byte widths
-- **`sizeof(struct)`** — C++ reality: multi-cycle burst sizing, `memcpy`, buffer allocation
-- **`_packedSt`** — C++ type that holds the bit-packed HW representation via `pack()` / `unpack()`
+- Never assume `sizeof(T)` equals `T::_byteWidth`.
+- Do not call internal bit-twiddling helpers (`pack_bits`, `unpack_bits`, `copy_packed_bits`) from user model/testbench code.
+- Use typed generated structures, channels, ports, and register/memory APIs in user code.
 
-Never assume `sizeof(T)` equals `T::_byteWidth`. See `SYSTEMC_API_USER_REFERENCE.md`: Introduction → HW Dimensions vs. C++ Dimensions for details.
+See `STRUCTURES_AND_DATA_TYPES_REFERENCE.md` for the definitive representation
+contract and `SYSTEMC_API_USER_REFERENCE.md` for user-facing SystemC APIs.
 
 ## Module Logging
 

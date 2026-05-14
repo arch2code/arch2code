@@ -9,6 +9,7 @@ Guide the user in defining regular constants, types, and structures in arch2code
 
 ## References
 *   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Low-Level Architecture Elements")
+*   **Definitive Representation Reference:** `STRUCTURES_AND_DATA_TYPES_REFERENCE.md` for YAML field ordering, generated SystemVerilog packed structs, generated SystemC storage, `_packedSt`, pack/unpack, and thunkers.
 
 ## Definition Order
 
@@ -126,17 +127,17 @@ structures:
 *   `data` -- marks the field as data (used by register bus generation)
 *   `tracker(name)` -- links to a debug tracker for transaction tracing
 
-## How YAML Width Maps to Generated C++
+## Representation Reference
 
-The YAML `width` on a type becomes the type's hardware bit width in generated code. Each generated C++ structure carries:
+Keep this skill focused on YAML authoring. For how YAML widths map to generated
+SystemVerilog and SystemC, including `_bitWidth`, `_byteWidth`, `_packedSt`,
+`sizeof(T)` differences, field order, pack/unpack behavior, and thunkers, read
+`STRUCTURES_AND_DATA_TYPES_REFERENCE.md`.
 
-*   `_bitWidth` — **HW bit width**, the sum of all field widths from YAML. Used for `sc_bv<>` sizing, pack/unpack, and address-map calculations.
-*   `_byteWidth` — **HW byte width**, `(_bitWidth + 7) >> 3`. Used for register/memory byte footprint.
-*   `_packedSt` — C++ type for the bit-packed HW representation (selected to fit `_bitWidth`).
-
-These are **not** the same as C++ `sizeof(struct)`. C++ storage types are typically wider than the HW fields they model (e.g., a 1-bit YAML type becomes `uint8_t` in C++). A structure with three 1-bit fields has `_byteWidth = 1` but `sizeof = 3`. The `pack()` / `unpack()` methods bridge between C++ layout and HW-accurate bit packing.
-
-For parameterizable structures, arch2code computes worst-case metadata from parameterizable field types, sub-structures, and `arraySize` constants. Users should not write those structure metadata fields directly; use `design-parameterizable-blocks.md`.
+For parameterizable structures, arch2code computes worst-case metadata from
+parameterizable field types, sub-structures, and `arraySize` constants. Users
+should not write those structure metadata fields directly; use
+`design-parameterizable-blocks.md`.
 
 ## Common Pitfalls
 

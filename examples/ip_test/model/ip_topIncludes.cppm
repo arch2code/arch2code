@@ -16,9 +16,11 @@ export module ip_top;
 import ip;
 import ipLeaf;
 import src;
+import ipBridge;
 using namespace ip_ns;
 using namespace ipLeaf_ns;
 using namespace src_ns;
+using namespace ipBridge_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
@@ -41,13 +43,15 @@ export namespace ip_top_ns {
 // enums
 enum  addr_id_top {          //Generated type for addressing top instances
     ADDR_ID_TOP_UIP0=0,      // uIp0 instance address
-    ADDR_ID_TOP_UIP1=1 };    // uIp1 instance address
+    ADDR_ID_TOP_UIP1=1,      // uIp1 instance address
+    ADDR_ID_TOP_UBRIDGE=2 }; // uBridge instance address
 inline const char* addr_id_top_prt( addr_id_top val )
 {
     switch( val )
     {
         case ADDR_ID_TOP_UIP0: return( "ADDR_ID_TOP_UIP0" );
         case ADDR_ID_TOP_UIP1: return( "ADDR_ID_TOP_UIP1" );
+        case ADDR_ID_TOP_UBRIDGE: return( "ADDR_ID_TOP_UBRIDGE" );
     }
     return("!!!BADENUM!!!");
 }

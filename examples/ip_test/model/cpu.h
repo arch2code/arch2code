@@ -10,8 +10,6 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "cpuBase.h"
-import ip_top;
-using namespace ip_top_ns;
 
 SC_MODULE(cpu), public blockBase, public cpuBase
 {

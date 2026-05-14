@@ -229,7 +229,7 @@ clangd: compdb
 		echo ""; \
 		echo "CompileFlags:"; \
 		echo "  Add:"; \
-		for flag in $(filter-out -m% -Wfatal-errors -g $(CPP_INCLUDES), $(CXX_FLAGS)); do \
+		for flag in $(filter-out -m% -Wfatal-errors -g -fmodule-file=% $(CPP_INCLUDES), $(CXX_FLAGS)); do \
 			echo "    - $$flag"; \
 		done; \
 		for inc in $(CPP_INCLUDES); do \
@@ -239,6 +239,7 @@ clangd: compdb
 		echo "  Remove:"; \
 		echo "    - -m*"; \
 		echo "    - -W*fatal-errors"; \
+		echo "    - -fmodule-file=*"; \
 		echo ""; \
 		echo "Diagnostics:"; \
 		echo "  Suppress:"; \

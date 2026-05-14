@@ -8,6 +8,8 @@ description: Guide for defining parameterizable arch2code YAML blocks, variants,
 Guide the user in defining parameterizable arch2code blocks in YAML. Use this skill when a block has per-instance widths, depths, structure shapes, register or memory sizing, or multiple variants.
 
 For regular block hierarchy and wiring, use `design-architecture.md`. For base constant/type/structure syntax, use `design-types-structures.md`.
+For generated structure representation, active vs. worst-case packed forms,
+and thunker behavior, use `STRUCTURES_AND_DATA_TYPES_REFERENCE.md`.
 
 ## Core Rules
 
@@ -153,10 +155,14 @@ When a parameterized producer interface connects to a consumer interface with a 
 *   Same interface meta-protocol.
 *   Same structure list and structureType ordering.
 *   Same field names and field ordering.
-*   Exact field `_bitWidth` agreement under the bound variants.
-*   Matching packed bit positions.
+*   Exact active field-width agreement under the bound variants.
+*   Matching active packed bit positions.
 
 Keep cross-parameter binds on the consumer's destination side. Producer-side cross-interface binding is not a supported authoring shape.
+
+Templated and untemplated structures may be compatible at the active packed-bit
+level while remaining incompatible C++ types. The generated thunker is the
+explicit bridge for those cases; see `STRUCTURES_AND_DATA_TYPES_REFERENCE.md`.
 
 ## Registers and Memories
 

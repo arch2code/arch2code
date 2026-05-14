@@ -12,10 +12,6 @@
 #include "srcBase.h"
 #include "ipLeafConfig.h"
 #include "srcConfig.h"
-import src;
-using namespace src_ns;
-import ipLeaf;
-using namespace ipLeaf_ns;
 //contained instances forward class declaration
 template<typename Config> class ipLeafBase;
 

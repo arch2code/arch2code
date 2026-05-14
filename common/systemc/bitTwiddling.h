@@ -27,9 +27,21 @@ constexpr uint16_t clog2(uint64_t n) {
 }
 extern uint64_t findNextPowerOf2(uint64_t n);
 extern uint16_t log2ofPowerOf2(uint64_t n);
+// pack_bits — append `bits` bits from src@srcPos to dest@destPos via
+// bitwise OR. Caller must pre-clear the destination. Source words are NOT
+// masked: any bits set above `consume` in a source word OR into the
+// destination at the matching position. For the unpack direction, where
+// source bits above `consume` must be discarded, use unpack_bits.
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits); // by ptr any alignment
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t bits); // by ptr aligned to start of src
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t src, uint16_t bits); // by value
+
+// unpack_bits — extract `bits` bits from src@srcPos to dest@destPos via
+// bitwise OR. Caller must pre-clear the destination. Each iteration's
+// source word is masked to exactly `consume` bits before OR-ing, so bits
+// above `consume` (adjacent fields in a packed form) are dropped. For the
+// pack direction, where bits above `consume` must propagate, use pack_bits.
+extern void unpack_bits(uint64_t* dest, uint16_t destPos, const uint64_t* src, uint16_t srcPos, uint16_t bits);
 
 template <typename OutPacked, typename InPacked>
 inline void copy_packed_bits(OutPacked& out, const InPacked& in, uint16_t bits)

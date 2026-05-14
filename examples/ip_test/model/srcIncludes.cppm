@@ -164,7 +164,8 @@ struct srcOut1St {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&data, 0, (uint64_t *)&_src, _pos, Config::OUT1_DATA_WIDTH);
+        memset((uint64_t *)&data, 0, sizeof(data));
+        unpack_bits((uint64_t *)&data, 0, (uint64_t *)&_src, _pos, Config::OUT1_DATA_WIDTH);
         _pos += Config::OUT1_DATA_WIDTH;
         marker = (srcMarkerT)((_src[ _pos >> 6 ] >> (_pos & 63)) & 1);
     }

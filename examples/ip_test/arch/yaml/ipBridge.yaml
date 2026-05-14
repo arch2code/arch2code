@@ -1,0 +1,94 @@
+# ipBridge - Stage 8.2 Q10 cross-interface bridge fixture for
+# plan-variant-config-unification.md.
+#
+# Two non-parameterized data interfaces (data8If, data70If) appear on the
+# ipBridge parent boundary and each binds via connectionMap to a
+# differently-Configed `ip` child (uBridgeIp0/variant0,
+# uBridgeIp1/variant1). The generator emits one push_ack_port_thunker
+# member per connectionMap inside ipBridge's container, bridging the
+# non-parameterized parent payload (data8St / data70St) to the per-
+# variant child payload (ipDataSt<ipVariant0Config> / ipDataSt<ipVariant1Config>).
+#
+# Runtime stimulus comes from a tiny non-parameterized bridgeDriver block
+# that pushes a known marker/data pair on each output. The model build
+# leverages the existing examples/ip_test testbench infrastructure: ip_top
+# carries hasTb: true so the generated ip_topExternal / ip_topTestbench
+# handle launch, and ipBridge sits as a normal contained sub-block whose
+# constructor sets up its own thunkers.
+#
+# The payload field order and bit widths in data8St / data70St exactly
+# match ipDataSt under variant0 / variant1 so the Stage 6.2 packed-form
+# compatibility check passes (marker: 1 bit, data: 8 bits matches
+# variant0; data: 70 bits matches variant1 — variant1 also exercises the
+# array-backed _packedSt path introduced after Stage 10.4).
+
+blockDir: .
+
+types:
+    bridgeMarkerT:
+        width: 1
+        desc: "Stage 8.2 1-bit marker; bit-width matches ipDataSt::marker (Stage 6.2 packed-form compatibility)"
+    data8T:
+        width: 8
+        desc: "Stage 8.2 fixed 8-bit Q10-bridge payload (matches ipDataSt::data under variant0)"
+    data70T:
+        width: 70
+        desc: "Stage 8.2 fixed 70-bit Q10-bridge payload (matches ipDataSt::data under variant1)"
+
+structures:
+    # Field order and per-field bit widths exactly match ipDataSt so the
+    # Stage 6.2 packed-form compatibility check passes when the cross-
+    # interface bind resolves to ipDataSt under the bound child Config.
+    data8St:
+        marker: { varType: bridgeMarkerT, desc: "Marker bit; bit-width matches ipDataSt::marker" }
+        data:   { varType: data8T,        desc: "8-bit payload; matches ipDataSt::data under variant0" }
+    data70St:
+        marker: { varType: bridgeMarkerT, desc: "Marker bit; bit-width matches ipDataSt::marker" }
+        data:   { varType: data70T,       desc: "70-bit payload; matches ipDataSt::data under variant1" }
+
+interfaces:
+    data8If:
+        desc: "Non-parameterized 8-bit Q10 bridge data interface"
+        interfaceType: push_ack
+        structures:
+            - { structure: data8St, structureType: data_t }
+    data70If:
+        desc: "Non-parameterized 70-bit Q10 bridge data interface"
+        interfaceType: push_ack
+        structures:
+            - { structure: data70St, structureType: data_t }
+
+blocks:
+    ipBridge:
+        desc: "Stage 8.2 Q10 fixture: two non-parameterized parent ports each route via connectionMap to a differently-Configed ip child"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            data8In:  { interface: data8If,  direction: dst }
+            data70In: { interface: data70If, direction: dst }
+    bridgeDriver:
+        desc: "Stage 8.2 stimulus producer: emits the two non-parameterized Q10 bridge interfaces"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            out8:  { interface: data8If,  direction: src }
+            out70: { interface: data70If, direction: src }
+    # Stage 8.2: the bridge's nested register-bus decoder is a separate
+    # block type from the top-level apbDecode. The two decoders share the
+    # apb_channel protocol shape but differ in connectivity: the top
+    # decoder owns cpu_main and dispatches to uIp0/uIp1/uBridge, while
+    # the bridge decoder owns its incoming apbReg port and dispatches to
+    # uBridgeIp0/uBridgeIp1. Keeping them as distinct blocks prevents
+    # the per-block port aggregation in apbDecodeBase from merging the
+    # two contexts (which would produce a body that references ports the
+    # instance does not own).
+    bridgeApbDecode:
+        desc: "Stage 8.2 nested APB decoder inside ipBridge (dispatches to uBridgeIp0/uBridgeIp1)"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true

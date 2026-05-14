@@ -23,6 +23,19 @@ AddressGroups:
         varType: addr_id_ip
         varTypeContext: ip_top.yaml
         enumPrefix: ADDR_ID_IP_
+    # Stage 8.2 of plan-variant-config-unification.md: the Q10 bridge
+    # container (ipBridge) hosts its own apbDecode instance so the
+    # register-bus hierarchy reaches the bridge's parameterizable
+    # children. postParseRegister.py auto-routes the parent register bus
+    # from the primary decoder (uAPBDecode) down into the bridge decoder
+    # (uBridgeAPBDecode), which then dispatches to uBridgeIp0/uBridgeIp1.
+    bridge:
+        addressIncrement: 0x00100000
+        maxAddressSpaces: 16
+        varType: addr_id_bridge
+        varTypeContext: ipBridge.yaml
+        enumPrefix: ADDR_ID_BRIDGE_
+        decoderInstance: uBridgeAPBDecode
 
 # Specify the register bus interface, this is used to define the address and data types used for register access
 # This interface definition must exist in the context of the register decoder instance specified in the address group

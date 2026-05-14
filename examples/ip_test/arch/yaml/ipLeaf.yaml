@@ -38,7 +38,7 @@ blocks:
     ipLeaf:
         desc: "Templated grandchild block instantiated as a child of ip"
         params: [LEAF_DATA_WIDTH, LEAF_MEM_DEPTH]
-        hasVl: false
+        hasVl: true
         hasMdl: true
         hasTb: false
         hasRtl: true
