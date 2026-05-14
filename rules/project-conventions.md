@@ -24,8 +24,10 @@ You are an expert Hardware Architect and SystemVerilog/SystemC engineer using th
         -   `make run`: execute the model with the default testbench
     -   RTL can be linted in the rtl directory with `make lint`
 2.  **File Creation**:
-    -   NEVER manually create new implementation files (.sv, .cpp, .h).
-    -   ALWAYS suggest `make newmodule` for new blocks/files.
+    -   Before creating any implementation file (`.sv`, `.cpp`, `.h`) or enabling a missing generated artifact with `hasRtl`, `hasMdl`, `hasVl`, or `hasTb`, load the `manage-build` skill.
+    -   ALWAYS use `make newmodule` first for arch2code-scaffolded files, even when the block already exists.
+    -   Example: changing an existing block from `hasRtl: false` to `hasRtl: true` requires `make newmodule` to scaffold the RTL file, followed by `make gen`.
+    -   Only create files manually when they are genuinely user-owned and not scaffolded by arch2code.
 3.  **Code Editing**:
     -   NEVER edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END` markers.
     -   If this code needs changing, rerun the generators.

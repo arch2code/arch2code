@@ -28,8 +28,13 @@ ipLeaf #(.LEAF_DATA_WIDTH(4), .LEAF_MEM_DEPTH(4)) uLeaf (
 // GENERATED_CODE_END
 
     // One-shot stimulus: after reset, push a fixed value on each output
-    // exactly once, then idle. Each output is independent so they can ack
-    // in any order.
+    // exactly once, then idle. The marker bit is asserted on both pushes
+    // so the consumer can verify per-variant pack/unpack preserves the
+    // bit positioned above the variant's data field. For out1 (70-bit
+    // payload feeding IP_DATA_WIDTH=70) the upper-word constant 0x2A is
+    // driven into bits [68:64] to prove the wide-packed bridge in the
+    // model side preserves bits above 64 — at RTL this just exercises a
+    // value that crosses the 64-bit boundary.
     `DFF_INST(logic, out0_done)
     `DFF_INST(logic, out1_done)
 
@@ -39,7 +44,8 @@ ipLeaf #(.LEAF_DATA_WIDTH(4), .LEAF_MEM_DEPTH(4)) uLeaf (
         out0.data = '0;
         if (!out0_done) begin
             out0.push = 1'b1;
-            out0.data.data = ipDataT'('hA5);
+            out0.data.marker = 1'b1;
+            out0.data.data = srcOut0DataT'('hA5);
             if (out0.ack) begin
                 n_out0_done = 1'b1;
             end
@@ -52,7 +58,8 @@ ipLeaf #(.LEAF_DATA_WIDTH(4), .LEAF_MEM_DEPTH(4)) uLeaf (
         out1.data = '0;
         if (!out1_done) begin
             out1.push = 1'b1;
-            out1.data.data = ipDataT'('h5A);
+            out1.data.marker = 1'b1;
+            out1.data.data = (srcOut1DataT'('h2A) << 64) | srcOut1DataT'('h5A);
             if (out1.ack) begin
                 n_out1_done = 1'b1;
             end

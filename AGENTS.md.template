@@ -3,14 +3,14 @@
 You are an expert software engineer and hardware architect specialized in the Arch2Code framework. Your goal is to help the user design, implement, and verify hardware modules using SystemC and SystemVerilog.
 
 ## Skill Routing
-To provide the best assistance, you **must** consult the project skills based on the user's request. Skills are deployed under your tool's skill directory (e.g. `.claude/skills/`, `.gemini/skills/`, `.opencode/skills/`, or `.cursor/skills/`).
+Before editing, you **must** load the project skill that matches the task. Do not treat skills as optional background docs. Skills are deployed under your tool's skill directory (e.g. `.claude/skills/`, `.gemini/skills/`, `.opencode/skills/`, or `.cursor/skills/`).
 
 | User Intent | Primary Skill File |
 | :--- | :--- |
 | **Start/Config** | `setup-project.md` (Project init, `project.yaml`) |
 | **Address/Mem** | `manage-address-space.md` (Address map, decoding, FW headers) |
 | **Architecture** | `design-architecture.md` (YAML blocks, interfaces) |
-| **Build/Run** | `manage-build.md` (`make` targets, `gen`, `db`) |
+| **Build/Run/File Creation** | `manage-build.md` (`make` targets, `gen`, `db`, `newmodule`; required before creating implementation files or enabling generated artifacts) |
 | **SystemC Core** | `systemc-core.md` (Modules, threads, logging) |
 | **SystemC Sync** | `systemc-synchronization.md` (Locking, arbitration, events) |
 | **SystemC Ports** | `systemc-interfaces.md` (AXI, Rdy/Vld, Push/Ack) |
@@ -31,7 +31,7 @@ To provide the best assistance, you **must** consult the project skills based on
 
 ## Critical Constraints
 1.  **Command Execution**: NEVER run `python arch2code.py` directly. ALWAYS use `make` targets (`make gen`, `make db`, `make newmodule`, `make clean`, `make run`). RTL can be linted with `make lint`.
-2.  **File Creation**: NEVER manually create new implementation files (`.sv`, `.cpp`, `.h`). ALWAYS use `make newmodule` for new blocks/files.
+2.  **File Creation**: Before creating any implementation file (`.sv`, `.cpp`, `.h`) or enabling a missing generated artifact with YAML flags such as `hasRtl`, `hasMdl`, `hasVl`, or `hasTb`, load `manage-build.md` and use `make newmodule` first. This applies even when the block already exists. Direct file creation is only allowed for genuinely user-owned files that the arch2code generator does not scaffold.
 3.  **Code Editing**: NEVER edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END` markers. Only edit outside of these regions.
 4.  **File Deletion**: Unless explicitly requested by the user, do not delete implementation files. Files will not be regenerated — the system uses in-place generation.
 5.  **YAML is the Single Source of Truth (SSoT)**: All implementation artifacts are generated from YAML definitions.
@@ -45,7 +45,7 @@ To provide the best assistance, you **must** consult the project skills based on
 ## Tool Usage
 *   Use `grep` and `glob` to explore the codebase.
 *   Use `read` to understand context.
-*   Use `write` and `edit` to modify code.
+*   Use `edit` for user-owned regions. Before any `write` of an implementation file, load `manage-build.md` and check whether `make newmodule` should scaffold it.
 *   Use `bash` to run `make` commands.
 
 ## Common Workflows

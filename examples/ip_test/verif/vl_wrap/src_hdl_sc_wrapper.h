@@ -9,11 +9,13 @@
 #include "srcBase.h"
 
 // Verilated RTL top (SystemC)
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_include_sv_wrapper_header
 #if !defined(VERILATOR) && defined(VCS)
-#include "src_hdl_sv_wrapper.h"
+#include "src_variantSrc0_hdl_sv_wrapper.h"
 #else
-#include "Vsrc_hdl_sv_wrapper.h"
+#include "Vsrc_variantSrc0_hdl_sv_wrapper.h"
 #endif
+// GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
@@ -113,5 +115,13 @@ private:
     }
 
 };
+
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
+#if !defined(VERILATOR) && defined(VCS)
+using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<src_variantSrc0_hdl_sv_wrapper>;
+#else
+using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<Vsrc_variantSrc0_hdl_sv_wrapper>;
+#endif
+// GENERATED_CODE_END
 
 #endif // SRC_HDL_SC_WRAPPER_H_

@@ -41,7 +41,7 @@ blocks:
         hasVl: false
         hasMdl: true
         hasTb: false
-        hasRtl: false
+        hasRtl: true
 
 memories:
     - { memory: ipLeafMem, block: ipLeaf, structure: ipLeafMemSt, addressStruct: ipLeafMemAddrSt, wordLines: LEAF_MEM_DEPTH, regAccess: false, desc: "Private leaf scratch memory (no FW access)" }
