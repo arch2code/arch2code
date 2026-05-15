@@ -4,7 +4,7 @@
 
 // === Block factory registration (ip_topTestbench) ===
 // Force-link function. Declaration in ip_topTestbench.h.
-// See plan-block-registration.md "Force-Link Function".
+// Referencing this symbol pulls the registration TU into static links.
 void force_link_ip_topTestbench() {}
 
 void register_ip_topTestbench_variants() {

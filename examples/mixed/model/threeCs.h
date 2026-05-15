@@ -9,8 +9,6 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "threeCsBase.h"
-import mixedBlockC;
-using namespace mixedBlockC_ns;
 //contained instances forward class declaration
 class blockCBase;
 

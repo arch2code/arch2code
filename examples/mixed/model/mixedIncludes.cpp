@@ -586,7 +586,7 @@ void test2St::unpack(const _packedSt &_src)
         uint16_t _consume;
         {
             cSt::_packedSt _tmp{0};
-            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, cSt::_bitWidth);
+            unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, cSt::_bitWidth);
             thirtyFiveBitArray[i].unpack(_tmp);
         }
         _pos += cSt::_bitWidth;
@@ -724,7 +724,7 @@ void test5St::unpack(const _packedSt &_src)
         uint16_t _consume;
         {
             uint64_t _tmp{0};
-            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, aRegSt::_bitWidth);
+            unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, aRegSt::_bitWidth);
             sevenBitArray[i].unpack(*((aRegSt::_packedSt*)&_tmp));
         }
         _pos += aRegSt::_bitWidth;
@@ -811,7 +811,7 @@ void test7St::unpack(const _packedSt &_src)
         uint16_t _consume;
         {
             test1St::_packedSt _tmp{0};
-            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, test1St::_bitWidth);
+            unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, test1St::_bitWidth);
             largeStruct[i].unpack(_tmp);
         }
         _pos += test1St::_bitWidth;
@@ -915,7 +915,7 @@ void test9St::unpack(const _packedSt &_src)
         uint16_t _consume;
         {
             test8St::_packedSt _tmp{0};
-            pack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, test8St::_bitWidth);
+            unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, test8St::_bitWidth);
             wordArray[i].unpack(_tmp);
         }
         _pos += test8St::_bitWidth;

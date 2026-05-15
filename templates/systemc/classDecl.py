@@ -16,13 +16,13 @@ def render_default(args, prj, data):
     out = list()
     className = f'{ data["blockName"] }'
     isParameterizable = data['isParameterizable']
-    # Stage 3.2 of plan-variant-config-unification.md: the parent class is
-    # itself a class template only when the block has its own `params:`
-    # (a "leaf parameterizable" block such as `ip` or `ipLeaf`). Containers
+    # The parent class is itself a class template only when the block has its
+    # own `params:` (a "leaf parameterizable" block such as `ip` or `ipLeaf`).
+    # Containers
     # that are flagged isParameterizable solely because parameterizable
     # structures transit their interface surface (e.g., `ip_top`) become
     # non-templated.
-    hasOwnParams = intf_gen_utils.block_has_own_params(prj, data['qualBlock'])
+    hasOwnParams = data['hasOwnParams']
     cfg = intf_gen_utils.block_config_arg(hasOwnParams)
     defaultConfig = data['defaultConfig'] if isParameterizable else ''
     baseClassName = f'{ data["blockName"] }Base{cfg}'
@@ -46,11 +46,9 @@ def render_default(args, prj, data):
                 break
     if needsHwMemory:
         out.append('#include "hwMemory.h"')
-    # Stage 6.3 of plan-variant-config-unification.md (Q10 / R2):
-    # protocol-specific thunker headers. Emitted exactly when this
-    # container declares at least one cross-interface thunker member
-    # (sc_declare_thunkers below). The set is computed once and emitted
-    # in sorted order so the generated text is deterministic.
+    # Protocol-specific thunker headers are emitted exactly when this container
+    # declares at least one cross-interface thunker member. The set is computed
+    # once and emitted in sorted order so the generated text is deterministic.
     # Off-by-default: an empty protocol set emits no include.
     thunker_protocols = intf_gen_utils.sc_thunker_protocols(data, prj)
     for proto in sorted(thunker_protocols):
@@ -87,12 +85,11 @@ def render_default(args, prj, data):
     if data["subBlocks"]:
         out.append(f'//contained instances forward class declaration')
         for key, value in data["subBlocks"].items():
-            # Stage 3.2 of plan-variant-config-unification.md: a child's
-            # Base class is itself a class template only when the child has
-            # its own params. Children flagged isParameterizable solely
-            # because parameterizable structures transit their surface are
-            # forward-declared as plain classes.
-            if intf_gen_utils.block_has_own_params(prj, key):
+            # A child's Base class is itself a class template only when the
+            # child has its own params. Children flagged isParameterizable
+            # solely because parameterizable structures transit their surface
+            # are forward-declared as plain classes.
+            if data['subBlockTypes'][key]['hasOwnParams']:
                 out.append(f'template<typename Config> class { value }Base;')
             else:
                 out.append(f'class { value }Base;')
@@ -117,8 +114,7 @@ def render_default(args, prj, data):
     # static emitted by templates/systemc/constructor.py. Non-templated
     # blocks additionally carry an active force-link function in
     # <block>Base.h so that modules-mode and static-archive linking pull
-    # the implementation TU into the program. See plan-block-registration.md
-    # "Force-Link Function" for the rationale.
+    # the implementation TU into the program.
     out.append('public:')
     if hasOwnParams:
         out.append(indent + f'SC_HAS_PROCESS({ className });')
@@ -137,21 +133,18 @@ def render_default(args, prj, data):
             out.append( indent + f'//instances contained in block')
             first = False
 
-        # Stage 3.1 of plan-variant-config-unification.md (D4 Option (a)):
-        # the child shared_ptr is typed by the child's per-variant Config
+        # The child shared_ptr is typed by the child's per-variant Config
         # (e.g., `ipBase<ipVariant0Config>`), not the parent's `Config`.
-        # Falls back to the child block's legacy `<context>DefaultConfig`
-        # when the descriptor's values are empty.
-        instCfg = intf_gen_utils.resolve_instance_config_arg(prj, instData)
+        # Falls back to the child block's default Config when the descriptor's
+        # values are empty.
+        instCfg = instData['instanceConfigArg']
         out.append( indent + f'std::shared_ptr<{ instData["instanceType"] }Base{instCfg}> { instData["instance"] };')
 
-    # Stage 6.3 of plan-variant-config-unification.md (Q10 / R2):
-    # cross-interface thunker member declarations. Emitted AFTER the
+    # Cross-interface thunker member declarations. Emitted after the
     # subBlockInstances loop so the thunker's mem-init can reference
-    # `instance->port` (C++ runs mem-inits in declaration order). When
-    # no cross-interface ends are flagged, sc_declare_thunkers returns
-    # [] and no line is emitted — the off-by-default invariant required
-    # by the brief.
+    # `instance->port` (C++ runs mem-inits in declaration order). When no
+    # cross-interface ends are flagged, sc_declare_thunkers returns [] and no
+    # line is emitted.
     thunkers = intf_gen_utils.sc_declare_thunkers(data, prj, indent, data)
     if thunkers:
         out.append('')

@@ -14,8 +14,6 @@
 #include "mixedConfig.h"
 import mixedBlockC;
 using namespace mixedBlockC_ns;
-import mixed;
-using namespace mixed_ns;
 
 template<typename Config>
 SC_MODULE(blockF), public blockBase, public blockFBase<Config>

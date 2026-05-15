@@ -69,7 +69,7 @@ public:
 };
 
 
-// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+// Force-link function (active modules-mode anchor).
 void force_link_blockC();
 // GENERATED_CODE_END
 

@@ -161,7 +161,7 @@ SC_HAS_PROCESS({{blockname}});
 
 // === Block factory registration ({{blockname}}) ===
 // Force-link function. Declaration in {{blockname}}Base.h.
-// See plan-block-registration.md "Force-Link Function".
+// Referencing this symbol pulls the registration TU into static links.
 void force_link_{{blockname}}() {}
 
 void register_{{blockname}}_variants() {

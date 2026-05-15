@@ -11,21 +11,11 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "axi4sDemoBase.h"
-#include "axi4sDemo_tbIncludes.h"
 
 SC_MODULE(axi4sDemo), public blockBase, public axi4sDemoBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("axi4sDemo_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<axi4sDemo>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
 
     axi4sDemo(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

@@ -9,12 +9,6 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "blockDBase.h"
-import mixed;
-using namespace mixed_ns;
-import mixedBlockC;
-using namespace mixedBlockC_ns;
-import mixedInclude;
-using namespace mixedInclude_ns;
 
 SC_MODULE(blockD), public blockBase, public blockDBase
 {

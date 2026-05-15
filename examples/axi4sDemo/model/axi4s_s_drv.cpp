@@ -5,7 +5,17 @@
 #include "axi4s_s_drv.h"
 SC_HAS_PROCESS(axi4s_s_drv);
 
-axi4s_s_drv::registerBlock axi4s_s_drv::registerBlock_; //register the block with the factory
+// === Block factory registration (axi4s_s_drv) ===
+void force_link_axi4s_s_drv() {}
+
+void register_axi4s_s_drv_variants() {
+    instanceFactory::registerBlock("axi4s_s_drv_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axi4s_s_drv>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _axi4s_s_drv_registered = (register_axi4s_s_drv_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 axi4s_s_drv::axi4s_s_drv(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)

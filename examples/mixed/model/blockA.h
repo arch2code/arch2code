@@ -14,8 +14,6 @@
 #include "hwMemory.h"
 import mixed;
 using namespace mixed_ns;
-import mixedBlockC;
-using namespace mixedBlockC_ns;
 import mixedInclude;
 using namespace mixedInclude_ns;
 

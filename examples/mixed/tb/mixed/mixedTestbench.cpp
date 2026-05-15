@@ -4,7 +4,7 @@
 
 // === Block factory registration (mixedTestbench) ===
 // Force-link function. Declaration in mixedTestbench.h.
-// See plan-block-registration.md "Force-Link Function".
+// Referencing this symbol pulls the registration TU into static links.
 void force_link_mixedTestbench() {}
 
 void register_mixedTestbench_variants() {

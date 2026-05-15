@@ -12,10 +12,10 @@
 #include "ipBridgeBase.h"
 #include "push_ack_port_thunker.h"
 #include "ipConfig.h"
-import ip_top;
-using namespace ip_top_ns;
 import ipBridge;
 using namespace ipBridge_ns;
+import ip_top;
+using namespace ip_top_ns;
 import ip;
 using namespace ip_ns;
 //contained instances forward class declaration

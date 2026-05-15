@@ -318,22 +318,21 @@ tbConfigTemplate = \
 
 // Forward declaration of the active force-link function emitted by
 // the testbench class. Calling it from createTestBench() creates a
-// real symbol reference into __modulename__Testbench.cpp so the
+// real symbol reference into __tbclassname__Testbench.cpp so the
 // linker pulls that TU into the program even when nothing else
 // references its symbols. This is required under C++20 modules and
-// static-archive linking. See plan-block-registration.md
-// "Force-Link Function".
-void force_link___modulename__Testbench();
+// static-archive linking.
+void force_link___tbclassname__Testbench();
 
-// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_PARAM --block=__modulename____variantparam__
 // GENERATED_CODE_BEGIN --template=tbConfig
 // GENERATED_CODE_END
 
     bool createTestBench(void) override
     {
         //create hierarchy
-        force_link___modulename__Testbench();
-        std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "__modulename__Testbench", "");
+        force_link___tbclassname__Testbench();
+        std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "__tbclassname__Testbench", "");
         return true;
     }
 
@@ -345,73 +344,88 @@ void force_link___modulename__Testbench();
     }
 
 };
-__modulename__Config::registerTestBenchConfig __modulename__Config::registerTestBenchConfig_; //register the testBench with the factory
+__tbclassname__Config::registerTestBenchConfig __tbclassname__Config::registerTestBenchConfig_; //register the testBench with the factory
 """
 
+def _tb_subst(data):
+    # Build the substitution map for testbench-family skeletons.
+    # There is exactly one testbench artifact and class family per block. The
+    # `__tbclassname__` token is therefore always the plain block name
+    # regardless of whether a `--variant` was supplied. The variant, when
+    # present, is consumed downstream only by the templates that select the DUT
+    # Config and factory variant string.
+    variant = data["variant"]
+    tbclassname = data["block"]
+    subst = {
+        'MODULENAME':   data["block"].upper(),
+        'modulename':   data["block"],
+        'TBCLASSNAME':  tbclassname.upper(),
+        'tbclassname':  tbclassname,
+        'variantparam': f" --variant={variant}" if variant else "",
+        'copyright':    data["fileGeneration"]["fileCopyrightStatement"],
+    }
+    return subst
+
 def tbConfig(args, prj, data):
+    subst = _tb_subst(data)
     t = TemplateCustom(tbConfigTemplate)
-    return(t.substitute({
-        'modulename':data["block"],
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+    return(t.substitute(subst))
 
 testBench_hdrTemplate = \
-"""#ifndef __MODULENAME___TANDEM_H
-#define __MODULENAME___TANDEM_H
+"""#ifndef __TBCLASSNAME___TESTBENCH_H
+#define __TBCLASSNAME___TESTBENCH_H
 // __copyright__
 
-// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_PARAM --block=__modulename____variantparam__
 // GENERATED_CODE_BEGIN --template=testbench --section=header
 // GENERATED_CODE_END
 
-#endif /* __MODULENAME___TANDEM_H */
+#endif /* __TBCLASSNAME___TESTBENCH_H */
 """
 
 def testBench_hdr(args, prj, data):
+    subst = _tb_subst(data)
     t = TemplateCustom(testBench_hdrTemplate)
-    return(t.substitute({
-        'MODULENAME':data["block"].upper(),
-        'modulename':data["block"],
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+    return(t.substitute(subst))
 
 testBench_srcTemplate = \
-"""// GENERATED_CODE_PARAM --block=__modulename__
+"""// GENERATED_CODE_PARAM --block=__modulename____variantparam__
 // GENERATED_CODE_BEGIN --template=testbench --section=init
 // GENERATED_CODE_END
 """
 
 def testBench_src(args, prj, data):
+    subst = _tb_subst(data)
     t = TemplateCustom(testBench_srcTemplate)
-    return(t.substitute({'modulename':data["block"]}))
+    return(t.substitute(subst))
 
 
 tbExternal_hdrTemplate = \
-"""#ifndef __MODULENAME___EXTERNAL_H
-#define __MODULENAME___EXTERNAL_H
+"""#ifndef __TBCLASSNAME___EXTERNAL_H
+#define __TBCLASSNAME___EXTERNAL_H
 // __copyright__
 
 #include "systemc.h"
 #include "logging.h"
 
-// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_PARAM --block=__modulename____variantparam__
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 // GENERATED_CODE_END
 };
 
-#endif /* __MODULENAME___EXTERNAL_H */
+#endif /* __TBCLASSNAME___EXTERNAL_H */
 """
 
 def tbExternal_hdr(args, prj, data):
+    subst = _tb_subst(data)
     t = TemplateCustom(tbExternal_hdrTemplate)
-    return(t.substitute({
-        'MODULENAME':data["block"].upper(),
-        'modulename':data["block"],
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+    return(t.substitute(subst))
 
 tbExternal_srcTemplate = \
-"""#include "__modulename__External.h"
+"""#include "__tbclassname__External.h"
 #include "workerThread.h"
 
-// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_PARAM --block=__modulename____variantparam__
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
 // GENERATED_CODE_END
@@ -421,8 +435,9 @@ tbExternal_srcTemplate = \
 """
 
 def tbExternal_src(args, prj, data):
+    subst = _tb_subst(data)
     t = TemplateCustom(tbExternal_srcTemplate)
-    return(t.substitute({'modulename':data["block"]}))
+    return(t.substitute(subst))
 
 include_hdrTemplate = \
 """

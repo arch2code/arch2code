@@ -21,23 +21,18 @@ def render_sc(args, prj, data):
     defaultConfig = data.get('defaultConfig', '') if isParameterizable else ''
     cfg = f'<{defaultConfig}>' if isParameterizable else ''
 
-    # Stage 9.3 of plan-variant-config-unification.md: when the block
-    # has its own `params:` AND none of its port structures depend on
-    # Config (so BFM/HDL_IF declarations don't carry `<Config>`), the
-    # per-variant wrapper typedef must bind the variant's own Config
-    # struct. The block default Config would lack the per-variant
-    # override fields and the wrapper instantiation would fail at
-    # compile time (the canonical mismatch for `blockF` in
-    # examples/mixed). Blocks with cross-Config or own-Config port
-    # structures (ip_test's `ip`, `src`) continue to use `defaultConfig`
-    # because their BFM declarations bind the same Config consistently
-    # across inheritance and BFM types.
+    # When the block has its own `params:` and none of its port structures
+    # depend on Config, the per-variant wrapper typedef must bind the variant's
+    # own Config struct. The block default Config would lack the per-variant
+    # override fields and the wrapper instantiation would fail at compile time.
+    # Blocks with cross-Config or own-Config port structures continue to use
+    # `defaultConfig` because their BFM declarations bind the same Config
+    # consistently across inheritance and BFM types.
     qualBlock = data.get('qualBlock', '')
     useOwnVariantConfig = False
-    if (isParameterizable and qualBlock
-            and intf_gen_utils.block_has_own_params(prj, qualBlock)):
+    if isParameterizable and qualBlock and data['hasOwnParams']:
         portStructsParameterized = False
-        for port_type in data.get('ports', {}):
+        for port_type in data['ports']:
             if portStructsParameterized:
                 break
             for port_name in data['ports'][port_type]:
@@ -50,8 +45,8 @@ def render_sc(args, prj, data):
             useOwnVariantConfig = True
     variantConfigForName = dict()
     if useOwnVariantConfig:
-        for desc in data.get('variantConfigs', []):
-            if desc.get('values'):
+        for desc in data['variantConfigs']:
+            if desc['values']:
                 variantConfigForName[desc['variant']] = desc['configName']
             else:
                 variantConfigForName[desc['variant']] = defaultConfig

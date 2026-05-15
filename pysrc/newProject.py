@@ -74,9 +74,9 @@ fileGeneration:
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
     vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
     # tandem      : { name : "Tandem",          ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true, hasRtl: true},  mode: block,   basePath: base,    desc: "Model tandem module wrapper class header file"}
-    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
-    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench config files"}
-    tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench external files"}
+    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench implementation file"}
+    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench config files"}
+    tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench external files"}
     include     : { name : "Includes",        ext: {cppm: "cppm"},           cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include module interface"}
     config      : { name : "Config",          ext: {hdr: "h"},               cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based default config header"}
     includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}

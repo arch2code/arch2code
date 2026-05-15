@@ -10,19 +10,11 @@
 #include "axi4sDemoBase.h"
 #include "axi4sDemoExternal.h"
 
+// Force-link function (active modules-mode anchor) for the testbench
+// class. Referencing this symbol pulls the registration TU into static links.
+void force_link_axi4sDemoTestbench();
+
 class axi4sDemoTestbench: public sc_module, public blockBase, public axi4sDemoChannels {
-
-    private:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("axi4sDemoTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<axi4sDemoTestbench>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 
 public:
 

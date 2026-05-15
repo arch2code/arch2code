@@ -7,6 +7,8 @@
 
 // GENERATED_CODE_PARAM --context=ip_top.yaml
 // GENERATED_CODE_BEGIN --template=includes --section=config
+struct ip_topDefaultConfig {
+};
 
 // GENERATED_CODE_END
 

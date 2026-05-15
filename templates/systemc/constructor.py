@@ -18,13 +18,10 @@ def wordLinesExpr(item, prj, useConfig=False, blockData=None):
             if constData.get('constant') == wordLines and constData.get('isParameterizable', False):
                 return f"Config::{wordLines}"
         if blockData:
-            # Stage 4.2 of plan-variant-config-unification.md: block
-            # params with no backing constant (the "IP_NONCONST_DEPTH"
-            # pattern) are now Config fields, not runtime addParam
-            # entries. Read them from `Config::*` like any other
-            # parameterizable constant. Stage 4.3 ensures the per-variant
-            # Config struct carries the field with the variant's
-            # override value.
+            # Block params with no backing constant are Config fields, not
+            # runtime addParam entries. Read them from `Config::*` like any
+            # other parameterizable constant; the per-variant Config struct
+            # carries the field with the variant's override value.
             for param in blockData.get('blockInfo', {}).get('params', []):
                 if param.get('param') == wordLines:
                     return f"Config::{wordLines}"
@@ -48,12 +45,11 @@ def constructorInit(args, prj, data):
     out = list()
     className = data["blockName"]
     isParameterizable = data['isParameterizable']
-    # Stage 3.2 of plan-variant-config-unification.md: only leaf
-    # parameterizable blocks (those with their own `params:`) remain class
-    # templates. Non-leaf containers — flagged isParameterizable solely
-    # because parameterizable structures transit their surface — are emitted
-    # as non-templated classes.
-    hasOwnParams = intf_gen_utils.block_has_own_params(prj, data['qualBlock'])
+    # Only leaf parameterizable blocks (those with their own `params:`) remain
+    # class templates. Non-leaf containers flagged isParameterizable solely
+    # because parameterizable structures transit their surface are emitted as
+    # non-templated classes.
+    hasOwnParams = data['hasOwnParams']
     cfg = intf_gen_utils.block_config_arg(hasOwnParams)
     templateDecl = intf_gen_utils.block_config_decl(hasOwnParams)
     qualClassName = f'{className}{cfg}'
@@ -72,10 +68,9 @@ def constructorInit(args, prj, data):
     # Non-templated blocks: a free helper function plus a self-registering
     # static at namespace scope replaces the in-class struct registerBlock
     # / static registerBlock_ pattern. An active force-link function is
-    # also emitted so generated parent / testbench code can guarantee that
-    # the implementation TU is linked into the program under C++20 modules
-    # and static-archive linking. See plan-block-registration.md
-    # "Force-Link Function" for the rationale.
+    # also emitted so generated parent / testbench code can guarantee that the
+    # implementation TU is linked into the program under C++20 modules and
+    # static-archive linking.
     #
     # Parameterized blocks: a self-registering static is emitted that
     # registers <className><DefaultConfig> for each variant the block
@@ -124,7 +119,8 @@ def constructorInit(args, prj, data):
                 printError(f"connection {chnl!r} ({channelType}) needs exactly one src and at least one dst end")
                 exit(warningAndErrorReport())
             src, dst = srcInstances[0], dstInstances[0]
-            if len(dstInstances) > 1:
+            uniqueDstInstances = list(dict.fromkeys(dstInstances))
+            if len(uniqueDstInstances) > 1:
                 printWarning(
                     f"connection {chnl!r} ({channelType}) has multiple dst ends ({dstInstances}). "
                     f"Channel naming will be arbitrarily using {dst!r} as the destination instance"
@@ -174,9 +170,9 @@ def constructorInit(args, prj, data):
             if chnl_table[chnl]['set_initial_value']:
                 # The structure type for the channel's default-value
                 # initializer must match the channel's own template
-                # arguments. Stage 3.3 derives those arguments from the
-                # connected child's per-variant Config; pass the same
-                # override here so the `_packedSt` qualified-id agrees.
+                # arguments. The channel derives those arguments from the
+                # connected child's per-variant Config; pass the same override
+                # here so the `_packedSt` qualified-id agrees.
                 channelStruct = intf_gen_utils.sc_structure_field_type(
                     chnlInfo, 'structure', 'structureKey', prj,
                     config_override=chnl_table[chnl].get('config_override'))
@@ -191,16 +187,14 @@ def constructorInit(args, prj, data):
 
             out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{extra}{autoMode}{defaultValue})')
 
-            # Stage 6.3 of plan-variant-config-unification.md: emit one
-            # thunker initialiser-list entry per flagged cross-interface
-            # end. The thunker constructor receives (name, parent-side
-            # channel, child port reference, block name). Member-init
-            # order in C++ follows declaration order in the class body;
-            # the thunker member is declared after the child instance
-            # pointer in classDecl.py so the child->port reference is
-            # valid by the time this entry runs. Off-by-default: when no
-            # ends are flagged, no entry is emitted and the generated
-            # output is byte-identical to pre-Stage-6.3.
+            # Emit one thunker initialiser-list entry per flagged
+            # cross-interface end. The thunker constructor receives (name,
+            # parent-side channel, child port reference, block name).
+            # Member-init order in C++ follows declaration order in the class
+            # body; the thunker member is declared after the child instance
+            # pointer in classDecl.py so the child->port reference is valid by
+            # the time this entry runs. When no ends are flagged, no entry is
+            # emitted.
             for flagged in intf_gen_utils._resolve_cross_interface_ends(chnlInfo, prj):
                 memberName = intf_gen_utils._thunker_member_name(flagged, chnlInfo, is_connection_map=False)
                 out.append(
@@ -210,22 +204,17 @@ def constructorInit(args, prj, data):
 
 
     for key, value in data['subBlockInstances'].items():
-        childData = prj.getBlockConfigView(value['instanceTypeKey'])
-        instIsParameterizable = childData['isParameterizable']
-        # Stage 3.1 of plan-variant-config-unification.md (D4 Option (a)):
-        # the cast target uses the child's per-variant Config so it matches
-        # the factory's variant-specific instantiation. Without this, the
-        # cast would resolve to the parent's `<Config>` (or the parent's
-        # defaultConfig) and dynamic_pointer_cast would return nullptr at
-        # runtime — the latent bug fixed in this stage.
-        instCfg = intf_gen_utils.resolve_instance_config_arg(prj, value)
-        # Generated createInstance passes the variant string only. Under
-        # variant ≅ Config (Stage 2) the factory key is
-        # `(blockType, variant)`; the variant string identifies the
-        # per-variant Config policy unambiguously. Non-templated children
-        # additionally emit an active force_link_<child>() call before the
-        # lookup so the linker pulls the child implementation TU into the
-        # program. See plan-block-registration.md "Force-Link Function".
+        instIsParameterizable = value['instanceTypeIsParameterizable']
+        # The cast target uses the child's per-variant Config so it matches
+        # the factory's variant-specific instantiation. Without this, the cast
+        # would resolve to the parent's `<Config>` or the parent's defaultConfig
+        # and dynamic_pointer_cast would return nullptr at runtime.
+        instCfg = value['instanceConfigArg']
+        # Generated createInstance passes the variant string only. The factory
+        # key is `(blockType, variant)`; the variant string identifies the
+        # per-variant Config policy unambiguously. Non-templated children also
+        # emit an active force_link_<child>() call before the lookup so the
+        # linker pulls the child implementation TU into the program.
         createCall = (
             f'instanceFactory::createInstance(name(), "{value["instance"]}", '
             f'"{value["instanceType"]}", "{value["variant"]}")'
@@ -237,13 +226,11 @@ def constructorInit(args, prj, data):
             f'<{ value["instanceType"] }Base{instCfg}>({createCall}))'
         )
 
-    # Stage 6.3 of plan-variant-config-unification.md: connectionMap
-    # thunker initialiser-list entries. A connectionMap binds an external
-    # parent port to a child instance port; when the two interfaces
-    # differ, the thunker bridges them. The thunker is declared after
-    # the child instance pointer in classDecl.py so the
-    # `instance->port` reference is well-formed when this entry runs.
-    # Off-by-default: an empty flagged list emits nothing.
+    # connectionMap thunker initialiser-list entries. A connectionMap binds an
+    # external parent port to a child instance port; when the two interfaces
+    # differ, the thunker bridges them. The thunker is declared after the child
+    # instance pointer in classDecl.py so the `instance->port` reference is
+    # well-formed when this entry runs. An empty flagged list emits nothing.
     for key, value in data["connectionMaps"].items():
         flagged_ends = intf_gen_utils._resolve_cross_interface_ends(value, prj)
         if not flagged_ends:
@@ -309,11 +296,10 @@ def constructorInit(args, prj, data):
 def constructorBody(args, prj, data):
     out = list()
     isParameterizable = data['isParameterizable']
-    # Stage 3.2 of plan-variant-config-unification.md: only leaf
-    # parameterizable blocks remain class templates. The body emits
-    # `this->` qualifiers for dependent base-class member names, which is
-    # only required inside class templates.
-    hasOwnParams = intf_gen_utils.block_has_own_params(prj, data['qualBlock'])
+    # Only leaf parameterizable blocks remain class templates. The body emits
+    # `this->` qualifiers for dependent base-class member names, which is only
+    # required inside class templates.
+    hasOwnParams = data['hasOwnParams']
 
     out.append('{')
     first = True
@@ -406,14 +392,13 @@ def constructorBody(args, prj, data):
 
         # `this->` qualifier is required only when the surrounding class
         # is itself a template (so the inherited member is a dependent
-        # name). Stage 3.2 keeps the template head only on blocks with
-        # their own params; non-leaf parents no longer need the qualifier.
+        # name). The template head is kept only on blocks with their own params;
+        # non-leaf parents no longer need the qualifier.
         parentPortName = f'this->{value["parentPortName"]}' if hasOwnParams else value["parentPortName"]
-        # Stage 6.3: getBDCrossInterfaceBinds() marks maps whose direct
-        # child bind is replaced by the thunker's downPort(m_chDown)
-        # bind. The thunker initialiser is emitted earlier in the
-        # constructor's init list. The off-by-default invariant: an empty
-        # flagged list leaves this loop's emission untouched.
+        # getBDCrossInterfaceBinds() marks maps whose direct child bind is
+        # replaced by the thunker's downPort(m_chDown) bind. The thunker
+        # initialiser is emitted earlier in the constructor's init list. An
+        # empty flagged list leaves this loop's emission untouched.
         if intf_gen_utils._resolve_cross_interface_ends(value, prj):
             continue
         out.append(f'    { value["instance"] }->{ value["instancePortName"]}({ parentPortName });')
@@ -462,9 +447,8 @@ def blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOw
       trampoline TU emitted via `<block>Registrar.cpp` (see
       `templates/systemc/blockRegistrar.py`). The trampoline owns the
       project-specific `(blockType, variant)` pairs that generated
-      callers look up. Under variant ≅ Config (Stage 2 of
-      plan-variant-config-unification.md) the variant string
-      identifies the per-variant Config policy unambiguously.
+      callers look up. The variant string identifies the per-variant Config
+      policy unambiguously.
 
       A self-registering static is *additionally* emitted in this TU
       for parameterized blocks. Its purpose is the load-bearing
@@ -487,38 +471,33 @@ def blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOw
       trigger.
 
     * **Non-templated SC blocks** continue to register themselves via
-      a free helper plus a self-registering static at namespace scope
-      in this TU, with an active force-link function declared in
-      `<block>Base.h`. See plan-block-registration.md "Force-Link
-      Function".
+      a free helper plus a self-registering static at namespace scope in this
+      TU, with an active force-link function declared in `<block>Base.h`.
     """
     out = list()
 
-    # Stage 4.1 of plan-variant-config-unification.md: the in-block
-    # self-registering static no longer emits `instanceFactory::addParam`
-    # calls. Block constructors read parameter values from `Config::*`
-    # directly (Stage 4.2); the runtime parameter table is decommissioned
-    # in Stage 4.4.
+    # The in-block self-registering static no longer emits
+    # `instanceFactory::addParam` calls. Block constructors read parameter
+    # values from `Config::*` directly; the runtime parameter table is
+    # decommissioned.
 
-    # Per-variant Config descriptors (Stage 1.1 of
-    # plan-variant-config-unification.md). The in-block static's job is
-    # to force implicit template instantiation of every per-variant
-    # `<B><PerVariantConfig>` so the trampoline TU's `make_shared` does
-    # not become an unresolved external at link time. We therefore emit
-    # one lambda per variant, each targeting its own per-variant Config
-    # (or the legacy <context>DefaultConfig when no descriptor is
-    # available). The factory keys here use `(blockType, variant)`,
-    # matching the trampoline-registered entries.
+    # Per-variant Config descriptors. The in-block static's job is to force
+    # implicit template instantiation of every per-variant
+    # `<B><PerVariantConfig>` so the trampoline TU's `make_shared` does not
+    # become an unresolved external at link time. We therefore emit one lambda
+    # per variant, each targeting its own per-variant Config or the default
+    # Config when no descriptor is available. The factory keys here use
+    # `(blockType, variant)`, matching the trampoline-registered entries.
     #
-    # Stage 3.2 caveat: only leaf parameterizable blocks (hasOwnParams)
-    # are class templates. Non-leaf parents that are flagged
-    # isParameterizable solely because parameterizable structures transit
-    # their surface are emitted as a single non-templated class; the
-    # registration lambda omits the template argument list.
+    # Only leaf parameterizable blocks (hasOwnParams) are class templates.
+    # Non-leaf parents that are flagged isParameterizable solely because
+    # parameterizable structures transit their surface are emitted as a single
+    # non-templated class; the registration lambda omits the template argument
+    # list.
     variantConfigName = dict()
     if hasOwnParams:
-        for desc in data.get('variantConfigs', []):
-            if desc.get('values'):
+        for desc in data['variantConfigs']:
+            if desc['values']:
                 variantConfigName[desc['variant']] = desc['configName']
             else:
                 variantConfigName[desc['variant']] = defaultConfig
@@ -563,13 +542,11 @@ def blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOw
         # guarantee that this TU's static initializers run. Without the
         # active call, the self-registering static below can remain
         # unfired and instanceFactory::createInstance can fail at runtime.
-        # See plan-block-registration.md "Force-Link Function".
         #
-        # Stage 3.2 of plan-variant-config-unification.md broadens the
-        # predicate from "non-parameterizable" to "non-templated" so that
-        # parent containers that are flagged isParameterizable solely
-        # because parameterizable structures transit their surface (e.g.,
-        # `ip_top`) also receive the force-link anchor.
+        # The predicate is "non-templated" so parent containers that are
+        # flagged isParameterizable solely because parameterizable structures
+        # transit their surface (e.g., `ip_top`) also receive the force-link
+        # anchor.
         out.append(f'void force_link_{className}() {{}}')
         out.append('')
         out.append(f'void register_{className}_variants() {{')

@@ -80,7 +80,7 @@ public:
 };
 
 
-// Force-link function (active modules-mode anchor). See plan-block-registration.md.
+// Force-link function (active modules-mode anchor).
 void force_link_ip_top();
 // GENERATED_CODE_END
 #endif //IP_TOP_BASE_H

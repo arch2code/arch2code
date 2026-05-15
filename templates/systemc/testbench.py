@@ -3,7 +3,7 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, block_has_own_params, resolve_instance_config_arg, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name
 
 from jinja2 import Template
 
@@ -34,43 +34,62 @@ def render_sc(args, prj, data):
     else:
         return ' yy'
 
+def _tb_selection(args, prj, data):
+    # Resolve once and reuse across the four testbench/external sections.
+    # Reads block view fields populated by getBDConfigInfo (variantConfigs,
+    # defaultConfig, isParameterizable). The Testbench/External/Config
+    # class-name family is always the plain block name: `--variant` selects
+    # only configName and factoryVariant, not emitted file or class names.
+    blockName = data['blockName']
+    variant = getattr(args, 'variant', None)
+    sel = resolve_dut_variant_selection(data, variant)
+    hasOwnParams = data['hasOwnParams']
+    configName = sel['configName']
+    cfg = f'<{configName}>' if hasOwnParams and configName else ''
+    return {
+        'blockName':      blockName,
+        'tbClassName':    blockName,
+        'hasOwnParams':   hasOwnParams,
+        'configName':     configName,
+        'cfg':             cfg,
+        'factoryVariant': sel['factoryVariant'],
+    }
+
+
 def tb_config_class(args, prj, data):
     t = Template(sec_tb_config_class_template)
-    blockName=data['blockName']
-    s = t.render(blockname=blockName)
+    sel = _tb_selection(args, prj, data)
+    s = t.render(blockname=sel['blockName'], tbclassname=sel['tbClassName'])
     return s
 
 def tb_sec_init(args, prj, data):
     t = Template(sec_tb_class_init_template)
-    blockName=data['blockName']
-    instName=blockName
+    sel = _tb_selection(args, prj, data)
+    blockName = sel['blockName']
+    instName = blockName
     isParameterizable = data['isParameterizable']
-    # Stage 3.2 of plan-variant-config-unification.md: the testbench harness
-    # holds a `<DUT>Base{cfg}` shared_ptr and inherits `<DUT>Channels{cfg}`.
-    # Both companions are class templates only when the DUT block has its
-    # own `params:`. Containers like `ip_top` (no own params) become
-    # non-templated, so the testbench's `cfg` is empty.
-    hasOwnParams = block_has_own_params(prj, data['qualBlock'])
-    defaultConfig = data['defaultConfig'] if isParameterizable else ''
-    cfg = f'<{defaultConfig}>' if hasOwnParams else ''
-    # Stage 3.2: the DUT's force-link function is emitted for any block
-    # without its own params (templated leaf blocks do not need it). The
-    # template branch that omits the force-link call is therefore gated on
-    # hasOwnParams, not on isParameterizable.
-    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external",
-                 is_parameterizable=isParameterizable, cfg=cfg, default_config=defaultConfig,
-                 dut_is_parameterizable=hasOwnParams)
+    # The DUT's force-link function is emitted for any block without its own
+    # params; templated leaf blocks do not need it. The template branch that
+    # omits the force-link call is therefore gated on hasOwnParams, not on
+    # isParameterizable.
+    s = t.render(blockname=blockName, tbclassname=sel['tbClassName'],
+                 dutinstname=instName, extinstname="external",
+                 is_parameterizable=isParameterizable, cfg=sel['cfg'],
+                 default_config=sel['configName'],
+                 dut_is_parameterizable=sel['hasOwnParams'],
+                 factory_variant=sel['factoryVariant'])
     return s
 
 def tb_sec_header(args, prj, data):
     t = Template(sec_tb_class_header_template)
-    blockName=data['blockName']
-    instName=blockName
+    sel = _tb_selection(args, prj, data)
+    blockName = sel['blockName']
+    instName = blockName
     isParameterizable = data['isParameterizable']
-    hasOwnParams = block_has_own_params(prj, data['qualBlock'])
-    defaultConfig = data['defaultConfig'] if isParameterizable else ''
-    cfg = f'<{defaultConfig}>' if hasOwnParams else ''
-    s = t.render(blockname=blockName, dutinstname=instName, extinstname="external", is_parameterizable=isParameterizable, cfg=cfg, default_config=defaultConfig)
+    s = t.render(blockname=blockName, tbclassname=sel['tbClassName'],
+                 dutinstname=instName, extinstname="external",
+                 is_parameterizable=isParameterizable, cfg=sel['cfg'],
+                 default_config=sel['configName'])
     return s
 
 def ext_sec_init(args, prj, data):
@@ -78,31 +97,28 @@ def ext_sec_init(args, prj, data):
     out = []
     out += sc_instance_includes(data, prj)
     isParameterizable = data['isParameterizable']
-    # Stage 3.2: the External pseudo-block inherits `<DUT>Inverted{cfg}`,
-    # which loses its template head when the DUT has no own params.
-    hasOwnParams = block_has_own_params(prj, data['qualBlock'])
-    defaultConfig = data['defaultConfig'] if isParameterizable else ''
-    cfg = f'<{defaultConfig}>' if hasOwnParams else ''
+    # The External pseudo-block inherits `<DUT>Inverted{cfg}`, which loses its
+    # template head when the DUT has no own params. The External class name is
+    # the plain `<block>External`; `--variant` selects only the Config and
+    # factory variant referenced inside it.
+    sel = _tb_selection(args, prj, data)
+    cfg = sel['cfg']
 
     s = """
-{blockName}External::{blockName}External(sc_module_name modulename) :
+{tbClassName}External::{tbClassName}External(sc_module_name modulename) :
     {blockName}Inverted{cfg}("Chnl"),
     log_(name())\n"""
-    out.append(s.format(blockName=data['blockName'], cfg=cfg))
+    out.append(s.format(blockName=sel['blockName'], tbClassName=sel['tbClassName'], cfg=cfg))
 
     for data_ in data['subBlockInstances'].values():
-        childData = prj.getBlockConfigView(data_['instanceTypeKey'])
-        instIsParameterizable = childData['isParameterizable']
-        # Stage 3.1: child instance's cast target is its per-variant Config,
-        # not the parent's defaultConfig. Falls back to the child's legacy
-        # defaultConfig for empty descriptors.
-        instCfg = resolve_instance_config_arg(prj, data_)
-        # Generated createInstance passes the variant string only.
-        # Under variant ≅ Config (Stage 2 of
-        # plan-variant-config-unification.md) the factory key is
-        # `(blockType, variant)`. Non-templated children additionally
+        instIsParameterizable = data_['instanceTypeIsParameterizable']
+        # Child instance casts target the child's per-variant Config, not the
+        # parent's defaultConfig. Empty descriptors fall back to the child's
+        # default Config.
+        instCfg = data_['instanceConfigArg']
+        # Generated createInstance passes the variant string only; the factory
+        # key is `(blockType, variant)`. Non-templated children additionally
         # emit an active force_link_<child>() call before the lookup.
-        # See plan-block-registration.md "Force-Link Function".
         createCall = (
             'instanceFactory::createInstance(name(), "{instName}", '
             '"{blockName}", "{variant}")'
@@ -122,10 +138,9 @@ def ext_sec_init(args, prj, data):
             chnlData = sc_gen_block_channels(data_, prj, data)
             s = '   ,{chnlName}("{chnlName}", "{instName}")'
             out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst))
-            # Stage 7.2 of plan-variant-config-unification.md: mirror the
-            # DUT's cross-interface thunker emission inside the external
-            # pseudo-block. Without these entries the consumer-side port
-            # whose interface is bridged by a thunker in the DUT would
+            # Mirror the DUT's cross-interface thunker emission inside the
+            # external pseudo-block. Without these entries the consumer-side
+            # port whose interface is bridged by a thunker in the DUT would
             # remain unbound during external elaboration.
             for flagged in _resolve_cross_interface_ends(data_, prj):
                 memberName = _thunker_member_name(flagged, data_, is_connection_map=False)
@@ -134,12 +149,11 @@ def ext_sec_init(args, prj, data):
                     f'{flagged["instance"]}->{flagged["portName"]}, name())'
                 )
 
-    # Stage 7.2: emit a local-only channel for each connectionMap port
-    # carried by a contained instance. The external pseudo-block
-    # inherits ip_topInverted's parent port for the same interface, but
-    # the inverted direction means it cannot serve as the binding target
-    # for the contained instance's port. The local channel satisfies SC
-    # port binding for the contained instance without disturbing the
+    # Emit a local-only channel for each connectionMap port carried by a
+    # contained instance. The external pseudo-block inherits ip_topInverted's
+    # parent port for the same interface, but the inverted direction means it
+    # cannot serve as the binding target for the contained instance's port.
+    # The local channel satisfies SC port binding without disturbing the
     # testbench harness's parent-port wiring.
     for key, value in data.get('connectionMaps', dict()).items():
         if _resolve_cross_interface_ends(value, prj):
@@ -181,8 +195,8 @@ def ext_sec_body(args, prj, data):
     # channels outside of any that include the excluded instances
     connections = sc_connect_channels(data, indent, data)
 
-    # Stage 7.2: bind the contained instance's connectionMap port to
-    # the local-only channel declared in ext_sec_header.
+    # Bind the contained instance's connectionMap port to the local-only
+    # channel declared in ext_sec_header.
     cm_binds = []
     for key, value in data.get('connectionMaps', dict()).items():
         if _resolve_cross_interface_ends(value, prj):
@@ -207,15 +221,18 @@ def ext_sec_header(args, prj, data):
     ext_fwd_decl_s = []
     external_blocks = sorted(data['subBlocks'].values())
     isParameterizable = data['isParameterizable']
-    # Stage 3.2: External pseudo-block inherits `<DUT>Inverted{cfg}`. Drop
-    # template arg when the DUT has no own params.
-    hasOwnParams = block_has_own_params(prj, data['qualBlock'])
-    defaultConfig = data['defaultConfig'] if isParameterizable else ''
-    cfg = f'<{defaultConfig}>' if hasOwnParams else ''
-    # Stage 3.2: child Base forward decls are class templates only when
-    # the child has its own params.
+    # External pseudo-block inherits `<DUT>Inverted{cfg}`. The External class
+    # name stays on the plain TB-family stub; only the selected Config suffix
+    # changes when the file-level GENERATED_CODE_PARAM names a different DUT
+    # variant.
+    sel = _tb_selection(args, prj, data)
+    hasOwnParams = sel['hasOwnParams']
+    defaultConfig = sel['configName']
+    cfg = sel['cfg']
+    # Child Base forward declarations are class templates only when the child
+    # has its own params.
     for blockKey, blockName in sorted(data['subBlocks'].items(), key=lambda item: item[1]):
-        childHasOwnParams = block_has_own_params(prj, blockKey)
+        childHasOwnParams = data['subBlockTypes'][blockKey]['hasOwnParams']
         if childHasOwnParams:
             ext_fwd_decl_s.append(f'template<typename Config> class {blockName}Base;')
         else:
@@ -224,27 +241,26 @@ def ext_sec_header(args, prj, data):
     ext_inst_decl_s = []
     external_insts = [v for v in data['subBlockInstances'].values() ]
     for data_ in external_insts:
-        # Stage 3.1: per-instance Config for parameterizable children.
-        instCfg = resolve_instance_config_arg(prj, data_)
+        # Per-instance Config for parameterizable children.
+        instCfg = data_['instanceConfigArg']
         ext_inst_decl_s.append(f'std::shared_ptr<{data_["instanceType"]}Base{instCfg}> {data_["instance"]};')
 
-    # Stage 3.3: channel types derive from the connected child's per-variant
-    # Config inside sc_gen_block_channels' connection-walk. The post-hoc
-    # `replace('<Config>', f'<{defaultConfig}>')` substitution that
-    # previously mapped the parent's template parameter onto the parent's
-    # defaultConfig is therefore obsolete for the typical case. We retain
-    # the substitution as a fallback for channels whose endpoints are not
-    # parameterizable child instances but still reference parameterizable
-    # structures (e.g., the parent itself surfaces `<Config>`); under
-    # Stage 3.2 those parents are non-templated and the literal `<Config>`
-    # would otherwise leak through as an undeclared name.
+    # Channel types derive from the connected child's per-variant Config
+    # inside sc_gen_block_channels' connection-walk. The post-hoc
+    # `replace('<Config>', f'<{defaultConfig}>')` substitution that previously
+    # mapped the parent's template parameter onto the parent's defaultConfig is
+    # therefore obsolete for the typical case. We retain the substitution as a
+    # fallback for channels whose endpoints are not parameterizable child
+    # instances but still reference parameterizable structures; those parents
+    # are non-templated and the literal `<Config>` would otherwise leak through
+    # as an undeclared name.
     ext_chnl_decl_s = sc_declare_channels(data, prj, ' '*4, data)
     if isParameterizable:
         ext_chnl_decl_s = [line.replace('<Config>', f'<{defaultConfig}>') for line in ext_chnl_decl_s]
 
-    # Stage 7.2: declare local-only channels for connectionMap ports on
-    # contained instances. See ext_sec_init for the matching member-init
-    # and ext_sec_body for the bind to the contained instance.
+    # Declare local-only channels for connectionMap ports on contained
+    # instances. See ext_sec_init for the matching member-init and
+    # ext_sec_body for the bind to the contained instance.
     for key, value in data.get('connectionMaps', dict()).items():
         if _resolve_cross_interface_ends(value, prj):
             continue
@@ -257,6 +273,11 @@ def ext_sec_header(args, prj, data):
         synth_conn['interfaceType'] = intfInfo['interfaceType']
         synth_conn['interfaceName'] = intfInfo['interface']
         synth_conn['maxTransferSize'] = intfInfo.get('maxTransferSize', '0')
+        synth_conn['configOverride'] = (
+            data.get('subBlockInstances', {})
+                .get(value.get('instanceKey', ''), {})
+                .get('instanceConfigName', '')
+        )
         chnlData = sc_gen_block_channels(synth_conn, prj, data)
         chnl_decl = chnlData["channel_decl"]
         # channel_decl is "<type><params> <name>;"; replace the
@@ -265,11 +286,10 @@ def ext_sec_header(args, prj, data):
         local_decl = chnl_decl.rsplit(' ', 1)[0] + f' {memberName};'
         ext_chnl_decl_s.append(f'    {local_decl}')
 
-    # Stage 7.2 of plan-variant-config-unification.md: when the DUT
-    # contains cross-interface thunker members the external pseudo-block
-    # must mirror them so its consumer-side ports complete binding
-    # during elaboration. The decls and the matching header include both
-    # remain off when no cross-interface ends are flagged.
+    # When the DUT contains cross-interface thunker members, the external
+    # pseudo-block must mirror them so its consumer-side ports complete binding
+    # during elaboration. The decls and matching header include remain off
+    # when no cross-interface ends are flagged.
     ext_thunker_decl_s = sc_declare_thunkers(data, prj, ' '*4, data)
     thunker_includes = sorted(sc_thunker_protocols(data, prj))
     thunker_include_lines = [f'#include "{proto}_port_thunker.h"' for proto in thunker_includes]
@@ -281,6 +301,7 @@ def ext_sec_header(args, prj, data):
             config_includes.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
     s = t.render(
         blockname=data['blockName'],
+        tbclassname=sel['tbClassName'],
         is_parameterizable=isParameterizable,
         cfg=cfg,
         default_config=defaultConfig,
@@ -309,21 +330,21 @@ sec_tb_class_header_template = """\
 #include "instanceFactory.h"
 
 #include "{{blockname}}Base.h"
-#include "{{blockname}}External.h"
+#include "{{tbclassname}}External.h"
 
 // Force-link function (active modules-mode anchor) for the testbench
-// class. See plan-block-registration.md "Force-Link Function".
-void force_link_{{blockname}}Testbench();
+// class. Referencing this symbol pulls the registration TU into static links.
+void force_link_{{tbclassname}}Testbench();
 
-class {{blockname}}Testbench: public sc_module, public blockBase, public {{blockname}}Channels{{cfg}} {
+class {{tbclassname}}Testbench: public sc_module, public blockBase, public {{blockname}}Channels{{cfg}} {
 
 public:
 
     std::shared_ptr<{{blockname}}Base{{cfg}}> {{dutinstname}};
-    {{blockname}}External {{extinstname}};
+    {{tbclassname}}External {{extinstname}};
 
-    {{blockname}}Testbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
-    ~{{blockname}}Testbench() override = default;
+    {{tbclassname}}Testbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
+    ~{{tbclassname}}Testbench() override = default;
 
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -337,29 +358,29 @@ public:
 """
 
 sec_tb_class_init_template = """\
-#include "{{blockname}}Testbench.h"
+#include "{{tbclassname}}Testbench.h"
 
-// === Block factory registration ({{blockname}}Testbench) ===
-// Force-link function. Declaration in {{blockname}}Testbench.h.
-// See plan-block-registration.md "Force-Link Function".
-void force_link_{{blockname}}Testbench() {}
+// === Block factory registration ({{tbclassname}}Testbench) ===
+// Force-link function. Declaration in {{tbclassname}}Testbench.h.
+// Referencing this symbol pulls the registration TU into static links.
+void force_link_{{tbclassname}}Testbench() {}
 
-void register_{{blockname}}Testbench_variants() {
-    instanceFactory::registerBlock("{{blockname}}Testbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{{blockname}}Testbench>(blockName, variant, bbMode)); }, "");
+void register_{{tbclassname}}Testbench_variants() {
+    instanceFactory::registerBlock("{{tbclassname}}Testbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{{tbclassname}}Testbench>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _{{blockname}}Testbench_registered = (register_{{blockname}}Testbench_variants(), 0);
+[[maybe_unused]] int _{{tbclassname}}Testbench_registered = (register_{{tbclassname}}Testbench_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
-{{blockname}}Testbench::{{blockname}}Testbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
-       : blockBase("{{blockname}}Testbench", name(), bbMode)
+{{tbclassname}}Testbench::{{tbclassname}}Testbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+       : blockBase("{{tbclassname}}Testbench", name(), bbMode)
         ,{{blockname}}Channels{{cfg}}("Chnl", "tb")
 {%- if dut_is_parameterizable %}
-        ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>( instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "")))
+        ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>( instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "{{factory_variant}}")))
 {%- else %}
-        ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>((force_link_{{blockname}}(), instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", ""))))
+        ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>((force_link_{{blockname}}(), instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "{{factory_variant}}"))))
 {%- endif %}
         ,{{extinstname}}("{{extinstname}}")
 {
@@ -384,7 +405,7 @@ sec_tb_external_header_template = """\
 {{ext_fwd_decl}}
 {%- endif %}
 
-class {{blockname}}External: public sc_module, public {{blockname}}Inverted{{cfg}} {
+class {{tbclassname}}External: public sc_module, public {{blockname}}Inverted{{cfg}} {
 
     logBlock log_;
 
@@ -395,9 +416,9 @@ public:
     {{ ext_inst_decl | indent(4) }}
 {%- endif %}
 
-    SC_HAS_PROCESS ({{blockname}}External);
+    SC_HAS_PROCESS ({{tbclassname}}External);
 
-    {{blockname}}External(sc_module_name modulename);
+    {{tbclassname}}External(sc_module_name modulename);
 
 {%- if ext_chnl_decl %}
 
@@ -419,7 +440,7 @@ public:
 
 sec_tb_config_class_template = """\
 
-class {{blockname}}Config : public testBenchConfigBase
+class {{tbclassname}}Config : public testBenchConfigBase
 {
 public:
     struct registerTestBenchConfig
@@ -427,10 +448,10 @@ public:
         registerTestBenchConfig()
         {
             // lamda function to construct the testbench
-            testBenchConfigFactory::registerTestBenchConfig("{{blockname}}", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<{{blockname}}Config>());}, is_default_testbench_v<{{blockname}}Config>);
+            testBenchConfigFactory::registerTestBenchConfig("{{tbclassname}}", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<{{tbclassname}}Config>());}, is_default_testbench_v<{{tbclassname}}Config>);
         }
     };
     static registerTestBenchConfig registerTestBenchConfig_;
-    virtual ~{{blockname}}Config() override = default; // Explicit Virtual Destructor
+    virtual ~{{tbclassname}}Config() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
 """

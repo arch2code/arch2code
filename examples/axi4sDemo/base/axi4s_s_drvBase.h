@@ -71,5 +71,8 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor).
+void force_link_axi4s_s_drv();
 // GENERATED_CODE_END
 #endif //AXI4S_S_DRV_BASE_H

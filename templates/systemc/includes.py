@@ -136,76 +136,58 @@ def includeTypes(args, prj, data):
 
 def includeConfig(args, prj, data):
     out = []
-    params = [value for value in data['constants'].values() if value.get('isParameterizable', False)]
-    # Stage 4.3 of plan-variant-config-unification.md: pure block params
-    # (declared via `params:` with no backing constant — the
-    # IP_NONCONST_DEPTH pattern) also surface as Config fields. Discover
-    # them via the descriptor lists for blocks whose primary context
-    # matches this file. Their value type is uint32_t — wide enough for
-    # any wordLines / depth-style block param under the project's worst-
-    # case variant — and inferred lazily from descriptor.values rather
-    # than from `data['constants']`.
-    context = data.get('context', '')
+    params = [value for value in data['constants'].values() if value['isParameterizable']]
+    # Synthetic block-param fields (declared via `params:` with no backing
+    # parameterizable constant) and per-variant Config descriptors are
+    # supplied by getContextData(); the template performs no cross-block
+    # walks.
     constants_by_name = {p['constant']: p for p in params}
-    block_param_synthetic = dict()
-    for qualBlock, blockRow in prj.data['blocks'].items():
-        if blockRow.get('_context', '') != context:
-            continue
-        for param_row in blockRow.get('params', []) or []:
-            name = param_row.get('param')
-            if not name or name in constants_by_name or name in block_param_synthetic:
-                continue
-            block_param_synthetic[name] = {'valueType': 'uint'}
-    if not params and not block_param_synthetic:
+    block_param_synthetic = data['contextBlockParamSynthetic']
+    variant_entries = data['contextVariantConfigs']
+    if not params and not block_param_synthetic and not variant_entries:
         return ""
-    # Legacy per-context Config struct. Retained during the Stage 1.1
-    # transition for blocks that still ride on <context>DefaultConfig
-    # (those without their own variants but parameterizable transitively).
+    # Legacy per-context Config struct. Retained for blocks that still ride on
+    # <context>DefaultConfig (those without their own variants but
+    # parameterizable transitively).
     # Pure block params (block_param_synthetic) are intentionally NOT
     # emitted here: there is no constant default, so any caller reading
     # them through the legacy default fallback is a usage bug. Per-variant
     # Config structs (below) carry the override values.
-    configName = data.get('configName', '')
-    if not configName:
-        configName = data['context'].rsplit('/', 1)[-1].rsplit('.', 1)[0].replace('-', '_') + 'DefaultConfig'
+    contextBaseName = data['context'].rsplit('/', 1)[-1].rsplit('.', 1)[0].replace('-', '_')
+    configName = f'{contextBaseName}DefaultConfig'
     out.append(f"struct {configName} {{")
     for value in params:
         type_str = _config_type(value)
         out.append(f"    static constexpr {type_str} {value['constant']} = {value['value']};")
     out.append("};")
     out.append("")
-    # Per-variant Config structs for any parameterizable block whose primary
-    # context matches this file's context. Variant labels and resolved values
-    # come from prj.getBlockConfigView()['variantConfigs']; intra-block dedup
-    # folds byte-identical variants onto a single canonical struct.
+    # Per-variant Config structs. Variant labels and resolved values come
+    # from the context view; intra-block dedup (duplicateOf) folds byte-
+    # identical variants onto a single canonical struct.
     seen_struct_names = set()
-    for qualBlock, blockRow in prj.data['blocks'].items():
-        if blockRow.get('_context', '') != context:
+    for entry in variant_entries:
+        desc = entry['descriptor']
+        if desc['duplicateOf'] is not None:
             continue
-        descriptors = prj.getBlockConfigView(qualBlock)['variantConfigs']
-        for desc in descriptors:
-            if desc['duplicateOf'] is not None:
-                continue
-            if not desc['values']:
-                continue
-            structName = desc['configName']
-            if structName in seen_struct_names:
-                continue
-            seen_struct_names.add(structName)
-            out.append(f"struct {structName} {{")
-            for constName, resolved in desc['values'].items():
-                if constName in constants_by_name:
-                    constData = constants_by_name[constName]
-                else:
-                    # Stage 4.3 synthetic block-param entry. Treated as an
-                    # unsigned 32-bit field; the variant override is the
-                    # value source.
-                    constData = block_param_synthetic.get(constName, {'valueType': 'uint'})
-                    constData = dict(constData, value=resolved)
-                type_str = _config_type(constData)
-                out.append(f"    static constexpr {type_str} {constName} = {resolved};")
-            out.append("};")
-            out.append("")
+        if not desc['values']:
+            continue
+        structName = desc['configName']
+        if structName in seen_struct_names:
+            continue
+        seen_struct_names.add(structName)
+        out.append(f"struct {structName} {{")
+        for constName, resolved in desc['values'].items():
+            if constName in constants_by_name:
+                constData = constants_by_name[constName]
+            else:
+                # Synthetic block-param entry. Treated as an unsigned
+                # 32-bit field; the variant override is the value source.
+                constData = block_param_synthetic[constName]
+                constData = dict(constData, value=resolved)
+            type_str = _config_type(constData)
+            out.append(f"    static constexpr {type_str} {constName} = {resolved};")
+        out.append("};")
+        out.append("")
     return("\n".join(out))
 
 

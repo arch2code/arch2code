@@ -6,6 +6,7 @@
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
 #include "endOfTest.h"
+#include "testController.h"
 #include "ipConfig.h"
 
 import ip;
@@ -40,6 +41,12 @@ public:
     bool createTestBench(void) override
     {
         test_ip_structs<ipDefaultConfig>::test();
+
+        testController::GetInstance().set_test_names({
+            "test_ip_uIp0_check",
+            "test_ip_uIp1_check",
+        });
+
         //create hierarchy
         force_link_ip_topTestbench();
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "ip_topTestbench", "");

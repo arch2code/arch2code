@@ -9,8 +9,6 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "cpuBase.h"
-import mixed;
-using namespace mixed_ns;
 
 SC_MODULE(cpu), public blockBase, public cpuBase
 {

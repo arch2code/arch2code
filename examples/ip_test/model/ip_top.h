@@ -13,14 +13,14 @@
 #include "push_ack_port_thunker.h"
 #include "ipConfig.h"
 #include "srcConfig.h"
-import src;
-using namespace src_ns;
-import ip;
-using namespace ip_ns;
-import ipBridge;
-using namespace ipBridge_ns;
 import ip_top;
 using namespace ip_top_ns;
+import src;
+using namespace src_ns;
+import ipBridge;
+using namespace ipBridge_ns;
+import ip;
+using namespace ip_ns;
 //contained instances forward class declaration
 class apbDecodeBase;
 template<typename Config> class srcBase;

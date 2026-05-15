@@ -27,16 +27,14 @@ class newModule:
                 exit(warningAndErrorReport())
         if not prj.data.get("blocks"):
             return
-        # File-map conditions can use raw block schema fields plus
-        # derived fields exposed by getBlockConfigView(), such as
-        # isParameterizable. Keep the derived view local instead of
-        # mutating prj.data['blocks'].
-        blockCondData = {}
-        for qualBlock in list(prj.data['blocks'].keys()):
-            configView = prj.getBlockConfigView(qualBlock)
-            blockCondData[qualBlock] = dict(prj.data['blocks'][qualBlock])
-            for field in ['isParameterizable', 'defaultConfig']:
-                blockCondData[qualBlock][field] = configView[field]
+        # File-map conditions read schema fields from the block row.
+        # `isParameterizable` and `defaultConfig` are persisted on the
+        # block row by projectCreate.calcBlockConfigInfo(); no derived
+        # view is required.
+        blockCondData = {
+            qualBlock: dict(prj.data['blocks'][qualBlock])
+            for qualBlock in prj.data['blocks']
+        }
         someBlock = next(iter(prj.data["blocks"])) # any random entry
         for fileKey, fileDefinition in fileGenerationConfig['fileMap'].items():
             mode = fileDefinition.get('mode', 'block') 
@@ -95,9 +93,40 @@ class newModule:
                         for variant in data['variants']:
                             self.create_from_template(fileGenerationConfig, fileKey, fileDefinition, variant, True, prj, data, args)
                     else:
-                        self.create_from_template(fileGenerationConfig, fileKey, fileDefinition, None, False, prj, data, args)
-        includeFiles = prj.config.getConfig('INCLUDEFILES')  
+                        # Single-emission testbench artifacts are created exactly
+                        # once per block. When that block has own variants, seed
+                        # the skeleton with the first declared variant for this
+                        # block.
+                        # This keeps `make newmodule` project-wide: multiple TBs can
+                        # be created in one pass without a global variant argument,
+                        # and users can edit the file-level GENERATED_CODE_PARAM if
+                        # they want a different DUT variant for a specific TB.
+                        selectedVariant = self._selectSingleVariant(
+                            fileKey, data, blockCondData[qualBlock])
+                        self.create_from_template(
+                            fileGenerationConfig, fileKey, fileDefinition,
+                            selectedVariant, False, prj, data, args)
+
+        includeFiles = prj.config.getConfig('INCLUDEFILES')
         self.context_create_from_template(includeFiles, fileGenerationConfig, prj, args)
+
+    _TB_FILE_KEYS = ('testBench', 'tbConfig', 'tbExternal')
+
+    def _selectSingleVariant(self, fileKey, data, blockCond):
+        # Return the variant string (or None) to bind into the generated-code
+        # parameter of a single-emission artifact. Only the testbench family
+        # binds a DUT variant; other single-emission file types stay variant-
+        # agnostic. Non-parameterizable blocks pass through as None. For
+        # parameterizable TBs, use the first variant in the block's declaration
+        # order as a useful skeleton default rather than making `newmodule`
+        # depend on one global variant selection.
+        if fileKey not in self._TB_FILE_KEYS:
+            return None
+        if not blockCond['isParameterizable']:
+            return None
+        if not data['variants']:
+            return None
+        return next(iter(data['variants']))
 
     def create_from_template(self, fileGenerationConfig, fileKey, fileDefinition, variant, variantFile, prj, data, args):
         # for each file target we need to build a path and filename to perform file template creation

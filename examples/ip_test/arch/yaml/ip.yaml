@@ -150,7 +150,7 @@ blocks:
         params: [IP_DATA_WIDTH, IP_MEM_DEPTH, IP_NONCONST_DEPTH]
         hasVl: true
         hasMdl: true
-        hasTb: false
+        hasTb: true
         hasRtl: true
         # Stage 5.2 of plan-variant-config-unification.md: bottom-up port
         # declaration (D10). Matches the top-down inferred shape so the

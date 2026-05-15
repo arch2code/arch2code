@@ -11,7 +11,7 @@
 #include "ip_topExternal.h"
 
 // Force-link function (active modules-mode anchor) for the testbench
-// class. See plan-block-registration.md "Force-Link Function".
+// class. Referencing this symbol pulls the registration TU into static links.
 void force_link_ip_topTestbench();
 
 class ip_topTestbench: public sc_module, public blockBase, public ip_topChannels {

@@ -11,8 +11,8 @@ axi4sDemoExternal::axi4sDemoExternal(sc_module_name modulename) :
     axi4sDemoInverted("Chnl"),
     log_(name())
 
-   ,u_axi4s_m_drv(std::dynamic_pointer_cast<axi4s_m_drvBase>( instanceFactory::createInstance(name(), "u_axi4s_m_drv", "axi4s_m_drv", "")))
-   ,u_axi4s_s_drv(std::dynamic_pointer_cast<axi4s_s_drvBase>( instanceFactory::createInstance(name(), "u_axi4s_s_drv", "axi4s_s_drv", "")))
+   ,u_axi4s_m_drv(std::dynamic_pointer_cast<axi4s_m_drvBase>((force_link_axi4s_m_drv(), instanceFactory::createInstance(name(), "u_axi4s_m_drv", "axi4s_m_drv", ""))))
+   ,u_axi4s_s_drv(std::dynamic_pointer_cast<axi4s_s_drvBase>((force_link_axi4s_s_drv(), instanceFactory::createInstance(name(), "u_axi4s_s_drv", "axi4s_s_drv", ""))))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=tbExternal --section=body
 {

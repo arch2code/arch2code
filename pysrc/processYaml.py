@@ -326,6 +326,10 @@ class projectOpen:
         printIfDebug("Data Loaded")
         self.loadData()
         self.generateHierarchy()
+        # Memoization for the per-block config bundle. Read repeatedly per
+        # parent block during view assembly; identical for the lifetime of
+        # the open database.
+        self._blockConfigBundleCache = dict()
         printIfDebug("Project loaded")
 
     def getSchemaNode(self, table_name):
@@ -953,7 +957,58 @@ class projectOpen:
 
         ret['enums'] = enums
         ret['context'] = context
+        # Per-context Config-header inputs. The view here is what
+        # `templates/systemc/includes.py` includeConfig() consumes; the
+        # template performs no cross-block walks of `prj.data['blocks']`.
+        # Names are prefixed with `context` to keep them distinct from the
+        # block-view `variantConfigs` field; SystemVerilog generation
+        # merges context-view fields over block-view fields via
+        # `data.update`, so overlapping names would silently shadow.
+        ret['contextVariantConfigs']      = self.getContextVariantConfigDescriptors(contexts)
+        ret['contextBlockParamSynthetic'] = self.getContextBlockParamSynthetic(contexts)
         return ret
+
+    def getContextVariantConfigDescriptors(self, contexts):
+        # Per-variant Config descriptors aggregated across every block
+        # whose primary `_context` matches one of the supplied contexts.
+        # Each entry is `{block, descriptor}` so the template renders the
+        # descriptor while keeping block provenance available for
+        # diagnostics. Intra-block dedup (`duplicateOf`) is preserved on
+        # the descriptor; the template skips duplicates.
+        ctx_set = set(contexts) if isinstance(contexts, (list, set, tuple)) else {contexts}
+        out = []
+        for qualBlock, blockRow in self.data['blocks'].items():
+            if blockRow['_context'] not in ctx_set:
+                continue
+            bundle = self.getBlockConfigView(qualBlock)
+            if not bundle['isParameterizable']:
+                continue
+            for desc in bundle['variantConfigs']:
+                out.append({'qualBlock': qualBlock, 'descriptor': desc})
+        return out
+
+    def getContextBlockParamSynthetic(self, contexts):
+        # Block params declared via `params:` without a backing
+        # parameterizable constant. Each appears as a field on per-variant
+        # Config structs but has no default value in `data['constants']`,
+        # so the type defaults to `uint32_t` here for the template to use.
+        ctx_set = set(contexts) if isinstance(contexts, (list, set, tuple)) else {contexts}
+        constants_by_name = {
+            const_row['constant']
+            for const_row in self.data['constants'].values()
+            if const_row['isParameterizable']
+            and const_row['_context'] in ctx_set
+        }
+        synthetic = dict()
+        for qualBlock, blockRow in self.data['blocks'].items():
+            if blockRow['_context'] not in ctx_set:
+                continue
+            for param_row in blockRow.get('params', []) or []:
+                name = param_row['param']
+                if name in constants_by_name or name in synthetic:
+                    continue
+                synthetic[name] = {'valueType': 'uint'}
+        return synthetic
 
     # do some preproccessing to assemble subset of data easily accessed by templates
     # from perspective of qualBlock
@@ -998,6 +1053,9 @@ class projectOpen:
         self.getBDConnections(ret, allowSingleEnded=(len(excludeInstances)!=0))
         # annotate cross-interface binds in the language-agnostic view
         self.getBDCrossInterfaceBinds(ret)
+        # pre-resolve per-channel Config override for SystemC channel
+        # typing so template utilities do not perform cross-block lookups
+        self.getBDChannelConfigOverrides(ret)
         # build final connection info
         self.getBDConnectionsFinal(ret)
         # deduplicate the ports
@@ -1013,12 +1071,12 @@ class projectOpen:
 
     def getBDConfigInfo(self, ret):
         # View assembly: read persisted truths and derive view-side fields.
-        # Persisted by projectCreate.calcBlockConfigInfo(); see
-        # plan-block-config-postprocess.md.
+        # Persisted by projectCreate.calcBlockConfigInfo().
         qualBlock = ret['blockInfo']['blockKey']
         block_row = self.data['blocks'][qualBlock]
-        ret['isParameterizable'] = bool(block_row.get('isParameterizable', False))
-        ret['defaultConfig'] = block_row.get('defaultConfig', '')
+        ret['isParameterizable'] = bool(block_row['isParameterizable'])
+        ret['hasOwnParams'] = bool(block_row.get('params'))
+        ret['defaultConfig'] = block_row['defaultConfig']
         # Pass ret['variants'] through so the descriptor builder reuses the
         # bound-parameter rows getBDInstances has already attached, instead
         # of re-walking parametersvariants.
@@ -1027,27 +1085,111 @@ class projectOpen:
         ) if ret['isParameterizable'] else []
 
     def getBlockConfigView(self, qualBlock):
-        # Constant-time per-block bundle of the config-info fields. Use this
-        # instead of getBlockData(qualBlock) when only isParameterizable /
-        # defaultConfig / variantConfigs are required.
+        # Internal view-assembly helper: constant-time per-block bundle of
+        # config-info fields used while building the language-agnostic
+        # block and context views. Templates and template utilities do
+        # NOT call this; they consume the equivalent fields surfaced on
+        # the block / context views (`subBlockTypes`,
+        # `subBlockInstances` entries, context view `variantConfigs` /
+        # `blockParamSynthetic`).
+        cached = self._blockConfigBundleCache.get(qualBlock)
+        if cached is not None:
+            return cached
         block_row = self.data['blocks'][qualBlock]
-        defaultConfig = block_row.get('defaultConfig', '')
-        is_parameterizable = bool(block_row.get('isParameterizable', False))
+        defaultConfig = block_row['defaultConfig']
+        is_parameterizable = bool(block_row['isParameterizable'])
+        has_own_params = bool(block_row.get('params'))
         variant_configs = self._buildVariantConfigDescriptors(qualBlock) \
             if is_parameterizable else []
-        return {
+        bundle = {
             'isParameterizable': is_parameterizable,
+            'hasOwnParams':      has_own_params,
             'defaultConfig':     defaultConfig,
             'variantConfigs':    variant_configs,
         }
+        self._blockConfigBundleCache[qualBlock] = bundle
+        return bundle
+
+    def _resolveInstanceConfigFields(self, instanceData, bundle=None):
+        # Per-instance Config view fields for a child instance: the
+        # per-variant Config struct name, the SystemC template-argument
+        # suffix, and the child block's own config flags.
+        #
+        # Returns a dict with: configName, configArg, isParameterizable,
+        # hasOwnParams, defaultConfig.
+        #
+        # `configArg` is '' when the child block is not a class template
+        # (no own params), even if `isParameterizable` is True; emitting
+        # `<X>` at a parent cast site would refer to a non-template class.
+        type_key = instanceData['instanceTypeKey']
+        if bundle is None:
+            bundle = self.getBlockConfigView(type_key)
+        is_parameterizable = bundle['isParameterizable']
+        has_own_params     = bundle['hasOwnParams']
+        default_config     = bundle['defaultConfig']
+        variant_configs    = bundle['variantConfigs']
+
+        config_name = ''
+        if is_parameterizable:
+            variant = instanceData['variant']
+            config_name = default_config
+            for desc in variant_configs:
+                if desc['variant'] == variant:
+                    if desc['values']:
+                        config_name = desc['configName']
+                    break
+
+        if has_own_params and config_name:
+            config_arg = f'<{config_name}>'
+        else:
+            config_arg = ''
+
+        return {
+            'configName':        config_name,
+            'configArg':         config_arg,
+            'isParameterizable': is_parameterizable,
+            'hasOwnParams':      has_own_params,
+            'defaultConfig':     default_config,
+        }
+
+    def _resolveConnectionConfigOverride(self, connVal):
+        # Pre-resolve the per-connection Config override used by SystemC
+        # channel emission. The choice mirrors the previous template-time
+        # rule: prefer a leaf-parameterizable end (a block with its own
+        # `params:`); on ties prefer dst; fall back to a non-leaf
+        # parameterizable end. Cross-interface consumer ends are excluded
+        # because the thunker resolves the consumer Config separately.
+        ends = connVal['ends']
+        cross_keys = {
+            flagged['endKey']
+            for flagged in (connVal.get('crossInterfaceEnds') or [])
+        }
+        leaf_choice = None
+        transit_choice = None
+        for end_key, end_data in ends.items():
+            if end_key in cross_keys:
+                continue
+            inst_key = end_data.get('instanceKey')
+            if not inst_key:
+                continue
+            inst_data = self.data['instances'][inst_key]
+            fields = self._resolveInstanceConfigFields(inst_data)
+            name = fields['configName']
+            if not name:
+                continue
+            if fields['hasOwnParams']:
+                if leaf_choice is None or end_data['direction'] == 'dst':
+                    leaf_choice = name
+            elif transit_choice is None:
+                transit_choice = name
+        return leaf_choice or transit_choice
 
     def _buildVariantConfigDescriptors(self, qualBlock, variantBindings=None):
-        # Per-variant Config descriptors for a parameterizable block. Stage 1.1
-        # of plan-variant-config-unification.md: each instance-bound variant
-        # maps to one Config struct. Naming follows D1 (anonymous variant ->
-        # <block>Config; named variant -> <block><Variant>Config). Direct
+        # Per-variant Config descriptors for a parameterizable block. Each
+        # instance-bound variant maps to one Config struct. Anonymous variants
+        # use <block>Config; named variants use <block><Variant>Config. Direct
         # overrides from parametersvariants are applied; eval re-resolution
-        # under variant overrides is deferred (D2).
+        # under variant overrides is deferred.
         #
         # variantBindings is optional. When provided (typically ret['variants']
         # from getBDInstances), its rows are used as the bound-parameter source
@@ -1069,17 +1211,17 @@ class projectOpen:
         # descriptor itself has duplicateOf=None. Templates emit the struct only
         # for canonical descriptors but use 'configName' on every descriptor (the
         # duplicate's configName equals the canonical's name).
-        block_row = self.data['blocks'].get(qualBlock)
-        if block_row is None or not bool(block_row.get('isParameterizable', False)):
+        block_row = self.data['blocks'][qualBlock]
+        if not bool(block_row['isParameterizable']):
             return []
         block_name = block_row['block']
-        block_context = block_row.get('_context', '')
+        block_context = block_row['_context']
         # Instance-bound variant set. A block declared parameterizable but
         # unreferenced by any instance produces no Config (and no trampoline).
         instance_bound = set()
         for inst_data in self.data['instances'].values():
-            if inst_data.get('instanceTypeKey') == qualBlock:
-                instance_bound.add(inst_data.get('variant', '') or '')
+            if inst_data['instanceTypeKey'] == qualBlock:
+                instance_bound.add(inst_data['variant'])
         if not instance_bound:
             return []
         variants = sorted(instance_bound)
@@ -1113,7 +1255,7 @@ class projectOpen:
         # Parameterizable constants in the block's primary context. These are
         # the Config struct's fields. Eval-derived constants appear here too;
         # they retain their default-resolved 'value' since variant-aware eval
-        # re-resolution is deferred (D2).
+        # re-resolution is deferred.
         param_constants = []
         for const_data in self.data['constants'].values():
             if const_data.get('_context') != block_context:
@@ -1122,14 +1264,12 @@ class projectOpen:
                 continue
             param_constants.append(const_data)
         param_constant_names = {const_data['constant'] for const_data in param_constants}
-        # Stage 4.3 of plan-variant-config-unification.md: block params
-        # declared via `params:` but with no backing constant in the
-        # context's parameterizable-constants table (the
-        # IP_NONCONST_DEPTH pattern) are folded into the Config struct
-        # as plain fields. Their value source is the variant override;
-        # there is no constant default. Variants that do not override
-        # such a field receive 0 — deliberately a "tripwire" for any
-        # caller that reads through the legacy default fallback.
+        # Block params declared via `params:` but with no backing constant in
+        # the context's parameterizable-constants table are folded into the
+        # Config struct as plain fields. Their value source is the variant
+        # override; there is no constant default. Variants that do not override
+        # such a field receive 0 as a tripwire for any caller that reads
+        # through the legacy default fallback.
         block_param_names = []
         for param_row in block_row.get('params', []) or []:
             name = param_row.get('param')
@@ -1267,8 +1407,31 @@ class projectOpen:
         ret['subBlockInstances'] = containedInstances
         ret['containerBlocks'] = containerBlocks
         ret['blockName'] = self.data['blocks'][qualBlock]['block']
+        # Sibling view: per child block type, surface the config facts
+        # templates need for forward-declaring child Base classes
+        # (`hasOwnParams`) and for resolving per-instance Config struct
+        # names. Indexed by the child block's qualified key.
+        ret['subBlockTypes'] = dict()
         for inst, instInfo in containedInstances.items():
-            ret['subBlocks'][instInfo['instanceTypeKey']] = instInfo['instanceType']
+            childTypeKey = instInfo['instanceTypeKey']
+            ret['subBlocks'][childTypeKey] = instInfo['instanceType']
+            if childTypeKey not in ret['subBlockTypes']:
+                bundle = self.getBlockConfigView(childTypeKey)
+                ret['subBlockTypes'][childTypeKey] = {
+                    'instanceType':      instInfo['instanceType'],
+                    'isParameterizable': bundle['isParameterizable'],
+                    'hasOwnParams':      bundle['hasOwnParams'],
+                    'defaultConfig':     bundle['defaultConfig'],
+                }
+            # Pre-resolve per-instance Config fields so templates do not
+            # call back into project-level helpers during rendering.
+            childBundle = self.getBlockConfigView(childTypeKey)
+            configFields = self._resolveInstanceConfigFields(instInfo, bundle=childBundle)
+            instInfo['instanceConfigName']         = configFields['configName']
+            instInfo['instanceConfigArg']          = configFields['configArg']
+            instInfo['instanceTypeIsParameterizable'] = configFields['isParameterizable']
+            instInfo['instanceTypeHasOwnParams']   = configFields['hasOwnParams']
+            instInfo['instanceTypeDefaultConfig']  = configFields['defaultConfig']
         if hasExcluded == 0 and len(excludeInstances) > 0:
             printError(f"--excludeInst={excludeInstances} did not find any of the instances to exclude in block {qualBlock}")
             exit(warningAndErrorReport())
@@ -1611,7 +1774,7 @@ class projectOpen:
             return structs
 
         def blockHasOwnParams(typeKey):
-            return bool((self.data['blocks'].get(typeKey, {}) or {}).get('params'))
+            return bool(self.data['blocks'][typeKey].get('params'))
 
         def resolveInterfaceKey(interfaceName, preferredContext):
             if not interfaceName:
@@ -1625,19 +1788,17 @@ class projectOpen:
             return ''
 
         def resolveInstanceConfigName(instanceData):
-            typeKey = instanceData.get('instanceTypeKey')
-            if not typeKey:
+            typeKey = instanceData['instanceTypeKey']
+            blockRow = self.data['blocks'][typeKey]
+            if not blockRow['isParameterizable']:
                 return ''
-            blockRow = self.data['blocks'].get(typeKey, {})
-            if not blockRow.get('isParameterizable', False):
-                return ''
-            variant = instanceData.get('variant', '') or ''
+            variant = instanceData['variant']
             for desc in self._buildVariantConfigDescriptors(typeKey):
                 if desc['variant'] == variant:
-                    if desc.get('values'):
+                    if desc['values']:
                         return desc['configName']
                     break
-            return blockRow.get('defaultConfig', '')
+            return blockRow['defaultConfig']
 
         def resolveConnectionConfigName(connVal, excludeEndKey=''):
             # When annotating a cross-interface bind, the "parent" payload
@@ -1656,9 +1817,7 @@ class projectOpen:
                 instData = self.data['instances'].get(instKey)
                 if not instData:
                     continue
-                typeKey = instData.get('instanceTypeKey')
-                if not typeKey:
-                    continue
+                typeKey = instData['instanceTypeKey']
                 name = resolveInstanceConfigName(instData)
                 if not name:
                     continue
@@ -1719,8 +1878,8 @@ class projectOpen:
                     payloads.append({
                         'side': side,
                         'structureType': structureType,
-                        'structure': structure.get('structure', ''),
-                        'structureKey': structure.get('structureKey', ''),
+                        'structure': structure['structure'],
+                        'structureKey': structure['structureKey'],
                         'configName': configName,
                     })
 
@@ -1743,10 +1902,8 @@ class projectOpen:
             instanceData = self.data['instances'].get(instanceKey)
             if not instanceData:
                 return None
-            childBlockKey = instanceData.get('instanceTypeKey') or ''
-            childBlock = self.data['blocks'].get(childBlockKey)
-            if not childBlock:
-                return None
+            childBlockKey = instanceData['instanceTypeKey']
+            childBlock = self.data['blocks'][childBlockKey]
             declaredPort = (childBlock.get('ports') or {}).get(portName)
             if not declaredPort:
                 return None
@@ -1769,14 +1926,12 @@ class projectOpen:
                 parentInterface, childInterface, parentConfigName, childConfigName)
             if not thunkerView:
                 return None
-            # Stage 7.2 of plan-variant-config-unification.md: the
-            # thunker member types reference the child interface's
-            # structures, so the surrounding container must include the
-            # child interface's defining context. getBDConnections only
-            # gathers structures from the connection's parent interface;
-            # absent this annotation, generated containers carrying
-            # cross-interface thunker members would miss the
-            # <childContext>Config.h include.
+            # The thunker member types reference the child interface's
+            # structures, so the surrounding container must include the child
+            # interface's defining context. getBDConnections only gathers
+            # structures from the connection's parent interface; absent this
+            # annotation, generated containers carrying cross-interface thunker
+            # members would miss the <childContext>Config.h include.
             self.getBDGetIntfStructs(ret, intfData=childInterface)
             return {
                 'endKey': endKey,
@@ -1859,6 +2014,17 @@ class projectOpen:
     connMapping = { 'connectDouble': ['connections', 'registerConnections'],
                     'connectSingle': ['connectionMaps', 'memoryConnections'] }
 
+    def getBDChannelConfigOverrides(self, ret):
+        # Annotate every emitted channel with the SystemC Config override
+        # the connected leaf-parameterizable end implies. Templates read
+        # `configOverride` directly through `sc_struct_type_name` and do
+        # not re-walk instance / variant / parameter tables. Runs after
+        # `getBDCrossInterfaceBinds` so cross-interface ends are excluded
+        # from the override selection.
+        for source in ('connections', 'registerConnections'):
+            for connVal in ret[source].values():
+                connVal['configOverride'] = self._resolveConnectionConfigOverride(connVal)
+
     def getBDConnectionsFinal(self, ret):
         # deduplicate the channels
         duplicateCheck = dict()
@@ -1907,15 +2073,13 @@ class projectOpen:
                 portName = endVal['portName']
                 self.getBDAddPort(ports, newPorts, portName, endVal)
                 temp = dict(connVal, **ports[portName])
-                # Stage 7.2 of plan-variant-config-unification.md: when
-                # this end has a bottom-up declared port whose interface
-                # differs from the connection's (a cross-interface bind),
-                # the port itself is typed by the child's declared
-                # interface. Channel typing remains the connection's
-                # parent interface; the per-protocol thunker bridges the
-                # two. Without this swap, the consumer's port would emit
-                # with the producer's structure type (the canonical Q11
-                # misemission).
+                # When this end has a bottom-up declared port whose interface
+                # differs from the connection's (a cross-interface bind), the
+                # port itself is typed by the child's declared interface.
+                # Channel typing remains the connection's parent interface;
+                # the per-protocol thunker bridges the two. Without this swap,
+                # the consumer's port would emit with the producer's structure
+                # type.
                 crossBind = endVal.get('crossInterface')
                 if crossBind and crossBind.get('childInterfaceKey'):
                     temp['connection']['interfaceKey'] = crossBind['childInterfaceKey']
@@ -2031,8 +2195,11 @@ class projectOpen:
                             addStructKey(item.get('structureKey'))
 
         classContexts = self.extractContext(classStructs, classConsts)
+        for sourceContext in ret['includeContext']:
+            if sourceContext in classContexts and sourceContext not in self.specialContexts:
+                ret['classIncludeContext'][sourceContext] = 0
         for sourceContext in classContexts:
-            if sourceContext not in self.specialContexts:
+            if sourceContext not in ret['classIncludeContext'] and sourceContext not in self.specialContexts:
                 ret['classIncludeContext'][sourceContext] = 0
 
         # Config headers are a distinct include surface from structure/type
@@ -2044,14 +2211,13 @@ class projectOpen:
             block_context = ret['blockInfo'].get('_context')
             if block_context and block_context not in self.specialContexts:
                 ret['configIncludeContext'][block_context] = 0
-        # Stage 3.1 of plan-variant-config-unification.md: child instance
-        # shared_ptr declarations name the child's per-variant Config
-        # (e.g., `ipLeafBase<ipLeafVariantLeaf0Config>`). The defining
+        # Child instance shared_ptr declarations name the child's per-variant
+        # Config (e.g., `ipLeafBase<ipLeafVariantLeaf0Config>`). The defining
         # `<childContext>Config.h` lives alongside the child block, in the
-        # child block's context. Without aggregating those contexts here
-        # the parent's class-declaration TU cannot resolve the Config
-        # struct name. The aggregation is bounded by subBlockInstances
-        # whose child block is itself parameterizable.
+        # child block's context. Without aggregating those contexts here the
+        # parent's class-declaration TU cannot resolve the Config struct name.
+        # The aggregation is bounded by subBlockInstances whose child block is
+        # itself parameterizable.
         for inst_data in (ret.get('subBlockInstances') or {}).values():
             type_key = inst_data.get('instanceTypeKey')
             if not type_key:
@@ -2837,7 +3003,7 @@ class projectCreate:
         # One-shot post-processing pass: for each block, walk every
         # structure it references through registers, memories, connections,
         # and connection maps. Persist isParameterizable and defaultConfig
-        # on the blocks row. See plan-block-config-postprocess.md.
+        # on the blocks row.
         # Walks raw SQL tables rather than the per-block view assembled by
         # getBlockData(); the result is read back via the slim
         # getBDConfigInfo() and getBlockConfigView() in projectOpen.
@@ -2907,11 +3073,10 @@ class projectCreate:
         g.cur.execute("SELECT blockKey, block, isRegHandler FROM blocks")
         block_rows = list(g.cur.fetchall())
 
-        # Stage 4.4 of plan-variant-config-unification.md: a block that
-        # declares its own `params:` is leaf-parameterizable and must
-        # carry isParameterizable=true so getBlockConfigView surfaces
-        # the per-variant Config descriptors that emit
-        # `<block><Variant>Config` structs and feed the trampoline.
+        # A block that declares its own `params:` is leaf-parameterizable and
+        # must carry isParameterizable=true so getBlockConfigView surfaces the
+        # per-variant Config descriptors that emit `<block><Variant>Config`
+        # structs and feed the trampoline.
         g.cur.execute("SELECT blockKey, _context FROM blocksparams")
         blocks_with_own_params = dict()
         for r in g.cur.fetchall():
@@ -2998,12 +3163,11 @@ class projectCreate:
                         add_struct(reg_row['structureKey'])
                         add_struct(reg_row['addressStructKey'])
 
-            # 8. Stage 4.4 of plan-variant-config-unification.md: a
-            #    block that declares its own `params:` is leaf-
-            #    parameterizable even if no structure on its surface is
-            #    itself parameterizable. The per-variant Config emission
-            #    in includes.py and the trampoline in blockRegistrar.py
-            #    both key on isParameterizable; without this flag the
+            # 8. A block that declares its own `params:` is
+            #    leaf-parameterizable even if no structure on its surface is
+            #    itself parameterizable. The per-variant Config emission in
+            #    includes.py and the trampoline in blockRegistrar.py both key
+            #    on isParameterizable; without this flag the
             #    `<block><Variant>Config` structs and `<block>Registrar.cpp`
             #    are skipped. Primary context is the block's own context
             #    (where its `params:` are declared).
@@ -3188,9 +3352,8 @@ class projectCreate:
                               connections_flat, connection_maps_flat,
                               memory_connections_flat, register_connections_flat,
                               memories_flat, registers_flat):
-        # Stage 5.2 / 5.3 of plan-variant-config-unification.md. Keep this
-        # create-time so bad YAML fails while building the DB, not later when a
-        # generator happens to request a block view.
+        # Keep this create-time so bad YAML fails while building the DB, not
+        # later when a generator happens to request a block view.
         instances_by_type = dict()
         for instKey, instRow in instances_flat.items():
             instances_by_type.setdefault(
@@ -3378,14 +3541,12 @@ class projectCreate:
             exit(warningAndErrorReport())
 
     def validatePorts(self):
-        # Stage 6.2 of plan-variant-config-unification.md. Cross-interface
-        # bind barrier: every connection end or connectionMap whose
-        # declared interface differs from the child block's bottom-up
-        # `ports:` declaration is checked for packed-form compatibility
-        # under the bound variant. The check is purely a gate; it writes
-        # nothing back to the DB and persists no state. The projectOpen
-        # consumer (Step 6.3) recomputes the cheap cross-interface
-        # predicate from the same persisted data.
+        # Cross-interface bind barrier: every connection end or connectionMap
+        # whose declared interface differs from the child block's bottom-up
+        # `ports:` declaration is checked for packed-form compatibility under
+        # the bound variant. The check is purely a gate; it writes nothing back
+        # to the DB and persists no state. The projectOpen consumer recomputes
+        # the cheap cross-interface predicate from the same persisted data.
         #
         # Packed-form compatibility per
         # research-multi-config-bindings.md lines 854-1001:
@@ -3398,7 +3559,7 @@ class projectCreate:
         # Synthesised binds (carrying _context == '_global') are exempt
         # — they are produced by post-parse scripts such as
         # config/postParseRegister.py and are not user-controlled
-        # (mirrors the Stage 5.3 exemption in validateDeclaredPorts()).
+        # (mirrors the synthesized-entry exemption in validateDeclaredPorts()).
 
         # ------------------------------------------------------------
         # Pre-fetch helper tables from in-memory self.data dictionaries.
@@ -3670,9 +3831,9 @@ class projectCreate:
 
         def _connectionBinding(conn):
             """Return the (blockKey, variant) binding used to resolve the
-            connection-side packed form. This mirrors Stage 3.3 channel type
-            derivation: prefer a leaf parameterizable end, with dst winning
-            when more than one leaf participates."""
+            connection-side packed form. This mirrors channel type derivation:
+            prefer a leaf parameterizable end, with dst winning when more than
+            one leaf participates."""
             leaf_choice = None
             transit_choice = None
             for endRow in (conn.get('ends') or {}).values():
@@ -3695,7 +3856,7 @@ class projectCreate:
             """Best-effort binding for a connectionMap parent interface. The
             parent side is often non-parameterized; when the mapped block has
             its own params, using its binding matches the generated channel
-            type for Stage 6's supported destination-side bridge."""
+            type for the supported destination-side bridge."""
             instRow = instances_flat.get(cm.get('instanceKey') or '')
             if not instRow:
                 return ('', '')
@@ -3848,7 +4009,7 @@ class projectCreate:
         # ------------------------------------------------------------
         for ctx, group in self.data.get('connections', {}).items():
             for connName, conn in group.items():
-                # Skip synthesised entries (Stage 5.3 exemption).
+                # Skip synthesised entries.
                 connContext = conn.get('_context') or ctx
                 if connContext == '_global':
                     continue
@@ -3894,9 +4055,9 @@ class projectCreate:
                     childIfaceKey = f"{portIface}/{blockContext}"
                     if childIfaceKey not in interfaces_flat:
                         # Fall back: search every context for a matching
-                        # interface name. The Stage 5.2 declared-check
-                        # catches genuinely unresolved references; here
-                        # we just need the qualified key to walk it.
+                        # interface name. The declared-port check catches
+                        # genuinely unresolved references; here we just need
+                        # the qualified key to walk it.
                         for ifk, ifr in interfaces_flat.items():
                             if ifr.get('interface') == portIface:
                                 childIfaceKey = ifk
@@ -3924,7 +4085,7 @@ class projectCreate:
             for cmName, cm in group.items():
                 cmContext = cm.get('_context') or ctx
                 if cmContext == '_global':
-                    # Synthesised maps (Stage 5.3 exemption).
+                    # Synthesised maps.
                     continue
                 parentIfaceKey = cm.get('interfaceKey') or ''
                 if not parentIfaceKey:

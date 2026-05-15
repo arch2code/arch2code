@@ -57,12 +57,25 @@ commands, ask `projectOpen` for views, render through
 `renderer.renderSections()` and `renderer.render()`, then rewrite only generated
 regions.
 
+Template utility modules, including `pysrc/intf_gen_utils.py`, are render
+helpers, not view builders. They may format SystemC/SystemVerilog spelling,
+choose local syntax, and iterate fields already supplied by `projectOpen` views
+such as `block_data`, `context_data`, connection rows, and `interface_defs`.
+
+Do not create new semantic views in template utilities. If a change needs to
+walk `prj.data` across blocks, instances, ports, connections, variants, or
+interface definitions to derive a fact that multiple template lines consume,
+add that fact to a `projectOpen` view helper instead. The template utility
+should then consume the precomputed field directly.
+
 ## Where Changes Belong
 
 - Put project-wide truth derived from YAML, schema, address calculation, or
   post-processing in `projectCreate`.
 - Put language-neutral reshaping for one rendering context in a `projectOpen`
-  view helper.
+  view helper. This includes connection annotations, variant/config ownership,
+  cross-interface bind classification, payload ordering, and any derived field
+  later consumed by `pysrc/intf_gen_utils.py` or templates.
 - If view creation needs interface-specific facts, prefer `interface_defs` and
   the corresponding interface YAML files over hard-coded special cases.
 - If a task appears to require schema changes, pause for any needed user input

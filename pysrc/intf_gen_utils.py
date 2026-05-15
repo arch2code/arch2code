@@ -160,8 +160,7 @@ def sv_gen_ports(data, prj, indent, block_data):
     return out
 
 def sc_connect_channels(data, indent, block_data, prj=None):
-    # Stage 6.3 of plan-variant-config-unification.md: cross-interface
-    # child-end binds are annotated in the language-agnostic block view.
+    # Cross-interface child-end binds are annotated in the language-agnostic block view.
     # The thunker emitted in the constructor's initialiser list performs
     # the equivalent bind internally via downPort(m_chDown).
     out = []
@@ -179,9 +178,9 @@ def sc_connect_channel_type(data, indent, block_data, prj=None):
             multiDst = interface_defs.get(intf_type, {}).get('multiDst', False)
             if not multiDst:
                 printError(f"connection {key} has more than 2 ends. Only status interfaces (including ro registers) can have multiple dst connections")
-        # Stage 6.3: suppress direct child binds already marked by
-        # getBDCrossInterfaceBinds(). The generator consumes the view
-        # annotation; it does not re-discover cross-interface semantics.
+        # Suppress direct child binds already marked by getBDCrossInterfaceBinds().
+        # The generator consumes the view annotation; it does not re-discover
+        # cross-interface semantics.
         suppressed = set()
         for flagged in _resolve_cross_interface_ends(value, prj):
             if flagged['endKey']:
@@ -206,9 +205,8 @@ def sc_instance_includes(data, prj):
 def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_override=None):
     # config_override: when supplied (and the structure is parameterizable),
     # the named Config replaces the literal `Config` template parameter in
-    # the emitted type. Stage 3.3 of plan-variant-config-unification.md uses
-    # this to type channels by the connected child's per-variant Config so
-    # the parent does not need to be a class template.
+    # the emitted type. This lets channels use the connected child's
+    # per-variant Config without requiring the parent to be a class template.
     if use_config and struct_key and prj.data['structures'].get(struct_key, {}).get('isParameterizable', False):
         suffix = config_override if config_override else 'Config'
         return f"{struct_name}<{suffix}>"
@@ -223,54 +221,58 @@ def block_config_decl(is_parameterizable):
 def block_config_arg(is_parameterizable):
     return '<Config>' if is_parameterizable else ''
 
-def block_has_own_params(prj, qual_block):
-    # Predicate for Stage 3.2 of plan-variant-config-unification.md. A block
-    # is "leaf parameterizable" — and thus emitted as `template<typename
-    # Config> class B {...};` — only when it declares its own `params:`.
-    # Containers that are flagged isParameterizable solely because a
-    # parameterizable structure transits their interface surface (e.g.,
-    # `ip_top` carrying `ipDataSt<Config>`) are NOT leaf-parameterizable; they
-    # become non-templated under Stage 3.2.
-    return bool(prj.data['blocks'].get(qual_block, {}).get('params'))
-
-def resolve_instance_config_name(prj, instance_data):
-    # Stage 3.1 of plan-variant-config-unification.md (D4 Option (a)):
-    # resolve the per-variant Config struct name for a parameterizable child
-    # instance. Returns '' for non-parameterizable children. Falls back to
-    # the child block's legacy `<context>DefaultConfig` when the descriptor's
-    # `values` is empty (e.g., intra-block dedup folded onto an empty
-    # canonical) or when no descriptor matches the instance's variant.
-    type_key = instance_data.get('instanceTypeKey')
-    if not type_key:
-        return ''
-    view = prj.getBlockConfigView(type_key)
-    if not view['isParameterizable']:
-        return ''
-    variant = instance_data.get('variant', '') or ''
-    for desc in view['variantConfigs']:
-        if desc['variant'] == variant:
-            if desc.get('values'):
-                return desc['configName']
-            break
-    return view['defaultConfig']
-
-def resolve_instance_config_arg(prj, instance_data):
-    # Convenience wrapper that returns either '<ConfigName>' or '' so callers
-    # can substitute directly into emitted text.
+def resolve_dut_variant_selection(block_data, variant):
+    # Map a generated testbench file's `GENERATED_CODE_PARAM --variant=<name>`
+    # to the concrete per-variant Config and instanceFactory variant key that
+    # the rest of the testbench emission threads through.
     #
-    # The template-argument suffix is emitted only when the child block is
-    # itself a class template (Stage 3.2 predicate: the child has its own
-    # `params:`). Non-leaf parameterizable children (e.g., `src`) become
-    # non-templated under Stage 3.2; emitting `srcBase<ipDefaultConfig>`
-    # at the parent's cast site would refer to a class template that no
-    # longer exists. Returning '' here keeps the cast consistent with the
-    # child's emitted class shape and surfaces the canonical Option-B
-    # failure at the child's own port declarations.
-    type_key = instance_data.get('instanceTypeKey')
-    if type_key and not block_has_own_params(prj, type_key):
-        return ''
-    name = resolve_instance_config_name(prj, instance_data)
-    return f'<{name}>' if name else ''
+    # Reads from the block view assembled by processYaml.getBDConfigInfo()
+    # (block_data['variantConfigs'], block_data['defaultConfig'],
+    # block_data['isParameterizable']).
+    #
+    # Contract:
+    #   {'configName':     str,   # e.g. 'ipVariant0Config' or 'ipDefaultConfig'
+    #    'factoryVariant': str}   # variant string passed to instanceFactory::createInstance
+    #
+    # When the DUT block has own `params:`, a missing variant selects the
+    # anonymous/default variant when that descriptor exists. Otherwise, missing
+    # or unknown variants raise printError with a diagnostic listing the
+    # available variants and the canonical fix (add `--variant=<name>` to the
+    # file-level GENERATED_CODE_PARAM line).
+    #
+    # When the DUT has no own params (containers like `ip_top`), the helper
+    # tolerates a missing variant and returns the block's defaultConfig (or
+    # empty for non-parameterizable blocks).
+    is_parameterizable = bool(block_data['isParameterizable'])
+    default_config = block_data['defaultConfig'] if is_parameterizable else ''
+    variant_configs = block_data['variantConfigs']
+    has_own_params = bool(block_data['hasOwnParams'])
+    if not has_own_params:
+        return {
+            'configName':     default_config,
+            'factoryVariant': variant or '',
+        }
+    available = [d['variant'] for d in variant_configs]
+    block_name = block_data['blockName']
+    variant = variant or ''
+    for desc in variant_configs:
+        if desc['variant'] != variant:
+            continue
+        config_name = desc['configName'] if desc['values'] else default_config
+        return {'configName': config_name, 'factoryVariant': variant}
+    if not variant:
+        printError(
+            f"Testbench generation for parameterizable block {block_name!r} "
+            f"requires a file-level `--variant=<name>` on GENERATED_CODE_PARAM "
+            f"because it has no anonymous/default variant. "
+            f"Available variants: {available!r}."
+        )
+        return {'configName': '', 'factoryVariant': ''}
+    printError(
+        f"Testbench generation for block {block_name!r} requested unknown "
+        f"variant {variant!r}. Available variants: {available!r}."
+    )
+    return {'configName': '', 'factoryVariant': ''}
 
 def _resolve_cross_interface_ends(conn_data, prj):
     # Cross-interface semantics are part of the block-data view assembled
@@ -279,71 +281,6 @@ def _resolve_cross_interface_ends(conn_data, prj):
     # or discovery logic.
     return conn_data.get('crossInterfaceEnds', []) or []
 
-
-def _resolve_channel_config_override(conn_data, prj):
-    # Stage 3.3 connection-walk derivation. Inspect a connection's `ends`
-    # and pick the per-variant Config of the leaf parameterizable end.
-    #
-    # Selection priority (D5):
-    #   1. An end whose bound block has its own `params:` (a leaf
-    #      parameterizable block such as `ip` or `ipLeaf`). This is the
-    #      authoritative source of the variant's Config. When two leaf
-    #      ends disagree (cross-Config bind), the `dst` end wins; the
-    #      resulting channel type will not bind to the disagreeing peer
-    #      and the build fails with a precise error — the documented
-    #      Stage 3 failure mode that Stages 6 and 7 (Q10/R2 thunker)
-    #      ultimately bridge.
-    #   2. An end whose bound block is flagged isParameterizable but has
-    #      no own params (e.g., `src` carrying `ipDataSt<Config>`). Such
-    #      a block is itself non-templated under Stage 3.2, so naming
-    #      its `defaultConfig` here is a fallback and not a precise
-    #      typing. We prefer (1) over (2) for that reason.
-    # Returns None when no end is parameterizable; the caller then emits
-    # the literal `Config` placeholder (correct inside leaf parents that
-    # remain class templates) or — for non-leaf parents — the testbench
-    # external's post-hoc `replace('<Config>', ...)` substitution applies.
-    #
-    # Stage 6.3 / Q11 refinement: when the connection has at least one
-    # cross-interface bind, the parent channel carries the producer's
-    # interface structure and must therefore be typed by the producer's
-    # Config. The thunker owns its own downstream channel that resolves
-    # the consumer's Config separately. We treat ends whose `endKey`
-    # appears in `crossInterfaceEnds` as the consumer side and skip
-    # them, leaving the surviving leaf end (the producer) as the
-    # channel's typing.
-    ends = conn_data.get('ends', {}) or {}
-    cross_keys = {
-        flagged.get('endKey')
-        for flagged in (conn_data.get('crossInterfaceEnds') or [])
-        if flagged.get('endKey')
-    }
-    leaf_choice = None
-    transit_choice = None
-    for end_key, end_data in ends.items():
-        if end_key in cross_keys:
-            continue
-        inst_key = end_data.get('instanceKey')
-        if not inst_key:
-            continue
-        inst_data = prj.data['instances'].get(inst_key)
-        if not inst_data:
-            continue
-        type_key = inst_data.get('instanceTypeKey')
-        if not type_key:
-            continue
-        name = resolve_instance_config_name(prj, inst_data)
-        if not name:
-            continue
-        if block_has_own_params(prj, type_key):
-            # Prefer the dst end on cross-Config binds; we accept the
-            # last leaf-parameterizable end seen, which under the dict's
-            # insertion order is the dst when both src and dst are leaf.
-            if leaf_choice is None or end_data.get('direction') == 'dst':
-                leaf_choice = name
-        else:
-            if transit_choice is None:
-                transit_choice = name
-    return leaf_choice or transit_choice
 
 def module_name_from_include(baseName):
     name = baseName
@@ -500,13 +437,12 @@ def sc_gen_block_channels(conn_data, prj, block_data):
     out['set_initial_value'] = intf_def['sc_channel'].get('set_initial_value', False) and 'register' in conn_data
     out['default_value'] = conn_data.get('defaultValue', 0)
 
-    # Stage 3.3 of plan-variant-config-unification.md: the channel's struct
-    # template arguments are typed by the connected child's per-variant
-    # Config (D5). The override is None when no end of the connection is
-    # parameterizable; in that case sc_struct_type_name falls back to its
-    # legacy `<Config>` placeholder, which is appropriate inside leaf
+    # The channel's struct template arguments are typed by the connected
+    # child's per-variant Config. The override is None when no end of the
+    # connection is parameterizable; in that case sc_struct_type_name falls
+    # back to its `<Config>` placeholder, which is appropriate inside leaf
     # parameterizable parents that remain class templates.
-    config_override = _resolve_channel_config_override(conn_data, prj)
+    config_override = conn_data['configOverride']
     out['config_override'] = config_override
 
     # Parameter
@@ -569,7 +505,7 @@ def _thunker_member_type(flagged, prj):
 
 
 def _thunker_member_name(flagged, conn_data, is_connection_map):
-    # Naming per Stage 6.3 brief:
+    # Stable thunker member naming:
     #   * connectionMap (one child end per map): thunker_<instanceName>
     #   * connection (peer-to-peer): thunker_<channelName>_<endInstance>
     inst = flagged.get('instance') or ''
@@ -579,12 +515,10 @@ def _thunker_member_name(flagged, conn_data, is_connection_map):
 
 
 def sc_declare_thunkers(data, prj, indent, block_data):
-    # Stage 6.3 of plan-variant-config-unification.md. Emit one thunker
-    # member declaration per flagged cross-interface end across both
-    # connections (data['connectDouble']) and connectionMaps. Returns []
-    # when no flagged ends exist — the off-by-default invariant required
-    # by the brief: byte-identical output for projects with no cross-
-    # interface binds.
+    # Emit one thunker member declaration per flagged cross-interface end
+    # across both connections (data['connectDouble']) and connectionMaps.
+    # Returns [] when no flagged ends exist, preserving byte-identical output
+    # for projects with no cross-interface binds.
     out = []
     if prj is None:
         return out
@@ -611,11 +545,10 @@ def sc_declare_thunkers(data, prj, indent, block_data):
 
 
 def sc_thunker_protocols(data, prj):
-    # Stage 6.3 helper: return the set of SystemC channel type stems
-    # (e.g. 'rdy_vld', 'req_ack') for which this container emits at
-    # least one thunker. Callers use the set to emit the matching
-    # `<channel_type>_port_thunker.h` include. Empty set means no thunker
-    # include is required — the off-by-default invariant.
+    # Return the set of SystemC channel type stems (e.g. 'rdy_vld',
+    # 'req_ack') for which this container emits at least one thunker. Callers
+    # use the set to emit the matching `<channel_type>_port_thunker.h`
+    # include. Empty set means no thunker include is required.
     protocols = set()
     if prj is None:
         return protocols

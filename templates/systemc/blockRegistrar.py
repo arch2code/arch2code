@@ -6,8 +6,7 @@
 #
 #   * SystemC parameterized-block registrations, one lambda per
 #     (blockType, variant) pair the project's instance tree binds.
-#     Under variant ≅ Config (Stage 2 of plan-variant-config-unification.md)
-#     the variant string identifies the per-variant Config policy
+#     The variant string identifies the per-variant Config policy
 #     unambiguously; the trampoline lambda constructs
 #     `make_shared<B<<perVariantConfig>>>` directly.
 #   * Verilated wrapper registrations under the `_verif` suffix when the
@@ -15,30 +14,22 @@
 #     `struct registerBlock` / `static registerBlock_` mechanism is
 #     superseded.
 #
-# Stage 4.1 of plan-variant-config-unification.md retired the
-# `instanceFactory::addParam(...)` emission from this trampoline.
-# Block constructors now read parameter values from `Config::*` directly
-# (Stage 4.2). The runtime addParam / getParam table on instanceFactory
-# is decommissioned in Stage 4.4.
+# The trampoline no longer emits `instanceFactory::addParam(...)`. Block
+# constructors now read parameter values from `Config::*` directly, and the
+# runtime addParam / getParam table on instanceFactory is decommissioned.
 #
 # Pure non-templated SC-only blocks reach the factory through the
 # self-registering static emitted in their own `<block>.cpp` and do not
 # need a trampoline — `cond: {isParameterizable: true, hasVl: true}` filters
 # them out at file-generation time.
 #
-# See plan-block-registration.md "Per-block trampoline TU" for the full
-# rationale, including the contract that the trampoline TU must be
-# linked unconditionally into the program (the linker-strip hazard the
-# active force-link function solves for non-templated self-registering
-# blocks does not apply here because the trampoline is referenced
-# directly).
+# The trampoline TU must be linked unconditionally into the program; the
+# linker-strip hazard that the active force-link function solves for
+# non-templated self-registering blocks does not apply here because the
+# trampoline is referenced directly.
 #
-# The plan currently uses the block's default Config policy as the only
-# binding — multi-Config-per-project propagation lives in the deferred
-# `processYaml.py` per-instance walk.
-
-import pysrc.intf_gen_utils as intf_gen_utils
-
+# The current implementation uses the block's default Config policy as the only
+# binding for cases that do not have per-instance Config propagation.
 
 def render(args, prj, data):
     return render_default(args, prj, data)
@@ -47,34 +38,30 @@ def render(args, prj, data):
 def render_default(args, prj, data):
     out = list()
     blockName = data['blockName']
-    qualBlock = data.get('qualBlock', '')
+    qualBlock = data['qualBlock']
     blockInfo = data['blockInfo']
     isParameterizable = data['isParameterizable']
-    # Stage 3.2 of plan-variant-config-unification.md: only leaf
-    # parameterizable blocks (those with their own `params:`) are class
-    # templates. Non-leaf containers flagged isParameterizable solely
+    # Only leaf parameterizable blocks (those with their own `params:`) are
+    # class templates. Non-leaf containers flagged isParameterizable solely
     # because parameterizable structures transit their surface remain
-    # non-templated and must NOT receive a `<Config>` template argument
-    # in the trampoline's `make_shared` call.
-    hasOwnParams = intf_gen_utils.block_has_own_params(prj, qualBlock) if qualBlock else False
+    # non-templated and must NOT receive a `<Config>` template argument in the
+    # trampoline's `make_shared` call.
+    hasOwnParams = data['hasOwnParams']
     defaultConfig = data['defaultConfig'] if isParameterizable else ''
 
     # The variant set is the project's instance-bound variant set for
     # this block. `data['variants']` is populated by getBDInstances and
     # already reflects only variants that the project's instance tree
     # actually selects, so there is no separate filter needed here.
-    variants = sorted(data.get('variants', {}).keys())
+    variants = sorted(data['variants'].keys())
 
-    # Per-variant Config descriptors (Stage 1.1 of
-    # plan-variant-config-unification.md). Each descriptor names the
-    # Config struct the lambda's templated block class instantiates
-    # against; when the descriptor's resolved values are empty (no
-    # parameterizable constants in the block's primary context) we
-    # fall back to the legacy <context>DefaultConfig name so the
-    # interim shape continues to link.
+    # Per-variant Config descriptors. Each descriptor names the Config struct
+    # the lambda's templated block class instantiates against; when the
+    # descriptor's resolved values are empty, we fall back to the default Config
+    # name so the generated shape continues to link.
     variantConfigName = dict()
-    for desc in data.get('variantConfigs', []):
-        if desc.get('values'):
+    for desc in data['variantConfigs']:
+        if desc['values']:
             variantConfigName[desc['variant']] = desc['configName']
         else:
             variantConfigName[desc['variant']] = defaultConfig
@@ -114,10 +101,9 @@ def render_default(args, prj, data):
     out.append(f'    _{blockName}_registrar() {{')
 
     # SC-model registrations for parameterized blocks. Emit one entry
-    # per (blockType, variant) pair. Stage 1.1 of
-    # plan-variant-config-unification.md threads the per-variant Config
-    # struct name from the descriptor list when one is available; under
-    # variant ≅ Config the variant string is the factory key. Non-leaf
+    # per (blockType, variant) pair. The per-variant Config struct name comes
+    # from the descriptor list when one is available; the variant string is the
+    # factory key. Non-leaf
     # parameterizable blocks (hasOwnParams=False) are non-templated, so
     # `make_shared<B>` rather than `make_shared<B<Config>>` is emitted.
     if isParameterizable:

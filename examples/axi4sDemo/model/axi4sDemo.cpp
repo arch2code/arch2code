@@ -5,7 +5,17 @@
 #include "axi4sDemo.h"
 SC_HAS_PROCESS(axi4sDemo);
 
-axi4sDemo::registerBlock axi4sDemo::registerBlock_; //register the block with the factory
+// === Block factory registration (axi4sDemo) ===
+void force_link_axi4sDemo() {}
+
+void register_axi4sDemo_variants() {
+    instanceFactory::registerBlock("axi4sDemo_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axi4sDemo>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _axi4sDemo_registered = (register_axi4sDemo_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 axi4sDemo::axi4sDemo(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)

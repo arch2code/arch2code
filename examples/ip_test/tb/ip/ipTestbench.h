@@ -1,28 +1,28 @@
-#ifndef MIXED_TESTBENCH_H
-#define MIXED_TESTBENCH_H
+#ifndef IP_TESTBENCH_H
+#define IP_TESTBENCH_H
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-// GENERATED_CODE_PARAM --block=mixed
+// GENERATED_CODE_PARAM --block=ip --variant=variant0
 // GENERATED_CODE_BEGIN --template=testbench --section=header
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "mixedBase.h"
-#include "mixedExternal.h"
+#include "ipBase.h"
+#include "ipExternal.h"
 
 // Force-link function (active modules-mode anchor) for the testbench
 // class. Referencing this symbol pulls the registration TU into static links.
-void force_link_mixedTestbench();
+void force_link_ipTestbench();
 
-class mixedTestbench: public sc_module, public blockBase, public mixedChannels {
+class ipTestbench: public sc_module, public blockBase, public ipChannels<ipVariant0Config> {
 
 public:
 
-    std::shared_ptr<mixedBase> mixed;
-    mixedExternal external;
+    std::shared_ptr<ipBase<ipVariant0Config>> ip;
+    ipExternal external;
 
-    mixedTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
-    ~mixedTestbench() override = default;
+    ipTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
+    ~ipTestbench() override = default;
 
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -35,4 +35,4 @@ public:
 };
 // GENERATED_CODE_END
 
-#endif /* MIXED_TESTBENCH_H */
+#endif /* IP_TESTBENCH_H */

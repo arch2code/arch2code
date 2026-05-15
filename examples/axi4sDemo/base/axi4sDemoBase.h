@@ -92,5 +92,8 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor).
+void force_link_axi4sDemo();
 // GENERATED_CODE_END
 #endif //AXI4SDEMO_BASE_H
