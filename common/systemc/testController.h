@@ -17,11 +17,21 @@ public:
     }
     // function to allow initialization of the list of tests
     void set_test_names(std::list<std::string> test_names) {
-        m_test_names = test_names;
-        for (auto test_name : m_test_names) {
+        // sc_main runs zero-time enumeration before the real simulation; coordinator threads may
+        // run during that pass. Re-calling set_test_names (e.g. from beforeFullSim) must reset all
+        // sequencing state, not only replace the name list.
+        m_test_number = 0;
+        m_outstanding_completions = 0;
+        m_test_name_registration_count.clear();
+        m_test_names = std::move(test_names);
+        for (const auto &test_name : m_test_names) {
             m_test_name_registration_count[test_name] = 0;
         }
-        m_total_tests = m_test_names.size();
+        m_total_tests = static_cast<int>(m_test_names.size());
+        if (m_total_tests == 0) {
+            m_current_test.clear();
+            return;
+        }
         m_current_test = m_test_names.front();
         m_test_names.pop_front();
     }
