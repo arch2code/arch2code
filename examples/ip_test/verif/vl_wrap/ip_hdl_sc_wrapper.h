@@ -25,8 +25,8 @@
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
 
-template <typename DUT_T>
-class ip_hdl_sc_wrapper: public sc_module, public blockBase, public ipBase<srcDefaultConfig> {
+template <typename DUT_T, typename Config>
+class ip_hdl_sc_wrapper: public sc_module, public blockBase, public ipBase<Config> {
 
 public:
 
@@ -37,7 +37,7 @@ public:
             // lamda function to construct the block
             instanceFactory::registerBlock(
                 "ip_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < ip_hdl_sc_wrapper<DUT_T> > (blockName, variant, bbMode));
+                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < ip_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
                 }, variant_);
         }
     };
@@ -48,15 +48,18 @@ public:
 
     sc_clock clk;
 
-    push_ack_dst_bfm<ipDataSt<srcDefaultConfig>, sc_bv<71>> ipDataIf_bfm;
+    push_ack_dst_bfm<ipDataSt<Config>, sc_bv<71>> ipDataIf_bfm;
     apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
 
-    SC_HAS_PROCESS (ip_hdl_sc_wrapper<DUT_T>);
+    // SC_HAS_PROCESS expects a single macro argument; the Config-templated
+    // self type carries a comma in its argument list and must be aliased.
+    using ip_hdl_sc_wrapper_self_t = ip_hdl_sc_wrapper<DUT_T, Config>;
+    SC_HAS_PROCESS (ip_hdl_sc_wrapper_self_t);
 
     ip_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
         blockBase("ip_hdl_sc_wrapper", name(), bbMode),
-        ipBase<srcDefaultConfig>(name(), variant),
+        ipBase<Config>(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         ipDataIf_bfm("ipDataIf_bfm"),
         apbReg_bfm("apbReg_bfm"),
@@ -78,12 +81,12 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        ipDataIf_bfm.if_p(ipDataIf);
+        ipDataIf_bfm.if_p(this->ipDataIf);
         ipDataIf_bfm.hdl_if_p(ipDataIf_hdl_if);
         ipDataIf_bfm.clk(clk);
         ipDataIf_bfm.rst_n(rst_n);
 
-        apbReg_bfm.if_p(apbReg);
+        apbReg_bfm.if_p(this->apbReg);
         apbReg_bfm.hdl_if_p(apbReg_hdl_if);
         apbReg_bfm.clk(clk);
         apbReg_bfm.rst_n(rst_n);
@@ -125,11 +128,11 @@ private:
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
 #if !defined(VERILATOR) && defined(VCS)
-using ip_variant0_hdl_sc_wrapper = ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper>;
-using ip_variant1_hdl_sc_wrapper = ip_hdl_sc_wrapper<ip_variant1_hdl_sv_wrapper>;
+using ip_variant0_hdl_sc_wrapper = ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper, ipVariant0Config>;
+using ip_variant1_hdl_sc_wrapper = ip_hdl_sc_wrapper<ip_variant1_hdl_sv_wrapper, ipVariant1Config>;
 #else
-using ip_variant0_hdl_sc_wrapper = ip_hdl_sc_wrapper<Vip_variant0_hdl_sv_wrapper>;
-using ip_variant1_hdl_sc_wrapper = ip_hdl_sc_wrapper<Vip_variant1_hdl_sv_wrapper>;
+using ip_variant0_hdl_sc_wrapper = ip_hdl_sc_wrapper<Vip_variant0_hdl_sv_wrapper, ipVariant0Config>;
+using ip_variant1_hdl_sc_wrapper = ip_hdl_sc_wrapper<Vip_variant1_hdl_sv_wrapper, ipVariant1Config>;
 #endif
 // GENERATED_CODE_END
 

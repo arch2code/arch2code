@@ -27,9 +27,7 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockBase("ip_top", name(), bbMode)
         ,ip_topBase(name(), variant)
         ,out0("ip_out0", "src")
-        ,thunker_out0_uIp0("thunker_out0_uIp0", out0, uIp0->ipDataIf, name())
         ,out1("ip_out1", "src")
-        ,thunker_out1_uIp1("thunker_out1_uIp1", out1, uIp1->ipDataIf, name())
         ,out8("ipBridge_out8", "bridgeDriver")
         ,out70("ipBridge_out70", "bridgeDriver")
         ,apb_uIp0("ip_apb_uIp0", "apbDecode")
@@ -41,6 +39,8 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,uIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1")))
         ,uBridgeDriver(std::dynamic_pointer_cast<bridgeDriverBase>((force_link_bridgeDriver(), instanceFactory::createInstance(name(), "uBridgeDriver", "bridgeDriver", ""))))
         ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>((force_link_ipBridge(), instanceFactory::createInstance(name(), "uBridge", "ipBridge", ""))))
+        ,thunker_out0_uIp0("thunker_out0_uIp0", out0, uIp0->ipDataIf, name())
+        ,thunker_out1_uIp1("thunker_out1_uIp1", out1, uIp1->ipDataIf, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

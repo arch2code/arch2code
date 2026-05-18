@@ -86,17 +86,17 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        data8In_bfm.if_p(data8In);
+        data8In_bfm.if_p(this->data8In);
         data8In_bfm.hdl_if_p(data8In_hdl_if);
         data8In_bfm.clk(clk);
         data8In_bfm.rst_n(rst_n);
 
-        data70In_bfm.if_p(data70In);
+        data70In_bfm.if_p(this->data70In);
         data70In_bfm.hdl_if_p(data70In_hdl_if);
         data70In_bfm.clk(clk);
         data70In_bfm.rst_n(rst_n);
 
-        apbReg_bfm.if_p(apbReg);
+        apbReg_bfm.if_p(this->apbReg);
         apbReg_bfm.hdl_if_p(apbReg_hdl_if);
         apbReg_bfm.clk(clk);
         apbReg_bfm.rst_n(rst_n);

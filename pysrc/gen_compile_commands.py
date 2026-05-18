@@ -20,7 +20,7 @@ def _looks_like_compile(tokens: list[str], compilers: set[str]) -> bool:
     exe = os.path.basename(tokens[0])
     if exe not in compilers:
         return False
-    return "-c" in tokens
+    return "-c" in tokens or "--precompile" in tokens
 
 
 def _extract_source(tokens: list[str]) -> str | None:
@@ -30,7 +30,33 @@ def _extract_source(tokens: list[str]) -> str | None:
     for t in tokens:
         if t.startswith("-c") and len(t) > 2:
             return t[2:]
+    if "--precompile" in tokens:
+        for t in tokens:
+            if t.endswith(".cppm"):
+                return t
     return None
+
+
+def _strip_clangd_unsafe_flags(tokens: list[str]) -> list[str]:
+    """Remove real-build module artifacts that clangd should not load."""
+    stripped: list[str] = []
+    skip_next = False
+
+    for token in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+
+        if token == "-fmodule-file":
+            skip_next = True
+            continue
+
+        if token.startswith("-fmodule-file="):
+            continue
+
+        stripped.append(token)
+
+    return stripped
 
 
 def _is_verilator_command(tokens: list[str]) -> bool:
@@ -103,6 +129,10 @@ def main(argv: list[str]) -> int:
                 continue
 
             src_path = os.path.normpath(src)
+            if src_path.endswith(".pcm"):
+                continue
+
+            tokens = _strip_clangd_unsafe_flags(tokens)
             cmd = " ".join(shlex.quote(t) for t in tokens)
 
             key = (src_path, cmd)

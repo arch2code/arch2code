@@ -17,7 +17,6 @@
 #endif
 // GENERATED_CODE_END
 
-template <typename DUT_T>
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
 #include "ipLeafConfig.h"
@@ -47,7 +46,10 @@ public:
 
     
 
-    SC_HAS_PROCESS (ipLeaf_hdl_sc_wrapper<DUT_T, Config>);
+    // SC_HAS_PROCESS expects a single macro argument; the Config-templated
+    // self type carries a comma in its argument list and must be aliased.
+    using ipLeaf_hdl_sc_wrapper_self_t = ipLeaf_hdl_sc_wrapper<DUT_T, Config>;
+    SC_HAS_PROCESS (ipLeaf_hdl_sc_wrapper_self_t);
 
     ipLeaf_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),

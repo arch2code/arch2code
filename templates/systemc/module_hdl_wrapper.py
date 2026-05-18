@@ -19,30 +19,26 @@ def render_sc(args, prj, data):
     # so defaults keep hierarchy-mode rendering working.
     isParameterizable = data.get('isParameterizable', False)
     defaultConfig = data.get('defaultConfig', '') if isParameterizable else ''
-    cfg = f'<{defaultConfig}>' if isParameterizable else ''
+    # `<block>Base` is emitted as a class template only when the block
+    # declares own `params:` (see intf_gen_utils.block_config_decl /
+    # block_config_arg). When the block is parameterizable only through
+    # contained children (e.g. `ip_top`), `<block>Base` is a plain class
+    # and the wrapper's base-class inheritance line must omit the
+    # template-argument list.
+    cfg = f'<{defaultConfig}>' if (isParameterizable and data.get('hasOwnParams')) else ''
 
-    # When the block has its own `params:` and none of its port structures
-    # depend on Config, the per-variant wrapper typedef must bind the variant's
-    # own Config struct. The block default Config would lack the per-variant
-    # override fields and the wrapper instantiation would fail at compile time.
-    # Blocks with cross-Config or own-Config port structures continue to use
-    # `defaultConfig` because their BFM declarations bind the same Config
-    # consistently across inheritance and BFM types.
+    # When the block declares its own `params:`, the wrapper class itself is
+    # templated on a second `Config` type parameter. Each per-variant `using`
+    # typedef binds `Config` to the variant's emitted `<block><Variant>Config`
+    # struct, so the wrapper inherits `<block>Base<Config>` and its BFM /
+    # hdl_if declarations carry `<Config>` through to the instantiation site
+    # rather than collapsing onto a project-wide default. Blocks that are
+    # parameterizable only through contained children (no own params) keep
+    # the non-Config-templated wrapper and continue to bind the project-wide
+    # `defaultConfig` so BFM, hdl_if, and base-class types stay self-consistent.
     qualBlock = data.get('qualBlock', '')
-    useOwnVariantConfig = False
-    if isParameterizable and qualBlock and data['hasOwnParams']:
-        portStructsParameterized = False
-        for port_type in data['ports']:
-            if portStructsParameterized:
-                break
-            for port_name in data['ports'][port_type]:
-                port_blast = intf_gen_utils.sc_gen_modport_signal_blast(
-                    data['ports'][port_type][port_name], prj, data)
-                if '<Config>' in port_blast.get('bfm_decl', ''):
-                    portStructsParameterized = True
-                    break
-        if not portStructsParameterized:
-            useOwnVariantConfig = True
+    hasOwnParams = bool(data.get('hasOwnParams', False))
+    useOwnVariantConfig = bool(isParameterizable and qualBlock and hasOwnParams)
     variantConfigForName = dict()
     if useOwnVariantConfig:
         for desc in data['variantConfigs']:
@@ -51,6 +47,13 @@ def render_sc(args, prj, data):
             else:
                 variantConfigForName[desc['variant']] = defaultConfig
     wrapperCfgTemplateArg = 'Config' if useOwnVariantConfig else ''
+    # The wrapper class is genuinely emitted as a class template only when
+    # variants exist to specialize it (otherwise the non-templated branch of
+    # `sec_hdl_sc_wrapper_class_template` is used). The BFM / hdl_if
+    # substitution below has to match: keep `<Config>` literal when the
+    # wrapper is Config-templated, otherwise substitute the project-wide
+    # default so the non-templated class body type-checks.
+    wrapperIsConfigTemplated = useOwnVariantConfig and bool(data.get('variants'))
 
     def sec_channel_decl(args, prj, data):
         s = []
@@ -108,6 +111,11 @@ def render_sc(args, prj, data):
 
     def sec_bfm_connect(args, prj, data):
         s = []
+        # Inherited ports (e.g. `ipDataIf`, `out0`) live on the
+        # `<block>Base{cfg}` base class. When the wrapper is Config-templated
+        # (cfg names a template parameter) those names are dependent and
+        # require `this->` to be looked up. `this->` is also legal on the
+        # non-templated path, so it is emitted unconditionally.
         for port_type in data['ports']:
             for port in data['ports'][port_type]:
                 if mp_sig[port]['is_skip']:
@@ -116,7 +124,7 @@ def render_sc(args, prj, data):
                 intf_name = data['ports'][port_type][port]['name']
                 bfm_name = intf_name + '_bfm'
                 hdl_intf_name = intf_name + '_hdl_if'
-                s_.append(f'{bfm_name}.if_p({intf_name});')
+                s_.append(f'{bfm_name}.if_p(this->{intf_name});')
                 s_.append(f'{bfm_name}.hdl_if_p({hdl_intf_name});')
                 s_.append(f'{bfm_name}.clk(clk);')
                 s_.append(f'{bfm_name}.rst_n(rst_n);')
@@ -200,7 +208,13 @@ def render_sc(args, prj, data):
         for port_type in data['ports']:
             for port in data['ports'][port_type] if not args.hierarchy else []:
                 mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port_type][port], prj, data)
-                if isParameterizable:
+                # Leave `<Config>` literal when the wrapper class itself is
+                # templated on `Config` (its per-variant typedefs supply the
+                # concrete Config). Substitute the project-wide default Config
+                # only on the non-Config-templated path so BFM and hdl_if
+                # decls in a non-templated wrapper body still name a concrete
+                # type.
+                if isParameterizable and not wrapperIsConfigTemplated:
                     for key in ['bfm_decl', 'hdl_if_decl']:
                         mp_sig[port][key] = mp_sig[port][key].replace('<Config>', f'<{defaultConfig}>')
 
@@ -317,7 +331,10 @@ public:
     SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper);
 {%- else %}
 
-{% if use_own_variant_config %}    SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper<DUT_T, Config>);
+{% if use_own_variant_config %}    // SC_HAS_PROCESS expects a single macro argument; the Config-templated
+    // self type carries a comma in its argument list and must be aliased.
+    using {{blockname}}_hdl_sc_wrapper_self_t = {{blockname}}_hdl_sc_wrapper<DUT_T, Config>;
+    SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper_self_t);
 {%- else %}    SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper<DUT_T>);
 {%- endif %}
 {%- endif %}

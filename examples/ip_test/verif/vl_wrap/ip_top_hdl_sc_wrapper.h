@@ -22,7 +22,7 @@
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
 
-class ip_top_hdl_sc_wrapper: public sc_module, public blockBase, public ip_topBase<srcDefaultConfig> {
+class ip_top_hdl_sc_wrapper: public sc_module, public blockBase, public ip_topBase {
 
 public:
 
@@ -55,7 +55,7 @@ public:
     ip_top_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
         blockBase("ip_top_hdl_sc_wrapper", name(), bbMode),
-        ip_topBase<srcDefaultConfig>(name(), variant),
+        ip_topBase(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         cpu_main_bfm("cpu_main_bfm"),
         rst_n(0)
@@ -77,7 +77,7 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        cpu_main_bfm.if_p(cpu_main);
+        cpu_main_bfm.if_p(this->cpu_main);
         cpu_main_bfm.hdl_if_p(cpu_main_hdl_if);
         cpu_main_bfm.clk(clk);
         cpu_main_bfm.rst_n(rst_n);

@@ -94,17 +94,17 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        apb_uBridgeIp0_bfm.if_p(apb_uBridgeIp0);
+        apb_uBridgeIp0_bfm.if_p(this->apb_uBridgeIp0);
         apb_uBridgeIp0_bfm.hdl_if_p(apb_uBridgeIp0_hdl_if);
         apb_uBridgeIp0_bfm.clk(clk);
         apb_uBridgeIp0_bfm.rst_n(rst_n);
 
-        apb_uBridgeIp1_bfm.if_p(apb_uBridgeIp1);
+        apb_uBridgeIp1_bfm.if_p(this->apb_uBridgeIp1);
         apb_uBridgeIp1_bfm.hdl_if_p(apb_uBridgeIp1_hdl_if);
         apb_uBridgeIp1_bfm.clk(clk);
         apb_uBridgeIp1_bfm.rst_n(rst_n);
 
-        apbReg_bfm.if_p(apbReg);
+        apbReg_bfm.if_p(this->apbReg);
         apbReg_bfm.hdl_if_p(apbReg_hdl_if);
         apbReg_bfm.clk(clk);
         apbReg_bfm.rst_n(rst_n);

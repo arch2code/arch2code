@@ -108,6 +108,7 @@ def constructorInit(args, prj, data):
         out += addressDecoder(args, prj, data)
 
     chnl_table = dict()
+    thunker_inits = []
     for channelType in data["connectDouble"]:
         for chnl, chnlInfo in data["connectDouble"][channelType].items():
             chnl_table[chnl] = intf_gen_utils.sc_gen_block_channels(chnlInfo, prj, data)
@@ -187,17 +188,13 @@ def constructorInit(args, prj, data):
 
             out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{extra}{autoMode}{defaultValue})')
 
-            # Emit one thunker initialiser-list entry per flagged
-            # cross-interface end. The thunker constructor receives (name,
-            # parent-side channel, child port reference, block name).
-            # Member-init order in C++ follows declaration order in the class
-            # body; the thunker member is declared after the child instance
-            # pointer in classDecl.py so the child->port reference is valid by
-            # the time this entry runs. When no ends are flagged, no entry is
-            # emitted.
+            # Collect one thunker initialiser-list entry per flagged
+            # cross-interface end. These are emitted after subBlockInstances
+            # below to match classDecl.py declaration order while preserving
+            # the original connection/database order within the thunker group.
             for flagged in intf_gen_utils._resolve_cross_interface_ends(chnlInfo, prj):
                 memberName = intf_gen_utils._thunker_member_name(flagged, chnlInfo, is_connection_map=False)
-                out.append(
+                thunker_inits.append(
                     f'        ,{memberName}("{memberName}", {channelBase}, '
                     f'{flagged["instance"]}->{flagged["portName"]}, name())'
                 )
@@ -225,6 +222,8 @@ def constructorInit(args, prj, data):
             f'        ,{ value["instance"] }(std::dynamic_pointer_cast'
             f'<{ value["instanceType"] }Base{instCfg}>({createCall}))'
         )
+
+    out.extend(thunker_inits)
 
     # connectionMap thunker initialiser-list entries. A connectionMap binds an
     # external parent port to a child instance port; when the two interfaces

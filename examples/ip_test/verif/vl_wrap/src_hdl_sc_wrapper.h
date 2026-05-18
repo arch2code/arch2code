@@ -23,8 +23,8 @@
 #include "srcConfig.h"
 #include "push_ack_bfm.h"
 
-template <typename DUT_T>
-class src_hdl_sc_wrapper: public sc_module, public blockBase, public srcBase<srcDefaultConfig> {
+template <typename DUT_T, typename Config>
+class src_hdl_sc_wrapper: public sc_module, public blockBase, public srcBase<Config> {
 
 public:
 
@@ -35,7 +35,7 @@ public:
             // lamda function to construct the block
             instanceFactory::registerBlock(
                 "src_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < src_hdl_sc_wrapper<DUT_T> > (blockName, variant, bbMode));
+                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < src_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
                 }, variant_);
         }
     };
@@ -46,15 +46,18 @@ public:
 
     sc_clock clk;
 
-    push_ack_src_bfm<srcOut0St<srcDefaultConfig>, sc_bv<9>> out0_bfm;
-    push_ack_src_bfm<srcOut1St<srcDefaultConfig>, sc_bv<71>> out1_bfm;
+    push_ack_src_bfm<srcOut0St<Config>, sc_bv<9>> out0_bfm;
+    push_ack_src_bfm<srcOut1St<Config>, sc_bv<71>> out1_bfm;
 
-    SC_HAS_PROCESS (src_hdl_sc_wrapper<DUT_T>);
+    // SC_HAS_PROCESS expects a single macro argument; the Config-templated
+    // self type carries a comma in its argument list and must be aliased.
+    using src_hdl_sc_wrapper_self_t = src_hdl_sc_wrapper<DUT_T, Config>;
+    SC_HAS_PROCESS (src_hdl_sc_wrapper_self_t);
 
     src_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
         blockBase("src_hdl_sc_wrapper", name(), bbMode),
-        srcBase<srcDefaultConfig>(name(), variant),
+        srcBase<Config>(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         out0_bfm("out0_bfm"),
         out1_bfm("out1_bfm"),
@@ -71,12 +74,12 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        out0_bfm.if_p(out0);
+        out0_bfm.if_p(this->out0);
         out0_bfm.hdl_if_p(out0_hdl_if);
         out0_bfm.clk(clk);
         out0_bfm.rst_n(rst_n);
 
-        out1_bfm.if_p(out1);
+        out1_bfm.if_p(this->out1);
         out1_bfm.hdl_if_p(out1_hdl_if);
         out1_bfm.clk(clk);
         out1_bfm.rst_n(rst_n);
@@ -118,9 +121,9 @@ private:
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
 #if !defined(VERILATOR) && defined(VCS)
-using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<src_variantSrc0_hdl_sv_wrapper>;
+using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<src_variantSrc0_hdl_sv_wrapper, srcVariantSrc0Config>;
 #else
-using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<Vsrc_variantSrc0_hdl_sv_wrapper>;
+using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<Vsrc_variantSrc0_hdl_sv_wrapper, srcVariantSrc0Config>;
 #endif
 // GENERATED_CODE_END
 

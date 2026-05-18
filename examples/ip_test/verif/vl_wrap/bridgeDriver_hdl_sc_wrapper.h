@@ -74,12 +74,12 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        out8_bfm.if_p(out8);
+        out8_bfm.if_p(this->out8);
         out8_bfm.hdl_if_p(out8_hdl_if);
         out8_bfm.clk(clk);
         out8_bfm.rst_n(rst_n);
 
-        out70_bfm.if_p(out70);
+        out70_bfm.if_p(this->out70);
         out70_bfm.hdl_if_p(out70_hdl_if);
         out70_bfm.clk(clk);
         out70_bfm.rst_n(rst_n);
