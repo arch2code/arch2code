@@ -110,6 +110,13 @@ fileGeneration:
   fileCopyrightStatement: "Update your copywright statement in your project yaml file"
   regBlockNaming: {instancePrefix: 'u_', blockSuffix: '_regs'} # naming convention for register handler blocks - instancePrefix is prefix for instance names, blockSuffix is suffix for block names
 postProcess:
+  # New-schema register-bus distribution. Runs unconditionally but
+  # is a no-op on legacy projects (skips when no block declares
+  # addressBlock:). Listed before postParseRegister.py so the new
+  # path wins when both spellings somehow coexist; the
+  # _post_registerAddressBlock schema hook still errors on mixed
+  # projects, so this ordering is defensive.
+  - $a2c/config/postParseRegisterPorts.py
   - $a2c/config/postParseRegister.py
   - $a2c/config/postParseChecks.py
 

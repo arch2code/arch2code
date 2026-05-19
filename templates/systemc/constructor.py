@@ -87,8 +87,8 @@ def constructorInit(args, prj, data):
         out.append(f'    decoder.decodeThread();\n}}\n')
 
     if registerDecode:
-        busInterface = data["addressDecode"]["registerBusInterface"]
-        busInterfaceRef = f'this->{busInterface}' if hasOwnParams else busInterface
+        busPort = data["addressDecode"]["registerBusPort"]
+        busInterfaceRef = f'this->{busPort}' if hasOwnParams else busPort
         busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
         if hasOwnParams:
             out.append(templateDecl)

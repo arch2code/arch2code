@@ -1065,6 +1065,9 @@ class projectOpen:
         # collect interface definitions for all interface types used in the block
         self.getBDInterfaceDefs(ret)
         self.getBDConfigInfo(ret)
+        # Surface per-block register-bus data on the view; routers without
+        # authored addressBlock rows get an equivalent view from ADDRESS_CONFIG.
+        self.getBDAddressBlockView(ret)
         ret.pop('temp') # remove temp data
 
         return ret
@@ -2114,15 +2117,101 @@ class projectOpen:
             else:
                 ports[portName]['instance'][instanceKey] = 0
 
+    def _legacyRegisterBusInterface(self, ret):
+        # Project-level addressControl.RegisterBusInterface supplies both the
+        # interface name and port name when a block has no local declaration.
+        addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
+        busName = addressConfig.get('RegisterBusInterface') if addressConfig else None
+        if not busName:
+            printError("No RegisterBusInterface configured: legacy addressControl.yaml is missing the section "
+                       "and no per-block addressBlock: / registerPorts: declarations supply a replacement.")
+            exit(warningAndErrorReport())
+        return busName, busName
+
+    def _resolveRouterUpstreamInterface(self, blockRow, upstreamPort):
+        # Look up the interface bound to the router's upstream port.
+        ports = blockRow.get('ports') or {}
+        portRow = ports.get(upstreamPort)
+        if portRow is None:
+            return None
+        return portRow.get('interface')
+
+    def _registerBusInterfacePort(self, ret):
+        # Returns (interfaceName, portName) for the block's register-bus
+        # surface. Routers source the port from addressBlock.upstreamPort;
+        # register handlers and leaves source from a declared registerPorts:
+        # row. Blocks without local declarations use the project-level
+        # RegisterBusInterface value.
+        qualBlock = ret['qualBlock']
+        blockRow = self.data['blocks'][qualBlock]
+        addressBlock = blockRow.get('addressBlock')
+        declaredRegisterPorts = blockRow.get('registerPorts') or {}
+
+        if ret['addressDecode']['isApbRouter'] and addressBlock:
+            port = addressBlock.get('upstreamPort') or 'apbReg'
+            interface = self._resolveRouterUpstreamInterface(blockRow, port)
+            if interface:
+                return interface, port
+            # If the upstream port has no local declaration, use the
+            # project-level register-bus interface.
+            legacyIntf, _ = self._legacyRegisterBusInterface(ret)
+            return legacyIntf, port
+
+        if declaredRegisterPorts:
+            # Register-bus blocks expose exactly one registerPorts: row
+            # whose key is the handler-side or leaf-side port.
+            (port, rpRow) = next(iter(declaredRegisterPorts.items()))
+            interface = rpRow.get('interface')
+            if interface:
+                return interface, port
+
+        return self._legacyRegisterBusInterface(ret)
+
+    def getBDAddressBlockView(self, ret):
+        # declaredRegisterPorts is the authored registerPorts: map. The
+        # existing ret['registerPorts'] key is the register-connection port
+        # aggregate used by register-handler templates and is left in place.
+        qualBlock = ret['qualBlock']
+        blockRow = self.data['blocks'][qualBlock]
+        ret['declaredRegisterPorts'] = dict(blockRow.get('registerPorts') or {})
+
+        # Router blocks always expose addressBlock through this view. When
+        # the block row has no local addressBlock, derive the equivalent
+        # fields from ADDRESS_CONFIG. Non-router blocks see no addressBlock.
+        if not ret['addressDecode'].get('isApbRouter'):
+            return
+
+        authored = blockRow.get('addressBlock')
+        if authored:
+            ret['addressBlock'] = dict(authored)
+            return
+
+        addressGroupData = ret['addressDecode'].get('addressGroupData') or {}
+        addressGroup = ret['addressDecode'].get('addressGroup')
+        legacyDefault = ret['addressDecode'].get('registerBusPort') or 'apbReg'
+        ret['addressBlock'] = {
+            'addressGroup': addressGroup,
+            'addressIncrement': addressGroupData.get('addressIncrement'),
+            'maxAddressSpaces': addressGroupData.get('maxAddressSpaces'),
+            'varType': addressGroupData.get('varType'),
+            'enumPrefix': addressGroupData.get('enumPrefix'),
+            'upstreamPort': addressGroupData.get('upstreamPort', legacyDefault),
+            'registerDecoderPort': addressGroupData.get('registerDecoderPort', legacyDefault),
+        }
+
     def getBDAddressBus(self, ret):
         if ret['addressDecode']['isApbRouter'] or ret['addressDecode']['hasDecoder']:
-            # search for the interface definition
             ret['addressDecode']['registerBusStructs'] = dict()
-            addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
-            ret['addressDecode']['registerBusInterface'] = addressConfig['RegisterBusInterface']
-            interfaceInfo = [x for x in self.data['interfaces'].values() if x.get('interface') == addressConfig['RegisterBusInterface']]
+            (interfaceName, portName) = self._registerBusInterfacePort(ret)
+            # registerBusInterface names the interface definition used
+            # for type/structure lookup. registerBusPort names the port
+            # object templates bind or read on the block-data view; in
+            # legacy mode the two values coincide.
+            ret['addressDecode']['registerBusInterface'] = interfaceName
+            ret['addressDecode']['registerBusPort'] = portName
+            interfaceInfo = [x for x in self.data['interfaces'].values() if x.get('interface') == interfaceName]
             if not interfaceInfo:
-                printError(f"Register Bus Interface {addressConfig['RegisterBusInterface']} from addressConfig does not match any yaml"
+                printError(f"Register Bus Interface {interfaceName} does not match any yaml"
                            f"defined interface definitions. This is necessary to define what interface type is used for registers")
                 exit(warningAndErrorReport())
             for regIf in interfaceInfo:
@@ -2186,9 +2275,11 @@ class projectOpen:
                     addStructKey(payload.get('structureKey'))
 
         if ret['addressDecode'].get('isApbRouter'):
-            addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
-            if addressConfig:
-                regBusInterface = addressConfig.get('RegisterBusInterface')
+            # The router's upstream interface determines the register-bus
+            # structures pulled into the class declaration. Walk the resolved
+            # interface rather than the global table directly.
+            regBusInterface = ret['addressDecode'].get('registerBusInterface')
+            if regBusInterface:
                 for intfData in self.data['interfaces'].values():
                     if intfData.get('interface') == regBusInterface:
                         for item in intfData.get('structures', []) or []:
@@ -2748,7 +2839,7 @@ class projectCreate:
             self.ignoreSections.add(item)
 
     def configTemplates(self):
-        # Check for deprecated config file references and provide migration guidance
+        # Reject deprecated config file references before template selection.
         deprecated_keys = {'cppConfig', 'svConfig', 'docConfig'}
         found_deprecated = deprecated_keys & self._userProjRaw.keys()
         if found_deprecated:
@@ -3513,17 +3604,6 @@ class projectCreate:
             instances_by_type.setdefault(
                 instRow['instanceTypeKey'], set()).add(instKey)
 
-        def _resolveInterfaceByName(name, preferredContext):
-            if not name:
-                return None
-            key = f"{name}/{preferredContext}" if preferredContext else ''
-            if key in interfaces_flat:
-                return interfaces_flat[key]
-            for row in interfaces_flat.values():
-                if row['interface'] == name:
-                    return row
-            return None
-
         def _addInferred(inferred, portName, sourceType, row, interfaceKey='',
                          direction=''):
             if not portName:
@@ -3614,25 +3694,16 @@ class projectCreate:
                 portEntry = inferred[portName]
                 declaredIfName = portRow['interface']
                 inferredIfName = portEntry['interface']
-                if declaredIfName != inferredIfName:
-                    declaredIf = _resolveInterfaceByName(declaredIfName, portContext)
-                    inferredIf = interfaces_flat.get(portEntry['interfaceKey'])
-                    if inferredIf is None:
-                        inferredIf = _resolveInterfaceByName(
-                            inferredIfName, portEntry['_context'])
-                    declaredProto = declaredIf.get('interfaceType') if declaredIf else None
-                    inferredProto = inferredIf.get('interfaceType') if inferredIf else None
-                    if not declaredProto or not inferredProto or declaredProto != inferredProto:
-                        printError(
-                            f"Block {block} port '{portName}' declares interface "
-                            f"'{declaredIfName}' in ports: (file {portContext}) but is "
-                            f"bound to interface '{inferredIfName}' by "
-                            f"{portEntry['sourceType']} (file "
-                            f"{portEntry['_context']}). Cross-interface ports "
-                            f"are only valid when both interfaces resolve and share "
-                            f"the same interfaceType; got '{declaredProto}' and "
-                            f"'{inferredProto}'.")
-                        exit(warningAndErrorReport())
+                if (declaredIfName != inferredIfName
+                        and portEntry['sourceType'] not in (
+                            'connections', 'connectionMaps')):
+                    printError(
+                        f"Block {block} port '{portName}' declares interface "
+                        f"'{declaredIfName}' in ports: (file {portContext}) but is "
+                        f"bound by {portEntry['sourceType']} (file "
+                        f"{portEntry['_context']}), which does not provide a "
+                        f"connection interface for cross-interface validation.")
+                    exit(warningAndErrorReport())
 
                 declaredDir = portRow['direction']
                 inferredDir = portEntry['direction']
@@ -3645,9 +3716,15 @@ class projectCreate:
                         f"{portEntry['_context']}).")
                     exit(warningAndErrorReport())
 
+            # ports: and registerPorts: are independent declarations. A
+            # registerPorts-owned name is allowed to be absent from ports:,
+            # and synthesized global binds are ignored for completeness.
+            registerPortNames = set((blockRow.get('registerPorts') or {}).keys())
             missing = set()
             for portName in (set(inferred.keys()) - set(declared.keys())):
                 if inferred[portName]['_context'] == '_global':
+                    continue
+                if portName in registerPortNames:
                     continue
                 missing.add(portName)
             if missing:
@@ -3702,18 +3779,15 @@ class projectCreate:
         # to the DB and persists no state. The projectOpen consumer recomputes
         # the cheap cross-interface predicate from the same persisted data.
         #
-        # Packed-form compatibility per
-        # research-multi-config-bindings.md lines 854-1001:
+        # Packed-form compatibility requires:
         #   1. Same interface meta-protocol (interfaceType).
         #   2. Same `structures` list paired by structureType.
         #   3. For each paired structure: same field count, same field
         #      order and names, exact per-field _bitWidth under the
         #      bound variant, exact bit offsets.
         #
-        # Synthesised binds (carrying _context == '_global') are exempt
-        # — they are produced by post-parse scripts such as
-        # config/postParseRegister.py and are not user-controlled
-        # (mirrors the synthesized-entry exemption in validateDeclaredPorts()).
+        # Synthesised binds (carrying _context == '_global') are generated
+        # internally and are exempt from user-authored compatibility checks.
 
         # ------------------------------------------------------------
         # Pre-fetch helper tables from in-memory self.data dictionaries.
@@ -5218,14 +5292,24 @@ class projectCreate:
         return item
 
     def _post_validateBlockAddressDecl(self, itemkey, item, yamlFile):
-        """Reject blocks that declare both registerPorts: (leaf) and
-        addressBlock: (router)."""
+        """Validate block-level address/register declaration invariants
+        that the schema engine cannot express."""
         if item.get('registerPorts') and item.get('addressBlock'):
             lc = item.get('lc')
-            line = lc.line + 1 if lc is not None and hasattr(lc, 'line') else '?'
+            line = lc.line + 1 if lc is not None else '?'
             self.logError(
                 f"In {yamlFile}:{line}, block '{itemkey}' declares both "
                 f"registerPorts: and addressBlock:; these are mutually exclusive."
+            )
+        registerPorts = item.get('registerPorts') or {}
+        if len(registerPorts) > 1:
+            lc = item.get('lc')
+            line = lc.line + 1 if lc is not None else '?'
+            names = "', '".join(sorted(registerPorts.keys()))
+            self.logError(
+                f"In {yamlFile}:{line}, block '{itemkey}' declares multiple "
+                f"registerPorts: entries ('{names}'). Blocks support exactly "
+                f"one register-bus ingress."
             )
         return item
 
@@ -6292,8 +6376,7 @@ class projectCreate:
         return (ret, qualification)
 
     def processSubTable(self, section, nested, yamlFile, nestedSchema, outerItemKey, context, outer = None):
-        # we have a nested table so we need to process the inner table
-        # there is probably an opportunitiy for some refactoring here with ProcessSection
+        # Process nested table entries using the schema for the child section.
         ret = dict()
         nestedContext = context+section
         if nestedContext == 'memoriesports':

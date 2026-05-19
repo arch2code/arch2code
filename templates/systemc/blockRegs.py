@@ -35,7 +35,7 @@ def get_reghandler_properties(prj, data):
     reghandler = dict()
     rhd = data['addressDecode']
     reghandler = {
-        "port_name": rhd['registerBusInterface'],
+        "port_name": rhd['registerBusPort'],
         "addr_type" : rhd['registerBusStructs']['addr_t'],
         "data_type" : rhd['registerBusStructs']['data_t'],
         "addressmask" : f"(1<<({rhd['addressBits']}))-1"

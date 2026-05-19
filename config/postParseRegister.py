@@ -1,25 +1,25 @@
 from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport, printIfDebug
 from pysrc.processYaml import camelCase
 
-def postProcess(prj):
-    """Post process the project after parsing the YAML file.
-
-    Args:
-        prj (project): The project object.
+def regHandlerNaming(prj):
+    """Resolve the regBlockNaming policy that governs synthesised
+    register-handler block and instance names. Returns
+    (instance_prefix, block_suffix, camel_case).
     """
-    # This script only understands the legacy addressControl.yaml schema.
-    if not prj.proj.get('addressControl') or not prj.addressControl:
-        return
-    reg_interface = prj.addressControl.get('RegisterBusInterface', 'apbReg')
     file_gen = prj.a2cProj.get('fileGeneration', {})
     proj_file_gen = prj.proj.get('fileGeneration', {})
-    # prefer users input else revert to default
     regBlockNaming = proj_file_gen.get('regBlockNaming', file_gen.get('regBlockNaming', {}))
     instance_prefix = regBlockNaming.get('instancePrefix', 'u_')
     block_suffix = regBlockNaming.get('blockSuffix', '_regs')
     camel_case = regBlockNaming.get('camelCase', False)
-    # build a dictionary with sections and content the same as if it was parsed from a file
-    #
+    return instance_prefix, block_suffix, camel_case
+
+
+def collectBlocksNeedingRegHandler(prj):
+    """Return {blockKey: block} for every leaf block that owns
+    registers or regAccess memories and therefore needs a synthesised
+    <block>_regs handler.
+    """
     blocksWithRegisters = dict()
     for context, registers in prj.data['registers'].items():
         for register, registerData in registers.items():
@@ -30,9 +30,57 @@ def postProcess(prj):
         for memory, memoryData in memories.items():
             if memoryData['regAccess'] and memoryData['blockKey'] not in blocksWithMemories:
                 blocksWithMemories[memoryData['blockKey']] = memoryData['block']
-    # create a dictionary of connections to be added to the database
     blocksNeedingConnections = blocksWithRegisters.copy()
     blocksNeedingConnections.update(blocksWithMemories)
+    return blocksNeedingConnections
+
+
+def synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
+                         instance_prefix, block_suffix, camel_case):
+    """Build the synthesised register-handler block, instance, and
+    leaf-to-handler connectionMap for a single routed leaf block.
+
+    Returns (reg_block, block_def, instance_name, instance_def, connection_map).
+    """
+    reg_block = block + block_suffix
+    has_mdl = len(prj.hierKey.get(block_key, [])) > 0
+    instance_name = camelCase(instance_prefix, reg_block) if camel_case else instance_prefix + reg_block
+    block_def = {
+        'desc': block + ' Register handler',
+        'isRegHandler': True,
+        'hasVl': False,
+        'hasRtl': True,
+        'hasMdl': has_mdl,
+        'hasTb': False,
+        'dir': blockInfo.get(block_key, {}).get('dir', ''),
+    }
+    instance_def = {
+        'instanceType': reg_block,
+        'container': block,
+    }
+    connection_map = {
+        'interface': reg_interface,
+        'block': block,
+        'direction': 'dst',
+        'instance': instance_name,
+    }
+    return reg_block, block_def, instance_name, instance_def, connection_map
+
+
+def postProcess(prj):
+    """Post process the project after parsing the YAML file.
+
+    Args:
+        prj (project): The project object.
+    """
+    # This script only understands the legacy addressControl.yaml schema.
+    if not prj.proj.get('addressControl') or not prj.addressControl:
+        return
+    reg_interface = prj.addressControl.get('RegisterBusInterface', 'apbReg')
+    instance_prefix, block_suffix, camel_case = regHandlerNaming(prj)
+    # build a dictionary with sections and content the same as if it was parsed from a file
+    #
+    blocksNeedingConnections = collectBlocksNeedingRegHandler(prj)
     blockInfo = dict()
     if blocksNeedingConnections:
         for context, blockData in prj.data['blocks'].items():
@@ -51,23 +99,12 @@ def postProcess(prj):
     reg_handler_instances = dict()
     reg_handler_connection_maps = list()
     for block_key, block in blocksNeedingConnections.items():
-        reg_block = block + block_suffix
-        has_mdl = len(prj.hierKey.get(block_key, [])) > 0
-        instance_name = camelCase(instance_prefix, reg_block) if camel_case else instance_prefix + reg_block
-        reg_handler_blocks[reg_block] = {'desc': block + ' Register handler',
-                                         'isRegHandler': True,
-                                         'hasVl': False,
-                                         'hasRtl': True,
-                                         'hasMdl': has_mdl,
-                                         'hasTb': False,
-                                         'isRegHandler': True,
-                                         'dir': blockInfo[block_key].get('dir', '') }
-        reg_handler_instances[instance_name] = {'instanceType': reg_block,
-                                                   'container': block}
-        reg_handler_connection_maps.append({'interface': reg_interface,
-                                            'block': block,
-                                            'direction': 'dst',
-                                            'instance': instance_name})
+        reg_block, block_def, instance_name, instance_def, connection_map = \
+            synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
+                                 instance_prefix, block_suffix, camel_case)
+        reg_handler_blocks[reg_block] = block_def
+        reg_handler_instances[instance_name] = instance_def
+        reg_handler_connection_maps.append(connection_map)
 
     for addressGroup, groupData in prj.addressControl['AddressGroups'].items():
         if 'decoderInstance' in groupData:

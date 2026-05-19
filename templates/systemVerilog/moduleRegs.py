@@ -24,9 +24,9 @@ def getParentStructures(prj, d):
 def render(args, prj, data):
     global regs_intf, regs_addr_t, regs_data_t
 
-    regs_intf = data['addressDecode'].get('registerBusInterface', None)
+    regs_intf = data['addressDecode'].get('registerBusPort', None)
     if not regs_intf:
-        printError("In your address Config file registerBusInterface is not defined")
+        printError("In your address Config file registerBusPort is not defined")
         exit(warningAndErrorReport())
 
     regs_addr_t = data['addressDecode']['registerBusStructs'].get('addr_t', None)
