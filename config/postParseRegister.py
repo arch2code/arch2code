@@ -7,7 +7,8 @@ def postProcess(prj):
     Args:
         prj (project): The project object.
     """
-    if not prj.addressControl:
+    # This script only understands the legacy addressControl.yaml schema.
+    if not prj.proj.get('addressControl') or not prj.addressControl:
         return
     reg_interface = prj.addressControl.get('RegisterBusInterface', 'apbReg')
     file_gen = prj.a2cProj.get('fileGeneration', {})

@@ -1,21 +1,24 @@
 ---
 name: manage-address-space
-description: Guide for configuring address maps, address groups, and firmware header generation using addressControl.yaml and project.yaml
+description: Guide for configuring address maps, address groups, address-policy sections, and firmware header generation using addressControl.yaml and project.yaml
 ---
 # Skill: Manage Address Space
 
 ## Purpose
-Guide the user in configuring the project's address map, managing address groups, and setting up firmware header generation using `addressControl.yaml` and `project.yaml`.
+Guide the user in configuring the project's address map, managing address groups, moving reusable address-policy sections into `project.yaml`, and setting up firmware header generation.
 
 ## References
 *   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Registers & Address Management" and "Address Control File")
 
 ## Instructions
 
-1.  **Address Control File (`addressControl.yaml`):**
-    *   This file is central to the project's memory map.
-    *   **Location:** Typically `arch/yaml/config/addressControl.yaml`.
-    *   **Key Sections:** `AddressGroups`, `InstanceGroups`, `AddressObjects`, `RegisterBusInterface`.
+1.  **Address Configuration Sources:**
+    *   Legacy projects keep address decode policy in `addressControl.yaml`, typically at `arch/yaml/config/addressControl.yaml`.
+    *   The legacy `addressControl.yaml` path is supported during migration but is expected to be deprecated; prefer the new `project.yaml` and per-block schema for new work.
+    *   New and migrated projects should put reusable address-policy sections in top-level `project.yaml` fields:
+        *   `instanceGroups:` replaces legacy `InstanceGroups:`.
+        *   `addressObjects:` replaces legacy `AddressObjects:`.
+    *   `AddressGroups:` and `RegisterBusInterface:` still belong to the legacy `addressControl.yaml` path until the per-block `addressBlock:` / `registerPorts:` migration is complete.
 
 2.  **Defining Address Groups (`AddressGroups`):**
     *   Address groups define hierarchical address spaces.
@@ -37,11 +40,13 @@ Guide the user in configuring the project's address map, managing address groups
     *   The `decoderInstance` field **must** reference a valid instance in your architecture YAML.
     *   This instance (e.g., `u_apb_decode_system`) corresponds to the manual top-level decoder you created to route the register bus.
 
-4.  **Instance Groups (`InstanceGroups`):**
+4.  **Instance Groups (`instanceGroups:` / legacy `InstanceGroups:`):**
     *   Used for ID enumeration without address space implications (e.g., for error reporting IDs).
+    *   Prefer top-level `project.yaml` spelling for new work. The row body is unchanged from legacy `InstanceGroups:`.
 
     ```yaml
-    InstanceGroups:
+    # In project.yaml
+    instanceGroups:
       all_instances:
         varType: global_inst_id_t
         enumPrefix: GID_
@@ -67,12 +72,14 @@ Guide the user in configuring the project's address map, managing address groups
           desc: "Firmware include file"
     ```
 
-6.  **Address Object Sorting:**
+6.  **Address Object Sorting (`addressObjects:` / legacy `AddressObjects:`):**
     *   Control how objects are packed in the address space using `AddressObjects`.
     *   **Best Practice:** Sort memories by size (`memsize` alignment) to optimize decoding.
+    *   Prefer top-level `project.yaml` spelling for new work. The row body is unchanged from legacy `AddressObjects:`.
 
     ```yaml
-    AddressObjects:
+    # In project.yaml
+    addressObjects:
       memories:
         alignment: memsize
         sizeRoundUpPowerOf2: true
@@ -81,6 +88,10 @@ Guide the user in configuring the project's address map, managing address groups
         alignment: 8
         sortDescending: true
     ```
+
+    If a project carries both `project.yaml` and legacy
+    `addressControl.yaml` spellings, the rows must match exactly.
+    Disagreement is a configuration error.
 
 7.  **Parameterizable Register/Memory Sizing:**
     *   Register and firmware-accessible memory offsets are allocated from worst-case sizes when the referenced structure or `wordLines` is parameterizable.

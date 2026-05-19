@@ -2588,6 +2588,9 @@ class projectCreate:
         #load project file from command line
         self._userProjRaw = existsLoad(projFile)
         self.proj = self._userProjRaw
+        # Remember the user-supplied project file path so address-policy
+        # diagnostics can name it (project.yaml may be renamed per-example).
+        self.projFile = projFile
         # the behavour or project file settings is as follows
         # for some settings the user project setting overrides the a2c defaults - eg schema is either user defined or a2c defined
         # for other settings they may be additive, eg template mappings are additive ie you get all the a2c defaults
@@ -2634,6 +2637,9 @@ class projectCreate:
             addressControlFile = self.proj["addressControl"]
             self.addressControl = existsLoad(addressControlFile)
             self.validateAddressControl(self.addressControl, addressControlFile)
+        # Normalize project-level address policy before instance auto fields
+        # allocate IDs from those groups.
+        self.loadProjectAddressPolicy()
         if 'topInstance' in self.proj:
             # all designs have a top instance, which must be specified in the project file
             self.topInstance = self.proj['topInstance']
@@ -2998,6 +3004,9 @@ class projectCreate:
             sql = f"UPDATE blocks SET maxAddress = {address-1} WHERE blockKey = '{blockKey}'"
             g.cur.execute(sql)
 
+        if isinstance(self.addressControl, dict):
+            self.config.setConfig("ADDRESS_CONFIG", self.addressControl, bin=True)
+
 
     def calcBlockConfigInfo(self):
         # One-shot post-processing pass: for each block, walk every
@@ -3346,7 +3355,152 @@ class projectCreate:
                             myLineNumber = objectSettings.lc.line + 1
                             printError(f"Bad addressControl detected in {addressControlFile}:{myLineNumber}, section {gen}, group {group} has unknown parameter {setting}")
                             exit(warningAndErrorReport())
-        self.config.setConfig("ADDRESS_CONFIG", addressControl, bin=True)
+
+    _PROJECT_ADDRESS_GROUP_FIELDS = {'varType': None, 'enumPrefix': None}
+    _PROJECT_ADDRESS_OBJECT_FIELDS = {'alignment': None,
+                                      'sizeRoundUpPowerOf2': None,
+                                      'sortDescending': None}
+
+    def loadProjectAddressPolicy(self):
+        """Merge project.yaml instanceGroups:/addressObjects: with the
+        legacy addressControl.yaml InstanceGroups:/AddressObjects:.
+
+        If both spellings supply a section, the rows must match
+        identically; disagreement names both files and errors. If
+        only project.yaml supplies the section, this method populates
+        the same counter-state and persisted ADDRESS_CONFIG blob that
+        validateAddressControl would have written.
+        """
+        projInstanceGroups = self.proj.get('instanceGroups')
+        projAddressObjects = self.proj.get('addressObjects')
+        if projInstanceGroups is None and projAddressObjects is None:
+            return
+
+        addressConfig = (self.addressControl
+                         if isinstance(self.addressControl, dict)
+                         else OrderedDict())
+
+        legacyFile = self.proj.get('addressControl')
+
+        if projInstanceGroups is not None:
+            self._mergeProjectAddressGroupSection(
+                'InstanceGroups', projInstanceGroups,
+                self._PROJECT_ADDRESS_GROUP_FIELDS,
+                legacyFile, addressConfig,
+            )
+
+        if projAddressObjects is not None:
+            self._mergeProjectAddressObjectSection(
+                'AddressObjects', projAddressObjects,
+                self._PROJECT_ADDRESS_OBJECT_FIELDS,
+                legacyFile, addressConfig,
+            )
+
+        self.addressControl = addressConfig
+
+    def _validateProjectAddressRows(self, sectionLabel, rows, allowedFields,
+                                    rowKindLabel):
+        """Reject rows that are not mappings or carry unknown fields."""
+        ok = True
+        if not isinstance(rows, dict):
+            self.logError(
+                f"In {self.projFile}, section '{sectionLabel}:' must be "
+                f"a mapping of {rowKindLabel} -> "
+                f"{sorted(allowedFields)}."
+            )
+            return False
+        for name, settings in rows.items():
+            if not isinstance(settings, dict):
+                self.logError(
+                    f"In {self.projFile}, {sectionLabel} {rowKindLabel} "
+                    f"'{name}' must be a mapping of "
+                    f"{sorted(allowedFields)}."
+                )
+                ok = False
+                continue
+            for setting in settings:
+                if setting not in allowedFields:
+                    line = (settings.lc.line + 1
+                            if hasattr(settings, 'lc') and settings.lc is not None
+                            else '?')
+                    self.logError(
+                        f"In {self.projFile}:{line}, {sectionLabel} "
+                        f"{rowKindLabel} '{name}' has unknown parameter "
+                        f"'{setting}'. Allowed: {sorted(allowedFields)}"
+                    )
+                    ok = False
+        return ok
+
+    def _mergeProjectAddressGroupSection(self, legacyKey, projRows,
+                                         allowedFields, legacyFile,
+                                         addressConfig):
+        """Normalize a project.yaml 'group'-shaped section
+        (today only instanceGroups:) into the legacy InstanceGroups
+        in-memory state and ADDRESS_CONFIG entry."""
+        if not self._validateProjectAddressRows(
+                'instanceGroups', projRows, allowedFields, 'group'):
+            return
+
+        legacyRows = addressConfig.get(legacyKey)
+        if legacyRows is not None:
+            if not self._addressRowsEqual(legacyRows, projRows):
+                self.logError(
+                    f"'{legacyKey}' is declared in both "
+                    f"'{self.projFile}' (as 'instanceGroups:') and "
+                    f"'{legacyFile}' (as '{legacyKey}:') with "
+                    f"disagreeing rows. Remove the section from one "
+                    f"file or align the rows."
+                )
+            # Agree -> legacy already populated counter state. Done.
+            return
+
+        # Sole source -> populate the same state that validateAddressControl
+        # would have written for an InstanceGroups: row.
+        addressConfig[legacyKey] = projRows
+        self.counterGroup[legacyKey] = OrderedDict()
+        self.counterGroupControl[legacyKey] = OrderedDict()
+        self.counterData[legacyKey] = OrderedDict()
+        for group, settings in projRows.items():
+            self.counterGroup[legacyKey][group] = 0
+            self.counterGroupControl[legacyKey][group] = settings
+            self.counterData[legacyKey][group] = OrderedDict()
+
+    def _mergeProjectAddressObjectSection(self, legacyKey, projRows,
+                                          allowedFields, legacyFile,
+                                          addressConfig):
+        """Normalize project.yaml addressObjects: into the legacy
+        AddressObjects in-memory state and ADDRESS_CONFIG entry."""
+        if not self._validateProjectAddressRows(
+                'addressObjects', projRows, allowedFields, 'object'):
+            return
+
+        legacyRows = addressConfig.get(legacyKey)
+        if legacyRows is not None:
+            if not self._addressRowsEqual(legacyRows, projRows):
+                self.logError(
+                    f"'{legacyKey}' is declared in both "
+                    f"'{self.projFile}' (as 'addressObjects:') and "
+                    f"'{legacyFile}' (as '{legacyKey}:') with "
+                    f"disagreeing rows. Remove the section from one "
+                    f"file or align the rows."
+                )
+            return
+
+        addressConfig[legacyKey] = projRows
+        self.addressObjects = projRows
+
+    @staticmethod
+    def _addressRowsEqual(legacyRows, newRows):
+        """Compare two CommentedMap-based row containers ignoring
+        ruamel.yaml line/column metadata, which is an attribute, not a
+        dict key, but which can carry through pickling unevenly."""
+        def plainify(value):
+            if isinstance(value, dict):
+                return {k: plainify(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [plainify(v) for v in value]
+            return value
+        return plainify(legacyRows) == plainify(newRows)
 
     def validateDeclaredPorts(self, blocks_flat, instances_flat, interfaces_flat,
                               connections_flat, connection_maps_flat,
@@ -5060,6 +5214,96 @@ class projectCreate:
             self.logError(f"In file {yamlFile}:{line_num}, interface '{itemkey}' with interfaceType '{intf_type}': "
                         f"missing required structureType(s): '{missing_params_str}'. "
                         f"All struct-type parameters from interface_defs must have corresponding structures.")
+
+        return item
+
+    def _post_validateBlockAddressDecl(self, itemkey, item, yamlFile):
+        """Reject blocks that declare both registerPorts: (leaf) and
+        addressBlock: (router)."""
+        if item.get('registerPorts') and item.get('addressBlock'):
+            lc = item.get('lc')
+            line = lc.line + 1 if lc is not None and hasattr(lc, 'line') else '?'
+            self.logError(
+                f"In {yamlFile}:{line}, block '{itemkey}' declares both "
+                f"registerPorts: and addressBlock:; these are mutually exclusive."
+            )
+        return item
+
+    def _post_validateRegisterPortInterface(self, itemkey, item, yamlFile):
+        """Confirm the row's interface resolves to an interface_defs
+        entry with addressBus: true."""
+        (intfInfo, _) = self.getFromContext('interfaces', yamlFile, item['interfaceKey'])
+        (intfDef, _) = self.getFromContext('interface_defs', yamlFile, intfInfo['interfaceTypeKey'])
+        if not intfDef['addressBus']:
+            lc = item.get('lc')
+            line = lc.line + 1 if lc is not None and hasattr(lc, 'line') else '?'
+            self.logError(
+                f"In {yamlFile}:{line}, registerPorts port "
+                f"'{item['port']}' references interface "
+                f"'{item['interface']}' whose interfaceType "
+                f"'{intfInfo['interfaceType']}' is not marked "
+                f"addressBus: true."
+            )
+        return item
+
+    def _post_registerAddressBlock(self, itemkey, item, yamlFile):
+        """Register the per-block addressBlock: declaration into the
+        AddressGroups state shared with validateAddressControl().
+        itemkey is the owning block name (passed by processSubTable
+        for dataGroup tables)."""
+        group = item['addressGroup']
+        lc = item.get('lc')
+        line = lc.line + 1 if lc is not None and hasattr(lc, 'line') else '?'
+
+        if self.proj.get('addressControl'):
+            self.logError(
+                f"In {yamlFile}:{line}, block '{itemkey}' declares "
+                f"addressBlock:, but project file '{self.projFile}' also "
+                f"declares legacy addressControl: '{self.proj['addressControl']}'. "
+                f"Projects must use either legacy addressControl.yaml "
+                f"AddressGroups or new per-block addressBlock:, not both."
+            )
+            return item
+
+        if 'AddressGroups' not in self.counterGroup:
+            self.counterGroup['AddressGroups'] = OrderedDict()
+        if 'AddressGroups' not in self.counterGroupControl:
+            self.counterGroupControl['AddressGroups'] = OrderedDict()
+        if 'AddressGroups' not in self.counterData:
+            self.counterData['AddressGroups'] = OrderedDict()
+        if not isinstance(self.addressControl, dict):
+            self.addressControl = OrderedDict()
+        if 'AddressGroups' not in self.addressControl:
+            self.addressControl['AddressGroups'] = OrderedDict()
+
+        if group in self.counterGroupControl['AddressGroups']:
+            prior = self.counterGroupControl['AddressGroups'][group]
+            self.logError(
+                f"In {yamlFile}:{line}, addressGroup '{group}' declared on "
+                f"block '{itemkey}' duplicates a prior addressBlock: "
+                f"declaration on block '{prior['_declaringBlock']}' "
+                f"in {prior['_declaringFile']}. "
+                f"Each addressGroup may have at most one router-block declaration."
+            )
+            return item
+
+        # varTypeContext = yamlFile scopes varType resolution to the
+        # router block's own YAML file.
+        groupRow = OrderedDict()
+        groupRow['addressIncrement'] = item['addressIncrement']
+        groupRow['maxAddressSpaces'] = item['maxAddressSpaces']
+        groupRow['varType'] = item['varType']
+        groupRow['varTypeContext'] = yamlFile
+        groupRow['enumPrefix'] = item['enumPrefix']
+        groupRow['upstreamPort'] = item['upstreamPort']
+        groupRow['registerDecoderPort'] = item['registerDecoderPort']
+        groupRow['_declaringBlock'] = itemkey
+        groupRow['_declaringFile'] = yamlFile
+
+        self.counterGroup['AddressGroups'][group] = 0
+        self.counterGroupControl['AddressGroups'][group] = groupRow
+        self.counterData['AddressGroups'][group] = OrderedDict()
+        self.addressControl['AddressGroups'][group] = groupRow
 
         return item
 

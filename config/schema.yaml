@@ -134,6 +134,8 @@ structures: # customer handler, the fields here must match the code
 
 interface_defs:
   interface_type: key
+  # marks an interface_def as a register-bus / address-bus meta-protocol
+  addressBus: optional(false)
   parameters:
     _attribs: [optional, multiple]
     param: key
@@ -228,6 +230,7 @@ instances:
   instID: auto(instanceID)  #note that even if specified in instances section, will be overridden
 
 blocks:
+  _attribs: [post(validateBlockAddressDecl)]
   block: key
   desc: required
   attrib: optional
@@ -259,6 +262,28 @@ blocks:
         values:
           - src
           - dst
+  # leaf-owned register-bus ingress ports; direction is implicitly dst,
+  # and interface.interfaceType must resolve to an interface_defs entry
+  # with addressBus: true
+  registerPorts:
+    _attribs: [optional, multiple, post(validateRegisterPortInterface)]
+    port: key
+    interface:
+      _type: required
+      _validate:
+        section: interfaces
+        field: interface
+  # per-router address-group attributes; mutually exclusive with
+  # registerPorts on the same block
+  addressBlock:
+    _attribs: [dataGroup, post(registerAddressBlock)]
+    addressGroup: required
+    addressIncrement: required
+    maxAddressSpaces: required
+    varType: required
+    enumPrefix: required
+    upstreamPort: optional(apbReg)
+    registerDecoderPort: optional(apbReg)
 
 parameters:
   block:

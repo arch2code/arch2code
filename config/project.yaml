@@ -112,3 +112,21 @@ fileGeneration:
 postProcess:
   - $a2c/config/postParseRegister.py
   - $a2c/config/postParseChecks.py
+
+# Top-level address-policy sections. Prefer these project.yaml fields for
+# new or migrated projects; they normalize into the same ADDRESS_CONFIG state
+# as the legacy addressControl.yaml InstanceGroups and AddressObjects sections.
+# The legacy addressControl.yaml path is supported during migration but is
+# expected to be deprecated.
+# If both spellings are present, their rows must match exactly.
+#
+# instanceGroups:
+#   <groupName>:
+#     varType: <type name>
+#     enumPrefix: <enum prefix>
+#
+# addressObjects:
+#   <objectName>:
+#     alignment: <memsize|number-of-bytes>
+#     sizeRoundUpPowerOf2: <bool>
+#     sortDescending: <bool>

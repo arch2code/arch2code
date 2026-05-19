@@ -190,7 +190,11 @@ The project file is the entry point that orchestrates all architecture files.
 
 **Optional Fields:**
 - `dbSchema`: Custom schema file path
-- `addressControl`: Address control configuration file
+- `addressControl`: Legacy address control configuration file
+- `instanceGroups`: Project-level ID enumeration groups; preferred over
+  legacy `addressControl.yaml` `InstanceGroups` for new work
+- `addressObjects`: Project-level register and memory packing policy;
+  preferred over legacy `addressControl.yaml` `AddressObjects` for new work
 - `templates`: Custom template mappings (overrides defaults from builder/base/config/project.yaml)
 - `fileGeneration`: File generation template configuration
 
@@ -205,7 +209,7 @@ projectFiles:
   - subsystem_b/subsystem_b.yaml
 
 dbSchema: config/schema.yaml  # Optional custom schema
-addressControl: config/addressControl.yaml
+addressControl: config/addressControl.yaml  # Optional legacy address control
 
 topInstance: top_tb
 
@@ -217,6 +221,21 @@ dirs:
   vl_wrap: $root/verif/vl_wrap     # Verilator wrappers
   tb: $root/tb                     # Testbenches
   fwInc: $root/fw/include          # Firmware includes (if needed)
+
+# Preferred project-level address-policy sections
+instanceGroups:
+  all_instances:
+    varType: global_inst_id_t
+    enumPrefix: GID_
+
+addressObjects:
+  memories:
+    alignment: memsize
+    sizeRoundUpPowerOf2: true
+    sortDescending: true
+  registers:
+    alignment: 8
+    sortDescending: true
 
 # Optional: Only needed for firmware header generation
 # fileGeneration:
@@ -232,6 +251,10 @@ dirs:
 - `$a2c` is automatically defined and points to the arch2code installation directory
 - **File generation defaults are inherited** from `builder/base/config/project.yaml` - no need to define fileMap unless customizing
 - Only add `fileGeneration.fileMap.includeFW` if your project needs firmware header files
+- Prefer `project.yaml` `instanceGroups:` and `addressObjects:` for new
+  address-policy rows. Legacy `addressControl.yaml` rows are still accepted;
+  this path is expected to be deprecated, and if both spellings exist, they
+  must match exactly.
 
 ### Architecture Files
 
@@ -243,8 +266,7 @@ Architecture files contain the actual design definitions. They can be organized 
 ```
 arch/yaml/
 ├── project.yaml
-├── config/
-│   └── addressControl.yaml
+├── config/                    # Optional legacy address-control files
 └── design.yaml  # All architecture in one file
 ```
 
@@ -252,8 +274,7 @@ arch/yaml/
 ```
 arch/yaml/
 ├── project.yaml
-├── config/
-│   └── addressControl.yaml
+├── config/                    # Optional legacy address-control files
 ├── shared_types.yaml        # Common types shared across modules
 ├── top_level.yaml           # Top-level connections
 ├── subsystem_a/
@@ -1514,13 +1535,27 @@ memories:
 - The instance must have `addressGroup` set to allocate address space
 - You still need to manually create the top-level bus decoder (e.g., `apb_decode_system`)
 
-### Address Control File
+### Address Policy and Address Control
 
-The address control file (`addressControl.yaml`) manages memory-mapped address space organization.
+Address configuration has two accepted sources:
+
+- `project.yaml` owns reusable address-policy sections for new and
+  migrated projects: `instanceGroups:` and `addressObjects:`.
+- Legacy `addressControl.yaml` still owns `AddressGroups:` and
+  `RegisterBusInterface:`, and may still carry `InstanceGroups:` and
+  `AddressObjects:` until a project migrates those sections. When both
+  spellings carry an address-policy section, the rows must match
+  exactly.
+- The legacy `addressControl.yaml` path is supported during migration
+  but is expected to be deprecated. Prefer the per-block schema and
+  project-level address-policy fields for new work.
 
 #### AddressGroups
 
-Address groups define hierarchical address spaces.
+Address groups define hierarchical address spaces. Legacy projects
+author these rows in `addressControl.yaml`; projects migrating to the
+per-block register-bus schema author equivalent router-local
+`addressBlock:` rows instead.
 
 ```yaml
 AddressGroups:
@@ -1569,12 +1604,12 @@ AddressGroups:
 - This is the **top-level** decoder that routes the bus between multiple blocks
 - Do not confuse with `<blockname>_regs` which is auto-generated per block
 
-#### InstanceGroups
+#### instanceGroups
 
 Instance groups provide ID enumeration without address space allocation.
 
 ```yaml
-InstanceGroups:
+instanceGroups:
   group_name:
     varType: <type_name>
     enumPrefix: <PREFIX_>
@@ -1582,18 +1617,21 @@ InstanceGroups:
 
 **Example:**
 ```yaml
-InstanceGroups:
+instanceGroups:
   top:
     varType: inst_id_t
     enumPrefix: INST_ID_
 ```
 
-#### AddressObjects
+Use this top-level `project.yaml` spelling for new work. Legacy
+`addressControl.yaml` `InstanceGroups:` rows use the same body shape.
+
+#### addressObjects
 
 Address objects control the ordering and alignment of memory-mapped elements.
 
 ```yaml
-AddressObjects:
+addressObjects:
   object_type:
     alignment: <memsize|bytes>
     sizeRoundUpPowerOf2: <true|false>
@@ -1602,7 +1640,7 @@ AddressObjects:
 
 **Example:**
 ```yaml
-AddressObjects:
+addressObjects:
   memories:
     alignment: memsize  # Align to memory size
     sizeRoundUpPowerOf2: true
@@ -1613,9 +1651,15 @@ AddressObjects:
     sortDescending: true
 ```
 
+Use this top-level `project.yaml` spelling for new work. Legacy
+`addressControl.yaml` `AddressObjects:` rows use the same body shape.
+
 #### RegisterBusInterface
 
-Specifies the interface used for register access.
+Specifies the interface used for register access in the legacy
+`addressControl.yaml` path. In the per-block schema, leaf
+`registerPorts:` and router `addressBlock:` declarations provide the
+register-bus surface instead.
 
 ```yaml
 RegisterBusInterface: <interface_name>

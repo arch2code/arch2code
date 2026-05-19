@@ -9,6 +9,7 @@ Before editing, you **must** load the project skill that matches the task. Do no
 | :--- | :--- |
 | **Start/Config** | `setup-project.md` (Project init, `project.yaml`) |
 | **Address/Mem** | `manage-address-space.md` (Address map, decoding, FW headers) |
+| **Address Migration** | `address-migration.md` (Migrate `addressControl.yaml` to per-block `addressBlock:` / `registerPorts:`) |
 | **Architecture** | `design-architecture.md` (YAML blocks, interfaces) |
 | **Build/Run/File Creation** | `manage-build.md` (`make` targets, `gen`, `db`, `newmodule`; required before creating implementation files or enabling generated artifacts) |
 | **SystemC Core** | `systemc-core.md` (Modules, threads, logging) |
