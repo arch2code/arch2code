@@ -180,7 +180,7 @@ def test_declared_interface_wrong_protocol():
     )
     return test_error_case(
         yaml,
-        ["declares interface 'reqIf'", "bound to interface 'dataIf'", "interfaceType"],
+        ["cross-interface bind", "same interface meta-protocol", "req_ack", "rdy_vld"],
         "Declared port interface has wrong protocol",
     )
 
