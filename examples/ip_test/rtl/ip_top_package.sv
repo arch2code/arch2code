@@ -5,14 +5,12 @@
 package ip_top_package;
 // Generated Import package statement(s)
 import ipBridge_package::*;
-import src_package::*;
 import ipLeaf_package::*;
+import src_package::*;
 import ip_package::*;
-localparam int unsigned DWORD = 32'h0000_0020;  // Width of an APB dword
+import shared_types_package::*;
 
 // types
-typedef logic[DWORD-1:0] apbAddrT; //APB address
-typedef logic[DWORD-1:0] apbDataT; //APB data
 
 // enums
 typedef enum logic[2-1:0] {          //Generated type for addressing top instances
@@ -22,13 +20,5 @@ typedef enum logic[2-1:0] {          //Generated type for addressing top instanc
 } addr_id_top;
 
 // structures
-typedef struct packed {
-    apbAddrT address; //
-} apbAddrSt;
-
-typedef struct packed {
-    apbDataT data; //
-} apbDataSt;
-
 endpackage : ip_top_package
 // GENERATED_CODE_END

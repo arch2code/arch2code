@@ -3,6 +3,8 @@
 // GENERATED_CODE_PARAM --context=src.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package src_package;
+// Generated Import package statement(s)
+import ipLeaf_package::*;
 localparam int unsigned OUT0_DATA_WIDTH = 32'h0000_0008;  // Width fed to uIp0
 localparam int unsigned OUT1_DATA_WIDTH = 32'h0000_0046;  // Width fed to uIp1
 

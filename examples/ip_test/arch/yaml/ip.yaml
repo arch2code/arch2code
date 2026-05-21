@@ -26,6 +26,8 @@ constants:
     IP_FIXED_PAIR_COUNT:   { value: 2, desc: "Fixed nested-structure array length" }
     IP_FIXED_WORD_COUNT:   { eval: "$IP_FIXED_NIBBLE_COUNT + 1", desc: "Derived fixed array length" }
     IP_FIXED_DEPTH:        { value: 9, desc: "Fixed depth for widthLog2 and widthLog2minus1 tests" }
+    IP_REG_ADDR_WIDTH:     { value: 32, desc: "Leaf register-bus address width" }
+    IP_REG_DATA_WIDTH:     { value: 32, desc: "Leaf register-bus data width" }
 
 types:
     ipModeT:
@@ -90,6 +92,12 @@ types:
             - { enumName: IP_OP_NOP, value: 0, desc: "No operation" }
             - { enumName: IP_OP_LOAD, value: 3, desc: "Load" }
             - { enumName: IP_OP_STORE, value: 9, desc: "Store" }
+    ipRegAddrT:
+        width: IP_REG_ADDR_WIDTH
+        desc: "ip leaf register-bus address"
+    ipRegDataT:
+        width: IP_REG_DATA_WIDTH
+        desc: "ip leaf register-bus data"
 
 structures:
     ipDataSt:
@@ -132,6 +140,10 @@ structures:
         arrays: { subStruct: ipFixedArraySt, arraySize: IP_FIXED_PAIR_COUNT, desc: "Nested fixed arrays" }
         log2Fields: { subStruct: ipFixedLog2St, desc: "Nested fixed log2 fields" }
         wideValue: { varType: ipWide37T, desc: "Wide fixed value" }
+    ipRegAddrSt:
+        address: { varType: ipRegAddrT, generator: address }
+    ipRegDataSt:
+        data: { varType: ipRegDataT, generator: data }
 
 interfaces:
     ipDataIf:
@@ -139,6 +151,12 @@ interfaces:
         interfaceType: push_ack
         structures:
             - { structure: ipDataSt, structureType: data_t }
+    ipReg:
+        desc: "Register bus the ip block consumes"
+        interfaceType: apb
+        structures:
+            - { structure: ipRegAddrSt, structureType: addr_t }
+            - { structure: ipRegDataSt, structureType: data_t }
 
 blocks:
     ip:
@@ -158,6 +176,8 @@ blocks:
         # path of projectCreate.validateDeclaredPorts.
         ports:
             ipDataIf: { interface: ipDataIf, direction: dst }
+        registerPorts:
+            regs: { interface: ipReg }
 
 registers:
     - { register: ipCfg, regType: rw, block: ip, structure: ipCfgSt, desc: "IP configuration" }

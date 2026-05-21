@@ -5,11 +5,11 @@
 //module as defined by block: apbDecode
 module apbDecode
 // Generated Import package statement(s)
-import ip_top_package::*;
+import shared_types_package::*;
 (
-    apb_if.src apb_uIp0,
-    apb_if.src apb_uIp1,
-    apb_if.src apb_uBridge,
+    apb_if.src apbReg_uBridge,
+    apb_if.src apbReg_uIp0,
+    apb_if.src apbReg_uIp1,
     apb_if.dst cpu_main,
     input clk, rst_n
 );

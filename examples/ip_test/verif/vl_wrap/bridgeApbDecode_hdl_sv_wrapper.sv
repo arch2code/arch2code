@@ -6,27 +6,27 @@
 
 module bridgeApbDecode_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import ip_top_package::*;
+    import shared_types_package::*;
 (
     // apb_if.src
-    output bit [31:0] apb_uBridgeIp0_paddr,
-    output bit apb_uBridgeIp0_psel,
-    output bit apb_uBridgeIp0_penable,
-    output bit apb_uBridgeIp0_pwrite,
-    output bit [31:0] apb_uBridgeIp0_pwdata,
-    input bit apb_uBridgeIp0_pready,
-    input bit [31:0] apb_uBridgeIp0_prdata,
-    input bit apb_uBridgeIp0_pslverr,
+    output bit [31:0] apbReg_uBridgeIp0_paddr,
+    output bit apbReg_uBridgeIp0_psel,
+    output bit apbReg_uBridgeIp0_penable,
+    output bit apbReg_uBridgeIp0_pwrite,
+    output bit [31:0] apbReg_uBridgeIp0_pwdata,
+    input bit apbReg_uBridgeIp0_pready,
+    input bit [31:0] apbReg_uBridgeIp0_prdata,
+    input bit apbReg_uBridgeIp0_pslverr,
 
     // apb_if.src
-    output bit [31:0] apb_uBridgeIp1_paddr,
-    output bit apb_uBridgeIp1_psel,
-    output bit apb_uBridgeIp1_penable,
-    output bit apb_uBridgeIp1_pwrite,
-    output bit [31:0] apb_uBridgeIp1_pwdata,
-    input bit apb_uBridgeIp1_pready,
-    input bit [31:0] apb_uBridgeIp1_prdata,
-    input bit apb_uBridgeIp1_pslverr,
+    output bit [31:0] apbReg_uBridgeIp1_paddr,
+    output bit apbReg_uBridgeIp1_psel,
+    output bit apbReg_uBridgeIp1_penable,
+    output bit apbReg_uBridgeIp1_pwrite,
+    output bit [31:0] apbReg_uBridgeIp1_pwdata,
+    input bit apbReg_uBridgeIp1_pready,
+    input bit [31:0] apbReg_uBridgeIp1_prdata,
+    input bit apbReg_uBridgeIp1_pslverr,
 
     // apb_if.dst
     input bit [31:0] apbReg_paddr,
@@ -42,28 +42,28 @@ module bridgeApbDecode_hdl_sv_wrapper
     input rst_n
 );
     // apb_if.src
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBridgeIp0();
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBridgeIp0();
 
-    assign #0 apb_uBridgeIp0_paddr = apb_uBridgeIp0.paddr;
-    assign #0 apb_uBridgeIp0_psel = apb_uBridgeIp0.psel;
-    assign #0 apb_uBridgeIp0_penable = apb_uBridgeIp0.penable;
-    assign #0 apb_uBridgeIp0_pwrite = apb_uBridgeIp0.pwrite;
-    assign #0 apb_uBridgeIp0_pwdata = apb_uBridgeIp0.pwdata;
-    assign #0 apb_uBridgeIp0.pready = apb_uBridgeIp0_pready;
-    assign #0 apb_uBridgeIp0.prdata = apb_uBridgeIp0_prdata;
-    assign #0 apb_uBridgeIp0.pslverr = apb_uBridgeIp0_pslverr;
+    assign #0 apbReg_uBridgeIp0_paddr = apbReg_uBridgeIp0.paddr;
+    assign #0 apbReg_uBridgeIp0_psel = apbReg_uBridgeIp0.psel;
+    assign #0 apbReg_uBridgeIp0_penable = apbReg_uBridgeIp0.penable;
+    assign #0 apbReg_uBridgeIp0_pwrite = apbReg_uBridgeIp0.pwrite;
+    assign #0 apbReg_uBridgeIp0_pwdata = apbReg_uBridgeIp0.pwdata;
+    assign #0 apbReg_uBridgeIp0.pready = apbReg_uBridgeIp0_pready;
+    assign #0 apbReg_uBridgeIp0.prdata = apbReg_uBridgeIp0_prdata;
+    assign #0 apbReg_uBridgeIp0.pslverr = apbReg_uBridgeIp0_pslverr;
 
     // apb_if.src
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBridgeIp1();
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBridgeIp1();
 
-    assign #0 apb_uBridgeIp1_paddr = apb_uBridgeIp1.paddr;
-    assign #0 apb_uBridgeIp1_psel = apb_uBridgeIp1.psel;
-    assign #0 apb_uBridgeIp1_penable = apb_uBridgeIp1.penable;
-    assign #0 apb_uBridgeIp1_pwrite = apb_uBridgeIp1.pwrite;
-    assign #0 apb_uBridgeIp1_pwdata = apb_uBridgeIp1.pwdata;
-    assign #0 apb_uBridgeIp1.pready = apb_uBridgeIp1_pready;
-    assign #0 apb_uBridgeIp1.prdata = apb_uBridgeIp1_prdata;
-    assign #0 apb_uBridgeIp1.pslverr = apb_uBridgeIp1_pslverr;
+    assign #0 apbReg_uBridgeIp1_paddr = apbReg_uBridgeIp1.paddr;
+    assign #0 apbReg_uBridgeIp1_psel = apbReg_uBridgeIp1.psel;
+    assign #0 apbReg_uBridgeIp1_penable = apbReg_uBridgeIp1.penable;
+    assign #0 apbReg_uBridgeIp1_pwrite = apbReg_uBridgeIp1.pwrite;
+    assign #0 apbReg_uBridgeIp1_pwdata = apbReg_uBridgeIp1.pwdata;
+    assign #0 apbReg_uBridgeIp1.pready = apbReg_uBridgeIp1_pready;
+    assign #0 apbReg_uBridgeIp1.prdata = apbReg_uBridgeIp1_prdata;
+    assign #0 apbReg_uBridgeIp1.pslverr = apbReg_uBridgeIp1_pslverr;
 
     // apb_if.dst
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
@@ -78,8 +78,8 @@ module bridgeApbDecode_hdl_sv_wrapper
     assign #0 apbReg_pslverr = apbReg.pslverr;
 
     bridgeApbDecode dut (
-        .apb_uBridgeIp0(apb_uBridgeIp0), // apb_if.src
-        .apb_uBridgeIp1(apb_uBridgeIp1), // apb_if.src
+        .apbReg_uBridgeIp0(apbReg_uBridgeIp0), // apb_if.src
+        .apbReg_uBridgeIp1(apbReg_uBridgeIp1), // apb_if.src
         .apbReg(apbReg), // apb_if.dst
         .clk(clk),
         .rst_n(rst_n)

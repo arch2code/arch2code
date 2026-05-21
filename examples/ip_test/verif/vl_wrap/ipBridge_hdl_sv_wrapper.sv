@@ -7,7 +7,7 @@
 module ipBridge_hdl_sv_wrapper
     // Generated Import package statement(s)
     import ip_package::*;
-    import ip_top_package::*;
+    import shared_types_package::*;
     import ipBridge_package::*;
 (
     // push_ack_if.dst

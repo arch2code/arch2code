@@ -10,11 +10,12 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "ip_topBase.h"
+#include "apb_port_thunker.h"
 #include "push_ack_port_thunker.h"
 #include "ipConfig.h"
 #include "srcConfig.h"
-import ip_top;
-using namespace ip_top_ns;
+import shared_types;
+using namespace shared_types_ns;
 import src;
 using namespace src_ns;
 import ipBridge;
@@ -42,12 +43,12 @@ public:
     push_ack_channel< data8St > out8;
     // Non-parameterized 70-bit Q10 bridge data interface
     push_ack_channel< data70St > out70;
-    // CPU access to IP registers via APB
-    apb_channel< apbAddrSt, apbDataSt > apb_uIp0;
-    // CPU access to IP registers via APB
-    apb_channel< apbAddrSt, apbDataSt > apb_uIp1;
-    // CPU access to IP registers via APB
-    apb_channel< apbAddrSt, apbDataSt > apb_uBridge;
+    // CPU access to registers via APB
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBridge;
+    // CPU access to registers via APB
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uIp0;
+    // CPU access to registers via APB
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uIp1;
 
     //instances contained in block
     std::shared_ptr<apbDecodeBase> uAPBDecode;
@@ -60,6 +61,8 @@ public:
     // cross-interface thunkers
     push_ack_port_thunker<srcOut0St<srcVariantSrc0Config>, ipDataSt<ipVariant0Config>> thunker_out0_uIp0;
     push_ack_port_thunker<srcOut1St<srcVariantSrc0Config>, ipDataSt<ipVariant1Config>> thunker_out1_uIp1;
+    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uIp0_uIp0;
+    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uIp1_uIp1;
 
     ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ip_top() override = default;

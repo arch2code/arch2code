@@ -22,6 +22,8 @@ const uint32_t IP_FIXED_NIBBLE_COUNT = 5;  // Fixed array length for non-paramet
 const uint32_t IP_FIXED_PAIR_COUNT = 2;  // Fixed nested-structure array length
 const uint32_t IP_FIXED_WORD_COUNT = 6;  // Derived fixed array length
 const uint32_t IP_FIXED_DEPTH = 9;  // Fixed depth for widthLog2 and widthLog2minus1 tests
+const uint32_t IP_REG_ADDR_WIDTH = 32;  // Leaf register-bus address width
+const uint32_t IP_REG_DATA_WIDTH = 32;  // Leaf register-bus data width
 
 } // namespace ip_ns
 // GENERATED_CODE_END
@@ -42,6 +44,8 @@ typedef uint16_t ipWordT; // [16] Fixed 16-bit word
 typedef uint64_t ipWide37T; // [37] Fixed 37-bit value crossing a 32-bit boundary
 typedef uint8_t ipFixedCountT; // [4] Fixed count field wide enough for 0..IP_FIXED_DEPTH
 typedef uint8_t ipFixedIndexT; // [4] Fixed index field wide enough for 0..IP_FIXED_DEPTH-1
+typedef uint32_t ipRegAddrT; // [32] ip leaf register-bus address
+typedef uint32_t ipRegDataT; // [32] ip leaf register-bus data
 
 } // namespace ip_ns
 // GENERATED_CODE_END
@@ -1160,6 +1164,119 @@ struct ipFixedNestedSt {
     explicit ipFixedNestedSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+struct ipRegAddrSt {
+    ipRegAddrT address; //
+
+    ipRegAddrSt() {}
+
+    static constexpr uint16_t _bitWidth = IP_REG_ADDR_WIDTH;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint32_t _packedSt;
+    inline bool operator == (const ipRegAddrSt & rhs) const {
+        bool ret = true;
+        ret = ret && (address == rhs.address);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const ipRegAddrSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.address, NAME + ".address");
+    }
+    inline friend ostream& operator << ( ostream& os,  ipRegAddrSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("address:0x{:08x}",
+           (uint64_t) address
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline ipRegAddrT _getAddress(void) { return( address); }
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, ipRegAddrSt::_byteWidth);
+        _ret = address;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        address = (ipRegAddrT)((_src));
+    }
+    inline sc_bv<ipRegAddrSt::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<ipRegAddrSt::_bitWidth> packed_data;
+        packed_data.range(31, 0) = address;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<ipRegAddrSt::_bitWidth> packed_data)
+    {
+        address = (ipRegAddrT) packed_data.range(31, 0).to_uint64();
+    }
+    explicit ipRegAddrSt(sc_bv<ipRegAddrSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit ipRegAddrSt(
+        ipRegAddrT address_) :
+        address(address_)
+    {}
+    explicit ipRegAddrSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct ipRegDataSt {
+    ipRegDataT data; //
+
+    ipRegDataSt() {}
+
+    static constexpr uint16_t _bitWidth = IP_REG_DATA_WIDTH;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint32_t _packedSt;
+    inline bool operator == (const ipRegDataSt & rhs) const {
+        bool ret = true;
+        ret = ret && (data == rhs.data);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const ipRegDataSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.data, NAME + ".data");
+    }
+    inline friend ostream& operator << ( ostream& os,  ipRegDataSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("data:0x{:08x}",
+           (uint64_t) data
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline ipRegDataT _getData(void) { return( data); }
+    inline void _setData(ipRegDataT value) { data = value; }
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, ipRegDataSt::_byteWidth);
+        _ret = data;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        data = (ipRegDataT)((_src));
+    }
+    inline sc_bv<ipRegDataSt::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<ipRegDataSt::_bitWidth> packed_data;
+        packed_data.range(31, 0) = data;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<ipRegDataSt::_bitWidth> packed_data)
+    {
+        data = (ipRegDataT) packed_data.range(31, 0).to_uint64();
+    }
+    explicit ipRegDataSt(sc_bv<ipRegDataSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit ipRegDataSt(
+        ipRegDataT data_) :
+        data(data_)
+    {}
+    explicit ipRegDataSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
 } // namespace ip_ns
 
 // GENERATED_CODE_END
@@ -1670,6 +1787,88 @@ void test_ip_structs<Config>::test(void) {
                 cout << a.prt();
                 cout << b.prt();
                 Q_ASSERT(false,"ipFixedNestedSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        ipRegAddrSt::_packedSt packed;
+        memset(&packed, pattern, ipRegAddrSt::_byteWidth);
+        sc_bv<ipRegAddrSt::_bitWidth> aInit;
+        sc_bv<ipRegAddrSt::_bitWidth> aTest;
+        for (int i = 0; i < ipRegAddrSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, ipRegAddrSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        ipRegAddrSt a;
+        a.sc_unpack(aInit);
+        ipRegAddrSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"ipRegAddrSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"ipRegAddrSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = ipRegAddrSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"ipRegAddrSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        ipRegDataSt::_packedSt packed;
+        memset(&packed, pattern, ipRegDataSt::_byteWidth);
+        sc_bv<ipRegDataSt::_bitWidth> aInit;
+        sc_bv<ipRegDataSt::_bitWidth> aTest;
+        for (int i = 0; i < ipRegDataSt::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, ipRegDataSt::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        ipRegDataSt a;
+        a.sc_unpack(aInit);
+        ipRegDataSt b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"ipRegDataSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"ipRegDataSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = ipRegDataSt::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"ipRegDataSt fail");
             }
             bitsLeft -= bits;
             ptr++;

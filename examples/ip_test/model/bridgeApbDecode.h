@@ -10,8 +10,8 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "bridgeApbDecodeBase.h"
-import ip_top;
-using namespace ip_top_ns;
+import shared_types;
+using namespace shared_types_ns;
 #include "apbBusDecode.h"
 
 SC_MODULE(bridgeApbDecode), public blockBase, public bridgeApbDecodeBase

@@ -9,8 +9,8 @@
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
 #include "push_ack_channel.h"
-import ip_top;
-using namespace ip_top_ns;
+import shared_types;
+using namespace shared_types_ns;
 import src;
 using namespace src_ns;
 import ipBridge;
@@ -23,7 +23,7 @@ class ip_topBase : public virtual blockPortBase
 public:
     virtual ~ip_topBase() = default;
     // dst ports
-    // uCPU->apbReg: CPU access to IP registers via APB
+    // uCPU->apbReg: CPU access to registers via APB
     apb_in< apbAddrSt, apbDataSt > cpu_main;
 
 
@@ -44,7 +44,7 @@ class ip_topInverted : public virtual blockPortBase
 {
 public:
     // dst ports
-    // uCPU->apbReg: CPU access to IP registers via APB
+    // uCPU->apbReg: CPU access to registers via APB
     apb_out< apbAddrSt, apbDataSt > cpu_main;
 
 
@@ -65,7 +65,7 @@ class ip_topChannels
 {
 public:
     // dst ports
-    // CPU access to IP registers via APB
+    // CPU access to registers via APB
     apb_channel< apbAddrSt, apbDataSt > cpu_main;
 
 

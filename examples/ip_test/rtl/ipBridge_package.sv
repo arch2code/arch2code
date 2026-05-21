@@ -3,6 +3,9 @@
 // GENERATED_CODE_PARAM --context=ipBridge.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package ipBridge_package;
+// Generated Import package statement(s)
+import ip_package::*;
+import shared_types_package::*;
 
 // types
 typedef logic[1-1:0] bridgeMarkerT; //Stage 8.2 1-bit marker; bit-width matches ipDataSt::marker (Stage 6.2 packed-form compatibility)

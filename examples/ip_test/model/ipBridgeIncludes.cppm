@@ -13,6 +13,10 @@ module;
 export module ipBridge;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
+import shared_types;
+import ip;
+using namespace shared_types_ns;
+using namespace ip_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants

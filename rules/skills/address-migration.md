@@ -1,0 +1,280 @@
+---
+name: address-migration
+description: Convert legacy arch2code projects from project-wide addressControl.yaml address control to per-block addressBlock: routers and project.yaml address-policy sections.
+---
+# Skill: Legacy Address Control Migration
+
+## Purpose
+
+Guide the user through converting an existing arch2code project that
+uses `project.yaml` `addressControl:` and project-wide
+`addressControl.yaml` declarations to the per-block address control
+schema:
+
+- Router blocks declare a top-level `addressBlock:` field.
+- Address-policy sections move from legacy `InstanceGroups:` and
+  `AddressObjects:` to top-level `project.yaml` fields named
+  `instanceGroups:` and `addressObjects:`.
+
+This skill is only for legacy migration. It is not a general guide for
+authoring a new address space or redesigning an existing one.
+
+## References
+
+- `builder/base/config/schema.yaml` — accepted YAML fields for
+  `blocks.addressBlock`, `instanceGroups`, and `addressObjects`.
+- `builder/base/pysrc/processYaml.py` — schema hooks, project-config
+  normalization, and port validation.
+- `manage-address-space.md` — the legacy address-control skill; still
+  applies to projects that have not yet migrated.
+- `design-architecture.md` — block hierarchy and wiring conventions
+  that the new schema slots into.
+- `design-yaml-includes.md` — include direction and load-time scope.
+
+## When to Use
+
+- Converting an existing project's `addressControl.yaml` `AddressGroups`
+  into per-block `addressBlock:` declarations.
+- Moving legacy `InstanceGroups:` and `AddressObjects:` into
+  `project.yaml` under the new spellings as part of that conversion.
+
+If the project is staying on the legacy schema, use
+`manage-address-space.md` instead. If the project is already on the new
+schema and only needs ordinary address-space edits, use the design and
+address-management skills instead of this migration skill.
+
+## Core Rules
+
+1. Preserve the legacy topology. Each live legacy `AddressGroups:` row
+   becomes one router block with a top-level `addressBlock:` field.
+2. `primaryDecode`, `varTypeContext`, and `decoderInstance` from the
+   legacy `AddressGroups` row do not migrate. The primary router is
+   inferred from the router hierarchy; `varType` is resolved in the
+   router block's own scope; the router instance is resolved by
+   container-locality.
+3. Do not mix legacy `addressControl:` with authored `addressBlock:`.
+   A project that declares any `addressBlock:` must remove the
+   `addressControl:` pointer from `project.yaml`. The only dual
+   spelling allowed during migration is for address-policy sections:
+   legacy `InstanceGroups:` / `AddressObjects:` may overlap with
+   `project.yaml` `instanceGroups:` / `addressObjects:` if the rows
+   are identical.
+4. Make the minimum edits required to express the
+   existing address topology in the new schema. Do not create new
+   user YAML files or reorganize unrelated declarations; edit the
+   files that already author the relevant blocks, interfaces,
+   policy sections, and project config.
+
+## Migration Steps
+
+### Step 1 — Inventory the legacy declarations
+
+Open the project's `addressControl.yaml`. Record:
+
+- Each `AddressGroups:` row, its key fields (`addressIncrement`,
+  `maxAddressSpaces`, `varType`, `enumPrefix`), and the
+  `decoderInstance` it names.
+- The legacy `RegisterBusInterface:` value, if present. This becomes
+  the router `addressBlock:` `upstreamPort` and `registerDecoderPort`
+- The `InstanceGroups:` and `AddressObjects:` sections.
+
+For each `decoderInstance`, follow the instance row in the
+architecture YAML back to the router block type. That block type is
+the one that will grow an `addressBlock:`.
+
+Legacy `AddressGroups:` rows can also appear with **no** `decoderInstance:`
+field and with no instance row using them as `addressGroup:`. Those
+groups are dormant — they describe an address space the project does
+not actually decode. Drop them during migration; do not author a
+matching `addressBlock:`. (A still-referenced group with no router is
+a project error; the post-parse pass will diagnose it.)
+
+Note that `InstanceGroups:` is independent of `AddressGroups:`. The
+legacy `InstanceGroups:` section frequently contains rows that have
+nothing to do with the router hierarchy (for example a `blocks:` row
+used for general instance enumeration). Carry every active `InstanceGroups:`
+row across to the new `instanceGroups:` spelling in `project.yaml`
+(Step 4), not just the row matching the address-decoder group.
+
+### Step 2 — Place the address-bus interface so every router can see it
+
+Walk each router file and check whether the interface (typically
+`apbReg`) and its supporting types/structures are already visible
+through the existing `include:` chain. If they are, leave them alone.
+
+If some router's file does not see the interface, **relocate** the
+interface, its structures, and their types into a file that satisfies
+the constraint for every router. Use an existing shared or router file
+that already fits the include graph; do not create a new user YAML file
+just to hold migrated declarations.
+
+In practice, move the declarations into the deepest existing router or
+shared file that all consuming router files already see through normal
+include direction.
+
+Do not give a router file a new `include:` directive pointing at the
+top integration file — that inverts the include direction and breaks
+parsing.
+
+After the move the `DWORD` / `apbAddrT` / `apbDataT` constants and
+types simply live wherever the address-bus interface they support
+now lives.
+
+### Step 3 — Declare `addressBlock:` on each router
+
+For every router block, add a top-level `addressBlock:` field.
+Copy the legacy row's body verbatim except for the retired fields:
+
+```yaml
+blocks:
+    topRegRouter:
+        desc: "Top register-bus router"
+        hasVl: true
+        hasMdl: true
+        hasRtl: true
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+```
+
+Do not author `primaryDecode:`, `varTypeContext:`, or
+`decoderInstance:`.
+
+If the legacy file named `RegisterBusInterface:`, carry it into
+`upstreamPort:` and `registerDecoderPort:`. These fields may be omitted
+only when the router should use the schema default interface name.
+
+Nested routers get their own `addressBlock:` row in the same shape,
+with the appropriate `addressGroup:`. Edit the nested router's block
+declaration in place in whatever file already authors it; do not split
+it out.
+
+If you see the diagnostic `Router block '<name>' (file <file>) has no
+addressBus: true interface authored in its load-time scope`, the
+nested router's file does not see the address-bus interface — revisit
+Step 2's placement decision rather than adding `include:` directives
+or creating new files.
+
+### Step 4 — Move address-policy sections to `project.yaml`
+
+Move `InstanceGroups:` and `AddressObjects:` from
+`addressControl.yaml` into `project.yaml` under their new spellings:
+
+```yaml
+# project.yaml
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+```
+
+Carry **every active** legacy `InstanceGroups:` row across, not just the
+address-decoder group. Rows like `blocks:` in the example above are
+unrelated to the router hierarchy but are still consumed by the
+generator for instance enumeration; dropping them produces a missing-
+symbol failure later in generation. Do not activate commented example
+rows during migration.
+
+These fields use the same row bodies as the legacy sections but lower
+camel-case section names. `instanceGroups:` rows have `varType` and
+`enumPrefix`; `addressObjects:` rows have `alignment`,
+`sizeRoundUpPowerOf2`, and `sortDescending`.
+
+If both legacy and new spellings of these two policy sections are
+present, the validator errors on any disagreement and names both files.
+Agreement passes silently, which is useful while converting one
+project. The completed migration should leave the policy sections in
+`project.yaml`.
+
+### Step 5 — Leave `postProcess:` to the base config
+
+Prefer removing any existing `postProcess:` override entirely. The base
+config already includes the standard scripts in the correct order. The
+merge rules treat lists as `list_append`, so any base script repeated
+in the project's `postProcess:` runs twice.
+
+A typical legacy `project.yaml` carries an override block like:
+
+```yaml
+# project.yaml (before — typical legacy override)
+postProcess:
+    - $a2c/config/postParseRegister.py
+    - $a2c/config/postParseChecks.py
+```
+
+Delete the entire block as part of this migration; the base config's
+`postProcess:` is the canonical list.
+
+If a project must keep a `postProcess:` block (for additional
+project-specific scripts), it must contain only those project-specific
+entries — never the base scripts.
+
+### Step 6 — Retire `addressControl:`
+
+Before any authored `addressBlock:` is committed, remove the
+`addressControl:` pointer from `project.yaml`. The new per-block router
+schema and legacy project-wide `AddressGroups:` schema are mutually
+exclusive.
+
+Once `InstanceGroups:` and `AddressObjects:` have moved to
+`project.yaml`, delete the legacy `addressControl.yaml` file if no
+other project still references it. Search first for any remaining
+`addressControl:` pointer or direct reference to that file.
+
+### Step 7 — Regenerate and diff
+
+Run the project's normal build:
+
+```text
+make db
+make gen
+```
+
+Compare the generated SystemC and SystemVerilog output to the
+pre-migration snapshot. Byte-identical output is the goal; any
+deliberate naming or context change must be reviewed.
+
+## Migration Diagnostics
+
+If conversion fails, focus on mistakes introduced by the migration
+rather than redesigning the address space:
+
+- Two router blocks declare the same `addressGroup`. Rename one,
+  or merge the two router block types if the duplication was
+  accidental.
+- Zero or multiple primary-router candidates. Adjust the router
+  declarations so the migrated legacy hierarchy still has exactly one
+  top router.
+- `Router block '<name>' (file <file>) has no addressBus: true
+  interface authored in its load-time scope.` The router block's
+  YAML file does not see a register-bus interface. Move the interface
+  declaration into an existing router or lower-level/shared file the
+  router file already includes. Do not include the parent integration
+  file from the nested router file.
+
+## Validation
+
+- `make db` succeeds; the project loads under the new schema.
+- `make gen` succeeds; generated output matches the pre-migration
+  snapshot or its differences are reviewer-approved.
+- Tandem / model regressions (for example `make step6` in the
+  proto-model build) continue to pass.
+- Each new diagnostic exercised by an intentional negative test
+  reports the expected file and field.

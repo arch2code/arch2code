@@ -8,9 +8,24 @@ projectName: ip_test
 projectFiles:
     - ip_top.yaml
 
-addressControl: exampleAddress.yaml
-
 topInstance: ip_top_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
 
 dirs: # this is list of locations that can be referenced as base path in fileMap section
     root: ../.. # project root directory relative to project file - required
@@ -39,6 +54,3 @@ fileGeneration:
             blockSuffix: "Regs",
             camelCase: true,
         } # naming convention for register handler blocks - instancePrefix is prefix for instance names, blockSuffix is suffix for block names
-postProcess:
-    - $a2c/config/postParseRegister.py
-    - $a2c/config/postParseChecks.py

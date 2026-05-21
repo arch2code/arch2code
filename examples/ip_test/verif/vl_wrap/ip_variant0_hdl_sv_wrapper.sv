@@ -6,7 +6,6 @@
 
 module ip_variant0_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import ip_top_package::*;
     import ip_package::*;
 (
     // push_ack_if.dst
@@ -15,14 +14,14 @@ module ip_variant0_hdl_sv_wrapper
     output bit ipDataIf_ack,
 
     // apb_if.dst
-    input bit [31:0] apbReg_paddr,
-    input bit apbReg_psel,
-    input bit apbReg_penable,
-    input bit apbReg_pwrite,
-    input bit [31:0] apbReg_pwdata,
-    output bit apbReg_pready,
-    output bit [31:0] apbReg_prdata,
-    output bit apbReg_pslverr,
+    input bit [31:0] regs_paddr,
+    input bit regs_psel,
+    input bit regs_penable,
+    input bit regs_pwrite,
+    input bit [31:0] regs_pwdata,
+    output bit regs_pready,
+    output bit [31:0] regs_prdata,
+    output bit regs_pslverr,
 
     input clk,
     input rst_n
@@ -35,20 +34,20 @@ module ip_variant0_hdl_sv_wrapper
     assign #0 ipDataIf_ack = ipDataIf.ack;
 
     // apb_if.dst
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
+    apb_if #(.addr_t(ipRegAddrSt), .data_t(ipRegDataSt)) regs();
 
-    assign #0 apbReg.paddr = apbReg_paddr;
-    assign #0 apbReg.psel = apbReg_psel;
-    assign #0 apbReg.penable = apbReg_penable;
-    assign #0 apbReg.pwrite = apbReg_pwrite;
-    assign #0 apbReg.pwdata = apbReg_pwdata;
-    assign #0 apbReg_pready = apbReg.pready;
-    assign #0 apbReg_prdata = apbReg.prdata;
-    assign #0 apbReg_pslverr = apbReg.pslverr;
+    assign #0 regs.paddr = regs_paddr;
+    assign #0 regs.psel = regs_psel;
+    assign #0 regs.penable = regs_penable;
+    assign #0 regs.pwrite = regs_pwrite;
+    assign #0 regs.pwdata = regs_pwdata;
+    assign #0 regs_pready = regs.pready;
+    assign #0 regs_prdata = regs.prdata;
+    assign #0 regs_pslverr = regs.pslverr;
 
     ip #(.IP_DATA_WIDTH(8), .IP_MEM_DEPTH(16), .IP_NONCONST_DEPTH(24)) dut (
         .ipDataIf(ipDataIf), // push_ack_if.dst
-        .apbReg(apbReg), // apb_if.dst
+        .regs(regs), // apb_if.dst
         .clk(clk),
         .rst_n(rst_n)
     );

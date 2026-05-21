@@ -8,15 +8,15 @@
 // GENERATED_CODE_PARAM --block=cpu
 // GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "apb_channel.h"
-import ip_top;
-using namespace ip_top_ns;
+import shared_types;
+using namespace shared_types_ns;
 
 class cpuBase : public virtual blockPortBase
 {
 public:
     virtual ~cpuBase() = default;
     // src ports
-    // apbReg->u_ip_top: CPU access to IP registers via APB
+    // apbReg->u_ip_top: CPU access to registers via APB
     apb_out< apbAddrSt, apbDataSt > cpu_main;
 
 
@@ -37,7 +37,7 @@ class cpuInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // apbReg->u_ip_top: CPU access to IP registers via APB
+    // apbReg->u_ip_top: CPU access to registers via APB
     apb_in< apbAddrSt, apbDataSt > cpu_main;
 
 
@@ -58,7 +58,7 @@ class cpuChannels
 {
 public:
     // src ports
-    // CPU access to IP registers via APB
+    // CPU access to registers via APB
     apb_channel< apbAddrSt, apbDataSt > cpu_main;
 
 

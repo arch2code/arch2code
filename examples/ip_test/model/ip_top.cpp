@@ -30,9 +30,9 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,out1("ip_out1", "src")
         ,out8("ipBridge_out8", "bridgeDriver")
         ,out70("ipBridge_out70", "bridgeDriver")
-        ,apb_uIp0("ip_apb_uIp0", "apbDecode")
-        ,apb_uIp1("ip_apb_uIp1", "apbDecode")
-        ,apb_uBridge("ipBridge_apb_uBridge", "apbDecode")
+        ,apbReg_uBridge("ipBridge_apbReg_uBridge", "apbDecode")
+        ,apbReg_uIp0("ip_apbReg_uIp0", "apbDecode")
+        ,apbReg_uIp1("ip_apbReg_uIp1", "apbDecode")
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>((force_link_apbDecode(), instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", ""))))
         ,uSrc(std::dynamic_pointer_cast<srcBase<srcVariantSrc0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "variantSrc0")))
         ,uIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0")))
@@ -41,6 +41,8 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>((force_link_ipBridge(), instanceFactory::createInstance(name(), "uBridge", "ipBridge", ""))))
         ,thunker_out0_uIp0("thunker_out0_uIp0", out0, uIp0->ipDataIf, name())
         ,thunker_out1_uIp1("thunker_out1_uIp1", out1, uIp1->ipDataIf, name())
+        ,thunker_apbReg_uIp0_uIp0("thunker_apbReg_uIp0_uIp0", apbReg_uIp0, uIp0->regs, name())
+        ,thunker_apbReg_uIp1_uIp1("thunker_apbReg_uIp1_uIp1", apbReg_uIp1, uIp1->regs, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
@@ -53,12 +55,10 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
     uBridge->data8In(out8);
     uBridgeDriver->out70(out70);
     uBridge->data70In(out70);
-    uAPBDecode->apb_uIp0(apb_uIp0);
-    uIp0->apbReg(apb_uIp0);
-    uAPBDecode->apb_uIp1(apb_uIp1);
-    uIp1->apbReg(apb_uIp1);
-    uAPBDecode->apb_uBridge(apb_uBridge);
-    uBridge->apbReg(apb_uBridge);
+    uAPBDecode->apbReg_uBridge(apbReg_uBridge);
+    uBridge->apbReg(apbReg_uBridge);
+    uAPBDecode->apbReg_uIp0(apbReg_uIp0);
+    uAPBDecode->apbReg_uIp1(apbReg_uIp1);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };

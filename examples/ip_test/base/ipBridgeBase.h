@@ -11,8 +11,8 @@
 #include "push_ack_channel.h"
 import ipBridge;
 using namespace ipBridge_ns;
-import ip_top;
-using namespace ip_top_ns;
+import shared_types;
+using namespace shared_types_ns;
 import ip;
 using namespace ip_ns;
 
@@ -25,7 +25,7 @@ public:
     push_ack_in< data8St > data8In;
     // uBridgeDriver->data70If: Non-parameterized 70-bit Q10 bridge data interface
     push_ack_in< data70St > data70In;
-    // uAPBDecode->apbReg: CPU access to IP registers via APB
+    // uAPBDecode->apbReg: CPU access to registers via APB
     apb_in< apbAddrSt, apbDataSt > apbReg;
 
 
@@ -56,7 +56,7 @@ public:
     push_ack_out< data8St > data8In;
     // uBridgeDriver->data70If: Non-parameterized 70-bit Q10 bridge data interface
     push_ack_out< data70St > data70In;
-    // uAPBDecode->apbReg: CPU access to IP registers via APB
+    // uAPBDecode->apbReg: CPU access to registers via APB
     apb_out< apbAddrSt, apbDataSt > apbReg;
 
 
@@ -87,7 +87,7 @@ public:
     push_ack_channel< data8St > data8In;
     // Non-parameterized 70-bit Q10 bridge data interface
     push_ack_channel< data70St > data70In;
-    // CPU access to IP registers via APB
+    // CPU access to registers via APB
     apb_channel< apbAddrSt, apbDataSt > apbReg;
 
 

@@ -1498,11 +1498,36 @@ class projectOpen:
             ret['addressDecode']['addressGroup'] = addressGroup
 
     def getBDAddressDecode(self, ret):
-        # is this block a special apbDecode block type that performs abp bus routing
+        # is this block a special apbDecode block type that performs abp bus routing.
+        # Two authoring paths reach this point:
+        #   - Legacy: addressControl.yaml's AddressGroups row carries the
+        #     decoderInstance pointing at a router instance. The loop below
+        #     identifies the router by walking AddressGroups.
+        #   - New schema: the router's own block row carries `addressBlock:`.
+        #     The router instance is resolved by post-parse container-locality
+        #     (see postParseRegisterPorts.py) and is the single instance of
+        #     this block type. Detect this directly off the block row.
         isApbRouter = False
+        qualBlock = ret['qualBlock']
+        blockRow = self.data['blocks'][qualBlock]
+        addressBlock = blockRow.get('addressBlock')
         addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
-        # iterate through the address config and see if we were mentioned
-        if addressConfig:
+        if addressBlock:
+            # New schema: the block declares addressBlock: directly. There is
+            # exactly one instance of this router (enforced by post-parse), so
+            # any element of ret['instances'] identifies the decoder instance.
+            qualDecoder = next(iter(ret['instances']))
+            instanceWithRegApb = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
+            if instanceWithRegApb is None:
+                printError('No instances with register interface found in db: missing or invalid register post processing script')
+                exit(warningAndErrorReport())
+            isApbRouter = True
+            ret['addressDecode']['addressGroupData'] = dict(addressBlock)
+            ret['addressDecode']['addressGroup'] = addressBlock.get('addressGroup')
+            ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
+            ret['addressDecode']['instanceWithRegApb'] = instanceWithRegApb
+        elif addressConfig:
+            # Legacy: iterate AddressGroups and match by decoderInstance.
             for addressGroup, addressGroupData in addressConfig.get('AddressGroups', {}).items():
                 decoder = addressGroupData.get('decoderInstance', None)
                 if decoder is not None:
@@ -1909,6 +1934,8 @@ class projectOpen:
             childBlock = self.data['blocks'][childBlockKey]
             declaredPort = (childBlock.get('ports') or {}).get(portName)
             if not declaredPort:
+                declaredPort = (childBlock.get('registerPorts') or {}).get(portName)
+            if not declaredPort:
                 return None
             childInterfaceName = declaredPort.get('interface')
             if not childInterfaceName or childInterfaceName == parentInterfaceName:
@@ -1943,7 +1970,7 @@ class projectOpen:
                 'childBlockKey': childBlockKey,
                 'childBlock': childBlock.get('block', ''),
                 'portName': portName,
-                'direction': declaredPort.get('direction') or inferredDirection,
+                'direction': declaredPort.get('direction') or inferredDirection or 'dst',
                 'parentInterfaceKey': parentInterfaceKey,
                 'parentInterface': parentInterfaceName,
                 'parentInterfaceType': parentInterface.get('interfaceType', ''),
@@ -2130,18 +2157,47 @@ class projectOpen:
 
     def _resolveRouterUpstreamInterface(self, blockRow, upstreamPort):
         # Look up the interface bound to the router's upstream port.
+        # New-schema routers do not author `ports:` for their upstream
+        # port. The router's addressBlock names the addressBus interface
+        # by port convention, and multiple APB-shaped interfaces may be
+        # visible in the router's load-time scope.
         ports = blockRow.get('ports') or {}
         portRow = ports.get(upstreamPort)
-        if portRow is None:
+        if portRow is not None:
+            return portRow.get('interface')
+
+        routerContext = blockRow.get('_context')
+        if not routerContext:
             return None
-        return portRow.get('interface')
+        # interface_defs is flat-keyed in projectOpen (keyed by
+        # interface_typeKey); each value is the row directly.
+        addressBusTypes = set()
+        for row in self.data.get('interface_defs', {}).values():
+            if isinstance(row, dict) and row.get('addressBus'):
+                addressBusTypes.add(row.get('interface_type'))
+        for context in self.yamlContext.get(routerContext, {}):
+            ifaceRow = self.data.get('interfaces', {}).get(f"{upstreamPort}/{context}")
+            if (
+                ifaceRow
+                and ifaceRow.get('interfaceType') in addressBusTypes
+            ):
+                return ifaceRow.get('interface')
+        ifaceRow = self.data.get('interfaces', {}).get(f"{upstreamPort}/_a2csystem")
+        if (
+            ifaceRow
+            and ifaceRow.get('interfaceType') in addressBusTypes
+        ):
+            return ifaceRow.get('interface')
+        return None
 
     def _registerBusInterfacePort(self, ret):
         # Returns (interfaceName, portName) for the block's register-bus
         # surface. Routers source the port from addressBlock.upstreamPort;
-        # register handlers and leaves source from a declared registerPorts:
-        # row. Blocks without local declarations use the project-level
-        # RegisterBusInterface value.
+        # leaves source from a declared registerPorts: row; synthesised
+        # register handlers (isRegHandler) source from the leaf-to-handler
+        # connectionMap that the post-parse pass emitted. Blocks without
+        # any of those use the project-level RegisterBusInterface value
+        # (legacy projects only).
         qualBlock = ret['qualBlock']
         blockRow = self.data['blocks'][qualBlock]
         addressBlock = blockRow.get('addressBlock')
@@ -2157,9 +2213,35 @@ class projectOpen:
             legacyIntf, _ = self._legacyRegisterBusInterface(ret)
             return legacyIntf, port
 
+        if blockRow.get('isRegHandler'):
+            # The synthesised handler block does not author
+            # `registerPorts:` (that map is reserved for user-authored
+            # leaf declarations). Its register-bus interface and port
+            # come from the leaf-to-handler connectionMap that the
+            # post-parse pass emitted: `block:` names the owning leaf,
+            # `instance:` names this handler instance, `interface:`
+            # carries the leaf-scoped register-bus interface, and
+            # `instancePortName` carries the handler's canonical port
+            # name (registerDecoderPort, e.g. `apbReg`). The
+            # connectionMap's `port:` field is the leaf-side authored
+            # port name and is *not* the handler's port.
+            for cm in self.data.get('connectionMaps', {}).values():
+                instKey = cm.get('instanceKey')
+                if not instKey:
+                    continue
+                instRow = self.data['instances'].get(instKey)
+                if instRow is None:
+                    continue
+                if instRow.get('instanceTypeKey') != qualBlock:
+                    continue
+                interface = cm.get('interface')
+                port = cm.get('instancePortName') or cm.get('instancePort') or interface
+                if interface:
+                    return interface, port
+
         if declaredRegisterPorts:
             # Register-bus blocks expose exactly one registerPorts: row
-            # whose key is the handler-side or leaf-side port.
+            # whose key is the leaf-side port.
             (port, rpRow) = next(iter(declaredRegisterPorts.items()))
             interface = rpRow.get('interface')
             if interface:
@@ -3652,6 +3734,19 @@ class projectCreate:
                         connMap['interfaceKey'],
                         connMap['direction'],
                     )
+                # A connectionMap also declares a parent-boundary port on
+                # `block:`. When the block currently being validated is
+                # the parent of this connectionMap, the connectionMap
+                # contributes the boundary port name to inferred.
+                if connMap.get('blockKey') == blockKey and connMap.get('portName'):
+                    _addInferred(
+                        inferred,
+                        connMap['portName'],
+                        'connectionMaps',
+                        connMap,
+                        connMap['interfaceKey'],
+                        connMap['direction'],
+                    )
 
             for _memConnKey, memConn in memory_connections_flat.items():
                 if memConn['instanceKey'] not in qual_block_instances:
@@ -3719,12 +3814,25 @@ class projectCreate:
             # ports: and registerPorts: are independent declarations. A
             # registerPorts-owned name is allowed to be absent from ports:,
             # and synthesized global binds are ignored for completeness.
+            # A connectionMap whose parent block is this block also acts
+            # as a boundary-port declaration — when the post-parse pass
+            # bridges an inherited register-bus port through a container,
+            # it emits a connectionMap with `block:` set to that
+            # container; the connectionMap is the authoritative
+            # declaration of that boundary port and satisfies partial
+            # ports: even when the user did not enumerate it.
             registerPortNames = set((blockRow.get('registerPorts') or {}).keys())
+            connectionMapPortNames = set()
+            for _cmKey, connMap in connection_maps_flat.items():
+                if connMap.get('blockKey') == blockKey and connMap.get('portName'):
+                    connectionMapPortNames.add(connMap['portName'])
             missing = set()
             for portName in (set(inferred.keys()) - set(declared.keys())):
                 if inferred[portName]['_context'] == '_global':
                     continue
                 if portName in registerPortNames:
+                    continue
+                if portName in connectionMapPortNames:
                     continue
                 missing.add(portName)
             if missing:
@@ -6162,8 +6270,15 @@ class projectCreate:
     # this is a complete custom handler, as the key is derived from other fields
     def _process_connections(self, data, yamlFile):
 
-        self.data['connections'][yamlFile]=dict()
-        self.data['connectionsends'][yamlFile] = dict()
+        # Initialize the per-file dict only if absent. Post-parse scripts
+        # may call processSingleFile() repeatedly for the same yamlFile
+        # to add synthesized connections; resetting the dict would wipe
+        # the user-authored rows processed earlier. The postProcess
+        # script list must be authored to avoid running the same script
+        # twice (avoid list_append duplication), otherwise duplicate
+        # rows would accumulate here.
+        self.data['connections'].setdefault(yamlFile, dict())
+        self.data['connectionsends'].setdefault(yamlFile, dict())
         # loop through the items in the section
         for item in data:
 
@@ -6326,8 +6441,11 @@ class projectCreate:
                     found = True
                 except: KeyError
             else:
-                # non global context means we need to ensure that the qualification is valid for this context
-                if qualification in self.yamlContext[context]:
+                # non global context means we need to ensure that the qualification is valid for this context.
+                # System files (_a2csystem) are implicitly visible to every user-file context, so a qualified
+                # key naming the system qualification resolves without requiring the user file to include
+                # the system file directly.
+                if qualification in self.yamlContext[context] or qualification == '_a2csystem':
                     try:
                         ret = self.data[objType][qualification][subKey]
                         found = True

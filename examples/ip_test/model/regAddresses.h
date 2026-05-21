@@ -5,6 +5,10 @@
 // GENERATED_CODE_PARAM --block=ip_top
 // GENERATED_CODE_BEGIN --template=includes --section=addresses
 //instance base addresses
+#define BASE_ADDR_ULEAF                0x0
+#define BASE_ADDR_UBRIDGEAPBDECODE     0x0
+#define BASE_ADDR_UBRIDGEIP0           0x0
+#define BASE_ADDR_UBRIDGEIP1           0x100000
 #define BASE_ADDR_IP_TOP_TB            0x0
 #define BASE_ADDR_U_IP_TOP             0x0
 #define BASE_ADDR_UCPU                 0x0
@@ -12,12 +16,8 @@
 #define BASE_ADDR_USRC                 0x0
 #define BASE_ADDR_UIP0                 0x0
 #define BASE_ADDR_UIP1                 0x1000000
-#define BASE_ADDR_ULEAF                0x0
 #define BASE_ADDR_UBRIDGEDRIVER        0x0
 #define BASE_ADDR_UBRIDGE              0x2000000
-#define BASE_ADDR_UBRIDGEAPBDECODE     0x0
-#define BASE_ADDR_UBRIDGEIP0           0x0
-#define BASE_ADDR_UBRIDGEIP1           0x100000
 #define BASE_ADDR_UIPREGS              0x0
 // GENERATED_CODE_END
 

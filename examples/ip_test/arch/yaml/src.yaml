@@ -26,6 +26,9 @@
 
 blockDir: .
 
+include:
+    - ipLeaf.yaml
+
 ipParameters:
     constants:
         OUT0_DATA_WIDTH: { value: 8,  maxValue: 16, desc: "Width fed to uIp0" }
@@ -76,3 +79,11 @@ blocks:
         ports:
             out0: { interface: srcOut0If, direction: src }
             out1: { interface: srcOut1If, direction: src }
+
+instances:
+    uLeaf: { container: src, instanceType: ipLeaf, instGroup: top, variant: variantLeaf0 }
+
+parameters:
+    ipLeaf:
+        - { variant: variantLeaf0, param: LEAF_DATA_WIDTH, value: 4 }
+        - { variant: variantLeaf0, param: LEAF_MEM_DEPTH,  value: 4 }

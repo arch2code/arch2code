@@ -28,8 +28,8 @@ bridgeApbDecode::bridgeApbDecode(sc_module_name blockName, const char * variant,
         ,blockBase("bridgeApbDecode", name(), bbMode)
         ,bridgeApbDecodeBase(name(), variant)
         ,decoder(16, 20, apbReg, {
-            &apb_uBridgeIp0,
-            &apb_uBridgeIp1})
+            &apbReg_uBridgeIp0,
+            &apbReg_uBridgeIp1})
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

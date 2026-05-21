@@ -102,7 +102,7 @@ def render_default(args, prj, data):
     out.append('private:')
     if registerDecode:
         out.append('    void regHandler(void);')
-        out.append('    addressMap regs;')
+        out.append('    addressMap _a2cRegs;')
     if data['addressDecode']['isApbRouter']:
         busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
         out.append('    void routerDecode(void);')

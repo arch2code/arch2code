@@ -22,7 +22,7 @@ SC_MODULE(ip), public blockBase, public ipBase<Config>
 {
 private:
     void regHandler(void);
-    addressMap regs;
+    addressMap _a2cRegs;
 
 public:
     SC_HAS_PROCESS(ip);

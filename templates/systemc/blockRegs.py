@@ -137,7 +137,7 @@ SC_MODULE({{blockname}}), public blockBase, public {{blockname}}Base
 {
 private:
     void regHandler(void);
-    addressMap regs;
+    addressMap _a2cRegs;
 
 public:
 
@@ -174,14 +174,14 @@ namespace {
 // === End block factory registration ===
 
 void {{blockname}}::regHandler(void) { //handle register decode
-    registerHandler< {{reghandler.addr_type}}, {{reghandler.data_type}} >(regs, {{reghandler.port_name}}, {{reghandler.addressmask}});
+    registerHandler< {{reghandler.addr_type}}, {{reghandler.data_type}} >(_a2cRegs, {{reghandler.port_name}}, {{reghandler.addressmask}});
 }
 
 {{blockname}}::{{blockname}}(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("{{blockname}}", name(), bbMode)
         ,{{blockname}}Base(name(), variant)
-        ,regs(log_)
+        ,_a2cRegs(log_)
         {% for entry in hwregs -%}
         {% if entry.is_memory -%}
         ,{{entry.name}}({{entry.port_name}})
@@ -205,14 +205,14 @@ block_regs_body_section_template = '''\
     {% if memory_items -%}
     // register memories for FW access
     {% for entry in memory_items -%}
-    regs.addMemory({{entry.offset}}, {{entry.datatype}}::_byteWidth, {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
+    _a2cRegs.addMemory({{entry.offset}}, {{entry.datatype}}::_byteWidth, {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
     {% endfor -%}
     {% endif -%}
     {% set register_items = hwregs | rejectattr('is_memory', 'equalto', true) | list -%}
     {% if register_items -%}
     // register registers for FW access
     {% for entry in register_items -%}
-    regs.addRegister({{entry.offset}}, {{entry.size}}, "{{entry.port_name}}", &{{entry.name}} );
+    _a2cRegs.addRegister({{entry.offset}}, {{entry.size}}, "{{entry.port_name}}", &{{entry.name}} );
     {% endfor -%}
     {% endif -%}
     SC_THREAD(regHandler);

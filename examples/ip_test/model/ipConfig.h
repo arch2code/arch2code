@@ -27,6 +27,12 @@ struct ipVariant1Config {
     static constexpr uint32_t IP_NONCONST_DEPTH = 12;
 };
 
+struct ipRegsConfig {
+    static constexpr uint32_t IP_DATA_WIDTH = 70;
+    static constexpr uint32_t IP_MEM_DEPTH = 16;
+    static constexpr uint32_t IP_DATA_WIDTH_X2 = 140;
+};
+
 // GENERATED_CODE_END
 
 #endif //IPCONFIG_H_CONFIG_H

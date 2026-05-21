@@ -93,7 +93,7 @@ def constructorInit(args, prj, data):
         if hasOwnParams:
             out.append(templateDecl)
         out.append(f'void { qualClassName }::regHandler(void) {{ //handle register decode')
-        out.append(f'    registerHandler< {busStructs} >(regs, {busInterfaceRef}, (1<<({data["addressDecode"]["addressBits"]}))-1); }}\n')
+        out.append(f'    registerHandler< {busStructs} >(_a2cRegs, {busInterfaceRef}, (1<<({data["addressDecode"]["addressBits"]}))-1); }}\n')
 
     if hasOwnParams:
         out.append(templateDecl)
@@ -103,7 +103,7 @@ def constructorInit(args, prj, data):
     out.append(f'        ,{ baseClassName}(name(), variant)')
 
     if registerDecode:
-        out.append(f'        ,regs(log_)')
+        out.append(f'        ,_a2cRegs(log_)')
     if data['addressDecode']['isApbRouter']:
         out += addressDecoder(args, prj, data)
 
@@ -371,17 +371,17 @@ def constructorBody(args, prj, data):
                     memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
                     linesExpr = wordLinesExpr(item, prj, isParameterizable, data)
                     if item['is_reg_handler']:
-                        out.append(f'    regs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                        out.append(f'    _a2cRegs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
                     else:
-                        out.append(f'    regs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
+                        out.append(f'    _a2cRegs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
                 else:  # memory_register
                     memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
-                    out.append(f'    regs.addMemory( {constName}, {memType}::_byteWidth, {wordLinesExpr(item, prj, isParameterizable, data)}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
+                    out.append(f'    _a2cRegs.addMemory( {constName}, {memType}::_byteWidth, {wordLinesExpr(item, prj, isParameterizable, data)}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
             else:  # regular register
                 if not register_comment_written:
                     register_comment_written = True
                     out.append(f'    // register registers for FW access')
-                out.append(f'    regs.addRegister( {constName}, {item["size"]}, "{item["name"]}", &{item["name"]} );')
+                out.append(f'    _a2cRegs.addRegister( {constName}, {item["size"]}, "{item["name"]}", &{item["name"]} );')
 
         first = True
     for key, value in data["connectionMaps"].items():
@@ -589,6 +589,12 @@ def addressDecoder(args, prj, data):
             parent_interface_port = conn_data['name']
 
 
+    # New-schema routers carry registerDecoderPort on the
+    # addressBlock; the per-instance dispatch port name follows
+    # `<registerDecoderPort>_<instance>` (e.g. `apbReg_uIp0`). Legacy
+    # AddressGroups rows do not carry this field, so the legacy port
+    # naming convention `apb_<instance>` remains the default.
+    portPrefix = addressGroupData.get('registerDecoderPort') or 'apb'
     out.append(f'        ,decoder({addressGroupData["maxAddressSpaces"]}, {addressGroupData["addressIncrement"].bit_length()-1}, {parent_interface_port}, {{')
     addressChannels = dict()
     for instance, instanceData in prj.data['instances'].items():
@@ -604,7 +610,7 @@ def addressDecoder(args, prj, data):
                 out.append('            nullptr,')
         if instance in instanceWithRegApb:
             for channel in range(instanceData['addressMultiples']):
-                out.append(f'            &apb_{instanceData["instance"]},')
+                out.append(f'            &{portPrefix}_{instanceData["instance"]},')
         else:
             out.append('            nullptr,')
 

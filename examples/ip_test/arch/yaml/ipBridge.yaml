@@ -24,6 +24,10 @@
 
 blockDir: .
 
+include:
+    - shared_types.yaml
+    - ipVariants.yaml
+
 types:
     bridgeMarkerT:
         width: 1
@@ -92,3 +96,31 @@ blocks:
         hasMdl: true
         hasTb: false
         hasRtl: true
+        addressBlock:
+            addressGroup: bridge
+            addressIncrement: 0x00100000
+            maxAddressSpaces: 16
+            varType: addr_id_bridge
+            enumPrefix: ADDR_ID_BRIDGE_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+
+instances:
+    # uBridgeAPBDecode is the bridge container's own register-bus decoder.
+    # Its presence under the `bridge` addressGroup satisfies
+    # postParseRegister.py's "same level as decoder" constraint for
+    # uBridgeIp0/uBridgeIp1, and postParseRegister auto-wires the parent
+    # register bus from uAPBDecode down through ipBridge.apbReg.
+    uBridgeAPBDecode: { container: ipBridge, instanceType: bridgeApbDecode, instGroup: top }
+    uBridgeIp0:       { container: ipBridge, instanceType: ip,              instGroup: top, addressGroup: bridge, variant: variant0 }
+    uBridgeIp1:       { container: ipBridge, instanceType: ip,              instGroup: top, addressGroup: bridge, variant: variant1 }
+
+connectionMaps:
+    # Parent ipBridge.data8In / data70In bind via connectionMap to
+    # differently-Configed ip children. Each map's parent interface
+    # (data8If / data70If) differs from the child's declared port interface
+    # (ipDataIf), so the generator emits one push_ack_port_thunker member per
+    # map inside ipBridge.
+    - { interface: data8If,  block: ipBridge, port: data8In,  direction: dst, instance: uBridgeIp0, instancePort: ipDataIf }
+    - { interface: data70If, block: ipBridge, port: data70In, direction: dst, instance: uBridgeIp1, instancePort: ipDataIf }
+

@@ -10,12 +10,13 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "ipBridgeBase.h"
+#include "apb_port_thunker.h"
 #include "push_ack_port_thunker.h"
 #include "ipConfig.h"
 import ipBridge;
 using namespace ipBridge_ns;
-import ip_top;
-using namespace ip_top_ns;
+import shared_types;
+using namespace shared_types_ns;
 import ip;
 using namespace ip_ns;
 //contained instances forward class declaration
@@ -28,10 +29,10 @@ private:
 
 public:
     // channels
-    // CPU access to IP registers via APB
-    apb_channel< apbAddrSt, apbDataSt > apb_uBridgeIp0;
-    // CPU access to IP registers via APB
-    apb_channel< apbAddrSt, apbDataSt > apb_uBridgeIp1;
+    // CPU access to registers via APB
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBridgeIp0;
+    // CPU access to registers via APB
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBridgeIp1;
 
     //instances contained in block
     std::shared_ptr<bridgeApbDecodeBase> uBridgeAPBDecode;
@@ -39,6 +40,8 @@ public:
     std::shared_ptr<ipBase<ipVariant1Config>> uBridgeIp1;
 
     // cross-interface thunkers
+    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uBridgeIp0_uBridgeIp0;
+    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uBridgeIp1_uBridgeIp1;
     push_ack_port_thunker<data8St, ipDataSt<ipVariant0Config>> thunker_uBridgeIp0;
     push_ack_port_thunker<data70St, ipDataSt<ipVariant1Config>> thunker_uBridgeIp1;
 

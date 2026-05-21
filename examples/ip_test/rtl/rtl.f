@@ -3,9 +3,10 @@
 // GENERATED_CODE_BEGIN --template=rtlDotF
 +incdir+.
 -y .
-ipBridge_package.sv
-src_package.sv
-ipLeaf_package.sv
+shared_types_package.sv
 ip_package.sv
+ipLeaf_package.sv
+src_package.sv
+ipBridge_package.sv
 ip_top_package.sv
 // GENERATED_CODE_END

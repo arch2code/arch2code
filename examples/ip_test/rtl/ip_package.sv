@@ -10,6 +10,8 @@ localparam int unsigned IP_FIXED_NIBBLE_COUNT = 32'h0000_0005;  // Fixed array l
 localparam int unsigned IP_FIXED_PAIR_COUNT = 32'h0000_0002;  // Fixed nested-structure array length
 localparam int unsigned IP_FIXED_WORD_COUNT = 32'h0000_0006;  // Derived fixed array length
 localparam int unsigned IP_FIXED_DEPTH = 32'h0000_0009;  // Fixed depth for widthLog2 and widthLog2minus1 tests
+localparam int unsigned IP_REG_ADDR_WIDTH = 32'h0000_0020;  // Leaf register-bus address width
+localparam int unsigned IP_REG_DATA_WIDTH = 32'h0000_0020;  // Leaf register-bus data width
 
 // types
 typedef logic[IP_DATA_WIDTH-1:0] ipDataT; //IP data word, parameterizable
@@ -26,6 +28,8 @@ typedef logic[16-1:0] ipWordT; //Fixed 16-bit word
 typedef logic[37-1:0] ipWide37T; //Fixed 37-bit value crossing a 32-bit boundary
 typedef logic[$clog2(IP_FIXED_DEPTH+1)-1:0] ipFixedCountT; //Fixed count field wide enough for 0..IP_FIXED_DEPTH
 typedef logic[$clog2(IP_FIXED_DEPTH)-1:0] ipFixedIndexT; //Fixed index field wide enough for 0..IP_FIXED_DEPTH-1
+typedef logic[IP_REG_ADDR_WIDTH-1:0] ipRegAddrT; //ip leaf register-bus address
+typedef logic[IP_REG_DATA_WIDTH-1:0] ipRegDataT; //ip leaf register-bus data
 
 // enums
 typedef enum logic[2-1:0] {              //IP operating mode
@@ -106,6 +110,14 @@ typedef struct packed {
     ipFixedLog2St log2Fields; //Nested fixed log2 fields
     ipWide37T wideValue; //Wide fixed value
 } ipFixedNestedSt;
+
+typedef struct packed {
+    ipRegAddrT address; //
+} ipRegAddrSt;
+
+typedef struct packed {
+    ipRegDataT data; //
+} ipRegDataSt;
 
 endpackage : ip_package
 // GENERATED_CODE_END

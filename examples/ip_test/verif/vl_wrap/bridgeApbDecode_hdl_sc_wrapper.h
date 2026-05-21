@@ -45,8 +45,8 @@ public:
 
     sc_clock clk;
 
-    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apb_uBridgeIp0_bfm;
-    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apb_uBridgeIp1_bfm;
+    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp0_bfm;
+    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp1_bfm;
     apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
 
     SC_HAS_PROCESS (bridgeApbDecode_hdl_sc_wrapper);
@@ -56,8 +56,8 @@ public:
         blockBase("bridgeApbDecode_hdl_sc_wrapper", name(), bbMode),
         bridgeApbDecodeBase(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
-        apb_uBridgeIp0_bfm("apb_uBridgeIp0_bfm"),
-        apb_uBridgeIp1_bfm("apb_uBridgeIp1_bfm"),
+        apbReg_uBridgeIp0_bfm("apbReg_uBridgeIp0_bfm"),
+        apbReg_uBridgeIp1_bfm("apbReg_uBridgeIp1_bfm"),
         apbReg_bfm("apbReg_bfm"),
         rst_n(0)
     {
@@ -67,22 +67,22 @@ public:
         dut_hdl = new VbridgeApbDecode_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->apb_uBridgeIp0_paddr(apb_uBridgeIp0_hdl_if.paddr);
-        dut_hdl->apb_uBridgeIp0_psel(apb_uBridgeIp0_hdl_if.psel);
-        dut_hdl->apb_uBridgeIp0_penable(apb_uBridgeIp0_hdl_if.penable);
-        dut_hdl->apb_uBridgeIp0_pwrite(apb_uBridgeIp0_hdl_if.pwrite);
-        dut_hdl->apb_uBridgeIp0_pwdata(apb_uBridgeIp0_hdl_if.pwdata);
-        dut_hdl->apb_uBridgeIp0_pready(apb_uBridgeIp0_hdl_if.pready);
-        dut_hdl->apb_uBridgeIp0_prdata(apb_uBridgeIp0_hdl_if.prdata);
-        dut_hdl->apb_uBridgeIp0_pslverr(apb_uBridgeIp0_hdl_if.pslverr);
-        dut_hdl->apb_uBridgeIp1_paddr(apb_uBridgeIp1_hdl_if.paddr);
-        dut_hdl->apb_uBridgeIp1_psel(apb_uBridgeIp1_hdl_if.psel);
-        dut_hdl->apb_uBridgeIp1_penable(apb_uBridgeIp1_hdl_if.penable);
-        dut_hdl->apb_uBridgeIp1_pwrite(apb_uBridgeIp1_hdl_if.pwrite);
-        dut_hdl->apb_uBridgeIp1_pwdata(apb_uBridgeIp1_hdl_if.pwdata);
-        dut_hdl->apb_uBridgeIp1_pready(apb_uBridgeIp1_hdl_if.pready);
-        dut_hdl->apb_uBridgeIp1_prdata(apb_uBridgeIp1_hdl_if.prdata);
-        dut_hdl->apb_uBridgeIp1_pslverr(apb_uBridgeIp1_hdl_if.pslverr);
+        dut_hdl->apbReg_uBridgeIp0_paddr(apbReg_uBridgeIp0_hdl_if.paddr);
+        dut_hdl->apbReg_uBridgeIp0_psel(apbReg_uBridgeIp0_hdl_if.psel);
+        dut_hdl->apbReg_uBridgeIp0_penable(apbReg_uBridgeIp0_hdl_if.penable);
+        dut_hdl->apbReg_uBridgeIp0_pwrite(apbReg_uBridgeIp0_hdl_if.pwrite);
+        dut_hdl->apbReg_uBridgeIp0_pwdata(apbReg_uBridgeIp0_hdl_if.pwdata);
+        dut_hdl->apbReg_uBridgeIp0_pready(apbReg_uBridgeIp0_hdl_if.pready);
+        dut_hdl->apbReg_uBridgeIp0_prdata(apbReg_uBridgeIp0_hdl_if.prdata);
+        dut_hdl->apbReg_uBridgeIp0_pslverr(apbReg_uBridgeIp0_hdl_if.pslverr);
+        dut_hdl->apbReg_uBridgeIp1_paddr(apbReg_uBridgeIp1_hdl_if.paddr);
+        dut_hdl->apbReg_uBridgeIp1_psel(apbReg_uBridgeIp1_hdl_if.psel);
+        dut_hdl->apbReg_uBridgeIp1_penable(apbReg_uBridgeIp1_hdl_if.penable);
+        dut_hdl->apbReg_uBridgeIp1_pwrite(apbReg_uBridgeIp1_hdl_if.pwrite);
+        dut_hdl->apbReg_uBridgeIp1_pwdata(apbReg_uBridgeIp1_hdl_if.pwdata);
+        dut_hdl->apbReg_uBridgeIp1_pready(apbReg_uBridgeIp1_hdl_if.pready);
+        dut_hdl->apbReg_uBridgeIp1_prdata(apbReg_uBridgeIp1_hdl_if.prdata);
+        dut_hdl->apbReg_uBridgeIp1_pslverr(apbReg_uBridgeIp1_hdl_if.pslverr);
         dut_hdl->apbReg_paddr(apbReg_hdl_if.paddr);
         dut_hdl->apbReg_psel(apbReg_hdl_if.psel);
         dut_hdl->apbReg_penable(apbReg_hdl_if.penable);
@@ -94,15 +94,15 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        apb_uBridgeIp0_bfm.if_p(this->apb_uBridgeIp0);
-        apb_uBridgeIp0_bfm.hdl_if_p(apb_uBridgeIp0_hdl_if);
-        apb_uBridgeIp0_bfm.clk(clk);
-        apb_uBridgeIp0_bfm.rst_n(rst_n);
+        apbReg_uBridgeIp0_bfm.if_p(this->apbReg_uBridgeIp0);
+        apbReg_uBridgeIp0_bfm.hdl_if_p(apbReg_uBridgeIp0_hdl_if);
+        apbReg_uBridgeIp0_bfm.clk(clk);
+        apbReg_uBridgeIp0_bfm.rst_n(rst_n);
 
-        apb_uBridgeIp1_bfm.if_p(this->apb_uBridgeIp1);
-        apb_uBridgeIp1_bfm.hdl_if_p(apb_uBridgeIp1_hdl_if);
-        apb_uBridgeIp1_bfm.clk(clk);
-        apb_uBridgeIp1_bfm.rst_n(rst_n);
+        apbReg_uBridgeIp1_bfm.if_p(this->apbReg_uBridgeIp1);
+        apbReg_uBridgeIp1_bfm.hdl_if_p(apbReg_uBridgeIp1_hdl_if);
+        apbReg_uBridgeIp1_bfm.clk(clk);
+        apbReg_uBridgeIp1_bfm.rst_n(rst_n);
 
         apbReg_bfm.if_p(this->apbReg);
         apbReg_bfm.hdl_if_p(apbReg_hdl_if);
@@ -125,8 +125,8 @@ public:
 
 private:
 
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apb_uBridgeIp0_hdl_if;
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apb_uBridgeIp1_hdl_if;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp0_hdl_if;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp1_hdl_if;
     apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
 
     sc_signal<bool> rst_n;

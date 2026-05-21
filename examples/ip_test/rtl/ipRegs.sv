@@ -4,7 +4,6 @@
 // GENERATED_CODE_BEGIN --template=moduleRegs
 module ipRegs
     // Generated Import package statement(s)
-    import ip_top_package::*;
     import ip_package::*;
     #(
         parameter bit APB_READY_1WS = 0
@@ -20,8 +19,8 @@ module ipRegs
         input rst_n
     );
 
-    apbAddrSt apb_addr;
-    assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h3ff;
+    ipRegAddrSt apb_addr;
+    assign apb_addr = ipRegAddrSt'(apbReg.paddr) & 32'h3ff;
     // Register/memory address offsets for decode documentation
     localparam int unsigned REG_IP_IPMEM = 32'h00000000; // IP scratch memory (FW-accessible)
     localparam int unsigned REG_IP_IPMEM_SIZE = 32'h00000100; // Decode range size
@@ -185,7 +184,7 @@ module ipRegs
 
     logic nxt_rd_pslverr, rd_pslverr;
     logic nxt_rd_ready, rd_ready;
-    apbDataSt nxt_rd_data, rd_data;
+    ipRegDataSt nxt_rd_data, rd_data;
     always_comb begin
         nxt_rd_pslverr = 1'b0;
         nxt_rd_ready = 1'b0;
@@ -197,46 +196,46 @@ module ipRegs
             case (apb_addr) inside
                 REG_IP_IPCFG : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = apbDataSt'(ipCfg_reg[31:0]);
+                    nxt_rd_data = ipRegDataSt'(ipCfg_reg[31:0]);
                 end
                 REG_IP_IPCFG + 32'd4 : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = apbDataSt'(ipCfg_reg[63:32]);
+                    nxt_rd_data = ipRegDataSt'(ipCfg_reg[63:32]);
                 end
                 REG_IP_IPCFG + 32'd8 : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = apbDataSt'(ipCfg_reg[72:64]);
+                    nxt_rd_data = ipRegDataSt'(ipCfg_reg[72:64]);
                 end
                 REG_IP_IPLASTDATA : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = apbDataSt'(ipLastData_reg[31:0]);
+                    nxt_rd_data = ipRegDataSt'(ipLastData_reg[31:0]);
                 end
                 REG_IP_IPLASTDATA + 32'd4 : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = apbDataSt'(ipLastData_reg[63:32]);
+                    nxt_rd_data = ipRegDataSt'(ipLastData_reg[63:32]);
                 end
                 REG_IP_IPLASTDATA + 32'd8 : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = apbDataSt'(ipLastData_reg[70:64]);
+                    nxt_rd_data = ipRegDataSt'(ipLastData_reg[70:64]);
                 end
                 [REG_IP_IPMEM:REG_IP_IPMEM + REG_IP_IPMEM_SIZE - 32'd4]: begin
                     case (apb_addr[3:0])
                         4'h0: begin
                             if (ipMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
-                                nxt_rd_data = apbDataSt'(ipMem.read_data[31:0]);
+                                nxt_rd_data = ipRegDataSt'(ipMem.read_data[31:0]);
                             end
                         end
                         4'h4: begin
                             if (ipMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
-                                nxt_rd_data = apbDataSt'(ipMem.read_data[63:32]);
+                                nxt_rd_data = ipRegDataSt'(ipMem.read_data[63:32]);
                             end
                         end
                         4'h8: begin
                             if (ipMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
-                                nxt_rd_data = apbDataSt'(ipMem.read_data[69:64]);
+                                nxt_rd_data = ipRegDataSt'(ipMem.read_data[69:64]);
                             end
                         end
                         default: ;
@@ -248,7 +247,7 @@ module ipRegs
                         2'h0: begin
                             if (ipFixedMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
-                                nxt_rd_data = apbDataSt'(ipFixedMem.read_data[7:0]);
+                                nxt_rd_data = ipRegDataSt'(ipFixedMem.read_data[7:0]);
                             end
                         end
                         default: ;
@@ -260,7 +259,7 @@ module ipRegs
                         2'h0: begin
                             if (ipNonConstMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
-                                nxt_rd_data = apbDataSt'(ipNonConstMem.read_data[7:0]);
+                                nxt_rd_data = ipRegDataSt'(ipNonConstMem.read_data[7:0]);
                             end
                         end
                         default: ;
@@ -268,7 +267,7 @@ module ipRegs
                     nxt_ipNonConstMem_rd_enable = ~ipNonConstMem_rd_capture;
                 end
                 default: begin
-                    nxt_rd_data = apbDataSt'(32'hBADD_C0DE);
+                    nxt_rd_data = ipRegDataSt'(32'hBADD_C0DE);
                     nxt_rd_pslverr = 1'b1;
                 end
             endcase

@@ -5,7 +5,6 @@
 //module as defined by block: ip
 module ip
 // Generated Import package statement(s)
-import ip_top_package::*;
 import ip_package::*;
 #(
     parameter IP_DATA_WIDTH,
@@ -14,7 +13,7 @@ import ip_package::*;
 )
 (
     push_ack_if.dst ipDataIf,
-    apb_if.dst apbReg,
+    apb_if.dst regs,
     input clk, rst_n
 );
 
@@ -32,7 +31,7 @@ import ip_package::*;
 
 // Instances
 ipRegs uIpRegs (
-    .apbReg (apbReg),
+    .apbReg (regs),
     .ipMem (ipMem_reg),
     .ipFixedMem (ipFixedMem_reg),
     .ipNonConstMem (ipNonConstMem_reg),

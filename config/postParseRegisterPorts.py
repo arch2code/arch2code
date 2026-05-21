@@ -43,10 +43,15 @@ def _exit_with_error(msg):
 
 
 def _flattenBlocks(prj):
-    """Return {blockKey: blockRow} across all contexts."""
+    """Return {blockKey: blockRow} across all contexts. _context is
+    synthesised at SQL-insert time, so during the post-parse phase the
+    in-memory entry does not yet carry it; inject it here from the outer
+    dict key so downstream callers can read blockRow['_context']
+    uniformly."""
     flat = dict()
     for context, blocks in prj.data['blocks'].items():
         for _, blockRow in blocks.items():
+            blockRow.setdefault('_context', context)
             flat[blockRow['blockKey']] = blockRow
     return flat
 
@@ -170,48 +175,41 @@ def _addressBusInterfaceTypes(prj):
 
 def _resolveRouterRegisterBusInterface(prj, routerBlock, addressBusTypes,
                                        cache):
-    """Find the single addressBus: true interface authored in the router
-    block's load-time scope. Routers do not declare `registerPorts:`
-    (Stage 1.2 forbids the combination with `addressBlock:`), so the
-    upstream / downstream interface is identified by walking the
-    router's visible YAML contexts and selecting the one interface whose
-    interfaceType resolves to an `addressBus: true` interface_defs row.
+    """Find the addressBus: true interface named by addressBlock.upstreamPort.
 
-    Errors if zero or more than one such interface is in scope."""
+    Routers do not declare `registerPorts:` (Stage 1.2 forbids the
+    combination with `addressBlock:`), so the upstream / downstream
+    interface is identified by the router's addressBlock port name. Multiple
+    APB-shaped interfaces may be visible in the same load-time scope; only the
+    one matching the router's port convention belongs to this router."""
     routerContext = routerBlock['_context']
-    if routerContext in cache:
-        return cache[routerContext]
-
-    visibleContexts = set(prj.yamlContext.get(routerContext, {}).keys())
-    visibleContexts.add(routerContext)
-
-    candidates = []
-    for ctx in visibleContexts:
-        ifaces = prj.data.get('interfaces', {}).get(ctx, {})
-        for ifaceName, ifaceRow in ifaces.items():
-            if ifaceRow.get('interfaceType') in addressBusTypes:
-                candidates.append((ifaceName, ctx))
+    addressBlock = routerBlock['addressBlock']
+    upstreamPort = addressBlock.get('upstreamPort') or 'apbReg'
+    cacheKey = (routerContext, upstreamPort)
+    if cacheKey in cache:
+        return cache[cacheKey]
 
     blockName = routerBlock['block']
-    if not candidates:
+    ifaceRow, ifaceContext = prj.getFromContext(
+        'interfaces', routerContext, upstreamPort, NotFoundFatal=False,
+    )
+    if not ifaceRow:
         _exit_with_error(
-            f"Router block '{blockName}' (file {routerContext}) has no "
-            f"addressBus: true interface authored in its load-time "
-            f"scope. Declare the router's register-bus interface in its "
-            f"YAML file or an included file, and ensure its "
-            f"interfaceType resolves to an interface_defs row with "
-            f"addressBus: true."
+            f"Router block '{blockName}' (file {routerContext}) names "
+            f"upstreamPort '{upstreamPort}', but no visible interface has "
+            f"that name."
         )
-    if len(candidates) > 1:
-        names = ', '.join(f"'{name}' (file {ctx})" for name, ctx in candidates)
+
+    if ifaceRow.get('interfaceType') not in addressBusTypes:
         _exit_with_error(
-            f"Router block '{blockName}' (file {routerContext}) has "
-            f"multiple addressBus: true interfaces in its load-time "
-            f"scope: {names}. Exactly one register-bus interface is "
-            f"supported per router."
+            f"Router block '{blockName}' (file {routerContext}) names "
+            f"upstreamPort '{upstreamPort}' (file {ifaceContext}), but that "
+            f"interface does not resolve to an addressBus: true "
+            f"interfaceType."
         )
-    cache[routerContext] = candidates[0][0]
-    return cache[routerContext]
+
+    cache[cacheKey] = upstreamPort
+    return upstreamPort
 
 
 def postProcess(prj):
@@ -263,21 +261,50 @@ def postProcess(prj):
     # ---- Step 4: synthesise register handlers per routed leaf ----
     blocksNeedingHandler = collectBlocksNeedingRegHandler(prj)
 
+    def _routerServingLeaf(leafBlockKey):
+        # Return any router serving an instance of this leaf block.
+        # All routers reaching this leaf must agree on
+        # registerDecoderPort (the handler block has one port name);
+        # picking any one is fine.
+        for _ctx, _instGroup in prj.data['instances'].items():
+            for _, _instRow in _instGroup.items():
+                if _instRow.get('instanceTypeKey') != leafBlockKey:
+                    continue
+                routerInst = decoderContainer.get(_instRow.get('containerKey'))
+                if routerInst is not None:
+                    return routers[routerInst['instanceTypeKey']]
+        return None
+
     for leafBlockKey, leafBlockSimple in blocksNeedingHandler.items():
         leafBlock = blockInfo[leafBlockKey]
         portName, regPortRow = _selectLeafRegisterPort(leafBlockKey, leafBlock)
         leafInterfaceName = regPortRow['interface']
         leafContext = leafBlock['_context']
 
+        # The handler block's register-bus port is named after the
+        # router's registerDecoderPort, not the leaf's authored port.
+        # This matches the legacy convention: every <leaf>Regs block
+        # exposes the same canonical port name (typically `apbReg`).
+        # The leaf-side authored port name (`portName`, e.g. `regs`)
+        # still appears on the connectionMap's parent-boundary `port:`
+        # field so the leaf's authored `registerPorts:` row binds to
+        # the handler's canonical port through this map.
+        servingRouter = _routerServingLeaf(leafBlockKey)
+        if servingRouter is None:
+            _exit_with_error(
+                f"Leaf block '{leafBlockSimple}' needs a register "
+                f"handler but no router was found serving any of its "
+                f"instances. Place the leaf in a router's container."
+            )
+        handlerPort = servingRouter['addressBlock']['registerDecoderPort']
+
         reg_block, block_def, instance_name, instance_def, connection_map = \
             synthesiseRegHandler(
                 prj, leafBlockKey, leafBlockSimple, leafInterfaceName,
                 blockInfo, instance_prefix, block_suffix, camel_case,
             )
-        # The leaf-to-handler bind names the leaf's registerPorts:
-        # entry as the leaf-side port; the handler block (synthesised)
-        # exposes the matching interface at its dst end.
         connection_map['port'] = portName
+        connection_map['instancePort'] = handlerPort
 
         _section(leafContext, 'blocks')[reg_block] = block_def
         _section(leafContext, 'instances')[instance_name] = instance_def
@@ -310,22 +337,30 @@ def postProcess(prj):
                 routerBlock = routers[parentRouter['instanceTypeKey']]
                 addressBlock = routerBlock['addressBlock']
                 regDecoderPort = addressBlock['registerDecoderPort']
-                routerContext = routerBlock['_context']
 
                 portName, regPortRow = _selectLeafRegisterPort(
                     instanceTypeKey, leafBlock
                 )
-                leafInterface = regPortRow['interface']
+                routerInterface = _resolveRouterRegisterBusInterface(
+                    prj, routerBlock, addressBusTypes, routerInterfaceCache,
+                )
 
                 listOfInstances.append(instRow['instanceKey'])
                 connection = {
                     'src': parentRouter['instance'],
                     'dst': instRow['instance'],
-                    'interface': leafInterface,
+                    'dstport': portName,
+                    'interface': routerInterface,
                     'srcport': f"{regDecoderPort}_{instRow['instance']}",
                     'interfaceName': f"{regDecoderPort}_{instRow['instance']}",
                 }
-                _section(routerContext, 'connections').append(connection)
+                # Owner context is the container that holds both
+                # endpoints. The router's own YAML file does not see
+                # leaf-scoped interfaces; the container's file does, via
+                # its include: chain. `context` is the yaml file the
+                # instance row was authored in, i.e. the container's
+                # file.
+                _section(context, 'connections').append(connection)
 
             # Router-to-router: instance whose block is itself a router
             # AND this is the canonical router instance for that block
@@ -343,35 +378,87 @@ def postProcess(prj):
                     prj, childBlock, addressBusTypes, routerInterfaceCache,
                 )
 
+                childAddressBlock = childBlock['addressBlock']
+                childUpstreamPort = childAddressBlock['upstreamPort']
+
                 parentRouter = _findRouterParent(prj, instRow, decoderContainer)
                 parentBlock = routers[parentRouter['instanceTypeKey']]
                 parentAddressBlock = parentBlock['addressBlock']
                 parentRegDecoderPort = parentAddressBlock['registerDecoderPort']
-                parentContext = parentBlock['_context']
 
-                listOfInstances.append(instRow['instanceKey'])
+                # Find the container-block sibling instance — the
+                # instance whose block type is the nested router's
+                # container block, and that sits in the parent
+                # router's container. The parent router dispatches to
+                # that sibling, and a connectionMap on the container
+                # block bridges its inherited upstream port into the
+                # nested router instance.
+                containerBlockKey = instRow['containerKey']
+                containerSiblingInst = None
+                containerSiblingContext = None
+                for _ctx2, _instGroup in prj.data['instances'].items():
+                    for _, _candRow in _instGroup.items():
+                        if _candRow['instanceTypeKey'] == containerBlockKey \
+                                and _candRow['containerKey'] \
+                                == parentRouter['containerKey']:
+                            containerSiblingInst = _candRow
+                            containerSiblingContext = _ctx2
+                            break
+                    if containerSiblingInst is not None:
+                        break
+                if containerSiblingInst is None:
+                    _exit_with_error(
+                        f"Could not find the sibling container instance "
+                        f"for nested router '{instRow['instance']}'. "
+                        f"Expected an instance of block "
+                        f"'{containerBlockKey}' contained by "
+                        f"'{parentRouter['containerKey']}'."
+                    )
+
+                siblingInstance = containerSiblingInst['instance']
+                # INSTANCES_WITH_REGAPB drives the top router's dispatch
+                # list: each entry is an instance that the parent router
+                # sends register-bus traffic to. For a nested router,
+                # the parent dispatches to the *container* instance
+                # (e.g. uBridge), not the nested decoder inside the
+                # container (uBridgeAPBDecode). Match the legacy
+                # convention so the constructor template emits a real
+                # downstream port instead of nullptr.
+                listOfInstances.append(containerSiblingInst['instanceKey'])
                 connection = {
                     'src': parentRouter['instance'],
-                    'dst': instRow['instance'],
+                    'dst': siblingInstance,
                     'interface': childInterface,
-                    'srcport': f"{parentRegDecoderPort}_{instRow['instance']}",
-                    'interfaceName': f"{parentRegDecoderPort}_{instRow['instance']}",
+                    'srcport': f"{parentRegDecoderPort}_{siblingInstance}",
+                    'dstport': childUpstreamPort,
+                    'interfaceName': f"{parentRegDecoderPort}_{siblingInstance}",
                 }
-                _section(parentContext, 'connections').append(connection)
+                # The parent container owns the sibling instance and
+                # the parent router instance, so it is the context that
+                # can resolve both endpoints of this dispatch bind.
+                _section(containerSiblingContext, 'connections').append(connection)
 
-                # Per Stage 4 step 6, also emit a connectionMap so the
-                # nested router exposes its upstream port to the
-                # parent router's dispatch — mirrors the legacy
-                # hierarchical decoder connection map. The bound
-                # interface is the child router's authored register-bus
-                # interface, not the upstreamPort port-name string.
+                # The container block boundary maps its inherited
+                # upstream interface to the nested router instance.
+                # Emit into the yaml file that authored the nested
+                # router instance row (`context`): that file already
+                # includes both the parent router's yaml (so the
+                # register-bus interface resolves) and the container
+                # block's yaml (so `block:` resolves), and it owns the
+                # nested router instance row itself (so `instance:`
+                # resolves).
+                _ck_block, _ck_ctx = containerBlockKey.split('/', 1)
+                containerBlockName = \
+                    prj.data['blocks'][_ck_ctx][_ck_block]['block']
                 connection_map = {
                     'interface': childInterface,
-                    'block': childBlock['block'],
+                    'block': containerBlockName,
+                    'port': childUpstreamPort,
                     'direction': 'dst',
                     'instance': instRow['instance'],
+                    'instancePort': childUpstreamPort,
                 }
-                _section(parentContext, 'connectionMaps').append(connection_map)
+                _section(context, 'connectionMaps').append(connection_map)
 
     # ---- Emit per owner context ----
     for ownerContext, sections in perContext.items():

@@ -20,14 +20,14 @@ namespace {
 
 template<typename Config>
 void ip<Config>::regHandler(void) { //handle register decode
-    registerHandler< apbAddrSt, apbDataSt >(regs, this->apbReg, (1<<(10))-1); }
+    registerHandler< ipRegAddrSt, ipRegDataSt >(_a2cRegs, this->regs, (1<<(10))-1); }
 
 template<typename Config>
 ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("ip", name(), bbMode)
         ,ipBase<Config>(name(), variant)
-        ,regs(log_)
+        ,_a2cRegs(log_)
         ,ipCfg(typename ipCfgSt<Config>::_packedSt(0x0))
         ,ipLastData()
         ,ipMem(name(), "ipMem", mems, Config::IP_MEM_DEPTH)
@@ -44,12 +44,12 @@ ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbM
     constexpr uint64_t REG_ADDR_IP_IPLASTDATA = 0x318;
 
     // register memories for FW access
-    regs.addMemory( REG_ADDR_IP_IPMEM, ipMemSt<Config>::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipMem", &ipMem);
-    regs.addMemory( REG_ADDR_IP_IPFIXEDMEM, ipFixedSt::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipFixedMem", &ipFixedMem);
-    regs.addMemory( REG_ADDR_IP_IPNONCONSTMEM, ipFixedSt::_byteWidth, Config::IP_NONCONST_DEPTH, std::string(this->name()) + ".ipNonConstMem", &ipNonConstMem);
+    _a2cRegs.addMemory( REG_ADDR_IP_IPMEM, ipMemSt<Config>::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipMem", &ipMem);
+    _a2cRegs.addMemory( REG_ADDR_IP_IPFIXEDMEM, ipFixedSt::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipFixedMem", &ipFixedMem);
+    _a2cRegs.addMemory( REG_ADDR_IP_IPNONCONSTMEM, ipFixedSt::_byteWidth, Config::IP_NONCONST_DEPTH, std::string(this->name()) + ".ipNonConstMem", &ipNonConstMem);
     // register registers for FW access
-    regs.addRegister( REG_ADDR_IP_IPCFG, 10, "ipCfg", &ipCfg );
-    regs.addRegister( REG_ADDR_IP_IPLASTDATA, 9, "ipLastData", &ipLastData );
+    _a2cRegs.addRegister( REG_ADDR_IP_IPCFG, 10, "ipCfg", &ipCfg );
+    _a2cRegs.addRegister( REG_ADDR_IP_IPLASTDATA, 9, "ipLastData", &ipLastData );
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

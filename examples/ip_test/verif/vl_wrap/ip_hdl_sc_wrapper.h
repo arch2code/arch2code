@@ -49,7 +49,7 @@ public:
     sc_clock clk;
 
     push_ack_dst_bfm<ipDataSt<Config>, sc_bv<71>> ipDataIf_bfm;
-    apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
+    apb_dst_bfm<ipRegAddrSt, ipRegDataSt, sc_bv<32>, sc_bv<32>> regs_bfm;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
@@ -62,7 +62,7 @@ public:
         ipBase<Config>(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         ipDataIf_bfm("ipDataIf_bfm"),
-        apbReg_bfm("apbReg_bfm"),
+        regs_bfm("regs_bfm"),
         rst_n(0)
     {
         dut_hdl = new DUT_T("dut_hdl");
@@ -70,14 +70,14 @@ public:
         dut_hdl->ipDataIf_push(ipDataIf_hdl_if.push);
         dut_hdl->ipDataIf_data(ipDataIf_hdl_if.data);
         dut_hdl->ipDataIf_ack(ipDataIf_hdl_if.ack);
-        dut_hdl->apbReg_paddr(apbReg_hdl_if.paddr);
-        dut_hdl->apbReg_psel(apbReg_hdl_if.psel);
-        dut_hdl->apbReg_penable(apbReg_hdl_if.penable);
-        dut_hdl->apbReg_pwrite(apbReg_hdl_if.pwrite);
-        dut_hdl->apbReg_pwdata(apbReg_hdl_if.pwdata);
-        dut_hdl->apbReg_pready(apbReg_hdl_if.pready);
-        dut_hdl->apbReg_prdata(apbReg_hdl_if.prdata);
-        dut_hdl->apbReg_pslverr(apbReg_hdl_if.pslverr);
+        dut_hdl->regs_paddr(regs_hdl_if.paddr);
+        dut_hdl->regs_psel(regs_hdl_if.psel);
+        dut_hdl->regs_penable(regs_hdl_if.penable);
+        dut_hdl->regs_pwrite(regs_hdl_if.pwrite);
+        dut_hdl->regs_pwdata(regs_hdl_if.pwdata);
+        dut_hdl->regs_pready(regs_hdl_if.pready);
+        dut_hdl->regs_prdata(regs_hdl_if.prdata);
+        dut_hdl->regs_pslverr(regs_hdl_if.pslverr);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
@@ -86,10 +86,10 @@ public:
         ipDataIf_bfm.clk(clk);
         ipDataIf_bfm.rst_n(rst_n);
 
-        apbReg_bfm.if_p(this->apbReg);
-        apbReg_bfm.hdl_if_p(apbReg_hdl_if);
-        apbReg_bfm.clk(clk);
-        apbReg_bfm.rst_n(rst_n);
+        regs_bfm.if_p(this->regs);
+        regs_bfm.hdl_if_p(regs_hdl_if);
+        regs_bfm.clk(clk);
+        regs_bfm.rst_n(rst_n);
 
         SC_THREAD(reset_driver);
 
@@ -108,7 +108,7 @@ public:
 private:
 
     push_ack_hdl_if<sc_bv<71>> ipDataIf_hdl_if;
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> regs_hdl_if;
 
     sc_signal<bool> rst_n;
 

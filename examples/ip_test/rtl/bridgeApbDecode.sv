@@ -5,10 +5,10 @@
 //module as defined by block: bridgeApbDecode
 module bridgeApbDecode
 // Generated Import package statement(s)
-import ip_top_package::*;
+import shared_types_package::*;
 (
-    apb_if.src apb_uBridgeIp0,
-    apb_if.src apb_uBridgeIp1,
+    apb_if.src apbReg_uBridgeIp0,
+    apb_if.src apbReg_uBridgeIp1,
     apb_if.dst apbReg,
     input clk, rst_n
 );

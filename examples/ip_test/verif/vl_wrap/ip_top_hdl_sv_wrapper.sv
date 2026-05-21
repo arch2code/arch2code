@@ -9,7 +9,7 @@ module ip_top_hdl_sv_wrapper
     import ip_package::*;
     import ipBridge_package::*;
     import src_package::*;
-    import ip_top_package::*;
+    import shared_types_package::*;
 (
     // apb_if.dst
     input bit [31:0] cpu_main_paddr,

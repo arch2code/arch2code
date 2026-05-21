@@ -13,6 +13,8 @@ module;
 export module src;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
+import ipLeaf;
+using namespace ipLeaf_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants

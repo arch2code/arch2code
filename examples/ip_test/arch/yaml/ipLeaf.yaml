@@ -6,7 +6,7 @@
 # memory that anchors the block as parameterizable through processYaml's
 # `add_struct_context` walk over `memories`.
 #
-# ipLeaf is instantiated as a child of `ip` (see ip_top.yaml) so that the
+# ipLeaf is instantiated as a child of `src` (see src.yaml) so that the
 # project block walk encounters a parameterized grandchild. The walk emits
 # `model/ipLeafRegistrar.cpp` directly, with no per-block recursion in the
 # trampoline pass.
@@ -36,7 +36,7 @@ structures:
 
 blocks:
     ipLeaf:
-        desc: "Templated grandchild block instantiated as a child of ip"
+        desc: "Templated grandchild block instantiated as a child of src"
         params: [LEAF_DATA_WIDTH, LEAF_MEM_DEPTH]
         hasVl: true
         hasMdl: true
