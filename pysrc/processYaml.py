@@ -4894,7 +4894,23 @@ class projectCreate:
                             # as its valid we also need to capture the context key - ie what file did the referenced value come from
                             ret[field+'Key'] = ret[field] + '/' + varContext
                         else:
-                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} field {field}, value {ret[field]} was not valid in context {scope}")
+                            # Surface likely include-scope mistakes by naming
+                            # already-loaded contexts that define the symbol.
+                            targetSection = validator['section']
+                            foundElsewhere = []
+                            for qualification, group in self.data.get(targetSection, {}).items():
+                                if isinstance(group, dict) and ret[field] in group:
+                                    foundElsewhere.append(qualification)
+                            if foundElsewhere:
+                                whereDefined = ', '.join(sorted(foundElsewhere))
+                                hint = (f" but is defined in {whereDefined}; "
+                                        f"add the defining file to the include: "
+                                        f"chain of {scope}")
+                            else:
+                                hint = (f"; no {targetSection} row named "
+                                        f"'{ret[field]}' was found in any "
+                                        f"context processed before this one")
+                            self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} field {field}, value {ret[field]} was not valid in context {scope}{hint}")
                             # add anyway to prevent key error later
                             ret[field+'Key'] = 'InvalidValueInYaml'
                     else:

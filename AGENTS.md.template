@@ -42,12 +42,10 @@ Before editing, you **must** load the project skill that matches the task. Do no
 2.  **No Assumptions:** Verify libraries and paths before using them.
 3.  **Safety:** Explain destructive commands before execution.
 4.  **Verification:** Always run `make gen` after YAML changes and `make run` to verify code.
-
-## Tool Usage
-*   Use `grep` and `glob` to explore the codebase.
-*   Use `read` to understand context.
-*   Use `edit` for user-owned regions. Before any `write` of an implementation file, load `manage-build.md` and check whether `make newmodule` should scaffold it.
-*   Use `bash` to run `make` commands.
+5.  Ask, don't assume. If something is unclear, ask before writing a single line. Never make silent assumptions about intent, architecture, or requirements.
+6.  Simplest solution first. Always implement the simplest thing that could work. Do not add abstractions or flexibility that weren't explicitly requested.
+7.  Don't touch unrelated code. If a file or function is not directly part of the current task, do not modify it, even if you think it could be improved.
+8.  Flag uncertainty explicitly. If you are not confident about an approach or technical detail, say so before proceeding. Confidence without certainty causes more damage than admitting a gap.
 
 ## Common Workflows
 1.  **New Module:** `setup-project` -> `design-architecture` -> `manage-build` (`make gen`) -> `systemc-core` / `rtl-core`.

@@ -3,12 +3,18 @@
 These rules apply when working under `builder/base`, especially generator,
 template, and project database code.
 
+## General Rules
+1. Ask, don't assume. If something is unclear, ask before writing a single line. Never make silent assumptions about intent, architecture, or requirements.
+2. Simplest solution first. Always implement the simplest thing that could work. Do not add abstractions or flexibility that weren't explicitly requested.
+3. Don't touch unrelated code. If a file or function is not directly part of the current task, do not modify it, even if you think it could be improved.
+4. Flag uncertainty explicitly. If you are not confident about an approach or technical detail, say so before proceeding. Confidence without certainty causes more damage than admitting a gap.
+
 ## Generator Control Flow
 
 Normal project use is a two-step flow. Do not treat generation as one Python run
 that parses YAML and immediately renders templates.
 
-Project makefiles usually wrap this as `make db` followed by generation targets
+Project makefiles wrap this as `make db` followed by generation targets
 such as `make gen`, but the Python dispatch still follows this split.
 
 1. `projectCreate` builds the database.
@@ -94,11 +100,13 @@ Python dictionaries.
 apply local language-specific formatting, and emit text. Move extensive data
 manipulation, validation, cross-object lookup logic, caching, or expensive
 computation into `projectCreate` or a language-neutral `projectOpen` view.
-- Avoid defensive programming in view creation and template functions for
-fields guaranteed by the DB/view contract. If a required field is missing, fix
-`projectCreate` validation, schema/config creation, or the view helper that
-defines the contract. Branching on optional rows or relationships is fine;
-treating fields on existing contracted rows as optional is not.
+- Do not use fallback defaults for fields guaranteed by the DB/view contract.
+Required fields on existing DB/view rows must be read directly, for example
+`row["dbfield"]`, not `row.get("dbfield", {})`, `row.get("dbfield") or {}`,
+or similar defensive fallback patterns. If a required field is missing, fix
+`projectCreate` validation, schema/config creation, or the `projectOpen` view
+helper that defines the contract. Branching on optional rows or optional
+relationships is fine; treating contracted fields as optional is not.
 - Do not edit generated regions by hand. Change the data creation, view helper,
 or template, then rerun the normal make target.
 - Do not add plan specific comments. Instead add durable behavior comments

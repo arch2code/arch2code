@@ -108,6 +108,49 @@ if ! python3 test_error_rtl_hierarchy.py; then
     echo "Note: Some RTL hierarchy error tests failed"
 fi
 
+# Test 15-35: address-control refactor — Stage 7 Batch A.
+# Per plan-address-control-test-coverage.md "Implementation Phasing"
+# (Batch A): single-router positives, the lowest-cost two-level
+# positives, port-name boundary cases, and the Stage 1.5 / Stage 4
+# diagnostic skeleton. See plan-address-control-refactor.md Stage 7.
+ADDRCTL_TESTS=(
+    "T1.1 single-router one-register view"      "test_addrctl_single_router_one_reg.py"
+    "T1.2 single-router multi-register leaf"    "test_addrctl_single_router_multi_reg.py"
+    "T1.3 single-router two-leaves"             "test_addrctl_single_router_two_leaves.py"
+    "T1.5 single-router mixed leaves"           "test_addrctl_mixed_leaves.py"
+    "T2.1 primary plus nested router"           "test_addrctl_two_router_simple.py"
+    "T2.2 primary with no direct leaves"        "test_addrctl_primary_no_direct_leaves.py"
+    "T4.1 single-router no-IP simple"           "test_addrctl_no_ip_simple.py"
+    "T4.2 two-level no-IP hierarchy"            "test_addrctl_no_ip_two_level.py"
+    "T4.3 mixed IP / no-IP under one router"    "test_addrctl_no_ip_mixed.py"
+    "T5.1 router with no leaves"                "test_addrctl_router_no_leaves.py"
+    "T5.2 leaf with registerPorts only"         "test_addrctl_leaf_register_port_only.py"
+    "T5.3 default upstream / decoder ports"     "test_addrctl_default_port_names.py"
+    "T5.4 explicit non-default ports"           "test_addrctl_explicit_port_names.py"
+    "E1.1 addressBlock and registerPorts both"  "test_error_addr_and_register_ports.py"
+    "E1.2 multi registerPorts rows"             "test_error_multi_register_ports.py"
+    "E1.3 registerPort interface not addressBus" "test_error_register_port_not_addressbus.py"
+    "E1.4 duplicate addressGroup"               "test_error_duplicate_address_group.py"
+    "E1.5 registerPort out-of-scope interface"  "test_error_register_port_out_of_scope.py"
+    "E2.1 router has no instance"               "test_error_router_no_instance.py"
+    "E2.5 routed leaf in unserved container"    "test_error_leaf_unserved.py"
+    "E2.6 leaf with regs but no registerPorts"  "test_error_leaf_no_register_port.py"
+)
+
+idx=15
+for ((i = 0; i < ${#ADDRCTL_TESTS[@]}; i+=2)); do
+    label=${ADDRCTL_TESTS[i]}
+    script=${ADDRCTL_TESTS[i+1]}
+    echo ""
+    echo "Test Suite ${idx}: addressControl refactor — ${label}"
+    echo "------------------------------------------------------------------------"
+    if ! python3 "${script}"; then
+        FAILED=1
+        echo "Note: ${label} failed"
+    fi
+    idx=$((idx+1))
+done
+
 echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then

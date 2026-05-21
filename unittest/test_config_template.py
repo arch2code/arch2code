@@ -42,6 +42,8 @@ def test_config_uses_maxvalue_for_type_width():
                 'isParameterizable': True,
             },
         },
+        'contextBlockParamSynthetic': {},
+        'contextVariantConfigs': [],
     }
 
     rendered = includes.includeConfig(args, None, data)
