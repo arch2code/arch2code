@@ -5,7 +5,19 @@
 #include <cstdint>
 #include <cstddef>
 
-enum socketMsgTypeT{ MSG_REQ=0x01, MSG_ACK=0x02, MSG_PUSH=0x03, MSG_PUSH_ACK=0x04, MSG_VLD=0x05, MSG_RDY=0x06, MSG_SYNC=0x07, MSG_SHUTDOWN=0xFE, MSG_ERROR=0xFF };
+enum socketMsgTypeT {
+    MSG_REQ=0x01,
+    MSG_ACK=0x02,
+    MSG_PUSH=0x03,
+    MSG_PUSH_ACK=0x04,
+    MSG_VLD=0x05,
+    MSG_RDY=0x06,
+    MSG_SYNC=0x07,
+    MSG_APB_REQ=0x08,
+    MSG_APB_ACK=0x09,
+    MSG_SHUTDOWN=0xFE,
+    MSG_ERROR=0xFF
+};
 inline const char* socketMsgTypeT_prt( socketMsgTypeT val )
 {
     switch( val )
@@ -17,6 +29,8 @@ inline const char* socketMsgTypeT_prt( socketMsgTypeT val )
         case MSG_VLD: return( "MSG_VLD" );
         case MSG_RDY: return( "MSG_RDY" );
         case MSG_SYNC: return( "MSG_SYNC" );
+        case MSG_APB_REQ: return( "MSG_APB_REQ" );
+        case MSG_APB_ACK: return( "MSG_APB_ACK" );
         case MSG_SHUTDOWN: return( "MSG_SHUTDOWN" );
         case MSG_ERROR: return( "MSG_ERROR" );
     }
