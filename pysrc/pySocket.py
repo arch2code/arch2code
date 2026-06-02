@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import os
+import socket
 import struct
 import sys
 
@@ -48,6 +49,56 @@ def parse_ports(ports_file: str | None) -> dict[str, int]:
             print(f"pySocket.py: invalid port in {part!r}: {exc}", file=sys.stderr)
             sys.exit(1)
     return out
+
+
+class SyncSocketTransport:
+    """Blocking TCP transport for use outside an asyncio event loop (e.g. pyuvm).
+
+    The API mirrors SocketTransport with async def methods so callers can use
+    await, but all I/O is performed synchronously via the stdlib socket module.
+    """
+
+    def __init__(self, host: str, port: int) -> None:
+        self._host = host
+        self._port = port
+        self._sock: socket.socket | None = None
+
+    async def connect(self) -> None:
+        self._sock = socket.create_connection((self._host, self._port))
+
+    async def send_msg(self, msg_type: int, payload: bytes) -> None:
+        assert self._sock is not None
+        if len(payload) > 0xFFFF:
+            raise ValueError("payload too large")
+        hdr = HEADER_STRUCT.pack(msg_type, 0, len(payload))
+        self._sock.sendall(hdr + payload)
+
+    def _recvexactly(self, n: int) -> bytes:
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = self._sock.recv(n - len(buf))
+            if not chunk:
+                raise ConnectionError("connection closed")
+            buf += chunk
+        return bytes(buf)
+
+    async def recv_msg(self) -> tuple[int, bytes]:
+        assert self._sock is not None
+        hdr = self._recvexactly(4)
+        msg_type, _reserved, plen = HEADER_STRUCT.unpack(hdr)
+        body = self._recvexactly(plen) if plen else b""
+        return msg_type, body
+
+    async def recv_sync(self) -> None:
+        """Wait for TB startup handshake (sent after accept, before full sc_start)."""
+        msg_type, body = await self.recv_msg()
+        if msg_type != MSG_SYNC or len(body) != 0:
+            raise ValueError(f"expected MSG_SYNC, got type={msg_type} len={len(body)}")
+
+    async def close(self) -> None:
+        if self._sock is not None:
+            self._sock.close()
+            self._sock = None
 
 
 class SocketTransport:
