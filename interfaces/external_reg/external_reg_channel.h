@@ -56,6 +56,9 @@ public:
     // blocking read
     virtual void reg_read( T& ) = 0;             // waits on event
     virtual T reg_read() = 0;
+    // non-blocking variant
+    virtual void readNonBlocking( T& ) = 0;
+    virtual T readNonBlocking() = 0;
     // blocking write
     virtual void write( const T& val_ ) = 0;
     virtual void reg_write( const T& val_ ) = 0; // triggers event to reader

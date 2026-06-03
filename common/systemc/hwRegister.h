@@ -91,7 +91,7 @@ public:
         uint32_t val;
         if constexpr (RO)
         {
-            m_val = (*m_port)->read();
+            m_val = (*m_port)->readNonBlocking();
         }
         m_val_sc = m_val.sc_pack();
         val = (uint32_t) m_val_sc.range(8*address+31, 8*address).to_uint64();
