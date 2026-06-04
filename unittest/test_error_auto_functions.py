@@ -217,7 +217,7 @@ instances:
 """
     return test_error_case(
         yaml,
-        ["UNDEFINED_CONSTANT", "unresolved", "Constant"],
+        ["UNDEFINED_CONSTANT", "not declared", "constant"],
         "Type width references undefined constant"
     )
 

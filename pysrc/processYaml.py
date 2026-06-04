@@ -13,6 +13,7 @@ import importlib
 import importlib.util
 
 from pysrc.merge_utils import merge_with_spec
+from pysrc.valueResolver import ValueResolver
 
 continueOnError = False
 
@@ -135,6 +136,27 @@ def getTypeWidthContext(typeInfo):
     if not key:
         key = None
     return mode, key
+
+def splitQualifiedKey(qualifiedKey, label):
+    if not qualifiedKey or '/' not in qualifiedKey:
+        printError(f"Internal error: malformed {label} key '{qualifiedKey}' "
+                   f"(expected 'name/yamlFile').")
+        exit(warningAndErrorReport())
+    return qualifiedKey.split('/', 1)
+
+def qualifiedKeyContext(name, qualifiedKey, label):
+    prefix = f"{name}/"
+    if not name or not qualifiedKey or not qualifiedKey.startswith(prefix):
+        printError(f"Internal error: {label} key mismatch: unqualified "
+                   f"name '{name}' does not match qualified key "
+                   f"'{qualifiedKey}'.")
+        exit(warningAndErrorReport())
+    context = qualifiedKey[len(prefix):]
+    if not context:
+        printError(f"Internal error: {label} key '{qualifiedKey}' has no "
+                   f"context suffix.")
+        exit(warningAndErrorReport())
+    return context
 
 def loadModule(filename):
     module = None
@@ -1065,12 +1087,36 @@ class projectOpen:
         # collect interface definitions for all interface types used in the block
         self.getBDInterfaceDefs(ret)
         self.getBDConfigInfo(ret)
+        # module-local parameterized declaration set, derived and persisted by
+        # projectCreate.deriveParameterizedDeclSets()
+        self.getBDParameterizedDecls(ret)
         # Surface per-block register-bus data on the view; routers without
         # authored addressBlock rows get an equivalent view from ADDRESS_CONFIG.
         self.getBDAddressBlockView(ret)
         ret.pop('temp') # remove temp data
 
         return ret
+
+    def getBDParameterizedDecls(self, ret):
+        # Per-block module-local parameterized declaration set, derived and
+        # persisted by projectCreate.deriveParameterizedDeclSets() into the
+        # non-schema blockParameterizedDecls table. Queried directly per block
+        # (the table is not loaded into prj.data) and joined to the types /
+        # structures rows for the declaration bodies. Emission order is the
+        # persisted orderIndex (types/sub-structures before the structures that
+        # use them) for emitters that declare these module-local.
+        qualBlock = ret['qualBlock']
+        g.cur.execute("SELECT declKind, declKey, orderIndex FROM blockParameterizedDecls "
+                      "WHERE blockKey = ? ORDER BY orderIndex", (qualBlock,))
+        decls = list()
+        for row in g.cur.fetchall():
+            declKey = row['declKey']
+            if row['declKind'] == 'type':
+                body = self.data['types'][declKey]
+            else:
+                body = self.data['structures'][declKey]
+            decls.append({'declKind': row['declKind'], 'declKey': declKey, 'body': body})
+        ret['parameterizedDecls'] = decls
 
     def getBDConfigInfo(self, ret):
         # View assembly: read persisted truths and derive view-side fields.
@@ -1261,7 +1307,7 @@ class projectOpen:
         # re-resolution is deferred.
         param_constants = []
         for const_data in self.data['constants'].values():
-            if const_data.get('_context') != block_context:
+            if const_data['_context'] != block_context:
                 continue
             if not const_data.get('isParameterizable', False):
                 continue
@@ -1358,16 +1404,15 @@ class projectOpen:
         ret['interfaceTypes'][intf_type] = intf_type_key
 
     def getBDDeclaredPortInterfaceKey(self, instanceKey, portName):
-        instData = self.data['instances'].get(instanceKey, {})
-        blockKey = instData.get('instanceTypeKey')
-        blockData = self.data['blocks'].get(blockKey, {})
+        instData = self.data['instances'][instanceKey]
+        blockData = self.data['blocks'][instData['instanceTypeKey']]
         declaredPort = (blockData.get('ports') or {}).get(portName)
         if not declaredPort:
             return ''
         interfaceName = declaredPort.get('interface')
         if not interfaceName:
             return ''
-        preferredContext = declaredPort.get('_context') or blockData.get('_context') or ''
+        preferredContext = declaredPort['_context'] or blockData['_context']
         interfaceKey = f"{interfaceName}/{preferredContext}" if preferredContext else ''
         if interfaceKey in self.data['interfaces']:
             return interfaceKey
@@ -1485,7 +1530,6 @@ class projectOpen:
                             data[obj]['maxBytes'] = data[obj]['bytes']
                         # Check if this is a memory register
                         if objInfo.get('regType') == 'memory':
-                            # Memory registers need additional metadata
                             if objInfo.get('wordLinesKey'):
                                 ret['temp']['consts'][objInfo['wordLinesKey']] = 0
                             if objInfo.get('addressStructKey'):
@@ -1918,7 +1962,7 @@ class projectOpen:
             }
 
         def annotate(connVal, endKey, instanceKey, portName, instanceName, inferredDirection):
-            if connVal.get('_context') == '_global':
+            if connVal['_context'] == '_global':
                 return None
             parentInterfaceKey = connVal.get('interfaceKey') or ''
             parentInterface = self.data['interfaces'].get(parentInterfaceKey)
@@ -1942,7 +1986,7 @@ class projectOpen:
                 return None
             childInterfaceKey = resolveInterfaceKey(
                 childInterfaceName,
-                declaredPort.get('_context') or childBlock.get('_context') or '')
+                declaredPort['_context'] or childBlock['_context'])
             if not childInterfaceKey:
                 printError(
                     f"Block {ret['qualBlock']} binds {instanceName}.{portName} "
@@ -2166,9 +2210,7 @@ class projectOpen:
         if portRow is not None:
             return portRow.get('interface')
 
-        routerContext = blockRow.get('_context')
-        if not routerContext:
-            return None
+        routerContext = blockRow['_context']
         # interface_defs is flat-keyed in projectOpen (keyed by
         # interface_typeKey); each value is the row directly.
         addressBusTypes = set()
@@ -2381,7 +2423,7 @@ class projectOpen:
         # contexts once in the block view so templates do not need to re-query
         # project-wide data.
         if ret['blockInfo'].get('params'):
-            block_context = ret['blockInfo'].get('_context')
+            block_context = ret['blockInfo']['_context']
             if block_context and block_context not in self.specialContexts:
                 ret['configIncludeContext'][block_context] = 0
         # Child instance shared_ptr declarations name the child's per-variant
@@ -2400,7 +2442,7 @@ class projectOpen:
                 continue
             if not child_block.get('isParameterizable', False):
                 continue
-            child_context = child_block.get('_context')
+            child_context = child_block['_context']
             if child_context and child_context not in self.specialContexts:
                 ret['includeContext'][child_context] = 0
                 ret['configIncludeContext'][child_context] = 0
@@ -2444,18 +2486,25 @@ class projectOpen:
                 ret[struct['_context']] = 0
                 for field, fieldData in struct['vars'].items():
                     if fieldData['varTypeKey']:
-                        context = fieldData['varTypeKey'].split('/', 1)[1]
+                        context = qualifiedKeyContext(
+                            fieldData['varType'], fieldData['varTypeKey'],
+                            f"structure field '{field}' varType")
+                        ret[context] = 0
                     elif fieldData['subStructKey']:
-                        context = fieldData['subStructKey'].split('/', 1)[1]
+                        context = qualifiedKeyContext(
+                            fieldData['subStruct'], fieldData['subStructKey'],
+                            f"structure field '{field}' subStruct")
+                        ret[context] = 0
                         nextLoop[fieldData['subStructKey']] = 0
-                    ret[context] = 0
-                    if '/' in fieldData['arraySizeKey']:
-                        context = fieldData['arraySizeKey'].split('/', 1)[1]
+                    if fieldData['arraySizeKey']:
+                        context = qualifiedKeyContext(
+                            fieldData['arraySize'], fieldData['arraySizeKey'],
+                            f"structure field '{field}' arraySize")
                         ret[context] = 0
             todo = nextLoop
         for const in consts:
             if '/' in const:
-                context = const.split('/', 1)[1]
+                _name, context = splitQualifiedKey(const, 'constant')
                 ret[context] = 0
         return ret
 
@@ -2689,6 +2738,7 @@ class projectCreate:
     schemaYaml = None
     schema = None
     data = dict()
+    flatData = dict()
     addressControl = None
     topInstance = None
     counterGroup = OrderedDict() # for counter group current values
@@ -2701,8 +2751,6 @@ class projectCreate:
     yamlRaw = dict()
     yamlDependancies = OrderedDict()
     yamlContext = OrderedDict() #dict containing precalculated contexts by file
-    const = dict() # contains constants by yamlfile scope
-    qualConst = dict() # contains constants by qualified name
     enums = dict() # contains enums by yamlfile scope
     qualEnums = dict() # contains enums by qualified name
     # section are simple, custom or something inbetween.
@@ -2717,11 +2765,14 @@ class projectCreate:
     stdFields = {"context"}
     specialContexts = {"_global", "_a2csystem"} # special contexts that should be excluded from includes
     constFind = re.compile(r"(\$)(\w+)")
-    currentContext = None
     errorState = False
     includeName = dict()
     includeValid = dict()
     includeSections = {"types", "structures", "constants"}
+    # ipParameters constants captured per file as they are parsed, so the
+    # block-param linkage can be validated after a file's section loop
+    # completes. Keyed by yamlFile, then by constant name.
+    ipParametersConstants = OrderedDict()
     hier = None
     hierKey = None
     instances = None
@@ -2742,6 +2793,7 @@ class projectCreate:
         ("fileGeneration", "fileMap"): "dict_shallow",
         # Templates are merged shallow - pro/user can override base templates.
         ("templates",): "dict_shallow",
+        ("postProcess",): "list_override",
     }
 
     def __init__(self, projFile, dbFile):
@@ -2757,6 +2809,18 @@ class projectCreate:
         g.cur = g.db.cursor()
         #initialize the config object
         self.config = config(RO = False)
+        # _parserResolver: parse-time-only ValueResolver, owned by the
+        # YAML parser. processSingleFile rebinds it on entry to a resolver
+        # bound to the file currently being parsed; the orchestrator
+        # methods (processYamls, postYamlExternalScript, generateAddressEnums)
+        # null it at the end of each phase. Its purpose is to amortize one
+        # resolver per file across the many parse-time call sites (auto
+        # handlers, processSimple, re_constReplace, _constants finalization).
+        # Post-parse code (calcAddresses, future derivations) must construct
+        # its own ValueResolver instead of reaching through this attribute;
+        # the parser does not own the post-parse lifecycle and the per-file
+        # `.context` would be stale / wrong outside a processSingleFile frame.
+        self._parserResolver = None
         global dirMacros
         #load project file from command line
         self._userProjRaw = existsLoad(projFile)
@@ -2853,6 +2917,9 @@ class projectCreate:
         # derive per-block config info (isParameterizable, defaultConfig)
         # from a one-shot structure walk and persist on the blocks row
         self.calcBlockConfigInfo()
+        # derive the per-block module-local parameterized declaration set and
+        # persist it into the non-schema blockParameterizedDecls table
+        self.deriveParameterizedDeclSets()
         # generate address enums and types
         self.generateAddressEnums()
         # check include files are valid
@@ -2978,6 +3045,8 @@ class projectCreate:
                     self.processSingleFile("_global", sections=newData)
             del self.yamlContext['_global']
         g.db.commit()
+        # Phase complete; see processYamls() for the rationale.
+        self._parserResolver = None
 
     def generateIndexes(self):
         for table in self.schema.tables:
@@ -3003,6 +3072,26 @@ class projectCreate:
         sql = f"CREATE TABLE {table} ({col})"
         g.cur.execute(sql)
         self.data[table] = dict()
+        if self.schema.data['flat'][table]:
+            self.flatData[table] = OrderedDict()
+
+    def addFlatRecord(self, section, row):
+        # Incrementally maintained flat index for sections with
+        # _attribs: [flat]. Mirrors self.data[section][context][name]
+        # keyed by the section's qualified storage key. Duplicate
+        # qualified keys are a parse-state bug (the producer should
+        # never re-emit the same row, even structurally identical)
+        # and are reported.
+        if not self.schema.data['flat'][section]:
+            return
+        node = self.schema.get_node(section)
+        keyField = node.get_storage_key_field_name_qualified()
+        flatKey = row[keyField]
+        flatSection = self.flatData[section]
+        if flatKey in flatSection:
+            printError(f"Duplicate flat key {flatKey} found in section {section}")
+            exit(warningAndErrorReport())
+        flatSection[flatKey] = row
 
     def generateHierarchy(self):
         (hier, hierKey, qualInstances, instanceContainer, blocks) = generateHierarchy(self.data['instances'], self.data['blocks'], withContext=True)
@@ -3066,12 +3155,23 @@ class projectCreate:
             self.yamlUnread = newFiles
 
     def calcAddresses(self):
+        # Post-parse derivation: parse-time self._parserResolver is None here.
+        # Construct a local resolver for the wordLines lookups; only the
+        # context-stateless lookupNamedRow helper is used, so no context
+        # binding is needed.
+        resolver = ValueResolver(self)
         # maintain a dict of the next available offset in a block
         blockAddressCurrent = dict()
         # loop through address generating objects
         for addressType, addressInfo in self.addressObjects.items():
             sortDescending = addressInfo.get('sortDescending', False)
             allocateOrder = dict()
+            # decodeSize: bytes of address-decoded memory range, before any
+            # sizeRoundUpPowerOf2/alignment padding. This is the worst-case
+            # decoded size templates need for the apb decode case-range; the
+            # padded `size` only feeds offset bumping. Non-memory registers
+            # have no decode size; their row defaults to 0.
+            decodeSizeMap = dict()
             # get everything that needs an address, sorted by block type then entry order. Entry order is maintained
             # to allow engineers to keep consistency of address generation and ensure addresses only change when intended
             if addressType == 'memories':
@@ -3099,32 +3199,26 @@ class projectCreate:
                     # memories can be aligned to an alignment value or to memory sized boundaries.
                     # memory size is based on the next rounded power of 2 of the data width, due to address decoding requirements.
                     # Worst-case wordLines uses maxValue when constant is parameterizable.
-                    wlConst = self._resolveWordLinesConst(row)
+                    wlConst = self._resolveWordLinesConst(self.flatData[addressType][row[keyField]], resolver)
                     if isParam and wlConst and wlConst['isParameterizable'] and wlConst['maxValue']:
                         wordLines = wlConst['maxValue']
                     elif wlConst and wlConst['value'] is not None:
                         wordLines = wlConst['value']
                     else:
-                        # Bare-name block-param wordLines (no backing constant):
-                        # bound values live in parametersvariants. Worst-case =
-                        # max bound value across variants.
-                        wordLines = self._resolveBlockParamMaxWordLines(row)
-                        if wordLines is None:
-                            # Reaching here means wlConst is None AND the row is
-                            # not a non-const block param. The only remaining
-                            # cases (empty wordLines, malformed blockKey, etc.)
-                            # are user/generator bugs; silently defaulting to 1
-                            # under-sizes the address space.
-                            keyField = 'memoryKey' if addressType == 'memories' else 'registerKey'
-                            printError(f"Cannot determine wordLines for "
-                                       f"{addressType[:-1]} '{row[keyField]}' "
-                                       f"(blockKey='{row['blockKey']}', "
-                                       f"wordLines='{row['wordLines']}', "
-                                       f"wordLinesKey='{row['wordLinesKey']}'). "
-                                       f"Address sizing requires a resolvable "
-                                       f"wordLines value.")
-                            exit(warningAndErrorReport())
-                    size = roundup_pow2min4((width + 7) >> 3) * wordLines
+                        # _resolveWordLinesConst hard-errors on non-empty
+                        # symbolic misses, so this is limited to missing/empty
+                        # wordLines on rows that require address sizing.
+                        keyField = 'memoryKey' if addressType == 'memories' else 'registerKey'
+                        printError(f"Cannot determine wordLines for "
+                                   f"{addressType[:-1]} '{row[keyField]}' "
+                                   f"(blockKey='{row['blockKey']}', "
+                                   f"wordLines='{row['wordLines']}', "
+                                   f"wordLinesKey='{row['wordLinesKey']}'). "
+                                   f"Address sizing requires a resolvable "
+                                   f"wordLines value.")
+                        exit(warningAndErrorReport())
+                    decodeSize = roundup_pow2min4((width + 7) >> 3) * wordLines
+                    size = decodeSize
                     if sizeRoundUpPowerOf2:
                         size = roundup_pow2min4(size)
                     if alignmentModeValue:
@@ -3134,10 +3228,21 @@ class projectCreate:
                     alignmentModeValue = True if isinstance(alignment, int) else False
                     # Regular register: width is in bits so convert to bytes and ensure alignment
                     #        bits to bytes              round up to alignment
-                    size = ((((width + 7) >> 3 ) + alignment - 1 ) // alignment ) * alignment
+                    bytesPerRow = (width + 7) >> 3
+                    size = ((bytesPerRow + alignment - 1 ) // alignment ) * alignment
+                    # Decoded address footprint for a non-memory register: the
+                    # SV decoder emits one exact-offset case arm per
+                    # REG_BUS_WIDTH_BYTES-wide bus segment of the structure, so
+                    # the row occupies ceil(bytes / busWidth) * busWidth bytes
+                    # of address space (no power-of-2 rounding; that only
+                    # applies to memory range-match decode). busWidth matches
+                    # templates/systemVerilog/moduleRegs.py REG_BUS_WIDTH_BYTES.
+                    busWidth = 4
+                    decodeSize = ((bytesPerRow + busWidth - 1) // busWidth) * busWidth
                 else:
                     continue
                 allocateOrder[row[keyField]] = size
+                decodeSizeMap[row[keyField]] = decodeSize
             if sortDescending:
                 # sort data list in ascending order of size
                 data.sort(key=lambda x: allocateOrder[x[keyField]], reverse=True)
@@ -3160,7 +3265,8 @@ class projectCreate:
                         blockAddressCurrent[currentBlock] = offset + size
                 else:
                     blockAddressCurrent[currentBlock] = offset + size
-                sql = f"UPDATE {addressType} SET offset = {offset} WHERE \"{keyField}\" = '{row[keyField]}'" # field is quoted to allow for sql reserved words
+                decodeSize = decodeSizeMap[row[keyField]]
+                sql = f"UPDATE {addressType} SET offset = {offset}, decodeSize = {decodeSize} WHERE \"{keyField}\" = '{row[keyField]}'" # field is quoted to allow for sql reserved words
                 g.cur.execute(sql)
 
         # once all addresses are calculated we need to perform space checks
@@ -3186,7 +3292,7 @@ class projectCreate:
         # structure it references through registers, memories, connections,
         # and connection maps. Persist isParameterizable and defaultConfig
         # on the blocks row.
-        # Walks raw SQL tables rather than the per-block view assembled by
+        # Walks parse-time rows rather than the per-block view assembled by
         # getBlockData(); the result is read back via the slim
         # getBDConfigInfo() and getBlockConfigView() in projectOpen.
         # Note: a block carries isParameterizable: true when at least one
@@ -3194,74 +3300,56 @@ class projectCreate:
         # the same flag name as on structures and registers/memories,
         # one scope up.
 
-        # Pre-fetch lookup tables.
-        g.cur.execute("SELECT structureKey, isParameterizable, _context FROM structures")
-        structures = {}
-        for r in g.cur.fetchall():
-            structures[r['structureKey']] = {
-                'isParameterizable': bool(r['isParameterizable']),
-                '_context': r['_context'] or '',
-            }
+        def flat_rows(section):
+            if section in self.flatData:
+                return list(self.flatData[section].values())
+            rows = list()
+            for context_rows in self.data.get(section, dict()).values():
+                rows.extend(context_rows.values())
+            return rows
 
-        g.cur.execute("SELECT instanceKey, instanceTypeKey, containerKey FROM instances")
+        structures = {r['structureKey']: r for r in flat_rows('structures')}
+        interfaces = {r['interfaceKey']: r for r in flat_rows('interfaces')}
+
         instances_by_type = dict()
         instances_by_container = dict()
         instance_container = dict()
-        for r in g.cur.fetchall():
+        for r in flat_rows('instances'):
             instances_by_type.setdefault(r['instanceTypeKey'], list()).append(r['instanceKey'])
             cont = r['containerKey']
             if cont:
                 instances_by_container.setdefault(cont, list()).append(r['instanceKey'])
                 instance_container[r['instanceKey']] = cont
 
-        g.cur.execute("SELECT interfaceKey, structureKey FROM interfacesstructures")
-        iface_structs = dict()
-        for r in g.cur.fetchall():
-            iface_structs.setdefault(r['interfaceKey'], list()).append(r['structureKey'])
-
-        g.cur.execute("SELECT connectionKey, instanceKey FROM connectionsends")
         conn_end_instances = dict()
-        for r in g.cur.fetchall():
+        for r in flat_rows('connectionsends'):
             conn_end_instances.setdefault(r['connectionKey'], list()).append(r['instanceKey'])
 
-        g.cur.execute("SELECT connectionKey, interfaceKey FROM connections")
-        connections = list(g.cur.fetchall())
+        connections = flat_rows('connections')
 
-        g.cur.execute("SELECT registerBlockKey, blockKey, structureKey, addressStructKey FROM registers")
-        registers = list(g.cur.fetchall())
         registers_by_block = dict()
         registers_by_key = dict()
-        for r in registers:
+        for r in flat_rows('registers'):
             registers_by_block.setdefault(r['blockKey'], list()).append(r)
             registers_by_key[r['registerBlockKey']] = r
 
-        g.cur.execute("SELECT memoryBlockKey, blockKey, structureKey, addressStructKey FROM memories")
-        memories = list(g.cur.fetchall())
         memories_by_block = dict()
         memories_by_key = dict()
-        for r in memories:
+        for r in flat_rows('memories'):
             memories_by_block.setdefault(r['blockKey'], list()).append(r)
             memories_by_key[r['memoryBlockKey']] = r
 
-        g.cur.execute("SELECT blockKey, instanceKey, memoryBlockKey FROM memoryConnections")
-        memory_connections = list(g.cur.fetchall())
-
-        g.cur.execute("SELECT blockKey, instanceKey, registerBlockKey FROM registerConnections")
-        register_connections = list(g.cur.fetchall())
-
-        g.cur.execute("SELECT blockKey, instanceKey, interfaceKey FROM connectionMaps")
-        connection_maps = list(g.cur.fetchall())
-
-        g.cur.execute("SELECT blockKey, block, isRegHandler FROM blocks")
-        block_rows = list(g.cur.fetchall())
+        memory_connections = flat_rows('memoryConnections')
+        register_connections = flat_rows('registerConnections')
+        connection_maps = flat_rows('connectionMaps')
+        block_rows = flat_rows('blocks')
 
         # A block that declares its own `params:` is leaf-parameterizable and
         # must carry isParameterizable=true so getBlockConfigView surfaces the
         # per-variant Config descriptors that emit `<block><Variant>Config`
         # structs and feed the trampoline.
-        g.cur.execute("SELECT blockKey, _context FROM blocksparams")
         blocks_with_own_params = dict()
-        for r in g.cur.fetchall():
+        for r in flat_rows('blocksparams'):
             blocks_with_own_params.setdefault(r['blockKey'], r['_context'] or '')
 
         for block_row in block_rows:
@@ -3285,65 +3373,73 @@ class projectCreate:
             contexts = list()
             is_parameterizable = False
 
-            def add_struct(struct_key):
+            def add_param_source(is_param, ctx):
                 nonlocal is_parameterizable
-                if not struct_key:
-                    return
-                struct = structures.get(struct_key)
-                if struct is None or not struct['isParameterizable']:
+                if not is_param:
                     return
                 is_parameterizable = True
-                ctx = struct['_context']
                 if ctx and ctx not in contexts:
                     contexts.append(ctx)
+
+            def add_struct(struct_key):
+                if not struct_key:
+                    return
+                struct = structures[struct_key]
+                add_param_source(bool(struct['isParameterizable']), struct['_context'] or '')
+
+            def add_regmem(row):
+                add_struct(row['structureKey'])
+                add_struct(row['addressStructKey'])
+                add_param_source(bool(row['isParameterizable']), row['_context'] or '')
+
+            def add_interface(interface_key):
+                intf = interfaces[interface_key]
+                if not intf['isParameterizable']:
+                    return
+                for struct_row in intf.get('structures', {}).values():
+                    add_struct(struct_row['structureKey'])
 
             # 1. Connections that touch a port-owner instance of this block.
             for conn in connections:
                 ends = conn_end_instances.get(conn['connectionKey'], list())
-                if any(e in qual_block_inst_set for e in ends):
-                    for sk in iface_structs.get(conn['interfaceKey'], list()):
-                        add_struct(sk)
+                if conn['isParameterizable'] and any(e in qual_block_inst_set for e in ends):
+                    add_interface(conn['interfaceKey'])
 
             # 2. Connections contained in this block (connectDouble).
             for conn in connections:
                 ends = conn_end_instances.get(conn['connectionKey'], list())
-                if any(e in contained_inst_set for e in ends):
-                    for sk in iface_structs.get(conn['interfaceKey'], list()):
-                        add_struct(sk)
+                if conn['isParameterizable'] and any(e in contained_inst_set for e in ends):
+                    add_interface(conn['interfaceKey'])
 
             # 3. Connection maps belonging to or terminating at this block.
             for cm in connection_maps:
-                if cm['blockKey'] == qualBlock or cm['instanceKey'] in qual_block_inst_set:
-                    for sk in iface_structs.get(cm['interfaceKey'], list()):
-                        add_struct(sk)
+                if (cm['isParameterizable'] and
+                        (cm['blockKey'] == qualBlock or cm['instanceKey'] in qual_block_inst_set)):
+                    add_interface(cm['interfaceKey'])
 
             # 4. Registers owned by this block (or parent block when this is
             #    a regHandler).
             for reg in registers_by_block.get(register_block, list()):
-                add_struct(reg['structureKey'])
-                add_struct(reg['addressStructKey'])
+                add_regmem(reg)
 
             # 5. Memories owned by this block (or parent block when this is
             #    a regHandler).
             for mem in memories_by_block.get(register_block, list()):
-                add_struct(mem['structureKey'])
-                add_struct(mem['addressStructKey'])
+                add_regmem(mem)
 
             # 6. Memory connections touching this block (container or port).
             for mc in memory_connections:
                 if mc['blockKey'] == qualBlock or mc['instanceKey'] in qual_block_inst_set:
-                    mem_row = memories_by_key.get(mc['memoryBlockKey'])
-                    if mem_row is not None:
-                        add_struct(mem_row['structureKey'])
-                        add_struct(mem_row['addressStructKey'])
+                    if mc['isParameterizable']:
+                        mem_row = memories_by_key[mc['memoryBlockKey']]
+                        add_regmem(mem_row)
 
             # 7. Register connections touching this block (container or port).
             for rc in register_connections:
                 if rc['blockKey'] == register_block or rc['instanceKey'] in qual_block_inst_set:
-                    reg_row = registers_by_key.get(rc['registerBlockKey'])
-                    if reg_row is not None:
-                        add_struct(reg_row['structureKey'])
-                        add_struct(reg_row['addressStructKey'])
+                    if rc['isParameterizable']:
+                        reg_row = registers_by_key[rc['registerBlockKey']]
+                        add_regmem(reg_row)
 
             # 8. A block that declares its own `params:` is
             #    leaf-parameterizable even if no structure on its surface is
@@ -3371,12 +3467,197 @@ class projectCreate:
                 default_config = ''
 
             sql_param = 1 if is_parameterizable else 0
-            sql_default = default_config.replace("'", "''")
-            sql = (f"UPDATE blocks SET isParameterizable = {sql_param}, "
-                   f"defaultConfig = '{sql_default}' "
-                   f"WHERE blockKey = '{qualBlock}'")
-            g.cur.execute(sql)
+            g.cur.execute("UPDATE blocks SET isParameterizable = ?, "
+                          "defaultConfig = ? WHERE blockKey = ?",
+                          (sql_param, default_config, qualBlock))
 
+
+    def deriveParameterizedDeclSets(self):
+        # Derive, per parameterizable block, the set of parameterizable
+        # types/structures that can be declared local to that block's module:
+        # those visible to the block whose backing-parameter dependencies are
+        # satisfiable by the block's own params. Topologically order them (a
+        # type or sub-structure before the structure that uses it) and persist
+        # the keys + order into the non-schema blockParameterizedDecls table
+        # that getBlockData() reads.
+        #
+        # The type/struct -> parameter dependency graph is recovered from the
+        # persisted *Key edges (types.width*Key, structuresvars.varTypeKey /
+        # subStructKey / arraySizeKey); all keys are qualified name/file so the
+        # closure is unambiguous across include contexts. The constant->constant
+        # (eval) edge is not stored: a declaration whose closure reaches a
+        # parameterizable-but-unbacked constant is eval-derived, cannot be sized
+        # from a single block's params, and is held out of the block-local set.
+        #
+        # Runs immediately after calcBlockConfigInfo() (which set
+        # blocks.isParameterizable). All inputs are persisted.
+
+        # All structural inputs are already in memory from parsing as flat
+        # qualified-key indexes (self.flatData), so read them from there. Every
+        # field used below - the *Key dependency edges and the parse-time
+        # isParameterizable - is carried on these rows.
+        types = self.flatData['types']
+        structures = self.flatData['structures']
+
+        # Backing constants are exactly the block-param keys: a constant whose
+        # qualified key is consumed by some block param. A parameterizable
+        # constant that is not a backing const is eval-derived.
+        backingKeys = {row['paramKey'] for row in self.flatData['blocksparams'].values()}
+        constParameterizable = {row['constantKey']: bool(row['isParameterizable'])
+                                for row in self.flatData['constants'].values()}
+        structVars = dict()
+        for row in self.flatData['structuresvars'].values():
+            structVars.setdefault(row['structureKey'], list()).append(row)
+
+        # Classify one constant reference's contribution to a declaration's
+        # dependency: a backing const adds its key to the paramSet; an
+        # eval-derived const (parameterizable but not a block param) marks the
+        # declaration eval-coupled; a plain const contributes nothing. Returns
+        # True iff the reference is eval-coupled.
+        def classifyConst(constKey, paramSet):
+            if not constKey:
+                return False
+            if constKey in backingKeys:
+                paramSet.add(constKey)
+                return False
+            return constParameterizable.get(constKey, False)
+
+        typeMemo = dict()
+        structMemo = dict()
+
+        def typeInfo(typeKey):
+            cached = typeMemo.get(typeKey)
+            if cached is not None:
+                return cached
+            row = types[typeKey]
+            paramSet = set()
+            evalCoupled = False
+            for key in (row['widthKey'], row['widthLog2Key'], row['widthLog2minus1Key']):
+                evalCoupled |= classifyConst(key, paramSet)
+            result = (paramSet, evalCoupled)
+            typeMemo[typeKey] = result
+            return result
+
+        def structInfo(structKey, stack):
+            cached = structMemo.get(structKey)
+            if cached is not None:
+                return cached
+            if structKey in stack:
+                return (set(), False)
+            stack.add(structKey)
+            paramSet = set()
+            evalCoupled = False
+            for var in structVars.get(structKey, list()):
+                if var['varTypeKey']:
+                    tSet, tEval = typeInfo(var['varTypeKey'])
+                    paramSet |= tSet
+                    evalCoupled |= tEval
+                if var['subStructKey']:
+                    sSet, sEval = structInfo(var['subStructKey'], stack)
+                    paramSet |= sSet
+                    evalCoupled |= sEval
+                evalCoupled |= classifyConst(var['arraySizeKey'], paramSet)
+            stack.discard(structKey)
+            result = (paramSet, evalCoupled)
+            structMemo[structKey] = result
+            return result
+
+        # Per-declaration parameter set. declInfo holds only declarations the
+        # closure finds parameter-dependent: declKey -> (declKind, paramSet,
+        # evalCoupled, _context). The derived flag must agree with the parser's
+        # isParameterizable; a disagreement is a generator bug.
+        def checkAgreement(kind, key, stored, paramSet, evalCoupled):
+            flagged = bool(paramSet) or evalCoupled
+            if flagged != bool(stored):
+                printError(f"Generator bug in deriveParameterizedDeclSets: {kind} '{key}' has "
+                           f"isParameterizable={bool(stored)} but the derived parameter "
+                           f"dependency disagrees (paramSet={sorted(paramSet)}, "
+                           f"evalCoupled={evalCoupled})")
+                exit(warningAndErrorReport())
+            return flagged
+
+        declInfo = dict()
+        for typeKey, row in types.items():
+            paramSet, evalCoupled = typeInfo(typeKey)
+            if checkAgreement('type', typeKey, row['isParameterizable'], paramSet, evalCoupled):
+                declInfo[typeKey] = ('type', paramSet, evalCoupled, row['_context'])
+        for structKey, row in structures.items():
+            paramSet, evalCoupled = structInfo(structKey, set())
+            if checkAgreement('structure', structKey, row['isParameterizable'], paramSet, evalCoupled):
+                declInfo[structKey] = ('structure', paramSet, evalCoupled, row['_context'])
+
+        # Per-block selection. For each parameterizable block, include a
+        # parameterizable declaration when it is visible in the block's context,
+        # is not eval-coupled (an eval-derived dependency cannot be sized from a
+        # single block's params), and its paramSet is satisfied by the block's
+        # own params.
+        blockParams = dict()
+        for row in self.flatData['blocksparams'].values():
+            blockParams.setdefault(row['blockKey'], set()).add(row['paramKey'])
+        # blocks.isParameterizable is computed by calcBlockConfigInfo() and
+        # written to the database only (not mirrored back into self.data /
+        # self.flatData), so it is the one input here that must be read from the
+        # DB.
+        g.cur.execute("SELECT blockKey, isParameterizable FROM blocks")
+        blockIsParameterizable = {r['blockKey']: bool(r['isParameterizable']) for r in g.cur.fetchall()}
+
+        rows = list()
+        for block in self.flatData['blocks'].values():
+            blockKey = block['blockKey']
+            if not blockIsParameterizable[blockKey]:
+                continue
+            params = blockParams.get(blockKey, set())
+            visible = self.yamlContext.get(block['_context'], OrderedDict())
+            selected = OrderedDict()
+            for declKey, (declKind, paramSet, evalCoupled, context) in declInfo.items():
+                if evalCoupled:
+                    continue
+                if context not in visible:
+                    continue
+                if not paramSet <= params:
+                    continue
+                selected[declKey] = declKind
+            for orderIndex, declKey in enumerate(self._topoOrderParameterizedDecls(selected, structVars)):
+                rows.append((blockKey, selected[declKey], declKey, orderIndex))
+
+        # Explicit non-schema table: create, bulk insert, then index on blockKey
+        # (the block-usage access path). Building the row list in memory and
+        # inserting via a single executemany keeps creation cheap; the index is
+        # added after the bulk load. getBlockData() queries this directly and
+        # joins to types/structures for bodies; it is never loaded into prj.data.
+        g.cur.execute("DROP TABLE IF EXISTS blockParameterizedDecls")
+        g.cur.execute("CREATE TABLE blockParameterizedDecls "
+                      "(blockKey TEXT, declKind TEXT, declKey TEXT, orderIndex INTEGER)")
+        g.cur.executemany("INSERT INTO blockParameterizedDecls "
+                          "(blockKey, declKind, declKey, orderIndex) VALUES (?, ?, ?, ?)", rows)
+        g.cur.execute("CREATE INDEX idx_blockParameterizedDecls_blockKey "
+                      "ON blockParameterizedDecls (blockKey)")
+
+    @staticmethod
+    def _topoOrderParameterizedDecls(selected, structVars):
+        # Order a block's selected parameterized declarations so a type or
+        # sub-structure appears before any structure that references it. Types
+        # carry no intra-set edges (they depend only on constants); a structure
+        # depends on the selected types/structures reached through its vars.
+        ordered = list()
+        placed = set()
+        visiting = set()
+
+        def visit(declKey):
+            if declKey in placed:
+                return
+            visiting.add(declKey)
+            for var in structVars.get(declKey, list()):
+                for dep in (var['varTypeKey'], var['subStructKey']):
+                    if dep in selected and dep not in placed and dep not in visiting:
+                        visit(dep)
+            visiting.discard(declKey)
+            placed.add(declKey)
+            ordered.append(declKey)
+
+        for declKey in selected:
+            visit(declKey)
+        return ordered
 
     def generateAddressEnums(self):
         self.yamlContext['_global'] = {key: None for key in self.yamlContext}
@@ -3402,9 +3683,13 @@ class projectCreate:
                         printError(f"In address control file, AddressControl group:{group} specified varTypeContext:{context} which is not a valid context")
                         exit(warningAndErrorReport())
                 else:
-                    (decoder, context) = self.getFromContext('instances', '_global', self.counterGroupControl['AddressGroups'][group]['decoderInstance'], NotFoundFatal=True)
+                    (decoder, context) = self.lookupInScope('instances', '_global', self.counterGroupControl['AddressGroups'][group]['decoderInstance'])
+                    if not decoder:
+                        printError(f"instances {self.counterGroupControl['AddressGroups'][group]['decoderInstance']} in file _global is unresolved")
+                        exit(warningAndErrorReport())
                     if decoder:
-                        (decoderContainer, context) = self.getFromContext('blocks', '_global', decoder['containerKey'])
+                        decoderContainer = self.flatData['blocks'][decoder['containerKey']]
+                        context = decoderContainer['_context']
                 if context:
                     dataToAdd['types'][ self.counterGroupControl['AddressGroups'][group]['varType'] ] = typesEnum[group].copy()
                     self.processSingleFile(context, sections=dataToAdd)
@@ -3412,6 +3697,8 @@ class projectCreate:
         # add to the table
 
         del self.yamlContext['_global']
+        # Phase complete; see processYamls() for the rationale.
+        self._parserResolver = None
 
     def saveIncludeFiles(self):
         files = dict()
@@ -3868,7 +4155,7 @@ class projectCreate:
             instanceName = instRow.get('instance') or instName
             parentName = parentBlock.get('block') or parentBlockKey
             childName = childBlock.get('block') or childBlockKey
-            instContext = instRow.get('_context') or '<unknown>'
+            instContext = instRow['_context']
             line = instRow.get('lc').line + 1 if instRow.get('lc') else '?'
             printError(
                 f"In {instContext}:{line}, RTL block '{parentName}' contains "
@@ -3877,6 +4164,151 @@ class projectCreate:
                 f"subblock of an RTL block to have an RTL implementation. Set "
                 f"blocks.{childName}.hasRtl: true, or set "
                 f"blocks.{parentName}.hasRtl: false if the parent is model-only.")
+            exit(warningAndErrorReport())
+
+    def variantValueBindings(self, blockKey, variant):
+        if not blockKey:
+            return dict()
+        resolver = ValueResolver(self)
+        bindings = dict()
+        g.cur.execute(
+            "SELECT p.param, p.blockParamKey, b.paramKey, p.value, p.valueKey "
+            "FROM parametersvariants p "
+            "JOIN blocksparams b "
+            "ON p.blockParamKey = b.blockparamKey "
+            "AND p.blockKey = b.blockKey "
+            "WHERE p.blockKey = ? AND p.variant = ?",
+            (blockKey, variant or ''),
+        )
+        for row in g.cur.fetchall():
+            raw = row['valueKey'] or row['value']
+            value = resolver.value(raw)
+            bindings[row['param']] = value
+            bindings[row['blockParamKey']] = value
+            bindings[row['paramKey']] = value
+        return bindings
+
+    def _structureRowsForInterface(self, interfaceRow):
+        return (interfaceRow.get('structures') or {}).values()
+
+    def checkInterfacePair(self, parentIface, childIface, childBlockKey,
+                           childVariant, locationStr, parentContext,
+                           childContext, parentBlockKey='', parentVariant=''):
+        """Validate that two qualified interfaces share the same packed form."""
+        if parentIface['interfaceKey'] == childIface['interfaceKey']:
+            return
+
+        parentName = parentIface['interface']
+        childName = childIface['interface']
+        parentProto = parentIface['interfaceType']
+        childProto = childIface['interfaceType']
+        if parentProto != childProto:
+            printError(
+                f"{locationStr}: cross-interface bind requires the same "
+                f"interface meta-protocol on both ends, but parent "
+                f"interface {parentName} has interfaceType "
+                f"'{parentProto}' (file {parentContext}) while child "
+                f"interface {childName} has interfaceType "
+                f"'{childProto}' (file {childContext}). Use a protocol "
+                f"changer block when binding different register-bus "
+                f"meta-protocols.")
+            exit(warningAndErrorReport())
+
+        parentStructs = self._structureRowsForInterface(parentIface)
+        childStructs = self._structureRowsForInterface(childIface)
+        parentByType = {s['structureType']: s for s in parentStructs}
+        childByType = {s['structureType']: s for s in childStructs}
+        allTypes = set(parentByType.keys()) | set(childByType.keys())
+        anyError = False
+        for stype in sorted(allTypes):
+            if stype not in parentByType:
+                printError(
+                    f"{locationStr}: cross-interface bind requires both "
+                    f"interfaces to carry the same structureTypes, but "
+                    f"parent interface {parentName} (file "
+                    f"{parentContext}) is missing structureType "
+                    f"'{stype}' that child interface {childName} (file "
+                    f"{childContext}) carries.")
+                anyError = True
+                continue
+            if stype not in childByType:
+                printError(
+                    f"{locationStr}: cross-interface bind requires both "
+                    f"interfaces to carry the same structureTypes, but "
+                    f"child interface {childName} (file {childContext}) "
+                    f"is missing structureType '{stype}' that parent "
+                    f"interface {parentName} (file {parentContext}) "
+                    f"carries.")
+                anyError = True
+                continue
+        if anyError:
+            exit(warningAndErrorReport())
+
+        parentResolver = ValueResolver(
+            self,
+            values=self.variantValueBindings(parentBlockKey, parentVariant or ''),
+            context=parentContext,
+        )
+        childResolver = ValueResolver(
+            self,
+            values=self.variantValueBindings(childBlockKey, childVariant or ''),
+            context=childContext,
+        )
+        for stype in sorted(allTypes):
+            parentStructKey = parentByType[stype]['structureKey']
+            childStructKey = childByType[stype]['structureKey']
+            parentStruct = parentByType[stype]['structure']
+            childStruct = childByType[stype]['structure']
+            parentFields = parentResolver.structPackedFields(parentStructKey)
+            childFields = childResolver.structPackedFields(childStructKey)
+            if len(parentFields) != len(childFields):
+                printError(
+                    f"{locationStr}: cross-interface bind requires the "
+                    f"same field count in each paired structure, but "
+                    f"{parentName}/{parentStruct} has "
+                    f"{len(parentFields)} fields (file {parentContext}) "
+                    f"while {childName}/{childStruct} has "
+                    f"{len(childFields)} fields (file {childContext}).")
+                anyError = True
+                continue
+            for (pname, pwidth, poff), (cname, cwidth, coff) in zip(
+                    parentFields, childFields):
+                if pname != cname:
+                    printError(
+                        f"{locationStr}: cross-interface bind requires "
+                        f"matching field names in declared order, but "
+                        f"field at offset {poff} in "
+                        f"{parentName}/{parentStruct} is named "
+                        f"'{pname}' (file {parentContext}) while the "
+                        f"corresponding field at offset {coff} in "
+                        f"{childName}/{childStruct} is named '{cname}' "
+                        f"(file {childContext}).")
+                    anyError = True
+                    continue
+                if pwidth != cwidth:
+                    printError(
+                        f"{locationStr}: cross-interface bind requires "
+                        f"per-field _bitWidth to agree, but field "
+                        f"'{pname}' of {parentName}/{parentStruct} has "
+                        f"_bitWidth {pwidth} (file {parentContext}) "
+                        f"while field '{cname}' of "
+                        f"{childName}/{childStruct} has _bitWidth "
+                        f"{cwidth} (file {childContext}). Adjust one "
+                        f"side so per-field _bitWidth agrees, or split "
+                        f"the connection.")
+                    anyError = True
+                    continue
+                if poff != coff:
+                    printError(
+                        f"{locationStr}: cross-interface bind requires "
+                        f"matching bit offsets in declared order, but "
+                        f"field '{pname}' of {parentName}/{parentStruct} "
+                        f"sits at bit offset {poff} (file "
+                        f"{parentContext}) while field '{cname}' of "
+                        f"{childName}/{childStruct} sits at bit offset "
+                        f"{coff} (file {childContext}).")
+                    anyError = True
+        if anyError:
             exit(warningAndErrorReport())
 
     def validatePorts(self):
@@ -3897,74 +4329,15 @@ class projectCreate:
         # Synthesised binds (carrying _context == '_global') are generated
         # internally and are exempt from user-authored compatibility checks.
 
-        # ------------------------------------------------------------
-        # Pre-fetch helper tables from in-memory self.data dictionaries.
-        # In projectCreate the data is keyed by yamlFile then by
-        # entry key. Flatten by (qualified) key for fast lookup.
-        # ------------------------------------------------------------
-        instances_flat = dict()
-        for ctx, group in self.data.get('instances', {}).items():
-            for inst, row in group.items():
-                row.setdefault('_context', ctx)
-                instances_flat[row.get('instanceKey', f"{inst}/{ctx}")] = row
-
-        blocks_flat = dict()
-        for ctx, group in self.data.get('blocks', {}).items():
-            for block, row in group.items():
-                row.setdefault('_context', ctx)
-                if 'ports' in row:
-                    for portRow in row['ports'].values():
-                        portRow.setdefault('_context', ctx)
-                blocks_flat[row.get('blockKey', f"{block}/{ctx}")] = row
-
-        interfaces_flat = dict()
-        for ctx, group in self.data.get('interfaces', {}).items():
-            for iface, row in group.items():
-                row.setdefault('_context', ctx)
-                interfaces_flat[row.get('interfaceKey', f"{iface}/{ctx}")] = row
-
-        interface_defs_flat = dict()
-        for ctx, group in self.data.get('interface_defs', {}).items():
-            for intf_type, row in group.items():
-                row.setdefault('_context', ctx)
-                key = row.get('interface_typeKey') or f"{intf_type}/{ctx}"
-                interface_defs_flat[key] = row
-
-        structures_flat = dict()
-        for ctx, group in self.data.get('structures', {}).items():
-            for struct, row in group.items():
-                row.setdefault('_context', ctx)
-                structures_flat[row.get('structureKey', f"{struct}/{ctx}")] = row
-
-        constants_flat = dict()
-        for ctx, group in self.data.get('constants', {}).items():
-            for const, row in group.items():
-                row.setdefault('_context', ctx)
-                qkey = row.get('constantKey') or f"{const}/{ctx}"
-                constants_flat[qkey] = row
-
-        types_flat = dict()
-        for ctx, group in self.data.get('types', {}).items():
-            for tname, row in group.items():
-                row.setdefault('_context', ctx)
-                qkey = row.get('typeKey') or f"{tname}/{ctx}"
-                types_flat[qkey] = row
-
-        def _flatten(section, keyField=''):
-            flattened = dict()
-            for ctx, group in self.data.get(section, {}).items():
-                for name, row in group.items():
-                    row.setdefault('_context', ctx)
-                    key = row.get(keyField) if keyField else None
-                    flattened[key or name] = row
-            return flattened
-
-        connections_flat = _flatten('connections', 'connectionKey')
-        connection_maps_flat = _flatten('connectionMaps', 'portId')
-        memory_connections_flat = _flatten('memoryConnections', 'memoryConnectionKey')
-        register_connections_flat = _flatten('registerConnections', 'registerConnectionKey')
-        memories_flat = _flatten('memories', 'memoryBlockKey')
-        registers_flat = _flatten('registers', 'registerBlockKey')
+        blocks_flat = self.flatData['blocks']
+        instances_flat = self.flatData['instances']
+        interfaces_flat = self.flatData['interfaces']
+        connections_flat = self.flatData['connections']
+        connection_maps_flat = self.flatData['connectionMaps']
+        memory_connections_flat = self.flatData['memoryConnections']
+        register_connections_flat = self.flatData['registerConnections']
+        memories_flat = self.flatData['memories']
+        registers_flat = self.flatData['registers']
 
         self.validateDeclaredPorts(
             blocks_flat,
@@ -3979,191 +4352,8 @@ class projectCreate:
         )
         self.validateRtlHierarchy(blocks_flat, instances_flat)
 
-        # Variant overrides: (blockKey, variant, paramName) -> int value.
-        variant_overrides = dict()
-        try:
-            g.cur.execute(
-                "SELECT blockKey, variant, param, value FROM parametersvariants")
-            for r in g.cur.fetchall():
-                try:
-                    val = int(r['value']) if r['value'] not in (None, '') else None
-                except (TypeError, ValueError):
-                    val = None
-                if val is not None:
-                    variant_overrides[(r['blockKey'], r['variant'], r['param'])] = val
-        except Exception:
-            # Table may not exist if YAML had no parameters section. Safe
-            # to proceed; cross-interface binds on non-parameterizable
-            # structures do not need overrides.
-            pass
-
-        # ------------------------------------------------------------
-        # Helper: resolve a type's bitwidth under a variant binding.
-        # ------------------------------------------------------------
-        def _resolveConstValue(constEntry, blockKey, variant):
-            """Return the int value of a constant under a (blockKey, variant)
-            binding. Falls back to the constant's default value when no
-            override applies. Hard-errors when no resolvable integer is
-            available."""
-            constName = constEntry.get('constant')
-            if blockKey and variant is not None:
-                ov = variant_overrides.get((blockKey, variant, constName))
-                if ov is not None:
-                    return ov
-            raw = constEntry.get('value')
-            if raw is None:
-                printError(
-                    f"Internal error: constant '{constName}' has no value "
-                    f"resolvable for variant '{variant}' under blockKey "
-                    f"'{blockKey}'. Cross-interface bind validation requires "
-                    f"a resolvable integer.")
-                exit(warningAndErrorReport())
-            try:
-                return int(raw)
-            except (TypeError, ValueError):
-                printError(
-                    f"Internal error: constant '{constName}' value '{raw}' is "
-                    f"not an integer; cross-interface bind validation requires "
-                    f"resolvable integer widths.")
-                exit(warningAndErrorReport())
-
-        def _resolveTypeWidth(typeKey, blockKey, variant):
-            """Return the integer width of a type qualified by typeKey under
-            the (blockKey, variant) binding."""
-            typeEntry = types_flat.get(typeKey)
-            if typeEntry is None:
-                printError(
-                    f"Internal error: cross-interface validation cannot find "
-                    f"type with qualified key '{typeKey}'.")
-                exit(warningAndErrorReport())
-            isSigned = bool(typeEntry.get('isSigned', False))
-            # Pick whichever of width/widthLog2/widthLog2minus1 is populated
-            # (the schema guarantees exactly one).
-            for mode in ('width', 'widthLog2', 'widthLog2minus1'):
-                key = typeEntry.get(mode + 'Key') or ''
-                raw = typeEntry.get(mode)
-                if key or (raw not in (None, '', 0)):
-                    if key and '/' in key:
-                        c = constants_flat.get(key)
-                        if c is None:
-                            printError(
-                                f"Internal error: cross-interface validation "
-                                f"cannot find constant '{key}' for type "
-                                f"'{typeKey}'.")
-                            exit(warningAndErrorReport())
-                        n = _resolveConstValue(c, blockKey, variant)
-                    else:
-                        try:
-                            n = int(raw)
-                        except (TypeError, ValueError):
-                            printError(
-                                f"Internal error: type '{typeKey}' {mode} "
-                                f"value '{raw}' is not an integer.")
-                            exit(warningAndErrorReport())
-                    if mode == 'widthLog2':
-                        width = int(n).bit_length()
-                        if isSigned:
-                            width += 1
-                    elif mode == 'widthLog2minus1':
-                        width = int(n - 1).bit_length()
-                        if isSigned:
-                            width += 1
-                    else:
-                        width = n
-                    return width
-            # No populated width field is a schema invariant violation.
-            printError(
-                f"Internal error: type '{typeKey}' has no width / widthLog2 / "
-                f"widthLog2minus1 populated; cross-interface bind validation "
-                f"cannot resolve its bit width.")
-            exit(warningAndErrorReport())
-
-        def _resolveArraySize(varRow, blockKey, variant):
-            """Return the integer array size for a structuresvars row. A
-            zero or missing arraySize indicates a non-array var (return 1)."""
-            akey = varRow.get('arraySizeKey') or ''
-            araw = varRow.get('arraySize')
-            if akey and '/' in akey:
-                c = constants_flat.get(akey)
-                if c is None:
-                    printError(
-                        f"Internal error: cross-interface validation cannot "
-                        f"find arraySize constant '{akey}'.")
-                    exit(warningAndErrorReport())
-                n = _resolveConstValue(c, blockKey, variant)
-                return n if n > 0 else 1
-            try:
-                n = int(araw)
-                return n if n > 0 else 1
-            except (TypeError, ValueError):
-                return 1
-
-        def _walkStructFields(structKey, blockKey, variant, _visiting=None):
-            """Walk a structure's vars in declared order and return a list of
-            (fieldName, bitWidth, bitOffset) tuples resolved under the given
-            (blockKey, variant) binding. Recurses into substructs."""
-            if _visiting is None:
-                _visiting = set()
-            if structKey in _visiting:
-                printError(
-                    f"Internal error: structure '{structKey}' recursively "
-                    f"references itself during cross-interface bind "
-                    f"validation.")
-                exit(warningAndErrorReport())
-            structEntry = structures_flat.get(structKey)
-            if structEntry is None:
-                printError(
-                    f"Internal error: cross-interface validation cannot find "
-                    f"structure with qualified key '{structKey}'.")
-                exit(warningAndErrorReport())
-            fields = []
-            offset = 0
-            _visiting = _visiting | {structKey}
-            for varName, varRow in (structEntry.get('vars') or {}).items():
-                entryType = varRow.get('entryType')
-                arraySize = _resolveArraySize(varRow, blockKey, variant)
-                if entryType == 'NamedStruct':
-                    subKey = varRow.get('subStructKey') or ''
-                    if not subKey or '/' not in subKey:
-                        printError(
-                            f"Internal error: NamedStruct field '{varName}' in "
-                            f"structure '{structKey}' has malformed "
-                            f"subStructKey '{subKey}'.")
-                        exit(warningAndErrorReport())
-                    # Recurse to obtain the subStruct's total width.
-                    subFields = _walkStructFields(
-                        subKey, blockKey, variant, _visiting)
-                    subWidth = sum(w for (_n, w, _o) in subFields)
-                    elemWidth = subWidth
-                elif entryType == 'Reserved':
-                    elemWidth = int(varRow.get('align') or 0)
-                else:
-                    # NamedVar / NamedType
-                    typeKey = varRow.get('varTypeKey') or ''
-                    if typeKey and '/' in typeKey:
-                        elemWidth = _resolveTypeWidth(
-                            typeKey, blockKey, variant)
-                    else:
-                        # Fall back to a literal bitwidth column if present.
-                        try:
-                            elemWidth = int(varRow.get('bitwidth') or 0)
-                        except (TypeError, ValueError):
-                            elemWidth = 0
-                width = elemWidth * arraySize
-                fields.append((varName, width, offset))
-                offset += width
-            return fields
-
-        # ------------------------------------------------------------
-        # Helper: emit a diagnostic and halt.
-        # ------------------------------------------------------------
-        def _ctxOf(row):
-            if not row:
-                return '<unknown>'
-            return row.get('_context') or '<unknown>'
-
         def _blockHasOwnParams(blockRow):
-            return bool((blockRow or {}).get('params'))
+            return bool(blockRow.get('params'))
 
         def _connectionBinding(conn):
             """Return the (blockKey, variant) binding used to resolve the
@@ -4172,19 +4362,15 @@ class projectCreate:
             one leaf participates."""
             leaf_choice = None
             transit_choice = None
-            for endRow in (conn.get('ends') or {}).values():
-                instRow = instances_flat.get(endRow.get('instanceKey') or '')
-                if not instRow:
-                    continue
-                blockKey = instRow.get('instanceTypeKey') or ''
-                blockRow = blocks_flat.get(blockKey)
-                if not blockRow:
-                    continue
-                choice = (blockKey, instRow.get('variant') or '')
+            for endRow in conn['ends'].values():
+                instRow = instances_flat[endRow['instanceKey']]
+                blockKey = instRow['instanceTypeKey']
+                blockRow = blocks_flat[blockKey]
+                choice = (blockKey, instRow['variant'] or '')
                 if _blockHasOwnParams(blockRow):
-                    if leaf_choice is None or endRow.get('direction') == 'dst':
+                    if leaf_choice is None or endRow['direction'] == 'dst':
                         leaf_choice = choice
-                elif blockRow.get('isParameterizable') and transit_choice is None:
+                elif blockRow['isParameterizable'] and transit_choice is None:
                     transit_choice = choice
             return leaf_choice or transit_choice or ('', '')
 
@@ -4193,285 +4379,97 @@ class projectCreate:
             parent side is often non-parameterized; when the mapped block has
             its own params, using its binding matches the generated channel
             type for the supported destination-side bridge."""
-            instRow = instances_flat.get(cm.get('instanceKey') or '')
-            if not instRow:
+            instRow = instances_flat[cm['instanceKey']]
+            blockKey = instRow['instanceTypeKey']
+            blockRow = blocks_flat[blockKey]
+            if not _blockHasOwnParams(blockRow):
                 return ('', '')
-            blockKey = instRow.get('instanceTypeKey') or ''
-            blockRow = blocks_flat.get(blockKey)
-            if not blockRow or not _blockHasOwnParams(blockRow):
-                return ('', '')
-            return (blockKey, instRow.get('variant') or '')
-
-        def _structureRows(interfaceRow):
-            structures = interfaceRow.get('structures') or []
-            if isinstance(structures, dict):
-                return structures.values()
-            return structures
-
-        def _resolveInterfaceDef(interfaceType, preferredContext):
-            if not interfaceType:
-                return None
-            qualifiedKey = f"{interfaceType}/{preferredContext}" if preferredContext else ''
-            if qualifiedKey in interface_defs_flat:
-                return interface_defs_flat[qualifiedKey]
-            for intfDef in interface_defs_flat.values():
-                if intfDef.get('interface_type') == interfaceType:
-                    return intfDef
-            return None
-
-        # ------------------------------------------------------------
-        # Compare two qualified interface keys under a (blockKey, variant)
-        # variant binding owned by the child end.
-        # ------------------------------------------------------------
-        def _checkPair(parentIfaceKey, childIfaceKey, childBlockKey,
-                       childVariant, locationStr, parentContext,
-                       childContext, parentBlockKey='', parentVariant=''):
-            """Run all four packed-form checks. Each failure category
-            emits its own printError; after all relevant diagnostics for
-            this bind have been emitted, halt via warningAndErrorReport."""
-            parentIface = interfaces_flat.get(parentIfaceKey)
-            childIface = interfaces_flat.get(childIfaceKey)
-            if parentIface is None or childIface is None:
-                # Cannot validate; missing interface is reported elsewhere.
-                return
-            parentName = parentIface.get('interface', parentIfaceKey)
-            childName = childIface.get('interface', childIfaceKey)
-            # 1. Same meta-protocol.
-            parentProto = parentIface.get('interfaceType', '')
-            childProto = childIface.get('interfaceType', '')
-            if parentProto != childProto:
-                printError(
-                    f"{locationStr}: cross-interface bind requires the same "
-                    f"interface meta-protocol on both ends, but parent "
-                    f"interface {parentName} has interfaceType "
-                    f"'{parentProto}' (file {parentContext}) while child "
-                    f"interface {childName} has interfaceType "
-                    f"'{childProto}' (file {childContext}).")
-                exit(warningAndErrorReport())
-            # 2. Pair structures by structureType.
-            parentStructs = _structureRows(parentIface)
-            childStructs = _structureRows(childIface)
-            parentByType = {s.get('structureType'): s for s in parentStructs}
-            childByType = {s.get('structureType'): s for s in childStructs}
-            allTypes = set(parentByType.keys()) | set(childByType.keys())
-            anyError = False
-            for stype in sorted(t for t in allTypes if t is not None):
-                if stype not in parentByType:
-                    printError(
-                        f"{locationStr}: cross-interface bind requires both "
-                        f"interfaces to carry the same structureTypes, but "
-                        f"parent interface {parentName} (file "
-                        f"{parentContext}) is missing structureType "
-                        f"'{stype}' that child interface {childName} (file "
-                        f"{childContext}) carries.")
-                    anyError = True
-                    continue
-                if stype not in childByType:
-                    printError(
-                        f"{locationStr}: cross-interface bind requires both "
-                        f"interfaces to carry the same structureTypes, but "
-                        f"child interface {childName} (file {childContext}) "
-                        f"is missing structureType '{stype}' that parent "
-                        f"interface {parentName} (file {parentContext}) "
-                        f"carries.")
-                    anyError = True
-                    continue
-                parentStructKey = parentByType[stype].get('structureKey') or ''
-                childStructKey = childByType[stype].get('structureKey') or ''
-                parentStruct = parentByType[stype].get('structure', parentStructKey)
-                childStruct = childByType[stype].get('structure', childStructKey)
-                # Walk both sides under the bindings that will be used for
-                # their generated C++ types. The parent/connection side may
-                # be non-parameterized; empty binding falls back to default
-                # constant values in that case.
-                parentFields = _walkStructFields(
-                    parentStructKey, parentBlockKey, parentVariant or '')
-                childFields = _walkStructFields(
-                    childStructKey, childBlockKey, childVariant or '')
-                # 3a. Same field count.
-                if len(parentFields) != len(childFields):
-                    printError(
-                        f"{locationStr}: cross-interface bind requires the "
-                        f"same field count in each paired structure, but "
-                        f"{parentName}/{parentStruct} has "
-                        f"{len(parentFields)} fields (file {parentContext}) "
-                        f"while {childName}/{childStruct} has "
-                        f"{len(childFields)} fields (file {childContext}).")
-                    anyError = True
-                    continue
-                # 3b/3c/3d. Per-field name, width, offset.
-                for (pname, pwidth, poff), (cname, cwidth, coff) in zip(
-                        parentFields, childFields):
-                    if pname != cname:
-                        printError(
-                            f"{locationStr}: cross-interface bind requires "
-                            f"matching field names in declared order, but "
-                            f"field at offset {poff} in "
-                            f"{parentName}/{parentStruct} is named "
-                            f"'{pname}' (file {parentContext}) while the "
-                            f"corresponding field at offset {coff} in "
-                            f"{childName}/{childStruct} is named '{cname}' "
-                            f"(file {childContext}).")
-                        anyError = True
-                        continue
-                    if pwidth != cwidth:
-                        printError(
-                            f"{locationStr}: cross-interface bind requires "
-                            f"per-field _bitWidth to agree, but field "
-                            f"'{pname}' of {parentName}/{parentStruct} has "
-                            f"_bitWidth {pwidth} (file {parentContext}) "
-                            f"while field '{cname}' of "
-                            f"{childName}/{childStruct} has _bitWidth "
-                            f"{cwidth} (file {childContext}). Adjust one "
-                            f"side so per-field _bitWidth agrees, or split "
-                            f"the connection.")
-                        anyError = True
-                        continue
-                    if poff != coff:
-                        printError(
-                            f"{locationStr}: cross-interface bind requires "
-                            f"matching bit offsets in declared order, but "
-                            f"field '{pname}' of {parentName}/{parentStruct} "
-                            f"sits at bit offset {poff} (file "
-                            f"{parentContext}) while field '{cname}' of "
-                            f"{childName}/{childStruct} sits at bit offset "
-                            f"{coff} (file {childContext}).")
-                        anyError = True
-            if anyError:
-                exit(warningAndErrorReport())
+            return (blockKey, instRow['variant'] or '')
 
         # ------------------------------------------------------------
         # Iterate connections. Each end may be a cross-interface bind.
         # ------------------------------------------------------------
-        for ctx, group in self.data.get('connections', {}).items():
-            for connName, conn in group.items():
-                # Skip synthesised entries.
-                connContext = conn.get('_context') or ctx
-                if connContext == '_global':
+        for connName, conn in connections_flat.items():
+            # Skip synthesised entries.
+            connContext = conn['_context']
+            if connContext == '_global':
+                continue
+            parentIfaceKey = conn['interfaceKey']
+            for _endDir, endRow in conn['ends'].items():
+                instanceKey = endRow['instanceKey']
+                instRow = instances_flat[instanceKey]
+                instTypeKey = instRow['instanceTypeKey']
+                blockRow = blocks_flat[instTypeKey]
+                declaredPorts = blockRow.get('ports') or {}
+                portName = endRow['portName']
+                portEntry = declaredPorts.get(portName)
+                if not portEntry:
+                    # No bottom-up declaration; top-down inference
+                    # governs and there is no cross-interface bind
+                    # to check.
                     continue
-                parentIfaceKey = conn.get('interfaceKey') or ''
-                if not parentIfaceKey:
+                portIface = portEntry['interface']
+                parentIfaceRow = interfaces_flat[parentIfaceKey]
+                parentIfaceName = parentIfaceRow['interface']
+                if portIface == parentIfaceName:
+                    # Names agree; not a cross-interface bind.
                     continue
-                ends = conn.get('ends') or {}
-                for endDir, endRow in ends.items():
-                    instanceKey = endRow.get('instanceKey') or ''
-                    if not instanceKey:
-                        continue
-                    instRow = instances_flat.get(instanceKey)
-                    if instRow is None:
-                        continue
-                    instTypeKey = instRow.get('instanceTypeKey') or ''
-                    if not instTypeKey:
-                        continue
-                    blockRow = blocks_flat.get(instTypeKey)
-                    if blockRow is None:
-                        continue
-                    declaredPorts = blockRow.get('ports') or {}
-                    portName = endRow.get('portName') or ''
-                    portEntry = declaredPorts.get(portName)
-                    if not portEntry:
-                        # No bottom-up declaration; top-down inference
-                        # governs and there is no cross-interface bind
-                        # to check.
-                        continue
-                    portIface = portEntry.get('interface')
-                    if not portIface:
-                        continue
-                    parentIfaceRow = interfaces_flat.get(parentIfaceKey)
-                    if parentIfaceRow is None:
-                        continue
-                    parentIfaceName = parentIfaceRow.get('interface')
-                    if portIface == parentIfaceName:
-                        # Names agree; not a cross-interface bind.
-                        continue
-                    # Resolve the child interface qualified key. The
-                    # port declaration carries only the unqualified
-                    # interface name; pair it with the block's _context.
-                    blockContext = blockRow.get('_context') or ''
-                    childIfaceKey = f"{portIface}/{blockContext}"
-                    if childIfaceKey not in interfaces_flat:
-                        # Fall back: search every context for a matching
-                        # interface name. The declared-port check catches
-                        # genuinely unresolved references; here we just need
-                        # the qualified key to walk it.
-                        for ifk, ifr in interfaces_flat.items():
-                            if ifr.get('interface') == portIface:
-                                childIfaceKey = ifk
-                                break
-                    childContext = (
-                        interfaces_flat.get(childIfaceKey, {}).get('_context')
-                        or '<unknown>')
-                    parentContext = parentIfaceRow.get('_context') or ctx
-                    childVariant = instRow.get('variant') or ''
-                    locationStr = (
-                        f"Block {blockRow.get('block')} connection "
-                        f"'{connName}' (file {connContext}) binds external "
-                        f"interface {parentIfaceName} to child "
-                        f"{instRow.get('instance')}.{portName} declared as "
-                        f"{portIface} (file {blockRow.get('_context') or '<unknown>'})")
-                    parentBlockKey, parentVariant = _connectionBinding(conn)
-                    _checkPair(parentIfaceKey, childIfaceKey, instTypeKey,
-                               childVariant, locationStr, parentContext,
-                               childContext, parentBlockKey, parentVariant)
+                childIfaceKey = portEntry['interfaceKey']
+                childContext = interfaces_flat[childIfaceKey]['_context']
+                parentContext = parentIfaceRow['_context']
+                childVariant = instRow['variant'] or ''
+                locationStr = (
+                    f"Block {blockRow['block']} connection "
+                    f"'{connName}' (file {connContext}) binds external "
+                    f"interface {parentIfaceName} to child "
+                    f"{instRow['instance']}.{portName} declared as "
+                    f"{portIface} (file {blockRow['_context']})")
+                parentBlockKey, parentVariant = _connectionBinding(conn)
+                self.checkInterfacePair(
+                    parentIfaceRow, interfaces_flat[childIfaceKey],
+                    instTypeKey,
+                    childVariant, locationStr, parentContext,
+                    childContext, parentBlockKey, parentVariant)
 
         # ------------------------------------------------------------
         # Iterate connectionMaps. The child port is the local end.
         # ------------------------------------------------------------
-        for ctx, group in self.data.get('connectionMaps', {}).items():
-            for cmName, cm in group.items():
-                cmContext = cm.get('_context') or ctx
-                if cmContext == '_global':
-                    # Synthesised maps.
-                    continue
-                parentIfaceKey = cm.get('interfaceKey') or ''
-                if not parentIfaceKey:
-                    continue
-                instanceKey = cm.get('instanceKey') or ''
-                if not instanceKey:
-                    continue
-                instRow = instances_flat.get(instanceKey)
-                if instRow is None:
-                    continue
-                instTypeKey = instRow.get('instanceTypeKey') or ''
-                blockRow = blocks_flat.get(instTypeKey)
-                if blockRow is None:
-                    continue
-                declaredPorts = blockRow.get('ports') or {}
-                instPortName = cm.get('instancePortName') or ''
-                portEntry = declaredPorts.get(instPortName)
-                if not portEntry:
-                    continue
-                portIface = portEntry.get('interface')
-                if not portIface:
-                    continue
-                parentIfaceRow = interfaces_flat.get(parentIfaceKey)
-                if parentIfaceRow is None:
-                    continue
-                parentIfaceName = parentIfaceRow.get('interface')
-                if portIface == parentIfaceName:
-                    continue
-                blockContext = blockRow.get('_context') or ''
-                childIfaceKey = f"{portIface}/{blockContext}"
-                if childIfaceKey not in interfaces_flat:
-                    for ifk, ifr in interfaces_flat.items():
-                        if ifr.get('interface') == portIface:
-                            childIfaceKey = ifk
-                            break
-                childContext = (
-                    interfaces_flat.get(childIfaceKey, {}).get('_context')
-                    or '<unknown>')
-                parentContext = parentIfaceRow.get('_context') or ctx
-                childVariant = instRow.get('variant') or ''
-                locationStr = (
-                    f"Block {cm.get('block')} connectionMap '{cmName}' "
-                    f"(file {cmContext}) binds external interface "
-                    f"{parentIfaceName} to child "
-                    f"{instRow.get('instance')}.{instPortName} declared as "
-                    f"{portIface} (file {blockRow.get('_context') or '<unknown>'})")
-                parentBlockKey, parentVariant = _mapParentBinding(cm)
-                _checkPair(parentIfaceKey, childIfaceKey, instTypeKey,
-                           childVariant, locationStr, parentContext,
-                           childContext, parentBlockKey, parentVariant)
+        for cmName, cm in connection_maps_flat.items():
+            cmContext = cm['_context']
+            if cmContext == '_global':
+                # Synthesised maps.
+                continue
+            parentIfaceKey = cm['interfaceKey']
+            instanceKey = cm['instanceKey']
+            instRow = instances_flat[instanceKey]
+            instTypeKey = instRow['instanceTypeKey']
+            blockRow = blocks_flat[instTypeKey]
+            declaredPorts = blockRow.get('ports') or {}
+            instPortName = cm['instancePortName']
+            portEntry = declaredPorts.get(instPortName)
+            if not portEntry:
+                continue
+            portIface = portEntry['interface']
+            parentIfaceRow = interfaces_flat[parentIfaceKey]
+            parentIfaceName = parentIfaceRow['interface']
+            if portIface == parentIfaceName:
+                continue
+            childIfaceKey = portEntry['interfaceKey']
+            childContext = interfaces_flat[childIfaceKey]['_context']
+            parentContext = parentIfaceRow['_context']
+            childVariant = instRow['variant'] or ''
+            locationStr = (
+                f"Block {cm['block']} connectionMap '{cmName}' "
+                f"(file {cmContext}) binds external interface "
+                f"{parentIfaceName} to child "
+                f"{instRow['instance']}.{instPortName} declared as "
+                f"{portIface} (file {blockRow['_context']})")
+            parentBlockKey, parentVariant = _mapParentBinding(cm)
+            self.checkInterfacePair(
+                parentIfaceRow, interfaces_flat[childIfaceKey],
+                instTypeKey,
+                childVariant, locationStr, parentContext,
+                childContext, parentBlockKey, parentVariant)
 
     def processYamls(self):
         # main outer loop for processing
@@ -4536,6 +4534,11 @@ class projectCreate:
             if self.errorState:
                 exit(warningAndErrorReport())
         g.db.commit()
+        # Phase complete; null the parse-time resolver so any post-parse
+        # caller that reaches through self._parserResolver AttributeError's
+        # at the call site. Post-parse code that needs a resolver should
+        # construct its own (see calcAddresses for the pattern).
+        self._parserResolver = None
 
     # process a single previously read file or provided standalone data
     def processSingleFile(self, yamlFile, sections=None, contextOverride=None):
@@ -4545,7 +4548,7 @@ class projectCreate:
             sections = self.yamlRaw[yamlFile]
         # Use contextOverride if provided (for system files in _a2csystem context)
         contextFile = contextOverride if contextOverride else yamlFile
-        self.currentContext = contextFile
+        self._parserResolver = ValueResolver(self, context=contextFile)
         if not sections:
             return
         if "blockDir" in sections:
@@ -4575,6 +4578,9 @@ class projectCreate:
                     exit(warningAndErrorReport())
                 if section in self.includeSections:
                     self.includeValid[yamlFile]["valid"] = True
+        # The file's sections are now all parsed, so the ipParameters constants
+        # and the consuming block params are both present: validate the linkage.
+        self._validateIpParametersLinkage(contextFile)
 
     # loop through section handling all items for simple and inbetween sections
     def processSection(self, section, data, yamlFile):
@@ -4587,9 +4593,6 @@ class projectCreate:
         comboKey = self.schema.data['comboKey'].get(section, None)
         if comboKey:
             comboKeyName = self.schema.data['key'][section]
-        if section == 'constants' and yamlFile not in self.const:
-            # for constants initialise the lookup dict for resolution of constants
-            self.const[yamlFile] = OrderedDict()
         # data input can be lists or dicts in the yaml
         isList = isinstance(data, list)
         if section == 'parameters':
@@ -4633,15 +4636,15 @@ class projectCreate:
             if comboKey is not None:
                 # ok we have a combo key, so we can finally resolve it
                 itemkey = entry[comboKeyName]
-            # save everything
             self.data[section][yamlFileOverride][itemkey] = entry
+            self.addFlatRecord(section, entry)
             self.addRecord(section, yamlFileOverride, itemkey, entry, self.schema.data['schema'][section])
 
     # process a single entry and handle all the trivial cases
     # schema can be provided for sub table use cases
     # note that auto fields are ignored
     def processSimple(self, section, anchor, item, yamlFile, schema = None, context='', outer = None):
-        ret = dict()
+        ret = {'_context': yamlFile}
         if 'lc' in item:
             myLineNumber = item['lc'].line + 1
             ret['lc'] = item['lc']
@@ -4789,40 +4792,44 @@ class projectCreate:
                     # outer key is for the nested case, we want to refer back to the entry we are nested within
                     ret[field] = outer[field]
                 if ftype in {'const', 'optionalConst', 'param'}:
-                    constType = ftype
-                    if ftype=='param':
-                        # param: field is required and can be either a block parameter or a constant
-                        # parameters are instance specific so the design element must belong to a block
+                    # Shared shape: ret[field] keeps the user-typed token
+                    # (symbol or numeric literal); ret[field+'Key'] gets the
+                    # qualified 'name/context' for symbolic references and ''
+                    # for literals (and for the param-is-block-parameter case,
+                    # where the value resolves per-instance via parameter
+                    # bindings rather than a constant-table lookup).
+                    qualKey = ""
+                    if ftype == 'param':
+                        # param accepts: a block parameter name, OR a constant/
+                        # enum symbol, OR a numeric literal. The design element
+                        # must belong to a block for the block-param path.
                         if field not in item:
-                            # param field missing - this is an error (param is like required)
                             self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{anchor} is missing required field {field}")
-                            constType = 'const'  # Continue processing as const to avoid additional errors
-                        elif 'blockKey' in ret and self.checkIsParam(ret['blockKey'], item[field], yamlFile):
-                            # TODO: move this logic to an auto function
-                            # Value is a block parameter - use it directly
+                        else:
                             ret[field] = item[field]
-                        else:
-                            # Value is not a parameter (or blockKey not yet available) - treat as constant
-                            constType = 'const'
-                    # const can be a number or a reference to a constant that has already been declared
-                    itemKeyField = None
-                    if constType == 'const':
-                        # const is not optional so report error if missing
+                            if 'block' in ret and self.checkIsParam(ret['block'], item[field], yamlFile):
+                                pass  # block parameter; resolved per-instance, no qualKey
+                            else:
+                                resolved = self._parserResolver.qualifyKey(
+                                    item[field], yamlFile, fatal=False)
+                                if resolved is None:
+                                    self.logError(
+                                        f"In file {yamlFile}:{myLineNumber}, section {section} {context}, "
+                                        f"key:{anchor} field {field}: '{item[field]}' is not a parameter "
+                                        f"of block '{ret.get('block', '?')}' and is not declared as a "
+                                        f"constant or enum in '{yamlFile}' or any file it includes.")
+                                else:
+                                    qualKey = resolved
+                    elif ftype == 'const':
                         if field not in item:
                             self.logError(f"In file {yamlFile}:{myLineNumber}, section {section} {context}, key:{anchor} is missing required field {field}")
                         else:
-                            ret[field], itemKeyField = self.constParse(item[field], yamlFile, value=False)
-                    if constType == 'optionalConst':
-                        # optionalConst is optional so only lookup if its there
+                            ret[field] = item[field]
+                            qualKey = self._parserResolver.qualifyKey(item[field], yamlFile)
+                    else:  # optionalConst
                         if field in item:
-                            # note we look up ret[field] here as the optional aspect is already handled above
-                            ret[field], itemKeyField = self.constParse(ret[field], yamlFile, value=False)
-                    # at this point we may or may not have found a const
-                    if itemKeyField is not None:
-                        # if constParse finds a named constant - save this value in the key field
-                        ret[field+'Key'] = itemKeyField
-                    else:
-                        ret[field+'Key'] = ""
+                            qualKey = self._parserResolver.qualifyKey(ret[field], yamlFile)
+                    ret[field+'Key'] = qualKey
                 if ftype=='eval':
                     # value is either provided from eval statement or a named field if present
                     if field in item:
@@ -4830,12 +4837,12 @@ class projectCreate:
                         ret[field] = item[field]
                     elif 'eval' in item:
                         # no named field, use eval
-                        self.currentContext = yamlFile
                         for match in self.constFind.finditer(item['eval']):
                             token = match.group(2)
                             foundToken = False
                             for myContext in self.yamlContext.get(yamlFile, {}):
-                                if token in self.const.get(myContext, {}) or token in self.enums.get(myContext, {}):
+                                if (token in self.data['constants'].get(myContext, {})
+                                        or token in self.enums.get(myContext, {})):
                                     foundToken = True
                                     break
                             if not foundToken:
@@ -4888,11 +4895,11 @@ class projectCreate:
                     if ret[field] not in self.dontValidate:
                         # search for appropriate value within the yaml context allowed for this file
                         scope = validator.get('scope', yamlFile) # if the schema specified a scope override - use that
-                        (varInfo, varContext) = self.getFromContext(validator['section'], scope, ret[field], NotFoundFatal=False)
+                        (varInfo, varContext) = self.validateForeignKey(ret, context+section, field, scope)
                         # if its valid then use it
                         if varInfo:
                             # as its valid we also need to capture the context key - ie what file did the referenced value come from
-                            ret[field+'Key'] = ret[field] + '/' + varContext
+                            ret[field+'Key'] = varInfo[validator['field']] + '/' + varContext
                         else:
                             # Surface likely include-scope mistakes by naming
                             # already-loaded contexts that define the symbol.
@@ -4923,54 +4930,6 @@ class projectCreate:
             ret = getattr(self, funct)(anchor, ret, yamlFile)
 
         return ret
-
-    def varWidth(self, varInfo, yamlFile):
-        if varInfo['entryType']=='NamedStruct':
-            (structInfo, structContext) = self.getFromContext('structures', yamlFile, varInfo['subStruct'], NotFoundFatal=True)
-            try:
-                arraySize = int(varInfo['arraySize'])
-            except ValueError:
-                # otherwise lookup the constant based on the key version
-                arraySize = self.qualConstParse(varInfo['arraySizeKey'])
-            width = structInfo['width'] * arraySize if arraySize else structInfo['width']
-        elif varInfo['entryType']=='Reserved':
-            width = varInfo['align']
-        else:
-            (typeInfo, typeContext) = self.getFromContext('types', yamlFile, varInfo['varType'], NotFoundFatal=True)
-            typeWidth = self.resolveTypeWidthCreate(typeInfo)
-            try:
-                arraySize = int(varInfo['arraySize'])
-            except ValueError:
-                # otherwise lookup the constant based on the key version
-                arraySize = self.qualConstParse(varInfo['arraySizeKey'])
-            width = typeWidth * arraySize if arraySize else typeWidth
-        return width
-
-    def resolveTypeWidthCreate(self, typeInfo):
-        """Resolve type width to integer during project creation (projectCreate context).
-
-        Checks which of width/widthLog2/widthLog2minus1 is present, resolves to integer.
-        Uses qualConstParse for qualified key resolution.
-        """
-        isSigned = typeInfo['isSigned']
-        mode, key = getTypeWidthContext(typeInfo)
-        raw = key if key else typeInfo[mode]
-        parse_mode = 'qualified' if key else 'literal'
-        n = self._resolve_width_int(raw, f"{mode}Key" if key else mode, context=key, parse_mode=parse_mode)
-        if n is None:
-            return 0
-
-        if mode == 'widthLog2':
-            width = int(n).bit_length()
-            if isSigned:
-                width += 1
-        elif mode == 'widthLog2minus1':
-            width = int(n - 1).bit_length()
-            if isSigned:
-                width += 1
-        else:
-            width = n
-        return width
 
     # AUTO SECTIONS begin here
     #
@@ -5042,7 +5001,9 @@ class projectCreate:
             # If any referent is parameterizable, this constant is too.
             for m in self.constFind.finditer(evalStr):
                 tok = m.group(2)
-                referent = self._lookupConstByName(tok, yamlFile, lineNo, itemkey)
+                referent = self._parserResolver.lookupVisibleRow(
+                    tok, yamlFile,
+                    label=f"constant '{itemkey}' in {yamlFile}:{lineNo} eval token '{tok}'")
                 if referent.get('isParameterizable'):
                     derivedParam = True
                     break
@@ -5051,7 +5012,9 @@ class projectCreate:
                 # value (non-parameterizable) to obtain the worst-case maxValue.
                 def _replaceMax(matchObj):
                     tok = matchObj.group(2)
-                    ref = self._lookupConstByName(tok, yamlFile, lineNo, itemkey)
+                    ref = self._parserResolver.lookupVisibleRow(
+                        tok, yamlFile,
+                        label=f"constant '{itemkey}' in {yamlFile}:{lineNo} eval token '{tok}'")
                     if ref.get('isParameterizable') and ref.get('maxValue'):
                         return str(ref['maxValue'])
                     return str(ref['value'])
@@ -5118,216 +5081,58 @@ class projectCreate:
         else:
             ret['isParameterizable'] = False
 
-        self.const[yamlFile][itemkey] = ret['value']
-        self.qualConst[itemkey+'/'+yamlFile] = ret['value']
         return ret
 
-    def _lookupConstByName(self, name, yamlFile, lineNo, refererName):
-        """Look up a constant by short name in the dependency context of yamlFile.
-        Used by parameterizable propagation. Missing user references are reported
-        as YAML errors; unfinalized internal records are reported as internal errors."""
-        for myContext in self.yamlContext.get(yamlFile, {}):
-            entry = self.data.get('constants', {}).get(myContext, {}).get(name)
-            if entry is not None:
-                if 'isParameterizable' not in entry:
-                    printError(f"Internal error: constant '{name}' referenced by "
-                               f"'{refererName}' in {yamlFile}:{lineNo} is not finalized "
-                               f"(missing isParameterizable).")
-                    exit(warningAndErrorReport())
-                return entry
-        # Not found. Could legitimately be an enum or builtin. Re-resolve via constParse,
-        # which handles enums/numerics. If that fails, it's a real error.
-        # Try enum
-        for myContext in self.yamlContext.get(yamlFile, {}):
-            enumVal = self.enums.get(myContext, {}).get(name)
-            if enumVal is not None:
-                # Synthesize a non-parameterizable record
-                return {'value': enumVal['value'], 'isParameterizable': False, 'maxValue': 0}
-        self.logError(f"In file {yamlFile}:{lineNo}, constant '{refererName}' "
-                      f"eval expression references unresolved constant or enum '{name}'")
-        return {'value': 0, 'isParameterizable': False, 'maxValue': 0}
-
-    def _lookupConstByQualKey(self, qualKey):
-        """Look up a constant by its qualified key 'name/yamlFile'.
-        Returns the entry dict, or hard-errors on miss.
-        Hard-errors on malformed input (empty / missing '/'); a malformed
-        qualKey is always a generator bug because the schema guarantees
-        qualified keys, and silently returning None would mask it."""
-        if not qualKey or '/' not in qualKey:
-            printError(f"Internal error: malformed qualified constant key "
-                       f"'{qualKey}' (expected 'name/yamlFile').")
-            exit(warningAndErrorReport())
-        name, ctx = qualKey.split('/', 1)
-        entry = self.data.get('constants', {}).get(ctx, {}).get(name)
-        if entry is None:
-            # Could be an enum
-            enumVal = self.enums.get(ctx, {}).get(name)
-            if enumVal is not None:
-                return {'value': enumVal['value'], 'isParameterizable': False, 'maxValue': 0}
-            printError(f"Internal error: qualified constant '{qualKey}' "
-                       f"is not present in self.data['constants'].")
-            exit(warningAndErrorReport())
-        return entry
-
-    def _resolveWordLinesConst(self, row):
+    def _resolveWordLinesConst(self, row, resolver):
         """Resolve a memory/register row's wordLines constant entry.
-        Handles both qualified-key (regular constant) and bare-name (block param)
-        cases, returning a constant entry dict or None.
-        Accepts a sqlite3.Row or dict.
+        Handles both qualified-key (regular constant) and bare-name block-param
+        cases, returning a constant entry dict or None for empty wordLines.
+        Accepts a processed project row. `resolver` is supplied by the caller so
+        this helper can be invoked both parse-time (passing the per-file
+        `self._parserResolver`) and post-parse (passing a caller-owned
+        ValueResolver, e.g. from calcAddresses).
 
         Lookup precedence:
-          1. wordLinesKey qualified ('name/file')             -> direct constant lookup
-          2. wordLines is a literal int                       -> synthesized non-param entry
-          3. wordLines is a bare name + block has context     -> per-block-context lookup
-                                                                 (constants table)
-          4. wordLines is a bare name + matches block 'params' list (legit
-             non-const block param bound per-variant) -> returns None
+          1. wordLinesKey qualified ('name/file') -> direct constant lookup
+          2. wordLines is a literal int           -> synthesized non-param entry
+          3. wordLines is a bare block param      -> exact blocksparams.paramKey lookup
 
-        No global fallback: searching every context risks picking a same-named
-        constant from an unrelated block and would mask scope/typo errors.
-        Bare-name miss in both constants AND block params is a hard error.
+        Bare-name misses are hard errors; searching every context risks picking
+        a same-named constant from an unrelated block and would mask scope/typo
+        errors.
 
-        Returns None for: empty wordLines, or non-const block param (the caller
-        treats None as non-parameterizable for sizing)."""
-        def _get(r, key):
-            try:
-                return r[key]
-            except (KeyError, IndexError):
-                return None
-        wlKey = _get(row, 'wordLinesKey') or ''
-        if wlKey and '/' in wlKey:
-            return self._lookupConstByQualKey(wlKey)
-        # Bare-name (param) case: search for a constant by name within the block's
-        # owning context (row['blockKey'] = 'block/yamlFile').
-        wl = _get(row, 'wordLines') or ''
-        if not wl:
-            # Empty wordLines: caller decides (e.g. non-memory registers have
-            # wordLines defaulted to 0). Surface as None rather than erroring.
+        Returns None for empty wordLines only; non-empty symbolic wordLines must
+        resolve to a constant row."""
+        wlKey = row['wordLinesKey']
+        if wlKey != '':
+            return resolver.lookupNamedRow(wlKey, 'constant')
+        # Bare-name (param) case: use the block-param row's backing constant key.
+        wl = row['wordLines']
+        if wl == '' or wl == 0:
+            # Empty/default wordLines: caller decides (e.g. non-memory registers
+            # have wordLines defaulted to 0). Surface as None rather than erroring.
             return None
         try:
             return {'value': int(wl), 'isParameterizable': False, 'maxValue': 0}
         except (TypeError, ValueError):
             pass
-        blockKey = _get(row, 'blockKey') or ''
-        if '/' not in blockKey:
-            printError(f"Generator bug: memory/register row references wordLines="
-                       f"'{wl}' but blockKey '{blockKey}' lacks a context "
-                       f"(expected 'block/yamlFile'). Cannot resolve scope.")
+        blockKey = row['blockKey']
+        blockRow = self.flatData['blocks'][blockKey]
+        blockName = blockRow['block']
+        ctx = blockRow['_context']
+        blockParam = None
+        for candidate in self.flatData['blocksparams'].values():
+            if candidate['blockKey'] == blockKey and candidate['param'] == wl:
+                blockParam = candidate
+                break
+        if blockParam is None:
+            printError(f"In context '{ctx}', block '{blockName}': wordLines references "
+                       f"'{wl}' but no block parameter named '{wl}' is declared "
+                       f"in this block (typo, missing ipParameters entry, or "
+                       f"scope violation).")
             exit(warningAndErrorReport())
-        ctx = blockKey.split('/', 1)[1]
-        blockName = blockKey.split('/', 1)[0]
-        entry = self.data.get('constants', {}).get(ctx, {}).get(wl)
-        if entry is not None:
-            return entry
-        # Not in constants. Legit if it's a declared block param (values bound
-        # per-variant via 'parameters:'); we surface that to the caller as None
-        # (no constant entry => non-parameterizable for sizing).
-        if self.checkIsParam(blockName, wl, ctx):
-            return None
-        # Otherwise: typo, missing ipParameters entry, or scope violation.
-        printError(f"In context '{ctx}', block '{blockName}': wordLines references "
-                   f"'{wl}' but no constant or block parameter named '{wl}' is "
-                   f"declared in this block (typo, missing ipParameters entry, "
-                   f"or scope violation).")
-        exit(warningAndErrorReport())
-
-    def _resolveBlockParamMaxWordLines(self, row):
-        """For a memory/register row whose wordLines is a non-const block param
-        (declared in 'block.params' and bound per-variant via 'parameters:'),
-        return the worst-case (maximum) bound value across all variants.
-
-        Used by calcAddresses when _resolveWordLinesConst returns None because
-        wordLines is a block param without a backing constant entry. Without
-        this, sizing would fall back to wordLines=1 -> silent under-allocation.
-
-        Returns an int (worst-case wordLines) or None if not applicable
-        (e.g. wordLines is not a bare-name block param, or no variant
-        bindings exist). On bound-value resolution failure, hard-errors."""
-        def _get(r, key):
-            try:
-                return r[key]
-            except (KeyError, IndexError):
-                return None
-        wlKey = _get(row, 'wordLinesKey') or ''
-        if wlKey:
-            return None  # qualified-constant case, not our concern
-        wl = _get(row, 'wordLines') or ''
-        if not wl:
-            return None
-        try:
-            int(wl)
-            return None  # literal int case, not our concern
-        except (TypeError, ValueError):
-            pass
-        blockKey = _get(row, 'blockKey') or ''
-        if '/' not in blockKey:
-            printError(f"Internal error: memory/register row references wordLines="
-                       f"'{wl}' but blockKey '{blockKey}' lacks a context "
-                       f"(expected 'block/yamlFile'). Cannot resolve scope.")
-            exit(warningAndErrorReport())
-        # Query parametersvariants for all bound values of this (blockKey, param).
-        # The valueKey column is a qualified constant ref (e.g. 'BOB0/mixed.yaml').
-        sql = ("SELECT valueKey, value FROM parametersvariants "
-               "WHERE blockKey = ? AND param = ?")
-        try:
-            g.cur.execute(sql, (blockKey, wl))
-            rows = g.cur.fetchall()
-        except Exception as e:
-            printError(f"Generator bug: failed to query parametersvariants for "
-                       f"blockKey='{blockKey}' param='{wl}': {e}")
-            exit(warningAndErrorReport())
-        if not rows:
-            # Block param declared but no variants bind it. This is a user error:
-            # the param appears in block.params but has no parameters: rows.
-            blockName = blockKey.split('/', 1)[0]
-            printError(f"Block '{blockName}': memory wordLines references block "
-                       f"parameter '{wl}' but no variant bindings exist in "
-                       f"'parameters:' for this param. Cannot determine "
-                       f"worst-case sizing.")
-            exit(warningAndErrorReport())
-        maxVal = 0
-        for r in rows:
-            valKey = r['valueKey'] or ''
-            rawVal = r['value']
-            resolved = None
-            # Prefer qualified-key resolution; fall back to literal int parse of value.
-            if valKey and '/' in valKey:
-                cEntry = self._lookupConstByQualKey(valKey)
-                if cEntry:
-                    # Use maxValue if the bound constant is itself parameterizable,
-                    # else its nominal value.
-                    if cEntry.get('isParameterizable') and cEntry.get('maxValue'):
-                        resolved = cEntry['maxValue']
-                    elif cEntry.get('value') is not None:
-                        resolved = cEntry['value']
-            if resolved is None and rawVal is not None:
-                try:
-                    resolved = int(rawVal)
-                except (TypeError, ValueError):
-                    resolved = None
-            if resolved is None:
-                blockName = blockKey.split('/', 1)[0]
-                printError(f"Block '{blockName}': cannot resolve bound value "
-                           f"'{rawVal}' (key='{valKey}') for param '{wl}'. "
-                           f"Worst-case wordLines sizing requires resolvable "
-                           f"integer bound values.")
-                exit(warningAndErrorReport())
-            if resolved <= 0:
-                blockName = blockKey.split('/', 1)[0]
-                printError(f"Block '{blockName}': bound value for param '{wl}' "
-                           f"resolved to {resolved} (key='{valKey}', raw="
-                           f"'{rawVal}'). wordLines must be a positive integer.")
-                exit(warningAndErrorReport())
-            if resolved > maxVal:
-                maxVal = resolved
-        if maxVal <= 0:
-            # Defensive: should not be reachable given per-row check above, but
-            # guard against an empty-rows path slipping through future edits.
-            blockName = blockKey.split('/', 1)[0]
-            printError(f"Block '{blockName}': worst-case wordLines for param "
-                       f"'{wl}' resolved to {maxVal}. wordLines must be > 0.")
-            exit(warningAndErrorReport())
-        return maxVal
+        backingKey = blockParam['paramKey']
+        return self.flatData['constants'][backingKey]
 
     def _post_add_enum(self, itemkey, item, yamlFile):
         if 'enumName' in item:
@@ -5360,7 +5165,7 @@ class projectCreate:
 
         # Get the interface_defs for this interfaceType
         # Use yamlFile as context to allow user-defined interfaces, with _a2csystem as fallback
-        (intf_def, intf_context) = self.getFromContext('interface_defs', yamlFile, intf_type, NotFoundFatal=False)
+        (intf_def, intf_context) = self.lookupInScope('interface_defs', yamlFile, intf_type)
 
         if not intf_def:
             # If interface_defs not found, the interfaceType validation will catch this
@@ -5440,8 +5245,8 @@ class projectCreate:
     def _post_validateRegisterPortInterface(self, itemkey, item, yamlFile):
         """Confirm the row's interface resolves to an interface_defs
         entry with addressBus: true."""
-        (intfInfo, _) = self.getFromContext('interfaces', yamlFile, item['interfaceKey'])
-        (intfDef, _) = self.getFromContext('interface_defs', yamlFile, intfInfo['interfaceTypeKey'])
+        intfInfo = self.flatData['interfaces'][item['interfaceKey']]
+        intfDef = self.flatData['interface_defs'][intfInfo['interfaceTypeKey']]
         if not intfDef['addressBus']:
             lc = item.get('lc')
             line = lc.line + 1 if lc is not None and hasattr(lc, 'line') else '?'
@@ -5535,7 +5340,7 @@ class projectCreate:
 
     def _specialStructures(self, itemkey, item, yamlFile):
         ret = self.processSimple('specialStructures', itemkey, item, yamlFile)
-        (varInfo, varContext) = self.getFromContext('structures', yamlFile, ret['baseStruct'], NotFoundFatal=False)
+        (varInfo, varContext) = self.lookupInScope('structures', yamlFile, ret['baseStruct'])
         if not varInfo:
             self.logError(f"Processing specialStructures in {yamlFile} and entry:{itemkey} does not reference valid baseStruct")
             exit(warningAndErrorReport())
@@ -5575,11 +5380,12 @@ class projectCreate:
                 bitpos = newBitpos
                 newStructVars[varName] = newVar
             newStructVars[var] = varData
-            bitpos = bitpos + self.varWidth(varData, yamlFile)
+            bitpos = bitpos + self._parserResolver.varWidth(varData)
         newStruct['vars'] = newStructVars
         newStruct['width'] = bitpos
         # add our newly constructed struct to the tables and db
         self.data["structures"][yamlFile][itemkey] = newStruct
+        self.addFlatRecord("structures", newStruct)
         self.addRecord("structures", yamlFile, itemkey, newStruct, self.schema.data['schema']["structures"])
         return ret
 
@@ -5591,13 +5397,14 @@ class projectCreate:
             ret['enumType'] = itemkey+"TypeT"
         if ret['enumPrefix'] == "":
             ret['enumPrefix'] = itemkey.upper()+"_TYPE_"
-        #(varInfo, varContext) = self.getFromContext('types', yamlFile, ret['encoderType'], NotFoundFatal=True)
         encoderType = ret['encoderType']
         newEncoderType = OrderedDict()
         newEncoderType['lc'] = ret['lc']
         newEncoderType['desc'] = ret['encoderTypeDesc']
         newEncoderType['width'] = ret['encoderTypeWidth']
-        encoderTypeBits = self.constParse(newEncoderType['width'], yamlFile, value=True)
+        encoderTypeBits = self._parserResolver.value(
+            newEncoderType['width'],
+            label=f"encoder '{itemkey}' encoderTypeWidth")
         # split off the items for further processing and later adding back in
         encoderItems = ret['items']
         ret['items'] = OrderedDict()
@@ -5605,7 +5412,9 @@ class projectCreate:
         # sort keys in decending size based on numBits
         numBits = dict() # store the lookups
         for item in encoderItems:
-            numBits[item] = self.constParse(encoderItems[item]['numBits'], yamlFile, value=True)
+            numBits[item] = self._parserResolver.value(
+                encoderItems[item]['numBits'],
+                label=f"encoder '{itemkey}' item '{item}' numBits")
 
         sortedItemKeys = sorted(encoderItems, key=lambda x: (numBits[x]), reverse=True)
         startValue = 0
@@ -5692,7 +5501,7 @@ class projectCreate:
             ret = "NamedType"
         else:
             # for named var we have to perform the validation as its outside the capabilities of simple section
-            (varInfo, varContext) = self.getFromContext('variables', yamlFile, itemkey, NotFoundFatal=False)
+            (varInfo, varContext) = self.lookupInScope('variables', yamlFile, itemkey)
             if not varInfo:
                 #it was neither
                 self.logError(f"reference {itemkey} in structure does not reference a valid variable definition in this context {yamlFile}:{item.lc.line + 1}")
@@ -5772,54 +5581,6 @@ class projectCreate:
         ret=item.get(field, 1)
         return ret
 
-    def _resolve_width_int(self, rawValue, fieldName, yamlFile=None, item=None, context=None, parse_mode='literal'):
-        """Resolve a width-related value and enforce integer semantics.
-
-        Rejects float values (literal or resolved constant/enum) to avoid silent truncation.
-        Returns int on success, otherwise returns None after reporting an error.
-        """
-        loc = "?"
-        if yamlFile is not None:
-            line = item.get('lc').line + 1 if isinstance(item, dict) and item.get('lc') else '?'
-            loc = f"{yamlFile}:{line}"
-        elif context:
-            loc = context
-
-        # Literal float in YAML (e.g. width: 1.5) would otherwise be silently int-truncated.
-        if isinstance(rawValue, float):
-            self.logError(f"In {loc}, {fieldName} '{rawValue}' resolves to floating-point value ({rawValue}), but type width requires an integer")
-            return None
-
-        if parse_mode not in {'literal', 'qualified'}:
-            raise ValueError(f"Invalid parse_mode '{parse_mode}' for _resolve_width_int")
-
-        resolvedValue = rawValue
-        if not isinstance(rawValue, int):
-            if yamlFile is not None:
-                resolvedValue = self.constParse(rawValue, yamlFile, value=True)
-            elif parse_mode == 'qualified' and isinstance(rawValue, str):
-                resolvedValue = self.qualConstParse(rawValue)
-            else:
-                try:
-                    resolvedValue = int(rawValue)
-                except (TypeError, ValueError):
-                    self.logError(f"In {loc}, {fieldName} '{rawValue}' is not a valid integer width value")
-                    return None
-
-        if isinstance(resolvedValue, float):
-            self.logError(f"In {loc}, {fieldName} '{rawValue}' resolves to floating-point value ({resolvedValue}), but type width requires an integer")
-            return None
-
-        if resolvedValue is None:
-            self.logError(f"In {loc}, {fieldName} '{rawValue}' is unresolved")
-            return None
-
-        try:
-            return int(resolvedValue)
-        except (TypeError, ValueError):
-            self.logError(f"In {loc}, {fieldName} '{rawValue}' resolves to non-integer value '{resolvedValue}'")
-            return None
-
     def _post_validateTypeWidth(self, itemkey, item, yamlFile):
         """Validate type width fields after processing.
 
@@ -5847,9 +5608,10 @@ class projectCreate:
                 if 'value' not in valItem:
                     self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' enum entry missing 'value' field")
                     return item
-                valActual = self._resolve_width_int(valItem['value'], f"enum '{val}' value", yamlFile=yamlFile, item=item)
-                if valActual is None:
-                    return item
+                valActual = self._parserResolver.value(
+                    valItem['value'],
+                    label=f"enum '{val}' value",
+                    source=item)
                 if valActual < 0:
                     self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, type '{itemkey}' enum '{val}' has negative value ({valActual}), but signed enums are not supported")
                     return item
@@ -5873,9 +5635,10 @@ class projectCreate:
 
         # Resolve the raw value to an integer
         rawValue = item[widthField]
-        n = self._resolve_width_int(rawValue, widthField, yamlFile=yamlFile, item=item)
-        if n is None:
-            return item
+        n = self._parserResolver.value(
+            rawValue,
+            label=widthField,
+            source=item)
 
         # Compute the actual bit width
         isSigned = bool(item.get('isSigned', False))
@@ -5947,7 +5710,7 @@ class projectCreate:
         if widthMode:
             qualKey = item.get(widthMode + 'Key', '')
             if qualKey:
-                refConst = self._lookupConstByQualKey(qualKey)
+                refConst = self._parserResolver.lookupNamedRow(qualKey, 'constant')
                 if refConst and refConst.get('isParameterizable'):
                     derivedParam = True
                     refMax = refConst.get('maxValue', 0) or 0
@@ -6008,7 +5771,9 @@ class projectCreate:
     def _auto_structWidth(self, section, itemkey, item, field, yamlFile, processed):
         width = 0
         for var, varinfo in processed['vars'].items():
-            width = width + self.varWidth(varinfo, yamlFile)
+            width = width + self._parserResolver.varWidth(
+                varinfo,
+                field_name=f"structure '{itemkey}' field '{var}'")
         return (width)
 
     def _auto_structIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
@@ -6017,16 +5782,10 @@ class projectCreate:
         lineNo = (processed.get('lc').line + 1) if processed.get('lc') else '?'
         for var, varinfo in processed['vars'].items():
             # Type field
-            varTypeKey = varinfo.get('varTypeKey') or ''
+            varTypeKey = varinfo['varTypeKey']
             if varTypeKey and '/' in varTypeKey:
-                tname, tctx = varTypeKey.split('/', 1)
-                tEntry = self.data.get('types', {}).get(tctx, {}).get(tname)
-                if not tEntry:
-                    printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
-                               f"references type '{varTypeKey}' for field '{var}', "
-                               f"but it is not present in self.data['types'].")
-                    exit(warningAndErrorReport())
-                if tEntry and tEntry.get('isParameterizable'):
+                tEntry = self._rowByQualifiedKey('types', varTypeKey)
+                if tEntry['isParameterizable']:
                     return True
             elif varTypeKey:
                 printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
@@ -6034,16 +5793,10 @@ class projectCreate:
                            f"(expected 'name/yamlFile').")
                 exit(warningAndErrorReport())
             # Sub-structure
-            subKey = varinfo.get('subStructKey') or ''
+            subKey = varinfo['subStructKey']
             if subKey and '/' in subKey:
-                sname, sctx = subKey.split('/', 1)
-                sEntry = self.data.get('structures', {}).get(sctx, {}).get(sname)
-                if not sEntry:
-                    printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
-                               f"references sub-structure '{subKey}' for field '{var}', "
-                               f"but it is not present in self.data['structures'].")
-                    exit(warningAndErrorReport())
-                if sEntry and sEntry.get('isParameterizable'):
+                sEntry = self._rowByQualifiedKey('structures', subKey)
+                if sEntry['isParameterizable']:
                     return True
             elif subKey:
                 printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
@@ -6051,103 +5804,69 @@ class projectCreate:
                            f"(expected 'name/yamlFile').")
                 exit(warningAndErrorReport())
             # Array size: arraySizeKey may be qualified ('NAME/file')
-            arrKey = varinfo.get('arraySizeKey') or ''
+            arrKey = varinfo['arraySizeKey']
             if arrKey and '/' in arrKey:
-                cEntry = self._lookupConstByQualKey(arrKey)
-                if cEntry and cEntry.get('isParameterizable'):
+                cEntry = self._parserResolver.lookupNamedRow(arrKey, 'constant')
+                if cEntry['isParameterizable']:
                     return True
+            elif arrKey:
+                printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
+                           f"has malformed arraySizeKey '{arrKey}' for field '{var}' "
+                           f"(expected 'name/yamlFile').")
+                exit(warningAndErrorReport())
         return False
+
+    def _rowByQualifiedKey(self, section, qualifiedKey):
+        if not qualifiedKey or '/' not in qualifiedKey:
+            printError(f"Internal error: malformed {section} key "
+                       f"'{qualifiedKey}' (expected 'name/yamlFile').")
+            exit(warningAndErrorReport())
+        try:
+            return self.flatData[section][qualifiedKey]
+        except KeyError:
+            printError(f"Internal error: {section} key '{qualifiedKey}' is "
+                       f"not present in flatData['{section}'].")
+            exit(warningAndErrorReport())
+
+    def _auto_intfIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
+        # Interface rows inherit parameterization from any carried structure.
+        for struct_row in (processed.get('structures') or {}).values():
+            sEntry = self._rowByQualifiedKey('structures', struct_row['structureKey'])
+            if sEntry['isParameterizable']:
+                return True
+        return False
+
+    def _auto_interfaceRefIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
+        intf = self._rowByQualifiedKey('interfaces', processed['interfaceKey'])
+        return bool(intf['isParameterizable'])
+
+    def _auto_memoryConnectionIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
+        mem = self._rowByQualifiedKey('memories', processed['memoryBlockKey'])
+        return bool(mem['isParameterizable'])
+
+    def _auto_registerConnectionIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
+        reg = self._rowByQualifiedKey('registers', processed['registerBlockKey'])
+        return bool(reg['isParameterizable'])
 
     def _auto_structMaxBitwidth(self, section, itemkey, item, field, yamlFile, processed):
         # Worst-case bit sum across fields. Returns 0 if structure is
         # not parameterizable (callers consult isParameterizable first).
-        if not processed.get('isParameterizable'):
+        if not processed['isParameterizable']:
             return 0
         total = 0
         lineNo = (processed.get('lc').line + 1) if processed.get('lc') else '?'
         for var, varinfo in processed['vars'].items():
-            # Per-element width: from type or sub-struct.
-            perElem = 0
-            if varinfo.get('entryType') == 'NamedStruct':
-                subKey = varinfo.get('subStructKey') or ''
-                if subKey and '/' in subKey:
-                    sname, sctx = subKey.split('/', 1)
-                    sEntry = self.data.get('structures', {}).get(sctx, {}).get(sname)
-                    if sEntry:
-                        if sEntry.get('isParameterizable') and sEntry.get('maxBitwidth'):
-                            perElem = sEntry['maxBitwidth']
-                        else:
-                            perElem = sEntry.get('width', 0)
-                    else:
-                        printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
-                                   f"references sub-structure '{subKey}' for field '{var}', "
-                                   f"but it is not present in self.data['structures'].")
-                        exit(warningAndErrorReport())
-                else:
-                    printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
-                               f"has malformed subStructKey '{subKey}' for field '{var}' "
-                               f"(expected 'name/yamlFile').")
-                    exit(warningAndErrorReport())
-            elif varinfo.get('entryType') == 'Reserved':
-                perElem = varinfo.get('align', 0)
-            else:
-                varTypeKey = varinfo.get('varTypeKey') or ''
-                if varTypeKey and '/' in varTypeKey:
-                    tname, tctx = varTypeKey.split('/', 1)
-                    tEntry = self.data.get('types', {}).get(tctx, {}).get(tname)
-                    if tEntry:
-                        if tEntry.get('isParameterizable') and tEntry.get('maxBitwidth'):
-                            perElem = tEntry['maxBitwidth']
-                        else:
-                            perElem = self.resolveTypeWidthCreate(tEntry)
-                    else:
-                        printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
-                                   f"references type '{varTypeKey}' for field '{var}', "
-                                   f"but it is not present in self.data['types'].")
-                        exit(warningAndErrorReport())
-                else:
-                    printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
-                               f"has malformed varTypeKey '{varTypeKey}' for field '{var}' "
-                               f"(expected 'name/yamlFile').")
-                    exit(warningAndErrorReport())
-            if not isinstance(perElem, int) or perElem <= 0:
+            fieldWidth = self._parserResolver.varWidth(
+                varinfo,
+                use_max=True,
+                field_name=f"structure '{itemkey}' field '{var}'")
+            if not isinstance(fieldWidth, int) or fieldWidth <= 0:
                 printError(f"Internal error: structure '{itemkey}' in {yamlFile}:{lineNo} "
-                           f"field '{var}' resolved to invalid element width {perElem!r}.")
+                           f"field '{var}' resolved to invalid field width {fieldWidth!r}.")
                 exit(warningAndErrorReport())
-            # Multiplier: arraySize.
-            mult = 1
-            arrSizeRaw = varinfo.get('arraySize', 0)
-            arrKey = varinfo.get('arraySizeKey') or ''
-            try:
-                arrInt = int(arrSizeRaw)
-            except (TypeError, ValueError):
-                arrInt = None
-            if arrKey and '/' in arrKey:
-                cEntry = self._lookupConstByQualKey(arrKey)
-                if cEntry:
-                    nominal = cEntry.get('value', 1)
-                    if isinstance(nominal, bool) or not isinstance(nominal, int) or nominal <= 0:
-                        self.logError(f"In {yamlFile}:{lineNo}, structure '{itemkey}' field '{var}': "
-                                      f"arraySize must resolve to a positive integer, got {nominal!r}")
-                        return total
-                    if cEntry.get('isParameterizable'):
-                        maxValue = cEntry.get('maxValue', 0)
-                        if isinstance(maxValue, bool) or not isinstance(maxValue, int) or maxValue <= 0:
-                            self.logError(f"In {yamlFile}:{lineNo}, structure '{itemkey}' field '{var}': "
-                                          f"arraySize maxValue must resolve to a positive integer, got {maxValue!r}")
-                            return total
-                        mult = maxValue
-                    else:
-                        mult = nominal
-            elif arrInt is not None and arrInt > 0:
-                mult = arrInt
-            if isinstance(mult, bool) or not isinstance(mult, int) or mult <= 0:
-                self.logError(f"In {yamlFile}:{lineNo}, structure '{itemkey}' field '{var}': "
-                              f"arraySize must resolve to a positive integer, got {mult!r}")
-                return total
-            total += perElem * mult
+            total += fieldWidth
         # Validate: maxBitwidth >= width
-        existingWidth = processed.get('width', 0) or 0
+        existingWidth = processed['width']
         if total < existingWidth:
             lineNo = (processed.get('lc').line + 1) if processed.get('lc') else '?'
             self.logError(f"In {yamlFile}:{lineNo}, structure '{itemkey}': "
@@ -6162,92 +5881,44 @@ class projectCreate:
         return self.yamlDir
 
     def _auto_memIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
-        # Memory is parameterizable iff its structure is parameterizable,
-        # OR its wordLines constant is parameterizable, OR its wordLines is a
-        # pure block parameter (no backing constant). The pure-block-param case
-        # is parameterizable by definition: bound values vary per variant, so
-        # calcAddresses must size for the worst case via parametersvariants.
-        structKey = processed.get('structureKey') or ''
-        structIsParam = False
-        if structKey and '/' in structKey:
-            sname, sctx = structKey.split('/', 1)
-            sEntry = self.data.get('structures', {}).get(sctx, {}).get(sname)
-            structIsParam = bool(sEntry and sEntry.get('isParameterizable'))
-        wlConst = self._resolveWordLinesConst(processed)
-        wlIsParam = bool(wlConst and wlConst.get('isParameterizable'))
-        # Pure block-param fallback (wlConst is None because wordLines is in
-        # block.params but has no backing constant entry).
-        if not wlIsParam and not wlConst:
-            wl = processed.get('wordLines') or ''
-            wlKey = processed.get('wordLinesKey') or ''
-            if wl and not wlKey:
-                try:
-                    int(wl)
-                except (TypeError, ValueError):
-                    blockKey = processed.get('blockKey') or ''
-                    if '/' in blockKey:
-                        block, ctx = blockKey.split('/', 1)
-                        if self.checkIsParam(block, wl, ctx):
-                            wlIsParam = True
+        # Memory is parameterizable iff its structure or wordLines constant is
+        # parameterizable.
+        structKey = processed['structureKey']
+        sEntry = self._rowByQualifiedKey('structures', structKey)
+        structIsParam = bool(sEntry['isParameterizable'])
+        wlConst = self._resolveWordLinesConst(processed, self._parserResolver)
+        wlIsParam = bool(wlConst and wlConst['isParameterizable'])
         return structIsParam or wlIsParam
 
     def _auto_regIsParameterizable(self, section, itemkey, item, field, yamlFile, processed):
         # Register is parameterizable iff its structure is parameterizable,
-        # plus (for memory-type registers) its wordLines constant or pure
-        # block-param. Mirrors _auto_memIsParameterizable.
-        structKey = processed.get('structureKey') or ''
-        structIsParam = False
-        if structKey and '/' in structKey:
-            sname, sctx = structKey.split('/', 1)
-            sEntry = self.data.get('structures', {}).get(sctx, {}).get(sname)
-            structIsParam = bool(sEntry and sEntry.get('isParameterizable'))
-        if processed.get('regType') == 'memory':
-            wlConst = self._resolveWordLinesConst(processed)
-            if wlConst and wlConst.get('isParameterizable'):
+        # plus (for memory-type registers) its wordLines constant.
+        structKey = processed['structureKey']
+        sEntry = self._rowByQualifiedKey('structures', structKey)
+        structIsParam = bool(sEntry['isParameterizable'])
+        if processed['regType'] == 'memory':
+            wlConst = self._resolveWordLinesConst(processed, self._parserResolver)
+            if wlConst and wlConst['isParameterizable']:
                 return True
-            # Pure block-param fallback.
-            if not wlConst:
-                wl = processed.get('wordLines') or ''
-                wlKey = processed.get('wordLinesKey') or ''
-                if wl and not wlKey:
-                    try:
-                        int(wl)
-                    except (TypeError, ValueError):
-                        blockKey = processed.get('blockKey') or ''
-                        if '/' in blockKey:
-                            block, ctx = blockKey.split('/', 1)
-                            if self.checkIsParam(block, wl, ctx):
-                                return True
         return structIsParam
 
     def _auto_regMaxBytes(self, section, itemkey, item, field, yamlFile, processed):
         # Worst-case byte size for a register, derived from its structure.
         # Hard-error on any failure path: a silent 0 propagates downstream as a
         # zero-sized register, corrupting address allocation without warning.
-        structKey = processed.get('structureKey') or ''
-        if not structKey or '/' not in structKey:
-            printError(f"Register '{itemkey}' in {yamlFile}: structureKey "
-                       f"'{structKey}' is missing or malformed (expected "
-                       f"'name/yamlFile'). Cannot derive maxBytes.")
-            exit(warningAndErrorReport())
-        sname, sctx = structKey.split('/', 1)
-        sEntry = self.data.get('structures', {}).get(sctx, {}).get(sname)
-        if not sEntry:
-            printError(f"Internal error: register '{itemkey}' in "
-                       f"{yamlFile} references structure '{structKey}' but it "
-                       f"is not present in self.data['structures'].")
-            exit(warningAndErrorReport())
-        if sEntry.get('isParameterizable') and sEntry.get('maxBitwidth'):
+        structKey = processed['structureKey']
+        sEntry = self._rowByQualifiedKey('structures', structKey)
+        if sEntry['isParameterizable'] and sEntry['maxBitwidth']:
             width = sEntry['maxBitwidth']
         else:
-            width = sEntry.get('width')
+            width = sEntry['width']
         if not isinstance(width, int) or width <= 0:
-            paramFlag = sEntry.get('isParameterizable')
+            paramFlag = sEntry['isParameterizable']
             printError(f"Register '{itemkey}' in {yamlFile}: structure "
                        f"'{structKey}' has invalid width "
                        f"(isParameterizable={paramFlag}, "
-                       f"maxBitwidth={sEntry.get('maxBitwidth')}, "
-                       f"width={sEntry.get('width')}). Cannot derive maxBytes.")
+                       f"maxBitwidth={sEntry['maxBitwidth']}, "
+                       f"width={sEntry['width']}). Cannot derive maxBytes.")
             exit(warningAndErrorReport())
         return (width + 7) >> 3
 
@@ -6263,18 +5934,12 @@ class projectCreate:
                 return item
 
             # Validate wordLines resolves to non-zero value
-            wlConst = self._resolveWordLinesConst(item)
-            if wlConst is not None:
-                parsed_val = wlConst.get('maxValue') if wlConst.get('isParameterizable') and wlConst.get('maxValue') else wlConst.get('value')
-                if isinstance(parsed_val, bool) or not isinstance(parsed_val, int) or parsed_val <= 0:
-                    self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{registerName}' "
-                                  f"wordLines must resolve to a positive integer, got {parsed_val!r}")
-                    return item
-            else:
-                # Non-const block params are bound through the parameters section,
-                # which may not have been processed yet. calcAddresses validates
-                # those bindings once all YAML has been loaded.
-                pass
+            wlConst = self._resolveWordLinesConst(item, self._parserResolver)
+            parsed_val = wlConst['maxValue'] if wlConst['isParameterizable'] and wlConst['maxValue'] else wlConst['value']
+            if isinstance(parsed_val, bool) or not isinstance(parsed_val, int) or parsed_val <= 0:
+                self.logError(f"In {yamlFile}:{item.get('lc').line + 1 if item.get('lc') else '?'}, memory register '{registerName}' "
+                              f"wordLines must resolve to a positive integer, got {parsed_val!r}")
+                return item
 
             # Memory registers must have addressStruct
             if not item.get('addressStruct') or item.get('addressStruct') == "":
@@ -6312,7 +5977,10 @@ class projectCreate:
             else:
                 entry['channel'] = ''
             for dir in ['src', 'dst']:
-                (instInfo, instContext) = self.getFromContext('instances', yamlFile, row[dir], NotFoundFatal=True)
+                (instInfo, instContext) = self.lookupInScope('instances', yamlFile, row[dir])
+                if not instInfo:
+                    printError(f"instances {row[dir]} in file {yamlFile} is unresolved")
+                    exit(warningAndErrorReport())
                 row['instanceType'] = instInfo['instanceType']
                 row['instanceTypeKey'] = instInfo['instanceTypeKey']
                 row['instance'] = row[dir]
@@ -6338,11 +6006,9 @@ class projectCreate:
                 entry['ends'][endRow['portId']]=endRow
                 self.data['connectionsends'][yamlFile][endRow['portId']]=endRow
 
-
-            self.addRecord('connections', yamlFile, myKey, entry, self.schema.data['schema']['connections'])
-
-
             self.data['connections'][yamlFile][myKey] = entry
+            self.addFlatRecord('connections', entry)
+            self.addRecord('connections', yamlFile, myKey, entry, self.schema.data['schema']['connections'])
 
         return
 
@@ -6375,139 +6041,203 @@ class projectCreate:
                     # Process through normal section pipeline - same schema, same validation.
                     # Per-entry handlers consult self._ipParametersActive to stamp isParameterizable.
                     self.processSection(section, sectData, yamlFile)
+                    if section == 'constants':
+                        self._captureIpParametersConstants(sectData, yamlFile)
                 else:
                     printError(f"Unknown sub-section '{section}' in ipParameters in {yamlFile}")
                     exit(warningAndErrorReport())
         finally:
             self._ipParametersActive = prev
 
-    def re_constReplace(self, myStr):
-        return(str(self.constParse(myStr.group(2), self.currentContext, value=True)))
+    def _captureIpParametersConstants(self, sectData, yamlFile):
+        # Record each ipParameters constant into a per-file dict keyed by name so
+        # the file-level orphan check (every exposed param consumed by >=1 block
+        # param) and the per-row variant-binding sizing check can resolve them.
+        # The constants have already been added to self.data['constants'][yamlFile]
+        # by processSection, so the qualified key and maxValue are read back here.
+        fileConsts = self.ipParametersConstants.setdefault(yamlFile, OrderedDict())
+        names = sectData if isinstance(sectData, dict) else \
+            (loopitem[self.schema.data['key']['constants']] for loopitem in sectData)
+        for name in names:
+            entry = self.data['constants'][yamlFile][name]
+            fileConsts[name] = {
+                'name': name,
+                'context': yamlFile,
+                'constantKey': entry['constantKey'],
+                'maxValue': entry['maxValue'],
+            }
 
-    # parse a constant and based on context. Return the value or the symbol based on value flag
-    def constParse(self, data, context, value=True):
-        found = False
-        try:
-            ret = int(data)
-            retContext = None
-            found = True
-        except (ValueError, TypeError):
-            pass
-        if not found:
-            try:
-                ret = float(data)
-                retContext = None
-                found = True
-            except (ValueError, TypeError):
-                pass
-        if not found:
-            # now check from dependancies
-            for myContext in self.yamlContext[context]:
-                const_val = self.const.get(myContext, {}).get(data)
-                if const_val is None:
-                    const_val = self.enums.get(myContext, {}).get(data, {}).get('value')
-                if const_val is not None:
-                    ret = const_val
-                    retContext = data+'/'+myContext
-                    found = True
-                    break
-        if found:
-            if value:
-                return ret
-            else:
-                return data, retContext
-        else:
-            self.logError(f"Constant {data} in file {context} is unresolved")
-            return 0
+    def _post_validateBlockParamBacking(self, itemkey, item, yamlFile):
+        # Per block-param row: resolve the param to its same-name backing constant
+        # and require that constant to be parameterizable. A declarative _validate
+        # cannot express this because constants is context-scoped (the FK framework
+        # only targets flat sections), so the lookup is done here. This rejects a
+        # pure param (no backing const) and a param colliding with a plain
+        # (non-parameterizable) constants: entry. The orphan direction (an exposed
+        # ipParameters const consumed by no block param) is the file-level check.
+        param = item['param']
+        line = item['lc'].line + 1 if item.get('lc') else '?'
+        (constInfo, _constContext) = self.lookupInScope('constants', yamlFile, param)
+        if constInfo is None:
+            self.logError(f"In {yamlFile}:{line}: block param '{param}' has no backing constant; "
+                          f"every block param must be declared as a same-name ipParameters constant")
+        elif not constInfo['isParameterizable']:
+            self.logError(f"In {yamlFile}:{line}: block param '{param}' is backed by a non-parameterizable "
+                          f"constant; a block param must be backed by an ipParameters constant")
+        return item
+
+    def _validateIpParametersLinkage(self, yamlFile):
+        # File-level orphan/empty-set check only: every exposed ipParameters
+        # constant must be consumed by at least one same-file block param. Detecting
+        # an empty consumer set is inherently aggregate and unique to ipParameters;
+        # the per-param backing and parameterizable checks are row-level validators
+        # on the params field (see _post_validateBlockParamBacking and the param
+        # field _validate). Consumption is read from the resolved blocksparams
+        # paramKey, so this stays idempotent across repeated processSingleFile calls.
+        fileConsts = self.ipParametersConstants.get(yamlFile, OrderedDict())
+        if not fileConsts:
+            return
+        consumed = {row['paramKey'] for row in self.data['blocksparams'].get(yamlFile, {}).values()}
+        for name, const in fileConsts.items():
+            if const['constantKey'] not in consumed:
+                self.logError(f"In {yamlFile}: ipParameters constant '{name}' is not consumed by any "
+                              f"block param; every exposed ipParameters constant must back >=1 block param")
+
+    def _post_validateVariantBindingSizing(self, itemkey, item, yamlFile):
+        # Per-binding-row check: the backing ipParameters const's maxValue must be
+        # >= this binding's value, otherwise worst-case address sizing (sourced
+        # from maxValue) would under-allocate for that variant. blockParamKey is
+        # an opaque identity for the target blocksparams row; use that row's
+        # paramKey to reach the exact backing constant.
+        blockParamKey = item['blockParamKey']
+        if blockParamKey not in self.flatData['blocksparams']:
+            return item   # blockParam failed its own validation; error already logged
+        blockParam = self.flatData['blocksparams'][blockParamKey]
+        backingKey = blockParam['paramKey']
+        if backingKey not in self.flatData['constants']:
+            return item   # blockParam backing failed its own validation; error already logged
+        backing = self.flatData['constants'][backingKey]
+        value = self._resolveVariantBindingValue(item)
+        if value is not None and backing['maxValue'] < value:
+            self.logError(f"In {yamlFile}:{item['lc'].line + 1 if item.get('lc') else '?'}: variant "
+                          f"'{item['variant']}' binds param '{item['param']}' to {value}, exceeding the "
+                          f"backing ipParameters constant '{backingKey}' maxValue "
+                          f"{backing['maxValue']}; raise the constant's maxValue to cover the worst-case binding")
+        return item
+
+    def _resolveVariantBindingValue(self, row):
+        # A binding value is either a literal int or the name of a constant the
+        # user referenced; in the latter case valueKey is the qualified const key.
+        valueKey = row.get('valueKey', '') or ''
+        if valueKey:
+            constEntry = self._parserResolver.lookupNamedRow(
+                valueKey, 'variant binding value')
+            return constEntry['value']
+        return row['value']
+
+    def re_constReplace(self, myStr):
+        token = myStr.group(2)
+        return str(self._parserResolver.value(
+            token, label=f"eval token '{token}'"))
 
     def checkIsParam(self, block, param, context):
-        (varInfo, varContext) = self.getFromContext('blocks', context, block, NotFoundFatal=False)
+        (varInfo, varContext) = self.lookupInScope('blocks', context, block)
         if varInfo:
             if 'params' in varInfo:
                 return param in varInfo['params']
 
         return False
 
-    def qualConstParse(self, data):
-        found = False
-        try:
-            ret = int(data)
-            found = True
-        except: ValueError
-        if not found:
-            ret = self.qualConst.get(data)
-            if ret is None:
-                ret = self.qualEnums.get(data, {}).get('value')
-        return(ret)
-
-    # in conversions involving context there are two main cases
-    # 1. A qualified name is not specified in the key and so context range is searched for a match
-    # 2. A qualified name is provided we just need to verify that the context is valid
-    def getFromContext(self, objType, context, key, NotFoundFatal=True):
+    def _lookupInGlobal(self, objType, name):
         ret = None
         found = False
-        if '/' in key:
-            # we have a qualified name so we just need to verify that the context is valid
-            subKey, qualification = key.split('/', 1)
-            # for global context just make sure its valid
-            if context == 'global':
-                # global context is always valid, just check the reference is ok
-                try:
-                    ret = self.data[objType][qualification][subKey]
-                    found = True
-                except: KeyError
-            else:
-                # non global context means we need to ensure that the qualification is valid for this context.
-                # System files (_a2csystem) are implicitly visible to every user-file context, so a qualified
-                # key naming the system qualification resolves without requiring the user file to include
-                # the system file directly.
-                if qualification in self.yamlContext[context] or qualification == '_a2csystem':
-                    try:
-                        ret = self.data[objType][qualification][subKey]
-                        found = True
-                    except: KeyError
+        foundContext = None
+        for qualification, rows in self.data[objType].items():
+            if name in rows:
+                if found:
+                    printError(f"Duplicate key {name} found in global context during validation of {objType}")
+                ret = rows[name]
+                found = True
+                foundContext = qualification
+        return ret, foundContext
 
-        # note that in case there was a slash in the name try the regular context search anyway
-        if not found:
-            if context == 'global':
-                testVal = None
-                foundContext = None
-                # search all contexts for a match, flag duplicates as an error
-                for qualification in self.data[objType]:
-                    try:
-                        testVal = self.data[objType][qualification][key]
-                        if found:
-                            printError(f"Duplicate key {key} found in global context during validation of {objType}")
-                        found = True
-                        foundContext = qualification
-                    except: KeyError
-                ret = testVal
-                qualification = foundContext
-            else:
-                # loop through possible qualifications to find a match
-                for qualification in self.yamlContext[context]:
-                    try:
-                        ret = self.data[objType][qualification][key]
-                        found = True
-                        break
-                    except: KeyError
+    def lookupInScope(self, objType, context, name):
+        """Resolve an unqualified row name by walking the include chain of
+        `context`. `_a2csystem` rows are visible from every non-global
+        context as an implicit fallback.
 
-                # If not found in regular context, also search _a2csystem context
-                if not found and '_a2csystem' in self.yamlContext:
-                    # System files are all stored under '_a2csystem' qualification
-                    try:
-                        ret = self.data[objType]['_a2csystem'][key]
-                        qualification = '_a2csystem'
-                        found = True
-                    except: KeyError
+        `context == 'global'` is the user-authored `scope: global` from
+        schema validators: search every loaded qualification and treat
+        duplicate matches as an error via `_lookupInGlobal`.
 
-        if (not found) and NotFoundFatal:
-            printError(f"{objType} {key} in file {context} is unresolved")
-            exit(warningAndErrorReport())
-        if not found:
-            qualification = None
+        `context == '_global'` is the internal sentinel populated by
+        callers that need to walk every loaded context without duplicate
+        diagnostics; the include chain stored in `yamlContext['_global']`
+        already covers all of them, so this falls through the normal walk.
 
-        return (ret, qualification)
+        Never interprets a `/` inside `name`. Returns
+        (row, qualification) or (None, None)."""
+        if context == 'global':
+            return self._lookupInGlobal(objType, name)
+        for qualification in self.yamlContext[context]:
+            rows = self.data[objType].get(qualification, {})
+            if name in rows:
+                return rows[name], qualification
+        sysRows = self.data[objType].get('_a2csystem', {})
+        if name in sysRows:
+            return sysRows[name], '_a2csystem'
+        return None, None
+
+    def validateForeignKey(self, sourceRow, sourceSection, sourceField, context):
+        """Validate a schema-declared foreign key on `sourceRow` against
+        its declared target. The schema's plain/combo classification of
+        the source field selects the branch:
+
+        - Plain FK: resolve `sourceRow[sourceField]` through scoped
+          lookup. Invariant 3 guarantees the target section is `flat`
+          and `validator.field` names its storage key.
+        - Combo FK: walk rows of the target section in scope order and
+          match the source row's components against the target's
+          component fields. Invariant 4 guarantees the combo sources
+          on source and target are identical, so reading the unqualified
+          component values on `sourceRow` is safe and the match is
+          immune to `is_foreign_key` asymmetry between sections.
+
+        Returns (targetRow, qualification) or (None, None)."""
+        validator = self.schema.data['validator'][sourceSection + sourceField]
+        targetSection = validator['section']
+        targetFieldName = validator['field']
+        sourceFieldObj = self.schema.get_node(sourceSection).get_field(sourceField)
+        sourceCombo = sourceFieldObj.combo_sources
+
+        if not sourceCombo:
+            return self.lookupInScope(targetSection, context, sourceRow[sourceField])
+
+        if context == 'global':
+            qualifications = list(self.data[targetSection])
+        else:
+            qualifications = list(self.yamlContext[context])
+        if '_a2csystem' not in qualifications:
+            qualifications.append('_a2csystem')
+        for qualification in qualifications:
+            for row in self.data[targetSection].get(qualification, {}).values():
+                if all(row[source] == sourceRow[source] for source in sourceCombo):
+                    return row, qualification
+        return None, None
+
+    def _scalarSeqItemLc(self, nested, index):
+        # ruamel (round-trip) attaches line/col to the parent CommentedSeq, not to
+        # scalar list elements (a bare str/int has no .lc). Recover the element's
+        # position from the parent so flat-list rows carry a real line for error
+        # reporting, mirroring the lc that mapping-style rows already get.
+        # Synthesized (non-ruamel) lists have no .lc; those rows carry no line.
+        if not hasattr(nested, 'lc'):
+            return None
+        line, col = nested.lc.item(index)
+        lc = type(nested.lc)()
+        lc.line = line
+        lc.col = col
+        return lc
 
     def processSubTable(self, section, nested, yamlFile, nestedSchema, outerItemKey, context, outer = None):
         # Process nested table entries using the schema for the child section.
@@ -6545,19 +6275,31 @@ class projectCreate:
 
                     ret[itemkey] = processed
                     self.data[nestedContext][yamlFile][itemkey] = processed
+                    self.addFlatRecord(nestedContext, processed)
             else:
-                # Simple list of scalar values for singleEntryList
-                for item in nested:
-                    itemkey = item
-                    ret[itemkey] = self.processSimple(section, itemkey, {}, yamlFile, schema=nestedSchema, context=context, outer=outer)
-                    self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
+                # Simple list of scalar values; recover each element's line from
+                # the parent sequence so the row carries a position for diagnostics.
+                for index, item in enumerate(nested):
+                    anchor = item
+                    lc = self._scalarSeqItemLc(nested, index)
+                    processed = self.processSimple(section, anchor, {'lc': lc} if lc is not None else {}, yamlFile, schema=nestedSchema, context=context, outer=outer)
+                    itemkey = self.schema.data['key'][nestedContext]
+                    itemkey = processed[itemkey]
+                    ret[anchor] = processed
+                    self.data[nestedContext][yamlFile][itemkey] = processed
+                    self.addFlatRecord(nestedContext, processed)
 
         elif 'singleEntryList' in attribs:
             # Handle singleEntryList separately - items from a list become individual records
-            for item in nested:
-                itemkey = item
-                ret[itemkey] = self.processSimple(section, itemkey, {}, yamlFile, schema=nestedSchema, context=context, outer=outer)
-                self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
+            for index, item in enumerate(nested):
+                anchor = item
+                lc = self._scalarSeqItemLc(nested, index)
+                processed = self.processSimple(section, anchor, {'lc': lc} if lc is not None else {}, yamlFile, schema=nestedSchema, context=context, outer=outer)
+                itemkey = self.schema.data['key'][nestedContext]
+                itemkey = processed[itemkey]
+                ret[anchor] = processed
+                self.data[nestedContext][yamlFile][itemkey] = processed
+                self.addFlatRecord(nestedContext, processed)
 
         else:
             if isinstance(nested, list):
@@ -6568,6 +6310,7 @@ class projectCreate:
                         listret = self.processSimple(section, itemkey, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
                         ret[listret[itemkeyName]] = listret
                         self.data[nestedContext][yamlFile][listret[itemkeyName]] = listret
+                        self.addFlatRecord(nestedContext, listret)
                 else:
                     printError(f"{yamlFile}:{nested.lc.line+1} {nested} unexpected in list format in file {context} this is either a schema or file error")
                     exit(warningAndErrorReport())
@@ -6577,8 +6320,12 @@ class projectCreate:
                     ret = self.processSimple(section, outerItemKey, nested, yamlFile, schema=nestedSchema, context=context, outer=outer)
                 else:
                     for itemkey, item in nested.items():
-                        ret[itemkey] = self.processSimple(section, itemkey, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
-                        self.data[nestedContext][yamlFile][itemkey] = ret[itemkey]
+                        processed = self.processSimple(section, itemkey, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
+                        storageKey = self.schema.data['key'][nestedContext]
+                        storageKey = processed[storageKey]
+                        ret[itemkey] = processed
+                        self.data[nestedContext][yamlFile][storageKey] = processed
+                        self.addFlatRecord(nestedContext, processed)
         return ret
 
     # add an item to the database

@@ -1,0 +1,22 @@
+projectName: addrctl_test
+topInstance: uTop
+
+dirs:
+    root: ..
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+projectFiles:
+    - addrctl_arch_0ugcg0_g.yaml

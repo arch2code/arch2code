@@ -141,8 +141,17 @@ def _run():
         ]
         assert len(memories) == 1, \
             f"expected one multiMem row, got {len(memories)}"
+        assert memories[0].get('blockKey') == multi_key, \
+            f"multiMem blockKey expected '{multi_key}', got '{memories[0].get('blockKey')}'"
         assert bool(memories[0].get('regAccess')), \
             f"multiMem expected regAccess truthy, got {memories[0].get('regAccess')!r}"
+
+        handler_view = prj.getBlockData(handler_block_key)
+        handler_memory_ports = handler_view.get('memoryPorts', {})
+        assert 'multiMem_reg' in handler_memory_ports, (
+            f"handler view memoryPorts expected to contain 'multiMem_reg'; "
+            f"got {sorted(handler_memory_ports.keys())}"
+        )
 
         instances_with_regapb = prj.config.getConfig('INSTANCES_WITH_REGAPB', failOk=True)
         multi_inst_key, _ = find_instance(prj, 'uMulti')

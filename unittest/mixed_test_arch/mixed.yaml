@@ -232,6 +232,17 @@ interfaces:
     desc: "A start done interface"
     interfaceType: notify_ack
 
+# Backing constants for blockF's block params (params: [bob, fred]). Every block
+# param must be declared as a same-name parameterizable ipParameters constant
+# with an explicit maxValue, which caps the worst-case variant binding.
+# Declared just before blocks: so the block-param backing resolves, and after
+# encoders: whose nested parse pass would otherwise trip the linkage check
+# before blocks are parsed.
+ipParameters:
+  constants:
+    bob:  {value: 16, maxValue: 16, desc: "blockF param: memory depth (variant bindings BOB0=16, BOB1=15)"}
+    fred: {value: 1,  maxValue: 1,  desc: "blockF param: exercises the param machinery (variant bindings 0, 1)"}
+
 # blocks these are subsystems or blocks that can be instanced one or more times
 ## blockname: followed by a name that gives this object (block) a unique key
 ### portname: followed by a name that gives this port a unique key for this block, this is used when a block is instanced

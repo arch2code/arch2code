@@ -67,6 +67,7 @@
 # regular format consists of
 
 constants:
+  _attribs: [flat]
   constant: key
   value: eval
   desc: required
@@ -90,7 +91,7 @@ variables:
       field: type
 
 types:
-  _attribs: [post(validateTypeWidth)]
+  _attribs: [flat, post(validateTypeWidth)]
   type: key
   desc: required
   isSigned: optional(false)
@@ -109,9 +110,10 @@ enums:
   _mapto: types # this section maps to the types section to allow user to define two types sections as yaml does not allow multiple sections with same name
 
 structures: # customer handler, the fields here must match the code
+  _attribs: [flat]
   structure: key
   vars:
-    _attribs: [required, multiple, collapsed]
+    _attribs: [required, multiple, collapsed, flat]
     variable: key
     varType:
       _type: optional
@@ -133,6 +135,7 @@ structures: # customer handler, the fields here must match the code
   maxBitwidth: auto(structMaxBitwidth)
 
 interface_defs:
+  _attribs: [flat]
   interface_type: key
   # marks an interface_def as a register-bus / address-bus meta-protocol
   addressBus: optional(false)
@@ -176,7 +179,7 @@ interface_defs:
     mapped_type: listkey  
 
 interfaces:
-  _attribs: [post(validate_interface_structures)]
+  _attribs: [flat, post(validate_interface_structures)]
   interface: key
   interfaceType:
     _type: required
@@ -205,8 +208,10 @@ interfaces:
       _validate:
         section: structures
         field: structure
+  isParameterizable: auto(intfIsParameterizable)
 
 instances:
+  _attribs: [flat]
   instance: key
   instanceType:
     _type: required
@@ -230,7 +235,7 @@ instances:
   instID: auto(instanceID)  #note that even if specified in instances section, will be overridden
 
 blocks:
-  _attribs: [post(validateBlockAddressDecl)]
+  _attribs: [flat, post(validateBlockAddressDecl)]
   block: key
   desc: required
   attrib: optional
@@ -246,7 +251,7 @@ blocks:
   isParameterizable: optional(false) # filled out by block config post-processing
   defaultConfig: optional("") # filled out by block config post-processing
   params:
-    _attribs: [optional, list]
+    _attribs: [optional, list, flat, post(validateBlockParamBacking)]
     param: key
   ports:
     _attribs: [optional, multiple]
@@ -292,9 +297,17 @@ parameters:
       section: blocks
       field: block
   variants:
-    _attribs: [multiple, collapsed]
+    _attribs: [multiple, collapsed, post(validateVariantBindingSizing)]
     variant: required
     param: required
+    blockParam:
+      _type: required
+      _combo:
+        block: required
+        param: required
+      _validate:
+        section: blocksparams
+        field: blockparam
     value: const
     blockVariantParam:
       _key:
@@ -303,6 +316,7 @@ parameters:
         param: required
 
 connections: # custom handler
+  _attribs: [flat]
   _dataSchema: #dataschema is used when how the data is parsed is different to how db stores data
     interface:
       _type: required
@@ -343,6 +357,7 @@ connections: # custom handler
         srcport: optional
         dst: required
         dstport: optional
+    isParameterizable: auto(interfaceRefIsParameterizable)
   interface:
     _type: required
     _validate:
@@ -373,6 +388,7 @@ connections: # custom handler
   channel: optional #filled programatically based on src portName
   maxTransferSize: optional(0) # for multiCycle operation, overrides the interface maxTransferSize definition
   tracker: optional
+  isParameterizable: auto(interfaceRefIsParameterizable)
   ends:
     _attribs: multiple
     direction: required
@@ -389,6 +405,7 @@ connections: # custom handler
     #connCount: optional
 
 connectionMaps:
+  _attribs: [flat]
   interface:
     _type: required
     _validate:
@@ -417,12 +434,14 @@ connectionMaps:
   instancePort: # currently no validator
     _type: optional
   instancePortName: auto(instancePortName)
+  isParameterizable: auto(interfaceRefIsParameterizable)
   portId : # at end for ordering
     _key:
       block: required  # metadata will use qualified version (blockKey)
       portName: required
 
 memories:
+  _attribs: [flat]
   memory: required
   structure:
     _type: required
@@ -443,6 +462,7 @@ memories:
       field: structure
   count: optionalConst(1)
   offset: optional(0)
+  decodeSize: optional(0)   # filled out by calcAddresses; bytes of memory-decoded address range (worst case)
   regAccess: optional(false)
   local: optional(false) # for memories that need to be in flops with fast array access
   isParameterizable: auto(memIsParameterizable)
@@ -467,7 +487,7 @@ memories:
         port: required
 
 registers:
-  _attribs: [post(registers)]
+  _attribs: [flat, post(registers)]
   register: required
   regType:
     _type: required
@@ -495,6 +515,7 @@ registers:
       field: structure
   wordLines: optionalConst(0)
   offset: optional(0)
+  decodeSize: optional(0)   # filled out by calcAddresses for memory-type registers; bytes of memory-decoded address range (worst case)
   defaultValue: optional(0)
   isParameterizable: auto(regIsParameterizable)
   maxBytes: auto(regMaxBytes)
@@ -512,6 +533,7 @@ specialStructures:
       field: structure
 
 memoryConnections:
+  _attribs: [flat]
   memory: required
   block:
     _type: required
@@ -540,6 +562,7 @@ memoryConnections:
     _validate:
       section: instances
       field: instance
+  isParameterizable: auto(memoryConnectionIsParameterizable)
   memoryBlockInstance:
     _key:
       memory: required
@@ -548,6 +571,7 @@ memoryConnections:
 
 
 registerConnections:
+  _attribs: [flat]
   register: required
   block:
     _type: required
@@ -567,6 +591,7 @@ registerConnections:
     _validate:
       section: instances
       field: instance
+  isParameterizable: auto(registerConnectionIsParameterizable)
   registerBlockInstance:
     _key:
       register: required

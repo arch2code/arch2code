@@ -21,15 +21,13 @@ def collectBlocksNeedingRegHandler(prj):
     <block>_regs handler.
     """
     blocksWithRegisters = dict()
-    for context, registers in prj.data['registers'].items():
-        for register, registerData in registers.items():
-            if registerData['blockKey'] not in blocksWithRegisters:
-                blocksWithRegisters[registerData['blockKey']] = registerData['block']
+    for registerData in prj.flatData['registers'].values():
+        if registerData['blockKey'] not in blocksWithRegisters:
+            blocksWithRegisters[registerData['blockKey']] = registerData['block']
     blocksWithMemories = dict()
-    for context, memories in prj.data['memories'].items():
-        for memory, memoryData in memories.items():
-            if memoryData['regAccess'] and memoryData['blockKey'] not in blocksWithMemories:
-                blocksWithMemories[memoryData['blockKey']] = memoryData['block']
+    for memoryData in prj.flatData['memories'].values():
+        if memoryData['regAccess'] and memoryData['blockKey'] not in blocksWithMemories:
+            blocksWithMemories[memoryData['blockKey']] = memoryData['block']
     blocksNeedingConnections = blocksWithRegisters.copy()
     blocksNeedingConnections.update(blocksWithMemories)
     return blocksNeedingConnections
@@ -83,9 +81,7 @@ def postProcess(prj):
     blocksNeedingConnections = collectBlocksNeedingRegHandler(prj)
     blockInfo = dict()
     if blocksNeedingConnections:
-        for context, blockData in prj.data['blocks'].items():
-            for _, block in blockData.items():
-                blockInfo[block['blockKey']] = block
+        blockInfo = prj.flatData['blocks']
     # create a set containers that hold address decode blocks, as blocks within the same scope of the decode can be connected directly
     decoderContainer = dict() # mapping of qualified container to qualified decoder instance
     instancesSimple = dict() # mapping of qualified instance to simple instance name
@@ -125,31 +121,31 @@ def postProcess(prj):
     instancesNeedingConnection = dict()
     instanceDirectConnection = dict()
     decoderContainerInstances = dict()
-    for context, instances in prj.data['instances'].items():
-        for instance, instanceData in instances.items():
-            if instanceData['instanceTypeKey'] in blocksNeedingConnections:
-                if instanceData['instanceTypeKey'] not in instancesNeedingConnection:
-                    instancesNeedingConnection[instanceData['instanceTypeKey']] = dict()
-                instancesNeedingConnection[instanceData['instanceTypeKey']][instance] = instanceData
-                # is the instance in the same container as the address decode block
-                if instanceData['containerKey'] in decoderContainer:
-                    instanceDirectConnection[instanceData['instanceKey']] = True
-                else:
-                    instanceDirectConnection[instanceData['instanceKey']] = False
-                    printError(f"Instances in address groups only supported at same level as decoder. Instance {instance} is in container {instanceData['containerKey']}.")
-                    exit(warningAndErrorReport())
-            if instanceData['instanceTypeKey'] in decoderContainer:
-                if instanceData['instanceTypeKey'] not in decoderContainerInstances:
-                    decoderContainerInstances[instanceData['instanceTypeKey']] = {instanceData['instanceKey']: instanceData}
-                else:
-                    decoderContainerInstances[instanceData['instanceTypeKey']][instanceData['instanceKey']] = instanceData
+    for instanceData in prj.flatData['instances'].values():
+        instanceName = instanceData['instance']
+        if instanceData['instanceTypeKey'] in blocksNeedingConnections:
+            if instanceData['instanceTypeKey'] not in instancesNeedingConnection:
+                instancesNeedingConnection[instanceData['instanceTypeKey']] = dict()
+            instancesNeedingConnection[instanceData['instanceTypeKey']][instanceName] = instanceData
+            # is the instance in the same container as the address decode block
+            if instanceData['containerKey'] in decoderContainer:
+                instanceDirectConnection[instanceData['instanceKey']] = True
+            else:
+                instanceDirectConnection[instanceData['instanceKey']] = False
+                printError(f"Instances in address groups only supported at same level as decoder. Instance {instanceName} is in container {instanceData['containerKey']}.")
+                exit(warningAndErrorReport())
+        if instanceData['instanceTypeKey'] in decoderContainer:
+            if instanceData['instanceTypeKey'] not in decoderContainerInstances:
+                decoderContainerInstances[instanceData['instanceTypeKey']] = {instanceData['instanceKey']: instanceData}
+            else:
+                decoderContainerInstances[instanceData['instanceTypeKey']][instanceData['instanceKey']] = instanceData
 
     connections = list()
     connectionMaps = list()
     listOfInstances = list()
     # build connections from decode blocks to blocks with registers and memories
     for block, blockData in instancesNeedingConnection.items():
-        for instance, instanceData in blockData.items():
+        for instanceName, instanceData in blockData.items():
             connection = dict()
             instanceKey = instanceData['instanceKey']
             listOfInstances.append(instanceKey)
@@ -158,10 +154,10 @@ def postProcess(prj):
                     printError(f"Instance {instanceKey} needs to specify an address group for register address decode")
                     exit(warningAndErrorReport())
                 connection['src'] = instancesSimple[groupDecoder[instanceData['addressGroup']]]
-                connection['dst'] = instance
+                connection['dst'] = instanceName
                 connection['interface'] = reg_interface
-                connection['srcport'] = "apb_"+instance
-                connection['interfaceName'] = "apb_"+instance
+                connection['srcport'] = "apb_"+instanceName
+                connection['interfaceName'] = "apb_"+instanceName
                 connections.append(connection)
             else:
                 # for non direct connect cases we need to connect to parent in the same container as the address decode block

@@ -17,12 +17,15 @@ endif
 #
 #   agents-setup  : Claude Code, Gemini CLI, OpenCode (.claude/, .gemini/, .opencode/, .agents/)
 #   cursor-setup  : Cursor IDE (.cursorrules, .cursor/rules/, .cursor/skills/)
+#   agent-dev-setup : Install Arch2Code builder/base development skills to all platforms
 #   agents-clean  : Remove OpenCode/generic agent artifacts
 #   cursor-clean  : Remove Cursor IDE artifacts (rules, skills, .cursorrules)
+#   agent-dev-clean : Remove Arch2Code builder/base development skills from all platforms
 #------------------------------------------------------------------------
 
 .PHONY: agents-setup agents-clean agents_setup agents_clean
 .PHONY: cursor-setup cursor-clean cursor_setup cursor_clean
+.PHONY: agent-dev-setup agent-dev-clean agent_dev_setup agent_dev_clean
 
 #------------------------------------------------------------------------
 # agents-setup: OpenCode / Claude Code / Gemini CLI / generic agents
@@ -144,6 +147,65 @@ cursor-setup cursor_setup:
 	@echo "  - .cursor/skills/*/SKILL.md (on-demand skills)"
 
 #------------------------------------------------------------------------
+# agent-dev-setup: Arch2Code builder/base development skills for all platforms
+#------------------------------------------------------------------------
+agent-dev-setup agent_dev_setup:
+	@echo "Setting up Arch2Code builder/base development skills..."
+	@# Deploy dev skills to each platform's expected layout:
+	@#   Claude Code:  .claude/skills/{name}/SKILL.md
+	@#   Gemini CLI:   .gemini/skills/{name}/SKILL.md
+	@#   OpenCode:     .opencode/skills/{name}/SKILL.md
+	@#   Cross-tool:   .agents/skills/{name}/SKILL.md
+	@#   Cursor IDE:   .cursor/skills/{name}/SKILL.md
+	@if [ -d "$(A2C_ROOT)/base/rules/dev-skills" ]; then \
+		for dir in .claude .gemini .opencode .agents .cursor; do \
+			mkdir -p "$(REPO_ROOT)/$$dir/skills"; \
+			for f in $(A2C_ROOT)/base/rules/dev-skills/*.md; do \
+				if [ -f "$$f" ]; then \
+					sname=$$(basename $$f .md); \
+					mkdir -p "$(REPO_ROOT)/$$dir/skills/$$sname" && \
+					cp "$$f" "$(REPO_ROOT)/$$dir/skills/$$sname/SKILL.md" && \
+					echo "  + Installed dev skill $$sname to $$dir/skills/"; \
+				fi \
+			done; \
+		done \
+	else \
+		echo "  = No dev skills found in builder/base/rules/dev-skills"; \
+	fi
+	@echo ""
+	@echo "Arch2Code builder/base development skill setup complete!"
+
+#------------------------------------------------------------------------
+# agent-dev-clean: Remove Arch2Code builder/base development skills
+#------------------------------------------------------------------------
+agent-dev-clean agent_dev_clean:
+	@echo "Removing Arch2Code builder/base development skills..."
+	@if [ -d "$(A2C_ROOT)/base/rules/dev-skills" ]; then \
+		for dir in .claude .gemini .opencode .agents .cursor; do \
+			for f in $(A2C_ROOT)/base/rules/dev-skills/*.md; do \
+				if [ -f "$$f" ]; then \
+					sname=$$(basename $$f .md); \
+					if [ -d "$(REPO_ROOT)/$$dir/skills/$$sname" ]; then \
+						rm -rf "$(REPO_ROOT)/$$dir/skills/$$sname" && \
+						echo "  - Removed dev skill $$sname from $$dir/skills/"; \
+					fi; \
+				fi; \
+			done; \
+			if [ -d "$(REPO_ROOT)/$$dir/skills" ] && [ -z "$$(ls -A "$(REPO_ROOT)/$$dir/skills" 2>/dev/null)" ]; then \
+				rmdir "$(REPO_ROOT)/$$dir/skills" && \
+				echo "  - Removed empty $$dir/skills directory"; \
+			fi; \
+			if [ -d "$(REPO_ROOT)/$$dir" ] && [ -z "$$(ls -A "$(REPO_ROOT)/$$dir" 2>/dev/null)" ]; then \
+				rmdir "$(REPO_ROOT)/$$dir" && \
+				echo "  - Removed empty $$dir directory"; \
+			fi; \
+		done \
+	else \
+		echo "  = No dev skills found in builder/base/rules/dev-skills"; \
+	fi
+	@echo "Arch2Code builder/base development skill cleanup complete!"
+
+#------------------------------------------------------------------------
 # agents-clean: Remove OpenCode / generic agent artifacts
 #------------------------------------------------------------------------
 agents-clean agents_clean:
@@ -226,5 +288,7 @@ help::
 	@echo "  agents-clean - Remove agent setup files (FORCE=1 to remove modified AGENTS.md)"
 	@echo "  cursor-setup - Setup Cursor IDE rules (.cursor/rules/) and skills (.cursor/skills/)"
 	@echo "  cursor-clean - Remove Cursor IDE setup files (rules, skills, .cursorrules)"
+	@echo "  agent-dev-setup - Install Arch2Code builder/base development skills to all platforms"
+	@echo "  agent-dev-clean - Remove Arch2Code builder/base development skills from all platforms"
 
 endif # A2C_INCLUDE_MAKE_A2C_AGENTS_MK_INCLUDED

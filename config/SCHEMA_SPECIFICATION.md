@@ -680,6 +680,25 @@ self.data_by_parent['parametersvariants'] = {
 - Grouped storage: For reconstructing hierarchical in-memory structure that matches YAML
 - Both populated simultaneously during `loadTable()` for efficiency
 
+#### Parameter Variant Identity
+
+- `parametersvariants.param` is the bare user-authored parameter name and remains the emitted HDL/SystemC Config field name.
+- `parametersvariants.blockParamKey` is the block-scoped target parameter identity. It validates the schema-built `blockParam` combo against `blocksparams.blockparam` and should be used for foreign-key joins, override maps, and other identity-sensitive comparisons.
+- `parametersvariants.blockVariantParamKey` is the unique row key for one `(block, variant, param)` variant binding row.
+- Bare `parametersvariants.param` is not sufficient as a foreign-key identity when multiple visible blocks declare the same parameter name, for example two blocks that both declare `WIDTH`.
+
+Example:
+```python
+self.data['parametersvariants']['blockF/v1/width/mixed.yaml'] = {
+    'param': 'width',
+    'blockParamKey': 'blockFwidth/mixed.yaml',
+    'blockVariantParamKey': 'blockFv1width/mixed.yaml',
+    ...
+}
+```
+
+Template emission should continue to use `param` for generated field names; only identity-sensitive logic should use `blockParamKey`.
+
 #### Loading Process
 
 1. **Load Subtables First**: Depth-first traversal ensures all children loaded before parents
@@ -841,7 +860,7 @@ Extracts the storage key from a processed YAML row.
 ### 4. Context Management
 - Use `_a2csystem` for system-wide definitions
 - Use `yamlFile` for project-specific definitions
-- `getFromContext` automatically searches `_a2csystem` as fallback
+- `lookupInScope` walks the include chain of the scope and falls back to `_a2csystem`
 - Validators should use appropriate scope (usually `yamlFile`)
 
 ### 5. Validation Strategy
@@ -936,4 +955,3 @@ The schema system provides a powerful, declarative way to define configuration s
 - **Validation**: Built-in checks for data integrity with fail-fast error handling
 
 By following these specifications and best practices, you can effectively define, validate, and process complex hierarchical configuration data.
-

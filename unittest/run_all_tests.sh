@@ -99,20 +99,56 @@ echo "Test Suite 13: Thunker View Derivation"
 echo "------------------------------------------------------------------------"
 python3 test_thunker_view.py || FAILED=1
 
-# Test 14: Error handling - RTL hierarchy implementation
+# Test 14: Declared port resolved interface context
 echo ""
-echo "Test Suite 14: Error Handling (RTL Hierarchy)"
+echo "Test Suite 14: Declared Port Resolved Interface Context"
+echo "------------------------------------------------------------------------"
+python3 test_declared_port_resolved_interface_key.py || FAILED=1
+
+# Test 15: ValueResolver qualified override scope
+echo ""
+echo "Test Suite 15: ValueResolver Qualified Override Scope"
+echo "------------------------------------------------------------------------"
+python3 test_value_resolver_qualified_override.py || FAILED=1
+
+# Test 16: Error handling - RTL hierarchy implementation
+echo ""
+echo "Test Suite 16: Error Handling (RTL Hierarchy)"
 echo "------------------------------------------------------------------------"
 if ! python3 test_error_rtl_hierarchy.py; then
     FAILED=1
     echo "Note: Some RTL hierarchy error tests failed"
 fi
 
-# Test 15-35: address-control refactor — Stage 7 Batch A.
-# Per plan-address-control-test-coverage.md "Implementation Phasing"
-# (Batch A): single-router positives, the lowest-cost two-level
-# positives, port-name boundary cases, and the Stage 1.5 / Stage 4
-# diagnostic skeleton. See plan-address-control-refactor.md Stage 7.
+# Test 17: Foreign-key lookup primitives
+echo ""
+echo "Test Suite 17: Foreign-Key Lookup Primitives"
+echo "------------------------------------------------------------------------"
+python3 test_foreign_key_lookup.py || FAILED=1
+
+# Test 18: Block-param / ipParameters-constant linkage and declaration set
+echo ""
+echo "Test Suite 18: Parameter/Constant Linkage and Declaration Set"
+echo "------------------------------------------------------------------------"
+if ! python3 test_param_const_linkage.py; then
+    FAILED=1
+    echo "Note: Some parameter/constant linkage tests failed"
+fi
+
+# Test 19: Block config parameterization
+echo ""
+echo "Test Suite 19: Block Config Parameterization"
+echo "------------------------------------------------------------------------"
+python3 test_block_config_parameterization.py || FAILED=1
+
+# Test 20-: address-control refactor — Stage 7 Batches A and B.
+# Per plan-address-control-test-coverage.md "Implementation Phasing":
+#   Batch A — single-router positives, the lowest-cost two-level
+#             positives, port-name boundary cases, and the Stage 1.5 /
+#             Stage 4 diagnostic skeleton.
+#   Batch B — three-level and thunker cases, including the block-reuse
+#             and mixed-sibling cases that exercise the multi-hop walk.
+# See plan-address-control-refactor.md Stage 7.
 ADDRCTL_TESTS=(
     "T1.1 single-router one-register view"      "test_addrctl_single_router_one_reg.py"
     "T1.2 single-router multi-register leaf"    "test_addrctl_single_router_multi_reg.py"
@@ -120,6 +156,11 @@ ADDRCTL_TESTS=(
     "T1.5 single-router mixed leaves"           "test_addrctl_mixed_leaves.py"
     "T2.1 primary plus nested router"           "test_addrctl_two_router_simple.py"
     "T2.2 primary with no direct leaves"        "test_addrctl_primary_no_direct_leaves.py"
+    "T2.6 parameterized nested router"          "test_addrctl_parameterized_router.py"
+    "T3.1 three-level chain"                    "test_addrctl_three_level_chain.py"
+    "T3.2 three-level fanout"                   "test_addrctl_three_level_fanout.py"
+    "T3.4 register-bearing block reuse"         "test_addrctl_block_reuse_across_levels.py"
+    "T3.5 sibling leaf and nested router"       "test_addrctl_sibling_leaf_and_router.py"
     "T4.1 single-router no-IP simple"           "test_addrctl_no_ip_simple.py"
     "T4.2 two-level no-IP hierarchy"            "test_addrctl_no_ip_two_level.py"
     "T4.3 mixed IP / no-IP under one router"    "test_addrctl_no_ip_mixed.py"
@@ -127,17 +168,25 @@ ADDRCTL_TESTS=(
     "T5.2 leaf with registerPorts only"         "test_addrctl_leaf_register_port_only.py"
     "T5.3 default upstream / decoder ports"     "test_addrctl_default_port_names.py"
     "T5.4 explicit non-default ports"           "test_addrctl_explicit_port_names.py"
+    "TT.3 parameterized register interface"     "test_addrctl_parameterized_reg_iface.py"
+    "TT.4 parameterized router upstream"        "test_addrctl_parameterized_router_upstream.py"
+    "TT.5 parent router variant interface"      "test_addrctl_parent_router_variant_interface.py"
     "E1.1 addressBlock and registerPorts both"  "test_error_addr_and_register_ports.py"
     "E1.2 multi registerPorts rows"             "test_error_multi_register_ports.py"
     "E1.3 registerPort interface not addressBus" "test_error_register_port_not_addressbus.py"
     "E1.4 duplicate addressGroup"               "test_error_duplicate_address_group.py"
     "E1.5 registerPort out-of-scope interface"  "test_error_register_port_out_of_scope.py"
     "E2.1 router has no instance"               "test_error_router_no_instance.py"
+    "E2.2 multi-instance router"                "test_error_multi_instance_router.py"
+    "E2.3 no primary router candidate"          "test_error_no_primary_router.py"
+    "E2.4 multiple primary router candidates"   "test_error_multi_primary_router.py"
     "E2.5 routed leaf in unserved container"    "test_error_leaf_unserved.py"
     "E2.6 leaf with regs but no registerPorts"  "test_error_leaf_no_register_port.py"
+    "E3.1 register interfaceType mismatch"      "test_error_register_interface_type_mismatch.py"
+    "E3.2 register packed-form mismatch"        "test_error_register_packed_form.py"
 )
 
-idx=15
+idx=20
 for ((i = 0; i < ${#ADDRCTL_TESTS[@]}; i+=2)); do
     label=${ADDRCTL_TESTS[i]}
     script=${ADDRCTL_TESTS[i+1]}

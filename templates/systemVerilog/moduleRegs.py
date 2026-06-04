@@ -40,8 +40,10 @@ def render(args, prj, data):
         # For memory registers, compute memory-specific fields
         if reg_data.get('regType') == 'memory':
             reg_data['rowwidth'] = clog2(len(reg_data['segments']) * REG_BUS_WIDTH_BYTES)
-            wordLines = resolve_word_lines(prj, reg_data)
-            reg_data['memsize'] = wordLines * (2** reg_data['rowwidth'])
+            # decodeSize is the worst-case decoded address range in bytes,
+            # persisted by projectCreate's calcAddresses. The template no
+            # longer derives it from wordLines * 2^rowwidth.
+            reg_data['memsize'] = reg_data['decodeSize']
             addr_l = reg_data['offset']
             addr_h = addr_l + reg_data['memsize'] - REG_BUS_WIDTH_BYTES
             reg_data['address_range'] = (addr_l, addr_h)
@@ -59,7 +61,9 @@ def render(args, prj, data):
             entry['bitwidth'] = intf_gen_utils.get_struct_width(mem_data['structureKey'], prj.data['structures'])
             entry['segments'] = list(segment_register_gen(entry, REG_BUS_WIDTH_BYTES, 0))
             entry['rowwidth'] = clog2(len(entry['segments']) * REG_BUS_WIDTH_BYTES)
-            entry['memsize'] = resolve_word_lines(prj, entry) * (2** entry['rowwidth'])
+            # decodeSize is the worst-case decoded address range in bytes,
+            # persisted by projectCreate's calcAddresses.
+            entry['memsize'] = entry['decodeSize']
             entry['address_range'] = ( entry['segments'][0][0], entry['segments'][0][0] + entry['memsize'] - REG_BUS_WIDTH_BYTES )
             entry['addr_const_name'] = address_const_name(data, entry, 'memory')
             entry['size_const_name'] = entry['addr_const_name'] + '_SIZE'
@@ -100,25 +104,6 @@ def address_const_name(data, entry, name_field):
 
 def sv_hex(value):
     return f"32'h{value:08x}"
-
-def resolve_word_lines(prj, entry):
-    word_lines_key = entry.get('wordLinesKey', '')
-    if word_lines_key:
-        return prj.getConst(word_lines_key)
-
-    word_lines = entry.get('wordLines', '')
-    try:
-        return int(word_lines)
-    except (TypeError, ValueError):
-        pass
-
-    values = [v['value'] for v in prj.data.get('parametersvariants', {}).values()
-              if v.get('blockKey') == entry.get('blockKey') and v.get('param') == word_lines]
-    if values:
-        return max(values)
-
-    printError(f"Cannot determine wordLines for {entry.get('memory', entry.get('register', '<unknown>'))}: {word_lines}")
-    exit(warningAndErrorReport())
 
 def section_package_imports(args, prj, data):
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']

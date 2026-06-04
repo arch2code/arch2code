@@ -12,9 +12,9 @@ blockDir: .
 # constants/types sections below for the Step 3 baseline).
 ipParameters:
     constants:
-        IP_DATA_WIDTH:    { value: 70, maxValue: 128, desc: "Per-instance data width" }
-        IP_MEM_DEPTH:     { value: 16, maxValue: 32, desc: "Per-instance memory depth" }
-        IP_DATA_WIDTH_X2: { eval: "$IP_DATA_WIDTH * 2", desc: "Derived width, 2x data (maxValue auto-derived)" }
+        IP_DATA_WIDTH:     { value: 70, maxValue: 128, desc: "Per-instance data width" }
+        IP_MEM_DEPTH:      { value: 16, maxValue: 32, desc: "Per-instance memory depth" }
+        IP_NONCONST_DEPTH: { value: 24, maxValue: 24, desc: "Per-instance block-param depth (worst-case variant binding = 24)" }
     types:
         ipDataT:
             width: IP_DATA_WIDTH
@@ -22,6 +22,7 @@ ipParameters:
             desc: "IP data word, parameterizable"
 
 constants:
+    IP_DATA_WIDTH_X2:      { eval: "$IP_DATA_WIDTH * 2", desc: "Derived width, 2x data (maxValue auto-derived); eval-derived, lives in constants: since no block param consumes it" }
     IP_FIXED_NIBBLE_COUNT: { value: 5, desc: "Fixed array length for non-parameterized type tests" }
     IP_FIXED_PAIR_COUNT:   { value: 2, desc: "Fixed nested-structure array length" }
     IP_FIXED_WORD_COUNT:   { eval: "$IP_FIXED_NIBBLE_COUNT + 1", desc: "Derived fixed array length" }
@@ -161,10 +162,10 @@ interfaces:
 blocks:
     ip:
         desc: "Parameterizable IP under test"
-        # IP_DATA_WIDTH and IP_MEM_DEPTH are also ipParameters constants.
-        # IP_NONCONST_DEPTH is a pure block param (no backing constant) used
-        # to exercise calcAddresses' worst-case sizing of block-param wordLines
-        # via parametersvariants. Bound values: variant0=24, variant1=12.
+        # Each param is backed by a same-name ipParameters constant.
+        # IP_NONCONST_DEPTH exercises calcAddresses' worst-case sizing of
+        # block-param wordLines via parametersvariants (its backing const's
+        # maxValue caps the worst case). Bound values: variant0=24, variant1=12.
         params: [IP_DATA_WIDTH, IP_MEM_DEPTH, IP_NONCONST_DEPTH]
         hasVl: true
         hasMdl: true

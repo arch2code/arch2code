@@ -5,7 +5,8 @@
 package ip_package;
 localparam int unsigned IP_DATA_WIDTH = 32'h0000_0046;  // Per-instance data width
 localparam int unsigned IP_MEM_DEPTH = 32'h0000_0010;  // Per-instance memory depth
-localparam int unsigned IP_DATA_WIDTH_X2 = 32'h0000_008C;  // Derived width, 2x data (maxValue auto-derived)
+localparam int unsigned IP_NONCONST_DEPTH = 32'h0000_0018;  // Per-instance block-param depth (worst-case variant binding = 24)
+localparam int unsigned IP_DATA_WIDTH_X2 = 32'h0000_008C;  // Derived width, 2x data (maxValue auto-derived); eval-derived, lives in constants: since no block param consumes it
 localparam int unsigned IP_FIXED_NIBBLE_COUNT = 32'h0000_0005;  // Fixed array length for non-parameterized type tests
 localparam int unsigned IP_FIXED_PAIR_COUNT = 32'h0000_0002;  // Fixed nested-structure array length
 localparam int unsigned IP_FIXED_WORD_COUNT = 32'h0000_0006;  // Derived fixed array length

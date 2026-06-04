@@ -8,6 +8,7 @@ template, and project database code.
 2. Simplest solution first. Always implement the simplest thing that could work. Do not add abstractions or flexibility that weren't explicitly requested.
 3. Don't touch unrelated code. If a file or function is not directly part of the current task, do not modify it, even if you think it could be improved.
 4. Flag uncertainty explicitly. If you are not confident about an approach or technical detail, say so before proceeding. Confidence without certainty causes more damage than admitting a gap.
+5. `builder/base` is a git submodule. Do not stage or commit any changes - user will manage.
 
 ## Generator Control Flow
 
@@ -16,6 +17,7 @@ that parses YAML and immediately renders templates.
 
 Project makefiles wrap this as `make db` followed by generation targets
 such as `make gen`, but the Python dispatch still follows this split.
+Use `make clean` to force db rebuild. Use make with `-j` for performance. 
 
 1. `projectCreate` builds the database.
   - Entry point: `arch2code.py` with both `--yaml` and `--db`.
@@ -45,7 +47,8 @@ steps. Generators should assume YAML parsing already happened and should read
 through DB-backed data, config, and view helpers.
 Schema-backed design data is stored in tables defined by
 `pysrc/processYaml.py::Schema`; non-schema project state is persisted through
-the DB-backed `config` object.
+the DB-backed `config` object. Exceptions to this rule must be generally avoided
+unless explicitly qualified by the user.
 
 ## Template Rendering
 
@@ -114,3 +117,10 @@ or template, then rerun the normal make target.
 Keep the ownership split clear: `projectCreate` owns durable project database
 truth; `projectOpen` owns read-only access and template-facing views; `renderer`
 owns turning those views into text.
+
+## Simplicity And New Internal Code
+
+- For new internal code, replace the internal shape directly. Do not add compatibility wrappers, optional parameters, fallback paths, or “future-proof” knobs unless a current caller requires them.
+- Before adding an abstraction, identify its owner and lifetime. If ownership is unclear, pause and ask instead of adding factories, caches, or injectable helpers.
+- Do not implement planned-but-unused flexibility. If a requested option has no concrete call site in the current change, leave it out or ask whether it should be included now.
+- Prefer one direct path through the code. Avoid parallel APIs such as `foo()`, `tryFoo()`, optional `resolver=None`, or `fatal=None` unless each path has an existing, tested consumer.

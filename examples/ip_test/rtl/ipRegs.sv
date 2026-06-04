@@ -23,9 +23,9 @@ module ipRegs
     assign apb_addr = ipRegAddrSt'(apbReg.paddr) & 32'h3ff;
     // Register/memory address offsets for decode documentation
     localparam int unsigned REG_IP_IPMEM = 32'h00000000; // IP scratch memory (FW-accessible)
-    localparam int unsigned REG_IP_IPMEM_SIZE = 32'h00000100; // Decode range size
+    localparam int unsigned REG_IP_IPMEM_SIZE = 32'h00000200; // Decode range size
     localparam int unsigned REG_IP_IPFIXEDMEM = 32'h00000200; // Fixed-struct memory with block-param wordLines (F2.4 regression)
-    localparam int unsigned REG_IP_IPFIXEDMEM_SIZE = 32'h00000040; // Decode range size
+    localparam int unsigned REG_IP_IPFIXEDMEM_SIZE = 32'h00000080; // Decode range size
     localparam int unsigned REG_IP_IPNONCONSTMEM = 32'h00000280; // Block-param wordLines with no backing constant (worst-case sizing regression)
     localparam int unsigned REG_IP_IPNONCONSTMEM_SIZE = 32'h00000060; // Decode range size
     localparam int unsigned REG_IP_IPCFG = 32'h00000300; // IP configuration

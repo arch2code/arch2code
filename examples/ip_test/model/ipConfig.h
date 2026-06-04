@@ -10,26 +10,28 @@
 struct ipDefaultConfig {
     static constexpr uint32_t IP_DATA_WIDTH = 70;
     static constexpr uint32_t IP_MEM_DEPTH = 16;
+    static constexpr uint32_t IP_NONCONST_DEPTH = 24;
     static constexpr uint32_t IP_DATA_WIDTH_X2 = 140;
 };
 
 struct ipVariant0Config {
     static constexpr uint32_t IP_DATA_WIDTH = 8;
     static constexpr uint32_t IP_MEM_DEPTH = 16;
-    static constexpr uint32_t IP_DATA_WIDTH_X2 = 140;
     static constexpr uint32_t IP_NONCONST_DEPTH = 24;
+    static constexpr uint32_t IP_DATA_WIDTH_X2 = 140;
 };
 
 struct ipVariant1Config {
     static constexpr uint32_t IP_DATA_WIDTH = 70;
     static constexpr uint32_t IP_MEM_DEPTH = 8;
-    static constexpr uint32_t IP_DATA_WIDTH_X2 = 140;
     static constexpr uint32_t IP_NONCONST_DEPTH = 12;
+    static constexpr uint32_t IP_DATA_WIDTH_X2 = 140;
 };
 
 struct ipRegsConfig {
     static constexpr uint32_t IP_DATA_WIDTH = 70;
     static constexpr uint32_t IP_MEM_DEPTH = 16;
+    static constexpr uint32_t IP_NONCONST_DEPTH = 24;
     static constexpr uint32_t IP_DATA_WIDTH_X2 = 140;
 };
 
