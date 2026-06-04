@@ -15,6 +15,10 @@ enum socketMsgTypeT {
     MSG_SYNC=0x07,
     MSG_APB_REQ=0x08,
     MSG_APB_ACK=0x09,
+    MSG_AXI_RD_REQ=0x0A,
+    MSG_AXI_RD_RESP=0x0B,
+    MSG_AXI_WR_REQ=0x0C,
+    MSG_AXI_WR_RESP=0x0D,
     MSG_SHUTDOWN=0xFE,
     MSG_ERROR=0xFF
 };
@@ -31,6 +35,10 @@ inline const char* socketMsgTypeT_prt( socketMsgTypeT val )
         case MSG_SYNC: return( "MSG_SYNC" );
         case MSG_APB_REQ: return( "MSG_APB_REQ" );
         case MSG_APB_ACK: return( "MSG_APB_ACK" );
+        case MSG_AXI_RD_REQ: return( "MSG_AXI_RD_REQ" );
+        case MSG_AXI_RD_RESP: return( "MSG_AXI_RD_RESP" );
+        case MSG_AXI_WR_REQ: return( "MSG_AXI_WR_REQ" );
+        case MSG_AXI_WR_RESP: return( "MSG_AXI_WR_RESP" );
         case MSG_SHUTDOWN: return( "MSG_SHUTDOWN" );
         case MSG_ERROR: return( "MSG_ERROR" );
     }
@@ -46,6 +54,8 @@ struct SocketMsgHeader {
 #pragma pack(pop)
 
 static_assert(sizeof(SocketMsgHeader) == 4, "SocketMsgHeader must be 4 bytes");
+
+static constexpr uint16_t SOCKET_AXI_BURST_BYTES = 4096;
 
 bool socket_send_msg(int fd, uint8_t msg_type, const void *payload, uint16_t len);
 
