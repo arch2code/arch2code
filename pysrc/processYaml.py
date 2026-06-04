@@ -2908,6 +2908,8 @@ class projectCreate:
         self.readRaw()
         # process all files
         self.processYamls()
+        # all files fully parsed: validate the whole-project ipParameters linkage
+        self._validateIpParametersLinkage()
         # run any user provided post processing
         self.postYamlExternalScript()
         # create database indexes
@@ -4578,9 +4580,6 @@ class projectCreate:
                     exit(warningAndErrorReport())
                 if section in self.includeSections:
                     self.includeValid[yamlFile]["valid"] = True
-        # The file's sections are now all parsed, so the ipParameters constants
-        # and the consuming block params are both present: validate the linkage.
-        self._validateIpParametersLinkage(contextFile)
 
     # loop through section handling all items for simple and inbetween sections
     def processSection(self, section, data, yamlFile):
@@ -6086,22 +6085,25 @@ class projectCreate:
                           f"constant; a block param must be backed by an ipParameters constant")
         return item
 
-    def _validateIpParametersLinkage(self, yamlFile):
-        # File-level orphan/empty-set check only: every exposed ipParameters
-        # constant must be consumed by at least one same-file block param. Detecting
-        # an empty consumer set is inherently aggregate and unique to ipParameters;
-        # the per-param backing and parameterizable checks are row-level validators
-        # on the params field (see _post_validateBlockParamBacking and the param
-        # field _validate). Consumption is read from the resolved blocksparams
-        # paramKey, so this stays idempotent across repeated processSingleFile calls.
-        fileConsts = self.ipParametersConstants.get(yamlFile, OrderedDict())
-        if not fileConsts:
-            return
-        consumed = {row['paramKey'] for row in self.data['blocksparams'].get(yamlFile, {}).values()}
-        for name, const in fileConsts.items():
-            if const['constantKey'] not in consumed:
-                self.logError(f"In {yamlFile}: ipParameters constant '{name}' is not consumed by any "
-                              f"block param; every exposed ipParameters constant must back >=1 block param")
+    def _validateIpParametersLinkage(self):
+        # Project-wide orphan/empty-set check, run once after every file is fully
+        # parsed: each exposed ipParameters constant must be consumed by at least
+        # one same-file block param. Detecting an empty consumer set is inherently
+        # aggregate over the whole file, so it cannot run inside processSingleFile,
+        # which is re-entered mid-parse for synthesized type/constant subsets
+        # (encoder expansion, address-enum injection) where the consuming blocks:
+        # section has not yet been parsed. The per-param backing and parameterizable
+        # checks remain row-level validators on the params field (see
+        # _post_validateBlockParamBacking and the param field _validate).
+        # Consumption is read from the resolved blocksparams paramKey.
+        for yamlFile, fileConsts in self.ipParametersConstants.items():
+            if not fileConsts:
+                continue
+            consumed = {row['paramKey'] for row in self.data['blocksparams'].get(yamlFile, {}).values()}
+            for name, const in fileConsts.items():
+                if const['constantKey'] not in consumed:
+                    self.logError(f"In {yamlFile}: ipParameters constant '{name}' is not consumed by any "
+                                  f"block param; every exposed ipParameters constant must back >=1 block param")
 
     def _post_validateVariantBindingSizing(self, itemkey, item, yamlFile):
         # Per-binding-row check: the backing ipParameters const's maxValue must be
