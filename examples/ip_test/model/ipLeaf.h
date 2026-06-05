@@ -24,10 +24,20 @@ private:
 public:
     SC_HAS_PROCESS(ipLeaf);
 
+    // inherited names usable unqualified (no Config:: / this->)
+    using ipLeafBase<Config>::LEAF_DATA_WIDTH;
+    using ipLeafBase<Config>::LEAF_MEM_DEPTH;
+
 
     memories mems;
     //memories
     hwMemory< ipLeafMemSt<Config> > ipLeafMem;
+
+    // inherited parameterized types usable unqualified (no <Config>)
+    using typename ipLeafBase<Config>::ipLeafDataT;
+    using typename ipLeafBase<Config>::ipLeafMemAddrT;
+    using typename ipLeafBase<Config>::ipLeafMemSt;
+    using typename ipLeafBase<Config>::ipLeafMemAddrSt;
 
     ipLeaf(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ipLeaf() override = default;

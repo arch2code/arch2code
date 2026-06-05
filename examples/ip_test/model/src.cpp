@@ -42,24 +42,24 @@ src<Config>::src(sc_module_name blockName, const char * variant, blockBaseMode b
 template<typename Config>
 void src<Config>::driveOut0(void)
 {
-    log_.logPrint(std::format("{} [Stage 8.3] Q11 out0 per-port width = {} bits", this->name(), Config::OUT0_DATA_WIDTH), LOG_IMPORTANT);
-    Q_ASSERT(Config::OUT0_DATA_WIDTH == 8, "Stage 8.3: producer OUT0_DATA_WIDTH must match uIp0 variant0 IP_DATA_WIDTH=8");
-    srcOut0St<Config> d{};
+    log_.logPrint(std::format("{} [Stage 8.3] Q11 out0 per-port width = {} bits", this->name(), OUT0_DATA_WIDTH), LOG_IMPORTANT);
+    Q_ASSERT(OUT0_DATA_WIDTH == 8, "Stage 8.3: producer OUT0_DATA_WIDTH must match uIp0 variant0 IP_DATA_WIDTH=8");
+    srcOut0St d{};
     d.data = 0xA5;
     d.marker = 1;
     log_.logPrint(std::format("{} pushing 0x{:x} marker {} on out0", this->name(), (uint64_t)d.data, (uint64_t)d.marker), LOG_IMPORTANT);
-    this->out0->push(d);
+    out0->push(d);
 }
 
 template<typename Config>
 void src<Config>::driveOut1(void)
 {
-    log_.logPrint(std::format("{} [Stage 8.3] Q11 out1 per-port width = {} bits", this->name(), Config::OUT1_DATA_WIDTH), LOG_IMPORTANT);
-    Q_ASSERT(Config::OUT1_DATA_WIDTH == 70, "Stage 8.3: producer OUT1_DATA_WIDTH must match uIp1 variant1 IP_DATA_WIDTH=70");
-    srcOut1St<Config> d{};
+    log_.logPrint(std::format("{} [Stage 8.3] Q11 out1 per-port width = {} bits", this->name(), OUT1_DATA_WIDTH), LOG_IMPORTANT);
+    Q_ASSERT(OUT1_DATA_WIDTH == 70, "Stage 8.3: producer OUT1_DATA_WIDTH must match uIp1 variant1 IP_DATA_WIDTH=70");
+    srcOut1St d{};
     d.data.word[0] = 0x5A;
     d.data.word[1] = 0x2A;
     d.marker = 1;
     log_.logPrint(std::format("{} pushing 0x{:x}{:016x} marker {} on out1", this->name(), d.data.word[1], d.data.word[0], (uint64_t)d.marker), LOG_IMPORTANT);
-    this->out1->push(d);
+    out1->push(d);
 }

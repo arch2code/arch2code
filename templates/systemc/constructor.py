@@ -8,6 +8,18 @@ def addressConstName(data, item):
     blockName = item.get('block', data['blockName'])
     return f"REG_ADDR_{blockName.upper()}_{item['name'].upper()}"
 
+def bareParameterizedType(typeStr, hasOwnParams):
+    # In templated (own-params) blocks the derived class re-imports each
+    # parameterized type as a bare, class-local alias (NAME aliases
+    # NAME<Config>). Out-of-line member-function references must therefore drop
+    # the <Config> so the qualified-id (NAME::_packedSt / NAME::_byteWidth)
+    # binds the class-local alias rather than the namespace template, which the
+    # alias has shadowed. `typename` is decided by the caller on the original
+    # <Config>-bearing string before stripping.
+    if hasOwnParams:
+        return typeStr.replace('<Config>', '')
+    return typeStr
+
 def wordLinesExpr(item, prj, useConfig=False, blockData=None):
     wordLines = item['wordLines']
     wordLinesKey = item.get('wordLinesKey', '')
@@ -182,6 +194,7 @@ def constructorInit(args, prj, data):
                 # it C++ rejects the dependent type name in the
                 # mem-initializer.
                 typenameKw = 'typename ' if '<Config>' in channelStruct else ''
+                channelStruct = bareParameterizedType(channelStruct, hasOwnParams)
                 defaultValue = f", {typenameKw}{channelStruct}::_packedSt({hex(prj.getConst(chnl_table[chnl]['default_value']))})"
             else:
                 defaultValue = ''
@@ -253,6 +266,7 @@ def constructorInit(args, prj, data):
             # enclosing class template parameter Config — without it C++
             # rejects the dependent type name in the mem-initializer.
             typenameKw = 'typename ' if '<Config>' in regType else ''
+            regType = bareParameterizedType(regType, hasOwnParams)
             out.append(f'        ,{ regData["register"] }({typenameKw}{regType}::_packedSt({defaultValue}))')
         else:
             out.append(f'        ,{ regData["register"] }()')
@@ -369,6 +383,7 @@ def constructorBody(args, prj, data):
                     out.append(f'    // register memories for FW access')
                 if item['type'] == 'memory':
                     memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
+                    memType = bareParameterizedType(memType, hasOwnParams)
                     linesExpr = wordLinesExpr(item, prj, isParameterizable, data)
                     if item['is_reg_handler']:
                         out.append(f'    _a2cRegs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
@@ -376,6 +391,7 @@ def constructorBody(args, prj, data):
                         out.append(f'    _a2cRegs.addMemory( {constName}, {memType}::_byteWidth, {linesExpr}, std::string(this->name()) + ".{item["name"]}", &{item["name"]});')
                 else:  # memory_register
                     memType = intf_gen_utils.sc_structure_field_type(item, 'structure', 'structureKey', prj)
+                    memType = bareParameterizedType(memType, hasOwnParams)
                     out.append(f'    _a2cRegs.addMemory( {constName}, {memType}::_byteWidth, {wordLinesExpr(item, prj, isParameterizable, data)}, std::string(this->name()) + ".{item["name"]}", &{item["name"]}_adapter);')
             else:  # regular register
                 if not register_comment_written:

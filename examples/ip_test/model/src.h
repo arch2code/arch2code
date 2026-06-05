@@ -23,8 +23,20 @@ private:
 public:
     SC_HAS_PROCESS(src);
 
+    // inherited names usable unqualified (no Config:: / this->)
+    using srcBase<Config>::OUT0_DATA_WIDTH;
+    using srcBase<Config>::OUT1_DATA_WIDTH;
+    using srcBase<Config>::out0;
+    using srcBase<Config>::out1;
+
     //instances contained in block
     std::shared_ptr<ipLeafBase<ipLeafVariantLeaf0Config>> uLeaf;
+
+    // inherited parameterized types usable unqualified (no <Config>)
+    using typename srcBase<Config>::srcOut0DataT;
+    using typename srcBase<Config>::srcOut1DataT;
+    using typename srcBase<Config>::srcOut0St;
+    using typename srcBase<Config>::srcOut1St;
 
     src(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~src() override = default;

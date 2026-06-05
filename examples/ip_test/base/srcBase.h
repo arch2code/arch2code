@@ -18,8 +18,8 @@ class srcBase : public virtual blockPortBase
 {
 public:
     virtual ~srcBase() = default;
-    const uint64_t OUT0_DATA_WIDTH;
-    const uint64_t OUT1_DATA_WIDTH;
+    static constexpr auto OUT0_DATA_WIDTH = Config::OUT0_DATA_WIDTH;
+    static constexpr auto OUT1_DATA_WIDTH = Config::OUT1_DATA_WIDTH;
     // src ports
     // srcOut0If->uIp0: src out0 push/ack stream
     push_ack_out< srcOut0St<Config> > out0;
@@ -28,9 +28,7 @@ public:
 
 
     srcBase(std::string name, const char * variant) :
-        OUT0_DATA_WIDTH(Config::OUT0_DATA_WIDTH)
-        ,OUT1_DATA_WIDTH(Config::OUT1_DATA_WIDTH)
-        ,out0("out0")
+        out0("out0")
         ,out1("out1")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
@@ -44,6 +42,10 @@ public:
         out0->setLogging(verbosity);
         out1->setLogging(verbosity);
     };
+    using srcOut0DataT = srcOut0DataT<Config>;
+    using srcOut1DataT = srcOut1DataT<Config>;
+    using srcOut0St = srcOut0St<Config>;
+    using srcOut1St = srcOut1St<Config>;
 };
 template<typename Config>
 class srcInverted : public virtual blockPortBase

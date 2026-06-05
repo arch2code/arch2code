@@ -27,6 +27,13 @@ private:
 public:
     SC_HAS_PROCESS(ip);
 
+    // inherited names usable unqualified (no Config:: / this->)
+    using ipBase<Config>::IP_DATA_WIDTH;
+    using ipBase<Config>::IP_MEM_DEPTH;
+    using ipBase<Config>::IP_NONCONST_DEPTH;
+    using ipBase<Config>::ipDataIf;
+    using ipBase<Config>::regs;
+
 
     //registers
     hwRegister< ipCfgSt<Config>, 20 > ipCfg; // IP configuration
@@ -37,6 +44,15 @@ public:
     hwMemory< ipMemSt<Config> > ipMem;
     hwMemory< ipFixedSt > ipFixedMem;
     hwMemory< ipFixedSt > ipNonConstMem;
+
+    // inherited parameterized types usable unqualified (no <Config>)
+    using typename ipBase<Config>::ipDataT;
+    using typename ipBase<Config>::ipMemAddrT;
+    using typename ipBase<Config>::ipDataSt;
+    using typename ipBase<Config>::ipCfgSt;
+    using typename ipBase<Config>::ipMemSt;
+    using typename ipBase<Config>::ipMemAddrSt;
+    using typename ipBase<Config>::ipBurstSt;
 
     ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ip() override = default;

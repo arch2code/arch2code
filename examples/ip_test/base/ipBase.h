@@ -17,9 +17,9 @@ class ipBase : public virtual blockPortBase
 {
 public:
     virtual ~ipBase() = default;
-    const uint64_t IP_DATA_WIDTH;
-    const uint64_t IP_MEM_DEPTH;
-    const uint64_t IP_NONCONST_DEPTH;
+    static constexpr auto IP_DATA_WIDTH = Config::IP_DATA_WIDTH;
+    static constexpr auto IP_MEM_DEPTH = Config::IP_MEM_DEPTH;
+    static constexpr auto IP_NONCONST_DEPTH = Config::IP_NONCONST_DEPTH;
     // dst ports
     // uSrc->ipDataIf: IP data push/ack stream
     push_ack_in< ipDataSt<Config> > ipDataIf;
@@ -28,10 +28,7 @@ public:
 
 
     ipBase(std::string name, const char * variant) :
-        IP_DATA_WIDTH(Config::IP_DATA_WIDTH)
-        ,IP_MEM_DEPTH(Config::IP_MEM_DEPTH)
-        ,IP_NONCONST_DEPTH(Config::IP_NONCONST_DEPTH)
-        ,ipDataIf("ipDataIf")
+        ipDataIf("ipDataIf")
         ,regs("regs")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
@@ -45,6 +42,13 @@ public:
         ipDataIf->setLogging(verbosity);
         regs->setLogging(verbosity);
     };
+    using ipDataT = ipDataT<Config>;
+    using ipMemAddrT = ipMemAddrT<Config>;
+    using ipDataSt = ipDataSt<Config>;
+    using ipCfgSt = ipCfgSt<Config>;
+    using ipMemSt = ipMemSt<Config>;
+    using ipMemAddrSt = ipMemAddrSt<Config>;
+    using ipBurstSt = ipBurstSt<Config>;
 };
 template<typename Config>
 class ipInverted : public virtual blockPortBase

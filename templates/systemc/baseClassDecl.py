@@ -121,8 +121,12 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
 
     if ifMapping['addConsts']:
         if prj.data['blocks'][data['qualBlock']]['params']:
+            # Block params are exposed as compile-time constants drawn from the
+            # Config policy. static constexpr (rather than a runtime const member)
+            # lets derived/user code use the bare name in constexpr contexts
+            # (if constexpr, template/width arguments) after re-importing it.
             for param in prj.data['blocks'][data['qualBlock']]['params']:
-                out.append(f'    const uint64_t {param["param"]};')
+                out.append(f'    static constexpr auto {param["param"]} = Config::{param["param"]};')
 
     mp_sig = dict()
     portNames = dict()
@@ -182,11 +186,9 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
     out.append(textwrap.indent(gen_sc_ports_decl(args, prj, data), indent))
 
     out.append('')
-    has_param_inits = (
-        ifMapping['addConsts']
-        and bool(prj.data['blocks'][data['qualBlock']]['params'])
-    )
-    colon = ':' if (port_count > 0 or has_param_inits) else ''
+    # Param constants are static constexpr (see above), so they carry no
+    # mem-initialiser; only ports are constructed here.
+    colon = ':' if port_count > 0 else ''
     out.append( indent + f'{ className }({ ifMapping["parameter"] }) {colon}')
     comma = ''
     if ifMapping['ctorStringHasParam']:
@@ -195,17 +197,6 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
     else:
         prefix = ''
         postfix = ''
-    if ifMapping['addConsts']:
-        if prj.data['blocks'][data['qualBlock']]['params']:
-            # Constants that mirror block params now read from the Config
-            # policy directly. The class is templated on Config for any block
-            # with own params, so the qualified-id is well-formed at the
-            # constructor's mem-initialiser. The runtime
-            # instanceFactory::getParam path is decommissioned.
-            for param in prj.data['blocks'][data['qualBlock']]['params']:
-                out.append(f'        {comma}{param["param"]}(Config::{param["param"]})')
-                comma = ','
-
 
     for direction in ['src', 'dst']:
         for port_type in data['ports']:
@@ -239,6 +230,18 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
                 if value['direction'] == direction:
                     out.append(f'        { value["name"] }->setLogging(verbosity);')
     out.append( indent + '};')
+
+    if ifMapping['addConsts']:
+        # Class-local type aliases let derived/user code use the bare type name
+        # (no <Config>). Emitted at the END of the class body, AFTER the port
+        # declarations above: those ports declare NAME<Config>, and a same-named
+        # alias introduced before them would shadow the namespace template and
+        # break the port decls. An alias-declaration's own name is not in scope
+        # within its right-hand side, so `using NAME = NAME<Config>;` resolves
+        # NAME<Config> to the namespace template (brought in via using-namespace).
+        for decl in data['parameterizedDecls']:
+            name = decl['body'][decl['declKind']]
+            out.append( indent + f'using {name} = {name}<Config>;')
 
     out.append( '};')
     return out

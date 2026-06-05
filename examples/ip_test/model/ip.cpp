@@ -28,7 +28,7 @@ ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockBase("ip", name(), bbMode)
         ,ipBase<Config>(name(), variant)
         ,_a2cRegs(log_)
-        ,ipCfg(typename ipCfgSt<Config>::_packedSt(0x0))
+        ,ipCfg(typename ipCfgSt::_packedSt(0x0))
         ,ipLastData()
         ,ipMem(name(), "ipMem", mems, Config::IP_MEM_DEPTH)
         ,ipFixedMem(name(), "ipFixedMem", mems, Config::IP_MEM_DEPTH)
@@ -44,7 +44,7 @@ ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbM
     constexpr uint64_t REG_ADDR_IP_IPLASTDATA = 0x318;
 
     // register memories for FW access
-    _a2cRegs.addMemory( REG_ADDR_IP_IPMEM, ipMemSt<Config>::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipMem", &ipMem);
+    _a2cRegs.addMemory( REG_ADDR_IP_IPMEM, ipMemSt::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipMem", &ipMem);
     _a2cRegs.addMemory( REG_ADDR_IP_IPFIXEDMEM, ipFixedSt::_byteWidth, Config::IP_MEM_DEPTH, std::string(this->name()) + ".ipFixedMem", &ipFixedMem);
     _a2cRegs.addMemory( REG_ADDR_IP_IPNONCONSTMEM, ipFixedSt::_byteWidth, Config::IP_NONCONST_DEPTH, std::string(this->name()) + ".ipNonConstMem", &ipNonConstMem);
     // register registers for FW access
@@ -59,15 +59,15 @@ ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbM
 template<typename Config>
 void ip<Config>::dataHandler(void)
 {
-    ipDataSt<Config> data;
+    ipDataSt data;
     while (true) {
-        this->ipDataIf->pushReceive(data);
+        ipDataIf->pushReceive(data);
         ipLastData.write(data);
         log_.logPrint(std::format("{} received data 0x{:x}{:016x} marker {}", this->name(), data.data.word[1], data.data.word[0], (uint64_t)data.marker), LOG_IMPORTANT);
         Q_ASSERT(data.marker == 1, "ipDataIf marker bit was not preserved through the thunker");
-        if constexpr (Config::IP_DATA_WIDTH > 64) {
+        if constexpr (IP_DATA_WIDTH > 64) {
             Q_ASSERT(data.data.word[1] == 0x2A, "ipDataIf high data word was not preserved through the thunker");
         }
-        this->ipDataIf->ack();
+        ipDataIf->ack();
     }
 }

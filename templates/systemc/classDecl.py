@@ -120,6 +120,31 @@ def render_default(args, prj, data):
         out.append(indent + f'SC_HAS_PROCESS({ className });')
         out.append('')
 
+    # Re-import inherited param constants and interface ports from the
+    # templated base so block code uses the bare name (no Config:: on
+    # constants, no this-> on ports). Two-phase lookup does not search a
+    # dependent base, so the using-declarations are what make the bare
+    # names resolve. Only templated (own-params) blocks have a dependent
+    # base; non-templated blocks need no re-import.
+    if hasOwnParams:
+        reimports = list()
+        for param in prj.data['blocks'][data['qualBlock']]['params']:
+            reimports.append(f'using { baseClassName }::{ param["param"] };')
+        seenPorts = set()
+        for port_type in data['ports']:
+            for port, port_data in data['ports'][port_type].items():
+                if intf_gen_utils.sc_gen_modport_signal_blast(port_data, prj, data, swap_dir=False)['is_skip']:
+                    continue
+                if port_data['name'] in seenPorts:
+                    continue
+                seenPorts.add(port_data['name'])
+                reimports.append(f'using { baseClassName }::{ port_data["name"] };')
+        if reimports:
+            out.append(indent + '// inherited names usable unqualified (no Config:: / this->)')
+            for line in reimports:
+                out.append(indent + line)
+            out.append('')
+
     channels = intf_gen_utils.sc_declare_channels(data, prj, indent, data)
     if len(channels):
         out.append( indent + '// channels')
@@ -214,6 +239,21 @@ def render_default(args, prj, data):
             addrStruct = intf_gen_utils.sc_structure_field_type(memData, 'addressStruct', 'addressStructKey', prj)
             dataStruct = intf_gen_utils.sc_structure_field_type(memData, 'structure', 'structureKey', prj)
             out.append( indent + f'memory_channel<{addrStruct}, {dataStruct}> {channelName};')
+
+    # Re-import inherited parameterized types from the templated base so block
+    # code uses the bare type name (no <Config>). Two-phase lookup does not
+    # search a dependent base, so the using-declarations are what make the bare
+    # names resolve; `typename` is required for type re-imports. Emitted at the
+    # END of the generated region, AFTER the register/memory/instance member
+    # declarations above: those declare NAME<Config> in-class, and a same-named
+    # alias placed before them would turn NAME into a non-template and break
+    # those decls. Only templated (own-params) blocks have a dependent base.
+    if hasOwnParams and data['parameterizedDecls']:
+        out.append('')
+        out.append(indent + '// inherited parameterized types usable unqualified (no <Config>)')
+        for decl in data['parameterizedDecls']:
+            name = decl['body'][decl['declKind']]
+            out.append(indent + f'using typename { baseClassName }::{name};')
 
     out.append('')
     out.append( indent + f'{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode);')

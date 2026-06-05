@@ -16,13 +16,11 @@ class ipLeafBase : public virtual blockPortBase
 {
 public:
     virtual ~ipLeafBase() = default;
-    const uint64_t LEAF_DATA_WIDTH;
-    const uint64_t LEAF_MEM_DEPTH;
+    static constexpr auto LEAF_DATA_WIDTH = Config::LEAF_DATA_WIDTH;
+    static constexpr auto LEAF_MEM_DEPTH = Config::LEAF_MEM_DEPTH;
 
 
-    ipLeafBase(std::string name, const char * variant) :
-        LEAF_DATA_WIDTH(Config::LEAF_DATA_WIDTH)
-        ,LEAF_MEM_DEPTH(Config::LEAF_MEM_DEPTH)
+    ipLeafBase(std::string name, const char * variant) 
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -31,6 +29,10 @@ public:
     void setLogging(verbosity_e verbosity) override
     {
     };
+    using ipLeafDataT = ipLeafDataT<Config>;
+    using ipLeafMemAddrT = ipLeafMemAddrT<Config>;
+    using ipLeafMemSt = ipLeafMemSt<Config>;
+    using ipLeafMemAddrSt = ipLeafMemAddrSt<Config>;
 };
 template<typename Config>
 class ipLeafInverted : public virtual blockPortBase
