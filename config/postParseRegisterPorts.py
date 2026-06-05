@@ -280,10 +280,17 @@ def postProcess(prj):
             )
         handlerPort = servingRouter['addressBlock']['registerDecoderPort']
 
+        # The handler inherits the leaf block's parameters so it emits
+        # module parameters and selects the leaf's module-local
+        # parameterizable declarations. The leaf's params are already parsed
+        # and validated (processYamls runs before this post-parse step).
+        parentParams = [row['param'] for row in prj.flatData['blocksparams'].values()
+                        if row['blockKey'] == leafBlockKey]
         reg_block, block_def, instance_name, instance_def, connection_map = \
             synthesiseRegHandler(
                 prj, leafBlockKey, leafBlockSimple, leafInterfaceName,
                 blockInfo, instance_prefix, block_suffix, camel_case,
+                parentParams,
             )
         connection_map['port'] = portName
         connection_map['instancePort'] = handlerPort

@@ -30,7 +30,7 @@ import ip_package::*;
     memory_if #(.data_t(ipFixedSt), .addr_t(ipFixedAddrSt)) ipNonConstMem_reg();
 
 // Instances
-ipRegs uIpRegs (
+ipRegs #(.IP_DATA_WIDTH(IP_DATA_WIDTH), .IP_MEM_DEPTH(IP_MEM_DEPTH), .IP_NONCONST_DEPTH(IP_NONCONST_DEPTH)) uIpRegs (
     .apbReg (regs),
     .ipMem (ipMem_reg),
     .ipFixedMem (ipFixedMem_reg),

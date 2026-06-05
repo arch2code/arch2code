@@ -6,6 +6,9 @@ module ipRegs
     // Generated Import package statement(s)
     import ip_package::*;
     #(
+        parameter IP_DATA_WIDTH,
+        parameter IP_MEM_DEPTH,
+        parameter IP_NONCONST_DEPTH,
         parameter bit APB_READY_1WS = 0
     )
     (
@@ -18,6 +21,28 @@ module ipRegs
         input clk,
         input rst_n
     );
+    // Module-local parameterizable type/struct declarations (SV cannot
+    // parameterize a package, so these live in the owning module).
+    typedef logic[IP_DATA_WIDTH-1:0] ipDataT; //IP data word, parameterizable
+    typedef logic[$clog2(IP_MEM_DEPTH)-1:0] ipMemAddrT; //Index into ipMem (0 .. IP_MEM_DEPTH-1)
+    typedef struct packed {
+        enableT marker; //Marker bit expected after the data payload
+        ipDataT data; //Data word
+    } ipDataSt;
+    typedef struct packed {
+        enableT enable; //Enable bit
+        ipModeT mode; //Operating mode
+        ipDataT threshold; //Threshold value
+    } ipCfgSt;
+    typedef struct packed {
+        ipDataT data; //Data word
+    } ipMemSt;
+    typedef struct packed {
+        ipMemAddrT address; //Memory address
+    } ipMemAddrSt;
+    typedef struct packed {
+        ipDataT [IP_MEM_DEPTH-1:0] samples; //Burst of parameterizable samples
+    } ipBurstSt;
 
     ipRegAddrSt apb_addr;
     assign apb_addr = ipRegAddrSt'(apbReg.paddr) & 32'h3ff;
@@ -31,41 +56,79 @@ module ipRegs
     localparam int unsigned REG_IP_IPCFG = 32'h00000300; // IP configuration
     localparam int unsigned REG_IP_IPLASTDATA = 32'h00000318; // Last data word received on ipDataIf
 
+    genvar gi;
+
     ipCfgSt ipCfg_reg;
-    logic ipCfg_reg_update_0;
-    logic ipCfg_reg_update_1;
-    logic ipCfg_reg_update_2;
+    localparam int unsigned IPCFG_W = $bits(ipCfgSt);
+    logic [31:0] ipCfg_rword [0:2];
+    logic [2:0] ipCfg_update;
     assign ipCfg.data = ipCfg_reg;
-    `DFFREN(ipCfg_reg[31:0], apbReg.pwdata[31:0], ipCfg_reg_update_0, 32'h00000000)
-    `DFFREN(ipCfg_reg[63:32], apbReg.pwdata[31:0], ipCfg_reg_update_1, 32'h00000000)
-    `DFFREN(ipCfg_reg[72:64], apbReg.pwdata[8:0], ipCfg_reg_update_2, 9'h00000000)
+    generate
+        for (gi = 0; gi < 3; gi++) begin : g_ipCfg
+            if (IPCFG_W > 32*gi) begin : present
+                if (IPCFG_W >= 32*(gi+1)) begin : full
+                    `DFFREN(ipCfg_reg[32*gi +: 32], apbReg.pwdata[31:0], ipCfg_update[gi], '0)
+                    assign ipCfg_rword[gi] = ipCfg_reg[32*gi +: 32];
+                end else begin : partial
+                    `DFFREN(ipCfg_reg[32*gi +: (IPCFG_W-32*gi)], apbReg.pwdata[IPCFG_W-32*gi-1:0], ipCfg_update[gi], '0)
+                    assign ipCfg_rword[gi] = 32'(ipCfg_reg[32*gi +: (IPCFG_W-32*gi)]);
+                end
+            end else begin : absent
+                assign ipCfg_rword[gi] = '0; // absent word reads 0
+            end
+        end
+    endgenerate
 
     ipDataSt ipLastData_reg;
+    localparam int unsigned IPLASTDATA_W = $bits(ipDataSt);
+    logic [31:0] ipLastData_rword [0:2];
     assign ipLastData_reg = ipLastData.data;
+    generate
+        for (gi = 0; gi < 3; gi++) begin : g_ipLastData
+            if (IPLASTDATA_W > 32*gi) begin : present
+                if (IPLASTDATA_W >= 32*(gi+1)) begin : full
+                    assign ipLastData_rword[gi] = ipLastData_reg[32*gi +: 32];
+                end else begin : partial
+                    assign ipLastData_rword[gi] = 32'(ipLastData_reg[32*gi +: (IPLASTDATA_W-32*gi)]);
+                end
+            end else begin : absent
+                assign ipLastData_rword[gi] = '0; // absent word reads 0
+            end
+        end
+    endgenerate
 
     // ipMem
-    ipMemSt nxt_ipMem_data, ipMem_data;
+    ipMemSt ipMem_reg;
+    localparam int unsigned IPMEM_W = $bits(ipMemSt);
+    localparam int unsigned IPMEM_TOP = (IPMEM_W-1)/32; // top present word for this variant
+    logic [2:0] ipMem_update;
+    logic [31:0] ipMem_rword [0:2];
     ipMemAddrSt ipMem_addr;
-
-    logic ipMem_update_0;
-    logic ipMem_update_1;
-    logic ipMem_update_2;
     logic nxt_ipMem_rd_enable, ipMem_rd_enable, ipMem_rd_capture;
     logic ipMem_wr_enable;
-
     `DFF(ipMem_addr, ipMemAddrSt'(apb_addr[31:4]))
-    `DFF(ipMem_wr_enable, ipMem_update_2)
+    `DFF(ipMem_wr_enable, ipMem_update[IPMEM_TOP])
     `DFF(ipMem_rd_enable, nxt_ipMem_rd_enable)
     `DFF(ipMem_rd_capture, ipMem_rd_enable)
-
-    `DFFEN(ipMem_data[31:0], nxt_ipMem_data[31:0], ipMem_update_0)
-    `DFFEN(ipMem_data[63:32], nxt_ipMem_data[63:32], ipMem_update_1)
-    `DFFEN(ipMem_data[69:64], nxt_ipMem_data[69:64], ipMem_update_2)
-
+    generate
+        for (gi = 0; gi < 3; gi++) begin : g_ipMem
+            if (IPMEM_W > 32*gi) begin : present
+                if (IPMEM_W >= 32*(gi+1)) begin : full
+                    `DFFEN(ipMem_reg[32*gi +: 32], apbReg.pwdata[31:0], ipMem_update[gi])
+                    assign ipMem_rword[gi] = ipMem.read_data[32*gi +: 32];
+                end else begin : partial
+                    `DFFEN(ipMem_reg[32*gi +: (IPMEM_W-32*gi)], apbReg.pwdata[IPMEM_W-32*gi-1:0], ipMem_update[gi])
+                    assign ipMem_rword[gi] = 32'(ipMem.read_data[32*gi +: (IPMEM_W-32*gi)]);
+                end
+            end else begin : absent
+                assign ipMem_rword[gi] = '0; // absent word reads 0
+            end
+        end
+    endgenerate
     assign ipMem.enable      = ipMem_rd_enable | ipMem_wr_enable;
     assign ipMem.wr_en       = ipMem_wr_enable;
     assign ipMem.addr        = ipMem_addr;
-    assign ipMem.write_data  = ipMem_data;
+    assign ipMem.write_data  = ipMem_reg;
 
     // ipFixedMem
     ipFixedSt nxt_ipFixedMem_data, ipFixedMem_data;
@@ -112,18 +175,11 @@ module ipRegs
     assign wr_select = apbReg.psel & apbReg.penable & apbReg.pwrite & rst_n;
     assign rd_select = apbReg.psel & apbReg.penable & !apbReg.pwrite & rst_n;
 
-    logic nxt_wr_pslverr, wr_pslverr;
     logic nxt_wr_ready, wr_ready;
     always_comb begin
-        nxt_wr_pslverr = 1'b0;
         nxt_wr_ready = 1'b0;
-        ipCfg_reg_update_0 = 1'b0;
-        ipCfg_reg_update_1 = 1'b0;
-        ipCfg_reg_update_2 = 1'b0;
-        ipMem_update_0 = 1'b0;
-        ipMem_update_1 = 1'b0;
-        ipMem_update_2 = 1'b0;
-        nxt_ipMem_data = ipMem_data;
+        ipCfg_update = '0;
+        ipMem_update = '0;
         ipFixedMem_update_0 = 1'b0;
         nxt_ipFixedMem_data = ipFixedMem_data;
         ipNonConstMem_update_0 = 1'b0;
@@ -131,28 +187,19 @@ module ipRegs
         if (wr_select) begin
             case (apb_addr) inside
                 REG_IP_IPCFG : begin
-                    ipCfg_reg_update_0 = 1'b1;
+                    ipCfg_update[0] = 1'b1;
                 end
                 REG_IP_IPCFG + 32'd4 : begin
-                    ipCfg_reg_update_1 = 1'b1;
+                    ipCfg_update[1] = 1'b1;
                 end
                 REG_IP_IPCFG + 32'd8 : begin
-                    ipCfg_reg_update_2 = 1'b1;
+                    ipCfg_update[2] = 1'b1;
                 end
                 [REG_IP_IPMEM:REG_IP_IPMEM + REG_IP_IPMEM_SIZE - 32'd4]: begin
                     case (apb_addr[3:0])
-                        4'h0: begin
-                            ipMem_update_0 = 1'b1;
-                            nxt_ipMem_data[31:0] = apbReg.pwdata[31:0];
-                        end
-                        4'h4: begin
-                            ipMem_update_1 = 1'b1;
-                            nxt_ipMem_data[63:32] = apbReg.pwdata[31:0];
-                        end
-                        4'h8: begin
-                            ipMem_update_2 = 1'b1;
-                            nxt_ipMem_data[69:64] = apbReg.pwdata[5:0];
-                        end
+                        4'h0: ipMem_update[0] = 1'b1;
+                        4'h4: ipMem_update[1] = 1'b1;
+                        4'h8: ipMem_update[2] = 1'b1;
                         default: ;
                     endcase
                 end
@@ -174,19 +221,15 @@ module ipRegs
                         default: ;
                     endcase
                 end
-                default: begin
-                    nxt_wr_pslverr = 1'b1;
-                end
+                default: ; // unmapped/ro write: silently ignored (ACK below)
             endcase
             nxt_wr_ready = 1'b1;
         end
     end
 
-    logic nxt_rd_pslverr, rd_pslverr;
     logic nxt_rd_ready, rd_ready;
     ipRegDataSt nxt_rd_data, rd_data;
     always_comb begin
-        nxt_rd_pslverr = 1'b0;
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
         nxt_ipMem_rd_enable = 1'b0;
@@ -196,51 +239,54 @@ module ipRegs
             case (apb_addr) inside
                 REG_IP_IPCFG : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = ipRegDataSt'(ipCfg_reg[31:0]);
+                    nxt_rd_data = ipRegDataSt'(ipCfg_rword[0]);
                 end
                 REG_IP_IPCFG + 32'd4 : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = ipRegDataSt'(ipCfg_reg[63:32]);
+                    nxt_rd_data = ipRegDataSt'(ipCfg_rword[1]);
                 end
                 REG_IP_IPCFG + 32'd8 : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = ipRegDataSt'(ipCfg_reg[72:64]);
+                    nxt_rd_data = ipRegDataSt'(ipCfg_rword[2]);
                 end
                 REG_IP_IPLASTDATA : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = ipRegDataSt'(ipLastData_reg[31:0]);
+                    nxt_rd_data = ipRegDataSt'(ipLastData_rword[0]);
                 end
                 REG_IP_IPLASTDATA + 32'd4 : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = ipRegDataSt'(ipLastData_reg[63:32]);
+                    nxt_rd_data = ipRegDataSt'(ipLastData_rword[1]);
                 end
                 REG_IP_IPLASTDATA + 32'd8 : begin
                     nxt_rd_ready = 1'b1;
-                    nxt_rd_data = ipRegDataSt'(ipLastData_reg[70:64]);
+                    nxt_rd_data = ipRegDataSt'(ipLastData_rword[2]);
                 end
                 [REG_IP_IPMEM:REG_IP_IPMEM + REG_IP_IPMEM_SIZE - 32'd4]: begin
                     case (apb_addr[3:0])
                         4'h0: begin
                             if (ipMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
-                                nxt_rd_data = ipRegDataSt'(ipMem.read_data[31:0]);
+                                nxt_rd_data = ipRegDataSt'(ipMem_rword[0]);
                             end
                         end
                         4'h4: begin
                             if (ipMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
-                                nxt_rd_data = ipRegDataSt'(ipMem.read_data[63:32]);
+                                nxt_rd_data = ipRegDataSt'(ipMem_rword[1]);
                             end
                         end
                         4'h8: begin
                             if (ipMem_rd_capture) begin
                                 nxt_rd_ready = 1'b1;
-                                nxt_rd_data = ipRegDataSt'(ipMem.read_data[69:64]);
+                                nxt_rd_data = ipRegDataSt'(ipMem_rword[2]);
                             end
                         end
-                        default: ;
+                        default: begin
+                            nxt_rd_ready = 1'b1;
+                            nxt_rd_data = '0;
+                        end
                     endcase
-                    nxt_ipMem_rd_enable = ~ipMem_rd_capture;
+                    nxt_ipMem_rd_enable = (apb_addr[3:0] inside {4'h0, 4'h4, 4'h8}) & ~ipMem_rd_capture;
                 end
                 [REG_IP_IPFIXEDMEM:REG_IP_IPFIXEDMEM + REG_IP_IPFIXEDMEM_SIZE - 32'd4]: begin
                     case (apb_addr[1:0])
@@ -266,35 +312,32 @@ module ipRegs
                     endcase
                     nxt_ipNonConstMem_rd_enable = ~ipNonConstMem_rd_capture;
                 end
-                default: begin
-                    nxt_rd_data = ipRegDataSt'(32'hBADD_C0DE);
-                    nxt_rd_pslverr = 1'b1;
+                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = '0;
                 end
             endcase
         end
     end
 
-    // Update APB ready, pslverr, and read data
+    // Update APB ready and read data. The bus is never stalled and slave
+    // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
             `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(wr_pslverr, nxt_wr_pslverr, '0)
             `DFFR(rd_ready,   nxt_rd_ready,   '0)
             `DFFR(rd_data,    nxt_rd_data,    '0)
-            `DFFR(rd_pslverr, nxt_rd_pslverr, '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
-            assign wr_pslverr = nxt_wr_pslverr;
             assign rd_ready   = nxt_rd_ready;
             assign rd_data    = nxt_rd_data;
-            assign rd_pslverr = nxt_rd_pslverr;
         end
     endgenerate
 
     // Update the APB interface
     assign apbReg.prdata  = rd_data;
     assign apbReg.pready  = rd_ready | wr_ready;
-    assign apbReg.pslverr = rd_pslverr | wr_pslverr;
+    assign apbReg.pslverr = 1'b0;
 
 endmodule : ipRegs
 // GENERATED_CODE_END

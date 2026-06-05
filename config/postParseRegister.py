@@ -34,9 +34,15 @@ def collectBlocksNeedingRegHandler(prj):
 
 
 def synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
-                         instance_prefix, block_suffix, camel_case):
+                         instance_prefix, block_suffix, camel_case,
+                         parentParams):
     """Build the synthesised register-handler block, instance, and
     leaf-to-handler connectionMap for a single routed leaf block.
+
+    parentParams is the list of the leaf block's parameter names; the
+    handler inherits them so it emits module parameters and selects the
+    leaf's module-local parameterizable declarations (its register/memory
+    storage is variant-width, sized by these params).
 
     Returns (reg_block, block_def, instance_name, instance_def, connection_map).
     """
@@ -51,6 +57,7 @@ def synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
         'hasMdl': has_mdl,
         'hasTb': False,
         'dir': blockInfo.get(block_key, {}).get('dir', ''),
+        'params': parentParams,
     }
     instance_def = {
         'instanceType': reg_block,
@@ -95,9 +102,12 @@ def postProcess(prj):
     reg_handler_instances = dict()
     reg_handler_connection_maps = list()
     for block_key, block in blocksNeedingConnections.items():
+        # Legacy addressControl.yaml path: handlers re-feed through the
+        # _global context and parameterized handlers are not supported here,
+        # so no parameters are inherited.
         reg_block, block_def, instance_name, instance_def, connection_map = \
             synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
-                                 instance_prefix, block_suffix, camel_case)
+                                 instance_prefix, block_suffix, camel_case, [])
         reg_handler_blocks[reg_block] = block_def
         reg_handler_instances[instance_name] = instance_def
         reg_handler_connection_maps.append(connection_map)

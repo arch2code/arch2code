@@ -87,6 +87,14 @@ def render(args, prj, data):
             inst_params += '#('
             inst_params += ", ".join([f".{param['param']}({param['value']})" for param in variant_data])
             inst_params += ') '
+        else:
+            # A reg-handler instance inherits the enclosing (parent) module's
+            # parameters; forward them by name (same-named param in scope).
+            instBlock = prj.data['blocks'][qualBlockInst]
+            if instBlock['isRegHandler'] and instBlock['params']:
+                inst_params += '#('
+                inst_params += ", ".join([f".{param['param']}({param['param']})" for param in instBlock['params']])
+                inst_params += ') '
 
         out.append(f"{value['instanceType']}{inst_params}{value['instance']} (")
         # Declare connectionMaps that connect to this instance
