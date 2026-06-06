@@ -3,10 +3,6 @@
 // GENERATED_CODE_PARAM --context=ip.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package ip_package;
-localparam int unsigned IP_DATA_WIDTH = 32'h0000_0046;  // Per-instance data width
-localparam int unsigned IP_MEM_DEPTH = 32'h0000_0010;  // Per-instance memory depth
-localparam int unsigned IP_NONCONST_DEPTH = 32'h0000_0018;  // Per-instance block-param depth (worst-case variant binding = 24)
-localparam int unsigned IP_DATA_WIDTH_X2 = 32'h0000_008C;  // Derived width, 2x data (maxValue auto-derived); eval-derived, lives in constants: since no block param consumes it
 localparam int unsigned IP_FIXED_NIBBLE_COUNT = 32'h0000_0005;  // Fixed array length for non-parameterized type tests
 localparam int unsigned IP_FIXED_PAIR_COUNT = 32'h0000_0002;  // Fixed nested-structure array length
 localparam int unsigned IP_FIXED_WORD_COUNT = 32'h0000_0006;  // Derived fixed array length
@@ -15,9 +11,7 @@ localparam int unsigned IP_REG_ADDR_WIDTH = 32'h0000_0020;  // Leaf register-bus
 localparam int unsigned IP_REG_DATA_WIDTH = 32'h0000_0020;  // Leaf register-bus data width
 
 // types
-typedef logic[IP_DATA_WIDTH-1:0] ipDataT; //IP data word, parameterizable
 typedef logic[1-1:0] enableT; //Single enable bit
-typedef logic[$clog2(IP_MEM_DEPTH)-1:0] ipMemAddrT; //Index into ipMem (0 .. IP_MEM_DEPTH-1)
 typedef logic[8-1:0] ipFixedT; //Fixed 8-bit byte (non-parameterizable)
 typedef logic[8-1:0] ipFixedAddrT; //Fixed 8-bit address index (non-parameterizable)
 typedef logic[4-1:0] ipNibbleT; //Fixed unsigned nibble
@@ -50,29 +44,6 @@ typedef enum logic[8-1:0] {       //Fixed-width opcode enum
 } ipFixedOpcodeT;
 
 // structures
-typedef struct packed {
-    enableT marker; //Marker bit expected after the data payload
-    ipDataT data; //Data word
-} ipDataSt;
-
-typedef struct packed {
-    enableT enable; //Enable bit
-    ipModeT mode; //Operating mode
-    ipDataT threshold; //Threshold value
-} ipCfgSt;
-
-typedef struct packed {
-    ipDataT data; //Data word
-} ipMemSt;
-
-typedef struct packed {
-    ipMemAddrT address; //Memory address
-} ipMemAddrSt;
-
-typedef struct packed {
-    ipDataT [IP_MEM_DEPTH-1:0] samples; //Burst of parameterizable samples
-} ipBurstSt;
-
 typedef struct packed {
     ipFixedT b; //Fixed byte
 } ipFixedSt;

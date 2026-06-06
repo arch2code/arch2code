@@ -59,9 +59,13 @@ def render(args, prj, data):
     if pkg_str:
         out += pkg_str + '\n'
 
+    # Parameterizable declarations are emitted in module scope, not the
+    # package (SV cannot parameterize packages), so they are skipped here.
     # Now put in everything at this context level
     # Generate constants as localparam[s]
     for unusedKey, value in data['constants'].items():
+        if value['isParameterizable']:
+            continue
         match value['valueType']:
             case 'uint':
                 if value['value'] <= 0xFFFFFFFF:
@@ -93,6 +97,8 @@ def render(args, prj, data):
     # Generate types
     out += f"\n// types\n"
     for unusedKey, value in data['types'].items():
+        if value['isParameterizable']:
+            continue
         widthExpr, descExtra = typeWidthExpression_sv(value, prj.data['constants'])
         desc = value['desc'] + descExtra
         # Check if type is signed
@@ -103,6 +109,8 @@ def render(args, prj, data):
     # Generate enums
     out += f"\n// enums\n"
     for unusedKey, value in data['enums'].items():
+        if value['isParameterizable']:
+            continue
         try:
             width = max(int(value['width']), 1)
         except (ValueError, TypeError):
@@ -122,6 +130,8 @@ def render(args, prj, data):
     # Generate structures
     out += f"\n// structures\n"
     for struct, value in data['structures'].items():
+        if value['isParameterizable']:
+            continue
         out += f"typedef struct packed {{\n"
         for var, varData in value['vars'].items():
             if varData['arraySize'] == 0 or varData['arraySize'] == '0':
