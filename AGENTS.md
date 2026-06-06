@@ -124,3 +124,5 @@ owns turning those views into text.
 - Before adding an abstraction, identify its owner and lifetime. If ownership is unclear, pause and ask instead of adding factories, caches, or injectable helpers.
 - Do not implement planned-but-unused flexibility. If a requested option has no concrete call site in the current change, leave it out or ask whether it should be included now.
 - Prefer one direct path through the code. Avoid parallel APIs such as `foo()`, `tryFoo()`, optional `resolver=None`, or `fatal=None` unless each path has an existing, tested consumer.
+- string processing should not be needed for extracting field information or performing lookup. There are functions already provided that utilize schema and data contracts that are robust. If you think you need to split strings expressly ask permission.
+- Avoid using SQL for data already in dicts
