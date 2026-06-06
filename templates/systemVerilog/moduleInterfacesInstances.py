@@ -1,6 +1,7 @@
 from pathlib import Path
 from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck, importPackages
 from pysrc.processYaml import camelCase
+from templates.systemVerilog.package import parameterizedDeclLines
 import pysrc.intf_gen_utils as intf_gen_utils
 
 # args from generator line
@@ -27,6 +28,17 @@ def render(args, prj, data):
 
     # Ports
     out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
+
+    # Module-local parameterizable type/struct declarations. SV cannot
+    # parameterize a package, so a parameterized block declares the
+    # types/structs sized from its own module parameters here (the same
+    # deriveParameterizedDeclSets set the package omits). Empty for
+    # non-parameterized blocks.
+    if data['parameterizedDecls']:
+        out.append(f"{indent}// Module-local parameterizable type/struct declarations")
+        for line in parameterizedDeclLines(data['parameterizedDecls'], prj):
+            out.append(f"{indent}{line}")
+        out.append("")
 
     #// Interface Instances, needed for between instanced modules inside this module
     out.append(f"{indent}// Interface Instances, needed for between instanced modules inside this module")

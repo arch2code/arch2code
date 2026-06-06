@@ -1,6 +1,6 @@
 from pysrc.systemVerilogGeneratorHelper import importPackages
 from pysrc.arch2codeHelper import printError, warningAndErrorReport, clog2
-from templates.systemVerilog.package import typeWidthExpression_sv
+from templates.systemVerilog.package import parameterizedDeclLines
 
 import pysrc.intf_gen_utils as intf_gen_utils
 
@@ -133,21 +133,7 @@ def section_param_decls(prj, data):
     # types-before-structs by orderIndex (deriveParameterizedDeclSets). These
     # are the same decls the owning module emits; they are module-local because
     # SV cannot parameterize a package.
-    out = []
-    for decl in data['parameterizedDecls']:
-        body = decl['body']
-        if decl['declKind'] == 'type':
-            widthExpr, descExtra = typeWidthExpression_sv(body, prj)
-            signedStr = " signed" if body['isSigned'] else ""
-            out.append(f"typedef logic{signedStr}[{widthExpr}-1:0] {body['type']}; //{body['desc']}{descExtra}")
-        else:
-            out.append("typedef struct packed {")
-            for var, varData in body['vars'].items():
-                arraySize = '' if varData['arraySize'] in (0, '0') else f"[{varData['arraySize']}-1:0] "
-                typeName = varData['subStruct'] if varData['entryType'] == 'NamedStruct' else varData['varType']
-                out.append(f"    {typeName} {arraySize}{varData['variable']}; //{varData['desc']}")
-            out.append(f"}} {body['structure']};")
-    return string_joiner(out, '\n')
+    return string_joiner(parameterizedDeclLines(data['parameterizedDecls'], prj), '\n')
 
 def section_intf_ports(prj, data):
 

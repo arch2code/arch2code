@@ -17,6 +17,18 @@ import src_package::*;
     input clk, rst_n
 );
 
+    // Module-local parameterizable type/struct declarations
+    typedef logic[OUT0_DATA_WIDTH-1:0] srcOut0DataT; //src out0 data word, parameterizable
+    typedef logic[OUT1_DATA_WIDTH-1:0] srcOut1DataT; //src out1 data word, parameterizable
+    typedef struct packed {
+        srcMarkerT marker; //marker bit copied through the thunker
+        srcOut0DataT data; //src out0 payload
+    } srcOut0St;
+    typedef struct packed {
+        srcMarkerT marker; //marker bit above bit 64 for the 70-bit variant
+        srcOut1DataT data; //src out1 payload
+    } srcOut1St;
+
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances

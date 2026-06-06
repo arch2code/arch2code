@@ -14,6 +14,16 @@ import ipLeaf_package::*;
     input clk, rst_n
 );
 
+    // Module-local parameterizable type/struct declarations
+    typedef logic[LEAF_DATA_WIDTH-1:0] ipLeafDataT; //ipLeaf data word, parameterizable
+    typedef logic[$clog2(LEAF_MEM_DEPTH)-1:0] ipLeafMemAddrT; //Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)
+    typedef struct packed {
+        ipLeafDataT data; //Leaf memory word
+    } ipLeafMemSt;
+    typedef struct packed {
+        ipLeafMemAddrT address; //Leaf memory address
+    } ipLeafMemAddrSt;
+
     // Interface Instances, needed for between instanced modules inside this module
 
     // Memory Interfaces

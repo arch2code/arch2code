@@ -17,6 +17,28 @@ import ip_package::*;
     input clk, rst_n
 );
 
+    // Module-local parameterizable type/struct declarations
+    typedef logic[IP_DATA_WIDTH-1:0] ipDataT; //IP data word, parameterizable
+    typedef logic[$clog2(IP_MEM_DEPTH)-1:0] ipMemAddrT; //Index into ipMem (0 .. IP_MEM_DEPTH-1)
+    typedef struct packed {
+        enableT marker; //Marker bit expected after the data payload
+        ipDataT data; //Data word
+    } ipDataSt;
+    typedef struct packed {
+        enableT enable; //Enable bit
+        ipModeT mode; //Operating mode
+        ipDataT threshold; //Threshold value
+    } ipCfgSt;
+    typedef struct packed {
+        ipDataT data; //Data word
+    } ipMemSt;
+    typedef struct packed {
+        ipMemAddrT address; //Memory address
+    } ipMemAddrSt;
+    typedef struct packed {
+        ipDataT [IP_MEM_DEPTH-1:0] samples; //Burst of parameterizable samples
+    } ipBurstSt;
+
     // Interface Instances, needed for between instanced modules inside this module
     status_if #(.data_t(ipCfgSt)) ipCfg();
     status_if #(.data_t(ipDataSt)) ipLastData();

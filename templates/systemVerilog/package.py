@@ -47,6 +47,30 @@ def typeWidthExpression_sv(value, prj_data):
     return str(value['realwidth']), descExtra
 
 
+def parameterizedDeclLines(parameterizedDecls, prj):
+    """Module-local SV typedef/struct lines for a block's parameterized
+    declaration set (deriveParameterizedDeclSets), ordered types-before-structs
+    by orderIndex. SV cannot parameterize a package, so a parameterized block
+    declares these inside the owning module from its module parameters; they are
+    the same declarations the package omits. Returns one physical line per list
+    element so callers can apply their own leading indent."""
+    out = []
+    for decl in parameterizedDecls:
+        body = decl['body']
+        if decl['declKind'] == 'type':
+            widthExpr, descExtra = typeWidthExpression_sv(body, prj)
+            signedStr = " signed" if body['isSigned'] else ""
+            out.append(f"typedef logic{signedStr}[{widthExpr}-1:0] {body['type']}; //{body['desc']}{descExtra}")
+        else:
+            out.append("typedef struct packed {")
+            for var, varData in body['vars'].items():
+                arraySize = '' if varData['arraySize'] in (0, '0') else f"[{varData['arraySize']}-1:0] "
+                typeName = varData['subStruct'] if varData['entryType'] == 'NamedStruct' else varData['varType']
+                out.append(f"    {typeName} {arraySize}{varData['variable']}; //{varData['desc']}")
+            out.append(f"}} {body['structure']};")
+    return out
+
+
 def render(args, prj, data):
     out     = ''
     indent  = ' ' *4
