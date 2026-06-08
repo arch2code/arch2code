@@ -25,6 +25,7 @@ Before editing, you **must** load the project skill that matches the task. Do no
 | **SC->RTL** | `systemc-to-rtl.md` (Model to RTL conversion) |
 | **RTL->SC** | `rtl-to-systemc.md` (RTL to model conversion) |
 | **Verification** | `verify-testbench.md` (Testbenches, scoreboards) |
+| **Regression Tests** | `run-regression-tests.md` (Create, run, filter, and triage regression tests with `regrLauncher.py` and `make regr`) |
 | **Co-Sim** | `verify-cosimulation.md` (Verilator wrappers, Tandem) |
 | **Tandem** | `run-tandem.md` (Build/run tandem verification for leaf blocks) |
 | **Review RTL** | `review-rtl.md` (RTL review: conventions, best practices, FUSA, tandem) |

@@ -12,7 +12,10 @@ EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 include $(A2C_ROOT)/include/make/a2c-systemc.mk
 include $(A2C_ROOT)/include/make/a2c-agents.mk
 
-.PHONY : run run-vl run-vl-src run-vl-ip0
+.PHONY : run run-vl run-vl-src run-vl-ip0 regr
+
+regr:
+	$(A2C_ROOT)/regrLauncher.py --build -j8 regr_ip_test.json $(REGR_USER_OPTS)
 
 run: $(BIN_DIR)/$(BIN)
 ifndef VL_DUT

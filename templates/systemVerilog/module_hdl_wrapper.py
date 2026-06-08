@@ -1,5 +1,6 @@
 import pysrc.intf_gen_utils as intf_gen_utils
 from pysrc.systemVerilogGeneratorHelper import importPackages
+from templates.systemVerilog.package import parameterizedDeclLines
 import textwrap
 
 # args from generator line
@@ -56,6 +57,21 @@ def render_sv(args, prj, data):
     s += 'input clk,\ninput rst_n\n'
     out += textwrap.indent(s, ' '*4)
     out += ');\n'
+
+    # Module-local parameterizable type/struct declarations. C3.1 moved the
+    # parameterized boundary types/structs out of the package into module
+    # scope, so the wrapper cannot resolve them through its package import.
+    # The wrapper is variant-specific, so declare the variant's concrete
+    # parameter values as localparams and emit the block's parameterizedDecls
+    # from them (the same set the owning module declares), before the boundary
+    # interface declarations that reference them.
+    if data['parameterizedDecls']:
+        s = ''
+        for _, var_data in variant_data.items():
+            s += f"localparam {var_data['param']} = {var_data['value']};\n"
+        for line in parameterizedDeclLines(data['parameterizedDecls'], prj):
+            s += line + '\n'
+        out += textwrap.indent(s, ' '*4) + '\n'
 
     # assigns ports<->interface
     s = ''

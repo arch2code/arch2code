@@ -22,6 +22,19 @@ module src_variantSrc0_hdl_sv_wrapper
     input clk,
     input rst_n
 );
+    localparam OUT0_DATA_WIDTH = 8;
+    localparam OUT1_DATA_WIDTH = 70;
+    typedef logic[OUT0_DATA_WIDTH-1:0] srcOut0DataT; //src out0 data word, parameterizable
+    typedef logic[OUT1_DATA_WIDTH-1:0] srcOut1DataT; //src out1 data word, parameterizable
+    typedef struct packed {
+        srcMarkerT marker; //marker bit copied through the thunker
+        srcOut0DataT data; //src out0 payload
+    } srcOut0St;
+    typedef struct packed {
+        srcMarkerT marker; //marker bit above bit 64 for the 70-bit variant
+        srcOut1DataT data; //src out1 payload
+    } srcOut1St;
+
     // push_ack_if.src
     push_ack_if #(.data_t(srcOut0St)) out0();
 
