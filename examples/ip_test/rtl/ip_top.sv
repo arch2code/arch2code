@@ -6,8 +6,9 @@
 module ip_top
 // Generated Import package statement(s)
 import ip_package::*;
-import ipBridge_package::*;
 import src_package::*;
+import ipBridge_package::*;
+import ip_top_package::*;
 import shared_types_package::*;
 (
     apb_if.dst cpu_main,
@@ -15,8 +16,8 @@ import shared_types_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-    push_ack_if #(.data_t(srcOut0St)) out0();
-    push_ack_if #(.data_t(srcOut1St)) out1();
+    push_ack_if #(.data_t(srcOut0BoundarySt)) out0();
+    push_ack_if #(.data_t(srcOut1BoundarySt)) out1();
     push_ack_if #(.data_t(data8St)) out8();
     push_ack_if #(.data_t(data70St)) out70();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBridge();

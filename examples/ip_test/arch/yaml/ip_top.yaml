@@ -16,6 +16,41 @@ include:
     - src.yaml
     - ipBridge.yaml
 
+# Container-owned non-parameterized boundary declarations.
+# uSrc (parameterized producer) and uIp0/uIp1 (parameterized consumers)
+# both remain parameterized; their module-local payload typedefs cannot be
+# named at container scope. The container therefore declares concrete,
+# non-parameterized interfaces/structs whose field order and bit widths
+# match each connected variant's expectation (variant0/variantSrc0 -> 8-bit,
+# variant1/variantSrc0 -> 70-bit; marker 1 bit). The cross-interface binds on
+# both the producer and consumer ends adapt to these channel types via the
+# push_ack thunker in the C++ model; SV binds the generic ports to the
+# non-parameterized channel directly.
+types:
+    boundaryMarkerT:  { width: 1,  desc: "Boundary marker bit; matches srcOut*St::marker and ipDataSt::marker" }
+    srcOut0BoundaryT: { width: 8,  desc: "Non-param 8-bit boundary payload; matches uSrc OUT0_DATA_WIDTH=8 / uIp0 IP_DATA_WIDTH=8" }
+    srcOut1BoundaryT: { width: 70, desc: "Non-param 70-bit boundary payload; matches uSrc OUT1_DATA_WIDTH=70 / uIp1 IP_DATA_WIDTH=70" }
+
+structures:
+    srcOut0BoundarySt:
+        marker: { varType: boundaryMarkerT,  desc: "Marker bit; matches srcOut0St::marker / ipDataSt::marker" }
+        data:   { varType: srcOut0BoundaryT, desc: "8-bit payload; matches srcOut0St::data@variantSrc0 and ipDataSt::data@variant0" }
+    srcOut1BoundarySt:
+        marker: { varType: boundaryMarkerT,  desc: "Marker bit; matches srcOut1St::marker / ipDataSt::marker" }
+        data:   { varType: srcOut1BoundaryT, desc: "70-bit payload; matches srcOut1St::data@variantSrc0 and ipDataSt::data@variant1" }
+
+interfaces:
+    srcOut0BoundaryIf:
+        desc: "Non-parameterized container boundary interface for uSrc.out0 -> uIp0.ipDataIf"
+        interfaceType: push_ack
+        structures:
+            - { structure: srcOut0BoundarySt, structureType: data_t }
+    srcOut1BoundaryIf:
+        desc: "Non-parameterized container boundary interface for uSrc.out1 -> uIp1.ipDataIf"
+        interfaceType: push_ack
+        structures:
+            - { structure: srcOut1BoundarySt, structureType: data_t }
+
 blocks:
     ip_top:
         desc: "Top container holding the two IP instances and the APB decoder"
@@ -63,8 +98,8 @@ instances:
 
 connections:
     - { interface: apbReg, src: uCPU, dst: u_ip_top, name: cpu_main }
-    - { interface: srcOut0If, src: uSrc, srcport: out0, dst: uIp0, dstport: ipDataIf }
-    - { interface: srcOut1If, src: uSrc, srcport: out1, dst: uIp1, dstport: ipDataIf }
+    - { interface: srcOut0BoundaryIf, src: uSrc, srcport: out0, dst: uIp0, dstport: ipDataIf }
+    - { interface: srcOut1BoundaryIf, src: uSrc, srcport: out1, dst: uIp1, dstport: ipDataIf }
     # Stage 8.2 sibling-level connections (non-cross-interface): the
     # Q10 cross-interface bridge sits one level deeper, inside uBridge.
     - { interface: data8If,  src: uBridgeDriver, srcport: out8,  dst: uBridge, dstport: data8In }

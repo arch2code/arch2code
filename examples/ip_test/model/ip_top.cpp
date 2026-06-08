@@ -39,7 +39,9 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,uIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1")))
         ,uBridgeDriver(std::dynamic_pointer_cast<bridgeDriverBase>((force_link_bridgeDriver(), instanceFactory::createInstance(name(), "uBridgeDriver", "bridgeDriver", ""))))
         ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>((force_link_ipBridge(), instanceFactory::createInstance(name(), "uBridge", "ipBridge", ""))))
+        ,thunker_out0_uSrc("thunker_out0_uSrc", out0, uSrc->out0, name())
         ,thunker_out0_uIp0("thunker_out0_uIp0", out0, uIp0->ipDataIf, name())
+        ,thunker_out1_uSrc("thunker_out1_uSrc", out1, uSrc->out1, name())
         ,thunker_out1_uIp1("thunker_out1_uIp1", out1, uIp1->ipDataIf, name())
         ,thunker_apbReg_uIp0_uIp0("thunker_apbReg_uIp0_uIp0", apbReg_uIp0, uIp0->regs, name())
         ,thunker_apbReg_uIp1_uIp1("thunker_apbReg_uIp1_uIp1", apbReg_uIp1, uIp1->regs, name())
@@ -49,8 +51,6 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
     uAPBDecode->cpu_main(cpu_main);
     // instance to instance connections via channel
-    uSrc->out0(out0);
-    uSrc->out1(out1);
     uBridgeDriver->out8(out8);
     uBridge->data8In(out8);
     uBridgeDriver->out70(out70);

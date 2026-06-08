@@ -7,8 +7,9 @@
 module ip_top_hdl_sv_wrapper
     // Generated Import package statement(s)
     import ip_package::*;
-    import ipBridge_package::*;
     import src_package::*;
+    import ipBridge_package::*;
+    import ip_top_package::*;
     import shared_types_package::*;
 (
     // apb_if.dst

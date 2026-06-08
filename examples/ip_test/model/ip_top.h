@@ -16,10 +16,12 @@
 #include "srcConfig.h"
 import shared_types;
 using namespace shared_types_ns;
-import src;
-using namespace src_ns;
+import ip_top;
+using namespace ip_top_ns;
 import ipBridge;
 using namespace ipBridge_ns;
+import src;
+using namespace src_ns;
 import ip;
 using namespace ip_ns;
 //contained instances forward class declaration
@@ -35,10 +37,10 @@ private:
 
 public:
     // channels
-    // src out0 push/ack stream
-    push_ack_channel< srcOut0St<srcVariantSrc0Config> > out0;
-    // src out1 push/ack stream
-    push_ack_channel< srcOut1St<srcVariantSrc0Config> > out1;
+    // Non-parameterized container boundary interface for uSrc.out0 -> uIp0.ipDataIf
+    push_ack_channel< srcOut0BoundarySt > out0;
+    // Non-parameterized container boundary interface for uSrc.out1 -> uIp1.ipDataIf
+    push_ack_channel< srcOut1BoundarySt > out1;
     // Non-parameterized 8-bit Q10 bridge data interface
     push_ack_channel< data8St > out8;
     // Non-parameterized 70-bit Q10 bridge data interface
@@ -59,8 +61,10 @@ public:
     std::shared_ptr<ipBridgeBase> uBridge;
 
     // cross-interface thunkers
-    push_ack_port_thunker<srcOut0St<srcVariantSrc0Config>, ipDataSt<ipVariant0Config>> thunker_out0_uIp0;
-    push_ack_port_thunker<srcOut1St<srcVariantSrc0Config>, ipDataSt<ipVariant1Config>> thunker_out1_uIp1;
+    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<srcVariantSrc0Config>> thunker_out0_uSrc;
+    push_ack_port_thunker<srcOut0BoundarySt, ipDataSt<ipVariant0Config>> thunker_out0_uIp0;
+    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<srcVariantSrc0Config>> thunker_out1_uSrc;
+    push_ack_port_thunker<srcOut1BoundarySt, ipDataSt<ipVariant1Config>> thunker_out1_uIp1;
     apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uIp0_uIp0;
     apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uIp1_uIp1;
 

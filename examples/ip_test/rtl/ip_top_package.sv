@@ -11,6 +11,9 @@ import ip_package::*;
 import shared_types_package::*;
 
 // types
+typedef logic[1-1:0] boundaryMarkerT; //Boundary marker bit; matches srcOut*St::marker and ipDataSt::marker
+typedef logic[8-1:0] srcOut0BoundaryT; //Non-param 8-bit boundary payload; matches uSrc OUT0_DATA_WIDTH=8 / uIp0 IP_DATA_WIDTH=8
+typedef logic[70-1:0] srcOut1BoundaryT; //Non-param 70-bit boundary payload; matches uSrc OUT1_DATA_WIDTH=70 / uIp1 IP_DATA_WIDTH=70
 
 // enums
 typedef enum logic[2-1:0] {          //Generated type for addressing top instances
@@ -20,5 +23,15 @@ typedef enum logic[2-1:0] {          //Generated type for addressing top instanc
 } addr_id_top;
 
 // structures
+typedef struct packed {
+    boundaryMarkerT marker; //Marker bit; matches srcOut0St::marker / ipDataSt::marker
+    srcOut0BoundaryT data; //8-bit payload; matches srcOut0St::data@variantSrc0 and ipDataSt::data@variant0
+} srcOut0BoundarySt;
+
+typedef struct packed {
+    boundaryMarkerT marker; //Marker bit; matches srcOut1St::marker / ipDataSt::marker
+    srcOut1BoundaryT data; //70-bit payload; matches srcOut1St::data@variantSrc0 and ipDataSt::data@variant1
+} srcOut1BoundarySt;
+
 endpackage : ip_top_package
 // GENERATED_CODE_END
