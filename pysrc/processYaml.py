@@ -3603,6 +3603,10 @@ class projectCreate:
         g.cur.execute("SELECT blockKey, isParameterizable FROM blocks")
         blockIsParameterizable = {r['blockKey']: bool(r['isParameterizable']) for r in g.cur.fetchall()}
 
+        # Validate parameterized-interface connection endpoints while the
+        # per-declaration paramSet is still in memory, so it need not be persisted.
+        self._validateParameterizedConnectionEndpoints(declInfo, blockParams, blockIsParameterizable)
+
         rows = list()
         for block in self.flatData['blocks'].values():
             blockKey = block['blockKey']
@@ -3660,6 +3664,58 @@ class projectCreate:
         for declKey in selected:
             visit(declKey)
         return ordered
+
+    def _validateParameterizedConnectionEndpoints(self, declInfo, blockParams, blockIsParameterizable):
+        # A parameterized interface implies both connected endpoints are
+        # parameterized. SV sizes a parameterized payload from the owning module's
+        # parameters, so an endpoint block that does not itself declare a required
+        # backing parameter cannot declare the payload type - the parameter would
+        # have to come from a level the block does not own. For every
+        # parameterizable connection, each endpoint instance's block must supply
+        # the union of backing parameters of the interface's parameterizable
+        # payload structures; a shortfall is a fatal error.
+        interfaces = self.flatData['interfaces']
+        constByKey = {row['constantKey']: row for row in self.flatData['constants'].values()}
+
+        # connectionsends is a nested ('multiple') table, not flat - gather the
+        # endpoints per connection from self.data, keyed by connectionKey.
+        connEnds = dict()
+        for fileRows in self.data.get('connectionsends', dict()).values():
+            for end in fileRows.values():
+                connEnds.setdefault(end['connectionKey'], list()).append(end)
+
+        errors = False
+        for conn in self.flatData['connections'].values():
+            if not conn['isParameterizable']:
+                continue
+            intf = interfaces[conn['interfaceKey']]
+            needed = set()
+            for structRow in intf.get('structures', dict()).values():
+                info = declInfo.get(structRow['structureKey'])
+                # info is (declKind, paramSet, evalCoupled, context); an
+                # eval-coupled payload cannot be sized from a single block's
+                # parameters, so it is not required of the endpoint here.
+                if info is not None and not info[2]:
+                    needed |= info[1]
+            if not needed:
+                continue
+            for end in connEnds.get(conn['connectionKey'], list()):
+                blockKey = end['instanceTypeKey']
+                missing = needed - blockParams.get(blockKey, set())
+                if not missing:
+                    continue
+                missingNames = ', '.join(sorted(constByKey[key]['constant'] for key in missing))
+                reason = ('is not parameterized' if not blockIsParameterizable.get(blockKey)
+                          else 'does not declare the required parameter(s)')
+                printError(f"Parameterized interface '{intf['interface']}' on the connection "
+                           f"'{conn['src']}' -> '{conn['dst']}' connects endpoint instance "
+                           f"'{end['instance']}' (block '{end['instanceType']}'), which "
+                           f"{reason}: missing {missingNames}. A block reached through a "
+                           f"parameterized interface must itself carry the backing "
+                           f"parameter(s) so the payload is sized in its own module scope.")
+                errors = True
+        if errors:
+            exit(warningAndErrorReport())
 
     def generateAddressEnums(self):
         self.yamlContext['_global'] = {key: None for key in self.yamlContext}

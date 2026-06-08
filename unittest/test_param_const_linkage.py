@@ -13,6 +13,12 @@ message):
   same-name constant that is not parameterizable.
 - A variant binding that exceeds its backing constant's maxValue (worst-case
   sizing would under-allocate).
+- A connection endpoint block reached through a parameterized interface that
+  does not itself carry the interface payload's backing param.
+
+Positive cases (must succeed):
+- A parameterized interface whose two connected endpoints both carry the
+  backing param (the payload is sized in each module's own scope).
 
 Positive case (must succeed, asserted in-process against the database):
 - One exposed param consumed by two blocks, and a parameterizable type and
@@ -101,6 +107,27 @@ def _expect_error(arch_content, expected_patterns, test_name):
         _cleanup([project_path, arch_path, db_path])
 
 
+def _expect_success(arch_content, test_name):
+    print(f"\n{'='*70}\nTest: {test_name}\n{'='*70}")
+    arch_path = _write_temp(arch_content, '.yaml', 'arch_linkage_')
+    project_path = _project_for(arch_path)
+    db_path = tempfile.mktemp(suffix='.db', dir=test_dir)
+    try:
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        cmd = [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+               '--yaml', project_path, '--db', db_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=test_dir, env=env)
+        if result.returncode != 0:
+            print("  FAIL: expected success but build failed")
+            print('  ' + '\n  '.join((result.stderr + result.stdout).split('\n')[:25]))
+            return False
+        print("  PASS: build succeeded")
+        return True
+    finally:
+        _cleanup([project_path, arch_path, db_path])
+
+
 def test_orphan_ipparameters_constant():
     arch = """ipParameters:
   constants:
@@ -184,6 +211,97 @@ parameters:
         arch,
         ["big", "exceeding the backing", "maxValue"],
         "variant binding exceeds backing maxValue")
+
+
+# ----------------------------------------------------------------------------
+# Parameterized-interface connection-endpoint validation. A parameterized
+# interface implies both connected endpoints carry the backing param its
+# payload depends on; an endpoint block that does not is an error.
+# ----------------------------------------------------------------------------
+
+# Shared building blocks: a parameterizable payload (dataSt -> dataT -> WIDTH)
+# exposed through a push_ack interface, with a producer block that backs WIDTH
+# (so it is not an orphan). The consumer side varies per test.
+_C36_COMMON = """ipParameters:
+  constants:
+    WIDTH: { value: 8, maxValue: 16, desc: "backing width" }
+  types:
+    dataT: { width: WIDTH, maxBitwidth: 16, desc: "parameterizable payload word" }
+
+structures:
+  dataSt:
+    data: { varType: dataT, desc: "parameterizable payload" }
+
+interfaces:
+  dataIf:
+    desc: "parameterized push/ack stream"
+    interfaceType: push_ack
+    structures:
+      - { structure: dataSt, structureType: data_t }
+
+blocks:
+  producer:
+    desc: "parameterized producer that backs WIDTH"
+    params: [WIDTH]
+    ports:
+      out: { interface: dataIf, direction: src }
+"""
+
+
+def test_param_interface_endpoint_missing_param():
+    # consumer carries a port on the parameterized dataIf but does not declare
+    # WIDTH in its own params:, so its module cannot size the payload. Error.
+    arch = _C36_COMMON + """  consumer:
+    desc: "endpoint on a parameterized interface without the backing param"
+    ports:
+      in: { interface: dataIf, direction: dst }
+  top: { desc: "top" }
+
+instances:
+  uTop: { container: top, instanceType: top }
+  uProd: { container: top, instanceType: producer, variant: v0 }
+  uCons: { container: top, instanceType: consumer }
+
+connections:
+  - { interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in }
+
+parameters:
+  producer:
+    - { variant: v0, param: WIDTH, value: 8 }
+"""
+    return _expect_error(
+        arch,
+        ["dataIf", "uCons", "missing WIDTH"],
+        "parameterized interface endpoint missing the backing param")
+
+
+def test_param_interface_both_endpoints_parameterized():
+    # Both endpoints carry WIDTH: the payload is sized in each module's own
+    # scope, so the connection is legal and projectCreate succeeds.
+    arch = _C36_COMMON + """  consumer:
+    desc: "endpoint that carries the backing param"
+    params: [WIDTH]
+    ports:
+      in: { interface: dataIf, direction: dst }
+  top: { desc: "top" }
+
+instances:
+  uTop: { container: top, instanceType: top }
+  uProd: { container: top, instanceType: producer, variant: v0 }
+  uCons: { container: top, instanceType: consumer, variant: v0 }
+
+connections:
+  - { interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in }
+
+parameters:
+  producer:
+    - { variant: v0, param: WIDTH, value: 8 }
+  consumer:
+    - { variant: v0, param: WIDTH, value: 8 }
+"""
+    return _expect_success(
+        arch,
+        "parameterized interface with both endpoints parameterized")
 
 
 # ----------------------------------------------------------------------------
@@ -295,6 +413,8 @@ def run_all_tests():
         test_unbacked_block_param,
         test_non_parameterizable_backing,
         test_variant_binding_exceeds_maxvalue,
+        test_param_interface_endpoint_missing_param,
+        test_param_interface_both_endpoints_parameterized,
         test_shared_param_two_blocks_and_decl_set,
     ]
     results = []
