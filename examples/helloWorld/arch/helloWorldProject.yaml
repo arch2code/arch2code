@@ -10,7 +10,26 @@ projectFiles:
   - helloWorldTop.yaml
 
 
-addressControl: helloWorldAddress.yaml
+# Address-policy sections (migrated from the legacy helloWorldAddress.yaml).
+# This project performs no address decoding, so there is no AddressGroups /
+# addressBlock: router; only the instance-enumeration and address-object
+# policy sections carry over to the per-block schema.
+instanceGroups:
+  top:
+    varType: inst_top
+    enumPrefix: INST_TOP_
+  blockTop:
+    varType: blockID
+    enumPrefix: BLOCK_TOP_
+
+addressObjects:
+  memories:
+    alignment: memsize
+    sizeRoundUpPowerOf2: true
+    sortDescending: true
+  registers:
+    alignment: 8
+    sortDescending: true
 
 topInstance: uTop
 
