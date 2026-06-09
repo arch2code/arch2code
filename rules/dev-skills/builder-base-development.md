@@ -65,4 +65,5 @@ Branching on optional rows or optional relationships is fine. Treating contracte
 - Before adding an abstraction, identify its owner and lifetime. If ownership is unclear, ask before adding it.
 - Prefer one direct path through the code. Avoid parallel APIs such as `foo()`, `tryFoo()`, optional `resolver=None`, or `fatal=None` unless each path has an existing, tested consumer.
 - string processing should not be needed for extracting field information or performing lookup. There are functions already provided that utilize schema and data contracts that are robust. If you think you need to split strings expressly ask permission.
+- Do not derive semantic names or artifact relationships from filenames, paths, stems, suffixes, or string splits in templates or template utilities. Module names, namespaces, package names, Config names, generated class names, sibling files, and validation facts must come from persisted config or `projectOpen` views.
 - Avoid using SQL for data already in dicts

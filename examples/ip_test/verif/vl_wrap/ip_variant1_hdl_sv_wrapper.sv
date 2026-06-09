@@ -10,7 +10,7 @@ module ip_variant1_hdl_sv_wrapper
 (
     // push_ack_if.dst
     input bit ipDataIf_push,
-    input bit [70:0] ipDataIf_data,
+    input bit [(IP_DATA_WIDTH + 1)-1:0] ipDataIf_data,
     output bit ipDataIf_ack,
 
     // apb_if.dst

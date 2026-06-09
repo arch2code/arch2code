@@ -48,7 +48,7 @@ public:
 
     sc_clock clk;
 
-    push_ack_dst_bfm<ipDataSt<Config>, sc_bv<71>> ipDataIf_bfm;
+    push_ack_dst_bfm<ipDataSt<Config>, sc_bv<ipDataSt<Config>::_bitWidth>> ipDataIf_bfm;
     apb_dst_bfm<ipRegAddrSt, ipRegDataSt, sc_bv<32>, sc_bv<32>> regs_bfm;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
@@ -107,7 +107,7 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<71>> ipDataIf_hdl_if;
+    push_ack_hdl_if<sc_bv<ipDataSt<Config>::_bitWidth>> ipDataIf_hdl_if;
     apb_hdl_if<sc_bv<32>, sc_bv<32>> regs_hdl_if;
 
     sc_signal<bool> rst_n;

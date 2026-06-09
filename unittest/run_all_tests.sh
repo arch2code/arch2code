@@ -141,6 +141,12 @@ echo "Test Suite 19: Block Config Parameterization"
 echo "------------------------------------------------------------------------"
 python3 test_block_config_parameterization.py || FAILED=1
 
+# Test 19b: HDL wrapper boundary width spelling
+echo ""
+echo "Test Suite 19b: HDL Wrapper Boundary Width Spelling"
+echo "------------------------------------------------------------------------"
+python3 test_boundary_signals.py || FAILED=1
+
 # Test 20-: address-control refactor — Stage 7 Batches A and B.
 # Per plan-address-control-test-coverage.md "Implementation Phasing":
 #   Batch A — single-router positives, the lowest-cost two-level

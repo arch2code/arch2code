@@ -65,6 +65,63 @@ class intfEvalDSL:
         w = get_struct_width(self.struct_key, self.prj_data['structures'])
         return w // 8 + (1 if w % 8 != 0 else 0)
 
+def sv_type_width_expression(type_info, prj):
+    is_signed = type_info['isSigned']
+    signed_extra = '+1' if is_signed else ''
+
+    wl2 = type_info['widthLog2']
+    if wl2 != '':
+        return f"$clog2({wl2}+1){signed_extra}"
+
+    wl2m1 = type_info['widthLog2minus1']
+    if wl2m1 != '':
+        return f"$clog2({wl2m1}){signed_extra}"
+
+    return str(type_info['width'])
+
+def _is_one(expr):
+    try:
+        return int(expr) == 1
+    except (TypeError, ValueError):
+        return False
+
+def sv_struct_width_expression(struct_key, prj):
+    struct = prj.data['structures'][struct_key]
+    terms = []
+    for _, var_data in reversed(struct['vars'].items()):
+        if var_data['entryType'] in ['NamedVar', 'NamedType']:
+            type_info = prj.data['types'][var_data['varTypeKey']]
+            expr = sv_type_width_expression(type_info, prj)
+        elif var_data['entryType'] == 'NamedStruct':
+            expr = sv_struct_width_expression(var_data['subStructKey'], prj)
+        elif var_data['entryType'] == 'Reserved':
+            expr = str(var_data['bitwidth'])
+        else:
+            expr = str(var_data['bitwidth'])
+
+        array_size = str(var_data['arraySize'])
+        if array_size != '0' and not _is_one(array_size):
+            if '+' in expr or '-' in expr:
+                expr = f"({expr})"
+            expr = f"{expr}*{array_size}"
+        terms.append(expr)
+    return ' + '.join(terms) if terms else '0'
+
+def sv_boundary_struct_width_expression(struct_key, prj):
+    struct = prj.data['structures'][struct_key]
+    if not struct['isParameterizable']:
+        return str(struct['width'])
+    return sv_struct_width_expression(struct_key, prj)
+
+def sv_packed_bit_type(width_expr):
+    if _is_one(width_expr):
+        return 'bit'
+    try:
+        width = int(width_expr)
+        return f"bit [{width-1}:0]"
+    except (TypeError, ValueError):
+        return f"bit [({width_expr})-1:0]"
+
 def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     out = {}
     prj_data = prj.data
@@ -126,8 +183,8 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
         port_type = intf_def['signals'][intf_sig]['signalType']
         port_name = f"{intf_name}_{intf_sig}"
         if port_type in intf_param.keys():
-            w = get_struct_width(intf_param[port_type]['structureKey'], prj_data['structures'])
-            port_type = 'bit' if w == 1 else f"bit [{w-1}:0]"
+            width_expr = sv_boundary_struct_width_expression(intf_param[port_type]['structureKey'], prj)
+            port_type = sv_packed_bit_type(width_expr)
         elif port_type in hdl_param.keys():
             w = hdl_param[port_type]
             port_type = 'bit' if w == 1 else f"bit [{w-1}:0]"
@@ -214,6 +271,14 @@ def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_ov
 
 def sc_structure_field_type(row, field_name, key_field_name, prj, use_config=True, config_override=None):
     return sc_struct_type_name(row[field_name], row.get(key_field_name, ''), prj, use_config, config_override)
+
+def sc_hdl_bridge_type(struct_param, prj):
+    struct_key = struct_param['structureKey']
+    struct_name = sc_struct_type_name(struct_param['structure'], struct_key, prj)
+    if prj.data['structures'][struct_key]['isParameterizable']:
+        return f"sc_bv<{struct_name}::_bitWidth>"
+    w = get_struct_width(struct_key, prj.data['structures'])
+    return 'bool' if w == 1 else f"sc_bv<{w}>"
 
 def block_config_decl(is_parameterizable):
     return 'template<typename Config>' if is_parameterizable else ''
@@ -359,11 +424,8 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     hdl_intf_name = intf_name + '_hdl_if'
 
     hdl_if_bv_types = []
-    params = intf_def.get('parameters') or {}
-    for param in params:
-        w = get_struct_width(intf_param[param]['structureKey'], prj.data['structures'])
-        sc_bv_type = 'bool' if w == 1 else f"sc_bv<{w}>"
-        hdl_if_bv_types.append(sc_bv_type)
+    for param in filter(lambda item: params[item]['datatype'] == 'struct', params):
+        hdl_if_bv_types.append(sc_hdl_bridge_type(intf_param[param], prj))
     hdl_params = intf_def.get('hdlparams', {}) or {}
     for param in hdl_params:
         assert(hdl_params[param]['datatype'] in ['integer'])

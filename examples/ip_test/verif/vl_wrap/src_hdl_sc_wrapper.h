@@ -46,8 +46,8 @@ public:
 
     sc_clock clk;
 
-    push_ack_src_bfm<srcOut0St<Config>, sc_bv<9>> out0_bfm;
-    push_ack_src_bfm<srcOut1St<Config>, sc_bv<71>> out1_bfm;
+    push_ack_src_bfm<srcOut0St<Config>, sc_bv<srcOut0St<Config>::_bitWidth>> out0_bfm;
+    push_ack_src_bfm<srcOut1St<Config>, sc_bv<srcOut1St<Config>::_bitWidth>> out1_bfm;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
@@ -100,8 +100,8 @@ public:
 
 private:
 
-    push_ack_hdl_if<sc_bv<9>> out0_hdl_if;
-    push_ack_hdl_if<sc_bv<71>> out1_hdl_if;
+    push_ack_hdl_if<sc_bv<srcOut0St<Config>::_bitWidth>> out0_hdl_if;
+    push_ack_hdl_if<sc_bv<srcOut1St<Config>::_bitWidth>> out1_hdl_if;
 
     sc_signal<bool> rst_n;
 
