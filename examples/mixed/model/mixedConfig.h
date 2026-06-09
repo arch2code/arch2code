@@ -8,6 +8,8 @@
 // GENERATED_CODE_PARAM --context=mixed.yaml
 // GENERATED_CODE_BEGIN --template=includes --section=config
 struct mixedDefaultConfig {
+    static constexpr uint32_t bob = 16;
+    static constexpr uint32_t fred = 0;
 };
 
 struct blockFVariant0Config {

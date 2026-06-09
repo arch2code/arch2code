@@ -19,13 +19,13 @@ namespace {
 // === End block factory registration ===
 
 void blockA::regHandler(void) { //handle register decode
-    registerHandler< apbAddrSt, apbDataSt >(regs, apbReg, (1<<(8))-1); }
+    registerHandler< apbAddrSt, apbDataSt >(_a2cRegs, apbReg, (1<<(8))-1); }
 
 blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("blockA", name(), bbMode)
         ,blockABase(name(), variant)
-        ,regs(log_)
+        ,_a2cRegs(log_)
         ,roA()
         ,blockATableLocal_channel("blockA_blockATableLocal", "blockA")
         ,blockATableLocal_port("blockATableLocal_port")
@@ -42,10 +42,10 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
     constexpr uint64_t REG_ADDR_BLOCKA_ROA = 0xc0;
 
     // register memories for FW access
-    regs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLE37BIT, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATable37Bit", &blockATable37Bit_adapter);
-    regs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLELOCAL, aRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATableLocal", &blockATableLocal_adapter);
+    _a2cRegs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLE37BIT, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATable37Bit", &blockATable37Bit_adapter);
+    _a2cRegs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLELOCAL, aRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockATableLocal", &blockATableLocal_adapter);
     // register registers for FW access
-    regs.addRegister( REG_ADDR_BLOCKA_ROA, 1, "roA", &roA );
+    _a2cRegs.addRegister( REG_ADDR_BLOCKA_ROA, 1, "roA", &roA );
     // bind local memory register ports to channels
     blockATableLocal_port(blockATableLocal_channel);
     blockATable37Bit_port(blockATable37Bit_channel);

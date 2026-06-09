@@ -49,6 +49,15 @@ constants:
   REAL_PI    : {value: 3.14159, valueType: real, desc: "Test constant for floating point (real) type"}
   REAL_HALF  : {eval: "$DWORD / 2.0", valueType: real, desc: "Test constant for real from eval expression"}
 
+# Per-instance block parameters for blockF. Every block param listed in a
+# block's params: must be backed by a same-name ipParameters constant. bob
+# sizes the blockF `test` memory wordLines (worst-case across variants =
+# max(BOB0=16, BOB1=15) = 16); fred is a scalar per-variant parameter.
+ipParameters:
+  constants:
+    bob:  {value: 16, maxValue: 16, desc: "blockF per-instance memory depth (variant-bound block parameter)"}
+    fred: {value: 0,  maxValue: 1,  desc: "blockF per-instance scalar block parameter"}
+
 encoders:
   opcodeEnA:
     desc: "Opcode Encoder A"

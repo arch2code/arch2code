@@ -7,6 +7,8 @@
 `include "ipLeaf_hdl_sv_wrapper.svh"
 
 module ipLeaf_variantLeaf0_hdl_sv_wrapper
+    // Generated Import package statement(s)
+    import ipLeaf_package::*;
 #(
     localparam LEAF_DATA_WIDTH = 4,
     localparam LEAF_MEM_DEPTH = 4

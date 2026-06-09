@@ -23,6 +23,15 @@ private:
 public:
     SC_HAS_PROCESS(blockF);
 
+    // inherited names usable unqualified (no Config:: / this->)
+    using blockFBase<Config>::bob;
+    using blockFBase<Config>::fred;
+    using blockFBase<Config>::cStuffIf;
+    using blockFBase<Config>::dStuffIf;
+    using blockFBase<Config>::dSin;
+    using blockFBase<Config>::dSout;
+    using blockFBase<Config>::rwD;
+
 
     memories mems;
     //memories

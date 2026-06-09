@@ -7,6 +7,8 @@
 `include "ip_hdl_sv_wrapper.svh"
 
 module ip_variant1_hdl_sv_wrapper
+    // Generated Import package statement(s)
+    import ip_package::*;
 #(
     localparam IP_DATA_WIDTH = 70,
     localparam IP_MEM_DEPTH = 8,

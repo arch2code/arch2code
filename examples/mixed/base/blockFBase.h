@@ -15,8 +15,8 @@ class blockFBase : public virtual blockPortBase
 {
 public:
     virtual ~blockFBase() = default;
-    const uint64_t bob;
-    const uint64_t fred;
+    static constexpr auto bob = Config::bob;
+    static constexpr auto fred = Config::fred;
     // src ports
     // cStuffIf->uThreeCs: An interface for C
     rdy_vld_out< seeSt > cStuffIf;
@@ -33,9 +33,7 @@ public:
 
 
     blockFBase(std::string name, const char * variant) :
-        bob(Config::bob)
-        ,fred(Config::fred)
-        ,cStuffIf("cStuffIf")
+        cStuffIf("cStuffIf")
         ,dSout("dSout")
         ,dStuffIf("dStuffIf")
         ,dSin("dSin")

@@ -56,7 +56,10 @@ public:
     rdy_vld_src_bfm<dSt, sc_bv<7>> dSout_bfm;
     status_dst_bfm<dRegSt, sc_bv<7>> rwD_bfm;
 
-    SC_HAS_PROCESS (blockF_hdl_sc_wrapper<DUT_T, Config>);
+    // SC_HAS_PROCESS expects a single macro argument; the Config-templated
+    // self type carries a comma in its argument list and must be aliased.
+    using blockF_hdl_sc_wrapper_self_t = blockF_hdl_sc_wrapper<DUT_T, Config>;
+    SC_HAS_PROCESS (blockF_hdl_sc_wrapper_self_t);
 
     blockF_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
@@ -88,27 +91,27 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        cStuffIf_bfm.if_p(cStuffIf);
+        cStuffIf_bfm.if_p(this->cStuffIf);
         cStuffIf_bfm.hdl_if_p(cStuffIf_hdl_if);
         cStuffIf_bfm.clk(clk);
         cStuffIf_bfm.rst_n(rst_n);
 
-        dStuffIf_bfm.if_p(dStuffIf);
+        dStuffIf_bfm.if_p(this->dStuffIf);
         dStuffIf_bfm.hdl_if_p(dStuffIf_hdl_if);
         dStuffIf_bfm.clk(clk);
         dStuffIf_bfm.rst_n(rst_n);
 
-        dSin_bfm.if_p(dSin);
+        dSin_bfm.if_p(this->dSin);
         dSin_bfm.hdl_if_p(dSin_hdl_if);
         dSin_bfm.clk(clk);
         dSin_bfm.rst_n(rst_n);
 
-        dSout_bfm.if_p(dSout);
+        dSout_bfm.if_p(this->dSout);
         dSout_bfm.hdl_if_p(dSout_hdl_if);
         dSout_bfm.clk(clk);
         dSout_bfm.rst_n(rst_n);
 
-        rwD_bfm.if_p(rwD);
+        rwD_bfm.if_p(this->rwD);
         rwD_bfm.hdl_if_p(rwD_hdl_if);
         rwD_bfm.clk(clk);
         rwD_bfm.rst_n(rst_n);

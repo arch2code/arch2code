@@ -125,8 +125,11 @@ def section_module_params(prj, data):
     # params). Emitted byte-identical to the owning module's header so a
     # parameterized handler can declare variant-width module-local storage.
     qualBlock = prj.getQualBlock(data['blockName'])
+    params = prj.data['blocks'][qualBlock]['params']
+    if not params:
+        return ""
     return string_joiner(
-        [ f"parameter {param['param']}," for param in prj.data['blocks'][qualBlock]['params'] ], '\n')
+        [ f"parameter {param['param']}," for param in params ], '\n')
 
 def section_param_decls(prj, data):
     # Module-local parameterizable type/struct declarations, ordered

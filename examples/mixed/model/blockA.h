@@ -21,7 +21,7 @@ SC_MODULE(blockA), public blockBase, public blockABase
 {
 private:
     void regHandler(void);
-    addressMap regs;
+    addressMap _a2cRegs;
 
 public:
 

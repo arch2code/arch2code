@@ -77,7 +77,7 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        cpu_main_bfm.if_p(cpu_main);
+        cpu_main_bfm.if_p(this->cpu_main);
         cpu_main_bfm.hdl_if_p(cpu_main_hdl_if);
         cpu_main_bfm.clk(clk);
         cpu_main_bfm.rst_n(rst_n);

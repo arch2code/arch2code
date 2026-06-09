@@ -108,10 +108,8 @@ module blockBRegs
     assign wr_select = apbReg.psel & apbReg.penable & apbReg.pwrite & rst_n;
     assign rd_select = apbReg.psel & apbReg.penable & !apbReg.pwrite & rst_n;
 
-    logic nxt_wr_pslverr, wr_pslverr;
     logic nxt_wr_ready, wr_ready;
     always_comb begin
-        nxt_wr_pslverr = 1'b0;
         nxt_wr_ready = 1'b0;
         rwD_reg_update_0 = 1'b0;
         blockBTable1_update_0 = 1'b0;
@@ -162,19 +160,15 @@ module blockBRegs
                         default: ;
                     endcase
                 end
-                default: begin
-                    nxt_wr_pslverr = 1'b1;
-                end
+                default: ; // unmapped/ro write: silently ignored (ACK below)
             endcase
             nxt_wr_ready = 1'b1;
         end
     end
 
-    logic nxt_rd_pslverr, rd_pslverr;
     logic nxt_rd_ready, rd_ready;
     apbDataSt nxt_rd_data, rd_data;
     always_comb begin
-        nxt_rd_pslverr = 1'b0;
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
         nxt_blockBTable1_rd_enable = 1'b0;
@@ -238,35 +232,32 @@ module blockBRegs
                     endcase
                     nxt_blockBTable37Bit_rd_enable = ~blockBTable37Bit_rd_capture;
                 end
-                default: begin
-                    nxt_rd_data = apbDataSt'(32'hBADD_C0DE);
-                    nxt_rd_pslverr = 1'b1;
+                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = '0;
                 end
             endcase
         end
     end
 
-    // Update APB ready, pslverr, and read data
+    // Update APB ready and read data. The bus is never stalled and slave
+    // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
             `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(wr_pslverr, nxt_wr_pslverr, '0)
             `DFFR(rd_ready,   nxt_rd_ready,   '0)
             `DFFR(rd_data,    nxt_rd_data,    '0)
-            `DFFR(rd_pslverr, nxt_rd_pslverr, '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
-            assign wr_pslverr = nxt_wr_pslverr;
             assign rd_ready   = nxt_rd_ready;
             assign rd_data    = nxt_rd_data;
-            assign rd_pslverr = nxt_rd_pslverr;
         end
     endgenerate
 
     // Update the APB interface
     assign apbReg.prdata  = rd_data;
     assign apbReg.pready  = rd_ready | wr_ready;
-    assign apbReg.pslverr = rd_pslverr | wr_pslverr;
+    assign apbReg.pslverr = 1'b0;
 
 endmodule : blockBRegs
 // GENERATED_CODE_END

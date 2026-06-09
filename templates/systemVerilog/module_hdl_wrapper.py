@@ -145,10 +145,17 @@ def render_trampoline(args, prj, data, mp_sig, blk_name):
     out = '\n'
     out += f'`include "{body_module}.svh"\n\n'
     out += f'module {module_name}\n'
+    # Import the block's packages so a binding value written as a project
+    # constant (e.g. bob bound to BOB0) resolves by name in the parameter port
+    # list. The parent instantiation and the canonical body already import
+    # these; the trampoline names the bound values directly, so it needs them
+    # in scope too.
+    startingContext = prj.data['blocks'][prj.getQualBlock(blk_name)]['_context']
+    out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
     # Bind the variant's concrete parameter values as localparams in the
     # parameter port list, so they precede (and are in scope for) the flattened
     # port widths that reuse the Stage-1 symbolic expressions.
-    out += '#(\n'
+    out += '\n#(\n'
     out += textwrap.indent(',\n'.join([f"localparam {var_data['param']} = {var_data['value']}" for _, var_data in variant_data.items()]), ' '*4)
     out += '\n)(\n'
     out += textwrap.indent(port_decl_block(prj, data, mp_sig), ' '*4)

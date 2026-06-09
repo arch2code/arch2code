@@ -4,11 +4,16 @@
 // GENERATED_CODE_PARAM --block=blockF --variant=variant1
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "blockF_hdl_sv_wrapper.svh"
+
 module blockF_variant1_hdl_sv_wrapper
     // Generated Import package statement(s)
     import mixed_package::*;
     import mixedBlockC_package::*;
-(
+#(
+    localparam bob = BOB1,
+    localparam fred = 1
+)(
     // rdy_vld_if.src
     output bit cStuffIf_vld,
     output bit [4:0] cStuffIf_data,
@@ -35,54 +40,26 @@ module blockF_variant1_hdl_sv_wrapper
     input clk,
     input rst_n
 );
-    // rdy_vld_if.src
-    rdy_vld_if #(.data_t(seeSt)) cStuffIf();
-
-    assign #0 cStuffIf_vld = cStuffIf.vld;
-    assign #0 cStuffIf_data = cStuffIf.data;
-    assign #0 cStuffIf.rdy = cStuffIf_rdy;
-
-    // rdy_vld_if.dst
-    rdy_vld_if #(.data_t(dSt)) dStuffIf();
-
-    assign #0 dStuffIf.vld = dStuffIf_vld;
-    assign #0 dStuffIf.data = dStuffIf_data;
-    assign #0 dStuffIf_rdy = dStuffIf.rdy;
-
-    // rdy_vld_if.dst
-    rdy_vld_if #(.data_t(dSt)) dSin();
-
-    assign #0 dSin.vld = dSin_vld;
-    assign #0 dSin.data = dSin_data;
-    assign #0 dSin_rdy = dSin.rdy;
-
-    // rdy_vld_if.src
-    rdy_vld_if #(.data_t(dSt)) dSout();
-
-    assign #0 dSout_vld = dSout.vld;
-    assign #0 dSout_data = dSout.data;
-    assign #0 dSout.rdy = dSout_rdy;
-
-    // status_if.dst
-    status_if #(.data_t(dRegSt)) rwD();
-
-    assign #0 rwD.data = rwD_data;
-
-    blockF #(.bob(BOB1), .fred(1)) dut (
-        .cStuffIf(cStuffIf), // rdy_vld_if.src
-        .dStuffIf(dStuffIf), // rdy_vld_if.dst
-        .dSin(dSin), // rdy_vld_if.dst
-        .dSout(dSout), // rdy_vld_if.src
-        .rwD(rwD), // status_if.dst
+    blockF_hdl_sv_wrapper #(
+        .bob(bob),
+        .fred(fred)
+    ) u_wrapper (
+        .cStuffIf_vld(cStuffIf_vld),
+        .cStuffIf_data(cStuffIf_data),
+        .cStuffIf_rdy(cStuffIf_rdy),
+        .dStuffIf_vld(dStuffIf_vld),
+        .dStuffIf_data(dStuffIf_data),
+        .dStuffIf_rdy(dStuffIf_rdy),
+        .dSin_vld(dSin_vld),
+        .dSin_data(dSin_data),
+        .dSin_rdy(dSin_rdy),
+        .dSout_vld(dSout_vld),
+        .dSout_data(dSout_data),
+        .dSout_rdy(dSout_rdy),
+        .rwD_data(rwD_data),
         .clk(clk),
         .rst_n(rst_n)
     );
-
-    `ifdef VCS
-    initial if ($test$plusargs("fsdbTrace")) begin
-        $fsdbDumpvars($sformatf("%m"), "+all");
-    end
-    `endif
 
 endmodule : blockF_variant1_hdl_sv_wrapper
 

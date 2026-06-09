@@ -18,13 +18,13 @@ namespace {
 // === End block factory registration ===
 
 void blockBRegs::regHandler(void) { //handle register decode
-    registerHandler< apbAddrSt, apbDataSt >(regs, apbReg, (1<<(9))-1); }
+    registerHandler< apbAddrSt, apbDataSt >(_a2cRegs, apbReg, (1<<(9))-1); }
 
 blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("blockBRegs", name(), bbMode)
         ,blockBRegsBase(name(), variant)
-        ,regs(log_)
+        ,_a2cRegs(log_)
         ,rwD(dRegSt::_packedSt(0x0))
         ,roBsize()
         ,blockBTable1_adapter(blockBTable1)
@@ -41,12 +41,12 @@ blockBRegs::blockBRegs(sc_module_name blockName, const char * variant, blockBase
     constexpr uint64_t REG_ADDR_BLOCKB_ROBSIZE = 0x148;
 
     // register memories for FW access
-    regs.addMemory( REG_ADDR_BLOCKB_BLOCKBTABLE1, bigSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTable1", &blockBTable1_adapter);
-    regs.addMemory( REG_ADDR_BLOCKB_BLOCKBTABLE37BIT, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTable37Bit", &blockBTable37Bit_adapter);
-    regs.addMemory( REG_ADDR_BLOCKB_BLOCKBTABLEEXT, seeSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTableExt", &blockBTableExt_adapter);
+    _a2cRegs.addMemory( REG_ADDR_BLOCKB_BLOCKBTABLE1, bigSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTable1", &blockBTable1_adapter);
+    _a2cRegs.addMemory( REG_ADDR_BLOCKB_BLOCKBTABLE37BIT, test37BitRegSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTable37Bit", &blockBTable37Bit_adapter);
+    _a2cRegs.addMemory( REG_ADDR_BLOCKB_BLOCKBTABLEEXT, seeSt::_byteWidth, BSIZE, std::string(this->name()) + ".blockBTableExt", &blockBTableExt_adapter);
     // register registers for FW access
-    regs.addRegister( REG_ADDR_BLOCKB_RWD, 1, "rwD", &rwD );
-    regs.addRegister( REG_ADDR_BLOCKB_ROBSIZE, 1, "roBsize", &roBsize );
+    _a2cRegs.addRegister( REG_ADDR_BLOCKB_RWD, 1, "rwD", &rwD );
+    _a2cRegs.addRegister( REG_ADDR_BLOCKB_ROBSIZE, 1, "roBsize", &roBsize );
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
