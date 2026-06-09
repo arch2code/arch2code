@@ -173,8 +173,11 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     out['intf_modp'] = intf_modp
 
-    # Blasted interface ports
+    # Blasted interface ports. 'ports' carries the full ANSI declarations;
+    # 'names' carries the bare flattened signal names, consumed by the variant
+    # trampoline when wiring the canonical body instance by name.
     out['ports'] = []
+    out['names'] = []
     for intf_sig in intf_def['signals']:
         modp_signals = intf_def['modports'][intf_modp]['modportGroups']
         # Safely get inputs and outputs lists
@@ -191,6 +194,7 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
         elif port_type == 'bool':
             port_type = 'bit'
         out['ports'].append(f"{port_dir} {port_type} {port_name}")
+        out['names'].append(port_name)
 
     # Assignment port <-> interface
     out['assign'] = []

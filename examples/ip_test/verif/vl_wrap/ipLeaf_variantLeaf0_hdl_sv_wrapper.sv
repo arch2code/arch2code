@@ -4,34 +4,23 @@
 // GENERATED_CODE_PARAM --block=ipLeaf --variant=variantLeaf0
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
+`include "ipLeaf_hdl_sv_wrapper.svh"
+
 module ipLeaf_variantLeaf0_hdl_sv_wrapper
-    // Generated Import package statement(s)
-    import ipLeaf_package::*;
-(
+#(
+    localparam LEAF_DATA_WIDTH = 4,
+    localparam LEAF_MEM_DEPTH = 4
+)(
     input clk,
     input rst_n
 );
-    localparam LEAF_DATA_WIDTH = 4;
-    localparam LEAF_MEM_DEPTH = 4;
-    typedef logic[LEAF_DATA_WIDTH-1:0] ipLeafDataT; //ipLeaf data word, parameterizable
-    typedef logic[$clog2(LEAF_MEM_DEPTH)-1:0] ipLeafMemAddrT; //Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)
-    typedef struct packed {
-        ipLeafDataT data; //Leaf memory word
-    } ipLeafMemSt;
-    typedef struct packed {
-        ipLeafMemAddrT address; //Leaf memory address
-    } ipLeafMemAddrSt;
-
-    ipLeaf #(.LEAF_DATA_WIDTH(4), .LEAF_MEM_DEPTH(4)) dut (
+    ipLeaf_hdl_sv_wrapper #(
+        .LEAF_DATA_WIDTH(LEAF_DATA_WIDTH),
+        .LEAF_MEM_DEPTH(LEAF_MEM_DEPTH)
+    ) u_wrapper (
         .clk(clk),
         .rst_n(rst_n)
     );
-
-    `ifdef VCS
-    initial if ($test$plusargs("fsdbTrace")) begin
-        $fsdbDumpvars($sformatf("%m"), "+all");
-    end
-    `endif
 
 endmodule : ipLeaf_variantLeaf0_hdl_sv_wrapper
 

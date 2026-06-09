@@ -94,6 +94,11 @@ fileGeneration:
     blockRegistrar : { name : "Registrar",    ext: {src: "cpp"},           cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: block, basePath: model, desc: "Per-block trampoline registrar TU"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
+    # Canonical parameterized SV wrapper body, emitted once per parameterizable
+    # block as an include-only .svh that each variant trampoline `include`s.
+    # Restricted to parameterizable VL blocks so non-parameterizable blocks emit
+    # only their single .sv top (no .svh, no name collision).
+    vlSvWrapBody: { name : "_hdl_sv_wrapper", ext: {svh: "svh"},           cond: {isParameterizable: true}, condAnd: {hasVl: true}, mode: block, basePath: vl_wrap, variant: false, desc: "Canonical parameterized SV wrapper body (include-only)"}
     vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
     # plan-step-11-variant-aware-testbenches.md scope boundary: exactly one
     # testbench artifact and class family per block (no variant: true). The

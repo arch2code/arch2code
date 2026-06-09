@@ -28,7 +28,11 @@ VERILATOR_OPTS += $(VERILATOR_USER_OPTS)
 VL_GEN_SV_FILES += $(call find_gen_sv_sources, $(VL_SRC_DIRS))
 VL_GEN_SC_FILES += $(call find_gen_cpp_sources, $(VL_SRC_DIRS))
 
-VL_OBJ_FILES = $(subst ./,obj_dir/V, $(patsubst %.sv, %.o, $(VL_GEN_SV_FILES)))
+# Only .sv files become Verilated tops. A generated canonical wrapper body
+# (.svh) is maintained by the generation scan and `include`d by variant
+# trampolines, but is never a top (a default-less parameterized module cannot be
+# a top); filter it out so it never becomes a malformed object target.
+VL_OBJ_FILES = $(subst ./,obj_dir/V, $(patsubst %.sv, %.o, $(filter %.sv, $(VL_GEN_SV_FILES))))
 
 VL_LIB_OBJ_FILES = obj_dir/verilated.o obj_dir/verilated_dpi.o obj_dir/verilated_vcd_c.o obj_dir/verilated_threads.o
 

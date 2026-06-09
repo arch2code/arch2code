@@ -28,8 +28,8 @@ systemVerilog/axiDemo/package.f
 # ignore the test output directory
 tests/out/*
 
-# ignore regression output directory
-regr/**
+# ignore regression output directories
+**/regr/**
 
 # database files
 *.db

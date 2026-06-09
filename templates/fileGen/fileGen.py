@@ -47,6 +47,8 @@ def render(args, prj, data):
                 return(rtlModule(args, prj, data))
         case 'vlSvWrap_sv':
             return(vlSvWrap_sv(args, prj, data))
+        case 'vlSvWrapBody_svh':
+            return(vlSvWrapBody_svh(args, prj, data))
         case 'vlScWrap_hdr':
             return(vlScWrap_hdr(args, prj, data))
         case 'vlSvWrap_svVariant':
@@ -219,6 +221,9 @@ vlSvWrap_svTemplate = \
 `endif // ___MODULENAME___HDL_SV_WRAPPER_SV_GUARD_
 """
 
+# Variant trampoline top. The module_hdl_sv_wrapper template renders both the
+# `include of the canonical parameterized body (the .svh) and the trampoline
+# module into the generated region.
 vlSvWrap_svVariantTemplate = \
 """`ifndef ___MODULENAME_____VARIANTNAME___HDL_SV_WRAPPER_SV_GUARD_
 `define ___MODULENAME_____VARIANTNAME___HDL_SV_WRAPPER_SV_GUARD_
@@ -237,6 +242,25 @@ def vlSvWrap_sv(args, prj, data):
     else:
         t = TemplateCustom(vlSvWrap_svTemplate)
         return(t.substitute({'MODULENAME':data["block"].upper(), 'modulename':data["block"]}))
+
+# Canonical parameterized SV wrapper body, emitted as an include-only .svh
+# header. It keeps its GENERATED_CODE markers and is maintained by the
+# generation scan, but is never Verilated as a top (a default-less parameterized
+# module cannot be a top); the a2c-vl-wrap.mk top list filters to .sv only.
+vlSvWrapBody_svhTemplate = \
+"""`ifndef ___MODULENAME___HDL_SV_WRAPPER_SVH_GUARD_
+`define ___MODULENAME___HDL_SV_WRAPPER_SVH_GUARD_
+
+// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper --section=body
+// GENERATED_CODE_END
+
+`endif // ___MODULENAME___HDL_SV_WRAPPER_SVH_GUARD_
+"""
+
+def vlSvWrapBody_svh(args, prj, data):
+    t = TemplateCustom(vlSvWrapBody_svhTemplate)
+    return(t.substitute({'MODULENAME':data["block"].upper(), 'modulename':data["block"]}))
 
 vlScWrap_hdrTemplate = \
 """#ifndef {{MODULENAME}}_HDL_SC_WRAPPER_H_

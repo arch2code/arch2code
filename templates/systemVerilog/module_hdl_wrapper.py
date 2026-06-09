@@ -18,31 +18,30 @@ def render_sv(args, prj, data):
         for port in data['ports'][port_type]:
             mp_sig[port] = intf_gen_utils.sv_gen_modport_signal_blast(data['ports'][port_type][port], prj, data)
 
-    out = '\n'
-
     blk_name = data['blockName']
 
-    if ( args.variant and args.variant in data['variants'] ):
-        variant_name = args.variant
-        variant_data = data['variants'][variant_name]
-    else:
-        variant_data = None
+    # The parameterizable wrapper is emitted in two pieces: one canonical
+    # default-less parameterized body (the .svh, --section=body) that owns the
+    # typedefs, interface reconstruction, and DUT instantiation, plus one tiny
+    # top-module trampoline per variant (the .sv, --variant=...) that binds the
+    # variant's parameter values and wires the flattened ports through by name.
+    # Non-parameterizable blocks have no variants and emit a single
+    # self-contained wrapper body.
+    if args.section == 'body':
+        return render_body(args, prj, data, mp_sig, blk_name)
+    if args.variant and args.variant in data['variants']:
+        return render_trampoline(args, prj, data, mp_sig, blk_name)
+    return render_non_parameterizable(args, prj, data, mp_sig, blk_name)
 
-    if (variant_data):
-        module_name = f'{blk_name}_{variant_name}_hdl_sv_wrapper'
-    else:
-        module_name = f'{blk_name}_hdl_sv_wrapper'
+def param_names(data):
+    # Default-less DUT parameter names. The parameter set is identical across a
+    # block's variants, so read the first variant's bound-parameter rows.
+    first_variant = next(iter(data['variants'].values()))
+    return [var_data['param'] for var_data in first_variant.values()]
 
-    # module
-
-    out += f'module {module_name}\n'
-
-    # packages
-    startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
-    out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
-    out += '\n(\n'
-
-    # ports
+def port_decl_block(prj, data, mp_sig):
+    # ANSI flattened port list shared by the canonical body and the variant
+    # trampoline.
     s = ''
     for port_type in data['ports']:
         for port, port_data in data['ports'][port_type].items():
@@ -55,25 +54,10 @@ def render_sv(args, prj, data):
             s += ',\n'
             s += '\n'
     s += 'input clk,\ninput rst_n\n'
-    out += textwrap.indent(s, ' '*4)
-    out += ');\n'
+    return s
 
-    # Module-local parameterizable type/struct declarations. C3.1 moved the
-    # parameterized boundary types/structs out of the package into module
-    # scope, so the wrapper cannot resolve them through its package import.
-    # The wrapper is variant-specific, so declare the variant's concrete
-    # parameter values as localparams and emit the block's parameterizedDecls
-    # from them (the same set the owning module declares), before the boundary
-    # interface declarations that reference them.
-    if data['parameterizedDecls']:
-        s = ''
-        for _, var_data in variant_data.items():
-            s += f"localparam {var_data['param']} = {var_data['value']};\n"
-        for line in parameterizedDeclLines(data['parameterizedDecls'], prj):
-            s += line + '\n'
-        out += textwrap.indent(s, ' '*4) + '\n'
-
-    # assigns ports<->interface
+def intf_reconstruction(prj, data, mp_sig):
+    # Interface declarations and the port<->interface assigns.
     s = ''
     for port_type in data['ports']:
         for port, port_data in data['ports'][port_type].items():
@@ -86,20 +70,9 @@ def render_sv(args, prj, data):
             s += '\n'.join(mp_sig[port]['assign'])
             s += '\n'
             s += '\n'
+    return s
 
-    out += textwrap.indent(s, ' '*4)
-
-    # dut parameters decl
-    blk_param = ''
-    if ( variant_data ):
-        blk_param = ' #('
-        blk_param += ", ".join([f".{var_data['param']}({var_data['value']})" for _,var_data in variant_data.items()])
-        blk_param += ')'
-    else:
-        blk_param = ''
-
-    # dut assign port decl
-
+def dut_instantiation(prj, data, blk_name, blk_param):
     s = f'{blk_name}{blk_param} dut (\n'
     s_1 = ''
     for port_type in data['ports']:
@@ -120,9 +93,102 @@ initial if ($test$plusargs("fsdbTrace")) begin
     $fsdbDumpvars($sformatf("%m"), "+all");
 end
 `endif'''
+    return s
 
-    out += textwrap.indent(s, ' '*4) + '\n'
+def render_body(args, prj, data, mp_sig, blk_name):
+    # Canonical default-less parameterized wrapper body (include-only .svh). The
+    # parameters precede the ports, so the Stage-1 active-width expressions are
+    # legal in the ANSI port list. The typedefs reference the #() parameters
+    # directly, and the DUT parameters are passed through by name.
+    module_name = f'{blk_name}_hdl_sv_wrapper'
+    out = '\n'
+    out += f'module {module_name}\n'
+
+    startingContext = prj.data['blocks'][prj.getQualBlock(blk_name)]['_context']
+    out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
+
+    params = param_names(data)
+    out += '\n#(\n'
+    out += textwrap.indent(',\n'.join(f'parameter {p}' for p in params), ' '*4)
+    out += '\n) (\n'
+    out += textwrap.indent(port_decl_block(prj, data, mp_sig), ' '*4)
+    out += ');\n'
+
+    # Module-local parameterizable type/struct declarations. C3.1 moved the
+    # parameterized boundary types/structs out of the package into module
+    # scope, so the wrapper cannot resolve them through its package import. In
+    # the canonical body they are declared from the #() parameters directly.
+    if data['parameterizedDecls']:
+        s = ''
+        for line in parameterizedDeclLines(data['parameterizedDecls'], prj):
+            s += line + '\n'
+        out += textwrap.indent(s, ' '*4) + '\n'
+
+    out += textwrap.indent(intf_reconstruction(prj, data, mp_sig), ' '*4)
+
+    blk_param = ' #(' + ", ".join([f".{p}({p})" for p in params]) + ')'
+    out += textwrap.indent(dut_instantiation(prj, data, blk_name, blk_param), ' '*4) + '\n'
 
     out += f'\nendmodule : {module_name}\n'
+    return out
 
+def render_trampoline(args, prj, data, mp_sig, blk_name):
+    # Variant top trampoline (.sv). The canonical body is made visible by the
+    # `include in the scaffold. The trampoline declares the variant's concrete
+    # parameter values as localparams, reuses the Stage-1 symbolic port widths,
+    # and wires every flattened port through to the canonical body by name.
+    variant_name = args.variant
+    variant_data = data['variants'][variant_name]
+    module_name = f'{blk_name}_{variant_name}_hdl_sv_wrapper'
+    body_module = f'{blk_name}_hdl_sv_wrapper'
+
+    out = '\n'
+    out += f'`include "{body_module}.svh"\n\n'
+    out += f'module {module_name}\n'
+    # Bind the variant's concrete parameter values as localparams in the
+    # parameter port list, so they precede (and are in scope for) the flattened
+    # port widths that reuse the Stage-1 symbolic expressions.
+    out += '#(\n'
+    out += textwrap.indent(',\n'.join([f"localparam {var_data['param']} = {var_data['value']}" for _, var_data in variant_data.items()]), ' '*4)
+    out += '\n)(\n'
+    out += textwrap.indent(port_decl_block(prj, data, mp_sig), ' '*4)
+    out += ');\n'
+
+    inst = f'{body_module} #(\n'
+    inst += textwrap.indent(',\n'.join([f".{var_data['param']}({var_data['param']})" for _, var_data in variant_data.items()]), ' '*4)
+    inst += '\n) u_wrapper (\n'
+    names = []
+    for port_type in data['ports']:
+        for port in data['ports'][port_type]:
+            names += mp_sig[port]['names']
+    conns = [f".{name}({name})" for name in names]
+    conns += ['.clk(clk)', '.rst_n(rst_n)']
+    inst += textwrap.indent(',\n'.join(conns), ' '*4) + '\n'
+    inst += ');\n'
+    out += textwrap.indent(inst, ' '*4)
+
+    out += f'\nendmodule : {module_name}\n'
+    return out
+
+def render_non_parameterizable(args, prj, data, mp_sig, blk_name):
+    # Single self-contained wrapper body for a non-parameterizable block: no
+    # parameters and no variants, so the wrapper instantiates the DUT directly.
+    module_name = f'{blk_name}_hdl_sv_wrapper'
+
+    out = '\n'
+    out += f'module {module_name}\n'
+
+    # packages
+    startingContext = prj.data['blocks'][prj.getQualBlock(blk_name)]['_context']
+    out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
+    out += '\n(\n'
+
+    out += textwrap.indent(port_decl_block(prj, data, mp_sig), ' '*4)
+    out += ');\n'
+
+    out += textwrap.indent(intf_reconstruction(prj, data, mp_sig), ' '*4)
+
+    out += textwrap.indent(dut_instantiation(prj, data, blk_name, ''), ' '*4) + '\n'
+
+    out += f'\nendmodule : {module_name}\n'
     return out
