@@ -89,10 +89,7 @@ public:
     {
         Q_ASSERT_CTX(address < N, "", "Address out of range");
         uint32_t val;
-        if constexpr (RO)
-        {
-            m_val = (*m_port)->readNonBlocking();
-        }
+        m_val = (*m_port)->readNonBlocking();
         m_val_sc = m_val.sc_pack();
         val = (uint32_t) m_val_sc.range(8*address+31, 8*address).to_uint64();
         return val;
@@ -104,31 +101,12 @@ public:
             Q_ASSERT_CTX(false, "", "Attempt to write to read-only register");
         } else {
             Q_ASSERT_CTX(address < N, "", "Address out of range");
+            // Perform a RMW operation
+            m_val = (*m_port)->readNonBlocking(); // Non-blocking read
             m_val_sc = m_val.sc_pack();
             m_val_sc.range(8*address+31, 8*address) = val;
             m_val.sc_unpack(m_val_sc);
-            if (address == (N-4))
-            {
-                (*m_port)->write(m_val);
-            }
-        }
-    }
-    REG_DATA read(void)
-    {
-        if constexpr (RO)
-        {
-            m_val = (*m_port)->read();
-        }
-        return m_val;
-    }
-    void write(REG_DATA val)
-    {
-        if constexpr (RO)
-        {
-            Q_ASSERT_CTX(false, "", "Attempt to write to read-only register");
-        } else {
-            m_val = val;
-            (*m_port)->write(m_val);
+            (*m_port)->reg_write(m_val); // Non-blocking write with event notification
         }
     }
     void copy(REG_DATA& to)
