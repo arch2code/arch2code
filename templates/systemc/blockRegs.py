@@ -81,7 +81,8 @@ def get_hwregs(prj, data):
                 "datatype": inst['structure'],
                 "size_rounded": roundup_multiple(inst['bytes'], 4),
                 "size": inst['bytes'],
-                "ro" : 'true' if ( inst['regType'] == 'ro' or port_type == 'external_reg_out' ) else 'false', # FIXME: consider changing this to a more general rule with property in interface definition
+                # "ro" : 'true' if ( inst['regType'] == 'ro' or port_type == 'external_reg_out' ) else 'false', # FIXME: consider changing this to a more general rule with property in interface definition
+                "ro" : 'true' if inst['regType'] == 'ro' else 'false',
                 "offset": hex(inst['offset']),
                 "port_type": port_type,
                 "port_name": inst['register'],

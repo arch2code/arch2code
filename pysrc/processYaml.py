@@ -2721,9 +2721,105 @@ class projectCreate:
                             exit(warningAndErrorReport())
         self.config.setConfig("ADDRESS_CONFIG", addressControl, bin=True)
 
+    def _lookupInstanceFromMap(self, connMap):
+        instance_name = connMap.get('instance')
+        instance_key = connMap.get('instanceKey')
+        for instances in self.data.get('instances', {}).values():
+            if not isinstance(instances, dict):
+                continue
+            if instance_name and instance_name in instances:
+                return instances[instance_name]
+            if instance_key and instance_key in instances:
+                return instances[instance_key]
+            for inst in instances.values():
+                if instance_key and inst.get('instanceKey') == instance_key:
+                    return inst
+                if instance_name and inst.get('instance') == instance_name:
+                    return inst
+        return None
+
+    def _collectBoundaryPorts(self):
+        """Build blockKey -> portName -> connection end metadata from connections and parent maps."""
+        boundary = dict()
+
+        def add_port(block_key, port_name, meta):
+            if block_key and port_name and port_name not in boundary.setdefault(block_key, dict()):
+                boundary[block_key][port_name] = meta
+
+        for yamlFile, conns in self.data.get('connections', {}).items():
+            if not isinstance(conns, dict):
+                continue
+            for conn in conns.values():
+                ends = conn.get('ends')
+                if not ends:
+                    continue
+                interface_key = conn.get('interfaceKey', '')
+                interface = conn.get('interface', '')
+                for end in ends.values():
+                    block_key = end.get('instanceTypeKey')
+                    port_name = end.get('portName')
+                    if not block_key or not port_name:
+                        continue
+                    add_port(block_key, port_name, {
+                        'interfaceKey': interface_key,
+                        'interface': interface,
+                        'direction': end.get('direction', ''),
+                        'yamlFile': yamlFile,
+                    })
+
+        # Parent connectionMaps expose instancePortName as a boundary port on the child block.
+        for yamlFile, maps in self.data.get('connectionMaps', {}).items():
+            if not isinstance(maps, dict):
+                continue
+            for connMap in maps.values():
+                inst = self._lookupInstanceFromMap(connMap)
+                if not inst:
+                    continue
+                child_port = connMap.get('instancePortName', '')
+                add_port(inst.get('instanceTypeKey'), child_port, {
+                    'interfaceKey': connMap.get('interfaceKey', ''),
+                    'interface': connMap.get('interface', ''),
+                    'direction': connMap.get('direction', ''),
+                    'yamlFile': yamlFile,
+                })
+
+        return boundary
+
     def validatePorts(self):
-        pass
-        # todo
+        """Verify every connectionMap parent port has a matching boundary connection on the block."""
+        if not self.data.get('connectionMaps'):
+            return
+        self.generateHierarchy()
+        boundary = self._collectBoundaryPorts()
+        for yamlFile, maps in self.data.get('connectionMaps', {}).items():
+            if not isinstance(maps, dict):
+                continue
+            for connMap in maps.values():
+                block_key = connMap.get('blockKey')
+                parent_port = connMap.get('portName')
+                if not block_key or not parent_port:
+                    continue
+                block_ports = boundary.get(block_key, {})
+                if parent_port in block_ports:
+                    continue
+                line = connMap['lc'].line + 1 if connMap.get('lc') else '?'
+                block_name = connMap.get('block', block_key)
+                interface = connMap.get('interface', '')
+                instance = connMap.get('instance', '')
+                direction = connMap.get('direction', '')
+                msg = (f"connectionMap in {yamlFile}:{line} routes interface {interface} "
+                       f"to parent port '{parent_port}' (direction {direction}) on block {block_name} "
+                       f"via instance {instance}, but no boundary connection defines that port on {block_name}. "
+                       f"Add a connections entry touching a {block_name} instance with matching port name, "
+                       f"or remove the connectionMap until ready.")
+                map_interface_key = connMap.get('interfaceKey', '')
+                for alt_port, alt_info in block_ports.items():
+                    if (alt_info.get('interfaceKey') == map_interface_key
+                            and alt_info.get('direction') == direction):
+                        msg += (f" Found boundary connection using port name '{alt_port}'; "
+                                f"add port: {alt_port} to the connectionMap.")
+                        break
+                self.logError(msg)
 
     def processYamls(self):
         # main outer loop for processing
