@@ -19,8 +19,8 @@ def render(args, prj, data):
     # Generate types
     out += f"\n// types\n"
     for unusedKey, value in data['types'].items():
-        widthExpr, descExtra = typeWidthExpression_sv(value, prj['constants'])
-        desc = value['desc'] + descExtra
+        widthExpr = typeWidthExpression_sv(value, prj['constants'])
+        desc = value['desc']
         # Check if type is signed
         isSigned = value['isSigned']
         signedStr = " signed" if isSigned else ""

@@ -10,7 +10,6 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "consumer_base.h"
-#include "helloWorldTopIncludes.h"
 
 SC_MODULE(consumer), public blockBase, public consumerBase
 {

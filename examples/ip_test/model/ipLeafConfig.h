@@ -6,7 +6,9 @@
 #include <cstdint>
 
 // GENERATED_CODE_PARAM --context=ipLeaf.yaml
-// GENERATED_CODE_BEGIN --template=includes --section=config
+// GENERATED_CODE_BEGIN --template=config
+#include "clog2.h"
+
 struct ipLeafDefaultConfig {
     static constexpr uint32_t LEAF_DATA_WIDTH = 4;
     static constexpr uint32_t LEAF_MEM_DEPTH = 4;

@@ -19,7 +19,7 @@ def render_sc(args, prj, data):
         case 'header': return render_section_header(args, prj, data)
         case 'init' : return render_section_init(args, prj, data)
         case 'body': return render_section_body(args, prj, data)
-        case _ : return 'xx'
+        case _ : raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are header, init, body")
 
     return s
 

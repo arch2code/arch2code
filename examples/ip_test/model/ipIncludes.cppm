@@ -33,6 +33,8 @@ export namespace ip_ns {
 template<typename Config> struct ipDataT { uint64_t word[ 2 ]; }; // [max:128] IP data word, parameterizable
 typedef uint8_t enableT; // [1] Single enable bit
 template<typename Config> using ipMemAddrT = uint64_t; // [max:5] Index into ipMem (0 .. IP_MEM_DEPTH-1)
+template<typename Config> struct ipDerivedWidthT { uint64_t word[ 8 ]; }; // [max:512] Type sized by a second-level eval-derived localparam
+template<typename Config> using ipDerivedMemAddrT = uint64_t; // [max:7] Index into second-level derived-depth memory
 typedef uint8_t ipFixedT; // [8] Fixed 8-bit byte (non-parameterizable)
 typedef uint8_t ipFixedAddrT; // [8] Fixed 8-bit address index (non-parameterizable)
 typedef uint8_t ipNibbleT; // [4] Fixed unsigned nibble
@@ -541,6 +543,68 @@ struct ipBurstSt {
         memcpy(&samples, &samples_, sizeof(samples));
     }
     explicit ipBurstSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+template<typename Config>
+struct ipDerivedMemAddrSt {
+    ipDerivedMemAddrT<Config> address; //Second-level derived-depth memory address
+
+    ipDerivedMemAddrSt() {}
+
+    static constexpr uint16_t _bitWidth = clog2(Config::IP_MEM_DEPTH_X4);
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint64_t _packedSt;
+    inline bool operator == (const ipDerivedMemAddrSt<Config> & rhs) const {
+        bool ret = true;
+        ret = ret && (address == rhs.address);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const ipDerivedMemAddrSt<Config> & v, const std::string & NAME ) {
+        sc_trace(tf,v.address, NAME + ".address");
+    }
+    inline friend ostream& operator << ( ostream& os,  ipDerivedMemAddrSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("address:0x{:02x}",
+           (uint64_t) address
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, ipDerivedMemAddrSt<Config>::_byteWidth);
+        uint16_t _pos{0};
+        pack_bits((uint64_t *)&_ret, _pos, address, clog2(Config::IP_MEM_DEPTH_X4));
+        _pos += clog2(Config::IP_MEM_DEPTH_X4);
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        address = (ipDerivedMemAddrT<Config>)((_src) & ((1ULL << clog2(Config::IP_MEM_DEPTH_X4)) - 1));
+    }
+    inline sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> packed_data;
+        uint16_t _pos{0};
+        packed_data.range(_pos+clog2(Config::IP_MEM_DEPTH_X4)-1, _pos) = address;
+        _pos += clog2(Config::IP_MEM_DEPTH_X4);
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> packed_data)
+    {
+    uint16_t _pos{0};
+        address = (ipDerivedMemAddrT<Config>) packed_data.range(_pos+clog2(Config::IP_MEM_DEPTH_X4)-1, _pos).to_uint64();
+        _pos += clog2(Config::IP_MEM_DEPTH_X4);
+    }
+    explicit ipDerivedMemAddrSt(sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit ipDerivedMemAddrSt(
+        ipDerivedMemAddrT<Config> address_) :
+        address(address_)
+    {}
+    explicit ipDerivedMemAddrSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
 struct ipFixedSt {
@@ -1500,6 +1564,47 @@ void test_ip_structs<Config>::test(void) {
                 cout << a.prt();
                 cout << b.prt();
                 Q_ASSERT(false,"ipBurstSt fail");
+            }
+            bitsLeft -= bits;
+            ptr++;
+        } while(bitsLeft > 0);
+    }
+    for(auto pattern : patterns) {
+        typename ipDerivedMemAddrSt<Config>::_packedSt packed;
+        memset(&packed, pattern, ipDerivedMemAddrSt<Config>::_byteWidth);
+        sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> aInit;
+        sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> aTest;
+        for (int i = 0; i < ipDerivedMemAddrSt<Config>::_byteWidth; i++) {
+            int end = std::min((i+1)*8-1, ipDerivedMemAddrSt<Config>::_bitWidth-1);
+            aInit.range(end, i*8) = pattern;
+        }
+        ipDerivedMemAddrSt<Config> a;
+        a.sc_unpack(aInit);
+        ipDerivedMemAddrSt<Config> b;
+        b.unpack(packed);
+        if (!(b == a)) {;
+            cout << a.prt();
+            cout << b.prt();
+            Q_ASSERT(false,"ipDerivedMemAddrSt fail");
+        }
+        uint64_t test;
+        memset(&test, pattern, 8);
+        b.pack(packed);
+        aTest = a.sc_pack();
+        if (!(aTest == aInit)) {;
+            cout << a.prt();
+            cout << aTest;
+            Q_ASSERT(false,"ipDerivedMemAddrSt fail");
+        }
+        uint64_t *ptr = (uint64_t *)&packed;
+        uint16_t bitsLeft = ipDerivedMemAddrSt<Config>::_bitWidth;
+        do {
+            int bits = std::min((uint16_t)64, bitsLeft);
+            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+            if ((*ptr & mask) != (test & mask)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false,"ipDerivedMemAddrSt fail");
             }
             bitsLeft -= bits;
             ptr++;

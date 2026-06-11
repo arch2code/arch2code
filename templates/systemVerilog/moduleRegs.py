@@ -136,7 +136,8 @@ def section_param_decls(prj, data):
     # types-before-structs by orderIndex (deriveParameterizedDeclSets). These
     # are the same decls the owning module emits; they are module-local because
     # SV cannot parameterize a package.
-    return string_joiner(parameterizedDeclLines(data['parameterizedDecls'], prj), '\n')
+    qualBlock = prj.getQualBlock(data['blockName'])
+    return string_joiner(parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][qualBlock]['params']), '\n')
 
 def section_intf_ports(prj, data):
 

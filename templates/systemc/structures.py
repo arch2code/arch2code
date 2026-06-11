@@ -14,6 +14,9 @@ dataTypeMappings = [
 # prj object
 # data set dict
 def render(args, prj, data):
+    valid_sections = ('', 'header', 'cpp', 'headerIncludes', 'cppIncludes', 'testStructsHeader', 'testStructsCPP')
+    if args.section not in valid_sections:
+        raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are header, cpp, headerIncludes, cppIncludes, testStructsHeader, testStructsCPP")
     if len(data['structures']) == 0:
         return ""
     global codeMapping

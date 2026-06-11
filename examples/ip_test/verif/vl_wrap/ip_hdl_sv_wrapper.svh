@@ -30,8 +30,14 @@ module ip_hdl_sv_wrapper
     input clk,
     input rst_n
 );
+    localparam IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2; //Derived width, 2x data (maxValue auto-derived); eval-derived, lives in constants: since no block param consumes it
+    localparam IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2; //Second-level derived width, 4x data
+    localparam IP_MEM_DEPTH_X2 = IP_MEM_DEPTH * 2; //Derived memory depth, 2x depth
+    localparam IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2; //Second-level derived memory depth, 4x depth
     typedef logic[IP_DATA_WIDTH-1:0] ipDataT; //IP data word, parameterizable
     typedef logic[$clog2(IP_MEM_DEPTH)-1:0] ipMemAddrT; //Index into ipMem (0 .. IP_MEM_DEPTH-1)
+    typedef logic[IP_DATA_WIDTH_X4-1:0] ipDerivedWidthT; //Type sized by a second-level eval-derived localparam
+    typedef logic[$clog2(IP_MEM_DEPTH_X4)-1:0] ipDerivedMemAddrT; //Index into second-level derived-depth memory
     typedef struct packed {
         enableT marker; //Marker bit expected after the data payload
         ipDataT data; //Data word
@@ -50,6 +56,9 @@ module ip_hdl_sv_wrapper
     typedef struct packed {
         ipDataT [IP_MEM_DEPTH-1:0] samples; //Burst of parameterizable samples
     } ipBurstSt;
+    typedef struct packed {
+        ipDerivedMemAddrT address; //Second-level derived-depth memory address
+    } ipDerivedMemAddrSt;
 
     // push_ack_if.dst
     push_ack_if #(.data_t(ipDataSt)) ipDataIf();

@@ -8,8 +8,7 @@ def render(args, prj, data):
         case 'moduleHeader':
             return moduleHeader(args, prj, data)
         case _:
-            print("error missing section, valid values are moduleHeader")
-            exit()
+            raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are moduleHeader")
 
 
 def moduleHeader(args, prj, data):

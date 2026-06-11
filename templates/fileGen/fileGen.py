@@ -539,7 +539,7 @@ config_hdrTemplate = \
 #include <cstdint>
 
 // GENERATED_CODE_PARAM --context=__context__
-// GENERATED_CODE_BEGIN --template=includes --section=config
+// GENERATED_CODE_BEGIN --template=config
 // GENERATED_CODE_END
 
 #endif //__HEADERGUARD___CONFIG_H

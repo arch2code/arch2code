@@ -241,7 +241,15 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
         # NAME<Config> to the namespace template (brought in via using-namespace).
         for decl in data['parameterizedDecls']:
             name = decl['body'][decl['declKind']]
-            out.append( indent + f'using {name} = {name}<Config>;')
+            # An eval-derived parameterizable constant lives on Config (like a
+            # block param); expose it as a class-local compile-time constant drawn
+            # from Config so bare-name use resolves, mirroring the block-param
+            # constants above. It is a value, not a type, so it takes no <Config>
+            # alias.
+            if decl['declKind'] == 'constant':
+                out.append( indent + f'static constexpr auto {name} = Config::{name};')
+            else:
+                out.append( indent + f'using {name} = {name}<Config>;')
 
     out.append( '};')
     return out

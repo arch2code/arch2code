@@ -147,6 +147,31 @@ echo "Test Suite 19b: HDL Wrapper Boundary Width Spelling"
 echo "------------------------------------------------------------------------"
 python3 test_boundary_signals.py || FAILED=1
 
+echo ""
+echo "Test Suite 19c: Eval Expression Parser (Stage E0)"
+echo "------------------------------------------------------------------------"
+python3 test_eval_expr_parser.py || FAILED=1
+
+echo ""
+echo "Test Suite 19d: Eval Expression Evaluator (Stage E1)"
+echo "------------------------------------------------------------------------"
+python3 test_eval_expr_evaluator.py || FAILED=1
+
+echo ""
+echo "Test Suite 19e: Eval Canonical View Exposure (Stage E3)"
+echo "------------------------------------------------------------------------"
+python3 test_eval_canonical_view.py || FAILED=1
+
+echo ""
+echo "Test Suite 19f: Eval SV localparam Emission (Stage E4)"
+echo "------------------------------------------------------------------------"
+python3 test_eval_sv_emit.py || FAILED=1
+
+echo ""
+echo "Test Suite 19g: Eval C++/SystemC Config Emission (Stage E5)"
+echo "------------------------------------------------------------------------"
+python3 test_eval_cpp_emit.py || FAILED=1
+
 # Test 20-: address-control refactor — Stage 7 Batches A and B.
 # Per plan-address-control-test-coverage.md "Implementation Phasing":
 #   Batch A — single-router positives, the lowest-cost two-level

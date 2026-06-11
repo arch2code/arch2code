@@ -233,7 +233,7 @@ def render_sc(args, prj, data):
         case 'factory_register_vl_decl' : return factory_register_vl_decl(args, prj, data)
         case 'factory_register_vl_incl' : return factory_register_vl_incl(args, prj, data)
 
-        case _ : return 'xx'
+        case _ : raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are hdl_sc_wrapper_class, channel_decl, bfm_decl, bfm_ctor_init, dut_connect, bfm_connect, hdl_if_decl, variant_include_sv_wrapper_header, variant_class_template_spec, factory_register_vl_decl, factory_register_vl_incl")
 
 sec_var_include_sv_wrap_header_template = """\
 #if !defined(VERILATOR) && defined(VCS)

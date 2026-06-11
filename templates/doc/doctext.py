@@ -12,7 +12,7 @@ def render(args, prj, data):
         case 'memusage':
             return renderer_memusage(args, prj, data)
         case _:
-            return ""
+            raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are meminst, memusage")
 
 
 def create_meminsts_extractor(prj, data):

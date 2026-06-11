@@ -33,6 +33,7 @@ ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,ipMem(name(), "ipMem", mems, Config::IP_MEM_DEPTH)
         ,ipFixedMem(name(), "ipFixedMem", mems, Config::IP_MEM_DEPTH)
         ,ipNonConstMem(name(), "ipNonConstMem", mems, Config::IP_NONCONST_DEPTH)
+        ,ipDerivedDepthMem(name(), "ipDerivedDepthMem", mems, Config::IP_MEM_DEPTH_X4)
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

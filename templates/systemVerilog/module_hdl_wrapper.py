@@ -29,6 +29,8 @@ def render_sv(args, prj, data):
     # self-contained wrapper body.
     if args.section == 'body':
         return render_body(args, prj, data, mp_sig, blk_name)
+    if args.section != '':
+        raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are body or empty")
     if args.variant and args.variant in data['variants']:
         return render_trampoline(args, prj, data, mp_sig, blk_name)
     return render_non_parameterizable(args, prj, data, mp_sig, blk_name)
@@ -120,7 +122,7 @@ def render_body(args, prj, data, mp_sig, blk_name):
     # the canonical body they are declared from the #() parameters directly.
     if data['parameterizedDecls']:
         s = ''
-        for line in parameterizedDeclLines(data['parameterizedDecls'], prj):
+        for line in parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][prj.getQualBlock(blk_name)]['params']):
             s += line + '\n'
         out += textwrap.indent(s, ' '*4) + '\n'
 

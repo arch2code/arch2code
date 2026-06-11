@@ -36,7 +36,7 @@ def render(args, prj, data):
     # non-parameterized blocks.
     if data['parameterizedDecls']:
         out.append(f"{indent}// Module-local parameterizable type/struct declarations")
-        for line in parameterizedDeclLines(data['parameterizedDecls'], prj):
+        for line in parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][data['qualBlock']]['params']):
             out.append(f"{indent}{line}")
         out.append("")
 

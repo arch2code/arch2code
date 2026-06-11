@@ -44,15 +44,23 @@ public:
     hwMemory< ipMemSt<Config> > ipMem;
     hwMemory< ipFixedSt > ipFixedMem;
     hwMemory< ipFixedSt > ipNonConstMem;
+    hwMemory< ipMemSt<Config> > ipDerivedDepthMem;
 
     // inherited parameterized types usable unqualified (no <Config>)
+    using ipBase<Config>::IP_DATA_WIDTH_X2;
+    using ipBase<Config>::IP_DATA_WIDTH_X4;
+    using ipBase<Config>::IP_MEM_DEPTH_X2;
+    using ipBase<Config>::IP_MEM_DEPTH_X4;
     using typename ipBase<Config>::ipDataT;
     using typename ipBase<Config>::ipMemAddrT;
+    using typename ipBase<Config>::ipDerivedWidthT;
+    using typename ipBase<Config>::ipDerivedMemAddrT;
     using typename ipBase<Config>::ipDataSt;
     using typename ipBase<Config>::ipCfgSt;
     using typename ipBase<Config>::ipMemSt;
     using typename ipBase<Config>::ipMemAddrSt;
     using typename ipBase<Config>::ipBurstSt;
+    using typename ipBase<Config>::ipDerivedMemAddrSt;
 
     ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ip() override = default;

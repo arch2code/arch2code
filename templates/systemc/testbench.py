@@ -21,18 +21,18 @@ def render_sc(args, prj, data):
         match args.section:
             case 'init' : return tb_sec_init(args, prj, data)
             case 'header': return tb_sec_header(args, prj, data)
-            case _ : return 'xx'
+            case _ : raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are init, header")
     elif(args.template == "tbExternal"):
         refactor_tbExternal(args, prj, data)
         match args.section:
             case 'init' : return ext_sec_init(args, prj, data)
             case 'body': return ext_sec_body(args, prj, data)
             case 'header': return ext_sec_header(args, prj, data)
-            case _ : return 'xx'
+            case _ : raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are init, body, header")
     elif(args.template == "tbConfig"):
         return tb_config_class(args, prj, data)
     else:
-        return ' yy'
+        raise ValueError(f"Unknown template '{args.template}' for testbench renderer")
 
 def _tb_selection(args, prj, data):
     # Resolve once and reuse across the four testbench/external sections.

@@ -25,6 +25,8 @@ def render(args, prj, data):
     out = ""
     
     section = getattr(args, 'section', 'all')
+    if section == '':
+        section = 'all'
     
     if section == 'interfaces':
         # Render only structures referenced by interfaces
@@ -57,7 +59,7 @@ def render(args, prj, data):
         else:
             out += "No interface structures found.\n\n"
     
-    else:
+    elif section == 'all':
         # Render all structures referenced by the block
         struct_keys = collect_referenced_struct_keys(prj, data)
         
@@ -68,5 +70,7 @@ def render(args, prj, data):
                 out += "\n"
         else:
             out += "No structures referenced by this block.\n\n"
+    else:
+        raise ValueError(f"Unknown section '{section}' for template '{args.template}'. Valid values are all, interfaces")
     
     return out

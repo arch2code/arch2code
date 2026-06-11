@@ -14,6 +14,7 @@ import importlib.util
 
 from pysrc.merge_utils import merge_with_spec
 from pysrc.valueResolver import ValueResolver
+import pysrc.evalExpr as evalExpr
 
 continueOnError = False
 
@@ -986,34 +987,27 @@ class projectOpen:
         # block-view `variantConfigs` field; SystemVerilog generation
         # merges context-view fields over block-view fields via
         # `data.update`, so overlapping names would silently shadow.
-        ret['contextVariantConfigs']      = self.getContextVariantConfigDescriptors(contexts)
-        ret['contextBlockParamSynthetic'] = self.getContextBlockParamSynthetic(contexts)
+        view = self.getContextConfigView(contexts)
+        ret['contextVariantConfigs']      = view['variantConfigs']
+        ret['contextBlockParamSynthetic'] = view['blockParamSynthetic']
         return ret
 
-    def getContextVariantConfigDescriptors(self, contexts):
-        # Per-variant Config descriptors aggregated across every block
-        # whose primary `_context` matches one of the supplied contexts.
-        # Each entry is `{block, descriptor}` so the template renders the
-        # descriptor while keeping block provenance available for
-        # diagnostics. Intra-block dedup (`duplicateOf`) is preserved on
-        # the descriptor; the template skips duplicates.
-        ctx_set = set(contexts) if isinstance(contexts, (list, set, tuple)) else {contexts}
-        out = []
-        for qualBlock, blockRow in self.data['blocks'].items():
-            if blockRow['_context'] not in ctx_set:
-                continue
-            bundle = self.getBlockConfigView(qualBlock)
-            if not bundle['isParameterizable']:
-                continue
-            for desc in bundle['variantConfigs']:
-                out.append({'qualBlock': qualBlock, 'descriptor': desc})
-        return out
-
-    def getContextBlockParamSynthetic(self, contexts):
-        # Block params declared via `params:` without a backing
-        # parameterizable constant. Each appears as a field on per-variant
-        # Config structs but has no default value in `data['constants']`,
-        # so the type defaults to `uint32_t` here for the template to use.
+    def getContextConfigView(self, contexts):
+        # Single-pass context Config view. Walks the blocks whose primary
+        # `_context` matches one of the supplied contexts exactly once and
+        # returns both Config-header inputs:
+        #   variantConfigs:     per-variant descriptors aggregated across
+        #                       parameterizable blocks. Each entry is
+        #                       `{qualBlock, descriptor}` so the template
+        #                       renders the descriptor while keeping block
+        #                       provenance for diagnostics. Intra-block dedup
+        #                       (`duplicateOf`) is preserved on the descriptor;
+        #                       the template skips duplicates.
+        #   blockParamSynthetic: block params declared via `params:` without a
+        #                       backing parameterizable constant. Each appears
+        #                       as a field on per-variant Config structs but has
+        #                       no default value in `data['constants']`, so this
+        #                       view supplies the Config member type contract.
         ctx_set = set(contexts) if isinstance(contexts, (list, set, tuple)) else {contexts}
         constants_by_name = {
             const_row['constant']
@@ -1021,16 +1015,21 @@ class projectOpen:
             if const_row['isParameterizable']
             and const_row['_context'] in ctx_set
         }
+        variantConfigs = []
         synthetic = dict()
         for qualBlock, blockRow in self.data['blocks'].items():
             if blockRow['_context'] not in ctx_set:
                 continue
+            bundle = self.getBlockConfigView(qualBlock)
+            if bundle['isParameterizable']:
+                for desc in bundle['variantConfigs']:
+                    variantConfigs.append({'qualBlock': qualBlock, 'descriptor': desc})
             for param_row in blockRow.get('params', []) or []:
                 name = param_row['param']
                 if name in constants_by_name or name in synthetic:
                     continue
-                synthetic[name] = {'valueType': 'uint'}
-        return synthetic
+                synthetic[name] = {'valueType': 'uint', 'maxValue': 0}
+        return {'variantConfigs': variantConfigs, 'blockParamSynthetic': synthetic}
 
     # do some preproccessing to assemble subset of data easily accessed by templates
     # from perspective of qualBlock
@@ -1113,8 +1112,10 @@ class projectOpen:
             declKey = row['declKey']
             if row['declKind'] == 'type':
                 body = self.data['types'][declKey]
-            else:
+            elif row['declKind'] == 'structure':
                 body = self.data['structures'][declKey]
+            else:  # constant: eval-derived parameterizable constant (module-local localparam)
+                body = self.data['constants'][declKey]
             decls.append({'declKind': row['declKind'], 'declKey': declKey, 'body': body})
         ret['parameterizedDecls'] = decls
 
@@ -2764,7 +2765,6 @@ class projectCreate:
     dontValidate = {'_topInstance'} # list of keys that should not be validated if validator is present
     stdFields = {"context"}
     specialContexts = {"_global", "_a2csystem"} # special contexts that should be excluded from includes
-    constFind = re.compile(r"(\$)(\w+)")
     errorState = False
     includeName = dict()
     includeValid = dict()
@@ -2815,12 +2815,16 @@ class projectCreate:
         # methods (processYamls, postYamlExternalScript, generateAddressEnums)
         # null it at the end of each phase. Its purpose is to amortize one
         # resolver per file across the many parse-time call sites (auto
-        # handlers, processSimple, re_constReplace, _constants finalization).
+        # handlers, processSimple eval evaluation, _constants finalization).
         # Post-parse code (calcAddresses, future derivations) must construct
         # its own ValueResolver instead of reaching through this attribute;
         # the parser does not own the post-parse lifecycle and the per-file
         # `.context` would be stale / wrong outside a processSingleFile frame.
         self._parserResolver = None
+        # Parsed eval IR nodes by (yamlFile, constant name), populated when an
+        # eval constant is parsed in processSimple and consumed by _constants.
+        # Transient to this projectCreate; only the canonical string persists.
+        self._evalNodes = {}
         global dirMacros
         #load project file from command line
         self._userProjRaw = existsLoad(projFile)
@@ -3475,21 +3479,19 @@ class projectCreate:
 
 
     def deriveParameterizedDeclSets(self):
-        # Derive, per parameterizable block, the set of parameterizable
-        # types/structures that can be declared local to that block's module:
-        # those visible to the block whose backing-parameter dependencies are
-        # satisfiable by the block's own params. Topologically order them (a
-        # type or sub-structure before the structure that uses it) and persist
-        # the keys + order into the non-schema blockParameterizedDecls table
-        # that getBlockData() reads.
+        # Derive, per parameterizable block, the parameterizable constants,
+        # types, and structures that can be declared local to that block's
+        # module: those visible to the block whose backing-parameter closure is
+        # satisfiable by the block's own params. Order local dependencies before
+        # their users and persist the keys + order into the non-schema
+        # blockParameterizedDecls table that getBlockData() reads.
         #
-        # The type/struct -> parameter dependency graph is recovered from the
-        # persisted *Key edges (types.width*Key, structuresvars.varTypeKey /
-        # subStructKey / arraySizeKey); all keys are qualified name/file so the
-        # closure is unambiguous across include contexts. The constant->constant
-        # (eval) edge is not stored: a declaration whose closure reaches a
-        # parameterizable-but-unbacked constant is eval-derived, cannot be sized
-        # from a single block's params, and is held out of the block-local set.
+        # Declaration dependencies are recovered from parse-time facts: eval
+        # symbol keys for eval-derived constants, type width*Key references, and
+        # structure varType/subStruct/arraySizeKey references. Each declaration
+        # carries the backing parameter constants required to keep it symbolic
+        # plus any module-local declarations that must appear earlier in the
+        # same block.
         #
         # Runs immediately after calcBlockConfigInfo() (which set
         # blocks.isParameterizable). All inputs are persisted.
@@ -3502,97 +3504,153 @@ class projectCreate:
         structures = self.flatData['structures']
 
         # Backing constants are exactly the block-param keys: a constant whose
-        # qualified key is consumed by some block param. A parameterizable
-        # constant that is not a backing const is eval-derived.
+        # qualified key is consumed by some block param.
         backingKeys = {row['paramKey'] for row in self.flatData['blocksparams'].values()}
-        constParameterizable = {row['constantKey']: bool(row['isParameterizable'])
-                                for row in self.flatData['constants'].values()}
         structVars = dict()
         for row in self.flatData['structuresvars'].values():
             structVars.setdefault(row['structureKey'], list()).append(row)
 
-        # Classify one constant reference's contribution to a declaration's
-        # dependency: a backing const adds its key to the paramSet; an
-        # eval-derived const (parameterizable but not a block param) marks the
-        # declaration eval-coupled; a plain const contributes nothing. Returns
-        # True iff the reference is eval-coupled.
-        def classifyConst(constKey, paramSet):
-            if not constKey:
-                return False
-            if constKey in backingKeys:
-                paramSet.add(constKey)
-                return False
-            return constParameterizable.get(constKey, False)
+        constants = self.flatData['constants']
+        evalConstSymbols = dict()
+        for (yamlFile, constName), node in self._evalNodes.items():
+            evalConstSymbols[constName + '/' + yamlFile] = evalExpr.symbolKeys(node)
 
+        def emptyDeclDeps():
+            return {'paramDeps': set(), 'localDeps': set()}
+
+        constMemo = dict()
         typeMemo = dict()
         structMemo = dict()
+
+        def mergeDeps(dst, src):
+            dst['paramDeps'] |= src['paramDeps']
+            dst['localDeps'] |= src['localDeps']
+
+        def constantRefDeps(constKey, stack):
+            deps = emptyDeclDeps()
+            if not constKey:
+                return deps
+            constRow = constants.get(constKey)
+            if constRow is None:
+                return deps
+            if constKey in backingKeys:
+                deps['paramDeps'].add(constKey)
+            elif constRow['isParameterizable'] and constRow['evalCanonical']:
+                localDep = ('constant', constKey)
+                deps['localDeps'].add(localDep)
+                constDeps = constDeclDeps(constKey, stack)
+                deps['paramDeps'] |= constDeps['paramDeps']
+                deps['localDeps'] |= constDeps['localDeps']
+            elif constRow['isParameterizable']:
+                deps['paramDeps'].add(constKey)
+            return deps
+
+        def constDeclDeps(constKey, stack):
+            cached = constMemo.get(constKey)
+            if cached is not None:
+                return cached
+            if constKey in stack:
+                printError(f"Generator bug in deriveParameterizedDeclSets: constant dependency cycle at '{constKey}'")
+                exit(warningAndErrorReport())
+            stack.add(constKey)
+            deps = emptyDeclDeps()
+            if constKey not in evalConstSymbols:
+                printError(f"Generator bug in deriveParameterizedDeclSets: eval-derived constant '{constKey}' "
+                           f"has no parse-time eval node")
+                exit(warningAndErrorReport())
+            for symKey in evalConstSymbols[constKey]:
+                mergeDeps(deps, constantRefDeps(symKey, stack))
+            stack.discard(constKey)
+            constMemo[constKey] = deps
+            return deps
 
         def typeInfo(typeKey):
             cached = typeMemo.get(typeKey)
             if cached is not None:
                 return cached
             row = types[typeKey]
-            paramSet = set()
-            evalCoupled = False
+            deps = emptyDeclDeps()
             for key in (row['widthKey'], row['widthLog2Key'], row['widthLog2minus1Key']):
-                evalCoupled |= classifyConst(key, paramSet)
-            result = (paramSet, evalCoupled)
-            typeMemo[typeKey] = result
-            return result
+                mergeDeps(deps, constantRefDeps(key, set()))
+            typeMemo[typeKey] = deps
+            return deps
 
         def structInfo(structKey, stack):
             cached = structMemo.get(structKey)
             if cached is not None:
                 return cached
             if structKey in stack:
-                return (set(), False)
+                printError(f"Generator bug in deriveParameterizedDeclSets: structure dependency cycle at '{structKey}'")
+                exit(warningAndErrorReport())
             stack.add(structKey)
-            paramSet = set()
-            evalCoupled = False
+            deps = emptyDeclDeps()
             for var in structVars.get(structKey, list()):
                 if var['varTypeKey']:
-                    tSet, tEval = typeInfo(var['varTypeKey'])
-                    paramSet |= tSet
-                    evalCoupled |= tEval
+                    typeDeps = typeInfo(var['varTypeKey'])
+                    mergeDeps(deps, typeDeps)
+                    if typeDeps['paramDeps'] or typeDeps['localDeps']:
+                        deps['localDeps'].add(('type', var['varTypeKey']))
                 if var['subStructKey']:
-                    sSet, sEval = structInfo(var['subStructKey'], stack)
-                    paramSet |= sSet
-                    evalCoupled |= sEval
-                evalCoupled |= classifyConst(var['arraySizeKey'], paramSet)
+                    structDeps = structInfo(var['subStructKey'], stack)
+                    mergeDeps(deps, structDeps)
+                    if structDeps['paramDeps'] or structDeps['localDeps']:
+                        deps['localDeps'].add(('structure', var['subStructKey']))
+                mergeDeps(deps, constantRefDeps(var['arraySizeKey'], set()))
             stack.discard(structKey)
-            result = (paramSet, evalCoupled)
-            structMemo[structKey] = result
-            return result
+            structMemo[structKey] = deps
+            return deps
 
-        # Per-declaration parameter set. declInfo holds only declarations the
-        # closure finds parameter-dependent: declKey -> (declKind, paramSet,
-        # evalCoupled, _context). The derived flag must agree with the parser's
-        # isParameterizable; a disagreement is a generator bug.
-        def checkAgreement(kind, key, stored, paramSet, evalCoupled):
-            flagged = bool(paramSet) or evalCoupled
+        # Per-declaration dependency set. declInfo holds only declarations whose
+        # closure finds parameter dependence: (declKind, declKey) -> deps/context.
+        # The derived flag must agree with the parser's isParameterizable; a
+        # disagreement is a generator bug.
+        def checkAgreement(kind, key, stored, deps):
+            flagged = bool(deps['paramDeps']) or bool(deps['localDeps'])
             if flagged != bool(stored):
                 printError(f"Generator bug in deriveParameterizedDeclSets: {kind} '{key}' has "
                            f"isParameterizable={bool(stored)} but the derived parameter "
-                           f"dependency disagrees (paramSet={sorted(paramSet)}, "
-                           f"evalCoupled={evalCoupled})")
+                           f"dependency disagrees (paramDeps={sorted(deps['paramDeps'])}, "
+                           f"localDeps={sorted(deps['localDeps'])})")
                 exit(warningAndErrorReport())
             return flagged
 
         declInfo = dict()
+        for constKey, row in self.flatData['constants'].items():
+            if not row['isParameterizable'] or not row['evalCanonical'] or constKey in backingKeys:
+                continue
+            deps = constDeclDeps(constKey, set())
+            declInfo[('constant', constKey)] = {
+                'declKind': 'constant',
+                'declKey': constKey,
+                'context': row['_context'],
+                'paramDeps': deps['paramDeps'],
+                'localDeps': deps['localDeps'],
+            }
         for typeKey, row in types.items():
-            paramSet, evalCoupled = typeInfo(typeKey)
-            if checkAgreement('type', typeKey, row['isParameterizable'], paramSet, evalCoupled):
-                declInfo[typeKey] = ('type', paramSet, evalCoupled, row['_context'])
+            deps = typeInfo(typeKey)
+            if checkAgreement('type', typeKey, row['isParameterizable'], deps):
+                declInfo[('type', typeKey)] = {
+                    'declKind': 'type',
+                    'declKey': typeKey,
+                    'context': row['_context'],
+                    'paramDeps': deps['paramDeps'],
+                    'localDeps': deps['localDeps'],
+                }
         for structKey, row in structures.items():
-            paramSet, evalCoupled = structInfo(structKey, set())
-            if checkAgreement('structure', structKey, row['isParameterizable'], paramSet, evalCoupled):
-                declInfo[structKey] = ('structure', paramSet, evalCoupled, row['_context'])
+            deps = structInfo(structKey, set())
+            if checkAgreement('structure', structKey, row['isParameterizable'], deps):
+                declInfo[('structure', structKey)] = {
+                    'declKind': 'structure',
+                    'declKey': structKey,
+                    'context': row['_context'],
+                    'paramDeps': deps['paramDeps'],
+                    'localDeps': deps['localDeps'],
+                }
 
-        # Per-block selection. For each parameterizable block, include a
-        # parameterizable declaration when it is visible in the block's context,
-        # is not eval-coupled (an eval-derived dependency cannot be sized from a
-        # single block's params), and its paramSet is satisfied by the block's
-        # own params.
+        # Per-block selection. A declaration can be emitted only when it is
+        # visible from the block and its full backing-parameter closure is
+        # supplied by that block's params; any local declaration dependencies are
+        # recursively selected first.
         blockParams = dict()
         for row in self.flatData['blocksparams'].values():
             blockParams.setdefault(row['blockKey'], set()).add(row['paramKey'])
@@ -3615,16 +3673,32 @@ class projectCreate:
             params = blockParams.get(blockKey, set())
             visible = self.yamlContext.get(block['_context'], OrderedDict())
             selected = OrderedDict()
-            for declKey, (declKind, paramSet, evalCoupled, context) in declInfo.items():
-                if evalCoupled:
-                    continue
-                if context not in visible:
-                    continue
-                if not paramSet <= params:
-                    continue
-                selected[declKey] = declKind
-            for orderIndex, declKey in enumerate(self._topoOrderParameterizedDecls(selected, structVars)):
-                rows.append((blockKey, selected[declKey], declKey, orderIndex))
+
+            def selectDecl(declId, visiting):
+                info = declInfo[declId]
+                if declId in selected:
+                    return True
+                if info['context'] not in visible:
+                    return False
+                if not info['paramDeps'] <= params:
+                    return False
+                if declId in visiting:
+                    printError(f"Generator bug in deriveParameterizedDeclSets: declaration dependency cycle at '{declId}'")
+                    exit(warningAndErrorReport())
+                visiting.add(declId)
+                for depId in sorted(info['localDeps']):
+                    if depId not in declInfo:
+                        return False
+                    if not selectDecl(depId, visiting):
+                        return False
+                visiting.discard(declId)
+                selected[declId] = info
+                return True
+
+            for declId in declInfo:
+                selectDecl(declId, set())
+            for orderIndex, info in enumerate(selected.values()):
+                rows.append((blockKey, info['declKind'], info['declKey'], orderIndex))
 
         # Explicit non-schema table: create, bulk insert, then index on blockKey
         # (the block-usage access path). Building the row list in memory and
@@ -3691,12 +3765,9 @@ class projectCreate:
             intf = interfaces[conn['interfaceKey']]
             needed = set()
             for structRow in intf.get('structures', dict()).values():
-                info = declInfo.get(structRow['structureKey'])
-                # info is (declKind, paramSet, evalCoupled, context); an
-                # eval-coupled payload cannot be sized from a single block's
-                # parameters, so it is not required of the endpoint here.
-                if info is not None and not info[2]:
-                    needed |= info[1]
+                info = declInfo.get(('structure', structRow['structureKey']))
+                if info is not None:
+                    needed |= info['paramDeps']
             if not needed:
                 continue
             for end in connEnds.get(conn['connectionKey'], list()):
@@ -4891,31 +4962,36 @@ class projectCreate:
                         # named field is present, so use that
                         ret[field] = item[field]
                     elif 'eval' in item:
-                        # no named field, use eval
-                        for match in self.constFind.finditer(item['eval']):
-                            token = match.group(2)
-                            foundToken = False
-                            for myContext in self.yamlContext.get(yamlFile, {}):
-                                if (token in self.data['constants'].get(myContext, {})
-                                        or token in self.enums.get(myContext, {})):
-                                    foundToken = True
-                                    break
-                            if not foundToken:
-                                self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} "
-                                              f"eval expression references unresolved constant or enum '{token}'")
-                                return ret
-                        # look for $XXX and if found search within context to replace symbol
-                        myVal = self.constFind.sub(self.re_constReplace, item['eval'])
-                        # Execute the user-provided expression with proper error handling
+                        # Parse once into the resolved IR: bare $symbols become
+                        # qualified keys, and unresolved symbols, real literals,
+                        # and bad syntax are rejected here. This is the sole
+                        # symbol-resolution gate for eval expressions.
                         try:
-                            ret[field] = eval(myVal, {}, {})
-                        except Exception as e:
-                            # User's eval expression failed - provide clear error
+                            node = evalExpr.parse(
+                                item['eval'],
+                                qualify=lambda n: self._parserResolver.qualifyKey(n, yamlFile, fatal=False))
+                        except evalExpr.EvalParseError as e:
                             self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} "
-                                        f"eval expression failed: '{item['eval']}' "
-                                        f"(after substitution: '{myVal}'). "
-                                        f"Error: {type(e).__name__}: {str(e)}")
-                            ret[field] = 0  # Set default to avoid cascading errors
+                                          f"eval expression '{item['eval']}' is invalid: {e}")
+                            ret[field] = 0  # default to avoid cascading errors
+                        else:
+                            try:
+                                ret[field] = evalExpr.evaluate(
+                                    node,
+                                    resolve=lambda k: self._parserResolver.value(
+                                        k, label=f"eval token in {yamlFile}:{myLineNumber} key:{anchor}"))
+                            except evalExpr.EvalEvalError as e:
+                                self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} "
+                                              f"eval expression '{item['eval']}' failed: {e}")
+                                ret[field] = 0  # default to avoid cascading errors
+                            # Persist the canonical IR serialization and stash the
+                            # node for _constants (parameterizable detection,
+                            # worst-case maxValue). evalCanonical precedes 'value'
+                            # in the schema, so the generic optional-field pass has
+                            # already defaulted it and will not clobber this write.
+                            if 'evalCanonical' in schema:
+                                ret['evalCanonical'] = evalExpr.unparse(node)
+                                self._evalNodes[(yamlFile, anchor)] = node
                     else:
                         # Neither field nor eval provided - this is an error
                         self.logError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} must provide either '{field}' field or 'eval' expression")
@@ -5009,7 +5085,12 @@ class projectCreate:
                 if isinstance(val, float):
                     self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType is 'int' but eval produced a float ({val}). "
                                   f"Use // for integer division in eval expressions")
-            # 'real' accepts int or float — no validation needed
+            elif declaredType == 'real':
+                # The integer symbolic-eval pipeline does not support real eval
+                # expressions; a real constant must carry a literal 'value'.
+                if isinstance(item, dict) and 'eval' in item and 'value' not in item:
+                    self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType 'real' with an "
+                                  f"'eval' expression is not supported; real constants must use a literal 'value'.")
         # Parameterizable constant propagation.
         # Determine if this constant is parameterizable, by:
         #   (a) derived: its eval expression references another parameterizable
@@ -5047,50 +5128,33 @@ class projectCreate:
                     rawMaxValue = coerced
         userMaxValue = rawMaxValue if userMaxProvided else 0
         userParamFlag = bool(item.get('isParameterizable', False)) if isinstance(item, dict) else False
-        evalStr = item.get('eval', None) if isinstance(item, dict) else None
+
+        # The parsed eval IR (if this is an eval constant) was stashed by
+        # processSimple keyed by (yamlFile, name).
+        node = self._evalNodes.get((yamlFile, itemkey))
 
         derivedParam = False
         derivedMaxValue = 0
-        if evalStr is not None and isinstance(evalStr, str):
-            # Walk every $TOKEN in the original eval string and look up the referent.
-            # If any referent is parameterizable, this constant is too.
-            for m in self.constFind.finditer(evalStr):
-                tok = m.group(2)
-                referent = self._parserResolver.lookupVisibleRow(
-                    tok, yamlFile,
-                    label=f"constant '{itemkey}' in {yamlFile}:{lineNo} eval token '{tok}'")
-                if referent.get('isParameterizable'):
+        if node is not None:
+            label = f"constant '{itemkey}' in {yamlFile}:{lineNo}"
+            # Symbol resolution only: if any referenced constant is
+            # parameterizable, this constant is derived-parameterizable. No
+            # value is computed in this walk.
+            for symKey in evalExpr.symbolKeys(node):
+                if self._parserResolver.lookupNamedRow(symKey, label)['isParameterizable']:
                     derivedParam = True
                     break
             if derivedParam:
-                # Recompute eval with each referent's maxValue (parameterizable) or
-                # value (non-parameterizable) to obtain the worst-case maxValue.
-                def _replaceMax(matchObj):
-                    tok = matchObj.group(2)
-                    ref = self._parserResolver.lookupVisibleRow(
-                        tok, yamlFile,
-                        label=f"constant '{itemkey}' in {yamlFile}:{lineNo} eval token '{tok}'")
-                    if ref.get('isParameterizable') and ref.get('maxValue'):
-                        return str(ref['maxValue'])
-                    return str(ref['value'])
-                substituted = self.constFind.sub(_replaceMax, evalStr)
+                # Worst-case maxValue: evaluate the same tree, substituting each
+                # referent's maxValue (parameterizable) or value (otherwise).
                 try:
-                    evalResult = eval(substituted, {}, {})
-                except Exception as e:
+                    derivedMaxValue = evalExpr.evaluate(
+                        node,
+                        resolve=lambda k: self._parserResolver.maxValue(k, label))
+                except evalExpr.EvalEvalError as e:
                     self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}' "
-                                  f"maxValue eval failed: '{evalStr}' (after substitution: '{substituted}'). "
-                                  f"Error: {type(e).__name__}: {str(e)}")
-                    evalResult = 0
-                # eval() can yield non-numeric results (string concat, tuples,
-                # etc.) if the expression is malformed; coerce defensively.
-                if isinstance(evalResult, bool) or not isinstance(evalResult, (int, float)):
-                    self.logError(f"In file {yamlFile}:{lineNo}, constant '{itemkey}': "
-                                  f"derived maxValue must evaluate to a number, got "
-                                  f"{type(evalResult).__name__}={evalResult!r} "
-                                  f"(eval='{evalStr}', substituted='{substituted}')")
+                                  f"maxValue evaluation failed: {e}")
                     derivedMaxValue = 0
-                else:
-                    derivedMaxValue = int(evalResult)
 
         # Direct path applies only when there is no derived path: literal value
         # (no eval) inside ipParameters, user-set isParameterizable: true, or
@@ -6192,11 +6256,6 @@ class projectCreate:
                 valueKey, 'variant binding value')
             return constEntry['value']
         return row['value']
-
-    def re_constReplace(self, myStr):
-        token = myStr.group(2)
-        return str(self._parserResolver.value(
-            token, label=f"eval token '{token}'"))
 
     def checkIsParam(self, block, param, context):
         (varInfo, varContext) = self.lookupInScope('blocks', context, block)

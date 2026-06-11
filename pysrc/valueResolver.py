@@ -160,6 +160,12 @@ class ValueResolver:
     def value(self, ref, label='value reference', source=None):
         return self._resolveActiveValue(ref, self.context, label, source=source)
 
+    def maxValue(self, key, label='maxValue reference'):
+        """Worst-case integer for an already-qualified symbol key: the
+        referent's maxValue when parameterizable, else its active value.
+        Mirrors `value` for the create-time worst-case eval pass."""
+        return self._resolveMaxValue(key, label)
+
     def qualifyKey(self, ref, context, fatal=True):
         """Resolve a constant/enum reference to its qualified storage key.
 

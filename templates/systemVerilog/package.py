@@ -1,73 +1,82 @@
 from pysrc.systemVerilogGeneratorHelper import importPackages
+import pysrc.emissionUtils as emissionUtils
 
 # args from generator line
 # prj object
 # data set dict
 def typeWidthExpression_sv(value, prj_data):
-    """Build a SystemVerilog bit-range expression for a type's width.
-
-    For widthLog2 with constant C:       $clog2(C+1)
-    For widthLog2minus1 with constant C: $clog2(C)
-    For width with constant C:           C
-    For literal integer N:               N
-    If isSigned + log2: appends +1
-
-    Returns: (widthExpr, descExtra) where widthExpr goes in [expr-1:0]
-    and descExtra is an optional description suffix.
-    # TODO: handle variable size parameters (parameterized widths)
-    """
-    isSigned = value['isSigned']
-    signedExtra = '+1' if isSigned else ''
-    descExtra = ''
+    """Build a SystemVerilog bit-range width expression for a type (goes in
+    [expr-1:0]). Delegates the language-neutral width decision tree to
+    emissionUtils.typeWidthExpr, binding SV constant spelling (the raw
+    parameter/localparam name) and the SV literal-width fallback
+    (value['realwidth']). Accepts either a raw constants dict or a prj."""
     constants = prj_data if isinstance(prj_data, dict) else prj_data.data['constants']
-
-    # Check widthLog2
-    wl2Key = value['widthLog2Key']
-    if wl2Key:
-        constName = constants[wl2Key]['constant']
-        return f"$clog2({constName}+1){signedExtra}", descExtra
-    wl2 = value['widthLog2']
-    if wl2 != '':
-        return f"$clog2({wl2}+1){signedExtra}", descExtra
-
-    # Check widthLog2minus1
-    wl2m1Key = value['widthLog2minus1Key']
-    if wl2m1Key:
-        constName = constants[wl2m1Key]['constant']
-        return f"$clog2({constName}){signedExtra}", descExtra
-    wl2m1 = value['widthLog2minus1']
-    if wl2m1 != '':
-        return f"$clog2({wl2m1}){signedExtra}", descExtra
-
-    # Direct width — check widthKey for constant, else literal
-    widthKey = value['widthKey']
-    if widthKey:
-        constName = constants[widthKey]['constant']
-        return constName, descExtra
-    return str(value['realwidth']), descExtra
+    return emissionUtils.typeWidthExpr(
+        value, emissionUtils.SV,
+        constSpelling=lambda key: constants[key]['constant'],
+        literalWidth=lambda v: str(v['realwidth']))
 
 
-def parameterizedDeclLines(parameterizedDecls, prj):
-    """Module-local SV typedef/struct lines for a block's parameterized
-    declaration set (deriveParameterizedDeclSets), ordered types-before-structs
-    by orderIndex. SV cannot parameterize a package, so a parameterized block
-    declares these inside the owning module from its module parameters; they are
-    the same declarations the package omits. Returns one physical line per list
-    element so callers can apply their own leading indent."""
+def emitSvCanonical(evalCanonical, symSpelling):
+    """Translate a persisted canonical eval expression into the SystemVerilog
+    RHS of a module-local localparam (see emissionUtils.emitExpr)."""
+    return emissionUtils.emitExpr(evalCanonical, symSpelling, emissionUtils.SV)
+
+
+def parameterizedDeclLines(parameterizedDecls, prj, blockParams):
+    """Module-local SV declaration lines for a block's parameterized
+    declaration set (deriveParameterizedDeclSets), ordered by orderIndex
+    (eval-derived localparams first, then types/sub-structures before the
+    structures that use them, so a localparam referenced by a type width or
+    struct array size is declared ahead of it). SV cannot parameterize a package, so a parameterized
+    block declares these inside the owning module from its module parameters;
+    they are the same declarations the package omits. Returns one physical line
+    per list element so callers can apply their own leading indent.
+
+    `blockParams` is the owning block's param rows (each {'param','paramKey'}).
+    A symbol that is one of the block's params stays symbolic (its SV parameter
+    name). A symbol already selected as an earlier localparam in this declaration
+    set is spelled by that localparam name. Any other symbol is spelled from its
+    persisted constant value as an SV literal."""
+    paramNameByKey = {p['paramKey']: p['param'] for p in blockParams}
+    localConstNameByKey = {
+        decl['declKey']: decl['body']['constant']
+        for decl in parameterizedDecls
+        if decl['declKind'] == 'constant'
+    }
+
+    def symSpelling(symKey):
+        if symKey in paramNameByKey:
+            return paramNameByKey[symKey]
+        if symKey in localConstNameByKey:
+            return localConstNameByKey[symKey]
+        return str(prj.getConst(symKey))
+
+    def arraySizeExpression(varData):
+        if varData['arraySize'] in (0, '0'):
+            return ''
+        if varData['arraySizeKey']:
+            return symSpelling(varData['arraySizeKey'])
+        return varData['arraySize']
+
     out = []
     for decl in parameterizedDecls:
         body = decl['body']
         if decl['declKind'] == 'type':
-            widthExpr, descExtra = typeWidthExpression_sv(body, prj)
+            widthExpr = typeWidthExpression_sv(body, prj)
             signedStr = " signed" if body['isSigned'] else ""
-            out.append(f"typedef logic{signedStr}[{widthExpr}-1:0] {body['type']}; //{body['desc']}{descExtra}")
-        else:
+            out.append(f"typedef logic{signedStr}[{widthExpr}-1:0] {body['type']}; //{body['desc']}")
+        elif decl['declKind'] == 'structure':
             out.append("typedef struct packed {")
             for var, varData in body['vars'].items():
-                arraySize = '' if varData['arraySize'] in (0, '0') else f"[{varData['arraySize']}-1:0] "
+                arrayExpr = arraySizeExpression(varData)
+                arraySize = '' if arrayExpr == '' else f"[{arrayExpr}-1:0] "
                 typeName = varData['subStruct'] if varData['entryType'] == 'NamedStruct' else varData['varType']
                 out.append(f"    {typeName} {arraySize}{varData['variable']}; //{varData['desc']}")
             out.append(f"}} {body['structure']};")
+        else:  # constant: eval-derived parameterizable constant -> localparam
+            rhs = emitSvCanonical(body['evalCanonical'], symSpelling)
+            out.append(f"localparam {body['constant']} = {rhs}; //{body['desc']}")
     return out
 
 
@@ -123,8 +132,8 @@ def render(args, prj, data):
     for unusedKey, value in data['types'].items():
         if value['isParameterizable']:
             continue
-        widthExpr, descExtra = typeWidthExpression_sv(value, prj.data['constants'])
-        desc = value['desc'] + descExtra
+        widthExpr = typeWidthExpression_sv(value, prj.data['constants'])
+        desc = value['desc']
         # Check if type is signed
         isSigned = value['isSigned']
         signedStr = " signed" if isSigned else ""

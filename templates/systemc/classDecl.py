@@ -253,7 +253,13 @@ def render_default(args, prj, data):
         out.append(indent + '// inherited parameterized types usable unqualified (no <Config>)')
         for decl in data['parameterizedDecls']:
             name = decl['body'][decl['declKind']]
-            out.append(indent + f'using typename { baseClassName }::{name};')
+            # An eval-derived parameterizable constant is re-imported as a value
+            # (no `typename`); the base declares it as a class-local constexpr
+            # drawn from Config, so the bare name resolves in this derived class.
+            if decl['declKind'] == 'constant':
+                out.append(indent + f'using { baseClassName }::{name};')
+            else:
+                out.append(indent + f'using typename { baseClassName }::{name};')
 
     out.append('')
     out.append( indent + f'{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode);')

@@ -31,6 +31,7 @@ templates:
   moduleScaffold: $a2c/templates/systemc/moduleScaffold.py
   headers: $a2c/templates/systemc/headers.py
   includes: $a2c/templates/systemc/includes.py
+  config: $a2c/templates/systemc/config.py
   structures: $a2c/templates/systemc/structures.py
   cpp_encoder: $a2c/templates/systemc/encoder.py
   module_hdl_sc_wrapper: $a2c/templates/systemc/module_hdl_wrapper.py

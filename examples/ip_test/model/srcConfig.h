@@ -6,7 +6,9 @@
 #include <cstdint>
 
 // GENERATED_CODE_PARAM --context=src.yaml
-// GENERATED_CODE_BEGIN --template=includes --section=config
+// GENERATED_CODE_BEGIN --template=config
+#include "clog2.h"
+
 struct srcDefaultConfig {
     static constexpr uint32_t OUT0_DATA_WIDTH = 8;
     static constexpr uint32_t OUT1_DATA_WIDTH = 70;

@@ -1,0 +1,119 @@
+import pysrc.emissionUtils as emissionUtils
+
+# args from generator line
+# prj object
+# data set dict
+def render(args, prj, data):
+    return(includeConfig(args, prj, data))
+
+
+def emitCStyleCanonical(evalCanonical, symSpelling):
+    """Translate a persisted canonical eval expression into a C/C++ expression
+    string suitable for the RHS of a constexpr or firmware-header initializer
+    (see emissionUtils.emitExpr)."""
+    return emissionUtils.emitExpr(evalCanonical, symSpelling, emissionUtils.C)
+
+
+def includeConfig(args, prj, data):
+    out = []
+    params = [value for value in data['constants'].values() if value['isParameterizable']]
+    # Synthetic block-param fields (declared via `params:` with no backing
+    # parameterizable constant) and per-variant Config descriptors are
+    # supplied by getContextData(); the template performs no cross-block
+    # walks.
+    constants_by_name = {p['constant']: p for p in params}
+    block_param_synthetic = data['contextBlockParamSynthetic']
+    variant_entries = data['contextVariantConfigs']
+    if not params and not block_param_synthetic and not variant_entries:
+        return ""
+    # Config structs may emit eval-derived members that use clog2; the
+    # dedicated clog2 header supplies that constexpr helper unconditionally.
+    out.append('#include "clog2.h"')
+    out.append("")
+    # Legacy per-context Config struct. Retained for blocks that still ride on
+    # <context>DefaultConfig (those without their own variants but
+    # parameterizable transitively).
+    # Pure block params (block_param_synthetic) are intentionally NOT
+    # emitted here: there is no constant default, so any caller reading
+    # them through the legacy default fallback is a usage bug. Per-variant
+    # Config structs (below) carry the override values.
+    contextBaseName = data['context'].rsplit('/', 1)[-1].rsplit('.', 1)[0].replace('-', '_')
+    configName = f'{contextBaseName}DefaultConfig'
+    out.append(f"struct {configName} {{")
+    defaultSpelling = _configSymSpelling(prj, {value['constant'] for value in params})
+    for value in params:
+        type_str = _config_type(value)
+        rhs = _configMemberRhs(value, value['value'], defaultSpelling)
+        out.append(f"    static constexpr {type_str} {value['constant']} = {rhs};")
+    out.append("};")
+    out.append("")
+    # Per-variant Config structs. Variant labels and resolved values come
+    # from the context view; intra-block dedup (duplicateOf) folds byte-
+    # identical variants onto a single canonical struct.
+    seen_struct_names = set()
+    for entry in variant_entries:
+        desc = entry['descriptor']
+        if desc['duplicateOf'] is not None:
+            continue
+        if not desc['values']:
+            continue
+        structName = desc['configName']
+        if structName in seen_struct_names:
+            continue
+        seen_struct_names.add(structName)
+        out.append(f"struct {structName} {{")
+        variantSpelling = _configSymSpelling(prj, set(desc['values'].keys()))
+        for constName, resolved in desc['values'].items():
+            if constName in constants_by_name:
+                constData = constants_by_name[constName]
+                rhs = _configMemberRhs(constData, resolved, variantSpelling)
+            else:
+                # Synthetic block-param entry. Treated as an unsigned
+                # 32-bit field; the variant override is the value source.
+                constData = block_param_synthetic[constName]
+                constData = dict(constData, value=resolved)
+                rhs = resolved
+            type_str = _config_type(constData)
+            out.append(f"    static constexpr {type_str} {constName} = {rhs};")
+        out.append("};")
+        out.append("")
+    return("\n".join(out))
+
+
+def _configSymSpelling(prj, memberNames):
+    """Per-symbol speller for an eval-derived constant emitted inside a Config
+    struct. A referent that is itself a struct member (a parameterizable sibling,
+    declared earlier in dependency order) stays symbolic as its bare member name,
+    so the variant's own value drives the computation; any other referent is a
+    non-parameterizable constant spelled from its persisted value as a literal."""
+    def symSpelling(symKey):
+        if symKey in prj.data['constants']:
+            row = prj.data['constants'][symKey]
+            name = row['constant']
+            if name in memberNames:
+                return name
+        return str(prj.getConst(symKey))
+    return symSpelling
+
+
+def _configMemberRhs(constData, resolved, symSpelling):
+    """RHS for one Config struct member. An eval-derived parameterizable constant
+    (non-empty evalCanonical) is emitted symbolically from its canonical
+    expression so each variant recomputes it from that struct's own members; a
+    backing block-param constant emits its per-variant resolved value."""
+    if constData['evalCanonical']:
+        return emitCStyleCanonical(constData['evalCanonical'], symSpelling)
+    return resolved
+
+
+def _config_type(value):
+    valueType = value['valueType']
+    if valueType == 'uint':
+        maxValue = max(value['value'], value['maxValue'])
+        return 'uint32_t' if maxValue <= 0xFFFFFFFF else 'uint64_t'
+    if valueType == 'int':
+        maxAbs = max(abs(value['value']), abs(value['maxValue']))
+        return 'int32_t' if maxAbs <= 0x7FFFFFFF else 'int64_t'
+    if valueType == 'real':
+        return 'double'
+    return valueType

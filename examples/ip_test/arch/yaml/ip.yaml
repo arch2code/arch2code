@@ -23,6 +23,9 @@ ipParameters:
 
 constants:
     IP_DATA_WIDTH_X2:      { eval: "$IP_DATA_WIDTH * 2", desc: "Derived width, 2x data (maxValue auto-derived); eval-derived, lives in constants: since no block param consumes it" }
+    IP_DATA_WIDTH_X4:      { eval: "$IP_DATA_WIDTH_X2 * 2", desc: "Second-level derived width, 4x data" }
+    IP_MEM_DEPTH_X2:       { eval: "$IP_MEM_DEPTH * 2", desc: "Derived memory depth, 2x depth" }
+    IP_MEM_DEPTH_X4:       { eval: "$IP_MEM_DEPTH_X2 * 2", desc: "Second-level derived memory depth, 4x depth" }
     IP_FIXED_NIBBLE_COUNT: { value: 5, desc: "Fixed array length for non-parameterized type tests" }
     IP_FIXED_PAIR_COUNT:   { value: 2, desc: "Fixed nested-structure array length" }
     IP_FIXED_WORD_COUNT:   { eval: "$IP_FIXED_NIBBLE_COUNT + 1", desc: "Derived fixed array length" }
@@ -43,6 +46,12 @@ types:
     ipMemAddrT:
         widthLog2minus1: IP_MEM_DEPTH
         desc: "Index into ipMem (0 .. IP_MEM_DEPTH-1)"
+    ipDerivedWidthT:
+        width: IP_DATA_WIDTH_X4
+        desc: "Type sized by a second-level eval-derived localparam"
+    ipDerivedMemAddrT:
+        widthLog2minus1: IP_MEM_DEPTH_X4
+        desc: "Index into second-level derived-depth memory"
     # Fixed-width type used to exercise the F2.4 case where a memory's
     # structure is NOT parameterizable but its wordLines IS a block parameter.
     ipFixedT:
@@ -114,6 +123,8 @@ structures:
         address: { varType: ipMemAddrT, desc: "Memory address" }
     ipBurstSt:
         samples: { varType: ipDataT, arraySize: IP_MEM_DEPTH, desc: "Burst of parameterizable samples" }
+    ipDerivedMemAddrSt:
+        address: { varType: ipDerivedMemAddrT, desc: "Second-level derived-depth memory address" }
     # Non-parameterizable structure: wordLines block-param is the only thing
     # that should make ipFixedMem (below) parameterizable for sizing.
     ipFixedSt:
@@ -196,3 +207,4 @@ memories:
     # Exercises calcAddresses' _resolveBlockParamMaxWordLines helper, which
     # must return max(variant0=24, variant1=12) = 24 wordLines for sizing.
     - { memory: ipNonConstMem, block: ip, structure: ipFixedSt, addressStruct: ipFixedAddrSt, wordLines: IP_NONCONST_DEPTH, regAccess: true, desc: "Block-param wordLines with no backing constant (worst-case sizing regression)" }
+    - { memory: ipDerivedDepthMem, block: ip, structure: ipMemSt, addressStruct: ipDerivedMemAddrSt, wordLines: IP_MEM_DEPTH_X4, regAccess: false, desc: "Memory with second-level eval-derived wordLines and address width" }

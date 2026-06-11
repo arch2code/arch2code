@@ -3,6 +3,7 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 #include <cstdint>
 #include <type_traits>
+#include "clog2.h"
 // https://www.techiedelight.com/round-next-highest-power-2/
 // Compute power of two greater than or equal to `n`
 constexpr uint64_t findNextPowerOf2Constexpr(uint64_t n) {
@@ -15,15 +16,6 @@ constexpr uint64_t findNextPowerOf2Constexpr(uint64_t n) {
     n |= n >> 16;
     n |= n >> 32;
     return n + 1;
-}
-// Constexpr ceiling log2 - matches SystemVerilog $clog2 semantics
-// clog2(0) = 0, clog2(1) = 0, clog2(2) = 1, clog2(3) = 2, clog2(4) = 2, clog2(5) = 3, ...
-constexpr uint16_t clog2(uint64_t n) {
-    if (n <= 1) return 0;
-    uint16_t result = 0;
-    n--;
-    while (n > 0) { n >>= 1; result++; }
-    return result;
 }
 extern uint64_t findNextPowerOf2(uint64_t n);
 extern uint16_t log2ofPowerOf2(uint64_t n);

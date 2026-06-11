@@ -69,6 +69,7 @@
 constants:
   _attribs: [flat]
   constant: key
+  evalCanonical: optional() # must be before value
   value: eval
   desc: required
   maxValue: optional(0)

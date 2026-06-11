@@ -1,4 +1,5 @@
 from pysrc.intf_gen_utils import wrap_module_namespace
+import pysrc.emissionUtils as emissionUtils
 
 # args from generator line
 # prj object
@@ -15,11 +16,8 @@ def render(args, prj, data):
             return(includeAddresses(args, prj, data))
         case 'regAddresses':
             return(includeRegAddresses(args, prj, data))
-        case 'config':
-            return(includeConfig(args, prj, data))
         case _:
-            print("error missing section, valid values are constants, types, enums")
-            exit()
+            raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are constants, types, enums, addresses, regAddresses")
 
 
 def includeConstants(args, prj, data):
@@ -64,43 +62,15 @@ def constReference_cpp(constKey, prj, useConfig=False):
 
 
 def typeWidthExpression_cpp(value, prj, useConfig=False):
-    """Build a C++ constexpr-compatible expression for a type's bit width.
-
-    For widthLog2 with constant C:       clog2(C+1)
-    For widthLog2minus1 with constant C: clog2(C)
-    For width with constant C:           C
-    For literal integer N:               N
-    If isSigned + log2: appends +1
-
-    Returns: string expression suitable for use in constexpr calculations.
-    # TODO: handle variable size parameters (parameterized widths)
-    """
-    isSigned = value['isSigned']
-    signedExtra = '+1' if isSigned else ''
-
-    # Check widthLog2
-    wl2Key = value['widthLog2Key']
-    if wl2Key:
-        constName = constReference_cpp(wl2Key, prj, useConfig)
-        return f"clog2({constName}+1){signedExtra}"
-    wl2 = value['widthLog2']
-    if wl2 != '':
-        return f"clog2({wl2}+1){signedExtra}"
-
-    # Check widthLog2minus1
-    wl2m1Key = value['widthLog2minus1Key']
-    if wl2m1Key:
-        constName = constReference_cpp(wl2m1Key, prj, useConfig)
-        return f"clog2({constName}){signedExtra}"
-    wl2m1 = value['widthLog2minus1']
-    if wl2m1 != '':
-        return f"clog2({wl2m1}){signedExtra}"
-
-    # Direct width — check widthKey for constant, else literal
-    widthKey = value['widthKey']
-    if widthKey:
-        return constReference_cpp(widthKey, prj, useConfig)
-    return str(prj.resolveTypeWidth(value))
+    """Build a C++ constexpr-compatible bit-width expression for a type.
+    Delegates the language-neutral width decision tree to
+    emissionUtils.typeWidthExpr, binding C++ constant spelling
+    (constReference_cpp, Config::-aware) and the C++ literal-width fallback
+    (prj.resolveTypeWidth)."""
+    return emissionUtils.typeWidthExpr(
+        value, emissionUtils.C,
+        constSpelling=lambda key: constReference_cpp(key, prj, useConfig),
+        literalWidth=lambda v: str(prj.resolveTypeWidth(v)))
 
 
 def includeTypes(args, prj, data):
@@ -132,76 +102,6 @@ def includeTypes(args, prj, data):
 
     out.append("")
     return("\n".join(wrap_module_namespace(args, data, out)))
-
-
-def includeConfig(args, prj, data):
-    out = []
-    params = [value for value in data['constants'].values() if value['isParameterizable']]
-    # Synthetic block-param fields (declared via `params:` with no backing
-    # parameterizable constant) and per-variant Config descriptors are
-    # supplied by getContextData(); the template performs no cross-block
-    # walks.
-    constants_by_name = {p['constant']: p for p in params}
-    block_param_synthetic = data['contextBlockParamSynthetic']
-    variant_entries = data['contextVariantConfigs']
-    if not params and not block_param_synthetic and not variant_entries:
-        return ""
-    # Legacy per-context Config struct. Retained for blocks that still ride on
-    # <context>DefaultConfig (those without their own variants but
-    # parameterizable transitively).
-    # Pure block params (block_param_synthetic) are intentionally NOT
-    # emitted here: there is no constant default, so any caller reading
-    # them through the legacy default fallback is a usage bug. Per-variant
-    # Config structs (below) carry the override values.
-    contextBaseName = data['context'].rsplit('/', 1)[-1].rsplit('.', 1)[0].replace('-', '_')
-    configName = f'{contextBaseName}DefaultConfig'
-    out.append(f"struct {configName} {{")
-    for value in params:
-        type_str = _config_type(value)
-        out.append(f"    static constexpr {type_str} {value['constant']} = {value['value']};")
-    out.append("};")
-    out.append("")
-    # Per-variant Config structs. Variant labels and resolved values come
-    # from the context view; intra-block dedup (duplicateOf) folds byte-
-    # identical variants onto a single canonical struct.
-    seen_struct_names = set()
-    for entry in variant_entries:
-        desc = entry['descriptor']
-        if desc['duplicateOf'] is not None:
-            continue
-        if not desc['values']:
-            continue
-        structName = desc['configName']
-        if structName in seen_struct_names:
-            continue
-        seen_struct_names.add(structName)
-        out.append(f"struct {structName} {{")
-        for constName, resolved in desc['values'].items():
-            if constName in constants_by_name:
-                constData = constants_by_name[constName]
-            else:
-                # Synthetic block-param entry. Treated as an unsigned
-                # 32-bit field; the variant override is the value source.
-                constData = block_param_synthetic[constName]
-                constData = dict(constData, value=resolved)
-            type_str = _config_type(constData)
-            out.append(f"    static constexpr {type_str} {constName} = {resolved};")
-        out.append("};")
-        out.append("")
-    return("\n".join(out))
-
-
-def _config_type(value):
-    valueType = value['valueType']
-    if valueType == 'uint':
-        maxValue = max(value['value'], value.get('maxValue', value['value']))
-        return 'uint32_t' if maxValue <= 0xFFFFFFFF else 'uint64_t'
-    if valueType == 'int':
-        maxAbs = max(abs(value['value']), abs(value.get('maxValue', value['value'])))
-        return 'int32_t' if maxAbs <= 0x7FFFFFFF else 'int64_t'
-    if valueType == 'real':
-        return 'double'
-    return valueType
 
 
 def includeEnum(args, prj, data):
