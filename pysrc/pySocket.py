@@ -14,6 +14,8 @@ import os
 import socket
 import struct
 import sys
+import select as _select
+from cocotb.triggers import Event, NullTrigger
 
 MSG_REQ = 0x01
 MSG_ACK = 0x02
@@ -54,7 +56,10 @@ def parse_ports(ports_file: str | None) -> dict[str, int]:
             sys.exit(1)
     return out
 
-
+# This class is used to transport messages between the cocotb/pyuvm and the systemc framework.
+# It is a blocking transport, so it is used in the cocotb/pyuvm context.
+# See the file docs/pyuvm_concurrency_wo_asyncio.md for more details on the concurrency issue related to the use of 
+# non-blocking sockets in the cocotb/pyuvm context.
 class SyncSocketTransport:
     """Blocking TCP transport for use outside an asyncio event loop (e.g. pyuvm).
 
@@ -66,6 +71,7 @@ class SyncSocketTransport:
         self._host = host
         self._port = port
         self._sock: socket.socket | None = None
+        self._sync_event = Event()
 
     async def connect(self) -> None:
         self._sock = socket.create_connection((self._host, self._port))
@@ -87,23 +93,37 @@ class SyncSocketTransport:
         return bytes(buf)
 
     async def recv_msg(self) -> tuple[int, bytes]:
+        """Receive one framed message without blocking the cocotb scheduler.
+
+        Polls the socket with select() and yields NullTrigger() when no data
+        is ready, letting other cocotb Tasks run between polls.
+        """
         assert self._sock is not None
-        hdr = self._recvexactly(4)
-        msg_type, _reserved, plen = HEADER_STRUCT.unpack(hdr)
-        body = self._recvexactly(plen) if plen else b""
-        return msg_type, body
+        while True:
+            readable, _, _ = _select.select([self._sock], [], [], 0)
+            if readable:
+                hdr = self._recvexactly(4)
+                msg_type, _reserved, plen = HEADER_STRUCT.unpack(hdr)
+                body = self._recvexactly(plen) if plen else b""
+                return msg_type, body
+            await NullTrigger()
 
     async def recv_sync(self) -> None:
         """Wait for TB startup handshake (sent after accept, before full sc_start)."""
         msg_type, body = await self.recv_msg()
         if msg_type != MSG_SYNC or len(body) != 0:
             raise ValueError(f"expected MSG_SYNC, got type={msg_type} len={len(body)}")
+        else:
+            self._sync_event.set()
 
     async def close(self) -> None:
         if self._sock is not None:
             self._sock.close()
             self._sock = None
 
+    # wait for flag that indicates that the socket has established sync
+    async def wait_for_sync(self) -> None:
+        await self._sync_event.wait()
 
 class SocketTransport:
     """Framed TCP transport (matches common/systemc/socketTransport)."""
