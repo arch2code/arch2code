@@ -1,5 +1,6 @@
 # Example project file that defines project level information
 
+yamlFormat: 2
 projectName: ip_test
 
 # project files can be regular input files, regular input files with additional projectFiles sections, or additional ProjectFiles.

@@ -18,6 +18,12 @@ import pysrc.evalExpr as evalExpr
 
 continueOnError = False
 
+# Current user-YAML authoring format. A migrated project carries a single
+# top-level `yamlFormat:` field in its project.yaml equal to this value; its
+# absence marks a pre-migration (legacy) project that projectCreate refuses to
+# build. See plan-yaml-migration.md.
+CURRENT_YAML_FORMAT = 2
+
 # yaml = YAML(typ='safe', pure=True)
 yaml = YAMLRAW.YAML(typ='rt')
 
@@ -1543,24 +1549,16 @@ class projectOpen:
             ret['addressDecode']['addressGroup'] = addressGroup
 
     def getBDAddressDecode(self, ret):
-        # is this block a special apbDecode block type that performs abp bus routing.
-        # Two authoring paths reach this point:
-        #   - Legacy: addressControl.yaml's AddressGroups row carries the
-        #     decoderInstance pointing at a router instance. The loop below
-        #     identifies the router by walking AddressGroups.
-        #   - New schema: the router's own block row carries `addressBlock:`.
-        #     The router instance is resolved by post-parse container-locality
-        #     (see postParseRegisterPorts.py) and is the single instance of
-        #     this block type. Detect this directly off the block row.
+        # Is this block an apbDecode router that performs APB bus routing?
+        # The router's own block row carries `addressBlock:`. The router
+        # instance is resolved by post-parse container-locality (see
+        # postParseRegisterPorts.py) and is the single instance of this
+        # block type, so any element of ret['instances'] identifies it.
         isApbRouter = False
         qualBlock = ret['qualBlock']
         blockRow = self.data['blocks'][qualBlock]
         addressBlock = blockRow.get('addressBlock')
-        addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
         if addressBlock:
-            # New schema: the block declares addressBlock: directly. There is
-            # exactly one instance of this router (enforced by post-parse), so
-            # any element of ret['instances'] identifies the decoder instance.
             qualDecoder = next(iter(ret['instances']))
             instanceWithRegApb = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
             if instanceWithRegApb is None:
@@ -1571,22 +1569,6 @@ class projectOpen:
             ret['addressDecode']['addressGroup'] = addressBlock.get('addressGroup')
             ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
             ret['addressDecode']['instanceWithRegApb'] = instanceWithRegApb
-        elif addressConfig:
-            # Legacy: iterate AddressGroups and match by decoderInstance.
-            for addressGroup, addressGroupData in addressConfig.get('AddressGroups', {}).items():
-                decoder = addressGroupData.get('decoderInstance', None)
-                if decoder is not None:
-                    qualDecoder = self.getQualInstance(decoder)
-                    if qualDecoder in ret['instances']:
-                        instanceWithRegApb = self.config.getConfig("INSTANCES_WITH_REGAPB", failOk=True)
-                        if instanceWithRegApb is None:
-                            printError('No instances with register interface found in db: missing or invalid register post processing script')
-                            exit(warningAndErrorReport())
-                        isApbRouter = True
-                        ret['addressDecode']['addressGroupData'] = addressGroupData
-                        ret['addressDecode']['addressGroup'] = addressGroup
-                        ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
-                        ret['addressDecode']['instanceWithRegApb'] = instanceWithRegApb
         ret['addressDecode']['isApbRouter'] = isApbRouter
 
     # memory connections
@@ -1962,6 +1944,31 @@ class projectOpen:
                 'payloads': payloads,
             }
 
+        addressBusInterfaceTypes = {
+            row.get('interface_type')
+            for row in self.data.get('interface_defs', {}).values()
+            if isinstance(row, dict) and row.get('addressBus')
+        }
+
+        def registerBusChildBind(childBlockKey, portName):
+            # A routed leaf's register-bus ingress is not declared in
+            # `ports:`. Its child interface is read from the leaf-to-handler
+            # connectionMap the post-parse pass emitted (block: this leaf,
+            # port: the leaf-side register-bus port), so projectOpen reads the
+            # resolved design rather than the leaf's parse-time `registerPorts:`
+            # construct. The addressBus filter keeps a datapath connectionMap on
+            # the same leaf from being mistaken for the register bus.
+            for cm in self.data['connectionMaps'].values():
+                if cm.get('blockKey') != childBlockKey or cm.get('port') != portName:
+                    continue
+                interfaceKey = cm.get('interfaceKey')
+                if not interfaceKey:
+                    continue
+                ifaceRow = self.data['interfaces'].get(interfaceKey)
+                if ifaceRow and ifaceRow.get('interfaceType') in addressBusInterfaceTypes:
+                    return interfaceKey, ifaceRow.get('interface')
+            return None
+
         def annotate(connVal, endKey, instanceKey, portName, instanceName, inferredDirection):
             if connVal['_context'] == '_global':
                 return None
@@ -1978,22 +1985,28 @@ class projectOpen:
             childBlockKey = instanceData['instanceTypeKey']
             childBlock = self.data['blocks'][childBlockKey]
             declaredPort = (childBlock.get('ports') or {}).get(portName)
-            if not declaredPort:
-                declaredPort = (childBlock.get('registerPorts') or {}).get(portName)
-            if not declaredPort:
-                return None
-            childInterfaceName = declaredPort.get('interface')
-            if not childInterfaceName or childInterfaceName == parentInterfaceName:
-                return None
-            childInterfaceKey = resolveInterfaceKey(
-                childInterfaceName,
-                declaredPort['_context'] or childBlock['_context'])
-            if not childInterfaceKey:
-                printError(
-                    f"Block {ret['qualBlock']} binds {instanceName}.{portName} "
-                    f"to interface '{childInterfaceName}', but the interface "
-                    f"could not be resolved while building the block view.")
-                exit(warningAndErrorReport())
+            if declaredPort:
+                childInterfaceName = declaredPort.get('interface')
+                declaredDirection = declaredPort.get('direction')
+                if not childInterfaceName or childInterfaceName == parentInterfaceName:
+                    return None
+                childInterfaceKey = resolveInterfaceKey(
+                    childInterfaceName,
+                    declaredPort['_context'] or childBlock['_context'])
+                if not childInterfaceKey:
+                    printError(
+                        f"Block {ret['qualBlock']} binds {instanceName}.{portName} "
+                        f"to interface '{childInterfaceName}', but the interface "
+                        f"could not be resolved while building the block view.")
+                    exit(warningAndErrorReport())
+            else:
+                registerBind = registerBusChildBind(childBlockKey, portName)
+                if not registerBind:
+                    return None
+                childInterfaceKey, childInterfaceName = registerBind
+                declaredDirection = None
+                if childInterfaceName == parentInterfaceName:
+                    return None
             childInterface = self.data['interfaces'][childInterfaceKey]
             childConfigName = resolveInstanceConfigName(instanceData)
             parentConfigName = resolveConnectionConfigName(connVal, excludeEndKey=endKey)
@@ -2015,7 +2028,7 @@ class projectOpen:
                 'childBlockKey': childBlockKey,
                 'childBlock': childBlock.get('block', ''),
                 'portName': portName,
-                'direction': declaredPort.get('direction') or inferredDirection or 'dst',
+                'direction': declaredDirection or inferredDirection or 'dst',
                 'parentInterfaceKey': parentInterfaceKey,
                 'parentInterface': parentInterfaceName,
                 'parentInterfaceType': parentInterface.get('interfaceType', ''),
@@ -2189,17 +2202,6 @@ class projectOpen:
             else:
                 ports[portName]['instance'][instanceKey] = 0
 
-    def _legacyRegisterBusInterface(self, ret):
-        # Project-level addressControl.RegisterBusInterface supplies both the
-        # interface name and port name when a block has no local declaration.
-        addressConfig = self.config.getConfig('ADDRESS_CONFIG', True)
-        busName = addressConfig.get('RegisterBusInterface') if addressConfig else None
-        if not busName:
-            printError("No RegisterBusInterface configured: legacy addressControl.yaml is missing the section "
-                       "and no per-block addressBlock: / registerPorts: declarations supply a replacement.")
-            exit(warningAndErrorReport())
-        return busName, busName
-
     def _resolveRouterUpstreamInterface(self, blockRow, upstreamPort):
         # Look up the interface bound to the router's upstream port.
         # New-schema routers do not author `ports:` for their upstream
@@ -2235,26 +2237,21 @@ class projectOpen:
 
     def _registerBusInterfacePort(self, ret):
         # Returns (interfaceName, portName) for the block's register-bus
-        # surface. Routers source the port from addressBlock.upstreamPort;
-        # leaves source from a declared registerPorts: row; synthesised
-        # register handlers (isRegHandler) source from the leaf-to-handler
-        # connectionMap that the post-parse pass emitted. Blocks without
-        # any of those use the project-level RegisterBusInterface value
-        # (legacy projects only).
+        # surface, read from the design projectCreate produced. Routers
+        # source the port from addressBlock.upstreamPort. Synthesised
+        # register handlers (isRegHandler) and routed leaves both read the
+        # leaf-to-handler connectionMap the post-parse pass emitted — the
+        # handler from its instance side, the leaf from its block side.
+        # `registerPorts:` is a parse-time construct that projectCreate
+        # consumes to infer this connectivity; projectOpen does not read it.
         qualBlock = ret['qualBlock']
         blockRow = self.data['blocks'][qualBlock]
         addressBlock = blockRow.get('addressBlock')
-        declaredRegisterPorts = blockRow.get('registerPorts') or {}
 
         if ret['addressDecode']['isApbRouter'] and addressBlock:
-            port = addressBlock.get('upstreamPort') or 'apbReg'
+            port = addressBlock['upstreamPort']
             interface = self._resolveRouterUpstreamInterface(blockRow, port)
-            if interface:
-                return interface, port
-            # If the upstream port has no local declaration, use the
-            # project-level register-bus interface.
-            legacyIntf, _ = self._legacyRegisterBusInterface(ret)
-            return legacyIntf, port
+            return interface, port
 
         if blockRow.get('isRegHandler'):
             # The synthesised handler block does not author
@@ -2282,47 +2279,48 @@ class projectOpen:
                 if interface:
                     return interface, port
 
-        if declaredRegisterPorts:
-            # Register-bus blocks expose exactly one registerPorts: row
-            # whose key is the leaf-side port.
-            (port, rpRow) = next(iter(declaredRegisterPorts.items()))
-            interface = rpRow.get('interface')
-            if interface:
-                return interface, port
+        # A routed leaf reads its register-bus interface and port from the
+        # leaf-to-handler connectionMap the post-parse pass emitted (block:
+        # this leaf). This is the same row whether the leaf authored
+        # registerPorts: or had its register bus inferred from the serving
+        # router — projectOpen reads the resolved design, not the authored
+        # construct.
+        return self._leafRegisterBusFromHandlerMap(qualBlock)
 
-        return self._legacyRegisterBusInterface(ret)
+    def _leafRegisterBusFromHandlerMap(self, qualBlock):
+        # Read the (interface, port) the post-parse pass resolved onto a
+        # routed leaf's leaf-to-handler connectionMap (the map whose
+        # `block:` is this leaf). The resolved interface row must be
+        # addressBus: true so a datapath cross-interface map on the same leaf
+        # is not mistaken for the register bus. Returns None when the leaf has
+        # no synthesised register handler.
+        addressBusTypes = set()
+        for row in self.data.get('interface_defs', {}).values():
+            if isinstance(row, dict) and row.get('addressBus'):
+                addressBusTypes.add(row.get('interface_type'))
+        for cm in self.data.get('connectionMaps', {}).values():
+            if cm.get('blockKey') != qualBlock:
+                continue
+            interfaceKey = cm.get('interfaceKey')
+            if not interfaceKey:
+                continue
+            ifaceRow = self.data['interfaces'][interfaceKey]
+            if ifaceRow.get('interfaceType') in addressBusTypes:
+                interface = ifaceRow['interface']
+                return interface, cm.get('port') or interface
+        return None
 
     def getBDAddressBlockView(self, ret):
-        # declaredRegisterPorts is the authored registerPorts: map. The
-        # existing ret['registerPorts'] key is the register-connection port
-        # aggregate used by register-handler templates and is left in place.
         qualBlock = ret['qualBlock']
         blockRow = self.data['blocks'][qualBlock]
-        ret['declaredRegisterPorts'] = dict(blockRow.get('registerPorts') or {})
 
-        # Router blocks always expose addressBlock through this view. When
-        # the block row has no local addressBlock, derive the equivalent
-        # fields from ADDRESS_CONFIG. Non-router blocks see no addressBlock.
+        # Router blocks expose their authored addressBlock through this view;
+        # isApbRouter is true only when the block authors addressBlock:.
+        # Non-router blocks see no addressBlock.
         if not ret['addressDecode'].get('isApbRouter'):
             return
 
-        authored = blockRow.get('addressBlock')
-        if authored:
-            ret['addressBlock'] = dict(authored)
-            return
-
-        addressGroupData = ret['addressDecode'].get('addressGroupData') or {}
-        addressGroup = ret['addressDecode'].get('addressGroup')
-        legacyDefault = ret['addressDecode'].get('registerBusPort') or 'apbReg'
-        ret['addressBlock'] = {
-            'addressGroup': addressGroup,
-            'addressIncrement': addressGroupData.get('addressIncrement'),
-            'maxAddressSpaces': addressGroupData.get('maxAddressSpaces'),
-            'varType': addressGroupData.get('varType'),
-            'enumPrefix': addressGroupData.get('enumPrefix'),
-            'upstreamPort': addressGroupData.get('upstreamPort', legacyDefault),
-            'registerDecoderPort': addressGroupData.get('registerDecoderPort', legacyDefault),
-        }
+        ret['addressBlock'] = dict(blockRow['addressBlock'])
 
     def getBDAddressBus(self, ret):
         if ret['addressDecode']['isApbRouter'] or ret['addressDecode']['hasDecoder']:
@@ -2330,8 +2328,7 @@ class projectOpen:
             (interfaceName, portName) = self._registerBusInterfacePort(ret)
             # registerBusInterface names the interface definition used
             # for type/structure lookup. registerBusPort names the port
-            # object templates bind or read on the block-data view; in
-            # legacy mode the two values coincide.
+            # object templates bind or read on the block-data view.
             ret['addressDecode']['registerBusInterface'] = interfaceName
             ret['addressDecode']['registerBusPort'] = portName
             interfaceInfo = [x for x in self.data['interfaces'].values() if x.get('interface') == interfaceName]
@@ -2863,6 +2860,9 @@ class projectCreate:
         self.proj = merge_with_spec(self.a2cProj, self.proj, self.MERGE_SPEC, path=())
         self.config.setConfig('A2CROOT', self.a2cRoot)
         self.config.setConfig('A2CPROJ', self.a2cProj)
+        # Refuse to build an un-migrated project before any address or eval
+        # processing runs. This is the sole detector of a pre-migration project.
+        self._gateYamlFormat()
         # save the global base path referenced by project file location
         g.yamlBasePath = os.path.dirname(os.path.abspath(projFile))
         os.chdir(os.path.dirname(os.path.abspath(projFile)))
@@ -2873,11 +2873,6 @@ class projectCreate:
         self.schema = Schema(self.schemaYaml, schemaFile)
         self.counterReverseField = self.schema.counter_reverse_field
 
-        if self.proj.get("addressControl"):
-            # load and check the addressControl file specified in the project file
-            addressControlFile = self.proj["addressControl"]
-            self.addressControl = existsLoad(addressControlFile)
-            self.validateAddressControl(self.addressControl, addressControlFile)
         # Normalize project-level address policy before instance auto fields
         # allocate IDs from those groups.
         self.loadProjectAddressPolicy()
@@ -3885,80 +3880,48 @@ class projectCreate:
                 contexts.add(r['_context'])
         return contexts
 
-
-    def validateAddressControl(self, addressControl, addressControlFile):
-        validGen = {'AddressGroups': {'addressIncrement': None, 'maxAddressSpaces': None, 'varType': None, 'varTypeContext': None, 'enumPrefix': None, 'decoderInstance': None, 'primaryDecode': None},
-                    'RegisterBusInterface' : None,
-                    'InstanceGroups': {'varType': None, 'enumPrefix': None},
-                    'AddressObjects': {'alignment': None, 'sizeRoundUpPowerOf2': None, 'sortDescending': None} }
-
-        allKeys = set(validGen.keys())
-        optionalKeys = { 'InstanceGroups' }
-        mandatoryKeys = allKeys - optionalKeys
-
-        # check if addressControl is a dictionary and has the correct keys
-        if not isinstance(addressControl, dict) or set(addressControl.keys()).difference(allKeys):
-            printError(f"Bad addressControl detected in {addressControlFile}, Valid section types are AddressGroups|RegisterBusInterface|InstanceGroups|AddressObjects")
-            exit(warningAndErrorReport())
-        elif not set(addressControl.keys()).issuperset(mandatoryKeys):
-            printError(f"Bad addressControl detected in {addressControlFile}, Missing mandatory section types from {list(mandatoryKeys)}")
-            exit(warningAndErrorReport())
-
-        # Check for mandatory keys in address control
-        if not isinstance(addressControl, dict) or not set(addressControl.keys()).issuperset(mandatoryKeys):
-            printError(f"Bad addressControl detected in {addressControlFile}, keys do not match. Valid keys are {list(validGen.keys())}")
-            exit(warningAndErrorReport())
-
-        for gen in addressControl:
-            if gen=='AddressGroups':
-                addressMode=True
-            else:
-                addressMode=False
-            if gen in ['AddressGroups', 'InstanceGroups']:
-                # groups
-                self.counterGroup[gen] = OrderedDict()
-                self.counterGroupControl[gen] = OrderedDict()
-                self.counterData[gen] = OrderedDict()
-
-                for group, groupSettings in addressControl[gen].items():
-                    self.counterGroup[gen][group] = 0
-                    self.counterGroupControl[gen][group] = groupSettings
-                    self.counterData[gen][group] = OrderedDict()
-                    for setting, val in groupSettings.items():
-                        if setting not in validGen[gen]:
-                            myLineNumber = groupSettings.lc.line + 1
-                            printError(f"Bad addressControl detected in {addressControlFile}:{myLineNumber}, section {gen}, group {group} has unknown parameter {setting}")
-                            exit(warningAndErrorReport())
-            elif gen == 'RegisterBusInterface':
-                self.registerBusInterface = addressControl[gen]
-                # register bus interface
-                if not self.registerBusInterface:
-                    printError(f"Bad RegisterBusInterface detected in {addressControlFile}, section {gen} is null")
-                    exit(warningAndErrorReport())
-            else:
-                # addressObjects
-                self.addressObjects = addressControl[gen]
-                for addressObject, objectSettings in self.addressObjects.items():
-                    for setting, val in objectSettings.items():
-                        if setting not in validGen[gen]:
-                            myLineNumber = objectSettings.lc.line + 1
-                            printError(f"Bad addressControl detected in {addressControlFile}:{myLineNumber}, section {gen}, group {group} has unknown parameter {setting}")
-                            exit(warningAndErrorReport())
-
     _PROJECT_ADDRESS_GROUP_FIELDS = {'varType': None, 'enumPrefix': None}
     _PROJECT_ADDRESS_OBJECT_FIELDS = {'alignment': None,
                                       'sizeRoundUpPowerOf2': None,
                                       'sortDescending': None}
 
-    def loadProjectAddressPolicy(self):
-        """Merge project.yaml instanceGroups:/addressObjects: with the
-        legacy addressControl.yaml InstanceGroups:/AddressObjects:.
+    def _gateYamlFormat(self):
+        """Stop the build unless the project is migrated to the current YAML
+        authoring format.
 
-        If both spellings supply a section, the rows must match
-        identically; disagreement names both files and errors. If
-        only project.yaml supplies the section, this method populates
-        the same counter-state and persisted ADDRESS_CONFIG blob that
-        validateAddressControl would have written.
+        The sentinel is a single top-level `yamlFormat:` field in the user
+        project.yaml. Its absence marks a pre-migration (legacy) project. The
+        legacy addressControl loader and Python-syntax eval acceptance are
+        already removed, so an un-migrated project must be stopped here, before
+        any address or eval processing, with an actionable remediation command
+        rather than failing obscurely downstream.
+        """
+        yamlFormat = self.proj.get('yamlFormat')
+        if yamlFormat == CURRENT_YAML_FORMAT:
+            return
+        if yamlFormat is None:
+            printError(
+                f"Project '{self.projFile}' is not migrated to yamlFormat: "
+                f"{CURRENT_YAML_FORMAT}.\n"
+                f"       Run the migration, then rebuild:\n\n"
+                f"           make migrate\n"
+                f"           make clean && make gen\n"
+            )
+        else:
+            printError(
+                f"Project '{self.projFile}' declares yamlFormat: {yamlFormat}, "
+                f"but this generator expects yamlFormat: {CURRENT_YAML_FORMAT}. "
+                f"Update the project to the current authoring format."
+            )
+        exit(warningAndErrorReport())
+
+    def loadProjectAddressPolicy(self):
+        """Normalize project.yaml instanceGroups:/addressObjects: into the
+        counter-state and persisted ADDRESS_CONFIG blob.
+
+        project.yaml is the sole source for these sections; they populate
+        the same state the address allocator and firmware-header generator
+        consume.
         """
         projInstanceGroups = self.proj.get('instanceGroups')
         projAddressObjects = self.proj.get('addressObjects')
@@ -3969,20 +3932,18 @@ class projectCreate:
                          if isinstance(self.addressControl, dict)
                          else OrderedDict())
 
-        legacyFile = self.proj.get('addressControl')
-
         if projInstanceGroups is not None:
             self._mergeProjectAddressGroupSection(
                 'InstanceGroups', projInstanceGroups,
                 self._PROJECT_ADDRESS_GROUP_FIELDS,
-                legacyFile, addressConfig,
+                addressConfig,
             )
 
         if projAddressObjects is not None:
             self._mergeProjectAddressObjectSection(
                 'AddressObjects', projAddressObjects,
                 self._PROJECT_ADDRESS_OBJECT_FIELDS,
-                legacyFile, addressConfig,
+                addressConfig,
             )
 
         self.addressControl = addressConfig
@@ -4020,76 +3981,33 @@ class projectCreate:
                     ok = False
         return ok
 
-    def _mergeProjectAddressGroupSection(self, legacyKey, projRows,
-                                         allowedFields, legacyFile,
-                                         addressConfig):
-        """Normalize a project.yaml 'group'-shaped section
-        (today only instanceGroups:) into the legacy InstanceGroups
-        in-memory state and ADDRESS_CONFIG entry."""
+    def _mergeProjectAddressGroupSection(self, sectionKey, projRows,
+                                         allowedFields, addressConfig):
+        """Normalize a project.yaml 'group'-shaped section (today only
+        instanceGroups:) into the counter-state and ADDRESS_CONFIG entry."""
         if not self._validateProjectAddressRows(
                 'instanceGroups', projRows, allowedFields, 'group'):
             return
 
-        legacyRows = addressConfig.get(legacyKey)
-        if legacyRows is not None:
-            if not self._addressRowsEqual(legacyRows, projRows):
-                self.logError(
-                    f"'{legacyKey}' is declared in both "
-                    f"'{self.projFile}' (as 'instanceGroups:') and "
-                    f"'{legacyFile}' (as '{legacyKey}:') with "
-                    f"disagreeing rows. Remove the section from one "
-                    f"file or align the rows."
-                )
-            # Agree -> legacy already populated counter state. Done.
-            return
-
-        # Sole source -> populate the same state that validateAddressControl
-        # would have written for an InstanceGroups: row.
-        addressConfig[legacyKey] = projRows
-        self.counterGroup[legacyKey] = OrderedDict()
-        self.counterGroupControl[legacyKey] = OrderedDict()
-        self.counterData[legacyKey] = OrderedDict()
+        addressConfig[sectionKey] = projRows
+        self.counterGroup[sectionKey] = OrderedDict()
+        self.counterGroupControl[sectionKey] = OrderedDict()
+        self.counterData[sectionKey] = OrderedDict()
         for group, settings in projRows.items():
-            self.counterGroup[legacyKey][group] = 0
-            self.counterGroupControl[legacyKey][group] = settings
-            self.counterData[legacyKey][group] = OrderedDict()
+            self.counterGroup[sectionKey][group] = 0
+            self.counterGroupControl[sectionKey][group] = settings
+            self.counterData[sectionKey][group] = OrderedDict()
 
-    def _mergeProjectAddressObjectSection(self, legacyKey, projRows,
-                                          allowedFields, legacyFile,
-                                          addressConfig):
-        """Normalize project.yaml addressObjects: into the legacy
-        AddressObjects in-memory state and ADDRESS_CONFIG entry."""
+    def _mergeProjectAddressObjectSection(self, sectionKey, projRows,
+                                          allowedFields, addressConfig):
+        """Normalize project.yaml addressObjects: into the AddressObjects
+        ADDRESS_CONFIG entry and in-memory state."""
         if not self._validateProjectAddressRows(
                 'addressObjects', projRows, allowedFields, 'object'):
             return
 
-        legacyRows = addressConfig.get(legacyKey)
-        if legacyRows is not None:
-            if not self._addressRowsEqual(legacyRows, projRows):
-                self.logError(
-                    f"'{legacyKey}' is declared in both "
-                    f"'{self.projFile}' (as 'addressObjects:') and "
-                    f"'{legacyFile}' (as '{legacyKey}:') with "
-                    f"disagreeing rows. Remove the section from one "
-                    f"file or align the rows."
-                )
-            return
-
-        addressConfig[legacyKey] = projRows
+        addressConfig[sectionKey] = projRows
         self.addressObjects = projRows
-
-    @staticmethod
-    def _addressRowsEqual(legacyRows, newRows):
-        """Compare two CommentedMap-based row containers ignoring
-        ruamel.yaml line/column metadata, which is an attribute, not a
-        dict key, but which can carry through pickling unevenly."""
-        def plainify(value):
-            if isinstance(value, dict):
-                return {k: plainify(v) for k, v in value.items()}
-            if isinstance(value, list):
-                return [plainify(v) for v in value]
-            return value
-        return plainify(legacyRows) == plainify(newRows)
 
     def validateDeclaredPorts(self, blocks_flat, instances_flat, interfaces_flat,
                               connections_flat, connection_maps_flat,
@@ -4529,9 +4447,16 @@ class projectCreate:
                 instRow = instances_flat[instanceKey]
                 instTypeKey = instRow['instanceTypeKey']
                 blockRow = blocks_flat[instTypeKey]
-                declaredPorts = blockRow.get('ports') or {}
                 portName = endRow['portName']
-                portEntry = declaredPorts.get(portName)
+                # registerPorts: is part of the block's declared-port
+                # surface. A routed leaf's register-bus ingress is declared
+                # there rather than in ports:, so cross-interface checking
+                # consults the union of both maps.
+                portEntry = (blockRow.get('ports') or {}).get(portName)
+                isRegisterBus = False
+                if not portEntry:
+                    portEntry = (blockRow.get('registerPorts') or {}).get(portName)
+                    isRegisterBus = portEntry is not None
                 if not portEntry:
                     # No bottom-up declaration; top-down inference
                     # governs and there is no cross-interface bind
@@ -4547,13 +4472,34 @@ class projectCreate:
                 childContext = interfaces_flat[childIfaceKey]['_context']
                 parentContext = parentIfaceRow['_context']
                 childVariant = instRow['variant'] or ''
-                locationStr = (
-                    f"Block {blockRow['block']} connection "
-                    f"'{connName}' (file {connContext}) binds external "
-                    f"interface {parentIfaceName} to child "
-                    f"{instRow['instance']}.{portName} declared as "
-                    f"{portIface} (file {blockRow['_context']})")
                 parentBlockKey, parentVariant = _connectionBinding(conn)
+                if isRegisterBus:
+                    # The synthesised register-bus connection links a router
+                    # to the routed leaf. Name both instances and the
+                    # registerPorts: row, and resolve the parent side from the
+                    # router end rather than the leaf-preferring channel rule.
+                    otherEnd = next(
+                        (e for e in conn['ends'].values()
+                         if e['instanceKey'] != instanceKey), None)
+                    if otherEnd is not None:
+                        otherInst = instances_flat[otherEnd['instanceKey']]
+                        parentBlockKey = otherInst['instanceTypeKey']
+                        parentVariant = otherInst['variant'] or ''
+                        srcInstance = otherEnd['instance']
+                    else:
+                        srcInstance = instRow['instance']
+                    locationStr = (
+                        f"Register-bus dispatch from router "
+                        f"'{srcInstance}' to leaf instance "
+                        f"'{instRow['instance']}' (registerPorts: row "
+                        f"'{portName}')")
+                else:
+                    locationStr = (
+                        f"Block {blockRow['block']} connection "
+                        f"'{connName}' (file {connContext}) binds external "
+                        f"interface {parentIfaceName} to child "
+                        f"{instRow['instance']}.{portName} declared as "
+                        f"{portIface} (file {blockRow['_context']})")
                 self.checkInterfacePair(
                     parentIfaceRow, interfaces_flat[childIfaceKey],
                     instTypeKey,
@@ -5380,22 +5326,12 @@ class projectCreate:
 
     def _post_registerAddressBlock(self, itemkey, item, yamlFile):
         """Register the per-block addressBlock: declaration into the
-        AddressGroups state shared with validateAddressControl().
-        itemkey is the owning block name (passed by processSubTable
-        for dataGroup tables)."""
+        AddressGroups counter state consumed by address allocation and
+        firmware-header generation. itemkey is the owning block name
+        (passed by processSubTable for dataGroup tables)."""
         group = item['addressGroup']
         lc = item.get('lc')
         line = lc.line + 1 if lc is not None and hasattr(lc, 'line') else '?'
-
-        if self.proj.get('addressControl'):
-            self.logError(
-                f"In {yamlFile}:{line}, block '{itemkey}' declares "
-                f"addressBlock:, but project file '{self.projFile}' also "
-                f"declares legacy addressControl: '{self.proj['addressControl']}'. "
-                f"Projects must use either legacy addressControl.yaml "
-                f"AddressGroups or new per-block addressBlock:, not both."
-            )
-            return item
 
         if 'AddressGroups' not in self.counterGroup:
             self.counterGroup['AddressGroups'] = OrderedDict()

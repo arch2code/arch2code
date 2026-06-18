@@ -23,7 +23,7 @@ constants:
     MULTI_STAT_WIDTH:  { value: 24, desc: "Status register payload width" }
     MULTI_MEM_WORDS:   { value: 16, desc: "Reg-access memory wordlines" }
     MULTI_MEM_WIDTH:   { value: 32, desc: "Reg-access memory data width" }
-    MULTI_MEM_AWIDTH:  { eval: "($MULTI_MEM_WORDS-1).bit_length()", desc: "Reg-access memory address width" }
+    MULTI_MEM_AWIDTH:  { eval: "$clog2($MULTI_MEM_WORDS)", desc: "Reg-access memory address width" }
 
 types:
     apbAddrT:       { width: APB_ADDR_WIDTH, desc: "APB address" }

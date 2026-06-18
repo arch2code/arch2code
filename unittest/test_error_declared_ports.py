@@ -24,6 +24,7 @@ def create_test_files(arch_content):
         f.write(arch_content)
 
     project_content = f"""projectName: declared_ports_error_test
+yamlFormat: 2
 topInstance: uTop
 
 dirs:

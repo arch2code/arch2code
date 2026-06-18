@@ -81,7 +81,6 @@ All tests are **self-contained** within the `unittest/` directory. Tests do not 
   - `mixedBlockC.yaml` - Block C definition
   - `mixedInclude.yaml` - Include file
   - `mixedNestedInclude.yaml` - Nested include file
-  - `exampleAddress.yaml` - Address configuration
   - `Makefile` - Build configuration
 
 ## Running Tests

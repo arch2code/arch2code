@@ -64,7 +64,8 @@ def write_temp(content, suffix, prefix):
     return path
 
 
-def make_project(arch_files, top_instance='uTop', project_name='addrctl_test'):
+def make_project(arch_files, top_instance='uTop', project_name='addrctl_test',
+                 yaml_format=2):
     """Write a temporary project.yaml plus one or more arch YAML files.
 
     arch_files: list of (filename_hint, content) tuples. The first entry
@@ -80,7 +81,9 @@ def make_project(arch_files, top_instance='uTop', project_name='addrctl_test'):
     project_files_section = ''.join(
         f"    - {os.path.basename(p)}\n" for p in arch_paths
     )
+    sentinel = f"yamlFormat: {yaml_format}\n" if yaml_format is not None else ""
     project_content = (
+        f"{sentinel}"
         f"projectName: {project_name}\n"
         f"topInstance: {top_instance}\n"
         f"\n"

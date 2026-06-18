@@ -1,11 +1,9 @@
 """New-schema post-parse pass for register-bus distribution.
 
-Activated when at least one block declares `addressBlock:`. Mutually
-exclusive with the legacy `postParseRegister.py`: blocks may not mix
-the two spellings — the schema-side `_post_registerAddressBlock` hook
-errors when a project also declares a legacy `addressControl.yaml`,
-so this script can assume the new-schema state is canonical when it
-runs.
+Activated when at least one block declares `addressBlock:`; a no-op
+otherwise. This is the sole register-bus distribution pass — the
+register-bus interface and per-router attributes come exclusively from
+per-block `addressBlock:` / `registerPorts:` declarations.
 
 Responsibilities:
   1. Build the router index from `prj.flatData['blocks']` rows that
@@ -13,8 +11,8 @@ Responsibilities:
   2. Resolve the router instance per group via container-locality.
   3. Infer the primary router by hierarchy walk.
   4. Synthesise the `<block>_regs` handler block, instance, and
-     leaf-to-handler `connectionMap` per routed leaf via the shared
-     helper exposed from `postParseRegister.py`.
+     leaf-to-handler `connectionMap` per routed leaf via the
+     `synthesiseRegHandler` helper defined in this module.
   5. Emit the router-to-leaf connection per routed instance, with the
      interface sourced from the leaf's `registerPorts:` entry.
   6. Emit the parent-router-to-child-router connection per nested
@@ -29,11 +27,78 @@ None.
 """
 
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from config.postParseRegister import (
-    collectBlocksNeedingRegHandler,
-    regHandlerNaming,
-    synthesiseRegHandler,
-)
+from pysrc.processYaml import camelCase
+
+
+def regHandlerNaming(prj):
+    """Resolve the regBlockNaming policy that governs synthesised
+    register-handler block and instance names. Returns
+    (instance_prefix, block_suffix, camel_case).
+    """
+    file_gen = prj.a2cProj.get('fileGeneration', {})
+    proj_file_gen = prj.proj.get('fileGeneration', {})
+    regBlockNaming = proj_file_gen.get('regBlockNaming', file_gen.get('regBlockNaming', {}))
+    instance_prefix = regBlockNaming.get('instancePrefix', 'u_')
+    block_suffix = regBlockNaming.get('blockSuffix', '_regs')
+    camel_case = regBlockNaming.get('camelCase', False)
+    return instance_prefix, block_suffix, camel_case
+
+
+def collectBlocksNeedingRegHandler(prj):
+    """Return {blockKey: block} for every leaf block that owns
+    registers or regAccess memories and therefore needs a synthesised
+    <block>_regs handler.
+    """
+    blocksWithRegisters = dict()
+    for registerData in prj.flatData['registers'].values():
+        if registerData['blockKey'] not in blocksWithRegisters:
+            blocksWithRegisters[registerData['blockKey']] = registerData['block']
+    blocksWithMemories = dict()
+    for memoryData in prj.flatData['memories'].values():
+        if memoryData['regAccess'] and memoryData['blockKey'] not in blocksWithMemories:
+            blocksWithMemories[memoryData['blockKey']] = memoryData['block']
+    blocksNeedingConnections = blocksWithRegisters.copy()
+    blocksNeedingConnections.update(blocksWithMemories)
+    return blocksNeedingConnections
+
+
+def synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
+                         instance_prefix, block_suffix, camel_case,
+                         parentParams):
+    """Build the synthesised register-handler block, instance, and
+    leaf-to-handler connectionMap for a single routed leaf block.
+
+    parentParams is the list of the leaf block's parameter names; the
+    handler inherits them so it emits module parameters and selects the
+    leaf's module-local parameterizable declarations (its register/memory
+    storage is variant-width, sized by these params).
+
+    Returns (reg_block, block_def, instance_name, instance_def, connection_map).
+    """
+    reg_block = block + block_suffix
+    has_mdl = len(prj.hierKey.get(block_key, [])) > 0
+    instance_name = camelCase(instance_prefix, reg_block) if camel_case else instance_prefix + reg_block
+    block_def = {
+        'desc': block + ' Register handler',
+        'isRegHandler': True,
+        'hasVl': False,
+        'hasRtl': True,
+        'hasMdl': has_mdl,
+        'hasTb': False,
+        'dir': blockInfo.get(block_key, {}).get('dir', ''),
+        'params': parentParams,
+    }
+    instance_def = {
+        'instanceType': reg_block,
+        'container': block,
+    }
+    connection_map = {
+        'interface': reg_interface,
+        'block': block,
+        'direction': 'dst',
+        'instance': instance_name,
+    }
+    return reg_block, block_def, instance_name, instance_def, connection_map
 
 
 def _exit_with_error(msg):
@@ -129,20 +194,39 @@ def _findPrimaryRouter(prj, routers, router_instance):
     return primary_candidates[0]
 
 
-def _selectLeafRegisterPort(leafBlockKey, leafBlock):
-    """Return (portName, registerPortRow) for a leaf block. Multiple
-    registerPorts: rows are rejected by the block parse hook."""
-    registerPorts = leafBlock.get('registerPorts') or {}
-    blockName = leafBlock['block']
-    if len(registerPorts) == 0:
-        _exit_with_error(
-            f"Routed leaf block '{blockName}' declares registers or "
-            f"memories but has no registerPorts: entry. Declare "
-            f"exactly one registerPorts: row whose interface resolves "
-            f"to an addressBus: true interfaceType."
+def _leafRegisterBinding(prj, leafBlock, servingRouter, addressBusTypes,
+                         routerInterfaceCache):
+    """Resolve a routed leaf's register-bus binding as
+    (portName, interfaceName, ifaceRow, ifaceContext, authored).
+
+    A reusable IP block authors its own register-bus surface in
+    `registerPorts:` and is the only kind that must declare it; the
+    authored row carries the leaf-local interface so `<block>Base.h`
+    stays self-contained across the projects that instantiate the IP.
+
+    A top-down leaf authors no register port and infers its
+    register-bus interface and canonical port from the serving router,
+    mirroring the way the legacy `postParseRegister.py` sourced the
+    interface from the project-wide RegisterBusInterface. `authored`
+    distinguishes the two so callers run the cross-interface
+    compatibility check only when the leaf names its own interface.
+
+    Multiple registerPorts: rows are rejected by the block parse hook."""
+    registerPorts = leafBlock.get('registerPorts')
+    if registerPorts:
+        portName = next(iter(registerPorts.keys()))
+        regPortRow = registerPorts[portName]
+        leafIfaceKey = regPortRow['interfaceKey']
+        leafIfaceContext = leafIfaceKey.split('/', 1)[1]
+        leafIfaceRow = prj.flatData['interfaces'][leafIfaceKey]
+        return portName, regPortRow['interface'], leafIfaceRow, leafIfaceContext, True
+
+    routerInterface, routerIfaceRow, routerIfaceContext = \
+        _resolveRouterRegisterBusInterface(
+            prj, servingRouter, addressBusTypes, routerInterfaceCache,
         )
-    portName = next(iter(registerPorts.keys()))
-    return portName, registerPorts[portName]
+    portName = servingRouter['addressBlock']['registerDecoderPort']
+    return portName, routerInterface, routerIfaceRow, routerIfaceContext, False
 
 
 def _addressBusInterfaceTypes(prj):
@@ -259,18 +343,17 @@ def postProcess(prj):
 
     for leafBlockKey, leafBlockSimple in blocksNeedingHandler.items():
         leafBlock = blockInfo[leafBlockKey]
-        portName, regPortRow = _selectLeafRegisterPort(leafBlockKey, leafBlock)
-        leafInterfaceName = regPortRow['interface']
         leafContext = leafBlock['_context']
 
         # The handler block's register-bus port is named after the
         # router's registerDecoderPort, not the leaf's authored port.
         # This matches the legacy convention: every <leaf>Regs block
         # exposes the same canonical port name (typically `apbReg`).
-        # The leaf-side authored port name (`portName`, e.g. `regs`)
-        # still appears on the connectionMap's parent-boundary `port:`
-        # field so the leaf's authored `registerPorts:` row binds to
-        # the handler's canonical port through this map.
+        # The leaf-side port name (`portName`) appears on the
+        # connectionMap's parent-boundary `port:` field. For a reusable
+        # IP it is the authored `registerPorts:` key (e.g. `regs`); for
+        # a top-down leaf it is the router's `registerDecoderPort`, the
+        # synthesised canonical register-bus port.
         servingRouter = _routerServingLeaf(leafBlockKey)
         if servingRouter is None:
             _exit_with_error(
@@ -279,6 +362,16 @@ def postProcess(prj):
                 f"instances. Place the leaf in a router's container."
             )
         handlerPort = servingRouter['addressBlock']['registerDecoderPort']
+
+        # A reusable IP authors its register-bus interface in
+        # registerPorts:; a top-down leaf infers it from the serving
+        # router (legacy inference behaviour). The handler block emits
+        # this interface for its register storage either way.
+        portName, leafInterfaceName, _leafIfaceRow, _leafIfaceContext, _authored = \
+            _leafRegisterBinding(
+                prj, leafBlock, servingRouter, addressBusTypes,
+                routerInterfaceCache,
+            )
 
         # The handler inherits the leaf block's parameters so it emits
         # module parameters and selects the leaf's module-local
@@ -304,15 +397,16 @@ def postProcess(prj):
         context = instRow['_context']
         instanceTypeKey = instRow['instanceTypeKey']
 
-        # Router-to-leaf: every instance whose block declares
-        # registerPorts: gets a dispatch connection from its parent
-        # router, even when the leaf owns no registers/memories and
-        # therefore needs no <block>_regs handler. The leaf's
-        # register-bus surface (the registerPorts: entry) is the
-        # contract for dispatch; handler synthesis is a separate
-        # concern handled above.
+        # Router-to-leaf: an instance gets a dispatch connection from
+        # its parent router when its block owns a register-bus surface.
+        # That is either an authored registerPorts: row (a reusable IP,
+        # which may carry registers/memories or expose only a register
+        # bus) or registers/memories that need a synthesised
+        # <block>_regs handler (a top-down leaf inferring its register
+        # bus from the router). Handler synthesis is a separate concern
+        # handled above; dispatch fires for both surfaces.
         leafBlock = blockInfo[instanceTypeKey]
-        if leafBlock.get('registerPorts'):
+        if leafBlock.get('registerPorts') or instanceTypeKey in blocksNeedingHandler:
             containerKey = instRow['containerKey']
             parentRouter = decoderContainer.get(containerKey)
             if parentRouter is None:
@@ -327,28 +421,22 @@ def postProcess(prj):
             addressBlock = routerBlock['addressBlock']
             regDecoderPort = addressBlock['registerDecoderPort']
 
-            portName, regPortRow = _selectLeafRegisterPort(
-                instanceTypeKey, leafBlock
-            )
-            routerInterface, routerIfaceRow, routerIfaceContext = \
+            routerInterface, _routerIfaceRow, _routerIfaceContext = \
                 _resolveRouterRegisterBusInterface(
                     prj, routerBlock, addressBusTypes,
                     routerInterfaceCache,
             )
-            leafIfaceKey = regPortRow['interfaceKey']
-            leafIfaceContext = leafIfaceKey.split('/', 1)[1]
-            leafIfaceRow = prj.flatData['interfaces'][leafIfaceKey]
-            prj.checkInterfacePair(
-                routerIfaceRow, leafIfaceRow, instanceTypeKey,
-                instRow['variant'] or '',
-                f"Register-bus dispatch from router "
-                f"'{parentRouter['instance']}' to leaf instance "
-                f"'{instRow['instance']}' (registerPorts: row "
-                f"'{portName}')",
-                routerIfaceContext, leafIfaceContext,
-                parentRouter['instanceTypeKey'],
-                parentRouter['variant'] or '',
-            )
+            # The router-to-leaf port name is the leaf's authored
+            # registerPorts: key (reusable IP) or the router's
+            # registerDecoderPort (top-down leaf). Cross-interface
+            # compatibility of an authored leaf is checked at the end of
+            # projectCreate by validatePorts, which reads registerPorts: as
+            # part of the leaf's declared-port surface; synthesis only emits
+            # the bind here.
+            portName = _leafRegisterBinding(
+                prj, leafBlock, routerBlock, addressBusTypes,
+                routerInterfaceCache,
+            )[0]
 
             listOfInstances.append(instRow['instanceKey'])
             connection = {

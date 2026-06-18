@@ -254,20 +254,72 @@ deliberate naming or context change must be reviewed.
 ## Migration Diagnostics
 
 If conversion fails, focus on mistakes introduced by the migration
-rather than redesigning the address space:
+rather than redesigning the address space. The generator fails the
+build and names both sides of the offending relationship. The
+diagnostics below are grouped by the stage that emits them.
 
-- Two router blocks declare the same `addressGroup`. Rename one,
-  or merge the two router block types if the duplication was
-  accidental.
-- Zero or multiple primary-router candidates. Adjust the router
-  declarations so the migrated legacy hierarchy still has exactly one
-  top router.
+A note on `registerPorts:`: a reusable-IP leaf (one whose
+`<block>Base.h` must carry its own register-bus interface) declares a
+single `registerPorts:` row naming that interface. A plain top-down
+leaf needs no `registerPorts:` — it infers its register bus from the
+serving router. The first group below only applies when the migration
+touches a leaf that declares `registerPorts:`.
+
+### `registerPorts:` / `addressBlock:` authoring (parse time)
+
+- A block `declares both` `addressBlock:` and `registerPorts:`. These
+  are `mutually exclusive`: a block is either a router (`addressBlock:`)
+  or a routed leaf (`registerPorts:`). Remove whichever field does not
+  belong on that block.
+- A leaf `declares multiple` `registerPorts:` rows. Blocks support
+  `exactly` one register-bus ingress today; collapse the entries to a
+  single row.
+- A `registerPorts:` row names an interface whose `interfaceType` is
+  not `addressBus: true` (for example `push_ack`). Point the row at the
+  register-bus interface (`apb`), whose `interface_defs` entry carries
+  `addressBus: true`.
+- A `registerPorts:` row's interface is not visible in the leaf's
+  load-time scope: `no interfaces row named` ... in
+  `any context processed before` this one. Author or `include:` the interface in
+  the leaf's own scope so its `<block>Base.h` is self-contained.
+
+### Router topology (post parse)
+
+- Two router blocks declare the same `addressGroup` (the diagnostic
+  reports the group `duplicates a prior addressBlock:`). Rename one, or
+  merge the two router block types if the duplication was accidental.
+- A router block declares `addressBlock:` but has no instance in the
+  design (`Router blocks declare addressBlock:` ... but the named block
+  has no instance). Instantiate the router, or drop its `addressBlock:`.
+- A router block has more than one instance (`Multi-instance` routers
+  serving one group are not supported). Use distinct router blocks and
+  address groups instead of reinstantiating one router.
+- Zero or multiple primary-router candidates:
+  `Multiple candidate primary routers` or
+  `No primary router could be inferred`. Adjust the router declarations
+  so the migrated legacy hierarchy still has exactly one top router.
+- A routed leaf instance sits in a container
+  `not served by any router`. Place the leaf under a routed container, or add the serving
+  router for that container.
 - `Router block '<name>' (file <file>) has no addressBus: true
   interface authored in its load-time scope.` The router block's
   YAML file does not see a register-bus interface. Move the interface
   declaration into an existing router or lower-level/shared file the
   router file already includes. Do not include the parent integration
   file from the nested router file.
+
+### Register-bus compatibility (validation)
+
+- A register-bus `cross-interface bind` where the leaf and router
+  resolve different `interfaceType` values (the diagnostic notes they
+  must share the `same interface meta-protocol` and points at a
+  `protocol changer`). Cross-`interfaceType` adaptation needs an
+  explicit protocol-changer block (out of scope); make both sides the
+  same `interfaceType`.
+- A register-bus `cross-interface bind` where the leaf and router share
+  an `interfaceType` but disagree on `per-field _bitWidth` (the
+  diagnostic names the offending `field` and both `_bitWidth` values).
+  Align the field widths of the leaf and router register interfaces.
 
 ## Validation
 

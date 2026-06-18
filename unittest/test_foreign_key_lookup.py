@@ -79,6 +79,7 @@ parameters:
 """
     arch_path = _write_temp(arch_yaml, '.yaml', 'fk_arch_')
     project_yaml = f"""projectName: fk_lookup_test
+yamlFormat: 2
 topInstance: uTop
 
 dirs:

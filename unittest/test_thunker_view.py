@@ -57,6 +57,7 @@ def create_test_files(arch_content):
         f.write(arch_content)
 
     project_content = f"""projectName: thunker_view_test
+yamlFormat: 2
 topInstance: uTop
 
 dirs:

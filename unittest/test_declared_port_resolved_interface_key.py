@@ -107,6 +107,7 @@ connections:
 
 
 PROJECT_YAML_TEMPLATE = """projectName: declared_port_interface_key_test
+yamlFormat: 2
 topInstance: uTop
 
 dirs:

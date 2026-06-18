@@ -72,6 +72,7 @@ instances:
 
 
 PROJECT_YAML_TEMPLATE = """projectName: e15_test
+yamlFormat: 2
 topInstance: uTop
 
 dirs:

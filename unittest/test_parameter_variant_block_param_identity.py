@@ -67,6 +67,7 @@ parameters:
 """
     arch_path = _write_temp(arch_yaml, '.yaml', 'param_ident_arch_')
     project_yaml = f"""projectName: parameter_variant_identity_test
+yamlFormat: 2
 topInstance: uTop
 
 dirs:

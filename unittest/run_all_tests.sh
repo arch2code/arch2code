@@ -172,13 +172,27 @@ echo "Test Suite 19g: Eval C++/SystemC Config Emission (Stage E5)"
 echo "------------------------------------------------------------------------"
 python3 test_eval_cpp_emit.py || FAILED=1
 
-# Test 20-: address-control refactor — Stage 7 Batches A and B.
+echo ""
+echo "Test Suite 19h: Python->SV Eval Converter (Stage E1.5)"
+echo "------------------------------------------------------------------------"
+python3 test_eval_py_to_sv.py || FAILED=1
+
+echo ""
+echo "Test Suite 19i: yamlFormat sentinel gate (projectCreate)"
+echo "------------------------------------------------------------------------"
+python3 test_gate_yaml_format.py || FAILED=1
+
+# Test 20-: address-control refactor — Stage 7 Batches A, B, and the
+# topology-fixture portion of Batch C.
 # Per plan-address-control-test-coverage.md "Implementation Phasing":
 #   Batch A — single-router positives, the lowest-cost two-level
 #             positives, port-name boundary cases, and the Stage 1.5 /
 #             Stage 4 diagnostic skeleton.
 #   Batch B — three-level and thunker cases, including the block-reuse
 #             and mixed-sibling cases that exercise the multi-hop walk.
+#   Batch C — the E3.4 registerPorts/ports independence guard (the
+#             migrated-ip_test view assertions run under the example
+#             build, not this runner).
 # See plan-address-control-refactor.md Stage 7.
 ADDRCTL_TESTS=(
     "T1.1 single-router one-register view"      "test_addrctl_single_router_one_reg.py"
@@ -199,6 +213,7 @@ ADDRCTL_TESTS=(
     "T5.2 leaf with registerPorts only"         "test_addrctl_leaf_register_port_only.py"
     "T5.3 default upstream / decoder ports"     "test_addrctl_default_port_names.py"
     "T5.4 explicit non-default ports"           "test_addrctl_explicit_port_names.py"
+    "T5.5 top-down leaf infers register bus"    "test_addrctl_top_down_leaf_infers.py"
     "TT.3 parameterized register interface"     "test_addrctl_parameterized_reg_iface.py"
     "TT.4 parameterized router upstream"        "test_addrctl_parameterized_router_upstream.py"
     "TT.5 parent router variant interface"      "test_addrctl_parent_router_variant_interface.py"
@@ -212,9 +227,11 @@ ADDRCTL_TESTS=(
     "E2.3 no primary router candidate"          "test_error_no_primary_router.py"
     "E2.4 multiple primary router candidates"   "test_error_multi_primary_router.py"
     "E2.5 routed leaf in unserved container"    "test_error_leaf_unserved.py"
-    "E2.6 leaf with regs but no registerPorts"  "test_error_leaf_no_register_port.py"
+    "E2.5b no serving router for reg leaf"      "test_error_leaf_no_serving_router.py"
     "E3.1 register interfaceType mismatch"      "test_error_register_interface_type_mismatch.py"
     "E3.2 register packed-form mismatch"        "test_error_register_packed_form.py"
+    "E3.4 registerPorts independent of ports"   "test_register_ports_independent_of_ports.py"
+    "T1.6/T2.3/T2.4/T2.5 migrated ip_test view" "test_addrctl_ip_test_view.py"
 )
 
 idx=20

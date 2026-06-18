@@ -62,6 +62,7 @@ def _cleanup(paths):
 def _project_for(arch_path):
     arch_basename = os.path.basename(arch_path)
     project_content = f"""projectName: param_linkage_test
+yamlFormat: 2
 topInstance: uTop
 
 dirs:
