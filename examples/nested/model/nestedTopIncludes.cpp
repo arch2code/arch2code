@@ -56,7 +56,7 @@ std::string bigSt::prt(bool all) const
 void bigSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, bigSt::_byteWidth);
-    pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&b, 96);
+    pack_bits((uint64_t *)&_ret, 0, (uint64_t *)&b, BIG_WIDTH);
 }
 void bigSt::unpack(const _packedSt &_src)
 {

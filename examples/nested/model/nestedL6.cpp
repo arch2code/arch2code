@@ -5,7 +5,17 @@
 #include "nestedL6.h"
 SC_HAS_PROCESS(nestedL6);
 
-nestedL6::registerBlock nestedL6::registerBlock_; //register the block with the factory
+// === Block factory registration (nestedL6) ===
+void force_link_nestedL6() {}
+
+void register_nestedL6_variants() {
+    instanceFactory::registerBlock("nestedL6_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<nestedL6>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _nestedL6_registered = (register_nestedL6_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 nestedL6::nestedL6(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)

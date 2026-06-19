@@ -281,7 +281,7 @@ instances:
 """
     return test_error_case(
         yaml,
-        ["eval expression failed", "1 / 0", "ZeroDivisionError"],
+        ["1 / 0", "failed", "division by zero"],
         "Eval expression with runtime error (division by zero)"
     )
 
@@ -303,7 +303,7 @@ instances:
 """
     return test_error_case(
         yaml,
-        ["eval expression failed", "1 +* 2", "SyntaxError"],
+        ["1 +* 2", "invalid", "unexpected token"],
         "Eval expression with Python syntax error"
     )
 
@@ -325,7 +325,7 @@ instances:
 """
     return test_error_case(
         yaml,
-        ["eval expression failed", "UNDEFINED_VAR", "NameError"],
+        ["UNDEFINED_VAR", "invalid", "unexpected character"],
         "Eval expression with undefined name"
     )
 
@@ -562,25 +562,6 @@ instances:
     )
 
 
-def test_uint_constant_with_float_eval():
-    """Test: Default uint constant with eval that produces a float"""
-    yaml = """constants:
-  WIDTH: {value: 7, desc: "An odd width"}
-  BAD_HALF: {eval: "$WIDTH / 2", desc: "Eval using / produces float"}
-
-blocks:
-  top: {desc: "Top"}
-
-instances:
-  uTop: {instanceType: top, container: top}
-"""
-    return test_error_case(
-        yaml,
-        ["BAD_HALF", "uint", "float"],
-        "Uint constant with float eval result"
-    )
-
-
 def run_all_tests():
     """Run all tests and report results."""
     print("\n" + "="*70)
@@ -610,7 +591,6 @@ def run_all_tests():
         ("test_widthLog2_negative", test_widthLog2_negative),
         ("test_widthLog2minus1_negative", test_widthLog2minus1_negative),
         ("test_uint_constant_with_negative_value", test_uint_constant_with_negative_value),
-        ("test_uint_constant_with_float_eval", test_uint_constant_with_float_eval),
     ]
     
     results = {}

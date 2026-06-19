@@ -20,21 +20,12 @@ SC_MODULE(someRapper), public blockBase, public someRapperBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("someRapper_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<someRapper>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
     // channels
     // CPU access to SoC registers in the design
-    apb_channel< apbAddrSt, apbDataSt > apb_uBlockA;
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockA;
     // CPU access to SoC registers in the design
-    apb_channel< apbAddrSt, apbDataSt > apb_uBlockB;
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockB;
 
     //instances contained in block
     std::shared_ptr<apbDecodeBase> uAPBDecode;

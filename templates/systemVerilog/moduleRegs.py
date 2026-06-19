@@ -135,7 +135,10 @@ def section_param_decls(prj, data):
     # Module-local parameterizable type/struct declarations, ordered
     # types-before-structs by orderIndex (deriveParameterizedDeclSets). These
     # are the same decls the owning module emits; they are module-local because
-    # SV cannot parameterize a package.
+    # SV cannot parameterize a package. Empty for a non-parameterized handler
+    # block, whose owning block has no params.
+    if not data['parameterizedDecls']:
+        return ""
     qualBlock = prj.getQualBlock(data['blockName'])
     return string_joiner(parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][qualBlock]['params']), '\n')
 

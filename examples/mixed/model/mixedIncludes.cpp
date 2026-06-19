@@ -273,14 +273,14 @@ void nestedSt::unpack(const _packedSt &_src)
         uint16_t _consume;
         {
             uint64_t _tmp{0};
-            _tmp = (_src >> _pos) & ((1ULL << seeSt::_bitWidth) - 1);
+            _tmp = (_src >> _pos) & ((1ULL << (seeSt::_bitWidth)) - 1);
             joe[i].unpack(*((seeSt::_packedSt*)&_tmp));
         }
         _pos += seeSt::_bitWidth;
     }
     {
         uint64_t _tmp{0};
-        _tmp = (_src >> _pos) & ((1ULL << dSt::_bitWidth) - 1);
+        _tmp = (_src >> _pos) & ((1ULL << (dSt::_bitWidth)) - 1);
         bob.unpack(*((dSt::_packedSt*)&_tmp));
     }
     _pos += dSt::_bitWidth;
@@ -638,7 +638,7 @@ void test3St::unpack(const _packedSt &_src)
         uint16_t _consume;
         {
             uint64_t _tmp{0};
-            _tmp = (_src >> _pos) & ((1ULL << aRegSt::_bitWidth) - 1);
+            _tmp = (_src >> _pos) & ((1ULL << (aRegSt::_bitWidth)) - 1);
             sevenBitArray[i].unpack(*((aRegSt::_packedSt*)&_tmp));
         }
         _pos += aRegSt::_bitWidth;
@@ -952,7 +952,7 @@ void signedTestSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, signedTestSt::_byteWidth);
     _ret = unsignedValue;
-    _ret |= ((uint16_t)(signedValue & ((1ULL << 8) - 1))) << (2 & 15);
+    _ret |= ((uint16_t)(signedValue & ((1ULL << (8)) - 1))) << (2 & 15);
 }
 void signedTestSt::unpack(const _packedSt &_src)
 {
@@ -963,7 +963,7 @@ void signedTestSt::unpack(const _packedSt &_src)
     _pos += 8;
     // Sign extension for signed type
     if (signedValue & (1ULL << (8 - 1))) {
-        signedValue = (signedByte_t)(signedValue | ~((1ULL << 8) - 1));
+        signedValue = (signedByte_t)(signedValue | ~((1ULL << (8)) - 1));
     }
 }
 sc_bv<signedTestSt::_bitWidth> signedTestSt::sc_pack(void) const
@@ -979,7 +979,7 @@ void signedTestSt::sc_unpack(sc_bv<signedTestSt::_bitWidth> packed_data)
     signedValue = (signedByte_t) packed_data.range(9, 2).to_uint64();
     // Sign extension for signed type
     if (signedValue & (1ULL << (8 - 1))) {
-        signedValue = (signedByte_t)(signedValue | ~((1ULL << 8) - 1));
+        signedValue = (signedByte_t)(signedValue | ~((1ULL << (8)) - 1));
     }
 }
 bool mixedSignedSt::operator == (const mixedSignedSt & rhs) const {
@@ -1001,8 +1001,8 @@ void mixedSignedSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, mixedSignedSt::_byteWidth);
     _ret = flags;
-    _ret |= ((uint32_t)(offset & ((1ULL << 8) - 1))) << (4 & 31);
-    _ret |= ((uint32_t)(temp & ((1ULL << 16) - 1))) << (12 & 31);
+    _ret |= ((uint32_t)(offset & ((1ULL << (8)) - 1))) << (4 & 31);
+    _ret |= ((uint32_t)(temp & ((1ULL << (16)) - 1))) << (12 & 31);
 }
 void mixedSignedSt::unpack(const _packedSt &_src)
 {
@@ -1013,13 +1013,13 @@ void mixedSignedSt::unpack(const _packedSt &_src)
     _pos += 8;
     // Sign extension for signed type
     if (offset & (1ULL << (8 - 1))) {
-        offset = (signedByte_t)(offset | ~((1ULL << 8) - 1));
+        offset = (signedByte_t)(offset | ~((1ULL << (8)) - 1));
     }
     temp = (signedWord_t)((_src >> (_pos & 31)) & ((1ULL << 16) - 1));
     _pos += 16;
     // Sign extension for signed type
     if (temp & (1ULL << (16 - 1))) {
-        temp = (signedWord_t)(temp | ~((1ULL << 16) - 1));
+        temp = (signedWord_t)(temp | ~((1ULL << (16)) - 1));
     }
 }
 sc_bv<mixedSignedSt::_bitWidth> mixedSignedSt::sc_pack(void) const
@@ -1036,12 +1036,12 @@ void mixedSignedSt::sc_unpack(sc_bv<mixedSignedSt::_bitWidth> packed_data)
     offset = (signedByte_t) packed_data.range(11, 4).to_uint64();
     // Sign extension for signed type
     if (offset & (1ULL << (8 - 1))) {
-        offset = (signedByte_t)(offset | ~((1ULL << 8) - 1));
+        offset = (signedByte_t)(offset | ~((1ULL << (8)) - 1));
     }
     temp = (signedWord_t) packed_data.range(27, 12).to_uint64();
     // Sign extension for signed type
     if (temp & (1ULL << (16 - 1))) {
-        temp = (signedWord_t)(temp | ~((1ULL << 16) - 1));
+        temp = (signedWord_t)(temp | ~((1ULL << (16)) - 1));
     }
 }
 bool signedArraySt::operator == (const signedArraySt & rhs) const {
@@ -1062,7 +1062,7 @@ void signedArraySt::pack(_packedSt &_ret) const
     memset(&_ret, 0, signedArraySt::_byteWidth);
     uint16_t _pos{0};
     for(unsigned int i=0; i<3; i++) {
-        pack_bits((uint64_t *)&_ret, _pos, values[i] & ((1ULL << 4) - 1), 4);
+        pack_bits((uint64_t *)&_ret, _pos, values[i] & ((1ULL << (4)) - 1), 4);
         _pos += 4;
     }
 }
@@ -1082,7 +1082,7 @@ void signedArraySt::unpack(const _packedSt &_src)
         }
         // Sign extension for signed type
         if (values[i] & (1ULL << (4 - 1))) {
-            values[i] = (signedNibble_t)(values[i] | ~((1ULL << 4) - 1));
+            values[i] = (signedNibble_t)(values[i] | ~((1ULL << (4)) - 1));
         }
     }
 }
@@ -1100,7 +1100,7 @@ void signedArraySt::sc_unpack(sc_bv<signedArraySt::_bitWidth> packed_data)
         values[i] = (signedNibble_t) packed_data.range(0+(i+1)*4-1, 0+i*4).to_uint64();
         // Sign extension for signed type
         if (values[i] & (1ULL << (4 - 1))) {
-            values[i] = (signedNibble_t)(values[i] | ~((1ULL << 4) - 1));
+            values[i] = (signedNibble_t)(values[i] | ~((1ULL << (4)) - 1));
         }
     }
 }
@@ -1125,9 +1125,9 @@ void nonByteAlignedSignedSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, nonByteAlignedSignedSt::_byteWidth);
     _ret = field4;
-    _ret |= ((uint16_t)(field3 & ((1ULL << 5) - 1))) << (3 & 15);
+    _ret |= ((uint16_t)(field3 & ((1ULL << (5)) - 1))) << (3 & 15);
     _ret |= (uint16_t)field2 << (8 & 15);
-    _ret |= ((uint16_t)(field1 & ((1ULL << 3) - 1))) << (13 & 15);
+    _ret |= ((uint16_t)(field1 & ((1ULL << (3)) - 1))) << (13 & 15);
 }
 void nonByteAlignedSignedSt::unpack(const _packedSt &_src)
 {
@@ -1138,7 +1138,7 @@ void nonByteAlignedSignedSt::unpack(const _packedSt &_src)
     _pos += 5;
     // Sign extension for signed type
     if (field3 & (1ULL << (5 - 1))) {
-        field3 = (signed5bit_t)(field3 | ~((1ULL << 5) - 1));
+        field3 = (signed5bit_t)(field3 | ~((1ULL << (5)) - 1));
     }
     field2 = (unsigned5bit_t)((_src >> (_pos & 15)) & ((1ULL << 5) - 1));
     _pos += 5;
@@ -1146,7 +1146,7 @@ void nonByteAlignedSignedSt::unpack(const _packedSt &_src)
     _pos += 3;
     // Sign extension for signed type
     if (field1 & (1ULL << (3 - 1))) {
-        field1 = (signed3bit_t)(field1 | ~((1ULL << 3) - 1));
+        field1 = (signed3bit_t)(field1 | ~((1ULL << (3)) - 1));
     }
 }
 sc_bv<nonByteAlignedSignedSt::_bitWidth> nonByteAlignedSignedSt::sc_pack(void) const
@@ -1164,13 +1164,13 @@ void nonByteAlignedSignedSt::sc_unpack(sc_bv<nonByteAlignedSignedSt::_bitWidth> 
     field3 = (signed5bit_t) packed_data.range(7, 3).to_uint64();
     // Sign extension for signed type
     if (field3 & (1ULL << (5 - 1))) {
-        field3 = (signed5bit_t)(field3 | ~((1ULL << 5) - 1));
+        field3 = (signed5bit_t)(field3 | ~((1ULL << (5)) - 1));
     }
     field2 = (unsigned5bit_t) packed_data.range(12, 8).to_uint64();
     field1 = (signed3bit_t) packed_data.range(15, 13).to_uint64();
     // Sign extension for signed type
     if (field1 & (1ULL << (3 - 1))) {
-        field1 = (signed3bit_t)(field1 | ~((1ULL << 3) - 1));
+        field1 = (signed3bit_t)(field1 | ~((1ULL << (3)) - 1));
     }
 }
 bool complexMixedSt::operator == (const complexMixedSt & rhs) const {
@@ -1195,11 +1195,11 @@ std::string complexMixedSt::prt(bool all) const
 void complexMixedSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, complexMixedSt::_byteWidth);
-    _ret = signedE & ((1ULL << 8) - 1);
+    _ret = signedE & ((1ULL << (8)) - 1);
     _ret |= (uint64_t)unsignedD << (8 & 63);
-    _ret |= ((uint64_t)(signedC & ((1ULL << 11) - 1))) << (12 & 63);
+    _ret |= ((uint64_t)(signedC & ((1ULL << (11)) - 1))) << (12 & 63);
     _ret |= (uint64_t)unsignedB << (23 & 63);
-    _ret |= ((uint64_t)(signedA & ((1ULL << 7) - 1))) << (32 & 63);
+    _ret |= ((uint64_t)(signedA & ((1ULL << (7)) - 1))) << (32 & 63);
 }
 void complexMixedSt::unpack(const _packedSt &_src)
 {
@@ -1208,7 +1208,7 @@ void complexMixedSt::unpack(const _packedSt &_src)
     _pos += 8;
     // Sign extension for signed type
     if (signedE & (1ULL << (8 - 1))) {
-        signedE = (signedByte_t)(signedE | ~((1ULL << 8) - 1));
+        signedE = (signedByte_t)(signedE | ~((1ULL << (8)) - 1));
     }
     unsignedD = (fourBitT)((_src >> (_pos & 63)) & ((1ULL << 4) - 1));
     _pos += 4;
@@ -1216,7 +1216,7 @@ void complexMixedSt::unpack(const _packedSt &_src)
     _pos += 11;
     // Sign extension for signed type
     if (signedC & (1ULL << (11 - 1))) {
-        signedC = (signed11bit_t)(signedC | ~((1ULL << 11) - 1));
+        signedC = (signed11bit_t)(signedC | ~((1ULL << (11)) - 1));
     }
     unsignedB = (unsigned9bit_t)((_src >> (_pos & 63)) & ((1ULL << 9) - 1));
     _pos += 9;
@@ -1224,7 +1224,7 @@ void complexMixedSt::unpack(const _packedSt &_src)
     _pos += 7;
     // Sign extension for signed type
     if (signedA & (1ULL << (7 - 1))) {
-        signedA = (signed7bit_t)(signedA | ~((1ULL << 7) - 1));
+        signedA = (signed7bit_t)(signedA | ~((1ULL << (7)) - 1));
     }
 }
 sc_bv<complexMixedSt::_bitWidth> complexMixedSt::sc_pack(void) const
@@ -1242,19 +1242,19 @@ void complexMixedSt::sc_unpack(sc_bv<complexMixedSt::_bitWidth> packed_data)
     signedE = (signedByte_t) packed_data.range(7, 0).to_uint64();
     // Sign extension for signed type
     if (signedE & (1ULL << (8 - 1))) {
-        signedE = (signedByte_t)(signedE | ~((1ULL << 8) - 1));
+        signedE = (signedByte_t)(signedE | ~((1ULL << (8)) - 1));
     }
     unsignedD = (fourBitT) packed_data.range(11, 8).to_uint64();
     signedC = (signed11bit_t) packed_data.range(22, 12).to_uint64();
     // Sign extension for signed type
     if (signedC & (1ULL << (11 - 1))) {
-        signedC = (signed11bit_t)(signedC | ~((1ULL << 11) - 1));
+        signedC = (signed11bit_t)(signedC | ~((1ULL << (11)) - 1));
     }
     unsignedB = (unsigned9bit_t) packed_data.range(31, 23).to_uint64();
     signedA = (signed7bit_t) packed_data.range(38, 32).to_uint64();
     // Sign extension for signed type
     if (signedA & (1ULL << (7 - 1))) {
-        signedA = (signed7bit_t)(signedA | ~((1ULL << 7) - 1));
+        signedA = (signed7bit_t)(signedA | ~((1ULL << (7)) - 1));
     }
 }
 bool edgeCaseSignedSt::operator == (const edgeCaseSignedSt & rhs) const {
@@ -1277,10 +1277,10 @@ std::string edgeCaseSignedSt::prt(bool all) const
 void edgeCaseSignedSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, edgeCaseSignedSt::_byteWidth);
-    _ret = largeVal & ((1ULL << 16) - 1);
-    _ret |= ((uint64_t)(mediumVal & ((1ULL << 11) - 1))) << (16 & 63);
-    _ret |= ((uint64_t)(smallVal & ((1ULL << 4) - 1))) << (27 & 63);
-    _ret |= ((uint64_t)(tiny & ((1ULL << 3) - 1))) << (31 & 63);
+    _ret = largeVal & ((1ULL << (16)) - 1);
+    _ret |= ((uint64_t)(mediumVal & ((1ULL << (11)) - 1))) << (16 & 63);
+    _ret |= ((uint64_t)(smallVal & ((1ULL << (4)) - 1))) << (27 & 63);
+    _ret |= ((uint64_t)(tiny & ((1ULL << (3)) - 1))) << (31 & 63);
 }
 void edgeCaseSignedSt::unpack(const _packedSt &_src)
 {
@@ -1289,25 +1289,25 @@ void edgeCaseSignedSt::unpack(const _packedSt &_src)
     _pos += 16;
     // Sign extension for signed type
     if (largeVal & (1ULL << (16 - 1))) {
-        largeVal = (signedWord_t)(largeVal | ~((1ULL << 16) - 1));
+        largeVal = (signedWord_t)(largeVal | ~((1ULL << (16)) - 1));
     }
     mediumVal = (signed11bit_t)((_src >> (_pos & 63)) & ((1ULL << 11) - 1));
     _pos += 11;
     // Sign extension for signed type
     if (mediumVal & (1ULL << (11 - 1))) {
-        mediumVal = (signed11bit_t)(mediumVal | ~((1ULL << 11) - 1));
+        mediumVal = (signed11bit_t)(mediumVal | ~((1ULL << (11)) - 1));
     }
     smallVal = (signedNibble_t)((_src >> (_pos & 63)) & ((1ULL << 4) - 1));
     _pos += 4;
     // Sign extension for signed type
     if (smallVal & (1ULL << (4 - 1))) {
-        smallVal = (signedNibble_t)(smallVal | ~((1ULL << 4) - 1));
+        smallVal = (signedNibble_t)(smallVal | ~((1ULL << (4)) - 1));
     }
     tiny = (signed3bit_t)((_src >> (_pos & 63)) & ((1ULL << 3) - 1));
     _pos += 3;
     // Sign extension for signed type
     if (tiny & (1ULL << (3 - 1))) {
-        tiny = (signed3bit_t)(tiny | ~((1ULL << 3) - 1));
+        tiny = (signed3bit_t)(tiny | ~((1ULL << (3)) - 1));
     }
 }
 sc_bv<edgeCaseSignedSt::_bitWidth> edgeCaseSignedSt::sc_pack(void) const
@@ -1324,22 +1324,22 @@ void edgeCaseSignedSt::sc_unpack(sc_bv<edgeCaseSignedSt::_bitWidth> packed_data)
     largeVal = (signedWord_t) packed_data.range(15, 0).to_uint64();
     // Sign extension for signed type
     if (largeVal & (1ULL << (16 - 1))) {
-        largeVal = (signedWord_t)(largeVal | ~((1ULL << 16) - 1));
+        largeVal = (signedWord_t)(largeVal | ~((1ULL << (16)) - 1));
     }
     mediumVal = (signed11bit_t) packed_data.range(26, 16).to_uint64();
     // Sign extension for signed type
     if (mediumVal & (1ULL << (11 - 1))) {
-        mediumVal = (signed11bit_t)(mediumVal | ~((1ULL << 11) - 1));
+        mediumVal = (signed11bit_t)(mediumVal | ~((1ULL << (11)) - 1));
     }
     smallVal = (signedNibble_t) packed_data.range(30, 27).to_uint64();
     // Sign extension for signed type
     if (smallVal & (1ULL << (4 - 1))) {
-        smallVal = (signedNibble_t)(smallVal | ~((1ULL << 4) - 1));
+        smallVal = (signedNibble_t)(smallVal | ~((1ULL << (4)) - 1));
     }
     tiny = (signed3bit_t) packed_data.range(33, 31).to_uint64();
     // Sign extension for signed type
     if (tiny & (1ULL << (3 - 1))) {
-        tiny = (signed3bit_t)(tiny | ~((1ULL << 3) - 1));
+        tiny = (signed3bit_t)(tiny | ~((1ULL << (3)) - 1));
     }
 }
 bool mixedArraySignedSt::operator == (const mixedArraySignedSt & rhs) const {
@@ -1368,7 +1368,7 @@ void mixedArraySignedSt::pack(_packedSt &_ret) const
         _pos += 5;
     }
     for(unsigned int i=0; i<4; i++) {
-        pack_bits((uint64_t *)&_ret, _pos, signedVals[i] & ((1ULL << 5) - 1), 5);
+        pack_bits((uint64_t *)&_ret, _pos, signedVals[i] & ((1ULL << (5)) - 1), 5);
         _pos += 5;
     }
 }
@@ -1400,7 +1400,7 @@ void mixedArraySignedSt::unpack(const _packedSt &_src)
         }
         // Sign extension for signed type
         if (signedVals[i] & (1ULL << (5 - 1))) {
-            signedVals[i] = (signed5bit_t)(signedVals[i] | ~((1ULL << 5) - 1));
+            signedVals[i] = (signed5bit_t)(signedVals[i] | ~((1ULL << (5)) - 1));
         }
     }
 }
@@ -1424,7 +1424,7 @@ void mixedArraySignedSt::sc_unpack(sc_bv<mixedArraySignedSt::_bitWidth> packed_d
         signedVals[i] = (signed5bit_t) packed_data.range(15+(i+1)*5-1, 15+i*5).to_uint64();
         // Sign extension for signed type
         if (signedVals[i] & (1ULL << (5 - 1))) {
-            signedVals[i] = (signed5bit_t)(signedVals[i] | ~((1ULL << 5) - 1));
+            signedVals[i] = (signed5bit_t)(signedVals[i] | ~((1ULL << (5)) - 1));
         }
     }
 }
@@ -1476,7 +1476,7 @@ std::string log2TestSt::prt(bool all) const
 void log2TestSt::pack(_packedSt &_ret) const
 {
     memset(&_ret, 0, log2TestSt::_byteWidth);
-    _ret = signedCount & ((1ULL << clog2(BSIZE+1)+1) - 1);
+    _ret = signedCount & ((1ULL << (clog2(BSIZE+1)+1)) - 1);
     _ret |= (uint16_t)index << (5 & 15);
     _ret |= (uint16_t)count << (9 & 15);
 }
@@ -1487,7 +1487,7 @@ void log2TestSt::unpack(const _packedSt &_src)
     _pos += 5;
     // Sign extension for signed type
     if (signedCount & (1ULL << (clog2(BSIZE+1)+1 - 1))) {
-        signedCount = (signedLog2T)(signedCount | ~((1ULL << clog2(BSIZE+1)+1) - 1));
+        signedCount = (signedLog2T)(signedCount | ~((1ULL << (clog2(BSIZE+1)+1)) - 1));
     }
     index = (bSizeIndexT)((_src >> (_pos & 15)) & ((1ULL << 4) - 1));
     _pos += 4;
@@ -1506,7 +1506,7 @@ void log2TestSt::sc_unpack(sc_bv<log2TestSt::_bitWidth> packed_data)
     signedCount = (signedLog2T) packed_data.range(4, 0).to_uint64();
     // Sign extension for signed type
     if (signedCount & (1ULL << (clog2(BSIZE+1)+1 - 1))) {
-        signedCount = (signedLog2T)(signedCount | ~((1ULL << clog2(BSIZE+1)+1) - 1));
+        signedCount = (signedLog2T)(signedCount | ~((1ULL << (clog2(BSIZE+1)+1)) - 1));
     }
     index = (bSizeIndexT) packed_data.range(8, 5).to_uint64();
     count = (bSizeCountT) packed_data.range(12, 9).to_uint64();
@@ -1593,8 +1593,8 @@ void wideLog2St::pack(_packedSt &_ret) const
     _ret[ 0 ] |= (uint64_t)addr << (13 & 63);
     _ret[ 0 ] |= (uint64_t)flags << (45 & 63);
     _ret[ 0 ] |= (uint64_t)tag << (49 & 63);
-    _ret[ 0 ] |= ((uint64_t)(signedB & ((1ULL << clog2(BSIZE+1)+1) - 1))) << (52 & 63);
-    _ret[ 0 ] |= ((uint64_t)(signedA & ((1ULL << clog2(BSIZE+1)+1) - 1))) << (57 & 63);
+    _ret[ 0 ] |= ((uint64_t)(signedB & ((1ULL << (clog2(BSIZE+1)+1)) - 1))) << (52 & 63);
+    _ret[ 0 ] |= ((uint64_t)(signedA & ((1ULL << (clog2(BSIZE+1)+1)) - 1))) << (57 & 63);
     pack_bits((uint64_t *)&_ret, 62, indexB, clog2(BSIZE));
     uint16_t _pos{66};
     for(unsigned int i=0; i<ASIZE2; i++) {
@@ -1621,13 +1621,13 @@ void wideLog2St::unpack(const _packedSt &_src)
     _pos += 5;
     // Sign extension for signed type
     if (signedB & (1ULL << (clog2(BSIZE+1)+1 - 1))) {
-        signedB = (signedLog2T)(signedB | ~((1ULL << clog2(BSIZE+1)+1) - 1));
+        signedB = (signedLog2T)(signedB | ~((1ULL << (clog2(BSIZE+1)+1)) - 1));
     }
     signedA = (signedLog2T)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 5) - 1));
     _pos += 5;
     // Sign extension for signed type
     if (signedA & (1ULL << (clog2(BSIZE+1)+1 - 1))) {
-        signedA = (signedLog2T)(signedA | ~((1ULL << clog2(BSIZE+1)+1) - 1));
+        signedA = (signedLog2T)(signedA | ~((1ULL << (clog2(BSIZE+1)+1)) - 1));
     }
     indexB = (bSizeIndexT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 4) - 1));
     _pos += 2;
@@ -1675,12 +1675,12 @@ void wideLog2St::sc_unpack(sc_bv<wideLog2St::_bitWidth> packed_data)
     signedB = (signedLog2T) packed_data.range(56, 52).to_uint64();
     // Sign extension for signed type
     if (signedB & (1ULL << (clog2(BSIZE+1)+1 - 1))) {
-        signedB = (signedLog2T)(signedB | ~((1ULL << clog2(BSIZE+1)+1) - 1));
+        signedB = (signedLog2T)(signedB | ~((1ULL << (clog2(BSIZE+1)+1)) - 1));
     }
     signedA = (signedLog2T) packed_data.range(61, 57).to_uint64();
     // Sign extension for signed type
     if (signedA & (1ULL << (clog2(BSIZE+1)+1 - 1))) {
-        signedA = (signedLog2T)(signedA | ~((1ULL << clog2(BSIZE+1)+1) - 1));
+        signedA = (signedLog2T)(signedA | ~((1ULL << (clog2(BSIZE+1)+1)) - 1));
     }
     indexB = (bSizeIndexT) packed_data.range(65, 62).to_uint64();
     for(unsigned int i=0; i<ASIZE2; i++) {

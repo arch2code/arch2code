@@ -10,21 +10,11 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "testBlock_base.h"
-#include "nestedTopIncludes.h"
 
 SC_MODULE(testBlock), public blockBase, public testBlockBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("testBlock_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<testBlock>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
 
     testBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

@@ -21,7 +21,7 @@
 ### to reference another constant use $CONSTNAME
 constants:
   NUM_TAGS:      { value: 32, desc: number of tags }
-  NUM_TAGS_LOG2: { eval: "($NUM_TAGS-1).bit_length()", desc: log2 of number of tags }
+  NUM_TAGS_LOG2: { eval: "$clog2($NUM_TAGS)", desc: log2 of number of tags }
 
 types:
   tag: { width: NUM_TAGS_LOG2, desc: "tag" }
@@ -83,8 +83,8 @@ blocks:
 ### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
 ###          for this instance, optional (currently does not work in diagram generation code)
 instances:
-  u_in_out0:      { container: pipe,  instanceType: in_out,    addressGroup: top,    instGroup: allInstances,    color: lightslateblue}
-  u_in_out1:      { container: pipe,  instanceType: in_out,    addressGroup: top,    instGroup: allInstances,    color: lightslateblue}
+  u_in_out0:      { container: pipe,  instanceType: in_out,    instGroup: allInstances,    color: lightslateblue}
+  u_in_out1:      { container: pipe,  instanceType: in_out,    instGroup: allInstances,    color: lightslateblue}
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries

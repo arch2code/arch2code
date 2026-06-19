@@ -92,6 +92,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor).
+void force_link_firstBlock();
 // GENERATED_CODE_END
 
 #endif //FIRSTBLOCK_BASE_H

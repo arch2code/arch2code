@@ -3,10 +3,10 @@ constants:
   ASIZE :             {value: 29, desc: "The size of A"}
   DWORD :             {value: 32, desc: size of a double word}
   MEMORYA_WORDS:      {value: 19, desc: "Address wordlines for memory A"}
-  MEMORYA_WORDS_LOG2: {eval: "($MEMORYA_WORDS-1).bit_length()", desc: "Address wordlines for memory A log2"}
+  MEMORYA_WORDS_LOG2: {eval: "$clog2($MEMORYA_WORDS)", desc: "Address wordlines for memory A log2"}
   MEMORYA_WIDTH:      {value: 63, desc: "Bit width of content for memory A, more than 32, less than 64"}
   MEMORYB_WORDS:      {value: 21, desc: "Address wordlines for memory B"}
-  MEMORYB_WORDS_LOG2: {eval: "($MEMORYB_WORDS-1).bit_length()", desc: "Address wordlines for memory B log2"}
+  MEMORYB_WORDS_LOG2: {eval: "$clog2($MEMORYB_WORDS)", desc: "Address wordlines for memory B log2"}
 
 types:
   thirtySevenBitT:
@@ -82,6 +82,14 @@ blocks:
   cpu:
     desc: A RISC-V CPU
   apbDecode:
+    addressBlock:
+      addressGroup: top
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: addr_id_top
+      enumPrefix: ADDR_ID_TOP_
+      upstreamPort: apbReg
+      registerDecoderPort: apbReg
     desc: The block to decode apb addresses
   someRapper:
     desc: A level of wrapper

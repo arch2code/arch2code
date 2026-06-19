@@ -21,6 +21,10 @@ projectTemplate = \
 """
 # Example project file that defines project level information
 
+# marks the project as using the current YAML authoring format; the generator
+# gate rejects a project without this sentinel
+yamlFormat: 2
+
 projectName: {{data.projectName}}
 
 # project files can be regular input files, regular input files with additional projectFiles sections, or additional ProjectFiles.
@@ -31,8 +35,6 @@ projectFiles:
 
 # uncomment to use a custom schema file, otherwise the default schema is used
 #dbSchema: config/schema.yaml
-
-addressControl: {{data.addressControlFile}}
 
 topInstance: testbench
 
@@ -166,7 +168,7 @@ class newProject:
         copywrite = input()
 
         tm = Template(projectTemplate, trim_blocks=True, lstrip_blocks=True)
-        data = {"projectName": self.name, "addressControlFile": "config/addressControl.yaml", "copywrite": copywrite}
+        data = {"projectName": self.name, "copywrite": copywrite}
         projectFileContents = tm.render(data=data)
         print("Creating directories")
         with open (f"{functionalDirectories['yaml']}/project.yaml", "w") as f:

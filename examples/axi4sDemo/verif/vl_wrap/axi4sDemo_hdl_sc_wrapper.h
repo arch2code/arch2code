@@ -86,12 +86,12 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        axis4_t1_bfm.if_p(axis4_t1);
+        axis4_t1_bfm.if_p(this->axis4_t1);
         axis4_t1_bfm.hdl_if_p(axis4_t1_hdl_if);
         axis4_t1_bfm.clk(clk);
         axis4_t1_bfm.rst_n(rst_n);
 
-        axis4_t2_bfm.if_p(axis4_t2);
+        axis4_t2_bfm.if_p(this->axis4_t2);
         axis4_t2_bfm.hdl_if_p(axis4_t2_hdl_if);
         axis4_t2_bfm.clk(clk);
         axis4_t2_bfm.rst_n(rst_n);

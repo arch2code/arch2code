@@ -34,9 +34,9 @@ public:
     // Duplicate interface def
     rdy_vld_channel< seeSt > dupIf;
     // CPU access to SoC registers in the design
-    apb_channel< apbAddrSt, apbDataSt > apb_uBlockA;
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockA;
     // CPU access to SoC registers in the design
-    apb_channel< apbAddrSt, apbDataSt > apb_uBlockB;
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockB;
 
     //instances contained in block
     std::shared_ptr<blockABase> uBlockA;

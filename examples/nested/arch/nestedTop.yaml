@@ -13,16 +13,16 @@
 ### to reference another constant use $CONSTNAME
 constants:
   NUM_COMMANDS:          {value: 1024, desc: "Number of Commands"}
-  NUM_COMMANDS_LOG2:     {eval: "($NUM_COMMANDS-1).bit_length()", desc: "Number of Commands log2"}
+  NUM_COMMANDS_LOG2:     {eval: "$clog2($NUM_COMMANDS)", desc: "Number of Commands log2"}
   BIG_WIDTH:             {value: 96, desc: big width test case}
   NUM_FIRST_TAGS:      {value: 64,  desc: "Num first Tags" }
-  NUM_FIRST_TAGS_LOG2: {eval: "($NUM_FIRST_TAGS-1).bit_length()",  desc: "Num first Tags Log2" }
+  NUM_FIRST_TAGS_LOG2: {eval: "$clog2($NUM_FIRST_TAGS)",  desc: "Num first Tags Log2" }
   NUM_SECOND_TAGS:       {value: 1024, desc: "Num second Tags" }
-  NUM_SECOND_TAGS_LOG2:  {eval: "($NUM_SECOND_TAGS-1).bit_length()", desc: "Num second Tags Log2" }
+  NUM_SECOND_TAGS_LOG2:  {eval: "$clog2($NUM_SECOND_TAGS)", desc: "Num second Tags Log2" }
   NUM_THIRD_TAGS:        {value: 1024, desc: "Num third Tags" }
-  NUM_THIRD_TAGS_LOG2:   {eval: "($NUM_THIRD_TAGS-1).bit_length()", desc: "Num third Tags Log2" }
+  NUM_THIRD_TAGS_LOG2:   {eval: "$clog2($NUM_THIRD_TAGS)", desc: "Num third Tags Log2" }
   NUM_TAGS:           {eval: "($NUM_FIRST_TAGS+$NUM_SECOND_TAGS+$NUM_THIRD_TAGS)", desc: "Num Tags" }
-  NUM_TAGS_LOG2:      {eval: "($NUM_TAGS-1).bit_length()", desc: "Num Tags Log2" }
+  NUM_TAGS_LOG2:      {eval: "$clog2($NUM_TAGS)", desc: "Num Tags Log2" }
 
 
 encoders:

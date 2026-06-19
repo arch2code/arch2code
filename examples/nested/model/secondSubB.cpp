@@ -7,7 +7,17 @@
 #include "secondSubB.h"
 SC_HAS_PROCESS(secondSubB);
 
-secondSubB::registerBlock secondSubB::registerBlock_; //register the block with the factory
+// === Block factory registration (secondSubB) ===
+void force_link_secondSubB() {}
+
+void register_secondSubB_variants() {
+    instanceFactory::registerBlock("secondSubB_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<secondSubB>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _secondSubB_registered = (register_secondSubB_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 secondSubB::secondSubB(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)

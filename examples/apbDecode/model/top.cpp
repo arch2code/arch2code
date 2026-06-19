@@ -9,15 +9,25 @@
 #include "someRapper_base.h"
 SC_HAS_PROCESS(top);
 
-top::registerBlock top::registerBlock_; //register the block with the factory
+// === Block factory registration (top) ===
+void force_link_top() {}
+
+void register_top_variants() {
+    instanceFactory::registerBlock("top_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<top>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _top_registered = (register_top_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 top::top(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("top", name(), bbMode)
         ,topBase(name(), variant)
         ,apbReg("someRapper_apbReg", "cpu")
-        ,uCPU(std::dynamic_pointer_cast<cpuBase>( instanceFactory::createInstance(name(), "uCPU", "cpu", "")))
-        ,uSomeRapper(std::dynamic_pointer_cast<someRapperBase>( instanceFactory::createInstance(name(), "uSomeRapper", "someRapper", "")))
+        ,uCPU(std::dynamic_pointer_cast<cpuBase>((force_link_cpu(), instanceFactory::createInstance(name(), "uCPU", "cpu", ""))))
+        ,uSomeRapper(std::dynamic_pointer_cast<someRapperBase>((force_link_someRapper(), instanceFactory::createInstance(name(), "uSomeRapper", "someRapper", ""))))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

@@ -124,9 +124,16 @@ $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
 # Project global phony targets
 #------------------------------------------------------------------------
 
-.PHONY: db gen newmodule clean
+.PHONY: db gen newmodule migrate clean
 
 db : $(A2C_SQLDB_FILE)
+
+
+# Migrate the project's user YAML to the current authoring format and stamp the
+# yamlFormat sentinel. Standalone: it reads and rewrites YAML as text and does
+# not build the database, so it runs on a project the yamlFormat gate rejects.
+migrate:
+	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
 
 
 gen: $(GEN_DEPS)
@@ -148,6 +155,7 @@ help::
 	@echo "  db       	- Generate or update the project database"
 	@echo "  gen      	- Generate SystemC and SystemVerilog files from the project database"
 	@echo "  newmodule	- Create a new module in the project database"
+	@echo "  migrate  	- Migrate the project YAML to the current authoring format"
 	@echo "  clean    	- Clean generated files and project database"
 	@echo "  help     	- Show this help message"
 

@@ -76,16 +76,19 @@ blocks:
             upstreamPort: paramApb
             registerDecoderPort: apbReg
 """
-    + render_leaf('leaf')
+    + render_leaf('leaf',
+                  extra_block_lines='        params: [PARAM_PARENT_WIDTH]\n')
     + """
 instances:
     uTop:       { container: top, instanceType: top }
     uAPBDecode: { container: top, instanceType: paramTopDecode, variant: topV0 }
-    uLeaf:      { container: top, instanceType: leaf, addressGroup: top }
+    uLeaf:      { container: top, instanceType: leaf, addressGroup: top, variant: leafV0 }
 
 parameters:
     paramTopDecode:
         - { variant: topV0, param: PARAM_PARENT_WIDTH, value: 32 }
+    leaf:
+        - { variant: leafV0, param: PARAM_PARENT_WIDTH, value: 32 }
 
 registers:
     - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }

@@ -1,3 +1,4 @@
+yamlFormat: 2
 # Example project file that defines project level information
 
 
@@ -11,7 +12,6 @@ projectFiles:
 
 #dbSchema: config/schema.yaml
 
-addressControl: config/address.yaml
 
 topInstance: testbench
 
@@ -61,7 +61,21 @@ fileGeneration:
     package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     desc: "yaml based package file"}
   # standard copyright statement to be added to all generated files - change to suite your company
   fileCopyrightStatement: "copyright Arch2Code authors 2024"
-postProcess:
-  #- $a2c/config/postParseRegister.py
-  - $a2c/config/postParseChecks.py
 
+
+instanceGroups:
+    allInstances:
+        varType: inst_allInstances
+        enumPrefix: INST_ALL_INSTANCES
+    blockTop:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true

@@ -74,9 +74,9 @@ blocks:
 ### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
 ###          for this instance, optional (currently does not work in diagram generation code)
 instances:
-  u_producer:      { container: simple,  instanceType: producer,    addressGroup: top,    instGroup: allInstances }
-  u_pipe:          { container: simple,  instanceType: pipe,        addressGroup: top,    instGroup: allInstances }
-  u_consumer:      { container: simple,  instanceType: consumer,    addressGroup: top,    instGroup: allInstances }
+  u_producer:      { container: simple,  instanceType: producer,    instGroup: allInstances }
+  u_pipe:          { container: simple,  instanceType: pipe,        instGroup: allInstances }
+  u_consumer:      { container: simple,  instanceType: consumer,    instGroup: allInstances }
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries

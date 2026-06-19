@@ -20,6 +20,8 @@ import shutil
 import sys
 import tempfile
 
+import yaml
+
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
 sys.path.insert(0, base_dir)
@@ -161,6 +163,38 @@ _CLEAN_PROJECT = (
     "postProcess:\n"
     "  - $a2c/config/postParseRegister.py\n"
     "  - $a2c/config/postParseChecks.py\n"
+)
+
+
+# A project whose postProcess: override has a commented-out first entry before a
+# real entry (the examples/simple shape). The sole real entry is a base dup, so
+# the whole block must be removed without orphaning the trailing '- ' line, and
+# the blank separating it from the next key must survive.
+_COMMENT_PROJECT = (
+    "projectName: miniComment\n"
+    "projectFiles:\n"
+    "  - top.yaml\n"
+    "addressControl: addressControl.yaml\n"
+    "postProcess:\n"
+    "  #- $a2c/config/postParseRegister.py\n"
+    "  - $a2c/config/postParseChecks.py\n"
+    "\n"
+    "topInstance: top_tb\n"
+)
+
+# A project mixing a base-dup entry, an interleaved comment, and a
+# project-specific entry. The base dup and comment drop; the project-specific
+# entry must survive under a still-present postProcess: key.
+_MIXED_COMMENT_PROJECT = (
+    "projectName: miniMixed\n"
+    "projectFiles:\n"
+    "  - top.yaml\n"
+    "addressControl: addressControl.yaml\n"
+    "postProcess:\n"
+    "  - $a2c/config/postParseChecks.py\n"
+    "  #- $proj/config/disabledPass.py\n"
+    "  - $proj/config/customPass.py\n"
+    "topInstance: top_tb\n"
 )
 
 
@@ -348,12 +382,72 @@ def test_unresolved_router_reports_manual():
     return True
 
 
+def test_commented_first_entry_no_orphan():
+    # The simple shape: a commented-out first entry before a real base-dup entry.
+    # The block's only real entry is a base dup, so the whole block is removed;
+    # the commented line goes too and no bare '- ' line may be orphaned.
+    d = _makeProject(_COMMENT_PROJECT, _CLEAN_TOP, _CLEAN_ADDR)
+    try:
+        report = migrateAddressControlInProject(os.path.join(d, "project.yaml"),
+                                                write=True)
+        projOut = open(os.path.join(d, "project.yaml")).read()
+        # No bare orphaned postProcess sequence item survives.
+        for line in projOut.splitlines():
+            assert not line.lstrip().startswith("- $a2c"), \
+                f"orphaned postProcess entry survived:\n{projOut}"
+        # The commented and real entries are both gone.
+        assert "postParseRegister.py" not in projOut, "commented entry survived"
+        assert "postParseChecks.py" not in projOut, "base dup survived"
+        # Result is valid YAML with no postProcess key, and the next top-level
+        # key (across the blank separator) is intact.
+        loaded = yaml.safe_load(projOut)
+        assert isinstance(loaded, dict), "migrated project.yaml failed to parse"
+        assert "postProcess" not in loaded, "postProcess block not fully removed"
+        assert loaded.get("topInstance") == "top_tb", "separator ate the next key"
+        # The report says removed, not a misleading keep.
+        pp = _find(report.applied, POSTPROCESS)
+        assert any("removed postProcess: override" in i.message for i in pp), \
+            [i.message for i in pp]
+    finally:
+        shutil.rmtree(d)
+    return True
+
+
+def test_mixed_keep_with_interleaved_comment():
+    # A base-dup entry, an interleaved comment, and a project-specific entry.
+    # The base dup and the comment drop; the project-specific entry survives
+    # under a still-present postProcess: key and the result is valid YAML.
+    d = _makeProject(_MIXED_COMMENT_PROJECT, _CLEAN_TOP, _CLEAN_ADDR)
+    try:
+        report = migrateAddressControlInProject(os.path.join(d, "project.yaml"),
+                                                write=True)
+        projOut = open(os.path.join(d, "project.yaml")).read()
+        loaded = yaml.safe_load(projOut)
+        assert isinstance(loaded, dict), "migrated project.yaml failed to parse"
+        # Base dup and the disabled (commented) entry are gone.
+        assert "postParseChecks.py" not in projOut, "base dup survived"
+        assert "disabledPass.py" not in projOut, "interleaved comment survived"
+        # Project-specific entry kept under a still-present postProcess: key.
+        assert loaded.get("postProcess") == ["$proj/config/customPass.py"], \
+            loaded.get("postProcess")
+        assert loaded.get("topInstance") == "top_tb", "separator ate the next key"
+        # The keep is reported for review.
+        pp = _find(report.applied, POSTPROCESS)
+        assert any("kept project-specific" in i.message for i in pp), \
+            [i.message for i in pp]
+    finally:
+        shutil.rmtree(d)
+    return True
+
+
 _TESTS = [
     ("dirty project: all applied edits + delegated TODOs", test_dirty_applied_edits),
     ("clean project finalized (deleted + signaled clean)", test_clean_finalizes),
     ("dry-run reports but changes nothing on disk", test_dry_run_changes_nothing),
     ("migrated project is idempotent (no-op)", test_idempotent_after_migration),
     ("unresolved router reported, never auto-authored", test_unresolved_router_reports_manual),
+    ("commented first entry: block removed, no orphan", test_commented_first_entry_no_orphan),
+    ("mixed keep with interleaved comment", test_mixed_keep_with_interleaved_comment),
 ]
 
 

@@ -62,6 +62,13 @@ def _build_project():
   - {os.path.basename(duplicate_a_path)}
   - {os.path.basename(duplicate_b_path)}
 
+ipParameters:
+  constants:
+    WIDTH:
+      value: 13
+      maxValue: 13
+      desc: "Backing parameter constant for leafBlock.WIDTH"
+
 blocks:
   leafBlock:
     desc: "Leaf with a parameter"

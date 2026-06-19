@@ -92,6 +92,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor).
+void force_link_secondBlock();
 // GENERATED_CODE_END
 
 #endif //SECONDBLOCK_BASE_H

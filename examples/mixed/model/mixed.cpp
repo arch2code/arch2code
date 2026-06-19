@@ -31,8 +31,8 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
         ,cStuffIf("blockC_cStuffIf", "blockA")
         ,startDone("blockB_startDone", "blockA")
         ,dupIf("blockB_dupIf", "blockA")
-        ,apb_uBlockA("blockA_apb_uBlockA", "apbDecode")
-        ,apb_uBlockB("blockB_apb_uBlockB", "apbDecode")
+        ,apbReg_uBlockA("blockA_apbReg_uBlockA", "apbDecode")
+        ,apbReg_uBlockB("blockB_apbReg_uBlockB", "apbDecode")
         ,uBlockA(std::dynamic_pointer_cast<blockABase>((force_link_blockA(), instanceFactory::createInstance(name(), "uBlockA", "blockA", ""))))
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>((force_link_apbDecode(), instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", ""))))
         ,uBlockC(std::dynamic_pointer_cast<blockCBase>((force_link_blockC(), instanceFactory::createInstance(name(), "uBlockC", "blockC", ""))))
@@ -51,10 +51,10 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
     uBlockB->startDone(startDone);
     uBlockA->dupIf(dupIf);
     uBlockB->dupIf(dupIf);
-    uAPBDecode->apb_uBlockA(apb_uBlockA);
-    uBlockA->apbReg(apb_uBlockA);
-    uAPBDecode->apb_uBlockB(apb_uBlockB);
-    uBlockB->apbReg(apb_uBlockB);
+    uAPBDecode->apbReg_uBlockA(apbReg_uBlockA);
+    uBlockA->apbReg(apbReg_uBlockA);
+    uAPBDecode->apbReg_uBlockB(apbReg_uBlockB);
+    uBlockB->apbReg(apbReg_uBlockB);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 

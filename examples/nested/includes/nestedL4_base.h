@@ -71,5 +71,8 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor).
+void force_link_nestedL4();
 // GENERATED_CODE_END
 #endif //NESTEDL4_BASE_H

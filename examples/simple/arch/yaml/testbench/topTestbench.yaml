@@ -68,7 +68,7 @@ blocks:
 ### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
 ###          for this instance, optional (currently does not work in diagram generation code)
 instances:
-  u_simple:        { container: testbench,  instanceType: simple,         addressGroup: top,    instGroup: allInstances }
+  u_simple:        { container: testbench,  instanceType: simple,         instGroup: allInstances }
   testbench:       { container: testbench,  instanceType: testbench,      instGroup: allInstances                       } # self referential
 
 # connections are specify interface connections between different instaces of objects

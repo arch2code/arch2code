@@ -4,6 +4,47 @@ description: Convert legacy arch2code projects from project-wide addressControl.
 ---
 # Skill: Legacy Address Control Migration
 
+## Run `make migrate` first
+
+This skill is the **fallback** for the automated migration tool, not the
+primary path. Run the converter before working through any step by hand:
+
+```text
+make migrate
+```
+
+`make migrate` wraps `migrateYaml.py --write <project.yaml>`. It converts every
+case it can resolve mechanically — emits `addressBlock:` on each resolved
+router, moves the policy sections to `project.yaml`, normalizes `postProcess:`,
+removes the `addressControl:` pointer, deletes the legacy `addressControl.yaml`
+once the project is clean, and stamps `yamlFormat: 2`. The cases it cannot
+resolve unambiguously are printed under a `manual TODO:` heading and block the
+stamp. **This skill covers exactly those manual-TODO cases.**
+
+Each manual-TODO line is printed as:
+
+```text
+<file>:<line>  <KIND>  <message>
+```
+
+Resolve every reported item, then re-run `make migrate`. The tool is
+idempotent: already-converted evals, an existing `addressBlock:`, and an absent
+`addressControl:` pointer are skipped, and a project already carrying
+`yamlFormat: 2` short-circuits to "already migrated".
+
+### Manual-TODO kinds and where each is resolved
+
+| Tool report `KIND` | Meaning | Resolve in |
+| --- | --- | --- |
+| `TODO_ROUTER_RESOLUTION` | An `AddressGroups` row's router cannot be resolved — it names no `decoderInstance`, or its `decoderInstance` does not resolve to a router block. | Step 3 |
+| `TODO_INTERFACE_SCOPE` | A router has no `addressBus: true` interface authored in its load-time scope. | Step 2 |
+| `TODO_LEAF_REGISTER_PORTS` | A routed leaf needs a `registerPorts:` declaration — a judgment call the tool will not guess. | Step 4 annotation + the `registerPorts:` note under Migration Diagnostics |
+
+A real-valued `eval` (for example `$DWORD / 2.0`) is reported by Phase A as a
+`NEEDS_MANUAL` eval row and also blocks the stamp; convert it to a literal
+`value:` by hand. That is an eval migration, not an address one, and is outside
+this skill's scope.
+
 ## Purpose
 
 Guide the user through converting an existing arch2code project that
@@ -21,6 +62,9 @@ authoring a new address space or redesigning an existing one.
 
 ## References
 
+- `make migrate` → `builder/base/migrateYaml.py` — the automated converter
+  this skill backstops; `pysrc/migrateAddressControl.py` is its Phase B address
+  pass and the source of the `manual TODO:` messages quoted here.
 - `builder/base/config/schema.yaml` — accepted YAML fields for
   `blocks.addressBlock`, `instanceGroups`, and `addressObjects`.
 - `builder/base/pysrc/processYaml.py` — schema hooks, project-config
@@ -120,6 +164,12 @@ After the move the `DWORD` / `apbAddrT` / `apbDataT` constants and
 types simply live wherever the address-bus interface they support
 now lives.
 
+**Tool report item.** This step resolves the converter's
+`TODO_INTERFACE_SCOPE` items: `Router block '<block>' (file <file>) has no
+addressBus: true interface authored in its load-time scope.` The tool emits the
+`addressBlock:` but cannot relocate the interface (that requires reasoning about
+the include graph), so it reports the router and leaves the placement to you.
+
 ### Step 3 — Declare `addressBlock:` on each router
 
 For every router block, add a top-level `addressBlock:` field.
@@ -148,6 +198,21 @@ Do not author `primaryDecode:`, `varTypeContext:`, or
 If the legacy file named `RegisterBusInterface:`, carry it into
 `upstreamPort:` and `registerDecoderPort:`. These fields may be omitted
 only when the router should use the schema default interface name.
+
+**Tool report item.** This step resolves the converter's
+`TODO_ROUTER_RESOLUTION` items, which the tool reports in one of two forms and
+will not author for you:
+
+- `AddressGroups row '<group>' is referenced by an instance but names no
+  decoderInstance, so its router block cannot be resolved — author addressBlock:
+  by hand — see address-migration.md Step 3.`
+- `AddressGroups row '<group>' decoderInstance '<inst>' does not resolve to a
+  router block — author addressBlock: by hand — see address-migration.md
+  Step 3.`
+
+For each, identify the router block by following the named (or intended)
+`decoderInstance` back through the architecture YAML per Step 1, then author the
+`addressBlock:` shown above on that block.
 
 Nested routers get their own `addressBlock:` row in the same shape,
 with the appropriate `addressGroup:`. Edit the nested router's block
@@ -203,6 +268,16 @@ Agreement passes silently, which is useful while converting one
 project. The completed migration should leave the policy sections in
 `project.yaml`.
 
+**Tool report item.** The converter routes its `TODO_LEAF_REGISTER_PORTS`
+items here — `Routed leaf block '<leaf>' (instance '<inst>', served by router
+'<router>' for group '<group>') needs a registerPorts: declaration authored by
+hand — see address-migration.md Step 4 (and Step 6.2).` Authoring
+`registerPorts:` is not a policy-section edit; the procedure and the
+reusable-IP-versus-top-down decision are the `registerPorts:` note at the head
+of **Migration Diagnostics** below. A plain top-down leaf needs no
+`registerPorts:` and the TODO is advisory; only a reusable-IP leaf must author
+one.
+
 ### Step 5 — Leave `postProcess:` to the base config
 
 Prefer removing any existing `postProcess:` override entirely. The base
@@ -257,6 +332,12 @@ If conversion fails, focus on mistakes introduced by the migration
 rather than redesigning the address space. The generator fails the
 build and names both sides of the offending relationship. The
 diagnostics below are grouped by the stage that emits them.
+
+These diagnostics are the same vocabulary the `make migrate` tool uses: the
+converter's `manual TODO:` messages (`TODO_INTERFACE_SCOPE`,
+`TODO_ROUTER_RESOLUTION`, `TODO_LEAF_REGISTER_PORTS`) quote the generator
+diagnostics below word for word, so a reported TODO and the eventual build error
+for the same unresolved relationship read identically.
 
 A note on `registerPorts:`: a reusable-IP leaf (one whose
 `<block>Base.h` must carry its own register-bus interface) declares a

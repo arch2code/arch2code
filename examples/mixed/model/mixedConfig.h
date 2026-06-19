@@ -6,7 +6,9 @@
 #include <cstdint>
 
 // GENERATED_CODE_PARAM --context=mixed.yaml
-// GENERATED_CODE_BEGIN --template=includes --section=config
+// GENERATED_CODE_BEGIN --template=config
+#include "clog2.h"
+
 struct mixedDefaultConfig {
     static constexpr uint32_t bob = 16;
     static constexpr uint32_t fred = 0;

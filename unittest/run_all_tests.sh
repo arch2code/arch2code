@@ -187,6 +187,11 @@ echo "Test Suite 19j: addressControl -> addressBlock Converter (Phase B)"
 echo "------------------------------------------------------------------------"
 python3 test_migrate_address_control.py || FAILED=1
 
+echo ""
+echo "Test Suite 19k: Unified YAML Migration Orchestrator (migrateYaml.py)"
+echo "------------------------------------------------------------------------"
+python3 test_migrate_yaml.py || FAILED=1
+
 # Test 20-: address-control refactor — Stage 7 Batches A, B, and the
 # topology-fixture portion of Batch C.
 # Per plan-address-control-test-coverage.md "Implementation Phasing":

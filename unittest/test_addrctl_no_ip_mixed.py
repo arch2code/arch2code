@@ -25,6 +25,13 @@ from _addrctl_helpers import (
 ARCH_YAML = (
     APB_PREAMBLE
     + """
+ipParameters:
+    constants:
+        LEAF_WIDTH:
+            value: 8
+            maxValue: 8
+            desc: "Per-variant width bound on the routed leaf"
+
 blocks:
     top:
         desc: "Top container"

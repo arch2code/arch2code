@@ -7,7 +7,17 @@
 #include "subBlock.h"
 SC_HAS_PROCESS(subBlock);
 
-subBlock::registerBlock subBlock::registerBlock_; //register the block with the factory
+// === Block factory registration (subBlock) ===
+void force_link_subBlock() {}
+
+void register_subBlock_variants() {
+    instanceFactory::registerBlock("subBlock_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<subBlock>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _subBlock_registered = (register_subBlock_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 subBlock::subBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)

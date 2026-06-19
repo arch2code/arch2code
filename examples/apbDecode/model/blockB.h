@@ -19,17 +19,8 @@ SC_MODULE(blockB), public blockBase, public blockBBase
 {
 private:
     void regHandler(void);
-    addressMap regs;
+    addressMap _a2cRegs;
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("blockB_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<blockB>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
 
     //registers

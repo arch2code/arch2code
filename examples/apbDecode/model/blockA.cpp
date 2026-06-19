@@ -5,16 +5,26 @@
 #include "blockA.h"
 SC_HAS_PROCESS(blockA);
 
-blockA::registerBlock blockA::registerBlock_; //register the block with the factory
+// === Block factory registration (blockA) ===
+void force_link_blockA() {}
+
+void register_blockA_variants() {
+    instanceFactory::registerBlock("blockA_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockA>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _blockA_registered = (register_blockA_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 void blockA::regHandler(void) { //handle register decode
-    registerHandler< apbAddrSt, apbDataSt >(regs, apbReg, (1<<(10))-1); }
+    registerHandler< apbAddrSt, apbDataSt >(_a2cRegs, apbReg, (1<<(10))-1); }
 
 blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("blockA", name(), bbMode)
         ,blockABase(name(), variant)
-        ,regs(log_)
+        ,_a2cRegs(log_)
         ,roA()
         ,rwUn0A(un0ARegSt::_packedSt(0x1234abcdef))
         ,roUn0A()
@@ -34,13 +44,13 @@ blockA::blockA(sc_module_name blockName, const char * variant, blockBaseMode bbM
     constexpr uint64_t REG_ADDR_BLOCKA_EXTA = 0x218;
 
     // register memories for FW access
-    regs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLE0, aMemSt::_byteWidth, MEMORYA_WORDS, std::string(this->name()) + ".blockATable0", &blockATable0);
-    regs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLE1, aMemSt::_byteWidth, MEMORYA_WORDS, std::string(this->name()) + ".blockATable1", &blockATable1);
+    _a2cRegs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLE0, aMemSt::_byteWidth, MEMORYA_WORDS, std::string(this->name()) + ".blockATable0", &blockATable0);
+    _a2cRegs.addMemory( REG_ADDR_BLOCKA_BLOCKATABLE1, aMemSt::_byteWidth, MEMORYA_WORDS, std::string(this->name()) + ".blockATable1", &blockATable1);
     // register registers for FW access
-    regs.addRegister( REG_ADDR_BLOCKA_ROA, 5, "roA", &roA );
-    regs.addRegister( REG_ADDR_BLOCKA_RWUN0A, 6, "rwUn0A", &rwUn0A );
-    regs.addRegister( REG_ADDR_BLOCKA_ROUN0A, 6, "roUn0A", &roUn0A );
-    regs.addRegister( REG_ADDR_BLOCKA_EXTA, 6, "extA", &extA );
+    _a2cRegs.addRegister( REG_ADDR_BLOCKA_ROA, 5, "roA", &roA );
+    _a2cRegs.addRegister( REG_ADDR_BLOCKA_RWUN0A, 6, "rwUn0A", &rwUn0A );
+    _a2cRegs.addRegister( REG_ADDR_BLOCKA_ROUN0A, 6, "roUn0A", &roUn0A );
+    _a2cRegs.addRegister( REG_ADDR_BLOCKA_EXTA, 6, "extA", &extA );
     SC_THREAD(regHandler);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

@@ -173,7 +173,7 @@ def cppWidthMask(widthExpr):
         widthExpr = str(widthExpr)
     if str(widthExpr) == '1':
         return ' & 1'
-    return f" & ((1ULL << {widthExpr}) - 1)"
+    return f" & ((1ULL << ({widthExpr})) - 1)"
 
 def printOneVar(prefix, space, varName, vardata, prtoss=True):
     out = list()
@@ -1011,7 +1011,7 @@ def get_sign_extension_code(varName, varIndex, varType, bitwidth, indent, isSign
         # Need to perform sign extension if the sign bit is set
         out.append(f"{indent}// Sign extension for signed type")
         out.append(f"{indent}if ({varName}{varIndex} & (1ULL << ({bitwidth} - 1))) {{")
-        out.append(f"{indent}    {varName}{varIndex} = ({varType})({varName}{varIndex} | ~((1ULL << {bitwidth}) - 1));")
+        out.append(f"{indent}    {varName}{varIndex} = ({varType})({varName}{varIndex} | ~((1ULL << ({bitwidth})) - 1));")
         out.append(f"{indent}}}")
     return out
 
@@ -1185,7 +1185,7 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
                     out.append(f"{indent}unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, {bitwidthExpr});")
                 else:
                     # src is using < 64 bit so we can just use bit shifting
-                    out.append(f"{indent}_tmp = (_src >> _pos) & ((1ULL << {bitwidthExpr}) - 1);")
+                    out.append(f"{indent}_tmp = (_src >> _pos) & ((1ULL << ({bitwidthExpr})) - 1);")
                 out.append(f'{indent}{varName}{varIndex}.unpack({unpackCast});')
                 # when we copied we used a tmp ptr to prevent overrun, reset point to correct place
             indent = indent[:-4]

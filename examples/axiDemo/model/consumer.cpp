@@ -6,7 +6,17 @@
 #include "consumer.h"
 SC_HAS_PROCESS(consumer);
 
-consumer::registerBlock consumer::registerBlock_; //register the block with the factory
+// === Block factory registration (consumer) ===
+void force_link_consumer() {}
+
+void register_consumer_variants() {
+    instanceFactory::registerBlock("consumer_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<consumer>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _consumer_registered = (register_consumer_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 consumer::consumer(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)

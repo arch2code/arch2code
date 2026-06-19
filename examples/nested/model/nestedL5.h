@@ -10,7 +10,6 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "nestedL5_base.h"
-#include "nestedTopIncludes.h"
 //contained instances forward class declaration
 class nestedL6Base;
 
@@ -18,15 +17,6 @@ SC_MODULE(nestedL5), public blockBase, public nestedL5Base
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("nestedL5_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<nestedL5>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
     //instances contained in block
     std::shared_ptr<nestedL6Base> uNestedL6;

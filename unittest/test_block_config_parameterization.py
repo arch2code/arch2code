@@ -93,11 +93,13 @@ blocks:
     srcBlock:
         desc: "Source block"
         hasMdl: true
+        params: [PARAM_BUS_WIDTH]
         ports:
             out: { interface: paramBus, direction: src }
     dstBlock:
         desc: "Destination block"
         hasMdl: true
+        params: [PARAM_BUS_WIDTH]
         ports:
             in: { interface: paramBus, direction: dst }
 

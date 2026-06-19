@@ -16,9 +16,9 @@ public:
     virtual ~apbDecodeBase() = default;
     // src ports
     // apbReg->uBlockA: CPU access to SoC registers in the design
-    apb_out< apbAddrSt, apbDataSt > apb_uBlockA;
+    apb_out< apbAddrSt, apbDataSt > apbReg_uBlockA;
     // apbReg->uBlockB: CPU access to SoC registers in the design
-    apb_out< apbAddrSt, apbDataSt > apb_uBlockB;
+    apb_out< apbAddrSt, apbDataSt > apbReg_uBlockB;
 
     // dst ports
     // External->apbReg: CPU access to SoC registers in the design
@@ -26,21 +26,21 @@ public:
 
 
     apbDecodeBase(std::string name, const char * variant) :
-        apb_uBlockA("apb_uBlockA")
-        ,apb_uBlockB("apb_uBlockB")
+        apbReg_uBlockA("apbReg_uBlockA")
+        ,apbReg_uBlockB("apbReg_uBlockB")
         ,apbReg("apbReg")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
-        apb_uBlockA->setTimed(nsec, mode);
-        apb_uBlockB->setTimed(nsec, mode);
+        apbReg_uBlockA->setTimed(nsec, mode);
+        apbReg_uBlockB->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
     {
-        apb_uBlockA->setLogging(verbosity);
-        apb_uBlockB->setLogging(verbosity);
+        apbReg_uBlockA->setLogging(verbosity);
+        apbReg_uBlockB->setLogging(verbosity);
         apbReg->setLogging(verbosity);
     };
 };
@@ -49,9 +49,9 @@ class apbDecodeInverted : public virtual blockPortBase
 public:
     // src ports
     // apbReg->uBlockA: CPU access to SoC registers in the design
-    apb_in< apbAddrSt, apbDataSt > apb_uBlockA;
+    apb_in< apbAddrSt, apbDataSt > apbReg_uBlockA;
     // apbReg->uBlockB: CPU access to SoC registers in the design
-    apb_in< apbAddrSt, apbDataSt > apb_uBlockB;
+    apb_in< apbAddrSt, apbDataSt > apbReg_uBlockB;
 
     // dst ports
     // External->apbReg: CPU access to SoC registers in the design
@@ -59,21 +59,21 @@ public:
 
 
     apbDecodeInverted(std::string name) :
-        apb_uBlockA(("apb_uBlockA"+name).c_str())
-        ,apb_uBlockB(("apb_uBlockB"+name).c_str())
+        apbReg_uBlockA(("apbReg_uBlockA"+name).c_str())
+        ,apbReg_uBlockB(("apbReg_uBlockB"+name).c_str())
         ,apbReg(("apbReg"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
-        apb_uBlockA->setTimed(nsec, mode);
-        apb_uBlockB->setTimed(nsec, mode);
+        apbReg_uBlockA->setTimed(nsec, mode);
+        apbReg_uBlockB->setTimed(nsec, mode);
         apbReg->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
     {
-        apb_uBlockA->setLogging(verbosity);
-        apb_uBlockB->setLogging(verbosity);
+        apbReg_uBlockA->setLogging(verbosity);
+        apbReg_uBlockB->setLogging(verbosity);
         apbReg->setLogging(verbosity);
     };
 };
@@ -82,9 +82,9 @@ class apbDecodeChannels
 public:
     // src ports
     // CPU access to SoC registers in the design
-    apb_channel< apbAddrSt, apbDataSt > apb_uBlockA;
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockA;
     // CPU access to SoC registers in the design
-    apb_channel< apbAddrSt, apbDataSt > apb_uBlockB;
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockB;
 
     // dst ports
     // CPU access to SoC registers in the design
@@ -92,21 +92,24 @@ public:
 
 
     apbDecodeChannels(std::string name, std::string srcName) :
-    apb_uBlockA(("apb_uBlockA"+name).c_str(), srcName)
-    ,apb_uBlockB(("apb_uBlockB"+name).c_str(), srcName)
+    apbReg_uBlockA(("apbReg_uBlockA"+name).c_str(), srcName)
+    ,apbReg_uBlockB(("apbReg_uBlockB"+name).c_str(), srcName)
     ,apbReg(("apbReg"+name).c_str(), srcName)
     {};
     void bind( apbDecodeBase *a, apbDecodeInverted *b)
     {
-        a->apb_uBlockA( apb_uBlockA );
-        b->apb_uBlockA( apb_uBlockA );
-        a->apb_uBlockB( apb_uBlockB );
-        b->apb_uBlockB( apb_uBlockB );
+        a->apbReg_uBlockA( apbReg_uBlockA );
+        b->apbReg_uBlockA( apbReg_uBlockA );
+        a->apbReg_uBlockB( apbReg_uBlockB );
+        b->apbReg_uBlockB( apbReg_uBlockB );
         a->apbReg( apbReg );
         b->apbReg( apbReg );
     };
 };
 
+
+// Force-link function (active modules-mode anchor).
+void force_link_apbDecode();
 // GENERATED_CODE_END
 
 #endif //APBDECODE_BASE_H

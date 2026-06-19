@@ -92,6 +92,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor).
+void force_link_secondSubB();
 // GENERATED_CODE_END
 
 #endif //SECONDSUBB_BASE_H

@@ -15,8 +15,8 @@ import mixed_package::*;
     rdy_vld_if #(.data_t(seeSt)) cStuffIf();
     notify_ack_if #() startDone();
     rdy_vld_if #(.data_t(seeSt)) dupIf();
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBlockA();
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBlockB();
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBlockA();
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBlockB();
 
 // Instances
 blockA uBlockA (
@@ -24,15 +24,15 @@ blockA uBlockA (
     .cStuffIf (cStuffIf),
     .startDone (startDone),
     .dupIf (dupIf),
-    .apbReg (apb_uBlockA),
+    .apbReg (apbReg_uBlockA),
     .clk (clk),
     .rst_n (rst_n)
 );
 
 apbDecode uAPBDecode (
     .cpu_main (cpu_main),
-    .apb_uBlockA (apb_uBlockA),
-    .apb_uBlockB (apb_uBlockB),
+    .apbReg_uBlockA (apbReg_uBlockA),
+    .apbReg_uBlockB (apbReg_uBlockB),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -47,7 +47,7 @@ blockB uBlockB (
     .btod (aStuffIf),
     .startDone (startDone),
     .dupIf (dupIf),
-    .apbReg (apb_uBlockB),
+    .apbReg (apbReg_uBlockB),
     .clk (clk),
     .rst_n (rst_n)
 );

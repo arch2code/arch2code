@@ -28,8 +28,8 @@ apbDecode::apbDecode(sc_module_name blockName, const char * variant, blockBaseMo
         ,blockBase("apbDecode", name(), bbMode)
         ,apbDecodeBase(name(), variant)
         ,decoder(16, 24, cpu_main, {
-            &apb_uBlockA,
-            &apb_uBlockB})
+            &apbReg_uBlockA,
+            &apbReg_uBlockB})
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

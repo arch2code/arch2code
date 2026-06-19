@@ -71,6 +71,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor).
+void force_link_blockA();
 // GENERATED_CODE_END
 
 #endif //BLOCKA_BASE_H

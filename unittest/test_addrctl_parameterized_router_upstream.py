@@ -108,9 +108,11 @@ blocks:
     mid:
         desc: "Nested router's container"
         hasMdl: true
+        params: [PARAM_UPSTREAM_WIDTH]
     apbDecode:
         desc: "Primary router"
         hasMdl: true
+        params: [PARAM_UPSTREAM_WIDTH]
         addressBlock:
             addressGroup: top
             addressIncrement: 0x01000000
@@ -132,18 +134,25 @@ blocks:
             upstreamPort: paramApb
             registerDecoderPort: apbReg
 """
-    + render_leaf('midLeaf')
+    + render_leaf('midLeaf',
+                  extra_block_lines='        params: [PARAM_UPSTREAM_WIDTH]\n')
     + """
 instances:
     uTop:          { container: top, instanceType: top }
-    uAPBDecode:    { container: top, instanceType: apbDecode }
-    uMid:          { container: top, instanceType: mid }
+    uAPBDecode:    { container: top, instanceType: apbDecode, variant: apbV0 }
+    uMid:          { container: top, instanceType: mid, variant: midV0 }
     uParamRouter:  { container: mid, instanceType: paramMidRouter, variant: paramMidV0 }
-    uMidLeaf:      { container: mid, instanceType: midLeaf, addressGroup: mid }
+    uMidLeaf:      { container: mid, instanceType: midLeaf, addressGroup: mid, variant: midLeafV0 }
 
 parameters:
     paramMidRouter:
         - { variant: paramMidV0, param: PARAM_UPSTREAM_WIDTH, value: 32 }
+    apbDecode:
+        - { variant: apbV0, param: PARAM_UPSTREAM_WIDTH, value: 32 }
+    mid:
+        - { variant: midV0, param: PARAM_UPSTREAM_WIDTH, value: 32 }
+    midLeaf:
+        - { variant: midLeafV0, param: PARAM_UPSTREAM_WIDTH, value: 32 }
 
 registers:
     - { register: cfg, regType: rw, block: midLeaf, structure: cfgRegSt, desc: "" }

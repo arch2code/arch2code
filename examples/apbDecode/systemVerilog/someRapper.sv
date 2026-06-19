@@ -10,26 +10,26 @@ import apbDecode_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBlockA();
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBlockB();
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBlockA();
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBlockB();
 
 // Instances
 apbDecode uAPBDecode (
     .apbReg (apbReg),
-    .apb_uBlockA (apb_uBlockA),
-    .apb_uBlockB (apb_uBlockB),
+    .apbReg_uBlockA (apbReg_uBlockA),
+    .apbReg_uBlockB (apbReg_uBlockB),
     .clk (clk),
     .rst_n (rst_n)
 );
 
 blockA uBlockA (
-    .apbReg (apb_uBlockA),
+    .apbReg (apbReg_uBlockA),
     .clk (clk),
     .rst_n (rst_n)
 );
 
 blockB uBlockB (
-    .apbReg (apb_uBlockB),
+    .apbReg (apbReg_uBlockB),
     .clk (clk),
     .rst_n (rst_n)
 );

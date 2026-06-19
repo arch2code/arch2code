@@ -10,21 +10,11 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "nestedL6_base.h"
-#include "nestedTopIncludes.h"
 
 SC_MODULE(nestedL6), public blockBase, public nestedL6Base
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("nestedL6_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<nestedL6>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
 
     nestedL6(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

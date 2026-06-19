@@ -439,7 +439,14 @@ def _rewritePostProcess(text, baseBasenames, report, projectYamlPath):
     Rewrites a `postParseRegister.py` reference to `postParseRegisterPorts.py`
     (the Stage 4 script), then strips any entry that duplicates a base script.
     An emptied block is removed entirely; a block that retains genuinely
-    project-specific entries keeps them and is reported for review."""
+    project-specific entries keeps them and is reported for review.
+
+    The block spans the `postProcess:` key line plus every following line that
+    belongs to it — real `- ` entries and any interleaved comment/blank lines —
+    terminating at the next top-level construct (a non-indented, non-comment,
+    non-blank line) or EOF. Trailing blank line(s) before that terminator are
+    the separator and are always left in place, so neither a kept nor a removed
+    block swallows the blank line that follows it."""
     lines = text.splitlines(keepends=True)
     start = None
     for i, line in enumerate(lines):
@@ -450,11 +457,23 @@ def _rewritePostProcess(text, baseBasenames, report, projectYamlPath):
     if start is None:
         return text
 
+    # Scan the whole block. `contentEnd` advances only past entry/comment lines
+    # so trailing blank separators are excluded from the spliced-out region.
     end = start + 1
+    contentEnd = start + 1
     items = []
-    while end < len(lines) and lines[end].lstrip().startswith("- "):
-        items.append(lines[end])
+    while end < len(lines):
+        line = lines[end]
+        stripped = line.strip()
+        isBlank = stripped == ""
+        isComment = stripped.startswith("#")
+        if not isBlank and not isComment and not line[:1].isspace():
+            break
+        if stripped.startswith("- "):
+            items.append(line)
         end += 1
+        if not isBlank:
+            contentEnd = end
 
     kept = []
     rewritten = False
@@ -488,7 +507,7 @@ def _rewritePostProcess(text, baseBasenames, report, projectYamlPath):
             "removed postProcess: override (only base-script duplicates remained)"))
         block = []
 
-    return "".join(lines[:start] + block + lines[end:])
+    return "".join(lines[:start] + block + lines[contentEnd:])
 
 
 def _appendPolicySections(text, instGroups, addrObjects):

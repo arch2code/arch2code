@@ -1,3 +1,4 @@
+yamlFormat: 2
 # Example project file that defines project level information
 
 
@@ -9,7 +10,6 @@ projectName: apbDecode
 projectFiles:
   - apbDecode.yaml
 
-addressControl: apbDecodeAddress.yaml
 
 topInstance: uTop
 dirs: # this is list of locations that can be referenced as base path in fileMap section
@@ -42,5 +42,12 @@ fileGeneration:
   # standard copyright statement to be added to all generated files - change to suite your company
   fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
   regBlockNaming: {instancePrefix: 'u', blockSuffix: 'Regs'} # naming convention for register handler blocks - instancePrefix is prefix for instance names, blockSuffix is suffix for block names
-postProcess:
-  - $a2c/config/postParseRegister.py
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true

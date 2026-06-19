@@ -71,6 +71,9 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor).
+void force_link_someRapper();
 // GENERATED_CODE_END
 
 #endif //SOMERAPPER_BASE_H

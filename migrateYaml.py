@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""Unified YAML migration orchestrator — the `make migrate` driver.
+
+Brings a pre-`yamlFormat: 2` arch2code project up to the current authoring
+format and stamps the sentinel once the result is format-2 clean. It is the
+single command the `projectCreate` gate names when it stops an un-migrated
+project.
+
+The orchestrator is standalone on purpose: a pre-migration project cannot pass
+the `projectCreate` yamlFormat gate, so the migrator must run WITHOUT opening
+the database. It reads and rewrites YAML as text, exactly as its two phase
+libraries do; it never invokes `arch2code.py`.
+
+    migrateYaml.py [--write] <project.yaml>
+
+Three ordered phases run over the project's YAML file set (the project.yaml
+`projectFiles:` entries plus their `include:` chains):
+
+  Phase A  eval Python -> SV subset     (pysrc.evalPyToSv.convertEvalsInFile)
+  Phase B  addressControl -> per-block  (pysrc.migrateAddressControl)
+  Phase C  stamp yamlFormat: 2          (only when A and B leave no manual work)
+
+Default is dry-run: the full combined report prints and nothing on disk
+changes. `--write` applies the edits. A project already carrying
+`yamlFormat: 2` short-circuits to "already migrated" — no phases run.
+
+Phase C writes the single top-level `yamlFormat: 2` only when Phase A reports
+no NEEDS_MANUAL eval rows and Phase B reports `clean` (its `clean` property is
+true only when no manual TODO remains and the `addressControl:` pointer has
+been removed). If either phase leaves manual work, the checklist prints and the
+sentinel is not written, so the gate keeps failing until the project is
+genuinely clean.
+"""
+
+import argparse
+import os
+import sys
+from dataclasses import dataclass, field
+
+import yaml
+
+from pysrc.evalPyToSv import convertEvalsInFile
+from pysrc.migrateAddressControl import (
+    migrateAddressControlInProject,
+    _projectFileSet,
+)
+from pysrc.processYaml import CURRENT_YAML_FORMAT
+
+
+@dataclass
+class MigrateResult:
+    projectYaml: str
+    alreadyMigrated: bool = False
+    evalReports: list = field(default_factory=list)  # list[evalPyToSv.FileReport]
+    addressReport: object = None                      # migrateAddressControl.MigrationReport
+    stamped: bool = False
+    wrote: bool = False
+
+    @property
+    def evalManual(self):
+        """(path, EvalRow) pairs for every NEEDS_MANUAL eval row across the file
+        set. A non-empty list blocks the stamp."""
+        return [(r.path, row) for r in self.evalReports for row in r.manual]
+
+    @property
+    def stampEligible(self):
+        """True when nothing is left for the user to fix by hand: no manual eval
+        rows and a clean Phase B report. Phase B's `clean` already encodes that
+        no address TODO remains and the `addressControl:` pointer was removed."""
+        if self.addressReport is None:
+            return False
+        return not self.evalManual and self.addressReport.clean
+
+
+def migrateProject(projectYamlPath, write=False):
+    """Run the three migration phases over one project and return a MigrateResult.
+
+    Idempotent: a project already stamped `yamlFormat: CURRENT_YAML_FORMAT`
+    short-circuits with no phases run and no writes. When `write` is true the
+    phase edits are applied and the sentinel is stamped only when the project is
+    format-2 clean.
+    """
+    projectYamlPath = os.path.abspath(projectYamlPath)
+    result = MigrateResult(projectYaml=projectYamlPath)
+
+    projectData = yaml.safe_load(_read(projectYamlPath)) or {}
+    if projectData.get("yamlFormat") == CURRENT_YAML_FORMAT:
+        result.alreadyMigrated = True
+        return result
+
+    projectDir = os.path.dirname(projectYamlPath)
+    files = _projectFileSet(projectDir, projectData)
+
+    # Phase A — convert Python-syntax evals to the SV subset in each project
+    # file. CONVERTED rows are rewritten under --write; NEEDS_MANUAL rows are
+    # reported and block the stamp.
+    for path in files:
+        result.evalReports.append(convertEvalsInFile(path, write=write))
+
+    # Phase B — convert legacy addressControl to the per-block schema. Reads the
+    # files fresh from disk, so it sees Phase A's rewrites.
+    result.addressReport = migrateAddressControlInProject(projectYamlPath,
+                                                          write=write)
+
+    # Phase C — stamp the sentinel only when both phases are clean.
+    if write and result.stampEligible:
+        _stamp(projectYamlPath)
+        result.stamped = True
+
+    result.wrote = write and (
+        any(r.written for r in result.evalReports)
+        or result.addressReport.written
+        or result.stamped
+    )
+    return result
+
+
+def _stamp(projectYamlPath):
+    """Write the single top-level `yamlFormat:` sentinel at the head of
+    project.yaml. Called only when the project is otherwise format-2 clean and
+    not already stamped, so there is never a duplicate sentinel."""
+    text = _read(projectYamlPath)
+    _write(projectYamlPath, f"yamlFormat: {CURRENT_YAML_FORMAT}\n" + text)
+
+
+# ---------------------------------------------------------------------------
+# Report rendering
+# ---------------------------------------------------------------------------
+
+def renderReport(result, write):
+    """Render the full combined dry-run / write report as text."""
+    lines = [f"=== YAML migration: {result.projectYaml} ==="]
+    if result.alreadyMigrated:
+        lines.append(f"Already migrated (yamlFormat: {CURRENT_YAML_FORMAT}); "
+                     f"nothing to do.")
+        return "\n".join(lines)
+
+    _renderPhaseA(result, lines)
+    _renderPhaseB(result, lines)
+    _renderPhaseC(result, write, lines)
+    return "\n".join(lines)
+
+
+def _renderPhaseA(result, lines):
+    lines.append("")
+    lines.append("Phase A - eval Python -> SV subset")
+    anyRows = False
+    for rep in result.evalReports:
+        converted = rep.converted
+        manual = rep.manual
+        if not converted and not manual:
+            continue
+        anyRows = True
+        lines.append(f"  {os.path.basename(rep.path)}:")
+        for row in converted:
+            lines.append(f"    line {row.line}: CONVERTED    "
+                         f"{row.original}  ->  {row.result.expr}")
+        for row in manual:
+            lines.append(f"    line {row.line}: NEEDS_MANUAL  "
+                         f"{row.original}   ({row.result.reason})")
+    if not anyRows:
+        lines.append("  no Python-syntax eval rows; all already in the SV subset")
+
+
+def _renderPhaseB(result, lines):
+    lines.append("")
+    lines.append("Phase B - addressControl -> per-block schema")
+    report = result.addressReport
+    if not report.applied and not report.manual:
+        lines.append("  no legacy addressControl: pointer; nothing to do")
+        return
+    if report.applied:
+        lines.append("  applied:")
+        for item in report.applied:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+    if report.manual:
+        lines.append("  manual TODO:")
+        for item in report.manual:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+
+
+def _renderPhaseC(result, write, lines):
+    lines.append("")
+    lines.append(f"Phase C - stamp yamlFormat: {CURRENT_YAML_FORMAT}")
+    if result.stampEligible:
+        if write and result.stamped:
+            lines.append(f"  STAMPED yamlFormat: {CURRENT_YAML_FORMAT}")
+        else:
+            lines.append(f"  WOULD STAMP yamlFormat: {CURRENT_YAML_FORMAT} "
+                         f"(dry-run; re-run with --write to apply)")
+        return
+    lines.append("  BLOCKED - project is not yet format-2 clean:")
+    for path, row in result.evalManual:
+        lines.append(f"    - {os.path.basename(path)}:{row.line} eval needs "
+                     f"manual conversion: {row.original}")
+    for item in result.addressReport.manual:
+        lines.append(f"    - {item.location} {item.message}")
+    lines.append("  Resolve the items above (see address-migration.md for the "
+                 "address TODOs), then re-run.")
+
+
+# ---------------------------------------------------------------------------
+# Small text helpers
+# ---------------------------------------------------------------------------
+
+def _read(path):
+    with open(path, "r") as fh:
+        return fh.read()
+
+
+def _write(path, text):
+    with open(path, "w") as fh:
+        fh.write(text)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Migrate an arch2code project's user YAML to the current "
+                    "authoring format (yamlFormat: %d)." % CURRENT_YAML_FORMAT)
+    parser.add_argument("--write", action="store_true",
+                        help="Apply the edits. Without it the tool is a dry-run "
+                             "that prints the report and changes nothing.")
+    parser.add_argument("projectYaml", help="Path to the project's project.yaml.")
+    args = parser.parse_args(argv)
+
+    result = migrateProject(args.projectYaml, write=args.write)
+    print(renderReport(result, args.write))
+
+    # Dry-run and an already-migrated project always succeed. A --write run that
+    # could not stamp (manual work remains) fails so `make migrate` signals the
+    # project is not yet buildable.
+    if args.write and not result.alreadyMigrated and not result.stamped:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

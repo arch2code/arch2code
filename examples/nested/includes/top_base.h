@@ -53,5 +53,8 @@ public:
     };
 };
 
+
+// Force-link function (active modules-mode anchor).
+void force_link_top();
 // GENERATED_CODE_END
 #endif //TOP_BASE_H

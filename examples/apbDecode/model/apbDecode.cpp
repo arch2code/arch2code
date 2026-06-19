@@ -6,7 +6,17 @@
 #include "apbDecode.h"
 SC_HAS_PROCESS(apbDecode);
 
-apbDecode::registerBlock apbDecode::registerBlock_; //register the block with the factory
+// === Block factory registration (apbDecode) ===
+void force_link_apbDecode() {}
+
+void register_apbDecode_variants() {
+    instanceFactory::registerBlock("apbDecode_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<apbDecode>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _apbDecode_registered = (register_apbDecode_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 void apbDecode::routerDecode(void) //handle apb routing for register
 {
@@ -19,8 +29,8 @@ apbDecode::apbDecode(sc_module_name blockName, const char * variant, blockBaseMo
         ,blockBase("apbDecode", name(), bbMode)
         ,apbDecodeBase(name(), variant)
         ,decoder(16, 24, apbReg, {
-            &apb_uBlockA,
-            &apb_uBlockB})
+            &apbReg_uBlockA,
+            &apbReg_uBlockB})
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
