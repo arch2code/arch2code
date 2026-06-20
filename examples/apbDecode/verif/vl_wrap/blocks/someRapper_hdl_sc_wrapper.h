@@ -80,7 +80,7 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        apbReg_bfm.if_p(apbReg);
+        apbReg_bfm.if_p(this->apbReg);
         apbReg_bfm.hdl_if_p(apbReg_hdl_if);
         apbReg_bfm.clk(clk);
         apbReg_bfm.rst_n(rst_n);

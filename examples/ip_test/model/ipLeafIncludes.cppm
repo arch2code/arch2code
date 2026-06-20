@@ -76,7 +76,7 @@ struct ipLeafMemSt {
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (ipLeafDataT<Config>)((_src) & ((1ULL << Config::LEAF_DATA_WIDTH) - 1));
+        data = (ipLeafDataT<Config>)((_src) & ((1ULL << (Config::LEAF_DATA_WIDTH)) - 1));
     }
     inline sc_bv<ipLeafMemSt<Config>::_bitWidth> sc_pack(void) const
     {
@@ -138,7 +138,7 @@ struct ipLeafMemAddrSt {
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipLeafMemAddrT<Config>)((_src) & ((1ULL << clog2(Config::LEAF_MEM_DEPTH)) - 1));
+        address = (ipLeafMemAddrT<Config>)((_src) & ((1ULL << (clog2(Config::LEAF_MEM_DEPTH))) - 1));
     }
     inline sc_bv<ipLeafMemAddrSt<Config>::_bitWidth> sc_pack(void) const
     {

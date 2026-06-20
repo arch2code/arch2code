@@ -10,7 +10,7 @@ digraph {
 		subgraph "cluster_mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockA/mixed.yaml" {
 			graph [color="" label=blockA style="" tooltip="The block named A"]
 			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockA/mixed.yaml" [label=blockA style=invis]
-			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockA/mixed.yaml.uBlockARegs/_global" [label=blockARegs fillcolor=white style=filled tooltip="blockA Register handler"]
+			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockA/mixed.yaml.uBlockARegs/mixed.yaml" [label=blockARegs fillcolor=white style=filled tooltip="blockA Register handler"]
 		}
 		"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uAPBDecode/mixed.yaml" [label=apbDecode fillcolor=pink style=filled tooltip="The block to decode apb addresses"]
 		"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockC/mixed.yaml" [label=blockC fillcolor=orange style=filled tooltip="The block named C"]
@@ -22,7 +22,7 @@ digraph {
 			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uBlockF0/mixed.yaml" [label=blockF fillcolor=white style=filled tooltip="The block named F"]
 			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uBlockF1/mixed.yaml" [label=blockF fillcolor=white style=filled tooltip="The block named F"]
 			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uThreeCs/mixed.yaml" [label=threeCs fillcolor=green style=filled tooltip="A block that contains three copies of blockC"]
-			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uBlockBRegs/_global" [label=blockBRegs fillcolor=white style=filled tooltip="blockB Register handler"]
+			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uBlockBRegs/mixed.yaml" [label=blockBRegs fillcolor=white style=filled tooltip="blockB Register handler"]
 		}
 	}
 	"mixed_tb/mixed.yaml.uCPU/mixed.yaml" [label=cpu fillcolor=pink style=filled tooltip="A RISC-V CPU"]

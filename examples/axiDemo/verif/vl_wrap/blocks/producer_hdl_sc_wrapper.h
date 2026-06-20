@@ -228,52 +228,52 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        axiRd0_bfm.if_p(axiRd0);
+        axiRd0_bfm.if_p(this->axiRd0);
         axiRd0_bfm.hdl_if_p(axiRd0_hdl_if);
         axiRd0_bfm.clk(clk);
         axiRd0_bfm.rst_n(rst_n);
 
-        axiRd1_bfm.if_p(axiRd1);
+        axiRd1_bfm.if_p(this->axiRd1);
         axiRd1_bfm.hdl_if_p(axiRd1_hdl_if);
         axiRd1_bfm.clk(clk);
         axiRd1_bfm.rst_n(rst_n);
 
-        axiRd2_bfm.if_p(axiRd2);
+        axiRd2_bfm.if_p(this->axiRd2);
         axiRd2_bfm.hdl_if_p(axiRd2_hdl_if);
         axiRd2_bfm.clk(clk);
         axiRd2_bfm.rst_n(rst_n);
 
-        axiRd3_bfm.if_p(axiRd3);
+        axiRd3_bfm.if_p(this->axiRd3);
         axiRd3_bfm.hdl_if_p(axiRd3_hdl_if);
         axiRd3_bfm.clk(clk);
         axiRd3_bfm.rst_n(rst_n);
 
-        axiWr0_bfm.if_p(axiWr0);
+        axiWr0_bfm.if_p(this->axiWr0);
         axiWr0_bfm.hdl_if_p(axiWr0_hdl_if);
         axiWr0_bfm.clk(clk);
         axiWr0_bfm.rst_n(rst_n);
 
-        axiWr1_bfm.if_p(axiWr1);
+        axiWr1_bfm.if_p(this->axiWr1);
         axiWr1_bfm.hdl_if_p(axiWr1_hdl_if);
         axiWr1_bfm.clk(clk);
         axiWr1_bfm.rst_n(rst_n);
 
-        axiWr2_bfm.if_p(axiWr2);
+        axiWr2_bfm.if_p(this->axiWr2);
         axiWr2_bfm.hdl_if_p(axiWr2_hdl_if);
         axiWr2_bfm.clk(clk);
         axiWr2_bfm.rst_n(rst_n);
 
-        axiWr3_bfm.if_p(axiWr3);
+        axiWr3_bfm.if_p(this->axiWr3);
         axiWr3_bfm.hdl_if_p(axiWr3_hdl_if);
         axiWr3_bfm.clk(clk);
         axiWr3_bfm.rst_n(rst_n);
 
-        axiStr0_bfm.if_p(axiStr0);
+        axiStr0_bfm.if_p(this->axiStr0);
         axiStr0_bfm.hdl_if_p(axiStr0_hdl_if);
         axiStr0_bfm.clk(clk);
         axiStr0_bfm.rst_n(rst_n);
 
-        axiStr1_bfm.if_p(axiStr1);
+        axiStr1_bfm.if_p(this->axiStr1);
         axiStr1_bfm.hdl_if_p(axiStr1_hdl_if);
         axiStr1_bfm.clk(clk);
         axiStr1_bfm.rst_n(rst_n);

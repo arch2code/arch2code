@@ -254,7 +254,7 @@ struct ipCfgSt {
         memset((uint64_t *)&threshold, 0, sizeof(threshold));
         unpack_bits((uint64_t *)&threshold, 0, (uint64_t *)&_src, _pos, Config::IP_DATA_WIDTH);
         _pos += Config::IP_DATA_WIDTH;
-        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << 2) - 1));
+        mode = (ipModeT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (2)) - 1));
         _pos += 2;
         enable = (enableT)((_src[ _pos >> 6 ] >> (_pos & 63)) & 1);
     }
@@ -425,7 +425,7 @@ struct ipMemAddrSt {
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipMemAddrT<Config>)((_src) & ((1ULL << clog2(Config::IP_MEM_DEPTH)) - 1));
+        address = (ipMemAddrT<Config>)((_src) & ((1ULL << (clog2(Config::IP_MEM_DEPTH))) - 1));
     }
     inline sc_bv<ipMemAddrSt<Config>::_bitWidth> sc_pack(void) const
     {
@@ -583,7 +583,7 @@ struct ipDerivedMemAddrSt {
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipDerivedMemAddrT<Config>)((_src) & ((1ULL << clog2(Config::IP_MEM_DEPTH_X4)) - 1));
+        address = (ipDerivedMemAddrT<Config>)((_src) & ((1ULL << (clog2(Config::IP_MEM_DEPTH_X4))) - 1));
     }
     inline sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> sc_pack(void) const
     {
@@ -840,8 +840,8 @@ struct ipFixedSignedSt {
         memset(&_ret, 0, ipFixedSignedSt::_byteWidth);
         _ret = lane;
         _ret |= (uint32_t)magnitude << (9 & 31);
-        _ret |= ((uint32_t)(offset & ((1ULL << 4) - 1))) << (14 & 31);
-        _ret |= ((uint32_t)(tiny & ((1ULL << 3) - 1))) << (18 & 31);
+        _ret |= ((uint32_t)(offset & ((1ULL << (4)) - 1))) << (14 & 31);
+        _ret |= ((uint32_t)(tiny & ((1ULL << (3)) - 1))) << (18 & 31);
     }
     inline void unpack(const _packedSt &_src)
     {
@@ -854,13 +854,13 @@ struct ipFixedSignedSt {
         _pos += 4;
         // Sign extension for signed type
         if (offset & (1ULL << (4 - 1))) {
-            offset = (ipSignedNibbleT)(offset | ~((1ULL << 4) - 1));
+            offset = (ipSignedNibbleT)(offset | ~((1ULL << (4)) - 1));
         }
         tiny = (ipSigned3T)((_src >> (_pos & 31)) & ((1ULL << 3) - 1));
         _pos += 3;
         // Sign extension for signed type
         if (tiny & (1ULL << (3 - 1))) {
-            tiny = (ipSigned3T)(tiny | ~((1ULL << 3) - 1));
+            tiny = (ipSigned3T)(tiny | ~((1ULL << (3)) - 1));
         }
     }
     inline sc_bv<ipFixedSignedSt::_bitWidth> sc_pack(void) const
@@ -879,12 +879,12 @@ struct ipFixedSignedSt {
         offset = (ipSignedNibbleT) packed_data.range(17, 14).to_uint64();
         // Sign extension for signed type
         if (offset & (1ULL << (4 - 1))) {
-            offset = (ipSignedNibbleT)(offset | ~((1ULL << 4) - 1));
+            offset = (ipSignedNibbleT)(offset | ~((1ULL << (4)) - 1));
         }
         tiny = (ipSigned3T) packed_data.range(20, 18).to_uint64();
         // Sign extension for signed type
         if (tiny & (1ULL << (3 - 1))) {
-            tiny = (ipSigned3T)(tiny | ~((1ULL << 3) - 1));
+            tiny = (ipSigned3T)(tiny | ~((1ULL << (3)) - 1));
         }
     }
     explicit ipFixedSignedSt(sc_bv<ipFixedSignedSt::_bitWidth> packed_data) { sc_unpack(packed_data); }

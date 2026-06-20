@@ -9,24 +9,24 @@ module apbDecode_hdl_sv_wrapper
     import apbDecode_package::*;
 (
     // apb_if.src
-    output bit [31:0] apb_uBlockA_paddr,
-    output bit apb_uBlockA_psel,
-    output bit apb_uBlockA_penable,
-    output bit apb_uBlockA_pwrite,
-    output bit [31:0] apb_uBlockA_pwdata,
-    input bit apb_uBlockA_pready,
-    input bit [31:0] apb_uBlockA_prdata,
-    input bit apb_uBlockA_pslverr,
+    output bit [31:0] apbReg_uBlockA_paddr,
+    output bit apbReg_uBlockA_psel,
+    output bit apbReg_uBlockA_penable,
+    output bit apbReg_uBlockA_pwrite,
+    output bit [31:0] apbReg_uBlockA_pwdata,
+    input bit apbReg_uBlockA_pready,
+    input bit [31:0] apbReg_uBlockA_prdata,
+    input bit apbReg_uBlockA_pslverr,
 
     // apb_if.src
-    output bit [31:0] apb_uBlockB_paddr,
-    output bit apb_uBlockB_psel,
-    output bit apb_uBlockB_penable,
-    output bit apb_uBlockB_pwrite,
-    output bit [31:0] apb_uBlockB_pwdata,
-    input bit apb_uBlockB_pready,
-    input bit [31:0] apb_uBlockB_prdata,
-    input bit apb_uBlockB_pslverr,
+    output bit [31:0] apbReg_uBlockB_paddr,
+    output bit apbReg_uBlockB_psel,
+    output bit apbReg_uBlockB_penable,
+    output bit apbReg_uBlockB_pwrite,
+    output bit [31:0] apbReg_uBlockB_pwdata,
+    input bit apbReg_uBlockB_pready,
+    input bit [31:0] apbReg_uBlockB_prdata,
+    input bit apbReg_uBlockB_pslverr,
 
     // apb_if.dst
     input bit [31:0] apbReg_paddr,
@@ -42,28 +42,28 @@ module apbDecode_hdl_sv_wrapper
     input rst_n
 );
     // apb_if.src
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBlockA();
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBlockA();
 
-    assign #0 apb_uBlockA_paddr = apb_uBlockA.paddr;
-    assign #0 apb_uBlockA_psel = apb_uBlockA.psel;
-    assign #0 apb_uBlockA_penable = apb_uBlockA.penable;
-    assign #0 apb_uBlockA_pwrite = apb_uBlockA.pwrite;
-    assign #0 apb_uBlockA_pwdata = apb_uBlockA.pwdata;
-    assign #0 apb_uBlockA.pready = apb_uBlockA_pready;
-    assign #0 apb_uBlockA.prdata = apb_uBlockA_prdata;
-    assign #0 apb_uBlockA.pslverr = apb_uBlockA_pslverr;
+    assign #0 apbReg_uBlockA_paddr = apbReg_uBlockA.paddr;
+    assign #0 apbReg_uBlockA_psel = apbReg_uBlockA.psel;
+    assign #0 apbReg_uBlockA_penable = apbReg_uBlockA.penable;
+    assign #0 apbReg_uBlockA_pwrite = apbReg_uBlockA.pwrite;
+    assign #0 apbReg_uBlockA_pwdata = apbReg_uBlockA.pwdata;
+    assign #0 apbReg_uBlockA.pready = apbReg_uBlockA_pready;
+    assign #0 apbReg_uBlockA.prdata = apbReg_uBlockA_prdata;
+    assign #0 apbReg_uBlockA.pslverr = apbReg_uBlockA_pslverr;
 
     // apb_if.src
-    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apb_uBlockB();
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBlockB();
 
-    assign #0 apb_uBlockB_paddr = apb_uBlockB.paddr;
-    assign #0 apb_uBlockB_psel = apb_uBlockB.psel;
-    assign #0 apb_uBlockB_penable = apb_uBlockB.penable;
-    assign #0 apb_uBlockB_pwrite = apb_uBlockB.pwrite;
-    assign #0 apb_uBlockB_pwdata = apb_uBlockB.pwdata;
-    assign #0 apb_uBlockB.pready = apb_uBlockB_pready;
-    assign #0 apb_uBlockB.prdata = apb_uBlockB_prdata;
-    assign #0 apb_uBlockB.pslverr = apb_uBlockB_pslverr;
+    assign #0 apbReg_uBlockB_paddr = apbReg_uBlockB.paddr;
+    assign #0 apbReg_uBlockB_psel = apbReg_uBlockB.psel;
+    assign #0 apbReg_uBlockB_penable = apbReg_uBlockB.penable;
+    assign #0 apbReg_uBlockB_pwrite = apbReg_uBlockB.pwrite;
+    assign #0 apbReg_uBlockB_pwdata = apbReg_uBlockB.pwdata;
+    assign #0 apbReg_uBlockB.pready = apbReg_uBlockB_pready;
+    assign #0 apbReg_uBlockB.prdata = apbReg_uBlockB_prdata;
+    assign #0 apbReg_uBlockB.pslverr = apbReg_uBlockB_pslverr;
 
     // apb_if.dst
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg();
@@ -78,8 +78,8 @@ module apbDecode_hdl_sv_wrapper
     assign #0 apbReg_pslverr = apbReg.pslverr;
 
     apbDecode dut (
-        .apb_uBlockA(apb_uBlockA), // apb_if.src
-        .apb_uBlockB(apb_uBlockB), // apb_if.src
+        .apbReg_uBlockA(apbReg_uBlockA), // apb_if.src
+        .apbReg_uBlockB(apbReg_uBlockB), // apb_if.src
         .apbReg(apbReg), // apb_if.dst
         .clk(clk),
         .rst_n(rst_n)

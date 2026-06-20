@@ -86,7 +86,7 @@ struct srcOut0St {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (srcOut0DataT<Config>)((_src >> (_pos & 63)) & ((1ULL << Config::OUT0_DATA_WIDTH) - 1));
+        data = (srcOut0DataT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::OUT0_DATA_WIDTH)) - 1));
         _pos += Config::OUT0_DATA_WIDTH;
         marker = (srcMarkerT)((_src >> (_pos & 63)) & 1);
     }

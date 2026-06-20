@@ -51,8 +51,8 @@ public:
 
     sc_clock clk;
 
-    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apb_uBlockA_bfm;
-    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apb_uBlockB_bfm;
+    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uBlockA_bfm;
+    apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uBlockB_bfm;
     apb_dst_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_bfm;
 
     SC_HAS_PROCESS (apbDecode_hdl_sc_wrapper);
@@ -62,8 +62,8 @@ public:
         blockBase("apbDecode_hdl_sc_wrapper", name(), bbMode),
         apbDecodeBase(name(), variant),
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
-        apb_uBlockA_bfm("apb_uBlockA_bfm"),
-        apb_uBlockB_bfm("apb_uBlockB_bfm"),
+        apbReg_uBlockA_bfm("apbReg_uBlockA_bfm"),
+        apbReg_uBlockB_bfm("apbReg_uBlockB_bfm"),
         apbReg_bfm("apbReg_bfm"),
         rst_n(0)
     {
@@ -73,22 +73,22 @@ public:
         dut_hdl = new VapbDecode_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->apb_uBlockA_paddr(apb_uBlockA_hdl_if.paddr);
-        dut_hdl->apb_uBlockA_psel(apb_uBlockA_hdl_if.psel);
-        dut_hdl->apb_uBlockA_penable(apb_uBlockA_hdl_if.penable);
-        dut_hdl->apb_uBlockA_pwrite(apb_uBlockA_hdl_if.pwrite);
-        dut_hdl->apb_uBlockA_pwdata(apb_uBlockA_hdl_if.pwdata);
-        dut_hdl->apb_uBlockA_pready(apb_uBlockA_hdl_if.pready);
-        dut_hdl->apb_uBlockA_prdata(apb_uBlockA_hdl_if.prdata);
-        dut_hdl->apb_uBlockA_pslverr(apb_uBlockA_hdl_if.pslverr);
-        dut_hdl->apb_uBlockB_paddr(apb_uBlockB_hdl_if.paddr);
-        dut_hdl->apb_uBlockB_psel(apb_uBlockB_hdl_if.psel);
-        dut_hdl->apb_uBlockB_penable(apb_uBlockB_hdl_if.penable);
-        dut_hdl->apb_uBlockB_pwrite(apb_uBlockB_hdl_if.pwrite);
-        dut_hdl->apb_uBlockB_pwdata(apb_uBlockB_hdl_if.pwdata);
-        dut_hdl->apb_uBlockB_pready(apb_uBlockB_hdl_if.pready);
-        dut_hdl->apb_uBlockB_prdata(apb_uBlockB_hdl_if.prdata);
-        dut_hdl->apb_uBlockB_pslverr(apb_uBlockB_hdl_if.pslverr);
+        dut_hdl->apbReg_uBlockA_paddr(apbReg_uBlockA_hdl_if.paddr);
+        dut_hdl->apbReg_uBlockA_psel(apbReg_uBlockA_hdl_if.psel);
+        dut_hdl->apbReg_uBlockA_penable(apbReg_uBlockA_hdl_if.penable);
+        dut_hdl->apbReg_uBlockA_pwrite(apbReg_uBlockA_hdl_if.pwrite);
+        dut_hdl->apbReg_uBlockA_pwdata(apbReg_uBlockA_hdl_if.pwdata);
+        dut_hdl->apbReg_uBlockA_pready(apbReg_uBlockA_hdl_if.pready);
+        dut_hdl->apbReg_uBlockA_prdata(apbReg_uBlockA_hdl_if.prdata);
+        dut_hdl->apbReg_uBlockA_pslverr(apbReg_uBlockA_hdl_if.pslverr);
+        dut_hdl->apbReg_uBlockB_paddr(apbReg_uBlockB_hdl_if.paddr);
+        dut_hdl->apbReg_uBlockB_psel(apbReg_uBlockB_hdl_if.psel);
+        dut_hdl->apbReg_uBlockB_penable(apbReg_uBlockB_hdl_if.penable);
+        dut_hdl->apbReg_uBlockB_pwrite(apbReg_uBlockB_hdl_if.pwrite);
+        dut_hdl->apbReg_uBlockB_pwdata(apbReg_uBlockB_hdl_if.pwdata);
+        dut_hdl->apbReg_uBlockB_pready(apbReg_uBlockB_hdl_if.pready);
+        dut_hdl->apbReg_uBlockB_prdata(apbReg_uBlockB_hdl_if.prdata);
+        dut_hdl->apbReg_uBlockB_pslverr(apbReg_uBlockB_hdl_if.pslverr);
         dut_hdl->apbReg_paddr(apbReg_hdl_if.paddr);
         dut_hdl->apbReg_psel(apbReg_hdl_if.psel);
         dut_hdl->apbReg_penable(apbReg_hdl_if.penable);
@@ -100,17 +100,17 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        apb_uBlockA_bfm.if_p(apb_uBlockA);
-        apb_uBlockA_bfm.hdl_if_p(apb_uBlockA_hdl_if);
-        apb_uBlockA_bfm.clk(clk);
-        apb_uBlockA_bfm.rst_n(rst_n);
+        apbReg_uBlockA_bfm.if_p(this->apbReg_uBlockA);
+        apbReg_uBlockA_bfm.hdl_if_p(apbReg_uBlockA_hdl_if);
+        apbReg_uBlockA_bfm.clk(clk);
+        apbReg_uBlockA_bfm.rst_n(rst_n);
 
-        apb_uBlockB_bfm.if_p(apb_uBlockB);
-        apb_uBlockB_bfm.hdl_if_p(apb_uBlockB_hdl_if);
-        apb_uBlockB_bfm.clk(clk);
-        apb_uBlockB_bfm.rst_n(rst_n);
+        apbReg_uBlockB_bfm.if_p(this->apbReg_uBlockB);
+        apbReg_uBlockB_bfm.hdl_if_p(apbReg_uBlockB_hdl_if);
+        apbReg_uBlockB_bfm.clk(clk);
+        apbReg_uBlockB_bfm.rst_n(rst_n);
 
-        apbReg_bfm.if_p(apbReg);
+        apbReg_bfm.if_p(this->apbReg);
         apbReg_bfm.hdl_if_p(apbReg_hdl_if);
         apbReg_bfm.clk(clk);
         apbReg_bfm.rst_n(rst_n);
@@ -131,8 +131,8 @@ public:
 
 private:
 
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apb_uBlockA_hdl_if;
-    apb_hdl_if<sc_bv<32>, sc_bv<32>> apb_uBlockB_hdl_if;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uBlockA_hdl_if;
+    apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_uBlockB_hdl_if;
     apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
 
     sc_signal<bool> rst_n;
