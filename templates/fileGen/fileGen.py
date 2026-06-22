@@ -571,7 +571,7 @@ include_srcTemplate = \
 def include_src(args, prj, data):
     t = TemplateCustom(include_srcTemplate)
     return(t.substitute({
-        'headerName':data["headerName"].replace(".cpp", ".h"),
+        'headerName':data["siblingHeaderName"],
         'context':data["context"],
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
@@ -622,7 +622,7 @@ using namespace fw_ns;
 def includeFW_src(args, prj, data):
     t = TemplateCustom(includeFW_srcTemplate)
     return(t.substitute({
-        'headerName':data["headerName"].replace(".cpp", ".h"),
+        'headerName':data["siblingHeaderName"],
         'context':data["context"],
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 

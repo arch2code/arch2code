@@ -1,6 +1,5 @@
 from pysrc.intf_gen_utils import get_const, wrap_module_namespace
 from templates.systemc.includes import constReference_cpp, typeWidthExpression_cpp
-import os.path
 dataTypeMappings = [
     {'maxSize': 1, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
     {'maxSize': 8, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
@@ -1454,7 +1453,7 @@ def structContainsSignedTypes(structValue, prj, data):
 
 def structTest(args, prj, data):
     out = list()
-    fn = os.path.splitext(os.path.basename(data['context']))[0] + '_structs'
+    fn = data['contextStem'] + '_structs'
     useConfig = args.mode == 'module'
     if args.section == 'testStructsHeader':
         if useConfig:

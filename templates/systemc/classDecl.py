@@ -66,19 +66,12 @@ def render_default(args, prj, data):
 
     for context in data['classIncludeContext']:
         if context in data['includeFiles'].get(fileMapKey, {}):
-            includeName = data["includeFiles"][fileMapKey][context]["baseName"]
             if fileMapKey == 'include_cppm':
-                moduleName = intf_gen_utils.module_name_from_include(includeName)
+                moduleName = intf_gen_utils.cpp_module_name(prj.includeName[context])
                 out.append(f'import {moduleName};')
-                out.append(f'using namespace {intf_gen_utils.namespace_name_from_include(includeName)};')
+                out.append(f'using namespace {intf_gen_utils.cpp_namespace_name(prj.includeName[context])};')
             else:
-                out.append(f'#include "{includeName}"')
-        elif fileMapKey == 'include_cppm' and context in data['includeFiles'].get('include_hdr', {}):
-            # Header-mode fallback: projects that publish only
-            # `include_hdr` entries (no `include_cppm`) still need the
-            # context's struct types reachable from this TU.
-            includeName = data["includeFiles"]['include_hdr'][context]["baseName"]
-            out.append(f'#include "{includeName}"')
+                out.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
     if data['addressDecode']['isApbRouter']:
         out.append(f'#include "apbBusDecode.h"')
 

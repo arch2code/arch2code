@@ -1,4 +1,4 @@
-from pysrc.intf_gen_utils import module_name_from_include, namespace_name_from_include
+from pysrc.intf_gen_utils import cpp_module_name, cpp_namespace_name
 
 # args from generator line
 # prj object
@@ -8,11 +8,7 @@ def render(args, prj, data):
     # to effectively backup
     out = list()
     fileMapKey = _file_map_key(args)
-    # Some legacy generated regions still request retired include maps
-    # (for example include_hdr after a context moved to include_cppm).
-    # Treat the missing map as an empty include set; generation should not
-    # emit diagnostic text into C++ output.
-    out.extend(_include_context_modules(fileMapKey, data))
+    out.extend(_include_context_modules(fileMapKey, prj, data))
     # Include bitTwiddling.h when any type in the accessible contexts uses clog2
     contexts = set(data['includeContext'].keys())
     if fileMapKey != 'include_cppm' and any(t['_context'] in contexts and (t['widthLog2'] != '' or t['widthLog2minus1'] != '')
@@ -31,7 +27,7 @@ def _file_map_key(args):
     return 'include_hdr'
 
 
-def _include_context_modules(fileMapKey, data):
+def _include_context_modules(fileMapKey, prj, data):
     # In C++20 module-interface units (cppm) every `import` must
     # precede any other declaration in the module purview. With more
     # than one imported context the `using namespace` directives must
@@ -41,25 +37,14 @@ def _include_context_modules(fileMapKey, data):
     usings = list()
     others = list()
     fileMap = data['includeFiles'].get(fileMapKey, {})
-    if not fileMap and fileMapKey == 'include_hdr':
-        # Legacy generated headers may still request include_hdr after the
-        # project moved context includes to C++20 module interfaces. The
-        # sibling .h files still exist for non-module compilation paths, so
-        # derive their names from the active include_cppm map.
-        fileMap = {
-            name: {
-                **info,
-                'baseName': info['baseName'].removesuffix('.cppm') + '.h',
-            }
-            for name, info in data['includeFiles'].get('include_cppm', {}).items()
-        }
+    currentContext = data['context']
     for name in data['includeContext']:
         if name and name in fileMap:
-            includeName = fileMap[name]['baseName']
-            if includeName != data['fileNameBase']:
-                if fileMapKey == 'include_cppm':
-                    imports.append(f'import {module_name_from_include(includeName)};')
-                    usings.append(f'using namespace {namespace_name_from_include(includeName)};')
-                else:
-                    others.append(f'#include "{includeName}"')
+            if name == currentContext:
+                continue
+            if fileMapKey == 'include_cppm':
+                imports.append(f'import {cpp_module_name(prj.includeName[name])};')
+                usings.append(f'using namespace {cpp_namespace_name(prj.includeName[name])};')
+            else:
+                others.append(f'#include "{fileMap[name]["baseName"]}"')
     return imports + usings + others

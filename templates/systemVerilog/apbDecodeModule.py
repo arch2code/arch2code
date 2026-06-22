@@ -1,6 +1,5 @@
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pathlib import Path
-from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck, importPackages
+from pysrc.systemVerilogGeneratorHelper import moduleDeclaration, importPackages
 import pysrc.intf_gen_utils as intf_gen_utils
 
 from jinja2 import Template
@@ -28,8 +27,9 @@ def render(args, prj, data):
     indentSize = 4
     indent = ' ' * indentSize
 
-    # Pass in the stem of fileName and the blockName
-    out.append(fileNameBlockCheck(Path(data['fileName']).resolve().stem, data['blockName']))
+    # Module declaration is emitted from the block name; filename/block
+    # consistency is validated by the generator before rendering.
+    out.append(moduleDeclaration(data['blockName']))
 
     # Packages
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']

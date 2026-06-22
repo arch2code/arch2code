@@ -351,21 +351,19 @@ def _resolve_cross_interface_ends(conn_data, prj):
     return conn_data.get('crossInterfaceEnds', []) or []
 
 
-def module_name_from_include(baseName):
-    name = baseName
-    if name.endswith('.cppm'):
-        name = name[:-5]
-    if name.endswith('Includes'):
-        name = name[:-8]
-    return name.replace('-', '_').replace('.', '_')
+def cpp_module_name(includeName):
+    # C++20 module name spelling for a context's project-owned include identity.
+    # The identity is supplied by projectCreate/projectOpen; this helper only
+    # sanitizes it into a legal module-name token.
+    return includeName.replace('-', '_').replace('.', '_')
 
-def namespace_name_from_include(baseName):
-    return f'{module_name_from_include(baseName)}_ns'
+def cpp_namespace_name(includeName):
+    return f'{cpp_module_name(includeName)}_ns'
 
 def wrap_module_namespace(args, data, lines):
     if args.mode != 'module':
         return lines
-    namespaceName = namespace_name_from_include(data['fileNameBase'])
+    namespaceName = cpp_namespace_name(data['contextIncludeName'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
 
 def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):

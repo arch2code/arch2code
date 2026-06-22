@@ -1,4 +1,4 @@
-from pysrc.intf_gen_utils import module_name_from_include
+from pysrc.intf_gen_utils import cpp_module_name
 
 # args from generator line
 # prj object
@@ -20,6 +20,6 @@ def moduleHeader(args, prj, data):
         '#include "q_assert.h"',
         '#include <algorithm>',
         '',
-        f'export module {module_name_from_include(data["fileNameBase"])};',
+        f'export module {cpp_module_name(data["contextIncludeName"])};',
     ]
     return "\n".join(out)

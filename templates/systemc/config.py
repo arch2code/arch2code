@@ -37,8 +37,7 @@ def includeConfig(args, prj, data):
     # emitted here: there is no constant default, so any caller reading
     # them through the legacy default fallback is a usage bug. Per-variant
     # Config structs (below) carry the override values.
-    contextBaseName = data['context'].rsplit('/', 1)[-1].rsplit('.', 1)[0].replace('-', '_')
-    configName = f'{contextBaseName}DefaultConfig'
+    configName = f"{data['contextStem'].replace('-', '_')}DefaultConfig"
     out.append(f"struct {configName} {{")
     defaultSpelling = _configSymSpelling(prj, {value['constant'] for value in params})
     for value in params:

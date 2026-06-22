@@ -986,6 +986,14 @@ class projectOpen:
 
         ret['enums'] = enums
         ret['context'] = context
+        # Language-neutral identity of the context being rendered. Emitters apply
+        # their own spelling: SystemC module/namespace names and the SV package
+        # name come from `contextIncludeName` (the project-owned include identity),
+        # while the legacy default-Config struct name and the structure-test class
+        # name come from `contextStem` (the context file basename), preserving
+        # their existing file-basename source.
+        ret['contextIncludeName'] = self.includeName[context]
+        ret['contextStem'] = os.path.splitext(os.path.basename(context))[0]
         # Per-context Config-header inputs. The view here is what
         # `templates/systemc/includes.py` includeConfig() consumes; the
         # template performs no cross-block walks of `prj.data['blocks']`.
@@ -3849,13 +3857,23 @@ class projectCreate:
                     valid = include in config_contexts
                 if not(smartInclude and not valid):
                     fileName = expandNewModulePath(fileData, includeData['dir'], includeName, includeName, missingDirOk=True)
+                    # Sibling header basename, derived from this file type's own
+                    # ext map (filespec). A source artifact #includes its paired
+                    # header by this name, so templates never reconstruct the
+                    # header from the source filename.
+                    siblingHeaderName = None
+                    if 'hdr' in fileData['ext']:
+                        siblingHeaderName = os.path.basename(fileName + "." + fileData['ext']['hdr'])
                     for ext in fileData['ext']:
                         fileNameExt = fileName + "." + fileData['ext'][ext]
                         baseName = os.path.basename(fileNameExt)
                         expandedType = fileType + "_" + ext
                         if not (os.path.exists(fileNameExt)):
                             printWarning(f"File {fileNameExt} does not exist. run arch2code.py with --newmodule option")
-                        includeFiles.setdefault(expandedType, {})[include] = {'baseName': baseName, 'fileName': fileNameExt}
+                        entry = {'baseName': baseName, 'fileName': fileNameExt}
+                        if ext == 'src' and siblingHeaderName is not None:
+                            entry['siblingHeaderName'] = siblingHeaderName
+                        includeFiles.setdefault(expandedType, {})[include] = entry
 
         self.config.setConfig('INCLUDEFILES', includeFiles)
 

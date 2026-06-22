@@ -181,6 +181,10 @@ class newModule:
                     data['target'] = fileKey
                     data['context'] = context
                     data['headerName'] = baseName
+                    # Paired header basename for source artifacts, derived from
+                    # the file type's ext map in saveIncludeFiles (filespec).
+                    if 'siblingHeaderName' in fileDefinition:
+                        data['siblingHeaderName'] = fileDefinition['siblingHeaderName']
                     data['fileGeneration'] = fileGeneration
                     vars = {'prj': prj.data, 'block': data, 'args': args}
                     newFileContents = self.renderer.render('fileGen', vars)

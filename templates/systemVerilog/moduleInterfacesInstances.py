@@ -1,5 +1,4 @@
-from pathlib import Path
-from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck, importPackages
+from pysrc.systemVerilogGeneratorHelper import moduleDeclaration, importPackages
 from pysrc.processYaml import camelCase
 from templates.systemVerilog.package import parameterizedDeclLines
 import pysrc.intf_gen_utils as intf_gen_utils
@@ -11,8 +10,9 @@ def render(args, prj, data):
     out = []
     indent = ' ' * 4
 
-    # Pass in the stem of fileName and the blockName
-    out.append(fileNameBlockCheck(Path(data['fileName']).resolve().stem, data['blockName']))
+    # Module declaration is emitted from the block name; filename/block
+    # consistency is validated by the generator before rendering.
+    out.append(moduleDeclaration(data['blockName']))
 
     # Packages
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
