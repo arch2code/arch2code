@@ -73,24 +73,36 @@ def _build_fresh_db():
     try:
         _reset_project_create_class_state()
         projectCreate(IP_TEST_PROJECT, db_path)
+    except BaseException:
+        # projectCreate failed (it may sys.exit on YAML errors); drop the
+        # partial database so a failing run leaks nothing into the test dir.
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+        raise
     finally:
         os.chdir(original_cwd)
-    g.db = None
-    g.cur = None
+        g.db = None
+        g.cur = None
     return db_path
 
 
 def _build_temp_project(ip_yaml_edit):
     src_dir = os.path.join(base_dir, 'examples', 'ip_test', 'arch', 'yaml')
     temp_root = tempfile.mkdtemp(prefix='eval_sv_emit_', dir=test_dir)
-    dst_dir = os.path.join(temp_root, 'arch', 'yaml')
-    shutil.copytree(src_dir, dst_dir)
-    ip_yaml = os.path.join(dst_dir, 'ip', 'ip.yaml')
-    with open(ip_yaml, 'r', encoding='utf-8') as f:
-        text = f.read()
-    with open(ip_yaml, 'w', encoding='utf-8') as f:
-        f.write(ip_yaml_edit(text))
-    return temp_root, os.path.join(dst_dir, 'project.yaml')
+    try:
+        dst_dir = os.path.join(temp_root, 'arch', 'yaml')
+        shutil.copytree(src_dir, dst_dir)
+        ip_yaml = os.path.join(dst_dir, 'ip', 'ip.yaml')
+        with open(ip_yaml, 'r', encoding='utf-8') as f:
+            text = f.read()
+        with open(ip_yaml, 'w', encoding='utf-8') as f:
+            f.write(ip_yaml_edit(text))
+        return temp_root, os.path.join(dst_dir, 'project.yaml')
+    except BaseException:
+        # Fixture build failed after mkdtemp; drop the copied tree so a failing
+        # run cannot leak an eval_sv_emit_* directory into the unittest dir.
+        shutil.rmtree(temp_root, ignore_errors=True)
+        raise
 
 
 def _build_fresh_db_from_project(project_yaml):
@@ -99,10 +111,16 @@ def _build_fresh_db_from_project(project_yaml):
     try:
         _reset_project_create_class_state()
         projectCreate(project_yaml, db_path)
+    except BaseException:
+        # projectCreate failed (it may sys.exit on YAML errors); drop the
+        # partial database so a failing run leaks nothing into the test dir.
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+        raise
     finally:
         os.chdir(original_cwd)
-    g.db = None
-    g.cur = None
+        g.db = None
+        g.cur = None
     return db_path
 
 
