@@ -56,7 +56,6 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 
-    test_mixed_structs<mixedDefaultConfig>::test(); // Run the test for structures
     log_.logPrint(std::format("Instance {} test completed.", this->name()), LOG_IMPORTANT );
 
 }

@@ -507,354 +507,77 @@ struct tuser_t2_t {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace axi4sDemo_tb_ns {
-template<typename Config>
+export namespace axi4sDemo_tb_test_ns {
 class test_axi4sDemo_tb_structs {
 public:
     static std::string name(void);
     static void test(void);
+private:
+    template<typename T>
+    static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
+        for(auto pattern : patterns) {
+            typename T::_packedSt packed;
+            memset(&packed, pattern, T::_byteWidth);
+            sc_bv<T::_bitWidth> aInit;
+            sc_bv<T::_bitWidth> aTest;
+            for (int i = 0; i < T::_byteWidth; i++) {
+                int end = std::min((i+1)*8-1, T::_bitWidth-1);
+                aInit.range(end, i*8) = pattern;
+            }
+            T a;
+            a.sc_unpack(aInit);
+            T b;
+            b.unpack(packed);
+            if (!(b == a)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false, sName);
+            }
+            uint64_t test;
+            memset(&test, pattern, 8);
+            b.pack(packed);
+            aTest = a.sc_pack();
+            if (!(aTest == aInit)) {;
+                cout << a.prt();
+                cout << aTest;
+                Q_ASSERT(false, sName);
+            }
+            uint64_t *ptr = (uint64_t *)&packed;
+            uint16_t bitsLeft = T::_bitWidth;
+            do {
+                int bits = std::min((uint16_t)64, bitsLeft);
+                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+                if ((*ptr & mask) != (test & mask)) {;
+                    cout << a.prt();
+                    cout << b.prt();
+                    Q_ASSERT(false, sName);
+                }
+                bitsLeft -= bits;
+                ptr++;
+            } while(bitsLeft > 0);
+        }
+    }
 };
-} // namespace axi4sDemo_tb_ns
+} // namespace axi4sDemo_tb_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace axi4sDemo_tb_ns {
-template<typename Config>
-std::string test_axi4sDemo_tb_structs<Config>::name(void) { return "test_axi4sDemo_tb_structs"; }
-template<typename Config>
-void test_axi4sDemo_tb_structs<Config>::test(void) {
+export namespace axi4sDemo_tb_test_ns {
+using namespace axi4sDemo_tb_ns;
+std::string test_axi4sDemo_tb_structs::name(void) { return "test_axi4sDemo_tb_structs"; }
+void test_axi4sDemo_tb_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
     std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
-    for(auto pattern : patterns) {
-        data_t1_t::_packedSt packed;
-        memset(&packed, pattern, data_t1_t::_byteWidth);
-        sc_bv<data_t1_t::_bitWidth> aInit;
-        sc_bv<data_t1_t::_bitWidth> aTest;
-        for (int i = 0; i < data_t1_t::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, data_t1_t::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        data_t1_t a;
-        a.sc_unpack(aInit);
-        data_t1_t b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"data_t1_t fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"data_t1_t fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = data_t1_t::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"data_t1_t fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        tid_t1_t::_packedSt packed;
-        memset(&packed, pattern, tid_t1_t::_byteWidth);
-        sc_bv<tid_t1_t::_bitWidth> aInit;
-        sc_bv<tid_t1_t::_bitWidth> aTest;
-        for (int i = 0; i < tid_t1_t::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, tid_t1_t::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        tid_t1_t a;
-        a.sc_unpack(aInit);
-        tid_t1_t b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"tid_t1_t fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"tid_t1_t fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = tid_t1_t::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"tid_t1_t fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        tdest_t1_t::_packedSt packed;
-        memset(&packed, pattern, tdest_t1_t::_byteWidth);
-        sc_bv<tdest_t1_t::_bitWidth> aInit;
-        sc_bv<tdest_t1_t::_bitWidth> aTest;
-        for (int i = 0; i < tdest_t1_t::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, tdest_t1_t::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        tdest_t1_t a;
-        a.sc_unpack(aInit);
-        tdest_t1_t b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"tdest_t1_t fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"tdest_t1_t fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = tdest_t1_t::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"tdest_t1_t fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        tuser_t1_t::_packedSt packed;
-        memset(&packed, pattern, tuser_t1_t::_byteWidth);
-        sc_bv<tuser_t1_t::_bitWidth> aInit;
-        sc_bv<tuser_t1_t::_bitWidth> aTest;
-        for (int i = 0; i < tuser_t1_t::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, tuser_t1_t::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        tuser_t1_t a;
-        a.sc_unpack(aInit);
-        tuser_t1_t b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"tuser_t1_t fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"tuser_t1_t fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = tuser_t1_t::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"tuser_t1_t fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        data_t2_t::_packedSt packed;
-        memset(&packed, pattern, data_t2_t::_byteWidth);
-        sc_bv<data_t2_t::_bitWidth> aInit;
-        sc_bv<data_t2_t::_bitWidth> aTest;
-        for (int i = 0; i < data_t2_t::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, data_t2_t::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        data_t2_t a;
-        a.sc_unpack(aInit);
-        data_t2_t b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"data_t2_t fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"data_t2_t fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = data_t2_t::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"data_t2_t fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        tid_t2_t::_packedSt packed;
-        memset(&packed, pattern, tid_t2_t::_byteWidth);
-        sc_bv<tid_t2_t::_bitWidth> aInit;
-        sc_bv<tid_t2_t::_bitWidth> aTest;
-        for (int i = 0; i < tid_t2_t::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, tid_t2_t::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        tid_t2_t a;
-        a.sc_unpack(aInit);
-        tid_t2_t b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"tid_t2_t fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"tid_t2_t fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = tid_t2_t::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"tid_t2_t fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        tdest_t2_t::_packedSt packed;
-        memset(&packed, pattern, tdest_t2_t::_byteWidth);
-        sc_bv<tdest_t2_t::_bitWidth> aInit;
-        sc_bv<tdest_t2_t::_bitWidth> aTest;
-        for (int i = 0; i < tdest_t2_t::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, tdest_t2_t::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        tdest_t2_t a;
-        a.sc_unpack(aInit);
-        tdest_t2_t b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"tdest_t2_t fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"tdest_t2_t fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = tdest_t2_t::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"tdest_t2_t fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        tuser_t2_t::_packedSt packed;
-        memset(&packed, pattern, tuser_t2_t::_byteWidth);
-        sc_bv<tuser_t2_t::_bitWidth> aInit;
-        sc_bv<tuser_t2_t::_bitWidth> aTest;
-        for (int i = 0; i < tuser_t2_t::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, tuser_t2_t::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        tuser_t2_t a;
-        a.sc_unpack(aInit);
-        tuser_t2_t b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"tuser_t2_t fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"tuser_t2_t fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = tuser_t2_t::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"tuser_t2_t fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
+    roundTrip<data_t1_t>("data_t1_t", patterns);
+    roundTrip<tid_t1_t>("tid_t1_t", patterns);
+    roundTrip<tdest_t1_t>("tdest_t1_t", patterns);
+    roundTrip<tuser_t1_t>("tuser_t1_t", patterns);
+    roundTrip<data_t2_t>("data_t2_t", patterns);
+    roundTrip<tid_t2_t>("tid_t2_t", patterns);
+    roundTrip<tdest_t2_t>("tdest_t2_t", patterns);
+    roundTrip<tuser_t2_t>("tuser_t2_t", patterns);
 }
-} // namespace axi4sDemo_tb_ns
+} // namespace axi4sDemo_tb_test_ns
 
 // GENERATED_CODE_END

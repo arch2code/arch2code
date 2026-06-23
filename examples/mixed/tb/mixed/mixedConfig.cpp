@@ -9,6 +9,8 @@
 #include "workerThread.h"
 #include "testController.h"
 
+import mixed;
+
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=tbConfig
 
@@ -30,6 +32,8 @@ public:
 
     bool createTestBench(void) override
     {
+        mixed_test_ns::test_mixed_structs::test();
+
         testController &controller = testController::GetInstance();
         controller.set_test_names({
             "test_mem_hier_blockd_write",

@@ -208,149 +208,72 @@ struct data_st {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace helloWorld_tb_ns {
-template<typename Config>
+export namespace helloWorld_tb_test_ns {
 class test_helloWorld_tb_structs {
 public:
     static std::string name(void);
     static void test(void);
+private:
+    template<typename T>
+    static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
+        for(auto pattern : patterns) {
+            typename T::_packedSt packed;
+            memset(&packed, pattern, T::_byteWidth);
+            sc_bv<T::_bitWidth> aInit;
+            sc_bv<T::_bitWidth> aTest;
+            for (int i = 0; i < T::_byteWidth; i++) {
+                int end = std::min((i+1)*8-1, T::_bitWidth-1);
+                aInit.range(end, i*8) = pattern;
+            }
+            T a;
+            a.sc_unpack(aInit);
+            T b;
+            b.unpack(packed);
+            if (!(b == a)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false, sName);
+            }
+            uint64_t test;
+            memset(&test, pattern, 8);
+            b.pack(packed);
+            aTest = a.sc_pack();
+            if (!(aTest == aInit)) {;
+                cout << a.prt();
+                cout << aTest;
+                Q_ASSERT(false, sName);
+            }
+            uint64_t *ptr = (uint64_t *)&packed;
+            uint16_t bitsLeft = T::_bitWidth;
+            do {
+                int bits = std::min((uint16_t)64, bitsLeft);
+                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+                if ((*ptr & mask) != (test & mask)) {;
+                    cout << a.prt();
+                    cout << b.prt();
+                    Q_ASSERT(false, sName);
+                }
+                bitsLeft -= bits;
+                ptr++;
+            } while(bitsLeft > 0);
+        }
+    }
 };
-} // namespace helloWorld_tb_ns
+} // namespace helloWorld_tb_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace helloWorld_tb_ns {
-template<typename Config>
-std::string test_helloWorld_tb_structs<Config>::name(void) { return "test_helloWorld_tb_structs"; }
-template<typename Config>
-void test_helloWorld_tb_structs<Config>::test(void) {
+export namespace helloWorld_tb_test_ns {
+using namespace helloWorld_tb_ns;
+std::string test_helloWorld_tb_structs::name(void) { return "test_helloWorld_tb_structs"; }
+void test_helloWorld_tb_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
     std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
-    for(auto pattern : patterns) {
-        test_st::_packedSt packed;
-        memset(&packed, pattern, test_st::_byteWidth);
-        sc_bv<test_st::_bitWidth> aInit;
-        sc_bv<test_st::_bitWidth> aTest;
-        for (int i = 0; i < test_st::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, test_st::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        test_st a;
-        a.sc_unpack(aInit);
-        test_st b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"test_st fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"test_st fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = test_st::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"test_st fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        test_no_tracker_st::_packedSt packed;
-        memset(&packed, pattern, test_no_tracker_st::_byteWidth);
-        sc_bv<test_no_tracker_st::_bitWidth> aInit;
-        sc_bv<test_no_tracker_st::_bitWidth> aTest;
-        for (int i = 0; i < test_no_tracker_st::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, test_no_tracker_st::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        test_no_tracker_st a;
-        a.sc_unpack(aInit);
-        test_no_tracker_st b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"test_no_tracker_st fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"test_no_tracker_st fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = test_no_tracker_st::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"test_no_tracker_st fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        data_st::_packedSt packed;
-        memset(&packed, pattern, data_st::_byteWidth);
-        sc_bv<data_st::_bitWidth> aInit;
-        sc_bv<data_st::_bitWidth> aTest;
-        for (int i = 0; i < data_st::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, data_st::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        data_st a;
-        a.sc_unpack(aInit);
-        data_st b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"data_st fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"data_st fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = data_st::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"data_st fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
+    roundTrip<test_st>("test_st", patterns);
+    roundTrip<test_no_tracker_st>("test_no_tracker_st", patterns);
+    roundTrip<data_st>("data_st", patterns);
 }
-} // namespace helloWorld_tb_ns
+} // namespace helloWorld_tb_test_ns
 
 // GENERATED_CODE_END

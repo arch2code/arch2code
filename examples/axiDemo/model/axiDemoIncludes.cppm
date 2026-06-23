@@ -213,149 +213,72 @@ struct axiStrobeSt {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace axiDemo_ns {
-template<typename Config>
+export namespace axiDemo_test_ns {
 class test_axiDemo_structs {
 public:
     static std::string name(void);
     static void test(void);
+private:
+    template<typename T>
+    static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
+        for(auto pattern : patterns) {
+            typename T::_packedSt packed;
+            memset(&packed, pattern, T::_byteWidth);
+            sc_bv<T::_bitWidth> aInit;
+            sc_bv<T::_bitWidth> aTest;
+            for (int i = 0; i < T::_byteWidth; i++) {
+                int end = std::min((i+1)*8-1, T::_bitWidth-1);
+                aInit.range(end, i*8) = pattern;
+            }
+            T a;
+            a.sc_unpack(aInit);
+            T b;
+            b.unpack(packed);
+            if (!(b == a)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false, sName);
+            }
+            uint64_t test;
+            memset(&test, pattern, 8);
+            b.pack(packed);
+            aTest = a.sc_pack();
+            if (!(aTest == aInit)) {;
+                cout << a.prt();
+                cout << aTest;
+                Q_ASSERT(false, sName);
+            }
+            uint64_t *ptr = (uint64_t *)&packed;
+            uint16_t bitsLeft = T::_bitWidth;
+            do {
+                int bits = std::min((uint16_t)64, bitsLeft);
+                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+                if ((*ptr & mask) != (test & mask)) {;
+                    cout << a.prt();
+                    cout << b.prt();
+                    Q_ASSERT(false, sName);
+                }
+                bitsLeft -= bits;
+                ptr++;
+            } while(bitsLeft > 0);
+        }
+    }
 };
-} // namespace axiDemo_ns
+} // namespace axiDemo_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace axiDemo_ns {
-template<typename Config>
-std::string test_axiDemo_structs<Config>::name(void) { return "test_axiDemo_structs"; }
-template<typename Config>
-void test_axiDemo_structs<Config>::test(void) {
+export namespace axiDemo_test_ns {
+using namespace axiDemo_ns;
+std::string test_axiDemo_structs::name(void) { return "test_axiDemo_structs"; }
+void test_axiDemo_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
     std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
-    for(auto pattern : patterns) {
-        axiAddrSt::_packedSt packed;
-        memset(&packed, pattern, axiAddrSt::_byteWidth);
-        sc_bv<axiAddrSt::_bitWidth> aInit;
-        sc_bv<axiAddrSt::_bitWidth> aTest;
-        for (int i = 0; i < axiAddrSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, axiAddrSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        axiAddrSt a;
-        a.sc_unpack(aInit);
-        axiAddrSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"axiAddrSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"axiAddrSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = axiAddrSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"axiAddrSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        axiDataSt::_packedSt packed;
-        memset(&packed, pattern, axiDataSt::_byteWidth);
-        sc_bv<axiDataSt::_bitWidth> aInit;
-        sc_bv<axiDataSt::_bitWidth> aTest;
-        for (int i = 0; i < axiDataSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, axiDataSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        axiDataSt a;
-        a.sc_unpack(aInit);
-        axiDataSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"axiDataSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"axiDataSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = axiDataSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"axiDataSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        axiStrobeSt::_packedSt packed;
-        memset(&packed, pattern, axiStrobeSt::_byteWidth);
-        sc_bv<axiStrobeSt::_bitWidth> aInit;
-        sc_bv<axiStrobeSt::_bitWidth> aTest;
-        for (int i = 0; i < axiStrobeSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, axiStrobeSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        axiStrobeSt a;
-        a.sc_unpack(aInit);
-        axiStrobeSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"axiStrobeSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"axiStrobeSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = axiStrobeSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"axiStrobeSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
+    roundTrip<axiAddrSt>("axiAddrSt", patterns);
+    roundTrip<axiDataSt>("axiDataSt", patterns);
+    roundTrip<axiStrobeSt>("axiStrobeSt", patterns);
 }
-} // namespace axiDemo_ns
+} // namespace axiDemo_test_ns
 
 // GENERATED_CODE_END

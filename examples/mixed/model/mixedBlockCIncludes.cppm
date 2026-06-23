@@ -167,108 +167,71 @@ struct cHeaderSt {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace mixedBlockC_ns {
-template<typename Config>
+export namespace mixedBlockC_test_ns {
 class test_mixedBlockC_structs {
 public:
     static std::string name(void);
     static void test(void);
+private:
+    template<typename T>
+    static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
+        for(auto pattern : patterns) {
+            typename T::_packedSt packed;
+            memset(&packed, pattern, T::_byteWidth);
+            sc_bv<T::_bitWidth> aInit;
+            sc_bv<T::_bitWidth> aTest;
+            for (int i = 0; i < T::_byteWidth; i++) {
+                int end = std::min((i+1)*8-1, T::_bitWidth-1);
+                aInit.range(end, i*8) = pattern;
+            }
+            T a;
+            a.sc_unpack(aInit);
+            T b;
+            b.unpack(packed);
+            if (!(b == a)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false, sName);
+            }
+            uint64_t test;
+            memset(&test, pattern, 8);
+            b.pack(packed);
+            aTest = a.sc_pack();
+            if (!(aTest == aInit)) {;
+                cout << a.prt();
+                cout << aTest;
+                Q_ASSERT(false, sName);
+            }
+            uint64_t *ptr = (uint64_t *)&packed;
+            uint16_t bitsLeft = T::_bitWidth;
+            do {
+                int bits = std::min((uint16_t)64, bitsLeft);
+                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+                if ((*ptr & mask) != (test & mask)) {;
+                    cout << a.prt();
+                    cout << b.prt();
+                    Q_ASSERT(false, sName);
+                }
+                bitsLeft -= bits;
+                ptr++;
+            } while(bitsLeft > 0);
+        }
+    }
 };
-} // namespace mixedBlockC_ns
+} // namespace mixedBlockC_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace mixedBlockC_ns {
-template<typename Config>
-std::string test_mixedBlockC_structs<Config>::name(void) { return "test_mixedBlockC_structs"; }
-template<typename Config>
-void test_mixedBlockC_structs<Config>::test(void) {
+export namespace mixedBlockC_test_ns {
+using namespace mixedBlockC_ns;
+std::string test_mixedBlockC_structs::name(void) { return "test_mixedBlockC_structs"; }
+void test_mixedBlockC_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
     std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
-    for(auto pattern : patterns) {
-        seeSt::_packedSt packed;
-        memset(&packed, pattern, seeSt::_byteWidth);
-        sc_bv<seeSt::_bitWidth> aInit;
-        sc_bv<seeSt::_bitWidth> aTest;
-        for (int i = 0; i < seeSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, seeSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        seeSt a;
-        a.sc_unpack(aInit);
-        seeSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"seeSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"seeSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = seeSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"seeSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        cHeaderSt::_packedSt packed;
-        memset(&packed, pattern, cHeaderSt::_byteWidth);
-        sc_bv<cHeaderSt::_bitWidth> aInit;
-        sc_bv<cHeaderSt::_bitWidth> aTest;
-        for (int i = 0; i < cHeaderSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, cHeaderSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        cHeaderSt a;
-        a.sc_unpack(aInit);
-        cHeaderSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"cHeaderSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"cHeaderSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = cHeaderSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"cHeaderSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
+    roundTrip<seeSt>("seeSt", patterns);
+    roundTrip<cHeaderSt>("cHeaderSt", patterns);
 }
-} // namespace mixedBlockC_ns
+} // namespace mixedBlockC_test_ns
 
 // GENERATED_CODE_END
