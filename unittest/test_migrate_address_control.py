@@ -277,7 +277,7 @@ def test_dirty_applied_edits():
         leaf = _find(report.manual, TODO_LEAF_REGISTER_PORTS)
         assert leaf, "leaf-registerPorts TODO missing"
         assert ("leafA" in leaf[0].message and "apbDecode" in leaf[0].message
-                and "Step 4" in leaf[0].message), leaf[0].message
+                and "Migration Diagnostics" in leaf[0].message), leaf[0].message
 
         # Dirty project is not finalized.
         assert not report.clean, "manual TODOs present but report.clean is True"

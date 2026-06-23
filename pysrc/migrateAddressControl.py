@@ -48,7 +48,7 @@ POSTPROCESS = "POSTPROCESS"         # postProcess: normalized (rewrite / dedup /
 
 # Manual-TODO kinds (delegated to address-migration.md).
 TODO_INTERFACE_SCOPE = "TODO_INTERFACE_SCOPE"        # skill Step 2
-TODO_LEAF_REGISTER_PORTS = "TODO_LEAF_REGISTER_PORTS"  # skill Steps 4 / 6.2
+TODO_LEAF_REGISTER_PORTS = "TODO_LEAF_REGISTER_PORTS"  # skill registerPorts: note (Migration Diagnostics)
 TODO_ROUTER_RESOLUTION = "TODO_ROUTER_RESOLUTION"    # skill Step 3
 
 # Fields copied verbatim from a legacy AddressGroups row into addressBlock:.
@@ -201,8 +201,8 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
             TODO_LEAF_REGISTER_PORTS, _loc(leafFile, line + 1),
             f"Routed leaf block '{leafBlock}' (instance '{leafInst}', served by "
             f"router '{router}' for group '{groupName}') needs a registerPorts: "
-            f"declaration authored by hand — see address-migration.md Step 4 "
-            f"(and Step 6.2)."))
+            f"declaration authored by hand — see the registerPorts: note under "
+            f"Migration Diagnostics in address-migration.md."))
 
     # Plan the project.yaml edits and report them. These items appear in both the
     # dry-run report and the applied write, so they are built unconditionally; the

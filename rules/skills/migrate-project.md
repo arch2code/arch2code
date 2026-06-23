@@ -58,12 +58,13 @@ phase ran, then re-run `make migrate` to confirm a clean report.
 | --- | --- | --- |
 | `TODO_ROUTER_RESOLUTION` | An `AddressGroups` row's router cannot be resolved. | `address-migration` skill, Step 3 |
 | `TODO_INTERFACE_SCOPE` | A router has no `addressBus: true` interface in its load-time scope. | `address-migration` skill, Step 2 |
-| `TODO_LEAF_REGISTER_PORTS` | A routed leaf needs `registerPorts:`. | `address-migration` skill, Step 4 |
+| `TODO_LEAF_REGISTER_PORTS` | A routed leaf needs `registerPorts:`. | `address-migration` skill, `registerPorts:` note (Migration Diagnostics) |
 | `TODO_USER_IMPORT` | Hand-written user code `#include`s a migrated context header. | Section 3 below |
 | eval `NEEDS_MANUAL` | A real-valued eval (e.g. `$DWORD / 2.0`) cannot be expressed in the SV subset. | Replace the `eval:` with a literal `value:` (hand decision). |
 
 The address-control kinds are documented in depth in the `address-migration`
-skill; the converter messages point at its step numbers.
+skill; each converter message points at the resolving step or note named in the
+table above.
 
 ## 3. Finish an includes (header → cppm) migration
 

@@ -38,7 +38,7 @@ idempotent: already-converted evals, an existing `addressBlock:`, and an absent
 | --- | --- | --- |
 | `TODO_ROUTER_RESOLUTION` | An `AddressGroups` row's router cannot be resolved — it names no `decoderInstance`, or its `decoderInstance` does not resolve to a router block. | Step 3 |
 | `TODO_INTERFACE_SCOPE` | A router has no `addressBus: true` interface authored in its load-time scope. | Step 2 |
-| `TODO_LEAF_REGISTER_PORTS` | A routed leaf needs a `registerPorts:` declaration — a judgment call the tool will not guess. | Step 4 annotation + the `registerPorts:` note under Migration Diagnostics |
+| `TODO_LEAF_REGISTER_PORTS` | A routed leaf needs a `registerPorts:` declaration — a judgment call the tool will not guess. | The `registerPorts:` note under Migration Diagnostics |
 
 A real-valued `eval` (for example `$DWORD / 2.0`) is reported by Phase A as a
 `NEEDS_MANUAL` eval row and also blocks the stamp; convert it to a literal
@@ -268,16 +268,6 @@ Agreement passes silently, which is useful while converting one
 project. The completed migration should leave the policy sections in
 `project.yaml`.
 
-**Tool report item.** The converter routes its `TODO_LEAF_REGISTER_PORTS`
-items here — `Routed leaf block '<leaf>' (instance '<inst>', served by router
-'<router>' for group '<group>') needs a registerPorts: declaration authored by
-hand — see address-migration.md Step 4 (and Step 6.2).` Authoring
-`registerPorts:` is not a policy-section edit; the procedure and the
-reusable-IP-versus-top-down decision are the `registerPorts:` note at the head
-of **Migration Diagnostics** below. A plain top-down leaf needs no
-`registerPorts:` and the TODO is advisory; only a reusable-IP leaf must author
-one.
-
 ### Step 5 — Leave `postProcess:` to the base config
 
 Prefer removing any existing `postProcess:` override entirely. The base
@@ -345,6 +335,14 @@ single `registerPorts:` row naming that interface. A plain top-down
 leaf needs no `registerPorts:` — it infers its register bus from the
 serving router. The first group below only applies when the migration
 touches a leaf that declares `registerPorts:`.
+
+**Tool report item.** The converter routes its `TODO_LEAF_REGISTER_PORTS`
+items here — `Routed leaf block '<leaf>' (instance '<inst>', served by router
+'<router>' for group '<group>') needs a registerPorts: declaration authored by
+hand — see the registerPorts: note under Migration Diagnostics in
+address-migration.md.` Authoring `registerPorts:` is a judgment call, not a
+mechanical edit: a plain top-down leaf needs no `registerPorts:` and the TODO is
+advisory; only a reusable-IP leaf must author one, per the rule just above.
 
 ### `registerPorts:` / `addressBlock:` authoring (parse time)
 
