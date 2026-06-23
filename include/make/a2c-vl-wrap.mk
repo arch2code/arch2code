@@ -48,8 +48,12 @@ endif
 obj_dir/Vvl_dummy: $(VL_GEN_SV_FILES) $(GEN_DEPS)
 	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) $(A2C_ROOT)/common/verilator/vl_dummy.sv $(A2C_ROOT)/common/verilator/vl_dummy.cpp --top vl_dummy -exe
 
+# +incdir for the wrapper's own directory so a variant trampoline finds its
+# co-located `_hdl_sv_wrapper.svh` body. Wrappers mirror the YAML/source layout,
+# so the body may live in a per-block subdirectory; for the flat layout this
+# directory is the Verilator cwd and the +incdir is a harmless no-op.
 $(VL_OBJ_FILES): $(VL_GEN_SV_FILES)
-	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(REPO_ROOT)/rtl/rtl.f $(subst obj_dir/V,, $(patsubst %.o, %.sv, $@)) -top $(notdir $(subst obj_dir/V,, $(patsubst %.o,%, $@)))
+	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(REPO_ROOT)/rtl/rtl.f +incdir+$(dir $(subst obj_dir/V,, $(patsubst %.o, %.sv, $@))) $(subst obj_dir/V,, $(patsubst %.o, %.sv, $@)) -top $(notdir $(subst obj_dir/V,, $(patsubst %.o,%, $@)))
 
 lib$(PROJECTNAME)vl_s_wrap.a: obj_dir/Vvl_dummy $(VL_OBJ_FILES)
 	ar -rcs $@ $(VL_LIB_OBJ_FILES) obj_dir/V*_hdl_sv_wrapper*.o

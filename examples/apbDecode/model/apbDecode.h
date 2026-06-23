@@ -10,8 +10,9 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "apbDecode_base.h"
-#include "apbDecodeIncludes.h"
+#include "apbDecodeBase.h"
+import apbDecode;
+using namespace apbDecode_ns;
 #include "apbBusDecode.h"
 
 SC_MODULE(apbDecode), public blockBase, public apbDecodeBase

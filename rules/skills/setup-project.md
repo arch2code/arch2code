@@ -21,15 +21,31 @@ Guide the user through initializing a new project, setting up the directory stru
     project_root/
     ├── arch/
     │   └── yaml/
-    │       ├── project.yaml          # Main configuration
+    │       ├── project.yaml          # Main configuration (defines the mirror root)
     │       ├── config/                    # Optional legacy address-control files
-    │       └── <module>/             # Module-specific architecture
-    ├── model/                        # SystemC models
-    ├── rtl/                          # SystemVerilog RTL
-    ├── tb/                           # Testbench files
+    │       └── <group>/             # Subsystem/module architecture (e.g. ip/, top/)
+    │           └── <module>.yaml
+    ├── model/                        # SystemC models      (mirrors arch/yaml layout)
+    ├── rtl/                          # SystemVerilog RTL   (mirrors arch/yaml layout)
+    ├── base/                         # Generated base classes (mirrors arch/yaml layout)
+    ├── tb/                           # Testbench files     (mirrors arch/yaml layout)
+    ├── verif/vl_wrap/                # Verilator wrappers  (mirrors arch/yaml layout)
     ├── rundir/                       # Run directory containing Makefile (standard practice)
     └── Makefile                      # Top-level Makefile
     ```
+
+    ### Directory Mirroring (default behavior)
+    *   **The generated implementation tree mirrors the architecture YAML tree.** A block's (and a YAML file's context) generated files are placed in a subdirectory, **relative to `arch/yaml/`**, that matches the location of the YAML file that defines it. There is no separate setting to enable this; it is the default.
+    *   Example: a block defined in `arch/yaml/ip/ip.yaml` generates to `model/ip/`, `rtl/ip/`, `base/ip/`, and `verif/vl_wrap/ip/`. Per-file context artifacts (SystemC `*Includes.cppm`, SV `*_package.sv`) follow the same rule (e.g. `rtl/ip/ip_package.sv`).
+    *   **Testbench files nest one extra level** by the block name: a `hasTb` block in `arch/yaml/top/ip_top.yaml` generates testbench files into `tb/top/ip_top/`.
+    *   Put YAML into subdirectories purely to organize; keep `project.yaml` at the `arch/yaml/` root (it defines the mirror root). Update relative `include:` / `projectFiles:` paths accordingly (e.g. `include: [../common/shared_types.yaml]`).
+    *   The build system discovers sources recursively, so no Makefile changes are needed when you add subdirectories.
+
+    ### `blockDir` override (exception only)
+    *   The default mirror is almost always what you want. **Do not add `blockDir:` just to reproduce the default.**
+    *   A top-level `blockDir:` directive in a YAML file overrides the output directory for **all** blocks and context artifacts defined in that file (relative to each `dirs` base path). For example `blockDir: .` forces a flat layout (everything directly under `model/`, `rtl/`, etc.) regardless of where the YAML file lives.
+    *   A per-block `dir:` field overrides the output directory for a single block.
+    *   Use these only for genuine exceptions (e.g. placing one block's files outside the mirrored tree). Otherwise omit them and let the YAML location drive the layout.
 
 2.  **`project.yaml` Configuration:**
     *   **Must** define `projectName`, `topInstance`, and `dirs`.

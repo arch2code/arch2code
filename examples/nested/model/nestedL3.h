@@ -9,7 +9,7 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "nestedL3_base.h"
+#include "nestedL3Base.h"
 //contained instances forward class declaration
 class nestedL4Base;
 

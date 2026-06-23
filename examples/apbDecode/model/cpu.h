@@ -9,7 +9,7 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "cpu_base.h"
+#include "cpuBase.h"
 
 SC_MODULE(cpu), public blockBase, public cpuBase
 {
@@ -23,6 +23,7 @@ public:
     // GENERATED_CODE_END
     // block implementation members
     void registerTest(void);
+    void endOfTestThread(void);
     void memAccessTest(void);
 
     void writeBlockATable0Mem(const int, aMemSt &);

@@ -4,8 +4,8 @@
 // GENERATED_CODE_PARAM --block=secondBlock
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "secondBlock.h"
-#include "secondSubA_base.h"
-#include "secondSubB_base.h"
+#include "secondSubABase.h"
+#include "secondSubBBase.h"
 SC_HAS_PROCESS(secondBlock);
 
 // === Block factory registration (secondBlock) ===

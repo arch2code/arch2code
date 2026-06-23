@@ -39,10 +39,10 @@ IP_TEST_PROJECT = os.path.join(
 # An eval constant and a non-eval constant from ip.yaml. The canonical form
 # carries fully qualified ${name/context} symbols, so it is context
 # independent and needs no re-scoping on reload.
-EVAL_CONST = 'IP_DATA_WIDTH_X2/ip.yaml'
-EVAL_CANONICAL = '${IP_DATA_WIDTH/ip.yaml} * 2'
+EVAL_CONST = 'IP_DATA_WIDTH_X2/ip/ip.yaml'
+EVAL_CANONICAL = '${IP_DATA_WIDTH/ip/ip.yaml} * 2'
 EVAL_VALUE = 140
-NON_EVAL_CONST = 'IP_FIXED_NIBBLE_COUNT/ip.yaml'
+NON_EVAL_CONST = 'IP_FIXED_NIBBLE_COUNT/ip/ip.yaml'
 
 
 def _build_fresh_db():

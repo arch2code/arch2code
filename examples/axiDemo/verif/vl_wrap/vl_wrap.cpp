@@ -1,4 +1,6 @@
 #include "vl_wrap.h"
 
-producer_hdl_sc_wrapper::registerBlock producer_hdl_sc_wrapper::registerBlock_;
-consumer_hdl_sc_wrapper::registerBlock consumer_hdl_sc_wrapper::registerBlock_;
+// GENERATED_CODE_PARAM --hierarchy
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=factory_register_vl_decl
+axiDemo_hdl_sc_wrapper::registerBlock axiDemo_hdl_sc_wrapper::registerBlock_;
+// GENERATED_CODE_END

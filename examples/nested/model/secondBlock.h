@@ -8,8 +8,9 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "secondBlock_base.h"
-#include "nestedTopIncludes.h"
+#include "secondBlockBase.h"
+import nested;
+using namespace nested_ns;
 //contained instances forward class declaration
 class secondSubABase;
 class secondSubBBase;

@@ -4,13 +4,13 @@
 // GENERATED_CODE_PARAM --block=testContainer
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "testContainer.h"
-#include "testBlock_base.h"
-#include "subBlockContainer_base.h"
-#include "firstBlock_base.h"
-#include "secondBlock_base.h"
-#include "lastBlock_base.h"
-#include "producer_base.h"
-#include "consumer_base.h"
+#include "testBlockBase.h"
+#include "subBlockContainerBase.h"
+#include "firstBlockBase.h"
+#include "secondBlockBase.h"
+#include "lastBlockBase.h"
+#include "producerBase.h"
+#include "consumerBase.h"
 SC_HAS_PROCESS(testContainer);
 
 // === Block factory registration (testContainer) ===

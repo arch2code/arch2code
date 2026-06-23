@@ -3,9 +3,9 @@
 // GENERATED_CODE_PARAM --block=someRapper
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "someRapper.h"
-#include "apbDecode_base.h"
-#include "blockA_base.h"
-#include "blockB_base.h"
+#include "apbDecodeBase.h"
+#include "blockABase.h"
+#include "blockBBase.h"
 SC_HAS_PROCESS(someRapper);
 
 // === Block factory registration (someRapper) ===

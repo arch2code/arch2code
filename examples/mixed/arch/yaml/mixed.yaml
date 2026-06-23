@@ -10,7 +10,6 @@
 include:
   - mixedInclude.yaml
   - mixedBlockC.yaml
-blockDir: .
 enums:
   test1EnumT:
     desc: a test enum

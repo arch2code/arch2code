@@ -1,7 +1,8 @@
 #ifndef MIXEDENCODERS_H
 #define MIXEDENCODERS_H
 
-#include "mixedIncludes.h"
+import mixed;
+using namespace mixed_ns;
 #include "encoderBase.h"
 
 // GENERATED_CODE_PARAM --context=mixed.yaml

@@ -26,6 +26,7 @@ def test_config_uses_maxvalue_for_type_width():
     args = SimpleNamespace(mode='header')
     data = {
         'context': 'wide.yaml',
+        'contextStem': 'wide',
         'constants': {
             'WIDE_PARAM': {
                 'constant': 'WIDE_PARAM',
@@ -67,6 +68,7 @@ def test_config_includes_clog2_unconditionally():
     args = SimpleNamespace(mode='header')
     data = {
         'context': 'wide.yaml',
+        'contextStem': 'wide',
         'constants': {
             'WIDE_PARAM': {
                 'constant': 'WIDE_PARAM',

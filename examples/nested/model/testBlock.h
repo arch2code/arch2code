@@ -9,7 +9,7 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "testBlock_base.h"
+#include "testBlockBase.h"
 
 SC_MODULE(testBlock), public blockBase, public testBlockBase
 {

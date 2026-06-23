@@ -8,7 +8,7 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "secondSubB_base.h"
+#include "secondSubBBase.h"
 
 SC_MODULE(secondSubB), public blockBase, public secondSubBBase
 {

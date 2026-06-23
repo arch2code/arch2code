@@ -4,7 +4,7 @@
 // GENERATED_CODE_PARAM --block=subBlockContainer
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "subBlockContainer.h"
-#include "subBlock_base.h"
+#include "subBlockBase.h"
 SC_HAS_PROCESS(subBlockContainer);
 
 // === Block factory registration (subBlockContainer) ===

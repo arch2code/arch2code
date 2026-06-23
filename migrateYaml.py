@@ -44,6 +44,7 @@ from pysrc.migrateAddressControl import (
     migrateAddressControlInProject,
     _projectFileSet,
 )
+from pysrc.migrateIncludes import migrateIncludesInProject
 from pysrc.processYaml import CURRENT_YAML_FORMAT
 
 
@@ -53,6 +54,7 @@ class MigrateResult:
     alreadyMigrated: bool = False
     evalReports: list = field(default_factory=list)  # list[evalPyToSv.FileReport]
     addressReport: object = None                      # migrateAddressControl.MigrationReport
+    includesReport: object = None                     # migrateIncludes.IncludesReport
     stamped: bool = False
     wrote: bool = False
 
@@ -65,11 +67,14 @@ class MigrateResult:
     @property
     def stampEligible(self):
         """True when nothing is left for the user to fix by hand: no manual eval
-        rows and a clean Phase B report. Phase B's `clean` already encodes that
-        no address TODO remains and the `addressControl:` pointer was removed."""
-        if self.addressReport is None:
+        rows, a clean Phase B report, and a clean includes phase. Phase B's
+        `clean` encodes that no address TODO remains and the `addressControl:`
+        pointer was removed; the includes phase's `clean` encodes that no
+        user-code import rewrite remains. All three are part of yamlFormat: 2."""
+        if self.addressReport is None or self.includesReport is None:
             return False
-        return not self.evalManual and self.addressReport.clean
+        return (not self.evalManual and self.addressReport.clean
+                and self.includesReport.clean)
 
 
 def migrateProject(projectYamlPath, write=False):
@@ -84,8 +89,17 @@ def migrateProject(projectYamlPath, write=False):
     result = MigrateResult(projectYaml=projectYamlPath)
 
     projectData = yaml.safe_load(_read(projectYamlPath)) or {}
+
+    # The include header -> cppm module conversion is part of yamlFormat: 2. It
+    # runs on every invocation and is idempotent (a project whose include file
+    # type is already the base cppm module is a no-op). It runs before the stamp
+    # short-circuit so a project stamped before this phase existed still gets its
+    # includes migrated; the eval/address phases already ran when it was stamped.
+    result.includesReport = migrateIncludesInProject(projectYamlPath, write=write)
+
     if projectData.get("yamlFormat") == CURRENT_YAML_FORMAT:
         result.alreadyMigrated = True
+        result.wrote = write and result.includesReport.written
         return result
 
     projectDir = os.path.dirname(projectYamlPath)
@@ -110,6 +124,7 @@ def migrateProject(projectYamlPath, write=False):
     result.wrote = write and (
         any(r.written for r in result.evalReports)
         or result.addressReport.written
+        or result.includesReport.written
         or result.stamped
     )
     return result
@@ -132,11 +147,13 @@ def renderReport(result, write):
     lines = [f"=== YAML migration: {result.projectYaml} ==="]
     if result.alreadyMigrated:
         lines.append(f"Already migrated (yamlFormat: {CURRENT_YAML_FORMAT}); "
-                     f"nothing to do.")
+                     f"eval/address phases skipped.")
+        _renderIncludes(result, lines)
         return "\n".join(lines)
 
     _renderPhaseA(result, lines)
     _renderPhaseB(result, lines)
+    _renderIncludes(result, lines)
     _renderPhaseC(result, write, lines)
     return "\n".join(lines)
 
@@ -175,6 +192,23 @@ def _renderPhaseB(result, lines):
             lines.append(f"    {item.location}  {item.kind}  {item.message}")
     if report.manual:
         lines.append("  manual TODO:")
+        for item in report.manual:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+
+
+def _renderIncludes(result, lines):
+    lines.append("")
+    lines.append("Includes - include header -> cppm module")
+    report = result.includesReport
+    if report is None or (not report.applied and not report.manual):
+        lines.append("  include file type already cppm; nothing to do")
+        return
+    if report.applied:
+        lines.append("  applied:")
+        for item in report.applied:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+    if report.manual:
+        lines.append("  manual TODO (see the migration skill):")
         for item in report.manual:
             lines.append(f"    {item.location}  {item.kind}  {item.message}")
 
@@ -229,8 +263,15 @@ def main(argv=None):
     # Dry-run and an already-migrated project always succeed. A --write run that
     # could not stamp (manual work remains) fails so `make migrate` signals the
     # project is not yet buildable.
-    if args.write and not result.alreadyMigrated and not result.stamped:
-        return 1
+    # A --write run succeeds when the project is format-2 clean: either it was
+    # stamped this run, or it already carried the stamp and the includes phase
+    # (the one part of format 2 that can post-date the stamp) left no manual
+    # work. Anything else means migration work remains, so signal non-zero.
+    if args.write:
+        ok = result.stamped or (result.alreadyMigrated
+                                and result.includesReport.clean)
+        if not ok:
+            return 1
     return 0
 
 

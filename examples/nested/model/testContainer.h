@@ -9,8 +9,9 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "testContainer_base.h"
-#include "nestedTopIncludes.h"
+#include "testContainerBase.h"
+import nested;
+using namespace nested_ns;
 //contained instances forward class declaration
 class testBlockBase;
 class subBlockContainerBase;

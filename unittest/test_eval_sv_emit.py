@@ -36,8 +36,8 @@ from templates.systemVerilog import package
 IP_TEST_PROJECT = os.path.join(
     base_dir, 'examples', 'ip_test', 'arch', 'yaml', 'project.yaml')
 
-IP_BLOCK = 'ip/ip.yaml'
-EVAL_CONST_KEY = 'IP_DATA_WIDTH_X2/ip.yaml'
+IP_BLOCK = 'ip/ip/ip.yaml'
+EVAL_CONST_KEY = 'IP_DATA_WIDTH_X2/ip/ip.yaml'
 EXPECTED_LOCALPARAM = 'localparam IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2;'
 
 
@@ -85,7 +85,7 @@ def _build_temp_project(ip_yaml_edit):
     temp_root = tempfile.mkdtemp(prefix='eval_sv_emit_', dir=test_dir)
     dst_dir = os.path.join(temp_root, 'arch', 'yaml')
     shutil.copytree(src_dir, dst_dir)
-    ip_yaml = os.path.join(dst_dir, 'ip.yaml')
+    ip_yaml = os.path.join(dst_dir, 'ip', 'ip.yaml')
     with open(ip_yaml, 'r', encoding='utf-8') as f:
         text = f.read()
     with open(ip_yaml, 'w', encoding='utf-8') as f:
@@ -243,8 +243,8 @@ def test_type_using_eval_derived_constant_is_selected():
         prj = projectOpen(db_path)
         block_data = prj.getBlockData(IP_BLOCK)
         decl_keys = [(d['declKind'], d['declKey']) for d in block_data['parameterizedDecls']]
-        expected_type = ('type', 'ipDerivedWidthT/ip.yaml')
-        expected_const = ('constant', 'IP_DATA_WIDTH_X4/ip.yaml')
+        expected_type = ('type', 'ipDerivedWidthT/ip/ip.yaml')
+        expected_const = ('constant', 'IP_DATA_WIDTH_X4/ip/ip.yaml')
         if expected_const not in decl_keys or expected_type not in decl_keys:
             print(f"  FAIL: missing closure declarations; got {decl_keys}")
             return False
@@ -356,8 +356,8 @@ def test_foreign_param_closure_not_selected_for_block():
         block_data = prj.getBlockData(IP_BLOCK)
         decl_keys = {(d['declKind'], d['declKey']) for d in block_data['parameterizedDecls']}
         forbidden = {
-            ('constant', 'FOREIGN_WIDTH_X2/ip.yaml'),
-            ('type', 'foreignWidthT/ip.yaml'),
+            ('constant', 'FOREIGN_WIDTH_X2/ip/ip.yaml'),
+            ('type', 'foreignWidthT/ip/ip.yaml'),
         }
         present = sorted(decl_keys & forbidden)
         if present:

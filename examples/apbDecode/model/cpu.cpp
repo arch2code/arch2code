@@ -1,5 +1,7 @@
 //copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 #include "regAddresses.h"
+#include "testController.h"
+#include "endOfTest.h"
 // GENERATED_CODE_PARAM --block=cpu
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "cpu.h"
@@ -27,10 +29,23 @@ cpu::cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(registerTest);
+    SC_THREAD(endOfTestThread);
 };
+
+void cpu::endOfTestThread(void)
+{
+    endOfTest eot(true);
+    testController::GetInstance().wait_all_tests_complete();
+    eot.setEndOfTest(true);
+}
 
 void cpu::registerTest(void)
 {
+    testController &controller = testController::GetInstance();
+    std::string test_name = "test_apbDecode";
+    controller.register_test_name(test_name);
+    controller.wait_test(test_name);
+
     apbAddrSt addr;
     apbDataSt writeData;
     apbDataSt readData;
@@ -51,6 +66,7 @@ void cpu::registerTest(void)
 
     memAccessTest();
 
+    controller.test_complete(test_name);
 }
 
 std::array<aMemSt, MEMORYA_WORDS>  aTableData0_ = {{

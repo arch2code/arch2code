@@ -1,0 +1,56 @@
+constants:
+  NUM_TAGS:      { value: 32, desc: number of tags }
+  NUM_TAGS_LOG2: { eval: "$clog2($NUM_TAGS)", desc: log2 of number of tags }
+
+types:
+  tag: { width: NUM_TAGS_LOG2, desc: "tag" }
+
+structures:
+  tag_st:
+    tagId : {varType: tag, desc: "tag id"}
+
+interfaces:
+  tag:
+    desc: tag interface
+    interfaceType: push_ack
+    structures:
+      - {structure: tag_st, structureType: data_t}
+
+blocks:
+  simple_tb:
+    desc: "Testbench container for simple (root container)"
+    hasVl: false
+    hasRtl: false
+    hasMdl: false
+    hasTb: false
+  simple:
+    desc: "The top most block, the self-contained DUT (producer + consumer)"
+    hasVl: true
+    hasRtl: true
+    hasMdl: true
+    hasTb: true
+  producer:
+    desc: "Producer block - drives tags to the consumer"
+    hasVl: false
+    hasRtl: true
+    hasMdl: true
+    hasTb: false
+  consumer:
+    desc: "Consumer block - receives tags from the producer"
+    hasVl: false
+    hasRtl: true
+    hasMdl: true
+    hasTb: false
+
+instances:
+  simple_tb:
+    container: simple_tb # self reference
+    instanceType: simple_tb
+    instGroup: top
+  u_simple:        { container: simple_tb, instanceType: simple,   instGroup: top }
+  u_producer:      { container: simple,    instanceType: producer, instGroup: top }
+  u_consumer:      { container: simple,    instanceType: consumer, instGroup: top }
+
+connections:
+  - {interface: tag,   src: u_producer,   dst: u_consumer,   name: tag0   }
+  - {interface: tag,   src: u_producer,   dst: u_consumer,   name: tag1   }

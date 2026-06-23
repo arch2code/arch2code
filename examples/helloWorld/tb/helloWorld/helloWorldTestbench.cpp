@@ -1,0 +1,27 @@
+// GENERATED_CODE_PARAM --block=helloWorld
+// GENERATED_CODE_BEGIN --template=testbench --section=init
+#include "helloWorldTestbench.h"
+
+// === Block factory registration (helloWorldTestbench) ===
+// Force-link function. Declaration in helloWorldTestbench.h.
+// Referencing this symbol pulls the registration TU into static links.
+void force_link_helloWorldTestbench() {}
+
+void register_helloWorldTestbench_variants() {
+    instanceFactory::registerBlock("helloWorldTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<helloWorldTestbench>(blockName, variant, bbMode)); }, "");
+}
+
+namespace {
+[[maybe_unused]] int _helloWorldTestbench_registered = (register_helloWorldTestbench_variants(), 0);
+} // namespace
+// === End block factory registration ===
+
+helloWorldTestbench::helloWorldTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+       : blockBase("helloWorldTestbench", name(), bbMode)
+        ,helloWorldChannels("Chnl", "tb")
+        ,helloWorld(std::dynamic_pointer_cast<helloWorldBase>((force_link_helloWorld(), instanceFactory::createInstance(name(), "helloWorld", "helloWorld", ""))))
+        ,external("external")
+{
+    bind(helloWorld.get(), &external);
+}
+// GENERATED_CODE_END

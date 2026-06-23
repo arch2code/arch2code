@@ -9,8 +9,9 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "someRapper_base.h"
-#include "apbDecodeIncludes.h"
+#include "someRapperBase.h"
+import apbDecode;
+using namespace apbDecode_ns;
 //contained instances forward class declaration
 class apbDecodeBase;
 class blockABase;

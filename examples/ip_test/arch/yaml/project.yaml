@@ -7,7 +7,7 @@ projectName: ip_test
 # note in the case of additional project files any top level controls (such as schema:) are ignored
 # relative path names are resolved based on location of project file (this includes sub projects)
 projectFiles:
-    - ip_top.yaml
+    - top/ip_top.yaml
 
 topInstance: ip_top_tb
 

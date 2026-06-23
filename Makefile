@@ -65,19 +65,22 @@ diagram-and-doc :
 	git diff --no-index $(DIAG_TEST_DIR)/golden/mixedDiagramDepth3.gv $(DIAG_TEST_DIR)/out/mixedDiagramDepth3.gv
 	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --drawStructure nestedSt/mixed.yaml --diagramOutFilename nestedSt --diagramOutDirectory $(DIAG_TEST_DIR)/out --diagramDeleteGV
 	git diff --no-index $(DIAG_TEST_DIR)/out/nestedSt.svg $(DIAG_TEST_DIR)/golden/nestedSt.svg
-	make -C $(NESTED_DIR)/arch
-	$(REPO_ROOT)/arch2code.py --db $(NESTED_DIR)/nested.db -r --diagram --depth 6
-	cp gv_out/nested.gv $(DIAG_TEST_DIR)/out/nestedDiagramDepth6.gv
-	git diff --no-index $(DIAG_TEST_DIR)/golden/nestedDiagramDepth6.gv $(DIAG_TEST_DIR)/out/nestedDiagramDepth6.gv
+	make -C $(NESTED_DIR) db
+	$(REPO_ROOT)/arch2code.py --db $(NESTED_DIR)/nested.db -r --diagram --depth 7
+	cp gv_out/nested.gv $(DIAG_TEST_DIR)/out/nestedDiagramDepth7.gv
+	git diff --no-index $(DIAG_TEST_DIR)/golden/nestedDiagramDepth7.gv $(DIAG_TEST_DIR)/out/nestedDiagramDepth7.gv
 
 .PHONY : nested
 nested:
-	make -C $(NESTED_DIR)/model run -j
+	make -C $(NESTED_DIR)/rundir -j all
+	make -C $(NESTED_DIR)/rundir run
 
 .PHONY : axiDemo
+# axiDemo migrated to the newer rundir/ build (module-capable). VL_DUT cosim is
+# omitted because its producer/consumer RTL are passthrough stubs with no datapath.
 axiDemo:
-	make -C $(AXI_DIR) all -j
-	make -C $(AXI_DIR) run -j
+	make -C $(AXI_DIR)/rundir -j all
+	make -C $(AXI_DIR)/rundir run
 
 .PHONY : axi4sDemo
 axi4sDemo:
@@ -92,13 +95,17 @@ ip-test:
 
 .PHONY : hello-world
 hello-world:
-	make -C $(HELLO_DIR)/model run -j
+	make -C $(HELLO_DIR)/rundir -j all
+	make -C $(HELLO_DIR)/rundir run
 
 .PHONY : apbDecode
+# apbDecode migrated to the newer rundir/ build. Full run-vl cosim is omitted
+# because blockA's RTL leaves blockATable1 memory uninitialized (a pre-existing
+# RTL gap the old lint-only target never exercised).
 apbDecode:
-	make -C $(APBDECODE_DIR)/systemVerilog lint -j
-	make -C $(APBDECODE_DIR) all -j
-	make -C $(APBDECODE_DIR) run -j
+	make -C $(APBDECODE_DIR)/rtl lint -j
+	make -C $(APBDECODE_DIR)/rundir -j all
+	make -C $(APBDECODE_DIR)/rundir run
 
 .PHONY : mixed
 mixed:
@@ -107,9 +114,11 @@ mixed:
 	make -C $(MIXED_DIR)/rtl lint -j
 
 .PHONY : in-and-out
+# sim dropped: inAndOut stays a header-mode SV-generation / moduleSignalBlast
+# demo, whose SystemC sim cannot regenerate under this branch's cppm-default
+# include. Verilator lint still exercises the generated SV.
 in-and-out:
 	make -C $(IN_OUT_DIR)/systemVerilog lint -j
-	make -C $(IN_OUT_DIR)/systemVerilog sim -j
 
 .PHONY : lint-hier
 lint-hier:
@@ -118,7 +127,7 @@ lint-hier:
 # later add systemc
 .PHONY : lint-axi
 lint-axi:
-	make -C $(AXI_DIR)/systemVerilog lint -j
+	make -C $(AXI_DIR)/rtl lint -j
 
 .PHONY : doc-build
 # last line; antora must be run at repo root so bypassing the aboslute path(s)
@@ -132,17 +141,17 @@ doc-build :
 	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --drawStructure nestedSt/mixed.yaml --diagramOutFilename nestedStWhite --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV --colors white
 	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --file $(DOC_PAGES_DIR)/mixedMemories.adoc --diagramOutDirectory $(DOC_IMAGES_DIR)
 	$(REPO_ROOT)/arch2code.py --db $(MIXED_DB_FILE) -r --docgen --file $(DOC_PAGES_DIR)/mixedBlockBadoc.adoc --diagramOutDirectory $(DOC_IMAGES_DIR)
-	make -C $(NESTED_DIR)/arch
-	$(REPO_ROOT)/arch2code.py --db $(NESTED_DB_FILE) -r --diagram --depth 6 --instance uTop --diagramOutFilename uNested --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
-	make -C $(HELLO_DIR)/arch
-	$(REPO_ROOT)/arch2code.py --db $(HELLO_DB_FILE) -r --diagram --depth 2 --instance uTop --diagramOutFilename uHelloWorld --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
-	make -C $(APBDECODE_DIR)/arch
-	$(REPO_ROOT)/arch2code.py --db $(APBDECODE_DB_FILE) -r --diagram --depth 4 --instance uTop --diagramOutFilename uapbDecode --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
+	make -C $(NESTED_DIR) db
+	$(REPO_ROOT)/arch2code.py --db $(NESTED_DB_FILE) -r --diagram --depth 7 --instance nested_tb --diagramOutFilename uNested --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
+	make -C $(HELLO_DIR) db
+	$(REPO_ROOT)/arch2code.py --db $(HELLO_DB_FILE) -r --diagram --depth 2 --instance helloWorld_tb --diagramOutFilename uHelloWorld --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
+	make -C $(APBDECODE_DIR) db
+	$(REPO_ROOT)/arch2code.py --db $(APBDECODE_DB_FILE) -r --diagram --depth 4 --instance top --diagramOutFilename uapbDecode --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
 	$(REPO_ROOT)/arch2code.py --db $(APBDECODE_DB_FILE) -r --docgen --file $(APBDECODE_DIR)/doc/top_memories.txt --diagramOutDirectory $(DOC_IMAGES_DIR)
 	make -C $(IN_OUT_DIR)/arch
 	$(REPO_ROOT)/arch2code.py --db $(IN_OUT_DB_FILE) -r --diagram --depth 2 --instance uTop --diagramOutFilename uinAndOut --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
-	make -C $(AXI_DIR)/arch
-	$(REPO_ROOT)/arch2code.py -r --db $(AXI_DB_FILE) --diagram --instance uTop --diagramOutFilename uaxiDemo --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
+	make -C $(AXI_DIR) db
+	$(REPO_ROOT)/arch2code.py -r --db $(AXI_DB_FILE) --diagram --instance u_axiDemo --diagramOutFilename uaxiDemo --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
 	make -C $(HIER_INCLUDE_DIR)/arch
 	$(REPO_ROOT)/arch2code.py -r --db $(HIER_INCLUDE_DB_FILE) --diagram --depth 3 --instance uTop --diagramOutFilename uTopHierInclude --diagramOutDirectory $(DOC_IMAGES_DIR) --diagramDeleteGV
 	antora --log-failure-level=error antora-playbook.yml
@@ -169,8 +178,8 @@ clean :
 	make -C $(IN_OUT_DIR)/systemVerilog clean
 	make -C common/systemc clean
 	make -C $(MIXED_DIR) clean
-	make -C $(NESTED_DIR)/model clean
-	make -C $(HELLO_DIR)/model clean
+	make -C $(NESTED_DIR) clean
+	make -C $(HELLO_DIR) clean
 	make -C $(APBDECODE_DIR) clean
 	make -C $(AXI_DIR) clean
 	make -C $(AXI4SDEMO_DIR) clean

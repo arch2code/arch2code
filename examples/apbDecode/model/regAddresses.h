@@ -5,10 +5,10 @@
 // GENERATED_CODE_PARAM --block=top
 // GENERATED_CODE_BEGIN --template=includes --section=addresses 
 //instance base addresses
-#define BASE_ADDR_UTOP                 0x0
+#define BASE_ADDR_TOP                  0x0
 #define BASE_ADDR_UCPU                 0x0
-#define BASE_ADDR_UAPBDECODE           0x0
 #define BASE_ADDR_USOMERAPPER          0x0
+#define BASE_ADDR_UAPBDECODE           0x0
 #define BASE_ADDR_UBLOCKA              0x0
 #define BASE_ADDR_UBLOCKB              0x1000000
 #define BASE_ADDR_UBLOCKBREGS          0x0

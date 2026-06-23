@@ -3,7 +3,7 @@
 // GENERATED_CODE_PARAM --block=nestedL2
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "nestedL2.h"
-#include "nestedL3_base.h"
+#include "nestedL3Base.h"
 SC_HAS_PROCESS(nestedL2);
 
 // === Block factory registration (nestedL2) ===

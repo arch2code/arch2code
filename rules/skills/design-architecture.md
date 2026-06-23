@@ -27,6 +27,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
         *   `hasTb`: (Optional) Generate Testbench. **Default: `false`**
         *   `ports`: (Optional) Explicit port map keyed by port name. Each entry names an `interface` and `direction`.
     *   **RTL hierarchy rule:** If a block has `hasRtl: true`, every block it instantiates must also have `hasRtl: true`. A model-only subblock (`hasRtl: false`) is only valid under a model-only parent.
+    *   **File placement:** A block's generated files (`base/`, `model/`, `rtl/`, `tb/`, `verif/vl_wrap/`) are placed in a subdirectory that mirrors the location of the YAML file defining the block, relative to `arch/yaml/`. This is automatic — do not set `blockDir:`/`dir:` to reproduce it. A top-level `blockDir:` (whole file) or per-block `dir:` field overrides this only for genuine exceptions. See `setup-project.md` (Directory Mirroring).
 
     ```yaml
     blocks:

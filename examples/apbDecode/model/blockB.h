@@ -9,11 +9,12 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockB_base.h"
+#include "blockBBase.h"
 #include "addressMap.h"
 #include "hwRegister.h"
 #include "hwMemory.h"
-#include "apbDecodeIncludes.h"
+import apbDecode;
+using namespace apbDecode_ns;
 
 SC_MODULE(blockB), public blockBase, public blockBBase
 {
