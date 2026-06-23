@@ -200,108 +200,71 @@ struct data70St {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace ipBridge_ns {
-template<typename Config>
+export namespace ipBridge_test_ns {
 class test_ipBridge_structs {
 public:
     static std::string name(void);
     static void test(void);
+private:
+    template<typename T>
+    static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
+        for(auto pattern : patterns) {
+            typename T::_packedSt packed;
+            memset(&packed, pattern, T::_byteWidth);
+            sc_bv<T::_bitWidth> aInit;
+            sc_bv<T::_bitWidth> aTest;
+            for (int i = 0; i < T::_byteWidth; i++) {
+                int end = std::min((i+1)*8-1, T::_bitWidth-1);
+                aInit.range(end, i*8) = pattern;
+            }
+            T a;
+            a.sc_unpack(aInit);
+            T b;
+            b.unpack(packed);
+            if (!(b == a)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false, sName);
+            }
+            uint64_t test;
+            memset(&test, pattern, 8);
+            b.pack(packed);
+            aTest = a.sc_pack();
+            if (!(aTest == aInit)) {;
+                cout << a.prt();
+                cout << aTest;
+                Q_ASSERT(false, sName);
+            }
+            uint64_t *ptr = (uint64_t *)&packed;
+            uint16_t bitsLeft = T::_bitWidth;
+            do {
+                int bits = std::min((uint16_t)64, bitsLeft);
+                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+                if ((*ptr & mask) != (test & mask)) {;
+                    cout << a.prt();
+                    cout << b.prt();
+                    Q_ASSERT(false, sName);
+                }
+                bitsLeft -= bits;
+                ptr++;
+            } while(bitsLeft > 0);
+        }
+    }
 };
-} // namespace ipBridge_ns
+} // namespace ipBridge_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace ipBridge_ns {
-template<typename Config>
-std::string test_ipBridge_structs<Config>::name(void) { return "test_ipBridge_structs"; }
-template<typename Config>
-void test_ipBridge_structs<Config>::test(void) {
+export namespace ipBridge_test_ns {
+using namespace ipBridge_ns;
+std::string test_ipBridge_structs::name(void) { return "test_ipBridge_structs"; }
+void test_ipBridge_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
     std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
-    for(auto pattern : patterns) {
-        data8St::_packedSt packed;
-        memset(&packed, pattern, data8St::_byteWidth);
-        sc_bv<data8St::_bitWidth> aInit;
-        sc_bv<data8St::_bitWidth> aTest;
-        for (int i = 0; i < data8St::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, data8St::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        data8St a;
-        a.sc_unpack(aInit);
-        data8St b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"data8St fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"data8St fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = data8St::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"data8St fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        data70St::_packedSt packed;
-        memset(&packed, pattern, data70St::_byteWidth);
-        sc_bv<data70St::_bitWidth> aInit;
-        sc_bv<data70St::_bitWidth> aTest;
-        for (int i = 0; i < data70St::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, data70St::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        data70St a;
-        a.sc_unpack(aInit);
-        data70St b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"data70St fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"data70St fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = data70St::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"data70St fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
+    roundTrip<data8St>("data8St", patterns);
+    roundTrip<data70St>("data70St", patterns);
 }
-} // namespace ipBridge_ns
+} // namespace ipBridge_test_ns
 
 // GENERATED_CODE_END

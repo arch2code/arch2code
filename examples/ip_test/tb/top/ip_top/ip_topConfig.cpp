@@ -33,7 +33,7 @@ public:
 
     bool createTestBench(void) override
     {
-        test_ip_structs<ipDefaultConfig>::test();
+        ip_test_ns::test_ip_structs::test();
 
         testController::GetInstance().set_test_names({
             "test_ip_uIp0_check",

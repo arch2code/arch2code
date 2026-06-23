@@ -885,6 +885,11 @@ def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False)
                 if structType != 'bool':
                     if data['bitwidth'] >= 64 and data['entryType'] != 'NamedStruct' and data['varLoopCount'] > 1 and useConfig:
                         widthExpr = cppVarBitwidth(data, prj, useConfig) if prj else data['bitwidth']
+                        # Zero the destination first: a Config whose width is an
+                        # exact multiple of 64 skips the guarded write of the
+                        # top word(s), so any preexisting garbage there would
+                        # survive. unpack() memsets for the same reason.
+                        out.append(f'{indent}memset((uint64_t *)&{varName}{varIndex}, 0, sizeof({varName}{varIndex}));')
                         for wix in range(data['varLoopCount']):
                             out.append(f'{indent}if ({widthExpr} > {wix * 64}) {{')
                             out.append(f'{indent}    uint16_t _bits = std::min((uint16_t)64, (uint16_t)({widthExpr} - {wix * 64}));')
@@ -1451,96 +1456,145 @@ def structContainsSignedTypes(structValue, prj, data):
                 return True
     return False
 
+def _roundTripHelperLines(indent):
+    """The struct round-trip body, parameterized over the struct type T and a
+    runtime struct-name string. Emitted once per context (Option C) so test()
+    is a deterministic list of calls rather than inlined-per-struct bodies."""
+    out = list()
+    out.append(f'{indent}template<typename T>')
+    out.append(f'{indent}static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {{')
+    indent += ' '*4
+    out.append(f'{indent}for(auto pattern : patterns) {{')
+    indent += ' '*4
+    out.append(f'{indent}typename T::_packedSt packed;')
+    out.append(f'{indent}memset(&packed, pattern, T::_byteWidth);')
+    out.append(f'{indent}sc_bv<T::_bitWidth> aInit;')
+    out.append(f'{indent}sc_bv<T::_bitWidth> aTest;')
+    out.append(f'{indent}for (int i = 0; i < T::_byteWidth; i++) {{')
+    out.append(f'{indent}    int end = std::min((i+1)*8-1, T::_bitWidth-1);')
+    out.append(f'{indent}    aInit.range(end, i*8) = pattern;')
+    out.append(f'{indent}}}')
+    out.append(f'{indent}T a;')
+    out.append(f'{indent}a.sc_unpack(aInit);')
+    out.append(f'{indent}T b;')
+    out.append(f'{indent}b.unpack(packed);')
+    out.append(f'{indent}if (!(b == a)) {{;')
+    out.append(f'{indent}    cout << a.prt();')
+    out.append(f'{indent}    cout << b.prt();')
+    out.append(f'{indent}    Q_ASSERT(false, sName);')
+    out.append(f'{indent}}}')
+    out.append(f'{indent}uint64_t test;')
+    out.append(f'{indent}memset(&test, pattern, 8);')
+    out.append(f'{indent}b.pack(packed);')
+    out.append(f'{indent}aTest = a.sc_pack();')
+    out.append(f'{indent}if (!(aTest == aInit)) {{;')
+    out.append(f'{indent}    cout << a.prt();')
+    out.append(f'{indent}    cout << aTest;')
+    out.append(f'{indent}    Q_ASSERT(false, sName);')
+    out.append(f'{indent}}}')
+    out.append(f'{indent}uint64_t *ptr = (uint64_t *)&packed;')
+    out.append(f'{indent}uint16_t bitsLeft = T::_bitWidth;')
+    out.append(f'{indent}do {{')
+    out.append(f'{indent}    int bits = std::min((uint16_t)64, bitsLeft);')
+    out.append(f'{indent}    uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);')
+    out.append(f'{indent}    if ((*ptr & mask) != (test & mask)) {{;')
+    out.append(f'{indent}        cout << a.prt();')
+    out.append(f'{indent}        cout << b.prt();')
+    out.append(f'{indent}        Q_ASSERT(false, sName);')
+    out.append(f'{indent}    }}')
+    out.append(f'{indent}    bitsLeft -= bits;')
+    out.append(f'{indent}    ptr++;')
+    out.append(f'{indent}}} while(bitsLeft > 0);')
+    indent = indent[:-4]
+    out.append(f'{indent}}}')
+    indent = indent[:-4]
+    out.append(f'{indent}}}')
+    return out
+
+
+def _sampleConfigs(prj, data):
+    """Deterministic Default/Mid/Max sample points for a context's base
+    parameterizable constants. Sample points are variant-independent: every
+    point is derived ONLY from the ipParameter declaration (its `value` and
+    `maxValue`), never from variant-bound Config values. Default = declared
+    value, Max = declared maxValue, Mid = maxValue // 2 (integer floor). Each
+    sample is a (Role, configName, baseValues) triple; identical value-dicts are
+    de-duplicated keeping first occurrence so a degenerate param does not emit
+    redundant Configs. baseValues carries only base (non-eval) parameterizable
+    constants; eval-derived members recompute symbolically inside the Config
+    struct."""
+    baseParams = [v for v in data['constants'].values()
+                  if v['isParameterizable'] and not v['evalCanonical']]
+    if not baseParams:
+        return []
+    defaultVals = {v['constant']: v['value'] for v in baseParams}
+    maxVals = {v['constant']: v['maxValue'] for v in baseParams}
+    # Mid is clamped to a minimum of 1 so maxValue == 1 cannot yield a 0 base
+    # value (which would emit a zero-width type / zero-size array). When the
+    # clamp hits, Mid == Max and the dedup below collapses it.
+    midVals = {v['constant']: max(1, v['maxValue'] // 2) for v in baseParams}
+    stem = data['contextStem'].replace('-', '_')
+    ordered = [('Default', defaultVals), ('Mid', midVals), ('Max', maxVals)]
+    samples = list()
+    seen = list()
+    for role, vals in ordered:
+        if vals in seen:
+            continue
+        seen.append(vals)
+        samples.append((role, f'{stem}TestConfig{role}', vals))
+    return samples
+
+
 def structTest(args, prj, data):
+    from templates.systemc import config
     out = list()
     fn = data['contextStem'] + '_structs'
     useConfig = args.mode == 'module'
-    # The test class is a template only when the context actually carries a
-    # parameterizable structure (which must be tested as struct<Config>). A
-    # context of concrete structures emits a plain class so the caller invokes
-    # test_<ctx>_structs::test() without supplying a Config.
-    anyParam = any(value.get('isParameterizable', False) for value in data['structures'].values())
-    templated = useConfig and anyParam
     if args.section == 'testStructsHeader':
-        if templated:
-            out.append(f'template<typename Config>')
+        # The class is always non-templated (Option C): test() instantiates
+        # concrete sample-point Configs internally, so callers invoke
+        # test_<ctx>_structs::test() without supplying a Config.
         out.append(f'class test_{fn} {{')
         out.append(f'public:')
         out.append(f'    static std::string name(void);')
         out.append(f'    static void test(void);')
+        out.append(f'private:')
+        out.extend(_roundTripHelperLines(' '*4))
         out.append(f'}};')
         return out
 
-    if args.mode != 'module':
+    if not useConfig:
         out.append(f'#include "q_assert.h"')
     else:
         # The test lives in the sibling test namespace; pull the functional
         # types into scope so struct names resolve unqualified.
         out.append(f'using namespace {cpp_namespace_name(data["contextIncludeName"])};')
-    if templated:
-        out.append(f'template<typename Config>')
-        out.append(f'std::string test_{fn}<Config>::name(void) {{ return "test_{fn}"; }}')
-        out.append(f'template<typename Config>')
-        out.append(f'void test_{fn}<Config>::test(void) {{')
-    else:
-        out.append(f'std::string test_{fn}::name(void) {{ return "test_{fn}"; }}')
-        out.append(f'void test_{fn}::test(void) {{')
+
+    # Sample-point Config structs for the parameterizable structs. Only emitted
+    # in module mode (no Config in a non-module TU).
+    samples = _sampleConfigs(prj, data) if useConfig else []
+    for _, configName, baseValues in samples:
+        out.extend(config.configStructLines(prj, data, configName, baseValues))
+
+    out.append(f'std::string test_{fn}::name(void) {{ return "test_{fn}"; }}')
+    out.append(f'void test_{fn}::test(void) {{')
     indent = ' '*4
     out.append(f'{indent}std::vector<uint8_t> patterns{{0x6a, 0xa6}};')
     out.append(f'{indent}std::vector<uint8_t> signedPatterns{{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF}};')
     out.append(f'{indent}cout << "Running " << name() << endl;')
+    # Deterministic call list in struct declaration order. Concrete structs emit
+    # one call; parameterizable structs emit one call per de-duplicated sample
+    # point at the fixed Config names.
     for _, value in data['structures'].items():
         isParam = value.get('isParameterizable', False)
         if isParam and not useConfig:
             continue
         struct = value['structure']
-        structType = f'{struct}<Config>' if isParam else struct
-        packedType = f'typename {structType}::_packedSt' if isParam else f'{structType}::_packedSt'
-        # Determine if this structure contains signed types
-        hasSigned = structContainsSignedTypes(value, prj, data)
-        patternVar = 'signedPatterns' if hasSigned else 'patterns'
-        out.append(f'{indent}for(auto pattern : {patternVar}) {{')
-        indent += ' '*4
-        out.append(f'{indent}{packedType} packed;')
-        out.append(f'{indent}memset(&packed, pattern, {structType}::_byteWidth);')
-        out.append(f'{indent}sc_bv<{structType}::_bitWidth> aInit;')
-        out.append(f'{indent}sc_bv<{structType}::_bitWidth> aTest;')
-        out.append(f'{indent}for (int i = 0; i < {structType}::_byteWidth; i++) {{')
-        out.append(f'{indent}    int end = std::min((i+1)*8-1, {structType}::_bitWidth-1);')
-        out.append(f'{indent}    aInit.range(end, i*8) = pattern;')
-        out.append(f'{indent}}}')
-        out.append(f'{indent}{structType} a;')
-        out.append(f'{indent}a.sc_unpack(aInit);')
-        out.append(f'{indent}{structType} b;')
-        out.append(f'{indent}b.unpack(packed);')
-        out.append(f'{indent}if (!(b == a)) {{;')
-        out.append(f'{indent}    cout << a.prt();')
-        out.append(f'{indent}    cout << b.prt();')
-        out.append(f'{indent}    Q_ASSERT(false,"{struct} fail");')
-        out.append(f'{indent}}}')
-        out.append(f'{indent}uint64_t test;')
-        out.append(f'{indent}memset(&test, pattern, 8);')
-        out.append(f'{indent}b.pack(packed);')
-        out.append(f'{indent}aTest = a.sc_pack();')
-        out.append(f'{indent}if (!(aTest == aInit)) {{;')
-        out.append(f'{indent}    cout << a.prt();')
-        out.append(f'{indent}    cout << aTest;')
-        out.append(f'{indent}    Q_ASSERT(false,"{struct} fail");')
-        out.append(f'{indent}}}')
-        out.append(f'{indent}uint64_t *ptr = (uint64_t *)&packed;')
-        out.append(f'{indent}uint16_t bitsLeft = {structType}::_bitWidth;')
-        out.append(f'{indent}do {{')
-        out.append(f'{indent}    int bits = std::min((uint16_t)64, bitsLeft);')
-        out.append(f'{indent}    uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);')
-        out.append(f'{indent}    if ((*ptr & mask) != (test & mask)) {{;')
-        out.append(f'{indent}        cout << a.prt();')
-        out.append(f'{indent}        cout << b.prt();')
-        out.append(f'{indent}        Q_ASSERT(false,"{struct} fail");')
-        out.append(f'{indent}    }}')
-        out.append(f'{indent}    bitsLeft -= bits;')
-        out.append(f'{indent}    ptr++;')
-        out.append(f'{indent}}} while(bitsLeft > 0);')
-        indent = indent[:-4]
-        out.append(f'{indent}}}')
+        patternVar = 'signedPatterns' if structContainsSignedTypes(value, prj, data) else 'patterns'
+        if isParam:
+            for _, configName, _ in samples:
+                out.append(f'{indent}roundTrip<{struct}<{configName}>>("{struct}", {patternVar});')
+        else:
+            out.append(f'{indent}roundTrip<{struct}>("{struct}", {patternVar});')
     out.append(f'}}')
     return out

@@ -191,6 +191,7 @@ struct srcOut1St {
     inline void sc_unpack(sc_bv<srcOut1St<Config>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
+        memset((uint64_t *)&data, 0, sizeof(data));
         if (Config::OUT1_DATA_WIDTH > 0) {
             uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::OUT1_DATA_WIDTH - 0));
             data.word[0] = (uint64_t) packed_data.range(_pos + 0 + _bits - 1, _pos + 0).to_uint64();
@@ -217,108 +218,87 @@ struct srcOut1St {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace src_ns {
-template<typename Config>
+export namespace src_test_ns {
 class test_src_structs {
 public:
     static std::string name(void);
     static void test(void);
+private:
+    template<typename T>
+    static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
+        for(auto pattern : patterns) {
+            typename T::_packedSt packed;
+            memset(&packed, pattern, T::_byteWidth);
+            sc_bv<T::_bitWidth> aInit;
+            sc_bv<T::_bitWidth> aTest;
+            for (int i = 0; i < T::_byteWidth; i++) {
+                int end = std::min((i+1)*8-1, T::_bitWidth-1);
+                aInit.range(end, i*8) = pattern;
+            }
+            T a;
+            a.sc_unpack(aInit);
+            T b;
+            b.unpack(packed);
+            if (!(b == a)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false, sName);
+            }
+            uint64_t test;
+            memset(&test, pattern, 8);
+            b.pack(packed);
+            aTest = a.sc_pack();
+            if (!(aTest == aInit)) {;
+                cout << a.prt();
+                cout << aTest;
+                Q_ASSERT(false, sName);
+            }
+            uint64_t *ptr = (uint64_t *)&packed;
+            uint16_t bitsLeft = T::_bitWidth;
+            do {
+                int bits = std::min((uint16_t)64, bitsLeft);
+                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+                if ((*ptr & mask) != (test & mask)) {;
+                    cout << a.prt();
+                    cout << b.prt();
+                    Q_ASSERT(false, sName);
+                }
+                bitsLeft -= bits;
+                ptr++;
+            } while(bitsLeft > 0);
+        }
+    }
 };
-} // namespace src_ns
+} // namespace src_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace src_ns {
-template<typename Config>
-std::string test_src_structs<Config>::name(void) { return "test_src_structs"; }
-template<typename Config>
-void test_src_structs<Config>::test(void) {
+export namespace src_test_ns {
+using namespace src_ns;
+struct srcTestConfigDefault {
+    static constexpr uint32_t OUT0_DATA_WIDTH = 8;
+    static constexpr uint32_t OUT1_DATA_WIDTH = 70;
+};
+struct srcTestConfigMid {
+    static constexpr uint32_t OUT0_DATA_WIDTH = 8;
+    static constexpr uint32_t OUT1_DATA_WIDTH = 64;
+};
+struct srcTestConfigMax {
+    static constexpr uint32_t OUT0_DATA_WIDTH = 16;
+    static constexpr uint32_t OUT1_DATA_WIDTH = 128;
+};
+std::string test_src_structs::name(void) { return "test_src_structs"; }
+void test_src_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
     std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
-    for(auto pattern : patterns) {
-        typename srcOut0St<Config>::_packedSt packed;
-        memset(&packed, pattern, srcOut0St<Config>::_byteWidth);
-        sc_bv<srcOut0St<Config>::_bitWidth> aInit;
-        sc_bv<srcOut0St<Config>::_bitWidth> aTest;
-        for (int i = 0; i < srcOut0St<Config>::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, srcOut0St<Config>::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        srcOut0St<Config> a;
-        a.sc_unpack(aInit);
-        srcOut0St<Config> b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"srcOut0St fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"srcOut0St fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = srcOut0St<Config>::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"srcOut0St fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        typename srcOut1St<Config>::_packedSt packed;
-        memset(&packed, pattern, srcOut1St<Config>::_byteWidth);
-        sc_bv<srcOut1St<Config>::_bitWidth> aInit;
-        sc_bv<srcOut1St<Config>::_bitWidth> aTest;
-        for (int i = 0; i < srcOut1St<Config>::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, srcOut1St<Config>::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        srcOut1St<Config> a;
-        a.sc_unpack(aInit);
-        srcOut1St<Config> b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"srcOut1St fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"srcOut1St fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = srcOut1St<Config>::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"srcOut1St fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
+    roundTrip<srcOut0St<srcTestConfigDefault>>("srcOut0St", patterns);
+    roundTrip<srcOut0St<srcTestConfigMid>>("srcOut0St", patterns);
+    roundTrip<srcOut0St<srcTestConfigMax>>("srcOut0St", patterns);
+    roundTrip<srcOut1St<srcTestConfigDefault>>("srcOut1St", patterns);
+    roundTrip<srcOut1St<srcTestConfigMid>>("srcOut1St", patterns);
+    roundTrip<srcOut1St<srcTestConfigMax>>("srcOut1St", patterns);
 }
-} // namespace src_ns
+} // namespace src_test_ns
 
 // GENERATED_CODE_END

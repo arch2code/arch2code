@@ -35,6 +35,7 @@ from pysrc.processYaml import projectCreate, projectOpen
 from pysrc.systemcGen import genSystemC
 from templates.systemc import config
 from templates.systemc import includes
+from templates.systemc import structures
 
 IP_TEST_PROJECT = os.path.join(
     base_dir, 'examples', 'ip_test', 'arch', 'yaml', 'project.yaml')
@@ -252,6 +253,124 @@ def test_fw_constants_symbolic():
             os.unlink(db_path)
 
 
+def _config_member_lines(out, structName):
+    """Return the in-order `constName = rhs` member pairs declared in the named
+    struct block of a rendered text blob. Walks structurally, no C++ re-parse."""
+    members = []
+    inStruct = False
+    for line in out.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"struct {structName} "):
+            inStruct = True
+            continue
+        if inStruct:
+            if stripped.startswith("};"):
+                break
+            if " = " in stripped and stripped.startswith("static constexpr"):
+                lhs, rhs = stripped.split(" = ", 1)
+                members.append((lhs.split()[-1], rhs.rstrip(';').strip()))
+    return members
+
+
+def test_teststructs_parameterizable_sample_points():
+    print(f"\n{'='*70}\nTest: parameterizable struct tests emit Default/Mid/Max "
+          f"sample-point Configs (Option C)\n{'='*70}")
+    db_path = _build_fresh_db()
+    try:
+        prj = projectOpen(db_path)
+        data = prj.getContextData(['ip'], genSystemC.dataTypeMappings)
+
+        hdr = structures.render(
+            SimpleNamespace(mode='module', section='testStructsHeader',
+                            template='structures', namespace=''),
+            prj, data)
+        cpp = structures.render(
+            SimpleNamespace(mode='module', section='testStructsCPP',
+                            template='structures', namespace=''),
+            prj, data)
+
+        ok = True
+
+        # Header: a single generic round-trip helper templated over the struct
+        # type, and a NON-templated test class (Option C pushes the Config choice
+        # into test(), not onto the caller).
+        if hdr.count('static void roundTrip(') != 1:
+            print(f"  FAIL: expected exactly one roundTrip helper in header")
+            ok = False
+        else:
+            print(f"  PASS: single roundTrip<T> helper emitted")
+        if 'template<typename Config>\nclass test_ip_structs' in hdr or \
+           'template<typename Config> class test_ip_structs' in hdr:
+            print(f"  FAIL: test_ip_structs class is still templated")
+            ok = False
+        elif 'class test_ip_structs {' in hdr:
+            print(f"  PASS: test_ip_structs class is non-templated")
+        else:
+            print(f"  FAIL: test_ip_structs class declaration not found")
+            ok = False
+
+        # CPP: three de-duplicated sample-point Config structs at the fixed names,
+        # carrying the Default/Mid/Max base-param values. Sample points are
+        # variant-independent (declared value/maxValue only): Default = value,
+        # Max = maxValue, Mid = maxValue // 2. IP_DATA_WIDTH 70/64/128,
+        # IP_MEM_DEPTH 16/16/32, IP_NONCONST_DEPTH 24/12/24.
+        expectedBase = {
+            'ipTestConfigDefault': {'IP_DATA_WIDTH': '70', 'IP_MEM_DEPTH': '16', 'IP_NONCONST_DEPTH': '24'},
+            'ipTestConfigMid':     {'IP_DATA_WIDTH': '64', 'IP_MEM_DEPTH': '16', 'IP_NONCONST_DEPTH': '12'},
+            'ipTestConfigMax':     {'IP_DATA_WIDTH': '128', 'IP_MEM_DEPTH': '32', 'IP_NONCONST_DEPTH': '24'},
+        }
+        for structName, baseExpect in expectedBase.items():
+            members = dict(_config_member_lines(cpp, structName))
+            if not members:
+                print(f"  FAIL: {structName} not emitted")
+                ok = False
+                continue
+            for constName, expVal in baseExpect.items():
+                if members.get(constName) != expVal:
+                    print(f"  FAIL: {structName}.{constName} = {members.get(constName)!r}, "
+                          f"expected {expVal!r}")
+                    ok = False
+            # Eval-derived members stay symbolic in the struct's own members so
+            # the C++ constexpr recomputes them from this sample point.
+            if members.get('IP_DATA_WIDTH_X2') != 'IP_DATA_WIDTH * 2':
+                print(f"  FAIL: {structName}.IP_DATA_WIDTH_X2 not symbolic: "
+                      f"{members.get('IP_DATA_WIDTH_X2')!r}")
+                ok = False
+            if ok:
+                print(f"  PASS: {structName} base values + symbolic derived members")
+
+        # Call list: a parameterizable struct is exercised once per sample point;
+        # a concrete struct exactly once (no Config).
+        for role in ('ipTestConfigDefault', 'ipTestConfigMid', 'ipTestConfigMax'):
+            if f'roundTrip<ipDataSt<{role}>>("ipDataSt"' not in cpp:
+                print(f"  FAIL: missing ipDataSt call at {role}")
+                ok = False
+        if cpp.count('roundTrip<ipFixedSt>("ipFixedSt"') != 1:
+            print(f"  FAIL: concrete ipFixedSt not called exactly once")
+            ok = False
+        else:
+            print(f"  PASS: param struct at 3 sample points, concrete struct once")
+
+        # Signed-pattern selection survives the helper-call form.
+        if 'roundTrip<ipFixedSignedSt>("ipFixedSignedSt", signedPatterns)' not in cpp:
+            print(f"  FAIL: signed struct does not select signedPatterns")
+            ok = False
+        else:
+            print(f"  PASS: signed struct selects signedPatterns")
+
+        return ok
+    finally:
+        if g.db is not None:
+            try:
+                g.db.close()
+            except Exception:
+                pass
+        g.db = None
+        g.cur = None
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 def run_all_tests():
     print("\n" + "="*70)
     print("TESTING: Stage E5 - eval-derived constants emit symbolic into Config")
@@ -260,6 +379,7 @@ def run_all_tests():
         test_emit_c_style_canonical_translation,
         test_config_struct_symbolic_per_variant,
         test_fw_constants_symbolic,
+        test_teststructs_parameterizable_sample_points,
     ]
     results = []
     for test_func in tests:

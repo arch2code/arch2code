@@ -166,108 +166,81 @@ struct ipLeafMemAddrSt {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace ipLeaf_ns {
-template<typename Config>
+export namespace ipLeaf_test_ns {
 class test_ipLeaf_structs {
 public:
     static std::string name(void);
     static void test(void);
+private:
+    template<typename T>
+    static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
+        for(auto pattern : patterns) {
+            typename T::_packedSt packed;
+            memset(&packed, pattern, T::_byteWidth);
+            sc_bv<T::_bitWidth> aInit;
+            sc_bv<T::_bitWidth> aTest;
+            for (int i = 0; i < T::_byteWidth; i++) {
+                int end = std::min((i+1)*8-1, T::_bitWidth-1);
+                aInit.range(end, i*8) = pattern;
+            }
+            T a;
+            a.sc_unpack(aInit);
+            T b;
+            b.unpack(packed);
+            if (!(b == a)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false, sName);
+            }
+            uint64_t test;
+            memset(&test, pattern, 8);
+            b.pack(packed);
+            aTest = a.sc_pack();
+            if (!(aTest == aInit)) {;
+                cout << a.prt();
+                cout << aTest;
+                Q_ASSERT(false, sName);
+            }
+            uint64_t *ptr = (uint64_t *)&packed;
+            uint16_t bitsLeft = T::_bitWidth;
+            do {
+                int bits = std::min((uint16_t)64, bitsLeft);
+                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+                if ((*ptr & mask) != (test & mask)) {;
+                    cout << a.prt();
+                    cout << b.prt();
+                    Q_ASSERT(false, sName);
+                }
+                bitsLeft -= bits;
+                ptr++;
+            } while(bitsLeft > 0);
+        }
+    }
 };
-} // namespace ipLeaf_ns
+} // namespace ipLeaf_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace ipLeaf_ns {
-template<typename Config>
-std::string test_ipLeaf_structs<Config>::name(void) { return "test_ipLeaf_structs"; }
-template<typename Config>
-void test_ipLeaf_structs<Config>::test(void) {
+export namespace ipLeaf_test_ns {
+using namespace ipLeaf_ns;
+struct ipLeafTestConfigDefault {
+    static constexpr uint32_t LEAF_DATA_WIDTH = 4;
+    static constexpr uint32_t LEAF_MEM_DEPTH = 4;
+};
+struct ipLeafTestConfigMax {
+    static constexpr uint32_t LEAF_DATA_WIDTH = 8;
+    static constexpr uint32_t LEAF_MEM_DEPTH = 8;
+};
+std::string test_ipLeaf_structs::name(void) { return "test_ipLeaf_structs"; }
+void test_ipLeaf_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
     std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
-    for(auto pattern : patterns) {
-        typename ipLeafMemSt<Config>::_packedSt packed;
-        memset(&packed, pattern, ipLeafMemSt<Config>::_byteWidth);
-        sc_bv<ipLeafMemSt<Config>::_bitWidth> aInit;
-        sc_bv<ipLeafMemSt<Config>::_bitWidth> aTest;
-        for (int i = 0; i < ipLeafMemSt<Config>::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipLeafMemSt<Config>::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipLeafMemSt<Config> a;
-        a.sc_unpack(aInit);
-        ipLeafMemSt<Config> b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipLeafMemSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipLeafMemSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipLeafMemSt<Config>::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipLeafMemSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        typename ipLeafMemAddrSt<Config>::_packedSt packed;
-        memset(&packed, pattern, ipLeafMemAddrSt<Config>::_byteWidth);
-        sc_bv<ipLeafMemAddrSt<Config>::_bitWidth> aInit;
-        sc_bv<ipLeafMemAddrSt<Config>::_bitWidth> aTest;
-        for (int i = 0; i < ipLeafMemAddrSt<Config>::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipLeafMemAddrSt<Config>::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipLeafMemAddrSt<Config> a;
-        a.sc_unpack(aInit);
-        ipLeafMemAddrSt<Config> b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipLeafMemAddrSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipLeafMemAddrSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipLeafMemAddrSt<Config>::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipLeafMemAddrSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
+    roundTrip<ipLeafMemSt<ipLeafTestConfigDefault>>("ipLeafMemSt", patterns);
+    roundTrip<ipLeafMemSt<ipLeafTestConfigMax>>("ipLeafMemSt", patterns);
+    roundTrip<ipLeafMemAddrSt<ipLeafTestConfigDefault>>("ipLeafMemAddrSt", patterns);
+    roundTrip<ipLeafMemAddrSt<ipLeafTestConfigMax>>("ipLeafMemAddrSt", patterns);
 }
-} // namespace ipLeaf_ns
+} // namespace ipLeaf_test_ns
 
 // GENERATED_CODE_END

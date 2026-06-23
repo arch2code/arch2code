@@ -175,6 +175,7 @@ struct ipDataSt {
     inline void sc_unpack(sc_bv<ipDataSt<Config>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
+        memset((uint64_t *)&data, 0, sizeof(data));
         if (Config::IP_DATA_WIDTH > 0) {
             uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
             data.word[0] = (uint64_t) packed_data.range(_pos + 0 + _bits - 1, _pos + 0).to_uint64();
@@ -280,6 +281,7 @@ struct ipCfgSt {
     inline void sc_unpack(sc_bv<ipCfgSt<Config>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
+        memset((uint64_t *)&threshold, 0, sizeof(threshold));
         if (Config::IP_DATA_WIDTH > 0) {
             uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
             threshold.word[0] = (uint64_t) packed_data.range(_pos + 0 + _bits - 1, _pos + 0).to_uint64();
@@ -369,6 +371,7 @@ struct ipMemSt {
     inline void sc_unpack(sc_bv<ipMemSt<Config>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
+        memset((uint64_t *)&data, 0, sizeof(data));
         if (Config::IP_DATA_WIDTH > 0) {
             uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
             data.word[0] = (uint64_t) packed_data.range(_pos + 0 + _bits - 1, _pos + 0).to_uint64();
@@ -525,6 +528,7 @@ struct ipBurstSt {
     {
     uint16_t _pos{0};
         for(unsigned int i=0; i<Config::IP_MEM_DEPTH; i++) {
+            memset((uint64_t *)&samples[i], 0, sizeof(samples[i]));
             if (Config::IP_DATA_WIDTH > 0) {
                 uint16_t _bits = std::min((uint16_t)64, (uint16_t)(Config::IP_DATA_WIDTH - 0));
                 samples[i].word[0] = (uint64_t) packed_data.range(_pos + 0 + _bits - 1, _pos + 0).to_uint64();
@@ -1345,641 +1349,123 @@ struct ipRegDataSt {
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace ip_ns {
-template<typename Config>
+export namespace ip_test_ns {
 class test_ip_structs {
 public:
     static std::string name(void);
     static void test(void);
+private:
+    template<typename T>
+    static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
+        for(auto pattern : patterns) {
+            typename T::_packedSt packed;
+            memset(&packed, pattern, T::_byteWidth);
+            sc_bv<T::_bitWidth> aInit;
+            sc_bv<T::_bitWidth> aTest;
+            for (int i = 0; i < T::_byteWidth; i++) {
+                int end = std::min((i+1)*8-1, T::_bitWidth-1);
+                aInit.range(end, i*8) = pattern;
+            }
+            T a;
+            a.sc_unpack(aInit);
+            T b;
+            b.unpack(packed);
+            if (!(b == a)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false, sName);
+            }
+            uint64_t test;
+            memset(&test, pattern, 8);
+            b.pack(packed);
+            aTest = a.sc_pack();
+            if (!(aTest == aInit)) {;
+                cout << a.prt();
+                cout << aTest;
+                Q_ASSERT(false, sName);
+            }
+            uint64_t *ptr = (uint64_t *)&packed;
+            uint16_t bitsLeft = T::_bitWidth;
+            do {
+                int bits = std::min((uint16_t)64, bitsLeft);
+                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+                if ((*ptr & mask) != (test & mask)) {;
+                    cout << a.prt();
+                    cout << b.prt();
+                    Q_ASSERT(false, sName);
+                }
+                bitsLeft -= bits;
+                ptr++;
+            } while(bitsLeft > 0);
+        }
+    }
 };
-} // namespace ip_ns
+} // namespace ip_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace ip_ns {
-template<typename Config>
-std::string test_ip_structs<Config>::name(void) { return "test_ip_structs"; }
-template<typename Config>
-void test_ip_structs<Config>::test(void) {
+export namespace ip_test_ns {
+using namespace ip_ns;
+struct ipTestConfigDefault {
+    static constexpr uint32_t IP_DATA_WIDTH = 70;
+    static constexpr uint32_t IP_MEM_DEPTH = 16;
+    static constexpr uint32_t IP_NONCONST_DEPTH = 24;
+    static constexpr uint32_t IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2;
+    static constexpr uint32_t IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2;
+    static constexpr uint32_t IP_MEM_DEPTH_X2 = IP_MEM_DEPTH * 2;
+    static constexpr uint32_t IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2;
+};
+struct ipTestConfigMid {
+    static constexpr uint32_t IP_DATA_WIDTH = 64;
+    static constexpr uint32_t IP_MEM_DEPTH = 16;
+    static constexpr uint32_t IP_NONCONST_DEPTH = 12;
+    static constexpr uint32_t IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2;
+    static constexpr uint32_t IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2;
+    static constexpr uint32_t IP_MEM_DEPTH_X2 = IP_MEM_DEPTH * 2;
+    static constexpr uint32_t IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2;
+};
+struct ipTestConfigMax {
+    static constexpr uint32_t IP_DATA_WIDTH = 128;
+    static constexpr uint32_t IP_MEM_DEPTH = 32;
+    static constexpr uint32_t IP_NONCONST_DEPTH = 24;
+    static constexpr uint32_t IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2;
+    static constexpr uint32_t IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2;
+    static constexpr uint32_t IP_MEM_DEPTH_X2 = IP_MEM_DEPTH * 2;
+    static constexpr uint32_t IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2;
+};
+std::string test_ip_structs::name(void) { return "test_ip_structs"; }
+void test_ip_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
     std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
-    for(auto pattern : patterns) {
-        typename ipDataSt<Config>::_packedSt packed;
-        memset(&packed, pattern, ipDataSt<Config>::_byteWidth);
-        sc_bv<ipDataSt<Config>::_bitWidth> aInit;
-        sc_bv<ipDataSt<Config>::_bitWidth> aTest;
-        for (int i = 0; i < ipDataSt<Config>::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipDataSt<Config>::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipDataSt<Config> a;
-        a.sc_unpack(aInit);
-        ipDataSt<Config> b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipDataSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipDataSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipDataSt<Config>::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipDataSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        typename ipCfgSt<Config>::_packedSt packed;
-        memset(&packed, pattern, ipCfgSt<Config>::_byteWidth);
-        sc_bv<ipCfgSt<Config>::_bitWidth> aInit;
-        sc_bv<ipCfgSt<Config>::_bitWidth> aTest;
-        for (int i = 0; i < ipCfgSt<Config>::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipCfgSt<Config>::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipCfgSt<Config> a;
-        a.sc_unpack(aInit);
-        ipCfgSt<Config> b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipCfgSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipCfgSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipCfgSt<Config>::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipCfgSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        typename ipMemSt<Config>::_packedSt packed;
-        memset(&packed, pattern, ipMemSt<Config>::_byteWidth);
-        sc_bv<ipMemSt<Config>::_bitWidth> aInit;
-        sc_bv<ipMemSt<Config>::_bitWidth> aTest;
-        for (int i = 0; i < ipMemSt<Config>::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipMemSt<Config>::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipMemSt<Config> a;
-        a.sc_unpack(aInit);
-        ipMemSt<Config> b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipMemSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipMemSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipMemSt<Config>::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipMemSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        typename ipMemAddrSt<Config>::_packedSt packed;
-        memset(&packed, pattern, ipMemAddrSt<Config>::_byteWidth);
-        sc_bv<ipMemAddrSt<Config>::_bitWidth> aInit;
-        sc_bv<ipMemAddrSt<Config>::_bitWidth> aTest;
-        for (int i = 0; i < ipMemAddrSt<Config>::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipMemAddrSt<Config>::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipMemAddrSt<Config> a;
-        a.sc_unpack(aInit);
-        ipMemAddrSt<Config> b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipMemAddrSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipMemAddrSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipMemAddrSt<Config>::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipMemAddrSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        typename ipBurstSt<Config>::_packedSt packed;
-        memset(&packed, pattern, ipBurstSt<Config>::_byteWidth);
-        sc_bv<ipBurstSt<Config>::_bitWidth> aInit;
-        sc_bv<ipBurstSt<Config>::_bitWidth> aTest;
-        for (int i = 0; i < ipBurstSt<Config>::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipBurstSt<Config>::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipBurstSt<Config> a;
-        a.sc_unpack(aInit);
-        ipBurstSt<Config> b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipBurstSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipBurstSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipBurstSt<Config>::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipBurstSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        typename ipDerivedMemAddrSt<Config>::_packedSt packed;
-        memset(&packed, pattern, ipDerivedMemAddrSt<Config>::_byteWidth);
-        sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> aInit;
-        sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> aTest;
-        for (int i = 0; i < ipDerivedMemAddrSt<Config>::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipDerivedMemAddrSt<Config>::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipDerivedMemAddrSt<Config> a;
-        a.sc_unpack(aInit);
-        ipDerivedMemAddrSt<Config> b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipDerivedMemAddrSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipDerivedMemAddrSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipDerivedMemAddrSt<Config>::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipDerivedMemAddrSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        ipFixedSt::_packedSt packed;
-        memset(&packed, pattern, ipFixedSt::_byteWidth);
-        sc_bv<ipFixedSt::_bitWidth> aInit;
-        sc_bv<ipFixedSt::_bitWidth> aTest;
-        for (int i = 0; i < ipFixedSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipFixedSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipFixedSt a;
-        a.sc_unpack(aInit);
-        ipFixedSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipFixedSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipFixedSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipFixedSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipFixedSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        ipFixedAddrSt::_packedSt packed;
-        memset(&packed, pattern, ipFixedAddrSt::_byteWidth);
-        sc_bv<ipFixedAddrSt::_bitWidth> aInit;
-        sc_bv<ipFixedAddrSt::_bitWidth> aTest;
-        for (int i = 0; i < ipFixedAddrSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipFixedAddrSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipFixedAddrSt a;
-        a.sc_unpack(aInit);
-        ipFixedAddrSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipFixedAddrSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipFixedAddrSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipFixedAddrSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipFixedAddrSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        ipFixedHeaderSt::_packedSt packed;
-        memset(&packed, pattern, ipFixedHeaderSt::_byteWidth);
-        sc_bv<ipFixedHeaderSt::_bitWidth> aInit;
-        sc_bv<ipFixedHeaderSt::_bitWidth> aTest;
-        for (int i = 0; i < ipFixedHeaderSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipFixedHeaderSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipFixedHeaderSt a;
-        a.sc_unpack(aInit);
-        ipFixedHeaderSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipFixedHeaderSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipFixedHeaderSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipFixedHeaderSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipFixedHeaderSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : signedPatterns) {
-        ipFixedSignedSt::_packedSt packed;
-        memset(&packed, pattern, ipFixedSignedSt::_byteWidth);
-        sc_bv<ipFixedSignedSt::_bitWidth> aInit;
-        sc_bv<ipFixedSignedSt::_bitWidth> aTest;
-        for (int i = 0; i < ipFixedSignedSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipFixedSignedSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipFixedSignedSt a;
-        a.sc_unpack(aInit);
-        ipFixedSignedSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipFixedSignedSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipFixedSignedSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipFixedSignedSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipFixedSignedSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        ipFixedArraySt::_packedSt packed;
-        memset(&packed, pattern, ipFixedArraySt::_byteWidth);
-        sc_bv<ipFixedArraySt::_bitWidth> aInit;
-        sc_bv<ipFixedArraySt::_bitWidth> aTest;
-        for (int i = 0; i < ipFixedArraySt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipFixedArraySt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipFixedArraySt a;
-        a.sc_unpack(aInit);
-        ipFixedArraySt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipFixedArraySt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipFixedArraySt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipFixedArraySt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipFixedArraySt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        ipFixedLog2St::_packedSt packed;
-        memset(&packed, pattern, ipFixedLog2St::_byteWidth);
-        sc_bv<ipFixedLog2St::_bitWidth> aInit;
-        sc_bv<ipFixedLog2St::_bitWidth> aTest;
-        for (int i = 0; i < ipFixedLog2St::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipFixedLog2St::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipFixedLog2St a;
-        a.sc_unpack(aInit);
-        ipFixedLog2St b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipFixedLog2St fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipFixedLog2St fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipFixedLog2St::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipFixedLog2St fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : signedPatterns) {
-        ipFixedNestedSt::_packedSt packed;
-        memset(&packed, pattern, ipFixedNestedSt::_byteWidth);
-        sc_bv<ipFixedNestedSt::_bitWidth> aInit;
-        sc_bv<ipFixedNestedSt::_bitWidth> aTest;
-        for (int i = 0; i < ipFixedNestedSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipFixedNestedSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipFixedNestedSt a;
-        a.sc_unpack(aInit);
-        ipFixedNestedSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipFixedNestedSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipFixedNestedSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipFixedNestedSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipFixedNestedSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        ipRegAddrSt::_packedSt packed;
-        memset(&packed, pattern, ipRegAddrSt::_byteWidth);
-        sc_bv<ipRegAddrSt::_bitWidth> aInit;
-        sc_bv<ipRegAddrSt::_bitWidth> aTest;
-        for (int i = 0; i < ipRegAddrSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipRegAddrSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipRegAddrSt a;
-        a.sc_unpack(aInit);
-        ipRegAddrSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipRegAddrSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipRegAddrSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipRegAddrSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipRegAddrSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
-    for(auto pattern : patterns) {
-        ipRegDataSt::_packedSt packed;
-        memset(&packed, pattern, ipRegDataSt::_byteWidth);
-        sc_bv<ipRegDataSt::_bitWidth> aInit;
-        sc_bv<ipRegDataSt::_bitWidth> aTest;
-        for (int i = 0; i < ipRegDataSt::_byteWidth; i++) {
-            int end = std::min((i+1)*8-1, ipRegDataSt::_bitWidth-1);
-            aInit.range(end, i*8) = pattern;
-        }
-        ipRegDataSt a;
-        a.sc_unpack(aInit);
-        ipRegDataSt b;
-        b.unpack(packed);
-        if (!(b == a)) {;
-            cout << a.prt();
-            cout << b.prt();
-            Q_ASSERT(false,"ipRegDataSt fail");
-        }
-        uint64_t test;
-        memset(&test, pattern, 8);
-        b.pack(packed);
-        aTest = a.sc_pack();
-        if (!(aTest == aInit)) {;
-            cout << a.prt();
-            cout << aTest;
-            Q_ASSERT(false,"ipRegDataSt fail");
-        }
-        uint64_t *ptr = (uint64_t *)&packed;
-        uint16_t bitsLeft = ipRegDataSt::_bitWidth;
-        do {
-            int bits = std::min((uint16_t)64, bitsLeft);
-            uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
-            if ((*ptr & mask) != (test & mask)) {;
-                cout << a.prt();
-                cout << b.prt();
-                Q_ASSERT(false,"ipRegDataSt fail");
-            }
-            bitsLeft -= bits;
-            ptr++;
-        } while(bitsLeft > 0);
-    }
+    roundTrip<ipDataSt<ipTestConfigDefault>>("ipDataSt", patterns);
+    roundTrip<ipDataSt<ipTestConfigMid>>("ipDataSt", patterns);
+    roundTrip<ipDataSt<ipTestConfigMax>>("ipDataSt", patterns);
+    roundTrip<ipCfgSt<ipTestConfigDefault>>("ipCfgSt", patterns);
+    roundTrip<ipCfgSt<ipTestConfigMid>>("ipCfgSt", patterns);
+    roundTrip<ipCfgSt<ipTestConfigMax>>("ipCfgSt", patterns);
+    roundTrip<ipMemSt<ipTestConfigDefault>>("ipMemSt", patterns);
+    roundTrip<ipMemSt<ipTestConfigMid>>("ipMemSt", patterns);
+    roundTrip<ipMemSt<ipTestConfigMax>>("ipMemSt", patterns);
+    roundTrip<ipMemAddrSt<ipTestConfigDefault>>("ipMemAddrSt", patterns);
+    roundTrip<ipMemAddrSt<ipTestConfigMid>>("ipMemAddrSt", patterns);
+    roundTrip<ipMemAddrSt<ipTestConfigMax>>("ipMemAddrSt", patterns);
+    roundTrip<ipBurstSt<ipTestConfigDefault>>("ipBurstSt", patterns);
+    roundTrip<ipBurstSt<ipTestConfigMid>>("ipBurstSt", patterns);
+    roundTrip<ipBurstSt<ipTestConfigMax>>("ipBurstSt", patterns);
+    roundTrip<ipDerivedMemAddrSt<ipTestConfigDefault>>("ipDerivedMemAddrSt", patterns);
+    roundTrip<ipDerivedMemAddrSt<ipTestConfigMid>>("ipDerivedMemAddrSt", patterns);
+    roundTrip<ipDerivedMemAddrSt<ipTestConfigMax>>("ipDerivedMemAddrSt", patterns);
+    roundTrip<ipFixedSt>("ipFixedSt", patterns);
+    roundTrip<ipFixedAddrSt>("ipFixedAddrSt", patterns);
+    roundTrip<ipFixedHeaderSt>("ipFixedHeaderSt", patterns);
+    roundTrip<ipFixedSignedSt>("ipFixedSignedSt", signedPatterns);
+    roundTrip<ipFixedArraySt>("ipFixedArraySt", patterns);
+    roundTrip<ipFixedLog2St>("ipFixedLog2St", patterns);
+    roundTrip<ipFixedNestedSt>("ipFixedNestedSt", signedPatterns);
+    roundTrip<ipRegAddrSt>("ipRegAddrSt", patterns);
+    roundTrip<ipRegDataSt>("ipRegDataSt", patterns);
 }
-} // namespace ip_ns
+} // namespace ip_test_ns
 
 // GENERATED_CODE_END

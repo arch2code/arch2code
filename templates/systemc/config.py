@@ -14,6 +14,24 @@ def emitCStyleCanonical(evalCanonical, symSpelling):
     return emissionUtils.emitExpr(evalCanonical, symSpelling, emissionUtils.C)
 
 
+def configStructLines(prj, data, structName, baseValues):
+    """Emit the lines for one Config struct given base-value overrides.
+
+    baseValues: {base-parameterizable-constant-name: int}. Base parameterizable
+    members emit the supplied override (or their declared value); eval-derived
+    members emit symbolically through their canonical expression so each struct
+    recomputes them from its own base members (see _configMemberRhs)."""
+    params = [value for value in data['constants'].values() if value['isParameterizable']]
+    spelling = _configSymSpelling(prj, {value['constant'] for value in params})
+    out = [f"struct {structName} {{"]
+    for value in params:
+        type_str = _config_type(value)
+        rhs = _configMemberRhs(value, baseValues.get(value['constant'], value['value']), spelling)
+        out.append(f"    static constexpr {type_str} {value['constant']} = {rhs};")
+    out.append("};")
+    return out
+
+
 def includeConfig(args, prj, data):
     out = []
     params = [value for value in data['constants'].values() if value['isParameterizable']]
