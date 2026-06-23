@@ -14,11 +14,20 @@ message):
 - A variant binding that exceeds its backing constant's maxValue (worst-case
   sizing would under-allocate).
 - A connection endpoint block reached through a parameterized interface that
-  does not itself carry the interface payload's backing param.
+  does not itself carry the interface payload's backing param. Three cells:
+  the dst endpoint unparameterized, the dst endpoint parameterized but with the
+  wrong backing param (so both error-reason branches are covered), and the src
+  endpoint short of the param (so both ends are shown to be checked).
 
 Positive cases (must succeed):
 - A parameterized interface whose two connected endpoints both carry the
   backing param (the payload is sized in each module's own scope).
+- A non-parameterized interface between non-parameterized endpoints (the
+  validator must not fire on a plain interface).
+- Two parameterized blocks bound to different variants bridged by a
+  non-parameterized boundary channel (the C3.5 cross-variant path: a
+  non-parameterizable channel is skipped, the per-leg adaptation being a
+  runtime concern).
 
 Positive case (must succeed, asserted in-process against the database):
 - One exposed param consumed by two blocks, and a parameterizable type and
@@ -305,6 +314,212 @@ parameters:
         "parameterized interface with both endpoints parameterized")
 
 
+def test_param_interface_endpoint_wrong_param():
+    # The consumer is parameterized, but with an unrelated backing param
+    # (OTHER_W), not the WIDTH the payload depends on. It is parameterizable yet
+    # still cannot size the payload, so the error reports a missing required
+    # parameter rather than an unparameterized block - the second reason branch.
+    arch = """ipParameters:
+  constants:
+    WIDTH: { value: 8, maxValue: 16, desc: "backing width the payload needs" }
+    OTHER_W: { value: 8, maxValue: 16, desc: "unrelated backing param" }
+  types:
+    dataT: { width: WIDTH, maxBitwidth: 16, desc: "parameterizable payload word" }
+
+structures:
+  dataSt:
+    data: { varType: dataT, desc: "parameterizable payload" }
+
+interfaces:
+  dataIf:
+    desc: "parameterized push/ack stream"
+    interfaceType: push_ack
+    structures:
+      - { structure: dataSt, structureType: data_t }
+
+blocks:
+  producer:
+    desc: "parameterized producer that backs WIDTH"
+    params: [WIDTH]
+    ports:
+      out: { interface: dataIf, direction: src }
+  consumer:
+    desc: "parameterized, but carries the wrong backing param"
+    params: [OTHER_W]
+    ports:
+      in: { interface: dataIf, direction: dst }
+  top: { desc: "top" }
+
+instances:
+  uTop: { container: top, instanceType: top }
+  uProd: { container: top, instanceType: producer, variant: v0 }
+  uCons: { container: top, instanceType: consumer, variant: v0 }
+
+connections:
+  - { interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in }
+
+parameters:
+  producer:
+    - { variant: v0, param: WIDTH, value: 8 }
+  consumer:
+    - { variant: v0, param: OTHER_W, value: 8 }
+"""
+    return _expect_error(
+        arch,
+        ["dataIf", "uCons", "does not declare the required parameter", "missing WIDTH"],
+        "parameterized interface endpoint parameterized with the wrong param")
+
+
+def test_param_interface_src_endpoint_missing_param():
+    # The shortfall is on the src (producer) end this time: validation checks
+    # both endpoints, not only the consumer. The consumer carries WIDTH (so it
+    # is not an orphan), the producer does not.
+    arch = """ipParameters:
+  constants:
+    WIDTH: { value: 8, maxValue: 16, desc: "backing width" }
+  types:
+    dataT: { width: WIDTH, maxBitwidth: 16, desc: "parameterizable payload word" }
+
+structures:
+  dataSt:
+    data: { varType: dataT, desc: "parameterizable payload" }
+
+interfaces:
+  dataIf:
+    desc: "parameterized push/ack stream"
+    interfaceType: push_ack
+    structures:
+      - { structure: dataSt, structureType: data_t }
+
+blocks:
+  producer:
+    desc: "src endpoint lacking the backing param"
+    ports:
+      out: { interface: dataIf, direction: src }
+  consumer:
+    desc: "consumer that carries the backing param"
+    params: [WIDTH]
+    ports:
+      in: { interface: dataIf, direction: dst }
+  top: { desc: "top" }
+
+instances:
+  uTop: { container: top, instanceType: top }
+  uProd: { container: top, instanceType: producer }
+  uCons: { container: top, instanceType: consumer, variant: v0 }
+
+connections:
+  - { interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in }
+
+parameters:
+  consumer:
+    - { variant: v0, param: WIDTH, value: 8 }
+"""
+    return _expect_error(
+        arch,
+        ["dataIf", "uProd", "missing WIDTH"],
+        "parameterized interface src endpoint missing the backing param")
+
+
+def test_nonparam_interface_endpoints_ok():
+    # Baseline: a non-parameterized interface (plain payload, fixed width)
+    # between two non-parameterized blocks. The connection is not
+    # parameterizable, so endpoint validation does not fire and the build
+    # succeeds. Guards against the validator over-firing on plain interfaces.
+    arch = """types:
+  ctrlT: { width: 4, desc: "plain payload word" }
+
+structures:
+  ctrlSt:
+    flag: { varType: ctrlT, desc: "plain payload" }
+
+interfaces:
+  ctrlIf:
+    desc: "non-parameterized push/ack stream"
+    interfaceType: push_ack
+    structures:
+      - { structure: ctrlSt, structureType: data_t }
+
+blocks:
+  producer:
+    desc: "plain producer"
+    ports:
+      out: { interface: ctrlIf, direction: src }
+  consumer:
+    desc: "plain consumer"
+    ports:
+      in: { interface: ctrlIf, direction: dst }
+  top: { desc: "top" }
+
+instances:
+  uTop: { container: top, instanceType: top }
+  uProd: { container: top, instanceType: producer }
+  uCons: { container: top, instanceType: consumer }
+
+connections:
+  - { interface: ctrlIf, src: uProd, srcport: out, dst: uCons, dstport: in }
+"""
+    return _expect_success(
+        arch,
+        "non-parameterized interface between non-parameterized endpoints")
+
+
+def test_crossvariant_nonparam_boundary_channel():
+    # The C3.5 cross-variant boundary path: two parameterized blocks bound to
+    # different variants (WIDTH 8 vs 16) connected through a non-parameterized
+    # boundary interface. Because the channel interface is not parameterizable,
+    # endpoint validation correctly skips it and the build succeeds - the
+    # per-leg payload adaptation is a runtime concern, not a static error.
+    arch = """ipParameters:
+  constants:
+    WIDTH: { value: 8, maxValue: 32, desc: "per-variant backing width" }
+
+types:
+  boundaryT: { width: 16, desc: "fixed-width boundary word" }
+
+structures:
+  boundarySt:
+    flag: { varType: boundaryT, desc: "fixed-width boundary payload" }
+
+interfaces:
+  boundaryIf:
+    desc: "non-parameterized boundary push/ack stream"
+    interfaceType: push_ack
+    structures:
+      - { structure: boundarySt, structureType: data_t }
+
+blocks:
+  producer:
+    desc: "parameterized producer (variant v0)"
+    params: [WIDTH]
+    ports:
+      out: { interface: boundaryIf, direction: src }
+  consumer:
+    desc: "parameterized consumer (variant v1)"
+    params: [WIDTH]
+    ports:
+      in: { interface: boundaryIf, direction: dst }
+  top: { desc: "top" }
+
+instances:
+  uTop: { container: top, instanceType: top }
+  uProd: { container: top, instanceType: producer, variant: v0 }
+  uCons: { container: top, instanceType: consumer, variant: v1 }
+
+connections:
+  - { interface: boundaryIf, src: uProd, srcport: out, dst: uCons, dstport: in }
+
+parameters:
+  producer:
+    - { variant: v0, param: WIDTH, value: 8 }
+  consumer:
+    - { variant: v1, param: WIDTH, value: 16 }
+"""
+    return _expect_success(
+        arch,
+        "cross-variant blocks bridged by a non-parameterized boundary channel")
+
+
 # ----------------------------------------------------------------------------
 # Positive case: in-process projectCreate, then assert against the database.
 # ----------------------------------------------------------------------------
@@ -415,7 +630,11 @@ def run_all_tests():
         test_non_parameterizable_backing,
         test_variant_binding_exceeds_maxvalue,
         test_param_interface_endpoint_missing_param,
+        test_param_interface_endpoint_wrong_param,
+        test_param_interface_src_endpoint_missing_param,
         test_param_interface_both_endpoints_parameterized,
+        test_nonparam_interface_endpoints_ok,
+        test_crossvariant_nonparam_boundary_channel,
         test_shared_param_two_blocks_and_decl_set,
     ]
     results = []

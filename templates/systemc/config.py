@@ -55,7 +55,12 @@ def includeConfig(args, prj, data):
     # emitted here: there is no constant default, so any caller reading
     # them through the legacy default fallback is a usage bug. Per-variant
     # Config structs (below) carry the override values.
-    configName = f"{data['contextStem'].replace('-', '_')}DefaultConfig"
+    # The struct name must be the same identifier consumer blocks reference
+    # as their Config type, i.e. blocks.defaultConfig. Mirror the exact
+    # context-stem sanitization used by calcBlockConfigInfo() (both '-' and
+    # '.' mapped to '_') so the emitted name never drifts from the persisted
+    # one.
+    configName = f"{data['contextStem'].replace('-', '_').replace('.', '_')}DefaultConfig"
     out.append(f"struct {configName} {{")
     defaultSpelling = _configSymSpelling(prj, {value['constant'] for value in params})
     for value in params:
