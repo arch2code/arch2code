@@ -7,14 +7,12 @@
 SC_HAS_PROCESS(nestedL5);
 
 // === Block factory registration (nestedL5) ===
-void force_link_nestedL5() {}
-
 void register_nestedL5_variants() {
     instanceFactory::registerBlock("nestedL5_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<nestedL5>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _nestedL5_registered = (register_nestedL5_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _nestedL5_registered = (register_nestedL5_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
@@ -22,7 +20,7 @@ nestedL5::nestedL5(sc_module_name blockName, const char * variant, blockBaseMode
        : sc_module(blockName)
         ,blockBase("nestedL5", name(), bbMode)
         ,nestedL5Base(name(), variant)
-        ,uNestedL6(std::dynamic_pointer_cast<nestedL6Base>((force_link_nestedL6(), instanceFactory::createInstance(name(), "uNestedL6", "nestedL6", ""))))
+        ,uNestedL6(std::dynamic_pointer_cast<nestedL6Base>(instanceFactory::createInstance(name(), "uNestedL6", "nestedL6", "")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

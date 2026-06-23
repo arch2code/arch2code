@@ -10,10 +10,6 @@
 #include "axi4sDemoBase.h"
 #include "axi4sDemoExternal.h"
 
-// Force-link function (active modules-mode anchor) for the testbench
-// class. Referencing this symbol pulls the registration TU into static links.
-void force_link_axi4sDemoTestbench();
-
 class axi4sDemoTestbench: public sc_module, public blockBase, public axi4sDemoChannels {
 
 public:

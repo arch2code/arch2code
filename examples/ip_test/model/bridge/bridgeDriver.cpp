@@ -6,14 +6,12 @@
 SC_HAS_PROCESS(bridgeDriver);
 
 // === Block factory registration (bridgeDriver) ===
-void force_link_bridgeDriver() {}
-
 void register_bridgeDriver_variants() {
     instanceFactory::registerBlock("bridgeDriver_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<bridgeDriver>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _bridgeDriver_registered = (register_bridgeDriver_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _bridgeDriver_registered = (register_bridgeDriver_variants(), 0);
 } // namespace
 // === End block factory registration ===
 

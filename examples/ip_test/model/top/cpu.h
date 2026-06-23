@@ -4,6 +4,7 @@
 //copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
+#include "fwIpMain.h"
 
 // GENERATED_CODE_PARAM --block=cpu
 // GENERATED_CODE_BEGIN --template=classDecl
@@ -26,6 +27,8 @@ private:
     void checkUIp0(void);
     void checkUIp1(void);
     void endOfTestThread(void);
+    // Bind the firmware register-access seam to this cpu's apb master port.
+    fw_ns::ipRegBus makeRegBus(void);
 };
 
 #endif //CPU_H

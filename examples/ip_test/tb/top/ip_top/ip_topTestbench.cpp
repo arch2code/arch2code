@@ -3,23 +3,22 @@
 #include "ip_topTestbench.h"
 
 // === Block factory registration (ip_topTestbench) ===
-// Force-link function. Declaration in ip_topTestbench.h.
-// Referencing this symbol pulls the registration TU into static links.
-void force_link_ip_topTestbench() {}
-
+// The testbench top self-registers through an A2C_REGISTRATION_RETAIN static
+// (see instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference.
 void register_ip_topTestbench_variants() {
     instanceFactory::registerBlock("ip_topTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_topTestbench>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _ip_topTestbench_registered = (register_ip_topTestbench_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _ip_topTestbench_registered = (register_ip_topTestbench_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
 ip_topTestbench::ip_topTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("ip_topTestbench", name(), bbMode)
         ,ip_topChannels("Chnl", "tb")
-        ,ip_top(std::dynamic_pointer_cast<ip_topBase>((force_link_ip_top(), instanceFactory::createInstance(name(), "ip_top", "ip_top", ""))))
+        ,ip_top(std::dynamic_pointer_cast<ip_topBase>( instanceFactory::createInstance(name(), "ip_top", "ip_top", "")))
         ,external("external")
 {
     bind(ip_top.get(), &external);

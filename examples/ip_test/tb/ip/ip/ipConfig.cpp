@@ -7,11 +7,6 @@
 #include "testBenchConfigFactory.h"
 #include "endOfTest.h"
 
-// Forward declaration of the active force-link function emitted by
-// the testbench class. See plan-block-registration.md
-// "Force-Link Function".
-void force_link_ipTestbench();
-
 // GENERATED_CODE_PARAM --block=ip --variant=variant0
 // GENERATED_CODE_BEGIN --template=tbConfig
 
@@ -34,7 +29,6 @@ public:
     bool createTestBench(void) override
     {
         //create hierarchy
-        force_link_ipTestbench();
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "ipTestbench", "");
         return true;
     }

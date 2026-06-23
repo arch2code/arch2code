@@ -12,14 +12,12 @@
 SC_HAS_PROCESS(mixed);
 
 // === Block factory registration (mixed) ===
-void force_link_mixed() {}
-
 void register_mixed_variants() {
     instanceFactory::registerBlock("mixed_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<mixed>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _mixed_registered = (register_mixed_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _mixed_registered = (register_mixed_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
@@ -33,10 +31,10 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
         ,dupIf("blockB_dupIf", "blockA")
         ,apbReg_uBlockA("blockA_apbReg_uBlockA", "apbDecode")
         ,apbReg_uBlockB("blockB_apbReg_uBlockB", "apbDecode")
-        ,uBlockA(std::dynamic_pointer_cast<blockABase>((force_link_blockA(), instanceFactory::createInstance(name(), "uBlockA", "blockA", ""))))
-        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>((force_link_apbDecode(), instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", ""))))
-        ,uBlockC(std::dynamic_pointer_cast<blockCBase>((force_link_blockC(), instanceFactory::createInstance(name(), "uBlockC", "blockC", ""))))
-        ,uBlockB(std::dynamic_pointer_cast<blockBBase>((force_link_blockB(), instanceFactory::createInstance(name(), "uBlockB", "blockB", ""))))
+        ,uBlockA(std::dynamic_pointer_cast<blockABase>(instanceFactory::createInstance(name(), "uBlockA", "blockA", "")))
+        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "")))
+        ,uBlockC(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC", "blockC", "")))
+        ,uBlockB(std::dynamic_pointer_cast<blockBBase>(instanceFactory::createInstance(name(), "uBlockB", "blockB", "")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

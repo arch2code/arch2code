@@ -9,14 +9,12 @@
 SC_HAS_PROCESS(secondBlock);
 
 // === Block factory registration (secondBlock) ===
-void force_link_secondBlock() {}
-
 void register_secondBlock_variants() {
     instanceFactory::registerBlock("secondBlock_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<secondBlock>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _secondBlock_registered = (register_secondBlock_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _secondBlock_registered = (register_secondBlock_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
@@ -25,8 +23,8 @@ secondBlock::secondBlock(sc_module_name blockName, const char * variant, blockBa
         ,blockBase("secondBlock", name(), bbMode)
         ,secondBlockBase(name(), variant)
         ,test("secondSubB_test", "secondSubA")
-        ,uSecondSubA(std::dynamic_pointer_cast<secondSubABase>((force_link_secondSubA(), instanceFactory::createInstance(name(), "uSecondSubA", "secondSubA", ""))))
-        ,uSecondSubB(std::dynamic_pointer_cast<secondSubBBase>((force_link_secondSubB(), instanceFactory::createInstance(name(), "uSecondSubB", "secondSubB", ""))))
+        ,uSecondSubA(std::dynamic_pointer_cast<secondSubABase>(instanceFactory::createInstance(name(), "uSecondSubA", "secondSubA", "")))
+        ,uSecondSubB(std::dynamic_pointer_cast<secondSubBBase>(instanceFactory::createInstance(name(), "uSecondSubB", "secondSubB", "")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

@@ -147,8 +147,5 @@ public:
     };
 };
 
-
-// Force-link function (active modules-mode anchor).
-void force_link_consumer();
 // GENERATED_CODE_END
 #endif //CONSUMER_BASE_H

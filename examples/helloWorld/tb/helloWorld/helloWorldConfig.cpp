@@ -8,14 +8,6 @@
 #include "endOfTest.h"
 #include "testController.h"
 
-// Forward declaration of the active force-link function emitted by
-// the testbench class. Calling it from createTestBench() creates a
-// real symbol reference into helloWorldTestbench.cpp so the
-// linker pulls that TU into the program even when nothing else
-// references its symbols. This is required under C++20 modules and
-// static-archive linking.
-void force_link_helloWorldTestbench();
-
 // GENERATED_CODE_PARAM --block=helloWorld
 // GENERATED_CODE_BEGIN --template=tbConfig
 
@@ -49,7 +41,6 @@ public:
         });
 
         //create hierarchy
-        force_link_helloWorldTestbench();
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "helloWorldTestbench", "");
         return true;
     }

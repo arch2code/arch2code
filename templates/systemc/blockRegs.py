@@ -23,12 +23,21 @@ def render_sc(args, prj, data):
 
     return s
 
-def get_include_deps(prj, data):
+def get_include_deps(args, prj, data):
+    # blockBase header is always a textual include; context dependencies are
+    # imported as C++20 modules in cppm mode and #included in header mode
+    # (mirrors classDecl's context-include emission).
     include_deps = []
-    include_deps.append(prj.getModuleFilename('blockBase', data["blockName"], 'hdr'))
+    include_deps.append(f'#include "{prj.getModuleFilename("blockBase", data["blockName"], "hdr")}"')
+    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
     for context in data['includeContext']:
-        if context in data['includeFiles'].get('include_cppm', {}):
-            include_deps.append(data["includeFiles"]["include_cppm"][context]["baseName"])
+        if context in data['includeFiles'].get(fileMapKey, {}):
+            if fileMapKey == 'include_cppm':
+                moduleName = intf_gen_utils.cpp_module_name(prj.includeName[context])
+                include_deps.append(f'import {moduleName};')
+                include_deps.append(f'using namespace {intf_gen_utils.cpp_namespace_name(prj.includeName[context])};')
+            else:
+                include_deps.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
     return include_deps
 
 def get_reghandler_properties(prj, data):
@@ -107,7 +116,7 @@ def get_hwregs(prj, data):
 def render_section_header(args, prj, data):
     t = Template(block_regs_header_template)
     blockName=data['blockName']
-    s = t.render(blockname=blockName, include_deps=get_include_deps(prj, data), hwregs=get_hwregs(prj, data))
+    s = t.render(blockname=blockName, include_deps=get_include_deps(args, prj, data), hwregs=get_hwregs(prj, data))
     return s
 
 def render_section_init(args, prj, data):
@@ -131,7 +140,7 @@ block_regs_header_template = '''\
 #include "hwRegister.h"
 #include "hwMemory.h"
 {% for entry in include_deps -%}
-#include "{{entry}}"
+{{entry}}
 {% endfor %}
 SC_MODULE({{blockname}}), public blockBase, public {{blockname}}Base
 {
@@ -160,16 +169,15 @@ block_regs_init_section_template = '''\
 SC_HAS_PROCESS({{blockname}});
 
 // === Block factory registration ({{blockname}}) ===
-// Force-link function. Declaration in {{blockname}}Base.h.
-// Referencing this symbol pulls the registration TU into static links.
-void force_link_{{blockname}}() {}
-
+// The register handler self-registers through an A2C_REGISTRATION_RETAIN
+// static (see instanceFactory.h); it is reachable through direct-.o linking
+// with no force-link reference from any parent.
 void register_{{blockname}}_variants() {
     instanceFactory::registerBlock("{{blockname}}_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{{blockname}}>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _{{blockname}}_registered = (register_{{blockname}}_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _{{blockname}}_registered = (register_{{blockname}}_variants(), 0);
 } // namespace
 // === End block factory registration ===
 

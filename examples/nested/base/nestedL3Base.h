@@ -72,8 +72,5 @@ public:
     };
 };
 
-
-// Force-link function (active modules-mode anchor).
-void force_link_nestedL3();
 // GENERATED_CODE_END
 #endif //NESTEDL3_BASE_H

@@ -354,22 +354,15 @@ tbConfigTemplate = \
 #include "testBenchConfigFactory.h"
 #include "endOfTest.h"
 
-// Forward declaration of the active force-link function emitted by
-// the testbench class. Calling it from createTestBench() creates a
-// real symbol reference into __tbclassname__Testbench.cpp so the
-// linker pulls that TU into the program even when nothing else
-// references its symbols. This is required under C++20 modules and
-// static-archive linking.
-void force_link___tbclassname__Testbench();
-
 // GENERATED_CODE_PARAM --block=__modulename____variantparam__
 // GENERATED_CODE_BEGIN --template=tbConfig
 // GENERATED_CODE_END
 
     bool createTestBench(void) override
     {
-        //create hierarchy
-        force_link___tbclassname__Testbench();
+        // The testbench top self-registers via an A2C_REGISTRATION_RETAIN
+        // static in __tbclassname__Testbench.cpp (see instanceFactory.h),
+        // reachable through direct-.o linking with no force-link reference.
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "__tbclassname__Testbench", "");
         return true;
     }

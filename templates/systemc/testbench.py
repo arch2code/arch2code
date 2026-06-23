@@ -68,15 +68,10 @@ def tb_sec_init(args, prj, data):
     blockName = sel['blockName']
     instName = blockName
     isParameterizable = data['isParameterizable']
-    # The DUT's force-link function is emitted for any block without its own
-    # params; templated leaf blocks do not need it. The template branch that
-    # omits the force-link call is therefore gated on hasOwnParams, not on
-    # isParameterizable.
     s = t.render(blockname=blockName, tbclassname=sel['tbClassName'],
                  dutinstname=instName, extinstname="external",
                  is_parameterizable=isParameterizable, cfg=sel['cfg'],
                  default_config=sel['configName'],
-                 dut_is_parameterizable=sel['hasOwnParams'],
                  factory_variant=sel['factoryVariant'])
     return s
 
@@ -111,20 +106,18 @@ def ext_sec_init(args, prj, data):
     out.append(s.format(blockName=sel['blockName'], tbClassName=sel['tbClassName'], cfg=cfg))
 
     for data_ in data['subBlockInstances'].values():
-        instIsParameterizable = data_['instanceTypeIsParameterizable']
         # Child instance casts target the child's per-variant Config, not the
         # parent's defaultConfig. Empty descriptors fall back to the child's
         # default Config.
         instCfg = data_['instanceConfigArg']
         # Generated createInstance passes the variant string only; the factory
-        # key is `(blockType, variant)`. Non-templated children additionally
-        # emit an active force_link_<child>() call before the lookup.
+        # key is `(blockType, variant)`. Non-templated children self-register
+        # via an A2C_REGISTRATION_RETAIN static in their own TU, so the
+        # testbench holds no symbol reference to them.
         createCall = (
             'instanceFactory::createInstance(name(), "{instName}", '
             '"{blockName}", "{variant}")'
         )
-        if not instIsParameterizable:
-            createCall = f'(force_link_{{blockName}}(), {createCall})'
         s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base{instCfg}>(' + createCall + '))'
         out.append(s.format(blockName=data_['instanceType'], instName=data_['instance'], instCfg=instCfg, variant=data_.get('variant', '')))
 
@@ -332,10 +325,6 @@ sec_tb_class_header_template = """\
 #include "{{blockname}}Base.h"
 #include "{{tbclassname}}External.h"
 
-// Force-link function (active modules-mode anchor) for the testbench
-// class. Referencing this symbol pulls the registration TU into static links.
-void force_link_{{tbclassname}}Testbench();
-
 class {{tbclassname}}Testbench: public sc_module, public blockBase, public {{blockname}}Channels{{cfg}} {
 
 public:
@@ -361,27 +350,22 @@ sec_tb_class_init_template = """\
 #include "{{tbclassname}}Testbench.h"
 
 // === Block factory registration ({{tbclassname}}Testbench) ===
-// Force-link function. Declaration in {{tbclassname}}Testbench.h.
-// Referencing this symbol pulls the registration TU into static links.
-void force_link_{{tbclassname}}Testbench() {}
-
+// The testbench top self-registers through an A2C_REGISTRATION_RETAIN static
+// (see instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference.
 void register_{{tbclassname}}Testbench_variants() {
     instanceFactory::registerBlock("{{tbclassname}}Testbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{{tbclassname}}Testbench>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _{{tbclassname}}Testbench_registered = (register_{{tbclassname}}Testbench_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _{{tbclassname}}Testbench_registered = (register_{{tbclassname}}Testbench_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
 {{tbclassname}}Testbench::{{tbclassname}}Testbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("{{tbclassname}}Testbench", name(), bbMode)
         ,{{blockname}}Channels{{cfg}}("Chnl", "tb")
-{%- if dut_is_parameterizable %}
         ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>( instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "{{factory_variant}}")))
-{%- else %}
-        ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>((force_link_{{blockname}}(), instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "{{factory_variant}}"))))
-{%- endif %}
         ,{{extinstname}}("{{extinstname}}")
 {
     bind({{dutinstname}}.get(), &{{extinstname}});

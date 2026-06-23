@@ -20,12 +20,41 @@ def render(args, prj, data):
             raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are constants, types, enums, addresses, regAddresses")
 
 
+def _fwConstSymSpelling(prj, evalMemberNames):
+    """Per-symbol speller for an eval-derived parameterizable constant emitted as
+    a flat FW header constant. A referent that is itself such an emitted FW
+    constant stays symbolic as its bare name (so the chain reads
+    IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2); any other referent (a block param
+    or fixed constant, which the FW header does not emit as its own symbol) is
+    spelled from its persisted value as a literal. FW headers have no per-variant
+    Config, so the persisted default is the single firmware value."""
+    def symSpelling(symKey):
+        if symKey in prj.data['constants']:
+            name = prj.data['constants'][symKey]['constant']
+            if name in evalMemberNames:
+                return name
+        return str(prj.getConst(symKey))
+    return symSpelling
+
+
 def includeConstants(args, prj, data):
     out = list()
     out.append("//constants")
 
+    # The SystemC path carries parameterizable constants in the per-variant
+    # Config structs, so they are skipped here. FW headers have no Config struct,
+    # so in fw mode eval-derived parameterizable constants are emitted as flat
+    # consts whose RHS is the canonical eval expression re-spelled in C.
+    fwMode = args.mode == 'fw'
+    fwEvalMembers = {
+        value['constant']
+        for value in data['constants'].values()
+        if value['isParameterizable'] and value['evalCanonical']
+    } if fwMode else set()
+    fwSymSpelling = _fwConstSymSpelling(prj, fwEvalMembers) if fwMode else None
+
     for const, value in data['constants'].items():
-        if value.get('isParameterizable', False):
+        if value['isParameterizable'] and value['constant'] not in fwEvalMembers:
             continue
         match value['valueType']:
             case 'uint':
@@ -48,6 +77,8 @@ def includeConstants(args, prj, data):
             case _:
                 type_str = value['valueType']
                 value_str = f"{value['value']}"
+        if value['isParameterizable']:
+            value_str = emissionUtils.emitExpr(value['evalCanonical'], fwSymSpelling, emissionUtils.C)
         out.append(f"const {type_str} { value['constant'] } = { value_str };  // {value['desc'].strip()}")
 
     out.append("")

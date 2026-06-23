@@ -9,6 +9,31 @@
 
 #include "blockBase.h"
 
+// Block-registration retention.
+//
+// Generated non-templated block .cpp files (and generated testbench .cpp
+// files) self-register with the instanceFactory through a namespace-scope
+// static initializer. For that initializer to run, the linker must keep the
+// object's section and its .init_array entry. Under the project's direct-.o
+// link model every block object is named on the link line, so the initializer
+// runs unconditionally. A2C_REGISTRATION_RETAIN additionally marks the static
+// so it survives compiler dead-code elimination ('used') and the linker's
+// --gc-sections pass ('retain'), keeping registration robust if a project ever
+// enables section GC.
+//
+// This attribute does NOT make registration reachable when a block is packaged
+// into a static archive: no source-level attribute can override the linker's
+// archive-extraction rule (no symbol reference -> no extraction). A project
+// that ships blocks as static archives must link those archives with
+// -Wl,--whole-archive (or the platform equivalent), or add an explicit
+// -Wl,-u <anchor> reference. Direct-.o linking, the shape of every project
+// build today, needs no extra flag.
+#if defined(__GNUC__) || defined(__clang__)
+#define A2C_REGISTRATION_RETAIN [[gnu::used, gnu::retain]]
+#else
+#define A2C_REGISTRATION_RETAIN
+#endif
+
 enum instanceFactoryMode { INSTANCE_FACTORY_DEFAULT, INSTANCE_FACTORY_PRIMARY_TYPE, INSTANCE_FACTORY_SECONDARY_TYPE };
 
 // this file allows the controllable configuration of the model. All blocks must be registered with the instanceFactory

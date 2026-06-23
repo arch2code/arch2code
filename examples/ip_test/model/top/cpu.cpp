@@ -3,6 +3,7 @@
 #include "testController.h"
 #include "regAddresses.h"
 #include "endOfTest.h"
+#include "fwIpMain.h"
 
 // GENERATED_CODE_PARAM --block=cpu
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -10,14 +11,12 @@
 SC_HAS_PROCESS(cpu);
 
 // === Block factory registration (cpu) ===
-void force_link_cpu() {}
-
 void register_cpu_variants() {
     instanceFactory::registerBlock("cpu_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<cpu>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _cpu_registered = (register_cpu_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _cpu_registered = (register_cpu_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
@@ -35,6 +34,34 @@ cpu::cpu(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     SC_THREAD(endOfTestThread);
 }
 
+fw_ns::ipRegBus cpu::makeRegBus(void)
+{
+    // Adapt the firmware's synchronous register seam onto this cpu's apb master
+    // port. The register read/write logic lives in the firmware TU
+    // (fw/src/fwIpMain.cpp); the model only provides transport.
+    //
+    // PRO/A2CPRO DIFFERENCE: with the firmware BSP, the cpu instead runs a
+    // listener thread that drains the regRdWr.h cross-thread queue onto the apb
+    // bus while firmware uses global regRead32()/regWrite32() on a worker
+    // thread. See fwIpMain.h.
+    fw_ns::ipRegBus bus;
+    bus.write32 = [this](uint64_t address, uint32_t value) {
+        apbAddrSt addr;
+        apbDataSt data;
+        addr.address = address;
+        data.data = value;
+        cpu_main->request(true, addr, data);
+    };
+    bus.read32 = [this](uint64_t address) -> uint32_t {
+        apbAddrSt addr;
+        apbDataSt data;
+        addr.address = address;
+        cpu_main->request(false, addr, data);
+        return (uint32_t)data.data;
+    };
+    return bus;
+}
+
 void cpu::checkUIp0(void)
 {
     testController &controller = testController::GetInstance();
@@ -45,12 +72,9 @@ void cpu::checkUIp0(void)
     // Allow time for src (model or RTL) to push and ip to capture.
     wait(50, SC_NS);
 
-    apbAddrSt addr;
-    apbDataSt data;
-    addr.address = BASE_ADDR_UIP0 + REG_IP_IPLASTDATA;
-    cpu_main->request(false, addr, data);
-    log_.logPrint(std::format("{} read uIp0 ipLastData = 0x{:x}", this->name(), (uint64_t)data.data), LOG_IMPORTANT);
-    Q_ASSERT_CTX((data.data & 0xFF) == 0xA5, "checkUIp0", "ipLastData mismatch on uIp0");
+    fw_ns::ipRegBus bus = makeRegBus();
+    bool ok = fw_ns::fwCheckUIp0(bus);
+    Q_ASSERT_CTX(ok, "checkUIp0", "uIp0 firmware register check failed");
 
     controller.test_complete(test_name);
 }
@@ -65,11 +89,10 @@ void cpu::checkUIp1(void)
     // Allow time for src (model or RTL) to push and ip to capture.
     wait(50, SC_NS);
 
-    apbAddrSt addr;
-    apbDataSt data;
-    addr.address = BASE_ADDR_UIP1 + REG_IP_IPLASTDATA;
-    cpu_main->request(false, addr, data);
-    log_.logPrint(std::format("{} read uIp1 ipLastData = 0x{:x}", this->name(), (uint64_t)data.data), LOG_IMPORTANT);
+    fw_ns::ipRegBus bus = makeRegBus();
+    bool ok = fw_ns::fwCheckUIp1(bus);
+    Q_ASSERT_CTX(ok, "checkUIp1", "uIp1 firmware register check failed");
+
     controller.test_complete(test_name);
 }
 

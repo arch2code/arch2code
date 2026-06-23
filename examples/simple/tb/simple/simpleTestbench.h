@@ -10,10 +10,6 @@
 #include "simpleBase.h"
 #include "simpleExternal.h"
 
-// Force-link function (active modules-mode anchor) for the testbench
-// class. Referencing this symbol pulls the registration TU into static links.
-void force_link_simpleTestbench();
-
 class simpleTestbench: public sc_module, public blockBase, public simpleChannels {
 
 public:

@@ -10,10 +10,6 @@
 #include "mixedBase.h"
 #include "mixedExternal.h"
 
-// Force-link function (active modules-mode anchor) for the testbench
-// class. Referencing this symbol pulls the registration TU into static links.
-void force_link_mixedTestbench();
-
 class mixedTestbench: public sc_module, public blockBase, public mixedChannels {
 
 public:

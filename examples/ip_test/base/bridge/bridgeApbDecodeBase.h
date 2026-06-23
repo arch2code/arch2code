@@ -108,8 +108,5 @@ public:
     };
 };
 
-
-// Force-link function (active modules-mode anchor).
-void force_link_bridgeApbDecode();
 // GENERATED_CODE_END
 #endif //BRIDGEAPBDECODE_BASE_H

@@ -8,14 +8,12 @@
 SC_HAS_PROCESS(secondSubA);
 
 // === Block factory registration (secondSubA) ===
-void force_link_secondSubA() {}
-
 void register_secondSubA_variants() {
     instanceFactory::registerBlock("secondSubA_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<secondSubA>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _secondSubA_registered = (register_secondSubA_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _secondSubA_registered = (register_secondSubA_variants(), 0);
 } // namespace
 // === End block factory registration ===
 

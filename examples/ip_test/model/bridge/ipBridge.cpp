@@ -8,14 +8,12 @@
 SC_HAS_PROCESS(ipBridge);
 
 // === Block factory registration (ipBridge) ===
-void force_link_ipBridge() {}
-
 void register_ipBridge_variants() {
     instanceFactory::registerBlock("ipBridge_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipBridge>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _ipBridge_registered = (register_ipBridge_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _ipBridge_registered = (register_ipBridge_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
@@ -25,7 +23,7 @@ ipBridge::ipBridge(sc_module_name blockName, const char * variant, blockBaseMode
         ,ipBridgeBase(name(), variant)
         ,apbReg_uBridgeIp0("ip_apbReg_uBridgeIp0", "bridgeApbDecode")
         ,apbReg_uBridgeIp1("ip_apbReg_uBridgeIp1", "bridgeApbDecode")
-        ,uBridgeAPBDecode(std::dynamic_pointer_cast<bridgeApbDecodeBase>((force_link_bridgeApbDecode(), instanceFactory::createInstance(name(), "uBridgeAPBDecode", "bridgeApbDecode", ""))))
+        ,uBridgeAPBDecode(std::dynamic_pointer_cast<bridgeApbDecodeBase>(instanceFactory::createInstance(name(), "uBridgeAPBDecode", "bridgeApbDecode", "")))
         ,uBridgeIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uBridgeIp0", "ip", "variant0")))
         ,uBridgeIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uBridgeIp1", "ip", "variant1")))
         ,thunker_apbReg_uBridgeIp0_uBridgeIp0("thunker_apbReg_uBridgeIp0_uBridgeIp0", apbReg_uBridgeIp0, uBridgeIp0->regs, name())

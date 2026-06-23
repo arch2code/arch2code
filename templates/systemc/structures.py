@@ -1,4 +1,4 @@
-from pysrc.intf_gen_utils import get_const, wrap_module_namespace
+from pysrc.intf_gen_utils import get_const, wrap_module_namespace, wrap_module_test_namespace, cpp_namespace_name
 from templates.systemc.includes import constReference_cpp, typeWidthExpression_cpp
 dataTypeMappings = [
     {'maxSize': 1, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
@@ -38,7 +38,7 @@ def render(args, prj, data):
         out.extend(systemIncludes(args))
     if (args.section == 'testStructsHeader' or args.section == 'testStructsCPP'):
         out.extend(structTest(args, prj, data))
-        out = wrap_module_namespace(args, data, out)
+        out = wrap_module_test_namespace(args, data, out)
     out.append("")
     return("\n".join(out))
 
@@ -1455,8 +1455,14 @@ def structTest(args, prj, data):
     out = list()
     fn = data['contextStem'] + '_structs'
     useConfig = args.mode == 'module'
+    # The test class is a template only when the context actually carries a
+    # parameterizable structure (which must be tested as struct<Config>). A
+    # context of concrete structures emits a plain class so the caller invokes
+    # test_<ctx>_structs::test() without supplying a Config.
+    anyParam = any(value.get('isParameterizable', False) for value in data['structures'].values())
+    templated = useConfig and anyParam
     if args.section == 'testStructsHeader':
-        if useConfig:
+        if templated:
             out.append(f'template<typename Config>')
         out.append(f'class test_{fn} {{')
         out.append(f'public:')
@@ -1467,7 +1473,11 @@ def structTest(args, prj, data):
 
     if args.mode != 'module':
         out.append(f'#include "q_assert.h"')
-    if useConfig:
+    else:
+        # The test lives in the sibling test namespace; pull the functional
+        # types into scope so struct names resolve unqualified.
+        out.append(f'using namespace {cpp_namespace_name(data["contextIncludeName"])};')
+    if templated:
         out.append(f'template<typename Config>')
         out.append(f'std::string test_{fn}<Config>::name(void) {{ return "test_{fn}"; }}')
         out.append(f'template<typename Config>')

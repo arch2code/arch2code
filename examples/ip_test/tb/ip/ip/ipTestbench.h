@@ -10,10 +10,6 @@
 #include "ipBase.h"
 #include "ipExternal.h"
 
-// Force-link function (active modules-mode anchor) for the testbench
-// class. Referencing this symbol pulls the registration TU into static links.
-void force_link_ipTestbench();
-
 class ipTestbench: public sc_module, public blockBase, public ipChannels<ipVariant0Config> {
 
 public:

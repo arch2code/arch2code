@@ -87,8 +87,5 @@ public:
     };
 };
 
-
-// Force-link function (active modules-mode anchor).
-void force_link_bridgeDriver();
 // GENERATED_CODE_END
 #endif //BRIDGEDRIVER_BASE_H

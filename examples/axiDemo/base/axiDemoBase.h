@@ -56,8 +56,5 @@ public:
     };
 };
 
-
-// Force-link function (active modules-mode anchor).
-void force_link_axiDemo();
 // GENERATED_CODE_END
 #endif //AXIDEMO_BASE_H

@@ -7,14 +7,12 @@
 SC_HAS_PROCESS(blockC);
 
 // === Block factory registration (blockC) ===
-void force_link_blockC() {}
-
 void register_blockC_variants() {
     instanceFactory::registerBlock("blockC_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockC>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _blockC_registered = (register_blockC_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _blockC_registered = (register_blockC_variants(), 0);
 } // namespace
 // === End block factory registration ===
 

@@ -9,14 +9,12 @@
 SC_HAS_PROCESS(someRapper);
 
 // === Block factory registration (someRapper) ===
-void force_link_someRapper() {}
-
 void register_someRapper_variants() {
     instanceFactory::registerBlock("someRapper_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<someRapper>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _someRapper_registered = (register_someRapper_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _someRapper_registered = (register_someRapper_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
@@ -26,9 +24,9 @@ someRapper::someRapper(sc_module_name blockName, const char * variant, blockBase
         ,someRapperBase(name(), variant)
         ,apbReg_uBlockA("blockA_apbReg_uBlockA", "apbDecode")
         ,apbReg_uBlockB("blockB_apbReg_uBlockB", "apbDecode")
-        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>((force_link_apbDecode(), instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", ""))))
-        ,uBlockA(std::dynamic_pointer_cast<blockABase>((force_link_blockA(), instanceFactory::createInstance(name(), "uBlockA", "blockA", ""))))
-        ,uBlockB(std::dynamic_pointer_cast<blockBBase>((force_link_blockB(), instanceFactory::createInstance(name(), "uBlockB", "blockB", ""))))
+        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "")))
+        ,uBlockA(std::dynamic_pointer_cast<blockABase>(instanceFactory::createInstance(name(), "uBlockA", "blockA", "")))
+        ,uBlockB(std::dynamic_pointer_cast<blockBBase>(instanceFactory::createInstance(name(), "uBlockB", "blockB", "")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

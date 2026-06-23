@@ -3,23 +3,22 @@
 #include "mixedTestbench.h"
 
 // === Block factory registration (mixedTestbench) ===
-// Force-link function. Declaration in mixedTestbench.h.
-// Referencing this symbol pulls the registration TU into static links.
-void force_link_mixedTestbench() {}
-
+// The testbench top self-registers through an A2C_REGISTRATION_RETAIN static
+// (see instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference.
 void register_mixedTestbench_variants() {
     instanceFactory::registerBlock("mixedTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<mixedTestbench>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _mixedTestbench_registered = (register_mixedTestbench_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _mixedTestbench_registered = (register_mixedTestbench_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
 mixedTestbench::mixedTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("mixedTestbench", name(), bbMode)
         ,mixedChannels("Chnl", "tb")
-        ,mixed(std::dynamic_pointer_cast<mixedBase>((force_link_mixed(), instanceFactory::createInstance(name(), "mixed", "mixed", ""))))
+        ,mixed(std::dynamic_pointer_cast<mixedBase>( instanceFactory::createInstance(name(), "mixed", "mixed", "")))
         ,external("external")
 {
     bind(mixed.get(), &external);

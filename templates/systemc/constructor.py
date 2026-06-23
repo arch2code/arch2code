@@ -78,10 +78,10 @@ def constructorInit(args, prj, data):
     #
     # Non-templated blocks: a free helper function plus a self-registering
     # static at namespace scope replaces the in-class struct registerBlock
-    # / static registerBlock_ pattern. An active force-link function is
-    # also emitted so generated parent / testbench code can guarantee that the
-    # implementation TU is linked into the program under C++20 modules and
-    # static-archive linking.
+    # / static registerBlock_ pattern. The static is marked
+    # A2C_REGISTRATION_RETAIN so it survives dead-code elimination and
+    # --gc-sections; under the project's direct-.o link model it is reachable
+    # with no force-link reference from any parent or testbench TU.
     #
     # Parameterized blocks: a self-registering static is emitted that
     # registers <className><DefaultConfig> for each variant the block
@@ -221,15 +221,14 @@ def constructorInit(args, prj, data):
         instCfg = value['instanceConfigArg']
         # Generated createInstance passes the variant string only. The factory
         # key is `(blockType, variant)`; the variant string identifies the
-        # per-variant Config policy unambiguously. Non-templated children also
-        # emit an active force_link_<child>() call before the lookup so the
-        # linker pulls the child implementation TU into the program.
+        # per-variant Config policy unambiguously. The parent holds no
+        # compile-time symbol reference to the child: non-templated children
+        # self-register via an A2C_REGISTRATION_RETAIN static in their own TU,
+        # reachable through direct-.o linking (see instanceFactory.h).
         createCall = (
             f'instanceFactory::createInstance(name(), "{value["instance"]}", '
             f'"{value["instanceType"]}", "{value["variant"]}")'
         )
-        if not instIsParameterizable:
-            createCall = f'(force_link_{value["instanceType"]}(), {createCall})'
         out.append(
             f'        ,{ value["instance"] }(std::dynamic_pointer_cast'
             f'<{ value["instanceType"] }Base{instCfg}>({createCall}))'
@@ -484,9 +483,10 @@ def blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOw
       removed and the trampoline becomes the sole registration
       trigger.
 
-    * **Non-templated SC blocks** continue to register themselves via
-      a free helper plus a self-registering static at namespace scope in this
-      TU, with an active force-link function declared in `<block>Base.h`.
+    * **Non-templated SC blocks** register themselves via a free helper
+      plus a self-registering static at namespace scope in this TU. The
+      static carries A2C_REGISTRATION_RETAIN; there is no force-link
+      function and parents hold no symbol reference to the block.
     """
     out = list()
 
@@ -545,30 +545,24 @@ def blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOw
 
     out.append(f'// === Block factory registration ({className}) ===')
     if not hasOwnParams:
-        # Active force-link function. Declaration lives in <block>Base.h.
-        # Generated parent / testbench code calls force_link_<B>() before
-        # any factory lookup that may construct this block. The call
-        # creates a real symbol reference into this TU, forcing the
-        # linker to pull this object into the program even when nothing
-        # else references symbols from it. This is required under C++20
-        # modules and static-archive linking, where importing a base
-        # interface or using string-keyed factory lookup does not
-        # guarantee that this TU's static initializers run. Without the
-        # active call, the self-registering static below can remain
-        # unfired and instanceFactory::createInstance can fail at runtime.
+        # Non-templated blocks self-register through a namespace-scope static
+        # whose initializer runs before main(). The static carries
+        # A2C_REGISTRATION_RETAIN (see instanceFactory.h) so it survives
+        # compiler dead-code elimination and the linker's --gc-sections pass;
+        # under the project's direct-.o link model the registration is
+        # reachable with no force-link reference in any parent or testbench TU.
+        # Archive-packaged builds must link block archives with --whole-archive
+        # (build-system contract); no source attribute can substitute for it.
         #
-        # The predicate is "non-templated" so parent containers that are
-        # flagged isParameterizable solely because parameterizable structures
-        # transit their surface (e.g., `ip_top`) also receive the force-link
-        # anchor.
-        out.append(f'void force_link_{className}() {{}}')
-        out.append('')
+        # The predicate is "non-templated" so parent containers flagged
+        # isParameterizable solely because parameterizable structures transit
+        # their surface (e.g., `ip_top`) also self-register this way.
         out.append(f'void register_{className}_variants() {{')
         out.extend(registerCalls)
         out.append('}')
         out.append('')
         out.append('namespace {')
-        out.append(f'[[maybe_unused]] int _{className}_registered = '
+        out.append(f'[[maybe_unused]] A2C_REGISTRATION_RETAIN int _{className}_registered = '
                    f'(register_{className}_variants(), 0);')
         out.append('} // namespace')
     else:

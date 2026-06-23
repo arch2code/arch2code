@@ -11,14 +11,12 @@
 SC_HAS_PROCESS(simple);
 
 // === Block factory registration (simple) ===
-void force_link_simple() {}
-
 void register_simple_variants() {
     instanceFactory::registerBlock("simple_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<simple>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _simple_registered = (register_simple_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _simple_registered = (register_simple_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
@@ -28,8 +26,8 @@ simple::simple(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,simpleBase(name(), variant)
         ,tag0("consumer_tag0", "producer")
         ,tag1("consumer_tag1", "producer")
-        ,u_producer(std::dynamic_pointer_cast<producerBase>((force_link_producer(), instanceFactory::createInstance(name(), "u_producer", "producer", ""))))
-        ,u_consumer(std::dynamic_pointer_cast<consumerBase>((force_link_consumer(), instanceFactory::createInstance(name(), "u_consumer", "consumer", ""))))
+        ,u_producer(std::dynamic_pointer_cast<producerBase>(instanceFactory::createInstance(name(), "u_producer", "producer", "")))
+        ,u_consumer(std::dynamic_pointer_cast<consumerBase>(instanceFactory::createInstance(name(), "u_consumer", "consumer", "")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

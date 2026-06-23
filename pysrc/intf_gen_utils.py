@@ -360,10 +360,21 @@ def cpp_module_name(includeName):
 def cpp_namespace_name(includeName):
     return f'{cpp_module_name(includeName)}_ns'
 
+def cpp_test_namespace_name(includeName):
+    # Generated structure tests are exported from a sibling namespace so they
+    # stay separate from the functional types in cpp_namespace_name.
+    return f'{cpp_module_name(includeName)}_test_ns'
+
 def wrap_module_namespace(args, data, lines):
     if args.mode != 'module':
         return lines
     namespaceName = cpp_namespace_name(data['contextIncludeName'])
+    return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
+
+def wrap_module_test_namespace(args, data, lines):
+    if args.mode != 'module':
+        return lines
+    namespaceName = cpp_test_namespace_name(data['contextIncludeName'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
 
 def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):

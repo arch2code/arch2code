@@ -10,10 +10,6 @@
 #include "nestedBase.h"
 #include "nestedExternal.h"
 
-// Force-link function (active modules-mode anchor) for the testbench
-// class. Referencing this symbol pulls the registration TU into static links.
-void force_link_nestedTestbench();
-
 class nestedTestbench: public sc_module, public blockBase, public nestedChannels {
 
 public:

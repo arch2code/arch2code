@@ -8,14 +8,12 @@
 SC_HAS_PROCESS(cpu);
 
 // === Block factory registration (cpu) ===
-void force_link_cpu() {}
-
 void register_cpu_variants() {
     instanceFactory::registerBlock("cpu_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<cpu>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _cpu_registered = (register_cpu_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _cpu_registered = (register_cpu_variants(), 0);
 } // namespace
 // === End block factory registration ===
 

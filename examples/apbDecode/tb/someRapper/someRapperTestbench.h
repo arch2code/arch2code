@@ -10,10 +10,6 @@
 #include "someRapperBase.h"
 #include "someRapperExternal.h"
 
-// Force-link function (active modules-mode anchor) for the testbench
-// class. Referencing this symbol pulls the registration TU into static links.
-void force_link_someRapperTestbench();
-
 class someRapperTestbench: public sc_module, public blockBase, public someRapperChannels {
 
 public:

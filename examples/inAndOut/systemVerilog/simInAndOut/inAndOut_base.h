@@ -151,9 +151,6 @@ public:
     };
 };
 
-
-// Force-link function (active modules-mode anchor).
-void force_link_inAndOut();
 // GENERATED_CODE_END
 
 

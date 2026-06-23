@@ -120,8 +120,5 @@ public:
     };
 };
 
-
-// Force-link function (active modules-mode anchor).
-void force_link_producer();
 // GENERATED_CODE_END
 #endif //PRODUCER_BASE_H

@@ -6,14 +6,12 @@
 SC_HAS_PROCESS(bridgeApbDecode);
 
 // === Block factory registration (bridgeApbDecode) ===
-void force_link_bridgeApbDecode() {}
-
 void register_bridgeApbDecode_variants() {
     instanceFactory::registerBlock("bridgeApbDecode_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<bridgeApbDecode>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _bridgeApbDecode_registered = (register_bridgeApbDecode_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _bridgeApbDecode_registered = (register_bridgeApbDecode_variants(), 0);
 } // namespace
 // === End block factory registration ===
 

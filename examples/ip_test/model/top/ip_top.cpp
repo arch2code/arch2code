@@ -11,14 +11,12 @@
 SC_HAS_PROCESS(ip_top);
 
 // === Block factory registration (ip_top) ===
-void force_link_ip_top() {}
-
 void register_ip_top_variants() {
     instanceFactory::registerBlock("ip_top_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_top>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _ip_top_registered = (register_ip_top_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _ip_top_registered = (register_ip_top_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
@@ -33,12 +31,12 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,apbReg_uBridge("ipBridge_apbReg_uBridge", "apbDecode")
         ,apbReg_uIp0("ip_apbReg_uIp0", "apbDecode")
         ,apbReg_uIp1("ip_apbReg_uIp1", "apbDecode")
-        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>((force_link_apbDecode(), instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", ""))))
+        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "")))
         ,uSrc(std::dynamic_pointer_cast<srcBase<srcVariantSrc0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "variantSrc0")))
         ,uIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0")))
         ,uIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1")))
-        ,uBridgeDriver(std::dynamic_pointer_cast<bridgeDriverBase>((force_link_bridgeDriver(), instanceFactory::createInstance(name(), "uBridgeDriver", "bridgeDriver", ""))))
-        ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>((force_link_ipBridge(), instanceFactory::createInstance(name(), "uBridge", "ipBridge", ""))))
+        ,uBridgeDriver(std::dynamic_pointer_cast<bridgeDriverBase>(instanceFactory::createInstance(name(), "uBridgeDriver", "bridgeDriver", "")))
+        ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>(instanceFactory::createInstance(name(), "uBridge", "ipBridge", "")))
         ,thunker_out0_uSrc("thunker_out0_uSrc", out0, uSrc->out0, name())
         ,thunker_out0_uIp0("thunker_out0_uIp0", out0, uIp0->ipDataIf, name())
         ,thunker_out1_uSrc("thunker_out1_uSrc", out1, uSrc->out1, name())

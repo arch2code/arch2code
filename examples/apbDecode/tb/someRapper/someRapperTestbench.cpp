@@ -3,23 +3,22 @@
 #include "someRapperTestbench.h"
 
 // === Block factory registration (someRapperTestbench) ===
-// Force-link function. Declaration in someRapperTestbench.h.
-// Referencing this symbol pulls the registration TU into static links.
-void force_link_someRapperTestbench() {}
-
+// The testbench top self-registers through an A2C_REGISTRATION_RETAIN static
+// (see instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference.
 void register_someRapperTestbench_variants() {
     instanceFactory::registerBlock("someRapperTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<someRapperTestbench>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _someRapperTestbench_registered = (register_someRapperTestbench_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _someRapperTestbench_registered = (register_someRapperTestbench_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
 someRapperTestbench::someRapperTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("someRapperTestbench", name(), bbMode)
         ,someRapperChannels("Chnl", "tb")
-        ,someRapper(std::dynamic_pointer_cast<someRapperBase>((force_link_someRapper(), instanceFactory::createInstance(name(), "someRapper", "someRapper", ""))))
+        ,someRapper(std::dynamic_pointer_cast<someRapperBase>( instanceFactory::createInstance(name(), "someRapper", "someRapper", "")))
         ,external("external")
 {
     bind(someRapper.get(), &external);

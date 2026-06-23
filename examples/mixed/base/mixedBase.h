@@ -73,9 +73,6 @@ public:
     };
 };
 
-
-// Force-link function (active modules-mode anchor).
-void force_link_mixed();
 // GENERATED_CODE_END
 
 #endif // MIXED_BASE_H

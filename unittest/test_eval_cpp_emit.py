@@ -23,6 +23,7 @@ Two functionality-executing checks, no committed database read-back:
 import os
 import sys
 import tempfile
+from types import SimpleNamespace
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
@@ -33,6 +34,7 @@ import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectCreate, projectOpen
 from pysrc.systemcGen import genSystemC
 from templates.systemc import config
+from templates.systemc import includes
 
 IP_TEST_PROJECT = os.path.join(
     base_dir, 'examples', 'ip_test', 'arch', 'yaml', 'project.yaml')
@@ -183,6 +185,73 @@ def test_config_struct_symbolic_per_variant():
             os.unlink(db_path)
 
 
+def _fw_constant(out, constName):
+    """Return the RHS text of a flat `const ... constName = ...;` line in the FW
+    constants section, or None if absent. Walks the rendered text structurally."""
+    marker = f" {constName} = "
+    for line in out.splitlines():
+        if marker in line and line.strip().startswith("const "):
+            return line.split(marker, 1)[1].split(';', 1)[0].strip()
+    return None
+
+
+def test_fw_constants_symbolic():
+    print(f"\n{'='*70}\nTest: eval-derived parameterizable constants emit symbolic "
+          f"into the FW header\n{'='*70}")
+    db_path = _build_fresh_db()
+    try:
+        prj = projectOpen(db_path)
+        data = prj.getContextData(['ip'], genSystemC.dataTypeMappings)
+        out = includes.includeConstants(SimpleNamespace(mode='fw'), prj, data)
+
+        ok = True
+        # FW has no per-variant Config. A first-level eval-derived parameterizable
+        # constant re-spells its block-param referent from the persisted (default)
+        # value (IP_DATA_WIDTH=70), keeping the operator structure; a second-level
+        # one chains symbolically through the sibling FW constant.
+        expectations = [
+            ('IP_DATA_WIDTH_X2', '70 * 2'),
+            ('IP_DATA_WIDTH_X4', 'IP_DATA_WIDTH_X2 * 2'),
+            ('IP_MEM_DEPTH_X2', '16 * 2'),
+            ('IP_MEM_DEPTH_X4', 'IP_MEM_DEPTH_X2 * 2'),
+            # Non-parameterizable eval-derived constant keeps its resolved value.
+            ('IP_FIXED_WORD_COUNT', '6'),
+        ]
+        for constName, expectedRhs in expectations:
+            rhs = _fw_constant(out, constName)
+            if rhs != expectedRhs:
+                print(f"  FAIL: {constName} RHS {rhs!r}, expected {expectedRhs!r}")
+                ok = False
+            else:
+                print(f"  PASS: {constName} = {rhs}")
+
+        # Dependency ordering: a chained member must be declared after the
+        # sibling it references (C requires the prior const definition).
+        if out.index(" IP_DATA_WIDTH_X2 = ") > out.index(" IP_DATA_WIDTH_X4 = "):
+            print("  FAIL: IP_DATA_WIDTH_X2 declared after IP_DATA_WIDTH_X4")
+            ok = False
+        if out.index(" IP_MEM_DEPTH_X2 = ") > out.index(" IP_MEM_DEPTH_X4 = "):
+            print("  FAIL: IP_MEM_DEPTH_X2 declared after IP_MEM_DEPTH_X4")
+            ok = False
+
+        # The block param itself (non-eval parameterizable) is NOT emitted as a
+        # flat FW constant; it has no single firmware value.
+        if _fw_constant(out, 'IP_DATA_WIDTH') is not None:
+            print("  FAIL: block param IP_DATA_WIDTH emitted as a flat FW constant")
+            ok = False
+        return ok
+    finally:
+        if g.db is not None:
+            try:
+                g.db.close()
+            except Exception:
+                pass
+        g.db = None
+        g.cur = None
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 def run_all_tests():
     print("\n" + "="*70)
     print("TESTING: Stage E5 - eval-derived constants emit symbolic into Config")
@@ -190,6 +259,7 @@ def run_all_tests():
     tests = [
         test_emit_c_style_canonical_translation,
         test_config_struct_symbolic_per_variant,
+        test_fw_constants_symbolic,
     ]
     results = []
     for test_func in tests:

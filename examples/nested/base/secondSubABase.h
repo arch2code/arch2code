@@ -93,8 +93,5 @@ public:
     };
 };
 
-
-// Force-link function (active modules-mode anchor).
-void force_link_secondSubA();
 // GENERATED_CODE_END
 #endif //SECONDSUBA_BASE_H

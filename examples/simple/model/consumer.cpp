@@ -7,14 +7,12 @@
 SC_HAS_PROCESS(consumer);
 
 // === Block factory registration (consumer) ===
-void force_link_consumer() {}
-
 void register_consumer_variants() {
     instanceFactory::registerBlock("consumer_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<consumer>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _consumer_registered = (register_consumer_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _consumer_registered = (register_consumer_variants(), 0);
 } // namespace
 // === End block factory registration ===
 

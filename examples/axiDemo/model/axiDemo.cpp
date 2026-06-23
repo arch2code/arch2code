@@ -11,14 +11,12 @@
 SC_HAS_PROCESS(axiDemo);
 
 // === Block factory registration (axiDemo) ===
-void force_link_axiDemo() {}
-
 void register_axiDemo_variants() {
     instanceFactory::registerBlock("axiDemo_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axiDemo>(blockName, variant, bbMode)); }, "");
 }
 
 namespace {
-[[maybe_unused]] int _axiDemo_registered = (register_axiDemo_variants(), 0);
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _axiDemo_registered = (register_axiDemo_variants(), 0);
 } // namespace
 // === End block factory registration ===
 
@@ -36,8 +34,8 @@ axiDemo::axiDemo(sc_module_name blockName, const char * variant, blockBaseMode b
         ,axiWr3("consumer_axiWr3", "producer", "api_list_size", 256, "")
         ,axiStr0("consumer_axiStr0", "producer", "api_list_size", 256, "")
         ,axiStr1("consumer_axiStr1", "producer", "api_list_size", 256, "")
-        ,uProducer(std::dynamic_pointer_cast<producerBase>((force_link_producer(), instanceFactory::createInstance(name(), "uProducer", "producer", ""))))
-        ,uConsumer(std::dynamic_pointer_cast<consumerBase>((force_link_consumer(), instanceFactory::createInstance(name(), "uConsumer", "consumer", ""))))
+        ,uProducer(std::dynamic_pointer_cast<producerBase>(instanceFactory::createInstance(name(), "uProducer", "producer", "")))
+        ,uConsumer(std::dynamic_pointer_cast<consumerBase>(instanceFactory::createInstance(name(), "uConsumer", "consumer", "")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

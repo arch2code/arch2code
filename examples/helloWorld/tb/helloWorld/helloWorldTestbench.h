@@ -10,10 +10,6 @@
 #include "helloWorldBase.h"
 #include "helloWorldExternal.h"
 
-// Force-link function (active modules-mode anchor) for the testbench
-// class. Referencing this symbol pulls the registration TU into static links.
-void force_link_helloWorldTestbench();
-
 class helloWorldTestbench: public sc_module, public blockBase, public helloWorldChannels {
 
 public:

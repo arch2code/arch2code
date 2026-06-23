@@ -42,11 +42,13 @@ dirs: # this is list of locations that can be referenced as base path in fileMap
 # architecture hierarchy.
 fileGeneration:
     template: $a2c/templates/fileGen/fileGen.py
-    #  fileMap:
-    # filePrefix and fileSuffix will be added to the module name to generate a filename
-    # path to the file will be based on command line input and the base path defined in the dirs section
-    # note that basePath should reference a path key in the dirs section
-    #    includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
+    # fileMap entries here merge (key-level dict_shallow) over the base
+    # config/project.yaml fileMap, so only the additional includeFW entry is
+    # declared; the base block/include/config/registrar entries are inherited.
+    # includeFW generates one *IncludesFW.{h,cpp} per yaml context (smartInclude),
+    # producing the firmware constant/type/struct headers consumed by the fw/ TUs.
+    fileMap:
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
 
     # standard copyright statement to be added to all generated files - change to suite your company
     fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
