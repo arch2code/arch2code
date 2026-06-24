@@ -13,7 +13,7 @@
 #include "addressMap.h"
 #include "hwRegister.h"
 #include "hwMemory.h"
-#include "ipConfig.h"
+#include "ipVariantConfig.h"
 import ip;
 using namespace ip_ns;
 

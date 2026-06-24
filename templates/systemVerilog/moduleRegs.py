@@ -140,7 +140,7 @@ def section_param_decls(prj, data):
     if not data['parameterizedDecls']:
         return ""
     qualBlock = prj.getQualBlock(data['blockName'])
-    return string_joiner(parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][qualBlock]['params']), '\n')
+    return string_joiner([entry['line'] for entry in parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][qualBlock]['params'])], '\n')
 
 def section_intf_ports(prj, data):
 

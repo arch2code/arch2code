@@ -4,8 +4,8 @@
 // GENERATED_CODE_BEGIN --template=blockRegistrar
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "ipLeafConfig.h"
-#include "srcConfig.h"
+#include "ipLeafVariantConfig.h"
+#include "srcVariantConfig.h"
 #include "src.h"
 
 namespace {
@@ -14,7 +14,7 @@ struct _src_registrar {
         instanceFactory::registerBlock(
             "src_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcVariantSrc0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcDefaultConfig>>(blockName, variant, bbMode));
             },
             "variantSrc0");
     }

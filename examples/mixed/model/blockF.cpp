@@ -8,7 +8,7 @@
 namespace {
 [[gnu::used]] std::shared_ptr<blockBase> _blockF_instantiate_variant_0(
     const char * blockName, const char * variant, blockBaseMode bbMode) {
-    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockF<blockFVariant0Config>>(blockName, variant, bbMode));
+    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockF<mixedDefaultConfig>>(blockName, variant, bbMode));
 }
 [[maybe_unused, gnu::used]] auto _blockF_instantiate_variant_0_anchor = &_blockF_instantiate_variant_0;
 [[gnu::used]] std::shared_ptr<blockBase> _blockF_instantiate_variant_1(

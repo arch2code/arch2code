@@ -4,7 +4,7 @@
 // GENERATED_CODE_BEGIN --template=blockRegistrar
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "ipConfig.h"
+#include "ipVariantConfig.h"
 #include "ip.h"
 
 namespace {

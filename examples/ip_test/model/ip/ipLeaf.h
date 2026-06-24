@@ -12,7 +12,7 @@
 #include "ipLeafBase.h"
 #include "addressMap.h"
 #include "hwMemory.h"
-#include "ipLeafConfig.h"
+#include "ipLeafVariantConfig.h"
 import ipLeaf;
 using namespace ipLeaf_ns;
 

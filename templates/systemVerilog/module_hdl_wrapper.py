@@ -41,6 +41,20 @@ def param_names(data):
     first_variant = next(iter(data['variants'].values()))
     return [var_data['param'] for var_data in first_variant.values()]
 
+def parameterized_decls(prj, data, blk_name):
+    # Split the block's module-local parameterized declaration set into the
+    # eval-derived constant localparams and the type/struct declarations. The
+    # flattened port widths reuse the constants, so they go in the parameter
+    # port list; the typedefs follow the port list in module scope.
+    if not data['parameterizedDecls']:
+        return [], []
+    entries = parameterizedDeclLines(
+        data['parameterizedDecls'], prj,
+        prj.data['blocks'][prj.getQualBlock(blk_name)]['params'])
+    constDecls = [e for e in entries if e['declKind'] == 'constant']
+    typeDecls = [e for e in entries if e['declKind'] != 'constant']
+    return constDecls, typeDecls
+
 def port_decl_block(prj, data, mp_sig):
     # ANSI flattened port list shared by the canonical body and the variant
     # trampoline.
@@ -110,20 +124,27 @@ def render_body(args, prj, data, mp_sig, blk_name):
     out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
 
     params = param_names(data)
+    constDecls, typeDecls = parameterized_decls(prj, data, blk_name)
+
+    # Eval-derived localparams that a flattened port width references (e.g. a
+    # grid width used as an array size) must be in scope in the port list, so
+    # they are declared as localparams in the parameter port list after the
+    # #() parameters they depend on.
+    param_list = [f'parameter {p}' for p in params]
+    param_list += [f"localparam {c['name']} = {c['rhs']}" for c in constDecls]
     out += '\n#(\n'
-    out += textwrap.indent(',\n'.join(f'parameter {p}' for p in params), ' '*4)
+    out += textwrap.indent(',\n'.join(param_list), ' '*4)
     out += '\n) (\n'
     out += textwrap.indent(port_decl_block(prj, data, mp_sig), ' '*4)
     out += ');\n'
 
     # Module-local parameterizable type/struct declarations. C3.1 moved the
     # parameterized boundary types/structs out of the package into module
-    # scope, so the wrapper cannot resolve them through its package import. In
-    # the canonical body they are declared from the #() parameters directly.
-    if data['parameterizedDecls']:
-        s = ''
-        for line in parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][prj.getQualBlock(blk_name)]['params']):
-            s += line + '\n'
+    # scope, so the wrapper cannot resolve them through its package import.
+    # They follow the port list (typedefs cannot live in the parameter port
+    # list) and resolve the #() parameters and the localparams declared above.
+    if typeDecls:
+        s = ''.join(decl['line'] + '\n' for decl in typeDecls)
         out += textwrap.indent(s, ' '*4) + '\n'
 
     out += textwrap.indent(intf_reconstruction(prj, data, mp_sig), ' '*4)
@@ -155,10 +176,15 @@ def render_trampoline(args, prj, data, mp_sig, blk_name):
     startingContext = prj.data['blocks'][prj.getQualBlock(blk_name)]['_context']
     out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
     # Bind the variant's concrete parameter values as localparams in the
-    # parameter port list, so they precede (and are in scope for) the flattened
-    # port widths that reuse the Stage-1 symbolic expressions.
+    # parameter port list, then declare the eval-derived constant localparams
+    # the flattened port widths reuse (e.g. a grid width used as an array
+    # size). Both precede (and are in scope for) the port list; the derived
+    # constants follow the bound root parameters they depend on.
+    constDecls, _unusedTypeDecls = parameterized_decls(prj, data, blk_name)
+    param_list = [f"localparam {var_data['param']} = {var_data['value']}" for _, var_data in variant_data.items()]
+    param_list += [f"localparam {c['name']} = {c['rhs']}" for c in constDecls]
     out += '\n#(\n'
-    out += textwrap.indent(',\n'.join([f"localparam {var_data['param']} = {var_data['value']}" for _, var_data in variant_data.items()]), ' '*4)
+    out += textwrap.indent(',\n'.join(param_list), ' '*4)
     out += '\n)(\n'
     out += textwrap.indent(port_decl_block(prj, data, mp_sig), ' '*4)
     out += ');\n'

@@ -1,6 +1,6 @@
 //copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include "mixedConfig.h"
+#include "mixedVariantConfig.h"
 
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=constructor --section=init

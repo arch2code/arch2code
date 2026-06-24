@@ -13,6 +13,11 @@ $(error A2C_ROOT is not set - please set to the root of your A2C builder)
 endif
 
 #------------------------------------------------------------------------
+# AI rule source roots; base always, extensions (e.g. pro) append via EXTRA_A2C_RULES_DIRS
+#------------------------------------------------------------------------
+A2C_RULES_DIRS := $(A2C_ROOT)/base/rules $(EXTRA_A2C_RULES_DIRS)
+
+#------------------------------------------------------------------------
 # AI Agent Setup Targets
 #
 #   agents-setup  : Claude Code, Gemini CLI, OpenCode (.claude/, .gemini/, .opencode/, .agents/)
@@ -36,8 +41,16 @@ agents-setup agents_setup:
 	@if [ ! -e "$(REPO_ROOT)/AGENTS.md" ]; then \
 		if [ -f "$(A2C_ROOT)/base/AGENTS.md.template" ]; then \
 			cp $(A2C_ROOT)/base/AGENTS.md.template $(REPO_ROOT)/AGENTS.md && \
-			(cd "$(REPO_ROOT)" && md5sum AGENTS.md > .agents-setup.md5) && \
 			echo "  + Created AGENTS.md from template"; \
+			for root in $(A2C_RULES_DIRS); do \
+				frag="$$(dirname $$root)/AGENTS.append.md"; \
+				if [ -f "$$frag" ]; then \
+					printf '\n' >> $(REPO_ROOT)/AGENTS.md && \
+					cat "$$frag" >> $(REPO_ROOT)/AGENTS.md && \
+					echo "  + Appended skill routing from $$frag"; \
+				fi; \
+			done; \
+			(cd "$(REPO_ROOT)" && md5sum AGENTS.md > .agents-setup.md5); \
 		else \
 			echo "  ! Warning: AGENTS.md.template not found - create AGENTS.md manually"; \
 		fi \
@@ -69,21 +82,21 @@ agents-setup agents_setup:
 	@#   Gemini CLI:   .gemini/skills/{name}/SKILL.md
 	@#   OpenCode:     .opencode/skills/{name}/SKILL.md
 	@#   Cross-tool:   .agents/skills/{name}/SKILL.md
-	@if [ -d "$(A2C_ROOT)/base/rules/skills" ]; then \
-		for dir in .claude .gemini .opencode .agents; do \
-			mkdir -p "$(REPO_ROOT)/$$dir/skills"; \
-			for f in $(A2C_ROOT)/base/rules/skills/*.md; do \
-				if [ -f "$$f" ]; then \
-					sname=$$(basename $$f .md); \
-					mkdir -p "$(REPO_ROOT)/$$dir/skills/$$sname" && \
-					cp "$$f" "$(REPO_ROOT)/$$dir/skills/$$sname/SKILL.md"; \
-				fi \
-			done; \
-			echo "  + Installed skills to $$dir/skills/"; \
-		done \
-	else \
-		echo "  = No skills found in builder/base/rules/skills"; \
-	fi
+	@for dir in .claude .gemini .opencode .agents; do \
+		mkdir -p "$(REPO_ROOT)/$$dir/skills"; \
+		for root in $(A2C_RULES_DIRS); do \
+			if [ -d "$$root/skills" ]; then \
+				for f in $$root/skills/*.md; do \
+					if [ -f "$$f" ]; then \
+						sname=$$(basename $$f .md); \
+						mkdir -p "$(REPO_ROOT)/$$dir/skills/$$sname" && \
+						cp "$$f" "$(REPO_ROOT)/$$dir/skills/$$sname/SKILL.md"; \
+					fi \
+				done; \
+			fi; \
+		done; \
+		echo "  + Installed skills to $$dir/skills/"; \
+	done
 	@echo ""
 	@echo "Agent setup complete!"
 	@echo ""
@@ -113,31 +126,29 @@ cursor-setup cursor_setup:
 	fi
 	@# Deploy rules to .cursor/rules/ (flat copy, .md -> .mdc)
 	@mkdir -p $(REPO_ROOT)/.cursor/rules
-	@if ls $(A2C_ROOT)/base/rules/*.md 1>/dev/null 2>&1; then \
-		for f in $(A2C_ROOT)/base/rules/*.md; do \
+	@for root in $(A2C_RULES_DIRS); do \
+		for f in $$root/*.md; do \
 			if [ -f "$$f" ]; then \
 				fname=$$(basename $$f .md).mdc; \
 				cp "$$f" "$(REPO_ROOT)/.cursor/rules/$$fname" && \
 				echo "  + Installed Cursor rule: $$fname"; \
 			fi \
-		done \
-	else \
-		echo "  = No rules found in builder/base/rules/"; \
-	fi
+		done; \
+	done
 	@# Deploy skills to .cursor/skills/{name}/SKILL.md (directory per skill)
 	@mkdir -p $(REPO_ROOT)/.cursor/skills
-	@if [ -d "$(A2C_ROOT)/base/rules/skills" ]; then \
-		for f in $(A2C_ROOT)/base/rules/skills/*.md; do \
-			if [ -f "$$f" ]; then \
-				sname=$$(basename $$f .md); \
-				mkdir -p "$(REPO_ROOT)/.cursor/skills/$$sname" && \
-				cp "$$f" "$(REPO_ROOT)/.cursor/skills/$$sname/SKILL.md" && \
-				echo "  + Installed Cursor skill: $$sname"; \
-			fi \
-		done \
-	else \
-		echo "  = No skills found in builder/base/rules/skills"; \
-	fi
+	@for root in $(A2C_RULES_DIRS); do \
+		if [ -d "$$root/skills" ]; then \
+			for f in $$root/skills/*.md; do \
+				if [ -f "$$f" ]; then \
+					sname=$$(basename $$f .md); \
+					mkdir -p "$(REPO_ROOT)/.cursor/skills/$$sname" && \
+					cp "$$f" "$(REPO_ROOT)/.cursor/skills/$$sname/SKILL.md" && \
+					echo "  + Installed Cursor skill: $$sname"; \
+				fi \
+			done; \
+		fi; \
+	done
 	@echo ""
 	@echo "Cursor setup complete!"
 	@echo ""
@@ -157,21 +168,21 @@ agent-dev-setup agent_dev_setup:
 	@#   OpenCode:     .opencode/skills/{name}/SKILL.md
 	@#   Cross-tool:   .agents/skills/{name}/SKILL.md
 	@#   Cursor IDE:   .cursor/skills/{name}/SKILL.md
-	@if [ -d "$(A2C_ROOT)/base/rules/dev-skills" ]; then \
-		for dir in .claude .gemini .opencode .agents .cursor; do \
-			mkdir -p "$(REPO_ROOT)/$$dir/skills"; \
-			for f in $(A2C_ROOT)/base/rules/dev-skills/*.md; do \
-				if [ -f "$$f" ]; then \
-					sname=$$(basename $$f .md); \
-					mkdir -p "$(REPO_ROOT)/$$dir/skills/$$sname" && \
-					cp "$$f" "$(REPO_ROOT)/$$dir/skills/$$sname/SKILL.md" && \
-					echo "  + Installed dev skill $$sname to $$dir/skills/"; \
-				fi \
-			done; \
-		done \
-	else \
-		echo "  = No dev skills found in builder/base/rules/dev-skills"; \
-	fi
+	@for dir in .claude .gemini .opencode .agents .cursor; do \
+		mkdir -p "$(REPO_ROOT)/$$dir/skills"; \
+		for root in $(A2C_RULES_DIRS); do \
+			if [ -d "$$root/dev-skills" ]; then \
+				for f in $$root/dev-skills/*.md; do \
+					if [ -f "$$f" ]; then \
+						sname=$$(basename $$f .md); \
+						mkdir -p "$(REPO_ROOT)/$$dir/skills/$$sname" && \
+						cp "$$f" "$(REPO_ROOT)/$$dir/skills/$$sname/SKILL.md" && \
+						echo "  + Installed dev skill $$sname to $$dir/skills/"; \
+					fi \
+				done; \
+			fi; \
+		done; \
+	done
 	@echo ""
 	@echo "Arch2Code builder/base development skill setup complete!"
 
@@ -180,29 +191,29 @@ agent-dev-setup agent_dev_setup:
 #------------------------------------------------------------------------
 agent-dev-clean agent_dev_clean:
 	@echo "Removing Arch2Code builder/base development skills..."
-	@if [ -d "$(A2C_ROOT)/base/rules/dev-skills" ]; then \
-		for dir in .claude .gemini .opencode .agents .cursor; do \
-			for f in $(A2C_ROOT)/base/rules/dev-skills/*.md; do \
-				if [ -f "$$f" ]; then \
-					sname=$$(basename $$f .md); \
-					if [ -d "$(REPO_ROOT)/$$dir/skills/$$sname" ]; then \
-						rm -rf "$(REPO_ROOT)/$$dir/skills/$$sname" && \
-						echo "  - Removed dev skill $$sname from $$dir/skills/"; \
+	@for dir in .claude .gemini .opencode .agents .cursor; do \
+		for root in $(A2C_RULES_DIRS); do \
+			if [ -d "$$root/dev-skills" ]; then \
+				for f in $$root/dev-skills/*.md; do \
+					if [ -f "$$f" ]; then \
+						sname=$$(basename $$f .md); \
+						if [ -d "$(REPO_ROOT)/$$dir/skills/$$sname" ]; then \
+							rm -rf "$(REPO_ROOT)/$$dir/skills/$$sname" && \
+							echo "  - Removed dev skill $$sname from $$dir/skills/"; \
+						fi; \
 					fi; \
-				fi; \
-			done; \
-			if [ -d "$(REPO_ROOT)/$$dir/skills" ] && [ -z "$$(ls -A "$(REPO_ROOT)/$$dir/skills" 2>/dev/null)" ]; then \
-				rmdir "$(REPO_ROOT)/$$dir/skills" && \
-				echo "  - Removed empty $$dir/skills directory"; \
+				done; \
 			fi; \
-			if [ -d "$(REPO_ROOT)/$$dir" ] && [ -z "$$(ls -A "$(REPO_ROOT)/$$dir" 2>/dev/null)" ]; then \
-				rmdir "$(REPO_ROOT)/$$dir" && \
-				echo "  - Removed empty $$dir directory"; \
-			fi; \
-		done \
-	else \
-		echo "  = No dev skills found in builder/base/rules/dev-skills"; \
-	fi
+		done; \
+		if [ -d "$(REPO_ROOT)/$$dir/skills" ] && [ -z "$$(ls -A "$(REPO_ROOT)/$$dir/skills" 2>/dev/null)" ]; then \
+			rmdir "$(REPO_ROOT)/$$dir/skills" && \
+			echo "  - Removed empty $$dir/skills directory"; \
+		fi; \
+		if [ -d "$(REPO_ROOT)/$$dir" ] && [ -z "$$(ls -A "$(REPO_ROOT)/$$dir" 2>/dev/null)" ]; then \
+			rmdir "$(REPO_ROOT)/$$dir" && \
+			echo "  - Removed empty $$dir directory"; \
+		fi; \
+	done
 	@echo "Arch2Code builder/base development skill cleanup complete!"
 
 #------------------------------------------------------------------------

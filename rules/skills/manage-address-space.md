@@ -1,48 +1,42 @@
 ---
 name: manage-address-space
-description: Guide for configuring address maps, address groups, address-policy sections, and firmware header generation using addressControl.yaml and project.yaml
+description: Guide for configuring address-policy sections (instance groups, address-object packing) and firmware header generation in project.yaml
 ---
 # Skill: Manage Address Space
 
 ## Purpose
-Guide the user in configuring the project's address map, managing address groups, moving reusable address-policy sections into `project.yaml`, and setting up firmware header generation.
+Guide the user in configuring the project's address **policy** (instance groups,
+address-object sorting/alignment) and setting up firmware header generation.
+
+For the **decode hierarchy** itself — where registers/memories live, declaring
+the generated `addressBlock:` router, routed leaves, nested routers, and the one
+upstream feed you author — use the **Register/Memory Decode** skill
+(`design-register-decode.md`). The router is a generated block; you never
+hand-create a top-level decoder.
 
 ## References
-*   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Registers & Address Management" and "Address Control File")
+*   **Decode hierarchy:** `design-register-decode.md` (router/leaf model, `regAccess`)
+*   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Registers & Address Management" and "Address Policy and Address Control")
 
 ## Instructions
 
 1.  **Address Configuration Sources:**
-    *   Legacy projects keep address decode policy in `addressControl.yaml`, typically at `arch/yaml/config/addressControl.yaml`.
-    *   The legacy `addressControl.yaml` path is supported during migration but is expected to be deprecated; prefer the new `project.yaml` and per-block schema for new work.
-    *   New and migrated projects should put reusable address-policy sections in top-level `project.yaml` fields:
-        *   `instanceGroups:` replaces legacy `InstanceGroups:`.
-        *   `addressObjects:` replaces legacy `AddressObjects:`.
-    *   `AddressGroups:` and `RegisterBusInterface:` still belong to the legacy `addressControl.yaml` path until the per-block `addressBlock:` / `registerPorts:` migration is complete.
+    *   Address-policy sections live in top-level `project.yaml`:
+        *   `instanceGroups:` — ID enumeration (see step 4).
+        *   `addressObjects:` — register/memory packing policy (see step 6).
+    *   The decode hierarchy is declared per-block: routers carry `addressBlock:` and reusable-IP leaves carry `registerPorts:`. There is no project-wide address-decode file to author. See `design-register-decode.md`.
+    *   Converting a pre-existing `addressControl.yaml` project to this schema is a one-time migration handled entirely by `migrate-project.md` / `address-migration.md`.
 
-2.  **Defining Address Groups (`AddressGroups`):**
-    *   Address groups define hierarchical address spaces.
-    *   **Top-Level Group:** Must have `primaryDecode: true` and define the `decoderInstance` that routes the system bus.
-    *   **Sub-Groups:** Define regions for subsystems.
+2.  **Address groups (per-block schema):**
+    *   An address group is named by a router block's `addressBlock.addressGroup`; routed leaves select it via their instance `addressGroup:`. The router block defines the group and its RTL is generated (`apbDecodeModule`); the primary router is inferred by hierarchy walk. There is no `decoderInstance:`/`primaryDecode:` to author.
+    *   Multi-level decode uses **nested routers** (a second `addressBlock:` block inside a container that is itself a routed leaf of the parent). See `design-register-decode.md`.
 
-    ```yaml
-    AddressGroups:
-      system:
-        addressIncrement: 0x01000000  # 16MB per block in this group
-        maxAddressSpaces: 16
-        varType: system_addr_id_t
-        enumPrefix: SYSTEM_ADDR_
-        decoderInstance: u_apb_decode_system  # CRITICAL: References your manual top-level decoder
-        primaryDecode: true
-    ```
+3.  **Making memory firmware-accessible:**
+    *   `regAccess: true` (with `local:` absent) is the single switch. No custom interface is needed. The serving router is a generated `addressBlock:` block. See `design-register-decode.md`.
 
-3.  **Connecting the Decoder (`decoderInstance`):**
-    *   The `decoderInstance` field **must** reference a valid instance in your architecture YAML.
-    *   This instance (e.g., `u_apb_decode_system`) corresponds to the manual top-level decoder you created to route the register bus.
-
-4.  **Instance Groups (`instanceGroups:` / legacy `InstanceGroups:`):**
+4.  **Instance Groups (`instanceGroups:`):**
     *   Used for ID enumeration without address space implications (e.g., for error reporting IDs).
-    *   Prefer top-level `project.yaml` spelling for new work. The row body is unchanged from legacy `InstanceGroups:`.
+    *   Declared in top-level `project.yaml`.
 
     ```yaml
     # In project.yaml
@@ -72,10 +66,10 @@ Guide the user in configuring the project's address map, managing address groups
           desc: "Firmware include file"
     ```
 
-6.  **Address Object Sorting (`addressObjects:` / legacy `AddressObjects:`):**
-    *   Control how objects are packed in the address space using `AddressObjects`.
+6.  **Address Object Sorting (`addressObjects:`):**
+    *   Control how objects are packed in the address space using `addressObjects`.
     *   **Best Practice:** Sort memories by size (`memsize` alignment) to optimize decoding.
-    *   Prefer top-level `project.yaml` spelling for new work. The row body is unchanged from legacy `AddressObjects:`.
+    *   Declared in top-level `project.yaml`.
 
     ```yaml
     # In project.yaml
@@ -88,10 +82,6 @@ Guide the user in configuring the project's address map, managing address groups
         alignment: 8
         sortDescending: true
     ```
-
-    If a project carries both `project.yaml` and legacy
-    `addressControl.yaml` spellings, the rows must match exactly.
-    Disagreement is a configuration error.
 
 7.  **Parameterizable Register/Memory Sizing:**
     *   Register and firmware-accessible memory offsets are allocated from worst-case sizes when the referenced structure or `wordLines` is parameterizable.

@@ -19,8 +19,8 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
-#include "ipLeafConfig.h"
-#include "srcConfig.h"
+#include "ipLeafVariantConfig.h"
+#include "srcVariantConfig.h"
 #include "push_ack_bfm.h"
 
 template <typename DUT_T, typename Config>
@@ -121,9 +121,9 @@ private:
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
 #if !defined(VERILATOR) && defined(VCS)
-using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<src_variantSrc0_hdl_sv_wrapper, srcVariantSrc0Config>;
+using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<src_variantSrc0_hdl_sv_wrapper, srcDefaultConfig>;
 #else
-using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<Vsrc_variantSrc0_hdl_sv_wrapper, srcVariantSrc0Config>;
+using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<Vsrc_variantSrc0_hdl_sv_wrapper, srcDefaultConfig>;
 #endif
 // GENERATED_CODE_END
 

@@ -1,6 +1,7 @@
 import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils
 from pysrc.arch2codeHelper import roundup_multiple
+from templates.systemc.constructor import blockRegistrarInitLines
 
 from jinja2 import Template
 
@@ -29,6 +30,12 @@ def get_include_deps(args, prj, data):
     # (mirrors classDecl's context-include emission).
     include_deps = []
     include_deps.append(f'#include "{prj.getModuleFilename("blockBase", data["blockName"], "hdr")}"')
+    # A parameterizable reg-handler is a class template on the parent's Config;
+    # the per-context Config-policy header carries the <context>DefaultConfig
+    # struct the registrar/anchor instantiation in the .cpp binds against.
+    for context in sorted(data['configIncludeContext']):
+        if context in data['includeFiles'].get('config_hdr', {}):
+            include_deps.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
     fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
     for context in data['includeContext']:
         if context in data['includeFiles'].get(fileMapKey, {}):
@@ -116,14 +123,44 @@ def get_hwregs(prj, data):
 def render_section_header(args, prj, data):
     t = Template(block_regs_header_template)
     blockName=data['blockName']
-    s = t.render(blockname=blockName, include_deps=get_include_deps(args, prj, data), hwregs=get_hwregs(prj, data))
+    # Only leaf parameterizable reg-handlers (those that inherit the parent's
+    # own `params:`) are class templates; mirror classDecl/constructor's
+    # hasOwnParams gate so non-parameterizable reg-handlers stay non-templated.
+    hasOwnParams = data['hasOwnParams']
+    cfg = intf_gen_utils.block_config_arg(hasOwnParams)
+    templatePrefix = intf_gen_utils.block_config_decl(hasOwnParams)
+    if templatePrefix:
+        templatePrefix += '\n'
+    s = t.render(blockname=blockName, cfg=cfg, templatePrefix=templatePrefix,
+                 hasOwnParams=hasOwnParams,
+                 include_deps=get_include_deps(args, prj, data), hwregs=get_hwregs(prj, data))
     return s
 
 def render_section_init(args, prj, data):
     t = Template(block_regs_init_section_template)
     blockName=data['blockName']
+    isParameterizable = data['isParameterizable']
+    hasOwnParams = data['hasOwnParams']
+    cfg = intf_gen_utils.block_config_arg(hasOwnParams)
+    templatePrefix = intf_gen_utils.block_config_decl(hasOwnParams)
+    if templatePrefix:
+        templatePrefix += '\n'
+    defaultConfig = data['defaultConfig'] if isParameterizable else ''
+    # Reuse the shared registration emission so parameterizable reg-handlers
+    # defer factory registration to the per-block trampoline (Registrar TU) and
+    # only emit instantiation anchors here, exactly as constructor.py does for
+    # leaf parameterizable blocks.
+    registration = '\n'.join(blockRegistrarInitLines(
+        args, prj, data, blockName, isParameterizable, hasOwnParams, defaultConfig))
+    reghandler = get_reghandler_properties(prj, data)
+    # Inherited base ports are dependent names inside a class template, so they
+    # must be reached through `this->`; non-templated reg-handlers use the bare
+    # name unchanged.
+    thisq = 'this->' if hasOwnParams else ''
     # render the template with the variables
-    s = t.render(blockname=blockName, reghandler=get_reghandler_properties(prj, data), hwregs=get_hwregs(prj, data))
+    s = t.render(blockname=blockName, cfg=cfg, templatePrefix=templatePrefix,
+                 hasOwnParams=hasOwnParams, registration=registration, thisq=thisq,
+                 reghandler=reghandler, hwregs=get_hwregs(prj, data))
     return s.rstrip()
 
 def render_section_body(args, prj, data):
@@ -142,14 +179,16 @@ block_regs_header_template = '''\
 {% for entry in include_deps -%}
 {{entry}}
 {% endfor %}
-SC_MODULE({{blockname}}), public blockBase, public {{blockname}}Base
+{{templatePrefix}}SC_MODULE({{blockname}}), public blockBase, public {{blockname}}Base{{cfg}}
 {
 private:
     void regHandler(void);
     addressMap _a2cRegs;
 
 public:
-
+{% if hasOwnParams %}
+    SC_HAS_PROCESS({{blockname}});
+{% endif %}
     {{blockname}}(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~{{blockname}}() override = default;
 
@@ -165,38 +204,27 @@ public:
 
 block_regs_init_section_template = '''\
 #include "{{blockname}}.h"
-
+{% if not hasOwnParams %}
 SC_HAS_PROCESS({{blockname}});
+{% endif %}
+{{registration}}
 
-// === Block factory registration ({{blockname}}) ===
-// The register handler self-registers through an A2C_REGISTRATION_RETAIN
-// static (see instanceFactory.h); it is reachable through direct-.o linking
-// with no force-link reference from any parent.
-void register_{{blockname}}_variants() {
-    instanceFactory::registerBlock("{{blockname}}_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{{blockname}}>(blockName, variant, bbMode)); }, "");
+{{templatePrefix}}void {{blockname}}{{cfg}}::regHandler(void) { //handle register decode
+    registerHandler< {{reghandler.addr_type}}, {{reghandler.data_type}} >(_a2cRegs, {{thisq}}{{reghandler.port_name}}, {{reghandler.addressmask}});
 }
 
-namespace {
-[[maybe_unused]] A2C_REGISTRATION_RETAIN int _{{blockname}}_registered = (register_{{blockname}}_variants(), 0);
-} // namespace
-// === End block factory registration ===
-
-void {{blockname}}::regHandler(void) { //handle register decode
-    registerHandler< {{reghandler.addr_type}}, {{reghandler.data_type}} >(_a2cRegs, {{reghandler.port_name}}, {{reghandler.addressmask}});
-}
-
-{{blockname}}::{{blockname}}(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+{{templatePrefix}}{{blockname}}{{cfg}}::{{blockname}}(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("{{blockname}}", name(), bbMode)
-        ,{{blockname}}Base(name(), variant)
+        ,{{blockname}}Base{{cfg}}(name(), variant)
         ,_a2cRegs(log_)
         {% for entry in hwregs -%}
         {% if entry.is_memory -%}
-        ,{{entry.name}}({{entry.port_name}})
+        ,{{entry.name}}({{thisq}}{{entry.port_name}})
         {% elif entry.default -%}
-        ,{{entry.name}}(&{{entry.port_name}}, {{entry.datatype}}::_packedSt({{entry.default}}))
+        ,{{entry.name}}(&{{thisq}}{{entry.port_name}}, {{entry.datatype}}::_packedSt({{entry.default}}))
         {% else -%}
-        ,{{entry.name}}(&{{entry.port_name}})
+        ,{{entry.name}}(&{{thisq}}{{entry.port_name}})
         {% endif -%}
         {% endfor -%}
 '''

@@ -11,7 +11,7 @@
 #include "blockFBase.h"
 #include "addressMap.h"
 #include "hwMemory.h"
-#include "mixedConfig.h"
+#include "mixedVariantConfig.h"
 import mixedBlockC;
 using namespace mixedBlockC_ns;
 

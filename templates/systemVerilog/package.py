@@ -30,8 +30,13 @@ def parameterizedDeclLines(parameterizedDecls, prj, blockParams):
     structures that use them, so a localparam referenced by a type width or
     struct array size is declared ahead of it). SV cannot parameterize a package, so a parameterized
     block declares these inside the owning module from its module parameters;
-    they are the same declarations the package omits. Returns one physical line
-    per list element so callers can apply their own leading indent.
+    they are the same declarations the package omits.
+
+    Returns one entry per physical line, each a dict with 'declKind' and 'line'
+    (the module-body declaration text, no leading indent). Constant entries also
+    carry 'name' and 'rhs' (the localparam name and its expression) so a caller
+    can re-emit them as a comma-separated parameter-port-list localparam when a
+    port width must resolve them ahead of the port list.
 
     `blockParams` is the owning block's param rows (each {'param','paramKey'}).
     A symbol that is one of the block's params stays symbolic (its SV parameter
@@ -65,18 +70,21 @@ def parameterizedDeclLines(parameterizedDecls, prj, blockParams):
         if decl['declKind'] == 'type':
             widthExpr = typeWidthExpression_sv(body, prj)
             signedStr = " signed" if body['isSigned'] else ""
-            out.append(f"typedef logic{signedStr}[{widthExpr}-1:0] {body['type']}; //{body['desc']}")
+            out.append({'declKind': 'type',
+                        'line': f"typedef logic{signedStr}[{widthExpr}-1:0] {body['type']}; //{body['desc']}"})
         elif decl['declKind'] == 'structure':
-            out.append("typedef struct packed {")
+            out.append({'declKind': 'structure', 'line': "typedef struct packed {"})
             for var, varData in body['vars'].items():
                 arrayExpr = arraySizeExpression(varData)
                 arraySize = '' if arrayExpr == '' else f"[{arrayExpr}-1:0] "
                 typeName = varData['subStruct'] if varData['entryType'] == 'NamedStruct' else varData['varType']
-                out.append(f"    {typeName} {arraySize}{varData['variable']}; //{varData['desc']}")
-            out.append(f"}} {body['structure']};")
+                out.append({'declKind': 'structure',
+                            'line': f"    {typeName} {arraySize}{varData['variable']}; //{varData['desc']}"})
+            out.append({'declKind': 'structure', 'line': f"}} {body['structure']};"})
         else:  # constant: eval-derived parameterizable constant -> localparam
             rhs = emitSvCanonical(body['evalCanonical'], symSpelling)
-            out.append(f"localparam {body['constant']} = {rhs}; //{body['desc']}")
+            out.append({'declKind': 'constant', 'name': body['constant'], 'rhs': rhs,
+                        'line': f"localparam {body['constant']} = {rhs}; //{body['desc']}"})
     return out
 
 

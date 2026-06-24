@@ -23,7 +23,7 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
-#include "mixedConfig.h"
+#include "mixedVariantConfig.h"
 #include "rdy_vld_bfm.h"
 #include "status_bfm.h"
 
@@ -156,10 +156,10 @@ private:
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
 #if !defined(VERILATOR) && defined(VCS)
-using blockF_variant0_hdl_sc_wrapper = blockF_hdl_sc_wrapper<blockF_variant0_hdl_sv_wrapper, blockFVariant0Config>;
+using blockF_variant0_hdl_sc_wrapper = blockF_hdl_sc_wrapper<blockF_variant0_hdl_sv_wrapper, mixedDefaultConfig>;
 using blockF_variant1_hdl_sc_wrapper = blockF_hdl_sc_wrapper<blockF_variant1_hdl_sv_wrapper, blockFVariant1Config>;
 #else
-using blockF_variant0_hdl_sc_wrapper = blockF_hdl_sc_wrapper<VblockF_variant0_hdl_sv_wrapper, blockFVariant0Config>;
+using blockF_variant0_hdl_sc_wrapper = blockF_hdl_sc_wrapper<VblockF_variant0_hdl_sv_wrapper, mixedDefaultConfig>;
 using blockF_variant1_hdl_sc_wrapper = blockF_hdl_sc_wrapper<VblockF_variant1_hdl_sv_wrapper, blockFVariant1Config>;
 #endif
 // GENERATED_CODE_END

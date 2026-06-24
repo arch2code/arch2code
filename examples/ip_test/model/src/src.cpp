@@ -8,7 +8,7 @@
 namespace {
 [[gnu::used]] std::shared_ptr<blockBase> _src_instantiate_variant_0(
     const char * blockName, const char * variant, blockBaseMode bbMode) {
-    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcVariantSrc0Config>>(blockName, variant, bbMode));
+    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcDefaultConfig>>(blockName, variant, bbMode));
 }
 [[maybe_unused, gnu::used]] auto _src_instantiate_variant_0_anchor = &_src_instantiate_variant_0;
 } // namespace
@@ -19,7 +19,7 @@ src<Config>::src(sc_module_name blockName, const char * variant, blockBaseMode b
        : sc_module(blockName)
         ,blockBase("src", name(), bbMode)
         ,srcBase<Config>(name(), variant)
-        ,uLeaf(std::dynamic_pointer_cast<ipLeafBase<ipLeafVariantLeaf0Config>>(instanceFactory::createInstance(name(), "uLeaf", "ipLeaf", "variantLeaf0")))
+        ,uLeaf(std::dynamic_pointer_cast<ipLeafBase<ipLeafDefaultConfig>>(instanceFactory::createInstance(name(), "uLeaf", "ipLeaf", "variantLeaf0")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

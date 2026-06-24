@@ -97,7 +97,9 @@ def ext_sec_init(args, prj, data):
     # the plain `<block>External`; `--variant` selects only the Config and
     # factory variant referenced inside it.
     sel = _tb_selection(args, prj, data)
-    cfg = sel['cfg']
+    # The Inverted base's template argument is the excluded DUT instance's
+    # Config when present; otherwise `data` is the DUT block itself.
+    cfg = data['dutInvertedCfg'] if data['dutInvertedCfg'] is not None else sel['cfg']
 
     s = """
 {tbClassName}External::{tbClassName}External(sc_module_name modulename) :
@@ -221,7 +223,9 @@ def ext_sec_header(args, prj, data):
     sel = _tb_selection(args, prj, data)
     hasOwnParams = sel['hasOwnParams']
     defaultConfig = sel['configName']
-    cfg = sel['cfg']
+    # The Inverted base's template argument is the excluded DUT instance's
+    # Config when present; otherwise `data` is the DUT block itself.
+    cfg = data['dutInvertedCfg'] if data['dutInvertedCfg'] is not None else sel['cfg']
     # Child Base forward declarations are class templates only when the child
     # has its own params.
     for blockKey, blockName in sorted(data['subBlocks'].items(), key=lambda item: item[1]):
@@ -313,9 +317,18 @@ and avoid channel name clashes
 """
 def refactor_tbExternal(args, prj, data):
     if len(data['excludedInstances']) > 0:
-        blockname = data['excludedInstances'][next(iter(data['excludedInstances']))]['instanceType']
+        dutInst = data['excludedInstances'][next(iter(data['excludedInstances']))]
+        blockname = dutInst['instanceType']
+        # The External pseudo-block inherits `<DUT>Inverted<Config>`. When the
+        # DUT is an excluded instance of a separate testbench-top block, the
+        # template argument is that instance's Config, not the (possibly
+        # param-less) testbench-top block's cfg from _tb_selection.
+        data['dutInvertedCfg'] = dutInst['instanceConfigArg']
     else:
+        # No excluded instance: `data` already is the DUT block, so the
+        # Inverted base cfg comes from _tb_selection (sentinel None).
         blockname = data['blockName']
+        data['dutInvertedCfg'] = None
     data['blockName'] = blockname
 
 sec_tb_class_header_template = """\

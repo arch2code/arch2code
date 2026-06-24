@@ -47,7 +47,7 @@ Before suggesting YAML changes, verify against `builder/base/config/schema.yaml`
 
 ### Design Checklist
 -   [ ] **Widths**: All non-enum types MUST have a `width` field.
--   [ ] **Decoders**: You MUST manually create the top-level bus decoder (e.g., `apb_decode_system`).
+-   [ ] **Decoders**: The register-bus router is a **generated** block — declare it with a populated `addressBlock:` and instance it in the container of the leaves it serves; its RTL comes from `apbDecodeModule` (`make newmodule` selects it). NEVER hand-author a top-level decoder. See `design-register-decode.md`.
 -   [ ] **Reg Handlers**: NEVER create `<block>_regs` blocks manually; they are auto-generated.
 -   [ ] **Connections**: Connections are for the SAME container. Use `connectionMaps` for hierarchy.
 -   [ ] **References**: Verify all types, structures, and instances exist before using them.

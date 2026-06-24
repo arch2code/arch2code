@@ -73,25 +73,21 @@ Guide the user on creating testbenches, configuring verification components, and
     *   `--excludeInst` is the DUT instance name as it appears in the YAML `instances:` section.
     *   If the instance name doesn't match any instance in the block, the generator produces an error.
 
-    **Example** — `debayer_tb.yaml` defines:
+    **Example** — `examples/mixed/arch/yaml/mixed.yaml` defines the `mixed_tb` container:
 
     ```yaml
     instances:
-      debayer_tb:   { container: debayer_tb, instanceType: debayer_tb,     instGroup: top }
-      u_raw_src:    { container: debayer_tb, instanceType: raw_video_src,  instGroup: top }
-      u_debayer:    { container: debayer_tb, instanceType: debayer,        instGroup: top }
-      u_rgb_sink:   { container: debayer_tb, instanceType: rgb_video_sink, instGroup: top }
-      u_apb_decode: { container: debayer_tb, instanceType: apb_decode,     instGroup: top }
-      u_cpu:        { container: debayer_tb, instanceType: cpu,            instGroup: top }
+      u_mixed: { container: mixed_tb, instanceType: mixed, instGroup: top }
+      uCPU:    { container: mixed_tb, instanceType: cpu,   instGroup: top }
     ```
 
-    The DUT is `u_debayer`. The External files use:
+    The DUT is `u_mixed`. The External files use:
 
     ```cpp
-    // GENERATED_CODE_PARAM --block=debayer_tb --excludeInst=u_debayer
+    // GENERATED_CODE_PARAM --block=mixed_tb --excludeInst=u_mixed
     ```
 
-    This makes the External instantiate `u_raw_src`, `u_rgb_sink`, `u_apb_decode`, and `u_cpu`, while the Testbench instantiates `u_debayer` and binds it to the External.
+    This makes the External instantiate the surrounding blocks (here `uCPU`), while the Testbench instantiates `u_mixed` and binds it to the External.
 
 4.  **Simulation Control:**
     *   **Start/Stop:** Use `sc_start()` and `sc_stop()`.

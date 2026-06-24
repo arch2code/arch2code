@@ -9,7 +9,7 @@
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
 #include "ipBase.h"
-#include "ipConfig.h"
+#include "ipVariantConfig.h"
 #include "endOfTest.h"
 
 class ipExternal: public sc_module, public ipInverted<ipVariant0Config> {

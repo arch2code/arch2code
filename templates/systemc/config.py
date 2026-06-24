@@ -72,7 +72,11 @@ def includeConfig(args, prj, data):
     # Per-variant Config structs. Variant labels and resolved values come
     # from the context view; intra-block dedup (duplicateOf) folds byte-
     # identical variants onto a single canonical struct.
-    seen_struct_names = set()
+    # Seed with the legacy context-stem default name: a block whose own
+    # default-variant config resolves to `<contextStem>DefaultConfig` (block
+    # name == YAML file stem) names the same struct already emitted above, so
+    # re-emitting it would be a redefinition.
+    seen_struct_names = {configName}
     for entry in variant_entries:
         desc = entry['descriptor']
         if desc['duplicateOf'] is not None:

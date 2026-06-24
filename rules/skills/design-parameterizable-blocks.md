@@ -13,7 +13,7 @@ and thunker behavior, use `STRUCTURES_AND_DATA_TYPES_REFERENCE.md`.
 
 ## Core Rules
 
-1.  Put variable constants and types in `ipParameters` in the block's own YAML file.
+1.  Declare a block's root parameters — the constants named in `params:` and bound per variant — in `ipParameters` in the block's own YAML file. Types and derived constants that only *reference* those parameters are parameterizable wherever they are declared and may stay in the regular `types:`/`constants:` sections; they do not have to be moved into `ipParameters`.
 2.  List the block parameters in the block's `params:` field.
 3.  Bind concrete values in the top-level `parameters:` dictionary by block and variant.
 4.  Use `maxValue` / `maxBitwidth` to describe the largest supported generated shape.
@@ -22,7 +22,7 @@ and thunker behavior, use `STRUCTURES_AND_DATA_TYPES_REFERENCE.md`.
 
 ## `ipParameters`
 
-Use `ipParameters` for constants and types that vary by instance or variant. Entries follow the normal `constants` and `types` schemas, then become parameterizable.
+Use `ipParameters` for the block's **root parameter constants** — the variant knobs listed in `params:` and bound per variant in the top-level `parameters:` dictionary. These must live in `ipParameters` in the block's own (IP-root) YAML file, because that is how the generator identifies them as the variant-bound parameters.
 
 ```yaml
 ipParameters:
@@ -34,11 +34,13 @@ ipParameters:
     ip_data_t: {width: IP_DATA_WIDTH, desc: "IP data word"}
 ```
 
+Types and derived constants that reference these parameters do **not** have to be declared inside `ipParameters`. Parameterizability propagates from the referenced root parameter, so such entries generate identically whether they sit in `ipParameters.types`/`ipParameters.constants` or in the regular `types:`/`constants:` sections. Declaring them in `ipParameters` is a locality convention only. (For example, a `pixel_t` whose `width` is a parameter, and derived types such as accumulator or address types whose widths come from derived constants, are routinely declared in the regular `types:` section.)
+
 Rules:
 
 *   Direct parameterizable constants require `maxValue`.
 *   Direct literal-width parameterizable types require `maxBitwidth`.
-*   Derived constants and types inherit worst-case bounds from referenced parameterizable constants.
+*   Derived constants and types inherit worst-case bounds from referenced parameterizable constants. A type whose width references a parameterizable constant inherits that constant's `maxValue` as its bound and needs no explicit `maxBitwidth`, in whichever section it is declared.
 *   Do not put `ipParameters` in shared include files that only define common constants, types, or structures.
 
 ## Parameterized Structures

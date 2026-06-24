@@ -12,7 +12,7 @@
 #include "blockBBase.h"
 #include "addressMap.h"
 #include "hwMemory.h"
-#include "mixedConfig.h"
+#include "mixedVariantConfig.h"
 import mixed;
 using namespace mixed_ns;
 import mixedBlockC;
@@ -58,7 +58,7 @@ public:
 
     //instances contained in block
     std::shared_ptr<blockDBase> uBlockD;
-    std::shared_ptr<blockFBase<blockFVariant0Config>> uBlockF0;
+    std::shared_ptr<blockFBase<mixedDefaultConfig>> uBlockF0;
     std::shared_ptr<blockFBase<blockFVariant1Config>> uBlockF1;
     std::shared_ptr<threeCsBase> uThreeCs;
     std::shared_ptr<blockBRegsBase> uBlockBRegs;

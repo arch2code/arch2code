@@ -36,8 +36,8 @@ def render(args, prj, data):
     # non-parameterized blocks.
     if data['parameterizedDecls']:
         out.append(f"{indent}// Module-local parameterizable type/struct declarations")
-        for line in parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][data['qualBlock']]['params']):
-            out.append(f"{indent}{line}")
+        for entry in parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][data['qualBlock']]['params']):
+            out.append(f"{indent}{entry['line']}")
         out.append("")
 
     #// Interface Instances, needed for between instanced modules inside this module

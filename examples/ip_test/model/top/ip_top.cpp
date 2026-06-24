@@ -32,7 +32,7 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,apbReg_uIp0("ip_apbReg_uIp0", "apbDecode")
         ,apbReg_uIp1("ip_apbReg_uIp1", "apbDecode")
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "")))
-        ,uSrc(std::dynamic_pointer_cast<srcBase<srcVariantSrc0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "variantSrc0")))
+        ,uSrc(std::dynamic_pointer_cast<srcBase<srcDefaultConfig>>(instanceFactory::createInstance(name(), "uSrc", "src", "variantSrc0")))
         ,uIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0")))
         ,uIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1")))
         ,uBridgeDriver(std::dynamic_pointer_cast<bridgeDriverBase>(instanceFactory::createInstance(name(), "uBridgeDriver", "bridgeDriver", "")))

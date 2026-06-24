@@ -16,6 +16,8 @@ Guide the user on how to build, simulate, and manage the project using the `make
     *   `make help`: Lists available targets.
     *   `make`: Runs full build with just the model
     *   `make VL_DUT=1`: Runs full build with model and RTL
+    *   `make compdb`: Generates `compile_commands.json` for clangd. Also refreshed automatically by `make newmodule` after sources are added.
+    *   `make clangd`: Generates the `.clangd` IDE configuration at the repo root (depends on `compdb`). Reload your IDE after running to apply changes.
 
 2.  **Module and Implementation File Creation:**
     *   Use `make newmodule` before creating any implementation file (`.sv`, `.cpp`, `.h`) that arch2code should scaffold.

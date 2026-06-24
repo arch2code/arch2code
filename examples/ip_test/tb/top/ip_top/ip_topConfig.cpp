@@ -7,7 +7,7 @@
 #include "testBenchConfigFactory.h"
 #include "endOfTest.h"
 #include "testController.h"
-#include "ipConfig.h"
+#include "ipVariantConfig.h"
 
 import ip;
 using namespace ip_ns;

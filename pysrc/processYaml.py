@@ -1032,7 +1032,11 @@ class projectOpen:
         variantConfigs = []
         synthetic = dict()
         for qualBlock, blockRow in self.data['blocks'].items():
-            if blockRow['_context'] not in ctx_set:
+            # Group a block's Config emission under its canonical config context
+            # (where its Config struct is emitted), not its declaring context.
+            # Non-parameterizable blocks have an empty configContext and never
+            # match a context set.
+            if blockRow['configContext'] not in ctx_set:
                 continue
             bundle = self.getBlockConfigView(qualBlock)
             if bundle['isParameterizable']:
@@ -1279,7 +1283,12 @@ class projectOpen:
         if not bool(block_row['isParameterizable']):
             return []
         block_name = block_row['block']
-        block_context = block_row['_context']
+        # The Config struct's fields are the parameterizable constants of the
+        # block's canonical config context (where its parameterizable
+        # declarations live), not necessarily the block's own declaring
+        # context. These coincide for IP-root blocks and differ for a block
+        # declared in an including file (e.g. a testbench block bound to the IP).
+        config_context = block_row['configContext']
         # Instance-bound variant set. A block declared parameterizable but
         # unreferenced by any instance produces no Config (and no trampoline).
         instance_bound = set()
@@ -1322,7 +1331,7 @@ class projectOpen:
         # re-resolution is deferred.
         param_constants = []
         for const_data in self.data['constants'].values():
-            if const_data['_context'] != block_context:
+            if const_data['_context'] != config_context:
                 continue
             if not const_data.get('isParameterizable', False):
                 continue
@@ -1343,6 +1352,22 @@ class projectOpen:
 
         descriptors = []
         canonical_by_signature = dict()
+        # Seed the shared context-default Config as the canonical struct for the
+        # nominal signature. A block whose bound variant resolves byte-identically
+        # to the context nominal (every backing parameterizable constant at its
+        # default value, no synthetic block-param fields) collapses onto the single
+        # <context>DefaultConfig type instead of a distinct per-block struct. This
+        # keeps direct cross-block channel and port binds well-typed: connected
+        # leaf blocks that share the nominal Config reference one C++ type rather
+        # than unrelated per-block specializations that cannot bind.
+        # block_row['defaultConfig'] is the exact name consumer blocks and the
+        # config header use for that shared struct.
+        if param_constants:
+            default_signature = tuple(sorted(
+                (const_data['constant'], const_data['value'])
+                for const_data in param_constants
+            ))
+            canonical_by_signature[default_signature] = block_row['defaultConfig']
         for variant in variants:
             values = dict()
             for const_data in param_constants:
@@ -1498,6 +1523,19 @@ class projectOpen:
         if hasExcluded == 0 and len(excludeInstances) > 0:
             printError(f"--excludeInst={excludeInstances} did not find any of the instances to exclude in block {qualBlock}")
             exit(warningAndErrorReport())
+        # Pre-resolve per-instance Config fields for the excluded DUT
+        # instance(s) too. The tbExternal template inherits
+        # `<DUT>Inverted<Config>`, whose template argument is the DUT's
+        # per-instance Config, not the (possibly param-less) testbench-top
+        # block's. Mirror the contained-instance resolution above.
+        for inst, instInfo in excluded.items():
+            childBundle = self.getBlockConfigView(instInfo['instanceTypeKey'])
+            configFields = self._resolveInstanceConfigFields(instInfo, bundle=childBundle)
+            instInfo['instanceConfigName']            = configFields['configName']
+            instInfo['instanceConfigArg']             = configFields['configArg']
+            instInfo['instanceTypeIsParameterizable'] = configFields['isParameterizable']
+            instInfo['instanceTypeHasOwnParams']      = configFields['hasOwnParams']
+            instInfo['instanceTypeDefaultConfig']     = configFields['defaultConfig']
         ret['excludedInstances'] = excluded
 
     def getBDRegistersMemories(self, qualBlock, ret):
@@ -2429,16 +2467,19 @@ class projectOpen:
         # contexts once in the block view so templates do not need to re-query
         # project-wide data.
         if ret['blockInfo'].get('params'):
-            block_context = ret['blockInfo']['_context']
-            if block_context and block_context not in self.specialContexts:
-                ret['configIncludeContext'][block_context] = 0
+            # The block's Config struct is emitted in its canonical config
+            # context, which differs from its declaring context when the block
+            # is defined in a file that includes the IP root.
+            config_context = ret['blockInfo']['configContext']
+            if config_context and config_context not in self.specialContexts:
+                ret['configIncludeContext'][config_context] = 0
         # Child instance shared_ptr declarations name the child's per-variant
-        # Config (e.g., `ipLeafBase<ipLeafVariantLeaf0Config>`). The defining
-        # `<childContext>Config.h` lives alongside the child block, in the
-        # child block's context. Without aggregating those contexts here the
-        # parent's class-declaration TU cannot resolve the Config struct name.
-        # The aggregation is bounded by subBlockInstances whose child block is
-        # itself parameterizable.
+        # Config (e.g., `ipLeafBase<ipLeafVariantLeaf0Config>`). The child's
+        # class header lives in the child block's own context, but its Config
+        # struct is defined in the child's canonical config context. Without
+        # aggregating those contexts here the parent's class-declaration TU
+        # cannot resolve the Config struct name. The aggregation is bounded by
+        # subBlockInstances whose child block is itself parameterizable.
         for inst_data in (ret.get('subBlockInstances') or {}).values():
             type_key = inst_data.get('instanceTypeKey')
             if not type_key:
@@ -2451,7 +2492,9 @@ class projectOpen:
             child_context = child_block['_context']
             if child_context and child_context not in self.specialContexts:
                 ret['includeContext'][child_context] = 0
-                ret['configIncludeContext'][child_context] = 0
+            child_config_context = child_block['configContext']
+            if child_config_context and child_config_context not in self.specialContexts:
+                ret['configIncludeContext'][child_config_context] = 0
 
     def getBDInterfaceDefs(self, ret):
         """Collect interface definitions for all interface types used in the block
@@ -3466,19 +3509,34 @@ class projectCreate:
 
             # Derive defaultConfig from contexts[0] (file-name basename
             # sanitised) when present, otherwise from the block name.
+            # contexts[0] is also persisted verbatim as configContext: the
+            # canonical config context, i.e. the YAML context that owns the
+            # block's parameterizable declarations and where its Config struct
+            # is emitted. This differs from the block's own _context when the
+            # block is declared in a file that includes the IP root (e.g. a
+            # testbench stimulus/sink), and every config-emission site keys on
+            # configContext rather than the block's declaring context.
             if is_parameterizable:
                 if contexts:
-                    base = os.path.splitext(os.path.basename(contexts[0]))[0]
+                    config_context = contexts[0]
+                    base = os.path.splitext(os.path.basename(config_context))[0]
                     default_config = base.replace('-', '_').replace('.', '_') + 'DefaultConfig'
                 else:
+                    config_context = ''
                     default_config = blockName + 'DefaultConfig'
             else:
+                config_context = ''
                 default_config = ''
+
+            # Mirror configContext onto the in-memory block row. _configHeaderContexts
+            # consumes it later in this same projectCreate pass, before the DB is
+            # reopened, so it reads the dict rather than re-querying SQL.
+            block_row['configContext'] = config_context
 
             sql_param = 1 if is_parameterizable else 0
             g.cur.execute("UPDATE blocks SET isParameterizable = ?, "
-                          "defaultConfig = ? WHERE blockKey = ?",
-                          (sql_param, default_config, qualBlock))
+                          "defaultConfig = ?, configContext = ? WHERE blockKey = ?",
+                          (sql_param, default_config, config_context, qualBlock))
 
 
     def deriveParameterizedDeclSets(self):
@@ -3654,9 +3712,24 @@ class projectCreate:
         # visible from the block and its full backing-parameter closure is
         # supplied by that block's params; any local declaration dependencies are
         # recursively selected first.
+        # Record each block's params as the backing ipParameters constant key
+        # resolved through the block's include chain, not the param's
+        # declaring-file qualification. A block may consume an ipParameters
+        # constant defined in an included IP-root file (e.g. a testbench
+        # stimulus/sink instanced against the IP); the backing parameter it
+        # carries is that same constant. Endpoint backing and per-declaration
+        # selection both compare against interface paramDeps, which are the
+        # constants' own keys, so resolved constant identity is the correct
+        # basis for comparison rather than the file the param was declared in.
         blockParams = dict()
         for row in self.flatData['blocksparams'].values():
-            blockParams.setdefault(row['blockKey'], set()).add(row['paramKey'])
+            (constInfo, _constContext) = self.lookupInScope(
+                'constants', row['_context'], row['param'])
+            if constInfo is None:
+                # A param with no backing constant is reported by
+                # _post_validateBlockParamBacking; nothing to record here.
+                continue
+            blockParams.setdefault(row['blockKey'], set()).add(constInfo['constantKey'])
         # blocks.isParameterizable is computed by calcBlockConfigInfo() and
         # written to the database only (not mirrored back into self.data /
         # self.flatData), so it is the one input here that must be read from the
@@ -3879,23 +3952,25 @@ class projectCreate:
 
     def _configHeaderContexts(self):
         contexts = set()
-        g.cur.execute("SELECT DISTINCT _context FROM constants WHERE isParameterizable = 1")
-        for r in g.cur.fetchall():
-            if r['_context']:
-                contexts.add(r['_context'])
+        # Every context that declares a parameterizable constant emits a
+        # <context>DefaultConfig struct.
+        for const_row in self.flatData['constants'].values():
+            if const_row['isParameterizable'] and const_row['_context']:
+                contexts.add(const_row['_context'])
 
-        # Blocks with own params but no backing parameterizable constant
-        # still emit per-variant Config structs when the project binds an
-        # instance of the block.
-        g.cur.execute("""
-            SELECT DISTINCT b._context
-            FROM blocks b
-            JOIN blocksparams bp ON bp.blockKey = b.blockKey
-            JOIN instances i ON i.instanceTypeKey = b.blockKey
-        """)
-        for r in g.cur.fetchall():
-            if r['_context']:
-                contexts.add(r['_context'])
+        # Blocks with own params still emit (or share) per-variant Config
+        # structs when the project binds an instance of the block. The header
+        # is keyed on the block's canonical config context, where its Config
+        # struct is emitted, not its declaring context. configContext is
+        # mirrored onto the block rows by calcBlockConfigInfo earlier in this
+        # pass.
+        instanced = {row['instanceTypeKey'] for row in self.flatData['instances'].values()}
+        blocks_with_params = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        block_by_key = {row['blockKey']: row for row in self.flatData['blocks'].values()}
+        for block_key in instanced & blocks_with_params:
+            config_context = block_by_key[block_key]['configContext']
+            if config_context:
+                contexts.add(config_context)
         return contexts
 
     _PROJECT_ADDRESS_GROUP_FIELDS = {'varType': None, 'enumPrefix': None}

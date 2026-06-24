@@ -4,8 +4,8 @@
 // GENERATED_CODE_BEGIN --template=blockRegistrar
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "ipConfig.h"
-#include "srcConfig.h"
+#include "ipVariantConfig.h"
+#include "srcVariantConfig.h"
 
 namespace {
 struct _ip_top_registrar {

@@ -10,8 +10,8 @@
 #include "logging.h"
 #include "instanceFactory.h"
 #include "srcBase.h"
-#include "ipLeafConfig.h"
-#include "srcConfig.h"
+#include "ipLeafVariantConfig.h"
+#include "srcVariantConfig.h"
 //contained instances forward class declaration
 template<typename Config> class ipLeafBase;
 
@@ -30,7 +30,7 @@ public:
     using srcBase<Config>::out1;
 
     //instances contained in block
-    std::shared_ptr<ipLeafBase<ipLeafVariantLeaf0Config>> uLeaf;
+    std::shared_ptr<ipLeafBase<ipLeafDefaultConfig>> uLeaf;
 
     // inherited parameterized types usable unqualified (no <Config>)
     using typename srcBase<Config>::srcOut0DataT;

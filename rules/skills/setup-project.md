@@ -68,11 +68,10 @@ Guide the user through initializing a new project, setting up the directory stru
       rtl: $root/rtl
       # ... standard paths
     
-    # Optional: Custom schema or legacy address control
+    # Optional: Custom schema
     dbSchema: config/schema.yaml
-    addressControl: config/addressControl.yaml
 
-    # Preferred project-level address-policy sections for new work
+    # Project-level address-policy sections
     instanceGroups:
       all_instances:
         varType: global_inst_id_t
@@ -89,12 +88,12 @@ Guide the user through initializing a new project, setting up the directory stru
     ```
 
 3.  **Address Policy and Register Decode:**
-    *   For new projects, place reusable address-policy sections in `project.yaml`:
+    *   Place reusable address-policy sections in `project.yaml`:
         *   `instanceGroups:` for non-address-space ID enumeration.
         *   `addressObjects:` for register and memory packing policy.
-    *   Legacy projects may still use `addressControl.yaml` with `InstanceGroups:` and `AddressObjects:` during migration, but that path is expected to be deprecated. If both spellings exist, the rows must match exactly.
-    *   If the project has register access, define at least one address group through the active address-decode schema. Legacy projects use `addressControl.yaml` `AddressGroups:`; migrated projects use per-router `addressBlock:`.
-    *   **Critical:** You must manually define the decoder/router block and instance in your architecture YAML (e.g., `apb_decode_system`).
+    *   If the project has register access, define at least one address group via the per-block schema: a router block carries `addressBlock:` and routed leaves tag their instance `addressGroup:`.
+    *   The register-bus decoder/router is a **generated** block: declare it with a populated `addressBlock:` and instance it in the container of the leaves it serves (its RTL comes from `apbDecodeModule`). Do **not** hand-author it. For the decode hierarchy decision rule and the upstream feed you do author, use the **Register/Memory Decode** skill (`design-register-decode.md`).
+    *   Converting an existing `addressControl.yaml` project to this schema is a one-time migration — see `migrate-project.md` / `address-migration.md`.
 
 4.  **Makefile Setup:**
     *   Ensure the project `Makefile` includes `shared.mk` from the repository root.

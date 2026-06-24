@@ -153,19 +153,30 @@ types:
   data_t: {width: 32, desc: "Data"}
 ```
 
-### 2. Forgetting Manual Top-Level Decoder
-You **MUST** manually create the top-level bus decoder:
+### 2. Missing Router for a Routed Leaf
+The register-bus decoder/router is a **generated** block. Declare it with a
+populated `addressBlock:` and instance it in the **same container** as the
+routed leaves it serves; its RTL comes from the `apbDecodeModule` template
+(`make newmodule` selects it). Routed leaves tag their instance `addressGroup:`.
 ```yaml
 blocks:
-  apb_decode_system:
-    desc: "APB decoder"
+  apb_decode:
+    desc: "APB router (RTL generated from apbDecodeModule)"
+    addressBlock:
+      addressGroup: system
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: system_addr_id_t
+      enumPrefix: SYSTEM_ADDR_
+      upstreamPort: apbReg
+      registerDecoderPort: apbReg
 
 instances:
-  u_apb_decode_system:
-    container: top
-    instanceType: apb_decode_system
+  u_apb_decode: {container: top, instanceType: apb_decode}
 ```
-Block-level `<blockname>_regs` are auto-generated, but the top-level decoder is NOT.
+Both the decoder RTL and the per-leaf `<blockname>_regs` handlers are generated;
+you author only the upstream feed into the primary router. Never hand-write a
+decoder. See `design-register-decode.md`.
 
 ### 3. Connections Across Containers
 Connections only work within the **same container**. Use `connectionMaps` for hierarchy.

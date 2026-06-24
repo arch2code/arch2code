@@ -956,9 +956,9 @@ instances:
 - Set `addressGroup` for any block that has registers or FW-accessible memories
 - Let `addressID` auto-assign unless specific ordering is required
 - Use hierarchical instances to mirror the physical design hierarchy
-- **You must manually create top-level bus decoder instances** (e.g., `u_apb_decode_system`) that route between blocks
+- **The register-bus decoder/router is a generated block** — declare it as a block with a populated `addressBlock:` and instance it in the container of the leaves it serves; its RTL comes from the `apbDecodeModule` template (`make newmodule` selects it automatically). Do not hand-author a top-level decoder.
 - **Block-level register handlers** (e.g., `u_<blockname>_regs`) are auto-generated - don't create these
-- Reference your manual decoder instance in `addressControl.yaml` → `AddressGroups` → `decoderInstance`
+- A routed leaf instance names the serving router's address group via `addressGroup:`; the register-bus fan-out below the primary router is synthesized. See the "Register/Memory Decode" skill (`design-register-decode.md`).
 
 ---
 
@@ -1273,80 +1273,82 @@ registers:
 - These blocks are automatically generated and instantiated
 - They handle register access **within** each block
 
-#### Manual Top-Level Bus Decoder (Required)
+#### Register-Bus Decoder/Router (Generated Block)
 
-**Important:** You **MUST manually create** the top-level bus decoder that routes the register bus to multiple blocks:
+**Important:** The register-bus decoder/router is a **generated** block, not
+hand-written. You declare it; the framework synthesises its RTL and the
+register-bus fan-out below it.
 
-1. **Top-Level Decoder Block**: You must define (e.g., `apb_decode_system`)
-   - This decodes the top-level address space
-   - Routes register bus to the appropriate block based on address
-   - Must be explicitly defined in your YAML
+1. **Router Block**: declare a block with a populated `addressBlock:` section.
+   Its RTL is emitted by the `apbDecodeModule` template, which `make newmodule`
+   selects automatically because the block carries `addressBlock:`. Never
+   hand-write decode/demux logic.
 
-2. **Decoder Instance**: You must instantiate (e.g., `u_apb_decode_system`)
-   - Must be explicitly created in `instances` section
-   - Must be referenced in `addressControl.yaml`
+2. **Router Instance**: instance the router in the **same container** as the
+   routed leaves it serves. A router serves the other instances in its own
+   container (its siblings) and nested routers — it never decodes its own
+   container block.
 
-3. **AddressGroup Reference**: 
-   - The `decoderInstance` field in `AddressGroups` must reference your manual decoder instance
-   - Example: `decoderInstance: u_apb_decode_system`
+3. **Routed Leaves**: a block that owns registers or `regAccess: true` memories
+   (or authors `registerPorts:`) is a routed leaf. Tag the leaf **instance**
+   with `addressGroup:` naming the serving router's `addressBlock.addressGroup`.
+
+For the full decode decision rule (where registers/memories live, nested
+routers, container blocks that own registers), see the **Register/Memory Decode**
+skill (`design-register-decode.md`).
 
 **Example:**
 ```yaml
-# YOU MUST MANUALLY CREATE THIS:
 blocks:
-  apb_decode_system:
-    desc: "APB decoder for system address space"
+  apb_decode:
+    desc: "APB register decoder (RTL generated from apbDecodeModule)"
     hasRtl: true
     hasMdl: true
+    addressBlock:
+      addressGroup: system
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: system_addr_id_t
+      enumPrefix: SYSTEM_ADDR_
+      upstreamPort: cpu_apb_reg       # addressBus interface feeding this router
+      registerDecoderPort: cpu_apb_reg # canonical downstream register-bus port
 
 instances:
-  u_apb_decode_system:
+  u_apb_decode:
     container: top
-    instanceType: apb_decode_system
-    instGroup: decoders
-
-# In addressControl.yaml
-AddressGroups:
-  system:
-    decoderInstance: u_apb_decode_system  # References decoder
-    primaryDecode: true
+    instanceType: apb_decode
+    instGroup: top
 ```
 
-#### Complete Example with Auto-Generated and Manual Components
+#### Complete Example with Generated Router and Auto-Generated Handlers
 
 ```yaml
-# ============================================
-# In addressControl.yaml
-# ============================================
-RegisterBusInterface: cpu_apb_reg  # Specifies APB interface for registers
-
-AddressGroups:
-  system:
-    addressIncrement: 0x01000000
-    maxAddressSpaces: 16
-    varType: system_addr_id_t
-    enumPrefix: SYSTEM_ADDR_
-    decoderInstance: u_apb_decode_system  # YOUR manual decoder
-    primaryDecode: true
-
 # ============================================
 # In your architecture YAML
 # ============================================
 
-# 1. YOU MUST MANUALLY CREATE: Top-level bus decoder
+# 1. Declare the GENERATED router block (RTL from apbDecodeModule)
 blocks:
-  apb_decode_system:
+  apb_decode:
     desc: "APB decoder routing to multiple blocks"
     hasRtl: true
     hasMdl: true
+    addressBlock:
+      addressGroup: system
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: system_addr_id_t
+      enumPrefix: SYSTEM_ADDR_
+      upstreamPort: cpu_apb_reg
+      registerDecoderPort: cpu_apb_reg
 
 instances:
-  u_apb_decode_system:
+  u_apb_decode:
     container: top
-    instanceType: apb_decode_system
-    instGroup: decoders
+    instanceType: apb_decode
+    instGroup: top
 
-# 2. Define your block with registers
+# 2. Define your block with registers (a routed leaf)
 blocks:
   dma_controller:
     desc: "DMA controller"
@@ -1355,10 +1357,10 @@ blocks:
 
 instances:
   u_dma_controller:
-    container: top
+    container: top              # same container as u_apb_decode (co-location)
     instanceType: dma_controller
     instGroup: peripherals
-    addressGroup: system  # Links to address group
+    addressGroup: system        # names the router's addressBlock.addressGroup
 
 # 3. Define registers for the block
 registers:
@@ -1388,11 +1390,12 @@ registers:
     wordLines: 256
     desc: "Lookup table memory register"
 
-# 4. Connect CPU to your manual decoder
+# 4. Author ONLY the upstream feed into the primary router. Here the CPU and the
+#    router share container `top`, so just a connection (no connectionMap).
 connections:
   - interface: cpu_apb_reg
     src: u_cpu
-    dst: u_apb_decode_system
+    dst: u_apb_decode
 ```
 
 **Behind the Scenes:**
@@ -1405,17 +1408,18 @@ blocks:
     desc: "Register handler for dma_controller"
     hasRtl: true
     hasMdl: true
-    isRegHandler: true  # Special flag
+    isRegHandler: true  # Special flag (set automatically)
 
-# The dma_controller_regs block is automatically instantiated
-# inside the dma_controller block and handles register operations
+# AUTO-GENERATED: the dma_controller_regs instance inside dma_controller, the
+# leaf-to-handler connectionMap, and the u_apb_decode → u_dma_controller
+# dispatch connection.
 ```
 
 **Key Points:**
-- **Manual**: `apb_decode_system` (top-level decoder routing between blocks)
-- **Automatic**: `dma_controller_regs` (block-level register handler)
-- The automatic block handles registers **within** dma_controller
-- The manual decoder routes the bus **to** dma_controller (and other blocks)
+- **Generated (you declare)**: the `apb_decode` router (`addressBlock:`); RTL from `apbDecodeModule`.
+- **Auto-generated (you do nothing)**: `dma_controller_regs` handler + the router→leaf dispatch.
+- **Authored by hand**: only the upstream feed into the primary router (master→DUT connection, plus a DUT-boundary connectionMap when the master is outside the router's container).
+- The router serves its **siblings** (and nested routers); it never decodes its own container block.
 
 ### Register Connections
 
@@ -1532,8 +1536,8 @@ memories:
 - Arch2code automatically generates the `<blockname>_regs` block (just like for registers)
 - The `<blockname>_regs` block handles both register and memory access for that block
 - The memory becomes memory-mapped and accessible via the register bus interface
-- The instance must have `addressGroup` set to allocate address space
-- You still need to manually create the top-level bus decoder (e.g., `apb_decode_system`)
+- The instance must have `addressGroup` set, naming a serving router's `addressBlock.addressGroup`
+- `regAccess: true` (with `local:` absent) is the single switch for FW-accessible memory; the serving router is a generated `addressBlock:` block (see the Register/Memory Decode skill)
 
 ### Address Policy and Address Control
 
@@ -1573,10 +1577,8 @@ AddressGroups:
 - `maxAddressSpaces`: Maximum number of addressable instances
 - `varType`: Generated enumeration type name
 - `enumPrefix`: Prefix for enumeration constants
-- `decoderInstance`: **Your manually-created top-level decoder instance** (e.g., `u_apb_decode_system`)
-  - This must reference an instance you explicitly defined in your YAML
-  - Routes register bus to blocks within this address group
-- `primaryDecode`: True for root address space
+- `decoderInstance`: **(legacy `addressControl.yaml` only)** names the router instance for this group. In the per-block schema this is not authored: the router is the block whose `addressBlock.addressGroup` equals this group, and routed leaves select it via their instance `addressGroup:`.
+- `primaryDecode`: **(legacy only)** True for root address space. In the per-block schema the primary router is inferred by hierarchy walk (the one router not nested under another).
 
 **Example:**
 ```yaml
@@ -1586,7 +1588,7 @@ AddressGroups:
     maxAddressSpaces: 16
     varType: system_addr_id_t
     enumPrefix: SYSTEM_ADDR_
-    decoderInstance: u_system_decoder  # YOU must create this instance
+    decoderInstance: u_system_decoder  # legacy: names the router instance
     primaryDecode: true
   
   peripheral:
@@ -1594,15 +1596,19 @@ AddressGroups:
     maxAddressSpaces: 32
     varType: periph_addr_id_t
     enumPrefix: PERIPH_ADDR_
-    decoderInstance: u_periph_decoder  # YOU must create this instance
+    decoderInstance: u_periph_decoder  # legacy: names the router instance
     primaryDecode: false
 ```
 
-**Important Note on Decoder Instances:**
-- `decoderInstance` must reference a **manually-created** instance in your YAML
-- Example: You must define `apb_decode_system` block and `u_apb_decode_system` instance
-- This is the **top-level** decoder that routes the bus between multiple blocks
-- Do not confuse with `<blockname>_regs` which is auto-generated per block
+**Important Note on the per-block schema (`addressBlock:`):**
+- `AddressGroups:`, `decoderInstance:`, and `primaryDecode:` belong to the
+  **legacy** `addressControl.yaml` path. For new work, do not author them.
+- Instead, declare a router block with `addressBlock:` (its `addressGroup` field
+  is the group name), and the router's RTL is generated from `apbDecodeModule`.
+- The router instance and the leaves it serves must share a container; leaves
+  select the group via their instance `addressGroup:`. See the Register/Memory
+  Decode skill (`design-register-decode.md`).
+- `<blockname>_regs` is always auto-generated per routed leaf — never author it.
 
 #### instanceGroups
 
@@ -1671,34 +1677,47 @@ RegisterBusInterface: cpu_apb_reg
 ```
 
 **AI Agent Guidance:**
-- Create hierarchical address groups for multi-level decode
+- For multi-level decode, use **nested routers**: a second `addressBlock:` block
+  inside a container that is itself a routed leaf of the parent router (two
+  address groups). The nested feed is auto-wired — see `design-register-decode.md`.
 - Use `memsize` alignment for memories to enable lower-bit internal decode
-- Set `primaryDecode: true` only for the top-level address group
 - Instance groups are useful for error reporting and debug ID assignment
-- **You must manually create and instantiate the decoder referenced in `decoderInstance`**
-- The decoder instance must exist and have appropriate interface connections
+- **The decoder is a generated `addressBlock:` block** — declare and instance it
+  in the container of the leaves it serves; its RTL and the register-bus fan-out
+  below it are synthesized. Do not hand-author a decoder or its bus connections
+  (beyond the single upstream feed into the primary router).
 
 ### Register Decoder Architecture (Critical Understanding)
 
-Arch2code uses a **two-level decoder architecture** for register access:
+Arch2code uses a **two-level decoder architecture** for register access. **Both
+levels are generated** — you declare the router block and the leaf's registers;
+the framework synthesises the RTL and the bus fan-out.
 
 ```
-CPU → [Top-Level Decoder] → [Block-Level Handler] → Registers/Memories
-      (MANUAL)                 (AUTO-GENERATED)
-      
-      apb_decode_system        dma_controller_regs
-      (you create this)        (arch2code creates this)
+CPU → [Router (addressBlock:)] → [Block-Level Handler] → Registers/Memories
+      (GENERATED block,            (AUTO-GENERATED,
+       apbDecodeModule RTL)         <blockname>_regs)
+
+      apb_decode                   dma_controller_regs
+      (you DECLARE addressBlock:)  (arch2code creates this)
 ```
 
-#### Level 1: Top-Level Bus Decoder (MANUAL - You Create)
-- **Name Pattern**: `apb_decode_<system_name>` or `lmmi_decode_<system_name>`
-- **Purpose**: Routes register bus to the correct block based on high-order address bits
-- **You Must**:
-  - Define the decoder block in `blocks` section
-  - Create an instance in `instances` section
-  - Reference it in `addressControl.yaml` → `AddressGroups` → `decoderInstance`
-  - Connect CPU (or bus master) to this decoder instance
-- **Example**: `apb_decode_system`, `u_apb_decode_system`
+You author by hand only the **upstream feed** into the primary router (the
+master→DUT connection, plus a DUT-boundary connectionMap when the master is
+outside the router's container). Everything below the primary router is
+synthesized.
+
+#### Level 1: Register-Bus Router (GENERATED - You Declare `addressBlock:`)
+- **Role**: Routes the register bus to the correct served instance based on
+  high-order address bits.
+- **What it is**: a block with a populated `addressBlock:`; its RTL is emitted by
+  the `apbDecodeModule` template, auto-selected by `make newmodule`.
+- **You declare**:
+  - the router block with its `addressBlock:` section, and
+  - an instance of it in the **same container** as the routed leaves it serves.
+- **It serves**: the other instances in its own container (its siblings) and
+  nested routers. It **never decodes its own container block**.
+- **Example**: block `apb_decode` (`addressBlock:`), instance `u_apb_decode`.
 
 #### Level 2: Block-Level Register Handler (AUTO - Arch2code Creates)
 - **Name Pattern**: `<blockname>_regs`
@@ -1707,42 +1726,53 @@ CPU → [Top-Level Decoder] → [Block-Level Handler] → Registers/Memories
   - Creates the `<blockname>_regs` block
   - Instantiates it within the parent block
   - Wires it to the block's registers and memories
+  - Emits the router→leaf dispatch connection
 - **Triggered By**:
-  - Registers defined for the block
+  - Registers defined for the block, **or**
   - Memories with `regAccess: true` for the block
+  - (register-only blocks DO get a synthesizable `_regs`)
 - **Example**: `dma_controller_regs`, `uart_regs`
 
 #### Complete Flow Example
 
 ```yaml
-# YOU CREATE: Top-level decoder
+# YOU DECLARE: the GENERATED router (RTL from apbDecodeModule)
 blocks:
-  apb_decode_system:
+  apb_decode:
     desc: "System APB decoder"
     hasRtl: true
     hasMdl: true
+    addressBlock:
+      addressGroup: system
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: system_addr_id_t
+      enumPrefix: SYSTEM_ADDR_
+      upstreamPort: cpu_apb_reg
+      registerDecoderPort: cpu_apb_reg
 
 instances:
-  u_apb_decode_system:
+  u_apb_decode:
     container: top
-    instanceType: apb_decode_system
-    instGroup: decoders
+    instanceType: apb_decode
+    instGroup: top
 
+# AUTHOR the upstream feed (CPU and router share container → connection only)
 connections:
   - interface: cpu_apb_reg
     src: u_cpu
-    dst: u_apb_decode_system  # CPU → Top decoder
+    dst: u_apb_decode
 
-# YOU CREATE: Blocks with registers
+# YOU DECLARE: routed leaf with registers
 blocks:
   dma_controller:
     desc: "DMA controller"
 
 instances:
   u_dma_controller:
-    container: top
+    container: top              # co-located with u_apb_decode
     instanceType: dma_controller
-    addressGroup: system
+    addressGroup: system        # names the router's addressBlock.addressGroup
 
 registers:
   - register: config
@@ -1752,15 +1782,16 @@ registers:
     desc: "Config"
 
 # ARCH2CODE AUTO-CREATES:
-# Block: dma_controller_regs
-#   - Handles register decode within dma_controller
-#   - Instantiated automatically inside dma_controller
-#   - Connected to config register
+# Block dma_controller_regs (handler) + its instance inside dma_controller,
+# the leaf-to-handler connectionMap, and the u_apb_decode → u_dma_controller
+# dispatch connection.
 ```
 
 **Key Principle:**
-- **Manual**: Top-level routing between blocks
-- **Automatic**: Register handling within each block
+- **Generated (you declare)**: the `addressBlock:` router; routing between blocks.
+- **Automatic (you do nothing)**: register handling within each block + the fan-out below the primary router.
+- **Authored by hand**: only the upstream feed into the primary router.
+- See the Register/Memory Decode skill (`design-register-decode.md`) for the decode decision rule, nested routers, and container blocks that own registers.
 
 ---
 
@@ -2249,20 +2280,28 @@ interfaces:
       - {structure: apb_addr_t, structureType: addr_t}
       - {structure: apb_data_t, structureType: data_t}
 
-# 3. MANUALLY CREATE: Top-level bus decoder
+# 3. DECLARE the GENERATED router (RTL from apbDecodeModule)
 blocks:
-  apb_decode_system:
+  apb_decode:
     desc: "APB decoder for system bus"
     hasRtl: true
     hasMdl: true
+    addressBlock:
+      addressGroup: system
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: system_addr_id_t
+      enumPrefix: SYSTEM_ADDR_
+      upstreamPort: reg_bus
+      registerDecoderPort: reg_bus
 
 instances:
-  u_apb_decode_system:
+  u_apb_decode:
     container: top
-    instanceType: apb_decode_system
-    instGroup: decoders
+    instanceType: apb_decode
+    instGroup: top
 
-# 4. Define your block with registers
+# 4. Define your routed leaf with registers
 blocks:
   my_module:
     desc: "My module with registers"
@@ -2271,10 +2310,10 @@ blocks:
 
 instances:
   u_my_module:
-    container: top
+    container: top        # co-located with u_apb_decode
     instanceType: my_module
     instGroup: peripherals
-    addressGroup: system  # Required for registers
+    addressGroup: system  # names the router's addressBlock.addressGroup
 
 # 5. Define registers
 registers:
@@ -2290,17 +2329,11 @@ registers:
     structure: status_reg_t
     desc: "Status register"
 
-# 6. Connect CPU to your manual decoder
+# 6. Author ONLY the upstream feed into the primary router
 connections:
   - interface: reg_bus
     src: u_cpu
-    dst: u_apb_decode_system
-
-# 7. In addressControl.yaml
-AddressGroups:
-  system:
-    decoderInstance: u_apb_decode_system  # Reference your manual decoder
-    primaryDecode: true
+    dst: u_apb_decode
 ```
 
 **What Gets Auto-Generated:**
@@ -2311,16 +2344,15 @@ blocks:
     desc: "Register handler for my_module"
     isRegHandler: true
 
-# This my_module_regs block is automatically instantiated
-# within my_module and handles register operations
+# This my_module_regs block is automatically instantiated within my_module, plus
+# the u_apb_decode → u_my_module dispatch connection.
 ```
 
 **Key Points:**
-- **You MUST manually create**: Top-level bus decoder (`apb_decode_system`)
-- **Arch2code auto-creates**: Block-level register handler (`my_module_regs`)
-- Top-level decoder routes between multiple blocks
-- Block-level handler manages registers within one block
-- Reference your manual decoder in `addressControl.yaml` → `decoderInstance`
+- **You declare**: the generated `addressBlock:` router (`apb_decode`).
+- **Arch2code auto-creates**: block-level handler (`my_module_regs`) + the router→leaf dispatch.
+- **You author by hand**: only the upstream feed into the primary router.
+- The router serves its siblings (and nested routers); it never decodes its own container block. See `design-register-decode.md`.
 
 ### 5. Streaming Data Pattern
 
@@ -2370,44 +2402,29 @@ interfaces:
       - {structure: response_t, structureType: rdata_t}
 ```
 
-### 7. Address Map Pattern
+### 7. Address Map Pattern (Nested Routers)
 
-Hierarchical address mapping:
+Hierarchical address mapping uses **nested `addressBlock:` routers** — one per
+address group. The subsystem container is a routed leaf of the parent router and
+hosts its own router for its children. The parent→child router feed is
+auto-wired; author nothing for it (see `design-register-decode.md`).
 
 ```yaml
-# addressControl.yaml
-AddressGroups:
-  system:
-    addressIncrement: 0x01000000
-    maxAddressSpaces: 16
-    varType: system_addr_t
-    enumPrefix: SYSTEM_
-    decoderInstance: u_system_decoder
-    primaryDecode: true
-  
-  subsystem_a:
-    addressIncrement: 0x00100000
-    maxAddressSpaces: 32
-    varType: subsys_a_addr_t
-    enumPrefix: SUBSYS_A_
-    decoderInstance: u_subsys_a_decoder
-    primaryDecode: false
+blocks:
+  system_decode:                       # primary router (group: system)
+    addressBlock: { addressGroup: system, addressIncrement: 0x01000000, maxAddressSpaces: 16,
+                    varType: system_addr_t, enumPrefix: SYSTEM_,
+                    upstreamPort: cpu_apb_reg, registerDecoderPort: cpu_apb_reg }
+  subsys_a_decode:                     # nested router (group: subsystem_a)
+    addressBlock: { addressGroup: subsystem_a, addressIncrement: 0x00100000, maxAddressSpaces: 32,
+                    varType: subsys_a_addr_t, enumPrefix: SUBSYS_A_,
+                    upstreamPort: cpu_apb_reg, registerDecoderPort: cpu_apb_reg }
 
-# Instance with address mapping
 instances:
-  u_subsystem_a:
-    container: top
-    instanceType: subsystem_a
-    instGroup: subsystems
-    addressGroup: system
-    addressID: 0x0
-  
-  u_module_x:
-    container: subsystem_a
-    instanceType: module_x
-    instGroup: subsys_a_modules
-    addressGroup: subsystem_a
-    addressID: 0x0
+  u_system_decode:  { container: top,         instanceType: system_decode }
+  u_subsystem_a:    { container: top,         instanceType: subsystem_a, addressGroup: system }     # routed leaf of system router
+  u_subsys_a_decode:{ container: subsystem_a, instanceType: subsys_a_decode }                       # nested router inside the subsystem
+  u_module_x:       { container: subsystem_a, instanceType: module_x,   addressGroup: subsystem_a } # served by the nested router
 ```
 
 ### 8. Naming Conventions Summary
@@ -3100,10 +3117,10 @@ blocks:
     hasMdl: false  # Explicitly no model
 ```
 
-### 11. Missing Top-Level Bus Decoder
+### 11. Missing Router for a Routed Leaf
 
 ```yaml
-# ❌ BAD - forgetting to create top-level bus decoder
+# ❌ BAD - a routed leaf with no router serving its container
 registers:
   - register: config
     regType: rw
@@ -3117,37 +3134,42 @@ instances:
     instanceType: my_module
     addressGroup: system
 
-# ERROR: No decoder to route bus to my_module!
-# addressControl.yaml references non-existent decoder:
-AddressGroups:
-  system:
-    decoderInstance: u_apb_decode_system  # This doesn't exist!
+# ERROR (from postParseRegisterPorts.py):
+#   Leaf instance 'u_my_module' (block 'my_module') is in container 'top'
+#   which is not served by any router.
 
-# ✅ GOOD - create the top-level bus decoder
+# ✅ GOOD - declare the GENERATED router and co-locate it with the leaf
 blocks:
-  apb_decode_system:
-    desc: "APB bus decoder"
+  apb_decode:
+    desc: "APB router (RTL generated from apbDecodeModule)"
     hasRtl: true
     hasMdl: true
+    addressBlock:
+      addressGroup: system
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: system_addr_id_t
+      enumPrefix: SYSTEM_ADDR_
+      upstreamPort: cpu_apb_reg
+      registerDecoderPort: cpu_apb_reg
 
 instances:
-  u_apb_decode_system:
-    container: top
-    instanceType: apb_decode_system
-    instGroup: decoders
+  u_apb_decode:
+    container: top            # same container as u_my_module
+    instanceType: apb_decode
+    instGroup: top
 
+# Author ONLY the upstream feed into the primary router
 connections:
   - interface: cpu_apb_reg
     src: u_cpu
-    dst: u_apb_decode_system
-
-# In addressControl.yaml
-AddressGroups:
-  system:
-    decoderInstance: u_apb_decode_system  # Now it exists!
+    dst: u_apb_decode
 ```
 
-**Why:** The top-level bus decoder (that routes between multiple blocks) must be manually created. Arch2code only auto-generates the block-level register handlers (e.g., `my_module_regs`).
+**Why:** The router is a generated `addressBlock:` block; it must be instanced in
+the same container as the routed leaves it serves. Arch2code synthesises the
+block-level handlers (e.g., `my_module_regs`) and the router→leaf dispatch. See
+`design-register-decode.md`.
 
 ### 12. Include Path Errors
 
@@ -3171,9 +3193,9 @@ include:
 - Ensure address groups exist in addressControl.yaml before using in instances
 - Use consistent naming conventions throughout
 - Remember: blocks default to `hasRtl: true` and `hasMdl: true` (only specify if different)
-- **Always manually create top-level bus decoders** (e.g., `apb_decode_system`) - these route between multiple blocks
+- **Declare the register-bus router as a generated `addressBlock:` block** and instance it in the container of the leaves it serves - its RTL (`apbDecodeModule`) and the bus fan-out below it are synthesized
 - **Never manually create block-level register handlers** (e.g., `<blockname>_regs`) - these are auto-generated
-- Reference your manual decoder in `addressControl.yaml` → `AddressGroups` → `decoderInstance`
+- Author only the upstream feed into the primary router; tag routed leaves with `addressGroup:`. See `design-register-decode.md`
 - When in doubt, let arch2code auto-assign IDs rather than specifying explicit values
 
 ---
@@ -3403,24 +3425,27 @@ instances:
 
 #### Issue 4: "Address group 'X' not defined"
 
-**Cause:** Instance references addressGroup not in addressControl.yaml.
+**Cause:** Instance references an `addressGroup` that no router declares.
 
 **Solution:**
 ```yaml
-# In addressControl.yaml
-AddressGroups:
-  system:
-    addressIncrement: 0x01000000
-    maxAddressSpaces: 16
-    varType: system_addr_t
-    enumPrefix: SYSTEM_
-    decoderInstance: u_decoder
-    primaryDecode: true
+# Declare a router whose addressBlock.addressGroup is the group name
+blocks:
+  apb_decode:
+    addressBlock:
+      addressGroup: system          # the group name
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: system_addr_id_t
+      enumPrefix: SYSTEM_ADDR_
+      upstreamPort: cpu_apb_reg
+      registerDecoderPort: cpu_apb_reg
 
-# In architecture.yaml
 instances:
+  u_apb_decode: {container: top, instanceType: apb_decode}
   u_module:
-    addressGroup: system  # Must match AddressGroups key
+    container: top
+    addressGroup: system  # Must match a router's addressBlock.addressGroup
 ```
 
 #### Issue 5: "Constant 'X' not defined"
@@ -3560,61 +3585,63 @@ include:
 
 #### Issue 9: Register not accessible
 
-**Cause:** Missing top-level bus decoder or incorrect configuration.
+**Cause:** No router serves the routed leaf, or the leaf is not in the router's
+container, or the upstream feed is missing.
 
 **Solution:**
 ```yaml
-# 1. CREATE the top-level bus decoder (REQUIRED)
+# 1. DECLARE the router as a generated addressBlock: block
 blocks:
-  apb_decode_system:
-    desc: "APB system bus decoder"
+  apb_decode:
+    desc: "APB router (RTL generated from apbDecodeModule)"
     hasRtl: true
     hasMdl: true
+    addressBlock:
+      addressGroup: system
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: system_addr_id_t
+      enumPrefix: SYSTEM_ADDR_
+      upstreamPort: cpu_apb_reg
+      registerDecoderPort: cpu_apb_reg
 
+# 2. Co-locate the router with the leaf, tag the leaf's addressGroup
 instances:
-  u_apb_decode_system:
-    container: top
-    instanceType: apb_decode_system
-    instGroup: decoders
-
-# 2. Connect CPU to the decoder
-connections:
-  - interface: cpu_apb_reg
-    src: u_cpu
-    dst: u_apb_decode_system
-
-# 3. Ensure instance has addressGroup
-instances:
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
   u_module:
     container: top
     instanceType: module
     instGroup: main
-    addressGroup: system  # Required for register access
+    addressGroup: system  # names the router's addressBlock.addressGroup
 
-# 4. Reference decoder in addressControl.yaml
-RegisterBusInterface: cpu_apb_reg
-
-AddressGroups:
-  system:
-    decoderInstance: u_apb_decode_system  # Must match your instance
-    primaryDecode: true
+# 3. Author ONLY the upstream feed into the primary router
+connections:
+  - interface: cpu_apb_reg
+    src: u_cpu
+    dst: u_apb_decode
 ```
 
 **Common Mistakes:**
 ```yaml
-# ❌ MISTAKE 1: Forgetting to create top-level decoder
-# You MUST manually create apb_decode_system (or similar)
-# Arch2code does NOT auto-create this
+# ❌ MISTAKE 1: No router in the leaf's container
+#   -> "Leaf instance '...' is in container '...' which is not served by any router."
+#   Fix: instance an addressBlock: router as the leaf's sibling.
 
 # ❌ MISTAKE 2: Manually creating block-level register handler
 blocks:
   my_module_regs:  # DON'T create this - it's auto-generated!
     desc: "Register handler"
 
-# ✅ CORRECT: Create top-level decoder, define registers
+# ❌ MISTAKE 3: Expecting a block to be decoded by a decoder it CONTAINS
+#   A router never decodes its own container block. If a block owns registers
+#   and holds the only decoder inside itself, add a router in the parent (the
+#   block becomes a routed leaf) or move the registers to a served child leaf.
+
+# ✅ CORRECT: declare the addressBlock: router, define registers on leaves
 blocks:
-  apb_decode_system:  # Manual - routes between blocks
-    desc: "System decoder"
+  apb_decode:        # generated router
+    desc: "System router"
+    addressBlock: { addressGroup: system, upstreamPort: cpu_apb_reg, registerDecoderPort: cpu_apb_reg, addressIncrement: 0x01000000, maxAddressSpaces: 16, varType: system_addr_id_t, enumPrefix: SYSTEM_ADDR_ }
 
 registers:
   - register: config
