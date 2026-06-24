@@ -56,6 +56,7 @@ public:
     using ipMemAddrSt = ipMemAddrSt<Config>;
     using ipBurstSt = ipBurstSt<Config>;
     using ipDerivedMemAddrSt = ipDerivedMemAddrSt<Config>;
+    using ipParamNestedSt = ipParamNestedSt<Config>;
 };
 template<typename Config>
 class ipInverted : public virtual blockPortBase

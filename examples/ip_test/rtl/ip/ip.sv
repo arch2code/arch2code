@@ -47,6 +47,10 @@ import ip_package::*;
     typedef struct packed {
         ipDerivedMemAddrT address; //Second-level derived-depth memory address
     } ipDerivedMemAddrSt;
+    typedef struct packed {
+        ipCfgSt cfg; //Single nested parameterizable config sub-struct
+        ipDataSt [2-1:0] payloads; //Parameterizable nested sub-struct array
+    } ipParamNestedSt;
 
     // Interface Instances, needed for between instanced modules inside this module
     status_if #(.data_t(ipCfgSt)) ipCfg();

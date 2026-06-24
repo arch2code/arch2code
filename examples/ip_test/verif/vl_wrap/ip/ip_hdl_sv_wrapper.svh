@@ -59,6 +59,10 @@ module ip_hdl_sv_wrapper
     typedef struct packed {
         ipDerivedMemAddrT address; //Second-level derived-depth memory address
     } ipDerivedMemAddrSt;
+    typedef struct packed {
+        ipCfgSt cfg; //Single nested parameterizable config sub-struct
+        ipDataSt [2-1:0] payloads; //Parameterizable nested sub-struct array
+    } ipParamNestedSt;
 
     // push_ack_if.dst
     push_ack_if #(.data_t(ipDataSt)) ipDataIf();

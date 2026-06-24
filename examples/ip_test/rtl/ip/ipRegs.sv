@@ -52,6 +52,10 @@ module ipRegs
     typedef struct packed {
         ipDerivedMemAddrT address; //Second-level derived-depth memory address
     } ipDerivedMemAddrSt;
+    typedef struct packed {
+        ipCfgSt cfg; //Single nested parameterizable config sub-struct
+        ipDataSt [2-1:0] payloads; //Parameterizable nested sub-struct array
+    } ipParamNestedSt;
 
     ipRegAddrSt apb_addr;
     assign apb_addr = ipRegAddrSt'(apbReg.paddr) & 32'h3ff;

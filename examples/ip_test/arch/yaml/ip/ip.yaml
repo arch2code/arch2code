@@ -150,6 +150,16 @@ structures:
         arrays: { subStruct: ipFixedArraySt, arraySize: IP_FIXED_PAIR_COUNT, desc: "Nested fixed arrays" }
         log2Fields: { subStruct: ipFixedLog2St, desc: "Nested fixed log2 fields" }
         wideValue: { varType: ipWide37T, desc: "Wide fixed value" }
+    # Parameterizable counterpart to ipFixedNestedSt: nests parameterizable
+    # sub-structs (ipCfgSt, ipDataSt) so the generated type is ipParamNestedSt<Config>
+    # and its nested sub-struct ::_packedSt accesses become C++ dependent types
+    # (e.g. ipDataSt<Config>::_packedSt), which require the typename keyword.
+    # Regression guard for the parameterized nested-struct pack/unpack bug that
+    # ipFixedNestedSt (non-parameterizable, non-dependent) cannot catch. Covers
+    # both the single nested sub-struct and the nested sub-struct array paths.
+    ipParamNestedSt:
+        cfg: { subStruct: ipCfgSt, desc: "Single nested parameterizable config sub-struct" }
+        payloads: { subStruct: ipDataSt, arraySize: IP_FIXED_PAIR_COUNT, desc: "Parameterizable nested sub-struct array" }
     ipRegAddrSt:
         address: { varType: ipRegAddrT, generator: address }
     ipRegDataSt:

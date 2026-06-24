@@ -167,6 +167,14 @@ def cppTypeName(vardata, prj, useConfig=False):
     return varType
 
 
+def packedStType(varType):
+    # ::_packedSt on a templated (parameterized) type such as rgb_pixel_t<Config>
+    # is a dependent type, so C++ requires the typename keyword. Non-parameterized
+    # types (e.g. ipFixedArraySt) must NOT use typename in these non-dependent contexts.
+    prefix = 'typename ' if '<' in varType else ''
+    return f"{prefix}{varType}::_packedSt"
+
+
 def cppWidthMask(widthExpr):
     if isinstance(widthExpr, int):
         widthExpr = str(widthExpr)
@@ -1163,21 +1171,24 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
             # nested structure, declare a tmp variable to hold the value and copy it to the destination
             tmpType, tmpRowType, tmpBaseSize = convertToType(data['arraywidth'])
             loop_current = currentPos
+            # parameterized (templated) sub-struct types like rgb_pixel_t<Config>
+            # make ::_packedSt a dependent type, which requires the typename keyword
+            packedSt = packedStType(varType)
             # we are aligned if the current position is a multiple of the base size
             # except for the array case, unless the array case is the single element array case)
             isAligned = ((currentPos & (baseMask)) == 0) and not (data['isArray'] and not isSingleArray)
             out.append(f'{indent}{{')
             indent += ' '*4
             if (isAligned):
-                out.append(f'{indent}{varName}{varIndex}.unpack(*({varType}::_packedSt*)&{src});')
+                out.append(f'{indent}{varName}{varIndex}.unpack(*({packedSt}*)&{src});')
             else:
                 # cases include whether src or dst is >=64 bits
                 # if tmp is <= 32 bit we want to use a 64 bit temp to prevent alignment issues and cast for the unpack
                 if data['bitwidth'] <= 32:
                     out.append(f"{indent}uint64_t _tmp{{0}};")
-                    unpackCast = f"*(({varType}::_packedSt*)&_tmp)"
+                    unpackCast = f"*(({packedSt}*)&_tmp)"
                 else:
-                    out.append(f"{indent}{varType}::_packedSt _tmp{{0}};")
+                    out.append(f"{indent}{packedSt} _tmp{{0}};")
                     unpackCast = f"_tmp"
                 if (bitwidth >= 64):
                     # src is using 64 bit words so use pass by pointer.
@@ -1325,6 +1336,9 @@ def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
 
     varType = cppTypeName(data, prj, useConfig) if prj else data['subStruct']
     varName = data['variable']
+    # parameterized (templated) sub-struct types like rgb_pixel_t<Config>
+    # make ::_packedSt a dependent type, which requires the typename keyword
+    packedSt = packedStType(varType)
 
     if isArray:
         varIndex = "[i]"
@@ -1337,10 +1351,10 @@ def fw_pack_oneNamedStruct(fw_pack_vars, pos, args, data, indent):
 
     if (isAligned):
         # for aligned data we can go straight to the destination
-        out.append(f'{indent}{varName}{varIndex}.pack(*({varType}::_packedSt*)&{dest});')
+        out.append(f'{indent}{varName}{varIndex}.pack(*({packedSt}*)&{dest});')
     else:
         # unaligned cases got through tmp value
-        out.append(f"{indent}{varType}::_packedSt _tmp{{0}};")
+        out.append(f"{indent}{packedSt} _tmp{{0}};")
         out.append(f'{indent}{varName}{varIndex}.pack(_tmp);')
         if pos + data['arraywidth'] <= 64 and fw_pack_vars['bitwidth'] <= 64:
             out.append(f"{indent}_ret |= {fw_pack_vars['cast']}_tmp << ({srcPos} & {baseMask});")

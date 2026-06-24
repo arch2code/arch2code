@@ -604,6 +604,61 @@ struct ipFixedNestedSt {
     }
 
 };
+template<typename Config>
+struct ipParamNestedSt {
+    ipDataSt<Config> payloads[IP_FIXED_PAIR_COUNT]; //Parameterizable nested sub-struct array
+    ipCfgSt<Config> cfg; //Single nested parameterizable config sub-struct
+
+    ipParamNestedSt() { memset(this, 0, sizeof(ipParamNestedSt)); }
+
+    static constexpr uint16_t _bitWidth = ipDataSt<Config>::_bitWidth*IP_FIXED_PAIR_COUNT + ipCfgSt<Config>::_bitWidth;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint64_t _packedSt[7];
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, ipParamNestedSt<Config>::_byteWidth);
+        uint16_t _pos{0};
+        for(unsigned int i=0; i<IP_FIXED_PAIR_COUNT; i++) {
+            typename ipDataSt<Config>::_packedSt _tmp{0};
+            payloads[i].pack(_tmp);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, ipDataSt<Config>::_bitWidth);
+            _pos += ipDataSt<Config>::_bitWidth;
+        }
+        {
+            typename ipCfgSt<Config>::_packedSt _tmp{0};
+            cfg.pack(_tmp);
+            pack_bits((uint64_t *)&_ret, _pos, (uint64_t *)&_tmp, ipCfgSt<Config>::_bitWidth);
+            _pos += ipCfgSt<Config>::_bitWidth;
+        }
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        uint16_t _pos{0};
+        for(unsigned int i=0; i<IP_FIXED_PAIR_COUNT; i++) {
+            uint16_t _bits = ipDataSt<Config>::_bitWidth;
+            uint16_t _consume;
+            {
+                typename ipDataSt<Config>::_packedSt _tmp{0};
+                unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, ipDataSt<Config>::_bitWidth);
+                payloads[i].unpack(_tmp);
+            }
+            _pos += ipDataSt<Config>::_bitWidth;
+        }
+        {
+            typename ipCfgSt<Config>::_packedSt _tmp{0};
+            unpack_bits((uint64_t *)&_tmp, 0, (uint64_t *)&_src, _pos, ipCfgSt<Config>::_bitWidth);
+            cfg.unpack(_tmp);
+        }
+    }
+    explicit ipParamNestedSt(
+        ipDataSt<Config> payloads_[IP_FIXED_PAIR_COUNT],
+        ipCfgSt<Config> cfg_) :
+        cfg(cfg_)
+    {
+        memcpy(&payloads, &payloads_, sizeof(payloads));
+    }
+
+};
 struct ipRegAddrSt {
     ipRegAddrT address; //
 
