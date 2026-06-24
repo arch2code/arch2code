@@ -80,6 +80,8 @@ class SyncSocketTransport:
         self._sync_event = Event()
 
     async def connect(self) -> None:
+        if self._sock is not None:
+            return
         self._sock = socket.create_connection((self._host, self._port))
 
     async def send_msg(self, msg_type: int, payload: bytes) -> None:
