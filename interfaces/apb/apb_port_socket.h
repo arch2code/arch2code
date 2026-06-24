@@ -5,6 +5,7 @@
 #include "apb_channel.h"
 #include "asyncEvent.h"
 #include "socketFactory.h"
+#include "socketObserve.h"
 #include "socketTransport.h"
 #include "systemc.h"
 
@@ -107,7 +108,11 @@ void port_socket(apb_out<R, D> &port, const std::string &interface_name)
             addr.address = wire_req.address;
             data.data = wire_req.data;
 
+            socket_observe_apb_req(interface_name, is_write, wire_req.address, wire_req.data);
+
             port->request(is_write, addr, data);
+
+            socket_observe_apb_resp(interface_name, is_write, wire_req.address, data.data);
 
             socket_apb_ack_st wire_ack{};
             wire_ack.data = data.data;

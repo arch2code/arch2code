@@ -19,6 +19,12 @@ enum socketMsgTypeT {
     MSG_AXI_RD_RESP=0x0B,
     MSG_AXI_WR_REQ=0x0C,
     MSG_AXI_WR_RESP=0x0D,
+    MSG_APB_OBS_REQ=0x0E,
+    MSG_APB_OBS_RESP=0x0F,
+    MSG_AXI_RD_OBS_REQ=0x10,
+    MSG_AXI_RD_OBS_RESP=0x11,
+    MSG_AXI_WR_OBS_REQ=0x12,
+    MSG_AXI_WR_OBS_RESP=0x13,
     MSG_SHUTDOWN=0xFE,
     MSG_ERROR=0xFF
 };
@@ -39,6 +45,12 @@ inline const char* socketMsgTypeT_prt( socketMsgTypeT val )
         case MSG_AXI_RD_RESP: return( "MSG_AXI_RD_RESP" );
         case MSG_AXI_WR_REQ: return( "MSG_AXI_WR_REQ" );
         case MSG_AXI_WR_RESP: return( "MSG_AXI_WR_RESP" );
+        case MSG_APB_OBS_REQ: return( "MSG_APB_OBS_REQ" );
+        case MSG_APB_OBS_RESP: return( "MSG_APB_OBS_RESP" );
+        case MSG_AXI_RD_OBS_REQ: return( "MSG_AXI_RD_OBS_REQ" );
+        case MSG_AXI_RD_OBS_RESP: return( "MSG_AXI_RD_OBS_RESP" );
+        case MSG_AXI_WR_OBS_REQ: return( "MSG_AXI_WR_OBS_REQ" );
+        case MSG_AXI_WR_OBS_RESP: return( "MSG_AXI_WR_OBS_RESP" );
         case MSG_SHUTDOWN: return( "MSG_SHUTDOWN" );
         case MSG_ERROR: return( "MSG_ERROR" );
     }
@@ -56,6 +68,7 @@ struct SocketMsgHeader {
 static_assert(sizeof(SocketMsgHeader) == 4, "SocketMsgHeader must be 4 bytes");
 
 static constexpr uint16_t SOCKET_AXI_BURST_BYTES = 4096;
+static constexpr uint16_t SOCKET_AXI_OBS_PREVIEW_BYTES = 16;
 
 bool socket_send_msg(int fd, uint8_t msg_type, const void *payload, uint16_t len);
 

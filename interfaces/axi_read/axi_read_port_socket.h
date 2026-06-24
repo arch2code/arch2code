@@ -6,6 +6,7 @@
 #include "axi_read_channel.h"
 #include "asyncEvent.h"
 #include "socketFactory.h"
+#include "socketObserve.h"
 #include "socketTransport.h"
 #include "systemc.h"
 
@@ -108,6 +109,9 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
         wire_req.arsize = static_cast<uint8_t>(addr.arsize);
         wire_req.arburst = static_cast<uint8_t>(addr.arburst);
 
+        socket_observe_axi_rd_req(interface_name, wire_req.arid, wire_req.araddr, wire_req.arlen,
+                                wire_req.arsize, wire_req.arburst);
+
         if (!socket_send_msg(fd, MSG_AXI_RD_REQ, &wire_req, static_cast<uint16_t>(sizeof(wire_req)))) {
             running->store(false, std::memory_order_release);
             should_shutdown = true;
@@ -131,6 +135,8 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
             should_shutdown = true;
             break;
         }
+
+        socket_observe_axi_rd_resp(interface_name, wire_resp.rid, wire_resp.rresp, wire_resp.data);
 
         const int num_beats = static_cast<int>(addr.arlen) + 1;
         const size_t beat_bytes = D::_byteWidth;

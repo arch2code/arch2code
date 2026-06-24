@@ -6,6 +6,7 @@
 #include "axi_write_channel.h"
 #include "asyncEvent.h"
 #include "socketFactory.h"
+#include "socketObserve.h"
 #include "socketTransport.h"
 #include "systemc.h"
 
@@ -114,6 +115,9 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
             std::memcpy(&wire_req.data[i * beat_bytes], &data.wdata, beat_bytes);
         }
 
+        socket_observe_axi_wr_req(interface_name, wire_req.awid, wire_req.awaddr, wire_req.awlen,
+                                  wire_req.awsize, wire_req.awburst, wire_req.data);
+
         if (!socket_send_msg(fd, MSG_AXI_WR_REQ, &wire_req, static_cast<uint16_t>(sizeof(wire_req)))) {
             running->store(false, std::memory_order_release);
             should_shutdown = true;
@@ -137,6 +141,8 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
             should_shutdown = true;
             break;
         }
+
+        socket_observe_axi_wr_resp(interface_name, wire_resp.bid, wire_resp.bresp);
 
         axiWriteRespSt resp{};
         resp.bid = static_cast<_axiIdT>(wire_resp.bid);
