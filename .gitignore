@@ -49,3 +49,6 @@ compile_commands.json
 **/.gen/**
 .cache/
 **/.cache/**
+.container-prerequisites
+# ignore local planning/prompt/research notes
+plans/
