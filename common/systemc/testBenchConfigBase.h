@@ -25,6 +25,8 @@ public:
     virtual void exitSummary(void) {};
     // create the testBench
     virtual bool createTestBench(void) = 0;
+    // Called from sc_main after zero-time enumeration and startup barrier, immediately before full sc_start().
+    virtual void beforeFullSim(void) {}
     virtual bool isDefaultTestBench(void) { return false; };
     
     static void addParam(const std::initializer_list<std::pair<std::string, uint64_t> > & params);

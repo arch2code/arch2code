@@ -6,6 +6,10 @@ MIXED_DIR = examples/mixed
 MIXED_DOT_DB_FILE = $(MIXED_DIR)/.mixed.db
 MIXED_DB_FILE = $(MIXED_DIR)/mixed.db
 
+PYSOCKET_DIR = examples/pySocket
+PYSOCKET_DOT_DB_FILE = $(PYSOCKET_DIR)/.pySocket.db
+PYSOCKET_DB_FILE = $(PYSOCKET_DIR)/pySocket.db
+
 HIER_INCLUDE_DIR = examples/hierInclude
 HIER_INCLUDE_DOT_DB_FILE = $(HIER_INCLUDE_DIR)/.hierInclude.db
 HIER_INCLUDE_DB_FILE = $(HIER_INCLUDE_DIR)/hierInclude.db
@@ -113,6 +117,12 @@ mixed:
 	make -C $(MIXED_DIR)/rundir run
 	make -C $(MIXED_DIR)/rtl lint -j
 
+.PHONY : pySocket
+pySocket:
+	make -C $(PYSOCKET_DIR)/rundir -j all VL_DUT=1
+	make -C $(PYSOCKET_DIR)/rundir run
+	make -C $(PYSOCKET_DIR)/rtl lint -j
+
 .PHONY : in-and-out
 # sim dropped: inAndOut stays a header-mode SV-generation / moduleSignalBlast
 # demo, whose SystemC sim cannot regenerate under this branch's cppm-default
@@ -180,6 +190,7 @@ clean :
 	make -C $(MIXED_DIR) clean
 	make -C $(NESTED_DIR) clean
 	make -C $(HELLO_DIR) clean
+	make -C $(PYSOCKET_DIR) clean
 	make -C $(APBDECODE_DIR) clean
 	make -C $(AXI_DIR) clean
 	make -C $(AXI4SDEMO_DIR) clean
@@ -190,5 +201,5 @@ unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo ip-test
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo ip-test
 push-test: clean unittest pipeline-test

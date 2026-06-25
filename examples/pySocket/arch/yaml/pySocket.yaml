@@ -1,0 +1,14 @@
+
+blocks:
+  pySocket:
+    desc: Module Top
+    hasVl: true
+    hasRtl: true
+    hasMdl: true
+    hasTb: true
+  dut:
+    desc: DUT
+    hasVl: true
+    hasRtl: true
+    hasMdl: true
+    hasTb: false
