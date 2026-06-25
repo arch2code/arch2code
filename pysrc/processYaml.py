@@ -1309,18 +1309,11 @@ class projectOpen:
         def _resolve_override(row):
             # parametersvariants 'value' may be either a literal (int) or
             # the unresolved name of a constant the user referenced from
-            # the `parameters:` section. When the latter, 'valueKey' is
-            # the qualified constant key; resolve through self.data['constants']
+            # the `parameters:` section. Resolve through self.data['constants']
             # so downstream emission gets a numeric literal. Per-variant
             # Config emission inlines the resolved value (matching the
             # ip_test reference shape).
-            value = row['value']
-            value_key = row.get('valueKey', '') or ''
-            if value_key:
-                const_data = self.data['constants'].get(value_key)
-                if const_data is not None:
-                    return const_data.get('value', value)
-            return value
+            return self._resolveBindingValueOpen(row)
 
         overrides = dict()
         if variantBindings is not None:
@@ -1496,6 +1489,22 @@ class projectOpen:
             result.append({'param': paramName, 'spelling': spelling})
         return result
 
+    def _resolveBindingValueOpen(self, row):
+        # projectOpen-time resolution of a parametersvariants binding row to a
+        # concrete value. 'value' is a literal for a literal binding, or the name
+        # of the referenced constant for a symbol binding (valueKey is then the
+        # qualified const key); symbol bindings resolve through the loaded
+        # self.data['constants'] so a standalone consumer — e.g. a per-variant
+        # HDL wrapper, which is a top module with no parent scope — emits a
+        # numeric literal instead of an out-of-scope parent symbol. (Parse-time
+        # validation uses projectCreate._resolveVariantBindingValue instead.)
+        valueKey = row.get('valueKey', '') or ''
+        if valueKey:
+            constData = self.data['constants'].get(valueKey)
+            if constData is not None:
+                return constData.get('value', row['value'])
+        return row['value']
+
     def getBDInstances(self, qualBlock, ret, trimRegLeafInstance, excludeInstances):
         qualBlockInstances = dict()
         containedInstances = dict()
@@ -1515,7 +1524,10 @@ class projectOpen:
                 qualBlockInstances[inst_key] = inst_data
                 containerBlocks[inst_data['containerKey']] = 0
                 if inst_data['variant'] != '':
-                    filtered_variants_data = {k: v for k, v in self.data['parameters'][qualBlock]['variants'].items() if v.get('variant') == inst_data['variant']}
+                    filtered_variants_data = {
+                        k: {**v, 'resolvedValue': self._resolveBindingValueOpen(v)}
+                        for k, v in self.data['parameters'][qualBlock]['variants'].items()
+                        if v.get('variant') == inst_data['variant']}
                     ret['variants'][inst_data['variant']] = filtered_variants_data
         if len(qualBlockInstances) == 0:
             printError(f"There are no instances of {qualBlock} in the design")

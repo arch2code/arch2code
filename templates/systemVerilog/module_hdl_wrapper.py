@@ -181,7 +181,10 @@ def render_trampoline(args, prj, data, mp_sig, blk_name):
     # size). Both precede (and are in scope for) the port list; the derived
     # constants follow the bound root parameters they depend on.
     constDecls, _unusedTypeDecls = parameterized_decls(prj, data, blk_name)
-    param_list = [f"localparam {var_data['param']} = {var_data['value']}" for _, var_data in variant_data.items()]
+    # The per-variant wrapper is a standalone Verilator top with no parent
+    # scope, so bind the resolved concrete value: a symbol binding such as
+    # value: OUT0_DATA_WIDTH would otherwise leak an out-of-scope parent symbol.
+    param_list = [f"localparam {var_data['param']} = {var_data['resolvedValue']}" for _, var_data in variant_data.items()]
     param_list += [f"localparam {c['name']} = {c['rhs']}" for c in constDecls]
     out += '\n#(\n'
     out += textwrap.indent(',\n'.join(param_list), ' '*4)

@@ -11,7 +11,7 @@ module blockF_variant0_hdl_sv_wrapper
     import mixed_package::*;
     import mixedBlockC_package::*;
 #(
-    localparam bob = BOB0,
+    localparam bob = 16,
     localparam fred = 0
 )(
     // rdy_vld_if.src

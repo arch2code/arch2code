@@ -10,7 +10,7 @@ module ipLeaf_variantLeaf0_hdl_sv_wrapper
     // Generated Import package statement(s)
     import ipLeaf_package::*;
 #(
-    localparam LEAF_DATA_WIDTH = OUT0_DATA_WIDTH,
+    localparam LEAF_DATA_WIDTH = 8,
     localparam LEAF_MEM_DEPTH = 4
 )(
     input clk,
