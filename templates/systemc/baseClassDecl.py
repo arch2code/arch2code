@@ -28,12 +28,7 @@ def render(args, prj, data):
 
     for context in data['includeContext']:
         if context in data['includeFiles'].get(fileMapKey, {}):
-            if fileMapKey == 'include_cppm':
-                moduleName = intf_gen_utils.cpp_module_name(prj.includeName[context])
-                out.append(f'import {moduleName};')
-                out.append(f'using namespace {intf_gen_utils.cpp_namespace_name(prj.includeName[context])};')
-            else:
-                out.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
+            out.extend(intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey))
 
 
     isParameterizable = data['isParameterizable']

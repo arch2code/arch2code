@@ -41,7 +41,8 @@ INCLUDE_OVERRIDE_REMOVE = "INCLUDE_OVERRIDE_REMOVE"  # legacy include override l
 STALE_FILE_DELETE = "STALE_FILE_DELETE"              # orphaned generated .h/.cpp deleted
 
 # Manual-TODO kinds (delegated to the migration skill).
-TODO_USER_IMPORT = "TODO_USER_IMPORT"  # user code #includes a migrated context header
+TODO_USER_IMPORT = "TODO_USER_IMPORT"          # user code #includes a migrated context header
+TODO_UNGENERATED_FILE = "TODO_UNGENERATED_FILE"  # name-matched file lacks the generated marker; not deleted
 
 
 @dataclass(frozen=True)
@@ -102,9 +103,16 @@ def migrateIncludesInProject(projectYamlPath, write=False):
     includeDir = _resolveDir(projectDir, projectData.get("dirs") or {},
                              include["basePath"])
     name = include["name"]  # e.g. "Includes"
-    staleFiles = []
+    # Name-globbing alone is not proof a file is a generated orphan: a
+    # hand-written file can share the `*<name>.<ext>` shape. Only delete files
+    # that carry the generated marker (the same GENERATED_CODE_BEGIN contract
+    # used to recognize generated source below); name-matched files without it
+    # are user-authored and are left in place for manual review.
+    candidates = []
     for ext in exts.values():
-        staleFiles.extend(sorted(glob.glob(os.path.join(includeDir, f"*{name}.{ext}"))))
+        candidates.extend(sorted(glob.glob(os.path.join(includeDir, f"*{name}.{ext}"))))
+    staleFiles = [p for p in candidates if _isGenerated(p)]
+    unguardedFiles = [p for p in candidates if not _isGenerated(p)]
 
     overrideLine0 = _fileMapIncludeLine(projectRoot)
     if overrideLine0 is not None:
@@ -116,6 +124,11 @@ def migrateIncludesInProject(projectYamlPath, write=False):
         report.applied.append(ReportItem(
             STALE_FILE_DELETE, _loc(path, 0),
             f"deleted orphaned generated context include {os.path.basename(path)}"))
+    for path in unguardedFiles:
+        report.manual.append(ReportItem(
+            TODO_UNGENERATED_FILE, _loc(path, 0),
+            f"name-matched {os.path.basename(path)} has no generated marker; "
+            f"left in place for manual review (not deleted)"))
 
     # Hand-off: hand-written user code that includes a migrated context header.
     staleHeaders = {os.path.basename(p) for p in staleFiles
@@ -149,6 +162,14 @@ def _resolveDir(projectDir, dirs, key):
     rootDir = os.path.abspath(os.path.join(projectDir, dirs["root"]))
     spec = dirs[key]
     return os.path.abspath(spec.replace("$root", rootDir))
+
+
+def _isGenerated(path):
+    """True when `path` carries the GENERATED_CODE_BEGIN marker that the
+    generator stamps into every in-place generated file. This is the same
+    contract `_userIncludeSites` uses to tell generated source from user
+    source; deletion reuses it so a name-matched user file is never removed."""
+    return "GENERATED_CODE_BEGIN" in _read(path)
 
 
 def _userIncludeSites(projectDir, projectData, staleHeaders):

@@ -15,8 +15,8 @@ import ipLeaf_package::*;
 );
 
     // Module-local parameterizable type/struct declarations
-    typedef logic[LEAF_DATA_WIDTH-1:0] ipLeafDataT; //ipLeaf data word, parameterizable
     typedef logic[$clog2(LEAF_MEM_DEPTH)-1:0] ipLeafMemAddrT; //Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)
+    typedef logic[LEAF_DATA_WIDTH-1:0] ipLeafDataT; //ipLeaf data word, parameterizable
     typedef struct packed {
         ipLeafDataT data; //Leaf memory word
     } ipLeafMemSt;

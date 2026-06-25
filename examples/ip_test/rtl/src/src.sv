@@ -32,7 +32,7 @@ import src_package::*;
     // Interface Instances, needed for between instanced modules inside this module
 
 // Instances
-ipLeaf #(.LEAF_DATA_WIDTH(4), .LEAF_MEM_DEPTH(4)) uLeaf (
+ipLeaf #(.LEAF_DATA_WIDTH(OUT0_DATA_WIDTH), .LEAF_MEM_DEPTH(4)) uLeaf (
     .clk (clk),
     .rst_n (rst_n)
 );

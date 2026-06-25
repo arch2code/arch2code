@@ -365,6 +365,17 @@ def cpp_test_namespace_name(includeName):
     # stay separate from the functional types in cpp_namespace_name.
     return f'{cpp_module_name(includeName)}_test_ns'
 
+def cpp_context_include_lines(prj, data, context, fileMapKey):
+    # Emit the dependency lines for one context: a C++20 `import` plus its
+    # `using namespace` in cppm mode, or a textual `#include` in header mode.
+    # Shared by the SystemC class-decl templates so the import/include spelling
+    # stays consistent across them.
+    if fileMapKey == 'include_cppm':
+        moduleName = cpp_module_name(prj.includeName[context])
+        return [f'import {moduleName};',
+                f'using namespace {cpp_namespace_name(prj.includeName[context])};']
+    return [f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"']
+
 def wrap_module_namespace(args, data, lines):
     if args.mode != 'module':
         return lines

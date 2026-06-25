@@ -14,6 +14,11 @@ struct ipLeafDefaultConfig {
     static constexpr uint32_t LEAF_MEM_DEPTH = 4;
 };
 
+struct ipLeafVariantLeaf0Config {
+    static constexpr uint32_t LEAF_DATA_WIDTH = 8;
+    static constexpr uint32_t LEAF_MEM_DEPTH = 4;
+};
+
 // GENERATED_CODE_END
 
 #endif //IPLEAFVARIANTCONFIG_H_CONFIG_H

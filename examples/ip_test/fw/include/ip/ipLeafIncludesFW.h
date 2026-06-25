@@ -23,8 +23,8 @@ namespace fw_ns {
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
 // types
-template<typename Config> using ipLeafDataT = uint64_t; // [max:8] ipLeaf data word, parameterizable
 template<typename Config> using ipLeafMemAddrT = uint64_t; // [max:3] Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)
+template<typename Config> using ipLeafDataT = uint64_t; // [max:16] ipLeaf data word, parameterizable
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums

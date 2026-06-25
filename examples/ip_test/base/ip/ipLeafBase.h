@@ -29,8 +29,8 @@ public:
     void setLogging(verbosity_e verbosity) override
     {
     };
-    using ipLeafDataT = ipLeafDataT<Config>;
     using ipLeafMemAddrT = ipLeafMemAddrT<Config>;
+    using ipLeafDataT = ipLeafDataT<Config>;
     using ipLeafMemSt = ipLeafMemSt<Config>;
     using ipLeafMemAddrSt = ipLeafMemAddrSt<Config>;
 };

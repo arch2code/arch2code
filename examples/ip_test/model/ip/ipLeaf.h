@@ -34,8 +34,8 @@ public:
     hwMemory< ipLeafMemSt<Config> > ipLeafMem;
 
     // inherited parameterized types usable unqualified (no <Config>)
-    using typename ipLeafBase<Config>::ipLeafDataT;
     using typename ipLeafBase<Config>::ipLeafMemAddrT;
+    using typename ipLeafBase<Config>::ipLeafDataT;
     using typename ipLeafBase<Config>::ipLeafMemSt;
     using typename ipLeafBase<Config>::ipLeafMemAddrSt;
 

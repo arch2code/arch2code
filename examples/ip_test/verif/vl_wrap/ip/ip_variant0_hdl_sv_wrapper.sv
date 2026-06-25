@@ -12,7 +12,11 @@ module ip_variant0_hdl_sv_wrapper
 #(
     localparam IP_DATA_WIDTH = 8,
     localparam IP_MEM_DEPTH = 16,
-    localparam IP_NONCONST_DEPTH = 24
+    localparam IP_NONCONST_DEPTH = 24,
+    localparam IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2,
+    localparam IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2,
+    localparam IP_MEM_DEPTH_X2 = IP_MEM_DEPTH * 2,
+    localparam IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2
 )(
     // push_ack_if.dst
     input bit ipDataIf_push,

@@ -89,7 +89,11 @@ def typeWidthExpr(value, lang, constSpelling, literalWidth):
     isSigned + log2 appends +1. Only the leaves vary by site/language and are
     supplied by the caller: lang.clog2, constSpelling(constKey) for a width
     constant reference, and literalWidth(value) for the literal fallback.
-    # TODO: handle variable size parameters (parameterized widths)
+
+    Parameterized (per-variant) widths need no special case: a width backed by
+    a parameterizable constant resolves through constSpelling to that constant's
+    symbol (a module-local SV param/localparam, or the per-variant Config member
+    in C++), so the emitted range stays symbolic rather than frozen to a literal.
     """
     signedExtra = '+1' if value['isSigned'] else ''
 

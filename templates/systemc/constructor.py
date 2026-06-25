@@ -268,7 +268,7 @@ def constructorInit(args, prj, data):
             out.append(f'        ,{ regData["register"] }({typenameKw}{regType}::_packedSt({defaultValue}))')
         else:
             out.append(f'        ,{ regData["register"] }()')
-    if data['blockInfo'].get('isRegHandler'):
+    if data['blockInfo']['isRegHandler']:
         # For register handlers, use hwMemoryPort for all register-accessible memories
         mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():
@@ -332,7 +332,7 @@ def constructorBody(args, prj, data):
                 'structureKey': memData["structureKey"],
                 'wordLines': memData["wordLines"],
                 'wordLinesKey': memData.get("wordLinesKey", ""),
-                'is_reg_handler': data['blockInfo'].get('isRegHandler')
+                'is_reg_handler': data['blockInfo']['isRegHandler']
             })
         
         # Add memory registers
@@ -431,7 +431,7 @@ def constructorBody(args, prj, data):
             out.append(f'    {val["memory"]}.bindPort({channelName});')
     
     # Bind LOCAL memory register ports to channels
-    if registerDecode and not data['blockInfo'].get('isRegHandler'):
+    if registerDecode and not data['blockInfo']['isRegHandler']:
         hasLocalMemReg = False
         for reg, regData in data['registers'].items():
             if regData['regType'] == 'memory':
@@ -454,34 +454,26 @@ def blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOw
     """Emit SC block registration lines at namespace scope, immediately
     following the SC_HAS_PROCESS line.
 
-    Two registration triggers coexist in the interim shape:
+    Two registration shapes coexist:
 
-    * **Parameterized SC blocks** are registered by the per-block
-      trampoline TU emitted via `<block>Registrar.cpp` (see
+    * **Parameterized SC blocks** are registered with the factory by the
+      per-block trampoline TU emitted via `<block>Registrar.cpp` (see
       `templates/systemc/blockRegistrar.py`). The trampoline owns the
       project-specific `(blockType, variant)` pairs that generated
       callers look up. The variant string identifies the per-variant Config
       policy unambiguously.
 
-      A self-registering static is *additionally* emitted in this TU
-      for parameterized blocks. Its purpose is the load-bearing
-      trigger for *implicit* template instantiation of every
-      per-variant `<B><PerVariantConfig>` in this TU. The
-      self-registering lambda's `make_shared<<B><Config>>(...)` forces
-      the compiler to instantiate the constructor body, regHandler
-      body, and any other template members defined later in this
-      `.cpp`. The trampoline TU sees only declarations from
-      `<block>.h`; without this implicit instantiation the
-      trampoline's `make_shared` would be an unresolved external at
-      link time. The factory keys used by these in-block lambdas
-      shadow the trampoline-registered entries — `std::map::emplace`
-      keeps the first insertion, so whichever static initialises
-      first wins; both lambdas construct the same target type, so
-      either ordering is functionally equivalent. Once modules-mode
-      lets the trampoline `import <block>;` and see the full template
-      definitions directly (long-term plan), this in-block static is
-      removed and the trampoline becomes the sole registration
-      trigger.
+      This implementation TU does not register the block; it emits
+      `[[gnu::used]]` instantiation anchors only — one per variant. Each
+      anchor is a free function that `make_shared`s the per-variant
+      `<B><PerVariantConfig>` specialization, and `gnu::used` keeps it (and
+      thus the forced implicit instantiation of the constructor body,
+      regHandler body, and other template members defined later in this
+      `.cpp`) from being elided. Without these anchors the trampoline TU,
+      which sees only declarations from `<block>.h`, would leave the
+      block's `make_shared` an unresolved external at link time. The
+      anchors insert no factory keys, so there is no shadowing of the
+      trampoline-registered entries.
 
     * **Non-templated SC blocks** register themselves via a free helper
       plus a self-registering static at namespace scope in this TU. The
@@ -490,24 +482,21 @@ def blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOw
     """
     out = list()
 
-    # The in-block self-registering static no longer emits
-    # `instanceFactory::addParam` calls. Block constructors read parameter
-    # values from `Config::*` directly; the runtime parameter table is
-    # decommissioned.
+    # No `instanceFactory::addParam` calls are emitted. Block constructors read
+    # parameter values from `Config::*` directly; there is no runtime parameter
+    # table.
 
-    # Per-variant Config descriptors. The in-block static's job is to force
-    # implicit template instantiation of every per-variant
-    # `<B><PerVariantConfig>` so the trampoline TU's `make_shared` does not
-    # become an unresolved external at link time. We therefore emit one lambda
-    # per variant, each targeting its own per-variant Config or the default
-    # Config when no descriptor is available. The factory keys here use
-    # `(blockType, variant)`, matching the trampoline-registered entries.
+    # Per-variant Config descriptors. `_targetClass` maps each variant to the
+    # specialization that backs it: a parameterizable leaf (hasOwnParams) is a
+    # class template instantiated with its per-variant Config (or the default
+    # Config when no descriptor has values); a non-templated block uses the
+    # plain class name. These targets feed the non-templated self-registration
+    # lambdas below and the parameterized-block instantiation anchors.
     #
     # Only leaf parameterizable blocks (hasOwnParams) are class templates.
     # Non-leaf parents that are flagged isParameterizable solely because
     # parameterizable structures transit their surface are emitted as a single
-    # non-templated class; the registration lambda omits the template argument
-    # list.
+    # non-templated class with no template argument list.
     variantConfigName = dict()
     if hasOwnParams:
         for desc in data['variantConfigs']:

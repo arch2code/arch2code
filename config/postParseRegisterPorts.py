@@ -27,7 +27,7 @@ None.
 """
 
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.processYaml import camelCase
+from pysrc.processYaml import camelCase, qualifiedKeyContext
 
 
 def regHandlerNaming(prj):
@@ -205,11 +205,10 @@ def _leafRegisterBinding(prj, leafBlock, servingRouter, addressBusTypes,
     stays self-contained across the projects that instantiate the IP.
 
     A top-down leaf authors no register port and infers its
-    register-bus interface and canonical port from the serving router,
-    mirroring the way the legacy `postParseRegister.py` sourced the
-    interface from the project-wide RegisterBusInterface. `authored`
-    distinguishes the two so callers run the cross-interface
-    compatibility check only when the leaf names its own interface.
+    register-bus interface and canonical port from the serving router's
+    addressBlock declaration. `authored` distinguishes the two so
+    callers run the cross-interface compatibility check only when the
+    leaf names its own interface.
 
     Multiple registerPorts: rows are rejected by the block parse hook."""
     registerPorts = leafBlock.get('registerPorts')
@@ -217,7 +216,8 @@ def _leafRegisterBinding(prj, leafBlock, servingRouter, addressBusTypes,
         portName = next(iter(registerPorts.keys()))
         regPortRow = registerPorts[portName]
         leafIfaceKey = regPortRow['interfaceKey']
-        leafIfaceContext = leafIfaceKey.split('/', 1)[1]
+        leafIfaceContext = qualifiedKeyContext(
+            regPortRow['interface'], leafIfaceKey, 'registerPorts interface')
         leafIfaceRow = prj.flatData['interfaces'][leafIfaceKey]
         return portName, regPortRow['interface'], leafIfaceRow, leafIfaceContext, True
 
@@ -283,8 +283,9 @@ def postProcess(prj):
     blockInfo = prj.flatData['blocks']
     routers = _collectRouterBlocks(blockInfo)
     if not routers:
-        # No new-schema declarations. Legacy postParseRegister.py
-        # handles this project (or there is no register bus at all).
+        # No addressBlock: routers are declared, so no register-bus
+        # decode pass runs for this project (the project either has no
+        # register bus at all or has not adopted the addressBlock: schema).
         return None
 
     instance_prefix, block_suffix, camel_case = regHandlerNaming(prj)

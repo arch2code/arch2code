@@ -1186,6 +1186,13 @@ class projectOpen:
         # Returns a dict with: configName, configArg, isParameterizable,
         # hasOwnParams, defaultConfig.
         #
+        # Behavioral limitation: configName is resolved from the child's own
+        # variant binding (frozen here), not from the parent's `Config`
+        # template parameter. A contained child's Config does NOT follow the
+        # parent's Config, so a Config-strict interface link from a
+        # multi-variant parent to a parameterized child is unsupported. Use a
+        # single-variant child, a Config-agnostic interface, or a thunker bind.
+        #
         # `configArg` is '' when the child block is not a class template
         # (no own params), even if `isParameterizable` is True; emitting
         # `<X>` at a parent cast site would refer to a non-template class.
@@ -1461,6 +1468,34 @@ class projectOpen:
                 return key
         return ''
 
+    def _resolveSvInstanceParams(self, childTypeKey, variant, parentParamNames):
+        # Build the param-override list for a sub-block instance's SV #(...).
+        # For each child block param, emit either the parent param SYMBOL (when
+        # the parent module declares a same-named param, so the value flows down
+        # from the parent's own instantiation) or the child's bound literal.
+        # Returns an ordered list of {'param', 'spelling'}; empty when the child
+        # block has no params.
+        childBlock = self.data['blocks'][childTypeKey]
+        if not childBlock['params']:
+            return []
+        # Variant bindings, keyed by the child's param name. A reg-handler
+        # inherits the parent's params with no own variant bindings; in that
+        # case there are no rows and every param must forward the parent symbol.
+        variantValues = dict()
+        childVariants = self.data['parameters'].get(childTypeKey, {}).get('variants', {})
+        for row in childVariants.values():
+            if row['variant'] == variant:
+                variantValues[row['param']] = row['value']
+        result = []
+        for paramRow in childBlock['params']:
+            paramName = paramRow['param']
+            if paramName in parentParamNames:
+                spelling = paramName
+            else:
+                spelling = str(variantValues[paramName])
+            result.append({'param': paramName, 'spelling': spelling})
+        return result
+
     def getBDInstances(self, qualBlock, ret, trimRegLeafInstance, excludeInstances):
         qualBlockInstances = dict()
         containedInstances = dict()
@@ -1500,9 +1535,17 @@ class projectOpen:
         # (`hasOwnParams`) and for resolving per-instance Config struct
         # names. Indexed by the child block's qualified key.
         ret['subBlockTypes'] = dict()
+        # Parent-module param names in scope at this instantiation site. A child
+        # instance param whose name matches a parent param forwards the parent
+        # SYMBOL (.CHILD_PARAM(PARENT_PARAM)); the parent variant supplies the
+        # value at the parent's own instantiation. Only params with no matching
+        # parent param fall back to the child's bound literal value.
+        parentParamNames = {p['param'] for p in (self.data['blocks'][qualBlock]['params'] or [])}
         for inst, instInfo in containedInstances.items():
             childTypeKey = instInfo['instanceTypeKey']
             ret['subBlocks'][childTypeKey] = instInfo['instanceType']
+            instInfo['svInstanceParams'] = self._resolveSvInstanceParams(
+                childTypeKey, instInfo['variant'], parentParamNames)
             if childTypeKey not in ret['subBlockTypes']:
                 bundle = self.getBlockConfigView(childTypeKey)
                 ret['subBlockTypes'][childTypeKey] = {
@@ -1759,8 +1802,22 @@ class projectOpen:
                 else:
                     implied_reg[reg]['interfaceName'] = reg
                     implied_reg[reg]['ends'] = dict()
-                    inst = next(iter(qualBlockInstances))
-                    implied_reg[reg]['ends'][inst] = {'instance': qualBlockInstances[inst]['instance'], 'portName': reg, 'direction': self.regMapBlock[regType]}
+                    # The implied register is owned by qualBlock itself (these
+                    # rows are filtered by blockKey == qualBlock in
+                    # getBDRegistersMemories), routed to the in-container reg
+                    # handler. The non-handler end is qualBlock's own register
+                    # boundary, NOT a contained child. `qualBlockInstances` is
+                    # every instance of this block type project-wide; picking
+                    # next(iter(...)) there would name an out-of-scope instance
+                    # (a sibling-container reuse, e.g. uBridgeIp0) and leak it
+                    # into this module. The boundary end is keyed and named by
+                    # the block itself so it stays in-scope and never
+                    # impersonates a sibling instance; the in-scope handler
+                    # (regHandlerKey, containerKey == qualBlock) is the other
+                    # end.
+                    boundaryKey = ret['qualBlock']
+                    boundaryName = ret['blockName']
+                    implied_reg[reg]['ends'][boundaryKey] = {'instance': boundaryName, 'portName': reg, 'direction': self.regMapBlock[regType]}
                     implied_reg[reg]['ends'][regHandlerKey] = {'instance': regHandler, 'portName': reg, 'direction': self.regMapReg[regType]}
                 # Track register-based interface types for later processing
                 ret['temp']['registerInterfaceTypes'][ifType] = 0
@@ -3788,32 +3845,6 @@ class projectCreate:
                           "(blockKey, declKind, declKey, orderIndex) VALUES (?, ?, ?, ?)", rows)
         g.cur.execute("CREATE INDEX idx_blockParameterizedDecls_blockKey "
                       "ON blockParameterizedDecls (blockKey)")
-
-    @staticmethod
-    def _topoOrderParameterizedDecls(selected, structVars):
-        # Order a block's selected parameterized declarations so a type or
-        # sub-structure appears before any structure that references it. Types
-        # carry no intra-set edges (they depend only on constants); a structure
-        # depends on the selected types/structures reached through its vars.
-        ordered = list()
-        placed = set()
-        visiting = set()
-
-        def visit(declKey):
-            if declKey in placed:
-                return
-            visiting.add(declKey)
-            for var in structVars.get(declKey, list()):
-                for dep in (var['varTypeKey'], var['subStructKey']):
-                    if dep in selected and dep not in placed and dep not in visiting:
-                        visit(dep)
-            visiting.discard(declKey)
-            placed.add(declKey)
-            ordered.append(declKey)
-
-        for declKey in selected:
-            visit(declKey)
-        return ordered
 
     def _validateParameterizedConnectionEndpoints(self, declInfo, blockParams, blockIsParameterizable):
         # A parameterized interface implies both connected endpoints are
@@ -5880,13 +5911,21 @@ class projectCreate:
             item['isParameterizable'] = True
             if directParam and userMaxBitwidthProvided:
                 # User-provided maxBitwidth takes precedence (worst case).
-                # Validate it is at least the resolved width.
+                # When the width references a parameterizable constant the type
+                # can be as wide as that constant's maxValue, so the floor is the
+                # worst-case derived width, not just the nominal resolved width;
+                # otherwise it must at least cover the resolved width.
                 if userMaxBitwidth <= 0:
                     self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
                                   f"maxBitwidth must be > 0 when parameterizable, got {userMaxBitwidth}")
-                if userMaxBitwidth < computedWidth:
+                requiredFloor = (derivedMaxBitwidth
+                                 if (derivedParam and derivedMaxBitwidth > 0)
+                                 else computedWidth)
+                if userMaxBitwidth < requiredFloor:
                     self.logError(f"In {yamlFile}:{lineNo}, type '{itemkey}': "
-                                  f"maxBitwidth ({userMaxBitwidth}) is less than resolved width ({computedWidth})")
+                                  f"maxBitwidth ({userMaxBitwidth}) is less than the "
+                                  f"worst-case width ({requiredFloor}) implied by its "
+                                  f"parameterizable width")
                 # already in item['maxBitwidth']
             elif directParam:
                 # ipParameters type or user-set isParameterizable: true with no

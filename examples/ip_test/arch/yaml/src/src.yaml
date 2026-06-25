@@ -83,5 +83,9 @@ instances:
 
 parameters:
     ipLeaf:
-        - { variant: variantLeaf0, param: LEAF_DATA_WIDTH, value: 4 }
+        # LEAF_DATA_WIDTH is bound to the parent's OUT0_DATA_WIDTH symbol so the
+        # value flows down from src's own instantiation (#(.LEAF_DATA_WIDTH(OUT0_DATA_WIDTH))).
+        # LEAF_MEM_DEPTH stays a literal: one instance covering both
+        # symbol-forward and literal-stays for a differently-named child param.
+        - { variant: variantLeaf0, param: LEAF_DATA_WIDTH, value: OUT0_DATA_WIDTH }
         - { variant: variantLeaf0, param: LEAF_MEM_DEPTH,  value: 4 }

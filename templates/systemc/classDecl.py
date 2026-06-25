@@ -39,7 +39,7 @@ def render_default(args, prj, data):
     needsHwMemory = len(data["memories"]) > 0 or len(data.get('memoriesParent', {})) > 0
     # Also need it if block has local memory registers (not isRegHandler but has registerDecode and memory registers)
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
-    if registerDecode and not data['blockInfo'].get('isRegHandler'):
+    if registerDecode and not data['blockInfo']['isRegHandler']:
         for reg, regData in data['registers'].items():
             if regData['regType'] == 'memory':
                 needsHwMemory = True
@@ -66,12 +66,7 @@ def render_default(args, prj, data):
 
     for context in data['classIncludeContext']:
         if context in data['includeFiles'].get(fileMapKey, {}):
-            if fileMapKey == 'include_cppm':
-                moduleName = intf_gen_utils.cpp_module_name(prj.includeName[context])
-                out.append(f'import {moduleName};')
-                out.append(f'using namespace {intf_gen_utils.cpp_namespace_name(prj.includeName[context])};')
-            else:
-                out.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
+            out.extend(intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey))
     if data['addressDecode']['isApbRouter']:
         out.append(f'#include "apbBusDecode.h"')
 
@@ -155,6 +150,11 @@ def render_default(args, prj, data):
         # (e.g., `ipBase<ipVariant0Config>`), not the parent's `Config`.
         # Falls back to the child block's default Config when the descriptor's
         # values are empty.
+        # The child Config is frozen from the child's own variant binding and
+        # does NOT follow the parent's Config template parameter. A
+        # Config-strict interface link from a multi-variant parent to a
+        # parameterized child is therefore unsupported; use a single-variant
+        # child, a Config-agnostic interface, or a thunker bind.
         instCfg = instData['instanceConfigArg']
         out.append( indent + f'std::shared_ptr<{ instData["instanceType"] }Base{instCfg}> { instData["instance"] };')
 
@@ -189,7 +189,7 @@ def render_default(args, prj, data):
         out.append( indent + f'memories mems;')
         out.append( indent + f'//memories')
 
-    if data['blockInfo'].get('isRegHandler'):
+    if data['blockInfo']['isRegHandler']:
         # For register handlers, use hwMemoryPort for all register-accessible memories
         mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():

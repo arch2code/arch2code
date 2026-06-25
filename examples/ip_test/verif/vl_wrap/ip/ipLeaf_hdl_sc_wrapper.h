@@ -102,9 +102,9 @@ private:
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
 #if !defined(VERILATOR) && defined(VCS)
-using ipLeaf_variantLeaf0_hdl_sc_wrapper = ipLeaf_hdl_sc_wrapper<ipLeaf_variantLeaf0_hdl_sv_wrapper, ipLeafDefaultConfig>;
+using ipLeaf_variantLeaf0_hdl_sc_wrapper = ipLeaf_hdl_sc_wrapper<ipLeaf_variantLeaf0_hdl_sv_wrapper, ipLeafVariantLeaf0Config>;
 #else
-using ipLeaf_variantLeaf0_hdl_sc_wrapper = ipLeaf_hdl_sc_wrapper<VipLeaf_variantLeaf0_hdl_sv_wrapper, ipLeafDefaultConfig>;
+using ipLeaf_variantLeaf0_hdl_sc_wrapper = ipLeaf_hdl_sc_wrapper<VipLeaf_variantLeaf0_hdl_sv_wrapper, ipLeafVariantLeaf0Config>;
 #endif
 // GENERATED_CODE_END
 

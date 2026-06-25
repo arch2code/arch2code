@@ -24,8 +24,8 @@ export namespace ipLeaf_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace ipLeaf_ns {
 // types
-template<typename Config> using ipLeafDataT = uint64_t; // [max:8] ipLeaf data word, parameterizable
 template<typename Config> using ipLeafMemAddrT = uint64_t; // [max:3] Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)
+template<typename Config> using ipLeafDataT = uint64_t; // [max:16] ipLeaf data word, parameterizable
 
 } // namespace ipLeaf_ns
 // GENERATED_CODE_END
@@ -227,8 +227,12 @@ struct ipLeafTestConfigDefault {
     static constexpr uint32_t LEAF_DATA_WIDTH = 4;
     static constexpr uint32_t LEAF_MEM_DEPTH = 4;
 };
-struct ipLeafTestConfigMax {
+struct ipLeafTestConfigMid {
     static constexpr uint32_t LEAF_DATA_WIDTH = 8;
+    static constexpr uint32_t LEAF_MEM_DEPTH = 4;
+};
+struct ipLeafTestConfigMax {
+    static constexpr uint32_t LEAF_DATA_WIDTH = 16;
     static constexpr uint32_t LEAF_MEM_DEPTH = 8;
 };
 std::string test_ipLeaf_structs::name(void) { return "test_ipLeaf_structs"; }
@@ -237,8 +241,10 @@ void test_ipLeaf_structs::test(void) {
     std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
     cout << "Running " << name() << endl;
     roundTrip<ipLeafMemSt<ipLeafTestConfigDefault>>("ipLeafMemSt", patterns);
+    roundTrip<ipLeafMemSt<ipLeafTestConfigMid>>("ipLeafMemSt", patterns);
     roundTrip<ipLeafMemSt<ipLeafTestConfigMax>>("ipLeafMemSt", patterns);
     roundTrip<ipLeafMemAddrSt<ipLeafTestConfigDefault>>("ipLeafMemAddrSt", patterns);
+    roundTrip<ipLeafMemAddrSt<ipLeafTestConfigMid>>("ipLeafMemAddrSt", patterns);
     roundTrip<ipLeafMemAddrSt<ipLeafTestConfigMax>>("ipLeafMemAddrSt", patterns);
 }
 } // namespace ipLeaf_test_ns

@@ -13,18 +13,17 @@
 
 ipParameters:
     constants:
-        LEAF_DATA_WIDTH: { value: 4, maxValue: 8,  desc: "ipLeaf per-instance data width" }
+        LEAF_DATA_WIDTH: { value: 4, maxValue: 16,  desc: "ipLeaf per-instance data width" }
         LEAF_MEM_DEPTH:  { value: 4, maxValue: 8,  desc: "ipLeaf per-instance memory depth" }
-    types:
-        ipLeafDataT:
-            width: LEAF_DATA_WIDTH
-            maxBitwidth: 8
-            desc: "ipLeaf data word, parameterizable"
 
 types:
     ipLeafMemAddrT:
         widthLog2minus1: LEAF_MEM_DEPTH
         desc: "Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)"
+    ipLeafDataT:
+        width: LEAF_DATA_WIDTH
+        maxBitwidth: 16
+        desc: "ipLeaf data word, parameterizable"
 
 structures:
     ipLeafMemSt:

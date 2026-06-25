@@ -87,26 +87,14 @@ def render(args, prj, data):
     out.append("// Instances")
     for unusedKey, value in data['subBlockInstances'].items():
 
-        qualBlockInst = prj.getQualBlock(value['instanceType'])
-
-        if qualBlockInst in prj.data['parameters'].keys():
-            variant_data = [v for _,v in prj.data['parameters'][qualBlockInst]['variants'].items() if v['variant'] == value['variant']]
-        else:
-            variant_data = None
-
+        # svInstanceParams (from the projectOpen view) gives each child param's
+        # override spelling: a parent param symbol when the parent forwards it,
+        # otherwise the bound literal. Empty for non-parameterized children.
         inst_params = ' '
-        if ( variant_data ):
+        if value['svInstanceParams']:
             inst_params += '#('
-            inst_params += ", ".join([f".{param['param']}({param['value']})" for param in variant_data])
+            inst_params += ", ".join([f".{param['param']}({param['spelling']})" for param in value['svInstanceParams']])
             inst_params += ') '
-        else:
-            # A reg-handler instance inherits the enclosing (parent) module's
-            # parameters; forward them by name (same-named param in scope).
-            instBlock = prj.data['blocks'][qualBlockInst]
-            if instBlock['isRegHandler'] and instBlock['params']:
-                inst_params += '#('
-                inst_params += ", ".join([f".{param['param']}({param['param']})" for param in instBlock['params']])
-                inst_params += ') '
 
         out.append(f"{value['instanceType']}{inst_params}{value['instance']} (")
         # Declare connectionMaps that connect to this instance

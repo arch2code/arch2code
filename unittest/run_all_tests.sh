@@ -178,6 +178,16 @@ echo "------------------------------------------------------------------------"
 python3 test_eval_py_to_sv.py || FAILED=1
 
 echo ""
+echo "Test Suite 19m: Parent->child parameter symbol forwarding"
+echo "------------------------------------------------------------------------"
+python3 test_param_symbol_forwarding.py || FAILED=1
+
+echo ""
+echo "Test Suite 19n: Implied register connection stays in-container scope"
+echo "------------------------------------------------------------------------"
+python3 test_implied_register_in_container_scope.py || FAILED=1
+
+echo ""
 echo "Test Suite 19i: yamlFormat sentinel gate (projectCreate)"
 echo "------------------------------------------------------------------------"
 python3 test_gate_yaml_format.py || FAILED=1

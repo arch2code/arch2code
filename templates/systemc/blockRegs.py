@@ -39,12 +39,7 @@ def get_include_deps(args, prj, data):
     fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
     for context in data['includeContext']:
         if context in data['includeFiles'].get(fileMapKey, {}):
-            if fileMapKey == 'include_cppm':
-                moduleName = intf_gen_utils.cpp_module_name(prj.includeName[context])
-                include_deps.append(f'import {moduleName};')
-                include_deps.append(f'using namespace {intf_gen_utils.cpp_namespace_name(prj.includeName[context])};')
-            else:
-                include_deps.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
+            include_deps.extend(intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey))
     return include_deps
 
 def get_reghandler_properties(prj, data):

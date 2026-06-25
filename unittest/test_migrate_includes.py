@@ -28,7 +28,13 @@ from pysrc.migrateIncludes import (
     INCLUDE_OVERRIDE_REMOVE,
     STALE_FILE_DELETE,
     TODO_USER_IMPORT,
+    TODO_UNGENERATED_FILE,
 )
+
+# Every in-place generated file carries this marker; the migration only deletes
+# name-matched files that contain it. The test fixtures stamp it into the files
+# that stand in for real generated orphans.
+GEN_MARKER = "// GENERATED_CODE_BEGIN\n"
 
 PASS = 0
 FAIL = 0
@@ -82,9 +88,12 @@ def test_migrate_removes_override_and_stale_files():
     print("test_migrate_removes_override_and_stale_files")
     with tempfile.TemporaryDirectory() as root:
         projectYaml, modelDir, fwDir = _project(root, '{hdr: "h", src: "cpp"}')
-        # Orphaned generated context include (the migration target) ...
-        open(os.path.join(modelDir, "topIncludes.h"), "w").close()
-        open(os.path.join(modelDir, "topIncludes.cpp"), "w").close()
+        # Orphaned generated context include (the migration target): carries the
+        # generated marker, like a real generated file ...
+        with open(os.path.join(modelDir, "topIncludes.h"), "w") as fh:
+            fh.write(GEN_MARKER)
+        with open(os.path.join(modelDir, "topIncludes.cpp"), "w") as fh:
+            fh.write(GEN_MARKER)
         # ... firmware context include (must be kept) ...
         open(os.path.join(fwDir, "topIncludesFW.h"), "w").close()
         open(os.path.join(fwDir, "topIncludesFW.cpp"), "w").close()
@@ -116,11 +125,44 @@ def test_migrate_removes_override_and_stale_files():
         check(not report.clean, "report not clean while a user import remains")
 
 
+def test_user_authored_namematch_not_deleted():
+    print("test_user_authored_namematch_not_deleted")
+    with tempfile.TemporaryDirectory() as root:
+        projectYaml, modelDir, _ = _project(root, '{hdr: "h", src: "cpp"}')
+        # A genuine generated orphan (carries the marker) -> must be deleted.
+        with open(os.path.join(modelDir, "topIncludes.h"), "w") as fh:
+            fh.write(GEN_MARKER)
+        # A hand-written file that happens to match the *Includes.{h,cpp} glob
+        # but has NO generated marker -> must be left untouched.
+        userH = os.path.join(modelDir, "myIncludes.h")
+        userCpp = os.path.join(modelDir, "myIncludes.cpp")
+        with open(userH, "w") as fh:
+            fh.write("// hand-written, no generated regions\n#pragma once\n")
+        with open(userCpp, "w") as fh:
+            fh.write("// hand-written translation unit\n")
+
+        report = migrateIncludesInProject(projectYaml, write=True)
+
+        check(not os.path.exists(os.path.join(modelDir, "topIncludes.h")),
+              "generated topIncludes.h still deleted")
+        check(os.path.exists(userH), "user-authored myIncludes.h NOT deleted")
+        check(os.path.exists(userCpp), "user-authored myIncludes.cpp NOT deleted")
+        deletes = [i for i in report.applied if i.kind == STALE_FILE_DELETE]
+        check(len(deletes) == 1, "only the generated file is reported as deleted")
+        check(all("myIncludes" not in i.location for i in deletes),
+              "no user file reported as deleted")
+        skipped = [i for i in report.manual if i.kind == TODO_UNGENERATED_FILE]
+        check(len(skipped) == 2, "both user files reported as left for manual review")
+        check(all("myIncludes" in i.location for i in skipped),
+              "skip diagnostics point at the user files")
+
+
 def test_dry_run_changes_nothing():
     print("test_dry_run_changes_nothing")
     with tempfile.TemporaryDirectory() as root:
         projectYaml, modelDir, _ = _project(root, '{hdr: "h", src: "cpp"}')
-        open(os.path.join(modelDir, "topIncludes.h"), "w").close()
+        with open(os.path.join(modelDir, "topIncludes.h"), "w") as fh:
+            fh.write(GEN_MARKER)
         before = open(projectYaml).read()
         report = migrateIncludesInProject(projectYaml, write=False)
         check(open(projectYaml).read() == before, "project.yaml unchanged in dry-run")
@@ -141,6 +183,7 @@ def test_already_cppm_is_noop():
 
 if __name__ == "__main__":
     test_migrate_removes_override_and_stale_files()
+    test_user_authored_namematch_not_deleted()
     test_dry_run_changes_nothing()
     test_already_cppm_is_noop()
     print(f"\nResult: {'PASS' if FAIL == 0 else 'FAIL'} ({PASS} checks, {FAIL} failures)")

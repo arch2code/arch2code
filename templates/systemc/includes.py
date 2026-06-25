@@ -87,7 +87,7 @@ def includeConstants(args, prj, data):
 
 def constReference_cpp(constKey, prj, useConfig=False):
     constName = prj.data['constants'][constKey]['constant']
-    if useConfig and prj.data['constants'][constKey].get('isParameterizable', False):
+    if useConfig and prj.data['constants'][constKey]['isParameterizable']:
         return f"Config::{constName}"
     return constName
 
@@ -111,7 +111,7 @@ def includeTypes(args, prj, data):
     for type, value in data['types'].items():
         # Comments show resolved integer bit width, not symbolic expression
         widthComment = str(value['realwidth'])
-        if value.get('isParameterizable', False):
+        if value['isParameterizable']:
             if value['maxBitwidth'] <= 64:
                 out.append(
                     f"template<typename Config> using { value['type'] } = uint64_t; // [max:{value['maxBitwidth']}] {value['desc']}"

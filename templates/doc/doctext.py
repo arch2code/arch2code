@@ -24,20 +24,20 @@ def create_meminsts_extractor(prj, data):
     """
     def meminsts_extractor(instance_key, instance_data, columns):
         """Extract data for each column from the memory instance data."""
-        _w = get_struct_width(instance_data.get('structureKey'), prj.data['structures'])
+        _w = get_struct_width(instance_data['structureKey'], prj.data['structures'])
         _d = get_const(instance_data.get('wordLinesKey'), prj.data['constants'])
         # Map column names to data extraction
         column_mapping = {
             'Instance': instance_key,
-            'Memory': instance_data.get('memory', ''),
-            'Block': instance_data.get('block', ''),
-            'Structure': instance_data.get('structure', ''),
-            'Description': instance_data.get('desc', ''),
+            'Memory': instance_data['memory'],
+            'Block': instance_data['block'],
+            'Structure': instance_data['structure'],
+            'Description': instance_data['desc'],
             'Offset': str(instance_data.get('offset', '')),
             'RegAccess': 'Y' if instance_data.get('regAccess', 0) else 'N',
             'MemType': instance_data.get('memoryType', ''),
             'WordLines': instance_data.get('wordLines', ''),
-            'AddressStruct': instance_data.get('addressStruct', ''),
+            'AddressStruct': instance_data['addressStruct'],
             'Count': str(instance_data.get('count', '')),
             'Local': str(instance_data.get('local', '')),
             'Width' : _w,
@@ -106,7 +106,7 @@ def build_hierarchical_usage_data(prj, data, memInsts):
     # First, process all memory instances to get their individual sizes
     for instance_path, instance_data in memInsts.items():
         # Calculate memory size for this instance
-        _w = get_struct_width(instance_data.get('structureKey'), prj.data['structures'])
+        _w = get_struct_width(instance_data['structureKey'], prj.data['structures'])
         _d = get_const(instance_data.get('wordLinesKey'), prj.data['constants'])
         size_kb = (_w * _d) / 8192  # Convert bits to KB
 

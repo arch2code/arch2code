@@ -30,7 +30,7 @@ public:
     using srcBase<Config>::out1;
 
     //instances contained in block
-    std::shared_ptr<ipLeafBase<ipLeafDefaultConfig>> uLeaf;
+    std::shared_ptr<ipLeafBase<ipLeafVariantLeaf0Config>> uLeaf;
 
     // inherited parameterized types usable unqualified (no <Config>)
     using typename srcBase<Config>::srcOut0DataT;

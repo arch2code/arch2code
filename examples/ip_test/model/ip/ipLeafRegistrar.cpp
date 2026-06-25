@@ -13,7 +13,7 @@ struct _ipLeaf_registrar {
         instanceFactory::registerBlock(
             "ipLeaf_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipLeaf<ipLeafDefaultConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipLeaf<ipLeafVariantLeaf0Config>>(blockName, variant, bbMode));
             },
             "variantLeaf0");
     }

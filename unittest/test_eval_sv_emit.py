@@ -166,6 +166,7 @@ def test_localparam_emitted_symbolic_per_module():
         params = prj.data['blocks'][IP_BLOCK]['params']
         lines = package.parameterizedDeclLines(
             block_data['parameterizedDecls'], prj, params)
+        lines = [ln['line'] for ln in lines]
         localparams = [ln for ln in lines if ln.startswith('localparam IP_DATA_WIDTH_X2')]
         if len(localparams) != 1:
             print(f"  FAIL: expected one IP_DATA_WIDTH_X2 localparam line, got {localparams}")
@@ -228,6 +229,7 @@ def test_dependency_closure_orders_derived_constant_chain():
         block_data = prj.getBlockData(IP_BLOCK)
         lines = package.parameterizedDeclLines(
             block_data['parameterizedDecls'], prj, prj.data['blocks'][IP_BLOCK]['params'])
+        lines = [ln['line'] for ln in lines]
         chain = [ln for ln in lines if ln.startswith('localparam IP_DATA_WIDTH_X')]
         expected = [
             'localparam IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2;',
@@ -271,6 +273,7 @@ def test_type_using_eval_derived_constant_is_selected():
             return False
         lines = package.parameterizedDeclLines(
             block_data['parameterizedDecls'], prj, prj.data['blocks'][IP_BLOCK]['params'])
+        lines = [ln['line'] for ln in lines]
         typedef = next((ln for ln in lines if ' ipDerivedWidthT;' in ln), '')
         if "IP_DATA_WIDTH_X4-1:0" not in typedef:
             print(f"  FAIL: derived type line {typedef!r} did not use IP_DATA_WIDTH_X4")
@@ -308,6 +311,7 @@ def test_struct_array_size_uses_eval_derived_localparam():
         block_data = prj.getBlockData(IP_BLOCK)
         lines = package.parameterizedDeclLines(
             block_data['parameterizedDecls'], prj, prj.data['blocks'][IP_BLOCK]['params'])
+        lines = [ln['line'] for ln in lines]
         sample_line = next((ln for ln in lines if ' derivedSamples;' in ln), '')
         expected = 'ipDataT [IP_DATA_WIDTH_X4-1:0] derivedSamples;'
         if expected not in sample_line:

@@ -324,7 +324,7 @@ codeMapping = {
 def oneStruct(args, prj, data, struct, value):
     global codeMapping
     isCpp = (args.section == 'cpp')
-    isParam = value.get('isParameterizable', False)
+    isParam = value['isParameterizable']
     if isCpp and isParam:
         return []
 
@@ -444,7 +444,7 @@ def declareVars(vars, indent, prj, useConfig=False):
 
 def equalTest(handle, args, structName, vars, indent):
     out = list()
-    isParam = vars.get('isParameterizable', False)
+    isParam = vars['isParameterizable']
     qualifiedStructName = f"{structName}<Config>" if isParam else structName
     if args.section == 'header' and handle == 'inline':
         out.append(f"{indent}inline bool operator == (const { qualifiedStructName } & rhs) const {{")
@@ -485,7 +485,7 @@ def equalTest(handle, args, structName, vars, indent):
 
 def scTrace(handle, args, structName, vars, indent):
     out = list()
-    isParam = vars.get('isParameterizable', False)
+    isParam = vars['isParameterizable']
     qualifiedStructName = f"{structName}<Config>" if isParam else structName
     if args.section == 'header' and handle == 'inline':
         out.append(f"{indent}inline friend void sc_trace(sc_trace_file *tf, const {qualifiedStructName} & v, const std::string & NAME ) {{")
@@ -543,7 +543,7 @@ def convertToList(start, decorators, varPrint, postfix):
 
 def prt(handle, args, vars, indent, prj):
     out = list()
-    useConfig = vars.get('isParameterizable', False)
+    useConfig = vars['isParameterizable']
     if args.section == 'header' and handle == 'inline':
         out.append(f"{indent}std::string prt(bool all=false) const")
     elif args.section == 'header' and handle == 'split':
@@ -584,7 +584,7 @@ def prt(handle, args, vars, indent, prj):
 
 def prtFmt(handle, args, vars, indent, prj):
     out = list()
-    useConfig = vars.get('isParameterizable', False)
+    useConfig = vars['isParameterizable']
     if args.section == 'header' and handle == 'inline':
         out.append(f"{indent}std::string prt(bool all=false) const")
     elif args.section == 'header' and handle == 'split':
@@ -735,7 +735,7 @@ def registerFeatures(vars, indent):
 def sc_pack(handle, args, vars, indent, prj=None):
     out = list()
     structName = vars['structure']
-    isParam = vars.get('isParameterizable', False)
+    isParam = vars['isParameterizable']
     qualifiedStructName = f"{structName}<Config>" if isParam else structName
     if vars['width'] > 1:
         structType = f"sc_bv<{qualifiedStructName}::_bitWidth>"
@@ -948,7 +948,7 @@ def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False)
     # constructor
 def constuctor_bv(structName, vars, indent):
     out = list()
-    qualifiedStructName = f"{structName}<Config>" if vars.get('isParameterizable', False) else structName
+    qualifiedStructName = f"{structName}<Config>" if vars['isParameterizable'] else structName
     if vars['width'] > 1:
         structType = f"sc_bv<{qualifiedStructName}::_bitWidth>"
     else:
@@ -1223,7 +1223,7 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
 def fw_pack_setup(args, vars, indent):
     out = list()
     fw_pack_vars = dict()
-    useConfig = vars.get('isParameterizable', False)
+    useConfig = vars['isParameterizable']
     bitwidth = vars['maxBitwidth'] if useConfig else vars['width']
     structName = f"{vars['structure']}<Config>" if useConfig else vars['structure']
     out.append(f"{indent}memset(&_ret, 0, {structName}::_byteWidth);")
@@ -1600,7 +1600,7 @@ def structTest(args, prj, data):
     # one call; parameterizable structs emit one call per de-duplicated sample
     # point at the fixed Config names.
     for _, value in data['structures'].items():
-        isParam = value.get('isParameterizable', False)
+        isParam = value['isParameterizable']
         if isParam and not useConfig:
             continue
         struct = value['structure']

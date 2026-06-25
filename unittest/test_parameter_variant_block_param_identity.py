@@ -36,12 +36,20 @@ def _cleanup(paths):
 def _run():
     print("Parameter variants: duplicate bare param names use block identity")
     original_cwd = os.getcwd()
-    target_yaml = """blocks:
+    target_yaml = """ipParameters:
+  constants:
+    WIDTH: {value: 8, maxValue: 32, desc: "targetBlock per-instance width (variant-bound block parameter)"}
+
+blocks:
   targetBlock:
     desc: "Target block with WIDTH"
     params: [WIDTH]
 """
-    other_yaml = """blocks:
+    other_yaml = """ipParameters:
+  constants:
+    WIDTH: {value: 8, maxValue: 32, desc: "otherBlock per-instance width (variant-bound block parameter)"}
+
+blocks:
   otherBlock:
     desc: "Other visible block with WIDTH"
     params: [WIDTH]

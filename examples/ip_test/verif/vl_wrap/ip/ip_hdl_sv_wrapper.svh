@@ -10,7 +10,11 @@ module ip_hdl_sv_wrapper
 #(
     parameter IP_DATA_WIDTH,
     parameter IP_MEM_DEPTH,
-    parameter IP_NONCONST_DEPTH
+    parameter IP_NONCONST_DEPTH,
+    localparam IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2,
+    localparam IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2,
+    localparam IP_MEM_DEPTH_X2 = IP_MEM_DEPTH * 2,
+    localparam IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2
 ) (
     // push_ack_if.dst
     input bit ipDataIf_push,
@@ -30,10 +34,6 @@ module ip_hdl_sv_wrapper
     input clk,
     input rst_n
 );
-    localparam IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2; //Derived width, 2x data (maxValue auto-derived); eval-derived, lives in constants: since no block param consumes it
-    localparam IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2; //Second-level derived width, 4x data
-    localparam IP_MEM_DEPTH_X2 = IP_MEM_DEPTH * 2; //Derived memory depth, 2x depth
-    localparam IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2; //Second-level derived memory depth, 4x depth
     typedef logic[IP_DATA_WIDTH-1:0] ipDataT; //IP data word, parameterizable
     typedef logic[$clog2(IP_MEM_DEPTH)-1:0] ipMemAddrT; //Index into ipMem (0 .. IP_MEM_DEPTH-1)
     typedef logic[IP_DATA_WIDTH_X4-1:0] ipDerivedWidthT; //Type sized by a second-level eval-derived localparam
