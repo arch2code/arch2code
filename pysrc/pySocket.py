@@ -83,6 +83,7 @@ class SyncSocketTransport:
         if self._sock is not None:
             return
         self._sock = socket.create_connection((self._host, self._port))
+        self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     async def send_msg(self, msg_type: int, payload: bytes) -> None:
         assert self._sock is not None

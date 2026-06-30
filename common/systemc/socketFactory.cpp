@@ -2,7 +2,7 @@
 
 #include "socketFactory.h"
 #include "socketTransport.h"
-
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -93,6 +93,8 @@ void socketFactory::acceptConnection(const std::string &name)
     if (c < 0) {
         return;
     }
+    int one = 1;
+    setsockopt(c, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     if (fcntl(c, F_SETFD, FD_CLOEXEC) != 0) {
         close(c);
         return;
