@@ -67,6 +67,16 @@ struct SocketMsgHeader {
 
 static_assert(sizeof(SocketMsgHeader) == 4, "SocketMsgHeader must be 4 bytes");
 
+#pragma pack(push, 1)
+struct socket_sync_st {
+    uint64_t sc_time_ns;
+};
+#pragma pack(pop)
+
+static_assert(sizeof(socket_sync_st) == 8, "socket_sync_st wire layout");
+
+static constexpr const char *PYSOCKET_SYNC_IFC = "pysocket_sync";
+
 static constexpr uint16_t SOCKET_AXI_BURST_BYTES = 4096;
 static constexpr uint16_t SOCKET_AXI_OBS_PREVIEW_BYTES = 16;
 

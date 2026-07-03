@@ -7,6 +7,7 @@
 #include "asyncEvent.h"
 #include "socketFactory.h"
 #include "socketObserve.h"
+#include "socketSync.h"
 #include "socketTransport.h"
 #include "systemc.h"
 
@@ -53,6 +54,11 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
     port->setCycleTransaction(PORTTYPE_IN);
 
     auto resp_event = ThreadSafeEventFactory::newEvent((interface_name + "_axi_wr_resp").c_str());
+    auto boundary_event = ThreadSafeEventFactory::newEvent((interface_name + "_axi_wr_boundary").c_str());
+    if (socketSyncLockstepEnabled()) {
+        socketSyncRegisterBoundaryEvent(boundary_event);
+        socketSyncRegisterBoundaryEvent(resp_event);
+    }
 
     std::mutex resp_mutex;
     std::queue<socket_axi_wr_resp_st> resp_queue;
@@ -81,13 +87,17 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
                     std::lock_guard<std::mutex> lock(resp_mutex);
                     resp_queue.push(recv_buf);
                 }
-                resp_event->notify();
+                if (!socketSyncLockstepEnabled()) {
+                    resp_event->notify();
+                } else if (socketSyncAtBoundary()) {
+                    resp_event->notify();
+                }
             }
         }
         running->store(false, std::memory_order_release);
         resp_event->notify();
     });
-    socketFactory::registerThread(interface_name + "_rx", std::move(rx_thread));
+    socketFactory::registerThread(interface_name, std::move(rx_thread));
 
     bool should_shutdown = false;
     while (running->load(std::memory_order_acquire)) {
@@ -113,6 +123,10 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
             axiWriteDataSt<D, S> data{};
             port->receiveDataCycle(data);
             std::memcpy(&wire_req.data[i * beat_bytes], &data.wdata, beat_bytes);
+        }
+
+        while (socketSyncLockstepEnabled() && !socketSyncAtBoundary()) {
+            sc_core::wait(boundary_event->default_event());
         }
 
         socket_observe_axi_wr_req(interface_name, wire_req.awid, wire_req.awaddr, wire_req.awlen,

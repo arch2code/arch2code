@@ -4,6 +4,7 @@
 
 #include "logging.h"
 #include "socketFactory.h"
+#include "socketSync.h"
 #include "socketTransport.h"
 #include "systemc.h"
 
@@ -65,8 +66,7 @@ static_assert(sizeof(socket_axi_wr_obs_resp_st) == 12, "socket_axi_wr_obs_resp_s
 
 inline uint64_t socket_sc_time_ns()
 {
-    const sc_core::sc_time stamp = sc_core::sc_time_stamp();
-    return static_cast<uint64_t>(stamp.to_seconds() * 1e9);
+    return socketSyncObserveTimeNs();
 }
 
 inline void socket_observe_push(const std::string &interface_name, uint8_t msg_type, const void *payload,

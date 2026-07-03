@@ -6,6 +6,7 @@
 #include "asyncEvent.h"
 #include "socketFactory.h"
 #include "socketObserve.h"
+#include "socketSync.h"
 #include "socketTransport.h"
 #include "systemc.h"
 
@@ -43,6 +44,9 @@ void port_socket(apb_out<R, D> &port, const std::string &interface_name)
     }
 
     auto req_event = ThreadSafeEventFactory::newEvent((interface_name + "_apb_req").c_str());
+    if (socketSyncLockstepEnabled()) {
+        socketSyncRegisterApbReqEvent(req_event);
+    }
 
     std::mutex req_mutex;
     std::queue<socket_apb_req_st> req_queue;
@@ -71,7 +75,11 @@ void port_socket(apb_out<R, D> &port, const std::string &interface_name)
                     std::lock_guard<std::mutex> lock(req_mutex);
                     req_queue.push(recv_buf);
                 }
-                req_event->notify();
+                if (!socketSyncLockstepEnabled()) {
+                    req_event->notify();
+                } else if (socketSyncAtBoundary()) {
+                    req_event->notify();
+                }
             }
         }
         running->store(false, std::memory_order_release);

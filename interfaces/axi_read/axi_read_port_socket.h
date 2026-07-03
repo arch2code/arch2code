@@ -7,6 +7,7 @@
 #include "asyncEvent.h"
 #include "socketFactory.h"
 #include "socketObserve.h"
+#include "socketSync.h"
 #include "socketTransport.h"
 #include "systemc.h"
 
@@ -53,6 +54,11 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
     port->setCycleTransaction(PORTTYPE_IN);
 
     auto resp_event = ThreadSafeEventFactory::newEvent((interface_name + "_axi_rd_resp").c_str());
+    auto boundary_event = ThreadSafeEventFactory::newEvent((interface_name + "_axi_rd_boundary").c_str());
+    if (socketSyncLockstepEnabled()) {
+        socketSyncRegisterBoundaryEvent(boundary_event);
+        socketSyncRegisterBoundaryEvent(resp_event);
+    }
 
     std::mutex resp_mutex;
     std::queue<socket_axi_rd_resp_st> resp_queue;
@@ -84,13 +90,17 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
                     std::lock_guard<std::mutex> lock(resp_mutex);
                     resp_queue.push(wire_resp);
                 }
-                resp_event->notify();
+                if (!socketSyncLockstepEnabled()) {
+                    resp_event->notify();
+                } else if (socketSyncAtBoundary()) {
+                    resp_event->notify();
+                }
             }
         }
         running->store(false, std::memory_order_release);
         resp_event->notify();
     });
-    socketFactory::registerThread(interface_name + "_rx", std::move(rx_thread));
+    socketFactory::registerThread(interface_name, std::move(rx_thread));
 
     bool should_shutdown = false;
     while (running->load(std::memory_order_acquire)) {
@@ -100,6 +110,10 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
         if (!running->load(std::memory_order_acquire)) {
             should_shutdown = true;
             break;
+        }
+
+        while (socketSyncLockstepEnabled() && !socketSyncAtBoundary()) {
+            sc_core::wait(boundary_event->default_event());
         }
 
         socket_axi_rd_req_st wire_req{};
