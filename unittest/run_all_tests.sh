@@ -78,6 +78,15 @@ if ! python3 test_error_parameterizable.py; then
     echo "Note: Some parameterizable-constant error tests failed"
 fi
 
+# Test 10b: Own-surface parameterizable structure without own params
+echo ""
+echo "Test Suite 10b: Block Own-Surface Parameterizable Without Params"
+echo "------------------------------------------------------------------------"
+if ! python3 test_block_own_surface_param_no_params.py; then
+    FAILED=1
+    echo "Note: Own-surface parameterizable validator test failed"
+fi
+
 # Test 11: Config template generation
 echo ""
 echo "Test Suite 11: Config Template Generation"
@@ -148,32 +157,32 @@ echo "------------------------------------------------------------------------"
 python3 test_boundary_signals.py || FAILED=1
 
 echo ""
-echo "Test Suite 19c: Eval Expression Parser (Stage E0)"
+echo "Test Suite 19c: Eval Expression Parser"
 echo "------------------------------------------------------------------------"
 python3 test_eval_expr_parser.py || FAILED=1
 
 echo ""
-echo "Test Suite 19d: Eval Expression Evaluator (Stage E1)"
+echo "Test Suite 19d: Eval Expression Evaluator"
 echo "------------------------------------------------------------------------"
 python3 test_eval_expr_evaluator.py || FAILED=1
 
 echo ""
-echo "Test Suite 19e: Eval Canonical View Exposure (Stage E3)"
+echo "Test Suite 19e: Eval Canonical View Exposure"
 echo "------------------------------------------------------------------------"
 python3 test_eval_canonical_view.py || FAILED=1
 
 echo ""
-echo "Test Suite 19f: Eval SV localparam Emission (Stage E4)"
+echo "Test Suite 19f: Eval SV localparam Emission"
 echo "------------------------------------------------------------------------"
 python3 test_eval_sv_emit.py || FAILED=1
 
 echo ""
-echo "Test Suite 19g: Eval C++/SystemC Config Emission (Stage E5)"
+echo "Test Suite 19g: Eval C++/SystemC Config Emission"
 echo "------------------------------------------------------------------------"
 python3 test_eval_cpp_emit.py || FAILED=1
 
 echo ""
-echo "Test Suite 19h: Python->SV Eval Converter (Stage E1.5)"
+echo "Test Suite 19h: Python->SV Eval Converter"
 echo "------------------------------------------------------------------------"
 python3 test_eval_py_to_sv.py || FAILED=1
 
@@ -193,7 +202,7 @@ echo "------------------------------------------------------------------------"
 python3 test_gate_yaml_format.py || FAILED=1
 
 echo ""
-echo "Test Suite 19j: addressControl -> addressBlock Converter (Phase B)"
+echo "Test Suite 19j: addressControl -> addressBlock Converter"
 echo "------------------------------------------------------------------------"
 python3 test_migrate_address_control.py || FAILED=1
 
@@ -207,56 +216,49 @@ echo "Test Suite 19l: Includes header -> cppm module migration (migrateIncludes.
 echo "------------------------------------------------------------------------"
 python3 test_migrate_includes.py || FAILED=1
 
-# Test 20-: address-control refactor — Stage 7 Batches A, B, and the
-# topology-fixture portion of Batch C.
-# Per plan-address-control-test-coverage.md "Implementation Phasing":
-#   Batch A — single-router positives, the lowest-cost two-level
-#             positives, port-name boundary cases, and the Stage 1.5 /
-#             Stage 4 diagnostic skeleton.
-#   Batch B — three-level and thunker cases, including the block-reuse
-#             and mixed-sibling cases that exercise the multi-hop walk.
-#   Batch C — the E3.4 registerPorts/ports independence guard (the
-#             migrated-ip_test view assertions run under the example
-#             build, not this runner).
-# See plan-address-control-refactor.md Stage 7.
+# Address-control decode: register/memory decode topology, port-name
+# resolution, parameterized routers/leaves, the diagnostic error cases,
+# and the migrated ip_test view assertions. The synthetic-topology tests
+# build fixtures in-process; the ip_test view test opens the migrated
+# example database.
 ADDRCTL_TESTS=(
-    "T1.1 single-router one-register view"      "test_addrctl_single_router_one_reg.py"
-    "T1.2 single-router multi-register leaf"    "test_addrctl_single_router_multi_reg.py"
-    "T1.3 single-router two-leaves"             "test_addrctl_single_router_two_leaves.py"
-    "T1.5 single-router mixed leaves"           "test_addrctl_mixed_leaves.py"
-    "T2.1 primary plus nested router"           "test_addrctl_two_router_simple.py"
-    "T2.2 primary with no direct leaves"        "test_addrctl_primary_no_direct_leaves.py"
-    "T2.6 parameterized nested router"          "test_addrctl_parameterized_router.py"
-    "T3.1 three-level chain"                    "test_addrctl_three_level_chain.py"
-    "T3.2 three-level fanout"                   "test_addrctl_three_level_fanout.py"
-    "T3.4 register-bearing block reuse"         "test_addrctl_block_reuse_across_levels.py"
-    "T3.5 sibling leaf and nested router"       "test_addrctl_sibling_leaf_and_router.py"
-    "T4.1 single-router no-IP simple"           "test_addrctl_no_ip_simple.py"
-    "T4.2 two-level no-IP hierarchy"            "test_addrctl_no_ip_two_level.py"
-    "T4.3 mixed IP / no-IP under one router"    "test_addrctl_no_ip_mixed.py"
-    "T5.1 router with no leaves"                "test_addrctl_router_no_leaves.py"
-    "T5.2 leaf with registerPorts only"         "test_addrctl_leaf_register_port_only.py"
-    "T5.3 default upstream / decoder ports"     "test_addrctl_default_port_names.py"
-    "T5.4 explicit non-default ports"           "test_addrctl_explicit_port_names.py"
-    "T5.5 top-down leaf infers register bus"    "test_addrctl_top_down_leaf_infers.py"
-    "TT.3 parameterized register interface"     "test_addrctl_parameterized_reg_iface.py"
-    "TT.4 parameterized router upstream"        "test_addrctl_parameterized_router_upstream.py"
-    "TT.5 parent router variant interface"      "test_addrctl_parent_router_variant_interface.py"
-    "E1.1 addressBlock and registerPorts both"  "test_error_addr_and_register_ports.py"
-    "E1.2 multi registerPorts rows"             "test_error_multi_register_ports.py"
-    "E1.3 registerPort interface not addressBus" "test_error_register_port_not_addressbus.py"
-    "E1.4 duplicate addressGroup"               "test_error_duplicate_address_group.py"
-    "E1.5 registerPort out-of-scope interface"  "test_error_register_port_out_of_scope.py"
-    "E2.1 router has no instance"               "test_error_router_no_instance.py"
-    "E2.2 multi-instance router"                "test_error_multi_instance_router.py"
-    "E2.3 no primary router candidate"          "test_error_no_primary_router.py"
-    "E2.4 multiple primary router candidates"   "test_error_multi_primary_router.py"
-    "E2.5 routed leaf in unserved container"    "test_error_leaf_unserved.py"
-    "E2.5b no serving router for reg leaf"      "test_error_leaf_no_serving_router.py"
-    "E3.1 register interfaceType mismatch"      "test_error_register_interface_type_mismatch.py"
-    "E3.2 register packed-form mismatch"        "test_error_register_packed_form.py"
-    "E3.4 registerPorts independent of ports"   "test_register_ports_independent_of_ports.py"
-    "T1.6/T2.3/T2.4/T2.5 migrated ip_test view" "test_addrctl_ip_test_view.py"
+    "single-router one-register view"           "test_addrctl_single_router_one_reg.py"
+    "single-router multi-register leaf"         "test_addrctl_single_router_multi_reg.py"
+    "single-router two-leaves"                  "test_addrctl_single_router_two_leaves.py"
+    "single-router mixed leaves"                "test_addrctl_mixed_leaves.py"
+    "primary plus nested router"                "test_addrctl_two_router_simple.py"
+    "primary with no direct leaves"             "test_addrctl_primary_no_direct_leaves.py"
+    "parameterized nested router"               "test_addrctl_parameterized_router.py"
+    "three-level chain"                         "test_addrctl_three_level_chain.py"
+    "three-level fanout"                        "test_addrctl_three_level_fanout.py"
+    "register-bearing block reuse"              "test_addrctl_block_reuse_across_levels.py"
+    "sibling leaf and nested router"            "test_addrctl_sibling_leaf_and_router.py"
+    "single-router no-IP simple"                "test_addrctl_no_ip_simple.py"
+    "two-level no-IP hierarchy"                 "test_addrctl_no_ip_two_level.py"
+    "mixed IP / no-IP under one router"         "test_addrctl_no_ip_mixed.py"
+    "router with no leaves"                     "test_addrctl_router_no_leaves.py"
+    "leaf with registerPorts only"              "test_addrctl_leaf_register_port_only.py"
+    "default upstream / decoder ports"          "test_addrctl_default_port_names.py"
+    "explicit non-default ports"                "test_addrctl_explicit_port_names.py"
+    "top-down leaf infers register bus"         "test_addrctl_top_down_leaf_infers.py"
+    "parameterized register interface"          "test_addrctl_parameterized_reg_iface.py"
+    "parameterized router upstream"             "test_addrctl_parameterized_router_upstream.py"
+    "parent router variant interface"           "test_addrctl_parent_router_variant_interface.py"
+    "addressBlock and registerPorts both"       "test_error_addr_and_register_ports.py"
+    "multi registerPorts rows"                  "test_error_multi_register_ports.py"
+    "registerPort interface not addressBus"     "test_error_register_port_not_addressbus.py"
+    "duplicate addressGroup"                    "test_error_duplicate_address_group.py"
+    "registerPort out-of-scope interface"       "test_error_register_port_out_of_scope.py"
+    "router has no instance"                    "test_error_router_no_instance.py"
+    "multi-instance router"                     "test_error_multi_instance_router.py"
+    "no primary router candidate"               "test_error_no_primary_router.py"
+    "multiple primary router candidates"        "test_error_multi_primary_router.py"
+    "routed leaf in unserved container"         "test_error_leaf_unserved.py"
+    "no serving router for reg leaf"            "test_error_leaf_no_serving_router.py"
+    "register interfaceType mismatch"           "test_error_register_interface_type_mismatch.py"
+    "register packed-form mismatch"             "test_error_register_packed_form.py"
+    "registerPorts independent of ports"        "test_register_ports_independent_of_ports.py"
+    "migrated ip_test view"                     "test_addrctl_ip_test_view.py"
 )
 
 idx=20
@@ -272,6 +274,35 @@ for ((i = 0; i < ${#ADDRCTL_TESTS[@]}; i+=2)); do
     fi
     idx=$((idx+1))
 done
+
+echo ""
+echo "Test Suite ${idx}: project layout mode — selector validation"
+echo "------------------------------------------------------------------------"
+python3 test_layout_selector.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: project layout mode — hierarchical structural golden"
+echo "------------------------------------------------------------------------"
+python3 test_layout_hierarchical.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: project layout mode — nested sign-off structural golden"
+echo "------------------------------------------------------------------------"
+python3 test_layout_nested.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: project layout mode — build manifest reproduces glob set"
+echo "------------------------------------------------------------------------"
+python3 test_build_manifest.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: project layout mode — hierarchical migration trigger"
+echo "------------------------------------------------------------------------"
+python3 test_migrate_layout.py || FAILED=1
 
 echo ""
 echo "========================================================================"

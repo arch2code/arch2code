@@ -54,28 +54,14 @@ define find_gen_sv_sources
 	done)
 endef
 
-define find_cpp_source_directories
-	$(shell for dir in $(1); do \
-		if [ -d "$$dir" ]; then \
-			find -L $$dir -type f \( -name '*.cpp' -or -name '*.h' -or -name '*.cppm' \) -exec dirname {} \; | sort -u ; \
-		fi \
-	done)
-endef
-
-define find_sv_source_directories
-	$(shell for dir in $(1); do \
-		if [ -d "$$dir" ]; then \
-			find -L $$dir -type f \( -name '*.sv' -or -name '*.svh' \) -exec dirname {} \; | sort -u ; \
-		fi \
-	done)
-endef
-
 #------------------------------------------------------------------------
 # Project global variables
 #------------------------------------------------------------------------
 
-YAML_FILES = $(shell find -L $(REPO_ROOT)/arch/yaml/ -type f -name '*.yaml')
-A2C_PRJ_YAML = $(REPO_ROOT)/arch/yaml/project.yaml
+# Project file is a build *input* (it builds the database that emits the
+# manifest), so it cannot come from the manifest. Default to the functional
+# location; a hierarchical project's shared.mk re-points it ($prj/yaml/...).
+A2C_PRJ_YAML ?= $(REPO_ROOT)/arch/yaml/project.yaml
 A2C_SQLDB_FILE = $(REPO_ROOT)/$(PROJECTNAME).db
 A2C_SQLDB_DOTFILE = $(REPO_ROOT)/.$(PROJECTNAME).db
 
@@ -83,10 +69,29 @@ PROJECT_RUNDIR = $(REPO_ROOT)/rundir
 
 GEN_BUILD_DIR = $(REPO_ROOT)/.gen
 
-SC_GEN_FILES =  $(call find_gen_cpp_sources, $(REPO_ROOT)/base/ $(REPO_ROOT)/model/ $(REPO_ROOT)/tb/ $(REPO_ROOT)/verif/vl_wrap $(REPO_ROOT)/fw/)
+# Build directory/file set is derived by projectCreate (buildManifest) and
+# emitted as a side effect of the database build (.gen/build.mk: source/include
+# dirs, the verilated entry, the YAML dependency closure). Including it replaces
+# the fixed-functional-root globs below, so discovery follows the project's
+# layout instead of assuming $root/base, $root/model, ... The database build
+# regenerates it, so it is declared as a target depending on the db: on a clean
+# tree `make` builds the db (emitting the manifest) and re-execs with the dir
+# lists populated; the established `make db` then `make gen` flow has it present
+# by gen time. The leading dash keeps the very first parse (no manifest yet) quiet.
+$(GEN_BUILD_DIR)/build.mk: $(A2C_SQLDB_FILE) ;
+-include $(GEN_BUILD_DIR)/build.mk
+
+# YAML dependency list (db rebuild trigger) is the parsed include-tree closure
+# the manifest records; empty before the first db build, when the db is built
+# unconditionally anyway.
+YAML_FILES = $(A2C_YAML_FILES)
+
+# Generated source discovery is scoped to the manifest's dirs (a per-dir search
+# for files carrying GENERATED markers), not fixed functional roots.
+SC_GEN_FILES =  $(call find_gen_cpp_sources, $(A2C_SC_SRC_DIRS) $(A2C_VL_WRAP_DIRS))
 SC_GEN_DOT_FILES = $(SC_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 
-SV_GEN_FILES =  $(call find_gen_sv_sources, $(REPO_ROOT)/rtl/ $(REPO_ROOT)/verif/vl_wrap) $(wildcard $(REPO_ROOT)/rtl/rtl.f)
+SV_GEN_FILES =  $(call find_gen_sv_sources, $(A2C_SV_SRC_DIRS) $(A2C_VL_WRAP_DIRS)) $(wildcard $(REPO_ROOT)/rtl/rtl.f)
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
 ifndef SKIP_GEN
@@ -124,7 +129,7 @@ $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
 # Project global phony targets
 #------------------------------------------------------------------------
 
-.PHONY: db gen newmodule migrate clean
+.PHONY: db gen newmodule migrate migrate-hierarchical clean
 
 db : $(A2C_SQLDB_FILE)
 
@@ -134,6 +139,14 @@ db : $(A2C_SQLDB_FILE)
 # not build the database, so it runs on a project the yamlFormat gate rejects.
 migrate:
 	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
+
+
+# Opt-in functional -> hierarchical layout migration. Separate from `migrate`:
+# it relocates files (the unconditional phases edit content in place) and
+# presupposes the project is already yamlFormat: 2, so it runs only after
+# `migrate`. See plan-decomp-functional-layout.md "Phase 4 - L4".
+migrate-hierarchical:
+	$(A2C_ROOT)/migrateYaml.py --to-hierarchical --write $(A2C_PRJ_YAML)
 
 
 gen: $(GEN_DEPS)

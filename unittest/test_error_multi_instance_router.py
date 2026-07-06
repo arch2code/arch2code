@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2.2: Two instances exist for the same router block.
+"""Two instances exist for the same router block.
 
 Diagnostic emitted by `_resolveRouterInstances` in
 `config/postParseRegisterPorts.py`. Asserts the diagnostic names both
@@ -12,7 +12,7 @@ Topology (must be rejected)::
     +-- uSub (sub)                              |  Same router block
         +-- uAPBDecode2 (instanceType=apbDecode)<+  instantiated twice.
 
-    Multi-instance routers are deferred; the post-parse pass must
+    Multi-instance routers are not supported; the post-parse pass must
     reject the project before any downstream emission and the
     diagnostic must name both instance keys plus the router block.
 """
@@ -29,8 +29,8 @@ from _addrctl_helpers import (
 
 # `apbDecode` declares `addressBlock:` once but is instantiated twice
 # (uAPBDecode in 'top', uAPBDecode2 in 'sub'). Multi-instance routers are
-# deferred per the parent plan; the post-parse pass must reject the
-# project before any downstream emission.
+# not supported; the post-parse pass must reject the project before any
+# downstream emission.
 ARCH_YAML = (
     APB_PREAMBLE
     + """
@@ -63,7 +63,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E2.2: two instances of the same router block")
+    print("two instances of the same router block")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
@@ -75,7 +75,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E2.2")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

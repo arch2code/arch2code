@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T1.2: One router, one routed leaf with multiple registers and one memory."""
+"""One router, one routed leaf with multiple registers and one memory."""
 
 import sys
 
@@ -92,7 +92,7 @@ memories:
 
 
 def _run():
-    print("T1.2: single router, one routed leaf with multiple registers and one memory")
+    print("single router, one routed leaf with multiple registers and one memory")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -159,7 +159,7 @@ def _run():
             f"INSTANCES_WITH_REGAPB missing '{multi_inst_key}'"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T1.2")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

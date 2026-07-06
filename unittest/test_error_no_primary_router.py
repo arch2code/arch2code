@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2.3: Zero primary-router candidates.
+"""Zero primary-router candidates.
 
 Diagnostic emitted by `_findPrimaryRouter` in
 `config/postParseRegisterPorts.py`. Asserts the diagnostic lists every
@@ -72,7 +72,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E2.3: zero primary-router candidates")
+    print("zero primary-router candidates")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
@@ -84,7 +84,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E2.3")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

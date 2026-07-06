@@ -26,51 +26,28 @@ def render_default(args, prj, data):
     cfg = intf_gen_utils.block_config_arg(hasOwnParams)
     defaultConfig = data['defaultConfig'] if isParameterizable else ''
     baseClassName = f'{ data["blockName"] }Base{cfg}'
-    out.append('#include "logging.h"')
-    out.append('#include "instanceFactory.h"')
-    baseInclude = prj.getModuleFilename('blockBase', data["blockName"], 'hdr')
-    out.append(f'#include "{baseInclude}"')
-    if  len(data['registers']) > 0 or len(data["memories"]) > 0:
-        out.append('#include "addressMap.h"')
-    if  len(data['registers']) > 0:
-        out.append('#include "hwRegister.h"')
-    
-    # Check if we need hwMemory.h include
-    needsHwMemory = len(data["memories"]) > 0 or len(data.get('memoriesParent', {})) > 0
-    # Also need it if block has local memory registers (not isRegHandler but has registerDecode and memory registers)
+    # registerDecode drives both the dependency includes (computed by the
+    # shared helper) and the in-class register-handler members emitted below.
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
-    if registerDecode and not data['blockInfo']['isRegHandler']:
-        for reg, regData in data['registers'].items():
-            if regData['regType'] == 'memory':
-                needsHwMemory = True
-                break
-    if needsHwMemory:
-        out.append('#include "hwMemory.h"')
-    # Protocol-specific thunker headers are emitted exactly when this container
-    # declares at least one cross-interface thunker member. The set is computed
-    # once and emitted in sorted order so the generated text is deterministic.
-    # Off-by-default: an empty protocol set emits no include.
-    thunker_protocols = intf_gen_utils.sc_thunker_protocols(data, prj)
-    for proto in sorted(thunker_protocols):
-        out.append(f'#include "{proto}_port_thunker.h"')
 
-    # Config policy include contexts are prepared by getBDIncludes().
-    for context in sorted(data.get('configIncludeContext', {})):
-        if context in data['includeFiles'].get('config_hdr', {}):
-            out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
-    
-    if args.fileMapKey:
-        fileMapKey = args.fileMapKey
-    else:
-        fileMapKey = 'include_cppm'
+    # Class dependency lines. In classic mode they are emitted inline ahead of
+    # the class. In module mode the block-module global module fragment owns the
+    # #includes and the `export module`/import lines
+    # (templates/systemc/moduleScaffold.py blockModuleHeader); a module interface
+    # forbids #include after the module declaration, so classDecl suppresses
+    # them here.
+    if args.mode != 'module':
+        for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
+            out.append(line)
 
-    for context in data['classIncludeContext']:
-        if context in data['includeFiles'].get(fileMapKey, {}):
-            out.extend(intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey))
-    if data['addressDecode']['isApbRouter']:
-        out.append(f'#include "apbBusDecode.h"')
-
-    if data["subBlocks"]:
+    # Contained-instance Base forward declarations. Classic mode forward-
+    # declares the child Base here and includes the full header only in the
+    # separate constructor `.cpp`. Module mode puts the class and its bodies in
+    # one translation unit whose GMF already #includes the full child Base
+    # header (sc_instance_includes); a purview forward declaration would then
+    # redeclare a global-module entity inside the named module, which is
+    # ill-formed, so it is suppressed.
+    if data["subBlocks"] and args.mode != 'module':
         out.append(f'//contained instances forward class declaration')
         for key, value in data["subBlocks"].items():
             # A child's Base class is itself a class template only when the
@@ -83,9 +60,15 @@ def render_default(args, prj, data):
                 out.append(f'class { value }Base;')
     out.append('')
 
+    # In module mode the block class is exported from the block-module
+    # interface unit; `export` prefixes the first line of the declaration (the
+    # template-head for own-params blocks, otherwise the SC_MODULE line).
+    exportKw = 'export ' if args.mode == 'module' else ''
     if hasOwnParams:
-        out.append(intf_gen_utils.block_config_decl(hasOwnParams))
-    out.append(f'SC_MODULE({ className }), public blockBase, public { baseClassName }')
+        out.append(exportKw + intf_gen_utils.block_config_decl(hasOwnParams))
+        out.append(f'SC_MODULE({ className }), public blockBase, public { baseClassName }')
+    else:
+        out.append(exportKw + f'SC_MODULE({ className }), public blockBase, public { baseClassName }')
     out.append('{')
     out.append('private:')
     if registerDecode:

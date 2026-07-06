@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T5.1: Router declared but no leaves under it.
+"""Router declared but no leaves under it.
 
 A router with `addressBlock:` declared but no routed leaves (and no
 register-bearing leaves) is legal: the pass synthesises no handler
@@ -40,7 +40,7 @@ instances:
 
 
 def _run():
-    print("T5.1: router with no leaves to dispatch to")
+    print("router with no leaves to dispatch to")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -66,7 +66,7 @@ def _run():
             f"INSTANCES_WITH_REGAPB expected empty list, got {instances_with_regapb}"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T5.1")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

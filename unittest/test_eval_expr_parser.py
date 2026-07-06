@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for the integer eval-expression parser and IR (Stage E0).
+"""Unit tests for the integer eval-expression parser and IR.
 
 Exercises precedence, associativity, unary operators, parentheses, $clog2,
 both $symbol forms, and rejection of out-of-grammar input (real literals,
@@ -128,7 +128,7 @@ def test_bitwise_shift_combo():
 
 
 def test_truncating_division_idiom_shape():
-    # ($DATA_BITS + 7) / 8  -- shape only; evaluation is Stage E1.
+    # ($DATA_BITS + 7) / 8  -- shape only; numeric evaluation is a separate concern.
     _expect("($DATA_BITS + 7) / 8",
             Bin('/', Bin('+', _sym('DATA_BITS'), Num(7)), Num(8)))
     return True
@@ -203,8 +203,7 @@ def _roundtrip(expr, canonical):
 
 
 def test_unparse_canonical():
-    # Symbols qualify and persist in ${name/context} form; the worked
-    # examples from plan-eval-symbolic-emission.md are the reference.
+    # Symbols qualify and persist in ${name/context} form.
     _roundtrip("$IP_DATA_WIDTH * 2", "${IP_DATA_WIDTH/ip_test} * 2")
     _roundtrip("$clog2($IP_DATA_WIDTH + 1)", "$clog2(${IP_DATA_WIDTH/ip_test} + 1)")
     # Precedence is in the tree, not stored parens: no parens needed here.
@@ -259,7 +258,7 @@ _TESTS = [
 
 def main():
     print("=" * 70)
-    print("TESTING EVAL EXPRESSION PARSER (Stage E0)")
+    print("TESTING EVAL EXPRESSION PARSER")
     print("=" * 70)
 
     all_ok = True

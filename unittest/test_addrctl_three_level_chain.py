@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T3.1: Primary -> mid-level nested router -> leaf-level nested router -> leaves.
+"""Primary -> mid-level nested router -> leaf-level nested router -> leaves.
 
 Exercises the recursive parent walk in `_findRouterParent` across two
 router-to-router hops. Asserts a router-to-router connection at each
@@ -80,7 +80,7 @@ registers:
 
 
 def _run():
-    print("T3.1: three-level chain (primary -> mid -> leaf-level)")
+    print("three-level chain (primary -> mid -> leaf-level)")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -143,7 +143,7 @@ def _run():
                 f"INSTANCES_WITH_REGAPB missing '{key}'"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T3.1")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

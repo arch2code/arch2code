@@ -203,8 +203,6 @@ registers:
     - { register: ipCfg, regType: rw, block: ip, structure: ipCfgSt, desc: "IP configuration" }
     - { register: ipLastData, regType: ro, block: ip, structure: ipDataSt, desc: "Last data word received on ipDataIf" }
 
-#memories:
-#    - { memory: ipMem, block: ip, structure: ipMemSt, addressStruct: ipMemAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "IP scratch memory (FW-accessible)" }
 memories:
     - { memory: ipMem, block: ip, structure: ipMemSt, addressStruct: ipMemAddrSt, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "IP scratch memory (FW-accessible)" }
     # F2.4 regression: non-parameterizable structure + block-param wordLines.

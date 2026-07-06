@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage E5 - eval-derived parameterizable constants emit symbolically into the
+"""Eval-derived parameterizable constants emit symbolically into the
 SystemC ``Config`` structs, so each variant recomputes them from that struct's
 own members instead of freezing the default-variant value.
 
@@ -373,7 +373,7 @@ def test_teststructs_parameterizable_sample_points():
 
 def run_all_tests():
     print("\n" + "="*70)
-    print("TESTING: Stage E5 - eval-derived constants emit symbolic into Config")
+    print("TESTING: eval-derived constants emit symbolic into Config")
     print("="*70)
     tests = [
         test_emit_c_style_canonical_translation,

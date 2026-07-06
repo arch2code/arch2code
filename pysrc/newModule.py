@@ -27,14 +27,21 @@ class newModule:
                 exit(warningAndErrorReport())
         if not prj.data.get("blocks"):
             return
-        # File-map conditions read schema fields from the block row.
-        # `isParameterizable` and `defaultConfig` are persisted on the
-        # block row by projectCreate.calcBlockConfigInfo(); no derived
-        # view is required.
-        blockCondData = {
-            qualBlock: dict(prj.data['blocks'][qualBlock])
-            for qualBlock in prj.data['blocks']
-        }
+        # File-map conditions read scalar fields from the block row, plus the
+        # derived `hasOwnParams` flag from the block config view.
+        # `isParameterizable` and `defaultConfig` are persisted on the block
+        # row by projectCreate.calcBlockConfigInfo() because they require a
+        # transitive surface walk. `hasOwnParams` is the block's own `params:`
+        # relationship — a cheap derivation that needs no persisted column, so
+        # getBlockConfigView() surfaces it and it is overlaid here as a cond
+        # scalar (routing own-params leaf blocks, emitted as class templates
+        # whose member bodies must be module-visible, to a module interface
+        # unit and all other blocks to .h/.cpp).
+        blockCondData = dict()
+        for qualBlock in prj.data['blocks']:
+            row = dict(prj.data['blocks'][qualBlock])
+            row['hasOwnParams'] = int(bool(prj.getBlockConfigView(qualBlock)['hasOwnParams']))
+            blockCondData[qualBlock] = row
         someBlock = next(iter(prj.data["blocks"])) # any random entry
         for fileKey, fileDefinition in fileGenerationConfig['fileMap'].items():
             mode = fileDefinition.get('mode', 'block') 
@@ -50,7 +57,10 @@ class newModule:
                 for field, value in both.items():
                     if isinstance(value, bool):
                         both[field] = int(value)
-                    if mode == 'block' and field not in blockCondData[someBlock]:
+                    # registrar mode applies cond/condAnd to the instantiated
+                    # child block, so its fields come from the same block row
+                    # data as block mode.
+                    if mode in ('block', 'registrar') and field not in blockCondData[someBlock]:
                         printError(f"field {field} in cond does not exist in block file-generation data")
             basePathKey = fileDefinition.get('basePath', '')
             if not basePathKey in processYaml.dirMacros:
@@ -70,24 +80,7 @@ class newModule:
             data['block'] = block
             data['qualBlock'] = qualBlock
             for fileKey, fileDefinition in blockFileGenerationConfig.items():
-                cond = fileDefinition.get("cond", None)
-                condAnd = fileDefinition.get("condAnd", None)
-                makeFile = not cond # of there is no or cond, then we will make the file by default
-                # no and or or cond - make file
-                # or cond - make file if any of the cond is true
-                # and cond - make file if all of the cond are true
-                # if there is both or and and cond, then we will make the file if any of the or cond is true and all of the and cond are true
-                if cond:
-                    for field, value in cond.items():
-                        if blockCondData[qualBlock][field] == value:
-                            makeFile = True 
-                            break
-                if condAnd:
-                    for field, value in condAnd.items():
-                        if blockCondData[qualBlock][field] != value:
-                            makeFile = False
-                            break
-                if makeFile:
+                if self._condMatch(fileDefinition, blockCondData[qualBlock]):
                     hasVariant = fileDefinition.get('variant', False)
                     if hasVariant and data['variants']:
                         for variant in data['variants']:
@@ -107,10 +100,19 @@ class newModule:
                             fileGenerationConfig, fileKey, fileDefinition,
                             selectedVariant, False, prj, data, args)
 
+        registrarFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'registrar'}
+        if registrarFileGenerationConfig:
+            self.registrar_create_from_templates(fileGenerationConfig, registrarFileGenerationConfig, blockCondData, prj, args)
+
         includeFiles = prj.config.getConfig('INCLUDEFILES')
         self.context_create_from_template(includeFiles, fileGenerationConfig, prj, args)
 
     _TB_FILE_KEYS = ('testBench', 'tbConfig', 'tbExternal')
+
+    def _condMatch(self, fileDefinition, condData):
+        # The fileMap cond/condAnd predicate is shared with the build-manifest
+        # derivation; see processYaml.fileMapCondMatch.
+        return processYaml.fileMapCondMatch(fileDefinition, condData)
 
     def _selectSingleVariant(self, fileKey, data, blockCond):
         # Return the variant string (or None) to bind into the generated-code
@@ -153,6 +155,60 @@ class newModule:
             else:
                 print(f"Making {fileName} at {moduleDirAbs} ")
                 # make the file contents
+                data['target'] = fileKey + "_" + ext
+                data['targetDetails'] = fileDefinition
+                data['fileGeneration'] = fileGenerationConfig
+                vars = {'prj': prj.data, 'block': data, 'args': args}
+                newFileContents = self.renderer.render('fileGen', vars)
+                with open(filePathExt, "w") as f:
+                    f.write(newFileContents)
+
+    def registrar_create_from_templates(self, fileGenerationConfig, registrarFileConfig, blockCondData, prj, args):
+        # A registrar trampoline TU is owned by the assembling block, not the
+        # leaf: for every distinct parameterizable child an assembler
+        # instantiates, one `<child>Registrar.cpp` is emitted under the
+        # assembler's directory in the `registrar` root (mirroring how `base`
+        # mirrors the yaml directory tree). The trampoline is keyed on the child
+        # block (`--block=<child>`), so the same child reused under two
+        # assemblers yields two independent compilations of the same
+        # registration — the accepted-duplication case (factory emplace is
+        # first-wins).
+        assemblerChildren = dict()
+        for inst in prj.data['instances'].values():
+            containerKey = inst['containerKey']
+            # The synthetic project-root container is not a block and owns no
+            # registrar; skip any container that is not a defined block.
+            if containerKey not in prj.data['blocks']:
+                continue
+            assemblerChildren.setdefault(containerKey, set()).add(inst['instanceTypeKey'])
+        for assemblerKey in sorted(assemblerChildren):
+            assemblerDir = prj.data['blocks'][assemblerKey]['dir']
+            for childKey in sorted(assemblerChildren[assemblerKey]):
+                childBlock = prj.data['blocks'][childKey]['block']
+                for fileKey, fileDefinition in registrarFileConfig.items():
+                    if self._condMatch(fileDefinition, blockCondData[childKey]):
+                        self.create_registrar_file(
+                            fileGenerationConfig, fileKey, fileDefinition,
+                            assemblerDir, childBlock, childKey, prj, args)
+
+    def create_registrar_file(self, fileGenerationConfig, fileKey, fileDefinition, assemblerDir, childBlock, childQualBlock, prj, args):
+        # Build the registrar path: the child-named trampoline lands under the
+        # assembler's directory within the registrar root.
+        data = dict()
+        data['block'] = childBlock
+        data['qualBlock'] = childQualBlock
+        data['variant'] = None
+        filePath = processYaml.expandNewModulePath(fileDefinition, assemblerDir, childBlock, childBlock, missingDirOk=True)
+        moduleDirAbs = os.path.dirname(filePath)
+        for ext in fileDefinition['ext']:
+            filePathExt = filePath + "." + fileDefinition['ext'][ext]
+            fileName = os.path.basename(filePathExt)
+            if not os.path.exists(moduleDirAbs):
+                os.makedirs(moduleDirAbs)
+            if os.path.exists(filePathExt) and not args.overwrite:
+                print(f"{filePathExt} exists so skipping, use --overwrite to overwrite")
+            else:
+                print(f"Making {fileName} at {moduleDirAbs} ")
                 data['target'] = fileKey + "_" + ext
                 data['targetDetails'] = fileDefinition
                 data['fileGeneration'] = fileGenerationConfig

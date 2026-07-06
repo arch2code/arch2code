@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T1.3: One router, two routed leaves at the same level.
+"""One router, two routed leaves at the same level.
 
 Asserts that two router-to-leaf binds are emitted (one per leaf
 instance), each carrying the leaf's authored port name, and that one
@@ -48,7 +48,7 @@ registers:
 
 
 def _run():
-    print("T1.3: single router, two routed leaves at the same level")
+    print("single router, two routed leaves at the same level")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -76,7 +76,7 @@ def _run():
             f"INSTANCES_WITH_REGAPB missing '{leafB_inst}'"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T1.3")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

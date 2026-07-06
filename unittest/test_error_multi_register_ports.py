@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E1.2: Leaf declares more than one registerPorts: row.
+"""Leaf declares more than one registerPorts: row.
 
 Diagnostic emitted by `_post_validateBlockAddressDecl` in
 `pysrc/processYaml.py`. Asserts the diagnostic names the offending
@@ -44,7 +44,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E1.2: leaf declares multiple registerPorts: rows")
+    print("leaf declares multiple registerPorts: rows")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
@@ -56,7 +56,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E1.2")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

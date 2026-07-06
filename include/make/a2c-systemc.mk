@@ -40,7 +40,10 @@ LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(L
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
 A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain $(wildcard $(A2C_ROOT)/interfaces/*) $(wildcard $(A2C_ROOT)/pro/interfaces/*)
-PRJ_SRC_DIRS = $(call find_cpp_source_directories, $(REPO_ROOT)/base $(REPO_ROOT)/model $(REPO_ROOT)/fw $(REPO_ROOT)/tb)
+# Project C++ source/include dirs come from the generated manifest (.gen/build.mk,
+# included by a2c-common.mk) instead of globbing fixed functional roots; the
+# per-dir file wildcards below pick up every .cpp within them.
+PRJ_SRC_DIRS = $(A2C_SC_SRC_DIRS)
 
 ifndef USE_GCC
 CXX_FLAGS += -fstandalone-debug
@@ -80,10 +83,14 @@ CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 # name, so precompile them before compiling any C++ translation units and pass
 # the resulting PCM files explicitly to Clang.
 CPP_MODULE_SRC = $(filter %.cppm,$(SC_GEN_FILES))
-cpp_module_name = $(basename $(notdir $(1:Includes.cppm=.cppm)))
+# A context types unit `<context>Includes.cppm` declares `export module <context>;`
+# while a parameterizable block unit `<block>.cppm` declares
+# `export module <block>.block;`. The module name must match the `import`
+# spelling, so block units get the `.block` suffix here.
+cpp_module_name = $(if $(filter %Includes.cppm,$(1)),$(basename $(notdir $(1:Includes.cppm=.cppm))),$(basename $(notdir $(1))).block)
 cpp_module_pcm = $(BUILD_DIR)/$(1:%.cppm=%.pcm)
 cpp_module_src_for = $(firstword $(foreach src,$(CPP_MODULE_SRC),$(if $(filter $(1),$(call cpp_module_name,$(src))),$(src))))
-cpp_module_import_names = $(shell test -f "$(1)" && sed -n 's/^[[:space:]]*import[[:space:]]\+\([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*;.*/\1/p' "$(1)" || true)
+cpp_module_import_names = $(shell test -f "$(1)" && sed -n 's/^[[:space:]]*import[[:space:]]\+\([A-Za-z_][A-Za-z0-9_.]*\)[[:space:]]*;.*/\1/p' "$(1)" || true)
 cpp_module_import_pcms = $(foreach module,$(call cpp_module_import_names,$(1)),$(if $(call cpp_module_src_for,$(module)),$(call cpp_module_pcm,$(call cpp_module_src_for,$(module)))))
 CPP_MODULE_PCM = $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.pcm)
 CPP_MODULE_OBJ = $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.module.o)
@@ -99,8 +106,14 @@ endif
 endif
 
 ifdef VL_DUT
-CPP_SRC += $(REPO_ROOT)/verif/vl_wrap/vl_wrap.cpp
-CPP_INCLUDES += $(foreach dir, $(call find_cpp_source_directories, $(REPO_ROOT)/verif/vl_wrap), -I$(dir))
+# The verilated entry (vl_wrap aggregator) and wrapper include dirs come from the
+# manifest, not a hard-coded path / glob.
+CPP_SRC += $(A2C_VL_WRAP_ENTRY)
+CPP_INCLUDES += $(foreach dir, $(A2C_VL_WRAP_DIRS), -I$(dir))
+# The Verilated tops (V*_hdl_sv_wrapper.h) are emitted by verilator into obj_dir
+# beside the aggregator. It is a build output, not project source, so the manifest
+# does not list it; add it explicitly (verilation runs before the compile sub-make).
+CPP_INCLUDES += -I$(dir $(A2C_VL_WRAP_ENTRY))obj_dir
 CPP_INCLUDES += -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd
 endif
 
@@ -167,6 +180,15 @@ $(BUILD_DIR)/%.pcm : %.cppm $(GEN_DB_DEPS)
 
 $(foreach src,$(CPP_MODULE_SRC),$(eval $(call cpp_module_pcm,$(src)): $(call cpp_module_import_pcms,$(src))))
 
+# A block-module unit (`<block>.cppm`) includes its `<block>Base.h` in the
+# global module fragment, and that header `import`s the block's context types
+# module. cpp_module_import_names scans only the .cppm's own `import` lines, so
+# that transitive dependency is invisible to the edge above. Order every
+# block-module pcm after all context (`*Includes.cppm`) pcms; the context
+# modules' own inter-dependencies are already captured by the import-name scan.
+CPP_CONTEXT_MODULE_PCM = $(foreach src,$(filter %Includes.cppm,$(CPP_MODULE_SRC)),$(call cpp_module_pcm,$(src)))
+$(foreach src,$(filter-out %Includes.cppm,$(CPP_MODULE_SRC)),$(eval $(call cpp_module_pcm,$(src)): $(CPP_CONTEXT_MODULE_PCM)))
+
 .SECONDARY: $(CPP_MODULE_PCM)
 
 $(BUILD_DIR)/%.module.o : $(BUILD_DIR)/%.pcm
@@ -205,14 +227,26 @@ help::
 # Generate compile_commands.json for clangd/OpenCode
 #------------------------------------------------------------------------
 
+# The VL_DUT=1 pass captures the verilated compile flags, but `make all
+# VL_DUT=1` recurses into the verif/vl_wrap aggregator dir, which only exists
+# when the project has verilated blocks. A2C_VL_WRAP_DIRS (from the manifest) is
+# the authoritative has-VL signal: empty means no verilated entry, so the VL
+# pass is skipped and compile_commands.json is built from the model pass alone.
+ifeq ($(strip $(A2C_VL_WRAP_DIRS)),)
+COMPDB_VL_CAPTURE =
+COMPDB_MAKE_N_FILES = $(GEN_BUILD_DIR)/compdb.model.make-n.txt
+else
+COMPDB_VL_CAPTURE = $(MAKE) -n -B all VL_DUT=1 > $(GEN_BUILD_DIR)/compdb.vl.make-n.txt
+COMPDB_MAKE_N_FILES = $(GEN_BUILD_DIR)/compdb.model.make-n.txt $(GEN_BUILD_DIR)/compdb.vl.make-n.txt
+endif
+
 .PHONY: compdb
 compdb:
 	@mkdir -p $(GEN_BUILD_DIR)
 	@$(MAKE) -n -B all > $(GEN_BUILD_DIR)/compdb.model.make-n.txt
-	@$(MAKE) -n -B all VL_DUT=1 > $(GEN_BUILD_DIR)/compdb.vl.make-n.txt
+	@$(COMPDB_VL_CAPTURE)
 	@python3 $(A2C_ROOT)/pysrc/gen_compile_commands.py \
-		$(GEN_BUILD_DIR)/compdb.model.make-n.txt \
-		$(GEN_BUILD_DIR)/compdb.vl.make-n.txt \
+		$(COMPDB_MAKE_N_FILES) \
 		$(REPO_ROOT)/compile_commands.json \
 		--directory $(PROJECT_RUNDIR) >/dev/null
 	@echo "Generated $(REPO_ROOT)/compile_commands.json"

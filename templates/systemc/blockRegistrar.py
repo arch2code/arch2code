@@ -31,6 +31,8 @@
 # The current implementation uses the block's default Config policy as the only
 # binding for cases that do not have per-instance Config propagation.
 
+import pysrc.intf_gen_utils as intf_gen_utils
+
 def render(args, prj, data):
     return render_default(args, prj, data)
 
@@ -75,11 +77,17 @@ def render_default(args, prj, data):
         if context in data['includeFiles'].get('config_hdr', {}):
             out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
 
-    # Block class header. Pulled in unconditionally for the
-    # parameterized-block branch so the lambda can construct
-    # `<B><Config>`.
+    # Block class visibility for the parameterized-block lambda so it can
+    # construct `<B><Config>`. A hasOwnParams block lives in its own C++20
+    # module interface unit (`<block>.cppm`), so the trampoline imports it;
+    # otherwise (a non-templated container flagged isParameterizable) the class
+    # is still a classic header. The import sits after the textual #includes,
+    # mirroring the validated S0 registrar TU shape.
     if isParameterizable:
-        out.append(f'#include "{blockName}.h"')
+        if hasOwnParams:
+            out.append(f'import {intf_gen_utils.cpp_block_module_name(blockName)};')
+        else:
+            out.append(f'#include "{blockName}.h"')
 
     # NOTE: Verilated wrapper registration is intentionally NOT emitted
     # here yet. The wrapper header (`<block>_hdl_sc_wrapper.h`) lives

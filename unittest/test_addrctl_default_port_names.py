@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T5.3: Router omits upstreamPort: and registerDecoderPort:.
+"""Router omits upstreamPort: and registerDecoderPort:.
 
 Defaults resolve to `apbReg`. Asserts the router-side view exposes
 `apbReg` for both fields and that the emitted router-to-leaf bind names
@@ -53,7 +53,7 @@ registers:
 
 
 def _run():
-    print("T5.3: router with default upstream/register port names")
+    print("router with default upstream/register port names")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -72,7 +72,7 @@ def _run():
             f"srcport expected 'apbReg_uLeaf' (default decoder port + instance), got {conns}"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T5.3")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

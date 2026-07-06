@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage E3 - persisted canonical eval string reaches generators through
+"""Persisted canonical eval string reaches generators through
 ``projectOpen`` views with no parse or numeric evaluation at open/template
 time.
 
@@ -124,7 +124,7 @@ def test_canonical_reaches_context_view_without_evaluation():
 
 def run_all_tests():
     print("\n" + "="*70)
-    print("TESTING: Stage E3 - canonical eval string surfaced via projectOpen")
+    print("TESTING: canonical eval string surfaced via projectOpen")
     print("="*70)
     tests = [
         test_canonical_reaches_context_view_without_evaluation,

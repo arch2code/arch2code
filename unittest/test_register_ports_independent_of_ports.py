@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E3.4: `registerPorts:` is independent of `ports:`.
+"""`registerPorts:` is independent of `ports:`.
 
 A routed leaf may declare a `ports:` map for its non-register interfaces
 *and* a `registerPorts:` map for its register-bus ingress. The
@@ -118,7 +118,7 @@ connections:
 
 
 def _run():
-    print("E3.4: registerPorts: is independent of a partial ports: map")
+    print("registerPorts: is independent of a partial ports: map")
     # build_database raises if arch2code.py exits non-zero, so a fired
     # partial-ports: diagnostic is itself the failure signal.
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
@@ -148,7 +148,7 @@ def _run():
             f"register bind interface expected 'apbReg', got {reg_conns[0].get('interface')}"
 
         assert_no_global_register_binds(prj)
-        print("PASS: E3.4")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

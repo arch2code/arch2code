@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E1.3: registerPorts: row points at an interface whose interfaceType
+"""registerPorts: row points at an interface whose interfaceType
 is not addressBus: true.
 
 Diagnostic emitted by `_post_validateRegisterPortInterface` in
@@ -54,7 +54,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E1.3: registerPorts row references non-addressBus interface")
+    print("registerPorts row references non-addressBus interface")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
@@ -66,7 +66,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E1.3")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

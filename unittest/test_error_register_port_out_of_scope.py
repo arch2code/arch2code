@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E1.5: Leaf registerPorts: row targets an interface defined outside the
+"""Leaf registerPorts: row targets an interface defined outside the
 leaf's load-time scope.
 
 The leaf block lives in its own YAML file that does not include the
@@ -107,7 +107,7 @@ REQUIRED_SUBSTRINGS_TEMPLATE = [
 
 
 def _run():
-    print("E1.5: registerPorts targets out-of-scope interface")
+    print("registerPorts targets out-of-scope interface")
     leaf_path = write_temp(LEAF_YAML, '.yaml', 'addrctl_leaf_')
     arch_content = ARCH_YAML_TEMPLATE.replace('__LEAF_FILE__',
                                               os.path.basename(leaf_path))
@@ -139,7 +139,7 @@ def _run():
                     f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
                 )
                 return False
-        print("PASS: E1.5")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

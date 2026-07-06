@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2.1: Router block declares addressBlock: but has no instance.
+"""Router block declares addressBlock: but has no instance.
 
 Diagnostic emitted by `postProcess` in `config/postParseRegisterPorts.py`.
 Asserts the diagnostic names the orphan router block.
@@ -49,7 +49,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E2.1: router block has no instance in the design")
+    print("router block has no instance in the design")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
@@ -61,7 +61,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E2.1")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

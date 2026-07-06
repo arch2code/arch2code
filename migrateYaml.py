@@ -40,6 +40,12 @@ from dataclasses import dataclass, field
 import yaml
 
 from pysrc.evalPyToSv import convertEvalsInFile
+from pysrc.migrateLayout import (
+    LAYOUT_ALREADY_HIERARCHICAL,
+    LAYOUT_FUNCTIONAL,
+    LAYOUT_NEEDS_MIGRATION,
+    migrateLayoutInProject,
+)
 from pysrc.migrateAddressControl import (
     migrateAddressControlInProject,
     _projectFileSet,
@@ -234,6 +240,72 @@ def _renderPhaseC(result, write, lines):
 
 
 # ---------------------------------------------------------------------------
+# Layout migration (opt-in functional -> hierarchical; separate invocation)
+# ---------------------------------------------------------------------------
+
+def renderLayoutReport(report, write):
+    """Render the opt-in layout-migration report as text."""
+    lines = [f"=== layout migration: {report.projectYaml} ===",
+             f"declared layout: {report.declaredLayout}"]
+    if report.state == LAYOUT_FUNCTIONAL:
+        lines.append("Project has not opted into hierarchical layout "
+                     "(fileGeneration.layout: functional); nothing to do.")
+    elif report.state == LAYOUT_ALREADY_HIERARCHICAL:
+        lines.append("Project is already hierarchical on disk "
+                     "(project file under <prj>/<yaml>/); nothing to do.")
+    elif report.state == LAYOUT_NEEDS_MIGRATION:
+        if any(i.kind == "TODO_NOT_FORMAT2" for i in report.manual):
+            lines.append("BLOCKED - cannot migrate layout yet:")
+            for item in report.manual:
+                lines.append(f"  {item.location}  {item.kind}  {item.message}")
+        else:
+            _renderRelocationMap(report, write, lines)
+    return "\n".join(lines)
+
+
+def _renderRelocationMap(report, write, lines):
+    """Render the relocation move/delete map. Under `--write` the map has been
+    applied on disk (T4.3); without it this is a dry-run preview and nothing
+    changed."""
+    root = report.projectRoot
+
+    def rel(path):
+        return os.path.relpath(path, root) if root and path.startswith(root) else path
+
+    lines.append("Project is functional on disk and opted into hierarchical.")
+    if write and report.written:
+        lines.append("  APPLIED relocation map (T4.3):")
+    else:
+        lines.append("  DRY-RUN relocation map (re-run with --write to apply):")
+
+    lines.append(f"  moves ({len(report.moves)}):")
+    for mv in report.moves:
+        lines.append(f"    [{mv.kind}] {rel(mv.src)}  ->  {rel(mv.dst)}")
+
+    lines.append(f"  deletes ({len(report.deletes)}) "
+                 f"[fully-generated source; recreated by make newmodule/gen]:")
+    for path in report.deletes:
+        lines.append(f"    {rel(path)}")
+
+    lines.append(f"  path rewrites ({len(report.rewrites)}) "
+                 f"[relative include/projectFiles/user-region references re-rooted]:")
+    for rw in report.rewrites:
+        lines.append(f"    [{rw.kind}] {rel(rw.path)}: {rw.old}  ->  {rw.new}")
+
+    lines.append(f"  harness edits ({len(report.harnessEdits)}) "
+                 f"[A2C_PRJ_YAML re-pointed at the moved project file; "
+                 f"include/ stays at root]:")
+    for edit in report.harnessEdits:
+        verb = "replace" if edit.old else "insert"
+        lines.append(f"    [{verb}] {rel(edit.path)}: {edit.new}")
+
+    if report.manual:
+        lines.append("  manual review (not moved or deleted):")
+        for item in report.manual:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+
+
+# ---------------------------------------------------------------------------
 # Small text helpers
 # ---------------------------------------------------------------------------
 
@@ -254,8 +326,23 @@ def main(argv=None):
     parser.add_argument("--write", action="store_true",
                         help="Apply the edits. Without it the tool is a dry-run "
                              "that prints the report and changes nothing.")
+    parser.add_argument("--to-hierarchical", action="store_true",
+                        dest="toHierarchical",
+                        help="Run the opt-in functional -> hierarchical layout "
+                             "migration instead of the unconditional yamlFormat "
+                             "phases. Presupposes the project is already "
+                             "yamlFormat: 2 and has declared "
+                             "fileGeneration.layout: hierarchical.")
     parser.add_argument("projectYaml", help="Path to the project's project.yaml.")
     args = parser.parse_args(argv)
+
+    if args.toHierarchical:
+        report = migrateLayoutInProject(args.projectYaml, write=args.write)
+        print(renderLayoutReport(report, args.write))
+        # A no-op (not opted in, or already hierarchical) always succeeds. A
+        # candidate blocked on a manual precondition (e.g. not yet yamlFormat: 2)
+        # fails so the make target signals work remains.
+        return 0 if (report.isNoOp or report.clean) else 1
 
     result = migrateProject(args.projectYaml, write=args.write)
     print(renderReport(result, args.write))

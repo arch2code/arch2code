@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TT.5: Parent router upstream interface uses the bound variant value."""
+"""Parent router upstream interface uses the bound variant value."""
 
 import sys
 
@@ -97,7 +97,7 @@ registers:
 
 
 def _run():
-    print("TT.5: parent router interface uses bound variant")
+    print("parent router interface uses bound variant")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -108,7 +108,7 @@ def _run():
         assert binds[0]['interface'] == 'paramApb', (
             f"expected parent router interface paramApb, "
             f"got {binds[0]['interface']!r}")
-        print("PASS: TT.5")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

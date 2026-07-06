@@ -201,7 +201,7 @@ def iter_rows(prj, section):
 
 
 def assert_no_global_register_binds(prj):
-    """Stage 7 invariant: synthesised register-bus rows never carry
+    """Synthesised register-bus rows never carry
     `_context: '_global'`. Asserts on connections and connectionMaps
     whose interface resolves to an addressBus: true interface_def, since
     those are the rows the post-parse pass authors."""

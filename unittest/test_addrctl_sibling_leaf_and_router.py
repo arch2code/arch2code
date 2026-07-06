@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T3.5: Sibling leaf and nested router under the same container.
+"""Sibling leaf and nested router under the same container.
 
 The mid router's container holds both a leaf instance of a routed block
 and a nested leaf-level router whose subtree contains another instance
@@ -78,7 +78,7 @@ registers:
 
 
 def _run():
-    print("T3.5: sibling leaf and nested router under one container")
+    print("sibling leaf and nested router under one container")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -129,7 +129,7 @@ def _run():
                 f"INSTANCES_WITH_REGAPB missing '{key}'"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T3.5")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

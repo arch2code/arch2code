@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E3.2: synthesized register-bus bind has incompatible packed fields."""
+"""Synthesized register-bus bind has incompatible packed fields."""
 
 import sys
 
@@ -68,7 +68,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E3.2: register-bus packed-form mismatch")
+    print("register-bus packed-form mismatch")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
@@ -80,7 +80,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E3.2")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

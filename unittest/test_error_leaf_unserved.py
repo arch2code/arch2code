@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2.5: Routed leaf instance sits in a container no router serves.
+"""Routed leaf instance sits in a container no router serves.
 
 Diagnostic emitted by `postProcess` in
 `config/postParseRegisterPorts.py`. Asserts the diagnostic names the
@@ -58,7 +58,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E2.5: routed leaf in a container no router serves")
+    print("routed leaf in a container no router serves")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
@@ -70,7 +70,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E2.5")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

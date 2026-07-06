@@ -54,6 +54,11 @@ def existsLoad(myFile):
     return ret
 
 dirMacros = None
+# Normalized layout-keyed directory representation (fileGeneration.layout). Built
+# in projectCreate (buildLayout), persisted as config LAYOUT, restored in
+# projectOpen. The seam reads layoutConfig['segments'][basePathKey]['path'];
+# the same segment record carries buildGroup for manifest discovery.
+layoutConfig = None
 
 
 def _expand_with_macros(path, macros):
@@ -76,20 +81,53 @@ def expandDirMacros(myFile):
     return _expand_with_macros(myFile, dirMacros)
 
 def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, missingDirOk = False):
-    global dirMacros
+    global layoutConfig
     fileStub = fileDefinition.get('name', '')
 
     basePathKey = fileDefinition.get('basePath', '')
-    basePathAbs = dirMacros[basePathKey]
-    if not os.path.exists(basePathAbs) and not missingDirOk:
-        printError(f"path of {basePathAbs} does not exist")
-    moduleDirAbs = os.path.abspath(os.path.join(basePathAbs, moduleDir))
+    segment = layoutConfig['segments'][basePathKey]['path']
+    if layoutConfig['mode'] == 'hierarchical':
+        # decomposition node outer, functional segment inner:
+        #   <node>/<segment>[/module]/file. moduleDir is the node's own absolute
+        #   directory (derived in processSingleFile); the segment is the bare
+        #   node-relative functional name joined onto it.
+        if not os.path.exists(moduleDir) and not missingDirOk:
+            printError(f"node path of {moduleDir} does not exist")
+        moduleDirAbs = os.path.abspath(os.path.join(moduleDir, segment))
+    else:
+        # functional segment root outer, decomposition inner (unchanged):
+        #   $root/<segment>/<decomp>[/module]/file.
+        if not os.path.exists(segment) and not missingDirOk:
+            printError(f"path of {segment} does not exist")
+        moduleDirAbs = os.path.abspath(os.path.join(segment, moduleDir))
     blockDir = fileDefinition.get('blockDir', False)
     if blockDir:
         moduleDirAbs = os.path.join(moduleDirAbs, module)
     fileName = f"{moduleFileStub}{fileStub}"
     filePath = os.path.join(moduleDirAbs, fileName)
     return filePath
+
+def fileMapCondMatch(fileDefinition, condData):
+    # Evaluate a fileMap entry's cond/condAnd predicate against a block's
+    # file-generation data row. OR semantics for cond (any true makes the
+    # file), AND semantics for condAnd (all must hold), no predicate means
+    # always make. This is the single decision the file generator (newModule)
+    # and the build-manifest artifact hook share, so
+    # the manifest's directory set cannot drift from the files actually emitted.
+    cond = fileDefinition.get("cond", None)
+    condAnd = fileDefinition.get("condAnd", None)
+    makeFile = not cond
+    if cond:
+        for field, value in cond.items():
+            if condData[field] == value:
+                makeFile = True
+                break
+    if condAnd:
+        for field, value in condAnd.items():
+            if condData[field] != value:
+                makeFile = False
+                break
+    return makeFile
 
     # if yaml file exists load it, otherwise return empty dict
 def loadIfExists(myFile):
@@ -98,6 +136,37 @@ def loadIfExists(myFile):
     with open(myFile) as f:
         ret = yaml.load(f)
     return ret
+
+def mergeProjectConfig(projFile):
+    """Merge base/pro/user project config exactly as projectCreate does during
+    create and return (a2cRoot, baseProj, proProj, a2cProj, proj), without
+    opening the database or running schema/address processing.
+
+    projectCreate.__init__ calls this so create has a single merge flow; it is
+    also the seam a text-only maintenance tool (the layout migration) uses to
+    read the same merged fileGeneration.fileMap / dirs the generator sees, since
+    a project file declares only a subset of the merged fileMap."""
+    a2cRoot = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Only promote a2cRoot to the parent (so pro/config is merged) when the user
+    # project does NOT live inside the current (base) a2cRoot. A project under
+    # builder/base/ is base-only; promoting would silently pull in a sibling pro
+    # tree on disk (e.g. base examples sitting next to a checked-out pro).
+    baseRootAbs = os.path.abspath(a2cRoot)
+    userProjAbs = os.path.abspath(projFile)
+    userIsUnderBase = (userProjAbs == baseRootAbs or
+                       userProjAbs.startswith(baseRootAbs + os.sep))
+    if (os.path.exists(os.path.join(a2cRoot, "../pro")) and
+            not userIsUnderBase):
+        a2cRoot = os.path.join(a2cRoot, "../")
+    a2cRoot = os.path.abspath(a2cRoot)
+    proProj = loadIfExists(os.path.join(a2cRoot, "pro/config/project.yaml"))
+    baseProj = loadIfExists(os.path.join(a2cRoot, "config/project.yaml"))
+    userProj = existsLoad(projFile)
+    # merge pro with base, then user over that, shallow dict merge by default and
+    # configurable behaviour per path via MERGE_SPEC.
+    a2cProj = merge_with_spec(baseProj, proProj, projectCreate.MERGE_SPEC, path=())
+    proj = merge_with_spec(a2cProj, userProj, projectCreate.MERGE_SPEC, path=())
+    return a2cRoot, baseProj, proProj, a2cProj, proj
 
 def resolveFilePath(userDict, a2cDict, key, basePath):
     filePath = ''
@@ -352,6 +421,8 @@ class projectOpen:
         self.filemap = self.config.getConfig('FILEMAP')
         global dirMacros
         dirMacros = self.config.getConfig('DIRS')
+        global layoutConfig
+        layoutConfig = self.config.getConfig('LAYOUT')
         printIfDebug("Data Loaded")
         self.loadData()
         self.generateHierarchy()
@@ -2945,39 +3016,15 @@ class projectCreate:
         global dirMacros
         #load project file from command line
         self._userProjRaw = existsLoad(projFile)
-        self.proj = self._userProjRaw
         # Remember the user-supplied project file path so address-policy
         # diagnostics can name it (project.yaml may be renamed per-example).
         self.projFile = projFile
-        # the behavour or project file settings is as follows
-        # for some settings the user project setting overrides the a2c defaults - eg schema is either user defined or a2c defined
-        # for other settings they may be additive, eg template mappings are additive ie you get all the a2c defaults
-        # however an individual template definition can be overridden by the user
-        # pro vs base is simpler, pro overrides any base settings.
-        # Only promote a2cRoot to the parent (so pro/config is merged) when the
-        # user project does NOT live inside the current (base) a2cRoot. A
-        # project under builder/base/ is base-only; promoting would silently
-        # pull in a sibling pro tree on disk (e.g. base examples sitting next
-        # to a checked-out pro) and contaminate the build.
-        baseRootAbs = os.path.abspath(self.a2cRoot)
-        userProjAbs = os.path.abspath(projFile)
-        userIsUnderBase = (userProjAbs == baseRootAbs or
-                           userProjAbs.startswith(baseRootAbs + os.sep))
-        if (os.path.exists(os.path.join(self.a2cRoot, "../pro")) and
-                not userIsUnderBase):
-            self.a2cRoot = os.path.join(self.a2cRoot, "../")
-        self.a2cRoot = os.path.abspath(self.a2cRoot)
+        # Merge base/pro/user project config. mergeProjectConfig owns the pro-vs-base
+        # a2cRoot promotion and the merge precedence; the raw base/pro inputs are kept
+        # so configTemplates() can merge template config files with user > pro > base.
+        (self.a2cRoot, self._a2cBaseProj, self._a2cProProj,
+         self.a2cProj, self.proj) = mergeProjectConfig(projFile)
         dirMacros = { "a2c" : self.a2cRoot }
-        proProj = loadIfExists(os.path.join(self.a2cRoot, "pro/config/project.yaml"))
-        baseProj = loadIfExists(os.path.join(self.a2cRoot, "config/project.yaml"))
-        # Keep the raw base/pro project inputs so configTemplates() can merge
-        # template config files with user > pro > base precedence.
-        self._a2cBaseProj = baseProj
-        self._a2cProProj = proProj
-        # merge pro with base, using shallow dict merge by default and
-        # configurable behaviour per path via MERGE_SPEC
-        self.a2cProj = merge_with_spec(baseProj, proProj, self.MERGE_SPEC, path=())
-        self.proj = merge_with_spec(self.a2cProj, self.proj, self.MERGE_SPEC, path=())
         self.config.setConfig('A2CROOT', self.a2cRoot)
         self.config.setConfig('A2CPROJ', self.a2cProj)
         # Refuse to build an un-migrated project before any address or eval
@@ -3003,6 +3050,8 @@ class projectCreate:
             printError(f"Project file {projFile} is missing topInstance: setting.")
             exit(warningAndErrorReport())
         self.projectDirs()
+        self.validateLayout()
+        self.buildLayout()
         self.configTemplates()
         #anything except for specific keys in the project file are all saved to the config for later use
         # this also allows user additions to the project file to make it through to the generators
@@ -3045,6 +3094,8 @@ class projectCreate:
         self.generateAddressEnums()
         # check include files are valid
         self.saveIncludeFiles()
+        # run late artifact creators that consume the completed project state
+        self.runCreateArtifacts()
         # save the schema as well to the config
         self.validatePorts()
         self.schema.save()
@@ -3093,6 +3144,94 @@ class projectCreate:
                 )
                 dirMacros[name] = os.path.abspath(raw_path)
         self.config.setConfig('DIRS', dirMacros)
+
+    # Valid project layout modes (see fileGeneration.layout in config/project.yaml).
+    LAYOUT_MODES = ('functional', 'hierarchical')
+
+    def validateLayout(self):
+        # fileGeneration.layout selects the directory layout axis ordering. The
+        # base config supplies the default ('functional'), so the merged project
+        # config always carries it; reject any other value early.
+        if 'fileGeneration' in self.proj:
+            mode = self.proj['fileGeneration']['layout']
+            if mode not in self.LAYOUT_MODES:
+                self.logError(
+                    f"fileGeneration.layout must be one of {self.LAYOUT_MODES}, "
+                    f"got '{mode}'")
+
+    # Keys in hierarchicalDirs that locate project-scope artifacts rather than a
+    # fileMap basePath segment: the authored-YAML subdir of a node (yaml), the
+    # project container for generated orphan artifacts (prj), the per-project
+    # build dir (rundir), and the user-owned build config (include). rundir and
+    # include are $root-anchored and stay at the project root (Q-L3 amended).
+    LAYOUT_CONVENTION_KEYS = ('yaml', 'prj', 'rundir', 'include')
+
+    def buildLayout(self):
+        # Normalize the merged dirs/fileGeneration into the layout-keyed shape
+        # the seam (expandNewModulePath) and build views consume. The user
+        # surface is unchanged: functional placement is the top-level dirs:
+        # (already resolved into dirMacros), hierarchical placement is the
+        # fileGeneration.hierarchicalDirs defaults. Selected by layout: and
+        # persisted as config LAYOUT so generators read it on projectOpen.
+        global layoutConfig
+        mode = 'functional'
+        if 'fileGeneration' in self.proj:
+            mode = self.proj['fileGeneration']['layout']
+        fileGeneration = self.proj['fileGeneration']
+        buildGroups = fileGeneration['buildGroups']
+        fileMapBasePaths = {fileDef['basePath']
+                            for fileDef in fileGeneration['fileMap'].values()}
+        for key in fileMapBasePaths:
+            if key not in buildGroups:
+                self.logError(
+                    f"fileGeneration.buildGroups must define basePath segment "
+                    f"'{key}'")
+
+        def buildGroupForSegment(key):
+            if key not in buildGroups:
+                return None
+            return buildGroups[key]
+
+        if mode == 'functional':
+            # functional segments ARE today's resolved $root-rooted dirs, so the
+            # seam emits byte-identical paths. Conventions match today's tree:
+            # authored YAML under arch/yaml, project artifacts at root (no prj/).
+            segments = {key: {'path': path, 'buildGroup': buildGroupForSegment(key)}
+                        for key, path in dirMacros.items()}
+            conventions = {
+                'yaml':    os.path.join(dirMacros['root'], 'arch', 'yaml'),
+                'prj':     dirMacros['root'],
+                'rundir':  os.path.join(dirMacros['root'], 'rundir'),
+                'include': os.path.join(dirMacros['root'], 'include'),
+            }
+        else:  # hierarchical
+            hdirs = self.proj['fileGeneration']['hierarchicalDirs']
+            segments = {}
+            conventions = {}
+            for key, raw in hdirs.items():
+                # $root-anchored conventions (prj, rundir) resolve to absolute;
+                # bare node-relative segment names stay relative and are joined
+                # onto the node directory at emit time.
+                expanded = _expand_with_macros(raw, dirMacros)
+                value = os.path.abspath(expanded) if expanded != raw else raw
+                if key in self.LAYOUT_CONVENTION_KEYS:
+                    conventions[key] = value
+                else:
+                    segments[key] = {
+                        'path': value,
+                        'buildGroup': buildGroupForSegment(key),
+                    }
+        layoutConfig = {
+            'mode':        mode,
+            'segments':    segments,
+            'buildGroups': sorted({group for group in buildGroups.values()
+                                   if group is not None}),
+            'yaml':        conventions['yaml'],
+            'prj':         conventions['prj'],
+            'rundir':      conventions['rundir'],
+            'include':     conventions['include'],
+        }
+        self.config.setConfig('LAYOUT', layoutConfig)
 
     def createProjectConfig(self):
         # save anything in project file to config except named items
@@ -3168,6 +3307,14 @@ class projectCreate:
         g.db.commit()
         # Phase complete; see processYamls() for the rationale.
         self._parserResolver = None
+
+    def runCreateArtifacts(self):
+        if "createArtifacts" in self.proj:
+            for script in self.proj["createArtifacts"]:
+                fileName = basePathRelative(expandDirMacros(script))
+                scriptCode = loadModule(fileName)
+                scriptCode.create(self)
+        g.db.commit()
 
     def generateIndexes(self):
         for table in self.schema.tables:
@@ -3493,74 +3640,92 @@ class projectCreate:
 
             contexts = list()
             is_parameterizable = False
+            # Tracks whether is_parameterizable was set by a parameterizable
+            # structure on the block's OWN surface (its own registers, memories,
+            # or own-port interfaces) rather than one reached only through a
+            # contained child at a frozen variant (the valid transit/container
+            # case). An own-surface parameterizable structure requires the block
+            # to be a class template (own `params:`) so it has a `Config` to
+            # instantiate the type with; the validation after step 8 rejects an
+            # own-surface flag on a block with no own params.
+            own_surface_param = False
 
-            def add_param_source(is_param, ctx):
-                nonlocal is_parameterizable
+            def add_param_source(is_param, ctx, own_surface):
+                nonlocal is_parameterizable, own_surface_param
                 if not is_param:
                     return
                 is_parameterizable = True
+                if own_surface:
+                    own_surface_param = True
                 if ctx and ctx not in contexts:
                     contexts.append(ctx)
 
-            def add_struct(struct_key):
+            def add_struct(struct_key, own_surface):
                 if not struct_key:
                     return
                 struct = structures[struct_key]
-                add_param_source(bool(struct['isParameterizable']), struct['_context'] or '')
+                add_param_source(bool(struct['isParameterizable']), struct['_context'] or '', own_surface)
 
-            def add_regmem(row):
-                add_struct(row['structureKey'])
-                add_struct(row['addressStructKey'])
-                add_param_source(bool(row['isParameterizable']), row['_context'] or '')
+            def add_regmem(row, own_surface):
+                add_struct(row['structureKey'], own_surface)
+                add_struct(row['addressStructKey'], own_surface)
+                add_param_source(bool(row['isParameterizable']), row['_context'] or '', own_surface)
 
-            def add_interface(interface_key):
+            def add_interface(interface_key, own_surface):
                 intf = interfaces[interface_key]
                 if not intf['isParameterizable']:
                     return
                 for struct_row in intf.get('structures', {}).values():
-                    add_struct(struct_row['structureKey'])
+                    add_struct(struct_row['structureKey'], own_surface)
 
-            # 1. Connections that touch a port-owner instance of this block.
+            # 1. Connections that touch a port-owner instance of this block: the
+            #    block owns the port, so a parameterizable interface is on its
+            #    own surface.
             for conn in connections:
                 ends = conn_end_instances.get(conn['connectionKey'], list())
                 if conn['isParameterizable'] and any(e in qual_block_inst_set for e in ends):
-                    add_interface(conn['interfaceKey'])
+                    add_interface(conn['interfaceKey'], own_surface=True)
 
-            # 2. Connections contained in this block (connectDouble).
+            # 2. Connections contained in this block (connectDouble): these wire
+            #    contained children to each other, so a parameterizable interface
+            #    is reached through a child at a frozen variant, NOT the block's
+            #    own surface (the valid transit/container case).
             for conn in connections:
                 ends = conn_end_instances.get(conn['connectionKey'], list())
                 if conn['isParameterizable'] and any(e in contained_inst_set for e in ends):
-                    add_interface(conn['interfaceKey'])
+                    add_interface(conn['interfaceKey'], own_surface=False)
 
-            # 3. Connection maps belonging to or terminating at this block.
+            # 3. Connection maps belonging to or terminating at this block: the
+            #    map binds the block's own parent-facing port, so a
+            #    parameterizable interface is on its own surface.
             for cm in connection_maps:
                 if (cm['isParameterizable'] and
                         (cm['blockKey'] == qualBlock or cm['instanceKey'] in qual_block_inst_set)):
-                    add_interface(cm['interfaceKey'])
+                    add_interface(cm['interfaceKey'], own_surface=True)
 
             # 4. Registers owned by this block (or parent block when this is
             #    a regHandler).
             for reg in registers_by_block.get(register_block, list()):
-                add_regmem(reg)
+                add_regmem(reg, own_surface=True)
 
             # 5. Memories owned by this block (or parent block when this is
             #    a regHandler).
             for mem in memories_by_block.get(register_block, list()):
-                add_regmem(mem)
+                add_regmem(mem, own_surface=True)
 
             # 6. Memory connections touching this block (container or port).
             for mc in memory_connections:
                 if mc['blockKey'] == qualBlock or mc['instanceKey'] in qual_block_inst_set:
                     if mc['isParameterizable']:
                         mem_row = memories_by_key[mc['memoryBlockKey']]
-                        add_regmem(mem_row)
+                        add_regmem(mem_row, own_surface=True)
 
             # 7. Register connections touching this block (container or port).
             for rc in register_connections:
                 if rc['blockKey'] == register_block or rc['instanceKey'] in qual_block_inst_set:
                     if rc['isParameterizable']:
                         reg_row = registers_by_key[rc['registerBlockKey']]
-                        add_regmem(reg_row)
+                        add_regmem(reg_row, own_surface=True)
 
             # 8. A block that declares its own `params:` is
             #    leaf-parameterizable even if no structure on its surface is
@@ -3575,6 +3740,25 @@ class projectCreate:
                 is_parameterizable = True
                 if own_param_context and own_param_context not in contexts:
                     contexts.append(own_param_context)
+
+            # A parameterizable structure on the block's own surface requires the
+            # block to declare its own `params:` so it is a
+            # template<typename Config> with a Config to instantiate the type.
+            # An own-surface flag with no own params has no valid C++
+            # realization: classDecl.py would emit a non-templated class that
+            # names Type<Config> with no Config in scope. The valid
+            # transit/container case is flagged only via step 2
+            # (own_surface=False) and is not rejected here.
+            if own_surface_param and own_param_context is None:
+                printError(
+                    f"Block '{blockName}' has a parameterizable structure on its "
+                    f"own surface (its own register, memory, or own-port "
+                    f"interface) but declares no params:. A non-templated block "
+                    f"has no Config to instantiate a parameterizable type; add a "
+                    f"params: declaration to make it a parameterizable (template) "
+                    f"block, or use non-parameterizable structures on its surface."
+                )
+                exit(warningAndErrorReport())
 
             # Derive defaultConfig from contexts[0] (file-name basename
             # sanitised) when present, otherwise from the block name.
@@ -3597,10 +3781,15 @@ class projectCreate:
                 config_context = ''
                 default_config = ''
 
-            # Mirror configContext onto the in-memory block row. _configHeaderContexts
-            # consumes it later in this same projectCreate pass, before the DB is
-            # reopened, so it reads the dict rather than re-querying SQL.
+            # Mirror the derived fields onto the in-memory block row. Later stages
+            # of this same projectCreate pass read the dict rather than re-querying
+            # SQL: _configHeaderContexts consumes configContext, and artifact
+            # hooks may filter on isParameterizable (the fileMap
+            # blockRegistrar cond). Without the mirror they would see the parse-time
+            # default (false) and the manifest would omit every registrar dir.
             block_row['configContext'] = config_context
+            block_row['isParameterizable'] = is_parameterizable
+            block_row['defaultConfig'] = default_config
 
             sql_param = 1 if is_parameterizable else 0
             g.cur.execute("UPDATE blocks SET isParameterizable = ?, "
@@ -3799,12 +3988,11 @@ class projectCreate:
                 # _post_validateBlockParamBacking; nothing to record here.
                 continue
             blockParams.setdefault(row['blockKey'], set()).add(constInfo['constantKey'])
-        # blocks.isParameterizable is computed by calcBlockConfigInfo() and
-        # written to the database only (not mirrored back into self.data /
-        # self.flatData), so it is the one input here that must be read from the
-        # DB.
-        g.cur.execute("SELECT blockKey, isParameterizable FROM blocks")
-        blockIsParameterizable = {r['blockKey']: bool(r['isParameterizable']) for r in g.cur.fetchall()}
+        # blocks.isParameterizable is computed by calcBlockConfigInfo(), which
+        # also mirrors it back onto the in-memory block rows, so read it from
+        # there rather than re-querying the DB.
+        blockIsParameterizable = {block['blockKey']: bool(block['isParameterizable'])
+                                  for block in self.flatData['blocks'].values()}
 
         # Validate parameterized-interface connection endpoints while the
         # per-declaration paramSet is still in memory, so it need not be persisted.
@@ -4765,7 +4953,18 @@ class projectCreate:
         if "blockDir" in sections:
             self.yamlDir = sections["blockDir"]
         else:
-            self.yamlDir = os.path.dirname(yamlFile)
+            yamlDir = os.path.dirname(yamlFile)
+            if layoutConfig['mode'] == 'hierarchical':
+                # hierarchical: a block's authored YAML lives in <node>/<yaml>/,
+                # and its generated functional segments are created beside that
+                # yaml/ dir. The decomposition anchor is therefore the node
+                # directory (the parent of the yaml/ dir), made absolute so the
+                # relative functional segment names join onto it at emit time.
+                self.yamlDir = os.path.dirname(os.path.abspath(yamlDir))
+            else:
+                # functional: directory relative to the central arch/yaml root,
+                # which the seam re-roots under each $root/<segment> (unchanged).
+                self.yamlDir = yamlDir
         if yamlFile not in self.includeValid and yamlFile not in self.specialContexts:
             # check if this is a nested project file
             if 'addressControl' not in sections:

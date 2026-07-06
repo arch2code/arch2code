@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T5.2: Leaf declares registerPorts: but owns no registers / memories.
+"""Leaf declares registerPorts: but owns no registers / memories.
 
 A leaf with `registerPorts:` and no register / memory rows still
 receives a router-to-leaf dispatch connection (the post-parse pass
@@ -41,7 +41,7 @@ instances:
 
 
 def _run():
-    print("T5.2: leaf with registerPorts: but no registers / memories")
+    print("leaf with registerPorts: but no registers / memories")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -62,7 +62,7 @@ def _run():
             f"empty leaf must not produce a handler block; got {offenders}"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T5.2")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

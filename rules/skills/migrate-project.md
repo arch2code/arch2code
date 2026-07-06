@@ -117,9 +117,99 @@ any hand-written code.
    `make -C <project>/rundir all run`). A clean build and run confirms the
    migration.
 
+## 4. (Opt-in) Migrate to hierarchical layout
+
+The functional → hierarchical layout migration is a **separate, opt-in step**,
+not part of the `make migrate` chain above and **not** gated by the
+`yamlFormat: 2` stamp. A project stays valid in functional layout forever; this
+step runs only when the project has chosen the hierarchical layout but its tree
+is still laid out functionally on disk.
+
+```text
+make migrate-hierarchical
+```
+
+`make migrate-hierarchical` wraps `migrateYaml.py --to-hierarchical --write
+<project.yaml>`. Like `make migrate` it is standalone and text-only (it never
+opens the database) and is idempotent — re-running a migrated project is a
+no-op. Drop the `--write` (run `migrateYaml.py --to-hierarchical <project.yaml>`
+by hand) for a dry-run that prints the full move/delete/rewrite map and changes
+nothing.
+
+### When it runs
+
+The step is a no-op unless the project is a migration candidate:
+
+- **Not opted in** — `fileGeneration.layout` is `functional` (the default). The
+  report says nothing to do.
+- **Already hierarchical** — the project file already sits under
+  `<prj>/<yaml>/`. The report says nothing to do.
+- **Candidate** — `fileGeneration.layout: hierarchical` is declared but the tree
+  is still functional. Relocation runs.
+
+Because relocation moves files where the unconditional phases edit content in
+place, it **presupposes the project is already `yamlFormat: 2`**. A candidate
+that opts into hierarchical before being format-2 clean is reported as
+`TODO_NOT_FORMAT2` and nothing is moved: run `make migrate` first, then
+`make migrate-hierarchical`.
+
+### What it moves
+
+For an unblocked candidate the tool relocates the tree, preserving user content
+byte-for-byte:
+
+- **Authored YAML.** `arch/yaml/<decomp>/*.yaml` → `<decomp>/yaml/*.yaml`. A
+  block with no decomposition subdir (`decomp=""`) maps to the **project-root
+  node** (`yaml/*.yaml` at the project root); no node directory is synthesized.
+- **Project file** → `prj/yaml/<projectName>Project.yaml`; **integration
+  orphans** (`fwIpMain`, `sc_main`, the `vl_wrap` aggregator) → `prj/fw/` /
+  `prj/verif/` (flattened). **Build-config `include/` and `rundir/` stay at the
+  project root** — they are user-owned entry points, not `prj/` orphans. The only
+  harness change is the `A2C_PRJ_YAML` line in the root `include/make/shared.mk`,
+  which the tool re-points at the moved project file
+  (`$(REPO_ROOT)/prj/yaml/<projectName>Project.yaml`); every other
+  `$(REPO_ROOT)/include/make/...` reference keeps working unchanged.
+- **Source.** Recognized fully-generated source (`Base`, `Registrar`,
+  `Includes`, `VariantConfig`, `_package`, and the HDL wrappers) is
+  **deleted** — marker-guarded by `GENERATED_CODE_BEGIN` — and recreated at the
+  hierarchical location by `make newmodule` / `make gen`. Every other source
+  (user-editable, or an unrecognized/custom fileMap type) **moves**
+  byte-preserving so its user regions are never lost.
+- **Relative references.** Relative `include:` / `projectFiles:` directives and
+  relative `#include` / `` `include `` paths inside **user regions** are
+  re-rooted through the new `yaml/` levels. Generated regions are left for
+  `make gen` to refresh; `$macro` and absolute paths are left alone.
+
+### Read the report
+
+`renderLayoutReport` prints the move/delete/rewrite map under either `DRY-RUN`
+(no `--write`) or `APPLIED` (`--write`). Manual items are listed for hand fixup
+using the same `<file>:<line>  <KIND>  <message>` format as the other phases:
+
+| Tool report `KIND` | Meaning | Resolve with |
+| --- | --- | --- |
+| `TODO_NOT_FORMAT2` | Hierarchical opted in before the project is `yamlFormat: 2`. Nothing is moved. | Run `make migrate` first, then `make migrate-hierarchical`. |
+| `TODO_UNGENERATED_FILE` | A source file matches a fully-generated name but carries no `GENERATED_CODE_BEGIN` marker. Left in place, **never deleted**. | Inspect the file: hand-move it to its hierarchical location, or add the marker if it should be generated. |
+| `TODO_UNREWRITABLE_PATH` | A relative `include:` / `projectFiles:` reference (or an authored YAML) resolves outside the migrated tree. Left byte-for-byte. | Re-point the reference by hand after the move. |
+
+### Finish the migration
+
+The deleted fully-generated source is recreated at the hierarchical location:
+
+```text
+make clean      # rebuild the database from the relocated project.yaml
+make newmodule  # create the generated modules at the hierarchical location
+make gen        # fill the generated regions
+```
+
+Then rebuild and run the project's normal targets to confirm the migration, and
+resolve any manual item the report listed.
+
 ## References
 
 - `make migrate` / `migrateYaml.py` — the unified orchestrator.
+- `make migrate-hierarchical` / `migrateYaml.py --to-hierarchical` — the opt-in
+  layout migration (`pysrc/migrateLayout.py`).
 - `pysrc/evalPyToSv.py` (Phase A), `pysrc/migrateAddressControl.py` (Phase B),
   `pysrc/migrateIncludes.py` (Includes phase) — the phase libraries.
 - `address-migration` skill — the in-depth reference for the address-control

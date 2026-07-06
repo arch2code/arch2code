@@ -67,9 +67,15 @@ def constructorInit(args, prj, data):
     baseClassName = f'{ className }Base{cfg}'
     defaultConfig = data['defaultConfig'] if isParameterizable else ''
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
-    out.append(f'#include "{className}.h"')
 
-    out += intf_gen_utils.sc_instance_includes(data, prj)
+    # In module mode the constructor bodies live in the same translation unit as
+    # the class (the block-module `.cppm`), and a module interface forbids
+    # #include after `export module`. The class header self-include and the
+    # contained-instance includes are therefore owned by the block-module GMF
+    # (moduleScaffold.blockModuleHeader); classic mode keeps emitting them here.
+    if args.mode != 'module':
+        out.append(f'#include "{className}.h"')
+        out += intf_gen_utils.sc_instance_includes(data, prj)
 
     if not hasOwnParams:
         out.append(f'SC_HAS_PROCESS({ className });\n')
@@ -83,12 +89,9 @@ def constructorInit(args, prj, data):
     # --gc-sections; under the project's direct-.o link model it is reachable
     # with no force-link reference from any parent or testbench TU.
     #
-    # Parameterized blocks: a self-registering static is emitted that
-    # registers <className><DefaultConfig> for each variant the block
-    # declares. Multi-Config-per-project bindings are deferred to a later
-    # iteration that propagates per-instance Config tuples in
-    # processYaml.py and emits a per-project trampoline TU.
-    out.extend(blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOwnParams, defaultConfig))
+    # Parameterized leaf blocks emit nothing here: their factory registration
+    # is owned by the per-assembler trampoline TU under registrar/.
+    out.extend(blockRegistrarInitLines(args, prj, data, className, hasOwnParams))
 
     if data['addressDecode']['isApbRouter']:
         if hasOwnParams:
@@ -450,125 +453,68 @@ def constructorBody(args, prj, data):
     # take the list and return a string
     return("\n".join(out))
 
-def blockRegistrarInitLines(args, prj, data, className, isParameterizable, hasOwnParams, defaultConfig):
+def blockRegistrarInitLines(args, prj, data, className, hasOwnParams):
     """Emit SC block registration lines at namespace scope, immediately
     following the SC_HAS_PROCESS line.
 
-    Two registration shapes coexist:
-
-    * **Parameterized SC blocks** are registered with the factory by the
-      per-block trampoline TU emitted via `<block>Registrar.cpp` (see
-      `templates/systemc/blockRegistrar.py`). The trampoline owns the
-      project-specific `(blockType, variant)` pairs that generated
-      callers look up. The variant string identifies the per-variant Config
-      policy unambiguously.
-
-      This implementation TU does not register the block; it emits
-      `[[gnu::used]]` instantiation anchors only — one per variant. Each
-      anchor is a free function that `make_shared`s the per-variant
-      `<B><PerVariantConfig>` specialization, and `gnu::used` keeps it (and
-      thus the forced implicit instantiation of the constructor body,
-      regHandler body, and other template members defined later in this
-      `.cpp`) from being elided. Without these anchors the trampoline TU,
-      which sees only declarations from `<block>.h`, would leave the
-      block's `make_shared` an unresolved external at link time. The
-      anchors insert no factory keys, so there is no shadowing of the
-      trampoline-registered entries.
-
     * **Non-templated SC blocks** register themselves via a free helper
       plus a self-registering static at namespace scope in this TU. The
-      static carries A2C_REGISTRATION_RETAIN; there is no force-link
-      function and parents hold no symbol reference to the block.
+      static carries A2C_REGISTRATION_RETAIN (see instanceFactory.h) so it
+      survives dead-code elimination and the linker's --gc-sections pass;
+      under the direct-.o link model the registration is reachable with no
+      force-link reference. The predicate is "non-templated" so parent
+      containers flagged isParameterizable solely because parameterizable
+      structures transit their surface (e.g., `ip_top`) also self-register
+      this way.
+
+    * **Parameterized leaf blocks (hasOwnParams)** are class templates that
+      live in a `<block>.cppm` module interface unit. Their factory
+      registration is owned by the per-assembler trampoline TU
+      (`registrar/<assembler>/<block>Registrar.cpp`, see
+      `templates/systemc/blockRegistrar.py`), which `import`s the block
+      module and instantiates `<block><Config>` directly. The module export
+      makes the template member bodies visible to that consumer, so no
+      instantiation anchor is needed in the module unit; this function emits
+      nothing for them.
     """
     out = list()
+
+    # Parameterized leaf blocks carry no registration material in their own
+    # module unit — the per-assembler trampoline owns it.
+    if hasOwnParams:
+        return out
 
     # No `instanceFactory::addParam` calls are emitted. Block constructors read
     # parameter values from `Config::*` directly; there is no runtime parameter
     # table.
-
-    # Per-variant Config descriptors. `_targetClass` maps each variant to the
-    # specialization that backs it: a parameterizable leaf (hasOwnParams) is a
-    # class template instantiated with its per-variant Config (or the default
-    # Config when no descriptor has values); a non-templated block uses the
-    # plain class name. These targets feed the non-templated self-registration
-    # lambdas below and the parameterized-block instantiation anchors.
-    #
-    # Only leaf parameterizable blocks (hasOwnParams) are class templates.
-    # Non-leaf parents that are flagged isParameterizable solely because
-    # parameterizable structures transit their surface are emitted as a single
-    # non-templated class with no template argument list.
-    variantConfigName = dict()
-    if hasOwnParams:
-        for desc in data['variantConfigs']:
-            if desc['values']:
-                variantConfigName[desc['variant']] = desc['configName']
-            else:
-                variantConfigName[desc['variant']] = defaultConfig
-
-    def _targetClass(variant):
-        if not hasOwnParams:
-            return className
-        configName = variantConfigName.get(variant, defaultConfig)
-        return f'{className}<{configName}>'
-
     if data['variants']:
         registerCalls = []
         for variant in sorted(data['variants']):
-            targetClass = _targetClass(variant)
             registerCalls.append(
                 f'    instanceFactory::registerBlock("{className}_model", '
                 f'[](const char * blockName, const char * variant, blockBaseMode bbMode) '
                 f'-> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>>'
-                f'(std::make_shared<{targetClass}>(blockName, variant, bbMode)); }}, '
+                f'(std::make_shared<{className}>(blockName, variant, bbMode)); }}, '
                 f'"{variant}");'
             )
     else:
-        targetClass = _targetClass('')
         registerCalls = [
             f'    instanceFactory::registerBlock("{className}_model", '
             f'[](const char * blockName, const char * variant, blockBaseMode bbMode) '
             f'-> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>>'
-            f'(std::make_shared<{targetClass}>(blockName, variant, bbMode)); }}, '
+            f'(std::make_shared<{className}>(blockName, variant, bbMode)); }}, '
             f'"");'
         ]
 
     out.append(f'// === Block factory registration ({className}) ===')
-    if not hasOwnParams:
-        # Non-templated blocks self-register through a namespace-scope static
-        # whose initializer runs before main(). The static carries
-        # A2C_REGISTRATION_RETAIN (see instanceFactory.h) so it survives
-        # compiler dead-code elimination and the linker's --gc-sections pass;
-        # under the project's direct-.o link model the registration is
-        # reachable with no force-link reference in any parent or testbench TU.
-        # Archive-packaged builds must link block archives with --whole-archive
-        # (build-system contract); no source attribute can substitute for it.
-        #
-        # The predicate is "non-templated" so parent containers flagged
-        # isParameterizable solely because parameterizable structures transit
-        # their surface (e.g., `ip_top`) also self-register this way.
-        out.append(f'void register_{className}_variants() {{')
-        out.extend(registerCalls)
-        out.append('}')
-        out.append('')
-        out.append('namespace {')
-        out.append(f'[[maybe_unused]] A2C_REGISTRATION_RETAIN int _{className}_registered = '
-                   f'(register_{className}_variants(), 0);')
-        out.append('} // namespace')
-    else:
-        # Parameterized block: the per-block trampoline owns the factory
-        # registrations. This implementation TU keeps factory-shaped anchor
-        # functions so the compiler instantiates the same block specializations
-        # without inserting duplicate factory keys.
-        instantiationVariants = sorted(data['variants']) if data['variants'] else ['']
-        out.append('namespace {')
-        for index, variant in enumerate(instantiationVariants):
-            targetClass = _targetClass(variant)
-            out.append(f'[[gnu::used]] std::shared_ptr<blockBase> _{className}_instantiate_variant_{index}(')
-            out.append('    const char * blockName, const char * variant, blockBaseMode bbMode) {')
-            out.append(f'    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{targetClass}>(blockName, variant, bbMode));')
-            out.append('}')
-            out.append(f'[[maybe_unused, gnu::used]] auto _{className}_instantiate_variant_{index}_anchor = &_{className}_instantiate_variant_{index};')
-        out.append('} // namespace')
+    out.append(f'void register_{className}_variants() {{')
+    out.extend(registerCalls)
+    out.append('}')
+    out.append('')
+    out.append('namespace {')
+    out.append(f'[[maybe_unused]] A2C_REGISTRATION_RETAIN int _{className}_registered = '
+               f'(register_{className}_variants(), 0);')
+    out.append('} // namespace')
     out.append('// === End block factory registration ===')
     out.append('')
     return out

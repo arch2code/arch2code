@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E1.1: Block declares both addressBlock: and registerPorts:.
+"""Block declares both addressBlock: and registerPorts:.
 
 Asserts that arch2code.py exits non-zero and that stderr names the
 offending block and both field names. Diagnostic emitted by
@@ -50,7 +50,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E1.1: block declares both addressBlock: and registerPorts:")
+    print("block declares both addressBlock: and registerPorts:")
     result = build_database(ARCH_YAML, expect_success=False)
     db_path, project_path, arch_paths, completed = result
     try:
@@ -62,7 +62,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E1.1")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

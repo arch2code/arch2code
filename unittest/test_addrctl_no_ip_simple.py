@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T4.1: One router, two non-parameterized leaves each with one register."""
+"""One router, two non-parameterized leaves each with one register."""
 
 import sys
 
@@ -43,7 +43,7 @@ registers:
 
 
 def _run():
-    print("T4.1: single router, two non-parameterized leaves")
+    print("single router, two non-parameterized leaves")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -77,7 +77,7 @@ def _run():
             f"INSTANCES_WITH_REGAPB missing '{leaf_b_key}'"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T4.1")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

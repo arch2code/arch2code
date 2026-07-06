@@ -60,6 +60,7 @@ templates:
 dirs: # this is list of locations that can be referenced as base path in fileMap section
   #root: ../..                  # project root directory relative to project file - required to be supplied by
   base: $root/base             # for block base classes
+  registrar: $root/registrar   # per-assembler block-registration trampolines + consumer-selected configs
   model: $root/model           # systemC model implementation
   rtl: $root/rtl               # RTL implementation
   vl_wrap: $root/verif/vl_wrap # rtl wrapper files
@@ -73,6 +74,45 @@ dirs: # this is list of locations that can be referenced as base path in fileMap
 # architecture hierarchy.
 fileGeneration:
   template: $a2c/templates/fileGen/fileGen.py
+  # Project layout mode (decomposition vs functional axis ordering):
+  #   functional   - functional axis outer: $root/<model|rtl|...>/<decomp>/file
+  #                  (today's behavior; default for back-compat / no regression)
+  #   hierarchical - decomposition axis outer: <node>/<model|rtl|...>/file
+  # Selected per project file; a nested project uses its own setting.
+  layout: functional
+  # Directory defaults for hierarchical layout. The functional placement is the
+  # top-level dirs: section (the compatibility surface); these are the
+  # node-relative segments created beside each block's yaml/ in hierarchical
+  # mode. The multi-level functional tails are flattened (verif/vl_wrap -> verif,
+  # fw/include -> fw). yaml/prj/rundir/include are project-scope conventions, not
+  # fileMap segments: yaml is the authored-YAML subdir of a node, prj is the
+  # container for generated orphan artifacts, rundir is the per-project build dir,
+  # and include is the user-owned build config. rundir and include stay at the
+  # project root ($root-anchored) as user-owned entry points; only the generated
+  # orphans live under prj/.
+  hierarchicalDirs:
+    base: base
+    registrar: registrar
+    model: model
+    rtl: rtl
+    tb: tb
+    vl_wrap: verif      # flattened (functional: $root/verif/vl_wrap)
+    fwInc: fw           # flattened (functional: $root/fw/include)
+    yaml: yaml
+    prj: $root/prj
+    rundir: $root/rundir
+    include: $root/include  # build config stays at project root (user-owned, not under prj/)
+  # Build manifest groups for fileMap basePath segments. Artifact placement is
+  # selected by fileMap[*].basePath; this map records how each segment
+  # participates in generated build discovery.
+  buildGroups:
+    base: sc
+    registrar: sc
+    model: sc
+    tb: sc
+    fwInc: sc
+    rtl: sv
+    vl_wrap: vl
   fileMap:
     # generation has 2 modes, block and context
     # block creates a file per design block and cond: depend on the block definition
@@ -86,13 +126,24 @@ fileGeneration:
     # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file
     # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
     blockBase   : { name : "Base",            ext: {hdr: "h"},             cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    desc: "Module Base class header file"}
-    block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
-    # blockRegistrar emits the per-block trampoline TU described in
-    # plan-block-registration.md. The cond predicate is OR semantics —
-    # the file is generated if the block uses Config (parameterized
-    # SC) or has a Verilated wrapper. Pure non-templated SC-only
+    # A parameterizable leaf block (hasOwnParams: declares its own params:, so
+    # it is a template<typename Config> class) is emitted as a single C++20
+    # module interface unit (blockModule, .cppm) whose member bodies are
+    # module-visible so a consumer registrar can `import` it and instantiate
+    # block<Config>. All other blocks (non-templated, including
+    # container-parameterizable ones) keep the classic .h/.cpp split. The two
+    # entries are mutually exclusive on hasOwnParams.
+    block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true}, condAnd: {hasOwnParams: false}, mode: block, basePath: model, desc: "Model implementation file (non-templated blocks)"}
+    blockModule : { name : "",                ext: {cppm: "cppm"},         cond: {hasOwnParams: true}, condAnd: {hasMdl: true}, mode: block, basePath: model, desc: "Parameterizable block module interface unit (templated blocks)"}
+    # blockRegistrar emits the per-assembler trampoline TUs described in
+    # plan-reusable-ip-registrar.md. mode: registrar iterates each assembling
+    # block and emits one <child>Registrar.cpp per distinct parameterizable
+    # child it instantiates, under the assembler's directory in the registrar
+    # root (mirroring how base mirrors the yaml tree). The cond/condAnd
+    # predicate is applied to the instantiated child: only parameterizable
+    # children with a model get a trampoline. Pure non-templated SC-only
     # blocks self-register from their own .cpp and gain no trampoline.
-    blockRegistrar : { name : "Registrar",    ext: {src: "cpp"},           cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: block, basePath: model, desc: "Per-block trampoline registrar TU"}
+    blockRegistrar : { name : "Registrar",    ext: {src: "cpp"},           cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, desc: "Per-assembler per-child trampoline registrar TU"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
     # Canonical parameterized SV wrapper body, emitted once per parameterizable
@@ -121,6 +172,9 @@ postProcess:
   # register-owning leaves, and synthesises register handlers.
   - $a2c/config/postParseRegisterPorts.py
   - $a2c/config/postParseChecks.py
+
+createArtifacts:
+  - $a2c/config/createBuildManifest.py
 
 # Top-level address-policy sections. Prefer these project.yaml fields for
 # new or migrated projects; they normalize into the same ADDRESS_CONFIG state

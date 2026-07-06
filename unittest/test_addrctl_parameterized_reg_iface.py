@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TT.3: IP leaf whose registerPorts: interface references a parameterizable type.
+"""IP leaf whose registerPorts: interface references a parameterizable type.
 
 The leaf declares `ipParameters:` with a parameter that drives a
 register-bus data type, and the leaf's `registerPorts:` interface binds
@@ -13,8 +13,8 @@ Both variants resolve the register width to the same value so that the
 emitted bind interface remains consistent with the router's upstream
 `apbReg`. The intent here is structural coverage of the parameterized-
 type code path on the register-bus interface; per-variant width
-*mismatch* diagnostics are covered separately by the E3.2 prerequisite
-fixture.
+*mismatch* diagnostics are covered separately by the packed-form
+mismatch fixture.
 
 Topology::
 
@@ -135,7 +135,7 @@ registers:
 
 
 def _run():
-    print("TT.3: parameterizable register-bus interface on a leaf")
+    print("parameterizable register-bus interface on a leaf")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -180,13 +180,13 @@ def _run():
             assert key in instances_with_regapb, \
                 f"INSTANCES_WITH_REGAPB missing '{key}'"
 
-        # The Stage 7 register-bus invariant: no synthesised register-
+        # The register-bus invariant: no synthesised register-
         # bus bind carries `_context: '_global'`. This is asserted in
         # every test_addrctl_*.py fixture for repository-wide coverage.
         # See _addrctl_helpers.assert_no_global_register_binds.
         from _addrctl_helpers import assert_no_global_register_binds
         assert_no_global_register_binds(prj)
-        print("PASS: TT.3")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

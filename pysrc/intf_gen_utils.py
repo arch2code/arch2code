@@ -357,6 +357,15 @@ def cpp_module_name(includeName):
     # sanitizes it into a legal module-name token.
     return includeName.replace('-', '_').replace('.', '_')
 
+def cpp_block_module_name(blockName):
+    # C++20 module name for a parameterizable block's own interface unit
+    # (`<block>.cppm`). Spelled `<block>.block` so it stays distinct from the
+    # context types module (`<context>`, from `<context>Includes.cppm`) the
+    # block imports. The block-name token is sanitized the same way as
+    # cpp_module_name; the `.block` suffix is literal. The block identity comes
+    # from the block view (`data['blockName']`), not from a filename.
+    return f'{cpp_module_name(blockName)}.block'
+
 def cpp_namespace_name(includeName):
     return f'{cpp_module_name(includeName)}_ns'
 
@@ -375,6 +384,52 @@ def cpp_context_include_lines(prj, data, context, fileMapKey):
         return [f'import {moduleName};',
                 f'using namespace {cpp_namespace_name(prj.includeName[context])};']
     return [f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"']
+
+def sc_class_dependency_includes(args, prj, data):
+    # The dependency lines a block's class declaration needs, returned as
+    # ordered (kind, text) pairs. kind is 'include' for a textual #include or
+    # 'import' for a C++20 module import / using-namespace line.
+    #
+    # Two rendering contexts share this set so they cannot drift:
+    #   * classDecl (classic mode) emits the lines inline, in order, ahead of
+    #     the class — preserving the historical interleaving of context imports
+    #     between the config-policy includes and apbBusDecode.h.
+    #   * the block-module GMF scaffold (moduleScaffold.blockModuleHeader)
+    #     splits them: 'include' lines go in the global module fragment, the
+    #     'import' lines after `export module`.
+    out = list()
+    out.append(('include', '#include "logging.h"'))
+    out.append(('include', '#include "instanceFactory.h"'))
+    baseInclude = prj.getModuleFilename('blockBase', data["blockName"], 'hdr')
+    out.append(('include', f'#include "{baseInclude}"'))
+    if len(data['registers']) > 0 or len(data["memories"]) > 0:
+        out.append(('include', '#include "addressMap.h"'))
+    if len(data['registers']) > 0:
+        out.append(('include', '#include "hwRegister.h"'))
+    needsHwMemory = len(data["memories"]) > 0 or len(data.get('memoriesParent', {})) > 0
+    registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
+    if registerDecode and not data['blockInfo']['isRegHandler']:
+        for reg, regData in data['registers'].items():
+            if regData['regType'] == 'memory':
+                needsHwMemory = True
+                break
+    if needsHwMemory:
+        out.append(('include', '#include "hwMemory.h"'))
+    thunker_protocols = sc_thunker_protocols(data, prj)
+    for proto in sorted(thunker_protocols):
+        out.append(('include', f'#include "{proto}_port_thunker.h"'))
+    for context in sorted(data.get('configIncludeContext', {})):
+        if context in data['includeFiles'].get('config_hdr', {}):
+            out.append(('include', f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"'))
+    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
+    for context in data['classIncludeContext']:
+        if context in data['includeFiles'].get(fileMapKey, {}):
+            for line in cpp_context_include_lines(prj, data, context, fileMapKey):
+                kind = 'import' if line.startswith(('import ', 'using namespace ')) else 'include'
+                out.append((kind, line))
+    if data['addressDecode']['isApbRouter']:
+        out.append(('include', '#include "apbBusDecode.h"'))
+    return out
 
 def wrap_module_namespace(args, data, lines):
     if args.mode != 'module':

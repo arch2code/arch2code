@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T2.6: Nested router that is itself parameterized.
+"""Nested router that is itself parameterized.
 
 Two-level topology (primary + one nested router) where the nested
 router block declares `params:` and `ipParameters:` with two named
@@ -9,9 +9,9 @@ configuration. Asserts the post-parse pass tolerates parameterized
 router blocks, the nested-router walk identifies the primary correctly,
 and `isParameterizable` is set on the router's block row.
 
-Distinct from TT.4: T2.6 covers a nested router whose own block carries
-parameterization metadata (params + variants) without the parameterized
-structures lying on the upstream register-bus interface itself.
+This covers a nested router whose own block carries parameterization
+metadata (params + variants) without the parameterized structures lying on
+the upstream register-bus interface itself.
 
 Topology::
 
@@ -143,7 +143,7 @@ registers:
 
 
 def _run():
-    print("T2.6: nested router that is itself parameterized")
+    print("nested router that is itself parameterized")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -197,7 +197,7 @@ def _run():
                 f"INSTANCES_WITH_REGAPB missing '{key}'"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T2.6")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

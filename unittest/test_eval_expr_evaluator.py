@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for the integer eval-expression evaluator (Stage E1).
+"""Unit tests for the integer eval-expression evaluator.
 
 Exercises each operator and unary, precedence/associativity flowing through
 to numeric results, $clog2 over an expression, symbol resolution via the
@@ -186,7 +186,7 @@ _TESTS = [
 
 def main():
     print("=" * 70)
-    print("TESTING EVAL EXPRESSION EVALUATOR (Stage E1)")
+    print("TESTING EVAL EXPRESSION EVALUATOR")
     print("=" * 70)
 
     all_ok = True

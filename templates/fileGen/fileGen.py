@@ -36,6 +36,8 @@ def render(args, prj, data):
             else:
                 return(block_src(args, prj, data))
             return(block_src(args, prj, data))
+        case 'blockModule_cppm':
+            return(blockModule_cppm(args, prj, data))
         case 'blockRegistrar_src':
             return(blockRegistrar_src(args, prj, data))
         case 'rtlModule_sv':
@@ -135,6 +137,31 @@ def block_src(args, prj, data):
     out = list()
     out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=constructor --section=init\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('// GENERATED_CODE_BEGIN --template=constructor --section=body\n')
+    out.append('    // GENERATED_CODE_END\n')
+    out.append('};\n\n')
+    return("".join(out))
+
+# C++20 module interface unit for a parameterizable (hasOwnParams) block. The
+# class declaration and all of its template member bodies live in one `.cppm`
+# so a consumer registrar can `import <block>.block;` and instantiate
+# `<block><Config>` with no out-of-line `.cpp`. The file-level `--mode=module`
+# routes classDecl/constructor to their module-mode branches; the
+# blockModuleHeader scaffold owns the global module fragment and the
+# `export module <block>.block;` declaration.
+def blockModule_cppm(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --mode=module\n')
+    out.append('// GENERATED_CODE_BEGIN --template=moduleScaffold --section=blockModuleHeader\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=classDecl\n')
+    out.append('\n')
+    out.append('    // GENERATED_CODE_END\n')
+    out.append('    // block implementation members\n\n')
+    out.append('};\n\n')
     out.append('// GENERATED_CODE_BEGIN --template=constructor --section=init\n')
     out.append('// GENERATED_CODE_END\n')
     out.append('// GENERATED_CODE_BEGIN --template=constructor --section=body\n')

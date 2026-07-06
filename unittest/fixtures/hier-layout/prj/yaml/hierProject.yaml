@@ -1,0 +1,44 @@
+yamlFormat: 2
+
+# Green-field hierarchical-layout fixture (plan-decomp-functional-layout.md
+# T1.5). Proves the decomposition-outer inversion: each block's functional
+# segments (base/model/rtl/tb/fw) are generated beside its yaml/ dir, under the
+# node directory, rather than under shared $root/<segment> roots. The project
+# file lives in the prj/ container; authored block YAML lives in each node's
+# yaml/ subdir (core/, leaf/).
+projectName: hier
+topInstance: hier_tb
+
+dirs:
+  root: ../..    # fixture root, relative to this project file (prj/yaml/)
+
+fileGeneration:
+  layout: hierarchical
+  template: $a2c/templates/fileGen/fileGen.py
+  fileMap:
+    blockBase   : { name : "Base",            ext: {hdr: "h"},             cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    desc: "Module Base class header file"}
+    block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
+    rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
+    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
+    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench config files"}
+    tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench external files"}
+    includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
+    package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     desc: "yaml based package file"}
+  fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+
+projectFiles:
+  - ../../core/yaml/core.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true

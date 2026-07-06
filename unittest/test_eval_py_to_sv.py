@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for the Python->SV `eval` converter (Stage E1.5 core).
+"""Unit tests for the Python->SV `eval` converter.
 
 Exercises `convertExpr` per conversion rule, numeric equivalence between the
 original Python expression and the converted SV expression, idempotency, the
@@ -48,8 +48,7 @@ def _expectManual(expr, reasonSubstr=None):
         raise AssertionError(f"{expr!r}: reason {got.reason!r} missing {reasonSubstr!r}")
 
 
-# Conversion rules, drawn from the repo inventory in
-# plan-eval-python-to-sv-migration.md.
+# Conversion rules, one test per supported Python->SV expression form.
 
 def test_bit_length_minus_one():
     # ($X - 1).bit_length()  ->  $clog2($X), no/with spacing, real symbol names.
@@ -233,7 +232,7 @@ _TESTS = [
 
 def main():
     print("=" * 70)
-    print("TESTING PYTHON->SV EVAL CONVERTER (Stage E1.5)")
+    print("TESTING PYTHON->SV EVAL CONVERTER")
     print("=" * 70)
 
     all_ok = True

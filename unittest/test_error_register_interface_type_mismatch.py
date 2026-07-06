@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E3.1: synthesized register-bus bind crosses interfaceType values."""
+"""Synthesized register-bus bind crosses interfaceType values."""
 
 import sys
 
@@ -76,7 +76,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E3.1: register-bus interfaceType mismatch")
+    print("register-bus interfaceType mismatch")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
@@ -88,7 +88,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E3.1")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

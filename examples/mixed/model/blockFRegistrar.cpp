@@ -5,7 +5,7 @@
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "mixedVariantConfig.h"
-#include "blockF.h"
+import blockF.block;
 
 namespace {
 struct _blockF_registrar {

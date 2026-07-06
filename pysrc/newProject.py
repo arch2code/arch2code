@@ -45,9 +45,10 @@ topInstance: testbench
 # $xxx is a macro that is replaced by the directory. Note macro replacement only works as first character 
 # root defines the top level directory for the project, and other directories are defined relative to this.
 # note that $a2c is automatically created by the system and points to the a2c directory
-dirs: 
+dirs:
   root: ../..    # project root directory relative to project file - required
   base: $root/base             # for block base classes
+  registrar: $root/registrar   # per-assembler block-registration trampolines + consumer-selected configs
   model: $root/model           # systemC model implementation
   rtl: $root/rtl               # RTL implementation
   vl_wrap: $root/verif/vl_wrap # rtl wrapper files

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T4.3: Non-parameterized leaf and parameterized leaf under one router.
+"""Non-parameterized leaf and parameterized leaf under one router.
 
 Asserts the post-parse pass treats both leaves identically — one
 router-to-leaf bind per leaf instance, one handler per leaf block —
@@ -68,7 +68,7 @@ registers:
 
 
 def _run():
-    print("T4.3: parameterized + non-parameterized leaf under one router")
+    print("parameterized + non-parameterized leaf under one router")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -87,7 +87,7 @@ def _run():
             find_instance(prj, inst)
 
         assert_no_global_register_binds(prj)
-        print("PASS: T4.3")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Batch C: migrated `examples/ip_test/` view assertions.
+"""Migrated `examples/ip_test/` view assertions.
 
-Covers the test-plan rows whose value is reading the post-migration
-`ip_test` database rather than a synthetic topology fixture:
+Reads the post-migration `ip_test` database rather than a synthetic
+topology fixture, covering:
 
-- T1.6 / T2.4 — the routed leaf `ip` declares its register-bus
+- Leaf interface scoping — the routed leaf `ip` declares its register-bus
   interface (`ipReg`) in its own scope, distinct from the routers'
   upstream interface (`apbReg`); the divergence is reconciled in the
   leaf-to-handler connectionMap, and the packed form matches so the
   build succeeds.
-- T2.3 — the primary router `apbDecode` serves direct leaves
+- The primary router `apbDecode` serves direct leaves
   (`uIp0`, `uIp1`) *and* a nested router (the `uBridge` subtree) from
   the same address group.
-- T2.5 — the nested `bridgeApbDecode` router dispatches to the leaves
+- The nested `bridgeApbDecode` router dispatches to the leaves
   inside the cross-config `ipBridge` thunker container.
 
 Unlike the synthetic `test_addrctl_*.py` fixtures, this test opens the
@@ -55,7 +55,7 @@ def _build_ip_test_db():
 
 
 def _assert_leaf_interface_scoping(prj):
-    """T1.6 / T2.4: leaf-scoped `ipReg` distinct from router `apbReg`."""
+    """Leaf-scoped `ipReg` distinct from router `apbReg`."""
     # Routers resolve their own upstream APB interface.
     for router, group in (('apbDecode', 'top'), ('bridgeApbDecode', 'bridge')):
         key, _ = find_block(prj, router)
@@ -108,7 +108,7 @@ def _assert_leaf_interface_scoping(prj):
 
 
 def _assert_primary_serves_leaves_and_nested_router(prj):
-    """T2.3: primary router has direct leaves AND a nested router."""
+    """Primary router has direct leaves AND a nested router."""
     for leaf in ('uIp0', 'uIp1'):
         conns = find_connections(prj, src='uAPBDecode', dst=leaf)
         assert len(conns) == 1, \
@@ -129,7 +129,7 @@ def _assert_primary_serves_leaves_and_nested_router(prj):
 
 
 def _assert_nested_router_subtree(prj):
-    """T2.5: the bridge nested router dispatches to its own leaves."""
+    """The bridge nested router dispatches to its own leaves."""
     for leaf in ('uBridgeIp0', 'uBridgeIp1'):
         conns = find_connections(prj, src='uBridgeAPBDecode', dst=leaf)
         assert len(conns) == 1, \
@@ -143,7 +143,7 @@ def _assert_nested_router_subtree(prj):
 
 
 def _run():
-    print("Batch C: migrated ip_test view assertions (T1.6/T2.3/T2.4/T2.5)")
+    print("migrated ip_test view assertions")
     db_path = _build_ip_test_db()
     try:
         prj = projectOpen(db_path)

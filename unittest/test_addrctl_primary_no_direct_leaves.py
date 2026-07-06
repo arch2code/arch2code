@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T2.2: Primary router has no direct leaves; all leaves under nested router.
+"""Primary router has no direct leaves; all leaves under nested router.
 
 Asserts the primary router emits a parent-to-child router bind but no
 router-to-leaf binds, and that the nested router emits binds to its own
@@ -54,7 +54,7 @@ registers:
 
 
 def _run():
-    print("T2.2: primary router with no direct leaves")
+    print("primary router with no direct leaves")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -85,7 +85,7 @@ def _run():
                 f"INSTANCES_WITH_REGAPB missing '{key}'"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T2.2")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

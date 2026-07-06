@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2.4: More than one primary-router candidate.
+"""More than one primary-router candidate.
 
 Diagnostic emitted by `_findPrimaryRouter` in
 `config/postParseRegisterPorts.py`. Asserts the diagnostic names every
@@ -79,7 +79,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E2.4: more than one primary-router candidate")
+    print("more than one primary-router candidate")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
@@ -91,7 +91,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E2.4")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

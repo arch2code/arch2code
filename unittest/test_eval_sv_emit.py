@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage E4 - eval-derived parameterizable constants emit as a module-local
+"""Eval-derived parameterizable constants emit as a module-local
 SystemVerilog ``localparam`` whose RHS is translated from the persisted
 ``evalCanonical`` string, symbolic in the owning module's parameters.
 
@@ -402,7 +402,7 @@ def test_foreign_param_closure_not_selected_for_block():
 
 def run_all_tests():
     print("\n" + "="*70)
-    print("TESTING: Stage E4 - SV localparam emission from evalCanonical")
+    print("TESTING: SV localparam emission from evalCanonical")
     print("="*70)
     tests = [
         test_emit_sv_canonical_translation,

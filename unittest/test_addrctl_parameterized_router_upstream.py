@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TT.4: Nested router whose upstreamPort carries parameterizable structures.
+"""Nested router whose upstreamPort carries parameterizable structures.
 
 The nested router declares `params:` and `ipParameters:` with a
 parameter that drives the data structure on its own
@@ -12,7 +12,7 @@ flagged `isParameterizable`.
 The resolved parameter value matches the primary router's upstream
 data width so that the parent → nested router-to-router bind remains
 packed-form compatible. Width-mismatch behavior is covered by the
-E3.2 prerequisite fixture, not here.
+packed-form mismatch fixture, not here.
 
 Topology::
 
@@ -161,7 +161,7 @@ registers:
 
 
 def _run():
-    print("TT.4: nested router with parameterizable upstream interface")
+    print("nested router with parameterizable upstream interface")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -211,7 +211,7 @@ def _run():
             )
 
         assert_no_global_register_binds(prj)
-        print("PASS: TT.4")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

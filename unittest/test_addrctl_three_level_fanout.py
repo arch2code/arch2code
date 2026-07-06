@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T3.2: Primary router with two nested routers at the same level.
+"""Primary router with two nested routers at the same level.
 
 Fan-out shape: a single primary dispatches to two independent nested
 subtrees, each carrying its own router and routed leaf. Asserts that
@@ -77,7 +77,7 @@ registers:
 
 
 def _run():
-    print("T3.2: primary router with two nested routers (fan-out)")
+    print("primary router with two nested routers (fan-out)")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -123,7 +123,7 @@ def _run():
                 f"INSTANCES_WITH_REGAPB missing '{key}'"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T3.2")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T3.4: One register-bearing block reused at three different depths.
+"""One register-bearing block reused at three different depths.
 
 The canonical multi-level reuse case. A single routed-leaf block
 (`myLeaf`) is instantiated three times — once in the primary router's
@@ -82,7 +82,7 @@ registers:
 
 
 def _run():
-    print("T3.4: register-bearing block reused at three depths")
+    print("register-bearing block reused at three depths")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -146,7 +146,7 @@ def _run():
                 f"INSTANCES_WITH_REGAPB missing '{key}'"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T3.4")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

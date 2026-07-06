@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2.5b: Register-owning leaf has no instance served by a router.
+"""Register-owning leaf has no instance served by a router.
 
 Diagnostic emitted by `postProcess` in
 `config/postParseRegisterPorts.py` while synthesising register handlers.
@@ -57,7 +57,7 @@ REQUIRED_SUBSTRINGS = [
 
 
 def _run():
-    print("E2.5b: register-owning leaf has no serving router")
+    print("register-owning leaf has no serving router")
     db_path, project_path, arch_paths, completed = build_database(
         ARCH_YAML, expect_success=False)
     try:
@@ -69,7 +69,7 @@ def _run():
                     f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
                 )
                 return False
-        print("PASS: E2.5b")
+        print("PASS")
         return True
     finally:
         cleanup([project_path, db_path] + arch_paths)

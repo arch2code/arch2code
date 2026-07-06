@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T5.5: A register-owning top-down leaf with NO registerPorts: infers
+"""A register-owning top-down leaf with NO registerPorts: infers
 its register bus from the serving router.
 
 `registerPorts:` is the boundary marker for a bottom-up reusable IP: only
@@ -9,9 +9,9 @@ register-bus interface and canonical port from the serving router, mirroring
 the way the legacy `postParseRegister.py` sourced the interface from the
 project-wide RegisterBusInterface.
 
-This is the inference counterpart to T1.1, which covers the authored
-bottom-up boundary leaf (one that DOES declare registerPorts:). The fixture
-here declares a register but no registerPorts:; the assertions confirm the
+This is the inference counterpart to the authored bottom-up boundary leaf
+(one that DOES declare registerPorts:). The fixture here declares a register
+but no registerPorts:; the assertions confirm the
 generator succeeds and produces the inferred register-bus surface on the
 router-to-leaf connection, the leaf-to-handler connectionMap, and both the
 leaf and synthesised-handler block views.
@@ -61,7 +61,7 @@ registers:
 
 
 def _run():
-    print("T5.5: top-down leaf with no registerPorts: infers register bus")
+    print("top-down leaf with no registerPorts: infers register bus")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -130,7 +130,7 @@ def _run():
         # ---- No-_global invariant ----
         assert_no_global_register_binds(prj)
 
-        print("PASS: T5.5")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

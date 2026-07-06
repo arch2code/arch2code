@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""T4.2: Two-level hierarchy with non-parameterized leaves only.
+"""Two-level hierarchy with non-parameterized leaves only.
 
-Same shape as T2.1 (primary + nested router, leaves under each) but
+Same shape as the primary + nested router case (leaves under each) but
 confirms the post-parse pass does not require any ipParameters: /
 variants and that the resulting connections carry no per-variant
 ConfigType.
@@ -53,13 +53,13 @@ registers:
 
 
 def _run():
-    print("T4.2: two-level hierarchy, no IP parameterization")
+    print("two-level hierarchy, no IP parameterization")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
         prj = projectOpen(db_path)
 
-        # Connection / bind shape matches T2.1.
+        # Connection / bind shape matches the primary + nested router case.
         assert len(find_connections(prj, src='uAPBDecode', dst='uTopLeaf')) == 1
         assert len(find_connections(prj, src='uSubDecode', dst='uSubLeaf')) == 1
         assert len(find_connections(prj, src='uAPBDecode', dst='uSub')) == 1
@@ -75,7 +75,7 @@ def _run():
                 )
 
         assert_no_global_register_binds(prj)
-        print("PASS: T4.2")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

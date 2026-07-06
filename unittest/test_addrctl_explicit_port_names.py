@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T5.4: Router declares non-default upstreamPort / registerDecoderPort.
+"""Router declares non-default upstreamPort / registerDecoderPort.
 
 Asserts the router-side addressBlock view echoes the authored values
 and that the router-to-leaf srcport is built from the custom
@@ -67,7 +67,7 @@ registers:
 
 
 def _run():
-    print("T5.4: router with explicit non-default port names")
+    print("router with explicit non-default port names")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -95,7 +95,7 @@ def _run():
             f"{view['addressDecode'].get('registerBusPort')!r}"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T5.4")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

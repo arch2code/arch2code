@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T2.1: Primary router, one nested router, one leaf under each.
+"""Primary router, one nested router, one leaf under each.
 
 Asserts the post-parse pass identifies the primary router by hierarchy
 walk, emits a parent-to-child router connection, and emits
@@ -57,7 +57,7 @@ registers:
 
 
 def _run():
-    print("T2.1: primary + one nested router, one leaf under each")
+    print("primary + one nested router, one leaf under each")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -99,7 +99,7 @@ def _run():
                 f"INSTANCES_WITH_REGAPB missing '{key}'; got {instances_with_regapb}"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T2.1")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

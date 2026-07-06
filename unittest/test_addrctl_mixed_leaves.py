@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T1.5: One router, mixed leaves — one routed leaf and one plain leaf.
+"""One router, mixed leaves — one routed leaf and one plain leaf.
 
 Asserts that the plain leaf receives no synthesised router-to-leaf
 dispatch connection, while the routed leaf does. This pins
@@ -49,7 +49,7 @@ registers:
 
 
 def _run():
-    print("T1.5: single router, one routed leaf plus one plain leaf")
+    print("single router, one routed leaf plus one plain leaf")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -83,7 +83,7 @@ def _run():
             f"INSTANCES_WITH_REGAPB must not list plain leaf '{plain_inst}'"
 
         assert_no_global_register_binds(prj)
-        print("PASS: T1.5")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T1.1: One router, one routed leaf with one register.
+"""One router, one routed leaf with one register.
 
 Asserts the canonical post-parse outputs of
 `config/postParseRegisterPorts.py` for the smallest new-schema
@@ -49,7 +49,7 @@ registers:
 
 
 def _run():
-    print("T1.1: single router, one routed leaf with one register")
+    print("single router, one routed leaf with one register")
     db_path, project_path, arch_paths = build_database(ARCH_YAML)
     paths = [project_path, db_path] + arch_paths
     try:
@@ -128,7 +128,7 @@ def _run():
         # ---- No-_global invariant ----
         assert_no_global_register_binds(prj)
 
-        print("PASS: T1.1")
+        print("PASS")
         return True
     finally:
         cleanup(paths)

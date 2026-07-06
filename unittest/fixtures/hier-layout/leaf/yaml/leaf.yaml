@@ -1,0 +1,15 @@
+# leaf node: a separate decomposition node from core. Proves the inversion
+# places leaf's functional segments under leaf/ (not a shared root), beside its
+# own leaf/yaml/. leaf carries no own types/interfaces, so it emits no context
+# package/fw files of its own; its dIn/dOut ports are derived from the datIf
+# connections authored in core.yaml (the cross-node type dependency on core's
+# context).
+blocks:
+  leaf:
+    desc: "Pass-through pipeline stage: forwards each word from its dIn (dst)
+           port to its dOut (src) port. Instantiated twice and wired in series
+           by core."
+    hasVl: false
+    hasRtl: true
+    hasMdl: true
+    hasTb: false
