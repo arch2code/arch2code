@@ -79,7 +79,13 @@ def includeConstants(args, prj, data):
                 value_str = f"{value['value']}"
         if value['isParameterizable']:
             value_str = emissionUtils.emitExpr(value['evalCanonical'], fwSymSpelling, emissionUtils.C)
-        out.append(f"const {type_str} { value['constant'] } = { value_str };  // {value['desc'].strip()}")
+        # `inline constexpr` (not plain `const`) so these namespace-scope constants
+        # have external linkage. In a C++20 module purview a `const` variable has
+        # internal linkage, and GCC rejects an exported template (e.g. a type's
+        # `static constexpr _bitWidth`) that references an internal-linkage entity.
+        # `inline constexpr` is ODR-safe across TUs and remains usable in the
+        # constant expressions these constants feed.
+        out.append(f"inline constexpr {type_str} { value['constant'] } = { value_str };  // {value['desc'].strip()}")
 
     out.append("")
     return("\n".join(wrap_module_namespace(args, data, out)))

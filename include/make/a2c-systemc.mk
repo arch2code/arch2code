@@ -35,7 +35,13 @@ endif
 # Systemc build global variables
 #------------------------------------------------------------------------
 
-CXX_FLAGS = -m64 -std=$(C_STD_VER) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
+# Language-standard flag passed to the compiler. Defaults to C_STD_VER, but is a
+# separate knob so a toolchain whose -std spelling differs (e.g. Clang 16 uses
+# `c++2b`, not `c++23`) can override the flag without flipping C_STD_VER, which
+# also gates the std::format fmt shim below.
+CPP_STD ?= $(C_STD_VER)
+
+CXX_FLAGS = -m64 -std=$(CPP_STD) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
 LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
@@ -96,17 +102,36 @@ cpp_module_pcm = $(BUILD_DIR)/$(1:%.cppm=%.pcm)
 cpp_module_src_for = $(firstword $(foreach src,$(CPP_MODULE_SRC),$(if $(filter $(1),$(call cpp_module_name,$(src))),$(src))))
 cpp_module_import_names = $(shell test -f "$(1)" && sed -n 's/^[[:space:]]*import[[:space:]]\+\([A-Za-z_][A-Za-z0-9_.]*\)[[:space:]]*;.*/\1/p' "$(1)" || true)
 cpp_module_import_pcms = $(foreach module,$(call cpp_module_import_names,$(1)),$(if $(call cpp_module_src_for,$(module)),$(call cpp_module_pcm,$(call cpp_module_src_for,$(module)))))
+# GCC has no standalone PCM: compiling the interface unit emits both the object
+# and the module interface (CMI, in the default module cache). Inter-module
+# ordering therefore hangs off the .module.o targets instead of .pcm targets.
+cpp_module_obj = $(BUILD_DIR)/$(1:%.cppm=%.module.o)
+cpp_module_import_objs = $(foreach module,$(call cpp_module_import_names,$(1)),$(if $(call cpp_module_src_for,$(module)),$(call cpp_module_obj,$(call cpp_module_src_for,$(module)))))
 CPP_MODULE_PCM = $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.pcm)
 CPP_MODULE_OBJ = $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.module.o)
 CPP_MODULE_FLAGS = $(foreach src,$(CPP_MODULE_SRC),-fmodule-file=$(call cpp_module_name,$(src))=$(call cpp_module_pcm,$(src)))
 CPP_MODULE_OBJ_FLAGS = $(filter-out -I%,$(CXX_FLAGS))
 
+# CPP_MODULE_DEPS is what a consuming translation unit must wait for so the
+# module interfaces it imports are available: standalone PCMs under Clang, or the
+# module objects (which carry the CMIs) under GCC.
 ifneq ($(strip $(CPP_MODULE_SRC)),)
-ifndef USE_GCC
-CXX_FLAGS += $(CPP_MODULE_FLAGS)
+ifdef USE_GCC
+# GCC compiles each interface unit with -fmodules-ts, emitting the CMI into the
+# default module cache keyed by module name. No -fmodule-file mapping is needed;
+# imports resolve by name.
+# -fno-module-lazy disables GCC's lazy CMI streaming. GCC 13.2 otherwise hits
+# "recursive lazy load" when a module pulls in heavy standard headers (e.g.
+# systemc.h -> <cmath> special functions) whose template instantiations re-enter
+# the loader. Must be applied uniformly across the whole import graph.
+CXX_FLAGS += -fmodules-ts -fno-module-lazy
+CPP_MODULE_DEPS = $(CPP_MODULE_OBJ)
 else
-$(error Generated C++20 module interface units require Clang; unset USE_GCC)
+CXX_FLAGS += $(CPP_MODULE_FLAGS)
+CPP_MODULE_DEPS = $(CPP_MODULE_PCM)
 endif
+else
+CPP_MODULE_DEPS =
 endif
 
 ifdef VL_DUT
@@ -153,7 +178,11 @@ OBJ = $(CPP_SRC:%.cpp=$(BUILD_DIR)/%.o)
 OBJ += $(CPP_MODULE_OBJ)
 # Gcc/Clang will create these .d files containing dependencies.
 DEP = $(OBJ:%.o=%.d)
+# Clang emits a .d beside each PCM; GCC's module .d comes from the .module.o and
+# is already covered by $(OBJ:%.o=%.d) above.
+ifndef USE_GCC
 DEP += $(CPP_MODULE_PCM:%.pcm=%.d)
+endif
 
 # Actual target of the binary - depends on all .o files.
 $(BIN_DIR)/$(BIN) : $(OBJ)
@@ -171,13 +200,20 @@ $(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp
 
 # Rule to compile all other .cpp files
 # The -MMD flags additionaly creates a .d file with the same name as the .o file.
-$(BUILD_DIR)/%.o : %.cpp $(GEN_DB_DEPS) $(CPP_MODULE_PCM)
+$(BUILD_DIR)/%.o : %.cpp $(GEN_DB_DEPS) $(CPP_MODULE_DEPS)
 	mkdir -p $(@D)
 	$(CXX) $(CXX_FLAGS) -MMD -c $< -o $@
 
-# Rules to precompile generated C++20 module interfaces and compile PCMs to
-# linkable objects.  The module flags are supplied at both stages because an
-# interface may import another generated interface.
+# Rules to build generated C++20 module interfaces to linkable objects. Clang
+# precompiles each interface to a PCM and then compiles that PCM to an object;
+# GCC does both in a single step and writes the CMI to the module cache. The
+# import-ordering edges below apply to whichever artifact the active compiler
+# produces (CPP_MODULE_DEPS): .pcm for Clang, .module.o for GCC.
+ifndef USE_GCC
+
+# Clang: precompile the interface unit to a PCM, then compile the PCM to an
+# object. The module flags are supplied at both stages because an interface may
+# import another generated interface.
 $(BUILD_DIR)/%.pcm : %.cppm $(GEN_DB_DEPS)
 	mkdir -p $(@D)
 	$(CXX) $(CXX_FLAGS) -MMD --precompile -x c++-module $< -o $@
@@ -199,6 +235,23 @@ $(BUILD_DIR)/%.module.o : $(BUILD_DIR)/%.pcm
 	mkdir -p $(@D)
 	$(CXX) $(CPP_MODULE_OBJ_FLAGS) -c $< -o $@
 
+else
+
+# GCC: one step compiles the interface unit to its object and emits the CMI into
+# the module cache (keyed by module name). Full CXX_FLAGS are used because the
+# interface's global module fragment includes headers (e.g. `<block>Base.h`).
+$(BUILD_DIR)/%.module.o : %.cppm $(GEN_DB_DEPS)
+	mkdir -p $(@D)
+	$(CXX) $(CXX_FLAGS) -MMD -x c++ -c $< -o $@
+
+# Same ordering as the Clang path, expressed over the .module.o targets since
+# GCC produces the CMI as a side effect of the object compile.
+$(foreach src,$(CPP_MODULE_SRC),$(eval $(call cpp_module_obj,$(src)): $(call cpp_module_import_objs,$(src))))
+CPP_CONTEXT_MODULE_OBJ = $(foreach src,$(filter %Includes.cppm,$(CPP_MODULE_SRC)),$(call cpp_module_obj,$(src)))
+$(foreach src,$(filter-out %Includes.cppm,$(CPP_MODULE_SRC)),$(eval $(call cpp_module_obj,$(src)): $(CPP_CONTEXT_MODULE_OBJ)))
+
+endif
+
 # Include all .d files
 -include $(DEP)
 
@@ -218,6 +271,8 @@ endif
 clean::
 	$(RM) -r $(BIN_DIR)
 	$(RM) -rf simx.*
+	# GCC C++20 module cache, written to the make working directory.
+	$(RM) -rf gcm.cache
 	@test -d $(REPO_ROOT)/verif/vl_wrap && $(MAKE) -C $(REPO_ROOT)/verif/vl_wrap clean || true
 
 help::
