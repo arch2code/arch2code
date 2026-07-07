@@ -173,32 +173,33 @@ class newModule:
         # assemblers yields two independent compilations of the same
         # registration — the accepted-duplication case (factory emplace is
         # first-wins).
-        assemblerChildren = dict()
+        parentChildren = dict()
         for inst in prj.data['instances'].values():
             containerKey = inst['containerKey']
             # The synthetic project-root container is not a block and owns no
             # registrar; skip any container that is not a defined block.
             if containerKey not in prj.data['blocks']:
                 continue
-            assemblerChildren.setdefault(containerKey, set()).add(inst['instanceTypeKey'])
-        for assemblerKey in sorted(assemblerChildren):
-            assemblerDir = prj.data['blocks'][assemblerKey]['dir']
-            for childKey in sorted(assemblerChildren[assemblerKey]):
+            parentChildren.setdefault(containerKey, set()).add(inst['instanceTypeKey'])
+        for parentKey in sorted(parentChildren):
+            parentDir = prj.data['blocks'][parentKey]['dir']
+            for childKey in sorted(parentChildren[parentKey]):
                 childBlock = prj.data['blocks'][childKey]['block']
                 for fileKey, fileDefinition in registrarFileConfig.items():
                     if self._condMatch(fileDefinition, blockCondData[childKey]):
                         self.create_registrar_file(
                             fileGenerationConfig, fileKey, fileDefinition,
-                            assemblerDir, childBlock, childKey, prj, args)
+                            parentDir, childBlock, childKey, parentKey, prj, args)
 
-    def create_registrar_file(self, fileGenerationConfig, fileKey, fileDefinition, assemblerDir, childBlock, childQualBlock, prj, args):
+    def create_registrar_file(self, fileGenerationConfig, fileKey, fileDefinition, parentDir, childBlock, childQualBlock, parentKey, prj, args):
         # Build the registrar path: the child-named trampoline lands under the
-        # assembler's directory within the registrar root.
+        # parent's directory within the registrar root.
         data = dict()
         data['block'] = childBlock
         data['qualBlock'] = childQualBlock
         data['variant'] = None
-        filePath = processYaml.expandNewModulePath(fileDefinition, assemblerDir, childBlock, childBlock, missingDirOk=True)
+        data['parent'] = prj.data['blocks'][parentKey]['block']
+        filePath = processYaml.expandNewModulePath(fileDefinition, parentDir, childBlock, childBlock, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
         for ext in fileDefinition['ext']:
             filePathExt = filePath + "." + fileDefinition['ext'][ext]

@@ -366,6 +366,15 @@ def cpp_block_module_name(blockName):
     # from the block view (`data['blockName']`), not from a filename.
     return f'{cpp_module_name(blockName)}.block'
 
+def cpp_registrar_module_name(projectName, parentBlock, childBlock):
+    # C++20 module name for a parent-owned registrar trampoline unit. Spelled
+    # `<project>.<parent>.<child>.registrar` so the same child reused under two
+    # parents yields two distinct registrar modules. The identity components
+    # (project, parent, child) come from persisted data; this helper only
+    # formats the C++ module spelling. Each token is sanitized the same way as
+    # cpp_module_name; the dotted structure and `.registrar` suffix are literal.
+    return f'{cpp_module_name(projectName)}.{cpp_module_name(parentBlock)}.{cpp_module_name(childBlock)}.registrar'
+
 def cpp_namespace_name(includeName):
     return f'{cpp_module_name(includeName)}_ns'
 

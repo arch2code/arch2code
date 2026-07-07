@@ -1,10 +1,13 @@
 //copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-// GENERATED_CODE_PARAM --block=ip
+// GENERATED_CODE_PARAM --block=ip --parent=ipBridge
 // GENERATED_CODE_BEGIN --template=blockRegistrar
+module;
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "ipVariantConfig.h"
+
+export module ip_test.ipBridge.ip.registrar;
 import ip.block;
 
 namespace {

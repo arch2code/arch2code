@@ -109,6 +109,7 @@ class codeText:
         parser.add_argument('--context', action='append', type=str, help='Yaml file context for generation' )
         parser.add_argument('--scope', type=str, help='hierarchy scope eg top' )
         parser.add_argument('--variant', type=str, help='Block variant name' )
+        parser.add_argument('--parent', type=str, help='Parent (assembling) block name for registrar identity')
         parser.add_argument('--importPackages', default=[], nargs='+', action='append', help='SystemVerilog only, this is a list that defines all packages to import')
         parser.add_argument('--mode', type=str, default='', help='File level mode option' )
         parser.add_argument('--project', default=[], nargs='+', help='List of projects that this file belongs to if no match ignore file' )
@@ -118,6 +119,7 @@ class codeText:
 
         self.params = parser.parse_args(cmdLine.split(' '))
         self.block = self.params.block
+        self.parent = self.params.parent
         if not self.params:
             print (f"params empty cmdLine{cmdLine}")
 

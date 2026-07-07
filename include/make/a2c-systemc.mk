@@ -83,11 +83,15 @@ CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 # name, so precompile them before compiling any C++ translation units and pass
 # the resulting PCM files explicitly to Clang.
 CPP_MODULE_SRC = $(filter %.cppm,$(SC_GEN_FILES))
-# A context types unit `<context>Includes.cppm` declares `export module <context>;`
-# while a parameterizable block unit `<block>.cppm` declares
-# `export module <block>.block;`. The module name must match the `import`
-# spelling, so block units get the `.block` suffix here.
-cpp_module_name = $(if $(filter %Includes.cppm,$(1)),$(basename $(notdir $(1:Includes.cppm=.cppm))),$(basename $(notdir $(1))).block)
+# The module name must match the `import` spelling exactly. Module names are not
+# uniform functions of the filename: a context types unit declares
+# `export module <context>;`, a parameterizable block unit declares
+# `export module <block>.block;`, and a parent-owned registrar unit declares the
+# dotted `export module <project>.<parent>.<child>.registrar;`. Rather than
+# encode each convention here, read the actual `export module ...;` line from the
+# generated .cppm (in-place generated files persist across `make clean`, so they
+# exist by the time CPP_MODULE_SRC is non-empty at parse).
+cpp_module_name = $(shell sed -n 's/^[[:space:]]*export[[:space:]]\+module[[:space:]]\+\([A-Za-z_][A-Za-z0-9_.]*\)[[:space:]]*;.*/\1/p;/^[[:space:]]*export[[:space:]]\+module[[:space:]]/q' "$(1)" 2>/dev/null)
 cpp_module_pcm = $(BUILD_DIR)/$(1:%.cppm=%.pcm)
 cpp_module_src_for = $(firstword $(foreach src,$(CPP_MODULE_SRC),$(if $(filter $(1),$(call cpp_module_name,$(src))),$(src))))
 cpp_module_import_names = $(shell test -f "$(1)" && sed -n 's/^[[:space:]]*import[[:space:]]\+\([A-Za-z_][A-Za-z0-9_.]*\)[[:space:]]*;.*/\1/p' "$(1)" || true)

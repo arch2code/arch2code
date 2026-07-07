@@ -38,8 +38,8 @@ def render(args, prj, data):
             return(block_src(args, prj, data))
         case 'blockModule_cppm':
             return(blockModule_cppm(args, prj, data))
-        case 'blockRegistrar_src':
-            return(blockRegistrar_src(args, prj, data))
+        case 'blockRegistrar_cppm':
+            return(blockRegistrar_cppm(args, prj, data))
         case 'rtlModule_sv':
             if isRegHandler:
                 return(rtlModuleRegs(args, prj, data))
@@ -169,17 +169,19 @@ def blockModule_cppm(args, prj, data):
     out.append('};\n\n')
     return("".join(out))
 
-# Per-block trampoline registrar TU. The body is emitted by
-# templates/systemc/blockRegistrar.py. The trampoline owns project-
-# specific factory registration concerns for the block (parameterized
-# SC lambdas with their per-Config tags, and verilated wrapper
-# registrations under the _verif suffix). Pure non-templated SC-only
-# blocks gain no trampoline (the cond predicate filters them out at
-# file-generation time).
-def blockRegistrar_src(args, prj, data):
+# Per-block trampoline registrar module interface unit. The whole module
+# (global module fragment #includes, `export module
+# <project>.<parent>.<child>.registrar;`, the private `import <child>.block;`,
+# and the anonymous-namespace trampoline static) is emitted by
+# templates/systemc/blockRegistrar.py into the single generated region, mirroring
+# how blockModule_cppm delegates its module body. The trampoline owns project-
+# specific factory registration concerns for the block (parameterized SC lambdas
+# with their per-Config tags). Pure non-templated SC-only blocks gain no
+# trampoline (the cond predicate filters them out at file-generation time).
+def blockRegistrar_cppm(args, prj, data):
     out = list()
     out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
-    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]}\n')
     out.append('// GENERATED_CODE_BEGIN --template=blockRegistrar\n')
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))

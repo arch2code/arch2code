@@ -1,10 +1,13 @@
 //copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-// GENERATED_CODE_PARAM --block=ipLeaf
+// GENERATED_CODE_PARAM --block=ipLeaf --parent=src
 // GENERATED_CODE_BEGIN --template=blockRegistrar
+module;
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "ipLeafVariantConfig.h"
+
+export module ip_test.src.ipLeaf.registrar;
 import ipLeaf.block;
 
 namespace {

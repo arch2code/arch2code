@@ -143,7 +143,7 @@ fileGeneration:
     # predicate is applied to the instantiated child: only parameterizable
     # children with a model get a trampoline. Pure non-templated SC-only
     # blocks self-register from their own .cpp and gain no trampoline.
-    blockRegistrar : { name : "Registrar",    ext: {src: "cpp"},           cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, desc: "Per-assembler per-child trampoline registrar TU"}
+    blockRegistrar : { name : "Registrar",    ext: {cppm: "cppm"},         cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, desc: "Per-assembler per-child trampoline registrar TU"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
     # Canonical parameterized SV wrapper body, emitted once per parameterizable

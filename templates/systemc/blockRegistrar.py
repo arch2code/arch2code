@@ -32,6 +32,7 @@
 # binding for cases that do not have per-instance Config propagation.
 
 import pysrc.intf_gen_utils as intf_gen_utils
+from pysrc.arch2codeHelper import printError, warningAndErrorReport
 
 def render(args, prj, data):
     return render_default(args, prj, data)
@@ -68,6 +69,26 @@ def render_default(args, prj, data):
         else:
             variantConfigName[desc['variant']] = defaultConfig
 
+    # The registrar is a C++20 module interface unit whose module name is
+    # parent-qualified (`<project>.<parent>.<child>.registrar`), so the same
+    # child reused under two parents yields two distinct registrar modules that
+    # coexist in one binary. The parent identity rides on the param line
+    # (systemcGen threads `--parent` into data['parent']); a missing parent means
+    # the file was not rescaffolded and would emit a malformed module.
+    parentBlock = data.get('parent')
+    if not parentBlock:
+        printError(f"blockRegistrar: block '{blockName}' has no --parent on its "
+                   f"GENERATED_CODE_PARAM line; re-run `make newmodule` (registrar "
+                   f"mode) to rescaffold the registrar .cppm files.")
+        exit(warningAndErrorReport())
+    projectName = prj.config.getConfig('PROJECTNAME')
+    registrarModule = intf_gen_utils.cpp_registrar_module_name(projectName, parentBlock, blockName)
+
+    # Global module fragment. Config stays sourced from the leaf-context header
+    # (config-policy header(s) below), so every config type remains
+    # header-attached and consistent across container/verif/TB. #includes are
+    # illegal in module purview, so all textual headers live here in the GMF.
+    out.append('module;')
     out.append('#include "instanceFactory.h"')
     out.append('#include "blockBase.h"')
 
@@ -77,17 +98,22 @@ def render_default(args, prj, data):
         if context in data['includeFiles'].get('config_hdr', {}):
             out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
 
+    # A non-templated container flagged isParameterizable is still a classic
+    # header class; its declaration must be visible in the GMF because includes
+    # are illegal after the module declaration.
+    if isParameterizable and not hasOwnParams:
+        out.append(f'#include "{blockName}.h"')
+
+    out.append('')
+    out.append(f'export module {registrarModule};')
+
     # Block class visibility for the parameterized-block lambda so it can
     # construct `<B><Config>`. A hasOwnParams block lives in its own C++20
-    # module interface unit (`<block>.cppm`), so the trampoline imports it;
-    # otherwise (a non-templated container flagged isParameterizable) the class
-    # is still a classic header. The import sits after the textual #includes,
-    # mirroring the validated S0 registrar TU shape.
-    if isParameterizable:
-        if hasOwnParams:
-            out.append(f'import {intf_gen_utils.cpp_block_module_name(blockName)};')
-        else:
-            out.append(f'#include "{blockName}.h"')
+    # module interface unit (`<block>.cppm`), so the trampoline imports it as a
+    # PRIVATE import (plain `import`, not `export import`): the registrar exports
+    # nothing, it only runs its trampoline static.
+    if isParameterizable and hasOwnParams:
+        out.append(f'import {intf_gen_utils.cpp_block_module_name(blockName)};')
 
     # NOTE: Verilated wrapper registration is intentionally NOT emitted
     # here yet. The wrapper header (`<block>_hdl_sc_wrapper.h`) lives

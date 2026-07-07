@@ -5,6 +5,7 @@ include $(REPO_ROOT)/include/make/shared.mk
 EXTRA_CPP_SRC      =
 EXTRA_CPP_INCLUDES =
 EXTRA_LD_FLAGS     =
+EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src
 
 # Include generated files with names matching '*Includes*.cpp' in SC_GEN_FILES.
 EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
