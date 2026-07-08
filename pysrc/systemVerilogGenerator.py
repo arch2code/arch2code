@@ -40,6 +40,17 @@ class systemVerilogGenerator:
         if not self.code.sections:
             # Gracefully skip files that do not have the appropriate GENERATED_CODE_ comments in them
             return
+        # Ownership gate (mirrors systemcGen): skip a file owned by a different
+        # project so a split build never regenerates (and clobbers) another
+        # project's output. The owner is resolved from the DB (the file's context
+        # -> contextOwningProject) keyed on the params on its GENERATED_CODE_PARAM
+        # line, so it is absolute rather than relative to the current build root.
+        # Files that resolve to no owning context return None and always generate,
+        # preserving monolithic behaviour.
+        projectName = prj.config.getConfig('PROJECTNAME')
+        owner = prj.resolveFileOwner(self.code.params)
+        if owner is not None and owner != projectName:
+            return
         if self.code.params.importPackages:
             importPackages = self.code.params.importPackages
         if self.code.params.block and self.code.params.context:

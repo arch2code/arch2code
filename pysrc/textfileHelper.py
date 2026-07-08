@@ -112,7 +112,6 @@ class codeText:
         parser.add_argument('--parent', type=str, help='Parent (assembling) block name for registrar identity')
         parser.add_argument('--importPackages', default=[], nargs='+', action='append', help='SystemVerilog only, this is a list that defines all packages to import')
         parser.add_argument('--mode', type=str, default='', help='File level mode option' )
-        parser.add_argument('--project', default=[], nargs='+', help='List of projects that this file belongs to if no match ignore file' )
         parser.add_argument('--hierarchy', action='store_true', help='generate in hierarchy mode' )
         parser.add_argument('--inst', type=str, help='instance name' )
         parser.add_argument('--excludeInst', type=str, help='Instance to exclude' )

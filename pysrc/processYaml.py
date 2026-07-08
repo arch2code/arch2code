@@ -828,6 +828,29 @@ class projectOpen:
             qual = self.blocks[block]
         return qual
 
+    def resolveFileOwner(self, params):
+        # Absolute ownership resolution for the generator gate. A generated file's
+        # owning context is named by the params on its GENERATED_CODE_PARAM line;
+        # the owning project is that context's entry in contextOwningProject, which
+        # holds each context's declared owning projectName identically whether that
+        # project is the current build root or a referenced child. Returns the
+        # owning projectName, or None for files that name no owning context
+        # (hierarchy/scope framework scaffolds), which are always generated.
+        if params.parent:
+            # Registrar trampoline: parent-owned (lands under the assembler block).
+            context = self.data['blocks'][self.getQualBlock(params.parent)]['_context']
+        elif params.block:
+            context = self.data['blocks'][self.getQualBlock(params.block)]['_context']
+        elif params.context:
+            # A generated context file names its own context; every context listed
+            # on one file shares an owner, so the first resolves the file. The
+            # param may be a bare basename, so canonicalize to the yamlContext key
+            # (shared with contextOwningProject) before the owner lookup.
+            context = self.resolveContextKey(params.context[0])
+        else:
+            return None
+        return self.contextOwningProject[context]
+
     def getModuleFilename(self, filekey, module, fileType):
         fileDefinition = self.filemap.get(filekey, None)
         if not fileDefinition:
@@ -951,31 +974,43 @@ class projectOpen:
     #             'type' : required - platform specific type string eg bool
     #            'array' : optional - if bitwidth needs to be in an array eg pc largest size = 64 bit so an array is used intead
     # 'arrayElementSize' : optional - if array is used, how many bits per array
+    def resolveContextKey(self, name):
+        # Canonicalize a context name as it may appear on a GENERATED_CODE_PARAM
+        # line to its yamlContext key. An exact key is returned unchanged; a bare
+        # basename (with or without extension) is matched against the known
+        # context keys. yamlContext, includeName and contextOwningProject all
+        # share these keys, so the resolved key indexes any of them. Exits on an
+        # ambiguous or unknown name.
+        if name in self.yamlContext:
+            return name
+        matching_keys = []
+        for key in self.yamlContext:
+            base = os.path.basename(key)
+            base_no_ext, _ = os.path.splitext(base)
+            if name == base or name == base_no_ext:
+                matching_keys.append(key)
+        if len(matching_keys) == 1:
+            return matching_keys[0]
+        if len(matching_keys) > 1:
+            printError(
+                "The context name '{}' is ambiguous; it matches multiple known contexts: {}"
+                .format(name, matching_keys)
+            )
+            exit(warningAndErrorReport())
+        printError("The context specified in GENERATED_CODE_PARAM: {} is not a known context.\n"
+            "Possible valid contexts are: {}".format(name, list(self.yamlContext.keys())))
+        exit(warningAndErrorReport())
+
     def getContextData(self, contexts, dataTypeMapping):
         ret = dict()
         enums = dict()
         ret['includeContext'] = dict()
         includes = self.config.getConfig('INCLUDEFILES')
         ret['includeFiles'] = includes
-        tmpContexts = contexts.copy()
-        for context in tmpContexts:
-            if context not in self.yamlContext:
-                # perform a search based on context hierarchy using exact basename matches
-                matching_keys = []
-                for key in self.yamlContext:
-                    base = os.path.basename(key)
-                    base_no_ext, _ = os.path.splitext(base)
-                    if context == base or context == base_no_ext:
-                        matching_keys.append(key)
-                if len(matching_keys) == 1:
-                    contexts.remove(context)
-                    contexts.append(matching_keys[0])
-                elif len(matching_keys) > 1:
-                    printError(
-                        "The context name '{}' is ambiguous; it matches multiple known contexts: {}"
-                        .format(context, matching_keys)
-                    )
-                    exit(warningAndErrorReport())
+        # Canonicalize each context name (as it may appear on a
+        # GENERATED_CODE_PARAM line) to its yamlContext key before use.
+        for i, context in enumerate(contexts):
+            contexts[i] = self.resolveContextKey(context)
         for context in contexts:
             if context not in self.yamlContext:
                 printError("The context specified in GENERATED_CODE_PARAM: {} is not a known context.\n" \
@@ -3135,20 +3170,17 @@ class projectCreate:
         # include stem, which continues to name generated files and SystemVerilog
         # packages so those stay unqualified.
         #
-        # A context owned by the current (root) project keeps the raw stem, so its
-        # C++ spelling is unqualified. A context owned by a referenced child
-        # project is qualified as `<owningProject>.<stem>`, so two composed IPs
-        # that author a same-stem context cannot collide in the global C++ linkage
-        # namespace. The qualified branch fires whenever a project references a
-        # child project file through its projectFiles: slot.
-        projectName = self.config.getConfig('PROJECTNAME')
+        # The identity is the bare include stem in every build: a context spells
+        # the same C++ module name whether it is built standalone or imported by a
+        # referencing parent project, so the owning file's `export module <stem>;`
+        # and a referencing file's `import <stem>;` always match. The
+        # field/persist/reload path is retained as the seam for a future
+        # owner-qualification scheme (Q-C8); this build neutralizes the
+        # qualification. Ownership itself lives in CONTEXTOWNINGPROJECT, consumed
+        # by the generator gate and per-owner layout resolution.
         self.contextModuleIdentity = {}
         for context, stem in self.includeName.items():
-            owningProjectName = self.contextOwningProject[context]
-            if owningProjectName == projectName:
-                self.contextModuleIdentity[context] = stem
-            else:
-                self.contextModuleIdentity[context] = f'{owningProjectName}.{stem}'
+            self.contextModuleIdentity[context] = stem
         self.config.setConfig('CONTEXTMODULEIDENTITY', self.contextModuleIdentity, bin=True)
 
         g.db.commit()

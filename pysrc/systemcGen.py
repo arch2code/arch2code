@@ -32,55 +32,61 @@ class genSystemC:
         if not self.code.sections:
             # Gracefully skip files that do not have the appropriate GENERATED_CODE_ comments in them
             return
+        # Ownership gate: skip a file owned by a different project so a split
+        # build never regenerates (and clobbers) another project's output. The
+        # owner is resolved from the DB (the file's context -> contextOwningProject)
+        # keyed on the params on its GENERATED_CODE_PARAM line, so it is absolute
+        # rather than relative to the current build root. Files that resolve to no
+        # owning context (hierarchy/scope framework scaffolds) return None and
+        # always generate, preserving monolithic behaviour.
         projectName = prj.config.getConfig('PROJECTNAME')
-        if "project" not in self.code.params:
-            print (f"Project name is {projectName}")
-            print(self.code.params)
-        if (projectName in self.code.params.project or not self.code.params.project ):
-            # setup the data for the renderer
-            data = None
-            if self.code.params.block:
-                if self.code.params.excludeInst:
-                    exclude = {self.code.params.excludeInst}
-                else:
-                    exclude = set()
-                # get a block based view of the database. This is used for block definitions
-                qualBlock = prj.getQualBlock( self.code.block)
-                block = prj.data['blocks'][qualBlock]['block']
-                data = prj.getBlockData(qualBlock, trimRegLeafInstance=True, excludeInstances=exclude)
-                if not data:
-                    printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
-                    exit(warningAndErrorReport())
-                # Registrar TUs carry the parent (assembling) block identity on
-                # their param line; expose it to blockRegistrar.py for the
-                # parent-qualified registrar module name.
-                if self.code.params.parent:
-                    data['parent'] = self.code.params.parent
+        owner = prj.resolveFileOwner(self.code.params)
+        if owner is not None and owner != projectName:
+            return
+        # setup the data for the renderer
+        data = None
+        if self.code.params.block:
+            if self.code.params.excludeInst:
+                exclude = {self.code.params.excludeInst}
             else:
-                block = 'No block specified in GENERATED_CODE_PARAM'
-            if self.code.params.context:
-                # get a context view of the database. This is used for shared header files
-                context = self.code.params.context
-                data = prj.getContextData(context, self.dataTypeMappings)
-                self.calcStructure(data, prj)
-            else:
-                context = 'No context specified in GENERATED_CODE_PARAM'
-            if self.code.params.scope:
-                scope = self.code.params.scope
-                data = prj.getSubHier(scope)
-            if self.code.params.hierarchy:
-                qualTop = prj.getQualInstance( prj.config.getConfig('TOPINSTANCE'))
-                data = {"qualTop": qualTop}
+                exclude = set()
+            # get a block based view of the database. This is used for block definitions
+            qualBlock = prj.getQualBlock( self.code.block)
+            block = prj.data['blocks'][qualBlock]['block']
+            data = prj.getBlockData(qualBlock, trimRegLeafInstance=True, excludeInstances=exclude)
             if not data:
-                printError(f"In {fileName} there was no context, block or scope specified in GENERATED_CODE_PARAM")
+                printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                 exit(warningAndErrorReport())
+            # Registrar TUs carry the parent (assembling) block identity on
+            # their param line; expose it to blockRegistrar.py for the
+            # parent-qualified registrar module name.
+            if self.code.params.parent:
+                data['parent'] = self.code.params.parent
+        else:
+            block = 'No block specified in GENERATED_CODE_PARAM'
+        if self.code.params.context:
+            # get a context view of the database. This is used for shared header files
+            context = self.code.params.context
+            data = prj.getContextData(context, self.dataTypeMappings)
+            self.calcStructure(data, prj)
+        else:
+            context = 'No context specified in GENERATED_CODE_PARAM'
+        if self.code.params.scope:
+            scope = self.code.params.scope
+            data = prj.getSubHier(scope)
+        if self.code.params.hierarchy:
+            qualTop = prj.getQualInstance( prj.config.getConfig('TOPINSTANCE'))
+            data = {"qualTop": qualTop}
+        if not data:
+            printError(f"In {fileName} there was no context, block or scope specified in GENERATED_CODE_PARAM")
+            exit(warningAndErrorReport())
 
-            parser = argparse.ArgumentParser(description="SystemC generated code parser", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-            parser.add_argument('--noDestructor', action='store_true', help='Dont add the destructor')
-            parser.add_argument('--namespace', type=str, help='c++ option', default='')
-            data['fileNameBase'] = os.path.basename(fileName)
+        parser = argparse.ArgumentParser(description="SystemC generated code parser", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        parser.add_argument('--noDestructor', action='store_true', help='Dont add the destructor')
+        parser.add_argument('--namespace', type=str, help='c++ option', default='')
+        data['fileNameBase'] = os.path.basename(fileName)
 
-            genOut = self.renderer.renderSections(self, self.code, parser, prj, data, args)
+        genOut = self.renderer.renderSections(self, self.code, parser, prj, data, args)
 
     def calcStructure(self, data, prj):
         # handle all the custom elements of the data specific to cpp

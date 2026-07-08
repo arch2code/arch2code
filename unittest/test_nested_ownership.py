@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ownership classifier proof for the M-split parsing change.
+"""Ownership classifier + absolute-ownership gate proof for the M-split.
 
 Builds the committed `fixtures/nested-ownership` two-project fixture into a
 temporary database and asserts that per-context ownership is NON-UNIFORM:
@@ -11,16 +11,27 @@ temporary database and asserts that per-context ownership is NON-UNIFORM:
   * a file that carries the sentinel keys but arrives via the include: slot is
     NOT misclassified and stays root-owned.
 
-It also checks the downstream CONTEXTMODULEIDENTITY consumer: a child-owned
-context gets the qualified `<childProject>.<stem>` spelling, root-owned contexts
-keep the bare stem.
+It also proves the ownership contract consumed downstream:
+
+  * CONTEXTMODULEIDENTITY is the BARE include stem for BOTH root- and
+    child-owned contexts, so a context's `export module` and a referencing
+    file's `import` spell the same name in every build;
+  * resolveFileOwner() maps every generated file (block / registrar-parent /
+    context) to the absolute owning projectName from the DB, and None for a
+    file that names no owning context;
+  * both generators honor the DB-driven ownership gate: a child-owned file is
+    SKIPPED when the generator runs under the root projectName and GENERATED
+    when it runs under the child projectName, with no `--project` token emitted
+    on any scaffold.
 """
 
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
@@ -52,6 +63,141 @@ def _build_db(work):
     assert result.returncode == 0, \
         f"db build failed:\n{result.stdout}\n{result.stderr}"
     return db
+
+
+def _newmodule_no_token(work):
+    """New contract: newModule stamps NO `--project` token on any scaffold.
+
+    Ownership is resolved from the DB by the generator gate, not from a token on
+    the file. Build the fixture db, run `--newmodule` in the same temp tree, and
+    assert that both the child-owned and root-owned block scaffolds are created
+    and NONE carries a `--project` token.
+    """
+    db = os.path.join(work, 'nested-ownership.db')
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    made = subprocess.run(
+        [sys.executable, ARCH2CODE, '--db', db, '-r', '--newmodule'],
+        capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+    assert made.returncode == 0, \
+        f"newmodule failed:\n{made.stdout}\n{made.stderr}"
+
+    # Collect every scaffolded GENERATED_CODE_PARAM line keyed by file basename.
+    param_lines = dict()
+    for root, _dirs, files in os.walk(work):
+        for name in files:
+            if 'yaml' in os.path.relpath(os.path.join(root, name), work).split(os.sep) \
+               and name.endswith(('.yaml',)):
+                continue
+            full = os.path.join(root, name)
+            if name.endswith('.db'):
+                continue
+            try:
+                with open(full) as f:
+                    for line in f:
+                        if 'GENERATED_CODE_PARAM' in line:
+                            param_lines.setdefault(name, line.strip())
+                            break
+            except (UnicodeDecodeError, IsADirectoryError):
+                continue
+
+    # Both child-owned and root-owned scaffolds must be created.
+    for name in ('childProjBlock.h', 'childProjBlock.cpp', 'childProjBlockBase.cppm',
+                 'childLeafBlock.h', 'childLeafBlock.cpp', 'childLeafBlockBase.cppm',
+                 'rootLeaf.h', 'rootLeaf.cpp', 'rootLeafBase.cppm'):
+        assert name in param_lines, f"expected scaffold '{name}' not generated"
+    # No scaffold may carry an ownership token under the new contract.
+    for name, line in param_lines.items():
+        assert '--project=' not in line, \
+            f"scaffold '{name}' must carry no --project token: {line!r}"
+    print("PASS: newModule emits no --project token on any scaffold")
+
+
+def _find_generated(work, basename):
+    for root, _dirs, files in os.walk(work):
+        if basename in files:
+            return os.path.join(root, basename)
+    raise AssertionError(f"generated file '{basename}' not found under {work}")
+
+
+def _run_gen(db, flag, filepath):
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    return subprocess.run(
+        [sys.executable, ARCH2CODE, '--db', db, '-r', flag, '--file', filepath],
+        capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+
+
+def _gate_skip_proof(work):
+    """DB-driven ownership-gate proof for BOTH generators.
+
+    A child-owned generated file must be SKIPPED (left byte-identical) when a
+    generator runs under a projectName that does not own it, and GENERATED when
+    it runs under the owning projectName. Ownership is read from the DB via the
+    file's context; nothing is stamped on the file. We flip only the persisted
+    PROJECTNAME in a db copy to drive the match case, so the same real generator
+    invocation exercises both branches. The child-owned context artifacts
+    (childLeafIncludes.cppm for SystemC, childLeaf_package.sv for SystemVerilog)
+    scaffold with an empty generated region and are always in scope, so an
+    empty->filled change is an unambiguous generate signal and no change is an
+    unambiguous skip.
+    """
+    root_db = os.path.join(work, 'nested-ownership.db')
+    child_db = os.path.join(work, 'nested-ownership-childmatch.db')
+    shutil.copy(root_db, child_db)
+    conn = sqlite3.connect(child_db)
+    conn.execute("UPDATE _config SET value=? WHERE item='PROJECTNAME'",
+                 (CHILD_PROJECT_NAME,))
+    conn.commit()
+    conn.close()
+
+    cases = [
+        ('--systemc',                'childLeafIncludes.cppm'),
+        ('--systemVerilogGenerator', 'childLeaf_package.sv'),
+    ]
+    for flag, basename in cases:
+        path = _find_generated(work, basename)
+        snapshot = open(path).read()
+
+        # Mismatch: root project does not own the child file, must SKIP it.
+        r = _run_gen(root_db, flag, path)
+        assert r.returncode == 0, \
+            f"{flag} mismatch run failed:\n{r.stdout}\n{r.stderr}"
+        assert open(path).read() == snapshot, \
+            f"{flag} gate FAILED to skip child-owned file {basename} under root"
+
+        # Match: child project owns the file, must GENERATE (empty region -> filled).
+        r = _run_gen(child_db, flag, path)
+        assert r.returncode == 0, \
+            f"{flag} match run failed:\n{r.stdout}\n{r.stderr}"
+        assert open(path).read() != snapshot, \
+            f"{flag} gate FAILED to generate child-owned file {basename} under child"
+    print("PASS: SC and SV ownership gates skip under root, generate under child")
+
+
+def _resolve_owner_unit(prj):
+    """Unit-level proof of resolveFileOwner over each param shape.
+
+    The gate resolves a file's absolute owner from the params on its
+    GENERATED_CODE_PARAM line: a registrar file via its --parent block's
+    context (parent wins over --block), a block file via its --block context, a
+    context file via its --context directly, and None when no owning context is
+    named (hierarchy/scope framework scaffolds).
+    """
+    def params(block=None, context=None, parent=None):
+        return SimpleNamespace(block=block, context=context, parent=parent)
+
+    child_ctx = '../../child/yaml/childLeaf.yaml'
+    assert prj.resolveFileOwner(params(block='childLeafBlock')) == CHILD_PROJECT_NAME
+    assert prj.resolveFileOwner(params(block='rootLeaf')) == ROOT_PROJECT_NAME
+    assert prj.resolveFileOwner(params(context=[child_ctx])) == CHILD_PROJECT_NAME
+    assert prj.resolveFileOwner(params(context=['sneaky.yaml'])) == ROOT_PROJECT_NAME
+    # A registrar names both --block and --parent; the parent (assembler) owns it.
+    assert prj.resolveFileOwner(
+        params(block='rootLeaf', parent='childProjBlock')) == CHILD_PROJECT_NAME
+    # No owning context named -> unowned -> always generate.
+    assert prj.resolveFileOwner(params()) is None
+    print("PASS: resolveFileOwner maps block/parent/context/none correctly")
 
 
 def _context_by_stem(mapping, stem):
@@ -119,7 +265,8 @@ def run_all_tests():
         identity = prj.contextModuleIdentity
 
         # Root-owned closure: the root top file, the root project's own leaf,
-        # and the sentinel-bearing included file all stay root-owned.
+        # and the sentinel-bearing included file all stay root-owned. Identity
+        # is the bare include stem.
         for stem in ('rootTop', 'sneaky'):
             _, owner = _context_by_stem(owners, stem)
             assert owner == ROOT_PROJECT_NAME, \
@@ -130,13 +277,14 @@ def run_all_tests():
 
         # Child-owned closure: the child project file itself and the leaf reached
         # through the child's own projectFiles: slot are owned by the child.
+        # Identity is the bare include stem here too (no owner qualification).
         for stem in ('childProject', 'childLeaf'):
             _, owner = _context_by_stem(owners, stem)
             assert owner == CHILD_PROJECT_NAME, \
                 f"context '{stem}' expected child-owned, got '{owner}'"
             _, ident = _context_by_stem(identity, stem)
-            assert ident == f'{CHILD_PROJECT_NAME}.{stem}', \
-                f"child-owned '{stem}' identity expected qualified, got '{ident}'"
+            assert ident == stem, \
+                f"child-owned '{stem}' identity expected bare stem, got '{ident}'"
 
         # Non-uniformity: at least two distinct owners must appear.
         distinct = set(owners.values())
@@ -144,9 +292,18 @@ def run_all_tests():
             f"ownership not non-uniform: {distinct}"
 
         print(f"PASS: nested ownership non-uniform ({sorted(distinct)})")
+        print("PASS: CONTEXTMODULEIDENTITY is bare stem for root- and child-owned contexts")
+
+        # Unit-level owner resolution across every param shape.
+        _resolve_owner_unit(prj)
 
         # Phase 2: per-owning-project directory resolution.
         _check_per_owner_resolution(prj)
+
+        # New contract: newModule emits no ownership token.
+        _newmodule_no_token(work)
+        # The SC and SV generators honor the DB-driven ownership gate.
+        _gate_skip_proof(work)
         return 0
     finally:
         # Close the read-only sqlite handle projectOpen left open so the temp
