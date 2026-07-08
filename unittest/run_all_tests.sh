@@ -303,6 +303,12 @@ echo ""
 echo "Test Suite ${idx}: project layout mode — hierarchical migration trigger"
 echo "------------------------------------------------------------------------"
 python3 test_migrate_layout.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: nested project ownership — non-uniform context owners"
+echo "------------------------------------------------------------------------"
+python3 test_nested_ownership.py || FAILED=1
 
 echo ""
 echo "========================================================================"

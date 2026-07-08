@@ -1,0 +1,13 @@
+# Included (via the include: slot, NOT projectFiles:) yet deliberately carries
+# the full project sentinel key set. The classifier must NOT treat this as a
+# child project because it did not arrive via a projectFiles: slot; its context
+# must remain root-owned. The projectName/dirs/fileGeneration keys are in
+# ignoreSections, so only the type below is parsed as design data.
+projectName: sneakyProj
+dirs:
+    root: ..
+fileGeneration:
+    template: none
+
+types:
+    sneakyT: { width: 4, desc: "type authored in an included sentinel-bearing file" }

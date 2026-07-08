@@ -2958,9 +2958,10 @@ class projectCreate:
     specialContexts = {"_global", "_a2csystem"} # special contexts that should be excluded from includes
     errorState = False
     includeName = dict()
-    # Per-context owning projectName, keyed identically to includeName. On a
-    # monolithic (single-project) build every context maps to the root
-    # PROJECTNAME; per-child ownership is deferred M-split work.
+    # Per-context owning projectName, keyed identically to includeName. Files in
+    # the root project's own closure map to the root PROJECTNAME; a context
+    # reached through a referenced child project file maps to that child's
+    # projectName (see readRaw ownership BFS).
     contextOwningProject = dict()
     includeValid = dict()
     includeSections = {"types", "structures", "constants"}
@@ -3074,10 +3075,15 @@ class projectCreate:
             systemFiles = self.getFileList(self.a2cProj, self.a2cRoot)[0]
 
         # Then load user project files
-        userFiles = self.getFileList(self.proj, g.yamlBasePath)[0]
+        (userFiles, _, userProjectSlot) = self.getFileList(self.proj, g.yamlBasePath)
 
-        # Combine with system files first (so they process with priority)
-        self.yamlUnread = systemFiles + userFiles
+        # Seed the ownership BFS. Each queue entry is (file, owningProject,
+        # viaProjectFiles): system files and the root project's include closure
+        # are root-owned and are not project-file candidates; only the root's
+        # projectFiles: entries can open a child project (resolved in readRaw).
+        rootProjectName = self.config.getConfig('PROJECTNAME')
+        self.yamlUnread = [(f, rootProjectName, False) for f in systemFiles]
+        self.yamlUnread += [(f, rootProjectName, f in userProjectSlot) for f in userFiles]
         self.systemFiles = set(systemFiles)  # Track which are system files
         #read all the files into project
         self.readRaw()
@@ -3119,9 +3125,8 @@ class projectCreate:
         # C++ spelling is unqualified. A context owned by a referenced child
         # project is qualified as `<owningProject>.<stem>`, so two composed IPs
         # that author a same-stem context cannot collide in the global C++ linkage
-        # namespace. There is currently no per-object owning-project tag, so every
-        # context is root-owned and the qualified branch below is correct but
-        # unreachable until per-object ownership exists.
+        # namespace. The qualified branch fires whenever a project references a
+        # child project file through its projectFiles: slot.
         projectName = self.config.getConfig('PROJECTNAME')
         self.contextModuleIdentity = {}
         for context, stem in self.includeName.items():
@@ -3402,11 +3407,15 @@ class projectCreate:
     def getFileList(self, data, basePath, dependencies=None):
         todoNorm = list()
         incNorm = list()
+        # normalized paths that arrived via the projectFiles: slot; the only
+        # slot that may introduce a child project (systemFiles/include entries
+        # are never treated as project-file candidates by the ownership BFS).
+        projectSlotNorm = set()
         dep_set = set()
         if dependencies:
             dep_set = set(sum(dependencies.values(), []))
         if not data:
-            return (todoNorm, incNorm)
+            return (todoNorm, incNorm, projectSlotNorm)
         # Handle systemFiles (needs macro expansion)
         if "systemFiles" in data:
             systemF = data["systemFiles"]
@@ -3417,7 +3426,9 @@ class projectCreate:
         if "projectFiles" in data:
             todo = data["projectFiles"]
             for f in todo:
-                todoNorm.append(os.path.relpath(os.path.join(basePath, f), g.yamlBasePath))
+                norm = os.path.relpath(os.path.join(basePath, f), g.yamlBasePath)
+                todoNorm.append(norm)
+                projectSlotNorm.add(norm)
         if "include" in data:
             inc = data["include"]
             for f in inc:
@@ -3426,29 +3437,49 @@ class projectCreate:
                 else:
                     incNorm.append(os.path.relpath(os.path.join(basePath, f), g.yamlBasePath))
             todoNorm.extend(incNorm)
-        return(todoNorm, incNorm)
+        return(todoNorm, incNorm, projectSlotNorm)
+
+    def _isChildProjectFile(self, raw):
+        # Positive project-file classifier. A referenced file is a child project
+        # only when its raw content carries the full project-file sentinel set
+        # (projectName + dirs + fileGeneration). The a2c base config carries
+        # dirs/fileGeneration but no projectName, and regular design files carry
+        # none of these, so neither is misclassified. The caller additionally
+        # gates on arrival via the projectFiles: slot.
+        if not raw:
+            return False
+        return all(key in raw for key in ("projectName", "dirs", "fileGeneration"))
 
     def readRaw(self):
-        # read files until nothing left to do
-        projectName = self.config.getConfig('PROJECTNAME')
+        # read files until nothing left to do. Each queue entry carries the
+        # owning projectName inherited from its parent plus whether it arrived
+        # via a projectFiles: slot (the only slot that can open a child project).
         while self.yamlUnread:
             newFiles = list()
-            for f in self.yamlUnread:
+            for (f, inheritedOwner, viaProjectFiles) in self.yamlUnread:
                 myBase = os.path.dirname(f)
                 if f not in self.yamlAllFiles:
                     self.yamlAllFiles[f] = None
                     self.yamlRaw[f] = existsLoad(f)
-                    (todo, include) = self.getFileList(self.yamlRaw[f], myBase, self.yamlDependancies)
+                    (todo, include, projectSlotFiles) = self.getFileList(self.yamlRaw[f], myBase, self.yamlDependancies)
                     if self.yamlRaw[f] and "includeName" in self.yamlRaw[f]:
                         self.includeName[f] = self.yamlRaw[f]["includeName"]
                     else:
                         self.includeName[f] = os.path.splitext(os.path.basename(f))[0]
-                    # Record the owning project per context, keyed identically to
-                    # includeName. Monolithic build: every context is root-owned.
-                    self.contextOwningProject[f] = projectName
+                    # A projectFiles-slot entry that itself carries the project
+                    # sentinel keys opens a child project: its own projectName
+                    # owns it and its whole transitive closure. Otherwise the
+                    # owner is inherited from the parent (root for the top-level
+                    # closure). Recorded per context, keyed identically to
+                    # includeName.
+                    if viaProjectFiles and self._isChildProjectFile(self.yamlRaw[f]):
+                        owner = self.yamlRaw[f]["projectName"]
+                    else:
+                        owner = inheritedOwner
+                    self.contextOwningProject[f] = owner
                     for t in todo:
                         if t not in self.yamlAllFiles:
-                            newFiles.insert(0, t)
+                            newFiles.insert(0, (t, owner, t in projectSlotFiles))
                     if f in self.yamlDependancies:
                         self.yamlDependancies[f].update(include)
                     else:

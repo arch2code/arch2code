@@ -1,0 +1,8 @@
+# Child-owned leaf context. Reached through the child project's own
+# projectFiles: slot, so ownership propagates from the child project (childProj)
+# even though this file itself is not a project file.
+blocks:
+    childLeafBlock:
+        desc: "child-owned leaf block reached through the child's closure"
+        hasMdl: true
+        hasRtl: false
