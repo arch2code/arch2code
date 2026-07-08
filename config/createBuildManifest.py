@@ -41,15 +41,21 @@ def create(prj):
     # decisions the file generator makes. The manifest uses the persisted layout
     # so artifact placement and build grouping share one project-create contract.
     fileMap = prj.proj['fileGeneration']['fileMap']
-    layout = prj.config.getConfig('LAYOUT')
-    processYaml.layoutConfig = layout
-    segments = layout['segments']
+    # Per-owning-project layouts. Object placement is resolved under the layout
+    # of the project that owns the object's defining context, so a child-owned
+    # artifact lands in the child project's segments. The root layout supplies
+    # the build-group buckets and the project-scoped verilator wrapper segment.
+    projectLayout = prj.config.getConfig('PROJECTLAYOUT')
+    rootLayout = projectLayout[prj.config.getConfig('PROJECTNAME')]
 
-    dirs = {group: set() for group in layout['buildGroups']}
+    dirs = {group: set() for group in rootLayout['buildGroups']}
     moduleFiles = set()
 
     blocksParams = {row['blockKey'] for row in prj.flatData['blocksparams'].values()}
     blockByKey = {row['blockKey']: row for row in prj.flatData['blocks'].values()}
+
+    def layoutForContext(context):
+        return projectLayout[prj.contextOwningProject[context]]
 
     def condRow(blockRow):
         # hasOwnParams is the block's own params: relationship, the one cond
@@ -58,8 +64,8 @@ def create(prj):
         condData['hasOwnParams'] = int(blockRow['blockKey'] in blocksParams)
         return condData
 
-    def record(fileDef, filePath):
-        role = segments[fileDef['basePath']]['buildGroup']
+    def record(fileDef, filePath, objLayout):
+        role = objLayout['segments'][fileDef['basePath']]['buildGroup']
         if role is None:
             return
         dirs[role].add(os.path.dirname(filePath))
@@ -69,6 +75,7 @@ def create(prj):
     # block mode: one artifact per block per matching block-mode entry.
     for blockRow in blockByKey.values():
         condData = condRow(blockRow)
+        objLayout = layoutForContext(blockRow['_context'])
         for fileDef in fileMap.values():
             if fileDef.get('mode', 'block') != 'block':
                 continue
@@ -76,8 +83,8 @@ def create(prj):
                 continue
             filePath = processYaml.expandNewModulePath(fileDef, blockRow['dir'],
                                                        blockRow['block'], blockRow['block'],
-                                                       missingDirOk=True)
-            record(fileDef, filePath)
+                                                       objLayout, missingDirOk=True)
+            record(fileDef, filePath, objLayout)
 
     # registrar mode: one trampoline per assembler per distinct matching child it
     # instantiates, under the assembler's directory.
@@ -92,6 +99,9 @@ def create(prj):
             assemblerChildren.setdefault(containerKey, set()).add(inst['instanceTypeKey'])
         for assemblerKey, childKeys in assemblerChildren.items():
             assemblerDir = blockByKey[assemblerKey]['dir']
+            # The trampoline is parent-owned: it lands under the assembler's
+            # directory, so it resolves under the assembler project layout.
+            objLayout = layoutForContext(blockByKey[assemblerKey]['_context'])
             for childKey in childKeys:
                 childRow = blockByKey[childKey]
                 childCond = condRow(childRow)
@@ -100,8 +110,8 @@ def create(prj):
                         continue
                     filePath = processYaml.expandNewModulePath(fileDef, assemblerDir,
                                                                childRow['block'], childRow['block'],
-                                                               missingDirOk=True)
-                    record(fileDef, filePath)
+                                                               objLayout, missingDirOk=True)
+                    record(fileDef, filePath, objLayout)
 
     # context mode: reuse the paths saveIncludeFiles already resolved through
     # the path seam, with validity/smartInclude already applied.
@@ -109,21 +119,24 @@ def create(prj):
     for fileType, fileDef in fileMap.items():
         if fileDef.get('mode', 'block') != 'context':
             continue
-        role = segments[fileDef['basePath']]['buildGroup']
-        if role is None:
-            continue
         for ext in fileDef['ext']:
             expandedType = f"{fileType}_{ext}"
             if expandedType not in includeFiles:
                 continue
-            for entry in includeFiles[expandedType].values():
+            # Each include entry is keyed by its context file; resolve its build
+            # role under the owning project's layout (path already resolved
+            # through that layout in saveIncludeFiles).
+            for context, entry in includeFiles[expandedType].items():
+                role = layoutForContext(context)['segments'][fileDef['basePath']]['buildGroup']
+                if role is None:
+                    continue
                 dirs[role].add(os.path.dirname(entry['fileName']))
                 if ext == 'cppm':
                     moduleFiles.add(entry['fileName'])
 
     # The verilator wrapper segment root holds the per-build verilated entry
     # (vl_wrap aggregator + sc_main): a known location, not a discovered one.
-    vlSegment = _projectScopedSegment(layout, 'vl_wrap')
+    vlSegment = _projectScopedSegment(rootLayout, 'vl_wrap')
     if dirs['vl']:
         dirs['vl'].add(vlSegment)
     vlWrapEntry = os.path.join(vlSegment, 'vl_wrap.cpp')
@@ -132,7 +145,7 @@ def create(prj):
     yamlFiles = sorted({os.path.abspath(f) for f in prj.includeValid} | {projectYaml})
 
     manifest = {
-        'mode':          layout['mode'],
+        'mode':          rootLayout['mode'],
         'projectYaml':   projectYaml,
         'yamlFiles':     yamlFiles,
         'scSrcDirs':     sorted(dirs.get('sc', set())),

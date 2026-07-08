@@ -80,13 +80,15 @@ def expandDirMacros(myFile):
         return myFile
     return _expand_with_macros(myFile, dirMacros)
 
-def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, missingDirOk = False):
-    global layoutConfig
+def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layout, missingDirOk = False):
+    # layout is the owning project's layoutConfig (PROJECTLAYOUT[owner]); the
+    # caller selects it by the object's defining-context owner so a child-owned
+    # object's path roots under the child project's own segments.
     fileStub = fileDefinition.get('name', '')
 
     basePathKey = fileDefinition.get('basePath', '')
-    segment = layoutConfig['segments'][basePathKey]['path']
-    if layoutConfig['mode'] == 'hierarchical':
+    segment = layout['segments'][basePathKey]['path']
+    if layout['mode'] == 'hierarchical':
         # decomposition node outer, functional segment inner:
         #   <node>/<segment>[/module]/file. moduleDir is the node's own absolute
         #   directory (derived in processSingleFile); the segment is the bare
@@ -425,6 +427,10 @@ class projectOpen:
         dirMacros = self.config.getConfig('DIRS')
         global layoutConfig
         layoutConfig = self.config.getConfig('LAYOUT')
+        # Per-owning-project layouts, keyed by projectName (same keys as
+        # contextOwningProject). Consumers select PROJECTLAYOUT[owner] to resolve
+        # an object's path under the segments of the project that owns it.
+        self.projectLayout = self.config.getConfig('PROJECTLAYOUT')
         printIfDebug("Data Loaded")
         self.loadData()
         self.generateHierarchy()
@@ -3021,6 +3027,12 @@ class projectCreate:
         # eval constant is parsed in processSimple and consumed by _constants.
         # Transient to this projectCreate; only the canonical string persists.
         self._evalNodes = {}
+        # Per referenced child project file, its raw content and the absolute
+        # directory of the child project file (so its dirs: resolve relative to
+        # the child file, mirroring the root's relative-to-project-file rule).
+        # Keyed by the child's projectName; populated by readRaw and consumed by
+        # buildProjectLayout to produce that project's $root-resolved layout.
+        self.childProjectRaw = {}
         global dirMacros
         #load project file from command line
         self._userProjRaw = existsLoad(projFile)
@@ -3087,6 +3099,8 @@ class projectCreate:
         self.systemFiles = set(systemFiles)  # Track which are system files
         #read all the files into project
         self.readRaw()
+        # derive the per-owning-project directory layouts (root + any children)
+        self.buildProjectLayout()
         # process all files
         self.processYamls()
         # all files fully parsed: validate the whole-project ipParameters linkage
@@ -3141,43 +3155,51 @@ class projectCreate:
         g.db.close()
         printIfDebug("Process Complete")
 
+    def _resolveDirMacros(self, dirsDict, baseDir):
+        # Resolve a project's dirs: block into an absolute macro dict, seeded
+        # with the shared a2c root. Paths are relative to baseDir (the project
+        # file's directory) exactly as the root project's dirs resolve against
+        # its own file location; a child project therefore roots under its own
+        # directory. Returns a fresh dict so per-project resolution never
+        # aliases the module-global dirMacros.
+        macros = {"a2c": self.a2cRoot}
+        if not dirsDict:
+            return macros
+        if 'root' not in dirsDict:
+            self.logError("Definition for project root directory missing in project file. This should reflect the root of all generated files and is relative to project file")
+        # Build macros in an order-independent way: resolve entries only once
+        # their referenced macro (if any) is available.
+        pending = dict(dirsDict)
+        resolved_this_pass = True
+        while pending and resolved_this_pass:
+            resolved_this_pass = False
+            # Iterate over a *copy* so we can pop items as they are resolved.
+            for name, raw_path in list(pending.items()):
+                # Use currently known macros (existing + newly resolved)
+                expanded = _expand_with_macros(raw_path, macros)
+                # If expansion still starts with '$' then we have an unresolved
+                # dependency on another macro – skip for now.
+                if expanded and expanded[0] == '$':
+                    continue
+                macros[name] = os.path.abspath(os.path.join(baseDir, expanded))
+                pending.pop(name)
+                resolved_this_pass = True
+        # Any remaining entries could not be resolved because their macro target
+        # is missing or circular; keep previous behaviour (store the raw path,
+        # abspath'd) but flag an error.
+        for name, raw_path in pending.items():
+            self.logError(
+                f"Could not fully resolve directory macro '{name}' "
+                f"with path '{raw_path}' – leaving unresolved macro in path."
+            )
+            macros[name] = os.path.abspath(os.path.join(baseDir, raw_path))
+        return macros
+
     def projectDirs(self):
         global dirMacros
-        if 'dirs' in self.proj:
-            if 'root' not in self.proj['dirs']:
-                self.logError("Definition for project root directory missing in project file. This should reflect the root of all generated files and is relative to project file")
-            # Build dirMacros in an order-independent way: resolve entries only
-            # once their referenced macro (if any) is available.
-            if not dirMacros:
-                dirMacros = {}
-            pending = dict(self.proj['dirs'])
-            resolved_this_pass = True
-
-            while pending and resolved_this_pass:
-                resolved_this_pass = False
-                # Iterate over a *copy* so we can pop items as they are resolved.
-                for name, raw_path in list(pending.items()):
-                    # Use currently known macros (existing + newly resolved)
-                    expanded = _expand_with_macros(raw_path, dirMacros)
-
-                    # If expansion still starts with '$' then we have an
-                    # unresolved dependency on another macro – skip for now.
-                    if expanded and expanded[0] == '$':
-                        continue
-
-                    dirMacros[name] = os.path.abspath(expanded)
-                    pending.pop(name)
-                    resolved_this_pass = True
-
-            # Any remaining entries could not be resolved because their macro
-            # target is missing or circular; keep previous behaviour (store the
-            # raw path, abspath'd) but flag an error.
-            for name, raw_path in pending.items():
-                self.logError(
-                    f"Could not fully resolve directory macro '{name}' "
-                    f"with path '{raw_path}' – leaving unresolved macro in path."
-                )
-                dirMacros[name] = os.path.abspath(raw_path)
+        # The root project's dirs resolve relative to its project file location,
+        # which is the current working directory (chdir'd in __init__).
+        dirMacros = self._resolveDirMacros(self.proj.get('dirs'), g.yamlBasePath)
         self.config.setConfig('DIRS', dirMacros)
 
     # Valid project layout modes (see fileGeneration.layout in config/project.yaml).
@@ -3201,18 +3223,14 @@ class projectCreate:
     # include are $root-anchored and stay at the project root (Q-L3 amended).
     LAYOUT_CONVENTION_KEYS = ('yaml', 'prj', 'rundir', 'include')
 
-    def buildLayout(self):
-        # Normalize the merged dirs/fileGeneration into the layout-keyed shape
-        # the seam (expandNewModulePath) and build views consume. The user
-        # surface is unchanged: functional placement is the top-level dirs:
-        # (already resolved into dirMacros), hierarchical placement is the
-        # fileGeneration.hierarchicalDirs defaults. Selected by layout: and
-        # persisted as config LAYOUT so generators read it on projectOpen.
-        global layoutConfig
-        mode = 'functional'
-        if 'fileGeneration' in self.proj:
-            mode = self.proj['fileGeneration']['layout']
-        fileGeneration = self.proj['fileGeneration']
+    def _buildLayoutFor(self, dirMacros, fileGeneration):
+        # Normalize one project's resolved dirs (dirMacros) + fileGeneration into
+        # the layout-keyed shape the seam (expandNewModulePath) and build views
+        # consume. functional placement is the project's resolved dirs:,
+        # hierarchical placement is the fileGeneration.hierarchicalDirs defaults.
+        # Selected by layout:. Called once per project (root + each child) so
+        # each project's segments root under its own $root.
+        mode = fileGeneration['layout']
         buildGroups = fileGeneration['buildGroups']
         fileMapBasePaths = {fileDef['basePath']
                             for fileDef in fileGeneration['fileMap'].values()}
@@ -3228,9 +3246,9 @@ class projectCreate:
             return buildGroups[key]
 
         if mode == 'functional':
-            # functional segments ARE today's resolved $root-rooted dirs, so the
-            # seam emits byte-identical paths. Conventions match today's tree:
-            # authored YAML under arch/yaml, project artifacts at root (no prj/).
+            # functional segments ARE the project's resolved $root-rooted dirs,
+            # so the seam emits byte-identical paths. Conventions match today's
+            # tree: authored YAML under arch/yaml, project artifacts at root.
             segments = {key: {'path': path, 'buildGroup': buildGroupForSegment(key)}
                         for key, path in dirMacros.items()}
             conventions = {
@@ -3240,7 +3258,7 @@ class projectCreate:
                 'include': os.path.join(dirMacros['root'], 'include'),
             }
         else:  # hierarchical
-            hdirs = self.proj['fileGeneration']['hierarchicalDirs']
+            hdirs = fileGeneration['hierarchicalDirs']
             segments = {}
             conventions = {}
             for key, raw in hdirs.items():
@@ -3256,7 +3274,7 @@ class projectCreate:
                         'path': value,
                         'buildGroup': buildGroupForSegment(key),
                     }
-        layoutConfig = {
+        return {
             'mode':        mode,
             'segments':    segments,
             'buildGroups': sorted({group for group in buildGroups.values()
@@ -3266,7 +3284,38 @@ class projectCreate:
             'rundir':      conventions['rundir'],
             'include':     conventions['include'],
         }
+
+    def buildLayout(self):
+        # Persist the root project's layout as config LAYOUT so generators read
+        # it on projectOpen. This stays the module-global root layout used by
+        # parse-time placement; PROJECTLAYOUT (built after readRaw) additionally
+        # holds one such layout per owning project for per-owner path selection.
+        global layoutConfig
+        layoutConfig = self._buildLayoutFor(dirMacros, self.proj['fileGeneration'])
         self.config.setConfig('LAYOUT', layoutConfig)
+
+    def buildProjectLayout(self):
+        # PROJECTLAYOUT: dict(projectName -> layoutConfig), one entry per owning
+        # project (the root plus each referenced child project file), keyed by
+        # the same projectName stored in CONTEXTOWNINGPROJECT. Each value has the
+        # exact shape _buildLayoutFor produces, but with segments resolved under
+        # THAT project's own $root, so object path resolution selects the owning
+        # project's segments. On a monolithic project there is exactly one entry
+        # and PROJECTLAYOUT[rootProjectName] is the root global layoutConfig.
+        global layoutConfig
+        rootProjectName = self.config.getConfig('PROJECTNAME')
+        self.projectLayout = {rootProjectName: layoutConfig}
+        for childName, childInfo in self.childProjectRaw.items():
+            # Give the child the same merged view the root got (base/pro
+            # defaults overlaid by the child's own project file), then resolve
+            # its dirs relative to the child project file and build its layout.
+            childProj = merge_with_spec(self.a2cProj, childInfo['raw'],
+                                        projectCreate.MERGE_SPEC, path=())
+            childMacros = self._resolveDirMacros(childProj.get('dirs'),
+                                                 childInfo['projectFileDir'])
+            self.projectLayout[childName] = self._buildLayoutFor(
+                childMacros, childProj['fileGeneration'])
+        self.config.setConfig('PROJECTLAYOUT', self.projectLayout, bin=True)
 
     def createProjectConfig(self):
         # save anything in project file to config except named items
@@ -3474,6 +3523,16 @@ class projectCreate:
                     # includeName.
                     if viaProjectFiles and self._isChildProjectFile(self.yamlRaw[f]):
                         owner = self.yamlRaw[f]["projectName"]
+                        # Capture the child's raw project content plus its own
+                        # file location, so buildProjectLayout can resolve the
+                        # child's dirs: relative to the child project file (not
+                        # the root) and derive the child's own layout. f is a
+                        # relpath from g.yamlBasePath and cwd is g.yamlBasePath,
+                        # so abspath yields the child project file's directory.
+                        self.childProjectRaw[owner] = {
+                            'raw': self.yamlRaw[f],
+                            'projectFileDir': os.path.abspath(os.path.dirname(f)),
+                        }
                     else:
                         owner = inheritedOwner
                     self.contextOwningProject[f] = owner
@@ -4225,7 +4284,11 @@ class projectCreate:
                     # should not grow an empty *Config.h.
                     valid = include in config_contexts
                 if not(smartInclude and not valid):
-                    fileName = expandNewModulePath(fileData, includeData['dir'], includeName, includeName, missingDirOk=True)
+                    # Resolve under the layout of the project that owns this
+                    # context (its defining file). include is the context's
+                    # file key, keyed identically to contextOwningProject.
+                    layout = self.projectLayout[self.contextOwningProject[include]]
+                    fileName = expandNewModulePath(fileData, includeData['dir'], includeName, includeName, layout, missingDirOk=True)
                     # Sibling header basename, derived from this file type's own
                     # ext map (filespec). A source artifact #includes its paired
                     # header by this name, so templates never reconstruct the

@@ -143,7 +143,11 @@ class newModule:
             data['variant'] = None
         if variantFile:
             moduleFileStub += '_' + data['variant']
-        filePath = processYaml.expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, missingDirOk=True)
+        # Resolve under the layout of the project that owns this block (the
+        # project that owns the block's defining context).
+        owner = prj.contextOwningProject[prj.data['blocks'][qualModule]['_context']]
+        layout = prj.projectLayout[owner]
+        filePath = processYaml.expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
         for ext in fileDefinition['ext']:
             filePathExt = filePath + "." + fileDefinition['ext'][ext]
@@ -199,7 +203,11 @@ class newModule:
         data['qualBlock'] = childQualBlock
         data['variant'] = None
         data['parent'] = prj.data['blocks'][parentKey]['block']
-        filePath = processYaml.expandNewModulePath(fileDefinition, parentDir, childBlock, childBlock, missingDirOk=True)
+        # The trampoline is parent-owned: it lands under the assembler's
+        # directory, so it resolves under the parent (assembler) project layout.
+        owner = prj.contextOwningProject[prj.data['blocks'][parentKey]['_context']]
+        layout = prj.projectLayout[owner]
+        filePath = processYaml.expandNewModulePath(fileDefinition, parentDir, childBlock, childBlock, layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
         for ext in fileDefinition['ext']:
             filePathExt = filePath + "." + fileDefinition['ext'][ext]
