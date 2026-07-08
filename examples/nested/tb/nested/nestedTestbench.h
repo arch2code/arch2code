@@ -7,7 +7,9 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "nestedBase.h"
+import nested.base;
+import nested;
+using namespace nested_ns;
 #include "nestedExternal.h"
 
 class nestedTestbench: public sc_module, public blockBase, public nestedChannels {

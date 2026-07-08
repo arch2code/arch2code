@@ -9,7 +9,9 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "ipBridgeBase.h"
+import ipBridge.base;
+#include "apb_channel.h"
+#include "push_ack_channel.h"
 #include "apb_port_thunker.h"
 #include "push_ack_port_thunker.h"
 #include "ipVariantConfig.h"
@@ -19,9 +21,9 @@ import shared_types;
 using namespace shared_types_ns;
 import ip;
 using namespace ip_ns;
-//contained instances forward class declaration
-class bridgeApbDecodeBase;
-template<typename Config> class ipBase;
+//contained instances base module imports
+import bridgeApbDecode.base;
+import ip.base;
 
 SC_MODULE(ipBridge), public blockBase, public ipBridgeBase
 {

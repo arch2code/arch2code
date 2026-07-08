@@ -71,7 +71,7 @@ fileGeneration:
     # cond: matches fields in the block definition, if all fields are true then the file is generated
     # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file 
     # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
-    blockBase   : { name : "Base",            ext: {hdr: "h"},             cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class header file"}
+    blockBase   : { name : "Base",            ext: {cppm: "cppm"},         cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class interface unit"}
     block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}

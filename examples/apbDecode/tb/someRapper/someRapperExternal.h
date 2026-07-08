@@ -8,7 +8,10 @@
 // GENERATED_CODE_PARAM --block=top --excludeInst=uSomeRapper
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "someRapperBase.h"
+#include "instanceFactory.h"
+import someRapper.base;
+import apbDecode;
+using namespace apbDecode_ns;
 #include "endOfTest.h"
 
 //contained instances forward class declaration

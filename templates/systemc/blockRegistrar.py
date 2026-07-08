@@ -154,6 +154,7 @@ def render_default(args, prj, data):
                     blockName=blockName,
                     targetClass=_target(variant),
                     variant=variant,
+                    projectName=projectName,
                     indent='        ',
                 ))
         else:
@@ -162,6 +163,7 @@ def render_default(args, prj, data):
                 blockName=blockName,
                 targetClass=_target(''),
                 variant='',
+                projectName=projectName,
                 indent='        ',
             ))
 
@@ -172,12 +174,14 @@ def render_default(args, prj, data):
     return '\n'.join(out)
 
 
-def _emit_register_call(*, suffix, blockName, targetClass, variant, indent):
+def _emit_register_call(*, suffix, blockName, targetClass, variant, projectName, indent):
     """Emit a single instanceFactory::registerBlock(...) call.
 
-    Under variant ≅ Config the factory key is `(blockType, variant)`;
-    the variant string identifies the per-variant Config policy
-    unambiguously.
+    The factory key is `(blockType, variant, projectName)`; the variant
+    string identifies the per-variant Config policy unambiguously within a
+    project and projectName is the assembling project's projectName so the
+    container's projectName-qualified createInstance lookup matches this
+    registration.
     """
     return [
         f'{indent}instanceFactory::registerBlock(',
@@ -185,5 +189,5 @@ def _emit_register_call(*, suffix, blockName, targetClass, variant, indent):
         f'{indent}    [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{',
         f'{indent}        return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{targetClass}>(blockName, variant, bbMode));',
         f'{indent}    }},',
-        f'{indent}    "{variant}");',
+        f'{indent}    "{variant}", "{projectName}");',
     ]

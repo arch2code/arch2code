@@ -9,7 +9,13 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "producerBase.h"
+import producer.base;
+#include "pop_ack_channel.h"
+#include "push_ack_channel.h"
+#include "rdy_vld_channel.h"
+#include "req_ack_channel.h"
+import helloWorld_tb;
+using namespace helloWorld_tb_ns;
 
 SC_MODULE(producer), public blockBase, public producerBase
 {

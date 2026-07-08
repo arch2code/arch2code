@@ -258,9 +258,13 @@ def sc_instance_includes(data, prj):
     # create a dict of unique includes
     for key, value in data['subBlockInstances'].items():
         includes[value["instanceType"]] = None
+    # Each contained instance's Base is a C++20 module interface unit
+    # (`<child>Base.cppm`, `export module <child>.base;`); consumers import it.
+    # In a classic TU (constructor/testbench .cpp) the import sits at namespace
+    # scope; in a block-module GMF caller the import must be placed after
+    # `export module` (module purview), not in the global module fragment.
     for include in includes:
-        baseInclude = prj.getModuleFilename('blockBase', include, 'hdr')
-        out.append(f'#include "{baseInclude}"')
+        out.append(f'import {cpp_base_module_name(include)};')
     return out
 
 def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_override=None):
@@ -366,6 +370,16 @@ def cpp_block_module_name(blockName):
     # from the block view (`data['blockName']`), not from a filename.
     return f'{cpp_module_name(blockName)}.block'
 
+def cpp_base_module_name(blockName):
+    # C++20 module name for a block's Base/Inverted/Channels interface unit
+    # (`<block>Base.cppm`). Spelled `<block>.base` so it stays distinct from the
+    # block impl module (`<block>.block`, from `<block>.cppm`) and the context
+    # types module (`<context>`) the base imports. The block-name token is
+    # sanitized the same way as cpp_module_name; the `.base` suffix is literal.
+    # The block identity comes from the block view (`data['blockName']`), not
+    # from a filename.
+    return f'{cpp_module_name(blockName)}.base'
+
 def cpp_registrar_module_name(projectName, parentBlock, childBlock):
     # C++20 module name for a parent-owned registrar trampoline unit. Spelled
     # `<project>.<parent>.<child>.registrar` so the same child reused under two
@@ -389,10 +403,40 @@ def cpp_context_include_lines(prj, data, context, fileMapKey):
     # Shared by the SystemC class-decl templates so the import/include spelling
     # stays consistent across them.
     if fileMapKey == 'include_cppm':
-        moduleName = cpp_module_name(prj.includeName[context])
+        moduleName = cpp_module_name(prj.contextModuleIdentity[context])
         return [f'import {moduleName};',
-                f'using namespace {cpp_namespace_name(prj.includeName[context])};']
+                f'using namespace {cpp_namespace_name(prj.contextModuleIdentity[context])};']
     return [f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"']
+
+def sc_base_dependency_includes(args, prj, data):
+    # Dependency lines a block's Base/Inverted/Channels declaration
+    # (baseClassDecl) needs, returned as ordered (kind, text) pairs mirroring
+    # sc_class_dependency_includes. kind is 'include' for a textual #include or
+    # 'import' for a C++20 module import / using-namespace line.
+    #
+    # Two rendering contexts share this set so they cannot drift:
+    #   * baseClassDecl (classic mode) emits the lines inline ahead of the
+    #     classes.
+    #   * the base-module GMF scaffold (moduleScaffold.baseModuleHeader) splits
+    #     them: 'include' lines go in the global module fragment, 'import' lines
+    #     after `export module`.
+    out = list()
+    block_intf_set = get_set_intf_types(data['interfaceTypes'], data)
+    # With no interfaces the channel headers (which transitively pull the common
+    # factory base) are absent, so include it directly.
+    if not block_intf_set:
+        out.append(('include', '#include "blockBase.h"'))
+    for intfType in sorted(block_intf_set):
+        intf_def = get_intf_defs(intfType, data)
+        chnlType = intf_def['sc_channel']['type']
+        out.append(('include', f'#include "{chnlType}_channel.h"'))
+    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
+    for context in data['includeContext']:
+        if context in data['includeFiles'].get(fileMapKey, {}):
+            for line in cpp_context_include_lines(prj, data, context, fileMapKey):
+                kind = 'import' if line.startswith(('import ', 'using namespace ')) else 'include'
+                out.append((kind, line))
+    return out
 
 def sc_class_dependency_includes(args, prj, data):
     # The dependency lines a block's class declaration needs, returned as
@@ -409,8 +453,20 @@ def sc_class_dependency_includes(args, prj, data):
     out = list()
     out.append(('include', '#include "logging.h"'))
     out.append(('include', '#include "instanceFactory.h"'))
-    baseInclude = prj.getModuleFilename('blockBase', data["blockName"], 'hdr')
-    out.append(('include', f'#include "{baseInclude}"'))
+    # The block's own Base is a C++20 module interface unit (`<block>Base.cppm`,
+    # `export module <block>.base;`), imported rather than textually included.
+    # As an 'import' pair it is emitted inline in classic mode (namespace-scope
+    # import in a plain header) and, in the block-module GMF, after
+    # `export module` alongside the context imports.
+    out.append(('import', f'import {cpp_base_module_name(data["blockName"])};'))
+    # The class declaration names each port's channel type (e.g.
+    # push_ack_channel<...>) directly as a member, so it needs the channel
+    # header for every interface the block uses, matching the loop in
+    # sc_base_dependency_includes.
+    for intfType in sorted(get_set_intf_types(data['interfaceTypes'], data)):
+        intf_def = get_intf_defs(intfType, data)
+        chnlType = intf_def['sc_channel']['type']
+        out.append(('include', f'#include "{chnlType}_channel.h"'))
     if len(data['registers']) > 0 or len(data["memories"]) > 0:
         out.append(('include', '#include "addressMap.h"'))
     if len(data['registers']) > 0:
@@ -443,13 +499,13 @@ def sc_class_dependency_includes(args, prj, data):
 def wrap_module_namespace(args, data, lines):
     if args.mode != 'module':
         return lines
-    namespaceName = cpp_namespace_name(data['contextIncludeName'])
+    namespaceName = cpp_namespace_name(data['contextModuleIdentity'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
 
 def wrap_module_test_namespace(args, data, lines):
     if args.mode != 'module':
         return lines
-    namespaceName = cpp_test_namespace_name(data['contextIncludeName'])
+    namespaceName = cpp_test_namespace_name(data['contextModuleIdentity'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
 
 def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):

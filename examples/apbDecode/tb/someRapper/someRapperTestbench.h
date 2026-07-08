@@ -7,7 +7,9 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "someRapperBase.h"
+import someRapper.base;
+import apbDecode;
+using namespace apbDecode_ns;
 #include "someRapperExternal.h"
 
 class someRapperTestbench: public sc_module, public blockBase, public someRapperChannels {

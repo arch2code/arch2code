@@ -7,7 +7,9 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "simpleBase.h"
+import simple.base;
+import simple;
+using namespace simple_ns;
 #include "simpleExternal.h"
 
 class simpleTestbench: public sc_module, public blockBase, public simpleChannels {

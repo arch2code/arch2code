@@ -43,8 +43,8 @@ def _include_context_modules(fileMapKey, prj, data):
             if name == currentContext:
                 continue
             if fileMapKey == 'include_cppm':
-                imports.append(f'import {cpp_module_name(prj.includeName[name])};')
-                usings.append(f'using namespace {cpp_namespace_name(prj.includeName[name])};')
+                imports.append(f'import {cpp_module_name(prj.contextModuleIdentity[name])};')
+                usings.append(f'using namespace {cpp_namespace_name(prj.contextModuleIdentity[name])};')
             else:
                 others.append(f'#include "{fileMap[name]["baseName"]}"')
     return imports + usings + others

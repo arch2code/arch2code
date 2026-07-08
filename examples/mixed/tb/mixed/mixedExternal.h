@@ -8,7 +8,10 @@
 // GENERATED_CODE_PARAM --block=mixed_tb --excludeInst=u_mixed
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "mixedBase.h"
+#include "instanceFactory.h"
+import mixed.base;
+import mixed;
+using namespace mixed_ns;
 #include "endOfTest.h"
 
 //contained instances forward class declaration

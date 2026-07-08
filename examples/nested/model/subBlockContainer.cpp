@@ -4,12 +4,12 @@
 // GENERATED_CODE_PARAM --block=subBlockContainer
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "subBlockContainer.h"
-#include "subBlockBase.h"
+import subBlock.base;
 SC_HAS_PROCESS(subBlockContainer);
 
 // === Block factory registration (subBlockContainer) ===
 void register_subBlockContainer_variants() {
-    instanceFactory::registerBlock("subBlockContainer_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<subBlockContainer>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("subBlockContainer_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<subBlockContainer>(blockName, variant, bbMode)); }, "", "nested");
 }
 
 namespace {
@@ -22,8 +22,8 @@ subBlockContainer::subBlockContainer(sc_module_name blockName, const char * vari
         ,blockBase("subBlockContainer", name(), bbMode)
         ,subBlockContainerBase(name(), variant)
         ,src("subBlock_src", "subBlock")
-        ,uSubBlock0(std::dynamic_pointer_cast<subBlockBase>(instanceFactory::createInstance(name(), "uSubBlock0", "subBlock", "")))
-        ,uSubBlock1(std::dynamic_pointer_cast<subBlockBase>(instanceFactory::createInstance(name(), "uSubBlock1", "subBlock", "")))
+        ,uSubBlock0(std::dynamic_pointer_cast<subBlockBase>(instanceFactory::createInstance(name(), "uSubBlock0", "subBlock", "", "nested")))
+        ,uSubBlock1(std::dynamic_pointer_cast<subBlockBase>(instanceFactory::createInstance(name(), "uSubBlock1", "subBlock", "", "nested")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

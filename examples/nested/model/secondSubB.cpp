@@ -9,7 +9,7 @@ SC_HAS_PROCESS(secondSubB);
 
 // === Block factory registration (secondSubB) ===
 void register_secondSubB_variants() {
-    instanceFactory::registerBlock("secondSubB_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<secondSubB>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("secondSubB_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<secondSubB>(blockName, variant, bbMode)); }, "", "nested");
 }
 
 namespace {

@@ -9,7 +9,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "producerBase.h"
+import producer.base;
+#include "rdy_vld_channel.h"
+import nested;
+using namespace nested_ns;
 
 SC_MODULE(producer), public blockBase, public producerBase
 {

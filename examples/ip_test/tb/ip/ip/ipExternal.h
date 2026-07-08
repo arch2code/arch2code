@@ -8,7 +8,10 @@
 // GENERATED_CODE_PARAM --block=ip --variant=variant0
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "ipBase.h"
+#include "instanceFactory.h"
+import ip.base;
+import ip;
+using namespace ip_ns;
 #include "ipVariantConfig.h"
 #include "endOfTest.h"
 

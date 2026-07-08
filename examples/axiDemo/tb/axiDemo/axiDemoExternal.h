@@ -8,7 +8,8 @@
 // GENERATED_CODE_PARAM --block=axiDemo_tb --excludeInst=u_axiDemo
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "axiDemoBase.h"
+#include "instanceFactory.h"
+import axiDemo.base;
 #include "endOfTest.h"
 
 class axiDemoExternal: public sc_module, public axiDemoInverted {

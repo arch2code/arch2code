@@ -8,7 +8,8 @@
 // GENERATED_CODE_PARAM --block=helloWorld_tb --excludeInst=u_helloWorld
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "helloWorldBase.h"
+#include "instanceFactory.h"
+import helloWorld.base;
 #include "endOfTest.h"
 
 class helloWorldExternal: public sc_module, public helloWorldInverted {

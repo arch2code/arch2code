@@ -5,8 +5,8 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=apbDecode
-
-#include "apbDecodeBase.h"
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import apbDecode.base;
 
 // Verilated RTL top (SystemC)
 #if !defined(VERILATOR) && defined(VCS)
@@ -14,9 +14,12 @@
 #else
 #include "VapbDecode_hdl_sv_wrapper.h"
 #endif
+// GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import shared_types;
+using namespace shared_types_ns;
 #include "apb_bfm.h"
 
 class apbDecode_hdl_sc_wrapper: public sc_module, public blockBase, public apbDecodeBase {
@@ -31,7 +34,7 @@ public:
             instanceFactory::registerBlock(
                 "apbDecode_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < apbDecode_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
+                }, "", "ip_test");
         }
     };
 

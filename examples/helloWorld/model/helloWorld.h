@@ -9,12 +9,16 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "helloWorldBase.h"
+import helloWorld.base;
+#include "pop_ack_channel.h"
+#include "push_ack_channel.h"
+#include "rdy_vld_channel.h"
+#include "req_ack_channel.h"
 import helloWorld_tb;
 using namespace helloWorld_tb_ns;
-//contained instances forward class declaration
-class producerBase;
-class consumerBase;
+//contained instances base module imports
+import producer.base;
+import consumer.base;
 
 SC_MODULE(helloWorld), public blockBase, public helloWorldBase
 {

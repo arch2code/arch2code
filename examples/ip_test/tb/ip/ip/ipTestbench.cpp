@@ -7,7 +7,7 @@
 // (see instanceFactory.h); main() reaches it through direct-.o linking with no
 // force-link reference.
 void register_ipTestbench_variants() {
-    instanceFactory::registerBlock("ipTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipTestbench>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("ipTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipTestbench>(blockName, variant, bbMode)); }, "", "ip_test");
 }
 
 namespace {
@@ -18,7 +18,7 @@ namespace {
 ipTestbench::ipTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("ipTestbench", name(), bbMode)
         ,ipChannels<ipVariant0Config>("Chnl", "tb")
-        ,ip(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>( instanceFactory::createInstance(name(), "ip", "ip", "variant0")))
+        ,ip(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>( instanceFactory::createInstance(name(), "ip", "ip", "variant0", "ip_test")))
         ,external("external")
 {
     bind(ip.get(), &external);

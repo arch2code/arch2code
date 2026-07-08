@@ -7,7 +7,9 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "axiDemoBase.h"
+import axiDemo.base;
+import axiDemo;
+using namespace axiDemo_ns;
 #include "axiDemoExternal.h"
 
 class axiDemoTestbench: public sc_module, public blockBase, public axiDemoChannels {

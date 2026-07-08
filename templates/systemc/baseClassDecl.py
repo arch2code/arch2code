@@ -11,25 +11,15 @@ def render(args, prj, data):
 
     out = list()
 
-    block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'], data)
-
-    if not block_intf_set:
-        out.append('#include "blockBase.h"')
-
-    for intfType in sorted(block_intf_set):
-        intf_def = intf_gen_utils.get_intf_defs(intfType, data)
-        chnlType = intf_def['sc_channel']['type']
-        out.append(f'#include "{chnlType}_channel.h"')
-
-    if args.fileMapKey:
-        fileMapKey = args.fileMapKey
-    else:
-        fileMapKey = 'include_cppm'
-
-    for context in data['includeContext']:
-        if context in data['includeFiles'].get(fileMapKey, {}):
-            out.extend(intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey))
-
+    # Dependency lines. In classic mode they are emitted inline ahead of the
+    # Base/Inverted/Channels classes. In module mode the base-module global
+    # module fragment owns the #includes and the `export module`/import lines
+    # (templates/systemc/moduleScaffold.py baseModuleHeader); a module interface
+    # forbids #include after the module declaration, so baseClassDecl suppresses
+    # them here.
+    if args.mode != 'module':
+        for kind, line in intf_gen_utils.sc_base_dependency_includes(args, prj, data):
+            out.append(line)
 
     isParameterizable = data['isParameterizable']
     # Base/Inverted/Channels companions inherit the parent's "leaf
@@ -80,9 +70,15 @@ def render(args, prj, data):
 def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
     out = list()
     className = blockName + ifMapping['classNamePostfix']
+    # In module mode the Base/Inverted classes are exported from the base-module
+    # interface unit; `export` prefixes the first line of the declaration (the
+    # template-head for own-params blocks, otherwise the class line).
+    exportKw = 'export ' if args.mode == 'module' else ''
     if isParameterizable:
-        out.append('template<typename Config>')
-    out.append(f'class { className } : public virtual blockPortBase')
+        out.append(exportKw + 'template<typename Config>')
+        out.append(f'class { className } : public virtual blockPortBase')
+    else:
+        out.append(exportKw + f'class { className } : public virtual blockPortBase')
     out.append('{')
     out.append('public:')
     indent = ' '*4
@@ -227,9 +223,15 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
 def renderChannels(args, prj, data, isParameterizable=False):
     out = list()
     className = data["blockName"] + 'Channels'
+    # In module mode the Channels class is exported from the base-module
+    # interface unit; `export` prefixes the template-head (own-params blocks) or
+    # the class line.
+    exportKw = 'export ' if args.mode == 'module' else ''
     if isParameterizable:
-        out.append('template<typename Config>')
-    out.append(f'class { className }')
+        out.append(exportKw + 'template<typename Config>')
+        out.append(f'class { className }')
+    else:
+        out.append(exportKw + f'class { className }')
     out.append('{')
     out.append('public:')
     indent = ' '*4

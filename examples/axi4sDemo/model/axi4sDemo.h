@@ -10,7 +10,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "axi4sDemoBase.h"
+import axi4sDemo.base;
+#include "axi4_stream_channel.h"
+import axi4sDemo_tb;
+using namespace axi4sDemo_tb_ns;
 
 SC_MODULE(axi4sDemo), public blockBase, public axi4sDemoBase
 {

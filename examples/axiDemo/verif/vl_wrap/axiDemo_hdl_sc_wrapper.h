@@ -5,8 +5,8 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=axiDemo
-
-#include "axiDemoBase.h"
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import axiDemo.base;
 
 // Verilated RTL top (SystemC)
 #if !defined(VERILATOR) && defined(VCS)
@@ -14,9 +14,12 @@
 #else
 #include "VaxiDemo_hdl_sv_wrapper.h"
 #endif
+// GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import axiDemo;
+using namespace axiDemo_ns;
 #include "axi4_stream_bfm.h"
 #include "axi_read_bfm.h"
 #include "axi_write_bfm.h"
@@ -33,7 +36,7 @@ public:
             instanceFactory::registerBlock(
                 "axiDemo_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < axiDemo_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
+                }, "", "axiDemo");
         }
     };
 

@@ -25,11 +25,13 @@ def render_sc(args, prj, data):
     return s
 
 def get_include_deps(args, prj, data):
-    # blockBase header is always a textual include; context dependencies are
-    # imported as C++20 modules in cppm mode and #included in header mode
-    # (mirrors classDecl's context-include emission).
+    # The block's own Base is a C++20 module interface unit
+    # (`<block>Base.cppm`, `export module <block>.base;`), imported rather than
+    # textually included; context dependencies are imported as C++20 modules in
+    # cppm mode and #included in header mode (mirrors classDecl's context-include
+    # emission).
     include_deps = []
-    include_deps.append(f'#include "{prj.getModuleFilename("blockBase", data["blockName"], "hdr")}"')
+    include_deps.append(f'import {intf_gen_utils.cpp_base_module_name(data["blockName"])};')
     # A parameterizable reg-handler is a class template on the parent's Config;
     # the per-context Config-policy header carries the <context>DefaultConfig
     # struct the registrar/anchor instantiation in the .cpp binds against.

@@ -9,13 +9,15 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 #include "instanceFactory.h"
-#include "ipBase.h"
+#include "apb_channel.h"
+#include "push_ack_channel.h"
 #include "addressMap.h"
 #include "hwRegister.h"
 #include "hwMemory.h"
 #include "ipVariantConfig.h"
 
 export module ip.block;
+import ip.base;
 import ip;
 using namespace ip_ns;
 // GENERATED_CODE_END

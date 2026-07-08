@@ -7,7 +7,11 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "mixedBase.h"
+import mixed.base;
+import mixed;
+using namespace mixed_ns;
+import mixedBlockC;
+using namespace mixedBlockC_ns;
 #include "mixedExternal.h"
 
 class mixedTestbench: public sc_module, public blockBase, public mixedChannels {

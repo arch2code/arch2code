@@ -1582,7 +1582,7 @@ def structTest(args, prj, data):
     else:
         # The test lives in the sibling test namespace; pull the functional
         # types into scope so struct names resolve unqualified.
-        out.append(f'using namespace {cpp_namespace_name(data["contextIncludeName"])};')
+        out.append(f'using namespace {cpp_namespace_name(data["contextModuleIdentity"])};')
 
     # Sample-point Config structs for the parameterizable structs. Only emitted
     # in module mode (no Config in a non-module TU).

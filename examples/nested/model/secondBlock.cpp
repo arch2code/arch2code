@@ -4,13 +4,13 @@
 // GENERATED_CODE_PARAM --block=secondBlock
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "secondBlock.h"
-#include "secondSubABase.h"
-#include "secondSubBBase.h"
+import secondSubA.base;
+import secondSubB.base;
 SC_HAS_PROCESS(secondBlock);
 
 // === Block factory registration (secondBlock) ===
 void register_secondBlock_variants() {
-    instanceFactory::registerBlock("secondBlock_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<secondBlock>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("secondBlock_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<secondBlock>(blockName, variant, bbMode)); }, "", "nested");
 }
 
 namespace {
@@ -23,8 +23,8 @@ secondBlock::secondBlock(sc_module_name blockName, const char * variant, blockBa
         ,blockBase("secondBlock", name(), bbMode)
         ,secondBlockBase(name(), variant)
         ,test("secondSubB_test", "secondSubA")
-        ,uSecondSubA(std::dynamic_pointer_cast<secondSubABase>(instanceFactory::createInstance(name(), "uSecondSubA", "secondSubA", "")))
-        ,uSecondSubB(std::dynamic_pointer_cast<secondSubBBase>(instanceFactory::createInstance(name(), "uSecondSubB", "secondSubB", "")))
+        ,uSecondSubA(std::dynamic_pointer_cast<secondSubABase>(instanceFactory::createInstance(name(), "uSecondSubA", "secondSubA", "", "nested")))
+        ,uSecondSubB(std::dynamic_pointer_cast<secondSubBBase>(instanceFactory::createInstance(name(), "uSecondSubB", "secondSubB", "", "nested")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

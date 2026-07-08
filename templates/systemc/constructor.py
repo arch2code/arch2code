@@ -222,15 +222,18 @@ def constructorInit(args, prj, data):
         # would resolve to the parent's `<Config>` or the parent's defaultConfig
         # and dynamic_pointer_cast would return nullptr at runtime.
         instCfg = value['instanceConfigArg']
-        # Generated createInstance passes the variant string only. The factory
-        # key is `(blockType, variant)`; the variant string identifies the
-        # per-variant Config policy unambiguously. The parent holds no
+        # Generated createInstance passes the variant string and the assembling
+        # project's projectName. The factory key is
+        # `(blockType, variant, projectName)`; the variant string identifies the
+        # per-variant Config policy unambiguously and projectName scopes the
+        # lookup to this assembler's registrations. The parent holds no
         # compile-time symbol reference to the child: non-templated children
         # self-register via an A2C_REGISTRATION_RETAIN static in their own TU,
         # reachable through direct-.o linking (see instanceFactory.h).
+        projectName = prj.config.getConfig('PROJECTNAME')
         createCall = (
             f'instanceFactory::createInstance(name(), "{value["instance"]}", '
-            f'"{value["instanceType"]}", "{value["variant"]}")'
+            f'"{value["instanceType"]}", "{value["variant"]}", "{projectName}")'
         )
         out.append(
             f'        ,{ value["instance"] }(std::dynamic_pointer_cast'
@@ -486,7 +489,9 @@ def blockRegistrarInitLines(args, prj, data, className, hasOwnParams):
 
     # No `instanceFactory::addParam` calls are emitted. Block constructors read
     # parameter values from `Config::*` directly; there is no runtime parameter
-    # table.
+    # table. The trailing projectName scopes the registration to this assembler
+    # so the container's projectName-qualified createInstance lookup matches.
+    projectName = prj.config.getConfig('PROJECTNAME')
     if data['variants']:
         registerCalls = []
         for variant in sorted(data['variants']):
@@ -495,7 +500,7 @@ def blockRegistrarInitLines(args, prj, data, className, hasOwnParams):
                 f'[](const char * blockName, const char * variant, blockBaseMode bbMode) '
                 f'-> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>>'
                 f'(std::make_shared<{className}>(blockName, variant, bbMode)); }}, '
-                f'"{variant}");'
+                f'"{variant}", "{projectName}");'
             )
     else:
         registerCalls = [
@@ -503,7 +508,7 @@ def blockRegistrarInitLines(args, prj, data, className, hasOwnParams):
             f'[](const char * blockName, const char * variant, blockBaseMode bbMode) '
             f'-> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>>'
             f'(std::make_shared<{className}>(blockName, variant, bbMode)); }}, '
-            f'"");'
+            f'"", "{projectName}");'
         ]
 
     out.append(f'// === Block factory registration ({className}) ===')

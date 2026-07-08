@@ -9,7 +9,8 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockABase.h"
+import blockA.base;
+#include "apb_channel.h"
 #include "addressMap.h"
 #include "hwRegister.h"
 #include "hwMemory.h"

@@ -5,11 +5,10 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=ipLeaf
-
-#include "ipLeafBase.h"
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import ipLeaf.base;
 
 // Verilated RTL top (SystemC)
-// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_include_sv_wrapper_header
 #if !defined(VERILATOR) && defined(VCS)
 #include "ipLeaf_variantLeaf0_hdl_sv_wrapper.h"
 #else
@@ -19,6 +18,8 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import ipLeaf;
+using namespace ipLeaf_ns;
 #include "ipLeafVariantConfig.h"
 
 template <typename DUT_T, typename Config>
@@ -34,7 +35,7 @@ public:
             instanceFactory::registerBlock(
                 "ipLeaf_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < ipLeaf_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
-                }, variant_);
+                }, variant_, "ip_test");
         }
     };
 

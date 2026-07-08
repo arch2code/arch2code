@@ -8,13 +8,13 @@
 // GENERATED_CODE_PARAM --block=helloWorld
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "helloWorld.h"
-#include "producerBase.h"
-#include "consumerBase.h"
+import producer.base;
+import consumer.base;
 SC_HAS_PROCESS(helloWorld);
 
 // === Block factory registration (helloWorld) ===
 void register_helloWorld_variants() {
-    instanceFactory::registerBlock("helloWorld_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<helloWorld>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("helloWorld_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<helloWorld>(blockName, variant, bbMode)); }, "", "helloWorld");
 }
 
 namespace {
@@ -30,8 +30,8 @@ helloWorld::helloWorld(sc_module_name blockName, const char * variant, blockBase
         ,test_req_ack("consumer_test_req_ack", "producer")
         ,test_push_ack("consumer_test_push_ack", "producer")
         ,test_pop_ack("consumer_test_pop_ack", "producer")
-        ,uProducer(std::dynamic_pointer_cast<producerBase>(instanceFactory::createInstance(name(), "uProducer", "producer", "")))
-        ,uConsumer(std::dynamic_pointer_cast<consumerBase>(instanceFactory::createInstance(name(), "uConsumer", "consumer", "")))
+        ,uProducer(std::dynamic_pointer_cast<producerBase>(instanceFactory::createInstance(name(), "uProducer", "producer", "", "helloWorld")))
+        ,uConsumer(std::dynamic_pointer_cast<consumerBase>(instanceFactory::createInstance(name(), "uConsumer", "consumer", "", "helloWorld")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

@@ -9,7 +9,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "cpuBase.h"
+import cpu.base;
+#include "apb_channel.h"
+import apbDecode;
+using namespace apbDecode_ns;
 
 SC_MODULE(cpu), public blockBase, public cpuBase
 {

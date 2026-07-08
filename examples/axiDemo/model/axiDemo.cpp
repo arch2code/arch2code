@@ -6,13 +6,13 @@
 // GENERATED_CODE_PARAM --block=axiDemo
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "axiDemo.h"
-#include "producerBase.h"
-#include "consumerBase.h"
+import producer.base;
+import consumer.base;
 SC_HAS_PROCESS(axiDemo);
 
 // === Block factory registration (axiDemo) ===
 void register_axiDemo_variants() {
-    instanceFactory::registerBlock("axiDemo_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axiDemo>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("axiDemo_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axiDemo>(blockName, variant, bbMode)); }, "", "axiDemo");
 }
 
 namespace {
@@ -34,8 +34,8 @@ axiDemo::axiDemo(sc_module_name blockName, const char * variant, blockBaseMode b
         ,axiWr3("consumer_axiWr3", "producer", "api_list_size", 256, "")
         ,axiStr0("consumer_axiStr0", "producer", "api_list_size", 256, "")
         ,axiStr1("consumer_axiStr1", "producer", "api_list_size", 256, "")
-        ,uProducer(std::dynamic_pointer_cast<producerBase>(instanceFactory::createInstance(name(), "uProducer", "producer", "")))
-        ,uConsumer(std::dynamic_pointer_cast<consumerBase>(instanceFactory::createInstance(name(), "uConsumer", "consumer", "")))
+        ,uProducer(std::dynamic_pointer_cast<producerBase>(instanceFactory::createInstance(name(), "uProducer", "producer", "", "axiDemo")))
+        ,uConsumer(std::dynamic_pointer_cast<consumerBase>(instanceFactory::createInstance(name(), "uConsumer", "consumer", "", "axiDemo")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

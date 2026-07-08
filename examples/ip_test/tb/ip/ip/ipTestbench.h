@@ -7,7 +7,9 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "ipBase.h"
+import ip.base;
+import ip;
+using namespace ip_ns;
 #include "ipExternal.h"
 
 class ipTestbench: public sc_module, public blockBase, public ipChannels<ipVariant0Config> {

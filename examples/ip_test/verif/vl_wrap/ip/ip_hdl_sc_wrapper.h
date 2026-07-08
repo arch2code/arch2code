@@ -5,11 +5,10 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=ip
-
-#include "ipBase.h"
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import ip.base;
 
 // Verilated RTL top (SystemC)
-// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_include_sv_wrapper_header
 #if !defined(VERILATOR) && defined(VCS)
 #include "ip_variant0_hdl_sv_wrapper.h"
 #include "ip_variant1_hdl_sv_wrapper.h"
@@ -21,6 +20,8 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import ip;
+using namespace ip_ns;
 #include "ipVariantConfig.h"
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
@@ -38,7 +39,7 @@ public:
             instanceFactory::registerBlock(
                 "ip_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < ip_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
-                }, variant_);
+                }, variant_, "ip_test");
         }
     };
 

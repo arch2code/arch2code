@@ -5,15 +5,15 @@
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "blockB.h"
-#include "blockDBase.h"
-#include "blockFBase.h"
-#include "threeCsBase.h"
-#include "blockBRegsBase.h"
+import blockD.base;
+import blockF.base;
+import threeCs.base;
+import blockBRegs.base;
 SC_HAS_PROCESS(blockB);
 
 // === Block factory registration (blockB) ===
 void register_blockB_variants() {
-    instanceFactory::registerBlock("blockB_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockB>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("blockB_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockB>(blockName, variant, bbMode)); }, "", "mixed");
 }
 
 namespace {
@@ -37,11 +37,11 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,roBsize("blockB_roBsize", "blockB", bSizeRegSt::_packedSt(0x0))
         ,blockBTableExt("blockB_blockBTableExt", "blockB")
         ,blockBTable37Bit("blockB_blockBTable37Bit", "blockB")
-        ,uBlockD(std::dynamic_pointer_cast<blockDBase>(instanceFactory::createInstance(name(), "uBlockD", "blockD", "")))
-        ,uBlockF0(std::dynamic_pointer_cast<blockFBase<mixedDefaultConfig>>(instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0")))
-        ,uBlockF1(std::dynamic_pointer_cast<blockFBase<blockFVariant1Config>>(instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1")))
-        ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>(instanceFactory::createInstance(name(), "uThreeCs", "threeCs", "")))
-        ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>(instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "")))
+        ,uBlockD(std::dynamic_pointer_cast<blockDBase>(instanceFactory::createInstance(name(), "uBlockD", "blockD", "", "mixed")))
+        ,uBlockF0(std::dynamic_pointer_cast<blockFBase<mixedDefaultConfig>>(instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0", "mixed")))
+        ,uBlockF1(std::dynamic_pointer_cast<blockFBase<blockFVariant1Config>>(instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1", "mixed")))
+        ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>(instanceFactory::createInstance(name(), "uThreeCs", "threeCs", "", "mixed")))
+        ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>(instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "", "mixed")))
         ,blockBTable0(name(), "blockBTable0", mems, BSIZE, HWMEMORYTYPE_LOCAL)
         ,blockBTable1(name(), "blockBTable1", mems, BSIZE)
         ,blockBTable2(name(), "blockBTable2", mems, BSIZE)

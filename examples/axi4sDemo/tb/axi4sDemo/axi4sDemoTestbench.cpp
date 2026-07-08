@@ -7,7 +7,7 @@
 // (see instanceFactory.h); main() reaches it through direct-.o linking with no
 // force-link reference.
 void register_axi4sDemoTestbench_variants() {
-    instanceFactory::registerBlock("axi4sDemoTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axi4sDemoTestbench>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("axi4sDemoTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axi4sDemoTestbench>(blockName, variant, bbMode)); }, "", "axi4sDemo");
 }
 
 namespace {
@@ -18,7 +18,7 @@ namespace {
 axi4sDemoTestbench::axi4sDemoTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("axi4sDemoTestbench", name(), bbMode)
         ,axi4sDemoChannels("Chnl", "tb")
-        ,axi4sDemo(std::dynamic_pointer_cast<axi4sDemoBase>( instanceFactory::createInstance(name(), "axi4sDemo", "axi4sDemo", "")))
+        ,axi4sDemo(std::dynamic_pointer_cast<axi4sDemoBase>( instanceFactory::createInstance(name(), "axi4sDemo", "axi4sDemo", "", "axi4sDemo")))
         ,external("external")
 {
     bind(axi4sDemo.get(), &external);

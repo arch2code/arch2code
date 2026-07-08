@@ -18,13 +18,13 @@ struct _ip_registrar {
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant0Config>>(blockName, variant, bbMode));
             },
-            "variant0");
+            "variant0", "ip_test");
         instanceFactory::registerBlock(
             "ip_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant1Config>>(blockName, variant, bbMode));
             },
-            "variant1");
+            "variant1", "ip_test");
     }
 };
 static _ip_registrar _ip_registrar_instance;

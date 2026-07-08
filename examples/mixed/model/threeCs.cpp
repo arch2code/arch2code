@@ -4,12 +4,12 @@
 // GENERATED_CODE_PARAM --block=threeCs
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "threeCs.h"
-#include "blockCBase.h"
+import blockC.base;
 SC_HAS_PROCESS(threeCs);
 
 // === Block factory registration (threeCs) ===
 void register_threeCs_variants() {
-    instanceFactory::registerBlock("threeCs_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<threeCs>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("threeCs_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<threeCs>(blockName, variant, bbMode)); }, "", "mixed");
 }
 
 namespace {
@@ -21,9 +21,9 @@ threeCs::threeCs(sc_module_name blockName, const char * variant, blockBaseMode b
        : sc_module(blockName)
         ,blockBase("threeCs", name(), bbMode)
         ,threeCsBase(name(), variant)
-        ,uBlockC0(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC0", "blockC", "")))
-        ,uBlockC1(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC1", "blockC", "")))
-        ,uBlockC2(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC2", "blockC", "")))
+        ,uBlockC0(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC0", "blockC", "", "mixed")))
+        ,uBlockC1(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC1", "blockC", "", "mixed")))
+        ,uBlockC2(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC2", "blockC", "", "mixed")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

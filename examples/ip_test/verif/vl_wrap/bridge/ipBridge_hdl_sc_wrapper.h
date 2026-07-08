@@ -5,8 +5,8 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=ipBridge
-
-#include "ipBridgeBase.h"
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import ipBridge.base;
 
 // Verilated RTL top (SystemC)
 #if !defined(VERILATOR) && defined(VCS)
@@ -14,9 +14,16 @@
 #else
 #include "VipBridge_hdl_sv_wrapper.h"
 #endif
+// GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import ipBridge;
+using namespace ipBridge_ns;
+import shared_types;
+using namespace shared_types_ns;
+import ip;
+using namespace ip_ns;
 #include "ipVariantConfig.h"
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
@@ -33,7 +40,7 @@ public:
             instanceFactory::registerBlock(
                 "ipBridge_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < ipBridge_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
+                }, "", "ip_test");
         }
     };
 

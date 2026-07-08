@@ -9,12 +9,13 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 #include "instanceFactory.h"
-#include "srcBase.h"
+#include "push_ack_channel.h"
 #include "ipLeafVariantConfig.h"
 #include "srcVariantConfig.h"
-#include "ipLeafBase.h"
 
 export module src.block;
+import src.base;
+import ipLeaf.base;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=classDecl
@@ -58,7 +59,7 @@ src<Config>::src(sc_module_name blockName, const char * variant, blockBaseMode b
        : sc_module(blockName)
         ,blockBase("src", name(), bbMode)
         ,srcBase<Config>(name(), variant)
-        ,uLeaf(std::dynamic_pointer_cast<ipLeafBase<ipLeafVariantLeaf0Config>>(instanceFactory::createInstance(name(), "uLeaf", "ipLeaf", "variantLeaf0")))
+        ,uLeaf(std::dynamic_pointer_cast<ipLeafBase<ipLeafVariantLeaf0Config>>(instanceFactory::createInstance(name(), "uLeaf", "ipLeaf", "variantLeaf0", "ip_test")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

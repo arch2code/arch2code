@@ -9,7 +9,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "consumerBase.h"
+import consumer.base;
+#include "rdy_vld_channel.h"
+import nested;
+using namespace nested_ns;
 
 SC_MODULE(consumer), public blockBase, public consumerBase
 {

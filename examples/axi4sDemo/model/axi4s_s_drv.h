@@ -11,7 +11,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "axi4s_s_drvBase.h"
+import axi4s_s_drv.base;
+#include "axi4_stream_channel.h"
+import axi4sDemo_tb;
+using namespace axi4sDemo_tb_ns;
 
 SC_MODULE(axi4s_s_drv), public blockBase, public axi4s_s_drvBase
 {

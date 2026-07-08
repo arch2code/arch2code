@@ -67,6 +67,15 @@ def render_sc(args, prj, data):
 
     def sec_bfm_includes(args, prj, data):
         s = []
+        # A module import does not propagate the base module's own context
+        # imports / using-directives the way the old textual `<block>Base.h`
+        # did. The Verilated SC wrapper class spells the DUT's interface struct
+        # types unqualified, so re-emit the block's interface-context imports
+        # (and their using-directives) at the top of the wrapper's generated
+        # region (global scope).
+        for context in data['includeContext']:
+            if context in data['includeFiles'].get('include_cppm', {}):
+                s.extend(intf_gen_utils.cpp_context_include_lines(prj, data, context, 'include_cppm'))
         for context in sorted(data.get('configIncludeContext', {})):
             if context in data['includeFiles'].get('config_hdr', {}):
                 s.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
@@ -156,6 +165,11 @@ def render_sc(args, prj, data):
             cfg=baseCfg,
             default_config=defaultConfig,
             use_own_variant_config=useOwnVariantTemplateArg,
+            # projectName is baked in as a generation-time literal (the wrapper
+            # ctor gets no projectName arg); the `_verif` registration must be
+            # keyed under the same projectName the container's createInstance
+            # lookup uses.
+            projectname=prj.config.getConfig('PROJECTNAME'),
             sec_bfm_includes=sec_bfm_includes(args, prj, data),
             sec_bfm_decl=sec_bfm_decl(args, prj, data),
             sec_bfm_ctor_init=sec_bfm_ctor_init(args, prj, data),
@@ -164,6 +178,18 @@ def render_sc(args, prj, data):
             sec_hdl_if_decl=sec_hdl_if_decl(args, prj, data)
         )
         return(s)
+
+    def sec_preamble(args, prj, data):
+        # File-scope preamble for the fully generated Verilated SC wrapper: the
+        # block's own Base import plus the DUT SV-wrapper include. Both are
+        # emitted from this generated region (rather than a create-only scaffold
+        # line) so `make gen` re-spells them every run and existing wrappers
+        # self-heal - notably the base reference, which after the Base
+        # header->C++20-module migration must read `import <block>.base;`
+        # instead of a now-dangling `#include "<block>Base.h"`.
+        t = Template(sec_preamble_template)
+        basemodule = intf_gen_utils.cpp_base_module_name(data['blockName'])
+        return(t.render(blockname=data['blockName'], variants=data['variants'], basemodule=basemodule))
 
     def sec_var_include_sv_wrap_header(args, prj, data):
         t = Template(sec_var_include_sv_wrap_header_template)
@@ -219,6 +245,7 @@ def render_sc(args, prj, data):
                         mp_sig[port][key] = mp_sig[port][key].replace('<Config>', f'<{defaultConfig}>')
 
     match args.section:
+        case 'preamble' : return sec_preamble(args, prj, data)
         case 'hdl_sc_wrapper_class' : return sec_hdl_sc_wrapper_class(args, prj, data)
         case 'channel_decl': return sec_channel_decl(args, prj, data)
         case 'bfm_decl': return sec_bfm_decl(args, prj, data)
@@ -233,7 +260,30 @@ def render_sc(args, prj, data):
         case 'factory_register_vl_decl' : return factory_register_vl_decl(args, prj, data)
         case 'factory_register_vl_incl' : return factory_register_vl_incl(args, prj, data)
 
-        case _ : raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are hdl_sc_wrapper_class, channel_decl, bfm_decl, bfm_ctor_init, dut_connect, bfm_connect, hdl_if_decl, variant_include_sv_wrapper_header, variant_class_template_spec, factory_register_vl_decl, factory_register_vl_incl")
+        case _ : raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are preamble, hdl_sc_wrapper_class, channel_decl, bfm_decl, bfm_ctor_init, dut_connect, bfm_connect, hdl_if_decl, variant_include_sv_wrapper_header, variant_class_template_spec, factory_register_vl_decl, factory_register_vl_incl")
+
+sec_preamble_template = """\
+import {{basemodule}};
+
+// Verilated RTL top (SystemC)
+#if !defined(VERILATOR) && defined(VCS)
+{% if variants -%}
+{% for var in variants -%}
+#include "{{blockname}}_{{var}}_hdl_sv_wrapper.h"
+{% endfor -%}
+{% else -%}
+#include "{{blockname}}_hdl_sv_wrapper.h"
+{% endif -%}
+#else
+{% if variants -%}
+{% for var in variants -%}
+#include "V{{blockname}}_{{var}}_hdl_sv_wrapper.h"
+{% endfor -%}
+{% else -%}
+#include "V{{blockname}}_hdl_sv_wrapper.h"
+{% endif -%}
+#endif\
+"""
 
 sec_var_include_sv_wrap_header_template = """\
 #if !defined(VERILATOR) && defined(VCS)
@@ -291,7 +341,7 @@ public:
             instanceFactory::registerBlock(
                 "{{blockname}}_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < {{blockname}}_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
+                }, "", "{{projectname}}");
         }
 {%- else %}
         registerBlock(const char *variant_)
@@ -301,11 +351,11 @@ public:
 {%- if use_own_variant_config %}
                 "{{blockname}}_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < {{blockname}}_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
-                }, variant_);
+                }, variant_, "{{projectname}}");
 {%- else %}
                 "{{blockname}}_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < {{blockname}}_hdl_sc_wrapper<DUT_T> > (blockName, variant, bbMode));
-                }, variant_);
+                }, variant_, "{{projectname}}");
 {%- endif %}
         }
 {%- endif %}

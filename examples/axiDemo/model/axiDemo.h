@@ -9,12 +9,15 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "axiDemoBase.h"
+import axiDemo.base;
+#include "axi4_stream_channel.h"
+#include "axi_read_channel.h"
+#include "axi_write_channel.h"
 import axiDemo;
 using namespace axiDemo_ns;
-//contained instances forward class declaration
-class producerBase;
-class consumerBase;
+//contained instances base module imports
+import producer.base;
+import consumer.base;
 
 SC_MODULE(axiDemo), public blockBase, public axiDemoBase
 {

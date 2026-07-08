@@ -8,7 +8,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "cpuBase.h"
+import cpu.base;
+#include "apb_channel.h"
+import mixed;
+using namespace mixed_ns;
 
 SC_MODULE(cpu), public blockBase, public cpuBase
 {

@@ -8,7 +8,7 @@ SC_HAS_PROCESS(blockD);
 
 // === Block factory registration (blockD) ===
 void register_blockD_variants() {
-    instanceFactory::registerBlock("blockD_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockD>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("blockD_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockD>(blockName, variant, bbMode)); }, "", "mixed");
 }
 
 namespace {

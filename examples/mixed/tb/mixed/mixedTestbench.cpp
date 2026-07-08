@@ -7,7 +7,7 @@
 // (see instanceFactory.h); main() reaches it through direct-.o linking with no
 // force-link reference.
 void register_mixedTestbench_variants() {
-    instanceFactory::registerBlock("mixedTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<mixedTestbench>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("mixedTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<mixedTestbench>(blockName, variant, bbMode)); }, "", "mixed");
 }
 
 namespace {
@@ -18,7 +18,7 @@ namespace {
 mixedTestbench::mixedTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("mixedTestbench", name(), bbMode)
         ,mixedChannels("Chnl", "tb")
-        ,mixed(std::dynamic_pointer_cast<mixedBase>( instanceFactory::createInstance(name(), "mixed", "mixed", "")))
+        ,mixed(std::dynamic_pointer_cast<mixedBase>( instanceFactory::createInstance(name(), "mixed", "mixed", "", "mixed")))
         ,external("external")
 {
     bind(mixed.get(), &external);

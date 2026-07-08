@@ -17,6 +17,10 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import mixed;
+using namespace mixed_ns;
+import mixedBlockC;
+using namespace mixedBlockC_ns;
 #include "apb_bfm.h"
 #include "notify_ack_bfm.h"
 #include "rdy_vld_bfm.h"
@@ -34,7 +38,7 @@ public:
             instanceFactory::registerBlock(
                 "mixed_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < mixed_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
+                }, "", "mixed");
         }
     };
 

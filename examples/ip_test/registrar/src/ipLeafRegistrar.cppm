@@ -18,7 +18,7 @@ struct _ipLeaf_registrar {
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipLeaf<ipLeafVariantLeaf0Config>>(blockName, variant, bbMode));
             },
-            "variantLeaf0");
+            "variantLeaf0", "ip_test");
     }
 };
 static _ipLeaf_registrar _ipLeaf_registrar_instance;

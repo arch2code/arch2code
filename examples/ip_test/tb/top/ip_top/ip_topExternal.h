@@ -8,7 +8,10 @@
 // GENERATED_CODE_PARAM --block=ip_top_tb --excludeInst=u_ip_top
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "ip_topBase.h"
+#include "instanceFactory.h"
+import ip_top.base;
+import shared_types;
+using namespace shared_types_ns;
 #include "endOfTest.h"
 
 //contained instances forward class declaration

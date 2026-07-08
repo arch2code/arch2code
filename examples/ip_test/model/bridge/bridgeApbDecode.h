@@ -9,7 +9,8 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "bridgeApbDecodeBase.h"
+import bridgeApbDecode.base;
+#include "apb_channel.h"
 import shared_types;
 using namespace shared_types_ns;
 #include "apbBusDecode.h"

@@ -4,18 +4,18 @@
 // GENERATED_CODE_PARAM --block=testContainer
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "testContainer.h"
-#include "testBlockBase.h"
-#include "subBlockContainerBase.h"
-#include "firstBlockBase.h"
-#include "secondBlockBase.h"
-#include "lastBlockBase.h"
-#include "producerBase.h"
-#include "consumerBase.h"
+import testBlock.base;
+import subBlockContainer.base;
+import firstBlock.base;
+import secondBlock.base;
+import lastBlock.base;
+import producer.base;
+import consumer.base;
 SC_HAS_PROCESS(testContainer);
 
 // === Block factory registration (testContainer) ===
 void register_testContainer_variants() {
-    instanceFactory::registerBlock("testContainer_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<testContainer>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("testContainer_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<testContainer>(blockName, variant, bbMode)); }, "", "nested");
 }
 
 namespace {
@@ -43,16 +43,16 @@ testContainer::testContainer(sc_module_name blockName, const char * variant, blo
         ,src_trans_dest_trans_rv_size("consumer_src_trans_dest_trans_rv_size", "producer", "api_list_size", 1024, "")
         ,src_clock_dest_trans_rv_size("consumer_src_clock_dest_trans_rv_size", "producer", "api_list_size", 2048, "")
         ,src_trans_dest_clock_rv_size("consumer_src_trans_dest_clock_rv_size", "producer", "api_list_size", 2048, "")
-        ,uTestBlock0(std::dynamic_pointer_cast<testBlockBase>(instanceFactory::createInstance(name(), "uTestBlock0", "testBlock", "")))
-        ,uTestBlock1(std::dynamic_pointer_cast<testBlockBase>(instanceFactory::createInstance(name(), "uTestBlock1", "testBlock", "")))
-        ,uSubBlockContainer0(std::dynamic_pointer_cast<subBlockContainerBase>(instanceFactory::createInstance(name(), "uSubBlockContainer0", "subBlockContainer", "")))
-        ,uSubBlockContainer1(std::dynamic_pointer_cast<subBlockContainerBase>(instanceFactory::createInstance(name(), "uSubBlockContainer1", "subBlockContainer", "")))
-        ,uSubBlockContainer2(std::dynamic_pointer_cast<subBlockContainerBase>(instanceFactory::createInstance(name(), "uSubBlockContainer2", "subBlockContainer", "")))
-        ,uFirst(std::dynamic_pointer_cast<firstBlockBase>(instanceFactory::createInstance(name(), "uFirst", "firstBlock", "")))
-        ,uSecond(std::dynamic_pointer_cast<secondBlockBase>(instanceFactory::createInstance(name(), "uSecond", "secondBlock", "")))
-        ,uLast(std::dynamic_pointer_cast<lastBlockBase>(instanceFactory::createInstance(name(), "uLast", "lastBlock", "")))
-        ,uProducer(std::dynamic_pointer_cast<producerBase>(instanceFactory::createInstance(name(), "uProducer", "producer", "")))
-        ,uConsumer(std::dynamic_pointer_cast<consumerBase>(instanceFactory::createInstance(name(), "uConsumer", "consumer", "")))
+        ,uTestBlock0(std::dynamic_pointer_cast<testBlockBase>(instanceFactory::createInstance(name(), "uTestBlock0", "testBlock", "", "nested")))
+        ,uTestBlock1(std::dynamic_pointer_cast<testBlockBase>(instanceFactory::createInstance(name(), "uTestBlock1", "testBlock", "", "nested")))
+        ,uSubBlockContainer0(std::dynamic_pointer_cast<subBlockContainerBase>(instanceFactory::createInstance(name(), "uSubBlockContainer0", "subBlockContainer", "", "nested")))
+        ,uSubBlockContainer1(std::dynamic_pointer_cast<subBlockContainerBase>(instanceFactory::createInstance(name(), "uSubBlockContainer1", "subBlockContainer", "", "nested")))
+        ,uSubBlockContainer2(std::dynamic_pointer_cast<subBlockContainerBase>(instanceFactory::createInstance(name(), "uSubBlockContainer2", "subBlockContainer", "", "nested")))
+        ,uFirst(std::dynamic_pointer_cast<firstBlockBase>(instanceFactory::createInstance(name(), "uFirst", "firstBlock", "", "nested")))
+        ,uSecond(std::dynamic_pointer_cast<secondBlockBase>(instanceFactory::createInstance(name(), "uSecond", "secondBlock", "", "nested")))
+        ,uLast(std::dynamic_pointer_cast<lastBlockBase>(instanceFactory::createInstance(name(), "uLast", "lastBlock", "", "nested")))
+        ,uProducer(std::dynamic_pointer_cast<producerBase>(instanceFactory::createInstance(name(), "uProducer", "producer", "", "nested")))
+        ,uConsumer(std::dynamic_pointer_cast<consumerBase>(instanceFactory::createInstance(name(), "uConsumer", "consumer", "", "nested")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

@@ -9,13 +9,14 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "someRapperBase.h"
+import someRapper.base;
+#include "apb_channel.h"
 import apbDecode;
 using namespace apbDecode_ns;
-//contained instances forward class declaration
-class apbDecodeBase;
-class blockABase;
-class blockBBase;
+//contained instances base module imports
+import apbDecode.base;
+import blockA.base;
+import blockB.base;
 
 SC_MODULE(someRapper), public blockBase, public someRapperBase
 {

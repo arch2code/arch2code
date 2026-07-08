@@ -5,15 +5,15 @@
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "mixed.h"
-#include "blockABase.h"
-#include "apbDecodeBase.h"
-#include "blockCBase.h"
-#include "blockBBase.h"
+import blockA.base;
+import apbDecode.base;
+import blockC.base;
+import blockB.base;
 SC_HAS_PROCESS(mixed);
 
 // === Block factory registration (mixed) ===
 void register_mixed_variants() {
-    instanceFactory::registerBlock("mixed_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<mixed>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("mixed_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<mixed>(blockName, variant, bbMode)); }, "", "mixed");
 }
 
 namespace {
@@ -31,10 +31,10 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
         ,dupIf("blockB_dupIf", "blockA")
         ,apbReg_uBlockA("blockA_apbReg_uBlockA", "apbDecode")
         ,apbReg_uBlockB("blockB_apbReg_uBlockB", "apbDecode")
-        ,uBlockA(std::dynamic_pointer_cast<blockABase>(instanceFactory::createInstance(name(), "uBlockA", "blockA", "")))
-        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "")))
-        ,uBlockC(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC", "blockC", "")))
-        ,uBlockB(std::dynamic_pointer_cast<blockBBase>(instanceFactory::createInstance(name(), "uBlockB", "blockB", "")))
+        ,uBlockA(std::dynamic_pointer_cast<blockABase>(instanceFactory::createInstance(name(), "uBlockA", "blockA", "", "mixed")))
+        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "mixed")))
+        ,uBlockC(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC", "blockC", "", "mixed")))
+        ,uBlockB(std::dynamic_pointer_cast<blockBBase>(instanceFactory::createInstance(name(), "uBlockB", "blockB", "", "mixed")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

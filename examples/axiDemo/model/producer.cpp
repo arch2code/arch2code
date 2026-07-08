@@ -8,7 +8,7 @@ SC_HAS_PROCESS(producer);
 
 // === Block factory registration (producer) ===
 void register_producer_variants() {
-    instanceFactory::registerBlock("producer_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<producer>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("producer_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<producer>(blockName, variant, bbMode)); }, "", "axiDemo");
 }
 
 namespace {

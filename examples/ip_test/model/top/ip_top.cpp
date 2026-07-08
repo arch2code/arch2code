@@ -3,16 +3,16 @@
 // GENERATED_CODE_PARAM --block=ip_top
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "ip_top.h"
-#include "apbDecodeBase.h"
-#include "srcBase.h"
-#include "ipBase.h"
-#include "bridgeDriverBase.h"
-#include "ipBridgeBase.h"
+import apbDecode.base;
+import src.base;
+import ip.base;
+import bridgeDriver.base;
+import ipBridge.base;
 SC_HAS_PROCESS(ip_top);
 
 // === Block factory registration (ip_top) ===
 void register_ip_top_variants() {
-    instanceFactory::registerBlock("ip_top_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_top>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("ip_top_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_top>(blockName, variant, bbMode)); }, "", "ip_test");
 }
 
 namespace {
@@ -31,12 +31,12 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,apbReg_uBridge("ipBridge_apbReg_uBridge", "apbDecode")
         ,apbReg_uIp0("ip_apbReg_uIp0", "apbDecode")
         ,apbReg_uIp1("ip_apbReg_uIp1", "apbDecode")
-        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "")))
-        ,uSrc(std::dynamic_pointer_cast<srcBase<srcDefaultConfig>>(instanceFactory::createInstance(name(), "uSrc", "src", "variantSrc0")))
-        ,uIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0")))
-        ,uIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1")))
-        ,uBridgeDriver(std::dynamic_pointer_cast<bridgeDriverBase>(instanceFactory::createInstance(name(), "uBridgeDriver", "bridgeDriver", "")))
-        ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>(instanceFactory::createInstance(name(), "uBridge", "ipBridge", "")))
+        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "ip_test")))
+        ,uSrc(std::dynamic_pointer_cast<srcBase<srcDefaultConfig>>(instanceFactory::createInstance(name(), "uSrc", "src", "variantSrc0", "ip_test")))
+        ,uIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0", "ip_test")))
+        ,uIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1", "ip_test")))
+        ,uBridgeDriver(std::dynamic_pointer_cast<bridgeDriverBase>(instanceFactory::createInstance(name(), "uBridgeDriver", "bridgeDriver", "", "ip_test")))
+        ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>(instanceFactory::createInstance(name(), "uBridge", "ipBridge", "", "ip_test")))
         ,thunker_out0_uSrc("thunker_out0_uSrc", out0, uSrc->out0, name())
         ,thunker_out0_uIp0("thunker_out0_uIp0", out0, uIp0->ipDataIf, name())
         ,thunker_out1_uSrc("thunker_out1_uSrc", out1, uSrc->out1, name())

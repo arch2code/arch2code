@@ -7,7 +7,7 @@
 // (see instanceFactory.h); main() reaches it through direct-.o linking with no
 // force-link reference.
 void register_nestedTestbench_variants() {
-    instanceFactory::registerBlock("nestedTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<nestedTestbench>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("nestedTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<nestedTestbench>(blockName, variant, bbMode)); }, "", "nested");
 }
 
 namespace {
@@ -18,7 +18,7 @@ namespace {
 nestedTestbench::nestedTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("nestedTestbench", name(), bbMode)
         ,nestedChannels("Chnl", "tb")
-        ,nested(std::dynamic_pointer_cast<nestedBase>( instanceFactory::createInstance(name(), "nested", "nested", "")))
+        ,nested(std::dynamic_pointer_cast<nestedBase>( instanceFactory::createInstance(name(), "nested", "nested", "", "nested")))
         ,external("external")
 {
     bind(nested.get(), &external);

@@ -9,7 +9,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "bridgeDriverBase.h"
+import bridgeDriver.base;
+#include "push_ack_channel.h"
+import ipBridge;
+using namespace ipBridge_ns;
 
 SC_MODULE(bridgeDriver), public blockBase, public bridgeDriverBase
 {

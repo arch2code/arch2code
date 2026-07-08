@@ -7,7 +7,7 @@ SC_HAS_PROCESS(axi4sDemo);
 
 // === Block factory registration (axi4sDemo) ===
 void register_axi4sDemo_variants() {
-    instanceFactory::registerBlock("axi4sDemo_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axi4sDemo>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("axi4sDemo_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axi4sDemo>(blockName, variant, bbMode)); }, "", "axi4sDemo");
 }
 
 namespace {

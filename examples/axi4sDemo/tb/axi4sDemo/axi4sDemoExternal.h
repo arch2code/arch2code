@@ -8,7 +8,10 @@
 // GENERATED_CODE_PARAM --block=axi4sDemo_tb --excludeInst=u_axi4sDemo
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "axi4sDemoBase.h"
+#include "instanceFactory.h"
+import axi4sDemo.base;
+import axi4sDemo_tb;
+using namespace axi4sDemo_tb_ns;
 #include "endOfTest.h"
 
 //contained instances forward class declaration

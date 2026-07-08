@@ -11,12 +11,17 @@
 
 void instanceFactory::registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction)
 {
-    registerBlock(std::move(blockType), std::move(blockFactoryFunction), std::string{});
+    registerBlock(std::move(blockType), std::move(blockFactoryFunction), std::string{}, std::string{});
 }
-    // for variant specific initialization
+    // for variant specific initialization; unqualified projectName
 void instanceFactory::registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction, std::string variant)
 {
-    getMap().emplace(Key{std::move(blockType), std::move(variant)}, std::move(blockFactoryFunction));
+    registerBlock(std::move(blockType), std::move(blockFactoryFunction), std::move(variant), std::string{});
+}
+    // projectName-qualified registration
+void instanceFactory::registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction, std::string variant, std::string projectName)
+{
+    getMap().emplace(Key{std::move(blockType), std::move(variant), std::move(projectName)}, std::move(blockFactoryFunction));
 }
 // allow top level to create mappings from instance names to block types prior to enumeration of model
 void instanceFactory::registerInstance(std::string instance, std::string blockType)
@@ -41,19 +46,27 @@ std::shared_ptr< blockBase> instanceFactory::getInstance(std::string qualifiedNa
 
 }
 // used to create the top level testbench of the model
-std::shared_ptr< blockBase > instanceFactory::createTestBench(const char * testBench)
+std::shared_ptr< blockBase > instanceFactory::createTestBench(const char * testBench, const char * projectName)
 {
-    return createInstance("", testBenchStr, testBench, INSTANCE_FACTORY_DEFAULT, "");
+    return createInstance("", testBenchStr, testBench, INSTANCE_FACTORY_DEFAULT, "", projectName);
 }
 std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst)
 {
-    return createInstance(hierarchy, blockName, blockTypeUser, inst, "");
+    return createInstance(hierarchy, blockName, blockTypeUser, inst, "", "");
 }
 std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant)
 {
-    return createInstance(hierarchy, blockName, blockTypeUser, INSTANCE_FACTORY_DEFAULT, variant);
+    return createInstance(hierarchy, blockName, blockTypeUser, INSTANCE_FACTORY_DEFAULT, variant, "");
+}
+std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant, const char * projectName)
+{
+    return createInstance(hierarchy, blockName, blockTypeUser, INSTANCE_FACTORY_DEFAULT, variant, projectName);
 }
 std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant)
+{
+    return createInstance(hierarchy, blockName, blockTypeUser, inst, variant, "");
+}
+std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant, const char * projectName)
 {
     // figure out what type of block to create for this instance
     std::string hierarchyStr(hierarchy);
@@ -78,12 +91,15 @@ std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierar
         instMode = getInstanceModeString()[inst];
         blockType = std::string(blockTypeUser) + "_" + instMode;
     }
-    // Lookup order:
-    //   1. exact (blockType, variant)
-    //   2. variant fallback (blockType, "")
+    // Lookup order (projectName is held FIXED; fallback iterates the variant
+    // dimension only, so an unknown variant never borrows another project's
+    // registration):
+    //   1. exact (blockType, variant, projectName)
+    //   2. variant fallback (blockType, "", projectName)
     //   3. error
+    std::string projectNameStr(projectName);
     for (const auto &candidateVariant : std::array<std::string, 2>{std::string(variant), std::string()}) {
-        auto it = getMap().find(Key{blockType, candidateVariant});
+        auto it = getMap().find(Key{blockType, candidateVariant, projectNameStr});
         if (it != getMap().end()) {
             bool tandem = (inst != INSTANCE_FACTORY_DEFAULT);
             if (tandem) {

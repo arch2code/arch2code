@@ -418,6 +418,7 @@ class projectOpen:
         g.yamlBasePath = self.config.getConfig('BASEYAMLPATH')
         self.yamlContext = self.config.getConfig('YAMLCONTEXT')
         self.includeName = self.config.getConfig('INCLUDENAME')
+        self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
         self.filemap = self.config.getConfig('FILEMAP')
         global dirMacros
         dirMacros = self.config.getConfig('DIRS')
@@ -1058,12 +1059,13 @@ class projectOpen:
         ret['enums'] = enums
         ret['context'] = context
         # Language-neutral identity of the context being rendered. Emitters apply
-        # their own spelling: SystemC module/namespace names and the SV package
-        # name come from `contextIncludeName` (the project-owned include identity),
-        # while the legacy default-Config struct name and the structure-test class
-        # name come from `contextStem` (the context file basename), preserving
-        # their existing file-basename source.
-        ret['contextIncludeName'] = self.includeName[context]
+        # their own spelling: SystemC module/namespace names come from
+        # `contextModuleIdentity` (the project-owned C++ linkage identity), the SV
+        # package name comes from `includeName` (the raw include stem), while the
+        # legacy default-Config struct name and the structure-test class name come
+        # from `contextStem` (the context file basename), preserving their
+        # existing file-basename source.
+        ret['contextModuleIdentity'] = self.contextModuleIdentity[context]
         ret['contextStem'] = os.path.splitext(os.path.basename(context))[0]
         # Per-context Config-header inputs. The view here is what
         # `templates/systemc/includes.py` includeConfig() consumes; the
@@ -3101,6 +3103,28 @@ class projectCreate:
         self.schema.save()
         self.config.setConfig('YAMLCONTEXT', self.yamlContext, bin=True) # save the structure of the yaml contexts for header usages
         self.config.setConfig('INCLUDENAME', self.includeName, bin=True) # save the structure of the yaml contexts for header usages
+        # Per-context C++ module/namespace linkage identity, keyed identically to
+        # includeName. Role A emitters (the SystemC `export module` and namespace
+        # names) spell this identity; it is deliberately separate from the raw
+        # include stem, which continues to name generated files and SystemVerilog
+        # packages so those stay unqualified.
+        #
+        # A context owned by the current (root) project keeps the raw stem, so its
+        # C++ spelling is unqualified. A context owned by a referenced child
+        # project is qualified as `<owningProject>.<stem>`, so two composed IPs
+        # that author a same-stem context cannot collide in the global C++ linkage
+        # namespace. There is currently no per-object owning-project tag, so every
+        # context is root-owned and the qualified branch below is correct but
+        # unreachable until per-object ownership exists.
+        projectName = self.config.getConfig('PROJECTNAME')
+        self.contextModuleIdentity = {}
+        for context, stem in self.includeName.items():
+            owningProjectName = projectName
+            if owningProjectName == projectName:
+                self.contextModuleIdentity[context] = stem
+            else:
+                self.contextModuleIdentity[context] = f'{owningProjectName}.{stem}'
+        self.config.setConfig('CONTEXTMODULEIDENTITY', self.contextModuleIdentity, bin=True)
 
         g.db.commit()
         g.db.close()

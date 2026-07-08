@@ -9,9 +9,12 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "nestedL3Base.h"
-//contained instances forward class declaration
-class nestedL4Base;
+import nestedL3.base;
+#include "rdy_vld_channel.h"
+import nested;
+using namespace nested_ns;
+//contained instances base module imports
+import nestedL4.base;
 
 SC_MODULE(nestedL3), public blockBase, public nestedL3Base
 {

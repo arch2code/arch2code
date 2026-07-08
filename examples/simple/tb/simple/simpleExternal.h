@@ -8,7 +8,8 @@
 // GENERATED_CODE_PARAM --block=simple_tb --excludeInst=u_simple
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "simpleBase.h"
+#include "instanceFactory.h"
+import simple.base;
 #include "endOfTest.h"
 
 class simpleExternal: public sc_module, public simpleInverted {

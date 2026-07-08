@@ -9,12 +9,13 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "simpleBase.h"
+import simple.base;
+#include "push_ack_channel.h"
 import simple;
 using namespace simple_ns;
-//contained instances forward class declaration
-class producerBase;
-class consumerBase;
+//contained instances base module imports
+import producer.base;
+import consumer.base;
 
 SC_MODULE(simple), public blockBase, public simpleBase
 {

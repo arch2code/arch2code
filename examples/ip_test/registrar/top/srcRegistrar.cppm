@@ -19,7 +19,7 @@ struct _src_registrar {
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcDefaultConfig>>(blockName, variant, bbMode));
             },
-            "variantSrc0");
+            "variantSrc0", "ip_test");
     }
 };
 static _src_registrar _src_registrar_instance;

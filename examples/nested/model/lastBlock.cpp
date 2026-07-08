@@ -8,7 +8,7 @@ SC_HAS_PROCESS(lastBlock);
 
 // === Block factory registration (lastBlock) ===
 void register_lastBlock_variants() {
-    instanceFactory::registerBlock("lastBlock_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<lastBlock>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("lastBlock_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<lastBlock>(blockName, variant, bbMode)); }, "", "nested");
 }
 
 namespace {

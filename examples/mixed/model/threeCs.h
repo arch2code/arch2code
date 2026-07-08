@@ -8,9 +8,12 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "threeCsBase.h"
-//contained instances forward class declaration
-class blockCBase;
+import threeCs.base;
+#include "rdy_vld_channel.h"
+import mixedBlockC;
+using namespace mixedBlockC_ns;
+//contained instances base module imports
+import blockC.base;
 
 SC_MODULE(threeCs), public blockBase, public threeCsBase
 {

@@ -8,7 +8,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "firstBlockBase.h"
+import firstBlock.base;
+#include "rdy_vld_channel.h"
+import nested;
+using namespace nested_ns;
 
 SC_MODULE(firstBlock), public blockBase, public firstBlockBase
 {

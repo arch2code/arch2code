@@ -3,12 +3,12 @@
 // GENERATED_CODE_PARAM --block=nestedL1
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "nestedL1.h"
-#include "nestedL2Base.h"
+import nestedL2.base;
 SC_HAS_PROCESS(nestedL1);
 
 // === Block factory registration (nestedL1) ===
 void register_nestedL1_variants() {
-    instanceFactory::registerBlock("nestedL1_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<nestedL1>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("nestedL1_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<nestedL1>(blockName, variant, bbMode)); }, "", "nested");
 }
 
 namespace {
@@ -20,7 +20,7 @@ nestedL1::nestedL1(sc_module_name blockName, const char * variant, blockBaseMode
        : sc_module(blockName)
         ,blockBase("nestedL1", name(), bbMode)
         ,nestedL1Base(name(), variant)
-        ,uNestedL2(std::dynamic_pointer_cast<nestedL2Base>(instanceFactory::createInstance(name(), "uNestedL2", "nestedL2", "")))
+        ,uNestedL2(std::dynamic_pointer_cast<nestedL2Base>(instanceFactory::createInstance(name(), "uNestedL2", "nestedL2", "", "nested")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

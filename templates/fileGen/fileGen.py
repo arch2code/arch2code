@@ -1,6 +1,7 @@
 
 from jinja2 import Template as J2Template
 from string import Template
+import pysrc.intf_gen_utils as intf_gen_utils
 
 # Redefine the pattern to follow the format defined by dvt templates (i.e __name__, or __{name}__)
 class TemplateCustom(Template):
@@ -21,8 +22,8 @@ def render(args, prj, data):
     # so it scaffolds without the trailing endmodule rtlModule adds.
     isApbRouter = True if 'block' in data and next(filter(lambda x: x['block'] == data['block'] and x.get('addressBlock'), prj['blocks'].values()), None) else False
     match data['target']:
-        case 'blockBase_hdr':
-            return(blockBase_hdr(args, prj, data))
+        case 'blockBase_cppm':
+            return(blockBase_cppm(args, prj, data))
         case 'blockBase_src':
             return(blockBase_src(args, prj, data))
         case 'block_hdr':
@@ -87,19 +88,21 @@ def render(args, prj, data):
             print(f"Unknown section: {data['target']}")
             exit()
 
-# header file for base class containing common architectureal definitions - such as interfaces to be inherited by implementations
-def blockBase_hdr(args, prj, data):
+# C++20 module interface unit for a block's base class family (Base/Inverted/
+# Channels). The `baseModuleHeader` scaffold owns the global module fragment and
+# the `export module <block>.base;` declaration; the `baseClassDecl` region
+# exports the class declarations. The file-level `--mode=module` routes
+# baseClassDecl to its module-mode branch. Consumers `import <block>.base;`
+# rather than textually including a header.
+def blockBase_cppm(args, prj, data):
     out = list()
-    blockUpper = data["block"].upper()
-    out.append(f'#ifndef {blockUpper}_BASE_H\n')
-    out.append(f'#define {blockUpper}_BASE_H\n\n')
     out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
-    out.append('#include "systemc.h"\n\n')
-    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --mode=module\n')
+    out.append('// GENERATED_CODE_BEGIN --template=moduleScaffold --section=baseModuleHeader\n')
+    out.append('// GENERATED_CODE_END\n\n')
     out.append('// GENERATED_CODE_BEGIN --template=baseClassDecl\n')
     out.append('\n')
     out.append('// GENERATED_CODE_END\n')
-    out.append(f'#endif //{blockUpper}_BASE_H\n')
     return("".join(out))
 
 
@@ -291,6 +294,14 @@ def vlSvWrapBody_svh(args, prj, data):
     t = TemplateCustom(vlSvWrapBody_svhTemplate)
     return(t.substitute({'MODULENAME':data["block"].upper(), 'modulename':data["block"]}))
 
+# The Verilated SC wrapper is a fully generated file: newmodule lays down only
+# the minimal skeleton (guard, the create-only `GENERATED_CODE_PARAM` line, and
+# the generated-region markers). Everything the generator owns - including the
+# `import <block>.base;` reference and the DUT SV-wrapper include - is emitted
+# into the `preamble` generated region so `make gen` re-emits it every run and
+# existing wrappers self-heal (e.g. after the Base header->C++20-module
+# migration). Nothing between the PARAM line and the first GENERATED_CODE_BEGIN
+# carries generator-owned content.
 vlScWrap_hdrTemplate = \
 """#ifndef {{MODULENAME}}_HDL_SC_WRAPPER_H_
 #define {{MODULENAME}}_HDL_SC_WRAPPER_H_
@@ -299,24 +310,9 @@ vlScWrap_hdrTemplate = \
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block={{modulename}}
-
-#include "{{modulename}}Base.h"
-
-// Verilated RTL top (SystemC)
-{%- if variants %}
-// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_include_sv_wrapper_header
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
 // GENERATED_CODE_END
-{% else %}
-#if !defined(VERILATOR) && defined(VCS)
-#include "{{modulename}}_hdl_sv_wrapper.h"
-#else
-#include "V{{modulename}}_hdl_sv_wrapper.h"
-#endif
-{% endif %}
 
-{%- if variants %}
-template <typename DUT_T>
-{%- endif %}
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 // GENERATED_CODE_END
 
@@ -392,7 +388,7 @@ tbConfigTemplate = \
         // The testbench top self-registers via an A2C_REGISTRATION_RETAIN
         // static in __tbclassname__Testbench.cpp (see instanceFactory.h),
         // reachable through direct-.o linking with no force-link reference.
-        std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "__tbclassname__Testbench", "");
+        std::shared_ptr<blockBase> tb = createTbTop();
         return true;
     }
 

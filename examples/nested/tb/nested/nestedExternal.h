@@ -8,7 +8,8 @@
 // GENERATED_CODE_PARAM --block=nested_tb --excludeInst=u_nested
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "nestedBase.h"
+#include "instanceFactory.h"
+import nested.base;
 #include "endOfTest.h"
 
 class nestedExternal: public sc_module, public nestedInverted {

@@ -7,7 +7,9 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "helloWorldBase.h"
+import helloWorld.base;
+import helloWorld_tb;
+using namespace helloWorld_tb_ns;
 #include "helloWorldExternal.h"
 
 class helloWorldTestbench: public sc_module, public blockBase, public helloWorldChannels {

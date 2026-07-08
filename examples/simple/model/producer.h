@@ -9,7 +9,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "producerBase.h"
+import producer.base;
+#include "push_ack_channel.h"
+import simple;
+using namespace simple_ns;
 
 SC_MODULE(producer), public blockBase, public producerBase
 {

@@ -7,7 +7,7 @@
 // (see instanceFactory.h); main() reaches it through direct-.o linking with no
 // force-link reference.
 void register_axiDemoTestbench_variants() {
-    instanceFactory::registerBlock("axiDemoTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axiDemoTestbench>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("axiDemoTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axiDemoTestbench>(blockName, variant, bbMode)); }, "", "axiDemo");
 }
 
 namespace {
@@ -18,7 +18,7 @@ namespace {
 axiDemoTestbench::axiDemoTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("axiDemoTestbench", name(), bbMode)
         ,axiDemoChannels("Chnl", "tb")
-        ,axiDemo(std::dynamic_pointer_cast<axiDemoBase>( instanceFactory::createInstance(name(), "axiDemo", "axiDemo", "")))
+        ,axiDemo(std::dynamic_pointer_cast<axiDemoBase>( instanceFactory::createInstance(name(), "axiDemo", "axiDemo", "", "axiDemo")))
         ,external("external")
 {
     bind(axiDemo.get(), &external);

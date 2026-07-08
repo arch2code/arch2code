@@ -51,15 +51,23 @@ public:
     static constexpr const char* testBenchQualStr = "tb.";
     // allow implementation to register thier constructors
     static void registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction);
-    // for variant specific initialization
+    // for variant specific initialization (projectName defaults to "" via delegation)
     static void registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction, std::string variant);
+    // projectName-qualified registration: the assembling project's projectName is
+    // the third Key dimension so the same (blockType, variant) reused by two
+    // distinct assembler projects lands under distinct keys.
+    static void registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction, std::string variant, std::string projectName);
     // allow top level to create mappings from instance names to block types prior to enumeration of model
     static void registerInstance(std::string instance, std::string blockType);
     static std::shared_ptr< blockBase> getInstance(std::string qualifiedName);
-    static std::shared_ptr< blockBase > createTestBench(const char * testBench);
+    static std::shared_ptr< blockBase > createTestBench(const char * testBench, const char * projectName);
     static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst);
     static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant);
     static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant);
+    // projectName-qualified lookup: the lookup projectName must match the
+    // projectName used at registerBlock time (both emitted by the same project).
+    static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant, const char * projectName);
+    static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant, const char * projectName);
     static void setInstanceFactoryMode(instanceFactoryMode mode, std::string name);
     static bool isTandemMode(void);
     static void setTimed(int nsec, bool all, timedDelayMode mode);
@@ -68,15 +76,19 @@ public:
     // de-tandemise provided name and remove any extra hierarchy levels
     static std::string getHierarchyName(const std::string name, blockBaseMode bbMode);
 private:
-    // Composite key: (blockType, variant). The variant string identifies
-    // the Config policy unambiguously under variant ≅ Config; the empty
-    // variant covers blocks with no declared variants.
+    // Composite key: (blockType, variant, projectName). The variant string
+    // identifies the Config policy unambiguously under variant ≅ Config within
+    // one project; the empty variant covers blocks with no declared variants.
+    // projectName is the assembling project's projectName so two distinct
+    // assembler projects reusing the same (blockType, variant) get distinct
+    // keys (empty projectName is the unqualified/framework case).
     struct Key {
         std::string blockType;
         std::string variant;
+        std::string projectName;
         bool operator<(const Key & rhs) const {
-            return std::tie(blockType, variant) <
-                   std::tie(rhs.blockType, rhs.variant);
+            return std::tie(blockType, variant, projectName) <
+                   std::tie(rhs.blockType, rhs.variant, rhs.projectName);
         }
     };
     // map[Key] = function to create block of type Key.blockType

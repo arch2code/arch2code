@@ -8,16 +8,20 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "mixedBase.h"
+import mixed.base;
+#include "apb_channel.h"
+#include "notify_ack_channel.h"
+#include "rdy_vld_channel.h"
+#include "req_ack_channel.h"
 import mixed;
 using namespace mixed_ns;
 import mixedBlockC;
 using namespace mixedBlockC_ns;
-//contained instances forward class declaration
-class blockABase;
-class apbDecodeBase;
-class blockCBase;
-class blockBBase;
+//contained instances base module imports
+import blockA.base;
+import apbDecode.base;
+import blockC.base;
+import blockB.base;
 
 SC_MODULE(mixed), public blockBase, public mixedBase
 {

@@ -10,7 +10,8 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "apbDecodeBase.h"
+import apbDecode.base;
+#include "apb_channel.h"
 import mixed;
 using namespace mixed_ns;
 #include "apbBusDecode.h"

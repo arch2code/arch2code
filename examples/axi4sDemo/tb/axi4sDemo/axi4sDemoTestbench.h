@@ -7,7 +7,9 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "axi4sDemoBase.h"
+import axi4sDemo.base;
+import axi4sDemo_tb;
+using namespace axi4sDemo_tb_ns;
 #include "axi4sDemoExternal.h"
 
 class axi4sDemoTestbench: public sc_module, public blockBase, public axi4sDemoChannels {

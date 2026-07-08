@@ -36,28 +36,39 @@ def render_default(args, prj, data):
     # (templates/systemc/moduleScaffold.py blockModuleHeader); a module interface
     # forbids #include after the module declaration, so classDecl suppresses
     # them here.
+    emittedDepLines = set()
     if args.mode != 'module':
         for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
             out.append(line)
+            emittedDepLines.add(line)
+        # A module import does not propagate the imported base module's own
+        # context imports / using-directives the way the old textual
+        # `<block>Base.h` did (a textual include re-ran those lines in the
+        # includer's TU). The block implementation — this classic `.h` and the
+        # `.cpp` that includes it — still spells the base's interface types
+        # unqualified, so re-emit the base's interface-context imports (and their
+        # using-directives) here for the ones the derived class does not already
+        # reference directly. Deduplicated against the lines emitted above.
+        fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
+        for context in data['includeContext']:
+            if context in data['includeFiles'].get(fileMapKey, {}):
+                for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey):
+                    if line not in emittedDepLines:
+                        out.append(line)
+                        emittedDepLines.add(line)
 
-    # Contained-instance Base forward declarations. Classic mode forward-
-    # declares the child Base here and includes the full header only in the
-    # separate constructor `.cpp`. Module mode puts the class and its bodies in
-    # one translation unit whose GMF already #includes the full child Base
-    # header (sc_instance_includes); a purview forward declaration would then
-    # redeclare a global-module entity inside the named module, which is
-    # ill-formed, so it is suppressed.
+    # Contained-instance Base modules. Each child's Base/Inverted/Channels lives
+    # in a C++20 module interface unit (`<child>.base`), so its class is attached
+    # to that module. A global-module forward declaration of `<child>Base` would
+    # name a DIFFERENT (global) entity than the module-attached class and would
+    # not match the shared_ptr member's type, so classic mode imports the child
+    # base module here to bring the complete, correctly-attached type into scope.
+    # Module mode omits it: the block-module GMF/purview already imports each
+    # child base (moduleScaffold.blockModuleHeader via sc_instance_includes).
     if data["subBlocks"] and args.mode != 'module':
-        out.append(f'//contained instances forward class declaration')
-        for key, value in data["subBlocks"].items():
-            # A child's Base class is itself a class template only when the
-            # child has its own params. Children flagged isParameterizable
-            # solely because parameterizable structures transit their surface
-            # are forward-declared as plain classes.
-            if data['subBlockTypes'][key]['hasOwnParams']:
-                out.append(f'template<typename Config> class { value }Base;')
-            else:
-                out.append(f'class { value }Base;')
+        out.append(f'//contained instances base module imports')
+        for line in intf_gen_utils.sc_instance_includes(data, prj):
+            out.append(line)
     out.append('')
 
     # In module mode the block class is exported from the block-module

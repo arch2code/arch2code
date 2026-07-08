@@ -3,14 +3,14 @@
 // GENERATED_CODE_PARAM --block=someRapper
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "someRapper.h"
-#include "apbDecodeBase.h"
-#include "blockABase.h"
-#include "blockBBase.h"
+import apbDecode.base;
+import blockA.base;
+import blockB.base;
 SC_HAS_PROCESS(someRapper);
 
 // === Block factory registration (someRapper) ===
 void register_someRapper_variants() {
-    instanceFactory::registerBlock("someRapper_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<someRapper>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("someRapper_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<someRapper>(blockName, variant, bbMode)); }, "", "apbDecode");
 }
 
 namespace {
@@ -24,9 +24,9 @@ someRapper::someRapper(sc_module_name blockName, const char * variant, blockBase
         ,someRapperBase(name(), variant)
         ,apbReg_uBlockA("blockA_apbReg_uBlockA", "apbDecode")
         ,apbReg_uBlockB("blockB_apbReg_uBlockB", "apbDecode")
-        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "")))
-        ,uBlockA(std::dynamic_pointer_cast<blockABase>(instanceFactory::createInstance(name(), "uBlockA", "blockA", "")))
-        ,uBlockB(std::dynamic_pointer_cast<blockBBase>(instanceFactory::createInstance(name(), "uBlockB", "blockB", "")))
+        ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "apbDecode")))
+        ,uBlockA(std::dynamic_pointer_cast<blockABase>(instanceFactory::createInstance(name(), "uBlockA", "blockA", "", "apbDecode")))
+        ,uBlockB(std::dynamic_pointer_cast<blockBBase>(instanceFactory::createInstance(name(), "uBlockB", "blockB", "", "apbDecode")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

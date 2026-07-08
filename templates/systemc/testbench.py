@@ -3,7 +3,20 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_context_include_lines
+
+
+def _tb_context_import_lines(prj, data):
+    # A module import does not propagate the base module's own context imports /
+    # using-directives the way the old textual `<block>Base.h` did. The testbench
+    # and its External pseudo-block spell the DUT's interface types (channel /
+    # port struct types) unqualified, so re-emit the block's interface-context
+    # imports (and their using-directives) in these classic TUs.
+    lines = []
+    for context in data['includeContext']:
+        if context in data['includeFiles'].get('include_cppm', {}):
+            lines.extend(cpp_context_include_lines(prj, data, context, 'include_cppm'))
+    return '\n'.join(lines)
 
 from jinja2 import Template
 
@@ -59,7 +72,8 @@ def _tb_selection(args, prj, data):
 def tb_config_class(args, prj, data):
     t = Template(sec_tb_config_class_template)
     sel = _tb_selection(args, prj, data)
-    s = t.render(blockname=sel['blockName'], tbclassname=sel['tbClassName'])
+    s = t.render(blockname=sel['blockName'], tbclassname=sel['tbClassName'],
+                 projectname=prj.config.getConfig('PROJECTNAME'))
     return s
 
 def tb_sec_init(args, prj, data):
@@ -72,7 +86,8 @@ def tb_sec_init(args, prj, data):
                  dutinstname=instName, extinstname="external",
                  is_parameterizable=isParameterizable, cfg=sel['cfg'],
                  default_config=sel['configName'],
-                 factory_variant=sel['factoryVariant'])
+                 factory_variant=sel['factoryVariant'],
+                 projectname=prj.config.getConfig('PROJECTNAME'))
     return s
 
 def tb_sec_header(args, prj, data):
@@ -84,7 +99,9 @@ def tb_sec_header(args, prj, data):
     s = t.render(blockname=blockName, tbclassname=sel['tbClassName'],
                  dutinstname=instName, extinstname="external",
                  is_parameterizable=isParameterizable, cfg=sel['cfg'],
-                 default_config=sel['configName'])
+                 default_config=sel['configName'],
+                 basemodule=cpp_base_module_name(blockName),
+                 context_includes=_tb_context_import_lines(prj, data))
     return s
 
 def ext_sec_init(args, prj, data):
@@ -112,16 +129,18 @@ def ext_sec_init(args, prj, data):
         # parent's defaultConfig. Empty descriptors fall back to the child's
         # default Config.
         instCfg = data_['instanceConfigArg']
-        # Generated createInstance passes the variant string only; the factory
-        # key is `(blockType, variant)`. Non-templated children self-register
-        # via an A2C_REGISTRATION_RETAIN static in their own TU, so the
-        # testbench holds no symbol reference to them.
+        # Generated createInstance passes the variant string and the assembling
+        # project's projectName; the factory key is
+        # `(blockType, variant, projectName)`. Non-templated children
+        # self-register via an A2C_REGISTRATION_RETAIN static in their own TU,
+        # so the testbench holds no symbol reference to them.
+        projectName = prj.config.getConfig('PROJECTNAME')
         createCall = (
             'instanceFactory::createInstance(name(), "{instName}", '
-            '"{blockName}", "{variant}")'
+            '"{blockName}", "{variant}", "{projectName}")'
         )
         s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base{instCfg}>(' + createCall + '))'
-        out.append(s.format(blockName=data_['instanceType'], instName=data_['instance'], instCfg=instCfg, variant=data_.get('variant', '')))
+        out.append(s.format(blockName=data_['instanceType'], instName=data_['instance'], instCfg=instCfg, variant=data_.get('variant', ''), projectName=projectName))
 
     for channelType in data['connectDouble']:
         for connKey,data_ in data['connectDouble'][channelType].items():
@@ -298,6 +317,8 @@ def ext_sec_header(args, prj, data):
             config_includes.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
     s = t.render(
         blockname=data['blockName'],
+        basemodule=cpp_base_module_name(data['blockName']),
+        context_includes=_tb_context_import_lines(prj, data),
         tbclassname=sel['tbClassName'],
         is_parameterizable=isParameterizable,
         cfg=cfg,
@@ -335,7 +356,10 @@ sec_tb_class_header_template = """\
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "{{blockname}}Base.h"
+import {{basemodule}};
+{%- if context_includes %}
+{{context_includes}}
+{%- endif %}
 #include "{{tbclassname}}External.h"
 
 class {{tbclassname}}Testbench: public sc_module, public blockBase, public {{blockname}}Channels{{cfg}} {
@@ -367,7 +391,7 @@ sec_tb_class_init_template = """\
 // (see instanceFactory.h); main() reaches it through direct-.o linking with no
 // force-link reference.
 void register_{{tbclassname}}Testbench_variants() {
-    instanceFactory::registerBlock("{{tbclassname}}Testbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{{tbclassname}}Testbench>(blockName, variant, bbMode)); }, "");
+    instanceFactory::registerBlock("{{tbclassname}}Testbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<{{tbclassname}}Testbench>(blockName, variant, bbMode)); }, "", "{{projectname}}");
 }
 
 namespace {
@@ -378,7 +402,7 @@ namespace {
 {{tbclassname}}Testbench::{{tbclassname}}Testbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("{{tbclassname}}Testbench", name(), bbMode)
         ,{{blockname}}Channels{{cfg}}("Chnl", "tb")
-        ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>( instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "{{factory_variant}}")))
+        ,{{dutinstname}}(std::dynamic_pointer_cast<{{blockname}}Base{{cfg}}>( instanceFactory::createInstance(name(), "{{dutinstname}}", "{{blockname}}", "{{factory_variant}}", "{{projectname}}")))
         ,{{extinstname}}("{{extinstname}}")
 {
     bind({{dutinstname}}.get(), &{{extinstname}});
@@ -387,7 +411,11 @@ namespace {
 
 sec_tb_external_header_template = """\
 
-#include "{{blockname}}Base.h"
+#include "instanceFactory.h"
+import {{basemodule}};
+{%- if context_includes %}
+{{context_includes}}
+{%- endif %}
 {%- if config_includes %}
 {{config_includes}}
 {%- endif %}
@@ -451,4 +479,10 @@ public:
     static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~{{tbclassname}}Config() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
+protected:
+    // The testbench top is instantiated through this generated helper so its
+    // factory-key projectName is emitted here on every make gen (matching the
+    // tb-top registration), instead of being hand-written into the user body.
+    std::shared_ptr<blockBase> createTbTop(void) { return instanceFactory::createInstance("", "tb", "{{tbclassname}}Testbench", "", "{{projectname}}"); }
+public:
 """

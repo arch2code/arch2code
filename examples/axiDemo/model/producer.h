@@ -9,7 +9,12 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "producerBase.h"
+import producer.base;
+#include "axi4_stream_channel.h"
+#include "axi_read_channel.h"
+#include "axi_write_channel.h"
+import axiDemo;
+using namespace axiDemo_ns;
 
 SC_MODULE(producer), public blockBase, public producerBase
 {

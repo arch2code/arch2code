@@ -9,7 +9,13 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockBBase.h"
+import blockB.base;
+#include "apb_channel.h"
+#include "memory_channel.h"
+#include "notify_ack_channel.h"
+#include "rdy_vld_channel.h"
+#include "req_ack_channel.h"
+#include "status_channel.h"
 #include "addressMap.h"
 #include "hwMemory.h"
 #include "mixedVariantConfig.h"
@@ -19,11 +25,11 @@ import mixedBlockC;
 using namespace mixedBlockC_ns;
 import mixedInclude;
 using namespace mixedInclude_ns;
-//contained instances forward class declaration
-class blockDBase;
-template<typename Config> class blockFBase;
-class threeCsBase;
-class blockBRegsBase;
+//contained instances base module imports
+import blockD.base;
+import blockF.base;
+import threeCs.base;
+import blockBRegs.base;
 
 SC_MODULE(blockB), public blockBase, public blockBBase
 {

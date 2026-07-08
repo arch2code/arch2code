@@ -9,12 +9,12 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 #include "instanceFactory.h"
-#include "ipLeafBase.h"
 #include "addressMap.h"
 #include "hwMemory.h"
 #include "ipLeafVariantConfig.h"
 
 export module ipLeaf.block;
+import ipLeaf.base;
 import ipLeaf;
 using namespace ipLeaf_ns;
 // GENERATED_CODE_END

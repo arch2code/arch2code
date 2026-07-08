@@ -8,7 +8,10 @@
 // GENERATED_CODE_BEGIN --template=classDecl 
 #include "logging.h"
 #include "instanceFactory.h"
-#include "blockCBase.h"
+import blockC.base;
+#include "rdy_vld_channel.h"
+import mixedBlockC;
+using namespace mixedBlockC_ns;
 
 SC_MODULE(blockC), public blockBase, public blockCBase
 {
