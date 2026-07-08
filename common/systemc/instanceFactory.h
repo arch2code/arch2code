@@ -50,9 +50,6 @@ public:
     static constexpr const char* testBenchStr = "tb";
     static constexpr const char* testBenchQualStr = "tb.";
     // allow implementation to register thier constructors
-    static void registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction);
-    // for variant specific initialization (projectName defaults to "" via delegation)
-    static void registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction, std::string variant);
     // projectName-qualified registration: the assembling project's projectName is
     // the third Key dimension so the same (blockType, variant) reused by two
     // distinct assembler projects lands under distinct keys.
@@ -61,9 +58,6 @@ public:
     static void registerInstance(std::string instance, std::string blockType);
     static std::shared_ptr< blockBase> getInstance(std::string qualifiedName);
     static std::shared_ptr< blockBase > createTestBench(const char * testBench, const char * projectName);
-    static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst);
-    static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant);
-    static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant);
     // projectName-qualified lookup: the lookup projectName must match the
     // projectName used at registerBlock time (both emitted by the same project).
     static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant, const char * projectName);

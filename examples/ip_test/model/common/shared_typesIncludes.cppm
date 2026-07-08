@@ -18,7 +18,7 @@ export module shared_types;
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 export namespace shared_types_ns {
 //constants
-const uint32_t DWORD = 32;  // Width of an APB dword
+inline constexpr uint32_t DWORD = 32;  // Width of an APB dword
 
 } // namespace shared_types_ns
 // GENERATED_CODE_END

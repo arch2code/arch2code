@@ -19,16 +19,16 @@
 namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-const uint32_t IP_DATA_WIDTH_X2 = 70 * 2;  // Derived width, 2x data (maxValue auto-derived); eval-derived, lives in constants: since no block param consumes it
-const uint32_t IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2;  // Second-level derived width, 4x data
-const uint32_t IP_MEM_DEPTH_X2 = 16 * 2;  // Derived memory depth, 2x depth
-const uint32_t IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2;  // Second-level derived memory depth, 4x depth
-const uint32_t IP_FIXED_NIBBLE_COUNT = 5;  // Fixed array length for non-parameterized type tests
-const uint32_t IP_FIXED_PAIR_COUNT = 2;  // Fixed nested-structure array length
-const uint32_t IP_FIXED_WORD_COUNT = 6;  // Derived fixed array length
-const uint32_t IP_FIXED_DEPTH = 9;  // Fixed depth for widthLog2 and widthLog2minus1 tests
-const uint32_t IP_REG_ADDR_WIDTH = 32;  // Leaf register-bus address width
-const uint32_t IP_REG_DATA_WIDTH = 32;  // Leaf register-bus data width
+inline constexpr uint32_t IP_DATA_WIDTH_X2 = 70 * 2;  // Derived width, 2x data (maxValue auto-derived); eval-derived, lives in constants: since no block param consumes it
+inline constexpr uint32_t IP_DATA_WIDTH_X4 = IP_DATA_WIDTH_X2 * 2;  // Second-level derived width, 4x data
+inline constexpr uint32_t IP_MEM_DEPTH_X2 = 16 * 2;  // Derived memory depth, 2x depth
+inline constexpr uint32_t IP_MEM_DEPTH_X4 = IP_MEM_DEPTH_X2 * 2;  // Second-level derived memory depth, 4x depth
+inline constexpr uint32_t IP_FIXED_NIBBLE_COUNT = 5;  // Fixed array length for non-parameterized type tests
+inline constexpr uint32_t IP_FIXED_PAIR_COUNT = 2;  // Fixed nested-structure array length
+inline constexpr uint32_t IP_FIXED_WORD_COUNT = 6;  // Derived fixed array length
+inline constexpr uint32_t IP_FIXED_DEPTH = 9;  // Fixed depth for widthLog2 and widthLog2minus1 tests
+inline constexpr uint32_t IP_REG_ADDR_WIDTH = 32;  // Leaf register-bus address width
+inline constexpr uint32_t IP_REG_DATA_WIDTH = 32;  // Leaf register-bus data width
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types

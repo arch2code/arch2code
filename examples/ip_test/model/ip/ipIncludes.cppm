@@ -18,12 +18,12 @@ export module ip;
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 export namespace ip_ns {
 //constants
-const uint32_t IP_FIXED_NIBBLE_COUNT = 5;  // Fixed array length for non-parameterized type tests
-const uint32_t IP_FIXED_PAIR_COUNT = 2;  // Fixed nested-structure array length
-const uint32_t IP_FIXED_WORD_COUNT = 6;  // Derived fixed array length
-const uint32_t IP_FIXED_DEPTH = 9;  // Fixed depth for widthLog2 and widthLog2minus1 tests
-const uint32_t IP_REG_ADDR_WIDTH = 32;  // Leaf register-bus address width
-const uint32_t IP_REG_DATA_WIDTH = 32;  // Leaf register-bus data width
+inline constexpr uint32_t IP_FIXED_NIBBLE_COUNT = 5;  // Fixed array length for non-parameterized type tests
+inline constexpr uint32_t IP_FIXED_PAIR_COUNT = 2;  // Fixed nested-structure array length
+inline constexpr uint32_t IP_FIXED_WORD_COUNT = 6;  // Derived fixed array length
+inline constexpr uint32_t IP_FIXED_DEPTH = 9;  // Fixed depth for widthLog2 and widthLog2minus1 tests
+inline constexpr uint32_t IP_REG_ADDR_WIDTH = 32;  // Leaf register-bus address width
+inline constexpr uint32_t IP_REG_DATA_WIDTH = 32;  // Leaf register-bus data width
 
 } // namespace ip_ns
 // GENERATED_CODE_END

@@ -9,15 +9,6 @@
 
 
 
-void instanceFactory::registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction)
-{
-    registerBlock(std::move(blockType), std::move(blockFactoryFunction), std::string{}, std::string{});
-}
-    // for variant specific initialization; unqualified projectName
-void instanceFactory::registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction, std::string variant)
-{
-    registerBlock(std::move(blockType), std::move(blockFactoryFunction), std::move(variant), std::string{});
-}
     // projectName-qualified registration
 void instanceFactory::registerBlock(std::string blockType, blockFactoryFunctionType blockFactoryFunction, std::string variant, std::string projectName)
 {
@@ -50,21 +41,9 @@ std::shared_ptr< blockBase > instanceFactory::createTestBench(const char * testB
 {
     return createInstance("", testBenchStr, testBench, INSTANCE_FACTORY_DEFAULT, "", projectName);
 }
-std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst)
-{
-    return createInstance(hierarchy, blockName, blockTypeUser, inst, "", "");
-}
-std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant)
-{
-    return createInstance(hierarchy, blockName, blockTypeUser, INSTANCE_FACTORY_DEFAULT, variant, "");
-}
 std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant, const char * projectName)
 {
     return createInstance(hierarchy, blockName, blockTypeUser, INSTANCE_FACTORY_DEFAULT, variant, projectName);
-}
-std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant)
-{
-    return createInstance(hierarchy, blockName, blockTypeUser, inst, variant, "");
 }
 std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant, const char * projectName)
 {

@@ -18,13 +18,13 @@
 namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-const uint32_t ASIZE = 29;  // The size of A
-const uint32_t DWORD = 32;  // size of a double word
-const uint32_t MEMORYA_WORDS = 19;  // Address wordlines for memory A
-const uint32_t MEMORYA_WORDS_LOG2 = 5;  // Address wordlines for memory A log2
-const uint32_t MEMORYA_WIDTH = 63;  // Bit width of content for memory A, more than 32, less than 64
-const uint32_t MEMORYB_WORDS = 21;  // Address wordlines for memory B
-const uint32_t MEMORYB_WORDS_LOG2 = 5;  // Address wordlines for memory B log2
+inline constexpr uint32_t ASIZE = 29;  // The size of A
+inline constexpr uint32_t DWORD = 32;  // size of a double word
+inline constexpr uint32_t MEMORYA_WORDS = 19;  // Address wordlines for memory A
+inline constexpr uint32_t MEMORYA_WORDS_LOG2 = 5;  // Address wordlines for memory A log2
+inline constexpr uint32_t MEMORYA_WIDTH = 63;  // Bit width of content for memory A, more than 32, less than 64
+inline constexpr uint32_t MEMORYB_WORDS = 21;  // Address wordlines for memory B
+inline constexpr uint32_t MEMORYB_WORDS_LOG2 = 5;  // Address wordlines for memory B log2
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types

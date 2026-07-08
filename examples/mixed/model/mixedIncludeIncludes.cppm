@@ -20,8 +20,8 @@ using namespace mixedNestedInclude_ns;
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 export namespace mixedInclude_ns {
 //constants
-const uint32_t BSIZE = 10;  // The size of B, used for memory wordlines
-const uint32_t BSIZE_LOG2 = 4;  // The size of B, used for memory wordlines log 2
+inline constexpr uint32_t BSIZE = 10;  // The size of B, used for memory wordlines
+inline constexpr uint32_t BSIZE_LOG2 = 4;  // The size of B, used for memory wordlines log 2
 
 } // namespace mixedInclude_ns
 // GENERATED_CODE_END

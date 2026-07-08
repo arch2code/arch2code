@@ -24,28 +24,28 @@ using namespace mixedBlockC_ns;
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 export namespace mixed_ns {
 //constants
-const uint32_t ASIZE = 1;  // The size of A
-const uint32_t ASIZE2 = 2;  // The size of A+1
-const uint32_t INTP = 4294966272;  // Test constant for numbers of unsigned integer type
-const int32_t INTN = -2147482624;  // Test constant for numbers of signed integer type (two's complement negative)
-const uint64_t LONGP = 0X1FFFFFFFFFFFFC00UL;  // Test constant for numbers unsigned long type
-const int64_t LONGN = -0XFFFFFC00L;  // Test constant for numbers signed long type (two's complement negative)
-const uint64_t BIGE33 = 0X1FFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
-const uint64_t BIGE53 = 0X3FFFFFFFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
-const uint64_t YUGE = 0X7FFFFFFFFFFFFFFFUL;  // Test constant for numbers of 63 bits
-const uint32_t DWORD = 32;  // size of a double word
-const uint32_t DWORD_LOG2 = 6;  // size of a double word log2
-const uint32_t BOB0 = 16;  // Memory size for instance 0
-const uint32_t BOB1 = 15;  // Memory size for instance 1
-const uint32_t TESTCONST1 = 1;  // A test constant
-const uint32_t TESTCONST2 = 6;  // A test constant using an enum value
-const double REAL_PI = 3.0;  // Test constant for floating point (real) type
-const double REAL_HALF = 16.0;  // Test constant for real from eval expression
-const uint32_t OPCODEABASE_READ = 0;  // base value for Read command
-const uint32_t OPCODEABASE_WRITE = 64;  // base value for Write command
-const uint32_t OPCODEABASE_WAIT = 128;  // base value for Wait command
-const uint32_t OPCODEABASE_EVICT = 192;  // base value for Evict command
-const uint32_t OPCODEABASE_TRIM = 256;  // base value for Trim command
+inline constexpr uint32_t ASIZE = 1;  // The size of A
+inline constexpr uint32_t ASIZE2 = 2;  // The size of A+1
+inline constexpr uint32_t INTP = 4294966272;  // Test constant for numbers of unsigned integer type
+inline constexpr int32_t INTN = -2147482624;  // Test constant for numbers of signed integer type (two's complement negative)
+inline constexpr uint64_t LONGP = 0X1FFFFFFFFFFFFC00UL;  // Test constant for numbers unsigned long type
+inline constexpr int64_t LONGN = -0XFFFFFC00L;  // Test constant for numbers signed long type (two's complement negative)
+inline constexpr uint64_t BIGE33 = 0X1FFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
+inline constexpr uint64_t BIGE53 = 0X3FFFFFFFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
+inline constexpr uint64_t YUGE = 0X7FFFFFFFFFFFFFFFUL;  // Test constant for numbers of 63 bits
+inline constexpr uint32_t DWORD = 32;  // size of a double word
+inline constexpr uint32_t DWORD_LOG2 = 6;  // size of a double word log2
+inline constexpr uint32_t BOB0 = 16;  // Memory size for instance 0
+inline constexpr uint32_t BOB1 = 15;  // Memory size for instance 1
+inline constexpr uint32_t TESTCONST1 = 1;  // A test constant
+inline constexpr uint32_t TESTCONST2 = 6;  // A test constant using an enum value
+inline constexpr double REAL_PI = 3.0;  // Test constant for floating point (real) type
+inline constexpr double REAL_HALF = 16.0;  // Test constant for real from eval expression
+inline constexpr uint32_t OPCODEABASE_READ = 0;  // base value for Read command
+inline constexpr uint32_t OPCODEABASE_WRITE = 64;  // base value for Write command
+inline constexpr uint32_t OPCODEABASE_WAIT = 128;  // base value for Wait command
+inline constexpr uint32_t OPCODEABASE_EVICT = 192;  // base value for Evict command
+inline constexpr uint32_t OPCODEABASE_TRIM = 256;  // base value for Trim command
 
 } // namespace mixed_ns
 // GENERATED_CODE_END

@@ -18,7 +18,7 @@
 namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-const uint32_t DWORD = 32;  // Width of an APB dword
+inline constexpr uint32_t DWORD = 32;  // Width of an APB dword
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types

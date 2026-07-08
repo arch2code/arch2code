@@ -18,8 +18,8 @@ export module mixedNestedInclude;
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 export namespace mixedNestedInclude_ns {
 //constants
-const uint32_t DSIZE = 1;  // The size of D
-const uint32_t DSIZE2 = 2;  // The size of D2
+inline constexpr uint32_t DSIZE = 1;  // The size of D
+inline constexpr uint32_t DSIZE2 = 2;  // The size of D2
 
 } // namespace mixedNestedInclude_ns
 // GENERATED_CODE_END

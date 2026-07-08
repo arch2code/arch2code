@@ -20,9 +20,9 @@ using namespace axiStd_ns;
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 export namespace axiDemo_ns {
 //constants
-const uint32_t AXI_ADDRESS_WIDTH = 32;  // The width of the AXI address busses
-const uint32_t AXI_DATA_WIDTH = 32;  // The width of the AXI data busses
-const uint32_t AXI_STROBE_WIDTH = 4;  // The width of the AXI strobe signals
+inline constexpr uint32_t AXI_ADDRESS_WIDTH = 32;  // The width of the AXI address busses
+inline constexpr uint32_t AXI_DATA_WIDTH = 32;  // The width of the AXI data busses
+inline constexpr uint32_t AXI_STROBE_WIDTH = 4;  // The width of the AXI strobe signals
 
 } // namespace axiDemo_ns
 // GENERATED_CODE_END

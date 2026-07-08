@@ -18,8 +18,8 @@ export module mixedBlockC;
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 export namespace mixedBlockC_ns {
 //constants
-const uint32_t CSIZE = 2;  // The size of C
-const uint32_t CSIZE_PLUS = 3;  // The size of C plus 1
+inline constexpr uint32_t CSIZE = 2;  // The size of C
+inline constexpr uint32_t CSIZE_PLUS = 3;  // The size of C plus 1
 
 } // namespace mixedBlockC_ns
 // GENERATED_CODE_END

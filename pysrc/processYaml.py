@@ -418,6 +418,7 @@ class projectOpen:
         g.yamlBasePath = self.config.getConfig('BASEYAMLPATH')
         self.yamlContext = self.config.getConfig('YAMLCONTEXT')
         self.includeName = self.config.getConfig('INCLUDENAME')
+        self.contextOwningProject = self.config.getConfig('CONTEXTOWNINGPROJECT')
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
         self.filemap = self.config.getConfig('FILEMAP')
         global dirMacros
@@ -2957,6 +2958,10 @@ class projectCreate:
     specialContexts = {"_global", "_a2csystem"} # special contexts that should be excluded from includes
     errorState = False
     includeName = dict()
+    # Per-context owning projectName, keyed identically to includeName. On a
+    # monolithic (single-project) build every context maps to the root
+    # PROJECTNAME; per-child ownership is deferred M-split work.
+    contextOwningProject = dict()
     includeValid = dict()
     includeSections = {"types", "structures", "constants"}
     # ipParameters constants captured per file as they are parsed, so the
@@ -3103,6 +3108,7 @@ class projectCreate:
         self.schema.save()
         self.config.setConfig('YAMLCONTEXT', self.yamlContext, bin=True) # save the structure of the yaml contexts for header usages
         self.config.setConfig('INCLUDENAME', self.includeName, bin=True) # save the structure of the yaml contexts for header usages
+        self.config.setConfig('CONTEXTOWNINGPROJECT', self.contextOwningProject, bin=True) # per-context owning projectName, keyed identically to includeName
         # Per-context C++ module/namespace linkage identity, keyed identically to
         # includeName. Role A emitters (the SystemC `export module` and namespace
         # names) spell this identity; it is deliberately separate from the raw
@@ -3119,7 +3125,7 @@ class projectCreate:
         projectName = self.config.getConfig('PROJECTNAME')
         self.contextModuleIdentity = {}
         for context, stem in self.includeName.items():
-            owningProjectName = projectName
+            owningProjectName = self.contextOwningProject[context]
             if owningProjectName == projectName:
                 self.contextModuleIdentity[context] = stem
             else:
@@ -3424,6 +3430,7 @@ class projectCreate:
 
     def readRaw(self):
         # read files until nothing left to do
+        projectName = self.config.getConfig('PROJECTNAME')
         while self.yamlUnread:
             newFiles = list()
             for f in self.yamlUnread:
@@ -3436,6 +3443,9 @@ class projectCreate:
                         self.includeName[f] = self.yamlRaw[f]["includeName"]
                     else:
                         self.includeName[f] = os.path.splitext(os.path.basename(f))[0]
+                    # Record the owning project per context, keyed identically to
+                    # includeName. Monolithic build: every context is root-owned.
+                    self.contextOwningProject[f] = projectName
                     for t in todo:
                         if t not in self.yamlAllFiles:
                             newFiles.insert(0, t)
