@@ -14,14 +14,14 @@ export module ip_top;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
 import shared_types;
-import ip;
 import src;
 import ipLeaf;
+import ip;
 import ipBridge;
 using namespace shared_types_ns;
-using namespace ip_ns;
 using namespace src_ns;
 using namespace ipLeaf_ns;
+using namespace ip_ns;
 using namespace ipBridge_ns;
 
 // GENERATED_CODE_END

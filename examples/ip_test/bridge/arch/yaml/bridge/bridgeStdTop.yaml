@@ -1,0 +1,34 @@
+# ipBridge standalone top harness.
+#
+# ipBridge has no hasTb block of its own, so this harness assembles a runnable
+# top: the ipBridge DUT, the bridgeDriver stimulus producer, and a minimal APB
+# master stub feeding the bridge's nested register-bus router upstream.
+include:
+    - ipBridge.yaml
+
+blocks:
+    bridgeStdTop:
+        desc: "Standalone top container for ipBridge"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+    bridgeStdMaster:
+        desc: "Standalone APB master stub feeding ipBridge's register bus upstream"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            apbOut: { interface: apbReg, direction: src }
+
+instances:
+    bridgeStdTop:    { container: bridgeStdTop, instanceType: bridgeStdTop,    instGroup: top }
+    uBridgeMaster:   { container: bridgeStdTop, instanceType: bridgeStdMaster, instGroup: top }
+    uBridgeDriver:   { container: bridgeStdTop, instanceType: bridgeDriver,    instGroup: top }
+    uBridge:         { container: bridgeStdTop, instanceType: ipBridge,        instGroup: top, addressGroup: bridge }
+
+connections:
+    - { interface: data8If,  src: uBridgeDriver, srcport: out8,   dst: uBridge, dstport: data8In }
+    - { interface: data70If, src: uBridgeDriver, srcport: out70,  dst: uBridge, dstport: data70In }
+    - { interface: apbReg,   src: uBridgeMaster, srcport: apbOut, dst: uBridge }

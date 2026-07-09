@@ -5,9 +5,9 @@
 package ip_top_package;
 // Generated Import package statement(s)
 import ipBridge_package::*;
+import ip_package::*;
 import ipLeaf_package::*;
 import src_package::*;
-import ip_package::*;
 import shared_types_package::*;
 
 // types

@@ -5,16 +5,18 @@
 -y ./top
 +incdir+./common
 -y ./common
-+incdir+./ip
--y ./ip
 +incdir+./src
 -y ./src
-+incdir+./bridge
--y ./bridge
++incdir+./ip
+-y ./ip
++incdir+./../../ip/arch/yaml/ip
+-y ./../../ip/arch/yaml/ip
++incdir+./../../bridge/arch/yaml/bridge
+-y ./../../bridge/arch/yaml/bridge
 common/shared_types_package.sv
-ip/ip_package.sv
 ip/ipLeaf_package.sv
+../../ip/arch/yaml/ip/ip_package.sv
 src/src_package.sv
-bridge/ipBridge_package.sv
+../../bridge/arch/yaml/bridge/ipBridge_package.sv
 top/ip_top_package.sv
 // GENERATED_CODE_END

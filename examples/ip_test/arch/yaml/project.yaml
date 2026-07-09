@@ -7,6 +7,12 @@ projectName: ip_test
 # note in the case of additional project files any top level controls (such as schema:) are ignored
 # relative path names are resolved based on location of project file (this includes sub projects)
 projectFiles:
+    # Referenced child IP projects (design-only entries) first, so their closures
+    # are BFS-owned by projectName ip / ipBridge before any sibling include of the
+    # same design files can claim ownership. The parent generates only its own
+    # objects; the ownership gate skips ip-/ipBridge-owned files (Q-C10 composition).
+    - ../../ip/arch/yaml/ipDesign.yaml
+    - ../../bridge/arch/yaml/ipBridgeDesign.yaml
     - top/ip_top.yaml
 
 topInstance: ip_top_tb

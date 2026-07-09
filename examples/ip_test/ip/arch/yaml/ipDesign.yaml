@@ -1,0 +1,58 @@
+# Design-only project file for the reusable 'ip' IP.
+#
+# This is the entry a PARENT project references (via projectFiles) to compose
+# 'ip'. It exposes only ip's design (ip.yaml + variant bindings) so the parent
+# does NOT parse ip's standalone test harness (ipTop.yaml's ipStdTop /
+# ipStdDecode router), which would otherwise collide with the parent's own
+# register-bus router during primary-router resolution.
+#
+# Same projectName / dirs / fileGeneration as ipProject.yaml, so ip's generated
+# files resolve under the same ip root and are owned by projectName 'ip' whether
+# ip is built standalone or referenced by a parent.
+
+yamlFormat: 2
+projectName: ip
+
+projectFiles:
+    - ip/ipVariants.yaml
+
+# Placeholder: a referenced child project's topInstance is ignored by the parent
+# (only the root project's topInstance is authoritative). Never built as a root.
+topInstance: ip
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+    base: $root/base
+    model: $root/model
+    rtl: $root/rtl
+    vl_wrap: $root/verif/vl_wrap
+    tb: $root/tb
+    fwInc: $root/fw/include
+
+fileGeneration:
+    template: $a2c/templates/fileGen/fileGen.py
+    fileMap:
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+    regBlockNaming: {
+            instancePrefix: "u",
+            blockSuffix: "Regs",
+            camelCase: true,
+        }
