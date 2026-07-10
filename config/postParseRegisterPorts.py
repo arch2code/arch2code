@@ -116,11 +116,16 @@ def _collectRouterBlocks(blockInfo):
     }
 
 
-def _resolveRouterInstances(prj, routers):
-    """Resolve the single router instance per router block. Multi-
+def _resolveRouterInstances(prj, routers, reachable):
+    """Resolve the single router instance per router block within the active
+    build's design hierarchy. Router instances that belong only to a
+    referenced project's standalone harness (not reachable from this build's
+    topInstance) are not part of this dispatch tree and are skipped. Multi-
     instance routers are diagnosed here."""
     router_instance = dict()
     for instRow in prj.flatData['instances'].values():
+        if instRow['instanceKey'] not in reachable:
+            continue
         instanceTypeKey = instRow['instanceTypeKey']
         if instanceTypeKey not in routers:
             continue
@@ -140,11 +145,14 @@ def _resolveRouterInstances(prj, routers):
     return router_instance
 
 
-def _findRouterParent(prj, childRouterInstRow, decoderContainer):
+def _findRouterParent(prj, childRouterInstRow, decoderContainer, reachable):
     """Walk up from a router instance's containerKey to locate the
-    parent router that serves the router's container block."""
+    parent router that serves the router's container block. Only instances
+    within the active build's design hierarchy are considered."""
     routerContainerBlockKey = childRouterInstRow['containerKey']
     for instRow in prj.flatData['instances'].values():
+        if instRow['instanceKey'] not in reachable:
+            continue
         if instRow['instanceTypeKey'] != routerContainerBlockKey:
             continue
         ancestor_container = instRow['containerKey']
@@ -154,7 +162,7 @@ def _findRouterParent(prj, childRouterInstRow, decoderContainer):
     return None
 
 
-def _findPrimaryRouter(prj, routers, router_instance):
+def _findPrimaryRouter(prj, routers, router_instance, reachable):
     """Infer the primary router by hierarchy walk. Errors if zero or
     more than one candidate is found."""
     decoderContainer = {
@@ -164,7 +172,7 @@ def _findPrimaryRouter(prj, routers, router_instance):
 
     primary_candidates = []
     for routerInstRow in router_instance.values():
-        parent_router = _findRouterParent(prj, routerInstRow, decoderContainer)
+        parent_router = _findRouterParent(prj, routerInstRow, decoderContainer, reachable)
         if parent_router is None:
             primary_candidates.append(routerInstRow)
 
@@ -290,12 +298,27 @@ def postProcess(prj):
 
     instance_prefix, block_suffix, camel_case = regHandlerNaming(prj)
 
-    router_instance = _resolveRouterInstances(prj, routers)
+    # Router-bus decode is scoped to the active build's design hierarchy.
+    # A referenced child project's standalone harness may be parsed into the
+    # same database; its instances exist in the flat table but are not part
+    # of this build's dispatch tree and must not compete for router/address
+    # selection. For a single-project build every instance is reachable, so
+    # this scoping changes nothing.
+    reachable = prj.reachableInstanceKeys()
 
+    # A router block declared with addressBlock: but never instantiated
+    # anywhere is an authoring error. A router instantiated only outside this
+    # build's hierarchy (a referenced child's harness) is not an error here;
+    # it is simply out of scope and is dropped from the working set below.
+    instantiatedRouterBlocks = {
+        instRow['instanceTypeKey']
+        for instRow in prj.flatData['instances'].values()
+        if instRow['instanceTypeKey'] in routers
+    }
     missing = [
         routers[blockKey]['block']
         for blockKey in routers
-        if blockKey not in router_instance
+        if blockKey not in instantiatedRouterBlocks
     ]
     if missing:
         _exit_with_error(
@@ -303,7 +326,14 @@ def postProcess(prj):
             f"instances in the design: {', '.join(missing)}."
         )
 
-    primary_router = _findPrimaryRouter(prj, routers, router_instance)
+    router_instance = _resolveRouterInstances(prj, routers, reachable)
+
+    # Restrict the working router set to routers that participate in this
+    # build's hierarchy; routers present only in a referenced child's harness
+    # are handled by that child's own build.
+    routers = {blockKey: routers[blockKey] for blockKey in router_instance}
+
+    primary_router = _findPrimaryRouter(prj, routers, router_instance, reachable)
 
     decoderContainer = {
         routerInstRow['containerKey']: routerInstRow
@@ -327,14 +357,28 @@ def postProcess(prj):
     routerInterfaceCache = dict()
 
     # ---- Step 4: synthesise register handlers per routed leaf ----
-    blocksNeedingHandler = collectBlocksNeedingRegHandler(prj)
+    # Handlers are synthesised only for leaf blocks that appear in this
+    # build's hierarchy. A register-owning block that is instantiated only in
+    # a referenced child's harness is served by that child's own build.
+    reachableBlockKeys = {
+        prj.flatData['instances'][instanceKey]['instanceTypeKey']
+        for instanceKey in reachable
+    }
+    blocksNeedingHandler = {
+        blockKey: block
+        for blockKey, block in collectBlocksNeedingRegHandler(prj).items()
+        if blockKey in reachableBlockKeys
+    }
 
     def _routerServingLeaf(leafBlockKey):
         # Return any router serving an instance of this leaf block.
         # All routers reaching this leaf must agree on
         # registerDecoderPort (the handler block has one port name);
-        # picking any one is fine.
+        # picking any one is fine. Only instances in this build's
+        # hierarchy are considered.
         for _instRow in prj.flatData['instances'].values():
+            if _instRow['instanceKey'] not in reachable:
+                continue
             if _instRow['instanceTypeKey'] != leafBlockKey:
                 continue
             routerInst = decoderContainer.get(_instRow['containerKey'])
@@ -395,6 +439,8 @@ def postProcess(prj):
 
     # ---- Steps 5 & 6: emit router-to-leaf and router-to-router binds ----
     for instRow in prj.flatData['instances'].values():
+        if instRow['instanceKey'] not in reachable:
+            continue
         context = instRow['_context']
         instanceTypeKey = instRow['instanceTypeKey']
 
@@ -476,7 +522,7 @@ def postProcess(prj):
             childAddressBlock = childBlock['addressBlock']
             childUpstreamPort = childAddressBlock['upstreamPort']
 
-            parentRouter = _findRouterParent(prj, instRow, decoderContainer)
+            parentRouter = _findRouterParent(prj, instRow, decoderContainer, reachable)
             parentBlock = routers[parentRouter['instanceTypeKey']]
             parentAddressBlock = parentBlock['addressBlock']
             parentRegDecoderPort = parentAddressBlock['registerDecoderPort']
@@ -508,6 +554,8 @@ def postProcess(prj):
             containerSiblingInst = None
             containerSiblingContext = None
             for _candRow in prj.flatData['instances'].values():
+                if _candRow['instanceKey'] not in reachable:
+                    continue
                 if _candRow['instanceTypeKey'] == containerBlockKey \
                         and _candRow['containerKey'] \
                         == parentRouter['containerKey']:

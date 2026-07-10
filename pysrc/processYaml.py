@@ -3494,6 +3494,40 @@ class projectCreate:
         self.instanceContainer = instanceContainer
         self.blocks = blocks
 
+    def reachableInstanceKeys(self):
+        """Return the set of instanceKeys that participate in this build's
+        design hierarchy, i.e. everything contained (transitively) by the
+        project's topInstance.
+
+        When a referenced child project is parsed into the same database, its
+        own standalone top and the instances beneath it are present in the
+        flat instance table but are not contained by this build's topInstance;
+        they are excluded here so passes that reason about the design tree see
+        only the active build's graph. For a single-project build every
+        instance descends from the topInstance, so the result is every
+        instance and this filtering is a no-op.
+
+        Reachability follows block containment via hierKey (containerBlockKey
+        -> contained instances): the topInstance rows anchor the walk and each
+        contained instance's block expands to its own contained instances.
+        """
+        reachable = set()
+        blockQueue = list()
+        for instanceKey, instRow in self.flatData['instances'].items():
+            if instRow['container'] == '_topInstance':
+                reachable.add(instanceKey)
+                blockQueue.append(instRow['instanceTypeKey'])
+        seenBlocks = set()
+        while blockQueue:
+            blockKey = blockQueue.pop()
+            if blockKey in seenBlocks:
+                continue
+            seenBlocks.add(blockKey)
+            for childInstanceKey, childRow in self.hierKey.get(blockKey, {}).items():
+                reachable.add(childInstanceKey)
+                blockQueue.append(childRow['instanceTypeKey'])
+        return reachable
+
     def getFileList(self, data, basePath, dependencies=None):
         todoNorm = list()
         incNorm = list()
