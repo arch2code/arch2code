@@ -18,7 +18,7 @@
 namespace {
 
 std::atomic<bool> g_lockstep{false};
-sc_core::sc_time g_quantum{1000, sc_core::SC_NS};
+sc_core::sc_time g_quantum{0, sc_core::SC_NS};
 std::shared_ptr<ThreadSafeEvent> g_ack_event;
 std::mutex g_ack_mutex;
 bool g_have_ack = false;
@@ -40,6 +40,17 @@ bool env_truthy(const char *value)
         return false;
     }
     return std::strcmp(value, "1") == 0 || strcasecmp(value, "true") == 0 || strcasecmp(value, "yes") == 0;
+}
+
+bool env_enabled_default_true(const char *value)
+{
+    if (value == nullptr || value[0] == '\0') {
+        return true;
+    }
+    if (std::strcmp(value, "0") == 0 || strcasecmp(value, "false") == 0 || strcasecmp(value, "no") == 0) {
+        return false;
+    }
+    return env_truthy(value);
 }
 
 void begin_boundary(uint64_t time_ns)
@@ -68,7 +79,7 @@ void socketSyncConfigureFromEnvironment()
         return;
     }
     g_configured = true;
-    g_lockstep = env_truthy(std::getenv("PYSOCKET_LOCKSTEP"));
+    g_lockstep = env_enabled_default_true(std::getenv("PYSOCKET_LOCKSTEP"));
     bool quantum_from_env = false;
     if (const char *quantum_ns = std::getenv("PYSOCKET_SYNC_QUANTUM_NS")) {
         const auto ns = std::strtoull(quantum_ns, nullptr, 10);
@@ -77,7 +88,7 @@ void socketSyncConfigureFromEnvironment()
             quantum_from_env = true;
         }
     }
-    if (!quantum_from_env && simController::delayNSec > 0) {
+    if (!quantum_from_env) {
         g_quantum = sc_core::sc_time(static_cast<double>(simController::delayNSec), sc_core::SC_NS);
     }
 }

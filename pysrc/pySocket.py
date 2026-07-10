@@ -44,9 +44,20 @@ SYNC_PAYLOAD_STRUCT = struct.Struct("<Q")
 PYSOCKET_SYNC_IFC = "pysocket_sync"
 
 
+def _env_enabled(name: str, *, default: bool = True) -> bool:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    v = value.strip().lower()
+    if v in ("0", "false", "no"):
+        return False
+    if v in ("1", "true", "yes"):
+        return True
+    return default
+
+
 def lockstep_enabled() -> bool:
-    value = os.environ.get("PYSOCKET_LOCKSTEP", "")
-    return value.lower() in ("1", "true", "yes")
+    return _env_enabled("PYSOCKET_LOCKSTEP")
 
 
 def struct_bytes(obj: ctypes.Structure) -> bytes:

@@ -11,7 +11,8 @@
 class ThreadSafeEvent;
 
 // Lockstep time-quantum synchronization between SystemC and Python.
-// Enabled when PYSOCKET_LOCKSTEP=1; quantum size from PYSOCKET_SYNC_QUANTUM_NS (default 1000).
+// Enabled by default; set PYSOCKET_LOCKSTEP=0 to disable.
+// Quantum size from PYSOCKET_SYNC_QUANTUM_NS, else --delay (default 0).
 
 void socketSyncConfigureFromEnvironment();
 
