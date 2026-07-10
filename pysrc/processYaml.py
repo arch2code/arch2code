@@ -3068,6 +3068,11 @@ class projectCreate:
         # Keyed by the child's projectName; populated by readRaw and consumed by
         # buildProjectLayout to produce that project's $root-resolved layout.
         self.childProjectRaw = {}
+        # Selected provider file (context key) per referenced projectName. A
+        # second, lexically-different provider path for the same declared
+        # projectName is a duplicate-provider error unless an ancestor
+        # projectOverrides entry redirects one of them. Populated by readRaw.
+        self.projectProviders = {}
         global dirMacros
         #load project file from command line
         self._userProjRaw = existsLoad(projFile)
@@ -3124,13 +3129,17 @@ class projectCreate:
         # Then load user project files
         (userFiles, _, userProjectSlot) = self.getFileList(self.proj, g.yamlBasePath)
 
-        # Seed the ownership BFS. Each queue entry is (file, owningProject,
-        # viaProjectFiles): system files and the root project's include closure
-        # are root-owned and are not project-file candidates; only the root's
+        # Seed the file-read BFS. Each queue entry is (file, viaProjectFiles,
+        # inheritedOverrides): system files and the root project's include
+        # closure are not project-file candidates; only the root's
         # projectFiles: entries can open a child project (resolved in readRaw).
-        rootProjectName = self.config.getConfig('PROJECTNAME')
-        self.yamlUnread = [(f, rootProjectName, False) for f in systemFiles]
-        self.yamlUnread += [(f, rootProjectName, f in userProjectSlot) for f in userFiles]
+        # inheritedOverrides carries the projectOverrides declared by ancestor
+        # project files (highest ancestor wins); the root project seeds them.
+        # File OWNERSHIP is assigned authoritatively in _assignOwnership() once
+        # every selected provider is known, not by BFS traversal order.
+        rootOverrides = self._mergeOverrides(self.proj, '.', {})
+        self.yamlUnread = [(f, False, rootOverrides) for f in systemFiles]
+        self.yamlUnread += [(f, f in userProjectSlot, rootOverrides) for f in userFiles]
         self.systemFiles = set(systemFiles)  # Track which are system files
         #read all the files into project
         self.readRaw()
@@ -3531,52 +3540,143 @@ class projectCreate:
             return False
         return all(key in raw for key in ("projectName", "dirs", "fileGeneration"))
 
+    def _mergeOverrides(self, raw, declDir, inherited):
+        # Merge the projectOverrides declared by one project file over the map
+        # inherited from its ancestors. An ancestor's entry for a projectName is
+        # never displaced by a descendant's (highest applicable ancestor wins).
+        # Each override path is absolute or relative to the declaring project
+        # file and is normalized LEXICALLY to a context key (no symlink deref),
+        # mirroring getFileList's include/projectFiles normalization. The value
+        # is (targetContextKey, declaringDir) so provider selection and error
+        # reporting can name the declaration.
+        merged = dict(inherited)
+        overrides = raw.get('projectOverrides')
+        if not overrides:
+            return merged
+        for projName, path in overrides.items():
+            if projName in merged:
+                # Sibling/descendant override of an already-selected projectName
+                # is ignored: the highest ancestor's selection is authoritative.
+                continue
+            targetKey = os.path.relpath(os.path.join(declDir, path), g.yamlBasePath)
+            merged[projName] = (targetKey, declDir)
+        return merged
+
+    def _selectProvider(self, refKey, projName, inheritedOverrides):
+        # Resolve the provider context key for a child-project reference. Absent
+        # an ancestor override for projName the referenced file is the provider;
+        # otherwise the ancestor override redirects to its target, which MUST
+        # itself declare the requested projectName. Owns the missing-target and
+        # name-mismatch errors.
+        if projName not in inheritedOverrides:
+            return refKey
+        targetKey, declDir = inheritedOverrides[projName]
+        if not os.path.exists(targetKey):
+            printError(f"projectOverrides in '{declDir}' selects '{targetKey}' "
+                       f"for projectName '{projName}', but that file does not "
+                       f"exist.")
+            exit(warningAndErrorReport())
+        targetRaw = existsLoad(targetKey)
+        if not self._isChildProjectFile(targetRaw) or targetRaw['projectName'] != projName:
+            declared = targetRaw.get('projectName') if targetRaw else None
+            printError(f"projectOverrides in '{declDir}' selects '{targetKey}' "
+                       f"for projectName '{projName}', but that file declares "
+                       f"projectName '{declared}'.")
+            exit(warningAndErrorReport())
+        return targetKey
+
     def readRaw(self):
-        # read files until nothing left to do. Each queue entry carries the
-        # owning projectName inherited from its parent plus whether it arrived
-        # via a projectFiles: slot (the only slot that can open a child project).
+        # Read files until nothing is left to do. Each queue entry carries
+        # whether it arrived via a projectFiles: slot (the only slot that can
+        # open a child project) and the provider-override map inherited from its
+        # ancestor projects. Ownership is NOT decided here: _assignOwnership()
+        # assigns it authoritatively once every selected provider is known.
         while self.yamlUnread:
             newFiles = list()
-            for (f, inheritedOwner, viaProjectFiles) in self.yamlUnread:
+            for (f, viaProjectFiles, inheritedOverrides) in self.yamlUnread:
+                if f in self.yamlAllFiles:
+                    continue
+                raw = existsLoad(f)
+                nextOverrides = inheritedOverrides
+                # A projectFiles-slot entry carrying the project sentinel keys
+                # opens a child project, subject to provider-override redirection
+                # against the ancestor overrides.
+                if viaProjectFiles and self._isChildProjectFile(raw):
+                    projName = raw["projectName"]
+                    selectedKey = self._selectProvider(f, projName, inheritedOverrides)
+                    if selectedKey != f:
+                        # Redirected by an ancestor override: f is not itself a
+                        # context; process the selected provider instead.
+                        if selectedKey not in self.yamlAllFiles:
+                            newFiles.insert(0, (selectedKey, True, inheritedOverrides))
+                        continue
+                    # f is the selected provider for projName. A second, lexically
+                    # different path claiming the same projectName is ambiguous
+                    # unless an ancestor override selects one (which would have
+                    # redirected the loser above).
+                    prior = self.projectProviders.get(projName)
+                    if prior is not None and prior != f:
+                        printError(f"Multiple providers declare projectName "
+                                   f"'{projName}': '{prior}' and '{f}'. Add a "
+                                   f"projectOverrides entry in an ancestor "
+                                   f"project to select one.")
+                        exit(warningAndErrorReport())
+                    self.projectProviders[projName] = f
+                    # Capture the child's raw project content plus its own file
+                    # location, so buildProjectLayout can resolve the child's
+                    # dirs: relative to the child project file (not the root). f
+                    # is a relpath from g.yamlBasePath and cwd is g.yamlBasePath,
+                    # so abspath yields the child project file's directory.
+                    self.childProjectRaw[projName] = {
+                        'raw': raw,
+                        'projectFileDir': os.path.abspath(os.path.dirname(f)),
+                    }
+                    # A child project's own projectOverrides extend the inherited
+                    # map for its subtree (ancestor entries still win).
+                    nextOverrides = self._mergeOverrides(raw, os.path.dirname(f),
+                                                         inheritedOverrides)
+                self.yamlAllFiles[f] = None
+                self.yamlRaw[f] = raw
                 myBase = os.path.dirname(f)
-                if f not in self.yamlAllFiles:
-                    self.yamlAllFiles[f] = None
-                    self.yamlRaw[f] = existsLoad(f)
-                    (todo, include, projectSlotFiles) = self.getFileList(self.yamlRaw[f], myBase, self.yamlDependancies)
-                    if self.yamlRaw[f] and "includeName" in self.yamlRaw[f]:
-                        self.includeName[f] = self.yamlRaw[f]["includeName"]
-                    else:
-                        self.includeName[f] = os.path.splitext(os.path.basename(f))[0]
-                    # A projectFiles-slot entry that itself carries the project
-                    # sentinel keys opens a child project: its own projectName
-                    # owns it and its whole transitive closure. Otherwise the
-                    # owner is inherited from the parent (root for the top-level
-                    # closure). Recorded per context, keyed identically to
-                    # includeName.
-                    if viaProjectFiles and self._isChildProjectFile(self.yamlRaw[f]):
-                        owner = self.yamlRaw[f]["projectName"]
-                        # Capture the child's raw project content plus its own
-                        # file location, so buildProjectLayout can resolve the
-                        # child's dirs: relative to the child project file (not
-                        # the root) and derive the child's own layout. f is a
-                        # relpath from g.yamlBasePath and cwd is g.yamlBasePath,
-                        # so abspath yields the child project file's directory.
-                        self.childProjectRaw[owner] = {
-                            'raw': self.yamlRaw[f],
-                            'projectFileDir': os.path.abspath(os.path.dirname(f)),
-                        }
-                    else:
-                        owner = inheritedOwner
-                    self.contextOwningProject[f] = owner
-                    for t in todo:
-                        if t not in self.yamlAllFiles:
-                            newFiles.insert(0, (t, owner, t in projectSlotFiles))
-                    if f in self.yamlDependancies:
-                        self.yamlDependancies[f].update(include)
-                    else:
-                        self.yamlDependancies[f] = include
+                (todo, include, projectSlotFiles) = self.getFileList(raw, myBase, self.yamlDependancies)
+                if raw and "includeName" in raw:
+                    self.includeName[f] = raw["includeName"]
+                else:
+                    self.includeName[f] = os.path.splitext(os.path.basename(f))[0]
+                for t in todo:
+                    if t not in self.yamlAllFiles:
+                        newFiles.insert(0, (t, t in projectSlotFiles, nextOverrides))
+                if f in self.yamlDependancies:
+                    self.yamlDependancies[f].update(include)
+                else:
+                    self.yamlDependancies[f] = include
 
             self.yamlUnread = newFiles
+        self._assignOwnership()
+
+    def _assignOwnership(self):
+        # Authoritative, order-independent file ownership. Each selected
+        # provider project owns the files that lie within its own project-file
+        # directory tree; the most-specific (deepest) containing provider wins,
+        # so a child's files are owned by the child even when a parent include:
+        # also reaches them: a sibling include: is a visibility mechanism, never
+        # an ownership claim. Files outside every
+        # child provider tree (root design files, system files) fall to the root
+        # project. On a monolithic project there are no child providers, so every
+        # context resolves to the root PROJECTNAME (byte-identical no-op).
+        rootProjectName = self.config.getConfig('PROJECTNAME')
+        providers = sorted(
+            ((info['projectFileDir'], name)
+             for name, info in self.childProjectRaw.items()),
+            key=lambda p: len(p[0]), reverse=True)
+        for f in self.yamlAllFiles:
+            fabs = os.path.abspath(f)
+            owner = rootProjectName
+            for pdir, name in providers:
+                if fabs.startswith(pdir + os.sep):
+                    owner = name
+                    break
+            self.contextOwningProject[f] = owner
 
     def calcAddresses(self):
         # Post-parse derivation: parse-time self._parserResolver is None here.
@@ -5122,9 +5222,22 @@ class projectCreate:
                 # relative functional segment names join onto it at emit time.
                 self.yamlDir = os.path.dirname(os.path.abspath(yamlDir))
             else:
-                # functional: directory relative to the central arch/yaml root,
-                # which the seam re-roots under each $root/<segment> (unchanged).
+                # functional: the object dir is relative to a yaml base which the
+                # seam (expandNewModulePath) re-roots under that project's
+                # $root/<segment>. When the object's defining context is owned by a
+                # referenced CHILD project, a root-relative dir is wrong: the seam
+                # would compose the child's own segment with a root-relative prefix.
+                # Re-root the dir under the OWNING child's yaml base so the child's
+                # segment composes with a child-base-relative dir. Root-owned and
+                # system/special contexts own no child base and keep the legacy
+                # root-relative value, so monolithic projects are byte-identical.
                 self.yamlDir = yamlDir
+                if contextFile not in self.specialContexts:
+                    owner = self.contextOwningProject[contextFile]
+                    if owner in self.childProjectRaw:
+                        owningBase = self.childProjectRaw[owner]['projectFileDir']
+                        self.yamlDir = os.path.dirname(
+                            os.path.relpath(os.path.abspath(yamlFile), owningBase))
         if yamlFile not in self.includeValid and yamlFile not in self.specialContexts:
             # check if this is a nested project file
             if 'addressControl' not in sections:
@@ -6742,6 +6855,26 @@ class projectCreate:
         sysRows = self.data[objType].get('_a2csystem', {})
         if name in sysRows:
             return sysRows[name], '_a2csystem'
+        # Cross-project fallback: a
+        # projectFiles-referenced child project makes its whole design closure
+        # resolvable in the referencing parent even though the child's files are
+        # not on this context's include: chain. Only contexts owned by a
+        # referenced child project are searched, so include-scope discipline is
+        # unchanged intra-project and a monolithic project (no child projects) is
+        # a byte-identical no-op.
+        if self.childProjectRaw:
+            return self._lookupInChildProjects(objType, name)
+        return None, None
+
+    def _lookupInChildProjects(self, objType, name):
+        # Resolve `name` against the design closures of referenced child
+        # projects. Searches only qualifications owned by a child provider (owner
+        # in childProjectRaw); returns the first match in processing order.
+        for qualification, rows in self.data[objType].items():
+            if name not in rows:
+                continue
+            if self.contextOwningProject.get(qualification) in self.childProjectRaw:
+                return rows[name], qualification
         return None, None
 
     def validateForeignKey(self, sourceRow, sourceSection, sourceField, context):

@@ -7,13 +7,22 @@ projectName: ip_test
 # note in the case of additional project files any top level controls (such as schema:) are ignored
 # relative path names are resolved based on location of project file (this includes sub projects)
 projectFiles:
-    # Referenced child IP projects (design-only entries) first, so their closures
-    # are BFS-owned by projectName ip / ipBridge before any sibling include of the
-    # same design files can claim ownership. The parent generates only its own
-    # objects; the ownership gate skips ip-/ipBridge-owned files (Q-C10 composition).
-    - ../../ip/arch/yaml/ipDesign.yaml
-    - ../../bridge/arch/yaml/ipBridgeDesign.yaml
+    # Referenced child IP projects: the real reusable projects (ip, ipBridge),
+    # not design-only shims. Their design closures are resolvable in this parent
+    # (cross-project block resolution) and owned by projectName ip / ipBridge
+    # (authoritative child-closure ownership); the parent generates only its own
+    # objects, the ownership gate skips ip-/ipBridge-owned files (Q-C10).
+    - ../../ip/arch/yaml/ipProject.yaml
+    - ../../bridge/arch/yaml/ipBridgeProject.yaml
     - top/ip_top.yaml
+
+# Hierarchical provider selection: both the root and the symlinked bridge/ip
+# path declare projectName: ip. This root (the highest ancestor) selects the
+# root ip provider, so every reference to projectName ip in this composition
+# resolves to it. Removing this entry exposes the duplicate-provider error
+# naming both the root and the symlinked bridge/ip provider paths.
+projectOverrides:
+    ip: ../../ip/arch/yaml/ipProject.yaml
 
 topInstance: ip_top_tb
 

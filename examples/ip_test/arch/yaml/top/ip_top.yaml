@@ -11,12 +11,9 @@
 include:
     - ../common/shared_types.yaml
     - ../src/src.yaml
-    # ip and ipBridge blocks are owned by their referenced child projects (see
-    # project.yaml projectFiles). Their defining files stay on this context's
-    # include chain for block-type resolution; ownership is set by child-project
-    # detection (CONTEXTOWNINGPROJECT), not by these includes.
-    - ../../../ip/arch/yaml/ip/ipVariants.yaml
-    - ../../../bridge/arch/yaml/bridge/ipBridge.yaml
+    # The ip and ipBridge blocks are provided by the referenced child projects
+    # (see project.yaml projectFiles) and are resolved through cross-project
+    # block resolution; their defining files are NOT included here.
 
 # Container-owned non-parameterized boundary declarations.
 # uSrc (parameterized producer) and uIp0/uIp1 (parameterized consumers)

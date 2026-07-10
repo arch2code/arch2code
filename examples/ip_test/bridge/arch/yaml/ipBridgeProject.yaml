@@ -8,9 +8,12 @@ yamlFormat: 2
 projectName: ipBridge
 
 projectFiles:
-    # ip child project (design-only entry, no standalone harness) first, so its
-    # closure is BFS-owned by 'ip' before any sibling include of the same files.
-    - ../../../ip/arch/yaml/ipDesign.yaml
+    # The 'ip' child project reached through the vendored provider symlink
+    # (bridge/ip -> ../../ip). Standalone, ipBridge selects this nested provider;
+    # in composition the root's projectOverrides selects the root ip and this
+    # reference is redirected there. Path identity is lexical (symlink is not
+    # dereferenced), so the two provider paths stay distinct.
+    - ../../ip/arch/yaml/ipProject.yaml
     - bridge/bridgeStdTop.yaml
 
 topInstance: bridgeStdTop
