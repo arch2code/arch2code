@@ -421,6 +421,7 @@ class projectOpen:
         self.yamlContext = self.config.getConfig('YAMLCONTEXT')
         self.includeName = self.config.getConfig('INCLUDENAME')
         self.contextOwningProject = self.config.getConfig('CONTEXTOWNINGPROJECT')
+        self.reachableInstances = self.config.getConfig('REACHABLEINSTANCES')
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
         self.filemap = self.config.getConfig('FILEMAP')
         global dirMacros
@@ -3185,6 +3186,16 @@ class projectCreate:
         self.config.setConfig('YAMLCONTEXT', self.yamlContext, bin=True) # save the structure of the yaml contexts for header usages
         self.config.setConfig('INCLUDENAME', self.includeName, bin=True) # save the structure of the yaml contexts for header usages
         self.config.setConfig('CONTEXTOWNINGPROJECT', self.contextOwningProject, bin=True) # per-context owning projectName, keyed identically to includeName
+        # instanceKeys contained (transitively) by this build's topInstance.
+        # Consumers that enumerate the whole instance table (address emission)
+        # intersect with this set so a referenced child project's standalone
+        # harness instances, present in the flat table but outside this build's
+        # design tree, are excluded. A single-project build reaches every
+        # instance, so the intersection is a no-op. Rebuild the hierarchy first
+        # so synthesized register-handler instances (added by post-parse) are
+        # reflected in the containment walk.
+        self.generateHierarchy()
+        self.config.setConfig('REACHABLEINSTANCES', self.reachableInstanceKeys(), bin=True)
         # Per-context C++ module/namespace linkage identity, keyed identically to
         # includeName. Role A emitters (the SystemC `export module` and namespace
         # names) spell this identity; it is deliberately separate from the raw
@@ -6901,26 +6912,6 @@ class projectCreate:
         sysRows = self.data[objType].get('_a2csystem', {})
         if name in sysRows:
             return sysRows[name], '_a2csystem'
-        # Cross-project fallback: a
-        # projectFiles-referenced child project makes its whole design closure
-        # resolvable in the referencing parent even though the child's files are
-        # not on this context's include: chain. Only contexts owned by a
-        # referenced child project are searched, so include-scope discipline is
-        # unchanged intra-project and a monolithic project (no child projects) is
-        # a byte-identical no-op.
-        if self.childProjectRaw:
-            return self._lookupInChildProjects(objType, name)
-        return None, None
-
-    def _lookupInChildProjects(self, objType, name):
-        # Resolve `name` against the design closures of referenced child
-        # projects. Searches only qualifications owned by a child provider (owner
-        # in childProjectRaw); returns the first match in processing order.
-        for qualification, rows in self.data[objType].items():
-            if name not in rows:
-                continue
-            if self.contextOwningProject.get(qualification) in self.childProjectRaw:
-                return rows[name], qualification
         return None, None
 
     def validateForeignKey(self, sourceRow, sourceSection, sourceField, context):

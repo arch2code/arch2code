@@ -175,6 +175,11 @@ def includeAddresses(args, prj, data):
     out.append("//instance base addresses")
 
     for key, value in prj.data['instances'].items():
+        # Restrict to this build's design tree; a referenced child project's
+        # standalone harness instances are parsed into the same database but do
+        # not descend from the active topInstance.
+        if key not in prj.reachableInstances:
+            continue
         out.append(f"#define BASE_ADDR_{ value['instance'].upper() } {  ' ' * ( 20 - (len(value['instance']) ))}0x{int(value['offset']):x}")
 
     return("\n".join(out))

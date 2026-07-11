@@ -18,6 +18,13 @@ def render(args, prj, data):
         out.append(f'-y {incdirName}')
     
     for context in data['includeFiles'].get('package_sv', list()):
+        # Emit only packages in this build's include-chain scope. A referenced
+        # child project's standalone harness context is parsed into the same
+        # database but is not on the build context's include chain, so it is not
+        # part of the compiled design. Iterating the (DB-wide) package map in its
+        # own order keeps the emitted order stable.
+        if context not in data['includeContext']:
+            continue
         contextBasename = os.path.dirname(context)
         if contextBasename:
             contextBasename += '/'

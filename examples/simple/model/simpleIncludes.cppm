@@ -18,8 +18,8 @@ export module simple;
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 export namespace simple_ns {
 //constants
-const uint32_t NUM_TAGS = 32;  // number of tags
-const uint32_t NUM_TAGS_LOG2 = 5;  // log2 of number of tags
+inline constexpr uint32_t NUM_TAGS = 32;  // number of tags
+inline constexpr uint32_t NUM_TAGS_LOG2 = 5;  // log2 of number of tags
 
 } // namespace simple_ns
 // GENERATED_CODE_END
