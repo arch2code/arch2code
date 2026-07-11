@@ -1273,11 +1273,8 @@ class projectOpen:
         ret['isParameterizable'] = bool(block_row['isParameterizable'])
         ret['hasOwnParams'] = bool(block_row.get('params'))
         ret['defaultConfig'] = block_row['defaultConfig']
-        # Pass ret['variants'] through so the descriptor builder reuses the
-        # bound-parameter rows getBDInstances has already attached, instead
-        # of re-walking parametersvariants.
         ret['variantConfigs'] = self._buildVariantConfigDescriptors(
-            qualBlock, variantBindings=ret.get('variants')
+            qualBlock
         ) if ret['isParameterizable'] else []
 
     def getBlockConfigView(self, qualBlock):
@@ -1387,22 +1384,20 @@ class projectOpen:
                 transit_choice = name
         return leaf_choice or transit_choice
 
-    def _buildVariantConfigDescriptors(self, qualBlock, variantBindings=None):
+    def _buildVariantConfigDescriptors(self, qualBlock):
         # Per-variant Config descriptors for a parameterizable block. Each
-        # instance-bound variant maps to one Config struct. Anonymous variants
+        # declared variant maps to one Config struct. Anonymous variants
         # use <block>Config; named variants use <block><Variant>Config. Direct
         # overrides from parametersvariants are applied; eval re-resolution
         # under variant overrides is deferred.
         #
-        # variantBindings is optional. When provided (typically ret['variants']
-        # from getBDInstances), its rows are used as the bound-parameter source
-        # so we do not re-walk parametersvariants. When None, this method walks
-        # self.data['parameters'] directly.
-        #
-        # The variant set is always derived from self.data['instances'] so the
-        # descriptor list mirrors the project's instance tree binds — not the
-        # declared-but-unbound variant set returned by getQualBlockVariants.
-        # This aligns the Config-emission and trampoline-emission variant sets.
+        # The variant set is the block's declared variant set: every variant
+        # the block specifies in its `parameters:` section produces one Config
+        # struct, whether or not the current project instantiates it. A block
+        # owns all the variants it declares, so a variant referenced only by a
+        # downstream project that reuses this block still finds its Config in
+        # the block's own Config header. Bound-parameter overrides come from the
+        # same declared source.
         #
         # Each descriptor:
         #   {'variant': str, 'configName': str,
@@ -1424,35 +1419,26 @@ class projectOpen:
         # context. These coincide for IP-root blocks and differ for a block
         # declared in an including file (e.g. a testbench block bound to the IP).
         config_context = block_row['configContext']
-        # Instance-bound variant set. A block declared parameterizable but
-        # unreferenced by any instance produces no Config (and no trampoline).
-        instance_bound = set()
-        for inst_data in self.data['instances'].values():
-            if inst_data['instanceTypeKey'] == qualBlock:
-                instance_bound.add(inst_data['variant'])
-        if not instance_bound:
+        # Declared variant set. A parameterizable block that declares no
+        # variants (parameterizable only transitively through its children)
+        # produces no per-variant struct here; its context still emits the
+        # shared default Config.
+        variant_data = self.data['parameters'].get(qualBlock, {}).get('variants', {})
+        declared = set()
+        for row in variant_data.values():
+            declared.add(row['variant'])
+        if not declared:
             return []
-        variants = sorted(instance_bound)
-        # Bound-parameter overrides keyed by (variant, paramName).
-        def _resolve_override(row):
-            # parametersvariants 'value' may be either a literal (int) or
-            # the unresolved name of a constant the user referenced from
-            # the `parameters:` section. Resolve through self.data['constants']
-            # so downstream emission gets a numeric literal. Per-variant
-            # Config emission inlines the resolved value (matching the
-            # ip_test reference shape).
-            return self._resolveBindingValueOpen(row)
-
+        variants = sorted(declared)
+        # Bound-parameter overrides keyed by (variant, paramName). The
+        # parametersvariants 'value' may be either a literal (int) or the
+        # unresolved name of a constant the user referenced from the
+        # `parameters:` section; resolve through self.data['constants'] so
+        # downstream emission gets a numeric literal. Per-variant Config
+        # emission inlines the resolved value.
         overrides = dict()
-        if variantBindings is not None:
-            # Caller passed ret['variants'] (variant -> {rowKey: row}).
-            for rows in variantBindings.values():
-                for row in rows.values():
-                    overrides[(row['variant'], row['param'])] = _resolve_override(row)
-        else:
-            variant_data = self.data['parameters'].get(qualBlock, {}).get('variants', {})
-            for row in variant_data.values():
-                overrides[(row['variant'], row['param'])] = _resolve_override(row)
+        for row in variant_data.values():
+            overrides[(row['variant'], row['param'])] = self._resolveBindingValueOpen(row)
         # Parameterizable constants in the block's primary context. These are
         # the Config struct's fields. Eval-derived constants appear here too;
         # they retain their default-resolved 'value' since variant-aware eval
