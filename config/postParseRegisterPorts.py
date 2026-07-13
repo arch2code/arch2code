@@ -386,6 +386,61 @@ def postProcess(prj):
         if blockKey in reachableBlockKeys
     }
 
+    # ---- Structural diagnostics for register-bus boundary declarations ----
+    # Run once the register-requiring set (blocksNeedingHandler), the nested-
+    # router container set, and the router set are all resolved. A reusable IP
+    # that needs a register bus must expose it under registerPorts:, not a plain
+    # ports: entry; catch that misconfiguration here rather than letting it
+    # surface as a cryptic C++ undeclared-identifier at compile time.
+    for blockKey, blockRow in blockInfo.items():
+        isRouter = blockKey in routers
+        hostsNestedRouter = blockKey in nestedRouterContainerBlockKeys
+        ownsRegisters = blockKey in blocksNeedingHandler
+
+        # Check 2 (defensive fail-loud): a nested-router container that also
+        # owns its own registers/memories. The router-to-leaf dispatch branch
+        # below skips every nested-router container (so the identical parent->
+        # container bind is not emitted twice), which would silently drop this
+        # block's own <block>_regs handler dispatch. Convert that silent mis-
+        # generation into a loud error. No in-tree example exercises this; it is
+        # a defensive assert, not supported flexibility. Ordered before Check 1
+        # so this more specific case reports itself rather than the generic
+        # missing-registerPorts message.
+        if hostsNestedRouter and ownsRegisters:
+            _exit_with_error(
+                f"block '{blockRow['block']}' hosts a nested register-decode "
+                f"router but also owns firmware-accessible registers/memories. "
+                f"The nested-router dispatch cannot also deliver this block's "
+                f"own register handler. Move those registers/memories onto a "
+                f"child leaf that the inner decoder serves (see the "
+                f"design-register-decode skill §1 nested-router case)."
+            )
+
+        # Check 1 (primary): a bounded register-requiring block that authors an
+        # explicit block-level ports: section but no registerPorts:. Presence of
+        # the 'ports' key on the block row means the author wrote a block-level
+        # ports: section; a top-down monolithic register-owning leaf (e.g.
+        # mixed's blockA/blockB) authors no such section — its ports are inferred
+        # from connections — and correctly omits registerPorts:. Requiring an
+        # explicit ports: section therefore excludes that legitimate case and
+        # targets the reusable-IP author who declared a plain ports: boundary
+        # where a registerPorts: boundary was required.
+        if isRouter:
+            continue
+        if not (ownsRegisters or hostsNestedRouter):
+            continue
+        if 'ports' not in blockRow:
+            continue
+        if blockRow.get('registerPorts'):
+            continue
+        _exit_with_error(
+            f"block '{blockRow['block']}' requires a register-bus interface "
+            f"(it owns firmware-accessible registers/memories or hosts a "
+            f"nested register-decode router) but declares no registerPorts:. "
+            f"A reusable IP must declare its register-bus boundary under "
+            f"registerPorts: (see the design-register-decode skill §5)."
+        )
+
     def _routerServingLeaf(leafBlockKey):
         # Return any router serving an instance of this leaf block.
         # All routers reaching this leaf must agree on
