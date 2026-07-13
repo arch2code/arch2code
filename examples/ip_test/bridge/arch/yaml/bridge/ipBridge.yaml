@@ -75,8 +75,12 @@ blocks:
         ports:
             data8In:  { interface: data8If,  direction: dst }
             data70In: { interface: data70If, direction: dst }
+        registerPorts:
             # Upstream register bus feeding the nested bridgeApbDecode router.
-            apbReg:   { interface: apbReg,   direction: dst }
+            # This is the reusable-IP register-bus boundary; the row key must
+            # be apbReg to match bridgeApbDecode's addressBlock upstreamPort /
+            # registerDecoderPort and the synthesised nested boundary map.
+            apbReg: { interface: apbReg }
     bridgeDriver:
         desc: "Stage 8.2 stimulus producer: emits the two non-parameterized Q10 bridge interfaces"
         hasVl: true

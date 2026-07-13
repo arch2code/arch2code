@@ -340,6 +340,22 @@ def postProcess(prj):
         for routerInstRow in router_instance.values()
     }
 
+    # A nested-router container is dispatched to by the router-to-router
+    # branch below, which sends the parent router's register bus to the
+    # container instance (the container-sibling of its non-primary nested
+    # router) and bridges it inward via a connectionMap. That branch is the
+    # complete, correct handling for such a container, so its own
+    # registerPorts: surface must not also fire a router-to-leaf dispatch;
+    # otherwise the identical parent->container connection is emitted twice.
+    # A non-primary nested router's containerKey is exactly the block type of
+    # its container instance, so those block keys identify the containers the
+    # router-to-leaf branch must skip.
+    nestedRouterContainerBlockKeys = {
+        routerInstRow['containerKey']
+        for routerInstRow in router_instance.values()
+        if routerInstRow is not primary_router
+    }
+
     # ---- Per-owner-context emission buckets. Each owner block's
     # YAML file becomes the `_context` of the rows we feed back into
     # processSingleFile().
@@ -453,7 +469,8 @@ def postProcess(prj):
         # bus from the router). Handler synthesis is a separate concern
         # handled above; dispatch fires for both surfaces.
         leafBlock = blockInfo[instanceTypeKey]
-        if leafBlock.get('registerPorts') or instanceTypeKey in blocksNeedingHandler:
+        if (leafBlock.get('registerPorts') or instanceTypeKey in blocksNeedingHandler) \
+                and instanceTypeKey not in nestedRouterContainerBlockKeys:
             containerKey = instRow['containerKey']
             parentRouter = decoderContainer.get(containerKey)
             if parentRouter is None:
