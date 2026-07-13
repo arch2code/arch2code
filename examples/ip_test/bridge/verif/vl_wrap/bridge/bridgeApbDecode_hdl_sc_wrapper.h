@@ -34,7 +34,7 @@ public:
             instanceFactory::registerBlock(
                 "bridgeApbDecode_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared < bridgeApbDecode_hdl_sc_wrapper > (blockName, variant, bbMode));
-                }, "", "ip_test");
+                }, "", "ipBridge");
         }
     };
 

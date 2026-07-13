@@ -27,7 +27,7 @@ public:
     push_ack_in< data8St > data8In;
     // uBridgeDriver->data70If: Non-parameterized 70-bit Q10 bridge data interface
     push_ack_in< data70St > data70In;
-    // uBridgeMaster->apbReg: CPU access to registers via APB
+    // uCpu->apbReg: CPU access to registers via APB
     apb_in< apbAddrSt, apbDataSt > apbReg;
 
 
@@ -58,7 +58,7 @@ public:
     push_ack_out< data8St > data8In;
     // uBridgeDriver->data70If: Non-parameterized 70-bit Q10 bridge data interface
     push_ack_out< data70St > data70In;
-    // uBridgeMaster->apbReg: CPU access to registers via APB
+    // uCpu->apbReg: CPU access to registers via APB
     apb_out< apbAddrSt, apbDataSt > apbReg;
 
 

@@ -356,6 +356,23 @@ def postProcess(prj):
         if routerInstRow is not primary_router
     }
 
+    # Every block that hosts a register-decode router (a router instantiated
+    # directly inside it) is fed at its own boundary and bridges that boundary
+    # inward to the nested router; it is therefore never a router-to-leaf
+    # dispatch target for its own registerPorts: surface. The upstream feed is
+    # a parent router's dispatch when the block is composed under one (the
+    # router-to-router branch below), or an authored master connection when the
+    # nested router is itself the dispatch-tree root (a standalone reusable-IP
+    # testbench). This set is independent of primary/non-primary status, unlike
+    # nestedRouterContainerBlockKeys, so the router-to-leaf skip is applied to a
+    # primary nested router's container too — the standalone reusable-IP build
+    # where that container would otherwise be dispatched to with no parent
+    # router present.
+    routerContainerBlockKeys = {
+        routerInstRow['containerKey']
+        for routerInstRow in router_instance.values()
+    }
+
     # ---- Per-owner-context emission buckets. Each owner block's
     # YAML file becomes the `_context` of the rows we feed back into
     # processSingleFile().
@@ -525,7 +542,7 @@ def postProcess(prj):
         # handled above; dispatch fires for both surfaces.
         leafBlock = blockInfo[instanceTypeKey]
         if (leafBlock.get('registerPorts') or instanceTypeKey in blocksNeedingHandler) \
-                and instanceTypeKey not in nestedRouterContainerBlockKeys:
+                and instanceTypeKey not in routerContainerBlockKeys:
             containerKey = instRow['containerKey']
             parentRouter = decoderContainer.get(containerKey)
             if parentRouter is None:
@@ -666,25 +683,47 @@ def postProcess(prj):
             # can resolve both endpoints of this dispatch bind.
             _section(containerSiblingContext, 'connections').append(connection)
 
-            # The container block boundary maps its inherited
-            # upstream interface to the nested router instance.
-            # Emit into the yaml file that authored the nested
-            # router instance row (`context`): that file already
-            # includes both the parent router's yaml (so the
-            # register-bus interface resolves) and the container
-            # block's yaml (so `block:` resolves), and it owns the
-            # nested router instance row itself (so `instance:`
-            # resolves).
-            containerBlockName = blockInfo[containerBlockKey]['block']
-            connection_map = {
-                'interface': childInterface,
-                'block': containerBlockName,
-                'port': childUpstreamPort,
-                'direction': 'dst',
-                'instance': instRow['instance'],
-                'instancePort': childUpstreamPort,
-            }
-            _section(context, 'connectionMaps').append(connection_map)
+    # ---- Intrinsic boundary map (container-fed nested router) ----
+    # A router instantiated inside a container block is fed at that container's
+    # boundary; a connectionMap bridges the container's inherited upstream
+    # interface to the nested router instance's upstream port. Emit it when
+    # either feed exists:
+    #   * the nested router is non-primary — a parent router dispatches to the
+    #     container (the composed top-down and composed reusable-IP cases); or
+    #   * the container block declares registerPorts: — its boundary is fed by
+    #     an authored master connection, including the standalone reusable-IP
+    #     testbench whose nested router is the dispatch-tree root (primary).
+    # A primary nested router in a plain (no registerPorts:) container has no
+    # boundary feed and gets no map. Gating on this union preserves the composed
+    # and top-down behaviour (non-primary containers always get the map) and
+    # gives a standalone reusable-IP build the same map its composed form has,
+    # so the IP's generated files (its <block>Base decoder) stay byte-identical
+    # across composed and standalone builds. Emitted into the yaml file that
+    # authored the nested router instance row (`_context`): that file includes
+    # the container block's yaml (so `block:` resolves), it owns the nested
+    # router instance row (so `instance:` resolves), and the register-bus
+    # interface is declared by that same container block.
+    for routerInstRow in router_instance.values():
+        containerBlockKey = routerInstRow['containerKey']
+        containerBlockRow = blockInfo[containerBlockKey]
+        if routerInstRow is primary_router \
+                and not containerBlockRow.get('registerPorts'):
+            continue
+        routerBlock = routers[routerInstRow['instanceTypeKey']]
+        childInterface, _childIfaceRow, _childIfaceContext = \
+            _resolveRouterRegisterBusInterface(
+                prj, routerBlock, addressBusTypes, routerInterfaceCache,
+            )
+        childUpstreamPort = routerBlock['addressBlock']['upstreamPort']
+        connection_map = {
+            'interface': childInterface,
+            'block': containerBlockRow['block'],
+            'port': childUpstreamPort,
+            'direction': 'dst',
+            'instance': routerInstRow['instance'],
+            'instancePort': childUpstreamPort,
+        }
+        _section(routerInstRow['_context'], 'connectionMaps').append(connection_map)
 
     # ---- Emit per owner context ----
     for ownerContext, sections in perContext.items():

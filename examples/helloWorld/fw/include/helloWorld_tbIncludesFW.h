@@ -18,7 +18,7 @@
 namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-const uint32_t BUFFER_SIZE = 64;  // Buffer size
+inline constexpr uint32_t BUFFER_SIZE = 64;  // Buffer size
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types

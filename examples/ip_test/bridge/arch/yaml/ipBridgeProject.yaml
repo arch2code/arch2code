@@ -18,6 +18,17 @@ projectFiles:
 
 topInstance: bridgeStdTop
 
+# Standalone, projectName ip is reached by two lexically-distinct paths: the
+# projectFiles reference resolves through the bridge/ip symlink (../../ip), while
+# ipBridge.yaml's direct include of ipVariants.yaml resolves through the real
+# tree (../../../ip). The two keys collide as a duplicate ip block. This override
+# redirects the projectFiles provider onto the real-tree ipProject so both paths
+# normalize to the same context key. In composition the root project's
+# projectOverrides for ip wins (highest ancestor), so this entry is ignored there
+# and composed output is unaffected.
+projectOverrides:
+    ip: ../../../ip/arch/yaml/ipProject.yaml
+
 instanceGroups:
     top:
         varType: inst_top

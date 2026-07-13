@@ -1,8 +1,13 @@
 # ipBridge standalone top harness.
 #
 # ipBridge has no hasTb block of its own, so this harness assembles a runnable
-# top: the ipBridge DUT, the bridgeDriver stimulus producer, and a minimal APB
-# master stub feeding the bridge's nested register-bus router upstream.
+# top: the ipBridge DUT, the bridgeDriver stimulus producer, and a top-down cpu
+# APB master. ipBridge's register bus lives entirely inside the IP: its nested
+# bridgeApbDecode router is the only decoder in this build and therefore the
+# dispatch-tree root (primary). No harness router is needed — the cpu master
+# feeds uBridge directly and the IP's own nested router decodes. The single
+# authored upstream feed is the cpu -> uBridge connection; the ipBridge boundary
+# map into bridgeApbDecode is synthesized intrinsically by the IP.
 include:
     - ipBridge.yaml
 
@@ -12,23 +17,27 @@ blocks:
         hasVl: false
         hasMdl: true
         hasTb: false
-        hasRtl: true
-    bridgeStdMaster:
-        desc: "Standalone APB master stub feeding ipBridge's register bus upstream"
+        # Model-only testbench top: it directly contains the model-only cpu
+        # master (mirroring ip_top's cpu), so it cannot sit in an RTL
+        # hierarchy. The RTL DUT (uBridge / ipBridge) generates its own RTL
+        # independently of this harness top.
+        hasRtl: false
+    cpu:
+        desc: "APB master / CPU"
         hasVl: false
         hasMdl: true
         hasTb: false
-        hasRtl: true
-        ports:
-            apbOut: { interface: apbReg, direction: src }
+        hasRtl: false
 
 instances:
-    bridgeStdTop:    { container: bridgeStdTop, instanceType: bridgeStdTop,    instGroup: top }
-    uBridgeMaster:   { container: bridgeStdTop, instanceType: bridgeStdMaster, instGroup: top }
-    uBridgeDriver:   { container: bridgeStdTop, instanceType: bridgeDriver,    instGroup: top }
-    uBridge:         { container: bridgeStdTop, instanceType: ipBridge,        instGroup: top, addressGroup: bridge }
+    bridgeStdTop:      { container: bridgeStdTop, instanceType: bridgeStdTop,    instGroup: top }
+    uCpu:              { container: bridgeStdTop, instanceType: cpu,             instGroup: top }
+    uBridgeDriver:     { container: bridgeStdTop, instanceType: bridgeDriver,    instGroup: top }
+    uBridge:           { container: bridgeStdTop, instanceType: ipBridge,        instGroup: top }
 
 connections:
     - { interface: data8If,  src: uBridgeDriver, srcport: out8,   dst: uBridge, dstport: data8In }
     - { interface: data70If, src: uBridgeDriver, srcport: out70,  dst: uBridge, dstport: data70In }
-    - { interface: apbReg,   src: uBridgeMaster, srcport: apbOut, dst: uBridge }
+    # APB master -> ipBridge boundary (the single authored upstream feed). The
+    # IP's own nested bridgeApbDecode router decodes from this boundary.
+    - { interface: apbReg,   src: uCpu, dst: uBridge }

@@ -23,21 +23,28 @@ public:
     // apbReg->uBridgeIp1: CPU access to registers via APB
     apb_out< apbAddrSt, apbDataSt > apbReg_uBridgeIp1;
 
+    // dst ports
+    // External->apbReg: CPU access to registers via APB
+    apb_in< apbAddrSt, apbDataSt > apbReg;
+
 
     bridgeApbDecodeBase(std::string name, const char * variant) :
         apbReg_uBridgeIp0("apbReg_uBridgeIp0")
         ,apbReg_uBridgeIp1("apbReg_uBridgeIp1")
+        ,apbReg("apbReg")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
         apbReg_uBridgeIp0->setTimed(nsec, mode);
         apbReg_uBridgeIp1->setTimed(nsec, mode);
+        apbReg->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
     {
         apbReg_uBridgeIp0->setLogging(verbosity);
         apbReg_uBridgeIp1->setLogging(verbosity);
+        apbReg->setLogging(verbosity);
     };
 };
 export class bridgeApbDecodeInverted : public virtual blockPortBase
@@ -49,21 +56,28 @@ public:
     // apbReg->uBridgeIp1: CPU access to registers via APB
     apb_in< apbAddrSt, apbDataSt > apbReg_uBridgeIp1;
 
+    // dst ports
+    // External->apbReg: CPU access to registers via APB
+    apb_out< apbAddrSt, apbDataSt > apbReg;
+
 
     bridgeApbDecodeInverted(std::string name) :
         apbReg_uBridgeIp0(("apbReg_uBridgeIp0"+name).c_str())
         ,apbReg_uBridgeIp1(("apbReg_uBridgeIp1"+name).c_str())
+        ,apbReg(("apbReg"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
         apbReg_uBridgeIp0->setTimed(nsec, mode);
         apbReg_uBridgeIp1->setTimed(nsec, mode);
+        apbReg->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
     {
         apbReg_uBridgeIp0->setLogging(verbosity);
         apbReg_uBridgeIp1->setLogging(verbosity);
+        apbReg->setLogging(verbosity);
     };
 };
 export class bridgeApbDecodeChannels
@@ -75,10 +89,15 @@ public:
     // CPU access to registers via APB
     apb_channel< apbAddrSt, apbDataSt > apbReg_uBridgeIp1;
 
+    // dst ports
+    // CPU access to registers via APB
+    apb_channel< apbAddrSt, apbDataSt > apbReg;
+
 
     bridgeApbDecodeChannels(std::string name, std::string srcName) :
     apbReg_uBridgeIp0(("apbReg_uBridgeIp0"+name).c_str(), srcName)
     ,apbReg_uBridgeIp1(("apbReg_uBridgeIp1"+name).c_str(), srcName)
+    ,apbReg(("apbReg"+name).c_str(), srcName)
     {};
     void bind( bridgeApbDecodeBase *a, bridgeApbDecodeInverted *b)
     {
@@ -86,6 +105,8 @@ public:
         b->apbReg_uBridgeIp0( apbReg_uBridgeIp0 );
         a->apbReg_uBridgeIp1( apbReg_uBridgeIp1 );
         b->apbReg_uBridgeIp1( apbReg_uBridgeIp1 );
+        a->apbReg( apbReg );
+        b->apbReg( apbReg );
     };
 };
 

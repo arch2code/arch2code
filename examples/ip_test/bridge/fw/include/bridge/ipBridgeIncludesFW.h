@@ -34,15 +34,13 @@ struct data70T { uint64_t word[ 2 ]; }; // [70] Stage 8.2 fixed 70-bit Q10-bridg
 // enums
 enum  addr_id_bridge {       //Generated type for addressing bridge instances
     ADDR_ID_BRIDGE_UBRIDGEIP0=0,   // uBridgeIp0 instance address
-    ADDR_ID_BRIDGE_UBRIDGEIP1=1,   // uBridgeIp1 instance address
-    ADDR_ID_BRIDGE_UBRIDGE=2 }; // uBridge instance address
+    ADDR_ID_BRIDGE_UBRIDGEIP1=1 }; // uBridgeIp1 instance address
 inline const char* addr_id_bridge_prt( addr_id_bridge val )
 {
     switch( val )
     {
         case ADDR_ID_BRIDGE_UBRIDGEIP0: return( "ADDR_ID_BRIDGE_UBRIDGEIP0" );
         case ADDR_ID_BRIDGE_UBRIDGEIP1: return( "ADDR_ID_BRIDGE_UBRIDGEIP1" );
-        case ADDR_ID_BRIDGE_UBRIDGE: return( "ADDR_ID_BRIDGE_UBRIDGE" );
     }
     return("!!!BADENUM!!!");
 }

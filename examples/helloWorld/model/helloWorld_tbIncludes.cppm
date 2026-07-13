@@ -18,7 +18,7 @@ export module helloWorld_tb;
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 export namespace helloWorld_tb_ns {
 //constants
-const uint32_t BUFFER_SIZE = 64;  // Buffer size
+inline constexpr uint32_t BUFFER_SIZE = 64;  // Buffer size
 
 } // namespace helloWorld_tb_ns
 // GENERATED_CODE_END
