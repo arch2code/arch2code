@@ -9,7 +9,11 @@
 # accesses IP registers via APB through 'apbDecode'.
 
 include:
-    - ../common/shared_types.yaml
+    # shared_types is owned by the contained 'common' sub-project; this include
+    # resolves to that sub-project's canonical path (examples/ip_test/common),
+    # matching the projectOverrides selection in project.yaml so it is one owned
+    # context. Referenced directly, mirroring the ip include below.
+    - ../../../common/arch/yaml/common/shared_types.yaml
     - ../src/src.yaml
     # ip and ipBridge blocks are owned by their referenced child projects (see
     # project.yaml projectFiles). Their defining files stay on this context's

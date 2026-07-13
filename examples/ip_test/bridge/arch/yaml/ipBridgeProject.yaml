@@ -8,6 +8,13 @@ yamlFormat: 2
 projectName: ipBridge
 
 projectFiles:
+    # The shared 'common' definitions sub-project reached through the vendored
+    # provider symlink (bridge/common -> ../common, i.e. examples/ip_test/common).
+    # ipBridge includes shared_types; the projectOverrides entry below selects the
+    # canonical provider so shared_types is owned by projectName common and its
+    # artifacts generate in the common sub-project's tree (not reached up into
+    # another tree). Mirrors the bridge/ip provider reference below.
+    - ../../common/arch/yaml/commonProject.yaml
     # The 'ip' child project reached through the vendored provider symlink
     # (bridge/ip -> ../../ip). Standalone, ipBridge selects this nested provider;
     # in composition the root's projectOverrides selects the root ip and this
@@ -28,6 +35,17 @@ topInstance: bridgeStdTop
 # and composed output is unaffected.
 projectOverrides:
     ip: ../../../ip/arch/yaml/ipProject.yaml
+    # Standalone, projectName common is reached by two lexically-distinct paths:
+    # the projectFiles reference resolves through the bridge/common symlink
+    # (../../common), while ipBridge.yaml's direct include of shared_types
+    # resolves through the real tree (../../../common = examples/ip_test/common).
+    # This override redirects the projectFiles provider onto the real-tree
+    # commonProject so both paths normalize to the same context key (no Duplicate
+    # key common) and artifacts generate in the common sub-project's tree, not the
+    # bridge tree. In composition the root project's projectOverrides for common
+    # wins (highest ancestor), so this entry is ignored there and composed output
+    # is unaffected.
+    common: ../../../common/arch/yaml/commonProject.yaml
 
 instanceGroups:
     top:

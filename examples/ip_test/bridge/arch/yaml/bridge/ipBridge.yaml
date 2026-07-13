@@ -23,8 +23,14 @@
 # array-backed _packedSt path introduced after Stage 10.4).
 
 include:
-    # shared_types (apbReg) still lives in the ip_top tree's common/ dir.
-    - ../../../../arch/yaml/common/shared_types.yaml
+    # shared_types (apbReg) is owned by the contained 'common' sub-project. Like
+    # the ip include below, this design-file include names the real sub-project
+    # tree (examples/ip_test/common) rather than the bridge/common symlink, so in
+    # composition its context path is lexically identical to the root ip_top
+    # include and the two collapse to one owned context (no ambiguous context).
+    # Standalone, this real-tree path and the symlinked projectFiles provider are
+    # deduped by the projectOverrides selection in ipBridgeProject.yaml.
+    - ../../../../common/arch/yaml/common/shared_types.yaml
     # The 'ip' block is owned by the referenced ip child project (via
     # projectFiles), but its defining file must still be on this context's
     # include chain for block-type resolution. Ownership is set by child-project

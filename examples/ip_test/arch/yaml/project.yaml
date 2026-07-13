@@ -7,6 +7,13 @@ projectName: ip_test
 # note in the case of additional project files any top level controls (such as schema:) are ignored
 # relative path names are resolved based on location of project file (this includes sub projects)
 projectFiles:
+    # Shared 'common' definitions sub-project, contained in this super-repo at
+    # examples/ip_test/common (alongside the ip sub-project). Referenced directly
+    # here (no symlink for the root), mirroring the ip reference below. ip_top
+    # includes shared_types downward; the projectOverrides entry below selects
+    # the canonical provider so the reference is owned by projectName common and
+    # its package/include/fw artifacts are generated in the common project's tree.
+    - ../../common/arch/yaml/commonProject.yaml
     # Referenced child IP projects: the real reusable projects (ip, ipBridge),
     # not design-only shims. Their design closures are resolvable in this parent
     # (cross-project block resolution) and owned by projectName ip / ipBridge
@@ -23,6 +30,15 @@ projectFiles:
 # naming both the root and the symlinked bridge/ip provider paths.
 projectOverrides:
     ip: ../../ip/arch/yaml/ipProject.yaml
+    # This root references the real common sub-project directly
+    # (examples/ip_test/common), while the bridge's vendored copy
+    # (examples/ip_test/bridge/common -> ../common) is a symlink onto the same
+    # dir; both declare projectName: common. This root (highest ancestor) selects
+    # the canonical provider, so every reference to projectName common in this
+    # composition resolves to it and the bridge's symlinked provider path is
+    # deduped onto it (real-path identity) so shared_types is one owned context,
+    # not a duplicate.
+    common: ../../common/arch/yaml/commonProject.yaml
 
 topInstance: ip_top_tb
 

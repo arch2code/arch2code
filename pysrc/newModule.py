@@ -25,8 +25,6 @@ class newModule:
             if key not in fileGenerationConfig:
                 printError(f"fileGeneration section of project file must contain {key}")
                 exit(warningAndErrorReport())
-        if not prj.data.get("blocks"):
-            return
         # File-map conditions read scalar fields from the block row, plus the
         # derived `hasOwnParams` flag from the block config view.
         # `isParameterizable` and `defaultConfig` are persisted on the block
@@ -37,12 +35,16 @@ class newModule:
         # scalar (routing own-params leaf blocks, emitted as class templates
         # whose member bodies must be module-visible, to a module interface
         # unit and all other blocks to .h/.cpp).
+        # A definitions-only project (shared types/interfaces, no blocks or
+        # instances) has no block rows; the block/registrar passes below then
+        # iterate nothing, but the context artifacts (include/package/firmware)
+        # are still created, so do not return early.
         blockCondData = dict()
-        for qualBlock in prj.data['blocks']:
+        for qualBlock in prj.data.get('blocks', {}):
             row = dict(prj.data['blocks'][qualBlock])
             row['hasOwnParams'] = int(bool(prj.getBlockConfigView(qualBlock)['hasOwnParams']))
             blockCondData[qualBlock] = row
-        someBlock = next(iter(prj.data["blocks"])) # any random entry
+        someBlock = next(iter(blockCondData), None) # any block row, or None when definitions-only
         for fileKey, fileDefinition in fileGenerationConfig['fileMap'].items():
             mode = fileDefinition.get('mode', 'block') 
             for key in ['basePath', 'name', 'ext']:
@@ -60,7 +62,7 @@ class newModule:
                     # registrar mode applies cond/condAnd to the instantiated
                     # child block, so its fields come from the same block row
                     # data as block mode.
-                    if mode in ('block', 'registrar') and field not in blockCondData[someBlock]:
+                    if mode in ('block', 'registrar') and someBlock is not None and field not in blockCondData[someBlock]:
                         printError(f"field {field} in cond does not exist in block file-generation data")
             basePathKey = fileDefinition.get('basePath', '')
             if not basePathKey in processYaml.dirMacros:

@@ -3102,12 +3102,14 @@ class projectCreate:
         # Normalize project-level address policy before instance auto fields
         # allocate IDs from those groups.
         self.loadProjectAddressPolicy()
+        # A design project names its root instance with topInstance. A
+        # definitions-only project (types/interfaces/constants shared across
+        # projects, with no instances or blocks of its own) has no root
+        # instance; topInstance is then omitted and stays None. Instance-,
+        # hierarchy-, and address-driven passes iterate the (empty) instance
+        # table and are natural no-ops for such a project.
         if 'topInstance' in self.proj:
-            # all designs have a top instance, which must be specified in the project file
             self.topInstance = self.proj['topInstance']
-        else:
-            printError(f"Project file {projFile} is missing topInstance: setting.")
-            exit(warningAndErrorReport())
         self.projectDirs()
         self.validateLayout()
         self.buildLayout()
@@ -3180,6 +3182,17 @@ class projectCreate:
         # instance, so the intersection is a no-op. Rebuild the hierarchy first
         # so synthesized register-handler instances (added by post-parse) are
         # reflected in the containment walk.
+        # A design project (one that declares instances) must name its root
+        # instance; only a definitions-only project (no instances) may omit
+        # topInstance. Checked here, after instances are parsed, so a missing
+        # topInstance fails clearly at database creation instead of surfacing
+        # late during generation as an obscure "_top is not part of design".
+        if self.topInstance is None and self.data['instances']:
+            raise ValueError(
+                f"Project '{self.proj.get('projectName', '<project>')}' declares "
+                f"instances but is missing topInstance:. A design project must name its "
+                f"root instance; only a definitions-only project (no instances or "
+                f"blocks) may omit topInstance.")
         self.generateHierarchy()
         self.config.setConfig('REACHABLEINSTANCES', self.reachableInstanceKeys(), bin=True)
         # Per-context C++ module/namespace linkage identity, keyed identically to
