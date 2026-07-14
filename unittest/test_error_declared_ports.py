@@ -149,6 +149,43 @@ def build_yaml(consumer_ports, connections):
     )
 
 
+def test_success_case(yaml_content, test_name):
+    """Assert the project builds without a DB-time error."""
+    print(f"\n{'='*70}")
+    print(f"Test: {test_name}")
+    print(f"{'='*70}")
+
+    project_path, arch_path = create_test_files(yaml_content)
+    db_path = tempfile.mktemp(suffix='.db', dir=test_dir)
+
+    try:
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '-y', project_path, '--db', db_path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=base_dir,
+            env=env,
+        )
+
+        full_output = result.stdout + '\n' + result.stderr
+        if result.returncode != 0:
+            print("  FAIL: Build failed when it should have succeeded")
+            print("  " + "\n  ".join(full_output.split('\n')[:40]))
+            return False
+
+        print("  PASS: Project built with no DB-time error")
+        return True
+
+    finally:
+        for path in (project_path, arch_path, db_path):
+            if path and os.path.exists(path):
+                os.unlink(path)
+
+
 def test_declared_port_without_inferred_source():
     yaml = build_yaml(
         "      missingPort: {interface: dataIf, direction: dst}",
@@ -198,6 +235,48 @@ def test_declared_direction_mismatch():
     )
 
 
+UNINSTANTIATED_YAML = """constants:
+  WIDTH: {value: 8, desc: "Data width"}
+
+types:
+  data_t: {width: WIDTH, desc: "Data type"}
+
+variables:
+  data: {type: data_t, desc: "Data"}
+
+structures:
+  data_st:
+    data: {}
+
+interfaces:
+  dataIf:
+    interfaceType: rdy_vld
+    desc: "Primary data interface"
+    structures:
+      - {structure: data_st, structureType: data_t}
+
+blocks:
+  top: {desc: "Top block"}
+  exported:
+    desc: "Reusable block exported for other projects; never instantiated here"
+    ports:
+      inData: {interface: dataIf, direction: dst}
+
+instances:
+  uTop: {container: top, instanceType: top}
+"""
+
+
+def test_uninstantiated_declared_ports_ok():
+    # An explicit ports: declaration on a block with no instance in this
+    # project is produced at a consumer's instantiation site, not here, so
+    # port-production validation must be scoped out for it (no error).
+    return test_success_case(
+        UNINSTANTIATED_YAML,
+        "Uninstantiated block with declared ports builds without error",
+    )
+
+
 def run_all_tests():
     print("\n" + "="*70)
     print("TESTING ERROR HANDLING: Bottom-Up Declared Ports")
@@ -208,6 +287,7 @@ def run_all_tests():
         test_partial_declaration_missing_connection_port,
         test_declared_interface_wrong_protocol,
         test_declared_direction_mismatch,
+        test_uninstantiated_declared_ports_ok,
     ]
 
     results = []

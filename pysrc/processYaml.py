@@ -4685,6 +4685,18 @@ class projectCreate:
             inferred = dict()
             qual_block_instances = instances_by_type.get(blockKey, set())
 
+            # An exported/library block — declared with explicit ports: but never
+            # instantiated in its owning project (e.g. a reusable block a
+            # definitions-only project exports for other projects to instantiate) —
+            # has its declared ports produced at the consumer's instantiation site,
+            # not here. Every reconciliation below validates declared ports against
+            # bindings inferred locally (all filtered by qual_block_instances), which
+            # are empty for an uninstantiated block. Scope this validation to blocks
+            # instantiated in this project; an unproduced declared port on an
+            # uninstantiated block is not an error.
+            if not qual_block_instances:
+                continue
+
             for _connKey, conn in connections_flat.items():
                 interfaceKey = conn['interfaceKey']
                 for endRow in conn['ends'].values():
