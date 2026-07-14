@@ -31,6 +31,7 @@ struct socket_axi_wr_req_st {
     uint8_t awburst;
     uint8_t pad1;
     uint8_t data[SOCKET_AXI_BURST_BYTES];
+    uint16_t strb[SOCKET_AXI_BURST_BYTES / 16];
 };
 struct socket_axi_wr_resp_st {
     uint8_t bid;
@@ -39,7 +40,7 @@ struct socket_axi_wr_resp_st {
 };
 #pragma pack(pop)
 
-static_assert(sizeof(socket_axi_wr_req_st) == 4108, "socket_axi_wr_req_st wire layout");
+static_assert(sizeof(socket_axi_wr_req_st) == 4620, "socket_axi_wr_req_st wire layout");
 static_assert(sizeof(socket_axi_wr_resp_st) == 4, "socket_axi_wr_resp_st wire layout");
 
 // axi_write_in: Python is AXI write slave; shell forwards DMA write bursts to Python memory.
@@ -123,6 +124,7 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
             axiWriteDataSt<D, S> data{};
             port->receiveDataCycle(data);
             std::memcpy(&wire_req.data[i * beat_bytes], &data.wdata, beat_bytes);
+            wire_req.strb[i] = static_cast<uint16_t>(data.wstrb.strobe);
         }
 
         while (socketSyncLockstepEnabled() && !socketSyncAtBoundary()) {
