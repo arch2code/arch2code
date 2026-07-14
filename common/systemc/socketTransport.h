@@ -25,6 +25,7 @@ enum socketMsgTypeT {
     MSG_AXI_RD_OBS_RESP=0x11,
     MSG_AXI_WR_OBS_REQ=0x12,
     MSG_AXI_WR_OBS_RESP=0x13,
+    MSG_IRQ_OBS=0x14,
     MSG_SHUTDOWN=0xFE,
     MSG_ERROR=0xFF
 };
@@ -51,6 +52,7 @@ inline const char* socketMsgTypeT_prt( socketMsgTypeT val )
         case MSG_AXI_RD_OBS_RESP: return( "MSG_AXI_RD_OBS_RESP" );
         case MSG_AXI_WR_OBS_REQ: return( "MSG_AXI_WR_OBS_REQ" );
         case MSG_AXI_WR_OBS_RESP: return( "MSG_AXI_WR_OBS_RESP" );
+        case MSG_IRQ_OBS: return( "MSG_IRQ_OBS" );
         case MSG_SHUTDOWN: return( "MSG_SHUTDOWN" );
         case MSG_ERROR: return( "MSG_ERROR" );
     }

@@ -56,6 +56,12 @@ struct socket_axi_wr_obs_resp_st {
     uint8_t bresp;
     uint8_t pad[2];
 };
+
+struct socket_irq_obs_st {
+    uint64_t sc_time_ns;
+    uint8_t irq;
+    uint8_t pad[7];
+};
 #pragma pack(pop)
 
 static_assert(sizeof(socket_apb_obs_st) == 20, "socket_apb_obs_st wire layout");
@@ -63,6 +69,7 @@ static_assert(sizeof(socket_axi_rd_obs_req_st) == 20, "socket_axi_rd_obs_req_st 
 static_assert(sizeof(socket_axi_rd_obs_resp_st) == 28, "socket_axi_rd_obs_resp_st wire layout");
 static_assert(sizeof(socket_axi_wr_obs_req_st) == 36, "socket_axi_wr_obs_req_st wire layout");
 static_assert(sizeof(socket_axi_wr_obs_resp_st) == 12, "socket_axi_wr_obs_resp_st wire layout");
+static_assert(sizeof(socket_irq_obs_st) == 16, "socket_irq_obs_st wire layout");
 
 inline uint64_t socket_sc_time_ns()
 {
@@ -219,6 +226,21 @@ inline void socket_observe_axi_wr_resp(const std::string &interface_name, uint8_
         bresp), LOG_NORMAL);
 
     socket_observe_push(interface_name, MSG_AXI_WR_OBS_RESP, &obs, static_cast<uint16_t>(sizeof(obs)));
+}
+
+inline void socket_observe_irq(const std::string &interface_name, bool irq)
+{
+    socket_irq_obs_st obs{};
+    obs.sc_time_ns = socket_sc_time_ns();
+    obs.irq = irq ? 1 : 0;
+
+    logging::GetInstance().logDirect(std::format(
+        "IRQ_OBS {} @ {}ns irq={}",
+        interface_name,
+        obs.sc_time_ns,
+        obs.irq), LOG_NORMAL);
+
+    socket_observe_push(interface_name, MSG_IRQ_OBS, &obs, static_cast<uint16_t>(sizeof(obs)));
 }
 
 #endif // SOCKET_OBSERVE_H
