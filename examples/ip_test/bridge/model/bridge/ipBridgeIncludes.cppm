@@ -28,9 +28,9 @@ export namespace ipBridge_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace ipBridge_ns {
 // types
-typedef uint8_t bridgeMarkerT; // [1] Stage 8.2 1-bit marker; bit-width matches ipDataSt::marker (Stage 6.2 packed-form compatibility)
-typedef uint8_t data8T; // [8] Stage 8.2 fixed 8-bit Q10-bridge payload (matches ipDataSt::data under variant0)
-struct data70T { uint64_t word[ 2 ]; }; // [70] Stage 8.2 fixed 70-bit Q10-bridge payload (matches ipDataSt::data under variant1)
+typedef uint8_t bridgeMarkerT; // [1] 1-bit marker; bit-width matches ipDataSt::marker (packed-form compatibility)
+typedef uint8_t data8T; // [8] Fixed 8-bit bridge payload (matches ipDataSt::data under variant0)
+struct data70T { uint64_t word[ 2 ]; }; // [70] Fixed 70-bit bridge payload (matches ipDataSt::data under variant1)
 
 } // namespace ipBridge_ns
 // GENERATED_CODE_END

@@ -25,7 +25,7 @@ bridgeStdTop::bridgeStdTop(sc_module_name blockName, const char * variant, block
         ,out8("ipBridge_out8", "bridgeDriver")
         ,out70("ipBridge_out70", "bridgeDriver")
         ,cpu_main("ipBridge_cpu_main", "cpu")
-        ,uCpu(std::dynamic_pointer_cast<cpuBase>(instanceFactory::createInstance(name(), "uCpu", "cpu", "", "ipBridge")))
+        ,uCpu(std::dynamic_pointer_cast<cpuBase>(instanceFactory::createInstance(name(), "uCpu", "cpu", "", "common")))
         ,uBridgeDriver(std::dynamic_pointer_cast<bridgeDriverBase>(instanceFactory::createInstance(name(), "uBridgeDriver", "bridgeDriver", "", "ipBridge")))
         ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>(instanceFactory::createInstance(name(), "uBridge", "ipBridge", "", "ipBridge")))
 // GENERATED_CODE_END

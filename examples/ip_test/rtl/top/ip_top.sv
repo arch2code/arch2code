@@ -5,9 +5,9 @@
 //module as defined by block: ip_top
 module ip_top
 // Generated Import package statement(s)
+import ipBridge_package::*;
 import ip_package::*;
 import src_package::*;
-import ipBridge_package::*;
 import ip_top_package::*;
 import shared_types_package::*;
 (
@@ -18,8 +18,8 @@ import shared_types_package::*;
     // Interface Instances, needed for between instanced modules inside this module
     push_ack_if #(.data_t(srcOut0BoundarySt)) out0();
     push_ack_if #(.data_t(srcOut1BoundarySt)) out1();
-    push_ack_if #(.data_t(data8St)) out8();
-    push_ack_if #(.data_t(data70St)) out70();
+    push_ack_if #(.data_t(srcOut0BoundarySt)) out2();
+    push_ack_if #(.data_t(srcOut1BoundarySt)) out3();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBridge();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uIp0();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uIp1();
@@ -37,6 +37,8 @@ apbDecode uAPBDecode (
 src #(.OUT0_DATA_WIDTH(8), .OUT1_DATA_WIDTH(70)) uSrc (
     .out0 (out0),
     .out1 (out1),
+    .out2 (out2),
+    .out3 (out3),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -55,16 +57,9 @@ ip #(.IP_DATA_WIDTH(70), .IP_MEM_DEPTH(8), .IP_NONCONST_DEPTH(12)) uIp1 (
     .rst_n (rst_n)
 );
 
-bridgeDriver uBridgeDriver (
-    .out8 (out8),
-    .out70 (out70),
-    .clk (clk),
-    .rst_n (rst_n)
-);
-
 ipBridge uBridge (
-    .data8In (out8),
-    .data70In (out70),
+    .data8In (out2),
+    .data70In (out3),
     .apbReg (apbReg_uBridge),
     .clk (clk),
     .rst_n (rst_n)

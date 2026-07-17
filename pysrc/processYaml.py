@@ -1122,6 +1122,13 @@ class projectOpen:
         # existing file-basename source.
         ret['contextModuleIdentity'] = self.contextModuleIdentity[context]
         ret['contextStem'] = os.path.splitext(os.path.basename(context))[0]
+        # Per-context RTL output directory, expressed relative to the project's
+        # rtl.f location, keyed by include-chain context. The RTL filelist
+        # template emits these for +incdir/-y and package lines. A context owned
+        # by a referenced child project roots under THAT child's rtl segment
+        # (via contextOwningProject + projectLayout), so a cross-project package
+        # resolves to the child's rtl/ output rather than its yaml source tree.
+        ret['contextRtlDir'] = self._contextRtlDirs(ret['includeContext'])
         # Per-context Config-header inputs. The view here is what
         # `templates/systemc/includes.py` includeConfig() consumes; the
         # template performs no cross-block walks of `prj.data['blocks']`.
@@ -1132,6 +1139,38 @@ class projectOpen:
         view = self.getContextConfigView(contexts)
         ret['contextVariantConfigs']      = view['variantConfigs']
         ret['contextBlockParamSynthetic'] = view['blockParamSynthetic']
+        return ret
+
+    def _contextRtlDirs(self, includeContext):
+        # Resolve each include-chain context to the directory holding its
+        # generated RTL artifacts (package + library modules), relative to the
+        # root project's rtl.f location. The RTL package files land in the
+        # `package` fileType's basePath segment; a context's rtl subdir mirrors
+        # its yaml subdir within the OWNING project's tree, so re-rooting the
+        # context's owner-relative subdir under that owner's rtl segment yields
+        # the child's rtl/ output directory for cross-project contexts and the
+        # local directory (byte-identical to the yaml-relative subdir) for
+        # root-owned contexts. Path composition mirrors the newModule/
+        # saveIncludeFiles seam (contextOwningProject + projectLayout[owner]).
+        fileMap = self.config.getConfig('FILEMAP')
+        rootName = self.config.getConfig('PROJECTNAME')
+        rootLayout = self.projectLayout[rootName]
+        rtlSegKey = fileMap['package']['basePath']
+        # A project without an rtl segment emits no rtl.f, so nothing consumes
+        # this map; return empty rather than fabricating a directory.
+        if rtlSegKey not in rootLayout['segments']:
+            return dict()
+        rtlDotFdir = rootLayout['segments'][rtlSegKey]['path']
+        rootYaml = rootLayout['yaml']
+        ret = dict()
+        for context in includeContext:
+            owner = self.contextOwningProject[context]
+            ownerLayout = self.projectLayout[owner]
+            absYaml = os.path.normpath(os.path.join(rootYaml, context))
+            subdir = os.path.dirname(os.path.relpath(absYaml, ownerLayout['yaml']))
+            absRtlDir = os.path.normpath(
+                os.path.join(ownerLayout['segments'][rtlSegKey]['path'], subdir))
+            ret[context] = os.path.relpath(absRtlDir, rtlDotFdir)
         return ret
 
     def getContextConfigView(self, contexts):

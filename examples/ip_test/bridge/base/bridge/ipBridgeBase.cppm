@@ -23,9 +23,9 @@ export class ipBridgeBase : public virtual blockPortBase
 public:
     virtual ~ipBridgeBase() = default;
     // dst ports
-    // uBridgeDriver->data8If: Non-parameterized 8-bit Q10 bridge data interface
+    // uBridgeDriver->data8If: Non-parameterized 8-bit bridge data interface
     push_ack_in< data8St > data8In;
-    // uBridgeDriver->data70If: Non-parameterized 70-bit Q10 bridge data interface
+    // uBridgeDriver->data70If: Non-parameterized 70-bit bridge data interface
     push_ack_in< data70St > data70In;
     // uCpu->apbReg: CPU access to registers via APB
     apb_in< apbAddrSt, apbDataSt > apbReg;
@@ -54,9 +54,9 @@ export class ipBridgeInverted : public virtual blockPortBase
 {
 public:
     // dst ports
-    // uBridgeDriver->data8If: Non-parameterized 8-bit Q10 bridge data interface
+    // uBridgeDriver->data8If: Non-parameterized 8-bit bridge data interface
     push_ack_out< data8St > data8In;
-    // uBridgeDriver->data70If: Non-parameterized 70-bit Q10 bridge data interface
+    // uBridgeDriver->data70If: Non-parameterized 70-bit bridge data interface
     push_ack_out< data70St > data70In;
     // uCpu->apbReg: CPU access to registers via APB
     apb_out< apbAddrSt, apbDataSt > apbReg;
@@ -85,9 +85,9 @@ export class ipBridgeChannels
 {
 public:
     // dst ports
-    // Non-parameterized 8-bit Q10 bridge data interface
+    // Non-parameterized 8-bit bridge data interface
     push_ack_channel< data8St > data8In;
-    // Non-parameterized 70-bit Q10 bridge data interface
+    // Non-parameterized 70-bit bridge data interface
     push_ack_channel< data70St > data70In;
     // CPU access to registers via APB
     apb_channel< apbAddrSt, apbDataSt > apbReg;

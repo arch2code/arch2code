@@ -24,6 +24,16 @@ module src_variantSrc0_hdl_sv_wrapper
     output bit [(OUT1_DATA_WIDTH + 1)-1:0] out1_data,
     input bit out1_ack,
 
+    // push_ack_if.src
+    output bit out2_push,
+    output bit [(OUT0_DATA_WIDTH + 1)-1:0] out2_data,
+    input bit out2_ack,
+
+    // push_ack_if.src
+    output bit out3_push,
+    output bit [(OUT1_DATA_WIDTH + 1)-1:0] out3_data,
+    input bit out3_ack,
+
     input clk,
     input rst_n
 );
@@ -37,6 +47,12 @@ module src_variantSrc0_hdl_sv_wrapper
         .out1_push(out1_push),
         .out1_data(out1_data),
         .out1_ack(out1_ack),
+        .out2_push(out2_push),
+        .out2_data(out2_data),
+        .out2_ack(out2_ack),
+        .out3_push(out3_push),
+        .out3_data(out3_data),
+        .out3_ack(out3_ack),
         .clk(clk),
         .rst_n(rst_n)
     );

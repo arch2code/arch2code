@@ -28,6 +28,21 @@ blocks:
         # hierarchy. The RTL DUT (uBridge / ipBridge) generates its own RTL
         # independently of this harness top.
         hasRtl: false
+    # Stimulus producer owned by the bridge's own standalone harness (top-down):
+    # it pushes a known marker/data pair on each of the two non-parameterized
+    # bridge interfaces (data8If / data70If, in scope via the ipBridge.yaml
+    # include). This block used to live inside the reusable ipBridge.yaml; it was
+    # relocated here so the reusable IP carries no testbench stimulus. Model-only:
+    # bridgeStdTop is a model-only harness, so the stimulus needs no RTL/Verilator.
+    bridgeDriver:
+        desc: "Stimulus producer: emits the two non-parameterized bridge interfaces"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        ports:
+            out8:  { interface: data8If,  direction: src }
+            out70: { interface: data70If, direction: src }
 
 instances:
     bridgeStdTop:      { container: bridgeStdTop, instanceType: bridgeStdTop,    instGroup: top }

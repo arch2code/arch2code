@@ -99,17 +99,21 @@ instances:
     uSrc:          { container: ip_top,    instanceType: src,         instGroup: top, variant: variantSrc0 }
     uIp0:          { container: ip_top,    instanceType: ip,          instGroup: top, addressGroup: top, variant: variant0 }
     uIp1:          { container: ip_top,    instanceType: ip,          instGroup: top, addressGroup: top, variant: variant1 }
-    uBridgeDriver: { container: ip_top,    instanceType: bridgeDriver,    instGroup: top }
     uBridge:       { container: ip_top,    instanceType: ipBridge,        instGroup: top, addressGroup: top }
 
 connections:
     - { interface: apbReg, src: uCPU, srcport: cpu_main, dst: u_ip_top, name: cpu_main }
     - { interface: srcOut0BoundaryIf, src: uSrc, srcport: out0, dst: uIp0, dstport: ipDataIf }
     - { interface: srcOut1BoundaryIf, src: uSrc, srcport: out1, dst: uIp1, dstport: ipDataIf }
-    # Stage 8.2 sibling-level connections (non-cross-interface): the
-    # Q10 cross-interface bridge sits one level deeper, inside uBridge.
-    - { interface: data8If,  src: uBridgeDriver, srcport: out8,  dst: uBridge, dstport: data8In }
-    - { interface: data70If, src: uBridgeDriver, srcport: out70, dst: uBridge, dstport: data70In }
+    # uSrc is the single stimulus for the whole top. out2/out3 feed the
+    # ipBridge subsystem, replacing the contrived bridgeDriver. These reuse the
+    # existing non-parameterized boundary interfaces (srcOut0BoundarySt = marker+8b
+    # exactly matches data8St; srcOut1BoundarySt = marker+70b exactly matches
+    # data70St), so the same cross-interface push_ack thunker adapts uSrc's
+    # parameterized out2/out3 payloads onto the bridge's data8In/data70In ports,
+    # which in turn thunk into uBridgeIp0 (variant0) / uBridgeIp1 (variant1).
+    - { interface: srcOut0BoundaryIf, src: uSrc, srcport: out2, dst: uBridge, dstport: data8In }
+    - { interface: srcOut1BoundaryIf, src: uSrc, srcport: out3, dst: uBridge, dstport: data70In }
 
 connectionMaps:
     - { interface: apbReg, block: ip_top, direction: dst, instance: uAPBDecode, name: cpu_main }

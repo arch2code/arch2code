@@ -14,6 +14,8 @@ import src_package::*;
 (
     push_ack_if.src out0,
     push_ack_if.src out1,
+    push_ack_if.src out2,
+    push_ack_if.src out3,
     input clk, rst_n
 );
 
@@ -49,6 +51,8 @@ ipLeaf #(.LEAF_DATA_WIDTH(OUT0_DATA_WIDTH), .LEAF_MEM_DEPTH(4)) uLeaf (
     // value that crosses the 64-bit boundary.
     `DFF_INST(logic, out0_done)
     `DFF_INST(logic, out1_done)
+    `DFF_INST(logic, out2_done)
+    `DFF_INST(logic, out3_done)
 
     always_comb begin
         n_out0_done = out0_done;
@@ -74,6 +78,34 @@ ipLeaf #(.LEAF_DATA_WIDTH(OUT0_DATA_WIDTH), .LEAF_MEM_DEPTH(4)) uLeaf (
             out1.data.data = (srcOut1DataT'('h2A) << 64) | srcOut1DataT'('h5A);
             if (out1.ack) begin
                 n_out1_done = 1'b1;
+            end
+        end
+    end
+
+    always_comb begin
+        n_out2_done = out2_done;
+        out2.push = 1'b0;
+        out2.data = '0;
+        if (!out2_done) begin
+            out2.push = 1'b1;
+            out2.data.marker = 1'b1;
+            out2.data.data = srcOut0DataT'('hA5);
+            if (out2.ack) begin
+                n_out2_done = 1'b1;
+            end
+        end
+    end
+
+    always_comb begin
+        n_out3_done = out3_done;
+        out3.push = 1'b0;
+        out3.data = '0;
+        if (!out3_done) begin
+            out3.push = 1'b1;
+            out3.data.marker = 1'b1;
+            out3.data.data = (srcOut1DataT'('h2A) << 64) | srcOut1DataT'('h5A);
+            if (out3.ack) begin
+                n_out3_done = 1'b1;
             end
         end
     end

@@ -10,14 +10,14 @@ module;
 export module ip_top.base;
 import shared_types;
 import ip_top;
-import ipBridge;
 import src;
 import ip;
+import ipBridge;
 using namespace shared_types_ns;
 using namespace ip_top_ns;
-using namespace ipBridge_ns;
 using namespace src_ns;
 using namespace ip_ns;
+using namespace ipBridge_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

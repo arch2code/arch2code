@@ -12,12 +12,12 @@ import shared_types;
 using namespace shared_types_ns;
 import ip_top;
 using namespace ip_top_ns;
-import ipBridge;
-using namespace ipBridge_ns;
 import src;
 using namespace src_ns;
 import ip;
 using namespace ip_ns;
+import ipBridge;
+using namespace ipBridge_ns;
 #include "ip_topExternal.h"
 
 class ip_topTestbench: public sc_module, public blockBase, public ip_topChannels {

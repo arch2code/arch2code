@@ -51,6 +51,8 @@ public:
 
     push_ack_src_bfm<srcOut0St<Config>, sc_bv<srcOut0St<Config>::_bitWidth>> out0_bfm;
     push_ack_src_bfm<srcOut1St<Config>, sc_bv<srcOut1St<Config>::_bitWidth>> out1_bfm;
+    push_ack_src_bfm<srcOut0St<Config>, sc_bv<srcOut0St<Config>::_bitWidth>> out2_bfm;
+    push_ack_src_bfm<srcOut1St<Config>, sc_bv<srcOut1St<Config>::_bitWidth>> out3_bfm;
 
     // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
@@ -64,6 +66,8 @@ public:
         clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
         out0_bfm("out0_bfm"),
         out1_bfm("out1_bfm"),
+        out2_bfm("out2_bfm"),
+        out3_bfm("out3_bfm"),
         rst_n(0)
     {
         dut_hdl = new DUT_T("dut_hdl");
@@ -74,6 +78,12 @@ public:
         dut_hdl->out1_push(out1_hdl_if.push);
         dut_hdl->out1_data(out1_hdl_if.data);
         dut_hdl->out1_ack(out1_hdl_if.ack);
+        dut_hdl->out2_push(out2_hdl_if.push);
+        dut_hdl->out2_data(out2_hdl_if.data);
+        dut_hdl->out2_ack(out2_hdl_if.ack);
+        dut_hdl->out3_push(out3_hdl_if.push);
+        dut_hdl->out3_data(out3_hdl_if.data);
+        dut_hdl->out3_ack(out3_hdl_if.ack);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
@@ -86,6 +96,16 @@ public:
         out1_bfm.hdl_if_p(out1_hdl_if);
         out1_bfm.clk(clk);
         out1_bfm.rst_n(rst_n);
+
+        out2_bfm.if_p(this->out2);
+        out2_bfm.hdl_if_p(out2_hdl_if);
+        out2_bfm.clk(clk);
+        out2_bfm.rst_n(rst_n);
+
+        out3_bfm.if_p(this->out3);
+        out3_bfm.hdl_if_p(out3_hdl_if);
+        out3_bfm.clk(clk);
+        out3_bfm.rst_n(rst_n);
 
         SC_THREAD(reset_driver);
 
@@ -105,6 +125,8 @@ private:
 
     push_ack_hdl_if<sc_bv<srcOut0St<Config>::_bitWidth>> out0_hdl_if;
     push_ack_hdl_if<sc_bv<srcOut1St<Config>::_bitWidth>> out1_hdl_if;
+    push_ack_hdl_if<sc_bv<srcOut0St<Config>::_bitWidth>> out2_hdl_if;
+    push_ack_hdl_if<sc_bv<srcOut1St<Config>::_bitWidth>> out3_hdl_if;
 
     sc_signal<bool> rst_n;
 

@@ -10,7 +10,7 @@
 # simulating a git submodule of the super-repo. The root ip_top references it
 # directly (projectFiles: + include:), while ipBridge vendors it through a
 # symlink (bridge/common -> ../common); a projectOverrides: entry in each
-# consumer selects this canonical provider (Q-C10 / D-SD3 composition).
+# consumer selects this canonical provider.
 
 yamlFormat: 2
 projectName: common

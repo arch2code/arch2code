@@ -27,9 +27,9 @@ private:
 
 public:
     // channels
-    // Non-parameterized 8-bit Q10 bridge data interface
+    // Non-parameterized 8-bit bridge data interface
     push_ack_channel< data8St > out8;
-    // Non-parameterized 70-bit Q10 bridge data interface
+    // Non-parameterized 70-bit bridge data interface
     push_ack_channel< data70St > out70;
     // CPU access to registers via APB
     apb_channel< apbAddrSt, apbDataSt > cpu_main;

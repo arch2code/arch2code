@@ -8,9 +8,9 @@ import ip_package::*;
 import shared_types_package::*;
 
 // types
-typedef logic[1-1:0] bridgeMarkerT; //Stage 8.2 1-bit marker; bit-width matches ipDataSt::marker (Stage 6.2 packed-form compatibility)
-typedef logic[8-1:0] data8T; //Stage 8.2 fixed 8-bit Q10-bridge payload (matches ipDataSt::data under variant0)
-typedef logic[70-1:0] data70T; //Stage 8.2 fixed 70-bit Q10-bridge payload (matches ipDataSt::data under variant1)
+typedef logic[1-1:0] bridgeMarkerT; //1-bit marker; bit-width matches ipDataSt::marker (packed-form compatibility)
+typedef logic[8-1:0] data8T; //Fixed 8-bit bridge payload (matches ipDataSt::data under variant0)
+typedef logic[70-1:0] data70T; //Fixed 70-bit bridge payload (matches ipDataSt::data under variant1)
 
 // enums
 typedef enum logic[1-1:0] {       //Generated type for addressing bridge instances

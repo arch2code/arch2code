@@ -16,7 +16,6 @@
 #define BASE_ADDR_USRC                 0x0
 #define BASE_ADDR_UIP0                 0x0
 #define BASE_ADDR_UIP1                 0x1000000
-#define BASE_ADDR_UBRIDGEDRIVER        0x0
 #define BASE_ADDR_UBRIDGE              0x2000000
 #define BASE_ADDR_UIPREGS              0x0
 // GENERATED_CODE_END

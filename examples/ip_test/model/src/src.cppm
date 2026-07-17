@@ -33,6 +33,8 @@ public:
     using srcBase<Config>::OUT1_DATA_WIDTH;
     using srcBase<Config>::out0;
     using srcBase<Config>::out1;
+    using srcBase<Config>::out2;
+    using srcBase<Config>::out3;
 
     //instances contained in block
     std::shared_ptr<ipLeafBase<ipLeafVariantLeaf0Config>> uLeaf;
@@ -51,6 +53,8 @@ public:
 private:
     void driveOut0(void);
     void driveOut1(void);
+    void driveOut2(void);
+    void driveOut3(void);
 };
 
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -67,11 +71,12 @@ src<Config>::src(sc_module_name blockName, const char * variant, blockBaseMode b
     // GENERATED_CODE_END
     SC_THREAD(driveOut0);
     SC_THREAD(driveOut1);
+    SC_THREAD(driveOut2);
+    SC_THREAD(driveOut3);
 };
 
-// Stage 8.3 of plan-variant-config-unification.md: the maintained
-// Q11 producer-with-per-port-parameters regression. The producer's
-// variantSrc0 binding fixes OUT0_DATA_WIDTH=8 and OUT1_DATA_WIDTH=70;
+// The maintained producer-with-per-port-parameters regression. The
+// producer's variantSrc0 binding fixes OUT0_DATA_WIDTH=8 and OUT1_DATA_WIDTH=70;
 // each per-port parameter must match the receiving consumer's
 // IP_DATA_WIDTH (uIp0 -> variant0=8, uIp1 -> variant1=70) for the
 // push_ack thunker on each cross-Config bind to round-trip cleanly.
@@ -82,8 +87,8 @@ src<Config>::src(sc_module_name blockName, const char * variant, blockBaseMode b
 template<typename Config>
 void src<Config>::driveOut0(void)
 {
-    log_.logPrint(std::format("{} [Stage 8.3] Q11 out0 per-port width = {} bits", this->name(), OUT0_DATA_WIDTH), LOG_IMPORTANT);
-    Q_ASSERT(OUT0_DATA_WIDTH == 8, "Stage 8.3: producer OUT0_DATA_WIDTH must match uIp0 variant0 IP_DATA_WIDTH=8");
+    log_.logPrint(std::format("{} out0 per-port width = {} bits", this->name(), OUT0_DATA_WIDTH), LOG_IMPORTANT);
+    Q_ASSERT(OUT0_DATA_WIDTH == 8, "producer OUT0_DATA_WIDTH must match uIp0 variant0 IP_DATA_WIDTH=8");
     srcOut0St d{};
     d.data = 0xA5;
     d.marker = 1;
@@ -94,12 +99,42 @@ void src<Config>::driveOut0(void)
 template<typename Config>
 void src<Config>::driveOut1(void)
 {
-    log_.logPrint(std::format("{} [Stage 8.3] Q11 out1 per-port width = {} bits", this->name(), OUT1_DATA_WIDTH), LOG_IMPORTANT);
-    Q_ASSERT(OUT1_DATA_WIDTH == 70, "Stage 8.3: producer OUT1_DATA_WIDTH must match uIp1 variant1 IP_DATA_WIDTH=70");
+    log_.logPrint(std::format("{} out1 per-port width = {} bits", this->name(), OUT1_DATA_WIDTH), LOG_IMPORTANT);
+    Q_ASSERT(OUT1_DATA_WIDTH == 70, "producer OUT1_DATA_WIDTH must match uIp1 variant1 IP_DATA_WIDTH=70");
     srcOut1St d{};
     d.data.word[0] = 0x5A;
     d.data.word[1] = 0x2A;
     d.marker = 1;
     log_.logPrint(std::format("{} pushing 0x{:x}{:016x} marker {} on out1", this->name(), d.data.word[1], d.data.word[0], (uint64_t)d.marker), LOG_IMPORTANT);
     out1->push(d);
+}
+
+// out2/out3 mirror out0/out1 but feed the ipBridge subsystem
+// (uBridge.data8In / data70In) in the composed ip_top. Same per-port widths and
+// the same marker/data payload style so the cross-interface push_ack thunker on
+// each bridge boundary round-trips cleanly into uBridgeIp0 (variant0=8-bit) and
+// uBridgeIp1 (variant1=70-bit).
+template<typename Config>
+void src<Config>::driveOut2(void)
+{
+    log_.logPrint(std::format("{} out2 per-port width = {} bits", this->name(), OUT0_DATA_WIDTH), LOG_IMPORTANT);
+    Q_ASSERT(OUT0_DATA_WIDTH == 8, "producer OUT0_DATA_WIDTH must match uBridgeIp0 variant0 IP_DATA_WIDTH=8");
+    srcOut0St d{};
+    d.data = 0xA5;
+    d.marker = 1;
+    log_.logPrint(std::format("{} pushing 0x{:x} marker {} on out2", this->name(), (uint64_t)d.data, (uint64_t)d.marker), LOG_IMPORTANT);
+    out2->push(d);
+}
+
+template<typename Config>
+void src<Config>::driveOut3(void)
+{
+    log_.logPrint(std::format("{} out3 per-port width = {} bits", this->name(), OUT1_DATA_WIDTH), LOG_IMPORTANT);
+    Q_ASSERT(OUT1_DATA_WIDTH == 70, "producer OUT1_DATA_WIDTH must match uBridgeIp1 variant1 IP_DATA_WIDTH=70");
+    srcOut1St d{};
+    d.data.word[0] = 0x5A;
+    d.data.word[1] = 0x2A;
+    d.marker = 1;
+    log_.logPrint(std::format("{} pushing 0x{:x}{:016x} marker {} on out3", this->name(), d.data.word[1], d.data.word[0], (uint64_t)d.marker), LOG_IMPORTANT);
+    out3->push(d);
 }

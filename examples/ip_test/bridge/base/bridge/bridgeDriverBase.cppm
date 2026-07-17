@@ -18,9 +18,9 @@ export class bridgeDriverBase : public virtual blockPortBase
 public:
     virtual ~bridgeDriverBase() = default;
     // src ports
-    // data8If->uBridge: Non-parameterized 8-bit Q10 bridge data interface
+    // data8If->uBridge: Non-parameterized 8-bit bridge data interface
     push_ack_out< data8St > out8;
-    // data70If->uBridge: Non-parameterized 70-bit Q10 bridge data interface
+    // data70If->uBridge: Non-parameterized 70-bit bridge data interface
     push_ack_out< data70St > out70;
 
 
@@ -44,9 +44,9 @@ export class bridgeDriverInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // data8If->uBridge: Non-parameterized 8-bit Q10 bridge data interface
+    // data8If->uBridge: Non-parameterized 8-bit bridge data interface
     push_ack_in< data8St > out8;
-    // data70If->uBridge: Non-parameterized 70-bit Q10 bridge data interface
+    // data70If->uBridge: Non-parameterized 70-bit bridge data interface
     push_ack_in< data70St > out70;
 
 
@@ -70,9 +70,9 @@ export class bridgeDriverChannels
 {
 public:
     // src ports
-    // Non-parameterized 8-bit Q10 bridge data interface
+    // Non-parameterized 8-bit bridge data interface
     push_ack_channel< data8St > out8;
-    // Non-parameterized 70-bit Q10 bridge data interface
+    // Non-parameterized 70-bit bridge data interface
     push_ack_channel< data70St > out70;
 
 

@@ -22,6 +22,16 @@ module src_hdl_sv_wrapper
     output bit [(OUT1_DATA_WIDTH + 1)-1:0] out1_data,
     input bit out1_ack,
 
+    // push_ack_if.src
+    output bit out2_push,
+    output bit [(OUT0_DATA_WIDTH + 1)-1:0] out2_data,
+    input bit out2_ack,
+
+    // push_ack_if.src
+    output bit out3_push,
+    output bit [(OUT1_DATA_WIDTH + 1)-1:0] out3_data,
+    input bit out3_ack,
+
     input clk,
     input rst_n
 );
@@ -50,9 +60,25 @@ module src_hdl_sv_wrapper
     assign #0 out1_data = out1.data;
     assign #0 out1.ack = out1_ack;
 
+    // push_ack_if.src
+    push_ack_if #(.data_t(srcOut0St)) out2();
+
+    assign #0 out2_push = out2.push;
+    assign #0 out2_data = out2.data;
+    assign #0 out2.ack = out2_ack;
+
+    // push_ack_if.src
+    push_ack_if #(.data_t(srcOut1St)) out3();
+
+    assign #0 out3_push = out3.push;
+    assign #0 out3_data = out3.data;
+    assign #0 out3.ack = out3_ack;
+
     src #(.OUT0_DATA_WIDTH(OUT0_DATA_WIDTH), .OUT1_DATA_WIDTH(OUT1_DATA_WIDTH)) dut (
         .out0(out0), // push_ack_if.src
         .out1(out1), // push_ack_if.src
+        .out2(out2), // push_ack_if.src
+        .out3(out3), // push_ack_if.src
         .clk(clk),
         .rst_n(rst_n)
     );
