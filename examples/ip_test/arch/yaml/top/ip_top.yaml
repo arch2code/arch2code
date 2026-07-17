@@ -14,6 +14,12 @@ include:
     # matching the projectOverrides selection in project.yaml so it is one owned
     # context. Referenced directly, mirroring the ip include below.
     - ../../../common/arch/yaml/common/shared_types.yaml
+    # cpu is a generic APB master owned by the 'common' sub-project. Its defining
+    # file stays on this context's include chain for block-type resolution;
+    # ownership is set by child-project detection (CONTEXTOWNINGPROJECT), so cpu's
+    # artifacts generate in common's tree, not here (eliminating the composed-build
+    # cpu duplicate-basename clobber).
+    - ../../../common/arch/yaml/cpu/cpu.yaml
     - ../src/src.yaml
     # ip and ipBridge blocks are owned by their referenced child projects (see
     # project.yaml projectFiles). Their defining files stay on this context's
@@ -70,12 +76,6 @@ blocks:
         hasMdl: false
         hasTb: false
         hasRtl: false
-    cpu:
-        desc: "APB master / CPU"
-        hasVl: false
-        hasMdl: true
-        hasTb: false
-        hasRtl: false
     apbDecode:
         desc: "APB address decoder"
         hasVl: true
@@ -103,7 +103,7 @@ instances:
     uBridge:       { container: ip_top,    instanceType: ipBridge,        instGroup: top, addressGroup: top }
 
 connections:
-    - { interface: apbReg, src: uCPU, dst: u_ip_top, name: cpu_main }
+    - { interface: apbReg, src: uCPU, srcport: cpu_main, dst: u_ip_top, name: cpu_main }
     - { interface: srcOut0BoundaryIf, src: uSrc, srcport: out0, dst: uIp0, dstport: ipDataIf }
     - { interface: srcOut1BoundaryIf, src: uSrc, srcport: out1, dst: uIp1, dstport: ipDataIf }
     # Stage 8.2 sibling-level connections (non-cross-interface): the

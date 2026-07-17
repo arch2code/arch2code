@@ -32,7 +32,7 @@ public:
     // Non-parameterized 70-bit Q10 bridge data interface
     push_ack_channel< data70St > out70;
     // CPU access to registers via APB
-    apb_channel< apbAddrSt, apbDataSt > apbReg;
+    apb_channel< apbAddrSt, apbDataSt > cpu_main;
 
     //instances contained in block
     std::shared_ptr<cpuBase> uCpu;

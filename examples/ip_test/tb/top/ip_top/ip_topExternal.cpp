@@ -12,6 +12,7 @@ ip_topExternal::ip_topExternal(sc_module_name modulename) :
 
    ,uCPU(std::dynamic_pointer_cast<cpuBase>(instanceFactory::createInstance(name(), "uCPU", "cpu", "", "ip_test")))
 // GENERATED_CODE_END
+   ,fwEvent("fwEvent")
 // GENERATED_CODE_BEGIN --template=tbExternal --section=body
 {
     // instance to instance connections via channel
@@ -19,4 +20,11 @@ ip_topExternal::ip_topExternal(sc_module_name modulename) :
 
     SC_THREAD(eotThread);
 // GENERATED_CODE_END
+
+    SC_THREAD(fwThread);
+}
+
+void ip_topExternal::fwThread(void)
+{
+    workerFactory::startSystemCThread("fw", &fwEvent);
 }

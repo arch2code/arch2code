@@ -259,6 +259,7 @@ ADDRCTL_TESTS=(
     "register packed-form mismatch"             "test_error_register_packed_form.py"
     "registerPorts independent of ports"        "test_register_ports_independent_of_ports.py"
     "migrated ip_test view"                     "test_addrctl_ip_test_view.py"
+    "zero-instance exported leaf ports"         "test_zero_instance_ported_block.py"
 )
 
 idx=20

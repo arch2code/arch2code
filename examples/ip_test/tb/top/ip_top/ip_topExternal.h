@@ -36,6 +36,11 @@ public:
     }
 
 // GENERATED_CODE_END
+
+    // Launches the firmware worker as a SystemC thread (SystemC-thread mode).
+    void fwThread(void);
+    sc_event fwEvent;
+
 };
 
 #endif /* IP_TOP_EXTERNAL_H */

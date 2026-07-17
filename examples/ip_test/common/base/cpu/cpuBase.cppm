@@ -18,42 +18,42 @@ export class cpuBase : public virtual blockPortBase
 public:
     virtual ~cpuBase() = default;
     // src ports
-    // apbReg->uBridge: CPU access to registers via APB
-    apb_out< apbAddrSt, apbDataSt > apbReg;
+    // apbReg->External: CPU access to registers via APB
+    apb_out< apbAddrSt, apbDataSt > cpu_main;
 
 
     cpuBase(std::string name, const char * variant) :
-        apbReg("apbReg")
+        cpu_main("cpu_main")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
-        apbReg->setTimed(nsec, mode);
+        cpu_main->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
     {
-        apbReg->setLogging(verbosity);
+        cpu_main->setLogging(verbosity);
     };
 };
 export class cpuInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // apbReg->uBridge: CPU access to registers via APB
-    apb_in< apbAddrSt, apbDataSt > apbReg;
+    // apbReg->External: CPU access to registers via APB
+    apb_in< apbAddrSt, apbDataSt > cpu_main;
 
 
     cpuInverted(std::string name) :
-        apbReg(("apbReg"+name).c_str())
+        cpu_main(("cpu_main"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
-        apbReg->setTimed(nsec, mode);
+        cpu_main->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
     {
-        apbReg->setLogging(verbosity);
+        cpu_main->setLogging(verbosity);
     };
 };
 export class cpuChannels
@@ -61,16 +61,16 @@ export class cpuChannels
 public:
     // src ports
     // CPU access to registers via APB
-    apb_channel< apbAddrSt, apbDataSt > apbReg;
+    apb_channel< apbAddrSt, apbDataSt > cpu_main;
 
 
     cpuChannels(std::string name, std::string srcName) :
-    apbReg(("apbReg"+name).c_str(), srcName)
+    cpu_main(("cpu_main"+name).c_str(), srcName)
     {};
     void bind( cpuBase *a, cpuInverted *b)
     {
-        a->apbReg( apbReg );
-        b->apbReg( apbReg );
+        a->cpu_main( cpu_main );
+        b->cpu_main( cpu_main );
     };
 };
 

@@ -17,6 +17,7 @@ projectName: common
 
 projectFiles:
     - common/shared_types.yaml
+    - cpu/cpu.yaml
 
 instanceGroups:
     top:

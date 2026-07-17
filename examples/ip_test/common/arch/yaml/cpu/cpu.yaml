@@ -1,0 +1,24 @@
+# Generic APB-master / CPU utility owned by the 'common' definitions sub-project.
+#
+# cpu is a reusable bus-master block: it drives an apbReg master port and runs
+# firmware via the worker pattern (regRdWr.h queue drained by a regWriteListener
+# thread onto the apb bus). It carries no design-specific logic, so it can be
+# instantiated by any consumer (ip_top, ipBridge) without duplicating the block.
+#
+# The block has explicit ports: but no instances in this definitions-only
+# project; the zero-instance render synthesises the master port from ports:.
+# cpu is the src/master end, so it declares plain ports: (NOT registerPorts:,
+# which is reserved for reusable-IP register-bus leaf boundaries).
+
+include:
+    - ../common/shared_types.yaml
+
+blocks:
+    cpu:
+        desc: "APB master / CPU"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            cpu_main: { interface: apbReg, direction: src }

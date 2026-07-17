@@ -10,6 +10,12 @@
 # map into bridgeApbDecode is synthesized intrinsically by the IP.
 include:
     - ipBridge.yaml
+    # cpu is the generic APB master owned by the 'common' sub-project. Reached via
+    # the same real-tree convention the bridge uses for shared_types (see
+    # ipBridge.yaml), so in composition its context path is lexically identical to
+    # the root ip_top include and the two collapse to one owned context. Ownership
+    # is set by child-project detection (CONTEXTOWNINGPROJECT), not this include.
+    - ../../../../common/arch/yaml/cpu/cpu.yaml
 
 blocks:
     bridgeStdTop:
@@ -21,12 +27,6 @@ blocks:
         # master (mirroring ip_top's cpu), so it cannot sit in an RTL
         # hierarchy. The RTL DUT (uBridge / ipBridge) generates its own RTL
         # independently of this harness top.
-        hasRtl: false
-    cpu:
-        desc: "APB master / CPU"
-        hasVl: false
-        hasMdl: true
-        hasTb: false
         hasRtl: false
 
 instances:
@@ -40,4 +40,4 @@ connections:
     - { interface: data70If, src: uBridgeDriver, srcport: out70,  dst: uBridge, dstport: data70In }
     # APB master -> ipBridge boundary (the single authored upstream feed). The
     # IP's own nested bridgeApbDecode router decodes from this boundary.
-    - { interface: apbReg,   src: uCpu, dst: uBridge }
+    - { interface: apbReg,   src: uCpu, srcport: cpu_main, dst: uBridge }

@@ -5,6 +5,8 @@
 -y ./top
 +incdir+./../../common/arch/yaml/common
 -y ./../../common/arch/yaml/common
++incdir+./../../common/arch/yaml/cpu
+-y ./../../common/arch/yaml/cpu
 +incdir+./src
 -y ./src
 +incdir+./ip

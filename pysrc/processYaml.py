@@ -1225,6 +1225,11 @@ class projectOpen:
         self.getBDChannelConfigOverrides(ret)
         # build final connection info
         self.getBDConnectionsFinal(ret)
+        # Zero-instance exported / library leaf: no design connection sourced the
+        # boundary ports, so synthesise them from the block's declared `ports:`
+        # before port dedup / includes / interface-def collection run.
+        if not ret['instances'] and self.data['blocks'][qualBlock].get('ports'):
+            self.getBDDefinitionPorts(ret, qualBlock)
         # deduplicate the ports
         self.getBDPorts(ret)
         # figure out includes
@@ -1560,6 +1565,13 @@ class projectOpen:
     def getBDDeclaredPortInterfaceKey(self, instanceKey, portName):
         instData = self.data['instances'][instanceKey]
         blockData = self.data['blocks'][instData['instanceTypeKey']]
+        return self._resolveDeclaredPortInterfaceKey(blockData, portName)
+
+    def _resolveDeclaredPortInterfaceKey(self, blockData, portName):
+        # Resolve a block's declared `ports:` row to a qualified interfaceKey
+        # from the block's own declaring context. Shared by the instance-driven
+        # cross-interface path (getBDDeclaredPortInterfaceKey) and the
+        # zero-instance definition-driven port synthesis (getBDDefinitionPorts).
         declaredPort = (blockData.get('ports') or {}).get(portName)
         if not declaredPort:
             return ''
@@ -1643,9 +1655,12 @@ class projectOpen:
                         for k, v in self.data['parameters'][qualBlock]['variants'].items()
                         if v.get('variant') == inst_data['variant']}
                     ret['variants'][inst_data['variant']] = filtered_variants_data
-        if len(qualBlockInstances) == 0:
-            printError(f"There are no instances of {qualBlock} in the design")
-            exit(warningAndErrorReport())
+        # A block with zero instances is a valid render target for an exported /
+        # library leaf that its owning project never instantiates (projectCreate
+        # gates which blocks are allowed to be uninstantiated). The rest of this
+        # function tolerates the empty case: subBlockInstances/containerBlocks
+        # stay empty and the boundary ports are synthesised from the block
+        # definition later (getBDDefinitionPorts).
         ret['instances'] = qualBlockInstances
         ret['enableRegConnections'] = True
         if trimRegLeafInstance and 'regHandler' in ret:
@@ -1723,8 +1738,14 @@ class projectOpen:
                     break
         else:
             decodeBlock = qualBlock
-            instanceInfo = ret['instances'][next(iter(ret['instances']))] # we only need one instance for the info as all instances must have similar config.. TODO add more checks
-            addressGroup = instanceInfo['addressGroup']
+            if ret['instances']:
+                instanceInfo = ret['instances'][next(iter(ret['instances']))] # we only need one instance for the info as all instances must have similar config.. TODO add more checks
+                addressGroup = instanceInfo['addressGroup']
+            else:
+                # Zero-instance exported leaf: there is no instance to sample an
+                # addressGroup from. It is only consumed below when hasDecoder,
+                # and such a leaf has no FW-accessible registers/memories.
+                addressGroup = None
 
         for designObject in ['registers', 'memories']:
             data = dict()
@@ -2036,6 +2057,41 @@ class projectOpen:
 
         ret['connections'] = connections
         ret['connectionPorts'] = ports
+
+    def getBDDefinitionPorts(self, ret, qualBlock):
+        # Zero-instance render path. A hasMdl block that its owning project never
+        # instantiates (an exported / library leaf) has no design connection to
+        # source its boundary ports from, so getBDConnections leaves
+        # ret['connectionPorts'] empty and getBDPorts would emit a portless
+        # module. Synthesise, from each declared `ports:` row, the
+        # connection-shaped entry getBDConnections produces for an
+        # instance-driven port (one 'parent' end), so the unchanged getBDPorts
+        # emits the declared boundary. Called only when ret['instances'] is
+        # empty, so instantiated blocks are unaffected.
+        # SCOPE: connection-interface `ports:` rows only. registerPorts: and
+        # memory ports are not synthesised here — those render from the router /
+        # register-handler connectivity the post-parse pass builds around a real
+        # instance, which does not exist in the zero-instance case.
+        blockRow = self.data['blocks'][qualBlock]
+        for portName, portRow in blockRow['ports'].items():
+            interfaceKey = self._resolveDeclaredPortInterfaceKey(blockRow, portName)
+            if not interfaceKey:
+                printError(f"Unable to resolve interface '{portRow['interface']}' for declared "
+                           f"port {portName} of uninstantiated block {qualBlock}")
+                exit(warningAndErrorReport())
+            intfInfo = self.data['interfaces'][interfaceKey]
+            direction = portRow['direction']
+            end = {'portName': portName, 'direction': direction, 'name': portName,
+                   'instanceKey': 'parent', 'isPort': True}
+            ret['connectionPorts'][portName] = {
+                'interfaceKey': interfaceKey,
+                'interface': intfInfo['interface'],
+                'interfaceName': intfInfo['interface'],
+                'interfaceType': intfInfo['interfaceType'],
+                'direction': direction,
+                'ends': {portName: end},
+            }
+            self.getBDGetIntfStructs(ret, intfKey=interfaceKey)
 
     def getBDCrossInterfaceBinds(self, ret):
         # projectCreate.validatePorts() performs the expensive structural

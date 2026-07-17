@@ -24,7 +24,7 @@ bridgeStdTop::bridgeStdTop(sc_module_name blockName, const char * variant, block
         ,bridgeStdTopBase(name(), variant)
         ,out8("ipBridge_out8", "bridgeDriver")
         ,out70("ipBridge_out70", "bridgeDriver")
-        ,apbReg("ipBridge_apbReg", "cpu")
+        ,cpu_main("ipBridge_cpu_main", "cpu")
         ,uCpu(std::dynamic_pointer_cast<cpuBase>(instanceFactory::createInstance(name(), "uCpu", "cpu", "", "ipBridge")))
         ,uBridgeDriver(std::dynamic_pointer_cast<bridgeDriverBase>(instanceFactory::createInstance(name(), "uBridgeDriver", "bridgeDriver", "", "ipBridge")))
         ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>(instanceFactory::createInstance(name(), "uBridge", "ipBridge", "", "ipBridge")))
@@ -36,8 +36,8 @@ bridgeStdTop::bridgeStdTop(sc_module_name blockName, const char * variant, block
     uBridge->data8In(out8);
     uBridgeDriver->out70(out70);
     uBridge->data70In(out70);
-    uCpu->apbReg(apbReg);
-    uBridge->apbReg(apbReg);
+    uCpu->cpu_main(cpu_main);
+    uBridge->apbReg(cpu_main);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };

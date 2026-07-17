@@ -7,6 +7,8 @@
 #include "testBenchConfigFactory.h"
 #include "endOfTest.h"
 #include "testController.h"
+#include "workerThread.h"
+#include "fwModelMain.h"
 #include "ipVariantConfig.h"
 
 import ip;
@@ -46,6 +48,17 @@ public:
             "test_ip_uIp1_check",
         });
 
+        // Register the firmware worker and run it as a SystemC thread. The worker
+        // event must exist before the testbench hierarchy is built, since the
+        // common 'cpu' master resolves it while draining the register-access
+        // queue. Mirrors the pro gold-standard lmmiDemoConfig.
+        workerFactory::addWorker({
+            { "fw", std::make_shared<fwModelMain>() }
+        });
+        workerFactory::setNumThreads(0, true);
+        workerFactory::assignWorkersToThreads();
+        workerFactory::startCPUThreads();
+
         //create hierarchy
         std::shared_ptr<blockBase> tb = createTbTop();
         return true;
@@ -54,7 +67,9 @@ public:
     void final(void) override
     {
         // Final cleanup if needed
+        workerFactory::joinCPUThreads();
         Q_ASSERT_CTX(endOfTestState::GetInstance().isEndOfTest(), "final", "Premature end of test detected");
+        Q_ASSERT_CTX(testController::GetInstance().are_all_tests_complete(), "final", "Not all tests completed");
         errorCode::pass();
     }
 
