@@ -2,7 +2,7 @@ REPO_ROOT = $(shell git rev-parse --show-toplevel)/examples/axiDemo
 
 include $(REPO_ROOT)/include/make/shared.mk
 
-# Source directory for Verilator wrapper files
-VL_SRC_DIRS = $(REPO_ROOT)/verif/vl_wrap
+# Verilator wrapper source dirs (from manifest)
+VL_SRC_DIRS = $(A2C_VL_WRAP_DIRS)
 
 include $(A2C_ROOT)/include/make/a2c-vl-wrap.mk
