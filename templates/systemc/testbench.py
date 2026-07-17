@@ -129,12 +129,15 @@ def ext_sec_init(args, prj, data):
         # parent's defaultConfig. Empty descriptors fall back to the child's
         # default Config.
         instCfg = data_['instanceConfigArg']
-        # Generated createInstance passes the variant string and the assembling
-        # project's projectName; the factory key is
-        # `(blockType, variant, projectName)`. Non-templated children
-        # self-register via an A2C_REGISTRATION_RETAIN static in their own TU,
-        # so the testbench holds no symbol reference to them.
-        projectName = prj.config.getConfig('PROJECTNAME')
+        # Generated createInstance passes the variant string and the child's
+        # factory-lookup projectName; the factory key is
+        # `(blockType, variant, projectName)`. `createInstanceProjectName`
+        # (a projectOpen view field) is the assembler for parameterizable and
+        # same-project children, and the owning project for a plain
+        # cross-project child. Non-templated children self-register via an
+        # A2C_REGISTRATION_RETAIN static in their own TU, so the testbench holds
+        # no symbol reference to them.
+        projectName = data_['createInstanceProjectName']
         createCall = (
             'instanceFactory::createInstance(name(), "{instName}", '
             '"{blockName}", "{variant}", "{projectName}")'

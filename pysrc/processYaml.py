@@ -1682,6 +1682,9 @@ class projectOpen:
         # value at the parent's own instantiation. Only params with no matching
         # parent param fall back to the child's bound literal value.
         parentParamNames = {p['param'] for p in (self.data['blocks'][qualBlock]['params'] or [])}
+        # The assembling project's name scopes the generated createInstance
+        # factory lookup for every child (see below).
+        assemblerProject = self.config.getConfig('PROJECTNAME')
         for inst, instInfo in containedInstances.items():
             childTypeKey = instInfo['instanceTypeKey']
             ret['subBlocks'][childTypeKey] = instInfo['instanceType']
@@ -1704,6 +1707,22 @@ class projectOpen:
             instInfo['instanceTypeIsParameterizable'] = configFields['isParameterizable']
             instInfo['instanceTypeHasOwnParams']   = configFields['hasOwnParams']
             instInfo['instanceTypeDefaultConfig']  = configFields['defaultConfig']
+            # projectName the generated createInstance lookup must target for
+            # this child. The factory key is (blockType, variant, projectName).
+            #  * parameterizable child -> assembler: a parent-owned registrar
+            #    trampoline re-registers it under the assembler, so the lookup
+            #    must match the assembler.
+            #  * plain (non-parameterizable) child owned by another project ->
+            #    owner: it self-registers only under its owning project and gets
+            #    no trampoline, so the assembler must target the owner. This
+            #    preserves the projectName disambiguation (no re-registration
+            #    under the assembler, which could collide).
+            #  * plain same-project child -> assembler (== owner, unchanged).
+            childOwner = self.contextOwningProject[self.data['blocks'][childTypeKey]['_context']]
+            if (not configFields['isParameterizable']) and childOwner != assemblerProject:
+                instInfo['createInstanceProjectName'] = childOwner
+            else:
+                instInfo['createInstanceProjectName'] = assemblerProject
         if hasExcluded == 0 and len(excludeInstances) > 0:
             printError(f"--excludeInst={excludeInstances} did not find any of the instances to exclude in block {qualBlock}")
             exit(warningAndErrorReport())

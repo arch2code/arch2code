@@ -222,15 +222,18 @@ def constructorInit(args, prj, data):
         # would resolve to the parent's `<Config>` or the parent's defaultConfig
         # and dynamic_pointer_cast would return nullptr at runtime.
         instCfg = value['instanceConfigArg']
-        # Generated createInstance passes the variant string and the assembling
-        # project's projectName. The factory key is
+        # Generated createInstance passes the variant string and the child's
+        # factory-lookup projectName. The factory key is
         # `(blockType, variant, projectName)`; the variant string identifies the
-        # per-variant Config policy unambiguously and projectName scopes the
-        # lookup to this assembler's registrations. The parent holds no
-        # compile-time symbol reference to the child: non-templated children
-        # self-register via an A2C_REGISTRATION_RETAIN static in their own TU,
-        # reachable through direct-.o linking (see instanceFactory.h).
-        projectName = prj.config.getConfig('PROJECTNAME')
+        # per-variant Config policy unambiguously. `createInstanceProjectName`
+        # (a projectOpen view field) is the assembler for parameterizable and
+        # same-project children, and the owning project for a plain
+        # cross-project child (which self-registers only under its owner). The
+        # parent holds no compile-time symbol reference to the child:
+        # non-templated children self-register via an A2C_REGISTRATION_RETAIN
+        # static in their own TU, reachable through direct-.o linking (see
+        # instanceFactory.h).
+        projectName = value['createInstanceProjectName']
         createCall = (
             f'instanceFactory::createInstance(name(), "{value["instance"]}", '
             f'"{value["instanceType"]}", "{value["variant"]}", "{projectName}")'
