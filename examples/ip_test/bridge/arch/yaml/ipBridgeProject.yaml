@@ -23,7 +23,7 @@ projectFiles:
     - ../../ip/arch/yaml/ipProject.yaml
     - bridge/bridgeStdTop.yaml
 
-topInstance: bridgeStdTop
+topInstance: bridgeStdTop_tb
 
 # Standalone, projectName ip is reached by two lexically-distinct paths: the
 # projectFiles reference resolves through the bridge/ip symlink (../../ip), while

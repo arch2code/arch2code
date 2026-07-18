@@ -15,8 +15,10 @@ export module bridgeStdTop;
 // GENERATED_CODE_BEGIN --template=headers
 import ipBridge;
 import shared_types;
+import ip;
 using namespace ipBridge_ns;
 using namespace shared_types_ns;
+using namespace ip_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants

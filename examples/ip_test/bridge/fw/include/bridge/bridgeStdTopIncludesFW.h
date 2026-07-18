@@ -10,6 +10,8 @@
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "ipBridgeIncludesFW.h"
 #include "shared_typesIncludesFW.h"
+#include "ipIncludesFW.h"
+#include "bitTwiddling.h"
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes

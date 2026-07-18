@@ -35,6 +35,7 @@ void bridgeDriver::driveOut8(void)
     d.marker = 1;
     log_.logPrint(std::format("{} pushing 0x{:x} marker {} on out8", this->name(), (uint64_t)d.data, (uint64_t)d.marker), LOG_IMPORTANT);
     this->out8->push(d);
+    eotOut8_.setEndOfTest(true);
 }
 
 void bridgeDriver::driveOut70(void)
@@ -45,5 +46,6 @@ void bridgeDriver::driveOut70(void)
     d.marker = 1;
     log_.logPrint(std::format("{} pushing 0x{:x}{:016x} marker {} on out70", this->name(), d.data.word[1], d.data.word[0], (uint64_t)d.marker), LOG_IMPORTANT);
     this->out70->push(d);
+    eotOut70_.setEndOfTest(true);
 }
 
