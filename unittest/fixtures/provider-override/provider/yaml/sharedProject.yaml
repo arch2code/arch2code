@@ -1,0 +1,16 @@
+# Shared provider child project (projectName sharedIp). Carries the full
+# project sentinel set so it is opened as a child project through a
+# projectFiles: slot. Its block is definition-only (not instantiated).
+projectName: sharedIp
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
+
+blocks:
+    sharedBlock:
+        desc: "block owned by the shared provider project"
+        hasMdl: true
+        hasRtl: false
