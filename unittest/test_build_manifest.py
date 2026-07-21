@@ -38,8 +38,7 @@ sys.path.insert(0, BASE_DIR)
 from config.createBuildManifest import _projectScopedSegment  # noqa: E402
 
 # pySocket: not migrated to yamlFormat: 2 (same skip as functional_layout_regression.sh).
-# mixed: excluded pending its registrar->module migration (blockFRegistrar.cpp lacks --parent).
-SKIP = {'pySocket', 'mixed'}
+SKIP = {'pySocket'}
 
 # C++ and SV glob roots the makefiles use today (a2c-systemc.mk PRJ_SRC_DIRS and
 # a2c-common.mk SV_GEN_FILES roots).
