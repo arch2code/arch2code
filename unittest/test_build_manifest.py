@@ -37,8 +37,9 @@ EXAMPLES_DIR = os.path.join(BASE_DIR, 'examples')
 sys.path.insert(0, BASE_DIR)
 from config.createBuildManifest import _projectScopedSegment  # noqa: E402
 
-# Same skip as functional_layout_regression.sh: not migrated to yamlFormat: 2.
-SKIP = {'pySocket'}
+# pySocket: not migrated to yamlFormat: 2 (same skip as functional_layout_regression.sh).
+# mixed: excluded pending its registrar->module migration (blockFRegistrar.cpp lacks --parent).
+SKIP = {'pySocket', 'mixed'}
 
 # C++ and SV glob roots the makefiles use today (a2c-systemc.mk PRJ_SRC_DIRS and
 # a2c-common.mk SV_GEN_FILES roots).
@@ -59,6 +60,28 @@ def find_source_dirs(repo_root, roots, exts):
     return found
 
 
+# Directory names that mark a project root: any functional glob root carries a
+# project's own source tree. A composed example nests one root per sub-project.
+PROJECT_ROOT_MARKERS = set(CPP_GLOB_ROOTS) | {r.split('/')[0] for r in SV_GLOB_ROOTS}
+
+
+def discover_project_roots(example_root):
+    """Composition-aware root set: the example root plus every nested
+    child-project root. A child-project root is a subdir that carries its own
+    functional glob tree (its own base/model/... beside a project file), which
+    is how a composed example embeds a sub-project. Discovered generically so
+    single-project examples yield only the example root (glob set unchanged)."""
+    roots = [example_root]
+    for dirpath, dirs, _files in os.walk(example_root):
+        # Prune build/cache mirrors so generated copies are not seen as roots.
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d != 'rundir']
+        if dirpath == example_root:
+            continue
+        if any(d in PROJECT_ROOT_MARKERS for d in dirs):
+            roots.append(os.path.abspath(dirpath))
+    return roots
+
+
 def parse_manifest(mk_path):
     vals = {}
     with open(mk_path) as f:
@@ -71,8 +94,17 @@ def parse_manifest(mk_path):
 
 def is_known_orphan(repo_root, d):
     rel = os.path.relpath(d, repo_root)
+    parts = rel.split(os.sep)
     # fwIpMain integration firmware lives in fw/src (no fileMap entry).
-    return rel == 'fw/src'
+    if rel == 'fw/src':
+        return True
+    # A composed child project's own verilated entry (its nested verif/vl_wrap
+    # sc_main + aggregator) is standalone-only; the composed sim runs a single
+    # top entry, so the child entry dir is on disk but absent from the manifest.
+    # The top project's own verif/vl_wrap IS carried, so exclude only a nested one.
+    if len(parts) > 2 and parts[-2:] == ['verif', 'vl_wrap']:
+        return True
+    return False
 
 
 def discover_examples():
@@ -105,8 +137,10 @@ def check_example(name):
     man = parse_manifest(mk)
     repo_root = exdir
 
-    glob_dirs = (find_source_dirs(repo_root, CPP_GLOB_ROOTS, CPP_EXTS) |
-                 find_source_dirs(repo_root, SV_GLOB_ROOTS, SV_EXTS))
+    glob_dirs = set()
+    for proot in discover_project_roots(repo_root):
+        glob_dirs |= find_source_dirs(proot, CPP_GLOB_ROOTS, CPP_EXTS)
+        glob_dirs |= find_source_dirs(proot, SV_GLOB_ROOTS, SV_EXTS)
     manifest_dirs = set(man.get('A2C_SC_SRC_DIRS', []) +
                         man.get('A2C_SV_SRC_DIRS', []) +
                         man.get('A2C_VL_WRAP_DIRS', []))
