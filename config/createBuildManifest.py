@@ -97,19 +97,35 @@ def create(prj):
             if containerKey not in blockByKey:
                 continue
             assemblerChildren.setdefault(containerKey, set()).add(inst['instanceTypeKey'])
-        for assemblerKey, childKeys in assemblerChildren.items():
+        # Owner-qualified foreign-Config headers, keyed (owningProject, child) ->
+        # module file stub. Computed once in projectCreate.calcForeignConfigHeaders
+        # under the same emit gate the config emitter uses, so the manifest never
+        # records a header the emitter would not produce. Dedup below because a
+        # project with two assembler blocks of one child hits the same pair twice.
+        foreignConfigHeaders = prj.config.getConfig('FOREIGNCONFIGHEADERS')
+        emittedForeign = set()
+        for assemblerKey, childKeys in sorted(assemblerChildren.items()):
             assemblerDir = blockByKey[assemblerKey]['dir']
             # The trampoline is parent-owned: it lands under the assembler's
             # directory, so it resolves under the assembler project layout.
             objLayout = layoutForContext(blockByKey[assemblerKey]['_context'])
-            for childKey in childKeys:
+            assemblerOwner = prj.contextOwningProject[blockByKey[assemblerKey]['_context']]
+            for childKey in sorted(childKeys):
                 childRow = blockByKey[childKey]
                 childCond = condRow(childRow)
                 for fileDef in registrarMap.values():
                     if not processYaml.fileMapCondMatch(fileDef, childCond):
                         continue
+                    fileStub = childRow['block']
+                    if fileDef.get('foreignConfig', False):
+                        if (assemblerOwner, childKey) not in foreignConfigHeaders:
+                            continue
+                        if (assemblerOwner, childKey) in emittedForeign:
+                            continue
+                        emittedForeign.add((assemblerOwner, childKey))
+                        fileStub = foreignConfigHeaders[(assemblerOwner, childKey)]
                     filePath = processYaml.expandNewModulePath(fileDef, assemblerDir,
-                                                               childRow['block'], childRow['block'],
+                                                               childRow['block'], fileStub,
                                                                objLayout, missingDirOk=True)
                     record(fileDef, filePath, objLayout)
 

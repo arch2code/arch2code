@@ -311,11 +311,18 @@ parameters:
         section: blocksparams
         field: blockparam
     value: const
+    # Declaring project of this binding row (the project owning the row's
+    # context file). Distinguishes two assembler projects that declare the
+    # same local (block, variant) so both survive as distinct Config identities
+    # in one composed database. Declared before blockVariantParam so it is
+    # populated when the combo key is built.
+    projectName: auto(variantProjectName)
     blockVariantParam:
       _key:
         block: required
         variant: required
         param: required
+        projectName: required
 
 connections: # custom handler
   _attribs: [flat]

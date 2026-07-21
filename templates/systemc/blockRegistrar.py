@@ -58,29 +58,25 @@ def render_default(args, prj, data):
     # actually selects, so there is no separate filter needed here.
     variants = sorted(data['variants'].keys())
 
-    # Per-variant Config descriptors. Each descriptor names the Config struct
-    # the lambda's templated block class instantiates against; when the
-    # descriptor's resolved values are empty, we fall back to the default Config
-    # name so the generated shape continues to link.
-    variantConfigName = dict()
-    for desc in data['variantConfigs']:
-        if desc['values']:
-            variantConfigName[desc['variant']] = desc['configName']
-        else:
-            variantConfigName[desc['variant']] = defaultConfig
-
-    # The registrar is a C++20 module interface unit whose module name is
-    # parent-qualified (`<project>.<parent>.<child>.registrar`), so the same
-    # child reused under two parents yields two distinct registrar modules that
-    # coexist in one binary. The parent identity rides on the param line
-    # (systemcGen threads `--parent` into data['parent']); a missing parent means
-    # the file was not rescaffolded and would emit a malformed module.
+    # Per-variant Config selection resolved against the parent's owning project:
+    # the trampoline binds the same Config the parent's own instances bind, so a
+    # variant the parent declares as a foreign (assembler-owned) variant of the
+    # reused child gets the owner-qualified struct. The view also supplies the
+    # foreign registrar-domain headers this TU must include.
     parentBlock = data.get('parent')
     if not parentBlock:
         printError(f"blockRegistrar: block '{blockName}' has no --parent on its "
                    f"GENERATED_CODE_PARAM line; re-run `make newmodule` (registrar "
                    f"mode) to rescaffold the registrar .cppm files.")
         exit(warningAndErrorReport())
+    registrarConfig = prj.getRegistrarConfigView(qualBlock, parentBlock)
+    variantDescriptors = registrarConfig['variantDescriptors']
+
+    # The registrar is a C++20 module interface unit whose module name is
+    # parent-qualified (`<project>.<parent>.<child>.registrar`), so the same
+    # child reused under two parents yields two distinct registrar modules that
+    # coexist in one binary. The parent identity rides on the param line
+    # (systemcGen threads `--parent` into data['parent']).
     projectName = prj.config.getConfig('PROJECTNAME')
     registrarModule = intf_gen_utils.cpp_registrar_module_name(projectName, parentBlock, blockName)
 
@@ -97,6 +93,11 @@ def render_default(args, prj, data):
     for context in sorted(data.get('configIncludeContext', {})):
         if context in data['includeFiles'].get('config_hdr', {}):
             out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
+    # Owner-qualified foreign-Config headers for variants the parent declares as
+    # foreign variants of the reused child; the lambda body spells those
+    # owner-qualified Config types.
+    for headerName in registrarConfig['foreignHeaders']:
+        out.append(f'#include "{headerName}"')
 
     # A non-templated container flagged isParameterizable is still a classic
     # header class; its declaration must be visible in the GMF because includes
@@ -144,7 +145,8 @@ def render_default(args, prj, data):
         def _target(variant):
             if not hasOwnParams:
                 return blockName
-            perVariantConfig = variantConfigName.get(variant, defaultConfig)
+            desc = variantDescriptors.get(variant)
+            perVariantConfig = intf_gen_utils.cpp_descriptor_config_name(desc, defaultConfig) if desc else defaultConfig
             return f'{blockName}<{perVariantConfig}>'
 
         if variants:

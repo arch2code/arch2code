@@ -30,7 +30,7 @@ if base_dir not in sys.path:
 
 import pysrc.arch2codeGlobals as g
 import pysrc.evalExpr as evalExpr
-from pysrc.processYaml import projectCreate, projectOpen
+from pysrc.processYaml import projectCreate, projectOpen, splitQualifiedKey
 from pysrc.systemcGen import genSystemC
 
 IP_TEST_PROJECT = os.path.join(
@@ -38,11 +38,25 @@ IP_TEST_PROJECT = os.path.join(
 
 # An eval constant and a non-eval constant from ip.yaml. The canonical form
 # carries fully qualified ${name/context} symbols, so it is context
-# independent and needs no re-scoping on reload.
-EVAL_CONST = 'IP_DATA_WIDTH_X2/ip/ip.yaml'
-EVAL_CANONICAL = '${IP_DATA_WIDTH/ip/ip.yaml} * 2'
+# independent and needs no re-scoping on reload. ip.yaml moved into a child
+# sub-project, so the context suffix on these keys is not literal; resolve keys
+# by unqualified name and derive the canonical from the resolved base-constant
+# key rather than hard-coding a brittle context.
+EVAL_CONST_NAME = 'IP_DATA_WIDTH_X2'
+EVAL_BASE_NAME = 'IP_DATA_WIDTH'
 EVAL_VALUE = 140
-NON_EVAL_CONST = 'IP_FIXED_NIBBLE_COUNT/ip/ip.yaml'
+NON_EVAL_CONST_NAME = 'IP_FIXED_NIBBLE_COUNT'
+
+
+def _resolve_const_key(constants, name):
+    """Return the single 'name/context' key in the constants view whose
+    unqualified name is `name`, so the assertion is independent of where ip.yaml
+    physically lives in the composed project tree."""
+    matches = [k for k in constants
+               if splitQualifiedKey(k, 'constant')[0] == name]
+    assert len(matches) == 1, \
+        f"expected exactly one constant named {name}, got {matches}"
+    return matches[0]
 
 
 def _build_fresh_db():
@@ -84,25 +98,33 @@ def test_canonical_reaches_context_view_without_evaluation():
         data = prj.getContextData(['ip'], genSystemC.dataTypeMappings)
         constants = data['constants']
 
-        eval_row = constants[EVAL_CONST]
-        if eval_row['evalCanonical'] != EVAL_CANONICAL:
-            print(f"  FAIL: {EVAL_CONST} canonical {eval_row['evalCanonical']!r}, "
-                  f"expected {EVAL_CANONICAL!r}")
+        eval_const = _resolve_const_key(constants, EVAL_CONST_NAME)
+        # The canonical embeds the fully qualified base-constant symbol; build
+        # the expected form from that constant's resolved key so the '* 2'
+        # structure is still asserted verbatim.
+        base_const = _resolve_const_key(constants, EVAL_BASE_NAME)
+        expected_canonical = '${' + base_const + '} * 2'
+        non_eval_const = _resolve_const_key(constants, NON_EVAL_CONST_NAME)
+
+        eval_row = constants[eval_const]
+        if eval_row['evalCanonical'] != expected_canonical:
+            print(f"  FAIL: {eval_const} canonical {eval_row['evalCanonical']!r}, "
+                  f"expected {expected_canonical!r}")
             return False
         # The numeric result is already persisted; the view exposes it
         # without re-evaluating the expression.
         if eval_row['value'] != EVAL_VALUE:
-            print(f"  FAIL: {EVAL_CONST} value {eval_row['value']}, "
+            print(f"  FAIL: {eval_const} value {eval_row['value']}, "
                   f"expected {EVAL_VALUE}")
             return False
 
-        non_eval_row = constants[NON_EVAL_CONST]
+        non_eval_row = constants[non_eval_const]
         if non_eval_row['evalCanonical'] != '':
-            print(f"  FAIL: non-eval {NON_EVAL_CONST} canonical "
+            print(f"  FAIL: non-eval {non_eval_const} canonical "
                   f"{non_eval_row['evalCanonical']!r}, expected ''")
             return False
 
-        print(f"  PASS: {EVAL_CONST} canonical={EVAL_CANONICAL!r} value={EVAL_VALUE}, "
+        print(f"  PASS: {eval_const} canonical={expected_canonical!r} value={EVAL_VALUE}, "
               f"non-eval canonical='' , no parse/evaluate at open")
         return True
     except AssertionError as exc:

@@ -16,6 +16,7 @@ import ip_top.base;
 #include "push_ack_port_thunker.h"
 #include "ipVariantConfig.h"
 #include "srcVariantConfig.h"
+#include "ip_test_ipVariantConfig.h"
 import shared_types;
 using namespace shared_types_ns;
 import ip_top;
@@ -57,14 +58,14 @@ public:
     std::shared_ptr<apbDecodeBase> uAPBDecode;
     std::shared_ptr<srcBase<srcDefaultConfig>> uSrc;
     std::shared_ptr<ipBase<ipVariant0Config>> uIp0;
-    std::shared_ptr<ipBase<ipVariant1Config>> uIp1;
+    std::shared_ptr<ipBase<ip_test_ipVariant1Config>> uIp1;
     std::shared_ptr<ipBridgeBase> uBridge;
 
     // cross-interface thunkers
     push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<srcDefaultConfig>> thunker_out0_uSrc;
     push_ack_port_thunker<srcOut0BoundarySt, ipDataSt<ipVariant0Config>> thunker_out0_uIp0;
     push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<srcDefaultConfig>> thunker_out1_uSrc;
-    push_ack_port_thunker<srcOut1BoundarySt, ipDataSt<ipVariant1Config>> thunker_out1_uIp1;
+    push_ack_port_thunker<srcOut1BoundarySt, ipDataSt<ip_test_ipVariant1Config>> thunker_out1_uIp1;
     push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<srcDefaultConfig>> thunker_out2_uSrc;
     push_ack_port_thunker<srcOut0BoundarySt, data8St> thunker_out2_uBridge;
     push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<srcDefaultConfig>> thunker_out3_uSrc;

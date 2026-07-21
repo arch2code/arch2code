@@ -15,6 +15,7 @@ import ipBridge.base;
 #include "apb_port_thunker.h"
 #include "push_ack_port_thunker.h"
 #include "ipVariantConfig.h"
+#include "ipBridge_ipVariantConfig.h"
 import ipBridge;
 using namespace ipBridge_ns;
 import shared_types;
@@ -39,13 +40,13 @@ public:
     //instances contained in block
     std::shared_ptr<bridgeApbDecodeBase> uBridgeAPBDecode;
     std::shared_ptr<ipBase<ipVariant0Config>> uBridgeIp0;
-    std::shared_ptr<ipBase<ipVariant1Config>> uBridgeIp1;
+    std::shared_ptr<ipBase<ipBridge_ipVariant1Config>> uBridgeIp1;
 
     // cross-interface thunkers
     apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uBridgeIp0_uBridgeIp0;
     apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uBridgeIp1_uBridgeIp1;
     push_ack_port_thunker<data8St, ipDataSt<ipVariant0Config>> thunker_uBridgeIp0;
-    push_ack_port_thunker<data70St, ipDataSt<ipVariant1Config>> thunker_uBridgeIp1;
+    push_ack_port_thunker<data70St, ipDataSt<ipBridge_ipVariant1Config>> thunker_uBridgeIp1;
 
     ipBridge(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ipBridge() override = default;

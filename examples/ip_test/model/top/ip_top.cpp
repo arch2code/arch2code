@@ -33,7 +33,7 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "ip_test")))
         ,uSrc(std::dynamic_pointer_cast<srcBase<srcDefaultConfig>>(instanceFactory::createInstance(name(), "uSrc", "src", "variantSrc0", "ip_test")))
         ,uIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0", "ip_test")))
-        ,uIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1", "ip_test")))
+        ,uIp1(std::dynamic_pointer_cast<ipBase<ip_test_ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1", "ip_test")))
         ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>(instanceFactory::createInstance(name(), "uBridge", "ipBridge", "", "ipBridge")))
         ,thunker_out0_uSrc("thunker_out0_uSrc", out0, uSrc->out0, name())
         ,thunker_out0_uIp0("thunker_out0_uIp0", out0, uIp0->ipDataIf, name())

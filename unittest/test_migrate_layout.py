@@ -30,6 +30,7 @@ import tempfile
 from _addrctl_helpers import base_dir, test_dir
 
 sys.path.insert(0, base_dir)
+from pysrc.processYaml import mergeProjectConfig  # noqa: E402
 from pysrc.migrateLayout import (  # noqa: E402
     LAYOUT_ALREADY_HIERARCHICAL,
     LAYOUT_FUNCTIONAL,
@@ -178,10 +179,20 @@ def test_decomposed_example_map(ok):
     return ok
 
 
+def _blockBaseExt(projFile):
+    """The blockBase file extension from the merged fileMap (the same base/pro/
+    user merge the generator runs). The merged fileMap now maps blockBase to a
+    module (.cppm), so the synthetic fixture and its expectations derive the ext
+    here instead of freezing a stale literal."""
+    _, _, _, _, mergedProj = mergeProjectConfig(projFile)
+    exts = list(mergedProj["fileGeneration"]["fileMap"]["blockBase"]["ext"].values())
+    return exts[0]
+
+
 def _synthProject(root):
     """Write a synthetic decomposed project exercising every classification
-    branch and return its project-file path. Two nodes ("" and sub); files are
-    classified by the merged base fileMap."""
+    branch and return (project-file path, blockBase ext). Two nodes ("" and
+    sub); files are classified by the merged base fileMap."""
     yamlRoot = os.path.join(root, "arch", "yaml")
     proj = os.path.join(yamlRoot, "project.yaml")
     _write(proj,
@@ -203,12 +214,14 @@ def _synthProject(root):
     _write(os.path.join(yamlRoot, "sub", "subblk.yaml"),
            "include:\n  - ../demo.yaml\nblocks:\n  subblk: {}\n")
     _write(os.path.join(root, "include", "make", "shared.mk"), "PROJECTNAME=demo\n")
-    # fully-generated (marker) -> delete: blockBase (base/*Base.h), package (rtl/*_package.sv)
-    _write(os.path.join(root, "base", "demoBase.h"), _MARKER)
-    _write(os.path.join(root, "base", "sub", "subblkBase.h"), _MARKER)
+    # fully-generated (marker) -> delete: blockBase (base/*Base.<ext>), package
+    # (rtl/*_package.sv). The blockBase ext follows the merged fileMap (.cppm).
+    ext = _blockBaseExt(proj)
+    _write(os.path.join(root, "base", f"demoBase.{ext}"), _MARKER)
+    _write(os.path.join(root, "base", "sub", f"subblkBase.{ext}"), _MARKER)
     _write(os.path.join(root, "rtl", "demo_package.sv"), _MARKER)
     # name-matched fully-generated file WITHOUT the marker -> manual (kept)
-    _write(os.path.join(root, "base", "handBase.h"), "struct hand {};\n")
+    _write(os.path.join(root, "base", f"handBase.{ext}"), "struct hand {};\n")
     # user-editable (block / rtlModule): root node stays, sub node moves
     _write(os.path.join(root, "model", "demo.cpp"), _MARKER)
     _write(os.path.join(root, "model", "sub", "subblk.cpp"), _MARKER)
@@ -218,7 +231,7 @@ def _synthProject(root):
     _write(os.path.join(root, "verif", "vl_wrap", "sc_main.cpp"), "int main(){}\n")
     _write(os.path.join(root, "verif", "vl_wrap", "vl_wrap.cpp"), _MARKER)
     _write(os.path.join(root, "fw", "fwIpMain.cpp"), "void fw(){}\n")
-    return proj
+    return proj, ext
 
 
 def test_orphan_and_guard_map(ok):
@@ -231,7 +244,7 @@ def test_orphan_and_guard_map(ok):
     tmp = tempfile.mkdtemp(prefix="layoutmap_orphan_")
     try:
         root = os.path.join(tmp, "demo")
-        proj = _synthProject(root)
+        proj, blockBaseExt = _synthProject(root)
 
         before = _treeSnapshot(root)
         r = migrateLayoutInProject(proj)
@@ -261,7 +274,8 @@ def test_orphan_and_guard_map(ok):
                      })
         ok &= _check("fully-generated types deleted (blockBase, package)",
                      _relDeletes(r, rt) == {
-                         "base/demoBase.h", "base/sub/subblkBase.h",
+                         f"base/demoBase.{blockBaseExt}",
+                         f"base/sub/subblkBase.{blockBaseExt}",
                          "rtl/demo_package.sv"})
         # User-editable source: root node stays in place, sub node relocates.
         srcMoves = _moveSet(r, MOVE_SOURCE, rt)
@@ -275,10 +289,10 @@ def test_orphan_and_guard_map(ok):
                      })
         ok &= _check("unguarded name-matched fully-generated file reported manual",
                      any(i.kind == TODO_UNGENERATED_FILE and
-                         "handBase.h" in i.location for i in r.manual))
+                         f"handBase.{blockBaseExt}" in i.location for i in r.manual))
         ok &= _check("unguarded file not deleted, not moved",
-                     "base/handBase.h" not in _relDeletes(r, rt) and
-                     not any("handBase.h" in s for s, _ in srcMoves))
+                     f"base/handBase.{blockBaseExt}" not in _relDeletes(r, rt) and
+                     not any(f"handBase.{blockBaseExt}" in s for s, _ in srcMoves))
         ok &= _check("synthetic dry-run wrote nothing",
                      _treeSnapshot(root) == before)
     finally:
@@ -379,7 +393,7 @@ def test_apply_orphan_and_guard(ok):
     tmp = tempfile.mkdtemp(prefix="layoutapply_orphan_")
     try:
         root = os.path.join(tmp, "demo")
-        proj = _synthProject(root)
+        proj, blockBaseExt = _synthProject(root)
 
         r = migrateLayoutInProject(proj, write=True)
         rt = r.projectRoot
@@ -404,7 +418,7 @@ def test_apply_orphan_and_guard(ok):
                      os.path.isfile(os.path.join(rt, "sub", "yaml", "subblk.yaml")))
 
         ok &= _check("fully-generated deletes removed",
-                     not os.path.exists(os.path.join(rt, "base", "demoBase.h")) and
+                     not os.path.exists(os.path.join(rt, "base", f"demoBase.{blockBaseExt}")) and
                      not os.path.exists(os.path.join(rt, "rtl", "demo_package.sv")))
         ok &= _check("root-node user source kept in place",
                      os.path.isfile(os.path.join(rt, "model", "demo.cpp")) and
@@ -413,11 +427,11 @@ def test_apply_orphan_and_guard(ok):
                      os.path.isfile(os.path.join(rt, "sub", "model", "subblk.cpp")) and
                      os.path.isfile(os.path.join(rt, "sub", "rtl", "subblk.sv")))
         ok &= _check("unguarded name-matched file left in place, dir kept",
-                     os.path.isfile(os.path.join(rt, "base", "handBase.h")) and
+                     os.path.isfile(os.path.join(rt, "base", f"handBase.{blockBaseExt}")) and
                      os.path.isdir(os.path.join(rt, "base")))
         ok &= _check("unguarded file reported manual",
                      any(i.kind == TODO_UNGENERATED_FILE and
-                         "handBase.h" in i.location for i in r.manual))
+                         f"handBase.{blockBaseExt}" in i.location for i in r.manual))
 
         # Idempotent even though an unguarded file remains (layout is hierarchical).
         movedProj = os.path.join(rt, "prj", "yaml", "demoProject.yaml")

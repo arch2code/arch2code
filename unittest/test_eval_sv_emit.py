@@ -30,15 +30,22 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 import pysrc.arch2codeGlobals as g
-from pysrc.processYaml import projectCreate, projectOpen
+from pysrc.processYaml import projectCreate, projectOpen, qualifiedKeyContext
 from templates.systemVerilog import package
 
 IP_TEST_PROJECT = os.path.join(
     base_dir, 'examples', 'ip_test', 'arch', 'yaml', 'project.yaml')
 
-IP_BLOCK = 'ip/ip/ip.yaml'
-EVAL_CONST_KEY = 'IP_DATA_WIDTH_X2/ip/ip.yaml'
 EXPECTED_LOCALPARAM = 'localparam IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2;'
+
+
+def _ip_qual(prj, name):
+    """Build a '<name>/<ipContext>' qualified key for a constant/type declared
+    in ip.yaml. ip.yaml moved into a child sub-project so its context suffix is
+    not literal; derive it from the resolved ip block key (the block and the
+    constants/types it declares share the one file context)."""
+    ctx = qualifiedKeyContext('ip', prj.getQualBlock('ip'), 'block')
+    return f"{name}/{ctx}"
 
 
 def test_emit_sv_canonical_translation():
@@ -87,17 +94,23 @@ def _build_fresh_db():
 
 
 def _build_temp_project(ip_yaml_edit):
-    src_dir = os.path.join(base_dir, 'examples', 'ip_test', 'arch', 'yaml')
+    # ip.yaml now lives in the referenced child sub-project (examples/ip_test/ip),
+    # and the parent project.yaml pulls that child (plus common/bridge) in by
+    # relative paths, so copy the whole ip_test composition (preserving its
+    # internal symlinks, dropping build artifacts) and edit the child's ip.yaml.
+    src_root = os.path.join(base_dir, 'examples', 'ip_test')
     temp_root = tempfile.mkdtemp(prefix='eval_sv_emit_', dir=test_dir)
     try:
-        dst_dir = os.path.join(temp_root, 'arch', 'yaml')
-        shutil.copytree(src_dir, dst_dir)
-        ip_yaml = os.path.join(dst_dir, 'ip', 'ip.yaml')
+        dst_root = os.path.join(temp_root, 'ip_test')
+        shutil.copytree(src_root, dst_root, symlinks=True,
+                        ignore=shutil.ignore_patterns('build', '.gen', 'obj_dir',
+                                                       'rundir', '*.db', '.*.db'))
+        ip_yaml = os.path.join(dst_root, 'ip', 'arch', 'yaml', 'ip', 'ip.yaml')
         with open(ip_yaml, 'r', encoding='utf-8') as f:
             text = f.read()
         with open(ip_yaml, 'w', encoding='utf-8') as f:
             f.write(ip_yaml_edit(text))
-        return temp_root, os.path.join(dst_dir, 'project.yaml')
+        return temp_root, os.path.join(dst_root, 'arch', 'yaml', 'project.yaml')
     except BaseException:
         # Fixture build failed after mkdtemp; drop the copied tree so a failing
         # run cannot leak an eval_sv_emit_* directory into the unittest dir.
@@ -150,20 +163,22 @@ def test_localparam_emitted_symbolic_per_module():
     db_path = _build_fresh_db()
     try:
         prj = projectOpen(db_path)
+        ip_block = prj.getQualBlock('ip')
+        eval_const_key = _ip_qual(prj, 'IP_DATA_WIDTH_X2')
 
         # The eval-derived parameterizable constant is selected into the block's
         # module-local declaration set as a 'constant' decl.
-        block_data = prj.getBlockData(IP_BLOCK)
+        block_data = prj.getBlockData(ip_block)
         const_decls = [d for d in block_data['parameterizedDecls']
                        if d['declKind'] == 'constant']
-        if EVAL_CONST_KEY not in [d['declKey'] for d in const_decls]:
-            print(f"  FAIL: block {IP_BLOCK} constant decls "
-                  f"{[d['declKey'] for d in const_decls]} did not include {EVAL_CONST_KEY!r}")
+        if eval_const_key not in [d['declKey'] for d in const_decls]:
+            print(f"  FAIL: block {ip_block} constant decls "
+                  f"{[d['declKey'] for d in const_decls]} did not include {eval_const_key!r}")
             return False
 
         # Render the module-local declaration lines exactly as the SV module
         # templates do, then locate the eval-derived localparam line.
-        params = prj.data['blocks'][IP_BLOCK]['params']
+        params = prj.data['blocks'][ip_block]['params']
         lines = package.parameterizedDeclLines(
             block_data['parameterizedDecls'], prj, params)
         lines = [ln['line'] for ln in lines]
@@ -192,8 +207,8 @@ def test_localparam_emitted_symbolic_per_module():
         # The constant must NOT be emitted into the package localparams (SV
         # cannot parameterize a package); the package render filters on exactly
         # this isParameterizable flag, so locking it here locks the exclusion.
-        if not prj.data['constants'][EVAL_CONST_KEY]['isParameterizable']:
-            print(f"  FAIL: {EVAL_CONST_KEY} not isParameterizable, so the package "
+        if not prj.data['constants'][eval_const_key]['isParameterizable']:
+            print(f"  FAIL: {eval_const_key} not isParameterizable, so the package "
                   f"would emit it instead of the module")
             return False
 
@@ -226,9 +241,10 @@ def test_dependency_closure_orders_derived_constant_chain():
     db_path = _build_fresh_db_from_project(project_yaml)
     try:
         prj = projectOpen(db_path)
-        block_data = prj.getBlockData(IP_BLOCK)
+        ip_block = prj.getQualBlock('ip')
+        block_data = prj.getBlockData(ip_block)
         lines = package.parameterizedDeclLines(
-            block_data['parameterizedDecls'], prj, prj.data['blocks'][IP_BLOCK]['params'])
+            block_data['parameterizedDecls'], prj, prj.data['blocks'][ip_block]['params'])
         lines = [ln['line'] for ln in lines]
         chain = [ln for ln in lines if ln.startswith('localparam IP_DATA_WIDTH_X')]
         expected = [
@@ -261,10 +277,11 @@ def test_type_using_eval_derived_constant_is_selected():
     db_path = _build_fresh_db()
     try:
         prj = projectOpen(db_path)
-        block_data = prj.getBlockData(IP_BLOCK)
+        ip_block = prj.getQualBlock('ip')
+        block_data = prj.getBlockData(ip_block)
         decl_keys = [(d['declKind'], d['declKey']) for d in block_data['parameterizedDecls']]
-        expected_type = ('type', 'ipDerivedWidthT/ip/ip.yaml')
-        expected_const = ('constant', 'IP_DATA_WIDTH_X4/ip/ip.yaml')
+        expected_type = ('type', _ip_qual(prj, 'ipDerivedWidthT'))
+        expected_const = ('constant', _ip_qual(prj, 'IP_DATA_WIDTH_X4'))
         if expected_const not in decl_keys or expected_type not in decl_keys:
             print(f"  FAIL: missing closure declarations; got {decl_keys}")
             return False
@@ -272,7 +289,7 @@ def test_type_using_eval_derived_constant_is_selected():
             print(f"  FAIL: {expected_const} appears after {expected_type}: {decl_keys}")
             return False
         lines = package.parameterizedDeclLines(
-            block_data['parameterizedDecls'], prj, prj.data['blocks'][IP_BLOCK]['params'])
+            block_data['parameterizedDecls'], prj, prj.data['blocks'][ip_block]['params'])
         lines = [ln['line'] for ln in lines]
         typedef = next((ln for ln in lines if ' ipDerivedWidthT;' in ln), '')
         if "IP_DATA_WIDTH_X4-1:0" not in typedef:
@@ -308,9 +325,10 @@ def test_struct_array_size_uses_eval_derived_localparam():
     db_path = _build_fresh_db_from_project(project_yaml)
     try:
         prj = projectOpen(db_path)
-        block_data = prj.getBlockData(IP_BLOCK)
+        ip_block = prj.getQualBlock('ip')
+        block_data = prj.getBlockData(ip_block)
         lines = package.parameterizedDeclLines(
-            block_data['parameterizedDecls'], prj, prj.data['blocks'][IP_BLOCK]['params'])
+            block_data['parameterizedDecls'], prj, prj.data['blocks'][ip_block]['params'])
         lines = [ln['line'] for ln in lines]
         sample_line = next((ln for ln in lines if ' derivedSamples;' in ln), '')
         expected = 'ipDataT [IP_DATA_WIDTH_X4-1:0] derivedSamples;'
@@ -375,15 +393,16 @@ def test_foreign_param_closure_not_selected_for_block():
     db_path = _build_fresh_db_from_project(project_yaml)
     try:
         prj = projectOpen(db_path)
-        block_data = prj.getBlockData(IP_BLOCK)
+        ip_block = prj.getQualBlock('ip')
+        block_data = prj.getBlockData(ip_block)
         decl_keys = {(d['declKind'], d['declKey']) for d in block_data['parameterizedDecls']}
         forbidden = {
-            ('constant', 'FOREIGN_WIDTH_X2/ip/ip.yaml'),
-            ('type', 'foreignWidthT/ip/ip.yaml'),
+            ('constant', _ip_qual(prj, 'FOREIGN_WIDTH_X2')),
+            ('type', _ip_qual(prj, 'foreignWidthT')),
         }
         present = sorted(decl_keys & forbidden)
         if present:
-            print(f"  FAIL: foreign-param declarations selected for {IP_BLOCK}: {present}")
+            print(f"  FAIL: foreign-param declarations selected for {ip_block}: {present}")
             return False
         print("  PASS: foreign-param closure stayed out of ip's local declarations")
         return True

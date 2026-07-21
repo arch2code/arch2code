@@ -41,6 +41,8 @@ def render(args, prj, data):
             return(blockModule_cppm(args, prj, data))
         case 'blockRegistrar_cppm':
             return(blockRegistrar_cppm(args, prj, data))
+        case 'foreignConfig_hdr':
+            return(foreignConfig_hdr(args, prj, data))
         case 'rtlModule_sv':
             if isRegHandler:
                 return(rtlModuleRegs(args, prj, data))
@@ -187,6 +189,23 @@ def blockRegistrar_cppm(args, prj, data):
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]}\n')
     out.append('// GENERATED_CODE_BEGIN --template=blockRegistrar\n')
     out.append('// GENERATED_CODE_END\n')
+    return("".join(out))
+
+# Owner-qualified foreign per-variant Config header for a reused child. The
+# whole struct set is emitted by templates/systemc/config.py (foreign mode,
+# keyed off --parent) into the single generated region. The header basename and
+# guard are owner-qualified (<project>_<child>VariantConfig.h).
+def foreignConfig_hdr(args, prj, data):
+    guard = data["headerName"].replace('.', '_').upper()
+    out = list()
+    out.append(f'#ifndef {guard}\n')
+    out.append(f'#define {guard}\n\n')
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append('#include <cstdint>\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=config\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append(f'#endif //{guard}\n')
     return("".join(out))
 
 def blockRegs_hdr(args, prj, data):

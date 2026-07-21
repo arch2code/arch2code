@@ -149,7 +149,7 @@ def render_default(args, prj, data):
         # Config-strict interface link from a multi-variant parent to a
         # parameterized child is therefore unsupported; use a single-variant
         # child, a Config-agnostic interface, or a thunker bind.
-        instCfg = instData['instanceConfigArg']
+        instCfg = intf_gen_utils.cpp_config_arg(instData['instanceConfigSelection'])
         out.append( indent + f'std::shared_ptr<{ instData["instanceType"] }Base{instCfg}> { instData["instance"] };')
 
     # Cross-interface thunker member declarations. Emitted after the

@@ -14,10 +14,15 @@ message):
 - A variant binding that exceeds its backing constant's maxValue (worst-case
   sizing would under-allocate).
 - A connection endpoint block reached through a parameterized interface that
-  does not itself carry the interface payload's backing param. Three cells:
-  the dst endpoint unparameterized, the dst endpoint parameterized but with the
-  wrong backing param (so both error-reason branches are covered), and the src
-  endpoint short of the param (so both ends are shown to be checked).
+  cannot size the interface payload's backing param. Three cells:
+  * dst endpoint that declares no params: at all - a parameterizable structure
+    on its own surface with no template params, rejected by the own-surface
+    check (which fires before the per-interface endpoint diagnostic);
+  * dst endpoint that does declare params: but the wrong one (not the payload's
+    backing param) - it clears the own-surface check and reaches the endpoint
+    diagnostic, which reports the missing required parameter;
+  * src endpoint that declares no params: - the own-surface check applies to the
+    src end too, not only the consumer.
 
 Positive cases (must succeed):
 - A parameterized interface whose two connected endpoints both carry the
@@ -259,8 +264,13 @@ blocks:
 
 
 def test_param_interface_endpoint_missing_param():
-    # consumer carries a port on the parameterized dataIf but does not declare
-    # WIDTH in its own params:, so its module cannot size the payload. Error.
+    # consumer carries a port on the parameterized dataIf but declares no
+    # params: at all. A parameterizable structure on a block's own surface makes
+    # the block's shape parameter-dependent, so it must be declared as a
+    # template (params:) block. The own-surface check fires first here, before
+    # the per-interface endpoint diagnostic (which is covered by
+    # test_param_interface_endpoint_wrong_param, where the block does declare
+    # params: but not the one the interface needs).
     arch = _C36_COMMON + """  consumer:
     desc: "endpoint on a parameterized interface without the backing param"
     ports:
@@ -281,8 +291,8 @@ parameters:
 """
     return _expect_error(
         arch,
-        ["dataIf", "uCons", "missing WIDTH"],
-        "parameterized interface endpoint missing the backing param")
+        ["consumer", "own surface", "declares no params"],
+        "parameterized interface endpoint declares no params (own-surface)")
 
 
 def test_param_interface_both_endpoints_parameterized():
@@ -371,9 +381,10 @@ parameters:
 
 
 def test_param_interface_src_endpoint_missing_param():
-    # The shortfall is on the src (producer) end this time: validation checks
-    # both endpoints, not only the consumer. The consumer carries WIDTH (so it
-    # is not an orphan), the producer does not.
+    # The shortfall is on the src (producer) end this time: the producer has a
+    # parameterizable port on its own surface but declares no params: at all,
+    # so the own-surface check rejects it. This shows the check applies to the
+    # src endpoint too, not only the consumer. The consumer carries WIDTH.
     arch = """ipParameters:
   constants:
     WIDTH: { value: 8, maxValue: 16, desc: "backing width" }
@@ -417,8 +428,8 @@ parameters:
 """
     return _expect_error(
         arch,
-        ["dataIf", "uProd", "missing WIDTH"],
-        "parameterized interface src endpoint missing the backing param")
+        ["producer", "own surface", "declares no params"],
+        "parameterized interface src endpoint declares no params (own-surface)")
 
 
 def test_nonparam_interface_endpoints_ok():

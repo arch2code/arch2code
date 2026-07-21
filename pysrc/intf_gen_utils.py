@@ -5,6 +5,7 @@
 LEGACY_COMPAT_MODE = False
 
 from pysrc.arch2codeHelper import printError
+import pysrc.processYaml as processYaml
 
 def get_set_intf_types(ifType, block_data):
     """Get set of interface names, resolving any type aliases
@@ -331,7 +332,7 @@ def resolve_dut_variant_selection(block_data, variant):
     for desc in variant_configs:
         if desc['variant'] != variant:
             continue
-        config_name = desc['configName'] if desc['values'] else default_config
+        config_name = cpp_descriptor_config_name(desc, default_config)
         return {'configName': config_name, 'factoryVariant': variant}
     if not variant:
         printError(
@@ -358,8 +359,10 @@ def _resolve_cross_interface_ends(conn_data, prj):
 def cpp_module_name(includeName):
     # C++20 module name spelling for a context's project-owned include identity.
     # The identity is supplied by projectCreate/projectOpen; this helper only
-    # sanitizes it into a legal module-name token.
-    return includeName.replace('-', '_').replace('.', '_')
+    # sanitizes it into a legal module-name token. The sanitization primitive is
+    # owned by core (processYaml.sanitizeModuleToken) so the template layer and
+    # the projectCreate foreign-Config stub cannot drift.
+    return processYaml.sanitizeModuleToken(includeName)
 
 def cpp_block_module_name(blockName):
     # C++20 module name for a parameterizable block's own interface unit
@@ -388,6 +391,53 @@ def cpp_registrar_module_name(projectName, parentBlock, childBlock):
     # formats the C++ module spelling. Each token is sanitized the same way as
     # cpp_module_name; the dotted structure and `.registrar` suffix are literal.
     return f'{cpp_module_name(projectName)}.{cpp_module_name(parentBlock)}.{cpp_module_name(childBlock)}.registrar'
+
+def cpp_variant_config_name(projectName, blockName, variant, isForeign=False):
+    # C++ struct name for a per-variant Config, spelled entirely in the template
+    # layer from the neutral (project, block, variant, isForeign) components a
+    # projectOpen view supplies. The bare tail `<block><Variant>Config` is the
+    # same-project spelling; a foreign (assembler-declared) variant is owner-
+    # qualified as `<project>_<block><Variant>Config` so two projects' same-named
+    # local variant of one reused child are DISTINCT C++ types. On a monolithic
+    # build nothing is foreign, so the bare form is emitted (byte-identical).
+    if variant == '':
+        bare = f'{blockName}Config'
+    else:
+        bare = f'{blockName}{variant[:1].upper()}{variant[1:]}Config'
+    if isForeign:
+        return f'{cpp_module_name(projectName)}_{bare}'
+    return bare
+
+def cpp_descriptor_config_name(desc, defaultConfig):
+    # Emitted C++ struct name for one neutral per-variant descriptor from
+    # _buildVariantConfigDescriptors. A descriptor with no Config fields, or one
+    # whose value signature collapses onto the block's shared context default,
+    # emits AS `defaultConfig`; otherwise it spells the struct of its (possibly
+    # deduplicated) emit variant.
+    if not desc['values'] or desc['useDefault']:
+        return defaultConfig
+    return cpp_variant_config_name(desc['declaringProject'], desc['block'],
+                                   desc['emitVariant'], desc['isForeign'])
+
+def cpp_config_struct_name(configSelection):
+    # Emitted C++ Config struct name for a neutral per-instance selection from
+    # _resolveInstanceConfigFields: '' when the block is not parameterizable, the
+    # selected descriptor's struct when it binds a per-variant override, else the
+    # block's default Config.
+    if not configSelection['isParameterizable']:
+        return ''
+    desc = configSelection['descriptor']
+    if desc is None:
+        return configSelection['defaultConfig']
+    return cpp_descriptor_config_name(desc, configSelection['defaultConfig'])
+
+def cpp_config_arg(configSelection):
+    # SystemC template-argument suffix (`<Config>`) for a neutral per-instance
+    # selection: empty when the child block is not a class template (no own
+    # params), even if parameterizable, since `<X>` at a cast site would name a
+    # non-template class.
+    name = cpp_config_struct_name(configSelection)
+    return f'<{name}>' if configSelection['hasOwnParams'] and name else ''
 
 def cpp_namespace_name(includeName):
     return f'{cpp_module_name(includeName)}_ns'
@@ -486,6 +536,12 @@ def sc_class_dependency_includes(args, prj, data):
     for context in sorted(data.get('configIncludeContext', {})):
         if context in data['includeFiles'].get('config_hdr', {}):
             out.append(('include', f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"'))
+    # Owner-qualified foreign-Config headers for child instances bound to an
+    # assembler-declared variant. These live in the parent's registrar domain
+    # (a distinct include surface from the child-owned context config headers)
+    # and are reachable through the manifest's registrar directories.
+    for headerName in sorted(data.get('foreignConfigHeaders', {})):
+        out.append(('include', f'#include "{headerName}"'))
     fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
     for context in data['classIncludeContext']:
         if context in data['includeFiles'].get(fileMapKey, {}):
@@ -644,11 +700,14 @@ def sc_gen_block_channels(conn_data, prj, block_data):
     out['default_value'] = conn_data.get('defaultValue', 0)
 
     # The channel's struct template arguments are typed by the connected
-    # child's per-variant Config. The override is None when no end of the
-    # connection is parameterizable; in that case sc_struct_type_name falls
-    # back to its `<Config>` placeholder, which is appropriate inside leaf
-    # parameterizable parents that remain class templates.
-    config_override = conn_data['configOverride']
+    # child's per-variant Config. `configOverride` is the winning end's neutral
+    # Config selection (or None when no end of the connection is
+    # parameterizable); spell it here into the C++ struct name. When None,
+    # sc_struct_type_name falls back to its `<Config>` placeholder, which is
+    # appropriate inside leaf parameterizable parents that remain class
+    # templates.
+    config_override_selection = conn_data['configOverride']
+    config_override = cpp_config_struct_name(config_override_selection) if config_override_selection else None
     out['config_override'] = config_override
 
     # Parameter
@@ -694,6 +753,14 @@ def sc_declare_channels(data, prj, indent, block_data):
     return out
 
 
+def _payload_config_name(payload):
+    # Spell the C++ Config struct name for a thunker payload's neutral Config
+    # selection. buildThunkerView sets 'configSelection' on every payload; its value
+    # is None for a non-parameterizable side, which spells to empty.
+    configSelection = payload['configSelection']
+    return cpp_config_struct_name(configSelection) if configSelection else ''
+
+
 def _thunker_member_type(flagged, prj):
     # View creation resolves protocol payload ordering and Config ownership.
     # Keep this helper limited to SystemC spelling of that already-valid view.
@@ -704,7 +771,7 @@ def _thunker_member_type(flagged, prj):
         sc_struct_type_name(payload.get('structure', ''),
                             payload.get('structureKey', ''),
                             prj,
-                            config_override=payload.get('configName') or None)
+                            config_override=(_payload_config_name(payload) or None))
         for payload in payloads
     ]
     return f"{channel_type}_port_thunker<{', '.join(args)}>"

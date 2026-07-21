@@ -42,10 +42,7 @@ def render_sc(args, prj, data):
     variantConfigForName = dict()
     if useOwnVariantConfig:
         for desc in data['variantConfigs']:
-            if desc['values']:
-                variantConfigForName[desc['variant']] = desc['configName']
-            else:
-                variantConfigForName[desc['variant']] = defaultConfig
+            variantConfigForName[desc['variant']] = intf_gen_utils.cpp_descriptor_config_name(desc, defaultConfig)
     wrapperCfgTemplateArg = 'Config' if useOwnVariantConfig else ''
     # The wrapper class is genuinely emitted as a class template only when
     # variants exist to specialize it (otherwise the non-templated branch of

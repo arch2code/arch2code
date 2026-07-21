@@ -3,7 +3,7 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_context_include_lines
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_context_include_lines, cpp_config_arg
 
 
 def _tb_context_import_lines(prj, data):
@@ -128,7 +128,7 @@ def ext_sec_init(args, prj, data):
         # Child instance casts target the child's per-variant Config, not the
         # parent's defaultConfig. Empty descriptors fall back to the child's
         # default Config.
-        instCfg = data_['instanceConfigArg']
+        instCfg = cpp_config_arg(data_['instanceConfigSelection'])
         # Generated createInstance passes the variant string and the child's
         # factory-lookup projectName; the factory key is
         # `(blockType, variant, projectName)`. `createInstanceProjectName`
@@ -261,7 +261,7 @@ def ext_sec_header(args, prj, data):
     external_insts = [v for v in data['subBlockInstances'].values() ]
     for data_ in external_insts:
         # Per-instance Config for parameterizable children.
-        instCfg = data_['instanceConfigArg']
+        instCfg = cpp_config_arg(data_['instanceConfigSelection'])
         ext_inst_decl_s.append(f'std::shared_ptr<{data_["instanceType"]}Base{instCfg}> {data_["instance"]};')
 
     # Channel types derive from the connected child's per-variant Config
@@ -292,10 +292,13 @@ def ext_sec_header(args, prj, data):
         synth_conn['interfaceType'] = intfInfo['interfaceType']
         synth_conn['interfaceName'] = intfInfo['interface']
         synth_conn['maxTransferSize'] = intfInfo.get('maxTransferSize', '0')
+        # Neutral Config selection of the contained instance whose port this
+        # local-only channel serves; sc_gen_block_channels spells the struct
+        # name. None when the instance is absent or not parameterizable.
         synth_conn['configOverride'] = (
             data.get('subBlockInstances', {})
                 .get(value.get('instanceKey', ''), {})
-                .get('instanceConfigName', '')
+                .get('instanceConfigSelection')
         )
         chnlData = sc_gen_block_channels(synth_conn, prj, data)
         chnl_decl = chnlData["channel_decl"]
@@ -347,7 +350,7 @@ def refactor_tbExternal(args, prj, data):
         # DUT is an excluded instance of a separate testbench-top block, the
         # template argument is that instance's Config, not the (possibly
         # param-less) testbench-top block's cfg from _tb_selection.
-        data['dutInvertedCfg'] = dutInst['instanceConfigArg']
+        data['dutInvertedCfg'] = cpp_config_arg(dutInst['instanceConfigSelection'])
     else:
         # No excluded instance: `data` already is the DUT block, so the
         # Inverted base cfg comes from _tb_selection (sentinel None).

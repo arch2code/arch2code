@@ -25,7 +25,7 @@ ipBridge::ipBridge(sc_module_name blockName, const char * variant, blockBaseMode
         ,apbReg_uBridgeIp1("ip_apbReg_uBridgeIp1", "bridgeApbDecode")
         ,uBridgeAPBDecode(std::dynamic_pointer_cast<bridgeApbDecodeBase>(instanceFactory::createInstance(name(), "uBridgeAPBDecode", "bridgeApbDecode", "", "ipBridge")))
         ,uBridgeIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uBridgeIp0", "ip", "variant0", "ipBridge")))
-        ,uBridgeIp1(std::dynamic_pointer_cast<ipBase<ipVariant1Config>>(instanceFactory::createInstance(name(), "uBridgeIp1", "ip", "variant1", "ipBridge")))
+        ,uBridgeIp1(std::dynamic_pointer_cast<ipBase<ipBridge_ipVariant1Config>>(instanceFactory::createInstance(name(), "uBridgeIp1", "ip", "variant1", "ipBridge")))
         ,thunker_apbReg_uBridgeIp0_uBridgeIp0("thunker_apbReg_uBridgeIp0_uBridgeIp0", apbReg_uBridgeIp0, uBridgeIp0->regs, name())
         ,thunker_apbReg_uBridgeIp1_uBridgeIp1("thunker_apbReg_uBridgeIp1_uBridgeIp1", apbReg_uBridgeIp1, uBridgeIp1->regs, name())
         ,thunker_uBridgeIp0("thunker_uBridgeIp0", data8In, uBridgeIp0->ipDataIf, name())

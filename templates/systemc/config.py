@@ -1,10 +1,56 @@
 import pysrc.emissionUtils as emissionUtils
+from pysrc.intf_gen_utils import cpp_variant_config_name
 
 # args from generator line
 # prj object
 # data set dict
 def render(args, prj, data):
+    # A registrar-domain foreign-Config header carries a --parent on its param
+    # line (block+parent mode); the context-mode default/same-project header does
+    # not. Foreign mode emits only the owner-qualified assembler-declared structs.
+    if 'parent' in data:
+        return(foreignConfig(args, prj, data))
     return(includeConfig(args, prj, data))
+
+
+def foreignConfig(args, prj, data):
+    # Owner-qualified per-variant Config structs for the reused child block
+    # `data['qualBlock']`, declared foreign by the parent `data['parent']`'s
+    # owning project. Member layout mirrors the child's context config header
+    # (base parameterizable members plus eval-derived members emitted
+    # symbolically); only the struct name is owner-qualified.
+    view = prj.getForeignConfigData(data['qualBlock'], data['parent'])
+    descriptors = view['descriptors']
+    if not descriptors:
+        return ""
+    params = view['params']
+    constants_by_name = {value['constant']: value for value in params}
+    block_param_synthetic = view['blockParamSynthetic']
+    out = []
+    out.append('#include "clog2.h"')
+    out.append("")
+    # getForeignConfigData yields only canonical descriptors (duplicateOf is
+    # None) whose struct name is unique, so each struct is emitted exactly once.
+    # The name is spelled here in the template layer from the descriptor's
+    # neutral (project, block, variant) components.
+    for desc in descriptors:
+        structName = cpp_variant_config_name(desc['declaringProject'], desc['block'],
+                                             desc['emitVariant'], desc['isForeign'])
+        out.append(f"struct {structName} {{")
+        variantSpelling = _configSymSpelling(prj, set(desc['values'].keys()))
+        for constName, resolved in desc['values'].items():
+            if constName in constants_by_name:
+                constData = constants_by_name[constName]
+                rhs = _configMemberRhs(constData, resolved, variantSpelling)
+            else:
+                constData = block_param_synthetic[constName]
+                constData = dict(constData, value=resolved)
+                rhs = resolved
+            type_str = _config_type(constData)
+            out.append(f"    static constexpr {type_str} {constName} = {rhs};")
+        out.append("};")
+        out.append("")
+    return("\n".join(out))
 
 
 def emitCStyleCanonical(evalCanonical, symSpelling):
@@ -83,7 +129,10 @@ def includeConfig(args, prj, data):
             continue
         if not desc['values']:
             continue
-        structName = desc['configName']
+        # Canonical, non-empty descriptor: spell its struct name in the template
+        # layer from the neutral components.
+        structName = cpp_variant_config_name(desc['declaringProject'], desc['block'],
+                                             desc['emitVariant'], desc['isForeign'])
         if structName in seen_struct_names:
             continue
         seen_struct_names.add(structName)

@@ -187,15 +187,31 @@ class newModule:
             if containerKey not in prj.data['blocks']:
                 continue
             parentChildren.setdefault(containerKey, set()).add(inst['instanceTypeKey'])
+        # Owner-qualified foreign-Config headers, keyed (owningProject, child) ->
+        # module file stub. Computed once in projectCreate under the same emit gate
+        # the config emitter uses, so the scaffold never creates a header the
+        # emitter would not produce. Dedup below because a project with two
+        # assembler blocks of one child hits the same pair twice.
+        foreignConfigHeaders = prj.config.getConfig('FOREIGNCONFIGHEADERS')
+        emittedForeign = set()
         for parentKey in sorted(parentChildren):
             parentDir = prj.data['blocks'][parentKey]['dir']
             for childKey in sorted(parentChildren[parentKey]):
                 childBlock = prj.data['blocks'][childKey]['block']
                 for fileKey, fileDefinition in registrarFileConfig.items():
-                    if self._condMatch(fileDefinition, blockCondData[childKey]):
-                        self.create_registrar_file(
-                            fileGenerationConfig, fileKey, fileDefinition,
-                            parentDir, childBlock, childKey, parentKey, prj, args)
+                    if not self._condMatch(fileDefinition, blockCondData[childKey]):
+                        continue
+                    if fileDefinition.get('foreignConfig', False):
+                        # Only the declaring assembler project scaffolds it.
+                        owner = prj.contextOwningProject[prj.data['blocks'][parentKey]['_context']]
+                        if (owner, childKey) not in foreignConfigHeaders:
+                            continue
+                        if (owner, childKey) in emittedForeign:
+                            continue
+                        emittedForeign.add((owner, childKey))
+                    self.create_registrar_file(
+                        fileGenerationConfig, fileKey, fileDefinition,
+                        parentDir, childBlock, childKey, parentKey, prj, args)
 
     def create_registrar_file(self, fileGenerationConfig, fileKey, fileDefinition, parentDir, childBlock, childQualBlock, parentKey, prj, args):
         # Build the registrar path: the child-named trampoline lands under the
@@ -209,7 +225,16 @@ class newModule:
         # directory, so it resolves under the parent (assembler) project layout.
         owner = prj.contextOwningProject[prj.data['blocks'][parentKey]['_context']]
         layout = prj.projectLayout[owner]
-        filePath = processYaml.expandNewModulePath(fileDefinition, parentDir, childBlock, childBlock, layout, missingDirOk=True)
+        # The owner-qualified foreign-Config header stub is the persisted identity
+        # from calcForeignConfigHeaders (declaring project prefixed onto the child
+        # so its basename cannot collide with the child-owned context config header
+        # on the shared registrar include path); the gate above guarantees the pair
+        # is present when foreignConfig is set.
+        if fileDefinition.get('foreignConfig', False):
+            fileStub = prj.config.getConfig('FOREIGNCONFIGHEADERS')[(owner, childQualBlock)]['stub']
+        else:
+            fileStub = childBlock
+        filePath = processYaml.expandNewModulePath(fileDefinition, parentDir, childBlock, fileStub, layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
         for ext in fileDefinition['ext']:
             filePathExt = filePath + "." + fileDefinition['ext'][ext]
@@ -220,6 +245,7 @@ class newModule:
                 print(f"{filePathExt} exists so skipping, use --overwrite to overwrite")
             else:
                 print(f"Making {fileName} at {moduleDirAbs} ")
+                data['headerName'] = fileName
                 data['target'] = fileKey + "_" + ext
                 data['targetDetails'] = fileDefinition
                 data['fileGeneration'] = fileGenerationConfig

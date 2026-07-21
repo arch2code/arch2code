@@ -5,6 +5,12 @@
 `isParameterizable` flags. A row can be parameterizable even when its
 payload/address structures are not, for example when `wordLines` is backed by
 an ipParameters constant.
+
+A parameterized `wordLines` depth is a shape parameter, and SystemVerilog is
+the defining language, so any shape-varying surface must be a declared SV module
+parameter. The block owning such a register/memory must therefore declare it in
+`params:`; the fixture's `wordLineLeaf` does so (a bare wordLines-backed surface
+with no `params:` is rejected by the own-surface validation in projectCreate).
 """
 
 import sys
@@ -41,7 +47,8 @@ blocks:
         params: [PARAM_WORD_LINES]
 """
     + render_router('apbDecode', 'top')
-    + render_leaf('wordLineLeaf')
+    + render_leaf('wordLineLeaf',
+                  extra_block_lines='        params: [PARAM_WORD_LINES]\n')
     + """
 instances:
     uTop:       { container: top, instanceType: top }
@@ -154,8 +161,11 @@ def _run_wordlines_register():
         )
 
         _leaf_key, leaf_row = find_block(prj, 'wordLineLeaf')
-        assert not leaf_row.get('params'), (
-            "wordLineLeaf should not rely on the block params special case"
+        leaf_params = {p['param'] for p in leaf_row.get('params') or []}
+        assert leaf_params == {'PARAM_WORD_LINES'}, (
+            "wordLineLeaf must declare PARAM_WORD_LINES: a parameterized "
+            "wordLines depth is a shape parameter, so the block owning that "
+            "register/memory must declare it as a template param"
         )
         assert bool(leaf_row.get('isParameterizable')), (
             "wordLineLeaf must inherit parameterization from wordMemReg"

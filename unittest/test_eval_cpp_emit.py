@@ -129,6 +129,14 @@ def test_config_struct_symbolic_per_variant():
         prj = projectOpen(db_path)
         data = prj.getContextData(['ip'], genSystemC.dataTypeMappings)
         out = config.includeConfig(None, prj, data)
+        # ip@variant1 is declared by the ip_test assemblers, so its Config is
+        # owner-qualified (ip_test_ipVariant1Config) and relocated out of the ip
+        # context header into the parent's registrar-domain foreign-Config
+        # emission (the --parent=ip_top / getForeignConfigData render path). The
+        # same-project default/variant0 Configs stay bare in the ip context.
+        foreignData = prj.getBlockData(prj.getQualBlock('ip'))
+        foreignData['parent'] = 'ip_top'
+        foreignOut = config.foreignConfig(None, prj, foreignData)
 
         # First-level and second-level eval-derived members must be symbolic in
         # the struct's own members, not frozen to the default value (140 / 280).
@@ -141,12 +149,25 @@ def test_config_struct_symbolic_per_variant():
             # (the variant's own IP_DATA_WIDTH=8 member drives the value to 16).
             ('ipVariant0Config', 'IP_DATA_WIDTH_X2', 'IP_DATA_WIDTH * 2'),
             ('ipVariant0Config', 'IP_DATA_WIDTH_X4', 'IP_DATA_WIDTH_X2 * 2'),
-            # Variant1 overrides IP_MEM_DEPTH=8: again symbolic, not the frozen 32.
-            ('ipVariant1Config', 'IP_MEM_DEPTH_X2', 'IP_MEM_DEPTH * 2'),
         ]
         ok = True
         for structName, constName, expectedRhs in expectations:
             rhs = _config_member(out, structName, constName)
+            if rhs != expectedRhs:
+                print(f"  FAIL: {structName}.{constName} RHS {rhs!r}, "
+                      f"expected {expectedRhs!r}")
+                ok = False
+            else:
+                print(f"  PASS: {structName}.{constName} = {rhs}")
+
+        # Variant1 overrides IP_MEM_DEPTH=8: again symbolic, not the frozen 32.
+        # It now lives in the owner-qualified foreign-Config emission as
+        # ip_test_ipVariant1Config.
+        foreignExpectations = [
+            ('ip_test_ipVariant1Config', 'IP_MEM_DEPTH_X2', 'IP_MEM_DEPTH * 2'),
+        ]
+        for structName, constName, expectedRhs in foreignExpectations:
+            rhs = _config_member(foreignOut, structName, constName)
             if rhs != expectedRhs:
                 print(f"  FAIL: {structName}.{constName} RHS {rhs!r}, "
                       f"expected {expectedRhs!r}")
@@ -163,14 +184,16 @@ def test_config_struct_symbolic_per_variant():
 
         # Dependency ordering inside the struct: a member must be declared before
         # any later member references it (C++ constexpr requires prior decl).
-        def _index(structName, constName):
-            block = out.split(f"struct {structName} ", 1)[1]
+        def _index(text, structName, constName):
+            block = text.split(f"struct {structName} ", 1)[1]
             return block.index(f" {constName} = ")
-        for structName in ('ipDefaultConfig', 'ipVariant0Config', 'ipVariant1Config'):
-            if _index(structName, 'IP_DATA_WIDTH') > _index(structName, 'IP_DATA_WIDTH_X2'):
+        for text, structName in ((out, 'ipDefaultConfig'),
+                                 (out, 'ipVariant0Config'),
+                                 (foreignOut, 'ip_test_ipVariant1Config')):
+            if _index(text, structName, 'IP_DATA_WIDTH') > _index(text, structName, 'IP_DATA_WIDTH_X2'):
                 print(f"  FAIL: {structName} declares IP_DATA_WIDTH after IP_DATA_WIDTH_X2")
                 ok = False
-            if _index(structName, 'IP_DATA_WIDTH_X2') > _index(structName, 'IP_DATA_WIDTH_X4'):
+            if _index(text, structName, 'IP_DATA_WIDTH_X2') > _index(text, structName, 'IP_DATA_WIDTH_X4'):
                 print(f"  FAIL: {structName} declares IP_DATA_WIDTH_X2 after IP_DATA_WIDTH_X4")
                 ok = False
         return ok
@@ -187,11 +210,13 @@ def test_config_struct_symbolic_per_variant():
 
 
 def _fw_constant(out, constName):
-    """Return the RHS text of a flat `const ... constName = ...;` line in the FW
-    constants section, or None if absent. Walks the rendered text structurally."""
+    """Return the RHS text of a flat `inline constexpr <type> constName = ...;`
+    line in the FW constants section, or None if absent. Walks the rendered text
+    structurally. The FW emitter spells flat constants `inline constexpr` (an
+    ODR-safe module-linkage form), not the older `const <type>`."""
     marker = f" {constName} = "
     for line in out.splitlines():
-        if marker in line and line.strip().startswith("const "):
+        if marker in line and line.strip().startswith("inline constexpr "):
             return line.split(marker, 1)[1].split(';', 1)[0].strip()
     return None
 

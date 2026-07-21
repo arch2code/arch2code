@@ -221,7 +221,7 @@ def constructorInit(args, prj, data):
         # the factory's variant-specific instantiation. Without this, the cast
         # would resolve to the parent's `<Config>` or the parent's defaultConfig
         # and dynamic_pointer_cast would return nullptr at runtime.
-        instCfg = value['instanceConfigArg']
+        instCfg = intf_gen_utils.cpp_config_arg(value['instanceConfigSelection'])
         # Generated createInstance passes the variant string and the child's
         # factory-lookup projectName. The factory key is
         # `(blockType, variant, projectName)`; the variant string identifies the
