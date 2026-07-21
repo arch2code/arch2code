@@ -60,14 +60,40 @@ memory_dp #(.DEPTH(MEMORYA_WORDS), .data_t(aMemSt)) uBlockATable1 (
     assign roA.data.a = 37'h1063686172;
 
     assign roUn0A.data = rwUn0A.data;
-    
-    un0ARegSt extAReg;
-    
-    always @(posedge clk) if(|extA.write) begin
-        extAReg <= extA.wdata;
+
+    // LocalRegAccess parity: reproduce the model blockA startup thread so the
+    // RTL block establishes the same power-up state the model seeds locally.
+
+    // extA local write {fa='a', fb=0xfefe1234, fc='c'}: power-up seed value,
+    // then capture subsequent bus write pulses (extA.write) as before.
+    localparam un0ARegSt EXTA_SEED = '{fa: 8'h61, fb: 32'hfefe1234, fc: 8'h63};
+    `DFFR_INST(un0ARegSt, extAReg, EXTA_SEED)
+    always_comb begin
+        n_extAReg = extAReg;
+        if (|extA.write) begin
+            n_extAReg = extA.wdata;
+        end
     end
-    
+
     assign extA.rdata = extAReg;
-    
+
+    // blockATable1[0x5] = 0x2a782d645e49c378: one-shot local write on port A
+    // after power-up, then leave port A idle so a bus (port B) read sees it.
+    `DFF_INST(logic, seedDone)
+    always_comb begin
+        n_seedDone = 1'b1;
+
+        blockATable1.addr       = '0;
+        blockATable1.write_data = '0;
+        blockATable1.wr_en      = 1'b0;
+        blockATable1.enable     = 1'b0;
+        if (!seedDone) begin
+            blockATable1.addr.address    = aAddrBitsT'(5);
+            blockATable1.write_data.data = aDataBitsT'(64'h2a782d645e49c378);
+            blockATable1.wr_en           = 1'b1;
+            blockATable1.enable          = 1'b1;
+        end
+    end
+
 
 endmodule // blockA

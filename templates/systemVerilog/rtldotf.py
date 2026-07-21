@@ -14,8 +14,9 @@ def render(args, prj, data):
         incName = '.' if relDir == '.' else './' + relDir
         incdirs[incName] = incName
     for incdir, incdirName in incdirs.items():
+        # +incdir+ resolves `include of package/svh bodies; managed module
+        # SELECTION is explicit via A2C_SV_FILES (D-SD2/D-SD7), not -y search.
         out.append(f'+incdir+{incdirName}')
-        out.append(f'-y {incdirName}')
 
     for context in data['includeFiles'].get('package_sv', list()):
         # Emit only packages in this build's include-chain scope. A referenced

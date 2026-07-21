@@ -26,8 +26,11 @@ projectFiles:
 # Hierarchical provider selection: both the root and the symlinked bridge/ip
 # path declare projectName: ip. This root (the highest ancestor) selects the
 # root ip provider, so every reference to projectName ip in this composition
-# resolves to it. Removing this entry exposes the duplicate-provider error
-# naming both the root and the symlinked bridge/ip provider paths.
+# resolves to it. The duplicate-provider safety error (naming both the
+# real-tree and symlinked bridge/ip paths) is exposed only when BOTH this entry
+# and the bridge's own ip override (ipBridgeProject.yaml) are removed; with
+# only this entry removed, the bridge's override still normalizes its symlinked
+# reference onto the same real-tree ipProject, so one coherent provider remains.
 projectOverrides:
     ip: ../../ip/arch/yaml/ipProject.yaml
     # This root references the real common sub-project directly

@@ -23,6 +23,7 @@ def _writeBuildManifestMk(rootDir, manifest):
         f"A2C_VL_WRAP_DIRS := {asList(manifest['vlWrapDirs'])}",
         f"A2C_VL_WRAP_ENTRY := {manifest['vlWrapEntry']}",
         f"A2C_CPP_MODULE_FILES := {asList(manifest['cppModuleFiles'])}",
+        f"A2C_SV_FILES := {asList(manifest['svFiles'])}",
         "",
     ]
     with open(os.path.join(genDir, 'build.mk'), 'w') as f:
@@ -50,6 +51,7 @@ def create(prj):
 
     dirs = {group: set() for group in rootLayout['buildGroups']}
     moduleFiles = set()
+    svModuleFiles = set()
 
     blocksParams = {row['blockKey'] for row in prj.flatData['blocksparams'].values()}
     blockByKey = {row['blockKey']: row for row in prj.flatData['blocks'].values()}
@@ -71,6 +73,11 @@ def create(prj):
         dirs[role].add(os.path.dirname(filePath))
         if 'cppm' in fileDef['ext']:
             moduleFiles.add(filePath + '.' + fileDef['ext']['cppm'])
+        # Explicit managed SV module files. role=='sv' selects rtlModule and
+        # excludes the vl_wrap wrappers (buildGroup vl); packages (context mode)
+        # are listed separately by the rtl.f template, not here.
+        if 'sv' in fileDef['ext'] and role == 'sv':
+            svModuleFiles.add(filePath + '.' + fileDef['ext']['sv'])
 
     # block mode: one artifact per block per matching block-mode entry.
     for blockRow in blockByKey.values():
@@ -169,6 +176,7 @@ def create(prj):
         'vlWrapDirs':    sorted(dirs.get('vl', set())),
         'vlWrapEntry':   vlWrapEntry,
         'cppModuleFiles':sorted(moduleFiles),
+        'svFiles':       sorted(svModuleFiles),
     }
     prj.config.setConfig('BUILDMANIFEST', manifest)
 
