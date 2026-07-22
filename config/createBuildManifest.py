@@ -21,7 +21,6 @@ def _writeBuildManifestMk(rootDir, manifest):
         f"A2C_SC_SRC_DIRS := {asList(manifest['scSrcDirs'])}",
         f"A2C_SV_SRC_DIRS := {asList(manifest['svSrcDirs'])}",
         f"A2C_VL_WRAP_DIRS := {asList(manifest['vlWrapDirs'])}",
-        f"A2C_VL_WRAP_ENTRY := {manifest['vlWrapEntry']}",
         f"A2C_CPP_MODULE_FILES := {asList(manifest['cppModuleFiles'])}",
         f"A2C_SV_FILES := {asList(manifest['svFiles'])}",
         f"A2C_VL_BUILD_DIR := {manifest['vlBuildDir']}",
@@ -169,12 +168,13 @@ def create(prj):
                 if ext == 'cppm':
                     moduleFiles.add(entry['fileName'])
 
-    # The verilator wrapper segment root holds the per-build verilated entry
-    # (vl_wrap aggregator + sc_main): a known location, not a discovered one.
+    # The verilator wrapper segment root (holds sc_main and the verilated build
+    # dir): a known location, not a discovered one. The retired vl_wrap.cpp
+    # aggregator no longer lives here; `_verif` registration moved to the
+    # per-assembler VlRegistrar.cpp files discovered under scSrcDirs.
     vlSegment = _projectScopedSegment(rootLayout, 'vl_wrap')
     if dirs['vl']:
         dirs['vl'].add(vlSegment)
-    vlWrapEntry = os.path.join(vlSegment, 'vl_wrap.cpp')
 
     # Per-top verilated-wrapper records: the explicit (physical .sv -> design
     # unit) set the verilator wrap build consumes, so a2c-vl-wrap.mk names each
@@ -240,18 +240,18 @@ def create(prj):
 
     if registrarMap:
         foreignConfigHeaders = prj.config.getConfig('FOREIGNCONFIGHEADERS')
-        manifestProject = prj.config.getConfig('PROJECTNAME')
         emittedForeignTop = set()
         for assemblerKey, childKeys in sorted(assemblerChildren.items()):
             assemblerDir = blockByKey[assemblerKey]['dir']
             objLayout = layoutForContext(blockByKey[assemblerKey]['_context'])
             assemblerOwner = prj.contextOwningProject[blockByKey[assemblerKey]['_context']]
-            # A foreign owner-qualified top is parent-owned: only the project that
-            # owns the assembler scaffolds/builds it, so a cross-project assembler's
-            # top is recorded in that owner's manifest, not here (mirrors the
-            # newModule ownership gate).
-            if assemblerOwner != manifestProject:
-                continue
+            # A foreign owner-qualified top is a build artifact the reused child's
+            # VlRegistrar (in the assembler's owning project) instantiates. A
+            # composed build runs ONE vl_wrap build for the whole assembled tree,
+            # so it must verilate every foreign top present -- including one owned
+            # by a sub-project (its .sv is scaffolded under that sub-project by its
+            # own newmodule). The foreignConfigHeaders key uses the assembler's own
+            # owner, so the stub/path stay owner-qualified and dedup handles repeats.
             for childKey in sorted(childKeys):
                 childRow = blockByKey[childKey]
                 childCond = condRow(childRow)
@@ -285,7 +285,6 @@ def create(prj):
         'scSrcDirs':     sorted(dirs.get('sc', set())),
         'svSrcDirs':     sorted(dirs.get('sv', set())),
         'vlWrapDirs':    sorted(dirs.get('vl', set())),
-        'vlWrapEntry':   vlWrapEntry,
         'cppModuleFiles':sorted(moduleFiles),
         'svFiles':       sorted(svModuleFiles),
         'vlBuildDir':    vlSegment,

@@ -162,11 +162,6 @@ def render_sc(args, prj, data):
             cfg=baseCfg,
             default_config=defaultConfig,
             use_own_variant_config=useOwnVariantTemplateArg,
-            # projectName is baked in as a generation-time literal (the wrapper
-            # ctor gets no projectName arg); the `_verif` registration must be
-            # keyed under the same projectName the container's createInstance
-            # lookup uses.
-            projectname=prj.config.getConfig('PROJECTNAME'),
             sec_bfm_includes=sec_bfm_includes(args, prj, data),
             sec_bfm_decl=sec_bfm_decl(args, prj, data),
             sec_bfm_ctor_init=sec_bfm_ctor_init(args, prj, data),
@@ -177,53 +172,19 @@ def render_sc(args, prj, data):
         return(s)
 
     def sec_preamble(args, prj, data):
-        # File-scope preamble for the fully generated Verilated SC wrapper: the
-        # block's own Base import plus the DUT SV-wrapper include. Both are
-        # emitted from this generated region (rather than a create-only scaffold
-        # line) so `make gen` re-spells them every run and existing wrappers
-        # self-heal - notably the base reference, which after the Base
-        # header->C++20-module migration must read `import <block>.base;`
-        # instead of a now-dangling `#include "<block>Base.h"`.
+        # File-scope preamble for the generated Verilated SC wrapper: the block's
+        # own Base import, emitted from this region so `make gen` re-spells it
+        # every run (self-healing after the Base header->C++20-module migration).
+        # A block with no instance-bound variants keeps a concrete wrapper that
+        # names its verilated DUT directly, so it also includes that DUT header
+        # (from the svWrapper view). A parameterizable wrapper is a reusable
+        # `<DUT_T, Config>` template; its concrete DUT header + `_verif`
+        # registration live in the per-assembler VlRegistrar, not here.
         t = Template(sec_preamble_template)
         basemodule = intf_gen_utils.cpp_base_module_name(data['blockName'])
-        return(t.render(blockname=data['blockName'], variants=data['variants'], basemodule=basemodule))
-
-    def sec_var_include_sv_wrap_header(args, prj, data):
-        t = Template(sec_var_include_sv_wrap_header_template)
-        return(t.render(blockname=data['blockName'], variants=data['variants']))
-
-    def sec_variant_class_template_spec(args, prj, data):
-        t = Template(sec_variant_class_template_spec_template)
-        return(t.render(
-            blockname=data['blockName'], variants=data['variants'],
-            use_own_variant_config=useOwnVariantConfig,
-            variant_cfg=variantConfigForName,
-            default_config=defaultConfig,
-        ))
-
-    def factory_register_vl_decl(args, prj, data):
-        s = []
-        #print(prj.data['parametersvariants'])
-        for key,data in prj.data['blocks'].items():
-            hasVl, block = data['hasVl'], data['block']
-            if hasVl:
-                variants = prj.getQualBlockVariants(key)
-                if variants:
-                    for variant in variants:
-                        s.append(f'template<> {block}_{variant}_hdl_sc_wrapper::registerBlock {block}_{variant}_hdl_sc_wrapper::registerBlock_("{variant}");')
-                else:
-                    s.append(f'{block}_hdl_sc_wrapper::registerBlock {block}_hdl_sc_wrapper::registerBlock_;')
-        s = '\n'.join(s)
-        return s
-
-    def factory_register_vl_incl(args, prj, data):
-        s = []
-        for key,data in prj.data['blocks'].items():
-            hasVl, block = data['hasVl'], data['block']
-            if hasVl:
-                s.append(f'#include "{block}_hdl_sc_wrapper.h"')
-        s = '\n'.join(s)
-        return s
+        return(t.render(variants=data['variants'], basemodule=basemodule,
+                        dut_header=data['svWrapper']['dutHeader'],
+                        sv_wrapper_header=f"{data['svWrapper']['bodyModule']}.h"))
 
     # ports blaster
     mp_sig = dict()
@@ -251,67 +212,20 @@ def render_sc(args, prj, data):
         case 'bfm_connect': return sec_bfm_connect(args, prj, data)
         case 'hdl_if_decl': return sec_hdl_if_decl(args, prj, data)
 
-        case 'variant_include_sv_wrapper_header' : return sec_var_include_sv_wrap_header(args, prj, data)
-        case 'variant_class_template_spec' : return sec_variant_class_template_spec(args, prj, data)
-
-        case 'factory_register_vl_decl' : return factory_register_vl_decl(args, prj, data)
-        case 'factory_register_vl_incl' : return factory_register_vl_incl(args, prj, data)
-
-        case _ : raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are preamble, hdl_sc_wrapper_class, channel_decl, bfm_decl, bfm_ctor_init, dut_connect, bfm_connect, hdl_if_decl, variant_include_sv_wrapper_header, variant_class_template_spec, factory_register_vl_decl, factory_register_vl_incl")
+        case _ : raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are preamble, hdl_sc_wrapper_class, channel_decl, bfm_decl, bfm_ctor_init, dut_connect, bfm_connect, hdl_if_decl")
 
 sec_preamble_template = """\
 import {{basemodule}};
+{%- if not variants %}
 
-// Verilated RTL top (SystemC)
+// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
+// its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
-{% if variants -%}
-{% for var in variants -%}
-#include "{{blockname}}_{{var}}_hdl_sv_wrapper.h"
-{% endfor -%}
-{% else -%}
-#include "{{blockname}}_hdl_sv_wrapper.h"
-{% endif -%}
+#include "{{sv_wrapper_header}}"
 #else
-{% if variants -%}
-{% for var in variants -%}
-#include "V{{blockname}}_{{var}}_hdl_sv_wrapper.h"
-{% endfor -%}
-{% else -%}
-#include "V{{blockname}}_hdl_sv_wrapper.h"
-{% endif -%}
-#endif\
-"""
-
-sec_var_include_sv_wrap_header_template = """\
-#if !defined(VERILATOR) && defined(VCS)
-{% for var in variants -%}
-#include "{{blockname}}_{{var}}_hdl_sv_wrapper.h"
-{% endfor -%}
-#else
-{% for var in variants -%}
-#include "V{{blockname}}_{{var}}_hdl_sv_wrapper.h"
-{% endfor -%}
-#endif\
-"""
-
-sec_variant_class_template_spec_template = """\
-#if !defined(VERILATOR) && defined(VCS)
-{% for var in variants -%}
-{% if use_own_variant_config -%}
-using {{blockname}}_{{var}}_hdl_sc_wrapper = {{blockname}}_hdl_sc_wrapper<{{blockname}}_{{var}}_hdl_sv_wrapper, {{variant_cfg.get(var, default_config)}}>;
-{% else -%}
-using {{blockname}}_{{var}}_hdl_sc_wrapper = {{blockname}}_hdl_sc_wrapper<{{blockname}}_{{var}}_hdl_sv_wrapper>;
-{% endif -%}
-{% endfor -%}
-#else
-{% for var in variants -%}
-{% if use_own_variant_config -%}
-using {{blockname}}_{{var}}_hdl_sc_wrapper = {{blockname}}_hdl_sc_wrapper<V{{blockname}}_{{var}}_hdl_sv_wrapper, {{variant_cfg.get(var, default_config)}}>;
-{% else -%}
-using {{blockname}}_{{var}}_hdl_sc_wrapper = {{blockname}}_hdl_sc_wrapper<V{{blockname}}_{{var}}_hdl_sv_wrapper>;
-{% endif -%}
-{% endfor -%}
-#endif\
+#include "{{dut_header}}"
+#endif
+{%- endif %}\
 """
 
 sec_hdl_sc_wrapper_class_template = """\
@@ -328,37 +242,6 @@ template <typename DUT_T>
 class {{blockname}}_hdl_sc_wrapper: public sc_module, public blockBase, public {{blockname}}Base{{cfg}} {
 
 public:
-
-    struct registerBlock
-    {
-{%- if not variants %}
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "{{blockname}}_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < {{blockname}}_hdl_sc_wrapper > (blockName, variant, bbMode));
-                }, "", "{{projectname}}");
-        }
-{%- else %}
-        registerBlock(const char *variant_)
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-{%- if use_own_variant_config %}
-                "{{blockname}}_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < {{blockname}}_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
-                }, variant_, "{{projectname}}");
-{%- else %}
-                "{{blockname}}_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < {{blockname}}_hdl_sc_wrapper<DUT_T> > (blockName, variant, bbMode));
-                }, variant_, "{{projectname}}");
-{%- endif %}
-        }
-{%- endif %}
-    };
-
-    static registerBlock registerBlock_;
 {%- if not variants %}
 
 #if !defined(VERILATOR) && defined(VCS)

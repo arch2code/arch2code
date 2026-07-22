@@ -8,7 +8,8 @@
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
 import simple.base;
 
-// Verilated RTL top (SystemC)
+// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
+// its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "simple_hdl_sv_wrapper.h"
 #else
@@ -25,20 +26,6 @@ using namespace simple_ns;
 class simple_hdl_sc_wrapper: public sc_module, public blockBase, public simpleBase {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "simple_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < simple_hdl_sc_wrapper > (blockName, variant, bbMode));
-                }, "", "simple");
-        }
-    };
-
-    static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
     simple_hdl_sv_wrapper *dut_hdl;

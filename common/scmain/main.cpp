@@ -16,10 +16,6 @@
 #include "simController.h"
 #include "endOfTest.h"
 
-#if defined(VERILATOR) || defined(VCS)
-#include "vl_wrap.h"
-#endif
-
 #ifdef VERILATOR
 #include "vl_tracer.h"
 #endif

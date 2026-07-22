@@ -135,14 +135,14 @@ CPP_MODULE_DEPS =
 endif
 
 ifdef VL_DUT
-# The verilated entry (vl_wrap aggregator) and wrapper include dirs come from the
-# manifest, not a hard-coded path / glob.
-CPP_SRC += $(A2C_VL_WRAP_ENTRY)
+# Wrapper include dirs come from the manifest. The `_verif` registrations live in
+# the per-assembler VlRegistrar.cpp files discovered under A2C_SC_SRC_DIRS, so
+# there is no vl_wrap aggregator entry to compile here.
 CPP_INCLUDES += $(foreach dir, $(A2C_VL_WRAP_DIRS), -I$(dir))
-# The Verilated tops (V*_hdl_sv_wrapper.h) are emitted by verilator into obj_dir
-# beside the aggregator. It is a build output, not project source, so the manifest
-# does not list it; add it explicitly (verilation runs before the compile sub-make).
-CPP_INCLUDES += -I$(dir $(A2C_VL_WRAP_ENTRY))obj_dir
+# Each Verilated top is built into its own --Mdir (A2C_VL_BUILD_DIR/obj_dir/<top>)
+# by a2c-vl-wrap.mk; its V<top>.h is a build output the VlRegistrar #includes.
+# Add each per-top Mdir to the include path, records-driven from A2C_VL_TOPS.
+CPP_INCLUDES += $(foreach top, $(A2C_VL_TOPS), -I$(A2C_VL_BUILD_DIR)/obj_dir/$(top))
 CPP_INCLUDES += -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd
 endif
 
@@ -161,7 +161,7 @@ CXX_FLAGS += $(CPP_INCLUDES)
 ifdef VL_DUT
 ifndef USE_VCS
 CXX_FLAGS += -DVERILATOR
-LD_FLAGS += -L$(REPO_ROOT)/verif/vl_wrap -l$(PROJECTNAME)vl_s_wrap -latomic
+LD_FLAGS += -L$(A2C_VL_BUILD_DIR) -l$(PROJECTNAME)vl_s_wrap -latomic
 # https://github.com/verilator/verilator/issues/5672
 CXX_FLAGS += -Wno-sign-compare
 endif
@@ -264,7 +264,7 @@ endif
 
 all: gen
 ifdef VL_DUT
-	$(MAKE) -C $(REPO_ROOT)/verif/vl_wrap vlwrap
+	$(MAKE) -C $(A2C_VL_BUILD_DIR) vlwrap
 endif
 	$(MAKE) $(BIN_DIR)/$(BIN)
 
@@ -273,7 +273,7 @@ clean::
 	$(RM) -rf simx.*
 	# GCC C++20 module cache, written to the make working directory.
 	$(RM) -rf gcm.cache
-	@test -d $(REPO_ROOT)/verif/vl_wrap && $(MAKE) -C $(REPO_ROOT)/verif/vl_wrap clean || true
+	@test -d $(A2C_VL_BUILD_DIR) && $(MAKE) -C $(A2C_VL_BUILD_DIR) clean || true
 
 help::
 	@echo "  all     	- Build the project binary"

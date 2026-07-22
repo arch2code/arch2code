@@ -41,6 +41,8 @@ def render(args, prj, data):
             return(blockModule_cppm(args, prj, data))
         case 'blockRegistrar_cppm':
             return(blockRegistrar_cppm(args, prj, data))
+        case 'blockVlRegistrar_src':
+            return(blockVlRegistrar_src(args, prj, data))
         case 'foreignConfig_cppm':
             return(foreignConfig_cppm(args, prj, data))
         case 'vlSvWrapForeign_sv':
@@ -190,6 +192,19 @@ def blockRegistrar_cppm(args, prj, data):
     out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]}\n')
     out.append('// GENERATED_CODE_BEGIN --template=blockRegistrar\n')
+    out.append('// GENERATED_CODE_END\n')
+    return("".join(out))
+
+# Per-assembler Verilated-wrapper registrar TU for a reused child. The whole body
+# (the #ifdef VERILATOR guard, the reusable SC-wrapper + verilated DUT includes,
+# the imported owner-qualified config module, and the anonymous-namespace `_verif`
+# registration static) is emitted by templates/systemc/vlRegistrar.py (keyed off
+# --parent) into the single generated region, mirroring blockRegistrar_cppm.
+def blockVlRegistrar_src(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=vlRegistrar\n')
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 
@@ -358,11 +373,6 @@ vlScWrap_hdrTemplate = \
     }
 
 };
-{%- if variants %}
-
-// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
-// GENERATED_CODE_END
-{%- endif %}
 
 #endif // {{MODULENAME}}_HDL_SC_WRAPPER_H_
 """

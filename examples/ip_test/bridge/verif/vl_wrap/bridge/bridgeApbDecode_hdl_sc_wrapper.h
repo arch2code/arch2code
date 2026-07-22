@@ -8,7 +8,8 @@
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
 import bridgeApbDecode.base;
 
-// Verilated RTL top (SystemC)
+// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
+// its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "bridgeApbDecode_hdl_sv_wrapper.h"
 #else
@@ -25,20 +26,6 @@ using namespace shared_types_ns;
 class bridgeApbDecode_hdl_sc_wrapper: public sc_module, public blockBase, public bridgeApbDecodeBase {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "bridgeApbDecode_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < bridgeApbDecode_hdl_sc_wrapper > (blockName, variant, bbMode));
-                }, "", "ipBridge");
-        }
-    };
-
-    static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
     bridgeApbDecode_hdl_sv_wrapper *dut_hdl;

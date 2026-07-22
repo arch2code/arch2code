@@ -2,23 +2,11 @@
 #define BLOCKF_HDL_SC_WRAPPER_H_
 
 #include "systemc.h"
-
 #include "instanceFactory.h"
 
-
 // GENERATED_CODE_PARAM --block=blockF
-
-#include "blockFBase.h"
-
-// Verilated RTL top (SystemC)
-// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_include_sv_wrapper_header
-#if !defined(VERILATOR) && defined(VCS)
-#include "blockF_variant0_hdl_sv_wrapper.h"
-#include "blockF_variant1_hdl_sv_wrapper.h"
-#else
-#include "VblockF_variant0_hdl_sv_wrapper.h"
-#include "VblockF_variant1_hdl_sv_wrapper.h"
-#endif
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import blockF.base;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
@@ -35,20 +23,6 @@ template <typename DUT_T, typename Config>
 class blockF_hdl_sc_wrapper: public sc_module, public blockBase, public blockFBase<Config> {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock(const char *variant_)
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "blockF_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < blockF_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
-                }, variant_, "mixed");
-        }
-    };
-
-    static registerBlock registerBlock_;
 
     DUT_T *dut_hdl;
 
@@ -157,15 +131,5 @@ private:
     }
 
 };
-
-// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
-#if !defined(VERILATOR) && defined(VCS)
-using blockF_variant0_hdl_sc_wrapper = blockF_hdl_sc_wrapper<blockF_variant0_hdl_sv_wrapper, mixedDefaultConfig>;
-using blockF_variant1_hdl_sc_wrapper = blockF_hdl_sc_wrapper<blockF_variant1_hdl_sv_wrapper, blockFVariant1Config>;
-#else
-using blockF_variant0_hdl_sc_wrapper = blockF_hdl_sc_wrapper<VblockF_variant0_hdl_sv_wrapper, mixedDefaultConfig>;
-using blockF_variant1_hdl_sc_wrapper = blockF_hdl_sc_wrapper<VblockF_variant1_hdl_sv_wrapper, blockFVariant1Config>;
-#endif
-// GENERATED_CODE_END
 
 #endif // BLOCKF_HDL_SC_WRAPPER_H_

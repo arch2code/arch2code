@@ -7,13 +7,6 @@
 // GENERATED_CODE_PARAM --block=src
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
 import src.base;
-
-// Verilated RTL top (SystemC)
-#if !defined(VERILATOR) && defined(VCS)
-#include "src_variantSrc0_hdl_sv_wrapper.h"
-#else
-#include "Vsrc_variantSrc0_hdl_sv_wrapper.h"
-#endif
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
@@ -30,20 +23,6 @@ template <typename DUT_T, typename Config>
 class src_hdl_sc_wrapper: public sc_module, public blockBase, public srcBase<Config> {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock(const char *variant_)
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "src_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < src_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
-                }, variant_, "ip_test");
-        }
-    };
-
-    static registerBlock registerBlock_;
 
     DUT_T *dut_hdl;
 
@@ -143,13 +122,5 @@ private:
     }
 
 };
-
-// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
-#if !defined(VERILATOR) && defined(VCS)
-using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<src_variantSrc0_hdl_sv_wrapper, srcDefaultConfig>;
-#else
-using src_variantSrc0_hdl_sc_wrapper = src_hdl_sc_wrapper<Vsrc_variantSrc0_hdl_sv_wrapper, srcDefaultConfig>;
-#endif
-// GENERATED_CODE_END
 
 #endif // SRC_HDL_SC_WRAPPER_H_

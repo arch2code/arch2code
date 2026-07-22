@@ -1334,16 +1334,33 @@ class projectOpen:
         wrapTail = self.filemap['vlSvWrap']['name']
         bodyExt = self.filemap['vlSvWrapBody']['ext']['svh']
         foreignTail = self.filemap['vlSvWrapForeign']['name']
+        scTail = self.filemap['vlScWrap']['name']
+        scExt = self.filemap['vlScWrap']['ext']['hdr']
         blockName = ret['blockName']
         project = self.config.getConfig('PROJECTNAME')
         bodyModule = f'{blockName}{wrapTail}'
+        variantTops = {v: f'{blockName}_{v}{wrapTail}' for v in ret['variants']}
+        foreignVariantTops = {
+            v: f'{sanitizeModuleToken(project)}_{blockName}_{v}{foreignTail}'
+            for v in ret['variants']}
         ret['svWrapper'] = {
             'bodyModule': bodyModule,
             'bodyInclude': f'{bodyModule}.{bodyExt}',
-            'variantTops': {v: f'{blockName}_{v}{wrapTail}' for v in ret['variants']},
-            'foreignVariantTops': {
-                v: f'{sanitizeModuleToken(project)}_{blockName}_{v}{foreignTail}'
-                for v in ret['variants']},
+            'variantTops': variantTops,
+            'foreignVariantTops': foreignVariantTops,
+            # SystemC verilated wrapper class + its include, from the vlScWrap
+            # fileMap name/ext (the wrapper this block's VlRegistrar instantiates).
+            'scWrapperModule': f'{blockName}{scTail}',
+            'scWrapperInclude': f'{blockName}{scTail}.{scExt}',
+            # Verilated DUT class + header for each SV top. Verilator's fixed
+            # V<top>[.h] output convention applied to the view-sourced top name;
+            # matches the A10 build-manifest generatedVHeader record.
+            'dutClass': f'V{bodyModule}',
+            'dutHeader': f'V{bodyModule}.h',
+            'variantDutClasses': {v: f'V{t}' for v, t in variantTops.items()},
+            'variantDutHeaders': {v: f'V{t}.h' for v, t in variantTops.items()},
+            'foreignVariantDutClasses': {v: f'V{t}' for v, t in foreignVariantTops.items()},
+            'foreignVariantDutHeaders': {v: f'V{t}.h' for v, t in foreignVariantTops.items()},
         }
 
     def getBDConfigInfo(self, ret):

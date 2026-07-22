@@ -28,6 +28,7 @@ templates:
   baseConstructor: $a2c/templates/systemc/baseConstructor.py
   blockRegs: $a2c/templates/systemc/blockRegs.py
   blockRegistrar: $a2c/templates/systemc/blockRegistrar.py
+  vlRegistrar: $a2c/templates/systemc/vlRegistrar.py
   moduleScaffold: $a2c/templates/systemc/moduleScaffold.py
   headers: $a2c/templates/systemc/headers.py
   includes: $a2c/templates/systemc/includes.py
@@ -144,6 +145,13 @@ fileGeneration:
     # children with a model get a trampoline. Pure non-templated SC-only
     # blocks self-register from their own .cpp and gain no trampoline.
     blockRegistrar : { name : "Registrar",    ext: {cppm: "cppm"},         cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, desc: "Per-assembler per-child trampoline registrar TU"}
+    # blockVlRegistrar emits the verilated counterpart of blockRegistrar: one
+    # per-assembler <child>VlRegistrar.cpp per distinct verilated (hasVl) child an
+    # assembler instantiates, under the assembler's registrar domain. The whole TU
+    # is guarded by #ifdef VERILATOR; it owns the `_verif` factory registrations
+    # that the retired vl_wrap.cpp aggregator + wrapper-local registerBlock struct
+    # used to carry. Discovered as an ordinary registrar/ source by A2C_SC_SRC_DIRS.
+    blockVlRegistrar : { name : "VlRegistrar", ext: {src: "cpp"},           cond: {hasVl: true},              mode: registrar, basePath: registrar, desc: "Per-assembler per-child Verilated-wrapper registrar TU"}
     # foreignConfig emits one owner-qualified per-variant Config module interface
     # unit per (declaring project, reused child) into the assembler's registrar
     # domain, aggregating the assembler-declared (foreign) variants of that child.

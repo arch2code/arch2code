@@ -7,13 +7,6 @@
 // GENERATED_CODE_PARAM --block=ipLeaf
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
 import ipLeaf.base;
-
-// Verilated RTL top (SystemC)
-#if !defined(VERILATOR) && defined(VCS)
-#include "ipLeaf_variantLeaf0_hdl_sv_wrapper.h"
-#else
-#include "VipLeaf_variantLeaf0_hdl_sv_wrapper.h"
-#endif
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
@@ -26,20 +19,6 @@ template <typename DUT_T, typename Config>
 class ipLeaf_hdl_sc_wrapper: public sc_module, public blockBase, public ipLeafBase<Config> {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock(const char *variant_)
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "ipLeaf_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < ipLeaf_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
-                }, variant_, "ip_test");
-        }
-    };
-
-    static registerBlock registerBlock_;
 
     DUT_T *dut_hdl;
 
@@ -100,13 +79,5 @@ private:
     }
 
 };
-
-// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
-#if !defined(VERILATOR) && defined(VCS)
-using ipLeaf_variantLeaf0_hdl_sc_wrapper = ipLeaf_hdl_sc_wrapper<ipLeaf_variantLeaf0_hdl_sv_wrapper, ipLeafVariantLeaf0Config>;
-#else
-using ipLeaf_variantLeaf0_hdl_sc_wrapper = ipLeaf_hdl_sc_wrapper<VipLeaf_variantLeaf0_hdl_sv_wrapper, ipLeafVariantLeaf0Config>;
-#endif
-// GENERATED_CODE_END
 
 #endif // IPLEAF_HDL_SC_WRAPPER_H_

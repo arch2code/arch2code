@@ -8,7 +8,8 @@
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
 import apbDecode.base;
 
-// Verilated RTL top (SystemC)
+// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
+// its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "apbDecode_hdl_sv_wrapper.h"
 #else
@@ -25,20 +26,6 @@ using namespace apbDecode_ns;
 class apbDecode_hdl_sc_wrapper: public sc_module, public blockBase, public apbDecodeBase {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "apbDecode_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < apbDecode_hdl_sc_wrapper > (blockName, variant, bbMode));
-                }, "", "apbDecode");
-        }
-    };
-
-    static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
     apbDecode_hdl_sv_wrapper *dut_hdl;

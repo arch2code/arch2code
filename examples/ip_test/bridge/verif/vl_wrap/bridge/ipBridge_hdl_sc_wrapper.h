@@ -8,7 +8,8 @@
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
 import ipBridge.base;
 
-// Verilated RTL top (SystemC)
+// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
+// its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "ipBridge_hdl_sv_wrapper.h"
 #else
@@ -31,20 +32,6 @@ using namespace ip_ns;
 class ipBridge_hdl_sc_wrapper: public sc_module, public blockBase, public ipBridgeBase {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "ipBridge_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < ipBridge_hdl_sc_wrapper > (blockName, variant, bbMode));
-                }, "", "ipBridge");
-        }
-    };
-
-    static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
     ipBridge_hdl_sv_wrapper *dut_hdl;

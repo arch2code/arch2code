@@ -7,13 +7,6 @@
 // GENERATED_CODE_PARAM --block=ip
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
 import ip.base;
-
-// Verilated RTL top (SystemC)
-#if !defined(VERILATOR) && defined(VCS)
-#include "ip_variant0_hdl_sv_wrapper.h"
-#else
-#include "Vip_variant0_hdl_sv_wrapper.h"
-#endif
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
@@ -28,20 +21,6 @@ template <typename DUT_T, typename Config>
 class ip_hdl_sc_wrapper: public sc_module, public blockBase, public ipBase<Config> {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock(const char *variant_)
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "ip_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < ip_hdl_sc_wrapper<DUT_T, Config> > (blockName, variant, bbMode));
-                }, variant_, "ip");
-        }
-    };
-
-    static registerBlock registerBlock_;
 
     DUT_T *dut_hdl;
 
@@ -124,13 +103,5 @@ private:
     }
 
 };
-
-// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=variant_class_template_spec
-#if !defined(VERILATOR) && defined(VCS)
-using ip_variant0_hdl_sc_wrapper = ip_hdl_sc_wrapper<ip_variant0_hdl_sv_wrapper, ipVariant0Config>;
-#else
-using ip_variant0_hdl_sc_wrapper = ip_hdl_sc_wrapper<Vip_variant0_hdl_sv_wrapper, ipVariant0Config>;
-#endif
-// GENERATED_CODE_END
 
 #endif // IP_HDL_SC_WRAPPER_H_
