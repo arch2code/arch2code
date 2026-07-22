@@ -1,20 +1,20 @@
 """Functional -> hierarchical layout migration (the opt-in layout phase of the
-project layout work, plan-decomp-functional-layout.md "Phase 4 - L4").
+project layout work).
 
 Unlike the eval / address / includes phases, this is NOT part of yamlFormat: 2
-and does not run on every `make migrate`. It is opt-in per project (Q-L4): a
+and does not run on every `make migrate`. It is opt-in per project: a
 project stays valid in functional layout forever, and this phase runs only when
 the project has chosen hierarchical (`fileGeneration.layout: hierarchical`) but
 its tree is still laid out functionally. It presupposes the project is already
-yamlFormat: 2 (Q-L4a) and is invoked separately (`migrateYaml.py
+yamlFormat: 2 and is invoked separately (`migrateYaml.py
 --to-hierarchical` / `make migrate-hierarchical`), after the unconditional
 phases, because it MOVES files where the other phases edit content in place.
 
 Standalone and text-only, like `migrateIncludes`: it reads YAML as text and
 never opens the project database. PyYAML supplies values.
 
-This module covers the trigger + idempotence (T4.1), the relocation map (T4.2),
-applying that map (T4.3), and the relative-path re-rooting (T4.4). It classifies
+This module covers the trigger + idempotence, the relocation map, applying that
+map, and the relative-path re-rooting. It classifies
 the project into one of three layout states and, for an unblocked candidate,
 computes the source->dest move map plus the generated-source delete set. Files
 are classified by the merged fileMap (the same base/pro/user merge processYaml
@@ -26,19 +26,19 @@ relocate + prune) and then re-roots the relative `include:` / `projectFiles:` /
 user-region include references through the new `yaml/` levels; a reference that
 cannot be re-rooted mechanically is reported for manual fixup, never mangled.
 
-The layout flip (`fileGeneration.layout: hierarchical`) is NOT an edit T4.3
-makes: it is the opt-in precondition itself. `migrateLayoutInProject` only
+The layout flip (`fileGeneration.layout: hierarchical`) is NOT an edit this
+migration makes: it is the opt-in precondition itself. `migrateLayoutInProject` only
 reaches the relocation map when the project already declares hierarchical, so
 there is nothing to flip.
 
-The relocation transform (plan "Phase 4 - L4", per Q-L4a / Q-L4b):
+The relocation transform:
   - Authored YAML `<yamlRoot>/<decomp>/*.yaml` -> `<root>/<decomp>/<yaml>/*.yaml`
     (decomp="" -> `<root>/<yaml>/*.yaml`; the functional central yaml root is the
     project file's own directory).
   - Project file -> `prj/yaml/<projectName>Project.yaml`; project-scope
     integration orphans (fwIpMain, sc_main, the vl_wrap aggregator) -> `prj/fw/`
     / `prj/verif/` (flattened). Build-config `include/` and `rundir/` stay at the
-    project root as user-owned entry points (Q-L3 amended); they do NOT move into
+    project root as user-owned entry points; they do NOT move into
     prj/. The only harness edit is re-pointing the `A2C_PRJ_YAML` line in the
     root `include/make/shared.mk` at the moved project file.
   - The layout flip to hierarchical is the opt-in precondition itself
@@ -58,7 +58,7 @@ States:
                                hierarchical (project file under <prj>/<yaml>/): a
                                no-op (idempotent).
   - LAYOUT_NEEDS_MIGRATION     declared hierarchical and the tree is still
-                               functional: relocation would run (T4.2+). Blocked
+                               functional: relocation would run. Blocked
                                when the project is not yet yamlFormat: 2.
 """
 
@@ -113,26 +113,36 @@ _SOURCE_INCLUDE_RE = re.compile(r'^\s*(?:#\s*include|`include)\s*"([^"]+)"')
 SOURCE_EXTS = (".h", ".hpp", ".cpp", ".cc", ".cppm", ".sv", ".svh")
 
 # Project-scope integration files (orphans) with no block YAML. They MOVE into
-# the prj/ container (flattened: verif/vl_wrap -> verif, fw/... -> fw) instead of
-# being deleted and regenerated, because sc_main / fwIpMain carry project-level
-# user content and vl_wrap is the single project-wide aggregator. Keyed by the
-# file's role basename -> prj/ subsegment (plan item 2).
+# the prj/ container (flattened: verif/vl_wrap -> verif) instead of being deleted
+# and regenerated, because sc_main carries project-level user content and vl_wrap
+# is the single project-wide aggregator. Keyed by the file's role basename ->
+# prj/ subsegment. These verif basenames are framework-general (base config /
+# shared tooling), so they stay literal. Firmware entry sources are NOT listed
+# here: their basename is project-defined, so they are routed data-drivenly by
+# the firmware-segment rule below (see FW_HIER_SEGMENT).
 ORPHAN_DESTS = {
-    "fwIpMain.cpp": "fw", "fwIpMain.h": "fw",
     "sc_main.cpp": "verif",
     "vl_wrap.cpp": "verif", "vl_wrap.h": "verif", "vl_wrap.sv": "verif",
     "vl_dummy.sv": "verif",
 }
 
+# Base-config hierarchical firmware subsegment (hierarchicalDirs maps the
+# firmware functional segment `fwInc` -> "fw"; a project-declared `$root/fw`
+# segment defaults to the same "fw" basename). A user-owned (non-generated,
+# non-block) source under a functional segment that maps to this hierarchical
+# name is a project-scope firmware orphan routed to prj/fw, regardless of its
+# basename — so any project's firmware entry file relocates, not just fwIpMain.
+FW_HIER_SEGMENT = "fw"
+
 # Project-root build-config container (holds make/shared.mk etc). Not a fileMap
-# segment; a user-owned root convention that STAYS at the project root (Q-L3
-# amended). It is not relocated; the migration only re-points the A2C_PRJ_YAML
-# line in the harness makefile below, because the project file moves to prj/yaml/.
+# segment; a user-owned root convention that STAYS at the project root. It is not
+# relocated; the migration only re-points the A2C_PRJ_YAML line in the harness
+# makefile below, because the project file moves to prj/yaml/.
 BUILD_CONFIG_DIR = "include"
 
 # The user-owned project build harness (root-relative) whose A2C_PRJ_YAML sets
 # the DB-build input path. It stays at the project root; only its A2C_PRJ_YAML
-# line is re-pointed at the moved project file (plan T4.6 item 2).
+# line is re-pointed at the moved project file.
 HARNESS_MK = os.path.join(BUILD_CONFIG_DIR, "make", "shared.mk")
 
 # Existing `A2C_PRJ_YAML [:?]?= ...` assignment (replaced in place when present),
@@ -144,7 +154,7 @@ _MK_INCLUDE_RE = re.compile(r'^[ \t]*-?include[ \t]', re.M)
 # Build/output subtrees never walked when sweeping a project tree.
 _SKIP_DIRS = ("build", ".gen", "obj_dir", ".git", "rundir")
 
-# The yamlFormat value the layout migration presupposes (Q-L4a). Kept local so
+# The yamlFormat value the layout migration presupposes. Kept local so
 # this module stays text-only and never imports processYaml (which opens the DB
 # path); migrateYaml passes the authoritative CURRENT_YAML_FORMAT through the
 # report check.
@@ -198,7 +208,7 @@ class LayoutReport:
     manual: list = field(default_factory=list)      # list[ReportItem]
     moves: list = field(default_factory=list)       # list[Move]
     deletes: list = field(default_factory=list)     # list[str] (abs paths of generated files)
-    rewrites: list = field(default_factory=list)    # list[Rewrite] (T4.4 relative-path re-rooting)
+    rewrites: list = field(default_factory=list)    # list[Rewrite] (relative-path re-rooting)
     harnessEdits: list = field(default_factory=list) # list[HarnessEdit] (A2C_PRJ_YAML re-point)
     projectRoot: str = ""                           # abs dirs.root (map anchor; "" until computed)
     written: bool = False
@@ -227,8 +237,8 @@ def migrateLayoutInProject(projectYamlPath, write=False):
     Only a project that has declared `fileGeneration.layout: hierarchical` while
     its tree is still functional is a migration candidate.
 
-    For an unblocked candidate the source->dest map is computed (T4.2); under
-    `write=True` it is applied to disk (T4.3). A no-op or blocked project writes
+    For an unblocked candidate the source->dest map is computed; under
+    `write=True` it is applied to disk. A no-op or blocked project writes
     nothing regardless of `write`.
     """
     projectYamlPath = os.path.abspath(projectYamlPath)
@@ -247,7 +257,7 @@ def migrateLayoutInProject(projectYamlPath, write=False):
     report = LayoutReport(projectYaml=projectYamlPath,
                           state=LAYOUT_NEEDS_MIGRATION, declaredLayout=declared)
 
-    # Precondition (Q-L4a): relocation presupposes the unconditional phases have
+    # Precondition: relocation presupposes the unconditional phases have
     # run and stamped yamlFormat: 2. A project that opts into hierarchical before
     # being format-2 clean must run `make migrate` first; report it rather than
     # relocate a half-migrated tree.
@@ -259,20 +269,20 @@ def migrateLayoutInProject(projectYamlPath, write=False):
             f"`make migrate-hierarchical`"))
         return report
 
-    # T4.2: compute the relocation map for the unblocked candidate.
+    # Compute the relocation map for the unblocked candidate.
     _buildRelocationMap(projectYamlPath, projectData, report)
 
-    # T4.4: plan the relative-path re-rooting from the pre-move (src) files. The
+    # Plan the relative-path re-rooting from the pre-move (src) files. The
     # moves preserve bytes, so offsets computed here stay valid against the
     # relocated copies; references that cannot be mechanically re-rooted are
     # reported (never mangled). Planning reads src, so it must run before apply.
     _planPathRewrites(report)
 
-    # T4.6 item 2: plan the single A2C_PRJ_YAML re-point into the root build
-    # harness (which stays at root, Q-L3), derived from the project-file move.
+    # Plan the single A2C_PRJ_YAML re-point into the root build harness (which
+    # stays at root), derived from the project-file move.
     _planHarnessEdit(report)
 
-    # T4.3 + T4.4: under --write, execute the map then apply the rewrites and the
+    # Under --write, execute the map then apply the rewrites and the
     # harness re-point. The layout flip is a no-op (reaching here means
     # hierarchical is already declared), so the apply is the moves + deletes +
     # emptied-dir prune, then the planned path rewrites on the relocated files,
@@ -288,7 +298,7 @@ def migrateLayoutInProject(projectYamlPath, write=False):
 
 
 # ---------------------------------------------------------------------------
-# Relocation map (T4.2 — computed, never applied)
+# Relocation map (computed, never applied)
 # ---------------------------------------------------------------------------
 
 def _buildRelocationMap(projectYamlPath, projectData, report):
@@ -333,7 +343,7 @@ def _buildRelocationMap(projectYamlPath, projectData, report):
                            f"{projectData['projectName']}Project.yaml")
     report.moves.append(Move(projectYamlPath, projDst, MOVE_PROJECT_FILE))
 
-    # 2b. Build-config include/ stays at the project root (Q-L3 amended): it is a
+    # 2b. Build-config include/ stays at the project root: it is a
     # user-owned entry point, not a prj/ orphan, so nothing under it moves. The
     # only harness change is re-pointing its A2C_PRJ_YAML line (planned separately
     # by _planHarnessEdit, since the project file moves to prj/yaml/).
@@ -345,7 +355,7 @@ def _buildRelocationMap(projectYamlPath, projectData, report):
     # a name-matched file lacking the marker is user content wearing a generated
     # name — reported, never deleted. Every other source (user-editable, or an
     # unrecognized/custom fileMap type) MOVES byte-preserving to its hierarchical
-    # <decomp>/<segment> location, content preserved for T4.4 to re-root.
+    # <decomp>/<segment> location, content preserved for the re-root pass.
     _, _, _, _, mergedProj = mergeProjectConfig(projectYamlPath)
     fileGen = mergedProj["fileGeneration"]
     fileMap = fileGen["fileMap"]
@@ -368,6 +378,12 @@ def _buildRelocationMap(projectYamlPath, projectData, report):
                         TODO_UNGENERATED_FILE, _loc(src, 0),
                         f"name-matched {base} under functional dir has no generated "
                         f"marker; left in place for manual review (not deleted)"))
+            elif hierName == FW_HIER_SEGMENT and not _isGenerated(src):
+                # User-owned firmware source under the firmware segment: a
+                # project-scope orphan (hand-authored entry file, no block YAML)
+                # moved into prj/fw (flattened), never deleted.
+                dst = os.path.join(prjDir, hierName, base)
+                report.moves.append(Move(src, dst, MOVE_ORPHAN))
             else:
                 # The node is the authored-YAML decomposition, not the raw
                 # source subdir: a blockDir segment (e.g. tb/<block>/) adds a
@@ -386,7 +402,7 @@ def _buildRelocationMap(projectYamlPath, projectData, report):
 
 
 # ---------------------------------------------------------------------------
-# Relocation apply (T4.3 — execute the computed map under --write)
+# Relocation apply (execute the computed map under --write)
 # ---------------------------------------------------------------------------
 
 def _applyRelocationMap(report):
@@ -497,11 +513,11 @@ def _isGenerated(path):
 
 
 # ---------------------------------------------------------------------------
-# Relative-path rewrite (T4.4 — re-root references through the new yaml/ levels)
+# Relative-path rewrite (re-root references through the new yaml/ levels)
 # ---------------------------------------------------------------------------
 
 def _planPathRewrites(report):
-    """Plan the T4.4 relative-path re-rooting from the pre-move files, using the
+    """Plan the relative-path re-rooting from the pre-move files, using the
     relocation map to find where each reference target moved. Records byte-offset
     edits in `report.rewrites` (applied later to the relocated copies, whose bytes
     the moves preserve) and reports references that cannot be mechanically
@@ -660,14 +676,14 @@ def _applyPathRewrites(report):
 
 
 # ---------------------------------------------------------------------------
-# Build harness re-point (T4.6 item 2 — A2C_PRJ_YAML follows the project file)
+# Build harness re-point (A2C_PRJ_YAML follows the project file)
 # ---------------------------------------------------------------------------
 
 def _planHarnessEdit(report):
     """Plan the single A2C_PRJ_YAML re-point into the root build harness.
 
     The project file moves to `prj/yaml/`, but the harness (`include/make/
-    shared.mk`) stays at the project root (Q-L3 amended), so the DB-build input
+    shared.mk`) stays at the project root, so the DB-build input
     path it hands `arch2code.py` must be updated. The new value is derived from
     the project-file move so it matches the relocation exactly (`$(REPO_ROOT)` is
     the project root in the harness).
