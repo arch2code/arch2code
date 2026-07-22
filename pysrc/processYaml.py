@@ -3457,6 +3457,24 @@ class projectCreate:
             self.contextModuleIdentity[context] = stem
         self.config.setConfig('CONTEXTMODULEIDENTITY', self.contextModuleIdentity, bin=True)
 
+        # A context's module/package identity names its generated SystemC module
+        # and namespace and its SystemVerilog package. Two distinct contexts
+        # sharing one identity would emit the same module/package name and
+        # silently clobber each other's generated output, so reject it here.
+        identityToContext = {}
+        for context, identity in self.contextModuleIdentity.items():
+            prior = identityToContext.get(identity)
+            if prior is not None:
+                printError(f"Module/package identity '{identity}' is used by "
+                           f"two distinct contexts: '{prior}' (project "
+                           f"'{self.contextOwningProject[prior]}') and '{context}' "
+                           f"(project '{self.contextOwningProject[context]}'). "
+                           f"Module and package names must be unique across all "
+                           f"contexts in a build; give one context a distinct "
+                           f"includeName.")
+                exit(warningAndErrorReport())
+            identityToContext[identity] = context
+
         g.db.commit()
         g.db.close()
         printIfDebug("Process Complete")
