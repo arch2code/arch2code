@@ -35,6 +35,10 @@ from dataclasses import dataclass, field
 
 import yaml
 
+from pysrc.migrateCommon import (
+    _read, _write, _loc, _isGenerated, _topValueNode, SKIP_DIRS, SOURCE_EXTS,
+)
+
 
 # Applied-edit kinds.
 INCLUDE_OVERRIDE_REMOVE = "INCLUDE_OVERRIDE_REMOVE"  # legacy include override line removed
@@ -103,6 +107,10 @@ def migrateIncludesInProject(projectYamlPath, write=False):
     includeDir = _resolveDir(projectDir, projectData.get("dirs") or {},
                              include["basePath"])
     name = include["name"]  # e.g. "Includes"
+    # The firmware `<context><name>FW.<ext>` files stay header-mode by design and
+    # must never be swept. Exclude them explicitly by their `<name>FW` stem rather
+    # than relying on the `*<name>.<ext>` glob not matching the `FW` suffix.
+    fwSuffixes = tuple(f"{name}FW.{ext}" for ext in exts.values())
     # Name-globbing alone is not proof a file is a generated orphan: a
     # hand-written file can share the `*<name>.<ext>` shape. Only delete files
     # that carry the generated marker (the same GENERATED_CODE_BEGIN contract
@@ -111,6 +119,8 @@ def migrateIncludesInProject(projectYamlPath, write=False):
     candidates = []
     for ext in exts.values():
         candidates.extend(sorted(glob.glob(os.path.join(includeDir, f"*{name}.{ext}"))))
+    candidates = [p for p in candidates
+                  if not os.path.basename(p).endswith(fwSuffixes)]
     staleFiles = [p for p in candidates if _isGenerated(p)]
     unguardedFiles = [p for p in candidates if not _isGenerated(p)]
 
@@ -145,7 +155,12 @@ def migrateIncludesInProject(projectYamlPath, write=False):
             _write(projectYamlPath, _deleteLine(projectText, overrideLine0))
             wrote = True
         for path in staleFiles:
-            os.remove(path)
+            try:
+                os.remove(path)
+            except OSError as exc:
+                raise RuntimeError(
+                    f"includes migration: cannot delete the orphaned generated "
+                    f"context include {os.path.basename(path)}: {exc}")
             wrote = True
         report.written = wrote
 
@@ -162,14 +177,6 @@ def _resolveDir(projectDir, dirs, key):
     rootDir = os.path.abspath(os.path.join(projectDir, dirs["root"]))
     spec = dirs[key]
     return os.path.abspath(spec.replace("$root", rootDir))
-
-
-def _isGenerated(path):
-    """True when `path` carries the GENERATED_CODE_BEGIN marker that the
-    generator stamps into every in-place generated file. This is the same
-    contract `_userIncludeSites` uses to tell generated source from user
-    source; deletion reuses it so a name-matched user file is never removed."""
-    return "GENERATED_CODE_BEGIN" in _read(path)
 
 
 def _userIncludeSites(projectDir, projectData, staleHeaders):
@@ -194,12 +201,12 @@ def _userIncludeSites(projectDir, projectData, staleHeaders):
 
 
 def _sourceFiles(rootDir):
-    """All C/C++ source files under the project root, excluding build trees."""
+    """All source files under the project root, excluding build trees. Uses the
+    shared source-extension set so `.cppm`/`.svh` include sites are seen too."""
     for dirpath, dirnames, filenames in os.walk(rootDir):
-        dirnames[:] = [d for d in dirnames
-                       if d not in ("build", ".gen", "obj_dir", ".git")]
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for fn in filenames:
-            if fn.endswith((".h", ".hpp", ".cpp", ".cc")):
+            if fn.endswith(SOURCE_EXTS):
                 yield os.path.join(dirpath, fn)
 
 
@@ -222,15 +229,6 @@ def _fileMapIncludeLine(root):
     return None
 
 
-def _topValueNode(root, key):
-    if root is None:
-        return None
-    for keyNode, valNode in root.value:
-        if keyNode.value == key:
-            return valNode
-    return None
-
-
 def _childValueNode(mappingNode, key):
     if not isinstance(mappingNode, yaml.MappingNode):
         return None
@@ -244,17 +242,3 @@ def _deleteLine(text, line0):
     lines = text.splitlines(keepends=True)
     del lines[line0]
     return "".join(lines)
-
-
-def _loc(path, line):
-    return f"{os.path.basename(path)}:{line}" if line else os.path.basename(path)
-
-
-def _read(path):
-    with open(path, "r") as fh:
-        return fh.read()
-
-
-def _write(path, text):
-    with open(path, "w") as fh:
-        fh.write(text)

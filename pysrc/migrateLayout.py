@@ -70,7 +70,9 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from pysrc.migrateAddressControl import _projectFileSet
+from pysrc.migrateCommon import (
+    _read, _write, _loc, _isGenerated, _projectFileSet, SKIP_DIRS, SOURCE_EXTS,
+)
 from pysrc.processYaml import mergeProjectConfig
 
 
@@ -106,11 +108,6 @@ FULLY_GENERATED_FILEMAP_KEYS = frozenset({
 # C/C++/module `#include "rel"` and SystemVerilog `` `include "rel" ``. Only the
 # quoted (local) relative form is a candidate; <...> and absolute paths are left.
 _SOURCE_INCLUDE_RE = re.compile(r'^\s*(?:#\s*include|`include)\s*"([^"]+)"')
-
-# Generated-source file extensions swept from the functional segments. A file
-# outside this set (Makefile, .f filelist, .gitignore) is build scaffolding the
-# user manages, not generated functional source, and is left untouched.
-SOURCE_EXTS = (".h", ".hpp", ".cpp", ".cc", ".cppm", ".sv", ".svh")
 
 # Project-scope integration files (orphans) with no block YAML. They MOVE into
 # the prj/ container (flattened: verif/vl_wrap -> verif) instead of being deleted
@@ -150,9 +147,6 @@ HARNESS_MK = os.path.join(BUILD_CONFIG_DIR, "make", "shared.mk")
 # before it so it wins over a2c-common.mk's `?=` default on the first build).
 _A2C_PRJ_YAML_RE = re.compile(r'^[ \t]*A2C_PRJ_YAML[ \t]*[:?]?=.*$', re.M)
 _MK_INCLUDE_RE = re.compile(r'^[ \t]*-?include[ \t]', re.M)
-
-# Build/output subtrees never walked when sweeping a project tree.
-_SKIP_DIRS = ("build", ".gen", "obj_dir", ".git", "rundir")
 
 # The yamlFormat value the layout migration presupposes. Kept local so
 # this module stays text-only and never imports processYaml (which opens the DB
@@ -499,17 +493,10 @@ def _decompPrefix(relDir, nodes):
 def _sourceFiles(rootDir):
     """Generated-source candidate files under `rootDir`, excluding build trees."""
     for dirpath, dirnames, filenames in os.walk(rootDir):
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for fn in filenames:
             if fn.endswith(SOURCE_EXTS):
                 yield os.path.join(dirpath, fn)
-
-
-def _isGenerated(path):
-    """True when `path` carries the GENERATED_CODE_BEGIN marker the generator
-    stamps into every in-place generated file (same contract migrateIncludes
-    uses); deletion reuses it so a name-matched user file is never removed."""
-    return "GENERATED_CODE_BEGIN" in _read(path)
 
 
 # ---------------------------------------------------------------------------
@@ -761,21 +748,3 @@ def _prjYamlSegments(projectData):
     prj = os.path.basename(hdirs.get("prj", DEFAULT_PRJ_SEGMENT))
     yamlSeg = hdirs.get("yaml", DEFAULT_YAML_SEGMENT)
     return prj, yamlSeg
-
-
-# ---------------------------------------------------------------------------
-# Small text helpers
-# ---------------------------------------------------------------------------
-
-def _loc(path, line):
-    return f"{os.path.basename(path)}:{line}" if line else os.path.basename(path)
-
-
-def _read(path):
-    with open(path, "r") as fh:
-        return fh.read()
-
-
-def _write(path, text):
-    with open(path, "w") as fh:
-        fh.write(text)

@@ -40,16 +40,14 @@ from dataclasses import dataclass, field
 import yaml
 
 from pysrc.evalPyToSv import convertEvalsInFile
+from pysrc.migrateCommon import _read, _write, _projectFileSet
 from pysrc.migrateLayout import (
     LAYOUT_ALREADY_HIERARCHICAL,
     LAYOUT_FUNCTIONAL,
     LAYOUT_NEEDS_MIGRATION,
     migrateLayoutInProject,
 )
-from pysrc.migrateAddressControl import (
-    migrateAddressControlInProject,
-    _projectFileSet,
-)
+from pysrc.migrateAddressControl import migrateAddressControlInProject
 from pysrc.migrateIncludes import migrateIncludesInProject
 from pysrc.processYaml import CURRENT_YAML_FORMAT
 
@@ -110,6 +108,19 @@ def migrateProject(projectYamlPath, write=False):
 
     projectDir = os.path.dirname(projectYamlPath)
     files = _projectFileSet(projectDir, projectData)
+
+    # The addressControl file (named by the `addressControl:` pointer) is not in
+    # the projectFiles/include closure, but Phase B copies its AddressGroups
+    # field values verbatim into the emitted addressBlock:. Add it to the Phase-A
+    # sweep so a Python-syntax eval there is converted to the SV subset before
+    # Phase B reads the file fresh from disk and copies the value on. Phase B
+    # deletes the legacy file afterwards, so only the values that survive into
+    # addressBlock: need the conversion — which this provides.
+    pointer = projectData.get("addressControl")
+    if pointer:
+        addrCtlPath = os.path.abspath(os.path.join(projectDir, pointer))
+        if addrCtlPath not in files and os.path.isfile(addrCtlPath):
+            files = files + [addrCtlPath]
 
     # Phase A — convert Python-syntax evals to the SV subset in each project
     # file. CONVERTED rows are rewritten under --write; NEEDS_MANUAL rows are
@@ -235,8 +246,11 @@ def _renderPhaseC(result, write, lines):
                      f"manual conversion: {row.original}")
     for item in result.addressReport.manual:
         lines.append(f"    - {item.location} {item.message}")
+    for item in result.includesReport.manual:
+        lines.append(f"    - {item.location} {item.message}")
     lines.append("  Resolve the items above (see address-migration.md for the "
-                 "address TODOs), then re-run.")
+                 "address TODOs and the migration skill for the include "
+                 "import rewrites), then re-run.")
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +279,7 @@ def renderLayoutReport(report, write):
 
 def _renderRelocationMap(report, write, lines):
     """Render the relocation move/delete map. Under `--write` the map has been
-    applied on disk (T4.3); without it this is a dry-run preview and nothing
+    applied on disk; without it this is a dry-run preview and nothing
     changed."""
     root = report.projectRoot
 
@@ -274,7 +288,7 @@ def _renderRelocationMap(report, write, lines):
 
     lines.append("Project is functional on disk and opted into hierarchical.")
     if write and report.written:
-        lines.append("  APPLIED relocation map (T4.3):")
+        lines.append("  APPLIED relocation map:")
     else:
         lines.append("  DRY-RUN relocation map (re-run with --write to apply):")
 
@@ -303,20 +317,6 @@ def _renderRelocationMap(report, write, lines):
         lines.append("  manual review (not moved or deleted):")
         for item in report.manual:
             lines.append(f"    {item.location}  {item.kind}  {item.message}")
-
-
-# ---------------------------------------------------------------------------
-# Small text helpers
-# ---------------------------------------------------------------------------
-
-def _read(path):
-    with open(path, "r") as fh:
-        return fh.read()
-
-
-def _write(path, text):
-    with open(path, "w") as fh:
-        fh.write(text)
 
 
 def main(argv=None):

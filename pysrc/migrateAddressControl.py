@@ -9,11 +9,10 @@ schema dissolves that table into a top-level `addressBlock:` field on each route
 block, with the policy sections moved to `project.yaml` as `instanceGroups:` /
 `addressObjects:`.
 
-The in-generator legacy loader was removed (address-control refactor Stage 8), so
-this converter runs standalone: it reads the on-disk YAML as text and never opens
-the project database. PyYAML supplies values; targeted line-capturing write-back
-applies edits, preserving every unrelated byte (the same split `evalPyToSv` uses
-for the eval pass).
+The in-generator legacy loader was removed, so this converter runs standalone: it
+reads the on-disk YAML as text and never opens the project database. PyYAML
+supplies values; targeted line-capturing write-back applies edits, preserving
+every unrelated byte (the same split `evalPyToSv` uses for the eval pass).
 
 Single public entry point:
   `migrateAddressControlInProject(projectYamlPath, write=False)` discovers the
@@ -37,6 +36,10 @@ import os
 from dataclasses import dataclass, field
 
 import yaml
+
+from pysrc.migrateCommon import (
+    _read, _write, _loc, _topValueNode, _projectFileSet, _includeList,
+)
 
 
 # Applied-edit kinds.
@@ -107,7 +110,12 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
         return report
 
     addrCtlPath = os.path.join(projectDir, pointer)
-    addrCtlText = _read(addrCtlPath)
+    try:
+        addrCtlText = _read(addrCtlPath)
+    except OSError as exc:
+        raise RuntimeError(
+            f"address-control migration: cannot read the addressControl file "
+            f"'{pointer}' referenced by {os.path.basename(projectYamlPath)}: {exc}")
     addrCtlRoot = yaml.compose(addrCtlText)
     addrCtl = yaml.safe_load(addrCtlText) or {}
 
@@ -252,7 +260,12 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
     # Delete the legacy file only when the project is clean; a non-empty manual
     # list means the skill still has work, so the file stays as reference.
     if report.clean:
-        os.remove(addrCtlPath)
+        try:
+            os.remove(addrCtlPath)
+        except OSError as exc:
+            raise RuntimeError(
+                f"address-control migration: cannot delete the migrated "
+                f"{os.path.basename(addrCtlPath)}: {exc}")
         report.deletedAddressControl = True
 
     report.written = wrote
@@ -262,29 +275,6 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
 # ---------------------------------------------------------------------------
 # Project file-set discovery and indexing
 # ---------------------------------------------------------------------------
-
-def _projectFileSet(projectDir, projectData):
-    """Ordered, de-duplicated list of project YAML files: the project.yaml
-    `projectFiles:` entries plus everything reachable through their `include:`
-    chains. Paths are resolved relative to the including file's directory."""
-    files = []
-    seen = set()
-    queue = [os.path.join(projectDir, f) for f in projectData.get("projectFiles", [])]
-    while queue:
-        path = os.path.abspath(queue.pop(0))
-        if path in seen:
-            continue
-        seen.add(path)
-        files.append(path)
-        for inc in _includeList(_read(path)):
-            queue.append(os.path.join(os.path.dirname(path), inc))
-    return files
-
-
-def _includeList(text):
-    data = yaml.safe_load(text) or {}
-    return data.get("include") or []
-
 
 def _buildBlockIndex(files):
     """Map every block name to (keyLine0, keyCol, childCol, filePath). keyLine0 is
@@ -437,7 +427,8 @@ def _rewritePostProcess(text, baseBasenames, report, projectYamlPath):
     """Normalize a project `postProcess:` override.
 
     Rewrites a `postParseRegister.py` reference to `postParseRegisterPorts.py`
-    (the Stage 4 script), then strips any entry that duplicates a base script.
+    (the current register-ports post-parse script), then strips any entry that
+    duplicates a base script.
     An emptied block is removed entirely; a block that retains genuinely
     project-specific entries keeps them and is reported for review.
 
@@ -539,15 +530,6 @@ def _baseScriptBasenames():
 # YAML node helpers (line / verbatim-value capture)
 # ---------------------------------------------------------------------------
 
-def _topValueNode(root, key):
-    if root is None:
-        return None
-    for keyNode, valNode in root.value:
-        if keyNode.value == key:
-            return valNode
-    return None
-
-
 def _topKeyLine(root, key):
     """1-based line of a top-level key, or None."""
     if root is None:
@@ -597,17 +579,3 @@ def _insertAfterLine(text, line0, newLines):
     lines = text.splitlines(keepends=True)
     lines[line0 + 1:line0 + 1] = newLines
     return "".join(lines)
-
-
-def _loc(path, line):
-    return f"{os.path.basename(path)}:{line}"
-
-
-def _read(path):
-    with open(path, "r") as fh:
-        return fh.read()
-
-
-def _write(path, text):
-    with open(path, "w") as fh:
-        fh.write(text)
