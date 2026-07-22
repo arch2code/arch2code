@@ -90,6 +90,8 @@ def render(args, prj, data):
             return(includeFW_hdr(args, prj, data))
         case 'package_sv':
             return(package_sv(args, prj, data))
+        case 'rtlDotF_f':
+            return(rtlDotF_f(args, prj, data))
         case _:
             print(f"Unknown section: {data['target']}")
             exit()
@@ -702,3 +704,15 @@ def package_sv(args, prj, data):
     return(t.substitute({
         'context':data["context"],
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+
+# Per-project verilator file list (rtl.f). The +libext line and the top-context
+# GENERATED_CODE_PARAM are the create-only skeleton; the rtlDotF template fills
+# the generated region with the +incdir lines and the ordered package list for
+# every context on the top context's include chain.
+def rtlDotF_f(args, prj, data):
+    out = list()
+    out.append('+libext+.sv\n')
+    out.append(f'// GENERATED_CODE_PARAM --context={data["context"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=rtlDotF\n')
+    out.append('// GENERATED_CODE_END\n')
+    return("".join(out))

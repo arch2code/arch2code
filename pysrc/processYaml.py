@@ -3449,6 +3449,19 @@ class projectCreate:
         self.generateAddressEnums()
         # check include files are valid
         self.saveIncludeFiles()
+        # The project's top context: the defining context of the topInstance's
+        # block. Its include chain spans the whole build, so it keys the single
+        # per-project (mode: project) artifact, the rtl.f verilator file list.
+        # A definitions-only project (no topInstance) has no top context.
+        # Persisted before runCreateArtifacts so the build manifest consumes it.
+        topContext = None
+        if self.topInstance is not None:
+            blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
+            for instRow in self.flatData['instances'].values():
+                if instRow['container'] == '_topInstance':
+                    topContext = blockByKey[instRow['instanceTypeKey']]['_context']
+                    break
+        self.config.setConfig('TOPCONTEXT', topContext, bin=True)
         # run late artifact creators that consume the completed project state
         self.runCreateArtifacts()
         # save the schema as well to the config

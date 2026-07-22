@@ -106,6 +106,10 @@ class newModule:
         if registrarFileGenerationConfig:
             self.registrar_create_from_templates(fileGenerationConfig, registrarFileGenerationConfig, blockCondData, prj, args)
 
+        projectFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'project'}
+        if projectFileGenerationConfig:
+            self.project_create_from_templates(fileGenerationConfig, projectFileGenerationConfig, prj, args)
+
         includeFiles = prj.config.getConfig('INCLUDEFILES')
         self.context_create_from_template(includeFiles, fileGenerationConfig, prj, args)
 
@@ -289,6 +293,53 @@ class newModule:
             else:
                 print(f"Making {fileName} at {moduleDirAbs} ")
                 data['headerName'] = fileName
+                data['target'] = fileKey + "_" + ext
+                data['targetDetails'] = fileDefinition
+                data['fileGeneration'] = fileGenerationConfig
+                vars = {'prj': prj.data, 'block': data, 'args': args}
+                newFileContents = self.renderer.render('fileGen', vars)
+                with open(filePathExt, "w") as f:
+                    f.write(newFileContents)
+
+    def project_create_from_templates(self, fileGenerationConfig, projectFileConfig, prj, args):
+        # Project mode: exactly one artifact per project, placed at its basePath
+        # segment root and keyed to the project's top context (the design's root
+        # context whose include chain spans the whole build). A definitions-only
+        # project (no topInstance) has no top context and emits nothing.
+        topContext = prj.config.getConfig('TOPCONTEXT')
+        if topContext is None:
+            return
+        # Ownership gate (mirrors the block/registrar scaffolds): only the project
+        # that owns the top context scaffolds its per-project artifact, so a
+        # composed build never creates a referenced child project's copy.
+        owner = prj.contextOwningProject[topContext]
+        projectName = prj.config.getConfig('PROJECTNAME')
+        if owner != projectName:
+            return
+        layout = prj.projectLayout[owner]
+        # The generated-code context stamp is the top context's basename, the
+        # spelling resolveContextKey matches back to the context key.
+        contextStamp = os.path.basename(topContext)
+        for fileKey, fileDefinition in projectFileConfig.items():
+            self.create_project_file(fileGenerationConfig, fileKey, fileDefinition, contextStamp, layout, prj, args)
+
+    def create_project_file(self, fileGenerationConfig, fileKey, fileDefinition, contextStamp, layout, prj, args):
+        # The single per-project artifact lands at the segment root: no module
+        # directory and no module file stub, so the filename is composed purely
+        # from the fileMap name + ext (e.g. rtl + f -> rtl.f).
+        data = dict()
+        data['context'] = contextStamp
+        filePath = processYaml.expandNewModulePath(fileDefinition, '', '', '', layout, missingDirOk=True)
+        moduleDirAbs = os.path.dirname(filePath)
+        for ext in fileDefinition['ext']:
+            filePathExt = filePath + "." + fileDefinition['ext'][ext]
+            fileName = os.path.basename(filePathExt)
+            if not os.path.exists(moduleDirAbs):
+                os.makedirs(moduleDirAbs)
+            if os.path.exists(filePathExt) and not args.overwrite:
+                print(f"{filePathExt} exists so skipping, use --overwrite to overwrite")
+            else:
+                print(f"Making {fileName} at {moduleDirAbs} ")
                 data['target'] = fileKey + "_" + ext
                 data['targetDetails'] = fileDefinition
                 data['fileGeneration'] = fileGenerationConfig

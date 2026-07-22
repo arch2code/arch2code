@@ -168,6 +168,19 @@ def create(prj):
                 if ext == 'cppm':
                     moduleFiles.add(entry['fileName'])
 
+    # project mode: exactly one artifact per project at its basePath segment
+    # root, keyed to the top context (mirrors the newModule project scaffold).
+    # A definitions-only project (no top context) emits none; the ownership gate
+    # keeps a composed build from recording a referenced child project's copy.
+    topContext = prj.config.getConfig('TOPCONTEXT')
+    if topContext is not None and prj.contextOwningProject[topContext] == prj.config.getConfig('PROJECTNAME'):
+        objLayout = layoutForContext(topContext)
+        for fileDef in fileMap.values():
+            if fileDef.get('mode', 'block') != 'project':
+                continue
+            filePath = processYaml.expandNewModulePath(fileDef, '', '', '', objLayout, missingDirOk=True)
+            record(fileDef, filePath, objLayout)
+
     # The verilator wrapper segment root (holds sc_main and the verilated build
     # dir): a known location, not a discovered one. The retired vl_wrap.cpp
     # aggregator no longer lives here; `_verif` registration moved to the

@@ -96,6 +96,11 @@ ip-test:
 	make -C $(IP_TEST_DIR) gen
 	make -C $(IP_TEST_DIR)/rundir -j run
 	make -C $(IP_TEST_DIR)/rundir -j run-vl
+	# Standalone IP projects (ip, ipBridge): model + verilated cosim.
+	make -C $(IP_TEST_DIR)/ip/rundir -j run
+	make -C $(IP_TEST_DIR)/ip/rundir -j run-vl
+	make -C $(IP_TEST_DIR)/bridge/rundir -j run
+	make -C $(IP_TEST_DIR)/bridge/rundir -j run-vl
 
 .PHONY : hello-world
 hello-world:
