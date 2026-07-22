@@ -15,7 +15,7 @@ import ipBridge.base;
 #include "apb_port_thunker.h"
 #include "push_ack_port_thunker.h"
 #include "ipVariantConfig.h"
-#include "ipBridge_ipVariantConfig.h"
+import ipBridge.ip.config;
 import ipBridge;
 using namespace ipBridge_ns;
 import shared_types;

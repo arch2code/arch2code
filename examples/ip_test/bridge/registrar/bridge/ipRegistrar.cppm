@@ -6,10 +6,10 @@ module;
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "ipVariantConfig.h"
-#include "ipBridge_ipVariantConfig.h"
 
 export module ipBridge.ipBridge.ip.registrar;
 import ip.block;
+import ipBridge.ip.config;
 
 namespace {
 struct _ip_registrar {

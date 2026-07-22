@@ -392,6 +392,18 @@ def cpp_registrar_module_name(projectName, parentBlock, childBlock):
     # cpp_module_name; the dotted structure and `.registrar` suffix are literal.
     return f'{cpp_module_name(projectName)}.{cpp_module_name(parentBlock)}.{cpp_module_name(childBlock)}.registrar'
 
+def cpp_config_module_name(projectName, childBlock):
+    # C++20 module name for the owner-qualified foreign per-variant Config module
+    # interface unit of a reused child. Spelled `<project>.<child>.config` so the
+    # same reused child yields ONE config module per owning project (NOT per
+    # parent): every parent-owned registrar and container in that project that
+    # binds a foreign variant of the child imports the same module. The identity
+    # components (project, child) come from persisted data / projectOpen views;
+    # this helper only formats the C++ module spelling. Each token is sanitized
+    # the same way as cpp_module_name; the dotted structure and `.config` suffix
+    # are literal.
+    return f'{cpp_module_name(projectName)}.{cpp_module_name(childBlock)}.config'
+
 def cpp_variant_config_name(projectName, blockName, variant, isForeign=False):
     # C++ struct name for a per-variant Config, spelled entirely in the template
     # layer from the neutral (project, block, variant, isForeign) components a
@@ -536,12 +548,16 @@ def sc_class_dependency_includes(args, prj, data):
     for context in sorted(data.get('configIncludeContext', {})):
         if context in data['includeFiles'].get('config_hdr', {}):
             out.append(('include', f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"'))
-    # Owner-qualified foreign-Config headers for child instances bound to an
-    # assembler-declared variant. These live in the parent's registrar domain
-    # (a distinct include surface from the child-owned context config headers)
-    # and are reachable through the manifest's registrar directories.
-    for headerName in sorted(data.get('foreignConfigHeaders', {})):
-        out.append(('include', f'#include "{headerName}"'))
+    # Owner-qualified foreign-Config modules for child instances bound to an
+    # assembler-declared variant. Each is a registrar-domain C++20 module
+    # interface unit (`<project>.<child>.config`, one per owning project); the
+    # container imports it rather than textually including a header. As an
+    # 'import' pair it is emitted inline in classic mode and, in a block-module
+    # GMF caller, after `export module` alongside the context imports.
+    for key in sorted(data['foreignConfigModules']):
+        mod = data['foreignConfigModules'][key]
+        moduleName = cpp_config_module_name(mod['project'], mod['block'])
+        out.append(('import', f'import {moduleName};'))
     fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
     for context in data['classIncludeContext']:
         if context in data['includeFiles'].get(fileMapKey, {}):

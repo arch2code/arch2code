@@ -109,7 +109,10 @@ def _config_member(out, structName, constName):
     inStruct = False
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith(f"struct {structName} "):
+        # Foreign Config structs are emitted `export struct ...` inside a module
+        # interface unit; same-context Config structs stay bare `struct ...`.
+        if (stripped.startswith(f"struct {structName} ") or
+                stripped.startswith(f"export struct {structName} ")):
             inStruct = True
             continue
         if inStruct:

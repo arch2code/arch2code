@@ -6,10 +6,10 @@ module;
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "ipVariantConfig.h"
-#include "ip_test_ipVariantConfig.h"
 
 export module ip_test.ip_top.ip.registrar;
 import ip.block;
+import ip_test.ip.config;
 
 namespace {
 struct _ip_registrar {

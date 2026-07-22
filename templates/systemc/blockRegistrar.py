@@ -93,11 +93,6 @@ def render_default(args, prj, data):
     for context in sorted(data.get('configIncludeContext', {})):
         if context in data['includeFiles'].get('config_hdr', {}):
             out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
-    # Owner-qualified foreign-Config headers for variants the parent declares as
-    # foreign variants of the reused child; the lambda body spells those
-    # owner-qualified Config types.
-    for headerName in registrarConfig['foreignHeaders']:
-        out.append(f'#include "{headerName}"')
 
     # A non-templated container flagged isParameterizable is still a classic
     # header class; its declaration must be visible in the GMF because includes
@@ -115,6 +110,13 @@ def render_default(args, prj, data):
     # nothing, it only runs its trampoline static.
     if isParameterizable and hasOwnParams:
         out.append(f'import {intf_gen_utils.cpp_block_module_name(blockName)};')
+
+    # Owner-qualified foreign-Config modules for variants the parent declares as
+    # foreign variants of the reused child; the lambda body spells those owner-
+    # qualified Config types. Imported as PRIVATE imports (plain `import`) in the
+    # registrar's module purview, after `export module`, not as GMF #includes.
+    for mod in registrarConfig['foreignConfigModules']:
+        out.append(f'import {intf_gen_utils.cpp_config_module_name(mod["project"], mod["block"])};')
 
     # NOTE: Verilated wrapper registration is intentionally NOT emitted
     # here yet. The wrapper header (`<block>_hdl_sc_wrapper.h`) lives

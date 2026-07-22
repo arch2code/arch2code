@@ -144,13 +144,16 @@ fileGeneration:
     # children with a model get a trampoline. Pure non-templated SC-only
     # blocks self-register from their own .cpp and gain no trampoline.
     blockRegistrar : { name : "Registrar",    ext: {cppm: "cppm"},         cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, desc: "Per-assembler per-child trampoline registrar TU"}
-    # foreignConfig emits one owner-qualified per-variant Config header per
-    # (declaring project, reused child) into the assembler's registrar domain,
-    # aggregating the assembler-declared (foreign) variants of that child. Only
-    # emitted when the assembler's owning project actually declares a foreign
+    # foreignConfig emits one owner-qualified per-variant Config module interface
+    # unit per (declaring project, reused child) into the assembler's registrar
+    # domain, aggregating the assembler-declared (foreign) variants of that child.
+    # Only emitted when the assembler's owning project actually declares a foreign
     # variant of the child; same-project/default variants stay in the child's
-    # context config header. foreignConfig: true owner-qualifies the basename.
-    foreignConfig : { name : "VariantConfig", ext: {hdr: "h"},             cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, foreignConfig: true, desc: "Owner-qualified foreign per-variant Config header"}
+    # context config header. foreignConfig: true owner-qualifies the basename. The
+    # cppm ext routes the unit into A2C_CPP_MODULE_FILES; the container and the SC
+    # registrar `import` the module (`<project>.<child>.config`) rather than
+    # textually including a header.
+    foreignConfig : { name : "VariantConfig", ext: {cppm: "cppm"},         cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, foreignConfig: true, desc: "Owner-qualified foreign per-variant Config module interface unit"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
     # Canonical parameterized SV wrapper body, emitted once per parameterizable

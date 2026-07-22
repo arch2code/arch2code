@@ -1,5 +1,5 @@
 import pysrc.emissionUtils as emissionUtils
-from pysrc.intf_gen_utils import cpp_variant_config_name
+from pysrc.intf_gen_utils import cpp_variant_config_name, cpp_config_module_name
 
 # args from generator line
 # prj object
@@ -16,9 +16,13 @@ def render(args, prj, data):
 def foreignConfig(args, prj, data):
     # Owner-qualified per-variant Config structs for the reused child block
     # `data['qualBlock']`, declared foreign by the parent `data['parent']`'s
-    # owning project. Member layout mirrors the child's context config header
-    # (base parameterizable members plus eval-derived members emitted
-    # symbolically); only the struct name is owner-qualified.
+    # owning project, emitted as a C++20 module interface unit. Member layout
+    # mirrors the child's context config header (base parameterizable members
+    # plus eval-derived members emitted symbolically); only the struct name is
+    # owner-qualified. The whole module (global module fragment #includes,
+    # `export module <project>.<child>.config;`, and the exported structs) is
+    # emitted here into the scaffold's single generated region, so a consumer
+    # container/registrar imports the module rather than including a header.
     view = prj.getForeignConfigData(data['qualBlock'], data['parent'])
     descriptors = view['descriptors']
     if not descriptors:
@@ -26,17 +30,30 @@ def foreignConfig(args, prj, data):
     params = view['params']
     constants_by_name = {value['constant']: value for value in params}
     block_param_synthetic = view['blockParamSynthetic']
+    # One config module per (owning project, child); every descriptor here shares
+    # that identity (getForeignConfigData filters to the owner project and one
+    # child). The module name is spelled in the template layer from the neutral
+    # (project, child) components.
+    moduleName = cpp_config_module_name(descriptors[0]['declaringProject'],
+                                        descriptors[0]['block'])
     out = []
+    # #includes are illegal in module purview, so the config struct's constexpr
+    # dependencies live in the global module fragment ahead of the module decl.
+    out.append('module;')
+    out.append('#include <cstdint>')
     out.append('#include "clog2.h"')
+    out.append("")
+    out.append(f'export module {moduleName};')
     out.append("")
     # getForeignConfigData yields only canonical descriptors (duplicateOf is
     # None) whose struct name is unique, so each struct is emitted exactly once.
     # The name is spelled here in the template layer from the descriptor's
-    # neutral (project, block, variant) components.
+    # neutral (project, block, variant) components. Each struct is exported so a
+    # module consumer can name it unqualified, exactly as the header form did.
     for desc in descriptors:
         structName = cpp_variant_config_name(desc['declaringProject'], desc['block'],
                                              desc['emitVariant'], desc['isForeign'])
-        out.append(f"struct {structName} {{")
+        out.append(f"export struct {structName} {{")
         variantSpelling = _configSymSpelling(prj, set(desc['values'].keys()))
         for constName, resolved in desc['values'].items():
             if constName in constants_by_name:

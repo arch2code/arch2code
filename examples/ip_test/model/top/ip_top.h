@@ -16,7 +16,7 @@ import ip_top.base;
 #include "push_ack_port_thunker.h"
 #include "ipVariantConfig.h"
 #include "srcVariantConfig.h"
-#include "ip_test_ipVariantConfig.h"
+import ip_test.ip.config;
 import shared_types;
 using namespace shared_types_ns;
 import ip_top;

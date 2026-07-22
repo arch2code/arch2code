@@ -1232,7 +1232,7 @@ class projectOpen:
     def getBlockData(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
         blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts',
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
-                        'classIncludeContext', 'configIncludeContext', 'foreignConfigHeaders',
+                        'classIncludeContext', 'configIncludeContext', 'foreignConfigModules',
                         'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
                         'interface_type_mappings_qualified'}
         ret = dict()
@@ -1383,7 +1383,7 @@ class projectOpen:
         variant_configs    = bundle['variantConfigs']
 
         descriptor = None
-        foreign_header = ''
+        foreign_config_module = None
         if is_parameterizable:
             variant = instanceData['variant']
             consumer_project = self.contextOwningProject[instanceData['_context']]
@@ -1391,14 +1391,18 @@ class projectOpen:
             if desc is not None and desc['values']:
                 descriptor = desc
                 if desc['isForeign']:
-                    foreign_header = desc['headerName']
+                    # Neutral identity of the owner-qualified foreign Config
+                    # module (`<project>.<child>.config`); the template spells the
+                    # module name and emits the import.
+                    foreign_config_module = {'project': desc['declaringProject'],
+                                             'block': desc['block']}
 
         return {
             'isParameterizable': is_parameterizable,
             'hasOwnParams':      has_own_params,
             'defaultConfig':     default_config,
             'descriptor':        descriptor,
-            'foreignConfigHeader': foreign_header,
+            'foreignConfigModule': foreign_config_module,
         }
 
     def _selectVariantDescriptor(self, variant_configs, variant, consumerProject):
@@ -1425,26 +1429,29 @@ class projectOpen:
         # own factory projectName, so it must bind the Config the parent's own
         # instances bind: the consumer project is the parent's owning project.
         # Returns the per-variant neutral descriptor (or None -> defaultConfig),
-        # the block defaultConfig, and the foreign registrar-domain header
-        # basenames the trampoline TU must include; the template spells each
-        # Config struct name.
+        # the block defaultConfig, and the neutral (project, child) identities of
+        # the foreign registrar-domain Config modules the trampoline TU must
+        # import; the template spells each Config struct and module name.
         parentQual = self.getQualBlock(parentBlock)
         consumerProject = self.contextOwningProject[self.data['blocks'][parentQual]['_context']]
         descriptors = self._buildVariantConfigDescriptors(childQualBlock)
         defaultConfig = self.data['blocks'][childQualBlock]['defaultConfig']
         variantDescriptors = dict()
-        foreignHeaders = dict()
+        foreignConfigModules = dict()
         for variant in sorted({desc['variant'] for desc in descriptors}):
             desc = self._selectVariantDescriptor(descriptors, variant, consumerProject)
             if desc is not None and desc['values']:
                 variantDescriptors[variant] = desc
                 if desc['isForeign']:
-                    foreignHeaders[desc['headerName']] = 0
+                    key = (desc['declaringProject'], desc['block'])
+                    foreignConfigModules[key] = {'project': desc['declaringProject'],
+                                                 'block': desc['block']}
             else:
                 variantDescriptors[variant] = None
         return {'variantDescriptors': variantDescriptors,
                 'defaultConfig': defaultConfig,
-                'foreignHeaders': list(foreignHeaders)}
+                'foreignConfigModules': [foreignConfigModules[k]
+                                         for k in sorted(foreignConfigModules)]}
 
     def getForeignConfigData(self, childQualBlock, parentBlock):
         # Emission inputs for one owner-qualified foreign-Config header: the
@@ -1529,8 +1536,7 @@ class projectOpen:
         #    'values': {constName: resolvedValue, ...},
         #    'emitVariant': str,          # variant whose struct this one emits as
         #    'useDefault': bool,          # emitted name is the block defaultConfig
-        #    'duplicateOf': None | dict,  # non-None marks a non-canonical descriptor
-        #    'headerName': str}           # fileMap-derived foreign-header basename
+        #    'duplicateOf': None | dict}  # non-None marks a non-canonical descriptor
         #
         # 'duplicateOf' is None for the canonical descriptor of a value signature
         # and a neutral marker otherwise, recording the intra-block dedup that
@@ -1600,14 +1606,6 @@ class projectOpen:
         projects_ordered = ([owner_project] if owner_project in rows_by_project else []) + \
             sorted(p for p in rows_by_project if p != owner_project)
 
-        # Foreign per-variant Configs live in an owner-qualified registrar-domain
-        # header whose basename is the fileMap-derived fact from
-        # calcForeignConfigHeaders (keyed by declaring project + child block).
-        # A foreign (project, block) pair earns a header only when it has Config
-        # fields to emit, so the lookup is an optional relationship: absent
-        # entries belong to empty-value descriptors whose headerName is unused.
-        foreign_headers = self.config.getConfig('FOREIGNCONFIGHEADERS')
-
         # Neutral sentinel: a value signature whose canonical struct is the
         # block's shared context default Config (same-project nominal collapse).
         _DEFAULT_SIGNATURE = object()
@@ -1636,11 +1634,6 @@ class projectOpen:
                     for const_data in param_constants
                 ))
                 canonical_by_signature[default_signature] = _DEFAULT_SIGNATURE
-            header_name = ''
-            if is_foreign:
-                entry = foreign_headers.get((declaring_project, qualBlock))
-                if entry:
-                    header_name = entry['baseName']
             for variant in sorted(declared):
                 values = dict()
                 for const_data in param_constants:
@@ -1681,7 +1674,6 @@ class projectOpen:
                     'emitVariant':      emit_variant,
                     'useDefault':       use_default,
                     'duplicateOf':      duplicate_of,
-                    'headerName':       header_name,
                 })
         return descriptors
 
@@ -1869,10 +1861,13 @@ class projectOpen:
             instInfo['instanceTypeHasOwnParams']   = configFields['hasOwnParams']
             instInfo['instanceTypeDefaultConfig']  = configFields['defaultConfig']
             # When the child binds a foreign (assembler-declared) variant, its
-            # owner-qualified Config lives in a registrar-domain header the
-            # container TU must include; aggregate the set for this block.
-            if configFields['foreignConfigHeader']:
-                ret['foreignConfigHeaders'][configFields['foreignConfigHeader']] = 0
+            # owner-qualified Config lives in a registrar-domain module the
+            # container TU must import; aggregate the neutral (project, child)
+            # identities for this block (deduped, one module per owning project).
+            foreignConfigModule = configFields['foreignConfigModule']
+            if foreignConfigModule:
+                key = (foreignConfigModule['project'], foreignConfigModule['block'])
+                ret['foreignConfigModules'][key] = foreignConfigModule
             # projectName the generated createInstance lookup must target for
             # this child. The factory key is (blockType, variant, projectName).
             #  * parameterizable child -> assembler: a parent-owned registrar
@@ -4436,7 +4431,7 @@ class projectCreate:
                     layout = self.projectLayout[row['projectName']]
                     filePath = expandNewModulePath(foreignDef, blockByKey[childKey]['dir'],
                                                    childBlock, stub, layout, missingDirOk=True)
-                    baseName = os.path.basename(filePath) + "." + foreignDef['ext']['hdr']
+                    baseName = os.path.basename(filePath) + "." + foreignDef['ext']['cppm']
                     headers[key] = {'stub': stub, 'baseName': baseName}
         self.config.setConfig('FOREIGNCONFIGHEADERS', headers, bin=True)
 

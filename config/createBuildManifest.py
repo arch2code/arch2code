@@ -130,7 +130,7 @@ def create(prj):
                         if (assemblerOwner, childKey) in emittedForeign:
                             continue
                         emittedForeign.add((assemblerOwner, childKey))
-                        fileStub = foreignConfigHeaders[(assemblerOwner, childKey)]
+                        fileStub = foreignConfigHeaders[(assemblerOwner, childKey)]['stub']
                     filePath = processYaml.expandNewModulePath(fileDef, assemblerDir,
                                                                childRow['block'], fileStub,
                                                                objLayout, missingDirOk=True)
