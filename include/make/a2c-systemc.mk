@@ -286,16 +286,19 @@ help::
 # Generate compile_commands.json for clangd/OpenCode
 #------------------------------------------------------------------------
 
-# The VL_DUT=1 pass captures the verilated compile flags, but `make all
-# VL_DUT=1` recurses into the verif/vl_wrap aggregator dir, which only exists
-# when the project has verilated blocks. A2C_VL_WRAP_DIRS (from the manifest) is
-# the authoritative has-VL signal: empty means no verilated entry, so the VL
-# pass is skipped and compile_commands.json is built from the model pass alone.
+# compdb feeds clangd, so the C++ compile DB must never be blocked by VL build
+# health. A2C_VL_WRAP_DIRS (from the manifest) is the has-VL signal: empty means
+# no verilated entry, so the VL pass is skipped and the DB is built from the
+# model pass alone. When present, the VL_DUT=1 pass is captured best-effort: a
+# project with unwired VL (no rtl.f / run-vl) can have a failing or incomplete
+# VL dry-run, so on failure we warn, empty the VL capture, and still build the
+# DB from the model pass (which already covers every C++ source).
 ifeq ($(strip $(A2C_VL_WRAP_DIRS)),)
 COMPDB_VL_CAPTURE =
 COMPDB_MAKE_N_FILES = $(GEN_BUILD_DIR)/compdb.model.make-n.txt
 else
-COMPDB_VL_CAPTURE = $(MAKE) -n -B all VL_DUT=1 > $(GEN_BUILD_DIR)/compdb.vl.make-n.txt
+COMPDB_VL_CAPTURE = $(MAKE) -n -B all VL_DUT=1 > $(GEN_BUILD_DIR)/compdb.vl.make-n.txt \
+	|| { echo "compdb: VL dry-run failed; building compile DB from the model pass only"; : > $(GEN_BUILD_DIR)/compdb.vl.make-n.txt; }
 COMPDB_MAKE_N_FILES = $(GEN_BUILD_DIR)/compdb.model.make-n.txt $(GEN_BUILD_DIR)/compdb.vl.make-n.txt
 endif
 
