@@ -19,7 +19,11 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Deque
 
-from cocotb.triggers import Event, NullTrigger
+try:
+    from cocotb.triggers import Event, NullTrigger
+except ImportError:  # pragma: no cover - optional for asyncio-only clients
+    Event = None  # type: ignore[misc, assignment]
+    NullTrigger = None  # type: ignore[misc, assignment]
 
 MSG_REQ = 0x01
 MSG_ACK = 0x02
@@ -87,11 +91,17 @@ def parse_ports(ports_file: str | None) -> dict[str, int]:
             sys.exit(1)
     return out
 
+def _cocotb_event_factory():
+    if Event is None:
+        raise ImportError("cocotb is required for SyncSocketTransport lockstep gating")
+    return Event()
+
+
 @dataclass
 class _PendingSend:
     msg_type: int
     payload: bytes
-    done: Event = field(default_factory=Event)
+    done: object = field(default_factory=_cocotb_event_factory)
 
 
 class LockstepRegistry:
