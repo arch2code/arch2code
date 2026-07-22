@@ -31,6 +31,11 @@ def render_sv(args, prj, data):
         return render_body(args, prj, data, mp_sig, blk_name)
     if args.section != '':
         raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are body or empty")
+    # A parent-owned foreign wrapper carries --parent on its param line: the top
+    # is owner-qualified and instantiates the child's canonical .svh body. A bare
+    # same-project variant trampoline has no --parent.
+    if args.parent and args.variant and args.variant in data['variants']:
+        return render_trampoline(args, prj, data, mp_sig, blk_name, foreign=True)
     if args.variant and args.variant in data['variants']:
         return render_trampoline(args, prj, data, mp_sig, blk_name)
     return render_non_parameterizable(args, prj, data, mp_sig, blk_name)
@@ -116,7 +121,7 @@ def render_body(args, prj, data, mp_sig, blk_name):
     # parameters precede the ports, so the Stage-1 active-width expressions are
     # legal in the ANSI port list. The typedefs reference the #() parameters
     # directly, and the DUT parameters are passed through by name.
-    module_name = f'{blk_name}_hdl_sv_wrapper'
+    module_name = data['svWrapper']['bodyModule']
     out = '\n'
     out += f'module {module_name}\n'
 
@@ -155,18 +160,28 @@ def render_body(args, prj, data, mp_sig, blk_name):
     out += f'\nendmodule : {module_name}\n'
     return out
 
-def render_trampoline(args, prj, data, mp_sig, blk_name):
+def render_trampoline(args, prj, data, mp_sig, blk_name, foreign=False):
     # Variant top trampoline (.sv). The canonical body is made visible by the
     # `include in the scaffold. The trampoline declares the variant's concrete
     # parameter values as localparams, reuses the Stage-1 symbolic port widths,
     # and wires every flattened port through to the canonical body by name.
+    #
+    # `foreign`: a PARENT-OWNED owner-qualified top for a variant the assembler
+    # declares foreign to a reused child (the file carries --parent). The top
+    # name is owner-qualified by the emitting (declaring) project so it stays a
+    # distinct Verilator design unit across projects; a same-project variant
+    # keeps the bare child-emitted top name. The body module (the `include`d
+    # .svh) is the child's canonical wrapper either way.
     variant_name = args.variant
     variant_data = data['variants'][variant_name]
-    module_name = f'{blk_name}_{variant_name}_hdl_sv_wrapper'
-    body_module = f'{blk_name}_hdl_sv_wrapper'
+    if foreign:
+        module_name = data['svWrapper']['foreignVariantTops'][variant_name]
+    else:
+        module_name = data['svWrapper']['variantTops'][variant_name]
+    body_module = data['svWrapper']['bodyModule']
 
     out = '\n'
-    out += f'`include "{body_module}.svh"\n\n'
+    out += f'`include "{data["svWrapper"]["bodyInclude"]}"\n\n'
     out += f'module {module_name}\n'
     # Import the block's packages so a binding value written as a project
     # constant (e.g. bob bound to BOB0) resolves by name in the parameter port
@@ -181,10 +196,21 @@ def render_trampoline(args, prj, data, mp_sig, blk_name):
     # size). Both precede (and are in scope for) the port list; the derived
     # constants follow the bound root parameters they depend on.
     constDecls, _unusedTypeDecls = parameterized_decls(prj, data, blk_name)
+    # One binding row per parameter, first occurrence wins. A reused child bound
+    # to the same variant name by more than one declaring context (the foreign
+    # case) surfaces duplicate per-param rows in the view; a single-context
+    # variant is already unique, so this preserves its order and output exactly.
+    variant_params = []
+    seen_params = set()
+    for _, var_data in variant_data.items():
+        if var_data['param'] in seen_params:
+            continue
+        seen_params.add(var_data['param'])
+        variant_params.append(var_data)
     # The per-variant wrapper is a standalone Verilator top with no parent
     # scope, so bind the resolved concrete value: a symbol binding such as
     # value: OUT0_DATA_WIDTH would otherwise leak an out-of-scope parent symbol.
-    param_list = [f"localparam {var_data['param']} = {var_data['resolvedValue']}" for _, var_data in variant_data.items()]
+    param_list = [f"localparam {var_data['param']} = {var_data['resolvedValue']}" for var_data in variant_params]
     param_list += [f"localparam {c['name']} = {c['rhs']}" for c in constDecls]
     out += '\n#(\n'
     out += textwrap.indent(',\n'.join(param_list), ' '*4)
@@ -193,7 +219,7 @@ def render_trampoline(args, prj, data, mp_sig, blk_name):
     out += ');\n'
 
     inst = f'{body_module} #(\n'
-    inst += textwrap.indent(',\n'.join([f".{var_data['param']}({var_data['param']})" for _, var_data in variant_data.items()]), ' '*4)
+    inst += textwrap.indent(',\n'.join([f".{var_data['param']}({var_data['param']})" for var_data in variant_params]), ' '*4)
     inst += '\n) u_wrapper (\n'
     names = []
     for port_type in data['ports']:
@@ -211,7 +237,7 @@ def render_trampoline(args, prj, data, mp_sig, blk_name):
 def render_non_parameterizable(args, prj, data, mp_sig, blk_name):
     # Single self-contained wrapper body for a non-parameterizable block: no
     # parameters and no variants, so the wrapper instantiates the DUT directly.
-    module_name = f'{blk_name}_hdl_sv_wrapper'
+    module_name = data['svWrapper']['bodyModule']
 
     out = '\n'
     out += f'module {module_name}\n'

@@ -1291,6 +1291,8 @@ class projectOpen:
         # Surface per-block register-bus data on the view; routers without
         # authored addressBlock rows get an equivalent view from ADDRESS_CONFIG.
         self.getBDAddressBlockView(ret)
+        # Verilated SV wrapper design-unit names, single-sourced from the fileMap.
+        self.getBDSvWrapperNames(ret)
         ret.pop('temp') # remove temp data
 
         return ret
@@ -1317,6 +1319,32 @@ class projectOpen:
                 body = self.data['constants'][declKey]
             decls.append({'declKind': row['declKind'], 'declKey': declKey, 'body': body})
         ret['parameterizedDecls'] = decls
+
+    def getBDSvWrapperNames(self, ret):
+        # Verilated SV wrapper design-unit names, single-sourced from the fileMap
+        # so a wrapper's emitted module name and its scaffolded filename share one
+        # tail/ext: expandNewModulePath builds the filename as moduleFileStub +
+        # fileMap 'name', and the module name is the SAME composition, never
+        # re-spelled as a code literal and never derived back from the filename.
+        # The body module name is the block stub + wrapper tail; the per-variant
+        # tops name-qualify the same tail with persisted identity tokens (block,
+        # variant, and — for a parent-owned foreign top — the declaring project,
+        # sanitized the same way as the foreign-Config stub). The `.svh` include
+        # name adds the body entry's ext.
+        wrapTail = self.filemap['vlSvWrap']['name']
+        bodyExt = self.filemap['vlSvWrapBody']['ext']['svh']
+        foreignTail = self.filemap['vlSvWrapForeign']['name']
+        blockName = ret['blockName']
+        project = self.config.getConfig('PROJECTNAME')
+        bodyModule = f'{blockName}{wrapTail}'
+        ret['svWrapper'] = {
+            'bodyModule': bodyModule,
+            'bodyInclude': f'{bodyModule}.{bodyExt}',
+            'variantTops': {v: f'{blockName}_{v}{wrapTail}' for v in ret['variants']},
+            'foreignVariantTops': {
+                v: f'{sanitizeModuleToken(project)}_{blockName}_{v}{foreignTail}'
+                for v in ret['variants']},
+        }
 
     def getBDConfigInfo(self, ret):
         # View assembly: read persisted truths and derive view-side fields.
@@ -4432,7 +4460,16 @@ class projectCreate:
                     filePath = expandNewModulePath(foreignDef, blockByKey[childKey]['dir'],
                                                    childBlock, stub, layout, missingDirOk=True)
                     baseName = os.path.basename(filePath) + "." + foreignDef['ext']['cppm']
-                    headers[key] = {'stub': stub, 'baseName': baseName}
+                    # `variants`: the FOREIGN variant labels this declaring project
+                    # binds for the child. The Config module aggregates all of
+                    # them into one unit; the per-variant SV verilated wrapper top
+                    # (vlSvWrapForeign) emits one owner-qualified trampoline per
+                    # label. Same source of truth so scaffold, manifest, and emit
+                    # agree.
+                    headers[key] = {'stub': stub, 'baseName': baseName, 'variants': set()}
+                headers[key]['variants'].add(row['variant'])
+        for entry in headers.values():
+            entry['variants'] = sorted(entry['variants'])
         self.config.setConfig('FOREIGNCONFIGHEADERS', headers, bin=True)
 
     def deriveParameterizedDeclSets(self):

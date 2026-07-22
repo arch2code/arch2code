@@ -24,8 +24,20 @@ def _writeBuildManifestMk(rootDir, manifest):
         f"A2C_VL_WRAP_ENTRY := {manifest['vlWrapEntry']}",
         f"A2C_CPP_MODULE_FILES := {asList(manifest['cppModuleFiles'])}",
         f"A2C_SV_FILES := {asList(manifest['svFiles'])}",
-        "",
+        f"A2C_VL_BUILD_DIR := {manifest['vlBuildDir']}",
+        f"A2C_VL_TOPS := {asList([t['qualifiedTop'] for t in manifest['vlTops']])}",
     ]
+    # Per-top verilated-wrapper records: physical .sv, design-unit (--top), the
+    # include search path, the generated V header, and the archived object. Keyed
+    # by the unique design-unit name so a2c-vl-wrap.mk consumes each fact directly
+    # instead of deriving tops from filenames or globbing objects.
+    for top in manifest['vlTops']:
+        name = top['qualifiedTop']
+        lines.append(f"A2C_VL_SV_{name} := {top['physicalSv']}")
+        lines.append(f"A2C_VL_INCDIRS_{name} := {asList(top['includeDirs'])}")
+        lines.append(f"A2C_VL_VHDR_{name} := {top['generatedVHeader']}")
+        lines.append(f"A2C_VL_OBJ_{name} := {top['objectIdentity']}")
+    lines.append("")
     with open(os.path.join(genDir, 'build.mk'), 'w') as f:
         f.write('\n'.join(lines))
 
@@ -164,6 +176,105 @@ def create(prj):
         dirs['vl'].add(vlSegment)
     vlWrapEntry = os.path.join(vlSegment, 'vl_wrap.cpp')
 
+    # Per-top verilated-wrapper records: the explicit (physical .sv -> design
+    # unit) set the verilator wrap build consumes, so a2c-vl-wrap.mk names each
+    # --top and its archived object directly rather than deriving them from
+    # filenames or globbing. The set mirrors the emitted vl-role .sv wrappers:
+    # block-mode vlSvWrap (one per variant for a parameterizable block, one bare
+    # otherwise; the .svh body is never a top) and registrar-mode vlSvWrapForeign
+    # (one owner-qualified top per foreign variant). The design-unit name is the
+    # file basename (moduleFileStub + fileMap 'name') -- the same composition the
+    # SV wrapper view emits -- so the record and the emitted module name agree,
+    # and the verilated object/header follow verilator's V<top>__ALL.o / V<top>.h.
+    vlIncludeDirs = sorted(dirs['vl'])
+    vlTops = list()
+
+    def recordVlTop(fileDef, filePath):
+        qualifiedTop = os.path.basename(filePath)
+        vlTops.append({
+            'physicalSv':       filePath + '.' + fileDef['ext']['sv'],
+            'qualifiedTop':     qualifiedTop,
+            'includeDirs':      vlIncludeDirs,
+            'generatedVHeader': 'V' + qualifiedTop + '.h',
+            'objectIdentity':   'V' + qualifiedTop + '__ALL.o',
+        })
+
+    def isVlSvTop(fileDef, objLayout):
+        # A verilated top is a vl-buildGroup .sv wrapper. The .svh body
+        # (vlSvWrapBody) and the SC wrapper (vlScWrap, .h) are excluded here.
+        if 'sv' not in fileDef['ext']:
+            return False
+        return objLayout['segments'][fileDef['basePath']]['buildGroup'] == 'vl'
+
+    # Same-project variant labels per block. A foreign variant (declaring project
+    # != the block's config-context owner) is emitted as a registrar-mode
+    # owner-qualified top (vlSvWrapForeign), not a block-mode wrapper, so it is
+    # excluded here -- mirroring the config emit gate in calcForeignConfigHeaders.
+    blockVariants = dict()
+    for contextRows in prj.data['parametersvariants'].values():
+        for row in contextRows.values():
+            configContext = blockByKey[row['blockKey']]['configContext']
+            if configContext and row['projectName'] != prj.contextOwningProject[configContext]:
+                continue
+            blockVariants.setdefault(row['blockKey'], set()).add(row['variant'])
+
+    for blockRow in blockByKey.values():
+        condData = condRow(blockRow)
+        objLayout = layoutForContext(blockRow['_context'])
+        for fileDef in fileMap.values():
+            if fileDef.get('mode', 'block') != 'block':
+                continue
+            if not isVlSvTop(fileDef, objLayout):
+                continue
+            if not processYaml.fileMapCondMatch(fileDef, condData):
+                continue
+            block = blockRow['block']
+            variants = sorted(blockVariants.get(blockRow['blockKey'], set()))
+            stubs = [f'{block}_{v}' for v in variants] \
+                if (fileDef.get('variant', False) and variants) else [block]
+            for stub in stubs:
+                filePath = processYaml.expandNewModulePath(fileDef, blockRow['dir'],
+                                                           block, stub, objLayout,
+                                                           missingDirOk=True)
+                recordVlTop(fileDef, filePath)
+
+    if registrarMap:
+        foreignConfigHeaders = prj.config.getConfig('FOREIGNCONFIGHEADERS')
+        manifestProject = prj.config.getConfig('PROJECTNAME')
+        emittedForeignTop = set()
+        for assemblerKey, childKeys in sorted(assemblerChildren.items()):
+            assemblerDir = blockByKey[assemblerKey]['dir']
+            objLayout = layoutForContext(blockByKey[assemblerKey]['_context'])
+            assemblerOwner = prj.contextOwningProject[blockByKey[assemblerKey]['_context']]
+            # A foreign owner-qualified top is parent-owned: only the project that
+            # owns the assembler scaffolds/builds it, so a cross-project assembler's
+            # top is recorded in that owner's manifest, not here (mirrors the
+            # newModule ownership gate).
+            if assemblerOwner != manifestProject:
+                continue
+            for childKey in sorted(childKeys):
+                childRow = blockByKey[childKey]
+                childCond = condRow(childRow)
+                for fileDef in registrarMap.values():
+                    if not fileDef.get('foreignConfig', False):
+                        continue
+                    if not isVlSvTop(fileDef, objLayout):
+                        continue
+                    if not processYaml.fileMapCondMatch(fileDef, childCond):
+                        continue
+                    if (assemblerOwner, childKey) not in foreignConfigHeaders:
+                        continue
+                    stubBase = foreignConfigHeaders[(assemblerOwner, childKey)]['stub']
+                    for variant in foreignConfigHeaders[(assemblerOwner, childKey)]['variants']:
+                        dedupKey = (assemblerOwner, childKey, variant)
+                        if dedupKey in emittedForeignTop:
+                            continue
+                        emittedForeignTop.add(dedupKey)
+                        filePath = processYaml.expandNewModulePath(
+                            fileDef, assemblerDir, childRow['block'],
+                            f'{stubBase}_{variant}', objLayout, missingDirOk=True)
+                        recordVlTop(fileDef, filePath)
+
     projectYaml = os.path.join(g.yamlBasePath, os.path.basename(prj.projFile))
     yamlFiles = sorted({os.path.abspath(f) for f in prj.includeValid} | {projectYaml})
 
@@ -177,6 +288,8 @@ def create(prj):
         'vlWrapEntry':   vlWrapEntry,
         'cppModuleFiles':sorted(moduleFiles),
         'svFiles':       sorted(svModuleFiles),
+        'vlBuildDir':    vlSegment,
+        'vlTops':        sorted(vlTops, key=lambda t: t['qualifiedTop']),
     }
     prj.config.setConfig('BUILDMANIFEST', manifest)
 

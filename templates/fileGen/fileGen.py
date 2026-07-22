@@ -43,6 +43,8 @@ def render(args, prj, data):
             return(blockRegistrar_cppm(args, prj, data))
         case 'foreignConfig_cppm':
             return(foreignConfig_cppm(args, prj, data))
+        case 'vlSvWrapForeign_sv':
+            return(vlSvWrapForeign_sv(args, prj, data))
         case 'rtlModule_sv':
             if isRegHandler:
                 return(rtlModuleRegs(args, prj, data))
@@ -204,6 +206,23 @@ def foreignConfig_cppm(args, prj, data):
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]}\n')
     out.append('// GENERATED_CODE_BEGIN --template=config\n')
     out.append('// GENERATED_CODE_END\n')
+    return("".join(out))
+
+# Parent-owned owner-qualified foreign per-variant SV verilated wrapper top for a
+# reused child. The whole trampoline (the `include of the child's canonical .svh
+# body and the owner-qualified top module binding the variant's resolved literals)
+# is emitted by templates/systemVerilog/module_hdl_wrapper.py (foreign branch,
+# keyed off --parent) into the single generated region. The file basename and the
+# top module name are owner-qualified (<project>_<child>_<variant>_hdl_sv_wrapper).
+def vlSvWrapForeign_sv(args, prj, data):
+    guard = f'{data["headerName"].replace(".", "_").upper()}_GUARD_'
+    out = list()
+    out.append(f'`ifndef {guard}\n')
+    out.append(f'`define {guard}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]} --variant={data["variant"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append(f'`endif // {guard}\n')
     return("".join(out))
 
 def blockRegs_hdr(args, prj, data):

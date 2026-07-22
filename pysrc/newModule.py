@@ -214,28 +214,43 @@ class newModule:
                     if fileDefinition.get('foreignConfig', False):
                         # Only the declaring assembler project scaffolds it.
                         owner = prj.contextOwningProject[prj.data['blocks'][parentKey]['_context']]
-                        # Ownership gate: the foreign-config header is parent-owned;
+                        # Ownership gate: the foreign artifact is parent-owned;
                         # skip it when the assembler is owned by a different project
                         # so a build never scaffolds across the ownership boundary.
                         if owner != projectName:
-                            print(f"{childBlock} foreign-config header owned by project '{owner}', skipping (scaffold it from that project's rundir)")
+                            print(f"{childBlock} foreign registrar artifact owned by project '{owner}', skipping (scaffold it from that project's rundir)")
                             continue
-                        if (owner, childKey) not in foreignConfigHeaders:
+                        entry = foreignConfigHeaders.get((owner, childKey))
+                        if entry is None:
                             continue
-                        if (owner, childKey) in emittedForeign:
-                            continue
-                        emittedForeign.add((owner, childKey))
+                        # A variant:true foreign entry (the per-variant SV
+                        # verilated wrapper top) emits one file per foreign
+                        # variant; the non-variant foreign entry (the aggregated
+                        # Config module) emits once. Dedup per (fileKey, owner,
+                        # child, variant) because a project with two assemblers of
+                        # one child reaches the pair more than once.
+                        variants = entry['variants'] if fileDefinition.get('variant', False) else [None]
+                        for variant in variants:
+                            dedupKey = (fileKey, owner, childKey, variant)
+                            if dedupKey in emittedForeign:
+                                continue
+                            emittedForeign.add(dedupKey)
+                            self.create_registrar_file(
+                                fileGenerationConfig, fileKey, fileDefinition,
+                                parentDir, childBlock, childKey, parentKey, prj, args,
+                                variant=variant)
+                        continue
                     self.create_registrar_file(
                         fileGenerationConfig, fileKey, fileDefinition,
                         parentDir, childBlock, childKey, parentKey, prj, args)
 
-    def create_registrar_file(self, fileGenerationConfig, fileKey, fileDefinition, parentDir, childBlock, childQualBlock, parentKey, prj, args):
+    def create_registrar_file(self, fileGenerationConfig, fileKey, fileDefinition, parentDir, childBlock, childQualBlock, parentKey, prj, args, variant=None):
         # Build the registrar path: the child-named trampoline lands under the
         # parent's directory within the registrar root.
         data = dict()
         data['block'] = childBlock
         data['qualBlock'] = childQualBlock
-        data['variant'] = None
+        data['variant'] = variant
         data['parent'] = prj.data['blocks'][parentKey]['block']
         # The trampoline is parent-owned: it lands under the assembler's
         # directory, so it resolves under the parent (assembler) project layout.
@@ -257,6 +272,11 @@ class newModule:
             fileStub = prj.config.getConfig('FOREIGNCONFIGHEADERS')[(owner, childQualBlock)]['stub']
         else:
             fileStub = childBlock
+        # A variant:true foreign artifact (per-variant SV verilated wrapper top)
+        # appends the variant to its owner-qualified stub, mirroring the block
+        # mode variant-file stub, so each foreign variant is a distinct file/top.
+        if variant:
+            fileStub += '_' + variant
         filePath = processYaml.expandNewModulePath(fileDefinition, parentDir, childBlock, fileStub, layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
         for ext in fileDefinition['ext']:

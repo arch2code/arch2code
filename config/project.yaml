@@ -162,6 +162,16 @@ fileGeneration:
     # only their single .sv top (no .svh, no name collision).
     vlSvWrapBody: { name : "_hdl_sv_wrapper", ext: {svh: "svh"},           cond: {isParameterizable: true}, condAnd: {hasVl: true}, mode: block, basePath: vl_wrap, variant: false, desc: "Canonical parameterized SV wrapper body (include-only)"}
     vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
+    # vlSvWrapForeign emits one PARENT-OWNED owner-qualified per-variant SV
+    # verilated wrapper top per (declaring project, reused child, foreign variant),
+    # into the assembler's vl_wrap domain. Only the declaring assembler project
+    # emits it (foreignConfig gate); same-project variants keep the bare
+    # child-emitted vlSvWrap top. The trampoline `include`s the child's canonical
+    # .svh body and binds the foreign variant's resolved literals. The top module
+    # name is owner-qualified (<project>_<child>_<variant>_hdl_sv_wrapper) so a
+    # variant of the same reused child declared by two projects stays a distinct
+    # Verilator top.
+    vlSvWrapForeign : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},         cond: {isParameterizable: true},  condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, variant: true, foreignConfig: true, desc: "Owner-qualified foreign per-variant SV verilated wrapper top"}
     # plan-step-11-variant-aware-testbenches.md scope boundary: exactly one
     # testbench artifact and class family per block (no variant: true). The
     # `--variant` parameter is solely a generated-code parameter consumed by
