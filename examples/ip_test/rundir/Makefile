@@ -13,7 +13,7 @@ EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 include $(A2C_ROOT)/include/make/a2c-systemc.mk
 include $(A2C_ROOT)/include/make/a2c-agents.mk
 
-.PHONY : run run-vl run-vl-src run-vl-ip0 regr
+.PHONY : run run-vl run-vl-src run-vl-ip0 run-vl-ip1 run-vl-uBridgeIp1 regr
 
 regr:
 	$(A2C_ROOT)/regrLauncher.py --build -j8 regr_ip_test.json $(REGR_USER_OPTS)
@@ -30,9 +30,17 @@ run-vl:
 	$(MAKE) all VL_DUT=1
 	$(MAKE) run-vl-src
 	$(MAKE) run-vl-ip0
+	$(MAKE) run-vl-ip1
+	$(MAKE) run-vl-uBridgeIp1
 
 run-vl-src: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uSrc
 
 run-vl-ip0: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uIp0
+
+run-vl-ip1: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uIp1
+
+run-vl-uBridgeIp1: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uBridge.uBridgeIp1
