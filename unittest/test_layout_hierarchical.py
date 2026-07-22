@@ -29,12 +29,12 @@ GOLDEN = os.path.join(FIXTURE, 'expected_tree.golden')
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
 
-def _arch2code(*args):
+def _arch2code(*args, cwd):
     env = os.environ.copy()
     env['NO_COLOR'] = '1'
     return subprocess.run(
         [sys.executable, ARCH2CODE, *args],
-        capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+        capture_output=True, text=True, timeout=120, cwd=cwd, env=env)
 
 
 def _generate_tree():
@@ -51,12 +51,22 @@ def _generate_tree():
         proj = os.path.join(tmp, 'prj', 'yaml', 'hierProject.yaml')
         db = os.path.join(tmp, 'hier.db')
 
-        built = _arch2code('--yaml', proj, '--db', db)
+        # Run the generator with cwd inside the temp project copy so that any
+        # relative path resolution stays sandboxed in tmp. Snapshot the repo
+        # root before/after: a hierarchical node-relative segment resolved
+        # against cwd used to leak a stray tree (e.g. rtl/rtl.f) to the process
+        # cwd, so assert generation creates nothing outside tmp.
+        before = set(os.listdir(base_dir))
+        built = _arch2code('--yaml', proj, '--db', db, cwd=tmp)
         assert built.returncode == 0, \
             f"db build failed:\n{built.stdout}\n{built.stderr}"
-        made = _arch2code('--db', db, '-r', '--newmodule')
+        made = _arch2code('--db', db, '-r', '--newmodule', cwd=tmp)
         assert made.returncode == 0, \
             f"newmodule failed:\n{made.stdout}\n{made.stderr}"
+        after = set(os.listdir(base_dir))
+        leaked = after - before
+        assert not leaked, \
+            f"generation created entries outside tmp at {base_dir}: {sorted(leaked)}"
 
         generated = []
         for root, _dirs, files in os.walk(tmp):

@@ -175,10 +175,22 @@ def create(prj):
     topContext = prj.config.getConfig('TOPCONTEXT')
     if topContext is not None and prj.contextOwningProject[topContext] == prj.config.getConfig('PROJECTNAME'):
         objLayout = layoutForContext(topContext)
+        # In hierarchical layout the per-project artifact anchors to the top
+        # context's node directory (the top block's persisted node dir) so its
+        # node-relative segment resolves inside the project tree, matching where
+        # the newModule scaffold writes it. Functional layout uses $root-
+        # absolute segments and needs no node anchor.
+        if objLayout['mode'] == 'hierarchical':
+            topBlockKey = next(inst['instanceTypeKey']
+                               for inst in prj.flatData['instances'].values()
+                               if inst['container'] == '_topInstance')
+            nodeDir = blockByKey[topBlockKey]['dir']
+        else:
+            nodeDir = ''
         for fileDef in fileMap.values():
             if fileDef.get('mode', 'block') != 'project':
                 continue
-            filePath = processYaml.expandNewModulePath(fileDef, '', '', '', objLayout, missingDirOk=True)
+            filePath = processYaml.expandNewModulePath(fileDef, nodeDir, '', '', objLayout, missingDirOk=True)
             record(fileDef, filePath, objLayout)
 
     # The verilator wrapper segment root (holds sc_main and the verilated build

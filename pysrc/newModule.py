@@ -317,19 +317,37 @@ class newModule:
         if owner != projectName:
             return
         layout = prj.projectLayout[owner]
+        # In hierarchical layout the single per-project artifact anchors to the
+        # top context's node directory: the persisted node dir of the top block
+        # (the block topInstance instantiates), whose defining context is the
+        # top context, so this is the same node dir block mode derives for a
+        # block in that context. Anchoring here keeps the artifact's node-
+        # relative functional segment inside the project tree rather than
+        # resolving against the process cwd. Functional layout uses $root-
+        # absolute segments, so it needs no node anchor (empty moduleDir).
+        if layout['mode'] == 'hierarchical':
+            topBlockKey = next(row['instanceTypeKey']
+                               for row in prj.data['instances'].values()
+                               if row['container'] == '_topInstance')
+            nodeDir = prj.data['blocks'][topBlockKey]['dir']
+        else:
+            nodeDir = ''
         # The generated-code context stamp is the top context's basename, the
         # spelling resolveContextKey matches back to the context key.
         contextStamp = os.path.basename(topContext)
         for fileKey, fileDefinition in projectFileConfig.items():
-            self.create_project_file(fileGenerationConfig, fileKey, fileDefinition, contextStamp, layout, prj, args)
+            self.create_project_file(fileGenerationConfig, fileKey, fileDefinition, contextStamp, nodeDir, layout, prj, args)
 
-    def create_project_file(self, fileGenerationConfig, fileKey, fileDefinition, contextStamp, layout, prj, args):
-        # The single per-project artifact lands at the segment root: no module
-        # directory and no module file stub, so the filename is composed purely
-        # from the fileMap name + ext (e.g. rtl + f -> rtl.f).
+    def create_project_file(self, fileGenerationConfig, fileKey, fileDefinition, contextStamp, nodeDir, layout, prj, args):
+        # The single per-project artifact lands at its segment root with no
+        # module file stub, so the filename is composed purely from the fileMap
+        # name + ext (e.g. rtl + f -> rtl.f). nodeDir is the top context's node
+        # directory in hierarchical layout (so the segment resolves inside the
+        # project tree) and empty in functional layout (segments are $root-
+        # absolute).
         data = dict()
         data['context'] = contextStamp
-        filePath = processYaml.expandNewModulePath(fileDefinition, '', '', '', layout, missingDirOk=True)
+        filePath = processYaml.expandNewModulePath(fileDefinition, nodeDir, '', '', layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
         for ext in fileDefinition['ext']:
             filePathExt = filePath + "." + fileDefinition['ext'][ext]

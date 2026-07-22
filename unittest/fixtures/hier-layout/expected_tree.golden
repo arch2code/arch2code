@@ -10,6 +10,7 @@ core/model/gen.h
 core/rtl/core.sv
 core/rtl/core_package.sv
 core/rtl/gen.sv
+core/rtl/rtl.f
 core/tb/core/coreConfig.cpp
 core/tb/core/coreExternal.cpp
 core/tb/core/coreExternal.h

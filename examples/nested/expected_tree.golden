@@ -56,6 +56,7 @@ model/testBlock.h
 model/testContainer.cpp
 model/testContainer.h
 rtl/nested_package.sv
+rtl/rtl.f
 tb/nested/nestedConfig.cpp
 tb/nested/nestedExternal.cpp
 tb/nested/nestedExternal.h

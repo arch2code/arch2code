@@ -136,19 +136,17 @@ def render_section_header(args, prj, data):
 def render_section_init(args, prj, data):
     t = Template(block_regs_init_section_template)
     blockName=data['blockName']
-    isParameterizable = data['isParameterizable']
     hasOwnParams = data['hasOwnParams']
     cfg = intf_gen_utils.block_config_arg(hasOwnParams)
     templatePrefix = intf_gen_utils.block_config_decl(hasOwnParams)
     if templatePrefix:
         templatePrefix += '\n'
-    defaultConfig = data['defaultConfig'] if isParameterizable else ''
     # Reuse the shared registration emission so parameterizable reg-handlers
     # defer factory registration to the per-block trampoline (Registrar TU) and
     # only emit instantiation anchors here, exactly as constructor.py does for
     # leaf parameterizable blocks.
     registration = '\n'.join(blockRegistrarInitLines(
-        args, prj, data, blockName, isParameterizable, hasOwnParams, defaultConfig))
+        args, prj, data, blockName, hasOwnParams))
     reghandler = get_reghandler_properties(prj, data)
     # Inherited base ports are dependent names inside a class template, so they
     # must be reached through `this->`; non-templated reg-handlers use the bare

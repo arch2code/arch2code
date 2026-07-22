@@ -102,6 +102,15 @@ def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layou
         #   <node>/<segment>[/module]/file. moduleDir is the node's own absolute
         #   directory (derived in processSingleFile); the segment is the bare
         #   node-relative functional name joined onto it.
+        if not moduleDir and not os.path.isabs(segment):
+            # A node-relative segment with no node directory would abspath
+            # against the process cwd and deposit the artifact outside the
+            # project tree. Fail loudly so a miswired caller cannot leak to cwd
+            # (every caller must supply the object's node dir: block/context/
+            # registrar the object's own, project-scope the top context's).
+            printError(f"hierarchical path resolution for '{fileStub}' has no "
+                       f"node directory for node-relative segment '{segment}'")
+            exit(warningAndErrorReport())
         if not os.path.exists(moduleDir) and not missingDirOk:
             printError(f"node path of {moduleDir} does not exist")
         moduleDirAbs = os.path.abspath(os.path.join(moduleDir, segment))
