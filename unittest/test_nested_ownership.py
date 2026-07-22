@@ -66,12 +66,15 @@ def _build_db(work):
 
 
 def _newmodule_no_token(work):
-    """New contract: newModule stamps NO `--project` token on any scaffold.
+    """Contract: run from the root project, `--newmodule` scaffolds only
+    root-owned blocks and skips child-owned ones (the ownership gate), and no
+    scaffold carries a `--project` token.
 
     Ownership is resolved from the DB by the generator gate, not from a token on
     the file. Build the fixture db, run `--newmodule` in the same temp tree, and
-    assert that both the child-owned and root-owned block scaffolds are created
-    and NONE carries a `--project` token.
+    assert that the root-owned block scaffolds are created, the child-owned block
+    scaffolds are skipped (never written across the ownership boundary), and NONE
+    of the created scaffolds carries a `--project` token.
     """
     db = os.path.join(work, 'nested-ownership.db')
     env = os.environ.copy()
@@ -101,16 +104,23 @@ def _newmodule_no_token(work):
             except (UnicodeDecodeError, IsADirectoryError):
                 continue
 
-    # Both child-owned and root-owned scaffolds must be created.
+    # Run from the root project, only root-owned scaffolds are created.
+    for name in ('rootLeaf.h', 'rootLeaf.cpp', 'rootLeafBase.cppm'):
+        assert name in param_lines, f"expected root-owned scaffold '{name}' not generated"
+    # Child-owned blocks are skipped by the ownership gate, so their files must
+    # never be written across the ownership boundary.
     for name in ('childProjBlock.h', 'childProjBlock.cpp', 'childProjBlockBase.cppm',
-                 'childLeafBlock.h', 'childLeafBlock.cpp', 'childLeafBlockBase.cppm',
-                 'rootLeaf.h', 'rootLeaf.cpp', 'rootLeafBase.cppm'):
-        assert name in param_lines, f"expected scaffold '{name}' not generated"
-    # No scaffold may carry an ownership token under the new contract.
+                 'childLeafBlock.h', 'childLeafBlock.cpp', 'childLeafBlockBase.cppm'):
+        assert name not in param_lines, \
+            f"child-owned scaffold '{name}' must be skipped when run from the root project"
+    # The ownership gate reports each skipped child block on stdout.
+    assert 'owned by project' in made.stdout, \
+        f"expected an ownership-skip message on stdout:\n{made.stdout}"
+    # No created scaffold may carry an ownership token under the new contract.
     for name, line in param_lines.items():
         assert '--project=' not in line, \
             f"scaffold '{name}' must carry no --project token: {line!r}"
-    print("PASS: newModule emits no --project token on any scaffold")
+    print("PASS: newModule skips child-owned scaffolds and emits no --project token")
 
 
 def _find_generated(work, basename):

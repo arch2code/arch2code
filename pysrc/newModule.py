@@ -148,6 +148,15 @@ class newModule:
         # Resolve under the layout of the project that owns this block (the
         # project that owns the block's defining context).
         owner = prj.contextOwningProject[prj.data['blocks'][qualModule]['_context']]
+        # Ownership gate (mirrors the systemcGen/systemVerilog generation gates):
+        # skip a block owned by a different project so a build never scaffolds
+        # across the ownership boundary. The owner comes from the block context ->
+        # contextOwningProject, keyed absolutely, so it is stable regardless of
+        # the current build root.
+        projectName = prj.config.getConfig('PROJECTNAME')
+        if owner != projectName:
+            print(f"{module} owned by project '{owner}', skipping (scaffold it from that project's rundir)")
+            return
         layout = prj.projectLayout[owner]
         filePath = processYaml.expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
@@ -194,6 +203,7 @@ class newModule:
         # assembler blocks of one child hits the same pair twice.
         foreignConfigHeaders = prj.config.getConfig('FOREIGNCONFIGHEADERS')
         emittedForeign = set()
+        projectName = prj.config.getConfig('PROJECTNAME')
         for parentKey in sorted(parentChildren):
             parentDir = prj.data['blocks'][parentKey]['dir']
             for childKey in sorted(parentChildren[parentKey]):
@@ -204,6 +214,12 @@ class newModule:
                     if fileDefinition.get('foreignConfig', False):
                         # Only the declaring assembler project scaffolds it.
                         owner = prj.contextOwningProject[prj.data['blocks'][parentKey]['_context']]
+                        # Ownership gate: the foreign-config header is parent-owned;
+                        # skip it when the assembler is owned by a different project
+                        # so a build never scaffolds across the ownership boundary.
+                        if owner != projectName:
+                            print(f"{childBlock} foreign-config header owned by project '{owner}', skipping (scaffold it from that project's rundir)")
+                            continue
                         if (owner, childKey) not in foreignConfigHeaders:
                             continue
                         if (owner, childKey) in emittedForeign:
@@ -224,6 +240,13 @@ class newModule:
         # The trampoline is parent-owned: it lands under the assembler's
         # directory, so it resolves under the parent (assembler) project layout.
         owner = prj.contextOwningProject[prj.data['blocks'][parentKey]['_context']]
+        # Ownership gate: skip a parent-owned registrar file when the assembler
+        # is owned by a different project so a build never scaffolds across the
+        # ownership boundary (mirrors the generation gates).
+        projectName = prj.config.getConfig('PROJECTNAME')
+        if owner != projectName:
+            print(f"{childBlock} registrar owned by project '{owner}', skipping (scaffold it from that project's rundir)")
+            return
         layout = prj.projectLayout[owner]
         # The owner-qualified foreign-Config header stub is the persisted identity
         # from calcForeignConfigHeaders (declaring project prefixed onto the child
