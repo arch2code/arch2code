@@ -251,14 +251,17 @@ class SyncSocketTransport:
         hdr = HEADER_STRUCT.pack(msg_type, 0, len(payload))
         self._sock.sendall(hdr + payload)
 
-    async def send_msg(self, msg_type: int, payload: bytes) -> None:
+    async def send_msg(self, msg_type: int, payload: bytes, *, expects_reply: bool = True) -> None:
         if not self._gated:
             self._send_raw(msg_type, payload)
             return
 
         pending = _PendingSend(msg_type, payload)
         self._pending_sends.append(pending)
-        self._awaiting_reply = True
+        # Responses (e.g. AXI_RD_RESP) must not hold the quantum drain open —
+        # under gated clocks the DUT cannot produce the next request until after
+        # ack/AdvanceTime, which would deadlock if we waited for another inbound.
+        self._awaiting_reply = expects_reply
         registry = get_lockstep_registry()
         if registry.draining or not registry.bootstrapped:
             self._flush_pending_sends()
@@ -397,6 +400,9 @@ class SocketTransport:
 
     async def connect(self) -> None:
         self._reader, self._writer = await asyncio.open_connection(self._host, self._port)
+        sock = self._writer.get_extra_info("socket")
+        if sock is not None:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     async def send_msg(self, msg_type: int, payload: bytes) -> None:
         assert self._writer is not None

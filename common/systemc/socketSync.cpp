@@ -34,6 +34,20 @@ bool g_lockstep_epoch_set = false;
 std::mutex g_boundary_events_mutex;
 std::vector<std::shared_ptr<ThreadSafeEvent>> g_boundary_events;
 
+bool g_time_gated = false;
+
+sc_core::sc_event &edge_event()
+{
+    static sc_core::sc_event *ev = new sc_core::sc_event("pysocket_clk_edge");
+    return *ev;
+}
+
+sc_core::sc_event &time_tick_event()
+{
+    static sc_core::sc_event *ev = new sc_core::sc_event("pysocket_time_tick");
+    return *ev;
+}
+
 bool env_truthy(const char *value)
 {
     if (value == nullptr || value[0] == '\0') {
@@ -58,8 +72,12 @@ void begin_boundary(uint64_t time_ns)
     g_boundary_time_ns = time_ns;
     g_at_boundary = true;
 
-    std::lock_guard<std::mutex> lock(g_boundary_events_mutex);
-    for (const auto &event : g_boundary_events) {
+    std::vector<std::shared_ptr<ThreadSafeEvent>> events;
+    {
+        std::lock_guard<std::mutex> lock(g_boundary_events_mutex);
+        events = g_boundary_events;
+    }
+    for (const auto &event : events) {
         if (event) {
             event->notify();
         }
@@ -69,6 +87,38 @@ void begin_boundary(uint64_t time_ns)
 void end_boundary()
 {
     g_at_boundary = false;
+}
+
+sc_core::sc_time effective_quantum()
+{
+    if (g_quantum > sc_core::SC_ZERO_TIME) {
+        return g_quantum;
+    }
+    return sc_core::sc_time(1, sc_core::SC_NS);
+}
+
+// Wait for Python SYNC ack without advancing sc_time.
+//
+// This TB has no watchDog keep-alive. Under gated lockstep, DUT clocks stop
+// issuing timed waits, so a pure wait(ack_event) can leave the SystemC event
+// queue empty and sc_start() returns immediately. Delta-cycling here keeps the
+// kernel alive until the OS rx thread sets g_have_ack (no sc_time advance).
+void wait_for_ack(uint64_t expected_time_ns)
+{
+    while (true) {
+        {
+            std::lock_guard<std::mutex> lock(g_ack_mutex);
+            if (g_have_ack) {
+                if (g_pending_ack_time_ns == expected_time_ns) {
+                    g_have_ack = false;
+                    return;
+                }
+                // Stale / mismatched ack — discard and keep waiting.
+                g_have_ack = false;
+            }
+        }
+        sc_core::wait(sc_core::SC_ZERO_TIME);
+    }
 }
 
 } // namespace
@@ -102,7 +152,7 @@ bool socketSyncLockstepEnabled()
 sc_core::sc_time socketSyncQuantum()
 {
     socketSyncConfigureFromEnvironment();
-    return g_quantum;
+    return effective_quantum();
 }
 
 uint64_t socketSyncScTimeNs()
@@ -142,6 +192,53 @@ void socketSyncRegisterBoundaryEvent(const std::shared_ptr<ThreadSafeEvent> &eve
 void socketSyncRegisterApbReqEvent(const std::shared_ptr<ThreadSafeEvent> &event)
 {
     socketSyncRegisterBoundaryEvent(event);
+}
+
+bool socketSyncTimeGated()
+{
+    return socketSyncLockstepEnabled() && g_time_gated;
+}
+
+sc_core::sc_time socketSyncClockHalfPeriod()
+{
+    return sc_core::sc_time(0.5, sc_core::SC_NS);
+}
+
+void socketSyncAdvanceTime(sc_core::sc_time amount)
+{
+    if (amount <= sc_core::SC_ZERO_TIME) {
+        return;
+    }
+    const sc_core::sc_time half = socketSyncClockHalfPeriod();
+    sc_core::sc_time advanced = sc_core::SC_ZERO_TIME;
+    while (advanced < amount) {
+        sc_core::sc_time step = half;
+        if (advanced + step > amount) {
+            step = amount - advanced;
+        }
+        if (g_time_gated) {
+            // Broadcast: every gated clock waiting on edge_event toggles once.
+            edge_event().notify(sc_core::SC_ZERO_TIME);
+        }
+        sc_core::wait(step);
+        advanced += step;
+        time_tick_event().notify(sc_core::SC_ZERO_TIME);
+    }
+}
+
+void socketSyncWaitClockEdge()
+{
+    sc_core::wait(edge_event());
+}
+
+void socketSyncNoteTimeAdvanced()
+{
+    time_tick_event().notify(sc_core::SC_ZERO_TIME);
+}
+
+const sc_core::sc_event &socketSyncTimeTickEvent()
+{
+    return time_tick_event();
 }
 
 void socketSyncStartRxThread()
@@ -212,9 +309,13 @@ void socketSyncQuantumThread()
         return;
     }
 
+    // Free-run clocks until Python is ready so reset and early DUT time can complete.
     while (!g_python_ready) {
         wait(g_ready_event->default_event());
     }
+
+    // From here, only socketSyncAdvanceTime() may release DUT time.
+    g_time_gated = true;
 
     while (true) {
         const uint64_t boundary_ns = socketSyncRelativeTimeNs();
@@ -228,27 +329,10 @@ void socketSyncQuantumThread()
             break;
         }
 
-        const uint64_t expected_time_ns = payload.sc_time_ns;
-        while (true) {
-            wait(g_ack_event->default_event());
-
-            bool got_ack = false;
-            {
-                std::lock_guard<std::mutex> lock(g_ack_mutex);
-                if (g_have_ack) {
-                    if (g_pending_ack_time_ns != expected_time_ns) {
-                        continue;
-                    }
-                    g_have_ack = false;
-                    got_ack = true;
-                }
-            }
-            if (got_ack) {
-                break;
-            }
-        }
+        wait_for_ack(payload.sc_time_ns);
 
         end_boundary();
-        wait(g_quantum);
+        // Sole timed waiter under lockstep: advances sc_time and drives clock edges.
+        socketSyncAdvanceTime(effective_quantum());
     }
 }

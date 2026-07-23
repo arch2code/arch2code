@@ -208,7 +208,8 @@ void socketFactory::shutdownAll()
             close(e.listen_fd);
             e.listen_fd = -1;
         }
-        if (e.has_thread && e.rx_thread.joinable()) {
+        if (e.has_thread && e.rx_thread.joinable() &&
+            e.rx_thread.get_id() != std::this_thread::get_id()) {
             e.rx_thread.join();
             e.has_thread = false;
         }
@@ -229,7 +230,9 @@ void socketFactory::shutdown_socket(SocketEntry &e)
         close(e.listen_fd);
         e.listen_fd = -1;
     }
-    if (e.has_thread && e.rx_thread.joinable()) {
+    // Never join the calling thread (rx paths may call shutdownByName on EOF).
+    if (e.has_thread && e.rx_thread.joinable() &&
+        e.rx_thread.get_id() != std::this_thread::get_id()) {
         e.rx_thread.join();
         e.has_thread = false;
     }

@@ -12,7 +12,15 @@ class ThreadSafeEvent;
 
 // Lockstep time-quantum synchronization between SystemC and Python.
 // Enabled by default; set PYSOCKET_LOCKSTEP=0 to disable.
-// Quantum size from PYSOCKET_SYNC_QUANTUM_NS, else --delay (default 0).
+// Quantum size from PYSOCKET_SYNC_QUANTUM_NS, else --delay (default 0 → 1 ns).
+//
+// After each Python SYNC ack, socketSyncAdvanceTime() advances sc_time and
+// requests DUT clock edges. Gated clocks must toggle only via
+// socketSyncWaitClockEdge() so they cannot free-run during wait(ack).
+// Model-only (no gated clock) still advances correctly via wait() in AdvanceTime.
+//
+// Ack wait uses delta-cycling so the SystemC event queue cannot go empty (this
+// TB has no watchDog keep-alive). That freezes sc_time until Python acks.
 
 void socketSyncConfigureFromEnvironment();
 
@@ -33,5 +41,27 @@ void socketSyncRegisterApbReqEvent(const std::shared_ptr<ThreadSafeEvent> &event
 void socketSyncStartRxThread();
 
 void socketSyncQuantumThread();
+
+// --- Gated time advance (lockstep) ---
+
+// True when lockstep is on and the quantum thread has entered gated mode
+// (after Python ready). Free-running clocks should check this.
+bool socketSyncTimeGated();
+
+// Half-period used for gated clock edges (0.5 ns for a 1 ns period).
+sc_core::sc_time socketSyncClockHalfPeriod();
+
+// Advance simulation time by `amount`. Requests one clock edge per half-period
+// then waits. Call only from the quantum SC thread after Python ack.
+void socketSyncAdvanceTime(sc_core::sc_time amount);
+
+// Gated clock: block until the quantum thread requests an edge, then return
+// so the clock generator can toggle (no timed wait here).
+void socketSyncWaitClockEdge();
+
+// Notify listeners (e.g. VCD flusher) that timed simulation progressed.
+void socketSyncNoteTimeAdvanced();
+
+const sc_core::sc_event &socketSyncTimeTickEvent();
 
 #endif // SOCKET_SYNC_H

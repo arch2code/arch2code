@@ -25,6 +25,7 @@
 #include "axi_read_bfm.h"
 #include "axi_write_bfm.h"
 
+#include "socketSync.h"
 class producer_hdl_sc_wrapper: public sc_module, public blockBase, public producerBase {
 
 public:
@@ -49,7 +50,7 @@ public:
     Vproducer_hdl_sv_wrapper *dut_hdl;
 #endif
 
-    sc_clock clk;
+    sc_signal<bool> clk;
 
     axi_read_src_bfm<axiAddrSt, axiDataSt, sc_bv<32>, sc_bv<32>> axiRd0_bfm;
     axi_read_src_bfm<axiAddrSt, axiDataSt, sc_bv<32>, sc_bv<32>> axiRd1_bfm;
@@ -68,7 +69,7 @@ public:
         sc_module(modulename),
         blockBase("producer_hdl_sc_wrapper", name(), bbMode),
         producerBase(name(), variant),
-        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
+        clk("clk"),
         axiRd0_bfm("axiRd0_bfm"),
         axiRd1_bfm("axiRd1_bfm"),
         axiRd2_bfm("axiRd2_bfm"),
@@ -79,7 +80,8 @@ public:
         axiWr3_bfm("axiWr3_bfm"),
         axiStr0_bfm("axiStr0_bfm"),
         axiStr1_bfm("axiStr1_bfm"),
-        rst_n(0)
+        rst_n(0),
+        clk_half_(0.5, SC_NS)
     {
 #if !defined(VERILATOR) && defined(VCS)
         dut_hdl = new producer_hdl_sv_wrapper("dut_hdl");
@@ -278,6 +280,8 @@ public:
         axiStr1_bfm.clk(clk);
         axiStr1_bfm.rst_n(rst_n);
 
+        clk.write(true);
+        SC_THREAD(clock_gen);
         SC_THREAD(reset_driver);
 
         end_ctor_init();
@@ -306,9 +310,26 @@ private:
     axi4_stream_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<32>, sc_bv<4>, sc_bv<4>> axiStr1_hdl_if;
 
     sc_signal<bool> rst_n;
+    sc_time clk_half_;
+
+    void clock_gen() {
+        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
+        // owns timed waits; we only toggle when an edge is requested.
+        while (true) {
+            if (socketSyncTimeGated()) {
+                socketSyncWaitClockEdge();
+                clk.write(!clk.read());
+            } else {
+                wait(clk_half_);
+                clk.write(!clk.read());
+            }
+        }
+    }
 
     void reset_driver() {
-        wait(5, SC_NS);
+        for (int i = 0; i < 5; ++i) {
+            wait(clk.posedge_event());
+        }
         rst_n = true;
     }
 

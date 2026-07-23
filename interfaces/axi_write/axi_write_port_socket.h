@@ -72,12 +72,12 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
         while (running->load(std::memory_order_acquire)) {
             if (!socket_recv_msg(fd, msg_type, &recv_buf, len, static_cast<uint16_t>(sizeof(recv_buf)))) {
                 running->store(false, std::memory_order_release);
-                socketFactory::shutdownByName(interface_name);
+                socketFactory::notifyPeerClosed(interface_name);
                 break;
             }
             if (msg_type == MSG_SHUTDOWN) {
                 running->store(false, std::memory_order_release);
-                socketFactory::shutdownByName(interface_name);
+                socketFactory::notifyPeerClosed(interface_name);
                 break;
             }
             if (msg_type == MSG_SYNC) {

@@ -188,6 +188,7 @@ sec_hdl_sc_wrapper_class_template = """\
 {% if sec_bfm_includes %}
 {{ sec_bfm_includes }}
 {% endif %}
+#include "socketSync.h"
 {%- if variants %}
 template <typename DUT_T>
 {%- endif %}
@@ -230,7 +231,7 @@ public:
 
     DUT_T *dut_hdl;
 {% endif %}
-    sc_clock clk;
+    sc_signal<bool> clk;
 
     {{ sec_bfm_decl | indent(4) }}
 {%- if not variants %}
@@ -245,9 +246,10 @@ public:
         sc_module(modulename),
         blockBase("{{blockname}}_hdl_sc_wrapper", name(), bbMode),
         {{blockname}}Base(name(), variant),
-        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
+        clk("clk"),
         {{ sec_bfm_ctor_init | indent(8) }}
-        rst_n(0)
+        rst_n(0),
+        clk_half_(0.5, SC_NS)
     {
 {%- if not variants %}
 #if !defined(VERILATOR) && defined(VCS)
@@ -263,6 +265,8 @@ public:
 
         {{ sec_bfm_connect | indent(8) }}
 
+        clk.write(true);
+        SC_THREAD(clock_gen);
         SC_THREAD(reset_driver);
 
         end_ctor_init();
@@ -282,9 +286,26 @@ private:
     {{ sec_hdl_if_decl | indent(4) }}
 
     sc_signal<bool> rst_n;
+    sc_time clk_half_;
+
+    void clock_gen() {
+        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
+        // owns timed waits; we only toggle when an edge is requested.
+        while (true) {
+            if (socketSyncTimeGated()) {
+                socketSyncWaitClockEdge();
+                clk.write(!clk.read());
+            } else {
+                wait(clk_half_);
+                clk.write(!clk.read());
+            }
+        }
+    }
 
     void reset_driver() {
-        wait(5, SC_NS);
+        for (int i = 0; i < 5; ++i) {
+            wait(clk.posedge_event());
+        }
         rst_n = true;
     }
 
