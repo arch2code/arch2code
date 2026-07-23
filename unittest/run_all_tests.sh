@@ -216,6 +216,11 @@ echo "Test Suite 19l: Includes header -> cppm module migration (migrateIncludes.
 echo "------------------------------------------------------------------------"
 python3 test_migrate_includes.py || FAILED=1
 
+echo ""
+echo "Test Suite 19o: Post-database legacy orphan sweep (migrateOrphans.py)"
+echo "------------------------------------------------------------------------"
+python3 test_migrate_orphans.py || FAILED=1
+
 # Address-control decode: register/memory decode topology, port-name
 # resolution, parameterized routers/leaves, the diagnostic error cases,
 # and the migrated ip_test view assertions. The synthetic-topology tests

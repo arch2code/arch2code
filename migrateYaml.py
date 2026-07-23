@@ -6,12 +6,22 @@ format and stamps the sentinel once the result is format-2 clean. It is the
 single command the `projectCreate` gate names when it stops an un-migrated
 project.
 
-The orchestrator is standalone on purpose: a pre-migration project cannot pass
-the `projectCreate` yamlFormat gate, so the migrator must run WITHOUT opening
-the database. It reads and rewrites YAML as text, exactly as its two phase
-libraries do; it never invokes `arch2code.py`.
+The text-conversion phases are standalone on purpose: a pre-migration project
+cannot pass the `projectCreate` yamlFormat gate, so they must run WITHOUT opening
+the database. They read and rewrite YAML as text, exactly as their phase
+libraries do; they never invoke `arch2code.py`.
 
     migrateYaml.py [--write] <project.yaml>
+
+A separate `--sweep` mode runs the post-database orphan sweep once the project
+is stamped/format-2 and `make db` has built the database. Unlike the text
+phases it opens the database READ-ONLY (`projectOpen`) to expand the legacy
+fileMap to concrete paths, and deletes the purely-generated legacy orphans:
+
+    migrateYaml.py --sweep [--write] --db <project.db>
+
+The two modes are disjoint: `--sweep` runs only the orphan sweep (no text
+phases, no project.yaml), and the text/default path never opens the database.
 
 Three ordered phases run over the project's YAML file set (the project.yaml
 `projectFiles:` entries plus their `include:` chains):
@@ -49,7 +59,8 @@ from pysrc.migrateLayout import (
 )
 from pysrc.migrateAddressControl import migrateAddressControlInProject
 from pysrc.migrateIncludes import migrateIncludesInProject
-from pysrc.processYaml import CURRENT_YAML_FORMAT
+from pysrc.migrateOrphans import renderReport as renderOrphanReport, sweepOrphans
+from pysrc.processYaml import CURRENT_YAML_FORMAT, projectOpen
 
 
 @dataclass
@@ -333,8 +344,31 @@ def main(argv=None):
                              "phases. Presupposes the project is already "
                              "yamlFormat: 2 and has declared "
                              "fileGeneration.layout: hierarchical.")
-    parser.add_argument("projectYaml", help="Path to the project's project.yaml.")
+    parser.add_argument("--sweep", action="store_true",
+                        help="Run the post-database orphan sweep instead of the "
+                             "text-conversion phases. Requires --db and opens the "
+                             "database READ-ONLY; run after `make db`.")
+    parser.add_argument("--db",
+                        help="Path to the built project database (required with "
+                             "--sweep).")
+    parser.add_argument("projectYaml", nargs="?",
+                        help="Path to the project's project.yaml (required unless "
+                             "--sweep is given).")
     args = parser.parse_args(argv)
+
+    if args.sweep:
+        if not args.db:
+            parser.error("--sweep requires --db")
+        prj = projectOpen(args.db)
+        report = sweepOrphans(prj, write=args.write)
+        print(renderOrphanReport(report, args.write))
+        # A sweep that leaves manual items (ungenerated delete targets, pending
+        # ports, user include sites) signals work remains, mirroring how the
+        # text phases fail when manual TODOs block the stamp.
+        return 0 if report.clean else 1
+
+    if not args.projectYaml:
+        parser.error("projectYaml is required unless --sweep is given")
 
     if args.toHierarchical:
         report = migrateLayoutInProject(args.projectYaml, write=args.write)

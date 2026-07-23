@@ -134,11 +134,26 @@ $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
 db : $(A2C_SQLDB_FILE)
 
 
-# Migrate the project's user YAML to the current authoring format and stamp the
-# yamlFormat sentinel. Standalone: it reads and rewrites YAML as text and does
-# not build the database, so it runs on a project the yamlFormat gate rejects.
+# One-command migration to the current authoring format. Orchestrates the whole
+# pipeline: the text conversions + yamlFormat stamp, then (only once the project
+# is stamped/format-2, so the database gate passes) build the DB, sweep the
+# generated orphans the legacy fileMap left behind, scaffold the current fileMap's
+# new-form producers the legacy generator never emitted, and regenerate. Each
+# recipe line fails the target on non-zero, so migrateYaml.py exiting non-zero
+# (manual TODOs remain, project unstamped) halts BEFORE db/sweep/newmodule/gen;
+# the user resolves the items and re-runs the same idempotent `make migrate`.
+# migrateYaml.py exits zero when already migrated, so a stamped-but-orphan-carrying
+# project still proceeds to sweep/scaffold/regenerate, and a fully-clean project
+# is a no-op. newmodule runs AFTER the sweep and BEFORE gen: gen only fills
+# generated regions of files that already exist, so newmodule (create-only) must
+# scaffold the missing new-form files first; the orphans must be gone before gen
+# so stale markers do not feed the scgen step.
 migrate:
 	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
+	$(MAKE) db
+	$(A2C_ROOT)/migrateYaml.py --sweep --write --db $(A2C_SQLDB_FILE)
+	$(MAKE) newmodule
+	$(MAKE) gen
 
 
 # Opt-in functional -> hierarchical layout migration. Separate from `migrate`:
@@ -168,7 +183,7 @@ help::
 	@echo "  db       	- Generate or update the project database"
 	@echo "  gen      	- Generate SystemC and SystemVerilog files from the project database"
 	@echo "  newmodule	- Create a new module in the project database"
-	@echo "  migrate  	- Migrate the project YAML to the current authoring format"
+	@echo "  migrate  	- Migrate to the current authoring format (yaml convert + stamp, db, orphan sweep, gen)"
 	@echo "  clean    	- Clean generated files and project database"
 	@echo "  help     	- Show this help message"
 
