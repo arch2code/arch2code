@@ -24,6 +24,7 @@ def _writeBuildManifestMk(rootDir, manifest):
         f"A2C_CPP_MODULE_FILES := {asList(manifest['cppModuleFiles'])}",
         f"A2C_SV_FILES := {asList(manifest['svFiles'])}",
         f"A2C_VL_BUILD_DIR := {manifest['vlBuildDir']}",
+        f"A2C_RTL_DOT_F := {manifest['rtlDotF']}",
         f"A2C_VL_TOPS := {asList([t['qualifiedTop'] for t in manifest['vlTops']])}",
     ]
     # Per-top verilated-wrapper records: physical .sv, design-unit (--top), the
@@ -165,6 +166,12 @@ def create(prj):
     # root, keyed to the top context (mirrors the newModule project scaffold).
     # A definitions-only project (no top context) emits none; the ownership gate
     # keeps a composed build from recording a referenced child project's copy.
+    # Layout-correct path of the per-project rtl.f verilator file list. Published
+    # so the shared VL/lint makefiles consume it instead of assuming the
+    # functional $root/rtl/rtl.f, which is wrong for a hierarchical multi-node
+    # top whose rtl segment lives under <topNode>/rtl. Empty for a definitions-
+    # only project (no top context, emits no rtl.f).
+    rtlDotFPath = ''
     topContext = prj.config.getConfig('TOPCONTEXT')
     if topContext is not None and prj.contextOwningProject[topContext] == prj.config.getConfig('PROJECTNAME'):
         objLayout = layoutForContext(topContext)
@@ -180,11 +187,16 @@ def create(prj):
             nodeDir = blockByKey[topBlockKey]['dir']
         else:
             nodeDir = ''
-        for fileDef in fileMap.values():
+        for fileType, fileDef in fileMap.items():
             if fileDef.get('mode', 'block') != 'project':
                 continue
             filePath = processYaml.expandNewModulePath(fileDef, nodeDir, '', '', objLayout, missingDirOk=True)
             record(fileDef, filePath, objLayout)
+            # The rtl.f file list is resolved through the same emit seam as every
+            # other project-mode artifact, so its path is layout-correct in both
+            # functional ($root/rtl/rtl.f) and hierarchical (<topNode>/rtl/rtl.f).
+            if fileType == 'rtlDotF':
+                rtlDotFPath = filePath + '.' + fileDef['ext']['f']
 
     # The verilator wrapper segment root (holds sc_main and the verilated build
     # dir): a known location, not a discovered one. The retired vl_wrap.cpp
@@ -306,6 +318,7 @@ def create(prj):
         'cppModuleFiles':sorted(moduleFiles),
         'svFiles':       sorted(svModuleFiles),
         'vlBuildDir':    vlSegment,
+        'rtlDotF':       rtlDotFPath,
         'vlTops':        sorted(vlTops, key=lambda t: t['qualifiedTop']),
     }
     prj.config.setConfig('BUILDMANIFEST', manifest)

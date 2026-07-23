@@ -61,7 +61,7 @@ obj_dir/vl_dummy/Vvl_dummy: $(VL_GEN_SV_FILES) $(GEN_DEPS)
 define vl_top_rule
 obj_dir/$(1)/$(A2C_VL_OBJ_$(1)): $(VL_GEN_SV_FILES)
 	mkdir -p obj_dir/$(1)
-	verilator $(VERILATOR_OPTS) --Mdir obj_dir/$(1) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(REPO_ROOT)/rtl/rtl.f $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_INCDIRS_$(1))) $(A2C_VL_SV_$(1)) -top $(1)
+	verilator $(VERILATOR_OPTS) --Mdir obj_dir/$(1) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_INCDIRS_$(1))) $(A2C_VL_SV_$(1)) -top $(1)
 endef
 $(foreach t,$(A2C_VL_TOPS),$(eval $(call vl_top_rule,$(t))))
 

@@ -91,7 +91,7 @@ YAML_FILES = $(A2C_YAML_FILES)
 SC_GEN_FILES =  $(call find_gen_cpp_sources, $(A2C_SC_SRC_DIRS) $(A2C_VL_WRAP_DIRS))
 SC_GEN_DOT_FILES = $(SC_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 
-SV_GEN_FILES =  $(call find_gen_sv_sources, $(A2C_SV_SRC_DIRS) $(A2C_VL_WRAP_DIRS)) $(wildcard $(REPO_ROOT)/rtl/rtl.f)
+SV_GEN_FILES =  $(call find_gen_sv_sources, $(A2C_SV_SRC_DIRS) $(A2C_VL_WRAP_DIRS)) $(wildcard $(A2C_RTL_DOT_F))
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
 ifndef SKIP_GEN
