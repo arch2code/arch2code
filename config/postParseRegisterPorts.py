@@ -326,6 +326,38 @@ def postProcess(prj):
             f"instances in the design: {', '.join(missing)}."
         )
 
+    # A router this project OWNS but whose every instance lies outside this
+    # build's reachable top cannot have its decode routing synthesised: the
+    # Steps 5&6 dispatch loop below skips all its (unreachable) instances, so
+    # the router would render as an empty decoder (an empty always_comb plus a
+    # stray end). This only fires when the current project both declares/
+    # instantiates the router and disowns it from its own top; a referenced
+    # child's router that the root legitimately prunes is owned by that child,
+    # not the root, so it is excluded by the ownership condition.
+    currentProject = prj.config.getConfig('PROJECTNAME')
+    reachableRouterBlocks = {
+        instRow['instanceTypeKey']
+        for instRow in prj.flatData['instances'].values()
+        if instRow['instanceKey'] in reachable
+        and instRow['instanceTypeKey'] in routers
+    }
+    orphanedOwnedRouters = [
+        routers[blockKey]['block']
+        for blockKey in routers
+        if blockKey in instantiatedRouterBlocks
+        and blockKey not in reachableRouterBlocks
+        and prj.contextOwningProject[routers[blockKey]['_context']] == currentProject
+    ]
+    if orphanedOwnedRouters:
+        _exit_with_error(
+            f"Register-decode router(s) owned by project "
+            f"'{currentProject}' are instantiated only outside its reachable "
+            f"top, so their decode routing cannot be synthesised: "
+            f"{', '.join(orphanedOwnedRouters)}. Instantiate the router under "
+            f"this project's topInstance, or ensure it is owned by the project "
+            f"whose top instantiates it."
+        )
+
     router_instance = _resolveRouterInstances(prj, routers, reachable)
 
     # Restrict the working router set to routers that participate in this

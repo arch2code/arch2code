@@ -1,8 +1,8 @@
-# Included (via the include: slot, NOT projectFiles:) yet deliberately carries
-# the full project sentinel key set. The classifier must NOT treat this as a
-# child project because it did not arrive via a projectFiles: slot; its context
-# must remain root-owned. The projectName/dirs/fileGeneration keys are in
-# ignoreSections, so only the type below is parsed as design data.
+# Negative-case project file: carries the full project sentinel key set
+# (projectName + dirs + fileGeneration). Under the strict invariant a project
+# file may only be reached through the projectFiles: slot; referencing it via
+# include: is a fatal authoring error. test_error_child_project_via_include
+# injects an include: edge to this file and asserts the guard fires.
 projectName: sneakyProj
 dirs:
     root: ..

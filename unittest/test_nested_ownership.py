@@ -7,9 +7,11 @@ temporary database and asserts that per-context ownership is NON-UNIFORM:
   * the child PROJECT file (reached through the root's projectFiles: slot and
     carrying the projectName/dirs/fileGeneration sentinel set) and everything in
     its transitive closure are owned by the child projectName;
-  * everything reached through the root's own closure stays root-owned;
-  * a file that carries the sentinel keys but arrives via the include: slot is
-    NOT misclassified and stays root-owned.
+  * everything reached through the root's own closure stays root-owned.
+
+It also proves the strict invariant that a project file may only be reached
+through the projectFiles: slot: referencing one via an include: edge is a fatal
+authoring error (test_error_child_project_via_include).
 
 It also proves the ownership contract consumed downstream:
 
@@ -63,6 +65,38 @@ def _build_db(work):
     assert result.returncode == 0, \
         f"db build failed:\n{result.stdout}\n{result.stderr}"
     return db
+
+
+def test_error_child_project_via_include():
+    """Strict invariant: a project file may only be reached through the
+    projectFiles: slot. Copy the fixture, inject an include: edge from
+    rootTop.yaml to the sneaky.yaml project file, and assert the db build
+    FAILS with the guard diagnostic naming the file and its projectName.
+    """
+    work = tempfile.mkdtemp(prefix='nested_ownership_neg_', dir=test_dir)
+    try:
+        shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
+        root_top = os.path.join(work, 'root', 'yaml', 'rootTop.yaml')
+        with open(root_top) as f:
+            body = f.read()
+        with open(root_top, 'w') as f:
+            f.write("include:\n    - sneaky.yaml\n\n" + body)
+
+        proj = os.path.join(work, 'root', 'yaml', 'rootProject.yaml')
+        db = os.path.join(work, 'nested-ownership.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, ARCH2CODE, '--yaml', proj, '--db', db],
+            capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+        assert result.returncode != 0, \
+            f"expected db build to fail on project-file-via-include:\n{result.stdout}\n{result.stderr}"
+        diag = result.stdout + result.stderr
+        assert 'sneakyProj' in diag and 'projectFiles:' in diag, \
+            f"expected guard diagnostic naming projectName and projectFiles:\n{diag}"
+        print("PASS: project-file-via-include: guard fires")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def _newmodule_no_token(work):
@@ -201,7 +235,6 @@ def _resolve_owner_unit(prj):
     assert prj.resolveFileOwner(params(block='childLeafBlock')) == CHILD_PROJECT_NAME
     assert prj.resolveFileOwner(params(block='rootLeaf')) == ROOT_PROJECT_NAME
     assert prj.resolveFileOwner(params(context=[child_ctx])) == CHILD_PROJECT_NAME
-    assert prj.resolveFileOwner(params(context=['sneaky.yaml'])) == ROOT_PROJECT_NAME
     # A registrar names both --block and --parent; the parent (assembler) owns it.
     assert prj.resolveFileOwner(
         params(block='rootLeaf', parent='childProjBlock')) == CHILD_PROJECT_NAME
@@ -274,10 +307,9 @@ def run_all_tests():
         owners = prj.contextOwningProject
         identity = prj.contextModuleIdentity
 
-        # Root-owned closure: the root top file, the root project's own leaf,
-        # and the sentinel-bearing included file all stay root-owned. Identity
-        # is the bare include stem.
-        for stem in ('rootTop', 'sneaky'):
+        # Root-owned closure: the root top file and the root project's own leaf
+        # stay root-owned. Identity is the bare include stem.
+        for stem in ('rootTop',):
             _, owner = _context_by_stem(owners, stem)
             assert owner == ROOT_PROJECT_NAME, \
                 f"context '{stem}' expected root-owned, got '{owner}'"
@@ -314,6 +346,8 @@ def run_all_tests():
         _newmodule_no_token(work)
         # The SC and SV generators honor the DB-driven ownership gate.
         _gate_skip_proof(work)
+        # Strict invariant: a project file reached via include: is fatal.
+        test_error_child_project_via_include()
         return 0
     finally:
         # Close the read-only sqlite handle projectOpen left open so the temp

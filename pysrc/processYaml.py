@@ -4039,6 +4039,16 @@ class projectCreate:
                     continue
                 raw = existsLoad(f)
                 nextOverrides = inheritedOverrides
+                # A project file may only be reached through the projectFiles:
+                # slot. Reaching one via an include: edge is a fatal authoring
+                # error: a project file provides nothing to include: scoping.
+                if self._isChildProjectFile(raw) and not viaProjectFiles:
+                    printError(f"'{f}' declares projectName "
+                               f"'{raw['projectName']}' and is a project file, "
+                               f"but it is referenced via include:. A project "
+                               f"file provides nothing to include: scoping and "
+                               f"must be referenced only via projectFiles:.")
+                    exit(warningAndErrorReport())
                 # A projectFiles-slot entry carrying the project sentinel keys
                 # opens a child project, subject to provider-override redirection
                 # against the ancestor overrides.
@@ -4135,10 +4145,14 @@ class projectCreate:
         # Authoritative, order-independent file ownership by projectFile
         # reference closure (NOT directory structure). Each selected provider
         # project owns the files its own projectFiles:/include: closure reaches,
-        # walked DOWN TO but not across the next nested provider boundary. A file
-        # reached by more than one closure is owned by the deepest (most-nested)
-        # provider, so a parent include: that merely makes a child's file visible
-        # never claims ownership of it. Files reached by no child provider (root
+        # walked DOWN TO but not across the next nested provider boundary. A
+        # genuinely-shared NON-provider file reached by more than one closure is
+        # owned by the deepest reaching provider, where "depth" is the
+        # shortest-path BFS distance from the root (fewest boundary crossings),
+        # NOT the maximum nesting depth. Equal-depth ties resolve deterministically
+        # by a lexical tiebreak on the provider path. This is why a parent
+        # include: that merely makes a child's file visible never claims ownership
+        # of it. Files reached by no child provider (root
         # design files, system files) fall to the root PROJECTNAME. A monolithic
         # project has no child providers, so every context resolves to the root
         # PROJECTNAME (byte-identical no-op).
@@ -4165,8 +4179,10 @@ class projectCreate:
                 nextLevel.extend(children)
             frontier = nextLevel
             curDepth += 1
-        # Root owns everything by default; providers overwrite shallow-to-deep so
-        # the deepest closure that reaches a shared file wins.
+        # Root owns everything by default; providers overwrite shallow-to-deep
+        # (depth = shortest-path BFS distance from root), so the deepest closure
+        # that reaches a shared file wins; equal-depth ties break lexically on
+        # the provider path.
         for f in self.yamlAllFiles:
             self.contextOwningProject[f] = rootProjectName
         for b in sorted(providerOwned, key=lambda x: (depth[x], x)):

@@ -1,11 +1,6 @@
 # Root-owned top context. Reached via the root project's projectFiles: slot but
 # it is NOT a project file (no projectName/dirs/fileGeneration), so it stays
-# root-owned. It also `include:`s sneaky.yaml (via the include slot, not
-# projectFiles) to prove an included file carrying the project sentinel keys is
-# NOT misclassified as a child project.
-include:
-    - sneaky.yaml
-
+# root-owned.
 blocks:
     root_tb:
         desc: "root testbench container"
