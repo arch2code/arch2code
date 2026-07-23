@@ -10,6 +10,7 @@ Before editing, you **must** load the project skill that matches the task. Do no
 | **Start/Config** | `setup-project.md` (Project init, `project.yaml`) |
 | **Address/Mem** | `manage-address-space.md` (Address map, decoding, FW headers) |
 | **Address Migration** | `address-migration.md` (Migrate `addressControl.yaml` to per-block `addressBlock:` / `registerPorts:`) |
+| **Project Migration** | `migrate-project.md` (Run/finish `make migrate`: eval→SV, addressControl→per-block, includes→cppm, orphan sweep, and the agent-driven `.cpp/.h`→`.cppm` block port) |
 | **Register/Memory Decode** | `design-register-decode.md` (Make registers/memories FW-accessible: `addressBlock:` routers, `registerPorts:`/`regAccess` leaves, nested routers, decode decision rule) |
 | **Architecture** | `design-architecture.md` (YAML blocks, interfaces) |
 | **Build/Run/File Creation** | `manage-build.md` (`make` targets, `gen`, `db`, `newmodule`; required before creating implementation files or enabling generated artifacts) |
