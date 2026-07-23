@@ -35,7 +35,7 @@ import sys
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # builder/base
 EXAMPLES_DIR = os.path.join(BASE_DIR, 'examples')
 sys.path.insert(0, BASE_DIR)
-from config.createBuildManifest import _projectScopedSegment  # noqa: E402
+from pysrc.processYaml import projectCreate  # noqa: E402
 
 # pySocket: not migrated to yamlFormat: 2 (same skip as functional_layout_regression.sh).
 SKIP = {'pySocket'}
@@ -168,15 +168,31 @@ def check_example(name):
 
 
 def check_hierarchical_vl_wrap_path():
-    layout = {
-        'mode': 'hierarchical',
-        'prj': '/tmp/demo/prj',
-        'segments': {
-            'vl_wrap': {'path': 'verif'},
+    # The verilator-wrap (buildGroup 'vl') segment is project-scoped: the layout
+    # anchors its node-relative segment under prj/ so emission (expandNewModulePath)
+    # and the manifest's A2C_VL_BUILD_DIR resolve to the one build location. All
+    # other segments stay node-relative (joined onto the block node dir at emit).
+    pc = object.__new__(projectCreate)
+    dirMacros = {'root': '/tmp/demo'}
+    fileGeneration = {
+        'layout': 'hierarchical',
+        'buildGroups': {'model': 'sc', 'vl_wrap': 'vl'},
+        'fileMap': {
+            'block': {'basePath': 'model'},
+            'vlSvWrap': {'basePath': 'vl_wrap'},
+        },
+        'hierarchicalDirs': {
+            'model': 'model',
+            'vl_wrap': 'verif',
+            'yaml': 'yaml',
+            'prj': '$root/prj',
+            'rundir': '$root/rundir',
+            'include': '$root/include',
         },
     }
-    vl_dir = _projectScopedSegment(layout, 'vl_wrap')
-    return vl_dir == '/tmp/demo/prj/verif'
+    layout = pc._buildLayoutFor(dirMacros, fileGeneration)
+    return (layout['segments']['vl_wrap']['path'] == '/tmp/demo/prj/verif' and
+            layout['segments']['model']['path'] == 'model')
 
 
 def main():

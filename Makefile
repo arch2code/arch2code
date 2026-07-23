@@ -20,6 +20,8 @@ APBDECODE_DB_FILE = $(APBDECODE_DIR)/apbDecode.db
 
 AXI4SDEMO_DIR = examples/axi4sDemo
 
+HIER_VL_DEMO_DIR = examples/hierVlDemo
+
 IP_TEST_DIR = examples/ip_test
 
 IN_OUT_DIR = examples/inAndOut
@@ -90,6 +92,14 @@ axiDemo:
 axi4sDemo:
 	make -C $(AXI4SDEMO_DIR)/rundir -j all VL_DUT=1
 	make -C $(AXI4SDEMO_DIR)/rundir -j run VL_DUT=1
+
+.PHONY : hierVlDemo
+# Hierarchical-layout twin of axi4sDemo: guards the hierarchical verilator wrapper
+# build (project-scoped prj/verif dir) and the block-less types-only-context RTL
+# package path resolution. Single-node (top node == project root).
+hierVlDemo:
+	make -C $(HIER_VL_DEMO_DIR)/rundir -j all VL_DUT=1
+	make -C $(HIER_VL_DEMO_DIR)/rundir -j run VL_DUT=1
 
 .PHONY : ip-test
 ip-test:
@@ -199,6 +209,7 @@ clean :
 	make -C $(APBDECODE_DIR) clean
 	make -C $(AXI_DIR) clean
 	make -C $(AXI4SDEMO_DIR) clean
+	make -C $(HIER_VL_DEMO_DIR) clean
 	make -C $(IP_TEST_DIR) clean
 
 .PHONY : unittest
@@ -206,5 +217,5 @@ unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo ip-test
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test
 push-test: clean unittest pipeline-test

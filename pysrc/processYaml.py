@@ -439,6 +439,7 @@ class projectOpen:
         self.yamlContext = self.config.getConfig('YAMLCONTEXT')
         self.includeName = self.config.getConfig('INCLUDENAME')
         self.contextOwningProject = self.config.getConfig('CONTEXTOWNINGPROJECT')
+        self.contextNodeDir = self.config.getConfig('CONTEXTNODEDIR')
         self.reachableInstances = self.config.getConfig('REACHABLEINSTANCES')
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
         self.filemap = self.config.getConfig('FILEMAP')
@@ -1163,13 +1164,15 @@ class projectOpen:
         # Resolve each include-chain context to the directory holding its
         # generated RTL artifacts (package + library modules), relative to the
         # root project's rtl.f location. The RTL package files land in the
-        # `package` fileType's basePath segment; a context's rtl subdir mirrors
-        # its yaml subdir within the OWNING project's tree, so re-rooting the
-        # context's owner-relative subdir under that owner's rtl segment yields
-        # the child's rtl/ output directory for cross-project contexts and the
-        # local directory (byte-identical to the yaml-relative subdir) for
-        # root-owned contexts. Path composition mirrors the newModule/
-        # saveIncludeFiles seam (contextOwningProject + projectLayout[owner]).
+        # `package` fileType's basePath segment. The two layouts resolve this
+        # differently (branch below): functional segments are $root-absolute, so
+        # a context's rtl subdir mirrors its yaml subdir within the OWNING
+        # project's tree (yaml-relative arithmetic); hierarchical segments are
+        # bare node-relative names joined onto a node dir at emit time, so both
+        # rtl.f and each package are resolved through the emit seam
+        # (expandNewModulePath) against their node dirs. Path composition mirrors
+        # the newModule/saveIncludeFiles seam (contextOwningProject +
+        # projectLayout[owner]).
         fileMap = self.config.getConfig('FILEMAP')
         rootName = self.config.getConfig('PROJECTNAME')
         rootLayout = self.projectLayout[rootName]
@@ -1178,9 +1181,38 @@ class projectOpen:
         # this map; return empty rather than fabricating a directory.
         if rtlSegKey not in rootLayout['segments']:
             return dict()
-        rtlDotFdir = rootLayout['segments'][rtlSegKey]['path']
         rootYaml = rootLayout['yaml']
         ret = dict()
+        if rootLayout['mode'] == 'hierarchical':
+            # Under hierarchical the rtl segment is a bare node-relative name
+            # joined onto a node directory at emit time, so both rtl.f and every
+            # context package land at <node>/<rtlSeg>/. Resolve each endpoint
+            # through the same seam (expandNewModulePath) that placed the files:
+            # rtl.f anchors to the top context's node (mirrors newModule), each
+            # context package to its own node (mirrors saveIncludeFiles). The
+            # yaml-relative arithmetic used for functional cannot apply here
+            # because the segment path is a bare node-relative name, not a
+            # $root-absolute directory. Each context's node dir comes from the
+            # persisted per-context map (CONTEXTNODEDIR), which covers types-only
+            # contexts that emit an RTL package but define no block.
+            topContext = self.config.getConfig('TOPCONTEXT')
+            if topContext is None:
+                # A definitions-only project (no topInstance) emits no rtl.f, so
+                # this map has no consumer; the functional branch tolerates the
+                # same case by never anchoring on a topInstance.
+                return dict()
+            rtlDotFdir = os.path.dirname(expandNewModulePath(
+                fileMap['rtlDotF'], self.contextNodeDir[topContext], '', '',
+                rootLayout, missingDirOk=True))
+            for context in includeContext:
+                ownerLayout = self.projectLayout[self.contextOwningProject[context]]
+                includeName = self.includeName[context]
+                pkgDir = os.path.dirname(expandNewModulePath(
+                    fileMap['package'], self.contextNodeDir[context], includeName,
+                    includeName, ownerLayout, missingDirOk=True))
+                ret[context] = os.path.relpath(pkgDir, rtlDotFdir)
+            return ret
+        rtlDotFdir = rootLayout['segments'][rtlSegKey]['path']
         for context in includeContext:
             owner = self.contextOwningProject[context]
             ownerLayout = self.projectLayout[owner]
@@ -3479,6 +3511,11 @@ class projectCreate:
         self.config.setConfig('YAMLCONTEXT', self.yamlContext, bin=True) # save the structure of the yaml contexts for header usages
         self.config.setConfig('INCLUDENAME', self.includeName, bin=True) # save the structure of the yaml contexts for header usages
         self.config.setConfig('CONTEXTOWNINGPROJECT', self.contextOwningProject, bin=True) # per-context owning projectName, keyed identically to includeName
+        # Per-context node directory (the seam saveIncludeFiles uses to place each
+        # context's generated artifacts), keyed identically to includeName. Covers
+        # types-only contexts that have no block, so a projectOpen view can resolve
+        # a block-less context's node dir without a data['blocks'] row.
+        self.config.setConfig('CONTEXTNODEDIR', {ctx: data['dir'] for ctx, data in self.includeValid.items()}, bin=True)
         # instanceKeys contained (transitively) by this build's topInstance.
         # Consumers that enumerate the whole instance table (address emission)
         # intersect with this set so a referenced child project's standalone
@@ -3660,6 +3697,15 @@ class projectCreate:
                         'path': value,
                         'buildGroup': buildGroupForSegment(key),
                     }
+            # The verilator wrap (buildGroup 'vl') is a single whole-design build,
+            # not a per-node one: anchor its node-relative segment under the
+            # project-scope prj/ container so every emitted wrapper AND the build
+            # manifest's A2C_VL_BUILD_DIR resolve to the one location the vlwrap
+            # build runs in. All other segments stay node-relative (joined onto the
+            # block's node dir at emit time).
+            for seg in segments.values():
+                if seg['buildGroup'] == 'vl' and not os.path.isabs(seg['path']):
+                    seg['path'] = os.path.join(conventions['prj'], seg['path'])
         return {
             'mode':        mode,
             'segments':    segments,

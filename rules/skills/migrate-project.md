@@ -216,11 +216,14 @@ not part of the `make migrate` chain above and **not** gated by the
 step runs only when the project has chosen the hierarchical layout but its tree
 is still laid out functionally on disk.
 
-**Opt in first.** The step does nothing until the project declares the layout.
-Hand-add `layout: hierarchical` under `fileGeneration:` in the project YAML (the
-base default is `functional`) — that declaration is what makes the project a
-migration candidate. The project must already be `yamlFormat: 2`, so run `make
-migrate` before this step. Then run:
+**Order matters — migrate to format-2 *while still functional*, then opt in.**
+Run `make migrate` **first, before adding any `layout:` key**, so the project
+reaches `yamlFormat: 2` in functional layout. Do not opt into hierarchical before
+`make migrate`: its orphan sweep does not walk a hierarchical context owner and
+would report `TODO_UNSUPPORTED_LAYOUT` and stop. Only after `make migrate` is
+clean, **opt in** by hand-adding `layout: hierarchical` under `fileGeneration:` in
+the project YAML (the base default is `functional`) — that declaration is what
+makes the project a migration candidate. Then run:
 
 ```text
 make migrate-hierarchical
@@ -263,8 +266,12 @@ byte-for-byte:
   block with no decomposition subdir (`decomp=""`) maps to the **project-root
   node** (`yaml/*.yaml` at the project root); no node directory is synthesized.
 - **Project file** → `prj/yaml/<projectName>Project.yaml`; **integration
-  orphans** (`fwIpMain`, `sc_main`, the `vl_wrap` aggregator) → `prj/fw/` /
-  `prj/verif/` (flattened). **Build-config `include/` and `rundir/` stay at the
+  orphans** (`fwIpMain`, `sc_main`, the `vl_wrap` aggregator, and the user-owned
+  vl-wrap `Makefile`) → `prj/fw/` / `prj/verif/` (flattened). The vl-wrap
+  `Makefile` moves byte-preserving to `prj/verif/Makefile` so the project-scoped
+  verilator build dir (`A2C_VL_BUILD_DIR`) has its build entry; its
+  `REPO_ROOT`-relative includes stay valid, so no rewrite is needed. **Build-config
+  `include/` and `rundir/` stay at the
   project root** — they are user-owned entry points, not `prj/` orphans. The only
   harness change is the `A2C_PRJ_YAML` line in the root `include/make/shared.mk`,
   which the tool re-points at the moved project file

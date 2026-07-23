@@ -214,7 +214,12 @@ def expandFileMap(prj, fileMap, report):
     path, and thus are never delete targets. `report` collects missing-basePath
     guard notes.
     """
-    blocksParams = {row["blockKey"] for row in prj.data["blocksparams"].values()}
+    # blocksparams is a list-mode subtable of blocks, so projectOpen groups it as
+    # {blockKey: [paramRow, ...]}; flatten the per-block lists to read each row's
+    # blockKey (blocks itself is a flat {blockKey: row} dict).
+    blocksParams = {row["blockKey"]
+                    for rows in prj.data["blocksparams"].values()
+                    for row in rows}
     blockByKey = {row["blockKey"]: row for row in prj.data["blocks"].values()}
     paths = set()
 

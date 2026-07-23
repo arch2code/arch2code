@@ -41,13 +41,6 @@ def _writeBuildManifestMk(rootDir, manifest):
         f.write('\n'.join(lines))
 
 
-def _projectScopedSegment(layout, basePathKey):
-    segment = layout['segments'][basePathKey]['path']
-    if layout['mode'] == 'hierarchical' and not os.path.isabs(segment):
-        return os.path.join(layout['prj'], segment)
-    return segment
-
-
 def create(prj):
     # Derive the per-project build directory/file set from the same emission
     # decisions the file generator makes. The manifest uses the persisted layout
@@ -197,7 +190,7 @@ def create(prj):
     # dir): a known location, not a discovered one. The retired vl_wrap.cpp
     # aggregator no longer lives here; `_verif` registration moved to the
     # per-assembler VlRegistrar.cpp files discovered under scSrcDirs.
-    vlSegment = _projectScopedSegment(rootLayout, 'vl_wrap')
+    vlSegment = rootLayout['segments']['vl_wrap']['path']
     if dirs['vl']:
         dirs['vl'].add(vlSegment)
 

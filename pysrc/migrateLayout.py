@@ -354,11 +354,22 @@ def _buildRelocationMap(projectYamlPath, projectData, report):
     fileGen = mergedProj["fileGeneration"]
     fileMap = fileGen["fileMap"]
     hdirs = fileGen.get("hierarchicalDirs") or {}
+    buildGroups = fileGen.get("buildGroups") or {}
     mergedDirs = mergedProj.get("dirs") or {}
     for segKey, segDir in _functionalSegments(projectRoot, mergedDirs):
         genEntries = [fileMap[k] for k in FULLY_GENERATED_FILEMAP_KEYS
                       if k in fileMap and fileMap[k]["basePath"] == segKey]
         hierName = hdirs.get(segKey, os.path.basename(segDir))
+        # The verilator-wrap (buildGroup 'vl') segment holds a user-owned build
+        # Makefile that is not a source file, so the source sweep below never
+        # sees it. It is the single build Makefile of the project-scoped vl build
+        # dir; relocate it byte-preserving into the prj/ verif container that
+        # becomes A2C_VL_BUILD_DIR (its REPO_ROOT-relative includes stay valid).
+        if buildGroups.get(segKey) == "vl":
+            mk = os.path.join(segDir, "Makefile")
+            if os.path.isfile(mk):
+                report.moves.append(
+                    Move(mk, os.path.join(prjDir, hierName, "Makefile"), MOVE_ORPHAN))
         for src in sorted(_sourceFiles(segDir)):
             base = os.path.basename(src)
             if base in ORPHAN_DESTS:
