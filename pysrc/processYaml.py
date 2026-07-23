@@ -3390,6 +3390,19 @@ class projectCreate:
         # projectName is a duplicate-provider error unless an ancestor
         # projectOverrides entry redirects one of them. Populated by readRaw.
         self.projectProviders = {}
+        # Per read file, the set of files it references through its
+        # projectFiles: and include: slots (systemFiles excluded). This is the
+        # reference graph _assignOwnership walks to attribute files to the
+        # provider whose closure reaches them. Populated by readRaw.
+        self.yamlReferences = {}
+        # The root project file's own projectFiles:/include: references, captured
+        # at seed time because the root project file is not itself a graph node.
+        self.rootReferences = set()
+        # Every child-project-file reference path (both selected providers and
+        # override-redirected aliases) mapped to its canonical selected provider
+        # path. A reference to any such path is an ownership boundary into that
+        # provider. Populated by readRaw.
+        self.providerFileAliases = {}
         global dirMacros
         #load project file from command line
         self._userProjRaw = existsLoad(projFile)
@@ -3446,7 +3459,10 @@ class projectCreate:
             systemFiles = self.getFileList(self.a2cProj, self.a2cRoot)[0]
 
         # Then load user project files
-        (userFiles, _, userProjectSlot) = self.getFileList(self.proj, g.yamlBasePath)
+        (userFiles, userInclude, userProjectSlot) = self.getFileList(self.proj, g.yamlBasePath)
+        # The root project file's reference closure (projectFiles + includes,
+        # not systemFiles) seeds _assignOwnership's root walk.
+        self.rootReferences = set(userProjectSlot) | set(userInclude)
 
         # Seed the file-read BFS. Each queue entry is (file, viaProjectFiles,
         # inheritedOverrides): system files and the root project's include
@@ -4031,7 +4047,10 @@ class projectCreate:
                     selectedKey = self._selectProvider(f, projName, inheritedOverrides)
                     if selectedKey != f:
                         # Redirected by an ancestor override: f is not itself a
-                        # context; process the selected provider instead.
+                        # context; process the selected provider instead. Record
+                        # the alias so ownership treats a reference to this
+                        # redirected path as a boundary into the selected provider.
+                        self.providerFileAliases[f] = selectedKey
                         if selectedKey not in self.yamlAllFiles:
                             newFiles.insert(0, (selectedKey, True, inheritedOverrides))
                         continue
@@ -4047,6 +4066,8 @@ class projectCreate:
                                    f"project to select one.")
                         exit(warningAndErrorReport())
                     self.projectProviders[projName] = f
+                    # f is a real provider boundary; it aliases to itself.
+                    self.providerFileAliases[f] = f
                     # Capture the child's raw project content plus its own file
                     # location, so buildProjectLayout can resolve the child's
                     # dirs: relative to the child project file (not the root). f
@@ -4064,6 +4085,9 @@ class projectCreate:
                 self.yamlRaw[f] = raw
                 myBase = os.path.dirname(f)
                 (todo, include, projectSlotFiles) = self.getFileList(raw, myBase, self.yamlDependancies)
+                # Record this file's reference edges (projectFiles + include, not
+                # systemFiles) for the ownership closure walk.
+                self.yamlReferences[f] = set(projectSlotFiles) | set(include)
                 if raw and "includeName" in raw:
                     self.includeName[f] = raw["includeName"]
                 else:
@@ -4079,29 +4103,76 @@ class projectCreate:
             self.yamlUnread = newFiles
         self._assignOwnership()
 
+    def _referenceClosure(self, seeds, ownProvider):
+        # Walk the projectFiles:/include: reference graph from `seeds`,
+        # collecting every file the walking project owns and the canonical
+        # nested provider project files it directly reaches. A reference to any
+        # provider path (a selected child project file or an override-redirected
+        # alias of one) other than the walker's own `ownProvider` is a boundary:
+        # it is recorded as a child boundary and NOT crossed, so a nested
+        # project's files are left for that project to claim. The walker's own
+        # provider file is owned. Returns (owned, childBoundaries).
+        owned = {ownProvider} if ownProvider is not None else set()
+        childBoundaries = set()
+        seen = set(seeds)
+        stack = list(seeds)
+        while stack:
+            cur = stack.pop()
+            canon = self.providerFileAliases.get(cur)
+            if canon is not None:
+                # cur is a provider boundary (or an alias of one).
+                if canon != ownProvider:
+                    childBoundaries.add(canon)
+                continue
+            owned.add(cur)
+            for ref in self.yamlReferences[cur]:
+                if ref not in seen:
+                    seen.add(ref)
+                    stack.append(ref)
+        return owned, childBoundaries
+
     def _assignOwnership(self):
-        # Authoritative, order-independent file ownership. Each selected
-        # provider project owns the files that lie within its own project-file
-        # directory tree; the most-specific (deepest) containing provider wins,
-        # so a child's files are owned by the child even when a parent include:
-        # also reaches them: a sibling include: is a visibility mechanism, never
-        # an ownership claim. Files outside every
-        # child provider tree (root design files, system files) fall to the root
-        # project. On a monolithic project there are no child providers, so every
-        # context resolves to the root PROJECTNAME (byte-identical no-op).
+        # Authoritative, order-independent file ownership by projectFile
+        # reference closure (NOT directory structure). Each selected provider
+        # project owns the files its own projectFiles:/include: closure reaches,
+        # walked DOWN TO but not across the next nested provider boundary. A file
+        # reached by more than one closure is owned by the deepest (most-nested)
+        # provider, so a parent include: that merely makes a child's file visible
+        # never claims ownership of it. Files reached by no child provider (root
+        # design files, system files) fall to the root PROJECTNAME. A monolithic
+        # project has no child providers, so every context resolves to the root
+        # PROJECTNAME (byte-identical no-op).
         rootProjectName = self.config.getConfig('PROJECTNAME')
-        providers = sorted(
-            ((info['projectFileDir'], name)
-             for name, info in self.childProjectRaw.items()),
-            key=lambda p: len(p[0]), reverse=True)
+        providerFileToName = {f: name for name, f in self.projectProviders.items()}
+        # Root pseudo-provider (depth 0): the child provider files its own
+        # closure directly reaches are the depth-1 boundaries.
+        _, rootChildren = self._referenceClosure(self.rootReferences, None)
+        # BFS the provider nesting tree so each provider's depth is its shortest
+        # boundary-crossing distance from the root, capturing each provider's
+        # owned closure along the way.
+        depth = {}
+        providerOwned = {}
+        frontier = list(rootChildren)
+        curDepth = 1
+        while frontier:
+            nextLevel = []
+            for b in frontier:
+                if b in depth:
+                    continue
+                depth[b] = curDepth
+                owned, children = self._referenceClosure(self.yamlReferences[b], b)
+                providerOwned[b] = owned
+                nextLevel.extend(children)
+            frontier = nextLevel
+            curDepth += 1
+        # Root owns everything by default; providers overwrite shallow-to-deep so
+        # the deepest closure that reaches a shared file wins.
         for f in self.yamlAllFiles:
-            fabs = os.path.abspath(f)
-            owner = rootProjectName
-            for pdir, name in providers:
-                if fabs.startswith(pdir + os.sep):
-                    owner = name
-                    break
-            self.contextOwningProject[f] = owner
+            self.contextOwningProject[f] = rootProjectName
+        for b in sorted(providerOwned, key=lambda x: (depth[x], x)):
+            name = providerFileToName[b]
+            for f in providerOwned[b]:
+                self.contextOwningProject[f] = name
 
     def calcAddresses(self):
         # Post-parse derivation: parse-time self._parserResolver is None here.
