@@ -80,11 +80,11 @@ clean report.
 | `TODO_LEAF_REGISTER_PORTS` | address phase | A routed leaf needs `registerPorts:`. | `address-migration` skill, `registerPorts:` note (Migration Diagnostics) |
 | `TODO_USER_IMPORT` | includes phase | Hand-written user code `#include`s a migrated context header. | Section 4 below |
 | eval `NEEDS_MANUAL` | eval phase | A real-valued eval (e.g. `$DWORD / 2.0`) cannot be expressed in the SV subset. | Replace the `eval:` with a literal `value:` (hand decision). |
-| `TODO_PORT` | orphan sweep | An old-form user `.cpp`/`.h` pair that the current map now produces in a different form — a block that was parameterized so its artifact is a single `.cppm`. Never deleted by the sweep. | Section 5 below (agent-driven port) |
+| `TODO_PORT` | orphan sweep | An old-form user `.cpp`/`.h` pair that the current map now produces in a different form — a block that was parameterized so its artifact is a single `.cppm`. Never deleted by the sweep. | Section 6 below (agent-driven port) |
 | `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 4 below |
 | `TODO_UNGENERATED_FILE` | orphan sweep | A file whose name matches a delete-target but that carries no `GENERATED_CODE_BEGIN` marker. Left in place, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
 | `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No action if the path genuinely no longer exists. |
-| `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk. | Complete the format migration in functional layout, then migrate to hierarchical (Section 6). |
+| `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk. | Complete the format migration in functional layout, then migrate to hierarchical (Section 7). |
 
 The address-control kinds are documented in depth in the `address-migration`
 skill; each converter message points at the resolving step or note named in the
@@ -182,7 +182,44 @@ build state:
    `make -C <project>/rundir all run`). A clean build and run confirms the
    migration.
 
-## 5. Port a parameterized block (`.cpp`/`.h` → `.cppm`)
+## 5. Adopt the generated `createTbTop()` helper
+
+The testbench top is instantiated through a generated helper. `make gen` emits,
+into the `tbConfig` generated region of each testbench's `<block>Config.cpp`,
+
+```cpp
+std::shared_ptr<blockBase> createTbTop(void)
+{ return instanceFactory::createInstance("", "tb", "<block>Testbench", "", "<project>"); }
+```
+
+so the factory `createInstance` — including the `projectName` factory key that
+must match the tb-top registration — is regenerated on every `make gen`. The
+project rule is that this `createInstance` for the tb-top **is generated** (lives
+inside `createTbTop`), and is **never** hand-written in a user region.
+
+A testbench predating the helper instantiates the tb-top by hand in the **user
+body** of `createTestBench()`:
+
+```cpp
+// user region — pre-helper form
+std::shared_ptr<blockBase> tb =
+    instanceFactory::createInstance("", "tb", "<block>Testbench", "");
+```
+
+`make gen` recreates the generated half (it emits `createTbTop`) but never
+rewrites the user body, and the tool flags **no** TODO for this — so fix the call
+site by hand. Replace the raw `createInstance` with a call to the helper:
+
+```cpp
+// user region — after
+std::shared_ptr<blockBase> tb = createTbTop();
+```
+
+This is the only edit: the factory call now sits in the generated `createTbTop`,
+and the user code just calls it, so the emitted `projectName` key stays correct
+across regenerations.
+
+## 6. Port a parameterized block (`.cpp`/`.h` → `.cppm`)
 
 The orphan sweep reports `TODO_PORT` when a block was **parameterized** — its
 YAML now declares its own `params:` — so the current file map produces a single
@@ -254,7 +291,7 @@ Once `<block>.cppm` holds the ported code, delete the now-superseded legacy
 entries are excluded from its delete set by construction), then re-run `make gen`
 and build. Re-run `make migrate` to confirm the `TODO_PORT` is gone.
 
-## 6. (Opt-in) Migrate to hierarchical layout
+## 7. (Opt-in) Migrate to hierarchical layout
 
 The functional → hierarchical layout migration is a **separate, opt-in step**,
 not part of the `make migrate` chain above and **not** gated by the

@@ -57,6 +57,35 @@ def _isGenerated(path):
     return "GENERATED_CODE_BEGIN" in _read(path)
 
 
+def classifyGeneratedDir(dirs):
+    """Partition the SOURCE files found under each directory in `dirs` into
+    `(generated, ungenerated)` by the GENERATED_CODE marker.
+
+    Fully-generated segment directories (base, registrar, vl_wrap) hold only
+    generated artifacts, so a migration sweep clears them by directory rather
+    than by fileMap expansion — the marker (not a cond/ext/name gate) is the
+    decider, so alternate-extension or renamed orphans a per-file expansion would
+    miss (pre-`.cppm` `<block>Base.h`, model-only `<block>Tandem.*`, stale
+    `*_hdl_sc_wrapper.h`) are still caught. `generated` files are safe to
+    delete-and-regenerate; `ungenerated` files are surfaced for review and never
+    deleted (a hand-authored file dropped into a generated segment is preserved).
+    Non-source files (build scaffolding) are ignored. Missing directories are
+    skipped."""
+    generated = list()
+    ungenerated = list()
+    for directory in sorted(dirs):
+        if not os.path.isdir(directory):
+            continue
+        for root, dirnames, names in os.walk(directory):
+            dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+            for name in sorted(names):
+                if not name.endswith(SOURCE_EXTS):
+                    continue
+                path = os.path.join(root, name)
+                (generated if _isGenerated(path) else ungenerated).append(path)
+    return generated, ungenerated
+
+
 # ---------------------------------------------------------------------------
 # YAML node helpers
 # ---------------------------------------------------------------------------

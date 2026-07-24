@@ -121,6 +121,12 @@ endif
 # Project global file based targets
 #------------------------------------------------------------------------
 
+# YAML_FILES (the manifest include-tree closure) is empty before the first db
+# build and never lists the project file itself, so name project.yaml as an
+# explicit prerequisite: a `migrate` run that stamps the project file (bumping
+# its mtime) then rebuilds the db from the stamped YAML rather than reusing a
+# stale (or gate-aborted shell) db.
+$(A2C_SQLDB_FILE): $(A2C_PRJ_YAML)
 $(A2C_SQLDB_FILE): $(YAML_FILES)
 	$(A2C_ROOT)/arch2code.py -y $(A2C_PRJ_YAML) --db $(A2C_SQLDB_FILE)
 	touch $(A2C_SQLDB_DOTFILE)

@@ -71,7 +71,8 @@ from dataclasses import dataclass, field
 import yaml
 
 from pysrc.migrateCommon import (
-    _read, _write, _loc, _isGenerated, _projectFileSet, SKIP_DIRS, SOURCE_EXTS,
+    _read, _write, _loc, _isGenerated, _projectFileSet, classifyGeneratedDir,
+    SKIP_DIRS, SOURCE_EXTS,
 )
 from pysrc.processYaml import mergeProjectConfig
 
@@ -99,9 +100,16 @@ MOVE_SOURCE = "SOURCE"                 # user-editable generated source (carries
 # (config/project.yaml). A project's own or custom fileMap key NOT listed here is
 # treated as user-editable and its files MOVE (content preserved) rather than
 # delete — the safe default for content the migrator does not recognize.
+# tandem, blockVlRegistrar, foreignConfig and vlSvWrapForeign are the
+# verilated/foreign siblings of already-listed generated keys (blockBase,
+# blockRegistrar, config, vlSvWrap): each is a single whole-file generated block
+# with no user regions, emitted into an all-generated segment (base, registrar,
+# vl_wrap). Listing them makes those segments classify fully-generated so the
+# migration clears them by directory (below).
 FULLY_GENERATED_FILEMAP_KEYS = frozenset({
     "blockBase", "blockRegistrar", "include", "config", "package",
     "vlSvWrap", "vlSvWrapBody", "vlScWrap",
+    "tandem", "blockVlRegistrar", "foreignConfig", "vlSvWrapForeign",
 })
 
 # Relative include references rewritten inside moved source user regions:
@@ -342,23 +350,57 @@ def _buildRelocationMap(projectYamlPath, projectData, report):
     # only harness change is re-pointing its A2C_PRJ_YAML line (planned separately
     # by _planHarnessEdit, since the project file moves to prj/yaml/).
 
-    # 2c + 4. Sweep the merged functional segments and classify each source file
-    # by the merged fileMap (the same base/pro/user merge processYaml runs at
-    # create). Project-scope orphans move into prj/. A recognized fully-generated
-    # file type is deleted (marker-guarded) and recreated by make gen/newmodule;
-    # a name-matched file lacking the marker is user content wearing a generated
-    # name — reported, never deleted. Every other source (user-editable, or an
-    # unrecognized/custom fileMap type) MOVES byte-preserving to its hierarchical
-    # <decomp>/<segment> location, content preserved for the re-root pass.
+    # 2c + 4. Sweep the merged functional segments (the same base/pro/user merge
+    # processYaml runs at create). A FULLY-GENERATED segment (every fileMap entry
+    # whole-file generated: base, registrar, vl_wrap) is cleared by DIRECTORY —
+    # every marker-carrying file deleted, so alternate-extension / renamed orphans
+    # a per-file name+ext match would miss go too. A MIXED/user segment (model,
+    # rtl, tb, fwInc) is classified per file: project-scope orphans move into prj/;
+    # its recognized generated files (include/package) are deleted (marker-guarded)
+    # and recreated by make gen/newmodule; a name-matched file lacking the marker
+    # is reported, never deleted; every other (user-editable / unrecognized) source
+    # MOVES byte-preserving to its hierarchical <decomp>/<segment> location, content
+    # preserved for the re-root pass. Both paths are recreated by the hierarchical
+    # newmodule/gen at the node dirs.
     _, _, _, _, mergedProj = mergeProjectConfig(projectYamlPath)
     fileGen = mergedProj["fileGeneration"]
     fileMap = fileGen["fileMap"]
     hdirs = fileGen.get("hierarchicalDirs") or {}
     mergedDirs = mergedProj.get("dirs") or {}
+    fullyGenerated = _fullyGeneratedSegments(fileMap)
     for segKey, segDir in _functionalSegments(projectRoot, mergedDirs):
+        hierName = hdirs.get(segKey, os.path.basename(segDir))
+        if segKey in fullyGenerated:
+            # Directory-level clear. A project-scope orphan (sc_main.cpp,
+            # vl_dummy.sv, the retired vl_wrap.* aggregator) MOVES to prj/
+            # regardless of its marker — ORPHAN_DESTS wins first. A remaining
+            # marker file is deleted (recreated at the node dir by newmodule/gen);
+            # a remaining non-marker file is user content wearing a generated name,
+            # reported and left in place (never deleted, never moved).
+            generated, ungenerated = classifyGeneratedDir({segDir})
+            for src in generated:
+                base = os.path.basename(src)
+                if base in ORPHAN_DESTS:
+                    report.moves.append(Move(
+                        src, os.path.join(prjDir, ORPHAN_DESTS[base], base),
+                        MOVE_ORPHAN))
+                else:
+                    report.deletes.append(src)
+            for src in ungenerated:
+                base = os.path.basename(src)
+                if base in ORPHAN_DESTS:
+                    report.moves.append(Move(
+                        src, os.path.join(prjDir, ORPHAN_DESTS[base], base),
+                        MOVE_ORPHAN))
+                else:
+                    report.manual.append(ReportItem(
+                        TODO_UNGENERATED_FILE, _loc(src, 0),
+                        f"non-marker file {base} in fully-generated segment "
+                        f"'{segKey}'; left in place for manual review (not "
+                        f"deleted, not moved)"))
+            continue
         genEntries = [fileMap[k] for k in FULLY_GENERATED_FILEMAP_KEYS
                       if k in fileMap and fileMap[k]["basePath"] == segKey]
-        hierName = hdirs.get(segKey, os.path.basename(segDir))
         # The verilator whole-design build dir is make infrastructure
         # (rundir/build/vl, driven by a2c-vl-build-entry.mk), not a relocated
         # per-example file, so the source sweep is all that runs here; the
@@ -466,6 +508,22 @@ def _functionalSegments(projectRoot, dirs):
         if os.path.isdir(segDir):
             out.append((key, segDir))
     return out
+
+
+def _fullyGeneratedSegments(fileMap):
+    """Segments (`basePath`) whose EVERY fileMap entry is a FULLY_GENERATED_-
+    FILEMAP_KEYS key and that carry at least one entry — the segment holds only
+    whole-file generated artifacts, so the migration clears it by directory rather
+    than classifying per file. A segment with any non-fully-generated entry
+    (`model`'s block, `rtl`'s rtlModule/rtlDotF, `tb`'s testbench, a custom key)
+    is MIXED/user and stays on the per-file path. Against the current merged
+    fileMap this resolves to {base, registrar, vl_wrap}."""
+    bySegment = dict()
+    for key, fileDef in fileMap.items():
+        bySegment.setdefault(fileDef["basePath"], []).append(
+            key in FULLY_GENERATED_FILEMAP_KEYS)
+    return {segment for segment, flags in bySegment.items()
+            if flags and all(flags)}
 
 
 def _matchesFullyGenerated(base, genEntries):
