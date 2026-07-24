@@ -113,7 +113,16 @@ class newModule:
         includeFiles = prj.config.getConfig('INCLUDEFILES')
         self.context_create_from_template(includeFiles, fileGenerationConfig, prj, args)
 
+        # Create-once user-owned build makefiles. Distinct from the fileMap
+        # passes above: these carry no generated regions, are written only when
+        # absent, and are never rewritten or deleted afterwards.
+        self.scaffold_create(fileGenerationConfig, prj, args)
+
     _TB_FILE_KEYS = ('testBench', 'tbConfig', 'tbExternal')
+
+    # Layout keys that name a project-scope convention directory rather than a
+    # fileMap segment (see processYaml._buildLayoutFor).
+    _LAYOUT_CONVENTION_KEYS = ('root', 'include', 'rundir', 'prj', 'yaml')
 
     def _condMatch(self, fileDefinition, condData):
         # The fileMap cond/condAnd predicate is shared with the build-manifest
@@ -365,6 +374,78 @@ class newModule:
                 newFileContents = self.renderer.render('fileGen', vars)
                 with open(filePathExt, "w") as f:
                     f.write(newFileContents)
+
+    def _deriveTopModules(self, prj):
+        # Best-effort scaffold defaults for the shared.mk identity variables.
+        # TB_TOP_MODULE is the design's top block (the block instanced at
+        # _topInstance). HDL_TOP_MODULE is that top block's single RTL/verilated
+        # child when unambiguous, else it falls back to the top block. Both are
+        # create-once, user-editable defaults, so a definitions-only project (no
+        # topInstance) simply uses the project name.
+        projectName = prj.config.getConfig('PROJECTNAME')
+        topBlockKey = next((row['instanceTypeKey']
+                            for row in prj.data['instances'].values()
+                            if row['container'] == '_topInstance'), None)
+        if topBlockKey is None:
+            return projectName, projectName
+        tbTop = prj.data['blocks'][topBlockKey]['block']
+        dutBlocks = {row['instanceTypeKey']
+                     for row in prj.data['instances'].values()
+                     if row['containerKey'] == topBlockKey
+                     and (prj.data['blocks'][row['instanceTypeKey']]['hasRtl']
+                          or prj.data['blocks'][row['instanceTypeKey']]['hasVl'])}
+        if len(dutBlocks) == 1:
+            hdlTop = prj.data['blocks'][next(iter(dutBlocks))]['block']
+        else:
+            hdlTop = tbTop
+        return tbTop, hdlTop
+
+    def scaffold_create(self, fileGenerationConfig, prj, args):
+        # Write the project's user-owned build makefiles once. Each file is
+        # emitted only if absent and is NEVER rewritten or deleted afterwards
+        # (--overwrite is deliberately ignored): the user owns their make
+        # structure and must not be pestered. A repeated migrate/newmodule on a
+        # project that already has its makefiles is therefore a silent no-op.
+        scaffoldConfig = fileGenerationConfig['scaffold']
+        projectName = prj.config.getConfig('PROJECTNAME')
+        layout = prj.projectLayout[projectName]
+        tbTop, hdlTop = self._deriveTopModules(prj)
+
+        templateProg = processYaml.expandDirMacros(scaffoldConfig['template'])
+        scaffoldRenderer = renderer(
+            prj, docType='', directTemplate={'templates': {'scaffold': templateProg}})
+
+        for fileKey, fileDef in scaffoldConfig['files'].items():
+            place = fileDef['place']
+            if place in layout['segments']:
+                baseDir = layout['segments'][place]['path']
+            elif place in self._LAYOUT_CONVENTION_KEYS:
+                baseDir = layout[place]
+            else:
+                printError(f"scaffold file {fileKey} references place '{place}' "
+                           f"that is not a layout segment or convention")
+                exit(warningAndErrorReport())
+            # A node-relative segment (hierarchical layout) anchors at the project
+            # root so the project-scope makefile never resolves against the cwd.
+            if not os.path.isabs(baseDir):
+                baseDir = os.path.join(layout['root'], baseDir)
+            filePath = os.path.join(baseDir, fileDef['sub'])
+            if os.path.exists(filePath):
+                continue
+            moduleDirAbs = os.path.dirname(filePath)
+            if not os.path.exists(moduleDirAbs):
+                os.makedirs(moduleDirAbs)
+            print(f"Scaffolding {filePath}")
+            data = {
+                'target': fileKey,
+                'projectName': projectName,
+                'tbTop': tbTop,
+                'hdlTop': hdlTop,
+            }
+            vars = {'prj': prj.data, 'block': data, 'args': args}
+            newFileContents = scaffoldRenderer.render('scaffold', vars)
+            with open(filePath, "w") as f:
+                f.write(newFileContents)
 
     def context_create_from_template(self, files, fileGeneration, prj, args):
         # for each file target we need to build a path and filename to perform file template creation

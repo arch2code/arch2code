@@ -30,6 +30,7 @@ templates:
   blockRegistrar: $a2c/templates/systemc/blockRegistrar.py
   vlRegistrar: $a2c/templates/systemc/vlRegistrar.py
   moduleScaffold: $a2c/templates/systemc/moduleScaffold.py
+  scaffold: $a2c/templates/fileGen/scaffold.py
   headers: $a2c/templates/systemc/headers.py
   includes: $a2c/templates/systemc/includes.py
   config: $a2c/templates/systemc/config.py
@@ -197,6 +198,23 @@ fileGeneration:
     # rtlDotF-template region lists every package on the top context's include
     # chain. name+ext compose the fixed filename rtl.f at the rtl segment root.
     rtlDotF     : { name : "rtl",              ext: {f: "f"},                                                    mode: project, basePath: rtl,     desc: "Per-project verilator file list (rtl.f)"}
+  # Create-once user-owned build makefiles (top Makefile, include/make/shared.mk,
+  # rundir/Makefile, rtl/Makefile). This is NOT a fileMap section: the files carry
+  # no GENERATED_CODE regions, so make gen never touches them and the build
+  # manifest never lists them. newModule writes each only if absent and never
+  # rewrites or deletes it (the user owns it thereafter), so a repeated
+  # migrate/newmodule on a project that already has its makefiles is a silent
+  # no-op. `place` names a layout convention (root/include/rundir) or a fileMap
+  # segment (rtl); `sub` is the file's path under that location. shared.mk always
+  # emits the pro a2cPro.mk `-include` line; the leading dash makes it conditional
+  # at make time, so a base-only project silently skips the missing file.
+  scaffold:
+    template: $a2c/templates/fileGen/scaffold.py
+    files:
+      topMakefile : { place: root,    sub: "Makefile" }
+      sharedMk    : { place: include, sub: "make/shared.mk" }
+      rundirMk    : { place: rundir,  sub: "Makefile" }
+      rtlMk       : { place: rtl,     sub: "Makefile" }
   # standard copyright statement to be added to all generated files - change to suite your company
   fileCopyrightStatement: "Update your copywright statement in your project yaml file"
   regBlockNaming: {instancePrefix: 'u_', blockSuffix: '_regs'} # naming convention for register handler blocks - instancePrefix is prefix for instance names, blockSuffix is suffix for block names
