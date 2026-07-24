@@ -28,10 +28,21 @@ it halts on the first unresolved item rather than proceeding on a broken tree:
 2. **`make db`** — builds the database from the now-stamped YAML (the yamlFormat
    gate passes).
 3. **`migrateYaml.py --sweep --db <db>`** — the orphan sweep. This step opens the
-   database **read-only** to expand the embedded legacy file map, deletes the
-   stale purely-generated orphans left by the form changes (marker-guarded by
-   `GENERATED_CODE_BEGIN`, never `git`), and reports the files it cannot touch
-   (`TODO_PORT`, `TODO_USER_INCLUDE`, `TODO_UNGENERATED_FILE`).
+   database **read-only**, removes the stale purely-generated orphans the form
+   changes left behind (every delete marker-guarded by `GENERATED_CODE_BEGIN`,
+   never `git`), and reports the files it cannot touch (`TODO_PORT`,
+   `TODO_USER_INCLUDE`, `TODO_UNGENERATED_FILE`). It sweeps two ways, keyed on the
+   embedded legacy file map. A **fully-generated segment** — one whose every legacy
+   entry is `delete`, i.e. `base` and `vl_wrap` (and `registrar` on the
+   hierarchical path, Section 7) — is cleared at the **directory** level: every
+   marker-carrying source file found there is deleted, so alternate-extension or
+   renamed orphans a per-file map expansion would miss (a pre-`.cppm`
+   `<block>Base.h`, a model-only `<block>Tandem.*`, a stale `*_hdl_sc_wrapper.h`)
+   are caught too. A **mixed segment** that also holds user code (`model`, `rtl`)
+   keeps the per-file delete-by-map-expansion for its generated context files
+   (`<context>Includes.{h,cpp}`, `<context>_package.sv`) and preserves the user
+   code beside them; the `tb` segment is left untouched. `make newmodule` / `make
+   gen` then recreate the cleared artifacts.
 4. **`make newmodule`** — create-only; scaffolds the new-form files (for example
    the `<context>Includes.cppm` module interfaces). It runs after the sweep so
    the orphans are gone before regeneration.
@@ -82,7 +93,7 @@ clean report.
 | eval `NEEDS_MANUAL` | eval phase | A real-valued eval (e.g. `$DWORD / 2.0`) cannot be expressed in the SV subset. | Replace the `eval:` with a literal `value:` (hand decision). |
 | `TODO_PORT` | orphan sweep | An old-form user `.cpp`/`.h` pair that the current map now produces in a different form — a block that was parameterized so its artifact is a single `.cppm`. Never deleted by the sweep. | Section 6 below (agent-driven port) |
 | `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 4 below |
-| `TODO_UNGENERATED_FILE` | orphan sweep | A file whose name matches a delete-target but that carries no `GENERATED_CODE_BEGIN` marker. Left in place, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
+| `TODO_UNGENERATED_FILE` | orphan sweep | A file that carries no `GENERATED_CODE_BEGIN` marker and either matches a per-file delete-target name **or** sits inside a wholesale-cleared fully-generated segment (`base`, `vl_wrap`). Skipped and reported, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
 | `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No action if the path genuinely no longer exists. |
 | `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk. | Complete the format migration in functional layout, then migrate to hierarchical (Section 7). |
 
@@ -395,12 +406,21 @@ byte-for-byte:
   which the tool re-points at the moved project file
   (`$(REPO_ROOT)/prj/yaml/<projectName>Project.yaml`); every other
   `$(REPO_ROOT)/include/make/...` reference keeps working unchanged.
-- **Source.** Recognized fully-generated source (`Base`, `Registrar`,
-  `Includes`, `VariantConfig`, `_package`, and the HDL wrappers) is
-  **deleted** — marker-guarded by `GENERATED_CODE_BEGIN` — and recreated at the
-  hierarchical location by `make newmodule` / `make gen`. Every other source
-  (user-editable, or an unrecognized/custom fileMap type) **moves**
-  byte-preserving so its user regions are never lost.
+- **Source.** The same directory-level wholesale clear applies here. A
+  **fully-generated segment** — one whose every fileMap entry is whole-file
+  generated: `base`, `registrar`, `vl_wrap` — is cleared at the **directory**
+  level: every marker-carrying file is **deleted** (guarded by
+  `GENERATED_CODE_BEGIN`), so alternate-extension or renamed orphans a per-file
+  name match would miss go with it, and all are recreated at the hierarchical
+  location by `make newmodule` / `make gen`. A **mixed/user segment** (`model`,
+  `rtl`, `tb`, `fwInc`) is classified per file: its recognized generated source
+  (`Includes`, `_package`) is deleted the same marker-guarded way, while every
+  other source (user-editable, or an unrecognized/custom fileMap type) **moves**
+  byte-preserving so its user regions are never lost. A project-scope orphan
+  (`sc_main`, `vl_dummy`, the retired `vl_wrap.*` aggregator) is moved into `prj/`
+  regardless of segment. A non-marker file inside a fully-generated segment is
+  reported (`TODO_UNGENERATED_FILE`) and left in place — never deleted, never
+  moved.
 - **Relative references.** Relative `include:` / `projectFiles:` directives and
   relative `#include` / `` `include `` paths inside **user regions** are
   re-rooted through the new `yaml/` levels. Generated regions are left for

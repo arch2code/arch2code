@@ -440,8 +440,42 @@ def test_mixed_keep_with_interleaved_comment():
     return True
 
 
+def test_stranded_file_cleaned_on_later_run():
+    # A first --write blocked by a non-router manual TODO (routed-leaf
+    # registerPorts) removes the pointer but keeps addressControl.yaml as
+    # reference. The pointer is now gone, so a later run must idempotently clean
+    # up the leftover rather than strand it on disk forever.
+    d = _makeProject(_DIRTY_PROJECT, _DIRTY_TOP, _DIRTY_ADDR)
+    try:
+        first = migrateAddressControlInProject(os.path.join(d, "project.yaml"),
+                                               write=True)
+        # First run: routing migrated (pointer removed), but dirty so file kept.
+        assert not first.clean, "dirty project signaled clean"
+        assert _find(first.applied, POINTER_REMOVE), "pointer not removed on first run"
+        assert not first.deletedAddressControl, "file deleted while dirty"
+        projOut = open(os.path.join(d, "project.yaml")).read()
+        assert "addressControl:" not in projOut, "pointer not removed on first run"
+        assert os.path.exists(os.path.join(d, "addressControl.yaml")), \
+            "file must be kept as reference while dirty"
+
+        # Later run: pointer already gone. The leftover must be cleaned up.
+        second = migrateAddressControlInProject(os.path.join(d, "project.yaml"),
+                                                write=True)
+        assert second.deletedAddressControl, "stranded file not cleaned on later run"
+        assert second.written, "cleanup not reflected in written"
+        assert second.clean
+        assert not os.path.exists(os.path.join(d, "addressControl.yaml")), \
+            "addressControl.yaml left stranded on disk"
+        # Pointer and file are now consistent: both absent.
+        assert "addressControl:" not in open(os.path.join(d, "project.yaml")).read()
+    finally:
+        shutil.rmtree(d)
+    return True
+
+
 _TESTS = [
     ("dirty project: all applied edits + delegated TODOs", test_dirty_applied_edits),
+    ("stranded addressControl.yaml cleaned on later run", test_stranded_file_cleaned_on_later_run),
     ("clean project finalized (deleted + signaled clean)", test_clean_finalizes),
     ("dry-run reports but changes nothing on disk", test_dry_run_changes_nothing),
     ("migrated project is idempotent (no-op)", test_idempotent_after_migration),

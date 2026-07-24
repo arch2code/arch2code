@@ -106,7 +106,18 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
 
     pointer = projectData.get("addressControl")
     if pointer is None:
-        # No legacy pointer: already migrated or never legacy. Nothing to do.
+        # No legacy pointer. Either the project never used the legacy schema, or a
+        # prior run already migrated the routing and removed the pointer. The
+        # pointer is removed as soon as routing is accounted for, but the legacy
+        # file is kept as reference until the project is fully clean; a run that
+        # finalized the project after the pointer was already gone would otherwise
+        # strand addressControl.yaml on disk. Delete that leftover here so the
+        # pointer and file stay consistent (both gone once routing is migrated).
+        leftover = os.path.join(projectDir, "addressControl.yaml")
+        if write and os.path.isfile(leftover):
+            os.remove(leftover)
+            report.deletedAddressControl = True
+            report.written = True
         return report
 
     addrCtlPath = os.path.join(projectDir, pointer)
