@@ -354,7 +354,7 @@ def sweepOrphans(prj, write=False):
     # sibling header for other classes). Reuses migrateIncludes._userIncludeSites.
     deletedHeaders = {os.path.basename(p) for p in deleted if p.endswith(".h")}
     if deletedHeaders:
-        rootDir = prj.projectLayout[report.projectName]["segments"]["root"]["path"]
+        rootDir = prj.projectLayout[report.projectName]["root"]
         projectData = {"dirs": {"root": "."}}
         for path, line in _userIncludeSites(rootDir, projectData, deletedHeaders):
             report.manual.append(ReportItem(

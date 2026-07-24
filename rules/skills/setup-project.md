@@ -39,7 +39,7 @@ Guide the user through initializing a new project, setting up the directory stru
     *   Example: a block defined in `arch/yaml/ip/ip.yaml` generates to `model/ip/`, `rtl/ip/`, `base/ip/`, and `verif/vl_wrap/ip/`. Per-file context artifacts (SystemC `*Includes.cppm`, SV `*_package.sv`) follow the same rule (e.g. `rtl/ip/ip_package.sv`).
     *   **Testbench files nest one extra level** by the block name: a `hasTb` block in `arch/yaml/top/ip_top.yaml` generates testbench files into `tb/top/ip_top/`.
     *   Put YAML into subdirectories purely to organize; keep `project.yaml` at the `arch/yaml/` root (it defines the mirror root). Update relative `include:` / `projectFiles:` paths accordingly (e.g. `include: [../common/shared_types.yaml]`).
-    *   The build system discovers sources recursively, so no Makefile changes are needed when you add subdirectories.
+    *   Source discovery is manifest-driven: `projectCreate` records the layout's source/include dirs in the DB and emits them to `.gen/build.mk`, so no Makefile changes are needed when you add subdirectories.
 
     ### `blockDir` override (exception only)
     *   The default mirror is almost always what you want. **Do not add `blockDir:` just to reproduce the default.**
@@ -96,8 +96,10 @@ Guide the user through initializing a new project, setting up the directory stru
     *   Converting an existing `addressControl.yaml` project to this schema is a one-time migration — see `migrate-project.md` / `address-migration.md`.
 
 4.  **Makefile Setup:**
-    *   Ensure the project `Makefile` includes `shared.mk` from the repository root.
-    *   Include `a2c-systemc.mk` and `a2c-agents.mk` from the builder logic.
+    *   `newProject` scaffolds `project.yaml` and the directory tree only; the build `Makefile` and its `include/make/shared.mk` are copied from an existing example (e.g. `examples/helloWorld`) and renamed for the project.
+    *   The per-project `include/make/shared.mk` sets `PROJECTNAME` / `TB_TOP_MODULE` / `HDL_TOP_MODULE` and then includes `a2c-common.mk`; the `rundir/Makefile` includes it and then `a2c-systemc.mk`.
+    *   The build is manifest-driven: `make db` derives the source/include dirs and the generated-file set from the layout and emits `.gen/build.mk`; no Makefile edits are needed as blocks are added. Model output lands in `rundir/build/run`, the whole-design Verilator build in `rundir/build/vl`.
+    *   If the project hosts **user-authored files that arch2code injects generated regions into** (address headers, encoder units — files `make newmodule` does not scaffold), wire them onto the `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES` seam in `shared.mk`. See the **Build/Run** skill (`manage-build.md`).
 
 ## Validation
 *   Run `make db` to verify the project configuration loads correctly.

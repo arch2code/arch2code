@@ -1,1 +1,1 @@
-../../../../../../../examples/axiDemo/systemVerilog/consumer.sv
+../../../../../../../examples/axiDemo/rtl/consumer.sv

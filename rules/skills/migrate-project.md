@@ -78,20 +78,66 @@ clean report.
 | `TODO_ROUTER_RESOLUTION` | address phase | An `AddressGroups` row's router cannot be resolved. | `address-migration` skill, Step 3 |
 | `TODO_INTERFACE_SCOPE` | address phase | A router has no `addressBus: true` interface in its load-time scope. | `address-migration` skill, Step 2 |
 | `TODO_LEAF_REGISTER_PORTS` | address phase | A routed leaf needs `registerPorts:`. | `address-migration` skill, `registerPorts:` note (Migration Diagnostics) |
-| `TODO_USER_IMPORT` | includes phase | Hand-written user code `#include`s a migrated context header. | Section 3 below |
+| `TODO_USER_IMPORT` | includes phase | Hand-written user code `#include`s a migrated context header. | Section 4 below |
 | eval `NEEDS_MANUAL` | eval phase | A real-valued eval (e.g. `$DWORD / 2.0`) cannot be expressed in the SV subset. | Replace the `eval:` with a literal `value:` (hand decision). |
-| `TODO_PORT` | orphan sweep | An old-form user `.cpp`/`.h` pair that the current map now produces in a different form — a block that was parameterized so its artifact is a single `.cppm`. Never deleted by the sweep. | Section 4 below (agent-driven port) |
-| `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 3 below |
+| `TODO_PORT` | orphan sweep | An old-form user `.cpp`/`.h` pair that the current map now produces in a different form — a block that was parameterized so its artifact is a single `.cppm`. Never deleted by the sweep. | Section 5 below (agent-driven port) |
+| `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 4 below |
 | `TODO_UNGENERATED_FILE` | orphan sweep | A file whose name matches a delete-target but that carries no `GENERATED_CODE_BEGIN` marker. Left in place, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
 | `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No action if the path genuinely no longer exists. |
-| `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk. | Complete the format migration in functional layout, then migrate to hierarchical (Section 5). |
+| `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk. | Complete the format migration in functional layout, then migrate to hierarchical (Section 6). |
 
 The address-control kinds are documented in depth in the `address-migration`
 skill; each converter message points at the resolving step or note named in the
 table above. The sweep only ever **deletes** purely-generated orphans; every
 user-owned file it encounters is reported, not touched.
 
-## 3. Finish an includes (header → cppm) migration
+## 3. Wire user-hosted generated-region files into the build
+
+After migration the build enumerates generated source from the DB-derived
+manifest (`A2C_SC_GEN_FILES` / `A2C_SV_GEN_FILES`, emitted by
+`config/createBuildManifest.py` and consumed wildcard-filtered by
+`a2c-common.mk`), replacing the old build-time `find … grep GENERATED_CODE_`
+scan. The manifest lists **only** files arch2code scaffolds whole through the
+fileMap, so a **user-hosted generated-region file** — a host whose name and
+segment are user-authored while arch2code injects only its generated sections —
+is no longer auto-discovered. Left unwired, it silently drops out of **both**
+generation and compilation.
+
+Identify them: a file that carries `GENERATED_CODE_BEGIN` markers yet is **not**
+scaffolded by any fileMap entry (`make newmodule` never creates it). The common
+cases are the address headers emitted through the `includes` template
+(`regAddresses.h`, `axi4sRegAddresses.h`) and the encoder units emitted through
+the encoder templates (`mixedEncoders.h`, `mixedEncoder_package.sv`). Wire each
+one onto the matching seam in the project's `include/make/shared.mk`, above the
+`include … a2c-common.mk` line — SystemC/C++ hosts (`.h`/`.cpp`/`.cppm`) on
+`EXTRA_SC_GEN_FILES`, SystemVerilog hosts (`.sv`/`.svh`) on `EXTRA_SV_GEN_FILES`:
+
+```make
+# User-hosted generated-region files: arch2code injects generated sections into
+# these user-authored hosts (address defines via the includes template, encoder
+# units via the encoder templates). Not fileMap-scaffolded, so they ride the
+# EXTRA_ generation seam.
+EXTRA_SC_GEN_FILES = $(REPO_ROOT)/model/regAddresses.h
+EXTRA_SV_GEN_FILES = $(REPO_ROOT)/rtl/mixedEncoder_package.sv
+```
+
+The seam layers onto the manifest baseline: listed files stamp for regeneration
+and compile alongside the scaffolded set. The stock examples show the pattern —
+`examples/{apbDecode,simple_ip,ip_test}` wire a `regAddresses.h`, `axi4sDemo` and
+`hierVlDemo` wire an `axi4sRegAddresses.h`, and `mixed` wires both an encoder
+header and its `_package.sv`. The `manage-build` skill covers the make targets
+that regenerate and compile the wired files.
+
+### Sweep the retired vl build tree
+
+The whole-design Verilator build now lives under `rundir/build/vl`
+(`A2C_VL_BUILD_DIR = $(BIN_DIR)/vl`, driven by
+`include/make/a2c-vl-build-entry.mk`); the old per-project `prj/verif/` build
+`Makefile` is retired and is no longer relocated by any migration step. When
+migrating an existing project, delete any stale `prj/verif/` vl-build `Makefile`
+and its `obj_dir` / built lib so they do not shadow the new build location.
+
+## 4. Finish an includes (header → cppm) migration
 
 When the report shows an `Includes` phase that applied edits, the project moved
 from paired-header context includes to C++20 module interfaces. The `make
@@ -136,7 +182,7 @@ build state:
    `make -C <project>/rundir all run`). A clean build and run confirms the
    migration.
 
-## 4. Port a parameterized block (`.cpp`/`.h` → `.cppm`)
+## 5. Port a parameterized block (`.cpp`/`.h` → `.cppm`)
 
 The orphan sweep reports `TODO_PORT` when a block was **parameterized** — its
 YAML now declares its own `params:` — so the current file map produces a single
@@ -208,7 +254,7 @@ Once `<block>.cppm` holds the ported code, delete the now-superseded legacy
 entries are excluded from its delete set by construction), then re-run `make gen`
 and build. Re-run `make migrate` to confirm the `TODO_PORT` is gone.
 
-## 5. (Opt-in) Migrate to hierarchical layout
+## 6. (Opt-in) Migrate to hierarchical layout
 
 The functional → hierarchical layout migration is a **separate, opt-in step**,
 not part of the `make migrate` chain above and **not** gated by the
@@ -300,13 +346,14 @@ byte-for-byte:
   block with no decomposition subdir (`decomp=""`) maps to the **project-root
   node** (`yaml/*.yaml` at the project root); no node directory is synthesized.
 - **Project file** → `prj/yaml/<projectName>Project.yaml`; **integration
-  orphans** (`fwIpMain`, `sc_main`, the `vl_wrap` aggregator, and the user-owned
-  vl-wrap `Makefile`) → `prj/fw/` / `prj/verif/` (flattened). The vl-wrap
-  `Makefile` moves byte-preserving to `prj/verif/Makefile` so the project-scoped
-  verilator build dir (`A2C_VL_BUILD_DIR`) has its build entry; its
-  `REPO_ROOT`-relative includes stay valid, so no rewrite is needed. **Build-config
-  `include/` and `rundir/` stay at the
-  project root** — they are user-owned entry points, not `prj/` orphans. The only
+  orphans** (`fwIpMain`, `sc_main`, and the `vl_wrap` aggregator sources
+  `vl_wrap.{cpp,h,sv}` / `vl_dummy.sv`) → `prj/fw/` / `prj/verif/` (flattened). No
+  vl-build `Makefile` is relocated: the whole-design Verilator build is make
+  infrastructure under `rundir/build/vl` (`A2C_VL_BUILD_DIR`, driven by
+  `a2c-vl-build-entry.mk`), not a per-project file — sweep any stale
+  `prj/verif/` build `Makefile`/`obj_dir` (Section 3). **Build-config `include/`
+  and `rundir/` stay at the project root** — they are user-owned entry points,
+  not `prj/` orphans. The only
   harness change is the `A2C_PRJ_YAML` line in the root `include/make/shared.mk`,
   which the tool re-points at the moved project file
   (`$(REPO_ROOT)/prj/yaml/<projectName>Project.yaml`); every other
@@ -344,7 +391,7 @@ make newmodule  # create the generated modules at the hierarchical location
 make gen        # fill the generated regions
 ```
 
-As in Section 3, a prior build leaves `.d` dependency files that reference the
+As in Section 4, a prior build leaves `.d` dependency files that reference the
 old paths; remove the rundir build tree (`rm -rf <project>/rundir/build`) before
 rebuilding. Then rebuild and run the project's normal targets to confirm the
 migration, and resolve any manual item the report listed.
@@ -360,6 +407,11 @@ migration, and resolve any manual item the report listed.
 - `pysrc/migrateOrphans.py` — the orphan sweep (`migrateYaml.py --sweep`): the
   embedded legacy file map, its `delete`/`port`/`leave` dispositions, and the
   `TODO_PORT` / `TODO_USER_INCLUDE` / `TODO_UNGENERATED_FILE` reports.
+- `config/createBuildManifest.py` / `include/make/a2c-common.mk` — the DB-derived
+  generated-file manifest (`A2C_SC_GEN_FILES` / `A2C_SV_GEN_FILES`) and the
+  `EXTRA_S{C,V}_GEN_FILES` user-extension seam (Section 3).
+- `include/make/a2c-vl-build-entry.mk` — the whole-design Verilator build entry,
+  built under `rundir/build/vl` (`A2C_VL_BUILD_DIR`).
 - `address-migration` skill — the in-depth reference for the address-control
   manual-TODO kinds.
 - `manage-build` skill — `make` targets (`db`, `gen`, `newmodule`, `clean`).

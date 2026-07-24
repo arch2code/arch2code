@@ -16,8 +16,9 @@ import os
 import yaml
 
 
-# Build/output subtrees never walked when sweeping a project tree.
-SKIP_DIRS = ("build", ".gen", "obj_dir", ".git", "rundir")
+# Build/output subtrees never walked when sweeping a project tree. `builder` is
+# the vendored toolchain dir (this generator's own source), never project code.
+SKIP_DIRS = ("build", ".gen", "obj_dir", ".git", "rundir", "builder")
 
 # Generated/authored source file extensions. A file outside this set (Makefile,
 # .f filelist, .gitignore) is build scaffolding the user manages, not generated

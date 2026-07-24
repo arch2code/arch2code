@@ -3719,6 +3719,9 @@ class projectCreate:
         return {
             'mode':        mode,
             'segments':    segments,
+            # Project root, layout-agnostic: functional exposes it as a segment,
+            # hierarchical does not, so callers read it here in both modes.
+            'root':        dirMacros['root'],
             'buildGroups': sorted({group for group in buildGroups.values()
                                    if group is not None}),
             'yaml':        conventions['yaml'],

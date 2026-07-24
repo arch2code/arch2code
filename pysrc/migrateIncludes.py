@@ -206,8 +206,13 @@ def _sourceFiles(rootDir):
     for dirpath, dirnames, filenames in os.walk(rootDir):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for fn in filenames:
-            if fn.endswith(SOURCE_EXTS):
-                yield os.path.join(dirpath, fn)
+            if not fn.endswith(SOURCE_EXTS):
+                continue
+            path = os.path.join(dirpath, fn)
+            # os.walk lists directory entries by name; a dangling symlink is one
+            # such entry with no readable target, so skip anything not a real file.
+            if os.path.isfile(path):
+                yield path
 
 
 # ---------------------------------------------------------------------------

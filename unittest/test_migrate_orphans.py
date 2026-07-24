@@ -107,7 +107,9 @@ class _FakePrj:
             "tb":        seg("tb", "sc"),
             "fwInc":     seg("fw/include", "sc"),
         }
-        layout = {"mode": "functional", "segments": segments}
+        # `root` is a first-class layout field (present in both layout modes),
+        # matching _buildLayoutFor; the sweep reads the walk root from here.
+        layout = {"mode": "functional", "segments": segments, "root": root}
         self.projectLayout = {"t": layout}
         self.contextOwningProject = {"top.yaml": "t", "usr.yaml": "t"}
         self.includeName = {"top.yaml": "top", "usr.yaml": "usr"}
@@ -152,8 +154,10 @@ class _FakePrj:
         blocks = OrderedDict()
         blocks["myblk"] = block("myblk", 1, 1, 1, 1)      # non-param, full surface
         blocks["paramblk"] = block("paramblk", 1, 0, 0, 0)  # parameterized (cppm)
+        # projectOpen groups blocksparams as {yamlFile: [paramRow, ...]} (a
+        # list-mode subtable); each row carries its owning blockKey.
         blocksparams = OrderedDict()
-        blocksparams["paramblk"] = {"blockKey": "paramblk"}
+        blocksparams["top.yaml"] = [{"blockKey": "paramblk"}]
         self.data = {"blocks": blocks, "blocksparams": blocksparams}
 
 
