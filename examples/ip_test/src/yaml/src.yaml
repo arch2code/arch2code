@@ -22,7 +22,7 @@
 # generator-shape regression.
 
 include:
-    - ../../ip/yaml/ipLeaf.yaml
+    - ../../leaf/yaml/ipLeaf.yaml
 
 ipParameters:
     constants:

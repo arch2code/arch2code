@@ -13,7 +13,7 @@ include:
     # resolves to that sub-project's canonical path (examples/ip_test/common),
     # matching the projectOverrides selection in project.yaml so it is one owned
     # context. Referenced directly, mirroring the ip include below.
-    - ../../common/common/yaml/shared_types.yaml
+    - ../../common/yaml/shared_types.yaml
     # cpu is a generic APB master owned by the 'common' sub-project. Its defining
     # file stays on this context's include chain for block-type resolution;
     # ownership is set by child-project detection (CONTEXTOWNINGPROJECT), so cpu's
@@ -25,8 +25,8 @@ include:
     # project.yaml projectFiles). Their defining files stay on this context's
     # include chain for block-type resolution; ownership is set by child-project
     # detection (CONTEXTOWNINGPROJECT), not by these includes.
-    - ../../ip/ip/yaml/ipVariants.yaml
-    - ../../bridge/bridge/yaml/ipBridge.yaml
+    - ../../ip/yaml/ipVariants.yaml
+    - ../../bridge/yaml/ipBridge.yaml
 
 # Container-owned non-parameterized boundary declarations.
 # uSrc (parameterized producer) and uIp0/uIp1 (parameterized consumers)

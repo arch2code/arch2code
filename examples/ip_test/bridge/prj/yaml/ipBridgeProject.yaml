@@ -21,7 +21,7 @@ projectFiles:
     # reference is redirected there. Path identity is lexical (symlink is not
     # dereferenced), so the two provider paths stay distinct.
     - ../../ip/prj/yaml/ipProject.yaml
-    - ../../bridge/yaml/bridgeStdTop.yaml
+    - ../../yaml/bridgeStdTop.yaml
 
 topInstance: bridgeStdTop_tb
 

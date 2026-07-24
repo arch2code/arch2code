@@ -31,12 +31,12 @@ include:
     # include and the two collapse to one owned context (no ambiguous context).
     # Standalone, this real-tree path and the symlinked projectFiles provider are
     # deduped by the projectOverrides selection in ipBridgeProject.yaml.
-    - ../../../common/common/yaml/shared_types.yaml
+    - ../../common/yaml/shared_types.yaml
     # The 'ip' block is owned by the referenced ip child project (via
     # projectFiles), but its defining file must still be on this context's
     # include chain for block-type resolution. Ownership is set by child-project
     # detection (CONTEXTOWNINGPROJECT), not by this include.
-    - ../../../ip/ip/yaml/ipVariants.yaml
+    - ../../ip/yaml/ipVariants.yaml
 
 types:
     bridgeMarkerT:

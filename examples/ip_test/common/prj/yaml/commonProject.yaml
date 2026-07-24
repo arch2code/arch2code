@@ -16,7 +16,7 @@ yamlFormat: 2
 projectName: common
 
 projectFiles:
-    - ../../common/yaml/shared_types.yaml
+    - ../../yaml/shared_types.yaml
     - ../../cpu/yaml/cpu.yaml
 
 instanceGroups:

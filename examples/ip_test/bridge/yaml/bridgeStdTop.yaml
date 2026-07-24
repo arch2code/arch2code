@@ -14,13 +14,13 @@ include:
     # parameters: section declares ip variant1 (block-type resolution requires
     # the defining file on this include chain). Real-tree path matches
     # ipBridge.yaml so the two dedupe to one context.
-    - ../../../ip/ip/yaml/ipVariants.yaml
+    - ../../ip/yaml/ipVariants.yaml
     # cpu is the generic APB master owned by the 'common' sub-project. Reached via
     # the same real-tree convention the bridge uses for shared_types (see
     # ipBridge.yaml), so in composition its context path is lexically identical to
     # the root ip_top include and the two collapse to one owned context. Ownership
     # is set by child-project detection (CONTEXTOWNINGPROJECT), not this include.
-    - ../../../common/cpu/yaml/cpu.yaml
+    - ../../common/cpu/yaml/cpu.yaml
 
 blocks:
     bridgeStdTop:

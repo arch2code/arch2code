@@ -9,7 +9,7 @@ yamlFormat: 2
 projectName: ip
 
 projectFiles:
-    - ../../ip/yaml/ipTop.yaml
+    - ../../yaml/ipTop.yaml
 
 topInstance: ipStdTop
 
