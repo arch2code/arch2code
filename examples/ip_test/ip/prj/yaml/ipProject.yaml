@@ -30,14 +30,8 @@ addressObjects:
         alignment: 8
         sortDescending: true
 
-dirs:
+dirs: # only root is supplied; other segments + hierarchicalDirs inherit the base config
     root: ../.. # ip project root (examples/ip_test/ip), relative to this project file
-    base: $root/base
-    model: $root/model
-    rtl: $root/rtl
-    vl_wrap: $root/verif/vl_wrap
-    tb: $root/tb
-    fwInc: $root/fw/include
 
 fileGeneration:
     layout: hierarchical

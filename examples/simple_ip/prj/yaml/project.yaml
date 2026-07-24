@@ -1,0 +1,61 @@
+# simple_ip - top-level project for the simple IP-reuse reference example.
+#
+# simple_ip embeds the reusable 'ip' IP exactly once (native variant0), adds a
+# single fixed-width producer (dataGen), reaches ip's registers through a
+# generated apbDecode router, and drives them from the shared 'cpu' APB master
+# running firmware. It is the simple, common-case counterpart to the
+# deliberately-complex ip_test.
+
+yamlFormat: 2
+projectName: simple_ip
+
+# Self-contained vendored sub-projects referenced as child IP projects: 'common'
+# owns the shared_types (apbReg bus) + reusable cpu master, 'ip' owns the
+# reusable IP. Their design closures resolve in this parent (cross-project block
+# resolution) and stay owned by projectName common / ip (CONTEXTOWNINGPROJECT);
+# the parent generates only its own objects. simple_ip.yaml is the top design.
+projectFiles:
+    - ../../common/prj/yaml/commonProject.yaml
+    - ../../ip/prj/yaml/ipProject.yaml
+    - ../../yaml/simple_ip.yaml
+
+# No projectOverrides: each vendored sub-project is a single self-contained
+# provider, so there is no duplicate-provider conflict to resolve.
+
+topInstance: simple_ip_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs: # only root must be supplied; base/model/rtl/vl_wrap/tb/fwInc inherit the base
+      # config defaults (dict_shallow merge). Hierarchical artifact placement comes
+      # from fileGeneration.hierarchicalDirs, also inherited from the base config.
+    root: ../.. # project root directory (examples/simple_ip), relative to this project file
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    # includeFW generates one *IncludesFW.{h,cpp} per yaml context (smartInclude),
+    # producing the firmware constant/type/struct headers consumed by the fw/ TUs.
+    fileMap:
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+    regBlockNaming: {
+            instancePrefix: "u",
+            blockSuffix: "Regs",
+            camelCase: true,
+        }

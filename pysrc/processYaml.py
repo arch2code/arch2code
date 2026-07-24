@@ -1394,8 +1394,7 @@ class projectOpen:
             'scWrapperModule': f'{blockName}{scTail}',
             'scWrapperInclude': f'{blockName}{scTail}.{scExt}',
             # Verilated DUT class + header for each SV top. Verilator's fixed
-            # V<top>[.h] output convention applied to the view-sourced top name;
-            # matches the A10 build-manifest generatedVHeader record.
+            # V<top>[.h] output convention applied to the view-sourced top name.
             'dutClass': f'V{bodyModule}',
             'dutHeader': f'V{bodyModule}.h',
             'variantDutClasses': {v: f'V{t}' for v, t in variantTops.items()},
@@ -3713,15 +3712,10 @@ class projectCreate:
                         'path': value,
                         'buildGroup': buildGroupForSegment(key),
                     }
-            # The verilator wrap (buildGroup 'vl') is a single whole-design build,
-            # not a per-node one: anchor its node-relative segment under the
-            # project-scope prj/ container so every emitted wrapper AND the build
-            # manifest's A2C_VL_BUILD_DIR resolve to the one location the vlwrap
-            # build runs in. All other segments stay node-relative (joined onto the
-            # block's node dir at emit time).
-            for seg in segments.values():
-                if seg['buildGroup'] == 'vl' and not os.path.isabs(seg['path']):
-                    seg['path'] = os.path.join(conventions['prj'], seg['path'])
+            # vl_wrap HDL wrappers are node-relative like every other block
+            # segment: mode: block emits each wrapper beside its block. The
+            # whole-design verilation build-output dir (obj_dir + lib) is
+            # project-scope, derived in createBuildManifest (prj + segment).
         return {
             'mode':        mode,
             'segments':    segments,

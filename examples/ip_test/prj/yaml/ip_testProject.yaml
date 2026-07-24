@@ -62,14 +62,8 @@ addressObjects:
         alignment: 8
         sortDescending: true
 
-dirs: # this is list of locations that can be referenced as base path in fileMap section
+dirs: # only root is supplied; other segments + hierarchicalDirs inherit the base config
     root: ../.. # project root directory relative to project file - required
-    base: $root/base
-    model: $root/model
-    rtl: $root/rtl
-    vl_wrap: $root/verif/vl_wrap
-    tb: $root/tb
-    fwInc: $root/fw/include
 
 # information about project directory structure to enable simplified maintenance
 # and generation of file for new blocks. Note that directory structure will mirror

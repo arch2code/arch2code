@@ -24,14 +24,8 @@ topInstance: hierVlDemo_tb
 # $xxx is a macro that is replaced by the directory. Note macro replacement only works as first character
 # root defines the top level directory for the project, and other directories are defined relative to this.
 # note that $a2c is automatically created by the system and points to the a2c directory
-dirs:
-  root: ../..    # project root directory relative to project file - required
-  base: $root/base             # for block base classes
-  model: $root/model           # systemC model implementation
-  rtl: $root/rtl               # RTL implementation
-  vl_wrap: $root/verif/vl_wrap # rtl wrapper files
-  tb: $root/tb                 # testbench definition files
-  fwInc: $root/fw/include      # firmware include files
+dirs: # only root is supplied; other segments + hierarchicalDirs inherit the base config
+  root: ../..    # project root directory relative to this project file
 
 # information about project directory structure to enable simplified maintenance
 # and generation of file for new blocks. Note that directory structure will mirror

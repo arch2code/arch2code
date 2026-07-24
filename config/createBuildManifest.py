@@ -16,27 +16,24 @@ def _writeBuildManifestMk(rootDir, manifest):
         "# Derived build directory/file set for this project's layout; see",
         "# plan-decomp-functional-layout.md (Q-L2 / L2a).",
         f"A2C_MANIFEST_LAYOUT := {manifest['mode']}",
-        f"A2C_PRJ_YAML := {manifest['projectYaml']}",
         f"A2C_YAML_FILES := {asList(manifest['yamlFiles'])}",
         f"A2C_SC_SRC_DIRS := {asList(manifest['scSrcDirs'])}",
         f"A2C_SV_SRC_DIRS := {asList(manifest['svSrcDirs'])}",
         f"A2C_VL_WRAP_DIRS := {asList(manifest['vlWrapDirs'])}",
         f"A2C_CPP_MODULE_FILES := {asList(manifest['cppModuleFiles'])}",
         f"A2C_SV_FILES := {asList(manifest['svFiles'])}",
-        f"A2C_VL_BUILD_DIR := {manifest['vlBuildDir']}",
         f"A2C_RTL_DOT_F := {manifest['rtlDotF']}",
         f"A2C_VL_TOPS := {asList([t['qualifiedTop'] for t in manifest['vlTops']])}",
     ]
-    # Per-top verilated-wrapper records: physical .sv, design-unit (--top), the
-    # include search path, the generated V header, and the archived object. Keyed
-    # by the unique design-unit name so a2c-vl-wrap.mk consumes each fact directly
-    # instead of deriving tops from filenames or globbing objects.
+    # Per-top verilated-wrapper records: the physical .sv wrapper keyed by the
+    # unique design-unit name, so a2c-vl-wrap.mk consumes the DB-derived wrapper
+    # path directly instead of deriving tops from filenames. The verilator object
+    # name, generated header, include search path, and build-output directory are
+    # tool/layout conventions reconstructed in the make infrastructure, not
+    # manifest facts.
     for top in manifest['vlTops']:
         name = top['qualifiedTop']
         lines.append(f"A2C_VL_SV_{name} := {top['physicalSv']}")
-        lines.append(f"A2C_VL_INCDIRS_{name} := {asList(top['includeDirs'])}")
-        lines.append(f"A2C_VL_VHDR_{name} := {top['generatedVHeader']}")
-        lines.append(f"A2C_VL_OBJ_{name} := {top['objectIdentity']}")
     lines.append("")
     with open(os.path.join(genDir, 'build.mk'), 'w') as f:
         f.write('\n'.join(lines))
@@ -198,35 +195,21 @@ def create(prj):
             if fileType == 'rtlDotF':
                 rtlDotFPath = filePath + '.' + fileDef['ext']['f']
 
-    # The verilator wrapper segment root (holds sc_main and the verilated build
-    # dir): a known location, not a discovered one. The retired vl_wrap.cpp
-    # aggregator no longer lives here; `_verif` registration moved to the
-    # per-assembler VlRegistrar.cpp files discovered under scSrcDirs.
-    vlSegment = rootLayout['segments']['vl_wrap']['path']
-    if dirs['vl']:
-        dirs['vl'].add(vlSegment)
-
     # Per-top verilated-wrapper records: the explicit (physical .sv -> design
     # unit) set the verilator wrap build consumes, so a2c-vl-wrap.mk names each
-    # --top and its archived object directly rather than deriving them from
+    # --top and its physical wrapper directly rather than deriving them from
     # filenames or globbing. The set mirrors the emitted vl-role .sv wrappers:
     # block-mode vlSvWrap (one per variant for a parameterizable block, one bare
     # otherwise; the .svh body is never a top) and registrar-mode vlSvWrapForeign
     # (one owner-qualified top per foreign variant). The design-unit name is the
     # file basename (moduleFileStub + fileMap 'name') -- the same composition the
-    # SV wrapper view emits -- so the record and the emitted module name agree,
-    # and the verilated object/header follow verilator's V<top>__ALL.o / V<top>.h.
-    vlIncludeDirs = sorted(dirs['vl'])
+    # SV wrapper view emits -- so the record and the emitted module name agree.
     vlTops = list()
 
     def recordVlTop(fileDef, filePath):
-        qualifiedTop = os.path.basename(filePath)
         vlTops.append({
-            'physicalSv':       filePath + '.' + fileDef['ext']['sv'],
-            'qualifiedTop':     qualifiedTop,
-            'includeDirs':      vlIncludeDirs,
-            'generatedVHeader': 'V' + qualifiedTop + '.h',
-            'objectIdentity':   'V' + qualifiedTop + '__ALL.o',
+            'physicalSv':   filePath + '.' + fileDef['ext']['sv'],
+            'qualifiedTop': os.path.basename(filePath),
         })
 
     def isVlSvTop(fileDef, objLayout):
@@ -310,14 +293,12 @@ def create(prj):
 
     manifest = {
         'mode':          rootLayout['mode'],
-        'projectYaml':   projectYaml,
         'yamlFiles':     yamlFiles,
         'scSrcDirs':     sorted(dirs.get('sc', set())),
         'svSrcDirs':     sorted(dirs.get('sv', set())),
         'vlWrapDirs':    sorted(dirs.get('vl', set())),
         'cppModuleFiles':sorted(moduleFiles),
         'svFiles':       sorted(svModuleFiles),
-        'vlBuildDir':    vlSegment,
         'rtlDotF':       rtlDotFPath,
         'vlTops':        sorted(vlTops, key=lambda t: t['qualifiedTop']),
     }

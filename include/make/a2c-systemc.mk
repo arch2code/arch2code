@@ -154,6 +154,10 @@ CPP_INCLUDES += $(foreach dir, $(PRJ_SRC_DIRS), -I$(dir))
 BIN = run
 BIN_DIR = $(PROJECT_RUNDIR)/build
 BUILD_DIR = $(BIN_DIR)/$(PROJECTNAME).build
+# Whole-design verilation build-output dir: holds the per-top obj_dir/<top> Mdirs
+# and the single lib<proj>vl_s_wrap.a. A fixed tooling location under the build
+# tree (not a manifest fact), so `clean` removing BIN_DIR removes it too.
+A2C_VL_BUILD_DIR = $(BIN_DIR)/vl
 
 # Add to compiler dependencies
 CXX_FLAGS += $(CPP_INCLUDES)
@@ -264,7 +268,7 @@ endif
 
 all: gen
 ifdef VL_DUT
-	$(MAKE) -C $(A2C_VL_BUILD_DIR) vlwrap
+	mkdir -p $(A2C_VL_BUILD_DIR) && $(MAKE) -C $(A2C_VL_BUILD_DIR) -f $(A2C_ROOT)/include/make/a2c-vl-build-entry.mk vlwrap REPO_ROOT=$(REPO_ROOT)
 endif
 	$(MAKE) $(BIN_DIR)/$(BIN)
 
@@ -273,7 +277,6 @@ clean::
 	$(RM) -rf simx.*
 	# GCC C++20 module cache, written to the make working directory.
 	$(RM) -rf gcm.cache
-	@test -d $(A2C_VL_BUILD_DIR) && $(MAKE) -C $(A2C_VL_BUILD_DIR) clean || true
 
 help::
 	@echo "  all     	- Build the project binary"

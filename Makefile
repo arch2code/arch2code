@@ -23,6 +23,7 @@ AXI4SDEMO_DIR = examples/axi4sDemo
 HIER_VL_DEMO_DIR = examples/hierVlDemo
 
 IP_TEST_DIR = examples/ip_test
+SIMPLE_IP_DIR = examples/simple_ip
 
 IN_OUT_DIR = examples/inAndOut
 IN_OUT_DOT_DB_FILE = $(IN_OUT_DIR)/.inAndOut.db
@@ -111,6 +112,12 @@ ip-test:
 	make -C $(IP_TEST_DIR)/ip/rundir -j run-vl
 	make -C $(IP_TEST_DIR)/bridge/rundir -j run
 	make -C $(IP_TEST_DIR)/bridge/rundir -j run-vl
+
+.PHONY : simple-ip
+simple-ip:
+	make -C $(SIMPLE_IP_DIR) gen
+	make -C $(SIMPLE_IP_DIR)/rundir -j run
+	make -C $(SIMPLE_IP_DIR)/rundir -j run-vl
 
 .PHONY : hello-world
 hello-world:
@@ -211,11 +218,12 @@ clean :
 	make -C $(AXI4SDEMO_DIR) clean
 	make -C $(HIER_VL_DEMO_DIR) clean
 	make -C $(IP_TEST_DIR) clean
+	make -C $(SIMPLE_IP_DIR) clean
 
 .PHONY : unittest
 unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip
 push-test: clean unittest pipeline-test

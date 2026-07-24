@@ -1,0 +1,27 @@
+#ifndef REGADDRESSES_H
+#define REGADDRESSES_H
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
+
+// GENERATED_CODE_PARAM --block=simple_ip
+// GENERATED_CODE_BEGIN --template=includes --section=addresses
+//instance base addresses
+#define BASE_ADDR_SIMPLE_IP_TB         0x0
+#define BASE_ADDR_U_SIMPLE_IP          0x0
+#define BASE_ADDR_UCPU                 0x0
+#define BASE_ADDR_UAPBDECODE           0x0
+#define BASE_ADDR_UDATAGEN             0x0
+#define BASE_ADDR_UIP                  0x0
+#define BASE_ADDR_UIPREGS              0x0
+// GENERATED_CODE_END
+
+// GENERATED_CODE_BEGIN --template=includes --section=regAddresses
+//register addresses
+#define REG_IP_IPCFG                        0x300
+#define REG_IP_IPLASTDATA                   0x318
+//memories base addresses
+#define REG_IP_IPMEM                        0x0
+#define REG_IP_IPFIXEDMEM                   0x200
+#define REG_IP_IPNONCONSTMEM                0x280
+// GENERATED_CODE_END
+
+#endif //REGADDRESSES_H

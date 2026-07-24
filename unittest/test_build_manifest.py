@@ -168,10 +168,12 @@ def check_example(name):
 
 
 def check_hierarchical_vl_wrap_path():
-    # The verilator-wrap (buildGroup 'vl') segment is project-scoped: the layout
-    # anchors its node-relative segment under prj/ so emission (expandNewModulePath)
-    # and the manifest's A2C_VL_BUILD_DIR resolve to the one build location. All
-    # other segments stay node-relative (joined onto the block node dir at emit).
+    # The verilator-wrap (buildGroup 'vl') wrapper SOURCES are node-relative like
+    # every other block segment: emission (expandNewModulePath) joins the bare
+    # segment name onto each block's node dir -> <node>/verif. The whole-design
+    # build-output dir is no longer a layout/manifest fact; it is make
+    # infrastructure (rundir/build/vl driven by a2c-vl-build-entry.mk), so only
+    # the node-relative source segment is asserted here.
     pc = object.__new__(projectCreate)
     dirMacros = {'root': '/tmp/demo'}
     fileGeneration = {
@@ -191,7 +193,7 @@ def check_hierarchical_vl_wrap_path():
         },
     }
     layout = pc._buildLayoutFor(dirMacros, fileGeneration)
-    return (layout['segments']['vl_wrap']['path'] == '/tmp/demo/prj/verif' and
+    return (layout['segments']['vl_wrap']['path'] == 'verif' and
             layout['segments']['model']['path'] == 'model')
 
 
@@ -199,7 +201,7 @@ def main():
     failures = []
     if not check_hierarchical_vl_wrap_path():
         print('  [FAIL ] hierarchical-vl path')
-        print('           - vl_wrap manifest path must be under prj/verif')
+        print('           - vl_wrap source segment must be node-relative "verif" (build dir is make infra, not manifest)')
         failures.append('hierarchical-vl path')
     else:
         print('  [OK   ] hierarchical-vl path')
