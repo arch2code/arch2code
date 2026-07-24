@@ -21,7 +21,10 @@ VERILATOR_OPTS = --no-timing --lint-only
 VERILATOR_OPTS += $(VERILATOR_USER_OPTS)
 
 TOP_HDL_SV_WRAPPER_NAME = $(HDL_TOP_MODULE)_hdl_sv_wrapper
-TOP_HDL_SV_WRAPPER_FILE = $(REPO_ROOT)/verif/vl_wrap/$(TOP_HDL_SV_WRAPPER_NAME).sv
+# Top wrapper source comes from the manifest's per-top record (keyed by the
+# wrapper design-unit name), which is layout-correct: functional
+# ($root/verif/vl_wrap) and hierarchical (node-scoped <node>/verif) alike.
+TOP_HDL_SV_WRAPPER_FILE = $(A2C_VL_SV_$(TOP_HDL_SV_WRAPPER_NAME))
 
 RTL_DOT_F_FILE = $(A2C_RTL_DOT_F)
 

@@ -86,12 +86,20 @@ $(GEN_BUILD_DIR)/build.mk: $(A2C_SQLDB_FILE) ;
 # unconditionally anyway.
 YAML_FILES = $(A2C_YAML_FILES)
 
-# Generated source discovery is scoped to the manifest's dirs (a per-dir search
-# for files carrying GENERATED markers), not fixed functional roots.
-SC_GEN_FILES =  $(call find_gen_cpp_sources, $(A2C_SC_SRC_DIRS) $(A2C_VL_WRAP_DIRS))
+# Generated source set is the manifest's authoritative DB-derived enumeration:
+# the files arch2code scaffolds whole through the fileMap. Filtered through
+# wildcard so a not-yet-scaffolded intended file (the manifest lists intent; make
+# newmodule scaffolds on disk) is not a missing prerequisite - the build stamps
+# only files present. EXTRA_S{C,V}_GEN_FILES is the home for user-hosted
+# generated-region files: files whose host (name, segment, any namespace wrapper)
+# is user-authored while arch2code injects generated sections into it (e.g.
+# address headers via the includes template, encoder units via the encoder
+# templates). They layer onto the manifest baseline and stamp for regeneration
+# alongside it.
+SC_GEN_FILES =  $(wildcard $(A2C_SC_GEN_FILES)) $(wildcard $(EXTRA_SC_GEN_FILES))
 SC_GEN_DOT_FILES = $(SC_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 
-SV_GEN_FILES =  $(call find_gen_sv_sources, $(A2C_SV_SRC_DIRS) $(A2C_VL_WRAP_DIRS)) $(wildcard $(A2C_RTL_DOT_F))
+SV_GEN_FILES =  $(wildcard $(A2C_SV_GEN_FILES)) $(wildcard $(A2C_RTL_DOT_F)) $(wildcard $(EXTRA_SV_GEN_FILES))
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
 ifndef SKIP_GEN

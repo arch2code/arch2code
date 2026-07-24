@@ -3,6 +3,12 @@ import os
 import pysrc.arch2codeGlobals as g
 import pysrc.processYaml as processYaml
 
+# Generated-source toolchain split, mirroring the make find globs: the C++ build
+# consumes .cpp/.h/.cppm, the SystemVerilog/verilator build consumes .sv/.svh.
+# rtl.f (ext 'f') is a file list, not a compiled source, so it is in neither set.
+_CPP_GEN_EXTS = {'cpp', 'h', 'cppm'}
+_SV_GEN_EXTS = {'sv', 'svh'}
+
 
 def _writeBuildManifestMk(rootDir, manifest):
     genDir = os.path.join(rootDir, '.gen')
@@ -22,6 +28,8 @@ def _writeBuildManifestMk(rootDir, manifest):
         f"A2C_VL_WRAP_DIRS := {asList(manifest['vlWrapDirs'])}",
         f"A2C_CPP_MODULE_FILES := {asList(manifest['cppModuleFiles'])}",
         f"A2C_SV_FILES := {asList(manifest['svFiles'])}",
+        f"A2C_SC_GEN_FILES := {asList(manifest['scGenFiles'])}",
+        f"A2C_SV_GEN_FILES := {asList(manifest['svGenFiles'])}",
         f"A2C_RTL_DOT_F := {manifest['rtlDotF']}",
         f"A2C_VL_TOPS := {asList([t['qualifiedTop'] for t in manifest['vlTops']])}",
     ]
@@ -54,6 +62,11 @@ def create(prj):
     dirs = {group: set() for group in rootLayout['buildGroups']}
     moduleFiles = set()
     svModuleFiles = set()
+    # Complete generated-file enumeration split by toolchain. Every file the
+    # generator emits is recorded here so the makefiles consume the DB-derived
+    # set instead of rediscovering GENERATED-marked files on disk.
+    scGenFiles = set()
+    svGenFiles = set()
 
     blocksParams = {row['blockKey'] for row in prj.flatData['blocksparams'].values()}
     blockByKey = {row['blockKey']: row for row in prj.flatData['blocks'].values()}
@@ -73,6 +86,12 @@ def create(prj):
         if role is None:
             return
         dirs[role].add(os.path.dirname(filePath))
+        for extVal in fileDef['ext'].values():
+            genFile = filePath + '.' + extVal
+            if extVal in _CPP_GEN_EXTS:
+                scGenFiles.add(genFile)
+            elif extVal in _SV_GEN_EXTS:
+                svGenFiles.add(genFile)
         if 'cppm' in fileDef['ext']:
             moduleFiles.add(filePath + '.' + fileDef['ext']['cppm'])
         # Explicit managed SV module files. role=='sv' selects rtlModule and
@@ -156,6 +175,11 @@ def create(prj):
                 if role is None:
                     continue
                 dirs[role].add(os.path.dirname(entry['fileName']))
+                extVal = fileDef['ext'][ext]
+                if extVal in _CPP_GEN_EXTS:
+                    scGenFiles.add(entry['fileName'])
+                elif extVal in _SV_GEN_EXTS:
+                    svGenFiles.add(entry['fileName'])
                 if ext == 'cppm':
                     moduleFiles.add(entry['fileName'])
 
@@ -288,6 +312,13 @@ def create(prj):
                             f'{stubBase}_{variant}', objLayout, missingDirOk=True)
                         recordVlTop(fileDef, filePath)
 
+    # Per-variant and foreign .sv wrapper tops are enumerated authoritatively by
+    # the vlTops pass (the block/registrar record only sees the bare stub, which
+    # for a parameterizable block is never emitted). Fold them into the SV set so
+    # their generated regions are refreshed like every other generated source.
+    for top in vlTops:
+        svGenFiles.add(top['physicalSv'])
+
     projectYaml = os.path.join(g.yamlBasePath, os.path.basename(prj.projFile))
     yamlFiles = sorted({os.path.abspath(f) for f in prj.includeValid} | {projectYaml})
 
@@ -299,6 +330,8 @@ def create(prj):
         'vlWrapDirs':    sorted(dirs.get('vl', set())),
         'cppModuleFiles':sorted(moduleFiles),
         'svFiles':       sorted(svModuleFiles),
+        'scGenFiles':    sorted(scGenFiles),
+        'svGenFiles':    sorted(svGenFiles),
         'rtlDotF':       rtlDotFPath,
         'vlTops':        sorted(vlTops, key=lambda t: t['qualifiedTop']),
     }
