@@ -40,7 +40,7 @@ from _addrctl_helpers import (
 
 
 IP_TEST_PROJECT = os.path.join(
-    base_dir, 'examples', 'ip_test', 'arch', 'yaml', 'project.yaml')
+    base_dir, 'examples', 'ip_test', 'prj', 'yaml', 'ip_testProject.yaml')
 
 
 def _build_ip_test_db():

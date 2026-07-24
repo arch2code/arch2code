@@ -5,7 +5,7 @@ PROJECTNAME = ipBridge
 TB_TOP_MODULE = bridgeStdTop
 HDL_TOP_MODULE = bridgeStdTop
 
-A2C_PRJ_YAML = $(REPO_ROOT)/arch/yaml/ipBridgeProject.yaml
+A2C_PRJ_YAML = $(REPO_ROOT)/prj/yaml/ipBridgeProject.yaml
 
 -include $(A2C_ROOT)/pro/include/make/a2cPro.mk
 include $(A2C_ROOT)/include/make/a2c-common.mk

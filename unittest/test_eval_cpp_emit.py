@@ -38,7 +38,7 @@ from templates.systemc import includes
 from templates.systemc import structures
 
 IP_TEST_PROJECT = os.path.join(
-    base_dir, 'examples', 'ip_test', 'arch', 'yaml', 'project.yaml')
+    base_dir, 'examples', 'ip_test', 'prj', 'yaml', 'ip_testProject.yaml')
 
 
 def test_emit_c_style_canonical_translation():

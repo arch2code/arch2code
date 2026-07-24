@@ -25,7 +25,7 @@ def build_test_database():
     os.close(db_fd)
 
     project_yaml = os.path.join(
-        base_dir, 'examples', 'ip_test', 'arch', 'yaml', 'project.yaml')
+        base_dir, 'examples', 'ip_test', 'prj', 'yaml', 'ip_testProject.yaml')
     arch2code_path = os.path.join(base_dir, 'arch2code.py')
     cmd = [sys.executable, arch2code_path, '-y', project_yaml, '--db', db_path]
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=base_dir)

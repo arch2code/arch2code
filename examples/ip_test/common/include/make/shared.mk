@@ -8,7 +8,7 @@ TB_TOP_MODULE = common
 HDL_TOP_MODULE = common
 
 # This project's entry YAML is commonProject.yaml (not the default project.yaml).
-A2C_PRJ_YAML = $(REPO_ROOT)/arch/yaml/commonProject.yaml
+A2C_PRJ_YAML = $(REPO_ROOT)/prj/yaml/commonProject.yaml
 
 -include $(A2C_ROOT)/pro/include/make/a2cPro.mk
 include $(A2C_ROOT)/include/make/a2c-common.mk

@@ -257,6 +257,40 @@ that opts into hierarchical before being format-2 clean is reported as
 `TODO_NOT_FORMAT2` and nothing is moved: run `make migrate` first, then
 `make migrate-hierarchical`.
 
+### Composed / nested-provider projects
+
+`make migrate-hierarchical` auto-converts a **genuinely independent** sub-project
+— its own `project.yaml`, no other provider nested in-tree — cleanly. Run the
+dry-run first and confirm it reports **zero escaping moves and zero manual
+items** before applying.
+
+A project that **nests providers** — a parent composing child projects in-tree
+via vendored symlinks or cross-project references (a composition root, or a
+bridge that vendors another IP) — needs **manual** handling: automatic
+relocation would try to move sibling/provider files that live outside the
+migrated project's own tree ("escaping moves"). Convert **leaf-first** — migrate
+the independent child sub-projects before the nesting parent — so the parent's
+re-pointed references resolve. For the parent:
+
+1. Re-point cross-project references at the children's **new** post-migration
+   locations (`prj/yaml` + per-node `<node>/yaml`).
+2. Apply the relocation while **dropping the escaping moves**.
+3. Hand-fix any `TODO_UNREWRITABLE_PATH` reference whose relative-path depth
+   changed.
+
+Two invariants:
+
+- In-tree nesting requires the **parent** to be `hierarchical`; a `functional`
+  parent may only compose children as external siblings.
+- A child project file must be referenced via `projectFiles:`, never `include:`
+  (a db-time guard enforces this — a project file provides nothing to `include:`
+  scoping).
+
+File ownership across a composition follows the **projectFile reference
+closure** — the deepest project file whose `projectFiles:`/`include:` closure
+reaches a file owns it — not directory location, so relocation never changes
+ownership.
+
 ### What it moves
 
 For an unblocked candidate the tool relocates the tree, preserving user content

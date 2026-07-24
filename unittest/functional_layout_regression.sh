@@ -57,6 +57,7 @@ declare -A SKIP=(
   [pySocket]="not migrated to yamlFormat: 2 (pre-existing; unrelated to layout)"
   [nested]="converted to hierarchical layout (T4.6 sign-off); covered by test_layout_nested.py, not the functional gate"
   [hierVlDemo]="hierarchical-layout verilator-wrapper regression guard; not functional, so excluded from the functional byte-identical gate"
+  [ip_test]="converted to hierarchical layout (composed multi-node); covered by the hierarchical VL flow, not the functional byte-identical gate"
 )
 
 # Discover example projects: a dir under examples/ with its own Makefile.

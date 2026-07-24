@@ -1,0 +1,133 @@
+# ipBridge - cross-interface bridge fixture.
+#
+# Two non-parameterized data interfaces (data8If, data70If) appear on the
+# ipBridge parent boundary and each binds via connectionMap to a
+# differently-Configed `ip` child (uBridgeIp0/variant0,
+# uBridgeIp1/variant1). The generator emits one push_ack_port_thunker
+# member per connectionMap inside ipBridge's container, bridging the
+# non-parameterized parent payload (data8St / data70St) to the per-
+# variant child payload (ipDataSt<ipVariant0Config> / ipDataSt<ipVariant1Config>).
+#
+# Runtime stimulus is owned by whatever top instantiates this reusable IP,
+# not by this file: the bridge standalone harness (bridgeStdTop.yaml) defines
+# its own bridgeDriver stimulus producer, and the composed ip_top drives the
+# two boundary ports from its shared src producer. ipBridge itself is a pure
+# reusable IP boundary. The model build leverages the existing
+# examples/ip_test testbench infrastructure: ip_top carries hasTb: true so the
+# generated ip_topExternal / ip_topTestbench handle launch, and ipBridge sits
+# as a normal contained sub-block whose constructor sets up its own thunkers.
+#
+# The payload field order and bit widths in data8St / data70St exactly
+# match ipDataSt under variant0 / variant1 so the packed-form
+# compatibility check passes (marker: 1 bit, data: 8 bits matches
+# variant0; data: 70 bits matches variant1 — variant1 also exercises the
+# array-backed _packedSt path).
+
+include:
+    # shared_types (apbReg) is owned by the contained 'common' sub-project. Like
+    # the ip include below, this design-file include names the real sub-project
+    # tree (examples/ip_test/common) rather than the bridge/common symlink, so in
+    # composition its context path is lexically identical to the root ip_top
+    # include and the two collapse to one owned context (no ambiguous context).
+    # Standalone, this real-tree path and the symlinked projectFiles provider are
+    # deduped by the projectOverrides selection in ipBridgeProject.yaml.
+    - ../../../common/common/yaml/shared_types.yaml
+    # The 'ip' block is owned by the referenced ip child project (via
+    # projectFiles), but its defining file must still be on this context's
+    # include chain for block-type resolution. Ownership is set by child-project
+    # detection (CONTEXTOWNINGPROJECT), not by this include.
+    - ../../../ip/ip/yaml/ipVariants.yaml
+
+types:
+    bridgeMarkerT:
+        width: 1
+        desc: "1-bit marker; bit-width matches ipDataSt::marker (packed-form compatibility)"
+    data8T:
+        width: 8
+        desc: "Fixed 8-bit bridge payload (matches ipDataSt::data under variant0)"
+    data70T:
+        width: 70
+        desc: "Fixed 70-bit bridge payload (matches ipDataSt::data under variant1)"
+
+structures:
+    # Field order and per-field bit widths exactly match ipDataSt so the
+    # packed-form compatibility check passes when the cross-
+    # interface bind resolves to ipDataSt under the bound child Config.
+    data8St:
+        marker: { varType: bridgeMarkerT, desc: "Marker bit; bit-width matches ipDataSt::marker" }
+        data:   { varType: data8T,        desc: "8-bit payload; matches ipDataSt::data under variant0" }
+    data70St:
+        marker: { varType: bridgeMarkerT, desc: "Marker bit; bit-width matches ipDataSt::marker" }
+        data:   { varType: data70T,       desc: "70-bit payload; matches ipDataSt::data under variant1" }
+
+interfaces:
+    data8If:
+        desc: "Non-parameterized 8-bit bridge data interface"
+        interfaceType: push_ack
+        structures:
+            - { structure: data8St, structureType: data_t }
+    data70If:
+        desc: "Non-parameterized 70-bit bridge data interface"
+        interfaceType: push_ack
+        structures:
+            - { structure: data70St, structureType: data_t }
+
+blocks:
+    ipBridge:
+        desc: "Two non-parameterized parent ports each route via connectionMap to a differently-Configed ip child"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            data8In:  { interface: data8If,  direction: dst }
+            data70In: { interface: data70If, direction: dst }
+        registerPorts:
+            # Upstream register bus feeding the nested bridgeApbDecode router.
+            # This is the reusable-IP register-bus boundary; the row key must
+            # be apbReg to match bridgeApbDecode's addressBlock upstreamPort /
+            # registerDecoderPort and the synthesised nested boundary map.
+            apbReg: { interface: apbReg }
+    # The bridge's nested register-bus decoder is a separate
+    # block type from the top-level apbDecode. The two decoders share the
+    # apb_channel protocol shape but differ in connectivity: the top
+    # decoder owns cpu_main and dispatches to uIp0/uIp1/uBridge, while
+    # the bridge decoder owns its incoming apbReg port and dispatches to
+    # uBridgeIp0/uBridgeIp1. Keeping them as distinct blocks prevents
+    # the per-block port aggregation in apbDecodeBase from merging the
+    # two contexts (which would produce a body that references ports the
+    # instance does not own).
+    bridgeApbDecode:
+        desc: "Nested APB decoder inside ipBridge (dispatches to uBridgeIp0/uBridgeIp1)"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        addressBlock:
+            addressGroup: bridge
+            addressIncrement: 0x00100000
+            maxAddressSpaces: 16
+            varType: addr_id_bridge
+            enumPrefix: ADDR_ID_BRIDGE_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+
+instances:
+    # uBridgeAPBDecode is the bridge container's own register-bus decoder.
+    # Its presence under the `bridge` addressGroup satisfies
+    # postParseRegister.py's "same level as decoder" constraint for
+    # uBridgeIp0/uBridgeIp1, and postParseRegister auto-wires the parent
+    # register bus from uAPBDecode down through ipBridge.apbReg.
+    uBridgeAPBDecode: { container: ipBridge, instanceType: bridgeApbDecode, instGroup: top }
+    uBridgeIp0:       { container: ipBridge, instanceType: ip,              instGroup: top, addressGroup: bridge, variant: variant0 }
+    uBridgeIp1:       { container: ipBridge, instanceType: ip,              instGroup: top, addressGroup: bridge, variant: variant1 }
+
+connectionMaps:
+    # Parent ipBridge.data8In / data70In bind via connectionMap to
+    # differently-Configed ip children. Each map's parent interface
+    # (data8If / data70If) differs from the child's declared port interface
+    # (ipDataIf), so the generator emits one push_ack_port_thunker member per
+    # map inside ipBridge.
+    - { interface: data8If,  block: ipBridge, port: data8In,  direction: dst, instance: uBridgeIp0, instancePort: ipDataIf }
+    - { interface: data70If, block: ipBridge, port: data70In, direction: dst, instance: uBridgeIp1, instancePort: ipDataIf }
+

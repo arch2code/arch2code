@@ -34,7 +34,7 @@ from pysrc.processYaml import projectCreate, projectOpen, qualifiedKeyContext
 from templates.systemVerilog import package
 
 IP_TEST_PROJECT = os.path.join(
-    base_dir, 'examples', 'ip_test', 'arch', 'yaml', 'project.yaml')
+    base_dir, 'examples', 'ip_test', 'prj', 'yaml', 'ip_testProject.yaml')
 
 EXPECTED_LOCALPARAM = 'localparam IP_DATA_WIDTH_X2 = IP_DATA_WIDTH * 2;'
 
@@ -105,12 +105,12 @@ def _build_temp_project(ip_yaml_edit):
         shutil.copytree(src_root, dst_root, symlinks=True,
                         ignore=shutil.ignore_patterns('build', '.gen', 'obj_dir',
                                                        'rundir', '*.db', '.*.db'))
-        ip_yaml = os.path.join(dst_root, 'ip', 'arch', 'yaml', 'ip', 'ip.yaml')
+        ip_yaml = os.path.join(dst_root, 'ip', 'ip', 'yaml', 'ip.yaml')
         with open(ip_yaml, 'r', encoding='utf-8') as f:
             text = f.read()
         with open(ip_yaml, 'w', encoding='utf-8') as f:
             f.write(ip_yaml_edit(text))
-        return temp_root, os.path.join(dst_root, 'arch', 'yaml', 'project.yaml')
+        return temp_root, os.path.join(dst_root, 'prj', 'yaml', 'ip_testProject.yaml')
     except BaseException:
         # Fixture build failed after mkdtemp; drop the copied tree so a failing
         # run cannot leak an eval_sv_emit_* directory into the unittest dir.

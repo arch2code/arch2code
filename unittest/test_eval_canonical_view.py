@@ -34,7 +34,7 @@ from pysrc.processYaml import projectCreate, projectOpen, splitQualifiedKey
 from pysrc.systemcGen import genSystemC
 
 IP_TEST_PROJECT = os.path.join(
-    base_dir, 'examples', 'ip_test', 'arch', 'yaml', 'project.yaml')
+    base_dir, 'examples', 'ip_test', 'prj', 'yaml', 'ip_testProject.yaml')
 
 # An eval constant and a non-eval constant from ip.yaml. The canonical form
 # carries fully qualified ${name/context} symbols, so it is context
