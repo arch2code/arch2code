@@ -3,7 +3,7 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_context_include_lines, cpp_config_arg
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_context_include_lines, cpp_config_arg, sc_channel_header_includes
 
 
 def _tb_context_import_lines(prj, data):
@@ -316,6 +316,26 @@ def ext_sec_header(args, prj, data):
     thunker_includes = sorted(sc_thunker_protocols(data, prj))
     thunker_include_lines = [f'#include "{proto}_port_thunker.h"' for proto in thunker_includes]
 
+    # Channel headers for the interface types the External's declared channels
+    # use, via the shared sc_channel_header_includes helper (same emission as the
+    # block implementations): a tb External declares DUT-boundary channel members
+    # directly, so it needs each channel's header (which also carries the payload
+    # structs). The filters match the channels sc_declare_channels emits (non-skip)
+    # and the local connectionMap channels (non cross-interface; cross-interface
+    # maps use thunkers instead).
+    intf_types = set()
+    for conns in data['connectDouble'].values():
+        for value in conns.values():
+            if not sc_gen_block_channels(value, prj, data)['is_skip']:
+                intf_types.add(get_intf_type(value['interfaceType'], data))
+    for value in data.get('connectionMaps', dict()).values():
+        if _resolve_cross_interface_ends(value, prj):
+            continue
+        intfInfo = prj.data['interfaces'].get(value.get('interfaceKey', ''))
+        if intfInfo:
+            intf_types.add(get_intf_type(intfInfo['interfaceType'], data))
+    channel_include_lines = sc_channel_header_includes(intf_types, data)
+
     t = Template(sec_tb_external_header_template)
     config_includes = []
     for context in sorted(data.get('configIncludeContext', {})):
@@ -330,6 +350,7 @@ def ext_sec_header(args, prj, data):
         cfg=cfg,
         default_config=defaultConfig,
         config_includes='\n'.join(config_includes),
+        channel_includes='\n'.join(channel_include_lines),
         thunker_includes='\n'.join(thunker_include_lines),
         ext_fwd_decl='\n'.join(ext_fwd_decl_s),
         ext_inst_decl='\n'.join(ext_inst_decl_s),
@@ -419,6 +440,9 @@ sec_tb_external_header_template = """\
 
 #include "instanceFactory.h"
 import {{basemodule}};
+{%- if channel_includes %}
+{{channel_includes}}
+{%- endif %}
 {%- if context_includes %}
 {{context_includes}}
 {%- endif %}

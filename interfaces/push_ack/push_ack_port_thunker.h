@@ -68,7 +68,7 @@ public:
 
     // connections shape: parent-side channel bound by its interface base.
     push_ack_port_thunker( const char* name_,
-                           sc_core::push_ack_in_if<UpT>& upInIface,
+                           push_ack_in_if<UpT>& upInIface,
                            push_ack_in<DownT>&           downPort,
                            std::string block_ )
       : m_up_port( nullptr ),
@@ -84,7 +84,7 @@ public:
     // that pushes into the owned channel; the bridged payload is pushed
     // onto the parent-side channel's push_ack_out_if<UpT>.
     push_ack_port_thunker( const char* name_,
-                           sc_core::push_ack_out_if<UpT>& upOutIface,
+                           push_ack_out_if<UpT>& upOutIface,
                            push_ack_out<DownT>&           downPort,
                            std::string block_ )
       : m_up_port( nullptr ),
@@ -101,7 +101,7 @@ private:
     {
         // Resolve the up-side interface once. For the port shape, sc_port
         // binding is complete by the time the spawned thread first runs.
-        sc_core::push_ack_in_if<UpT>* upIn =
+        push_ack_in_if<UpT>* upIn =
             m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
         while (true) {
             UpT   inVal;
@@ -143,9 +143,9 @@ private:
     }
 
     push_ack_in<UpT>*                m_up_port;
-    sc_core::push_ack_in_if<UpT>*    m_up_in_iface;
-    sc_core::push_ack_out_if<UpT>*   m_up_out_iface;
-    sc_core::push_ack_channel<DownT> m_down_channel;
+    push_ack_in_if<UpT>*    m_up_in_iface;
+    push_ack_out_if<UpT>*   m_up_out_iface;
+    push_ack_channel<DownT> m_down_channel;
 };
 
 #endif // PUSH_ACK_PORT_THUNKER_H

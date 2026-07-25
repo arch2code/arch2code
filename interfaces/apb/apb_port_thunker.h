@@ -80,7 +80,7 @@ public:
 
     // connections shape: parent-side channel bound by its interface base.
     apb_port_thunker( const char* name_,
-                      sc_core::apb_in_if<UpA, UpD>& upInIface,
+                      apb_in_if<UpA, UpD>& upInIface,
                       apb_in<DownA, DownD>&         downPort,
                       std::string block_ )
       : m_up_port( nullptr ),
@@ -96,7 +96,7 @@ public:
     // that drives the owned channel; the bridged request is issued onto
     // the parent-side channel's apb_out_if<UpA, UpD>.
     apb_port_thunker( const char* name_,
-                      sc_core::apb_out_if<UpA, UpD>& upOutIface,
+                      apb_out_if<UpA, UpD>& upOutIface,
                       apb_out<DownA, DownD>&         downPort,
                       std::string block_ )
       : m_up_port( nullptr ),
@@ -113,7 +113,7 @@ private:
     {
         // Resolve the up-side interface once. For the port shape, sc_port
         // binding is complete by the time the spawned thread first runs.
-        sc_core::apb_in_if<UpA, UpD>* upIn =
+        apb_in_if<UpA, UpD>* upIn =
             m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
         while (true) {
             bool   isWrite = false;
@@ -207,9 +207,9 @@ private:
     }
 
     apb_in<UpA, UpD>*              m_up_port;
-    sc_core::apb_in_if<UpA, UpD>*  m_up_in_iface;
-    sc_core::apb_out_if<UpA, UpD>* m_up_out_iface;
-    sc_core::apb_channel<DownA, DownD> m_down_channel;
+    apb_in_if<UpA, UpD>*  m_up_in_iface;
+    apb_out_if<UpA, UpD>* m_up_out_iface;
+    apb_channel<DownA, DownD> m_down_channel;
 };
 
 #endif // APB_PORT_THUNKER_H

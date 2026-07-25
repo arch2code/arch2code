@@ -13,7 +13,6 @@
 #include "interfaceBase.h"
 #include "synchLock.h"
 
-namespace sc_core {
 
 // push(T)
 // |        ---T---> pushReceive(T)
@@ -364,7 +363,6 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const push_ack_channel<
     return os;
 }
 
-} // namespace sc_core
 
 template <class T>
 using push_ack_out = sc_port<push_ack_out_if< T > >;

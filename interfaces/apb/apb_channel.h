@@ -14,7 +14,6 @@
 #include "trackerBase.h"
 #include "portBase.h"
 
-namespace sc_core {
 
 // ----------------------------------------------------------------------------
 //  CLASS : apb_in_if<R, D>
@@ -426,7 +425,6 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const apb_channel< R, D
     return os;
 }
 
-} // namespace sc_core
 
 template <class R, class D>
 using apb_out = sc_port<apb_out_if< R, D > >;

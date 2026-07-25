@@ -470,6 +470,13 @@ def cpp_context_include_lines(prj, data, context, fileMapKey):
                 f'using namespace {cpp_namespace_name(prj.contextModuleIdentity[context])};']
     return [f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"']
 
+def sc_channel_header_includes(intf_types, block_data):
+    # `#include "<chnl>_channel.h"` for each interface type's channel. Shared by
+    # the block Base/class dependency sets and the testbench External, which each
+    # supply their own interface-type set.
+    return [f'#include "{get_intf_defs(intfType, block_data)["sc_channel"]["type"]}_channel.h"'
+            for intfType in sorted(intf_types)]
+
 def sc_base_dependency_includes(args, prj, data):
     # Dependency lines a block's Base/Inverted/Channels declaration
     # (baseClassDecl) needs, returned as ordered (kind, text) pairs mirroring
@@ -488,10 +495,8 @@ def sc_base_dependency_includes(args, prj, data):
     # factory base) are absent, so include it directly.
     if not block_intf_set:
         out.append(('include', '#include "blockBase.h"'))
-    for intfType in sorted(block_intf_set):
-        intf_def = get_intf_defs(intfType, data)
-        chnlType = intf_def['sc_channel']['type']
-        out.append(('include', f'#include "{chnlType}_channel.h"'))
+    for line in sc_channel_header_includes(block_intf_set, data):
+        out.append(('include', line))
     fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
     for context in data['includeContext']:
         if context in data['includeFiles'].get(fileMapKey, {}):
@@ -523,12 +528,9 @@ def sc_class_dependency_includes(args, prj, data):
     out.append(('import', f'import {cpp_base_module_name(data["blockName"])};'))
     # The class declaration names each port's channel type (e.g.
     # push_ack_channel<...>) directly as a member, so it needs the channel
-    # header for every interface the block uses, matching the loop in
-    # sc_base_dependency_includes.
-    for intfType in sorted(get_set_intf_types(data['interfaceTypes'], data)):
-        intf_def = get_intf_defs(intfType, data)
-        chnlType = intf_def['sc_channel']['type']
-        out.append(('include', f'#include "{chnlType}_channel.h"'))
+    # header for every interface the block uses, matching sc_base_dependency_includes.
+    for line in sc_channel_header_includes(get_set_intf_types(data['interfaceTypes'], data), data):
+        out.append(('include', line))
     if len(data['registers']) > 0 or len(data["memories"]) > 0:
         out.append(('include', '#include "addressMap.h"'))
     if len(data['registers']) > 0:

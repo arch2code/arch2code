@@ -68,7 +68,7 @@ public:
 
     // connections shape: parent-side channel bound by its interface base.
     req_ack_port_thunker( const char* name_,
-                          sc_core::req_ack_in_if<UpR, UpA>& upInIface,
+                          req_ack_in_if<UpR, UpA>& upInIface,
                           req_ack_in<DownR, DownA>&         downPort,
                           std::string block_ )
       : m_up_port( nullptr ),
@@ -84,7 +84,7 @@ public:
     // that drives the owned channel; the bridged request is issued onto
     // the parent-side channel's req_ack_out_if<UpR, UpA>.
     req_ack_port_thunker( const char* name_,
-                          sc_core::req_ack_out_if<UpR, UpA>& upOutIface,
+                          req_ack_out_if<UpR, UpA>& upOutIface,
                           req_ack_out<DownR, DownA>&         downPort,
                           std::string block_ )
       : m_up_port( nullptr ),
@@ -101,7 +101,7 @@ private:
     {
         // Resolve the up-side interface once. For the port shape, sc_port
         // binding is complete by the time the spawned thread first runs.
-        sc_core::req_ack_in_if<UpR, UpA>* upIn =
+        req_ack_in_if<UpR, UpA>* upIn =
             m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
         while (true) {
             UpR   reqIn;
@@ -156,9 +156,9 @@ private:
     }
 
     req_ack_in<UpR, UpA>*             m_up_port;
-    sc_core::req_ack_in_if<UpR, UpA>* m_up_in_iface;
-    sc_core::req_ack_out_if<UpR, UpA>* m_up_out_iface;
-    sc_core::req_ack_channel<DownR, DownA> m_down_channel;
+    req_ack_in_if<UpR, UpA>* m_up_in_iface;
+    req_ack_out_if<UpR, UpA>* m_up_out_iface;
+    req_ack_channel<DownR, DownA> m_down_channel;
 };
 
 #endif // REQ_ACK_PORT_THUNKER_H

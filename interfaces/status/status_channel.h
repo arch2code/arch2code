@@ -13,7 +13,6 @@
 #include "interfaceBase.h"
 #include "synchLock.h"
 
-namespace sc_core {
 
 // write(T)
 // |        ---T---> read(T)
@@ -264,7 +263,6 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const status_channel<T>
     return os;
 }
 
-} // namespace sc_core
 
 template <class T>
 using status_out = sc_port<status_out_if< T > >;

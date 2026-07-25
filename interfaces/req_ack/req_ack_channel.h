@@ -13,7 +13,6 @@
 #include "interfaceBase.h"
 #include "synchLock.h"
 
-namespace sc_core {
 
 // req(R, &A)
 // |        ---R----> reqReceive(R)
@@ -368,7 +367,6 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const req_ack_channel< 
     return os;
 }
 
-} // namespace sc_core
 
 template <class R, class A>
 using req_ack_out = sc_port<req_ack_out_if< R, A > >;

@@ -64,7 +64,7 @@ public:
 
     // connections shape: parent-side channel bound by its interface base.
     rdy_vld_port_thunker( const char* name_,
-                          sc_core::rdy_vld_in_if<UpT>& upInIface,
+                          rdy_vld_in_if<UpT>& upInIface,
                           rdy_vld_in<DownT>&           downPort,
                           std::string block_ )
       : m_up_port( nullptr ),
@@ -80,7 +80,7 @@ public:
     // that writes into the owned channel; the bridged payload is written
     // onto the parent-side channel's rdy_vld_out_if<UpT>.
     rdy_vld_port_thunker( const char* name_,
-                          sc_core::rdy_vld_out_if<UpT>& upOutIface,
+                          rdy_vld_out_if<UpT>& upOutIface,
                           rdy_vld_out<DownT>&           downPort,
                           std::string block_ )
       : m_up_port( nullptr ),
@@ -97,7 +97,7 @@ private:
     {
         // Resolve the up-side interface once. For the port shape, sc_port
         // binding is complete by the time the spawned thread first runs.
-        sc_core::rdy_vld_in_if<UpT>* upIn =
+        rdy_vld_in_if<UpT>* upIn =
             m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
         while (true) {
             UpT   inVal;
@@ -136,9 +136,9 @@ private:
     }
 
     rdy_vld_in<UpT>*                m_up_port;
-    sc_core::rdy_vld_in_if<UpT>*    m_up_in_iface;
-    sc_core::rdy_vld_out_if<UpT>*   m_up_out_iface;
-    sc_core::rdy_vld_channel<DownT> m_down_channel;
+    rdy_vld_in_if<UpT>*    m_up_in_iface;
+    rdy_vld_out_if<UpT>*   m_up_out_iface;
+    rdy_vld_channel<DownT> m_down_channel;
 };
 
 #endif // RDY_VLD_PORT_THUNKER_H
