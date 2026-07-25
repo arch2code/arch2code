@@ -1,4 +1,6 @@
-// GENERATED_CODE_PARAM --context mixedBlockC.yaml
+
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
+// GENERATED_CODE_PARAM --context=mixedBlockC.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package mixedBlockC_package;
 localparam int unsigned CSIZE = 32'h0000_0002;  // The size of C

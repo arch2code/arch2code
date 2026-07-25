@@ -1,3 +1,4 @@
+Makefile
 core/base/coreBase.h
 core/base/genBase.h
 core/fw/coreIncludesFW.cpp
@@ -20,3 +21,5 @@ leaf/base/leafBase.h
 leaf/model/leaf.cpp
 leaf/model/leaf.h
 leaf/rtl/leaf.sv
+rtl/Makefile
+rundir/Makefile

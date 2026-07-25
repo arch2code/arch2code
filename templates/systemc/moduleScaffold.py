@@ -57,22 +57,29 @@ def blockModuleHeader(args, prj, data):
             emitted.add(line)
     out.append('')
     out.append(f'export module {cpp_block_module_name(data["blockName"])};')
-    # All import declarations must immediately follow the module declaration,
-    # before any other declaration (e.g. a using-namespace); the language rejects
-    # an `import` that trails a using-namespace. Emit every import first — context
-    # imports, then contained-instance Base imports — and defer the context
-    # `using namespace` lines until after them. Contained-instance Base modules
-    # (`import <child>.base;`) let the constructor body's createInstance /
-    # dynamic_pointer_cast see the complete child Base type; imports are illegal
-    # in the global module fragment so they live here in the purview.
+    # Every `import` must precede the first non-import declaration, and a
+    # using-namespace permanently closes the module preamble. For a
+    # classDecl-rendered block this header emits imports ONLY — the context
+    # `using namespace` lines are relocated to the head of the classDecl region
+    # (templates/systemc/classDecl.py). That keeps this region import-only so its
+    # trailing user gap inherits an open preamble where a hand-added `import`
+    # stays legal. A reg-handler block is the exception: its class is rendered by
+    # the blockRegs template, which does not re-emit the usings, so they must
+    # remain here (after the imports) as before. Emit context imports first, then
+    # contained-instance Base imports (`import <child>.base;`), which let the
+    # constructor body's createInstance / dynamic_pointer_cast see the complete
+    # child Base type; imports are illegal in the global module fragment so they
+    # live here in the purview.
+    isRegHandler = data['blockInfo']['isRegHandler']
     usings = []
     for kind, line in deps:
         if kind != 'import':
             continue
         if line.startswith('using namespace '):
-            usings.append(line)
-        else:
-            out.append(line)
+            if isRegHandler:
+                usings.append(line)
+            continue
+        out.append(line)
     for line in intf_gen_utils.sc_instance_includes(data, prj):
         out.append(line)
     out.extend(usings)

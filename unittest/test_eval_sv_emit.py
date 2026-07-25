@@ -105,7 +105,7 @@ def _build_temp_project(ip_yaml_edit):
         shutil.copytree(src_root, dst_root, symlinks=True,
                         ignore=shutil.ignore_patterns('build', '.gen', 'obj_dir',
                                                        'rundir', '*.db', '.*.db'))
-        ip_yaml = os.path.join(dst_root, 'ip', 'ip', 'yaml', 'ip.yaml')
+        ip_yaml = os.path.join(dst_root, 'ip', 'yaml', 'ip.yaml')
         with open(ip_yaml, 'r', encoding='utf-8') as f:
             text = f.read()
         with open(ip_yaml, 'w', encoding='utf-8') as f:

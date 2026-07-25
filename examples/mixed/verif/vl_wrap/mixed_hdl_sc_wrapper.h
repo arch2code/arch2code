@@ -5,15 +5,17 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=mixed
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import mixed.base;
 
-#include "mixedBase.h"
-
-// Verilated RTL top (SystemC)
+// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
+// its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "mixed_hdl_sv_wrapper.h"
 #else
 #include "Vmixed_hdl_sv_wrapper.h"
 #endif
+// GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 

@@ -18,10 +18,10 @@ module;
 export module blockF.block;
 import blockF.base;
 import mixedBlockC;
-using namespace mixedBlockC_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace mixedBlockC_ns;
 
 export template<typename Config>
 SC_MODULE(blockF), public blockBase, public blockFBase<Config>

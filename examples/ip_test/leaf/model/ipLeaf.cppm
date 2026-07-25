@@ -16,10 +16,10 @@ module;
 export module ipLeaf.block;
 import ipLeaf.base;
 import ipLeaf;
-using namespace ipLeaf_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace ipLeaf_ns;
 
 export template<typename Config>
 SC_MODULE(ipLeaf), public blockBase, public ipLeafBase<Config>

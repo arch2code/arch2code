@@ -17,8 +17,12 @@ make migrate
 
 `make migrate` is the single command — issue it once and everything happens. It
 is idempotent: a fully migrated, orphan-free project is a no-op. The target is a
-five-step pipeline, and each recipe line fails the target on a non-zero exit, so
-it halts on the first unresolved item rather than proceeding on a broken tree:
+five-step pipeline. The first two steps halt the target on a non-zero exit, so an
+unresolved yaml-stage item stops the run before the database is built. The sweep
+(step 3) does **not** halt: it applies its deletes, then `newmodule` and `gen`
+always run to rescaffold the purely-generated blocks, and only afterward is the
+sweep's exit code re-raised — so a remaining agent-driven port (`TODO_PORT`)
+leaves the tree scaffolded while `make migrate` still signals non-zero:
 
 1. **`migrateYaml.py --write <project.yaml>`** — the text conversion + stamp.
    Standalone and text-only (it never opens the database); runs the three
@@ -93,8 +97,8 @@ clean report.
 | eval `NEEDS_MANUAL` | eval phase | A real-valued eval (e.g. `$DWORD / 2.0`) cannot be expressed in the SV subset. | Replace the `eval:` with a literal `value:` (hand decision). |
 | `TODO_PORT` | orphan sweep | An old-form user `.cpp`/`.h` pair that the current map now produces in a different form — a block that was parameterized so its artifact is a single `.cppm`. Never deleted by the sweep. | Section 6 below (agent-driven port) |
 | `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 4 below |
-| `TODO_UNGENERATED_FILE` | orphan sweep | A file that carries no `GENERATED_CODE_BEGIN` marker and either matches a per-file delete-target name **or** sits inside a wholesale-cleared fully-generated segment (`base`, `vl_wrap`). Skipped and reported, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
-| `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No action if the path genuinely no longer exists. |
+| `TODO_UNGENERATED_FILE` | orphan sweep, includes phase, or layout migration | A file that carries no `GENERATED_CODE_BEGIN` marker and either matches a per-file delete-target name **or** sits inside a wholesale-cleared fully-generated segment (`base`, `vl_wrap`). Skipped and reported, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
+| `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No file action is needed if the path genuinely no longer exists, but the item keeps the sweep's report non-clean, so `make migrate` still exits non-zero until the stale entry no longer applies. |
 | `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk. | Complete the format migration in functional layout, then migrate to hierarchical (Section 7). |
 
 The address-control kinds are documented in depth in the `address-migration`
@@ -151,11 +155,15 @@ and its `obj_dir` / built lib so they do not shadow the new build location.
 ## 4. Finish an includes (header → cppm) migration
 
 When the report shows an `Includes` phase that applied edits, the project moved
-from paired-header context includes to C++20 module interfaces. The `make
-migrate` pipeline already recreated the module interfaces for you — its
-`make newmodule` step scaffolds the missing `<context>Includes.cppm` and its
-`make gen` step fills them. The remaining work is hand-written code and stale
-build state:
+from paired-header context includes to C++20 module interfaces. Whether the
+`.cppm` interfaces already exist depends on the report: a `TODO_USER_IMPORT` from
+the includes phase keeps `yamlFormat: 2` un-stamped, which makes step 1 exit
+non-zero and halts the pipeline **before** `make db`/`newmodule`/`gen` — so the
+`<context>Includes.cppm` files are **not** yet recreated. Fix the import sites
+below first, then re-run `make migrate`: on the clean second pass step 1 stamps
+and the pipeline continues, so `make newmodule` scaffolds the missing
+`<context>Includes.cppm` and `make gen` fills them. The remaining work is
+hand-written code and stale build state:
 
 1. **Fix `TODO_USER_IMPORT` / `TODO_USER_INCLUDE` sites.** A hand-written source
    file that does:
@@ -164,10 +172,11 @@ build state:
    #include "<context>Includes.h"
    ```
 
-   must instead import the module. The module name is the context stem without
-   the `Includes` suffix and its namespace is `<module>_ns` (see the top of the
-   generated `<context>Includes.cppm`: `export module <module>;` /
-   `export namespace <module>_ns`). For example a file that included
+   must instead import the module. Read the exact module name and namespace from
+   the top of the generated `<context>Includes.cppm` — `export module <module>;`
+   and `export namespace <module>_ns` — rather than deriving them from the
+   filename; the module name need not equal the file stem. In the common case it
+   is the context stem without the `Includes` suffix, so a file that included
    `axi4sDemo_tbIncludes.h` becomes:
 
    ```cpp
@@ -175,8 +184,12 @@ build state:
    using namespace axi4sDemo_tb_ns;
    ```
 
-   Generated files (those carrying `GENERATED_CODE_BEGIN`) are **not** reported —
-   `make gen` rewrites their include into an `import` automatically. Only
+   Generated files (those carrying `GENERATED_CODE_BEGIN`) are skipped wholesale
+   by the scanner and **not** reported — `make gen` rewrites the include in their
+   *generated* regions into an `import` automatically. Two caveats: an include a
+   user placed in a *user* region of a generated file is neither reported nor
+   rewritten (move it by hand), and the scanner matches only the quoted form
+   `#include "..."` — an angle-bracket `#include <...>` is not detected. Only
    user-authored files need this edit.
 
 2. **Clear stale build artifacts.** A prior header-mode build leaves `.d`
@@ -239,9 +252,19 @@ pair. Those old files still hold the block's hand-written code, so the sweep
 leaves them untouched and reports them. A block left non-parameterized keeps its
 `.cpp`/`.h` form and is never reported.
 
+A synthesized `<block>_regs` handler is a special case: it is generated wholesale
+through the `blockRegs` template and holds **no** user code (its only
+non-generated span is an empty member placeholder). So if a legacy
+`<block>_regs.h`/`.cpp` pair is flagged `TODO_PORT`, it is a
+regenerate-not-port case — delete the legacy pair and let `make gen` recreate the
+`.cppm`. Do **not** run the four-slot procedure below on it: a reg-handler has no
+user slots to carry over.
+
 `make migrate` performs mechanical **format** conversion only; it does **not**
 parameterize a block, and it does not attempt this port. The port is
-**agent-driven** and is two transformations, done in this order:
+**agent-driven** and is two transformations. Do them in the order below —
+**T2 (templatize) first, then T1 (move)**; the labels are historical, the
+sequence is what matters:
 
 ### T2 — templatize the user code (do this first, in place on the legacy files)
 
@@ -258,16 +281,24 @@ the code — it is not a text substitution:
   `auto <block><Config>::f(...) -> acc32_t`.
 - Reach inherited base members through `this->` (or the matching `using`
   declaration) where the compiler now treats them as dependent names.
-- Switch any user `#include "<sibling>.h"` to `import <sibling>;` for a block or
-  context that is now a module.
+- Switch a user `#include` of a now-module dependency to the matching `import`,
+  minding the name form: a parameterized sibling **block** becomes
+  `import <sibling>.block;` (block module names are dotted), while a migrated
+  **context** header becomes `import <context>;` (bare stem). A sibling block that
+  was **not** parameterized is still `.h`/`.cpp`, not a module — leave its
+  `#include` alone.
 
 If the block cannot be made template-correct, the parameterization itself is
 wrong — fix that before porting.
 
 ### T1 — move the user regions into the single `.cppm` (mechanical)
 
-The pipeline's `make newmodule` + `make gen` already scaffolded `<block>.cppm`
-with empty user regions. The legacy files and the new `.cppm` carry the same
+The pipeline scaffolds `<block>.cppm` with empty user regions via `make
+newmodule` + `make gen`, which run even while ports remain — so after `make
+migrate` the `.cppm` already exists and is ready to port into, and the
+purely-generated blocks the sweep deleted are rescaffolded (`make migrate` still
+exits non-zero to signal the pending ports). The legacy
+files and the new `.cppm` carry the same
 generated-section markers, so every stretch of user code sits between the same
 two markers (or after the last one) in both, and transplants by that anchor. A
 block has **four** user slots, and all four must move — do not treat the `.cpp`
@@ -295,12 +326,53 @@ Never paste inside a `GENERATED_CODE_BEGIN`/`END` region. Drop the legacy
 boilerplate the module form replaces: the `#ifndef` guard, `#include
 "systemc.h"`, and the `#include "<block>.h"` at the top of the old `.cpp`.
 
+### Restore body-only context imports
+
+The generated `.cppm` header emits only `import` lines — `import <block>.base;`
+plus a context `import` for every context the block's **generated surface**
+structurally references (registers, memories, ports, connections). The matching
+`using namespace <ctx>_ns;` lines are emitted at the **head of the
+`--template=classDecl` region**, not in the header, so the header always ends
+import-only. The generated set does **not** cover a context type or constant used
+only in the implementation **body** (e.g. `bayer_pattern_reg_t`,
+`NUM_LINE_BUFFERS`) — the generator has no structural reference to key on, so that
+import is the migrating agent's job. If the build reports `must be imported from
+module '<ctx>'` or `use of undeclared identifier`, add `import <ctx>;` (and
+`using namespace <ctx>_ns;` unless that context is already covered by the
+generated usings) for each such context.
+
+Put them in the non-generated purview gap between the module-header
+`GENERATED_CODE_END` and the `--template=classDecl` `GENERATED_CODE_BEGIN` — that
+region is module purview and survives `make gen`. Because the header ends
+import-only, that gap always sits inside an open module preamble, so a hand-added
+`import` there is always valid (any generated `using namespace` sits later, at the
+classDecl head). Order within the gap: every `import` first, then any
+`using namespace` (and before any declaration-introducing `#include`); C++20
+requires all import-declarations to precede the first non-import declaration
+(clang: `imports must immediately follow the module declaration`). Do **not**
+paste the `import` inside a generated region.
+
 ### Finish the port
 
 Once `<block>.cppm` holds the ported code, delete the now-superseded legacy
 `<block>.h` and `<block>.cpp` (the sweep never deletes them — `port`-disposition
 entries are excluded from its delete set by construction), then re-run `make gen`
 and build. Re-run `make migrate` to confirm the `TODO_PORT` is gone.
+
+### When a block pulls a module-hostile library
+
+Some libraries cannot be safely included in a module **purview** — notably ones
+that pull SIMD-intrinsic or precompiled headers (e.g. OpenCV). Their headers
+attach to the named module and clash with the global module, producing errors
+like `declaration of '<sym>' in the global module follows declaration in module
+<block>.block`; global-module-fragment hoisting does not reliably fix it.
+
+This is project-specific and a design decision, not a mechanical port step — the
+migrating agent works out the right approach for the block. In general, keep the
+library out of the module purview: confine its use to a plain, separately-compiled
+`.cpp` (global module) behind an opaque/pimpl interface so the parameterized
+template names no library types, or leave the block non-parameterized (`.cpp/.h`,
+no module) if parameterization is not essential.
 
 ## 7. (Opt-in) Migrate to hierarchical layout
 
@@ -328,11 +400,9 @@ make migrate-hierarchical
 relocates the tree (it never builds the database, sweeps orphans, or
 regenerates), and it is idempotent — re-running a migrated project is a no-op.
 There is no `make` dry-run target; run `migrateYaml.py --to-hierarchical
-<project.yaml>` directly (without `--write`) for a dry run.
-Because it does not regenerate, you finish it by hand (see "Finish the
-migration" below). Drop the `--write` (run `migrateYaml.py --to-hierarchical
-<project.yaml>` by hand) for a dry-run that prints the full move/delete/rewrite
-map and changes nothing.
+<project.yaml>` directly (without `--write`) for a dry run that prints the full
+move/delete/rewrite map and changes nothing. Because it does not regenerate, you
+finish it by hand (see "Finish the migration" below).
 
 ### When it runs
 
@@ -368,7 +438,13 @@ re-pointed references resolve. For the parent:
 
 1. Re-point cross-project references at the children's **new** post-migration
    locations (`prj/yaml` + per-node `<node>/yaml`).
-2. Apply the relocation while **dropping the escaping moves**.
+2. Apply the relocation. There is **no** "drop escaping moves" switch:
+   `--to-hierarchical --write` applies every safe move/delete and reports each
+   out-of-tree reference as `TODO_UNREWRITABLE_PATH`, leaving it in place. The
+   write is **not** transactional — the safe moves are applied even when it exits
+   non-zero, and it cannot roll back (a mid-sequence destination clash can leave
+   the tree half-moved). So re-point the references (step 1) first and confirm a
+   clean dry-run **before** writing.
 3. Hand-fix any `TODO_UNREWRITABLE_PATH` reference whose relative-path depth
    changed.
 

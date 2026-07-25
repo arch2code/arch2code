@@ -1,3 +1,4 @@
+Makefile
 base/consumerBase.cppm
 base/firstBlockBase.cppm
 base/lastBlockBase.cppm
@@ -18,6 +19,7 @@ base/testBlockBase.cppm
 base/testContainerBase.cppm
 fw/nestedIncludesFW.cpp
 fw/nestedIncludesFW.h
+include/make/shared.mk
 model/consumer.cpp
 model/consumer.h
 model/firstBlock.cpp
@@ -55,8 +57,10 @@ model/testBlock.cpp
 model/testBlock.h
 model/testContainer.cpp
 model/testContainer.h
+rtl/Makefile
 rtl/nested_package.sv
 rtl/rtl.f
+rundir/Makefile
 tb/nested/nestedConfig.cpp
 tb/nested/nestedExternal.cpp
 tb/nested/nestedExternal.h

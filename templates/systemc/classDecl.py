@@ -37,7 +37,20 @@ def render_default(args, prj, data):
     # forbids #include after the module declaration, so classDecl suppresses
     # them here.
     emittedDepLines = set()
-    if args.mode != 'module':
+    if args.mode == 'module':
+        # The block-module header (moduleScaffold.blockModuleHeader) emits the
+        # dependency imports but NOT the context `using namespace` lines: a
+        # using-namespace closes the module preamble and every `import` must
+        # precede it. Emitting the usings here, at the head of the classDecl
+        # region (after the header region's trailing user gap), keeps that gap
+        # inside an open, import-only preamble so a hand-added `import` stays
+        # legal. They sit at module scope, before the class template, so the
+        # unqualified-name coverage over the class and all user regions matches
+        # classic mode.
+        for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
+            if kind == 'import' and line.startswith('using namespace '):
+                out.append(line)
+    else:
         for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
             out.append(line)
             emittedDepLines.add(line)

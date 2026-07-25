@@ -152,22 +152,23 @@ db : $(A2C_SQLDB_FILE)
 # pipeline: the text conversions + yamlFormat stamp, then (only once the project
 # is stamped/format-2, so the database gate passes) build the DB, sweep the
 # generated orphans the legacy fileMap left behind, scaffold the current fileMap's
-# new-form producers the legacy generator never emitted, and regenerate. Each
-# recipe line fails the target on non-zero, so migrateYaml.py exiting non-zero
-# (manual TODOs remain, project unstamped) halts BEFORE db/sweep/newmodule/gen;
-# the user resolves the items and re-runs the same idempotent `make migrate`.
-# migrateYaml.py exits zero when already migrated, so a stamped-but-orphan-carrying
-# project still proceeds to sweep/scaffold/regenerate, and a fully-clean project
-# is a no-op. newmodule runs AFTER the sweep and BEFORE gen: gen only fills
-# generated regions of files that already exist, so newmodule (create-only) must
-# scaffold the missing new-form files first; the orphans must be gone before gen
-# so stale markers do not feed the scgen step.
+# new-form producers the legacy generator never emitted, and regenerate.
+# The stamp line fails the target on non-zero (yaml-stage manual TODOs remain,
+# project unstamped), halting before db/sweep so the user resolves them and re-runs
+# the same idempotent `make migrate`. The sweep applies its deletes, but a remaining
+# agent-driven port (TODO_PORT) makes it exit non-zero; rather than halt there —
+# which would leave the purely-generated blocks deleted but not recreated —
+# newmodule + gen ALWAYS run after the sweep to rescaffold them, then the sweep's
+# exit code is re-raised so `make migrate` still signals non-zero while ports remain.
+# A newmodule/gen failure still halts. newmodule runs AFTER the sweep and BEFORE gen:
+# gen only fills generated regions of files that already exist, so newmodule
+# (create-only) must scaffold the missing new-form files first, and the orphans must
+# be gone before it so stale markers do not feed the scgen step.
 migrate:
 	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
 	$(MAKE) db
-	$(A2C_ROOT)/migrateYaml.py --sweep --write --db $(A2C_SQLDB_FILE)
-	$(MAKE) newmodule
-	$(MAKE) gen
+	$(A2C_ROOT)/migrateYaml.py --sweep --write --db $(A2C_SQLDB_FILE); rc=$$?; \
+	$(MAKE) newmodule && $(MAKE) gen && exit $$rc
 
 
 # Opt-in functional -> hierarchical layout migration. Separate from `migrate`:

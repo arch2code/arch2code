@@ -4,7 +4,10 @@
 
 The rundir makefiles discover build inputs by globbing fixed functional roots:
   C++ : find_cpp_source_directories(base model registrar fw tb)
-  SV  : find over (rtl, verif/vl_wrap)
+  SV  : find over (rtl, verif). The verilated wrappers live under the `verif`
+        segment: functional layout nests them in a `verif/vl_wrap/` subdir,
+        hierarchical layout places them directly under each node's `verif/`.
+        Walking the `verif` root recurses into either.
 T2a.2 will replace those globs with the generated manifest, so before deleting
 anything we prove the manifest covers the same directories. The only tolerated
 deltas are the project ORPHANS the makefiles pick up only because their glob
@@ -41,9 +44,12 @@ from pysrc.processYaml import projectCreate  # noqa: E402
 SKIP = {'pySocket'}
 
 # C++ and SV glob roots the makefiles use today (a2c-systemc.mk PRJ_SRC_DIRS and
-# a2c-common.mk SV_GEN_FILES roots).
+# a2c-common.mk SV_GEN_FILES roots). The `verif` root covers the verilated
+# wrappers in both layouts: functional nests them under verif/vl_wrap/, while
+# hierarchical places them directly under each node's verif/ (the vl_wrap
+# segment path is `verif`); os.walk recurses into either.
 CPP_GLOB_ROOTS = ('base', 'model', 'registrar', 'fw', 'tb')
-SV_GLOB_ROOTS = ('rtl', 'verif/vl_wrap')
+SV_GLOB_ROOTS = ('rtl', 'verif')
 
 CPP_EXTS = ('.cpp', '.h', '.cppm')
 SV_EXTS = ('.sv', '.svh')
