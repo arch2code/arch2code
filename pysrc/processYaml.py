@@ -2942,7 +2942,7 @@ class projectOpen:
                 for payload in (crossBind.get('thunker') or {}).get('payloads', []) or []:
                     addStructKey(payload.get('structureKey'))
 
-        if ret['addressDecode'].get('isApbRouter'):
+        if ret['addressDecode'].get('isApbRouter') or ret['addressDecode'].get('hasDecoder'):
             # The router's upstream interface determines the register-bus
             # structures pulled into the class declaration. Walk the resolved
             # interface rather than the global table directly.

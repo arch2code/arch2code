@@ -7,6 +7,7 @@
 #include "blockBase.h"
 #include "mixed_hdl_sc_wrapper.h"
 #include "Vmixed_hdl_sv_wrapper.h"
+#include "mixedVariantConfig.h"
 
 namespace {
 struct _mixed_vl_registrar {

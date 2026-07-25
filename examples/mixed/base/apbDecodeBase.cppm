@@ -22,6 +22,8 @@ public:
     apb_out< apbAddrSt, apbDataSt > apbReg_uBlockA;
     // apbReg->uBlockB: CPU access to SoC registers in the design
     apb_out< apbAddrSt, apbDataSt > apbReg_uBlockB;
+    // apbReg->uBlockG: CPU access to SoC registers in the design
+    apb_out< apbAddrSt, apbDataSt > apbReg_uBlockG;
 
     // dst ports
     // External->apbReg: CPU access to SoC registers in the design
@@ -31,12 +33,14 @@ public:
     apbDecodeBase(std::string name, const char * variant) :
         apbReg_uBlockA("apbReg_uBlockA")
         ,apbReg_uBlockB("apbReg_uBlockB")
+        ,apbReg_uBlockG("apbReg_uBlockG")
         ,cpu_main("cpu_main")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
         apbReg_uBlockA->setTimed(nsec, mode);
         apbReg_uBlockB->setTimed(nsec, mode);
+        apbReg_uBlockG->setTimed(nsec, mode);
         cpu_main->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
@@ -44,6 +48,7 @@ public:
     {
         apbReg_uBlockA->setLogging(verbosity);
         apbReg_uBlockB->setLogging(verbosity);
+        apbReg_uBlockG->setLogging(verbosity);
         cpu_main->setLogging(verbosity);
     };
 };
@@ -55,6 +60,8 @@ public:
     apb_in< apbAddrSt, apbDataSt > apbReg_uBlockA;
     // apbReg->uBlockB: CPU access to SoC registers in the design
     apb_in< apbAddrSt, apbDataSt > apbReg_uBlockB;
+    // apbReg->uBlockG: CPU access to SoC registers in the design
+    apb_in< apbAddrSt, apbDataSt > apbReg_uBlockG;
 
     // dst ports
     // External->apbReg: CPU access to SoC registers in the design
@@ -64,12 +71,14 @@ public:
     apbDecodeInverted(std::string name) :
         apbReg_uBlockA(("apbReg_uBlockA"+name).c_str())
         ,apbReg_uBlockB(("apbReg_uBlockB"+name).c_str())
+        ,apbReg_uBlockG(("apbReg_uBlockG"+name).c_str())
         ,cpu_main(("cpu_main"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
         apbReg_uBlockA->setTimed(nsec, mode);
         apbReg_uBlockB->setTimed(nsec, mode);
+        apbReg_uBlockG->setTimed(nsec, mode);
         cpu_main->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
@@ -77,6 +86,7 @@ public:
     {
         apbReg_uBlockA->setLogging(verbosity);
         apbReg_uBlockB->setLogging(verbosity);
+        apbReg_uBlockG->setLogging(verbosity);
         cpu_main->setLogging(verbosity);
     };
 };
@@ -88,6 +98,8 @@ public:
     apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockA;
     // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockB;
+    // CPU access to SoC registers in the design
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockG;
 
     // dst ports
     // CPU access to SoC registers in the design
@@ -97,6 +109,7 @@ public:
     apbDecodeChannels(std::string name, std::string srcName) :
     apbReg_uBlockA(("apbReg_uBlockA"+name).c_str(), srcName)
     ,apbReg_uBlockB(("apbReg_uBlockB"+name).c_str(), srcName)
+    ,apbReg_uBlockG(("apbReg_uBlockG"+name).c_str(), srcName)
     ,cpu_main(("cpu_main"+name).c_str(), srcName)
     {};
     void bind( apbDecodeBase *a, apbDecodeInverted *b)
@@ -105,6 +118,8 @@ public:
         b->apbReg_uBlockA( apbReg_uBlockA );
         a->apbReg_uBlockB( apbReg_uBlockB );
         b->apbReg_uBlockB( apbReg_uBlockB );
+        a->apbReg_uBlockG( apbReg_uBlockG );
+        b->apbReg_uBlockG( apbReg_uBlockG );
         a->cpu_main( cpu_main );
         b->cpu_main( cpu_main );
     };

@@ -6,7 +6,7 @@
 #include "systemc.h"
 
 // GENERATED_CODE_PARAM --block=blockBRegs
-// GENERATED_CODE_BEGIN --template=classDecl
+// GENERATED_CODE_BEGIN --template=blockRegs --section=header
 #include "logging.h"
 #include "instanceFactory.h"
 import blockBRegs.base;
@@ -31,16 +31,16 @@ private:
 
 public:
 
-    //registers
-    hwRegister< dRegSt, 4 > rwD; // A Read Write register
-    hwRegister< bSizeRegSt, 4 > roBsize; // A Read Only register with a structure that has a definition from an included context
-    hwMemoryPort< bSizeSt, bigSt > blockBTable1_adapter;
-    hwMemoryPort< bSizeSt, seeSt > blockBTableExt_adapter;
-    hwMemoryPort< bSizeSt, test37BitRegSt > blockBTable37Bit_adapter;
-
     blockBRegs(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~blockBRegs() override = default;
 
+    //registers
+    hwMemoryPort< bSizeSt, bigSt > blockBTable1_adapter; // Dual Port with one connection
+    hwMemoryPort< bSizeSt, test37BitRegSt > blockBTable37Bit_adapter; // External 37-bit memory register - firmware accessible with 8-byte stride
+    hwMemoryPort< bSizeSt, seeSt > blockBTableExt_adapter; // Memory register - firmware accessible memory-mapped storage
+    hwRegisterIf< dRegSt, status_out<dRegSt>, 4, false> rwD_reg; // A Read Write register
+    hwRegisterIf< bSizeRegSt, status_in<bSizeRegSt>, 4, true> roBsize_reg; // A Read Only register with a structure that has a definition from an included context
+    
     // GENERATED_CODE_END
     // block implementation members
 

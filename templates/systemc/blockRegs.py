@@ -25,24 +25,15 @@ def render_sc(args, prj, data):
     return s
 
 def get_include_deps(args, prj, data):
-    # The block's own Base is a C++20 module interface unit
-    # (`<block>Base.cppm`, `export module <block>.base;`), imported rather than
-    # textually included; context dependencies are imported as C++20 modules in
-    # cppm mode and #included in header mode (mirrors classDecl's context-include
-    # emission).
-    include_deps = []
-    include_deps.append(f'import {intf_gen_utils.cpp_base_module_name(data["blockName"])};')
-    # A parameterizable reg-handler is a class template on the parent's Config;
-    # the per-context Config-policy header carries the <context>DefaultConfig
-    # struct the registrar/anchor instantiation in the .cpp binds against.
-    for context in sorted(data['configIncludeContext']):
-        if context in data['includeFiles'].get('config_hdr', {}):
-            include_deps.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
-    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
-    for context in data['includeContext']:
-        if context in data['includeFiles'].get(fileMapKey, {}):
-            include_deps.extend(intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey))
-    return include_deps
+    # Classic-mode header include set for the reg-handler. Reuse the shared
+    # class-dependency computation so the reg-handler header inherits exactly the
+    # same channel headers, framework headers (addressMap/hwRegister/hwMemory),
+    # config-policy includes, and context imports as a normal block class
+    # (classDecl), preventing include-set drift. Rendered as the flat `line` of
+    # each (kind, line) pair. In module mode the block-module global module
+    # fragment (moduleScaffold.blockModuleHeader) owns these instead, so
+    # render_section_header suppresses this set entirely.
+    return [line for (kind, line) in intf_gen_utils.sc_class_dependency_includes(args, prj, data)]
 
 def get_reghandler_properties(prj, data):
     reghandler = dict()
@@ -128,9 +119,16 @@ def render_section_header(args, prj, data):
     templatePrefix = intf_gen_utils.block_config_decl(hasOwnParams)
     if templatePrefix:
         templatePrefix += '\n'
+    # In module mode the block-module global module fragment
+    # (moduleScaffold.blockModuleHeader) owns the framework/context includes and
+    # the class is exported from the module; classic mode emits the includes
+    # inline ahead of the (non-exported) class.
+    moduleMode = (args.mode == 'module')
+    exportKw = 'export ' if moduleMode else ''
+    include_deps = [] if moduleMode else get_include_deps(args, prj, data)
     s = t.render(blockname=blockName, cfg=cfg, templatePrefix=templatePrefix,
-                 hasOwnParams=hasOwnParams,
-                 include_deps=get_include_deps(args, prj, data), hwregs=get_hwregs(prj, data))
+                 hasOwnParams=hasOwnParams, moduleMode=moduleMode, exportKw=exportKw,
+                 include_deps=include_deps, hwregs=get_hwregs(prj, data))
     return s
 
 def render_section_init(args, prj, data):
@@ -141,6 +139,11 @@ def render_section_init(args, prj, data):
     templatePrefix = intf_gen_utils.block_config_decl(hasOwnParams)
     if templatePrefix:
         templatePrefix += '\n'
+    # In module mode the constructor bodies live in the same TU as the class
+    # (the block-module `.cppm`), whose global module fragment owns the class
+    # header self-include; a module interface forbids #include after
+    # `export module`. Classic mode keeps emitting the self-include here.
+    moduleMode = (args.mode == 'module')
     # Reuse the shared registration emission so parameterizable reg-handlers
     # defer factory registration to the per-block trampoline (Registrar TU) and
     # only emit instantiation anchors here, exactly as constructor.py does for
@@ -154,7 +157,8 @@ def render_section_init(args, prj, data):
     thisq = 'this->' if hasOwnParams else ''
     # render the template with the variables
     s = t.render(blockname=blockName, cfg=cfg, templatePrefix=templatePrefix,
-                 hasOwnParams=hasOwnParams, registration=registration, thisq=thisq,
+                 hasOwnParams=hasOwnParams, moduleMode=moduleMode,
+                 registration=registration, thisq=thisq,
                  reghandler=reghandler, hwregs=get_hwregs(prj, data))
     return s.rstrip()
 
@@ -166,15 +170,12 @@ def render_section_body(args, prj, data):
     return s.rstrip()
 
 block_regs_header_template = '''\
-#include "logging.h"
-#include "instanceFactory.h"
-#include "addressMap.h"
-#include "hwRegister.h"
-#include "hwMemory.h"
+{% if not moduleMode -%}
 {% for entry in include_deps -%}
 {{entry}}
 {% endfor %}
-{{templatePrefix}}SC_MODULE({{blockname}}), public blockBase, public {{blockname}}Base{{cfg}}
+{% endif -%}
+{{exportKw}}{{templatePrefix}}SC_MODULE({{blockname}}), public blockBase, public {{blockname}}Base{{cfg}}
 {
 private:
     void regHandler(void);
@@ -198,7 +199,9 @@ public:
 '''
 
 block_regs_init_section_template = '''\
+{% if not moduleMode -%}
 #include "{{blockname}}.h"
+{% endif -%}
 {% if not hasOwnParams %}
 SC_HAS_PROCESS({{blockname}});
 {% endif %}

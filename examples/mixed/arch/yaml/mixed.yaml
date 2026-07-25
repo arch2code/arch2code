@@ -420,6 +420,17 @@ blocks:
     hasVl: false
     hasMdl: true
     hasTb: false
+  blockG:
+    desc: Parameterized container that owns a rw register and forwards it to a leaf child (parameterized model reg-handler fixture)
+    params: [fred]
+    hasVl: false
+    hasMdl: true
+    hasTb: false
+  blockGLeaf:
+    desc: Minimal leaf that receives the forwarded register
+    hasVl: false
+    hasMdl: true
+    hasTb: false
 
 
 # instances, these are instantiations of objects
@@ -447,6 +458,8 @@ instances:
   uBlockC0:    {container: threeCs,  instanceType: blockC,                         instGroup: top,                             color: orange}
   uBlockC1:    {container: threeCs,  instanceType: blockC,                         instGroup: top,                             color: orange}
   uBlockC2:    {container: threeCs,  instanceType: blockC,                         instGroup: top,                             color: orange}
+  uBlockG:     {container: mixed,    instanceType: blockG,     addressGroup: top,  instGroup: top, variant: gvariant0}
+  uBlockGLeaf: {container: blockG,   instanceType: blockGLeaf,                     instGroup: top}
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries
@@ -497,6 +510,8 @@ parameters:
     - {variant: variant0, param: fred, value: 0    }
     - {variant: variant1, param: bob,  value: BOB1 }
     - {variant: variant1, param: fred, value: 1    }
+  blockG:
+    - {variant: gvariant0, param: fred, value: 0}
 
 memoryConnections:
   - {memory: blockBTable1,  block: blockB, instance: uBlockD, port: port1}
@@ -515,6 +530,7 @@ registers:
   - {register: blockBTableExt, regType: memory, block: blockB, structure: seeSt, addressStruct: bSizeSt, wordLines: BSIZE, desc: Memory register - firmware accessible memory-mapped storage}
   - {register: blockATable37Bit, regType: memory, block: blockA, structure: test37BitRegSt, addressStruct: bSizeSt, wordLines: BSIZE, desc: Local 37-bit memory register - serviced directly by blockA with 8-byte stride}
   - {register: blockBTable37Bit, regType: memory, block: blockB, structure: test37BitRegSt, addressStruct: bSizeSt, wordLines: BSIZE, desc: External 37-bit memory register - firmware accessible with 8-byte stride}
+  - {register: rwG, regType: rw, block: blockG, structure: dRegSt, desc: A Read Write register owned by parameterized container blockG and forwarded to a leaf}
 
 registerConnections:
   - {register: rwD,     block: blockB, instance: uBlockF0 }
@@ -523,6 +539,7 @@ registerConnections:
   - {register: roBsize, block: blockB, instance: uBlockD }
   - {register: blockBTableExt, block: blockB, instance: uBlockD }
   - {register: blockBTable37Bit, block: blockB, instance: uBlockD }
+  - {register: rwG, block: blockG, instance: uBlockGLeaf }
 #  - {register: extD,    block: blockB, instance: uBlockD }
 
 # flows, are very similar to a plantuml sequence diagram, a filename is taken and optionally

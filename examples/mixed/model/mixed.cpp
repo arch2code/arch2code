@@ -9,6 +9,7 @@ import blockA.base;
 import apbDecode.base;
 import blockC.base;
 import blockB.base;
+import blockG.base;
 SC_HAS_PROCESS(mixed);
 
 // === Block factory registration (mixed) ===
@@ -31,10 +32,12 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
         ,dupIf("blockB_dupIf", "blockA")
         ,apbReg_uBlockA("blockA_apbReg_uBlockA", "apbDecode")
         ,apbReg_uBlockB("blockB_apbReg_uBlockB", "apbDecode")
+        ,apbReg_uBlockG("blockG_apbReg_uBlockG", "apbDecode")
         ,uBlockA(std::dynamic_pointer_cast<blockABase>(instanceFactory::createInstance(name(), "uBlockA", "blockA", "", "mixed")))
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "mixed")))
         ,uBlockC(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC", "blockC", "", "mixed")))
         ,uBlockB(std::dynamic_pointer_cast<blockBBase>(instanceFactory::createInstance(name(), "uBlockB", "blockB", "", "mixed")))
+        ,uBlockG(std::dynamic_pointer_cast<blockGBase<mixedDefaultConfig>>(instanceFactory::createInstance(name(), "uBlockG", "blockG", "gvariant0", "mixed")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
@@ -53,6 +56,8 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
     uBlockA->apbReg(apbReg_uBlockA);
     uAPBDecode->apbReg_uBlockB(apbReg_uBlockB);
     uBlockB->apbReg(apbReg_uBlockB);
+    uAPBDecode->apbReg_uBlockG(apbReg_uBlockG);
+    uBlockG->apbReg(apbReg_uBlockG);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 

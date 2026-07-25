@@ -48,7 +48,8 @@ public:
             "test_mem_hier_cpu_write",
             "test_mem_hier_cpu_ext_rw",
             "test_mem_local_cpu_rw",
-            "test_mem_37bit_cpu_rw"
+            "test_mem_37bit_cpu_rw",
+            "test_reg_cpu_rwg"
         });
 
 

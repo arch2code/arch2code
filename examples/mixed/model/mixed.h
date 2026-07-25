@@ -13,6 +13,7 @@ import mixed.base;
 #include "notify_ack_channel.h"
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
+#include "mixedVariantConfig.h"
 import mixed;
 using namespace mixed_ns;
 import mixedBlockC;
@@ -22,6 +23,7 @@ import blockA.base;
 import apbDecode.base;
 import blockC.base;
 import blockB.base;
+import blockG.base;
 
 SC_MODULE(mixed), public blockBase, public mixedBase
 {
@@ -41,12 +43,15 @@ public:
     apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockA;
     // CPU access to SoC registers in the design
     apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockB;
+    // CPU access to SoC registers in the design
+    apb_channel< apbAddrSt, apbDataSt > apbReg_uBlockG;
 
     //instances contained in block
     std::shared_ptr<blockABase> uBlockA;
     std::shared_ptr<apbDecodeBase> uAPBDecode;
     std::shared_ptr<blockCBase> uBlockC;
     std::shared_ptr<blockBBase> uBlockB;
+    std::shared_ptr<blockGBase<mixedDefaultConfig>> uBlockG;
 
     mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~mixed() override = default;

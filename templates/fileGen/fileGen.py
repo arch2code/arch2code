@@ -38,7 +38,10 @@ def render(args, prj, data):
                 return(block_src(args, prj, data))
             return(block_src(args, prj, data))
         case 'blockModule_cppm':
-            return(blockModule_cppm(args, prj, data))
+            if isRegHandler:
+                return(blockRegsModule_cppm(args, prj, data))
+            else:
+                return(blockModule_cppm(args, prj, data))
         case 'blockRegistrar_cppm':
             return(blockRegistrar_cppm(args, prj, data))
         case 'blockVlRegistrar_src':
@@ -176,6 +179,32 @@ def blockModule_cppm(args, prj, data):
     out.append('// GENERATED_CODE_BEGIN --template=constructor --section=init\n')
     out.append('// GENERATED_CODE_END\n')
     out.append('// GENERATED_CODE_BEGIN --template=constructor --section=body\n')
+    out.append('    // GENERATED_CODE_END\n')
+    out.append('};\n\n')
+    return("".join(out))
+
+# C++20 module interface unit for a parameterizable (hasOwnParams) synthesized
+# reg-handler block. Mirrors blockModule_cppm's moduleScaffold header wiring but
+# routes the class body to the blockRegs sections (header/init/body) so the
+# interface-forwarding hwRegisterIf<> members are emitted, not the plain
+# hwRegister<> a normal block class carries. The file-level `--mode=module`
+# routes the blockRegs sections to their module-mode branches; the
+# blockModuleHeader scaffold owns the global module fragment and the
+# `export module <block>.block;` declaration.
+def blockRegsModule_cppm(args, prj, data):
+    out = list()
+    out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --mode=module\n')
+    out.append('// GENERATED_CODE_BEGIN --template=moduleScaffold --section=blockModuleHeader\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=blockRegs --section=header\n')
+    out.append('\n')
+    out.append('    // GENERATED_CODE_END\n')
+    out.append('    // block implementation members\n\n')
+    out.append('};\n\n')
+    out.append('// GENERATED_CODE_BEGIN --template=blockRegs --section=init\n')
+    out.append('// GENERATED_CODE_END\n')
+    out.append('// GENERATED_CODE_BEGIN --template=blockRegs --section=body\n')
     out.append('    // GENERATED_CODE_END\n')
     out.append('};\n\n')
     return("".join(out))

@@ -84,9 +84,10 @@ typedef enum logic[8-1:0] {              //opcode with fixed width
     ADD = 0,                 // Add
     SUB = 5                 // Subtract
 } opcodeT;
-typedef enum logic[1-1:0] {          //Generated type for addressing top instances
+typedef enum logic[2-1:0] {          //Generated type for addressing top instances
     ADDR_ID_TOP_UBLOCKA = 0, // uBlockA instance address
-    ADDR_ID_TOP_UBLOCKB = 1 // uBlockB instance address
+    ADDR_ID_TOP_UBLOCKB = 1, // uBlockB instance address
+    ADDR_ID_TOP_UBLOCKG = 2 // uBlockG instance address
 } addr_id_top;
 
 // structures

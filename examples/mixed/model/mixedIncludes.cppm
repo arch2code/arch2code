@@ -158,13 +158,15 @@ inline const char* opcodeT_prt( opcodeT val )
 }
 enum  addr_id_top {          //Generated type for addressing top instances
     ADDR_ID_TOP_UBLOCKA=0,   // uBlockA instance address
-    ADDR_ID_TOP_UBLOCKB=1 }; // uBlockB instance address
+    ADDR_ID_TOP_UBLOCKB=1,   // uBlockB instance address
+    ADDR_ID_TOP_UBLOCKG=2 }; // uBlockG instance address
 inline const char* addr_id_top_prt( addr_id_top val )
 {
     switch( val )
     {
         case ADDR_ID_TOP_UBLOCKA: return( "ADDR_ID_TOP_UBLOCKA" );
         case ADDR_ID_TOP_UBLOCKB: return( "ADDR_ID_TOP_UBLOCKB" );
+        case ADDR_ID_TOP_UBLOCKG: return( "ADDR_ID_TOP_UBLOCKG" );
     }
     return("!!!BADENUM!!!");
 }

@@ -17,6 +17,7 @@ import mixed_package::*;
     rdy_vld_if #(.data_t(seeSt)) dupIf();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBlockA();
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBlockB();
+    apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBlockG();
 
 // Instances
 blockA uBlockA (
@@ -33,6 +34,7 @@ apbDecode uAPBDecode (
     .cpu_main (cpu_main),
     .apbReg_uBlockA (apbReg_uBlockA),
     .apbReg_uBlockB (apbReg_uBlockB),
+    .apbReg_uBlockG (apbReg_uBlockG),
     .clk (clk),
     .rst_n (rst_n)
 );
@@ -48,6 +50,12 @@ blockB uBlockB (
     .startDone (startDone),
     .dupIf (dupIf),
     .apbReg (apbReg_uBlockB),
+    .clk (clk),
+    .rst_n (rst_n)
+);
+
+blockG #(.fred(0)) uBlockG (
+    .apbReg (apbReg_uBlockG),
     .clk (clk),
     .rst_n (rst_n)
 );

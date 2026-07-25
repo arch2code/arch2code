@@ -48,6 +48,9 @@ void cpu::fwTest(void)
     std::string test_local = "test_mem_local_cpu_rw";
     controller.register_test_name(test_local);
 
+    std::string test_rwg = "test_reg_cpu_rwg";
+    controller.register_test_name(test_rwg);
+
     // Wait for read test
     controller.wait_test(test_read, sc_core::sc_time(1, sc_core::SC_NS));
     
@@ -223,6 +226,33 @@ void cpu::fwTest(void)
     }
 
     controller.test_complete(test_local);
+
+    // Parameterized reg-handler end-to-end guard. blockG is a PARAMETERIZED
+    // container that owns rw register rwG and forwards it to leaf uBlockGLeaf over
+    // a status channel; its synthesized blockGRegs handler is the parameterized
+    // .cppm form that must emit hwRegisterIf<..., status_out<...>>. Write rwG over
+    // APB and read it back (handler round-trip); blockGLeaf independently verifies
+    // it received the forwarded value, proving the whole path.
+    controller.wait_test(test_rwg, sc_core::sc_time(1, sc_core::SC_NS));
+
+    const uint32_t rwg_val = 0x5A; // fits dRegSt.d (7-bit sevenBitT field)
+    addr.address = BASE_ADDR_UBLOCKG + REG_BLOCKG_RWG;
+    data.data = rwg_val;
+    cpu_main->request(true, addr, data);
+
+    addr.address = BASE_ADDR_UBLOCKG + REG_BLOCKG_RWG;
+    cpu_main->request(false, addr, data);
+    if ((data.data & 0x7F) == rwg_val) {
+        log_.logPrint("CPU Reg (blockG rwG, parameterized handler) RW verify success", LOG_ALWAYS);
+    } else {
+        std::stringstream ss;
+        ss << "CPU Reg (blockG rwG) write/readback mismatch. Expected 0x"
+           << std::hex << rwg_val << ", got 0x" << (data.data & 0x7F);
+        log_.logPrint(ss.str(), LOG_ALWAYS);
+        errorCode::fail("blockG rwG APB write/readback mismatch");
+    }
+
+    controller.test_complete(test_rwg);
 }
 
 void cpu::test_mem_37bit_cpu_rw(void)
