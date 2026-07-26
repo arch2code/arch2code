@@ -30,7 +30,19 @@ def scan_module(path):
                 imports.append(imported.group(1))
 
     if module_name is None:
-        raise ValueError(f"{path}: no 'export module <name>;' declaration")
+        # A .cppm without an `export module` declaration provides no module, so
+        # it contributes nothing to the provider/import map: skip it with a
+        # warning instead of failing the whole scan. Erroring here would poison
+        # every make target that merely parses this makefile (the empty-scaffold
+        # wedge: freshly `newmodule`-scaffolded units are empty until `make gen`
+        # fills them). A genuinely missing module still surfaces later, when the
+        # compiler cannot resolve an importer's `import`.
+        print(
+            f"gen_cpp_module_map.py: warning: {path}: "
+            "no 'export module <name>;' declaration; skipping",
+            file=sys.stderr,
+        )
+        return None
 
     return module_name, imports
 
@@ -39,7 +51,10 @@ def render_module_map(paths):
     modules = list()
     providers = dict()
     for path in sorted(os.path.normpath(path) for path in paths):
-        module_name, imports = scan_module(path)
+        scanned = scan_module(path)
+        if scanned is None:
+            continue
+        module_name, imports = scanned
         if module_name in providers:
             raise ValueError(
                 f"module {module_name!r} is provided by both "

@@ -514,7 +514,14 @@ byte-for-byte:
   harness change is the `A2C_PRJ_YAML` line in the root `include/make/shared.mk`,
   which the tool re-points at the moved project file
   (`$(REPO_ROOT)/prj/yaml/<projectName>Project.yaml`); every other
-  `$(REPO_ROOT)/include/make/...` reference keeps working unchanged.
+  `$(REPO_ROOT)/include/make/...` reference keeps working unchanged. The moved
+  project file also has its **`dirs:` block reduced to `root:` only** — every
+  functional segment override (`base`, `model`, `rtl`, `vl_wrap`, `tb`, `fwInc`,
+  and any custom key) is dropped so node-relative placement is governed by the
+  base `hierarchicalDirs:`; `root:` (and its comment) is preserved verbatim. A
+  hand-declared segment map is redundant with the base defaults, and its
+  multi-level functional tails (`verif/vl_wrap`, `fw/include`) fight the
+  hierarchical layout, so keeping them would mis-place artifacts.
 - **Source.** The same directory-level wholesale clear applies here. A
   **fully-generated segment** — one whose every fileMap entry is whole-file
   generated: `base`, `registrar`, `vl_wrap` — is cleared at the **directory**

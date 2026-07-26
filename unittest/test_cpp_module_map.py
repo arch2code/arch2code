@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import contextlib
+import io
 import os
 import sys
 import tempfile
@@ -74,12 +76,24 @@ def test_module_map():
             "duplicate module providers are rejected",
         )
 
+        # A .cppm without an `export module` declaration provides no module: it
+        # is skipped with a stderr warning naming the file, and the scan still
+        # succeeds (does not raise). This keeps empty freshly-scaffolded units
+        # from poisoning every make target.
         not_module = os.path.join(root, "not_module.cppm")
         write(not_module, "int value;\n")
-        expect_value_error(
-            lambda: render_module_map([not_module]),
-            "no 'export module <name>;' declaration",
-            "a cppm without an exported module is rejected",
+        warnings = io.StringIO()
+        with contextlib.redirect_stderr(warnings):
+            rendered_skip = render_module_map([beta, not_module])
+        check(
+            "no 'export module <name>;' declaration" in warnings.getvalue()
+            and not_module in warnings.getvalue(),
+            "a cppm without an exported module is skipped with a warning naming it",
+        )
+        check(
+            "CPP_MODULE_NAMES := generated.beta" in rendered_skip
+            and "not_module" not in rendered_skip,
+            "the skipped module is absent from the map while others remain",
         )
 
 

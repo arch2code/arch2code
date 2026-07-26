@@ -591,6 +591,7 @@ def _planPathRewrites(report):
             _planYamlListRewrite(mv, "include", srcDir, dstDir, moveIndex, root, report)
         elif mv.kind == MOVE_PROJECT_FILE:
             _planYamlListRewrite(mv, "projectFiles", srcDir, dstDir, moveIndex, root, report)
+            _planDirsStrip(mv, report)
         elif mv.kind in (MOVE_SOURCE, MOVE_ORPHAN):
             _planSourceRewrite(mv, srcDir, dstDir, moveIndex, root, report)
 
@@ -667,6 +668,44 @@ def _topSequenceItems(root, key):
         if keyNode.value == key and isinstance(valNode, yaml.SequenceNode):
             return valNode.value
     return []
+
+
+def _topMappingItems(root, key):
+    """(keyNode, valNode) pairs of a top-level `key:` mapping, or [] when absent."""
+    if not isinstance(root, yaml.MappingNode):
+        return []
+    for keyNode, valNode in root.value:
+        if keyNode.value == key and isinstance(valNode, yaml.MappingNode):
+            return valNode.value
+    return []
+
+
+def _entryLineSpan(text, keyNode, valNode):
+    """Full-line char span `[lineStart, nextLineStart)` of a single-line mapping
+    entry, including leading indentation and any trailing end-of-line comment. The
+    project `dirs:` entries are always single-line (`key: $root/seg  # comment`)."""
+    start = text.rfind("\n", 0, keyNode.start_mark.index) + 1
+    end = text.find("\n", valNode.end_mark.index)
+    return (start, len(text)) if end == -1 else (start, end + 1)
+
+
+def _planDirsStrip(mv, report):
+    """Reduce the project file's `dirs:` mapping to `root:` only on the
+    functional->hierarchical flip. Node-relative artifact placement is then
+    governed by the base-config `hierarchicalDirs:`; a project-declared functional
+    segment map (base/model/rtl/vl_wrap/tb/fwInc, plus any custom override) is
+    redundant with the base defaults, and its multi-level functional tails
+    (verif/vl_wrap, fw/include) fight the hierarchical layout. Every non-root entry
+    is deleted line-for-line via the same byte-offset splice the include/
+    projectFiles re-rooting uses, so `root:` and its comment are preserved
+    verbatim; offsets computed on mv.src stay valid against the byte-identical
+    relocated mv.dst."""
+    text = _read(mv.src)
+    for keyNode, valNode in _topMappingItems(yaml.compose(text), "dirs"):
+        if keyNode.value == "root":
+            continue
+        start, end = _entryLineSpan(text, keyNode, valNode)
+        report.rewrites.append(Rewrite(mv.dst, start, end, text[start:end], "", "dirsStrip"))
 
 
 def _scalarValueSpan(text, item):

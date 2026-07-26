@@ -184,8 +184,13 @@ gen: $(GEN_DEPS)
 newmodule: $(A2C_SQLDB_FILE)
 	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --newmodule
 	touch $(A2C_SQLDB_FILE)
-	@# Refresh clangd compilation database after adding sources.
-	@$(MAKE) -C $(PROJECT_RUNDIR) compdb >/dev/null
+	@# Best-effort clangd compile-DB refresh after adding sources. newmodule
+	@# scaffolds EMPTY module-interface units (<block>Base.cppm, <ctx>Includes.cppm)
+	@# whose `export module` line is emitted only when `make gen` fills them, so the
+	@# rundir compdb parse here runs the C++ module scan over not-yet-generated
+	@# .cppm and fails by design. It must never abort newmodule (nor the `migrate`
+	@# pipeline, which runs newmodule before gen), so keep it non-fatal.
+	@$(MAKE) -C $(PROJECT_RUNDIR) compdb >/dev/null 2>&1 || true
 
 clean::
 	rm -rf $(GEN_BUILD_DIR)
