@@ -85,32 +85,32 @@ LD_FLAGS     += $(EXTRA_LD_FLAGS)
 CPP_SRC += $(foreach dir, $(A2C_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 
-# Generated C++20 module interface units.  Consumers import these by module
-# name, so precompile them before compiling any C++ translation units and pass
-# the resulting PCM files explicitly to Clang.
-CPP_MODULE_SRC = $(filter %.cppm,$(SC_GEN_FILES))
-# The module name must match the `import` spelling exactly. Module names are not
-# uniform functions of the filename: a context types unit declares
-# `export module <context>;`, a parameterizable block unit declares
-# `export module <block>.block;`, and a parent-owned registrar unit declares the
-# dotted `export module <project>.<parent>.<child>.registrar;`. Rather than
-# encode each convention here, read the actual `export module ...;` line from the
-# generated .cppm (in-place generated files persist across `make clean`, so they
-# exist by the time CPP_MODULE_SRC is non-empty at parse).
-cpp_module_name = $(shell sed -n 's/^[[:space:]]*export[[:space:]]\+module[[:space:]]\+\([A-Za-z_][A-Za-z0-9_.]*\)[[:space:]]*;.*/\1/p;/^[[:space:]]*export[[:space:]]\+module[[:space:]]/q' "$(1)" 2>/dev/null)
+# C++20 module interface units include both generated files and user-authored
+# .cppm files in project source directories. EXTRA_CPP_MODULE_SRC covers modules
+# outside those directories. Scan the complete source set once per make parse
+# into a Make include; this replaces the prior repeated $(shell sed ...) lookups
+# that rescanned every module for every emitted compiler command.
+CPP_MODULE_CANDIDATES := $(sort \
+	$(filter %.cppm,$(SC_GEN_FILES)) \
+	$(foreach dir,$(PRJ_SRC_DIRS),$(wildcard $(dir)/*.cppm)) \
+	$(EXTRA_CPP_MODULE_SRC))
+CPP_MODULE_MAP := $(GEN_BUILD_DIR)/cpp-modules.mk
+CPP_MODULE_SCANNER := $(A2C_ROOT)/pysrc/gen_cpp_module_map.py
+_CPP_MODULE_SCAN_STATUS := $(shell python3 "$(CPP_MODULE_SCANNER)" --output "$(CPP_MODULE_MAP)" $(CPP_MODULE_CANDIDATES) || echo failed)
+ifneq ($(strip $(_CPP_MODULE_SCAN_STATUS)),)
+$(error C++ module scan failed)
+endif
+include $(CPP_MODULE_MAP)
+
+CPP_MODULE_SRC := $(foreach module,$(CPP_MODULE_NAMES),$(CPP_MODULE_PROVIDER_$(module)))
 cpp_module_pcm = $(BUILD_DIR)/$(1:%.cppm=%.pcm)
-cpp_module_src_for = $(firstword $(foreach src,$(CPP_MODULE_SRC),$(if $(filter $(1),$(call cpp_module_name,$(src))),$(src))))
-cpp_module_import_names = $(shell test -f "$(1)" && sed -n 's/^[[:space:]]*import[[:space:]]\+\([A-Za-z_][A-Za-z0-9_.]*\)[[:space:]]*;.*/\1/p' "$(1)" || true)
-cpp_module_import_pcms = $(foreach module,$(call cpp_module_import_names,$(1)),$(if $(call cpp_module_src_for,$(module)),$(call cpp_module_pcm,$(call cpp_module_src_for,$(module)))))
+cpp_module_src_for = $(CPP_MODULE_PROVIDER_$(1))
+cpp_module_import_pcms = $(foreach imported,$(CPP_MODULE_IMPORTS_$(1)),$(if $(call cpp_module_src_for,$(imported)),$(call cpp_module_pcm,$(call cpp_module_src_for,$(imported)))))
 # GCC has no standalone PCM: compiling the interface unit emits both the object
 # and the module interface (CMI, in the default module cache). Inter-module
 # ordering therefore hangs off the .module.o targets instead of .pcm targets.
 cpp_module_obj = $(BUILD_DIR)/$(1:%.cppm=%.module.o)
-cpp_module_import_objs = $(foreach module,$(call cpp_module_import_names,$(1)),$(if $(call cpp_module_src_for,$(module)),$(call cpp_module_obj,$(call cpp_module_src_for,$(module)))))
-CPP_MODULE_PCM = $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.pcm)
-CPP_MODULE_OBJ = $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.module.o)
-CPP_MODULE_FLAGS = $(foreach src,$(CPP_MODULE_SRC),-fmodule-file=$(call cpp_module_name,$(src))=$(call cpp_module_pcm,$(src)))
-CPP_MODULE_OBJ_FLAGS = $(filter-out -I%,$(CXX_FLAGS))
+cpp_module_import_objs = $(foreach imported,$(CPP_MODULE_IMPORTS_$(1)),$(if $(call cpp_module_src_for,$(imported)),$(call cpp_module_obj,$(call cpp_module_src_for,$(imported)))))
 
 # CPP_MODULE_DEPS is what a consuming translation unit must wait for so the
 # module interfaces it imports are available: standalone PCMs under Clang, or the
@@ -170,6 +170,14 @@ LD_FLAGS += -L$(A2C_VL_BUILD_DIR) -l$(PROJECTNAME)vl_s_wrap -latomic
 CXX_FLAGS += -Wno-sign-compare
 endif
 endif
+
+# These module lists and flags are invariant for one make parse. Materialize
+# them after BUILD_DIR and all conditional CXX_FLAGS are known so every emitted
+# compiler command reuses the values instead of rebuilding the full strings.
+CPP_MODULE_PCM := $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.pcm)
+CPP_MODULE_OBJ := $(CPP_MODULE_SRC:%.cppm=$(BUILD_DIR)/%.module.o)
+CPP_MODULE_FLAGS := $(foreach module,$(CPP_MODULE_NAMES),-fmodule-file=$(module)=$(call cpp_module_pcm,$(call cpp_module_src_for,$(module))))
+CPP_MODULE_OBJ_FLAGS := $(filter-out -I%,$(CXX_FLAGS))
 
 # Build-flavor stamp. The model and VL (VL_DUT=1) builds share the same
 # BIN/BUILD_DIR paths and the same object files; toggling VL_DUT only changes the
@@ -237,12 +245,12 @@ $(BUILD_DIR)/%.pcm : %.cppm $(GEN_DB_DEPS) $(FLAVOR_STAMP)
 	mkdir -p $(@D)
 	$(CXX) $(CXX_FLAGS) -MMD --precompile -x c++-module $< -o $@
 
-$(foreach src,$(CPP_MODULE_SRC),$(eval $(call cpp_module_pcm,$(src)): $(call cpp_module_import_pcms,$(src))))
+$(foreach module,$(CPP_MODULE_NAMES),$(eval $(call cpp_module_pcm,$(call cpp_module_src_for,$(module))): $(call cpp_module_import_pcms,$(module))))
 
 # A block-module unit (`<block>.cppm`) includes its `<block>Base.h` in the
 # global module fragment, and that header `import`s the block's context types
-# module. cpp_module_import_names scans only the .cppm's own `import` lines, so
-# that transitive dependency is invisible to the edge above. Order every
+# module. The module scanner sees only the .cppm's own `import` lines, so that
+# transitive dependency is invisible to the edge above. Order every
 # block-module pcm after all context (`*Includes.cppm`) pcms; the context
 # modules' own inter-dependencies are already captured by the import-name scan.
 CPP_CONTEXT_MODULE_PCM = $(foreach src,$(filter %Includes.cppm,$(CPP_MODULE_SRC)),$(call cpp_module_pcm,$(src)))
@@ -265,7 +273,7 @@ $(BUILD_DIR)/%.module.o : %.cppm $(GEN_DB_DEPS) $(FLAVOR_STAMP)
 
 # Same ordering as the Clang path, expressed over the .module.o targets since
 # GCC produces the CMI as a side effect of the object compile.
-$(foreach src,$(CPP_MODULE_SRC),$(eval $(call cpp_module_obj,$(src)): $(call cpp_module_import_objs,$(src))))
+$(foreach module,$(CPP_MODULE_NAMES),$(eval $(call cpp_module_obj,$(call cpp_module_src_for,$(module))): $(call cpp_module_import_objs,$(module))))
 CPP_CONTEXT_MODULE_OBJ = $(foreach src,$(filter %Includes.cppm,$(CPP_MODULE_SRC)),$(call cpp_module_obj,$(src)))
 $(foreach src,$(filter-out %Includes.cppm,$(CPP_MODULE_SRC)),$(eval $(call cpp_module_obj,$(src)): $(CPP_CONTEXT_MODULE_OBJ)))
 
@@ -304,18 +312,20 @@ help::
 # Generate compile_commands.json for clangd/OpenCode
 #------------------------------------------------------------------------
 
-# compdb feeds clangd, so the C++ compile DB must never be blocked by VL build
-# health. A2C_VL_WRAP_DIRS (from the manifest) is the has-VL signal: empty means
-# no verilated entry, so the VL pass is skipped and the DB is built from the
-# model pass alone. When present, the VL_DUT=1 pass is captured best-effort: a
-# project with unwired VL (no rtl.f / run-vl) can have a failing or incomplete
-# VL dry-run, so on failure we warn, empty the VL capture, and still build the
-# DB from the model pass (which already covers every C++ source).
-ifeq ($(strip $(A2C_VL_WRAP_DIRS)),)
+# Capture only the object graph: generation and linking do not contribute C++
+# compilation database entries. The normal pass already covers every C++ source.
+# A second VL_DUT pass is useful only when a wrapper directory contains a
+# compiled .cpp source whose command needs -DVERILATOR; generated wrapper headers
+# and SystemVerilog files do not create compile_commands entries.
+.PHONY: compdb-capture
+compdb-capture: $(OBJ)
+
+COMPDB_VL_CPP_SRC := $(foreach dir,$(A2C_VL_WRAP_DIRS),$(wildcard $(dir)/*.cpp))
+ifeq ($(strip $(COMPDB_VL_CPP_SRC)),)
 COMPDB_VL_CAPTURE =
 COMPDB_MAKE_N_FILES = $(GEN_BUILD_DIR)/compdb.model.make-n.txt
 else
-COMPDB_VL_CAPTURE = $(MAKE) -n -B all VL_DUT=1 > $(GEN_BUILD_DIR)/compdb.vl.make-n.txt \
+COMPDB_VL_CAPTURE = $(MAKE) -n -B compdb-capture VL_DUT=1 > $(GEN_BUILD_DIR)/compdb.vl.make-n.txt \
 	|| { echo "compdb: VL dry-run failed; building compile DB from the model pass only"; : > $(GEN_BUILD_DIR)/compdb.vl.make-n.txt; }
 COMPDB_MAKE_N_FILES = $(GEN_BUILD_DIR)/compdb.model.make-n.txt $(GEN_BUILD_DIR)/compdb.vl.make-n.txt
 endif
@@ -323,7 +333,7 @@ endif
 .PHONY: compdb
 compdb:
 	@mkdir -p $(GEN_BUILD_DIR)
-	@$(MAKE) -n -B all > $(GEN_BUILD_DIR)/compdb.model.make-n.txt
+	@$(MAKE) -n -B compdb-capture > $(GEN_BUILD_DIR)/compdb.model.make-n.txt
 	@$(COMPDB_VL_CAPTURE)
 	@python3 $(A2C_ROOT)/pysrc/gen_compile_commands.py \
 		$(COMPDB_MAKE_N_FILES) \

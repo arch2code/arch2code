@@ -321,6 +321,12 @@ echo ""
 echo "Test Suite ${idx}: provider override — selection and duplicate diagnostic"
 echo "------------------------------------------------------------------------"
 python3 test_provider_override.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: C++ module provider/import map"
+echo "------------------------------------------------------------------------"
+python3 test_cpp_module_map.py || FAILED=1
 
 echo ""
 echo "========================================================================"
