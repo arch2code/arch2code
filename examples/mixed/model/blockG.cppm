@@ -12,14 +12,16 @@ module;
 #include "apb_channel.h"
 #include "status_channel.h"
 #include "mixedVariantConfig.h"
+// GENERATED_CODE_END
 
+// GENERATED_CODE_BEGIN --template=moduleExport
 export module blockG.block;
 import blockG.base;
 import mixed;
 import blockGLeaf.base;
 import blockGRegs.base;
 // GENERATED_CODE_END
-
+// user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
 using namespace mixed_ns;
 

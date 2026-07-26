@@ -68,6 +68,20 @@ The text conversion (step 1) runs these phases over the project's YAML file set:
   header mode by design). This conversion is part of `yamlFormat: 2`; it runs
   before the stamp short-circuit so a project stamped before the phase existed
   still has its includes migrated.
+- **Module header — single region → GMF + moduleExport.** Restructures every
+  block-module `.cppm` (one carrying a `moduleScaffold --section=blockModuleHeader`
+  region) from the legacy single header region into the three-section form:
+  GMF-only `blockModuleHeader`, a new `moduleExport` region owning `export module`
+  + the imports, and two seeded user slots (`// user #includes here` in the GMF
+  zone, `// user imports here` in the preamble). It inserts the `moduleExport`
+  region and the `// user imports here` slot just before the class region
+  (`classDecl`, or `blockRegs --section=header` for a reg-handler); the next
+  `gen` refills `blockModuleHeader` to GMF-only and populates `moduleExport`. The
+  old user gap between the header and class regions ends up in the GMF zone, so an
+  existing `#include "endOfTest.h"` there lands in the GMF slot automatically. It
+  manipulates markers only — every span below the class region is untouched. Part
+  of `yamlFormat: 2`, idempotent (a file already carrying a `moduleExport` region
+  is a no-op), and, like the includes phase, runs before the stamp short-circuit.
 
 Because a stamped-but-orphan-carrying project exits step 1 with zero, the
 pipeline still proceeds to sweep, scaffold, and regenerate it — so `make migrate`
@@ -94,6 +108,7 @@ clean report.
 | `TODO_INTERFACE_SCOPE` | address phase | A router has no `addressBus: true` interface in its load-time scope. | `address-migration` skill, Step 2 |
 | `TODO_LEAF_REGISTER_PORTS` | address phase | A routed leaf needs `registerPorts:`. | `address-migration` skill, `registerPorts:` note (Migration Diagnostics) |
 | `TODO_USER_IMPORT` | includes phase | Hand-written user code `#include`s a migrated context header. | Section 4 below |
+| `TODO_MODULE_IMPORT` | module-header phase | A hand-added `import` line was left in the old header→class gap, which the restructure moved into the GMF zone (before `export module`) where imports are illegal. Never moved by the tool. | Section 4a below |
 | eval `NEEDS_MANUAL` | eval phase | A real-valued eval (e.g. `$DWORD / 2.0`) cannot be expressed in the SV subset. | Replace the `eval:` with a literal `value:` (hand decision). |
 | `TODO_PORT` | orphan sweep | An old-form user `.cpp`/`.h` pair that the current map now produces in a different form — a block that was parameterized so its artifact is a single `.cppm`. Never deleted by the sweep. | Section 6 below (agent-driven port) |
 | `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 4 below |
@@ -205,6 +220,24 @@ hand-written code and stale build state:
 3. **Verify.** Rebuild and run the project's normal targets (for example
    `make -C <project>/rundir all run`). A clean build and run confirms the
    migration.
+
+## 4a. Relocate a stray module import (`TODO_MODULE_IMPORT`)
+
+The module-header restructure moves the old user gap (between the legacy header
+region and the class region) into the **GMF zone**, before `export module`. A
+non-modular `#include` there is correct — it attaches to the global module. A
+hand-added **`import`** there is not: C++20 forbids an import before the module
+declaration (clang: `imports must immediately follow the module declaration`).
+The tool reports each such line as `TODO_MODULE_IMPORT` and never moves it.
+
+Fix it by hand: cut the `import <name>;` line out of the GMF gap (between the
+`blockModuleHeader` `GENERATED_CODE_END` and the `moduleExport`
+`GENERATED_CODE_BEGIN`) and paste it into the `// user imports here` slot (the
+gap between the `moduleExport` `GENERATED_CODE_END` and the class region's
+`GENERATED_CODE_BEGIN`). That slot is the module preamble, where imports are
+legal. Order within the slot: every `import` first, then any `using namespace`.
+Do **not** paste inside a generated region. Re-run `make migrate` to confirm the
+`TODO_MODULE_IMPORT` is gone.
 
 ## 5. Adopt the generated `createTbTop()` helper
 
@@ -535,8 +568,8 @@ migration, and resolve any manual item the report listed.
 - `make migrate-hierarchical` / `migrateYaml.py --to-hierarchical` — the opt-in
   layout migration (`pysrc/migrateLayout.py`).
 - `pysrc/evalPyToSv.py` (Phase A), `pysrc/migrateAddressControl.py` (Phase B),
-  `pysrc/migrateIncludes.py` (Includes phase) — the text-conversion phase
-  libraries.
+  `pysrc/migrateIncludes.py` (Includes phase), `pysrc/migrateModuleHeader.py`
+  (Module-header phase) — the text-conversion phase libraries.
 - `pysrc/migrateOrphans.py` — the orphan sweep (`migrateYaml.py --sweep`): the
   embedded legacy file map, its `delete`/`port`/`leave` dispositions, and the
   `TODO_PORT` / `TODO_USER_INCLUDE` / `TODO_UNGENERATED_FILE` reports.

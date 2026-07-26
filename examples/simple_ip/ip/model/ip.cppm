@@ -15,14 +15,16 @@ module;
 #include "hwRegister.h"
 #include "hwMemory.h"
 #include "ipVariantConfig.h"
+// GENERATED_CODE_END
 
+// GENERATED_CODE_BEGIN --template=moduleExport
 export module ip.block;
 import ip.base;
 import ip;
-using namespace ip_ns;
 // GENERATED_CODE_END
-
+// user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace ip_ns;
 
 export template<typename Config>
 SC_MODULE(ip), public blockBase, public ipBase<Config>

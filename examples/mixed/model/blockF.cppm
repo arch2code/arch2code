@@ -14,12 +14,14 @@ module;
 #include "addressMap.h"
 #include "hwMemory.h"
 #include "mixedVariantConfig.h"
+// GENERATED_CODE_END
 
+// GENERATED_CODE_BEGIN --template=moduleExport
 export module blockF.block;
 import blockF.base;
 import mixedBlockC;
 // GENERATED_CODE_END
-
+// user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
 using namespace mixedBlockC_ns;
 

@@ -15,12 +15,14 @@ module;
 #include "hwRegister.h"
 #include "hwMemory.h"
 #include "ipVariantConfig.h"
+// GENERATED_CODE_END
 
+// GENERATED_CODE_BEGIN --template=moduleExport
 export module ip.block;
 import ip.base;
 import ip;
 // GENERATED_CODE_END
-
+// user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
 using namespace ip_ns;
 

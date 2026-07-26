@@ -12,12 +12,14 @@ module;
 #include "push_ack_channel.h"
 #include "ipLeafVariantConfig.h"
 #include "srcVariantConfig.h"
+// GENERATED_CODE_END
 
+// GENERATED_CODE_BEGIN --template=moduleExport
 export module src.block;
 import src.base;
 import ipLeaf.base;
 // GENERATED_CODE_END
-
+// user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
 
 export template<typename Config>

@@ -12,12 +12,14 @@ module;
 #include "addressMap.h"
 #include "hwMemory.h"
 #include "ipLeafVariantConfig.h"
+// GENERATED_CODE_END
 
+// GENERATED_CODE_BEGIN --template=moduleExport
 export module ipLeaf.block;
 import ipLeaf.base;
 import ipLeaf;
 // GENERATED_CODE_END
-
+// user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
 using namespace ipLeaf_ns;
 

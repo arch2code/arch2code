@@ -14,13 +14,15 @@ module;
 #include "addressMap.h"
 #include "hwRegister.h"
 #include "mixedVariantConfig.h"
+// GENERATED_CODE_END
 
+// GENERATED_CODE_BEGIN --template=moduleExport
 export module blockGRegs.block;
 import blockGRegs.base;
 import mixed;
 using namespace mixed_ns;
 // GENERATED_CODE_END
-
+// user imports here
 // GENERATED_CODE_BEGIN --template=blockRegs --section=header
 export template<typename Config>
 SC_MODULE(blockGRegs), public blockBase, public blockGRegsBase<Config>

@@ -30,6 +30,7 @@ templates:
   blockRegistrar: $a2c/templates/systemc/blockRegistrar.py
   vlRegistrar: $a2c/templates/systemc/vlRegistrar.py
   moduleScaffold: $a2c/templates/systemc/moduleScaffold.py
+  moduleExport: $a2c/templates/systemc/moduleScaffold.py
   scaffold: $a2c/templates/fileGen/scaffold.py
   headers: $a2c/templates/systemc/headers.py
   includes: $a2c/templates/systemc/includes.py

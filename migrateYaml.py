@@ -59,6 +59,7 @@ from pysrc.migrateLayout import (
 )
 from pysrc.migrateAddressControl import migrateAddressControlInProject
 from pysrc.migrateIncludes import migrateIncludesInProject
+from pysrc.migrateModuleHeader import migrateModuleHeaderInProject
 from pysrc.migrateOrphans import renderReport as renderOrphanReport, sweepOrphans
 from pysrc.processYaml import CURRENT_YAML_FORMAT, projectOpen
 
@@ -70,6 +71,7 @@ class MigrateResult:
     evalReports: list = field(default_factory=list)  # list[evalPyToSv.FileReport]
     addressReport: object = None                      # migrateAddressControl.MigrationReport
     includesReport: object = None                     # migrateIncludes.IncludesReport
+    moduleHeaderReport: object = None                 # migrateModuleHeader.ModuleHeaderReport
     stamped: bool = False
     wrote: bool = False
 
@@ -82,14 +84,17 @@ class MigrateResult:
     @property
     def stampEligible(self):
         """True when nothing is left for the user to fix by hand: no manual eval
-        rows, a clean Phase B report, and a clean includes phase. Phase B's
-        `clean` encodes that no address TODO remains and the `addressControl:`
-        pointer was removed; the includes phase's `clean` encodes that no
-        user-code import rewrite remains. All three are part of yamlFormat: 2."""
-        if self.addressReport is None or self.includesReport is None:
+        rows, a clean Phase B report, a clean includes phase, and a clean
+        module-header phase. Phase B's `clean` encodes that no address TODO
+        remains and the `addressControl:` pointer was removed; the includes
+        phase's `clean` encodes that no user-code import rewrite remains; the
+        module-header phase's `clean` encodes that no stray GMF-zone import
+        remains to relocate. All are part of yamlFormat: 2."""
+        if (self.addressReport is None or self.includesReport is None
+                or self.moduleHeaderReport is None):
             return False
         return (not self.evalManual and self.addressReport.clean
-                and self.includesReport.clean)
+                and self.includesReport.clean and self.moduleHeaderReport.clean)
 
 
 def migrateProject(projectYamlPath, write=False):
@@ -112,9 +117,18 @@ def migrateProject(projectYamlPath, write=False):
     # includes migrated; the eval/address phases already ran when it was stamped.
     result.includesReport = migrateIncludesInProject(projectYamlPath, write=write)
 
+    # The block-module header restructure (single header region -> GMF-only
+    # blockModuleHeader + moduleExport + seeded user slots) is part of
+    # yamlFormat: 2. Like the includes phase it runs on every invocation, is
+    # idempotent (a file already in three-section form is a no-op), and runs
+    # before the stamp short-circuit so a project stamped before this phase
+    # existed still gets its block `.cppm` headers restructured.
+    result.moduleHeaderReport = migrateModuleHeaderInProject(projectYamlPath, write=write)
+
     if projectData.get("yamlFormat") == CURRENT_YAML_FORMAT:
         result.alreadyMigrated = True
-        result.wrote = write and result.includesReport.written
+        result.wrote = write and (result.includesReport.written
+                                  or result.moduleHeaderReport.written)
         return result
 
     projectDir = os.path.dirname(projectYamlPath)
@@ -153,6 +167,7 @@ def migrateProject(projectYamlPath, write=False):
         any(r.written for r in result.evalReports)
         or result.addressReport.written
         or result.includesReport.written
+        or result.moduleHeaderReport.written
         or result.stamped
     )
     return result
@@ -177,11 +192,13 @@ def renderReport(result, write):
         lines.append(f"Already migrated (yamlFormat: {CURRENT_YAML_FORMAT}); "
                      f"eval/address phases skipped.")
         _renderIncludes(result, lines)
+        _renderModuleHeader(result, lines)
         return "\n".join(lines)
 
     _renderPhaseA(result, lines)
     _renderPhaseB(result, lines)
     _renderIncludes(result, lines)
+    _renderModuleHeader(result, lines)
     _renderPhaseC(result, write, lines)
     return "\n".join(lines)
 
@@ -241,6 +258,23 @@ def _renderIncludes(result, lines):
             lines.append(f"    {item.location}  {item.kind}  {item.message}")
 
 
+def _renderModuleHeader(result, lines):
+    lines.append("")
+    lines.append("Module header - single region -> GMF + moduleExport sections")
+    report = result.moduleHeaderReport
+    if report is None or (not report.applied and not report.manual):
+        lines.append("  block module headers already three-section; nothing to do")
+        return
+    if report.applied:
+        lines.append("  applied:")
+        for item in report.applied:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+    if report.manual:
+        lines.append("  manual TODO (see the migration skill):")
+        for item in report.manual:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+
+
 def _renderPhaseC(result, write, lines):
     lines.append("")
     lines.append(f"Phase C - stamp yamlFormat: {CURRENT_YAML_FORMAT}")
@@ -258,6 +292,8 @@ def _renderPhaseC(result, write, lines):
     for item in result.addressReport.manual:
         lines.append(f"    - {item.location} {item.message}")
     for item in result.includesReport.manual:
+        lines.append(f"    - {item.location} {item.message}")
+    for item in result.moduleHeaderReport.manual:
         lines.append(f"    - {item.location} {item.message}")
     lines.append("  Resolve the items above (see address-migration.md for the "
                  "address TODOs and the migration skill for the include "
@@ -390,7 +426,8 @@ def main(argv=None):
     # work. Anything else means migration work remains, so signal non-zero.
     if args.write:
         ok = result.stamped or (result.alreadyMigrated
-                                and result.includesReport.clean)
+                                and result.includesReport.clean
+                                and result.moduleHeaderReport.clean)
         if not ok:
             return 1
     return 0
