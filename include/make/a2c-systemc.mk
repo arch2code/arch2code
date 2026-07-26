@@ -90,8 +90,12 @@ CPP_SRC += $(foreach dir, $(PRJ_SRC_DIRS), $(wildcard $(dir)/*.cpp))
 # outside those directories. Scan the complete source set once per make parse
 # into a Make include; this replaces the prior repeated $(shell sed ...) lookups
 # that rescanned every module for every emitted compiler command.
+# Source the manifest's full module set (A2C_CPP_MODULE_FILES), not SC_GEN_FILES:
+# the gen set is now owned-only, but every imported module -- including foreign
+# sub-project .cppm this build compiles but never regenerates -- must still be
+# scanned so importers resolve their `import`s.
 CPP_MODULE_CANDIDATES := $(sort \
-	$(filter %.cppm,$(SC_GEN_FILES)) \
+	$(wildcard $(A2C_CPP_MODULE_FILES)) \
 	$(foreach dir,$(PRJ_SRC_DIRS),$(wildcard $(dir)/*.cppm)) \
 	$(EXTRA_CPP_MODULE_SRC))
 CPP_MODULE_MAP := $(GEN_BUILD_DIR)/cpp-modules.mk
