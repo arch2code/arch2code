@@ -125,6 +125,36 @@ def test_migrate_removes_override_and_stale_files():
         check(not report.clean, "report not clean while a user import remains")
 
 
+def test_user_region_include_in_generated_file_reported():
+    """An include a user left in the USER region of a GENERATED file is reported.
+
+    Such a line is refreshed by nobody: `make gen` rewrites only generated
+    regions, so it survives the migration, and skipping marker-carrying files
+    wholesale would leave it to break the build with no diagnostic. The include
+    inside a generated region on the same file must still be ignored — that one
+    `make gen` does rewrite."""
+    print("test_user_region_include_in_generated_file_reported")
+    with tempfile.TemporaryDirectory() as root:
+        projectYaml, modelDir, _ = _project(root, '{hdr: "h", src: "cpp"}')
+        with open(os.path.join(modelDir, "topIncludes.h"), "w") as fh:
+            fh.write(GEN_MARKER)
+        # One include inside the generated region (regen rewrites it) and one in
+        # the user gap after it (nothing rewrites it).
+        with open(os.path.join(modelDir, "blk.cppm"), "w") as fh:
+            fh.write('// GENERATED_CODE_BEGIN\n'
+                     '#include "topIncludes.h"\n'
+                     '// GENERATED_CODE_END\n'
+                     '#include "topIncludes.h"\n')
+
+        report = migrateIncludesInProject(projectYaml, write=True)
+
+        userTodos = [i for i in report.manual if i.kind == TODO_USER_IMPORT]
+        check(len(userTodos) == 1,
+              "exactly one TODO_USER_IMPORT (user region only, not the generated one)")
+        check(userTodos and userTodos[0].location.endswith(":4"),
+              "TODO_USER_IMPORT points at the user-region line, not the generated one")
+
+
 def test_user_authored_namematch_not_deleted():
     print("test_user_authored_namematch_not_deleted")
     with tempfile.TemporaryDirectory() as root:
@@ -183,6 +213,7 @@ def test_already_cppm_is_noop():
 
 if __name__ == "__main__":
     test_migrate_removes_override_and_stale_files()
+    test_user_region_include_in_generated_file_reported()
     test_user_authored_namematch_not_deleted()
     test_dry_run_changes_nothing()
     test_already_cppm_is_noop()

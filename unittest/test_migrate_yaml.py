@@ -329,8 +329,89 @@ def test_already_migrated_short_circuits():
     return True
 
 
+def _composed(root, *, childFormat):
+    """A two-project composition on disk: a top project referencing one child
+    project, each with its own project root and `rundir/`. Returns the top's
+    project.yaml path."""
+    childYamlDir = os.path.join(root, "ip", "prj", "yaml")
+    os.makedirs(childYamlDir)
+    os.makedirs(os.path.join(root, "ip", "rundir"))
+    sentinel = (f"yamlFormat: {childFormat}\n"
+                if childFormat is not None else "")
+    with open(os.path.join(childYamlDir, "ipProject.yaml"), "w") as fh:
+        fh.write(f"{sentinel}"
+                 "projectName: ip\n"
+                 "dirs:\n"
+                 "    root: ../..\n"
+                 "fileGeneration:\n"
+                 "    layout: hierarchical\n")
+    # A design file listed beside the child project file: it must NOT be mistaken
+    # for a child project (it carries none of the three project sentinel keys).
+    with open(os.path.join(root, "design.yaml"), "w") as fh:
+        fh.write("blocks:\n    blk:\n        desc: \"a block\"\n")
+    topYaml = os.path.join(root, "project.yaml")
+    with open(topYaml, "w") as fh:
+        fh.write(f"yamlFormat: {CURRENT_YAML_FORMAT}\n"
+                 "projectName: topProj\n"
+                 "projectFiles:\n"
+                 "  - ip/prj/yaml/ipProject.yaml\n"
+                 "  - design.yaml\n"
+                 "topInstance: top_tb\n")
+    return topYaml
+
+
+def test_unmigrated_child_project_blocks_stamp():
+    """A composed top cannot be called migrated while a child project is not.
+
+    `make migrate` stamps only the project it is handed and the projectCreate
+    gate reads only that file, so an un-migrated child is invisible from the
+    composition and is refused the moment anyone builds it standalone — a failure
+    in a different tree, long after the migration looked done. The check must
+    therefore block the top's own stamp, name the child's `rundir/` so the fix is
+    actionable, and clear once the child is migrated. A referenced DESIGN file
+    must never be mistaken for a child project.
+    """
+    root = tempfile.mkdtemp()
+    try:
+        topYaml = _composed(root, childFormat=None)
+        result = migrateProject(topYaml, write=True)
+
+        assert not result.subProjectsReport.clean, "un-migrated child not reported"
+        assert len(result.subProjectsReport.manual) == 1, \
+            f"design.yaml misread as a child project: {result.subProjectsReport.manual}"
+        assert not result.stampEligible, "child TODO did not block the stamp"
+
+        message = result.subProjectsReport.manual[0].message
+        assert os.path.join("ip", "rundir") in message, \
+            f"child rundir not named, so the fix is not actionable: {message}"
+
+        report = renderReport(result, write=True)
+        assert "Composed build" in report and "ipProject.yaml" in report
+
+        # The top already carries the stamp, so blocking has to show up in the
+        # exit code rather than in a withheld stamp.
+        assert main(["--write", topYaml]) == 1, \
+            "already-stamped top with an un-migrated child must exit non-zero"
+    finally:
+        shutil.rmtree(root)
+
+    root = tempfile.mkdtemp()
+    try:
+        topYaml = _composed(root, childFormat=CURRENT_YAML_FORMAT)
+        result = migrateProject(topYaml, write=True)
+        assert result.subProjectsReport.clean, \
+            "a migrated child must not be reported"
+        assert "Composed build" not in renderReport(result, write=True), \
+            "silent check still printed its section"
+        assert main(["--write", topYaml]) == 0
+    finally:
+        shutil.rmtree(root)
+    return True
+
+
 _TESTS = [
     ("clean project converts both phases and is stamped", test_clean_converts_both_and_stamps),
+    ("un-migrated child project blocks the stamp", test_unmigrated_child_project_blocks_stamp),
     ("addressControl eval is converted into the emitted addressBlock", test_addresscontrol_eval_converted_into_addressblock),
     ("Phase A real eval blocks the stamp", test_phase_a_real_eval_blocks_stamp),
     ("Phase B manual TODO blocks the stamp", test_phase_b_todo_blocks_stamp),

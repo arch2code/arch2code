@@ -72,7 +72,8 @@ import yaml
 
 from pysrc.migrateCommon import (
     _read, _write, _loc, _isGenerated, _projectFileSet, classifyGeneratedDir,
-    SKIP_DIRS, SOURCE_EXTS,
+    extraVarRefs, userRegionLines,
+    HARNESS_MK, SKIP_DIRS, SOURCE_EXTS,
 )
 from pysrc.processYaml import mergeProjectConfig
 
@@ -139,35 +140,16 @@ ORPHAN_DESTS = {
 # basename — so any project's firmware entry file relocates, not just fwIpMain.
 FW_HIER_SEGMENT = "fw"
 
-# Project-root build-config container (holds make/shared.mk etc). Not a fileMap
-# segment; a user-owned root convention that STAYS at the project root. It is not
-# relocated; the migration only re-points the A2C_PRJ_YAML line in the harness
-# makefile below, because the project file moves to prj/yaml/.
-BUILD_CONFIG_DIR = "include"
-
-# The user-owned project build harness (root-relative) whose A2C_PRJ_YAML sets
-# the DB-build input path. It stays at the project root; only its A2C_PRJ_YAML
-# line is re-pointed at the moved project file.
-HARNESS_MK = os.path.join(BUILD_CONFIG_DIR, "make", "shared.mk")
+# The user-owned build makefiles (HARNESS_MK, RUNDIR_MK) and the build-config
+# container holding them come from migrateCommon. They STAY at the project root:
+# the only harness edit made here is re-pointing the A2C_PRJ_YAML line, because
+# the project file moves to prj/yaml/.
 
 # Existing `A2C_PRJ_YAML [:?]?= ...` assignment (replaced in place when present),
 # and the first makefile `include`/`-include` line (the new line is inserted
 # before it so it wins over a2c-common.mk's `?=` default on the first build).
 _A2C_PRJ_YAML_RE = re.compile(r'^[ \t]*A2C_PRJ_YAML[ \t]*[:?]?=.*$', re.M)
 _MK_INCLUDE_RE = re.compile(r'^[ \t]*-?include[ \t]', re.M)
-
-# Root-relative user-owned build makefile (stays at the project root) that can
-# carry EXTRA_* make-variable references to relocatable segment roots.
-RUNDIR_MK = os.path.join("rundir", "Makefile")
-
-# An EXTRA_* make-variable assignment, and a `$(REPO_ROOT)/<top>` path reference
-# within it. <top> is the first path component under the repo root — the
-# functional segment (model, rtl, fw, verif, ...) the layout migration relocates.
-# Matched against one backslash-folded LOGICAL line (see _foldedLines), so a
-# continued list is scanned whole; a line-anchored match would see only the first
-# physical line and silently miss every path on the continuations.
-_EXTRA_VAR_RE = re.compile(r'^[ \t]*(EXTRA_\w+)[ \t]*[:+?]?=(?P<rhs>.*)$')
-_REPO_ROOT_REF_RE = re.compile(r'\$\(REPO_ROOT\)/(?P<top>[^\s/):]+)')
 
 # The yamlFormat value the layout migration presupposes. Kept local so
 # this module stays text-only and never imports processYaml (which opens the DB
@@ -225,7 +207,7 @@ class LayoutReport:
     deletes: list = field(default_factory=list)     # list[str] (abs paths of generated files)
     rewrites: list = field(default_factory=list)    # list[Rewrite] (relative-path re-rooting)
     harnessEdits: list = field(default_factory=list) # list[HarnessEdit] (A2C_PRJ_YAML re-point)
-    relocatableRoots: set = field(default_factory=set) # top-level dir names of the functional segments the migration relocates
+    relocatableSegments: set = field(default_factory=set) # project-root-relative dirs of the functional segments the migration relocates
     projectRoot: str = ""                           # abs dirs.root (map anchor; "" until computed)
     written: bool = False
 
@@ -387,13 +369,17 @@ def _buildRelocationMap(projectYamlPath, projectData, report):
     mergedDirs = mergedProj.get("dirs") or {}
     fullyGenerated = _fullyGeneratedSegments(fileMap)
     for segKey, segDir in _functionalSegments(projectRoot, mergedDirs):
-        # Every functional segment relocates under hierarchical layout (its root is
-        # no longer a valid $(REPO_ROOT)-relative top-level path), so record its
-        # top-level project-root component for the EXTRA_* reference warning.
-        top = _topSegment(segDir, projectRoot)
-        if top is not None:
-            report.relocatableRoots.add(top)
         hierName = hdirs.get(segKey, os.path.basename(segDir))
+        # Record the segment for the EXTRA_* reference warning, but only when it
+        # actually relocates. With a single project-root node the hierarchical
+        # placement collapses to <hierName>, so a segment already sitting there
+        # (functional `model` -> hierarchical `model`) does not move and must not
+        # warn. Any decomposition node other than the root splits the segment into
+        # <node>/<hierName>, which invalidates the whole-segment reference even if
+        # the root-node half stays put.
+        segRel = _segmentRelPath(segDir, projectRoot)
+        if segRel is not None and (nodes != {""} or segRel != hierName):
+            report.relocatableSegments.add(segRel)
         if segKey in fullyGenerated:
             # Directory-level clear. A project-scope orphan (sc_main.cpp,
             # vl_dummy.sv, the retired vl_wrap.* aggregator) MOVES to prj/
@@ -652,7 +638,7 @@ def _planSourceRewrite(mv, srcDir, dstDir, moveIndex, root, report):
     gen refreshes their includes in place."""
     text = _read(mv.src)
     lineOffsets = _lineStartOffsets(text)
-    for lineIdx, line in _userRegionLines(text):
+    for lineIdx, line in userRegionLines(text):
         m = _SOURCE_INCLUDE_RE.match(line)
         if not m:
             continue
@@ -747,23 +733,6 @@ def _scalarValueSpan(text, item):
     return start, end, raw
 
 
-def _userRegionLines(text):
-    """Yield `(lineIndex, lineText)` for every line OUTSIDE a generated region,
-    tracking the GENERATED_CODE_BEGIN/END marker contract (the marker lines
-    themselves are not yielded). Generated regions are excluded so their includes
-    are never hand-edited; make gen refreshes them."""
-    inGen = False
-    for i, line in enumerate(text.splitlines()):
-        if "GENERATED_CODE_BEGIN" in line:
-            inGen = True
-            continue
-        if "GENERATED_CODE_END" in line:
-            inGen = False
-            continue
-        if not inGen:
-            yield i, line
-
-
 def _lineStartOffsets(text):
     """Absolute char offset of the start of each line, index-aligned with
     `text.splitlines()`."""
@@ -822,30 +791,14 @@ def _planHarnessEdit(report):
         HarnessEdit(harness, match.group(0) if match else "", newLine))
 
 
-def _topSegment(path, projectRoot):
-    """The first path component of `path` relative to `projectRoot`, or None when
-    `path` lies outside the project root."""
+def _segmentRelPath(path, projectRoot):
+    """`path` relative to `projectRoot` in posix spelling (the form a
+    `$(REPO_ROOT)/...` make reference uses), or None when `path` lies outside the
+    project root."""
     rel = os.path.relpath(os.path.abspath(path), os.path.abspath(projectRoot))
     if rel == os.pardir or rel.startswith(os.pardir + os.sep):
         return None
-    return rel.split(os.sep)[0]
-
-
-def _foldedLines(text):
-    """Yield (1-based start line, logical line) with make's trailing-backslash
-    continuations folded into one string, so a multi-line variable assignment is
-    matched as a whole. The reported line is where the assignment STARTS, which is
-    the line the user edits."""
-    physical = text.splitlines()
-    i = 0
-    while i < len(physical):
-        start = i
-        logical = physical[i]
-        while logical.endswith("\\") and i + 1 < len(physical):
-            i += 1
-            logical = logical[:-1] + " " + physical[i].strip()
-        yield start + 1, logical
-        i += 1
+    return rel.replace(os.sep, "/")
 
 
 def _planExtraPathWarnings(report):
@@ -862,33 +815,32 @@ def _planExtraPathWarnings(report):
     item per (assignment, referenced root), so a continued list naming several
     segments reports each of them.
 
-    The relocatable roots are the functional segments the migration moves
-    (`report.relocatableRoots`, the top-level project-root component of each), so
-    only references to a segment root that actually relocates warn."""
-    relocatedTops = report.relocatableRoots
-    if not relocatedTops:
+    Matching is by segment path, not by top-level component: a reference warns
+    only when it names a relocating segment (`report.relocatableSegments`) or a
+    path inside one. A sibling that merely shares a top-level component with a
+    relocating segment — `$(REPO_ROOT)/fw/src` beside an `fwInc` segment of
+    `fw/include` — is left where it is by the migration and must not warn."""
+    relocated = report.relocatableSegments
+    if not relocated:
         return
-    for rel in (HARNESS_MK, RUNDIR_MK):
-        path = os.path.join(report.projectRoot, rel)
-        if not os.path.isfile(path):
+    for path, line, var, ref in extraVarRefs(report.projectRoot):
+        seg = _relocatingSegmentOf(ref, relocated)
+        if seg is None:
             continue
-        for line, logical in _foldedLines(_read(path)):
-            m = _EXTRA_VAR_RE.match(logical)
-            if m is None:
-                continue
-            var = m.group(1)
-            # Every distinct relocating root the assignment references is
-            # reported: one continued list commonly names several segments, and a
-            # single item per assignment would leave the rest silently dangling.
-            tops = sorted({r.group("top")
-                           for r in _REPO_ROOT_REF_RE.finditer(m.group("rhs"))
-                           if r.group("top") in relocatedTops})
-            for top in tops:
-                report.manual.append(ReportItem(
-                    TODO_UNREWRITABLE_PATH, _loc(path, line),
-                    f"{var} references '$(REPO_ROOT)/{top}' which relocates under "
-                    f"hierarchical layout and cannot be rewritten mechanically; "
-                    f"re-point it by hand"))
+        report.manual.append(ReportItem(
+            TODO_UNREWRITABLE_PATH, _loc(path, line),
+            f"{var} references '$(REPO_ROOT)/{ref}', which sits in the "
+            f"'{seg}' segment; that segment relocates under hierarchical "
+            f"layout and cannot be rewritten mechanically; re-point it by "
+            f"hand"))
+
+
+def _relocatingSegmentOf(ref, relocated):
+    """The relocating segment `ref` names or sits inside, or None. Longest match
+    wins so a nested segment is named rather than its parent."""
+    matches = [seg for seg in relocated
+               if ref == seg or ref.startswith(seg + "/")]
+    return max(matches, key=len) if matches else None
 
 
 def _applyHarnessEdits(report):

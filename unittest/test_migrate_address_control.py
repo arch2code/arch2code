@@ -27,8 +27,9 @@ base_dir = os.path.dirname(test_dir)
 sys.path.insert(0, base_dir)
 
 from pysrc.migrateAddressControl import (
-    migrateAddressControlInProject,
-    ADDRESS_BLOCK, DROP_DORMANT, POLICY_MOVE, POINTER_REMOVE, POSTPROCESS,
+    migrateAddressControlInProject, routedLeafRegisterPortsAdvisory,
+    ADDRESS_BLOCK, ADVISORY_LEAF_REGISTER_PORTS, DELETE_DEFERRED, DROP_DORMANT,
+    POLICY_MOVE, POINTER_REMOVE, POSTPROCESS,
     TODO_INTERFACE_SCOPE, TODO_LEAF_REGISTER_PORTS, TODO_ROUTER_RESOLUTION,
 )
 
@@ -457,6 +458,10 @@ def test_stranded_file_cleaned_on_later_run():
         assert "addressControl:" not in projOut, "pointer not removed on first run"
         assert os.path.exists(os.path.join(d, "addressControl.yaml")), \
             "file must be kept as reference while dirty"
+        # The survivor must be explained, or the operator hand-deletes a file the
+        # next run removes on its own.
+        assert _find(first.applied, DELETE_DEFERRED), \
+            "first run did not report that the leftover is cleaned on a later run"
 
         # Later run: pointer already gone. The leftover must be cleaned up.
         second = migrateAddressControlInProject(os.path.join(d, "project.yaml"),
@@ -473,8 +478,50 @@ def test_stranded_file_cleaned_on_later_run():
     return True
 
 
+def test_advisory_outlives_the_one_shot_todo():
+    """The routed-leaf question keeps being asked after the migrating run.
+
+    Phase B's TODO_LEAF_REGISTER_PORTS can only be raised while the legacy
+    AddressGroups table still exists, so run 2 has nothing to derive it from and
+    an unanswered leaf would quietly settle as top-down. The advisory recomputes
+    the same set from the migrated schema, so it must be silent BEFORE the
+    migration (the blocking TODO owns that run), name the same leaf after it, and
+    fall silent once the leaf answers with registerPorts: — an advisory that
+    nags a project which already decided just teaches readers to skip the list.
+    """
+    d = _makeProject(_DIRTY_PROJECT, _DIRTY_TOP, _DIRTY_ADDR)
+    try:
+        projectYaml = os.path.join(d, "project.yaml")
+        assert not routedLeafRegisterPortsAdvisory(projectYaml), \
+            "pre-migration project has no addressBlock: to read; must be silent"
+
+        report = migrateAddressControlInProject(projectYaml, write=True)
+        assert _find(report.manual, TODO_LEAF_REGISTER_PORTS), \
+            "expected the one-shot Phase B TODO on the migrating run"
+
+        after = routedLeafRegisterPortsAdvisory(projectYaml)
+        assert _kinds(after) == [ADVISORY_LEAF_REGISTER_PORTS], \
+            f"expected exactly one advisory after migration, got {_kinds(after)}"
+        assert "leafA" in after[0].message and "apbDecode" in after[0].message, \
+            f"advisory must name the leaf and its router: {after[0].message}"
+
+        topPath = os.path.join(d, "top.yaml")
+        answered = open(topPath).read().replace(
+            '    leafA:\n        desc: "routed leaf"\n',
+            '    leafA:\n        desc: "routed leaf"\n'
+            "        registerPorts:\n"
+            "            apbReg: { interface: apbReg }\n")
+        with open(topPath, "w") as fh:
+            fh.write(answered)
+        assert not routedLeafRegisterPortsAdvisory(projectYaml), \
+            "a leaf that declares registerPorts: must not be reported"
+    finally:
+        shutil.rmtree(d)
+
+
 _TESTS = [
     ("dirty project: all applied edits + delegated TODOs", test_dirty_applied_edits),
+    ("routed-leaf advisory outlives the one-shot TODO", test_advisory_outlives_the_one_shot_todo),
     ("stranded addressControl.yaml cleaned on later run", test_stranded_file_cleaned_on_later_run),
     ("clean project finalized (deleted + signaled clean)", test_clean_finalizes),
     ("dry-run reports but changes nothing on disk", test_dry_run_changes_nothing),

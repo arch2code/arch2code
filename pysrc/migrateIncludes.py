@@ -21,9 +21,11 @@ Mechanical (applied automatically):
     in place; firmware headers remain header-mode by design.
 
 Reported and handed to the migration skill (not mechanical):
-  - hand-written user code (a source file with no generated regions) that
-    `#include`s a migrated `"<context>Includes.h"` header and must switch to
-    `import <module>;`. The skill explains the import rewrite.
+  - user-owned code that `#include`s a migrated `"<context>Includes.h"` header
+    and must switch to `import <module>;`. This means the user REGIONS, not
+    whole user files: a generated file's inter-region gaps are user purview that
+    `make gen` never refreshes, so an include left in one is reported too. The
+    skill explains the import rewrite.
 
 When the manual-TODO list is non-empty the project still builds only after the
 skill resolves those user-code includes, so `clean` is False.
@@ -36,7 +38,8 @@ from dataclasses import dataclass, field
 import yaml
 
 from pysrc.migrateCommon import (
-    _read, _write, _loc, _isGenerated, _topValueNode, SKIP_DIRS, SOURCE_EXTS,
+    _read, _write, _loc, _isGenerated, _topValueNode, userRegionLines,
+    SKIP_DIRS, SOURCE_EXTS,
 )
 
 
@@ -180,19 +183,21 @@ def _resolveDir(projectDir, dirs, key):
 
 
 def _userIncludeSites(projectDir, projectData, staleHeaders):
-    """Yield (path, 1-based-line) for every hand-written source file that
-    `#include`s one of `staleHeaders`. A file carrying a GENERATED_CODE_BEGIN
-    marker is generated (its include is rewritten to an import by `make gen`) and
-    is skipped; only user files need the manual import rewrite."""
+    """Yield (path, 1-based-line) for every include of one of `staleHeaders` that
+    sits in USER-owned text and therefore needs the manual import rewrite.
+
+    A generated file is scanned too, but only across its user regions. `make gen`
+    rewrites the include in a *generated* region into an `import` on its own, so
+    those lines are skipped — but the gaps between regions are user purview and
+    are refreshed by nobody. An include a user left in such a gap is invisible to
+    both halves of the toolchain, so skipping marker-carrying files wholesale
+    would let it break the build with no diagnostic."""
     if not staleHeaders:
         return
     dirs = projectData.get("dirs") or {}
     rootDir = os.path.abspath(os.path.join(projectDir, dirs["root"]))
     for path in sorted(_sourceFiles(rootDir)):
-        text = _read(path)
-        if "GENERATED_CODE_BEGIN" in text:
-            continue
-        for i, line in enumerate(text.splitlines()):
+        for i, line in userRegionLines(_read(path)):
             stripped = line.strip()
             if not stripped.startswith("#include"):
                 continue

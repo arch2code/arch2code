@@ -40,12 +40,19 @@ segment, is never destroyed). Removal is a plain filesystem delete (never
 `git rm`). User `#include` sites of a deleted header are handed to the operator
 as manual TODOs. The sweep is delete-only; the operator runs `make gen`
 afterwards to recreate the current-format artifacts.
+
+One check here is not about orphans at all: directories of C++ that the build
+manifest does not compile. It rides in this module because it needs the same
+post-`make db` handle — the manifest it diffs against is written when the
+database is built — and because its finding is the same kind of hand-off, a
+manual TODO the operator resolves.
 """
 
 import os
 from dataclasses import dataclass, field
 
-from pysrc.migrateCommon import _isGenerated, classifyGeneratedDir
+from pysrc.migrateCommon import (_isGenerated, classifyGeneratedDir,
+                                 extraVarRefs, SKIP_DIRS)
 from pysrc.migrateIncludes import _userIncludeSites
 from pysrc.processYaml import expandNewModulePath, fileMapCondMatch
 
@@ -131,6 +138,12 @@ TODO_PORT = "TODO_PORT"                          # user-code file awaiting agent
 TODO_USER_INCLUDE = "TODO_USER_INCLUDE"          # user code #includes a deleted header
 TODO_MISSING_BASEPATH = "TODO_MISSING_BASEPATH"  # legacy basePath absent from current layout; entry skipped
 TODO_UNSUPPORTED_LAYOUT = "TODO_UNSUPPORTED_LAYOUT"  # context owner uses hierarchical layout; not swept
+TODO_UNMANIFESTED_SRC_DIR = "TODO_UNMANIFESTED_SRC_DIR"  # C++ dir the retired glob compiled, absent from the manifest
+
+# C++ compile units. A header-only directory is out of scope: what the manifest
+# switch changed is WHICH directories are compiled, and a directory holding no
+# compile unit was never one of them.
+_CPP_UNIT_EXTS = (".cpp", ".cc", ".cppm")
 
 
 @dataclass(frozen=True)
@@ -524,6 +537,11 @@ def sweepOrphans(prj, write=False):
             f"identity; switch it to the current artifact (import the module, "
             f"or include the current file)"))
 
+    # Independent of the orphan sweep proper: nothing is deleted or expanded for
+    # it. It rides here because it needs the same post-`make db` handle — the
+    # build manifest it diffs against is only written when the database is built.
+    _reportUnmanifestedSrcDirs(prj, report, rootDir)
+
     if write:
         # Mixed-segment per-file deletes plus the fully-generated segment files;
         # both are marker-guarded plain filesystem deletes (never `git rm`).
@@ -537,6 +555,55 @@ def sweepOrphans(prj, write=False):
         report.written = bool(deleted or wholesaleRemoved)
 
     return report
+
+
+def _cppSourceDirs(rootDir):
+    """Every directory under `rootDir` holding at least one C++ compile unit."""
+    found = set()
+    for dirpath, dirnames, filenames in os.walk(rootDir):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        if any(fn.endswith(_CPP_UNIT_EXTS) for fn in filenames):
+            found.add(os.path.abspath(dirpath))
+    return found
+
+
+def _reportUnmanifestedSrcDirs(prj, report, rootDir):
+    """Report each directory of C++ the build has stopped compiling.
+
+    Before the build manifest, the C++ source list came from walking the tree, so
+    a directory outside the segment roots — a firmware directory, a shared helper
+    directory, or a SUBDIRECTORY of a segment root — was compiled without ever
+    being declared. The manifest enumerates only the roots arch2code itself places
+    artifacts in and each is globbed one level deep, so every such directory
+    silently drops out of the build. The same list feeds the include path, so the
+    first symptom is usually a missing header or an undefined symbol in an
+    UNRELATED translation unit, far from the cause; that distance is why this is
+    detected here rather than left to the operator to notice.
+
+    Membership is by EXACT directory, never by prefix: a subdirectory of a
+    manifest root is genuinely uncovered because the glob does not recurse.
+    `EXTRA_PRJ_SRC_DIRS` counts as covered, which is what lets the item clear —
+    the operator wires the directory up (or removes it from the tree) and the next
+    sweep is silent, so this converges like every other TODO here.
+    """
+    manifest = prj.config.getConfig("BUILDMANIFEST")
+    covered = {os.path.abspath(d)
+               for d in manifest["scSrcDirs"] + manifest["vlWrapDirs"]}
+    covered |= {os.path.abspath(os.path.join(rootDir, ref))
+                for _, _, var, ref in extraVarRefs(rootDir)
+                if var == "EXTRA_PRJ_SRC_DIRS"}
+    for path in sorted(_cppSourceDirs(rootDir) - covered):
+        rel = os.path.relpath(path, rootDir)
+        report.manual.append(ReportItem(
+            TODO_UNMANIFESTED_SRC_DIR, rel,
+            f"'{rel}' holds C++ that the build manifest does not compile, and "
+            f"the retired tree-walking scan did. Decide which this directory is: "
+            f"if the project must compile it, add "
+            f"`EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/{rel}` to rundir/Makefile "
+            f"(that also puts it on the include path); if it is not part of this "
+            f"build — vendored, an example, or dead code — take it out of the "
+            f"project tree. Either resolution clears this item; adding it "
+            f"reflexively compiles code that may never have been meant to build"))
 
 
 def _dispositionMap(disposition):

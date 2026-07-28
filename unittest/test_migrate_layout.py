@@ -572,7 +572,12 @@ def test_extra_var_warning_spans_continuations(ok):
     one path. Matching per physical line would see only the first line of such an
     assignment and silently drop the rest — and because this path only warns, the
     miss would surface as a dangling reference after the move rather than as a
-    TODO. Each item is reported at the line where the assignment STARTS."""
+    TODO. Each item is reported at the line where the assignment STARTS.
+
+    Matching is by SEGMENT PATH, not top-level component: `fw/src` sits beside the
+    `fw/include` segment rather than inside it, so the migration leaves it alone
+    and it must not be reported. Over-reporting here trains readers to skim the
+    one list that also carries the references that genuinely dangle."""
     tmp = tempfile.mkdtemp(prefix="layoutextra_")
     try:
         _write(os.path.join(tmp, "rundir", "Makefile"),
@@ -580,13 +585,14 @@ def test_extra_var_warning_spans_continuations(ok):
                "EXTRA_CPP_SRC = $(REPO_ROOT)/model/a.cpp\n"
                "EXTRA_PRJ_SRC_DIRS += \\\n"
                "    $(REPO_ROOT)/fw/src \\\n"
+               "    $(REPO_ROOT)/fw/include/gen \\\n"
                "    $(REPO_ROOT)/rtl/extra\n"
                "OTHER_VAR = $(REPO_ROOT)/model/ignored.cpp\n"
                "EXTRA_UNRELATED = $(REPO_ROOT)/include/make/x.mk\n")
         r = LayoutReport(projectYaml="", state=LAYOUT_NEEDS_MIGRATION,
                          declaredLayout="hierarchical")
         r.projectRoot = tmp
-        r.relocatableRoots = {"model", "fw", "rtl"}
+        r.relocatableSegments = {"model", "fw/include", "rtl"}
         _planExtraPathWarnings(r)
 
         items = [i for i in r.manual if i.kind == TODO_UNREWRITABLE_PATH]
@@ -598,12 +604,15 @@ def test_extra_var_warning_spans_continuations(ok):
                      any("EXTRA_PRJ_SRC_DIRS" in i.message for i in items))
         ok &= _check("continued assignment reported at its start line",
                      any(i.location.endswith(":3") for i in items))
-        # One item per referenced root: the continued list names both fw and rtl,
-        # and reporting only the first would leave the other silently dangling.
+        # One item per relocating reference: the continued list names paths in
+        # both fw/include and rtl, and reporting only the first would leave the
+        # other silently dangling.
         continued = [i.message for i in items if "EXTRA_PRJ_SRC_DIRS" in i.message]
-        ok &= _check("every relocating root in one assignment reported",
-                     any("/fw'" in m for m in continued)
-                     and any("/rtl'" in m for m in continued))
+        ok &= _check("every relocating reference in one assignment reported",
+                     any("/fw/include/gen'" in m for m in continued)
+                     and any("/rtl/extra'" in m for m in continued))
+        ok &= _check("sibling of a relocating segment not reported",
+                     not any("/fw/src'" in m for m in continued))
         ok &= _check("non-EXTRA_ variable ignored", "OTHER_VAR" not in messages)
         ok &= _check("EXTRA_* pointing at a non-relocating root ignored",
                      "EXTRA_UNRELATED" not in messages)

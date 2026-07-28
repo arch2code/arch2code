@@ -57,10 +57,12 @@ from pysrc.migrateLayout import (
     LAYOUT_NEEDS_MIGRATION,
     migrateLayoutInProject,
 )
-from pysrc.migrateAddressControl import migrateAddressControlInProject
+from pysrc.migrateAddressControl import (migrateAddressControlInProject,
+                                         routedLeafRegisterPortsAdvisory)
 from pysrc.migrateIncludes import migrateIncludesInProject
 from pysrc.migrateModuleHeader import migrateModuleHeaderInProject
 from pysrc.migrateOrphans import renderReport as renderOrphanReport, sweepOrphans
+from pysrc.migrateSubProjects import checkSubProjects
 from pysrc.migrateProjectParam import (
     renderReport as renderProjectParamReport,
     restampProjectParam,
@@ -77,6 +79,8 @@ class MigrateResult:
     addressReport: object = None                      # migrateAddressControl.MigrationReport
     includesReport: object = None                     # migrateIncludes.IncludesReport
     moduleHeaderReport: object = None                 # migrateModuleHeader.ModuleHeaderReport
+    subProjectsReport: object = None                  # migrateSubProjects.SubProjectsReport
+    leafAdvisory: list = field(default_factory=list)  # list[migrateAddressControl.ReportItem]
     stamped: bool = False
     wrote: bool = False
 
@@ -89,17 +93,21 @@ class MigrateResult:
     @property
     def stampEligible(self):
         """True when nothing is left for the user to fix by hand: no manual eval
-        rows, a clean Phase B report, a clean includes phase, and a clean
-        module-header phase. Phase B's `clean` encodes that no address TODO
-        remains and the `addressControl:` pointer was removed; the includes
-        phase's `clean` encodes that no user-code import rewrite remains; the
-        module-header phase's `clean` encodes that no stray GMF-zone import
-        remains to relocate. All are part of yamlFormat: 2."""
+        rows, a clean Phase B report, a clean includes phase, a clean
+        module-header phase, and every referenced child project already migrated.
+        Phase B's `clean` encodes that no address TODO remains and the
+        `addressControl:` pointer was removed; the includes phase's `clean`
+        encodes that no user-code import rewrite remains; the module-header
+        phase's `clean` encodes that no stray GMF-zone import remains to
+        relocate; the sub-project check's `clean` encodes that the rest of the
+        composition is migrated too. All are part of yamlFormat: 2."""
         if (self.addressReport is None or self.includesReport is None
-                or self.moduleHeaderReport is None):
+                or self.moduleHeaderReport is None
+                or self.subProjectsReport is None):
             return False
         return (not self.evalManual and self.addressReport.clean
-                and self.includesReport.clean and self.moduleHeaderReport.clean)
+                and self.includesReport.clean and self.moduleHeaderReport.clean
+                and self.subProjectsReport.clean)
 
 
 def migrateProject(projectYamlPath, write=False):
@@ -129,6 +137,19 @@ def migrateProject(projectYamlPath, write=False):
     # before the stamp short-circuit so a project stamped before this phase
     # existed still gets its block `.cppm` headers restructured.
     result.moduleHeaderReport = migrateModuleHeaderInProject(projectYamlPath, write=write)
+
+    # Composed builds: every child project this one names must be migrated in its
+    # own tree. Runs before the short-circuit so a top stamped before a child was
+    # added still reports it, and because it is the only check that looks past
+    # this project at all.
+    result.subProjectsReport = checkSubProjects(projectYamlPath,
+                                                CURRENT_YAML_FORMAT)
+
+    # Advisory, not a phase: it writes nothing and is excluded from stampEligible
+    # by construction. It sits before the short-circuit because its whole purpose
+    # is to outlive the stamp — Phase B's equivalent TODO can only be raised on
+    # the one run that still has the legacy AddressGroups table to read.
+    result.leafAdvisory = routedLeafRegisterPortsAdvisory(projectYamlPath)
 
     if projectData.get("yamlFormat") == CURRENT_YAML_FORMAT:
         result.alreadyMigrated = True
@@ -198,12 +219,16 @@ def renderReport(result, write):
                      f"eval/address phases skipped.")
         _renderIncludes(result, lines)
         _renderModuleHeader(result, lines)
+        _renderSubProjects(result, lines)
+        _renderLeafAdvisory(result, lines)
         return "\n".join(lines)
 
     _renderPhaseA(result, lines)
     _renderPhaseB(result, lines)
     _renderIncludes(result, lines)
     _renderModuleHeader(result, lines)
+    _renderSubProjects(result, lines)
+    _renderLeafAdvisory(result, lines)
     _renderPhaseC(result, write, lines)
     return "\n".join(lines)
 
@@ -280,6 +305,31 @@ def _renderModuleHeader(result, lines):
             lines.append(f"    {item.location}  {item.kind}  {item.message}")
 
 
+def _renderSubProjects(result, lines):
+    """Render the composed-build check. Silent on a project that references no
+    child projects, which is most of them."""
+    report = result.subProjectsReport
+    if report is None or report.clean:
+        return
+    lines.append("")
+    lines.append("Composed build - child projects not yet migrated")
+    lines.append("  manual TODO (see the migration skill):")
+    for item in report.manual:
+        lines.append(f"    {item.location}  {item.kind}  {item.message}")
+
+
+def _renderLeafAdvisory(result, lines):
+    """Render the routed-leaf advisory. Silent when there is nothing to say — it
+    prints on every run and would otherwise be noise in the common case."""
+    if not result.leafAdvisory:
+        return
+    lines.append("")
+    lines.append("Advisory - routed leaves with no registerPorts: "
+                 "(informational; does not block the stamp)")
+    for item in result.leafAdvisory:
+        lines.append(f"    {item.location}  {item.kind}  {item.message}")
+
+
 def _renderPhaseC(result, write, lines):
     lines.append("")
     lines.append(f"Phase C - stamp yamlFormat: {CURRENT_YAML_FORMAT}")
@@ -299,6 +349,8 @@ def _renderPhaseC(result, write, lines):
     for item in result.includesReport.manual:
         lines.append(f"    - {item.location} {item.message}")
     for item in result.moduleHeaderReport.manual:
+        lines.append(f"    - {item.location} {item.message}")
+    for item in result.subProjectsReport.manual:
         lines.append(f"    - {item.location} {item.message}")
     lines.append("  Resolve the items above (see address-migration.md for the "
                  "address TODOs and the migration skill for the include "
@@ -440,13 +492,16 @@ def main(argv=None):
     # could not stamp (manual work remains) fails so `make migrate` signals the
     # project is not yet buildable.
     # A --write run succeeds when the project is format-2 clean: either it was
-    # stamped this run, or it already carried the stamp and the includes phase
-    # (the one part of format 2 that can post-date the stamp) left no manual
-    # work. Anything else means migration work remains, so signal non-zero.
+    # stamped this run, or it already carried the stamp and the checks that can
+    # post-date the stamp left no manual work. Those are the includes and
+    # module-header phases plus the composed-build check, which can start
+    # reporting long after the stamp — a child project added to `projectFiles:`
+    # later is un-migrated on a project that is itself already format 2.
     if args.write:
         ok = result.stamped or (result.alreadyMigrated
                                 and result.includesReport.clean
-                                and result.moduleHeaderReport.clean)
+                                and result.moduleHeaderReport.clean
+                                and result.subProjectsReport.clean)
         if not ok:
             return 1
     return 0

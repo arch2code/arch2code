@@ -48,11 +48,15 @@ DROP_DORMANT = "DROP_DORMANT"       # dormant AddressGroups row dropped, not con
 POLICY_MOVE = "POLICY_MOVE"         # InstanceGroups/AddressObjects moved to project.yaml
 POINTER_REMOVE = "POINTER_REMOVE"   # addressControl: pointer removed from project.yaml
 POSTPROCESS = "POSTPROCESS"         # postProcess: normalized (rewrite / dedup / keep)
+DELETE_DEFERRED = "DELETE_DEFERRED"  # addressControl.yaml kept as reference; next run removes it
 
 # Manual-TODO kinds (delegated to address-migration.md).
 TODO_INTERFACE_SCOPE = "TODO_INTERFACE_SCOPE"        # skill Step 2
 TODO_LEAF_REGISTER_PORTS = "TODO_LEAF_REGISTER_PORTS"  # skill registerPorts: note (Migration Diagnostics)
 TODO_ROUTER_RESOLUTION = "TODO_ROUTER_RESOLUTION"    # skill Step 3
+
+# Advisory kinds: reported on every run, never block the stamp or the exit code.
+ADVISORY_LEAF_REGISTER_PORTS = "ADVISORY_LEAF_REGISTER_PORTS"  # routed leaf infers its register bus
 
 # Fields copied verbatim from a legacy AddressGroups row into addressBlock:.
 # primaryDecode / varTypeContext / decoderInstance are the retired fields and are
@@ -83,8 +87,63 @@ class MigrationReport:
 
 
 # ---------------------------------------------------------------------------
-# Public entry point
+# Public entry points
 # ---------------------------------------------------------------------------
+
+def routedLeafRegisterPortsAdvisory(projectYamlPath):
+    """List every routed leaf block that declares no `registerPorts:`, read from
+    the MIGRATED schema. Returns list[ReportItem]; advisory, never blocking.
+
+    A routed leaf with no `registerPorts:` has its register bus inferred from the
+    serving router — correct for a top-down block, wrong for reusable IP, whose
+    `<block>Base` must stay self-contained. Both are legitimate, so this can only
+    inform: making it block would leave every honestly top-down project
+    permanently un-stampable.
+
+    It re-derives the set rather than reusing Phase B's because Phase B's
+    equivalent TODO is ONE-SHOT: it is computed from the legacy `AddressGroups`
+    table, which the first run consumes and deletes, so an unanswered decision
+    would silently resolve itself as top-down on run 2. Reading the post-migration
+    schema instead (`addressBlock.addressGroup` names the router, `addressGroup:`
+    places the leaf) keeps the question in front of the reader every run until the
+    leaf either declares `registerPorts:` or stops being routed. On a project that
+    has not migrated yet no block carries `addressBlock:`, so this is silent and
+    the blocking Phase B TODO owns that run.
+    """
+    projectYamlPath = os.path.abspath(projectYamlPath)
+    projectDir = os.path.dirname(projectYamlPath)
+    projectData = yaml.safe_load(_read(projectYamlPath)) or {}
+
+    files = _projectFileSet(projectDir, projectData)
+    blockRows = _buildBlockRows(files)
+    blockIndex = _buildBlockIndex(files)
+    instances = _buildInstanceIndex(files)
+
+    routerForGroup = {}
+    for blockName, row in blockRows.items():
+        addressBlock = row.get("addressBlock")
+        if not isinstance(addressBlock, dict):
+            continue
+        group = addressBlock.get("addressGroup")
+        if group is not None:
+            routerForGroup[group] = blockName
+
+    items = []
+    for leafBlock, leafInst, group in _routedLeaves(instances, routerForGroup,
+                                                    blockIndex):
+        if (blockRows.get(leafBlock) or {}).get("registerPorts"):
+            continue
+        keyLine0, _, _, leafFile = blockIndex[leafBlock]
+        items.append(ReportItem(
+            ADVISORY_LEAF_REGISTER_PORTS, _loc(leafFile, keyLine0 + 1),
+            f"routed leaf '{leafBlock}' (instance '{leafInst}', group '{group}') "
+            f"declares no registerPorts:, so its register bus is inferred from "
+            f"the router '{routerForGroup[group]}'. Correct for a top-down block; "
+            f"for reusable IP declare registerPorts: on the leaf instead. See the "
+            f"registerPorts: note under Migration Diagnostics in "
+            f"address-migration.md. Advisory: never blocks the stamp."))
+    return items
+
 
 def migrateAddressControlInProject(projectYamlPath, write=False):
     """Convert one project from the legacy address-control schema.
@@ -250,6 +309,16 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
             "moved InstanceGroups:/AddressObjects: to project.yaml "
             "instanceGroups:/addressObjects:"))
 
+    # A survivor looks like a migration failure. Say why it is still there, or
+    # the operator hand-deletes a file the next run removes on its own (the
+    # pointer-is-None cleanup at the top of this function).
+    if not report.clean:
+        report.applied.append(ReportItem(
+            DELETE_DEFERRED, _loc(addrCtlPath, 0),
+            f"keeping {os.path.basename(addrCtlPath)} as reference while manual "
+            f"items remain; it is removed automatically on the next run — do not "
+            f"delete it by hand"))
+
     if not write:
         return report
 
@@ -269,7 +338,8 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
         wrote = True
 
     # Delete the legacy file only when the project is clean; a non-empty manual
-    # list means the skill still has work, so the file stays as reference.
+    # list means the skill still has work, so the file stays as reference
+    # (DELETE_DEFERRED above says so).
     if report.clean:
         try:
             os.remove(addrCtlPath)
@@ -304,6 +374,18 @@ def _buildBlockIndex(files):
                 childCol = valNode.value[0][0].start_mark.column
             index[keyNode.value] = (keyNode.start_mark.line, col, childCol, path)
     return index
+
+
+def _buildBlockRows(files):
+    """Map every block name to its authored row dict (an empty dict when the
+    block declares no fields). Values only — `_buildBlockIndex` carries the
+    positions the emitters need."""
+    rows = {}
+    for path in files:
+        data = yaml.safe_load(_read(path)) or {}
+        for name, row in (data.get("blocks") or {}).items():
+            rows[name] = row or {}
+    return rows
 
 
 def _buildInstanceIndex(files):

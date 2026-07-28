@@ -32,13 +32,25 @@ idempotent: already-converted evals, an existing `addressBlock:`, and an absent
 `addressControl:` pointer are skipped, and a project already carrying
 `yamlFormat: 2` short-circuits to "already migrated".
 
+In a **composed build**, run it once per sub-project from that project's own
+`rundir/` — `make migrate` converts only the project `A2C_PRJ_YAML` names, and
+each sub-project carries its own `addressControl:` pointer and its own routing to
+convert. See "Composed builds" in the `migrate-project` skill, Section 1.
+
 ### Manual-TODO kinds and where each is resolved
 
 | Tool report `KIND` | Meaning | Resolve in |
 | --- | --- | --- |
 | `TODO_ROUTER_RESOLUTION` | An `AddressGroups` row's router cannot be resolved — it names no `decoderInstance`, or its `decoderInstance` does not resolve to a router block. | Step 3 |
 | `TODO_INTERFACE_SCOPE` | A router has no `addressBus: true` interface authored in its load-time scope. | Step 2 |
-| `TODO_LEAF_REGISTER_PORTS` | A routed leaf needs a `registerPorts:` declaration — a judgment call the tool will not guess. | The `registerPorts:` note under Migration Diagnostics |
+| `TODO_LEAF_REGISTER_PORTS` | A routed leaf needs a `registerPorts:` declaration — a judgment call the tool will not guess. Raised only on the migrating run; afterwards the same leaf appears as the advisory below. | The `registerPorts:` note under Migration Diagnostics |
+
+One **advisory** kind is also emitted here. It prints on every run and never
+blocks the stamp or the exit code:
+
+| Tool report `KIND` | Meaning | Read about it in |
+| --- | --- | --- |
+| `ADVISORY_LEAF_REGISTER_PORTS` | A routed leaf declares no `registerPorts:`, so its register bus is inferred from the serving router. Correct for a top-down leaf, wrong for reusable IP. | The `registerPorts:` note under Migration Diagnostics |
 
 A real-valued `eval` (for example `$DWORD / 2.0`) is reported by Phase A as a
 `NEEDS_MANUAL` eval row and also blocks the stamp; convert it to a literal
@@ -298,10 +310,17 @@ Before any authored `addressBlock:` is committed, remove the
 schema and legacy project-wide `AddressGroups:` schema are mutually
 exclusive.
 
-Once `InstanceGroups:` and `AddressObjects:` have moved to
-`project.yaml`, delete the legacy `addressControl.yaml` file if no
-other project still references it. Search first for any remaining
-`addressControl:` pointer or direct reference to that file.
+**Do not delete `addressControl.yaml` by hand.** `make migrate` owns that
+delete: it removes the file on the run that finds the project clean, and while
+manual TODOs remain it deliberately keeps the file as reference and reports
+`DELETE_DEFERRED` saying so. Because the pointer is removed as soon as the
+routing is accounted for, the next run removes the leftover on its own. A
+survivor after a non-clean run is expected, not a failure — resolve the reported
+TODOs and re-run rather than deleting it.
+
+The one thing to check by hand is references: if another project still names the
+file, search for any remaining `addressControl:` pointer or direct reference
+before the final run.
 
 ### Step 7 — Regenerate and diff
 
@@ -341,8 +360,28 @@ items here — `Routed leaf block '<leaf>' (instance '<inst>', served by router
 '<router>' for group '<group>') needs a registerPorts: declaration authored by
 hand — see the registerPorts: note under Migration Diagnostics in
 address-migration.md.` Authoring `registerPorts:` is a judgment call, not a
-mechanical edit: a plain top-down leaf needs no `registerPorts:` and the TODO is
-advisory; only a reusable-IP leaf must author one, per the rule just above.
+mechanical edit: a plain top-down leaf needs no `registerPorts:`, and only a
+reusable-IP leaf must author one, per the rule just above.
+
+**It is asked twice, in two forms.** `TODO_LEAF_REGISTER_PORTS` is computed from
+the legacy `AddressGroups` table, which the migrating run consumes and deletes,
+so it can only be raised on that one run — and it blocks the stamp while it is.
+From then on the same set is recomputed from the migrated schema and re-reported
+every run as `ADVISORY_LEAF_REGISTER_PORTS`:
+
+```text
+Advisory - routed leaves with no registerPorts: (informational; does not block the stamp)
+    top.yaml:14  ADVISORY_LEAF_REGISTER_PORTS  routed leaf 'leafA' (instance
+    'uLeafA', group 'top') declares no registerPorts:, so its register bus is
+    inferred from the router 'apbDecode'. ...
+```
+
+The advisory cannot block, because a top-down leaf is a legitimate answer and
+blocking on it would leave such a project permanently un-stampable. It also
+never clears itself: it stops only when the leaf declares `registerPorts:` or
+stops being routed. So a leaf you have decided is top-down keeps appearing, by
+design — that line is a statement of what the design resolved to, not an
+outstanding task. Read it once per leaf and move on.
 
 ### `registerPorts:` / `addressBlock:` authoring (parse time)
 

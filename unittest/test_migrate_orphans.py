@@ -51,6 +51,7 @@ from pysrc.migrateOrphans import (
     ORPHAN_DELETE,
     TODO_UNGENERATED_FILE,
     TODO_PORT,
+    TODO_UNMANIFESTED_SRC_DIR,
     TODO_USER_INCLUDE,
 )
 
@@ -146,7 +147,20 @@ class _FakePrj:
                              "fileName": os.path.join(rtl, "top_package.sv")},
             },
         }
-        self.config = _FakeConfig({"INCLUDEFILES": includeFiles, "PROJECTNAME": "t"})
+        # The build manifest as `make db` would emit it: the segment roots
+        # arch2code itself places artifacts in, and nothing else. Every staged
+        # C++ directory is covered, so the unmanifested-source detector is silent
+        # here and only the test that stages an undeclared directory sees it.
+        manifest = {
+            "scSrcDirs": [os.path.join(root, "base"),
+                          os.path.join(root, "registrar"),
+                          model,
+                          os.path.join(root, "tb"),
+                          os.path.join(root, "fw", "include")],
+            "vlWrapDirs": [os.path.join(root, "verif", "vl_wrap")],
+        }
+        self.config = _FakeConfig({"INCLUDEFILES": includeFiles, "PROJECTNAME": "t",
+                                   "BUILDMANIFEST": manifest})
 
         def block(key, hasMdl, hasTb, hasRtl, hasVl):
             return {"blockKey": key, "_context": "top.yaml", "dir": "", "block": key,
@@ -341,6 +355,47 @@ def test_literal_delete_resolves_against_layout():
         check(not report.manual, "no missing-segment note for a full layout")
 
 
+def test_unmanifested_src_dir_reported_and_clears():
+    """C++ the manifest does not compile is surfaced as a decision, and clears.
+
+    The retired glob walked the whole tree, so a directory the manifest does not
+    list stops being compiled AND stops being an include path — and because the
+    include path is shared, the first failure usually lands in an unrelated
+    translation unit. Two shapes must both be caught: a directory outside every
+    segment root, and a SUBDIRECTORY of one (the manifest globs a root one level
+    deep, so nesting is not covered either).
+
+    It must also converge. `EXTRA_PRJ_SRC_DIRS` is the operator's answer, so a
+    wired directory falls silent while the un-wired one still reports; an item
+    that survived its own fix would leave `make migrate` permanently non-clean.
+    """
+    print("test_unmanifested_src_dir_reported_and_clears")
+    with tempfile.TemporaryDirectory() as root:
+        _stage(root)
+        _write(os.path.join(root, "fw", "src", "fwMain.cpp"), False)
+        _write(os.path.join(root, "model", "helpers", "helper.cpp"), False)
+        prj = _FakePrj(root)
+
+        report = sweepOrphans(prj, write=False)
+        found = sorted(i.location for i in report.manual
+                       if i.kind == TODO_UNMANIFESTED_SRC_DIR)
+        check(found == [os.path.join("fw", "src"), os.path.join("model", "helpers")],
+              "undeclared directory and un-globbed subdirectory both reported")
+        message = next((i.message for i in report.manual
+                        if i.kind == TODO_UNMANIFESTED_SRC_DIR), "")
+        check("EXTRA_PRJ_SRC_DIRS" in message and "Decide" in message,
+              "TODO states the decision and names the seam that answers it")
+
+        os.makedirs(os.path.join(root, "rundir"))
+        with open(os.path.join(root, "rundir", "Makefile"), "w") as fh:
+            fh.write("EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src\n")
+        report = sweepOrphans(prj, write=False)
+        found = sorted(i.location for i in report.manual
+                       if i.kind == TODO_UNMANIFESTED_SRC_DIR)
+        check(found == [os.path.join("model", "helpers")],
+              "a directory wired onto EXTRA_PRJ_SRC_DIRS stops being reported")
+
+
 if __name__ == "__main__":
     test_delete_dispatch_sweeps_delete_entries_and_literals()
     test_port_and_leave_never_deleted()
@@ -349,5 +404,6 @@ if __name__ == "__main__":
     test_user_include_site_handoff()
     test_dry_run_changes_nothing()
     test_literal_delete_resolves_against_layout()
+    test_unmanifested_src_dir_reported_and_clears()
     print(f"\nResult: {'PASS' if FAIL == 0 else 'FAIL'} ({PASS} checks, {FAIL} failures)")
     sys.exit(1 if FAIL else 0)

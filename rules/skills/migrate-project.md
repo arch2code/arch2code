@@ -71,7 +71,9 @@ The text conversion (step 1) runs these phases over the project's YAML file set:
 - **Phase B — addressControl → per-block.** Emits `addressBlock:` on each
   resolved router, moves policy sections to `project.yaml`, normalizes
   `postProcess:`, removes the `addressControl:` pointer, and deletes the legacy
-  `addressControl.yaml` when clean.
+  `addressControl.yaml` when clean. While manual items remain the file is kept as
+  reference and the report says so (`DELETE_DEFERRED`); the next run removes it
+  automatically once the pointer is gone, so **never delete it by hand**.
 - **Includes — include header → cppm module.** Removes a legacy
   `fileGeneration.fileMap` `include` override (paired `.h`/`.cpp`) so the project
   inherits the base `cppm` module-interface definition, and deletes the orphaned
@@ -99,6 +101,58 @@ Because a stamped-but-orphan-carrying project exits step 1 with zero, the
 pipeline still proceeds to sweep, scaffold, and regenerate it — so `make migrate`
 finishes the job on a partially migrated tree, not only a pristine one.
 
+### Composed builds: run it once per sub-project, in that project's own tree
+
+`make migrate` migrates exactly **one** project — the one `A2C_PRJ_YAML` names.
+A composed build (a top-level project whose `projectFiles:` lists child
+`*Project.yaml` files; `examples/ip_test` is the reference shape) is several
+projects, each with its own `prj/yaml/<name>Project.yaml`, its own
+`include/make/shared.mk` setting its own `A2C_PRJ_YAML`, and its own `rundir/`.
+It therefore takes one `make migrate` per project, run from that project's own
+`rundir/`. **The top-level run does not migrate the children** — it only reports
+them, as `TODO_UNMIGRATED_SUBPROJECT`, and refuses to stamp until each one is
+migrated in its own tree.
+
+Three things break if you migrate only the top. The first is what the check
+catches; the other two are why you must still do the per-project runs rather than
+trust one clean top-level report.
+
+1. **The children are never stamped, so they stop building standalone.** Phase C
+   writes `yamlFormat: 2` into the one file it was handed, and the `projectCreate`
+   gate reads only the project YAML it was invoked on. Composed, the gate sees the
+   stamped top and passes, so the composition builds and hides the problem — the
+   failure lands in a different tree, whenever someone next builds the child on
+   its own, which is the entire point of a reusable IP sub-project. This is the
+   gap `TODO_UNMIGRATED_SUBPROJECT` closes.
+2. **Part of the children's YAML is never reached.** The text phases walk the
+   top's `projectFiles:` entries plus the `include:` chains below them. A child
+   `*Project.yaml` named in the top's `projectFiles:` is itself reached, but its
+   own `projectFiles:` list is not walked. In `ip_test` the top-level file set
+   picks up `ip/yaml/ip.yaml` and `ip/yaml/ipVariants.yaml` through `include:`,
+   but never `ip/yaml/ipTop.yaml`, which `ipProject.yaml` names in its own
+   `projectFiles:` — only a run from `ip/rundir` converts that file. Nothing
+   reports this; the child's own run is the only thing that reaches it.
+3. **The per-project work in Sections 3 and 7 really is per-project.** Each
+   sub-project has its own `rundir/Makefile` and `include/make/shared.mk`, so the
+   `EXTRA_SC_GEN_FILES` / `EXTRA_PRJ_SRC_DIRS` wiring, the retired vl build tree,
+   and the hierarchical `layout:` opt-in are separate decisions in separate files
+   that the top-level run can neither see nor fix. `TODO_UNMANIFESTED_SRC_DIR`
+   likewise diffs against the manifest of whichever project was built.
+
+**Migrate the children first, then the top**, in dependency order (a project
+before anything that references it; in `ip_test`: `common`, then `ip` and
+`ipBridge`, then `ip_test`). The top's text phases do edit child design YAML they
+reach, so going bottom-up keeps each edit in the run that also stamps the owning
+project, and leaves the top-level report about the top-level project alone. The
+check reports **direct** children only — a grandchild surfaces in its own
+parent's run — so bottom-up also walks the composition one level at a time
+instead of leaving a deep child for last.
+
+Reaching one file from several projects is fine: under `projectOverrides:`, or
+where a sub-project vendors another by symlink (`ip_test/bridge/ip` is
+`ip_test/ip`), the same file belongs to more than one composition. Every phase is
+idempotent, so the second run over it is a no-op.
+
 ## 2. Read the report
 
 Applied edits are listed under `applied:`. Items the tool cannot complete are
@@ -118,7 +172,8 @@ clean report.
 | --- | --- | --- | --- |
 | `TODO_ROUTER_RESOLUTION` | address phase | An `AddressGroups` row's router cannot be resolved. | `address-migration` skill, Step 3 |
 | `TODO_INTERFACE_SCOPE` | address phase | A router has no `addressBus: true` interface in its load-time scope. | `address-migration` skill, Step 2 |
-| `TODO_LEAF_REGISTER_PORTS` | address phase | A routed leaf needs `registerPorts:`. | `address-migration` skill, `registerPorts:` note (Migration Diagnostics) |
+| `TODO_LEAF_REGISTER_PORTS` | address phase | A routed leaf needs `registerPorts:`. Raised only on the run that still has the legacy `AddressGroups` table to read; afterwards the same leaf is re-reported as the advisory below. | `address-migration` skill, `registerPorts:` note (Migration Diagnostics) |
+| `TODO_UNMIGRATED_SUBPROJECT` | composed-build check | A child `*Project.yaml` named in this project's `projectFiles:` does not carry `yamlFormat: 2`. Blocks this project's stamp: a composition is not migrated until its parts are. | Run `make migrate` from the child's own `rundir/`, which the message names, then re-run here (Section 1, "Composed builds"). |
 | `TODO_USER_IMPORT` | includes phase | Hand-written user code `#include`s a migrated context header. | Section 4 below |
 | `TODO_MODULE_IMPORT` | module-header phase | A hand-added `import` line was left in the old header→class gap, which the restructure moved into the GMF zone (before `export module`) where imports are illegal. Never moved by the tool. | Section 4a below |
 | eval `NEEDS_MANUAL` | eval phase | A real-valued eval (e.g. `$DWORD / 2.0`) cannot be expressed in the SV subset. | Replace the `eval:` with a literal `value:` (hand decision). |
@@ -128,11 +183,27 @@ clean report.
 | `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No file action is needed if the path genuinely no longer exists, but the item keeps the sweep's report non-clean, so `make migrate` still exits non-zero until the stale entry no longer applies. |
 | `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk, **and** a legacy header-mode artifact is still sitting next to that context's current generated file — i.e. hierarchical was opted into before the format migration finished. A cleanly hierarchical context with nothing left to migrate is silent. | Complete the format migration in functional layout, then migrate to hierarchical (Section 7). |
 | `TODO_MISSING_PARAM_LINE` | param phase | A generated artifact carries a `GENERATED_CODE_BEGIN` marker but no `GENERATED_CODE_PARAM` line, so there is no line to re-stamp with `--project`. | Add the `GENERATED_CODE_PARAM` line the report quotes verbatim at the top of the file's generated preamble, then re-run. |
+| `TODO_UNMANIFESTED_SRC_DIR` | orphan sweep | A directory holding C++ compile units that the build manifest does not compile — outside every segment root, or a subdirectory of one (the manifest globs a root one level deep). The retired tree-walking scan compiled it; the manifest does not. | Decide whether the project must build it, then either wire it onto `EXTRA_PRJ_SRC_DIRS` or take it out of the tree (Section 3). |
 
 The address-control kinds are documented in depth in the `address-migration`
 skill; each converter message points at the resolving step or note named in the
 table above. The sweep only ever **deletes** purely-generated orphans; every
 user-owned file it encounters is reported, not touched.
+
+### Advisory kinds
+
+An **advisory** is printed on every run and never blocks the stamp or the exit
+code. It exists for a question with more than one right answer, where staying
+silent would let the migration decide by default.
+
+| Tool report `KIND` | Emitted by | Meaning | Act on it when |
+| --- | --- | --- | --- |
+| `ADVISORY_LEAF_REGISTER_PORTS` | address phase | A routed leaf declares no `registerPorts:`, so its register bus is inferred from the serving router. | The leaf is reusable IP: its `<block>Base` must stay self-contained, which requires the explicit declaration. A top-down leaf is correct as-is and needs no change; the advisory simply keeps saying so. |
+
+Read the advisory list even on a clean run. The routed-leaf one in particular is
+the *only* place a leaf's top-down-vs-reusable-IP resolution is ever stated
+again: the blocking `TODO_LEAF_REGISTER_PORTS` is derived from the legacy
+`AddressGroups` table, so it cannot be raised once that table is gone.
 
 ## 3. Wire user-owned files and source directories into the build
 
@@ -187,21 +258,29 @@ simply stops contributing, and since the same list also feeds the include path
 (one `-I` per directory), the symptom is usually a missing header or an undefined
 symbol in an **unrelated** translation unit, a long way from the cause.
 
-So after the manifest switch, enumerate the hand-written source directories and
-wire up every one the manifest does not already cover:
+You do not have to hunt for these. The orphan sweep diffs the manifest against
+the directories on disk and reports each uncovered one as
+`TODO_UNMANIFESTED_SRC_DIR`, so `make migrate` will not go clean while one is
+outstanding. Membership is by exact directory, so a **subdirectory** of a
+manifest root is reported too — the glob does not recurse.
 
-1. List the roots the manifest produced:
-   `grep A2C_SC_SRC_DIRS <project>/.gen/build.mk`.
-2. Find every directory under the project root holding hand-written `.cpp` /
-   `.cppm` (skipping `build/`, `.gen/`, `obj_dir/`).
-3. Add each directory from step 2 that is not itself a root from step 1. A
-   **subdirectory** of a root counts as missing too — the glob does not recurse:
+The report hands you a decision, not an instruction, because the tool cannot
+tell code that must build from code that merely happens to sit in the tree. For
+each reported directory, decide:
 
-   ```make
-   EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src
-   ```
+- **It belongs in the build** — declare it in the project's `rundir/Makefile`
+  (see `examples/{simple_ip,ip_test}`), which also puts it on the include path:
 
-   in the project's `rundir/Makefile` (see `examples/{simple_ip,ip_test}`).
+  ```make
+  EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src
+  ```
+
+- **It does not** — vendored code, an example, a dead directory — take it out of
+  the project tree.
+
+Either resolution clears the item. Do not reach for the first one reflexively:
+the retired scan compiled whatever it found, so a directory being reported is
+evidence it *was* built, not evidence it *should* be.
 
 Like `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES`, these paths are
 **user-authored and the migrator never rewrites them**. Any of them pointing into
@@ -210,10 +289,10 @@ re-point the affected lines by hand afterwards. What moves is the `dirs:` /
 `hierarchicalDirs:` pair as **merged** from the base `config/project.yaml` and
 the project file's own overrides, the project's entries winning — so read the
 project file first to know which of your paths are affected. This is the same
-exposure covered in Section 7, where the tool emits `TODO_UNREWRITABLE_PATH`.
-That warning matches on the **top-level path component**, so it over-reports: a
-path that merely sits under a relocating top, without moving itself, is flagged
-too. Check each reported path against the new tree before editing it.
+exposure covered in Section 7, where the tool emits `TODO_UNREWRITABLE_PATH` for
+each affected reference. It matches by segment path, so a sibling that merely
+shares a top-level component with a relocating segment — `fw/src` beside an
+`fwInc` segment of `fw/include` — is correctly left alone.
 
 ### Sweep the retired vl build tree
 
@@ -277,13 +356,13 @@ hand-written code and stale build state:
    using namespace axi4sDemo_tb_ns;
    ```
 
-   Generated files (those carrying `GENERATED_CODE_BEGIN`) are skipped wholesale
-   by the scanner and **not** reported — `make gen` rewrites the include in their
-   *generated* regions into an `import` automatically. Two caveats: an include a
-   user placed in a *user* region of a generated file is neither reported nor
-   rewritten (move it by hand), and the scanner matches only the quoted form
-   `#include "..."` — an angle-bracket `#include <...>` is not detected. Only
-   user-authored files need this edit.
+   The scanner reports **user-owned text**, not whole user files. An include
+   inside a *generated region* is not reported — `make gen` rewrites it into an
+   `import` automatically — but a generated file's inter-region gaps are user
+   purview that nothing refreshes, so an include left in one **is** reported and
+   must be fixed like any other site. One caveat remains: the scanner matches
+   only the quoted form `#include "..."`, so an angle-bracket `#include <...>`
+   is not detected.
 
    **The namespace rewrite is not mechanical.** Header mode put the context types
    in the enclosing scope; module mode moves them into a per-context module
@@ -531,6 +610,14 @@ make migrate-hierarchical
 <project.yaml>`. Unlike `make migrate`, it is a single standalone step: it only
 relocates the tree (it never builds the database, sweeps orphans, or
 regenerates), and it is idempotent — re-running a migrated project is a no-op.
+Like `make migrate`, it acts on the single project `A2C_PRJ_YAML` names, so in a
+composed build the layout is opted into and relocated **per sub-project**, from
+each project's own `rundir/` (Section 1). `layout:` is read from each project
+file and `projectLayout` carries one entry per owning project, so the declaration
+is genuinely per-project — but every composed example in the tree
+(`ip_test`, `simple_ip`) declares `hierarchical` in the top **and** in each
+child, so a uniform composition is the shape that is actually exercised. Convert
+the whole composition rather than leaving it mixed.
 There is no `make` dry-run target; run `migrateYaml.py --to-hierarchical
 <project.yaml>` directly (without `--write`) for a dry run that prints the full
 move/delete/rewrite map and changes nothing. Because it does not regenerate, you
@@ -660,7 +747,7 @@ using the same `<file>:<line>  <KIND>  <message>` format as the other phases:
 | --- | --- | --- |
 | `TODO_NOT_FORMAT2` | Hierarchical opted in before the project is `yamlFormat: 2`. Nothing is moved. | Run `make migrate` first, then `make migrate-hierarchical`. |
 | `TODO_UNGENERATED_FILE` | A source file matches a fully-generated name but carries no `GENERATED_CODE_BEGIN` marker. Left in place, **never deleted**. | Inspect the file: hand-move it to its hierarchical location, or add the marker if it should be generated. |
-| `TODO_UNREWRITABLE_PATH` | Either a relative `include:` / `projectFiles:` reference (or an authored YAML) that resolves outside the migrated tree, or an `EXTRA_*` make variable in `include/make/shared.mk` / `rundir/Makefile` naming a segment root that relocates. Left byte-for-byte. | Re-point the reference by hand after the move. The `EXTRA_*` form matches on the **top-level** path component, so it over-reports: a path that merely sits under a relocating top, without moving itself, is flagged and needs no edit. Check each against the new tree (Section 3). |
+| `TODO_UNREWRITABLE_PATH` | Either a relative `include:` / `projectFiles:` reference (or an authored YAML) that resolves outside the migrated tree, or an `EXTRA_*` make variable in `include/make/shared.mk` / `rundir/Makefile` naming a path inside a segment that relocates. Left byte-for-byte. | Re-point the reference by hand after the move. The `EXTRA_*` form matches by segment path, so a sibling of a relocating segment is not flagged (Section 3). |
 
 ### Finish the migration
 
