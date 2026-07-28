@@ -396,7 +396,7 @@ def oneStruct(args, prj, data, struct, value):
             case 'tracker': # getTrackerType
                 out.extend(tracker(value, indent)) if not isCpp else None
             case 'getSet': # getters and setters
-                out.extend(getSet(value, indent)) if not isCpp else None
+                out.extend(getSet(value, indent, prj, isParam)) if not isCpp else None
             case 'fw_pack':
                 out.extend(processPackUnpack("fw_pack", handle, args, value, indent, prj, isParam))
             case 'fw_pack_ret':
@@ -649,33 +649,36 @@ def tracker(vars, indent):
     out.append(f"{indent}inline uint64_t getStructValue(void) const {{ return( {ret} );}}")
     return out
 
-def getSet(vars, indent):
+def getSet(vars, indent, prj=None, useConfig=False):
     out = list()
     for var, vardata in vars['vars'].items():
         generator = vardata['generator']
+        # Route through cppTypeName so parameterizable field types keep their
+        # <Config> template argument; non-parameterizable types emit bare name.
+        varType = cppTypeName(vardata, prj, useConfig) if prj else vardata['varType']
         # next features
         if generator == 'next':
-            out.append(f"{indent}inline {vardata['varType']} _getNext(void) {{ return( { var }); }}")
-            out.append(f"{indent}inline void _setNext({vardata['varType']} value) {{ { var } = value; }}")
+            out.append(f"{indent}inline {varType} _getNext(void) {{ return( { var }); }}")
+            out.append(f"{indent}inline void _setNext({varType} value) {{ { var } = value; }}")
         # listValid features
         if generator == 'listValid':
-            out.append(f"{indent}inline {vardata['varType']} _getValid(void) {{ return( { var }); }}")
-            out.append(f"{indent}inline void _setValid({vardata['varType']} value) {{ { var } = value; }}")
+            out.append(f"{indent}inline {varType} _getValid(void) {{ return( { var }); }}")
+            out.append(f"{indent}inline void _setValid({varType} value) {{ { var } = value; }}")
         # listHead features
         if generator == 'listHead':
-            out.append(f"{indent}inline {vardata['varType']} _getHead(void) {{ return( { var }); }}")
-            out.append(f"{indent}inline void _setHead({vardata['varType']} value) {{ { var } = value; }}")
+            out.append(f"{indent}inline {varType} _getHead(void) {{ return( { var }); }}")
+            out.append(f"{indent}inline void _setHead({varType} value) {{ { var } = value; }}")
         # listTail features
         if generator == 'listTail':
-            out.append(f"{indent}inline {vardata['varType']} _getTail(void) {{ return( { var }); }}")
-            out.append(f"{indent}inline void _setTail({vardata['varType']} value) {{ { var } = value; }}")
+            out.append(f"{indent}inline {varType} _getTail(void) {{ return( { var }); }}")
+            out.append(f"{indent}inline void _setTail({varType} value) {{ { var } = value; }}")
         # address field
         if generator == 'address':
-            out.append(f"{indent}inline {vardata['varType']} _getAddress(void) {{ return( { var }); }}")
+            out.append(f"{indent}inline {varType} _getAddress(void) {{ return( { var }); }}")
         # address field
         if generator == 'data':
-            out.append(f"{indent}inline {vardata['varType']} _getData(void) {{ return( { var }); }}")
-            out.append(f"{indent}inline void _setData({vardata['varType']} value) {{ { var } = value; }}")
+            out.append(f"{indent}inline {varType} _getData(void) {{ return( { var }); }}")
+            out.append(f"{indent}inline void _setData({varType} value) {{ { var } = value; }}")
     return out
 def registerFeatures(vars, indent):
     out = list()

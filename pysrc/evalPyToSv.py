@@ -19,6 +19,12 @@ Two public entry points:
 `valueType: real` evals (`$DWORD / 2.0`) cannot be rewritten by a syntactic
 tool — converting them to a literal `value:` needs resolved symbol values — so
 they are reported as NEEDS_MANUAL and never touched.
+
+Python floor division (`//`) is likewise never auto-rewritten. `//` floors
+toward -inf whereas SV `/` truncates toward zero; the two agree only for
+non-negative operands, so a blind `//`->`/` rewrite silently corrupts the
+ceiling idiom `-(-a//b)`. Every floor-division expression is reported as
+NEEDS_MANUAL so a human rewrites it (e.g. positive ceiling as `(a + b - 1) / b`).
 """
 
 import ast
@@ -55,11 +61,12 @@ def _acceptAll(name):
     return name
 
 
-# Binary operators the converter understands. FloorDiv is the one Python-only
-# operator that is rewritten (`//` -> `/`); the rest are already SV-valid and
-# are copied through verbatim.
+# Binary operators the converter understands; all are already SV-valid and are
+# copied through verbatim. Python floor division (`//`) is deliberately absent:
+# it floors toward -inf while SV `/` truncates toward zero, so it is never
+# auto-rewritten and is routed to NEEDS_MANUAL instead (see convertExpr).
 _BINOPS = (
-    ast.Add, ast.Sub, ast.Mult, ast.FloorDiv, ast.Div, ast.Mod,
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod,
     ast.LShift, ast.RShift, ast.BitAnd, ast.BitOr, ast.BitXor,
 )
 _UNARYOPS = (ast.UAdd, ast.USub, ast.Invert)
@@ -89,6 +96,18 @@ def convertExpr(pyExpr):
     except SyntaxError as exc:
         return ConvertResult(NEEDS_MANUAL, pyExpr,
                              reason=f"not a parseable expression: {exc.msg}")
+
+    # Step 2b - floor division is never auto-rewritten. Python `//` floors
+    # toward -inf; SV `/` truncates toward zero, so blindly rewriting `//`->`/`
+    # silently corrupts the ceiling idiom `-(-a//b)`. Walk the whole tree so
+    # nested forms like `-(-(a)//b)` are caught, and route to NEEDS_MANUAL.
+    if any(isinstance(n, ast.BinOp) and isinstance(n.op, ast.FloorDiv)
+           for n in ast.walk(tree)):
+        return ConvertResult(
+            NEEDS_MANUAL, pyExpr,
+            reason="Python '//' floors toward -inf; SV '/' truncates toward "
+                   "zero. Rewrite by hand (e.g. positive ceiling as "
+                   "(a + b - 1) / b).")
 
     # Step 3 - validate the tree is built only from convertible constructs.
     reason = _validate(tree.body, pyExpr)
@@ -172,8 +191,9 @@ def _src(node, src):
 
 def _collectSpans(node, src, spans):
     """Append `(start, end, replacement)` rewrite spans for every Python-only
-    construct in the tree. Only `.bit_length()` calls and `//` operators are
-    rewritten; everything else is copied verbatim.
+    construct in the tree. Only `.bit_length()` calls are rewritten; everything
+    else is copied verbatim. (Floor division is never reached here - it is
+    routed to NEEDS_MANUAL up front in convertExpr.)
 
     A `.bit_length()` receiver is carried through by its verbatim source slice
     and is not descended into: a convertible construct nested inside a receiver
@@ -198,12 +218,6 @@ def _collectSpans(node, src, spans):
     if isinstance(node, ast.BinOp):
         _collectSpans(node.left, src, spans)
         _collectSpans(node.right, src, spans)
-        if isinstance(node.op, ast.FloorDiv):
-            # The `//` token lies in the gap between the operands; rewrite that
-            # 2-char span to `/`.
-            gapStart = node.left.end_col_offset
-            rel = src.index('//', gapStart, node.right.col_offset)
-            spans.append((rel, rel + 2, '/'))
         return
     if isinstance(node, ast.UnaryOp):
         _collectSpans(node.operand, src, spans)

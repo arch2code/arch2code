@@ -537,7 +537,14 @@ def sc_class_dependency_includes(args, prj, data):
         out.append(('include', '#include "hwRegister.h"'))
     needsHwMemory = len(data["memories"]) > 0 or len(data.get('memoriesParent', {})) > 0
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
-    if registerDecode and not data['blockInfo']['isRegHandler']:
+    if data['blockInfo']['isRegHandler']:
+        # A reg-handler's memories are surfaced as memoryPorts or regType:memory
+        # registerPorts (blockRegs.get_hwregs emits hwMemoryPort members and
+        # addMemory() for both), never as data['memories'], so the scan below
+        # never reaches them. Include hwMemory.h whenever any such port exists.
+        if data['memoryPorts'] or any(p['regType'] == 'memory' for p in data['registerPorts'].values()):
+            needsHwMemory = True
+    elif registerDecode:
         for reg, regData in data['registers'].items():
             if regData['regType'] == 'memory':
                 needsHwMemory = True

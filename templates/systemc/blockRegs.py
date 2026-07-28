@@ -1,7 +1,7 @@
 import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils
 from pysrc.arch2codeHelper import roundup_multiple
-from templates.systemc.constructor import blockRegistrarInitLines
+from templates.systemc.constructor import blockRegistrarInitLines, bareParameterizedType
 
 from jinja2 import Template
 
@@ -53,36 +53,33 @@ def address_const_name(data, inst, name_field):
 def get_hwregs(prj, data):
     hwregs = []
     regs = dict()
+    # A templated (own-params) reg-handler re-imports each parameterized type as
+    # a bare class-local alias (NAME aliases NAME<Config>). The class member
+    # declarations name the type BEFORE that alias, so they use the full
+    # NAME<Config> spelling; the out-of-line member bodies (::_packedSt /
+    # ::_byteWidth) run AFTER the alias and must drop <Config> so the qualified-id
+    # binds the alias rather than the shadowed namespace template. Mirrors
+    # constructor.py (bareParameterizedType + the `typename` decision).
+    hasOwnParams = data['hasOwnParams']
 
     sorted_insts = sorted(list(data['memoryPorts'].values()) + list(data['registerPorts'].values()), key=lambda x: x['offset'])
 
     for inst in sorted_insts:
-        if 'memory' in inst:
-            const_name = address_const_name(data, inst, 'memory')
+        if 'memory' in inst or inst.get('regType') == 'memory':
+            name_field = 'memory' if 'memory' in inst else 'register'
+            const_name = address_const_name(data, inst, name_field)
+            datatype = intf_gen_utils.sc_structure_field_type(inst, 'structure', 'structureKey', prj)
             hwregs.append({
                 "is_memory": True,
-                "name": inst['memory'] + '_adapter',
-                "datatype": inst['structure'],
-                "addresstype": inst['addressStruct'],
+                "name": inst[name_field] + '_adapter',
+                "datatype": datatype,
+                "datatype_inclass": bareParameterizedType(datatype, hasOwnParams),
+                "addresstype": intf_gen_utils.sc_structure_field_type(inst, 'addressStruct', 'addressStructKey', prj),
                 "word_lines": inst['wordLines'],
                 "offset": const_name,
                 "offset_value": hex(inst['offset']),
                 "const_name": const_name,
-                "port_name": inst['memory'],
-                "descr": inst['desc']
-            })
-        elif inst.get('regType') == 'memory':
-            const_name = address_const_name(data, inst, 'register')
-            hwregs.append({
-                "is_memory": True,
-                "name": inst['register'] + '_adapter',
-                "datatype": inst['structure'],
-                "addresstype": inst['addressStruct'],
-                "word_lines": inst['wordLines'],
-                "offset": const_name,
-                "offset_value": hex(inst['offset']),
-                "const_name": const_name,
-                "port_name": inst['register'],
+                "port_name": inst[name_field],
                 "descr": inst['desc']
             })
         else:
@@ -91,10 +88,13 @@ def get_hwregs(prj, data):
             port_type = intf_gen_utils.get_intf_type(inst['interfaceType'], data)
             direction = "_out" if inst['direction'] == 'src' else "_in"
             port_type = port_type + direction
+            datatype = intf_gen_utils.sc_structure_field_type(inst, 'structure', 'structureKey', prj)
             hwregs.append({
                 "is_memory": False,
                 "name": inst['register'] + '_reg',
-                "datatype": inst['structure'],
+                "datatype": datatype,
+                "datatype_inclass": bareParameterizedType(datatype, hasOwnParams),
+                "packedst_typename": 'typename ' if '<Config>' in datatype else '',
                 "size_rounded": roundup_multiple(effective_bytes, 4),
                 "size": inst['bytes'],
                 "ro" : 'true' if inst['regType'] == 'ro' else 'false',
@@ -126,9 +126,37 @@ def render_section_header(args, prj, data):
     moduleMode = (args.mode == 'module')
     exportKw = 'export ' if moduleMode else ''
     include_deps = [] if moduleMode else get_include_deps(args, prj, data)
+    # Re-import inherited parameterized types from the templated base so the
+    # reg-handler body uses the bare type name (no <Config>). Two-phase lookup
+    # does not search a dependent base, so these using-declarations are what make
+    # the bare names resolve; `typename` is required for type re-imports. Mirrors
+    # classDecl.py and is emitted AFTER the register/memory members (which declare
+    # NAME<Config>), because a same-named alias placed before them would turn NAME
+    # into a non-template and break those decls. Only templated (own-params)
+    # reg-handlers have a dependent base.
+    baseClassName = f'{blockName}Base{cfg}'
+    param_reimports = []
+    if hasOwnParams and data['parameterizedDecls']:
+        for decl in data['parameterizedDecls']:
+            name = decl['body'][decl['declKind']]
+            if decl['declKind'] == 'constant':
+                param_reimports.append(f'using {baseClassName}::{name};')
+            else:
+                param_reimports.append(f'using typename {baseClassName}::{name};')
+    # Pre-rendered as a single block (empty string when there are none) so the
+    # generated region is byte-identical to the un-patched output for every
+    # non-templated reg-handler; a non-empty block appends the comment + usings
+    # after the register-member blank line the loop above leaves.
+    if param_reimports:
+        param_reimports_block = (
+            '\n    // inherited parameterized types usable unqualified (no <Config>)\n'
+            + '\n'.join(f'    {line}' for line in param_reimports))
+    else:
+        param_reimports_block = ''
     s = t.render(blockname=blockName, cfg=cfg, templatePrefix=templatePrefix,
                  hasOwnParams=hasOwnParams, moduleMode=moduleMode, exportKw=exportKw,
-                 include_deps=include_deps, hwregs=get_hwregs(prj, data))
+                 include_deps=include_deps, hwregs=get_hwregs(prj, data),
+                 param_reimports_block=param_reimports_block)
     return s
 
 def render_section_init(args, prj, data):
@@ -195,8 +223,7 @@ public:
     {% else -%}
     hwRegisterIf< {{entry.datatype}}, {{entry.port_type}}<{{entry.datatype}}>, {{entry.size_rounded}}, {{entry.ro}}> {{entry.name}}; // {{entry.descr}}
     {% endif -%}
-    {% endfor %}
-'''
+    {% endfor %}{{param_reimports_block}}'''
 
 block_regs_init_section_template = '''\
 {% if not moduleMode -%}
@@ -220,7 +247,7 @@ SC_HAS_PROCESS({{blockname}});
         {% if entry.is_memory -%}
         ,{{entry.name}}({{thisq}}{{entry.port_name}})
         {% elif entry.default -%}
-        ,{{entry.name}}(&{{thisq}}{{entry.port_name}}, {{entry.datatype}}::_packedSt({{entry.default}}))
+        ,{{entry.name}}(&{{thisq}}{{entry.port_name}}, {{entry.packedst_typename}}{{entry.datatype_inclass}}::_packedSt({{entry.default}}))
         {% else -%}
         ,{{entry.name}}(&{{thisq}}{{entry.port_name}})
         {% endif -%}
@@ -239,7 +266,7 @@ block_regs_body_section_template = '''\
     {% if memory_items -%}
     // register memories for FW access
     {% for entry in memory_items -%}
-    _a2cRegs.addMemory({{entry.offset}}, {{entry.datatype}}::_byteWidth, {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
+    _a2cRegs.addMemory({{entry.offset}}, {{entry.datatype_inclass}}::_byteWidth, {{entry.word_lines}}, "{{entry.port_name}}", &{{entry.name}} );
     {% endfor -%}
     {% endif -%}
     {% set register_items = hwregs | rejectattr('is_memory', 'equalto', true) | list -%}

@@ -33,6 +33,13 @@ def _writeBuildManifestMk(rootDir, manifest):
         f"A2C_RTL_DOT_F := {manifest['rtlDotF']}",
         f"A2C_VL_TOPS := {asList([t['qualifiedTop'] for t in manifest['vlTops']])}",
     ]
+    # DUT-top wrapper per HDL top block, keyed by block name: the wrapper of that
+    # block's top instance at its resolved variant. The lint makefile looks this
+    # up by HDL_TOP_MODULE (A2C_VL_TOP_<block>) to name exactly one --top-module,
+    # unambiguous under multiple variants, prefix-sharing siblings, or several
+    # Verilated top-level children.
+    for block in sorted(manifest['dutTops']):
+        lines.append(f"A2C_VL_TOP_{block} := {manifest['dutTops'][block]}")
     # Per-top verilated-wrapper records: the physical .sv wrapper keyed by the
     # unique design-unit name, so a2c-vl-wrap.mk consumes the DB-derived wrapper
     # path directly instead of deriving tops from filenames. The verilator object
@@ -275,6 +282,31 @@ def create(prj):
                 continue
             blockVariants.setdefault(row['blockKey'], set()).add(row['variant'])
 
+    # DUT-top candidates: the HDL top the lint/vl build drives is named by
+    # HDL_TOP_MODULE, which is either the design top block itself (when
+    # Verilated) or one of its direct children (a testbench harness wrapping a
+    # Verilated DUT). Each candidate maps its block key to that instance's
+    # resolved variant, so the wrapper recorded below is the single top for that
+    # block -- not every declared variant. The lint makefile then looks up
+    # HDL_TOP_MODULE by exact block name (A2C_VL_TOP_<block>) instead of
+    # prefix-matching A2C_VL_TOPS, which is ambiguous once the top block declares
+    # several variants, a Verilated sibling shares its name prefix, or several
+    # direct children are Verilated.
+    dutTopVariantByBlock = dict()
+    topInst = next((inst for inst in prj.flatData['instances'].values()
+                    if inst['container'] == '_topInstance'), None)
+    if topInst is not None:
+        topBlockKey = topInst['instanceTypeKey']
+        dutInsts = list()
+        if blockByKey[topBlockKey]['hasVl']:
+            dutInsts.append(topInst)
+        dutInsts += [inst for inst in prj.flatData['instances'].values()
+                     if inst['containerKey'] == topBlockKey
+                     and blockByKey[inst['instanceTypeKey']]['hasVl']]
+        for inst in dutInsts:
+            dutTopVariantByBlock[inst['instanceTypeKey']] = inst['variant'] or ''
+
+    dutTops = dict()
     for blockRow in blockByKey.values():
         condData = condRow(blockRow)
         objLayout = layoutForContext(blockRow['_context'])
@@ -287,13 +319,18 @@ def create(prj):
                 continue
             block = blockRow['block']
             variants = sorted(blockVariants.get(blockRow['blockKey'], set()))
-            stubs = [f'{block}_{v}' for v in variants] \
-                if (fileDef.get('variant', False) and variants) else [block]
-            for stub in stubs:
+            variantStubs = [(v, f'{block}_{v}') for v in variants] \
+                if (fileDef.get('variant', False) and variants) else [('', block)]
+            for variant, stub in variantStubs:
                 filePath = processYaml.expandNewModulePath(fileDef, blockRow['dir'],
                                                            block, stub, objLayout,
                                                            missingDirOk=True)
                 recordVlTop(fileDef, filePath)
+                # Capture a DUT-top wrapper name from the same emission that
+                # records it (so the map and A2C_VL_TOPS agree exactly), keyed by
+                # block name for the makefile's HDL_TOP_MODULE lookup.
+                if dutTopVariantByBlock.get(blockRow['blockKey']) == variant:
+                    dutTops[block] = os.path.basename(filePath)
 
     if registrarMap:
         foreignConfigHeaders = prj.config.getConfig('FOREIGNCONFIGHEADERS')
@@ -354,6 +391,7 @@ def create(prj):
         'svGenFiles':    sorted(svGenFiles),
         'rtlDotF':       rtlDotFPath,
         'vlTops':        sorted(vlTops, key=lambda t: t['qualifiedTop']),
+        'dutTops':       dutTops,
     }
     prj.config.setConfig('BUILDMANIFEST', manifest)
 

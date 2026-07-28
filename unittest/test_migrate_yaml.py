@@ -255,8 +255,12 @@ def test_phase_b_todo_blocks_stamp():
         assert rc == 1, "blocked --write run must return non-zero"
         proj = _read(d, "project.yaml")
         assert "yamlFormat:" not in proj, "sentinel written while blocked"
-        # Legacy file is preserved while the address migration is incomplete.
-        assert os.path.exists(os.path.join(d, "addressControl.yaml"))
+        # The stamp is blocked by the one-shot leaf TODO, but the router IS
+        # resolved, so routing is fully migrated: the pointer and the legacy file
+        # are removed together, leaving no orphan even though the stamp is blocked.
+        assert "addressControl:" not in proj, "pointer kept though routing migrated"
+        assert not os.path.exists(os.path.join(d, "addressControl.yaml")), \
+            "legacy file stranded while the stamp is blocked"
     finally:
         shutil.rmtree(d)
 

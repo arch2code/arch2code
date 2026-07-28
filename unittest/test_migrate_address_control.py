@@ -280,11 +280,17 @@ def test_dirty_applied_edits():
         assert ("leafA" in leaf[0].message and "apbDecode" in leaf[0].message
                 and "Migration Diagnostics" in leaf[0].message), leaf[0].message
 
-        # Dirty project is not finalized.
+        # Dirty project is not finalized (leaf/interface TODOs remain), but the
+        # router IS resolved, so routing is fully migrated: the pointer is removed
+        # AND the legacy file is deleted together this run. The remaining manual
+        # items are non-router hand tasks that do not need the legacy file, so
+        # nothing is stranded and no DELETE_DEFERRED is reported.
         assert not report.clean, "manual TODOs present but report.clean is True"
-        assert not report.deletedAddressControl, "deleted addressControl.yaml while dirty"
-        assert os.path.exists(os.path.join(d, "addressControl.yaml")), \
-            "addressControl.yaml deleted while dirty"
+        assert report.deletedAddressControl, "resolved routing did not delete legacy file"
+        assert not os.path.exists(os.path.join(d, "addressControl.yaml")), \
+            "legacy file left on disk after routing fully migrated"
+        assert not _find(report.applied, DELETE_DEFERRED), \
+            "DELETE_DEFERRED reported though the file was deleted this run"
     finally:
         shutil.rmtree(d)
     return True
@@ -378,6 +384,14 @@ def test_unresolved_router_reports_manual():
         projOut = open(os.path.join(d, "project.yaml")).read()
         assert "addressControl:" in projOut, "pointer removed with nothing converted"
         assert not report.clean
+        # Unresolved router: pointer AND legacy file are kept together so a later
+        # run (once the router is authored) still finds the pointer and deletes
+        # through the subdir-honoring path. DELETE_DEFERRED explains the survivor.
+        assert os.path.exists(os.path.join(d, "addressControl.yaml")), \
+            "legacy file must be kept while a router is unresolved"
+        assert not report.deletedAddressControl, "deleted file while a router is unresolved"
+        assert _find(report.applied, DELETE_DEFERRED), \
+            "unresolved router did not report the kept file"
     finally:
         shutil.rmtree(d)
     return True
@@ -441,39 +455,142 @@ def test_mixed_keep_with_interleaved_comment():
     return True
 
 
-def test_stranded_file_cleaned_on_later_run():
-    # A first --write blocked by a non-router manual TODO (routed-leaf
-    # registerPorts) removes the pointer but keeps addressControl.yaml as
-    # reference. The pointer is now gone, so a later run must idempotently clean
-    # up the leftover rather than strand it on disk forever.
+def test_leaf_todo_removes_pointer_and_file_together():
+    # A first --write blocked only by a non-router manual TODO (routed-leaf
+    # registerPorts) has a fully-resolved router, so routing is fully migrated:
+    # the pointer AND the legacy file are removed together on that run. The leaf
+    # TODO is one-shot (it needs the legacy table), so keeping the file would
+    # re-raise it forever and never stamp. Nothing is stranded, so a later run is
+    # a clean idempotent no-op — the pointer is never dropped while the file
+    # survives, in any subdir.
     d = _makeProject(_DIRTY_PROJECT, _DIRTY_TOP, _DIRTY_ADDR)
     try:
         first = migrateAddressControlInProject(os.path.join(d, "project.yaml"),
                                                write=True)
-        # First run: routing migrated (pointer removed), but dirty so file kept.
+        # First run: routing migrated. Pointer removed AND file deleted together.
         assert not first.clean, "dirty project signaled clean"
         assert _find(first.applied, POINTER_REMOVE), "pointer not removed on first run"
-        assert not first.deletedAddressControl, "file deleted while dirty"
+        assert first.deletedAddressControl, "legacy file not deleted with the pointer"
         projOut = open(os.path.join(d, "project.yaml")).read()
         assert "addressControl:" not in projOut, "pointer not removed on first run"
-        assert os.path.exists(os.path.join(d, "addressControl.yaml")), \
-            "file must be kept as reference while dirty"
-        # The survivor must be explained, or the operator hand-deletes a file the
-        # next run removes on its own.
-        assert _find(first.applied, DELETE_DEFERRED), \
-            "first run did not report that the leftover is cleaned on a later run"
+        assert not os.path.exists(os.path.join(d, "addressControl.yaml")), \
+            "legacy file stranded after routing fully migrated"
+        # The file is gone, so nothing is deferred.
+        assert not _find(first.applied, DELETE_DEFERRED), \
+            "DELETE_DEFERRED reported though the file was deleted this run"
 
-        # Later run: pointer already gone. The leftover must be cleaned up.
+        # Later run: pointer already gone, file already gone. Idempotent no-op.
         second = migrateAddressControlInProject(os.path.join(d, "project.yaml"),
                                                 write=True)
-        assert second.deletedAddressControl, "stranded file not cleaned on later run"
-        assert second.written, "cleanup not reflected in written"
+        assert not second.deletedAddressControl, "second run tried to delete again"
+        assert not second.written, "second run wrote to a fully-migrated project"
         assert second.clean
-        assert not os.path.exists(os.path.join(d, "addressControl.yaml")), \
-            "addressControl.yaml left stranded on disk"
-        # Pointer and file are now consistent: both absent.
+        assert not second.applied and not second.manual, "second run did work"
+        assert not os.path.exists(os.path.join(d, "addressControl.yaml"))
         assert "addressControl:" not in open(os.path.join(d, "project.yaml")).read()
     finally:
+        shutil.rmtree(d)
+    return True
+
+
+def test_config_subdir_pointer_not_stranded():
+    # BUG 5: a project pointing at config/addressControl.yaml (a subdirectory)
+    # must have that nested file deleted, never stranded. This is the path that
+    # previously removed the pointer but kept the file, then a later pointer-is-
+    # None run checked the wrong (project-root) path and stranded the config/-
+    # nested file forever. Deletion now goes through os.path.join(projectDir,
+    # pointer), which honors the subdir.
+    d = tempfile.mkdtemp()
+    try:
+        os.makedirs(os.path.join(d, "config"))
+        with open(os.path.join(d, "project.yaml"), "w") as fh:
+            fh.write(_DIRTY_PROJECT.replace(
+                "addressControl: addressControl.yaml\n",
+                "addressControl: config/addressControl.yaml\n"))
+        with open(os.path.join(d, "top.yaml"), "w") as fh:
+            fh.write(_DIRTY_TOP)
+        with open(os.path.join(d, "config", "addressControl.yaml"), "w") as fh:
+            fh.write(_DIRTY_ADDR)
+        addrPath = os.path.join(d, "config", "addressControl.yaml")
+
+        report = migrateAddressControlInProject(os.path.join(d, "project.yaml"),
+                                                write=True)
+        # Router resolved (leaf TODO keeps it dirty) -> pointer removed AND the
+        # config/-nested file deleted together.
+        assert not report.clean, "leaf TODO should keep the project dirty"
+        assert report.deletedAddressControl, "config/-nested file not deleted"
+        assert not os.path.exists(addrPath), \
+            "config/addressControl.yaml stranded on disk"
+        assert "addressControl:" not in open(os.path.join(d, "project.yaml")).read()
+
+        # A later run finds no pointer and no file: idempotent no-op, no strand.
+        second = migrateAddressControlInProject(os.path.join(d, "project.yaml"),
+                                                write=True)
+        assert not second.written and not second.deletedAddressControl
+        assert not os.path.exists(addrPath), "config/ file resurrected or stranded"
+    finally:
+        shutil.rmtree(d)
+    return True
+
+
+def test_retry_after_failed_delete_no_duplicate_addressblock():
+    # The write phase injects addressBlock: on the resolved router BEFORE it
+    # os.remove()s the legacy file, and the delete is ordered before the pointer-
+    # removal write for retry safety. So a delete that fails mid-run leaves the
+    # addressBlock: already injected, the pointer still present, and the legacy
+    # file on disk. The next run re-enters emission against a router file that
+    # already carries its addressBlock:; without the idempotency guard it would
+    # re-inject and produce a DUPLICATE. This simulates that exact sequence by
+    # making the first os.remove fail, then asserts the retry finalizes with
+    # exactly one addressBlock:.
+    import pysrc.migrateAddressControl as mac
+    d = _makeProject(_DIRTY_PROJECT, _DIRTY_TOP, _DIRTY_ADDR)
+    projectYaml = os.path.join(d, "project.yaml")
+    addrPath = os.path.join(d, "addressControl.yaml")
+    topPath = os.path.join(d, "top.yaml")
+    realRemove = os.remove
+    calls = {"n": 0}
+
+    def flakyRemove(path):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("simulated mid-run filesystem failure")
+        return realRemove(path)
+
+    try:
+        mac.os.remove = flakyRemove
+        # First run: addressBlock: injected, then the delete fails -> RuntimeError.
+        try:
+            migrateAddressControlInProject(projectYaml, write=True)
+            raise AssertionError("expected RuntimeError from the failed delete")
+        except RuntimeError:
+            pass
+
+        # Retry safety held: the pointer survives and the file is still on disk,
+        # but the addressBlock: was already injected exactly once.
+        assert open(topPath).read().count("addressBlock:") == 1, \
+            "first run must inject exactly one addressBlock:"
+        assert "addressControl:" in open(projectYaml).read(), \
+            "pointer must survive a failed delete (never dropped while file lives)"
+        assert os.path.exists(addrPath), "legacy file must survive a failed delete"
+
+        # Retry: os.remove now succeeds. The already-present addressBlock: must be
+        # detected and NOT re-injected; the run finalizes cleanly.
+        report = migrateAddressControlInProject(projectYaml, write=True)
+        topOut = open(topPath).read()
+        assert topOut.count("addressBlock:") == 1, \
+            f"retry duplicated addressBlock::\n{topOut}"
+        # The router was reported as already migrated (skipped), not re-emitted.
+        skipped = _find(report.applied, ADDRESS_BLOCK)
+        assert any("already present" in i.message for i in skipped), \
+            [i.message for i in skipped]
+        # Router still resolved -> pointer removed and legacy file deleted together.
+        assert report.deletedAddressControl, "retry did not delete the legacy file"
+        assert not os.path.exists(addrPath), "legacy file stranded after retry"
+        assert "addressControl:" not in open(projectYaml).read(), \
+            "pointer not removed on the successful retry"
+    finally:
+        mac.os.remove = realRemove
         shutil.rmtree(d)
     return True
 
@@ -522,7 +639,9 @@ def test_advisory_outlives_the_one_shot_todo():
 _TESTS = [
     ("dirty project: all applied edits + delegated TODOs", test_dirty_applied_edits),
     ("routed-leaf advisory outlives the one-shot TODO", test_advisory_outlives_the_one_shot_todo),
-    ("stranded addressControl.yaml cleaned on later run", test_stranded_file_cleaned_on_later_run),
+    ("leaf TODO removes pointer and file together", test_leaf_todo_removes_pointer_and_file_together),
+    ("config/-subdir pointer file not stranded", test_config_subdir_pointer_not_stranded),
+    ("retry after failed delete: no duplicate addressBlock", test_retry_after_failed_delete_no_duplicate_addressblock),
     ("clean project finalized (deleted + signaled clean)", test_clean_finalizes),
     ("dry-run reports but changes nothing on disk", test_dry_run_changes_nothing),
     ("migrated project is idempotent (no-op)", test_idempotent_after_migration),

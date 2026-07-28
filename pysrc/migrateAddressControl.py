@@ -27,9 +27,11 @@ diagnostics so the two surfaces match:
   - routed-leaf `registerPorts:` authoring (skill Steps 4 / 6.2),
   - ambiguous / missing router resolution (skill Step 3).
 
-When the manual-TODO list is non-empty the converter does NOT delete
-`addressControl.yaml` and reports the project as not format-2 clean, so the future
-orchestrator does not stamp it.
+Pointer removal and legacy-file deletion are coupled: both happen together once
+every router is resolved (routing fully migrated), and both are kept when a
+router is still unresolved. The pointer is therefore never dropped while the file
+survives. Any remaining manual TODO reports the project as not format-2 clean, so
+the future orchestrator does not stamp it.
 """
 
 import os
@@ -165,18 +167,10 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
 
     pointer = projectData.get("addressControl")
     if pointer is None:
-        # No legacy pointer. Either the project never used the legacy schema, or a
-        # prior run already migrated the routing and removed the pointer. The
-        # pointer is removed as soon as routing is accounted for, but the legacy
-        # file is kept as reference until the project is fully clean; a run that
-        # finalized the project after the pointer was already gone would otherwise
-        # strand addressControl.yaml on disk. Delete that leftover here so the
-        # pointer and file stay consistent (both gone once routing is migrated).
-        leftover = os.path.join(projectDir, "addressControl.yaml")
-        if write and os.path.isfile(leftover):
-            os.remove(leftover)
-            report.deletedAddressControl = True
-            report.written = True
+        # No legacy pointer: the project never used the legacy schema, or a prior
+        # run already migrated it. Pointer removal and file deletion are coupled
+        # (see the write phase), so a removed pointer always means the legacy file
+        # was deleted in the same run — there is never a stranded leftover here.
         return report
 
     addrCtlPath = os.path.join(projectDir, pointer)
@@ -191,6 +185,7 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
 
     files = _projectFileSet(projectDir, projectData)
     blockIndex = _buildBlockIndex(files)
+    blockRows = _buildBlockRows(files)
     instances = _buildInstanceIndex(files)
     fileInterfaces = {path: _interfaceNames(_read(path)) for path in files}
 
@@ -251,6 +246,21 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
     addressBlockEdits = {}    # path -> [(line, col, childCol, bodyLines)]
     for block, groupName, fieldNodes in emissions:
         line, col, childCol, blockFile = blockIndex[block]
+        # Idempotency guard for the retry path. The os.remove of the legacy file
+        # is ordered before the pointer-removal write (retry safety), so a prior
+        # run can inject addressBlock: here and then fail the delete, leaving the
+        # pointer in place; a retry then re-enters this loop with the router file
+        # already carrying its addressBlock:. Detect that already-migrated router
+        # the same way as the post-migration advisory — an addressBlock: on the
+        # parsed block row — and skip the injection so a retry cannot write a
+        # duplicate. Router resolution still stands, so pointer removal and file
+        # deletion proceed below.
+        if blockRows[block].get("addressBlock"):
+            report.applied.append(ReportItem(
+                ADDRESS_BLOCK, _loc(blockFile, line + 1),
+                f"addressBlock: already present on router block '{block}' "
+                f"(from AddressGroups row '{groupName}'); skipping re-injection"))
+            continue
         bodyLines = _addressBlockLines(addrCtlText, groupName, fieldNodes,
                                        regBusIf, col, childCol)
         addressBlockEdits.setdefault(blockFile, []).append((line, bodyLines))
@@ -309,15 +319,18 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
             "moved InstanceGroups:/AddressObjects: to project.yaml "
             "instanceGroups:/addressObjects:"))
 
-    # A survivor looks like a migration failure. Say why it is still there, or
-    # the operator hand-deletes a file the next run removes on its own (the
-    # pointer-is-None cleanup at the top of this function).
-    if not report.clean:
+    # The legacy file is kept only while a router is still unresolved, because its
+    # AddressGroups decode information is not yet fully migrated. Explain the
+    # survivor so the operator does not hand-delete a file a later run removes once
+    # the router is authored. When only non-router manual items remain the routing
+    # is fully migrated, so the file (and pointer) are removed together below.
+    if unresolvedRouter:
         report.applied.append(ReportItem(
             DELETE_DEFERRED, _loc(addrCtlPath, 0),
-            f"keeping {os.path.basename(addrCtlPath)} as reference while manual "
-            f"items remain; it is removed automatically on the next run — do not "
-            f"delete it by hand"))
+            f"keeping {os.path.basename(addrCtlPath)} (and its addressControl: "
+            f"pointer) as reference while a router remains unresolved; both are "
+            f"removed automatically once the router is authored — do not delete "
+            f"it by hand"))
 
     if not write:
         return report
@@ -333,14 +346,17 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
         _write(path, text)
         wrote = True
 
-    if ptext != projectText:
-        _write(projectYamlPath, ptext)
-        wrote = True
-
-    # Delete the legacy file only when the project is clean; a non-empty manual
-    # list means the skill still has work, so the file stays as reference
-    # (DELETE_DEFERRED above says so).
-    if report.clean:
+    # Pointer removal and file deletion are coupled under the same condition
+    # (`not unresolvedRouter`): once every router is resolved the routing is fully
+    # migrated, so the pointer is dropped from project.yaml (above) and the legacy
+    # file is deleted here, together. Any remaining manual item is then a
+    # non-router hand-authoring task (routed-leaf registerPorts:, interface scope)
+    # that does not need the legacy file, so deleting it strands nothing. When a
+    # router is still unresolved both are kept, so a later run finds the pointer
+    # and deletes through this same subdir-honoring addrCtlPath. Delete before
+    # writing the pointer removal: a failed delete then leaves the pointer in place
+    # for a retry, so the pointer is never dropped while the file survives.
+    if not unresolvedRouter:
         try:
             os.remove(addrCtlPath)
         except OSError as exc:
@@ -348,6 +364,10 @@ def migrateAddressControlInProject(projectYamlPath, write=False):
                 f"address-control migration: cannot delete the migrated "
                 f"{os.path.basename(addrCtlPath)}: {exc}")
         report.deletedAddressControl = True
+
+    if ptext != projectText:
+        _write(projectYamlPath, ptext)
+        wrote = True
 
     report.written = wrote
     return report

@@ -66,19 +66,31 @@ def test_bit_length_general():
 
 
 def test_floordiv():
-    # floor // -> /, with the surrounding spacing left intact.
-    _expectConvert("$HORIZONTAL_SIZE // $PIXELS_PER_CLOCK",
-                   "$HORIZONTAL_SIZE / $PIXELS_PER_CLOCK")
-    _expectConvert("($DEBAYER_DIMENSION-1)//2", "($DEBAYER_DIMENSION-1)/2")
-    _expectConvert("($DEBAYER_DIMENSION - 1) // 2", "($DEBAYER_DIMENSION - 1) / 2")
+    # Floor division is never auto-rewritten: Python `//` floors toward -inf
+    # while SV `/` truncates toward zero, so `//`->`/` would silently corrupt
+    # the ceiling idiom. Every `//` site is reported NEEDS_MANUAL (fail-loud).
+    _expectManual("$HORIZONTAL_SIZE // $PIXELS_PER_CLOCK", reasonSubstr="floors toward -inf")
+    _expectManual("($DEBAYER_DIMENSION-1)//2", reasonSubstr="floors toward -inf")
+    _expectManual("($DEBAYER_DIMENSION - 1) // 2", reasonSubstr="floors toward -inf")
+    return True
+
+
+def test_floordiv_ceiling_idiom():
+    # The concrete corruption motivating fail-loud: the positive-ceiling idiom
+    # `-(-a//b)`. A blind `//`->`/` turns this ceiling into a floor (the real
+    # 2240->2176 undersized-memory bug). Both the flat and the nested-parens
+    # forms must be caught by the AST walk and reported NEEDS_MANUAL.
+    _expectManual("-(-$A//$B)", reasonSubstr="floors toward -inf")
+    _expectManual("-(-($A)//$B)", reasonSubstr="floors toward -inf")
     return True
 
 
 def test_combination():
     # A bit_length inside a larger expression; the surrounding text is verbatim.
     _expectConvert("($A-1).bit_length() + 1", "$clog2($A) + 1")
-    # A bit_length feeding a floor-divide: two non-overlapping rewrites.
-    _expectConvert("($A-1).bit_length() // 2", "$clog2($A) / 2")
+    # A bit_length feeding a floor-divide: the `//` poisons the whole row, so it
+    # is reported NEEDS_MANUAL rather than partially rewritten.
+    _expectManual("($A-1).bit_length() // 2", reasonSubstr="floors toward -inf")
     return True
 
 
@@ -112,8 +124,6 @@ def test_idempotency():
     for pyExpr in [
         "($MEMORYA_WORDS-1).bit_length()",
         "($DWORD).bit_length()",
-        "$HORIZONTAL_SIZE // $PIXELS_PER_CLOCK",
-        "($A-1).bit_length() // 2",
     ]:
         once = convertExpr(pyExpr)
         assert once.category == CONVERTED, pyExpr
@@ -144,19 +154,15 @@ def test_numeric_equivalence():
     cases = [
         "($MEMORYA_WORDS-1).bit_length()",
         "($DWORD).bit_length()",
-        "$HORIZONTAL_SIZE // $PIXELS_PER_CLOCK",
-        "($DEBAYER_DIMENSION-1)//2",
-        "($A-1).bit_length() // 2",
     ]
     # Symbol assignments: include powers of two and non-powers; all positive so
-    # $clog2 arguments are valid and Python floor // matches SV truncation.
+    # the $clog2 arguments are valid. (Floor division is intentionally absent
+    # from `cases`: `//` is never converted, so there is no converted SV string
+    # to check for numeric equivalence.)
     assignments = [
-        {"MEMORYA_WORDS": 8, "DWORD": 32, "HORIZONTAL_SIZE": 1920,
-         "PIXELS_PER_CLOCK": 4, "DEBAYER_DIMENSION": 5, "A": 8},
-        {"MEMORYA_WORDS": 9, "DWORD": 33, "HORIZONTAL_SIZE": 1921,
-         "PIXELS_PER_CLOCK": 3, "DEBAYER_DIMENSION": 8, "A": 17},
-        {"MEMORYA_WORDS": 2, "DWORD": 1, "HORIZONTAL_SIZE": 100,
-         "PIXELS_PER_CLOCK": 7, "DEBAYER_DIMENSION": 2, "A": 2},
+        {"MEMORYA_WORDS": 8, "DWORD": 32},
+        {"MEMORYA_WORDS": 9, "DWORD": 33},
+        {"MEMORYA_WORDS": 2, "DWORD": 1},
     ]
     for pyExpr in cases:
         result = convertExpr(pyExpr)
@@ -188,18 +194,19 @@ def test_file_roundtrip():
     try:
         report = convertEvalsInFile(path, write=True)
         assert report.written, "expected a write"
-        # Two CONVERTED rows, one NEEDS_MANUAL (the real eval); ALREADY_SV not
-        # reported as either.
-        assert len(report.converted) == 2, [r.original for r in report.converted]
-        assert len(report.manual) == 1, [r.original for r in report.manual]
-        assert report.manual[0].original == "$A / 2.0"
+        # One CONVERTED row (the bit_length); two NEEDS_MANUAL (the floor `//`
+        # and the real eval); ALREADY_SV not reported as either.
+        assert len(report.converted) == 1, [r.original for r in report.converted]
+        manualOriginals = sorted(r.original for r in report.manual)
+        assert manualOriginals == ["$A / 2.0", "$H // $PPC"], manualOriginals
 
         with open(path) as f:
             out = f.read()
+        # The floor `//` row is left byte-identical (NEEDS_MANUAL, never written).
         expected = (
             "constants:\n"
             '  A_LOG2: {eval: "$clog2($A)", desc: "log2 of A"}\n'
-            '  ENTRIES: {eval: "$H / $PPC", desc: "entries per line"}  # trailing comment\n'
+            '  ENTRIES: {eval: "$H // $PPC", desc: "entries per line"}  # trailing comment\n'
             '  ALREADY: {eval: "$A + 1", desc: "already SV"}\n'
             '  REAL_HALF: {eval: "$A / 2.0", valueType: real, desc: "real eval"}\n'
         )
@@ -220,7 +227,8 @@ def test_file_roundtrip():
 _TESTS = [
     ("($X-1).bit_length() -> $clog2($X)", test_bit_length_minus_one),
     ("($X).bit_length() -> $clog2($X + 1)", test_bit_length_general),
-    ("floor // -> /", test_floordiv),
+    ("floor // reported NEEDS_MANUAL", test_floordiv),
+    ("ceiling idiom -(-a//b) reported NEEDS_MANUAL", test_floordiv_ceiling_idiom),
     ("bit_length combined with other constructs", test_combination),
     ("already-SV rows skipped unchanged", test_already_sv),
     ("out-of-grammar rows reported NEEDS_MANUAL", test_needs_manual),

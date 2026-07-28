@@ -1320,14 +1320,16 @@ class projectOpen:
             self.getBDDefinitionPorts(ret, qualBlock)
         # deduplicate the ports
         self.getBDPorts(ret)
+        # module-local parameterized declaration set, derived and persisted by
+        # projectCreate.deriveParameterizedDeclSets(). Resolved before getBDIncludes
+        # so the include computation can pull in contexts transitively referenced
+        # by the emitted decl set.
+        self.getBDParameterizedDecls(ret)
         # figure out includes
         self.getBDIncludes(ret)
         # collect interface definitions for all interface types used in the block
         self.getBDInterfaceDefs(ret)
         self.getBDConfigInfo(ret)
-        # module-local parameterized declaration set, derived and persisted by
-        # projectCreate.deriveParameterizedDeclSets()
-        self.getBDParameterizedDecls(ret)
         # Surface per-block register-bus data on the view; routers without
         # authored addressBlock rows get an equivalent view from ADDRESS_CONFIG.
         self.getBDAddressBlockView(ret)
@@ -2888,6 +2890,22 @@ class projectOpen:
     def getBDIncludes(self, ret):
         sourceContexts = self.extractContext(ret['temp']['structs'], ret['temp']['consts'])
         for sourceContext in sourceContexts:
+            if sourceContext not in self.specialContexts:
+                ret['includeContext'][sourceContext] = 0
+
+        # A parameterizable block emits its FULL module-local parameterized-decl
+        # set (e.g. video_bayer_t), which can redeclare a context type that
+        # transitively references a type in ANOTHER package (video_bayer_t ->
+        # video_frame_t in isp_types). That other package is imported, not
+        # redeclared, but nothing on the register/port surface references it
+        # directly, so it would be dropped from the import/include list. Pull in
+        # the contexts reachable from the decl-set struct keys via the same
+        # recursive extractContext walk; over-inclusion is a harmless extra import.
+        declStructs = dict()
+        for decl in ret['parameterizedDecls']:
+            if decl['declKind'] == 'structure':
+                declStructs[decl['declKey']] = 0
+        for sourceContext in self.extractContext(declStructs, dict()):
             if sourceContext not in self.specialContexts:
                 ret['includeContext'][sourceContext] = 0
 
