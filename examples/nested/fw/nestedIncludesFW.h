@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 
-// GENERATED_CODE_PARAM --context=nested.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=nested --context=../../yaml/nested.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 
 // GENERATED_CODE_END

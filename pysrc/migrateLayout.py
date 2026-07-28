@@ -156,6 +156,19 @@ HARNESS_MK = os.path.join(BUILD_CONFIG_DIR, "make", "shared.mk")
 _A2C_PRJ_YAML_RE = re.compile(r'^[ \t]*A2C_PRJ_YAML[ \t]*[:?]?=.*$', re.M)
 _MK_INCLUDE_RE = re.compile(r'^[ \t]*-?include[ \t]', re.M)
 
+# Root-relative user-owned build makefile (stays at the project root) that can
+# carry EXTRA_* make-variable references to relocatable segment roots.
+RUNDIR_MK = os.path.join("rundir", "Makefile")
+
+# An EXTRA_* make-variable assignment, and a `$(REPO_ROOT)/<top>` path reference
+# within it. <top> is the first path component under the repo root — the
+# functional segment (model, rtl, fw, verif, ...) the layout migration relocates.
+# Matched against one backslash-folded LOGICAL line (see _foldedLines), so a
+# continued list is scanned whole; a line-anchored match would see only the first
+# physical line and silently miss every path on the continuations.
+_EXTRA_VAR_RE = re.compile(r'^[ \t]*(EXTRA_\w+)[ \t]*[:+?]?=(?P<rhs>.*)$')
+_REPO_ROOT_REF_RE = re.compile(r'\$\(REPO_ROOT\)/(?P<top>[^\s/):]+)')
+
 # The yamlFormat value the layout migration presupposes. Kept local so
 # this module stays text-only and never imports processYaml (which opens the DB
 # path); migrateYaml passes the authoritative CURRENT_YAML_FORMAT through the
@@ -212,6 +225,7 @@ class LayoutReport:
     deletes: list = field(default_factory=list)     # list[str] (abs paths of generated files)
     rewrites: list = field(default_factory=list)    # list[Rewrite] (relative-path re-rooting)
     harnessEdits: list = field(default_factory=list) # list[HarnessEdit] (A2C_PRJ_YAML re-point)
+    relocatableRoots: set = field(default_factory=set) # top-level dir names of the functional segments the migration relocates
     projectRoot: str = ""                           # abs dirs.root (map anchor; "" until computed)
     written: bool = False
 
@@ -283,6 +297,10 @@ def migrateLayoutInProject(projectYamlPath, write=False):
     # Plan the single A2C_PRJ_YAML re-point into the root build harness (which
     # stays at root), derived from the project-file move.
     _planHarnessEdit(report)
+
+    # Warn on EXTRA_* make-variable references to relocatable segment roots in the
+    # root-relative build makefiles; these cannot be rewritten mechanically.
+    _planExtraPathWarnings(report)
 
     # Under --write, execute the map then apply the rewrites and the
     # harness re-point. The layout flip is a no-op (reaching here means
@@ -369,6 +387,12 @@ def _buildRelocationMap(projectYamlPath, projectData, report):
     mergedDirs = mergedProj.get("dirs") or {}
     fullyGenerated = _fullyGeneratedSegments(fileMap)
     for segKey, segDir in _functionalSegments(projectRoot, mergedDirs):
+        # Every functional segment relocates under hierarchical layout (its root is
+        # no longer a valid $(REPO_ROOT)-relative top-level path), so record its
+        # top-level project-root component for the EXTRA_* reference warning.
+        top = _topSegment(segDir, projectRoot)
+        if top is not None:
+            report.relocatableRoots.add(top)
         hierName = hdirs.get(segKey, os.path.basename(segDir))
         if segKey in fullyGenerated:
             # Directory-level clear. A project-scope orphan (sc_main.cpp,
@@ -796,6 +820,75 @@ def _planHarnessEdit(report):
     match = _A2C_PRJ_YAML_RE.search(_read(harness))
     report.harnessEdits.append(
         HarnessEdit(harness, match.group(0) if match else "", newLine))
+
+
+def _topSegment(path, projectRoot):
+    """The first path component of `path` relative to `projectRoot`, or None when
+    `path` lies outside the project root."""
+    rel = os.path.relpath(os.path.abspath(path), os.path.abspath(projectRoot))
+    if rel == os.pardir or rel.startswith(os.pardir + os.sep):
+        return None
+    return rel.split(os.sep)[0]
+
+
+def _foldedLines(text):
+    """Yield (1-based start line, logical line) with make's trailing-backslash
+    continuations folded into one string, so a multi-line variable assignment is
+    matched as a whole. The reported line is where the assignment STARTS, which is
+    the line the user edits."""
+    physical = text.splitlines()
+    i = 0
+    while i < len(physical):
+        start = i
+        logical = physical[i]
+        while logical.endswith("\\") and i + 1 < len(physical):
+            i += 1
+            logical = logical[:-1] + " " + physical[i].strip()
+        yield start + 1, logical
+        i += 1
+
+
+def _planExtraPathWarnings(report):
+    """Warn on EXTRA_* make-variable references to relocatable segment roots.
+
+    A user's root-relative build harness (`include/make/shared.mk`) or
+    `rundir/Makefile` can point EXTRA_* variables (EXTRA_SC_GEN_FILES,
+    EXTRA_SV_GEN_FILES, EXTRA_PRJ_SRC_DIRS, ...) at a functional segment root via
+    `$(REPO_ROOT)/<segment>/...`. Those roots relocate under hierarchical layout,
+    so the reference dangles after the move. The migration does NOT rewrite EXTRA_*
+    text (it uses the $(REPO_ROOT) macro and free-form make); it surfaces each such
+    reference as a TODO_UNREWRITABLE_PATH manual item so the user re-points it by
+    hand, the same mechanism used for unrewritable include/projectFiles paths. One
+    item per (assignment, referenced root), so a continued list naming several
+    segments reports each of them.
+
+    The relocatable roots are the functional segments the migration moves
+    (`report.relocatableRoots`, the top-level project-root component of each), so
+    only references to a segment root that actually relocates warn."""
+    relocatedTops = report.relocatableRoots
+    if not relocatedTops:
+        return
+    for rel in (HARNESS_MK, RUNDIR_MK):
+        path = os.path.join(report.projectRoot, rel)
+        if not os.path.isfile(path):
+            continue
+        for line, logical in _foldedLines(_read(path)):
+            m = _EXTRA_VAR_RE.match(logical)
+            if m is None:
+                continue
+            var = m.group(1)
+            # Every distinct relocating root the assignment references is
+            # reported: one continued list commonly names several segments, and a
+            # single item per assignment would leave the rest silently dangling.
+            tops = sorted({r.group("top")
+                           for r in _REPO_ROOT_REF_RE.finditer(m.group("rhs"))
+                           if r.group("top") in relocatedTops})
+            for top in tops:
+                report.manual.append(ReportItem(
+                    TODO_UNREWRITABLE_PATH, _loc(path, line),
+                    f"{var} references '$(REPO_ROOT)/{top}' which relocates under "
+                    f"hierarchical layout and cannot be rewritten mechanically; "
+                    f"re-point it by hand"))
 
 
 def _applyHarnessEdits(report):

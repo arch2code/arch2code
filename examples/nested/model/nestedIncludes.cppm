@@ -1,5 +1,5 @@
 
-// GENERATED_CODE_PARAM --context=../../yaml/nested.yaml --mode=module
+// GENERATED_CODE_PARAM --project=nested --context=../../yaml/nested.yaml --mode=module
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader

@@ -1,0 +1,9 @@
+# subA-owned leaf context. Drags subA's vendored shared copy via include:.
+include:
+    - ../shared/yaml/shared_types.yaml
+
+blocks:
+    subALeafBlock:
+        desc: "subA-owned leaf block"
+        hasMdl: true
+        hasRtl: false

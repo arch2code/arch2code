@@ -1,16 +1,19 @@
-#ifndef PYSOCKET_TB_BASE_H
-#define PYSOCKET_TB_BASE_H
+//
 
-//copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
-
+// GENERATED_CODE_PARAM --block=pySocket_tb --mode=module
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=baseModuleHeader
+module;
 #include "systemc.h"
-
-// GENERATED_CODE_PARAM --block=pySocket_tb
-// GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "req_ack_channel.h"
-#include "pySocket_tbIncludes.h"
 
-class pySocket_tbBase : public virtual blockPortBase
+export module pySocket_tb.base;
+import pySocket_tb;
+using namespace pySocket_tb_ns;
+// GENERATED_CODE_END
+
+// GENERATED_CODE_BEGIN --template=baseClassDecl
+
+export class pySocket_tbBase : public virtual blockPortBase
 {
 public:
     virtual ~pySocket_tbBase() = default;
@@ -26,7 +29,7 @@ public:
     {
     };
 };
-class pySocket_tbInverted : public virtual blockPortBase
+export class pySocket_tbInverted : public virtual blockPortBase
 {
 public:
 
@@ -41,7 +44,7 @@ public:
     {
     };
 };
-class pySocket_tbChannels
+export class pySocket_tbChannels
 {
 public:
 
@@ -54,4 +57,3 @@ public:
 };
 
 // GENERATED_CODE_END
-#endif //PYSOCKET_TB_BASE_H

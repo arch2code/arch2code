@@ -1,5 +1,5 @@
 
-// GENERATED_CODE_PARAM --context=../../yaml/hierVlSharedTypes.yaml --mode=module
+// GENERATED_CODE_PARAM --project=hierVlDemo --context=../../yaml/hierVlSharedTypes.yaml --mode=module
 // 
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader

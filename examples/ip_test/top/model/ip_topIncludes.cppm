@@ -1,5 +1,5 @@
 
-// GENERATED_CODE_PARAM --context=../../top/yaml/ip_top.yaml --mode=module
+// GENERATED_CODE_PARAM --project=ip_test --context=../../top/yaml/ip_top.yaml --mode=module
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader

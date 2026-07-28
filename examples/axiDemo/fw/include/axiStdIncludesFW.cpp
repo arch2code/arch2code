@@ -2,7 +2,7 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 #include "axiStdIncludesFW.h"
 using namespace fw_ns;
-// GENERATED_CODE_PARAM --context=axiStd.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=axiDemo --context=axiStd.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=structures --section=cppIncludes
 
 // GENERATED_CODE_END

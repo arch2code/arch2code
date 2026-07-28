@@ -41,6 +41,7 @@ from pysrc.migrateOrphans import (
     expandFileMap,
     _dispositionMap,
     _literalDeletePaths,
+    _reconstructContexts,
     LEGACY_FILEMAP,
     LEGACY_LITERAL_DELETE,
     MIGRATE_DELETE,
@@ -249,10 +250,11 @@ def test_port_and_leave_never_deleted():
         # unreachability by construction: the delete-target set (delete entries +
         # literals) is disjoint from the port/leave expansion.
         r = OrphansReport(projectName="t")
-        deleteTargets = expandFileMap(prj, _dispositionMap(MIGRATE_DELETE), r)
+        contexts = _reconstructContexts(prj, r)
+        deleteTargets = expandFileMap(prj, _dispositionMap(MIGRATE_DELETE), r, contexts)
         deleteTargets |= _literalDeletePaths(prj, r)
-        portLeave = (expandFileMap(prj, _dispositionMap(MIGRATE_PORT), r)
-                     | expandFileMap(prj, _dispositionMap(MIGRATE_LEAVE), r))
+        portLeave = (expandFileMap(prj, _dispositionMap(MIGRATE_PORT), r, contexts)
+                     | expandFileMap(prj, _dispositionMap(MIGRATE_LEAVE), r, contexts))
         check(portLeave and portLeave.isdisjoint(deleteTargets),
               "port/leave paths are unreachable for deletion by construction")
 
@@ -294,10 +296,14 @@ def test_user_include_site_handoff():
     print("test_user_include_site_handoff")
     with tempfile.TemporaryDirectory() as root:
         _stage(root)
-        # A hand-authored user source that #includes a to-be-deleted header.
+        # A hand-authored user source that #includes a to-be-deleted header, and
+        # also a port-pending one. Only the deleted header's include is stale:
+        # paramblk.h survives the sweep (reported TODO_PORT) until the agent-driven
+        # port converts it, so including it is still valid and must not be flagged.
         userFile = os.path.join(root, "model", "consumer.cpp")
         with open(userFile, "w") as fh:
-            fh.write('#include "topIncludes.h"\nint main(){return 0;}\n')
+            fh.write('#include "topIncludes.h"\n#include "paramblk.h"\n'
+                     'int main(){return 0;}\n')
         prj = _FakePrj(root)
         report = sweepOrphans(prj, write=True)
         todos = [i for i in report.manual if i.kind == TODO_USER_INCLUDE]
@@ -305,6 +311,8 @@ def test_user_include_site_handoff():
         check(len(todos) == 1, "exactly one user-include-site hand-off")
         check(todos and "consumer.cpp" in todos[0].location,
               "hand-off points at the user file that includes the deleted header")
+        check(todos and todos[0].location.endswith(":1"),
+              "hand-off names the deleted header's line, not the port-pending one")
 
 
 def test_dry_run_changes_nothing():

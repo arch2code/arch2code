@@ -101,14 +101,20 @@ def test_error_child_project_via_include():
 
 def _newmodule_no_token(work):
     """Contract: run from the root project, `--newmodule` scaffolds only
-    root-owned blocks and skips child-owned ones (the ownership gate), and no
-    scaffold carries a `--project` token.
+    root-owned blocks AND CONTEXTS and skips child-owned ones (the ownership
+    gate). A build scaffolds only the contexts it owns, so child-owned context
+    files (childLeafIncludes.cppm/childLeaf_package.sv) are laid down by the
+    child's OWN newmodule run, never by this root run.
 
-    Ownership is resolved from the DB by the generator gate, not from a token on
-    the file. Build the fixture db, run `--newmodule` in the same temp tree, and
-    assert that the root-owned block scaffolds are created, the child-owned block
-    scaffolds are skipped (never written across the ownership boundary), and NONE
-    of the created scaffolds carries a `--project` token.
+    Ownership for BLOCK scaffolds is resolved from the DB by the generator gate,
+    not from a token, so a block scaffold carries `--block` (never `--project`).
+    The project-mode rtl.f carries `--project` directly. Context-mode scaffolds
+    (Includes.cppm/VariantConfig.h/_package.sv/IncludesFW.*, identified by their
+    `--context` token) carry BOTH `--context` (canonical yamlContext key) and
+    `--project` (the context's owning project) — the S3-context dual stamp, so an
+    owned file resolves ownership through `--project` and renders through
+    `--context`. Build the fixture db, run `--newmodule` in the same temp tree,
+    and assert those per-mode stamp shapes.
     """
     db = os.path.join(work, 'nested-ownership.db')
     env = os.environ.copy()
@@ -147,14 +153,38 @@ def _newmodule_no_token(work):
                  'childLeafBlock.h', 'childLeafBlock.cpp', 'childLeafBlockBase.cppm'):
         assert name not in param_lines, \
             f"child-owned scaffold '{name}' must be skipped when run from the root project"
+    # Child-owned CONTEXT files are skipped by the same ownership gate: a build
+    # scaffolds only the contexts it owns, so the root newmodule never lays down
+    # a child context file with a parent-relative --context the child's own build
+    # could not resolve (the basename fallback is gone).
+    for name in ('childLeafIncludes.cppm', 'childLeaf_package.sv'):
+        assert name not in param_lines, \
+            f"child-owned context scaffold '{name}' must be skipped when run from the root project"
     # The ownership gate reports each skipped child block on stdout.
     assert 'owned by project' in made.stdout, \
         f"expected an ownership-skip message on stdout:\n{made.stdout}"
-    # No created scaffold may carry an ownership token under the new contract.
+    # A project-mode artifact (rtl.f) names its owning project directly via
+    # --project and owns no context (no --context token).
+    assert '--project=' + ROOT_PROJECT_NAME in param_lines.get('rtl.f', ''), \
+        f"project-mode rtl.f must carry --project={ROOT_PROJECT_NAME}: {param_lines.get('rtl.f')!r}"
+    assert '--context=' not in param_lines.get('rtl.f', ''), \
+        f"project-mode rtl.f must carry no --context token: {param_lines.get('rtl.f')!r}"
     for name, line in param_lines.items():
-        assert '--project=' not in line, \
-            f"scaffold '{name}' must carry no --project token: {line!r}"
-    print("PASS: newModule skips child-owned scaffolds and emits no --project token")
+        if name == 'rtl.f':
+            continue
+        if '--context=' in line:
+            # Context-mode scaffold: dual-stamped with --context (render) AND
+            # --project (owner), so ownership never needs the context key.
+            assert '--project=' in line, \
+                f"context-mode scaffold '{name}' must carry a --project token: {line!r}"
+        else:
+            # Block-mode scaffold: ownership resolves from the DB via --block; no
+            # --project token is stamped.
+            assert '--project=' not in line, \
+                f"block-mode scaffold '{name}' must carry no --project token: {line!r}"
+    print("PASS: newModule (root run) skips child-owned blocks AND contexts; "
+          "rtl.f carries --project, context scaffolds carry --context + --project, "
+          "block scaffolds carry neither")
 
 
 def _find_generated(work, basename):
@@ -177,14 +207,17 @@ def _gate_skip_proof(work):
 
     A child-owned generated file must be SKIPPED (left byte-identical) when a
     generator runs under a projectName that does not own it, and GENERATED when
-    it runs under the owning projectName. Ownership is read from the DB via the
-    file's context; nothing is stamped on the file. We flip only the persisted
-    PROJECTNAME in a db copy to drive the match case, so the same real generator
-    invocation exercises both branches. The child-owned context artifacts
+    it runs under the owning projectName. A context file carries --project (its
+    owning project), which resolveFileOwner reads directly; the owner is compared
+    against the running PROJECTNAME. We flip only the persisted PROJECTNAME in a
+    db copy to drive the match case, so the same real generator invocation
+    exercises both branches. The child-owned context artifacts
     (childLeafIncludes.cppm for SystemC, childLeaf_package.sv for SystemVerilog)
     scaffold with an empty generated region and are always in scope, so an
     empty->filled change is an unambiguous generate signal and no change is an
-    unambiguous skip.
+    unambiguous skip. A build scaffolds only the contexts it owns, so these
+    child-owned files are laid down by a `--newmodule` run under the child
+    projectName (the same PROJECTNAME-flipped db copy), not by the root build.
     """
     root_db = os.path.join(work, 'nested-ownership.db')
     child_db = os.path.join(work, 'nested-ownership-childmatch.db')
@@ -194,6 +227,16 @@ def _gate_skip_proof(work):
                  (CHILD_PROJECT_NAME,))
     conn.commit()
     conn.close()
+
+    # Scaffold the child-owned context files from the child project: the root
+    # newmodule owns only root contexts, so these child artifacts do not exist
+    # yet. Running --newmodule against the PROJECTNAME=childProj db lays them down.
+    made = subprocess.run(
+        [sys.executable, ARCH2CODE, '--db', child_db, '-r', '--newmodule'],
+        capture_output=True, text=True, timeout=120, cwd=base_dir,
+        env={**os.environ, 'NO_COLOR': '1'})
+    assert made.returncode == 0, \
+        f"child newmodule failed:\n{made.stdout}\n{made.stderr}"
 
     cases = [
         ('--systemc',                'childLeafIncludes.cppm'),
@@ -228,8 +271,9 @@ def _resolve_owner_unit(prj):
     context file via its --context directly, and None when no owning context is
     named (hierarchy/scope framework scaffolds).
     """
-    def params(block=None, context=None, parent=None):
-        return SimpleNamespace(block=block, context=context, parent=parent)
+    def params(block=None, context=None, parent=None, project=None):
+        return SimpleNamespace(block=block, context=context, parent=parent,
+                               project=project)
 
     child_ctx = '../../child/yaml/childLeaf.yaml'
     assert prj.resolveFileOwner(params(block='childLeafBlock')) == CHILD_PROJECT_NAME
@@ -238,9 +282,14 @@ def _resolve_owner_unit(prj):
     # A registrar names both --block and --parent; the parent (assembler) owns it.
     assert prj.resolveFileOwner(
         params(block='rootLeaf', parent='childProjBlock')) == CHILD_PROJECT_NAME
+    # A project-mode file (rtl.f) names its owning projectName directly. The gate
+    # returns it verbatim: the current build owns it (root) or a referenced child
+    # owns it (child, so the SC/SV skip gate fires and it is not regenerated).
+    assert prj.resolveFileOwner(params(project=ROOT_PROJECT_NAME)) == ROOT_PROJECT_NAME
+    assert prj.resolveFileOwner(params(project=CHILD_PROJECT_NAME)) == CHILD_PROJECT_NAME
     # No owning context named -> unowned -> always generate.
     assert prj.resolveFileOwner(params()) is None
-    print("PASS: resolveFileOwner maps block/parent/context/none correctly")
+    print("PASS: resolveFileOwner maps block/parent/context/project/none correctly")
 
 
 def _context_by_stem(mapping, stem):

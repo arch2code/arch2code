@@ -8,7 +8,10 @@
 // GENERATED_CODE_PARAM --block=pySocket
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "pySocketBase.h"
+#include "instanceFactory.h"
+import pySocket.base;
+import pySocket_tb;
+using namespace pySocket_tb_ns;
 #include "endOfTest.h"
 
 class pySocketExternal: public sc_module, public pySocketInverted {

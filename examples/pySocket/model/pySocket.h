@@ -10,22 +10,15 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "pySocketBase.h"
-#include "pySocket_tbIncludes.h"
+import pySocket.base;
+#include "req_ack_channel.h"
+import pySocket_tb;
+using namespace pySocket_tb_ns;
 
 SC_MODULE(pySocket), public blockBase, public pySocketBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("pySocket_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<pySocket>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
 
     pySocket(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

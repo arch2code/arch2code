@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 
-// GENERATED_CODE_PARAM --context=hierVlDemo_tb.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=hierVlDemo --context=../../yaml/hierVlDemo_tb.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "hierVlSharedTypesIncludesFW.h"
 

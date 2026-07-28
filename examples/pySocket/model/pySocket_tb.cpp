@@ -3,11 +3,19 @@
 // GENERATED_CODE_PARAM --block=pySocket_tb
 // GENERATED_CODE_BEGIN --template=constructor --section=init
 #include "pySocket_tb.h"
-#include "pySocketBase.h"
-#include "dutBase.h"
+import pySocket.base;
+import dut.base;
 SC_HAS_PROCESS(pySocket_tb);
 
-pySocket_tb::registerBlock pySocket_tb::registerBlock_; //register the block with the factory
+// === Block factory registration (pySocket_tb) ===
+void register_pySocket_tb_variants() {
+    instanceFactory::registerBlock("pySocket_tb_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<pySocket_tb>(blockName, variant, bbMode)); }, "", "pySocket");
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _pySocket_tb_registered = (register_pySocket_tb_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 pySocket_tb::pySocket_tb(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
@@ -16,8 +24,8 @@ pySocket_tb::pySocket_tb(sc_module_name blockName, const char * variant, blockBa
         ,test_req_ack("dut_test_req_ack", "pySocket")
         ,test2Python_req_ack("dut_test2Python_req_ack", "pySocket")
         ,dut2Python_req_ack("pySocket_dut2Python_req_ack", "dut")
-        ,u_pySocket(std::dynamic_pointer_cast<pySocketBase>( instanceFactory::createInstance(name(), "u_pySocket", "pySocket", "")))
-        ,u_dut(std::dynamic_pointer_cast<dutBase>( instanceFactory::createInstance(name(), "u_dut", "dut", "")))
+        ,u_pySocket(std::dynamic_pointer_cast<pySocketBase>(instanceFactory::createInstance(name(), "u_pySocket", "pySocket", "", "pySocket")))
+        ,u_dut(std::dynamic_pointer_cast<dutBase>(instanceFactory::createInstance(name(), "u_dut", "dut", "", "pySocket")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

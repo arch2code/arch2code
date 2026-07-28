@@ -1,0 +1,4 @@
+# Shared types (subA's vendored copy).
+types:
+    sharedPixel: { width: 8, desc: "shared pixel type" }
+    sharedCoord: { width: 12, desc: "shared coordinate type" }

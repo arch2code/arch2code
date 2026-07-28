@@ -1,6 +1,6 @@
 
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
-// GENERATED_CODE_PARAM --context=simple_ip.yaml
+// GENERATED_CODE_PARAM --project=simple_ip --context=../../yaml/simple_ip.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package simple_ip_package;
 // Generated Import package statement(s)

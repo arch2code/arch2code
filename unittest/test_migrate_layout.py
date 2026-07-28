@@ -42,6 +42,8 @@ from pysrc.migrateLayout import (  # noqa: E402
     TODO_NOT_FORMAT2,
     TODO_UNGENERATED_FILE,
     TODO_UNREWRITABLE_PATH,
+    LayoutReport,
+    _planExtraPathWarnings,
     migrateLayoutInProject,
 )
 
@@ -562,6 +564,54 @@ def test_quoted_yaml_rewrite(ok):
     return ok
 
 
+def test_extra_var_warning_spans_continuations(ok):
+    """Every `$(REPO_ROOT)/<relocatable>` reference in an EXTRA_* assignment is
+    reported, including references on backslash-continuation lines.
+
+    A make list is usually written across continuations once it holds more than
+    one path. Matching per physical line would see only the first line of such an
+    assignment and silently drop the rest — and because this path only warns, the
+    miss would surface as a dangling reference after the move rather than as a
+    TODO. Each item is reported at the line where the assignment STARTS."""
+    tmp = tempfile.mkdtemp(prefix="layoutextra_")
+    try:
+        _write(os.path.join(tmp, "rundir", "Makefile"),
+               "# harness\n"
+               "EXTRA_CPP_SRC = $(REPO_ROOT)/model/a.cpp\n"
+               "EXTRA_PRJ_SRC_DIRS += \\\n"
+               "    $(REPO_ROOT)/fw/src \\\n"
+               "    $(REPO_ROOT)/rtl/extra\n"
+               "OTHER_VAR = $(REPO_ROOT)/model/ignored.cpp\n"
+               "EXTRA_UNRELATED = $(REPO_ROOT)/include/make/x.mk\n")
+        r = LayoutReport(projectYaml="", state=LAYOUT_NEEDS_MIGRATION,
+                         declaredLayout="hierarchical")
+        r.projectRoot = tmp
+        r.relocatableRoots = {"model", "fw", "rtl"}
+        _planExtraPathWarnings(r)
+
+        items = [i for i in r.manual if i.kind == TODO_UNREWRITABLE_PATH]
+        messages = " | ".join(i.message for i in items)
+        ok &= _check("single-line EXTRA_* reference reported",
+                     any("EXTRA_CPP_SRC" in i.message and "/model" in i.message
+                         for i in items))
+        ok &= _check("continuation-line EXTRA_* reference reported",
+                     any("EXTRA_PRJ_SRC_DIRS" in i.message for i in items))
+        ok &= _check("continued assignment reported at its start line",
+                     any(i.location.endswith(":3") for i in items))
+        # One item per referenced root: the continued list names both fw and rtl,
+        # and reporting only the first would leave the other silently dangling.
+        continued = [i.message for i in items if "EXTRA_PRJ_SRC_DIRS" in i.message]
+        ok &= _check("every relocating root in one assignment reported",
+                     any("/fw'" in m for m in continued)
+                     and any("/rtl'" in m for m in continued))
+        ok &= _check("non-EXTRA_ variable ignored", "OTHER_VAR" not in messages)
+        ok &= _check("EXTRA_* pointing at a non-relocating root ignored",
+                     "EXTRA_UNRELATED" not in messages)
+    finally:
+        shutil.rmtree(tmp)
+    return ok
+
+
 def _treeSnapshot(root):
     """{relpath: bytes} for every file under `root`, to prove a dry-run made no
     on-disk change."""
@@ -629,6 +679,9 @@ def run_all_tests():
     ok = test_source_userregion_rewrite(ok)
     ok = test_unrewritable_reported(ok)
     ok = test_quoted_yaml_rewrite(ok)
+
+    # Build-harness EXTRA_* references to relocating segment roots.
+    ok = test_extra_var_warning_spans_continuations(ok)
 
     print("PASS: layout migration trigger + map + apply + path rewrite"
           if ok else

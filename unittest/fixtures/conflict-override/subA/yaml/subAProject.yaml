@@ -1,0 +1,22 @@
+# Sub-project subA. Overrides `shared` onto its OWN nested copy. Folds at the
+# same depth as subB's override of `shared` onto subB's copy - a contradiction.
+projectName: subA
+
+projectFiles:
+    - subALeaf.yaml
+    - ../shared/yaml/sharedProject.yaml
+
+projectOverrides:
+    shared: ../shared/yaml/sharedProject.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
+
+blocks:
+    subABlock:
+        desc: "block owned by sub-project subA"
+        hasMdl: true
+        hasRtl: false

@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-// GENERATED_CODE_PARAM --context=../../src/yaml/src.yaml
+// GENERATED_CODE_PARAM --project=ip_test --context=../../src/yaml/src.yaml
 // GENERATED_CODE_BEGIN --template=config
 #include "clog2.h"
 

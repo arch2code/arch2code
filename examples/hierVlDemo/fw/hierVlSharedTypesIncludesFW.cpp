@@ -2,7 +2,7 @@
 // 
 #include "hierVlSharedTypesIncludesFW.h"
 using namespace fw_ns;
-// GENERATED_CODE_PARAM --context=../../yaml/hierVlSharedTypes.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=hierVlDemo --context=../../yaml/hierVlSharedTypes.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=structures --section=cppIncludes
 
 // GENERATED_CODE_END

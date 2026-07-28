@@ -7,22 +7,12 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "pySocketBase.h"
+import pySocket.base;
+import pySocket_tb;
+using namespace pySocket_tb_ns;
 #include "pySocketExternal.h"
 
 class pySocketTestbench: public sc_module, public blockBase, public pySocketChannels {
-
-    private:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("pySocketTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<pySocketTestbench>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 
 public:
 

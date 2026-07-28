@@ -2,7 +2,7 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 #include "nestedIncludesFW.h"
 using namespace fw_ns;
-// GENERATED_CODE_PARAM --context=nested.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=nested --context=../../yaml/nested.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=structures --section=cppIncludes
 
 // GENERATED_CODE_END

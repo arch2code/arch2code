@@ -9,25 +9,18 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "pySocket_tbBase.h"
-#include "pySocket_tbIncludes.h"
-//contained instances forward class declaration
-class pySocketBase;
-class dutBase;
+import pySocket_tb.base;
+#include "req_ack_channel.h"
+import pySocket_tb;
+using namespace pySocket_tb_ns;
+//contained instances base module imports
+import pySocket.base;
+import dut.base;
 
 SC_MODULE(pySocket_tb), public blockBase, public pySocket_tbBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("pySocket_tb_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<pySocket_tb>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
     // channels
     // Req Ack Test interface

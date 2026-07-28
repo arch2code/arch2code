@@ -1,16 +1,19 @@
-#ifndef PYSOCKET_BASE_H
-#define PYSOCKET_BASE_H
-
 //
 
+// GENERATED_CODE_PARAM --block=pySocket --mode=module
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=baseModuleHeader
+module;
 #include "systemc.h"
-
-// GENERATED_CODE_PARAM --block=pySocket
-// GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "req_ack_channel.h"
-#include "pySocket_tbIncludes.h"
 
-class pySocketBase : public virtual blockPortBase
+export module pySocket.base;
+import pySocket_tb;
+using namespace pySocket_tb_ns;
+// GENERATED_CODE_END
+
+// GENERATED_CODE_BEGIN --template=baseClassDecl
+
+export class pySocketBase : public virtual blockPortBase
 {
 public:
     virtual ~pySocketBase() = default;
@@ -44,7 +47,7 @@ public:
         dut2Python_req_ack->setLogging(verbosity);
     };
 };
-class pySocketInverted : public virtual blockPortBase
+export class pySocketInverted : public virtual blockPortBase
 {
 public:
     // src ports
@@ -77,7 +80,7 @@ public:
         dut2Python_req_ack->setLogging(verbosity);
     };
 };
-class pySocketChannels
+export class pySocketChannels
 {
 public:
     // src ports
@@ -108,4 +111,3 @@ public:
 };
 
 // GENERATED_CODE_END
-#endif //PYSOCKET_BASE_H

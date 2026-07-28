@@ -5,7 +5,15 @@
 #include "dut.h"
 SC_HAS_PROCESS(dut);
 
-dut::registerBlock dut::registerBlock_; //register the block with the factory
+// === Block factory registration (dut) ===
+void register_dut_variants() {
+    instanceFactory::registerBlock("dut_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dut>(blockName, variant, bbMode)); }, "", "pySocket");
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _dut_registered = (register_dut_variants(), 0);
+} // namespace
+// === End block factory registration ===
 
 dut::dut(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)

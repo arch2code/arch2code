@@ -1,5 +1,5 @@
 +libext+.sv
-// GENERATED_CODE_PARAM --context=simple_ip.yaml
+// GENERATED_CODE_PARAM --project=simple_ip
 // GENERATED_CODE_BEGIN --template=rtlDotF
 +incdir+.
 +incdir+./../common/rtl

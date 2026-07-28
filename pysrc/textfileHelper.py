@@ -3,6 +3,10 @@ from pysrc.arch2codeHelper import printError, warningAndErrorReport
 import os
 import argparse
 
+
+# The GENERATED_CODE_PARAM line this class parses is WRITTEN by
+# pysrc/genFileParam.py, which owns its argument order and per-file-type --mode.
+#
 # read source file and store in class
 # process GENERATED_CODE_BEGIN & GENERATED_CODE_END and extract command line for use by the caller
 # GENERATED_CODE_BEGIN allows a string following to be treated as a command line
@@ -110,6 +114,7 @@ class codeText:
         parser.add_argument('--scope', type=str, help='hierarchy scope eg top' )
         parser.add_argument('--variant', type=str, help='Block variant name' )
         parser.add_argument('--parent', type=str, help='Parent (assembling) block name for registrar identity')
+        parser.add_argument('--project', type=str, help='Owning projectName for project-mode artifacts')
         parser.add_argument('--importPackages', default=[], nargs='+', action='append', help='SystemVerilog only, this is a list that defines all packages to import')
         parser.add_argument('--mode', type=str, default='', help='File level mode option' )
         parser.add_argument('--hierarchy', action='store_true', help='generate in hierarchy mode' )

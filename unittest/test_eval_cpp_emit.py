@@ -130,7 +130,10 @@ def test_config_struct_symbolic_per_variant():
     db_path = _build_fresh_db()
     try:
         prj = projectOpen(db_path)
-        data = prj.getContextData(['ip'], genSystemC.dataTypeMappings)
+        # Derive the canonical context key from the block: resolveContextKey no
+        # longer accepts a bare name, so getContextData needs the exact yamlContext key.
+        ipCtx = prj.data['blocks'][prj.getQualBlock('ip')]['_context']
+        data = prj.getContextData([ipCtx], genSystemC.dataTypeMappings)
         out = config.includeConfig(None, prj, data)
         # ip@variant1 is declared by the ip_test assemblers, so its Config is
         # owner-qualified (ip_test_ipVariant1Config) and relocated out of the ip
@@ -230,7 +233,8 @@ def test_fw_constants_symbolic():
     db_path = _build_fresh_db()
     try:
         prj = projectOpen(db_path)
-        data = prj.getContextData(['ip'], genSystemC.dataTypeMappings)
+        ipCtx = prj.data['blocks'][prj.getQualBlock('ip')]['_context']
+        data = prj.getContextData([ipCtx], genSystemC.dataTypeMappings)
         out = includes.includeConstants(SimpleNamespace(mode='fw'), prj, data)
 
         ok = True
@@ -306,7 +310,8 @@ def test_teststructs_parameterizable_sample_points():
     db_path = _build_fresh_db()
     try:
         prj = projectOpen(db_path)
-        data = prj.getContextData(['ip'], genSystemC.dataTypeMappings)
+        ipCtx = prj.data['blocks'][prj.getQualBlock('ip')]['_context']
+        data = prj.getContextData([ipCtx], genSystemC.dataTypeMappings)
 
         hdr = structures.render(
             SimpleNamespace(mode='module', section='testStructsHeader',

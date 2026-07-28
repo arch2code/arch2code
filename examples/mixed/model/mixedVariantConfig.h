@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-// GENERATED_CODE_PARAM --context=mixed.yaml
+// GENERATED_CODE_PARAM --project=mixed --context=mixed.yaml
 // GENERATED_CODE_BEGIN --template=config
 #include "clog2.h"
 

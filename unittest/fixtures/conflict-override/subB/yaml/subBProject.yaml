@@ -1,0 +1,22 @@
+# Sub-project subB. Overrides `shared` onto its OWN nested copy - a DIFFERENT
+# target than subA selects, at the same nesting depth. The conflict.
+projectName: subB
+
+projectFiles:
+    - subBLeaf.yaml
+    - ../shared/yaml/sharedProject.yaml
+
+projectOverrides:
+    shared: ../shared/yaml/sharedProject.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
+
+blocks:
+    subBBlock:
+        desc: "block owned by sub-project subB"
+        hasMdl: true
+        hasRtl: false

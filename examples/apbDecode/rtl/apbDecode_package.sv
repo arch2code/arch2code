@@ -1,6 +1,6 @@
 
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
-// GENERATED_CODE_PARAM --context=apbDecode.yaml
+// GENERATED_CODE_PARAM --project=apbDecode --context=apbDecode.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package apbDecode_package;
 localparam int unsigned ASIZE = 32'h0000_001D;  // The size of A

@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 
-// GENERATED_CODE_PARAM --context=simple.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=simple --context=simple.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 
 // GENERATED_CODE_END

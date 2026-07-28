@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 
-// GENERATED_CODE_PARAM --context=bridge/ipBridge.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=ipBridge --context=../../yaml/ipBridge.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "shared_typesIncludesFW.h"
 #include "ipIncludesFW.h"

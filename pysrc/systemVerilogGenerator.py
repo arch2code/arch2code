@@ -71,6 +71,21 @@ class systemVerilogGenerator:
         elif self.code.params.context:
             context = self.code.params.context
             data = prj.getContextData(context, self.dataTypeMappings)
+        elif self.code.params.project:
+            # Project-mode artifact (rtl.f): owns no block/context of its own; its
+            # content enumerates the whole-build file list rooted at the top
+            # context. The ownership gate above guarantees this file belongs to the
+            # current build, so TOPCONTEXT names this build's top context directly
+            # (no basename-stamp round-trip). getContextData takes a context list
+            # and yields the same view the retired --context stamp produced.
+            #
+            # Invariant: there is exactly one mode: project artifact (rtl.f),
+            # rooted at the build's top context. That single-instance,
+            # top-context-rooted contract is what lets this branch derive its
+            # context from TOPCONTEXT alone; a second project-mode artifact, or one
+            # not rooted at the top context, would break that derivation.
+            context = [prj.config.getConfig('TOPCONTEXT')]
+            data = prj.getContextData(context, self.dataTypeMappings)
         else:
             context = 'No context specified in GENERATED_CODE_PARAM'
         if not data:

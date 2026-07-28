@@ -89,6 +89,12 @@ MIGRATE_PORT = "port"
 MIGRATE_LEAVE = "leave"
 
 # Legacy fileMap (base ⊕ pro). Each entry carries a `migrate:` disposition.
+# An entry only earns its place by giving the sweep a legacy form to act on, so a
+# file type the migration left alone is omitted. Two such omissions: `includeFW`
+# is unchanged by the migration (same entry name, same {hdr: h, src: cpp} before
+# and after), so its legacy form IS the current file — nothing to detect, and it
+# cancels out of every legacy-minus-current diff; `config` (VariantConfig) has no
+# legacy form at all, it did not exist in the old map.
 LEGACY_FILEMAP = {
     "blockBase":  {"name": "Base",            "ext": {"hdr": "h"},              "cond": {"hasMdl": True, "hasTb": True},                 "mode": "block",   "basePath": "base",    "migrate": MIGRATE_DELETE},
     "block":      {"name": "",                "ext": {"hdr": "h", "src": "cpp"}, "cond": {"hasMdl": True},                                "mode": "block",   "basePath": "model",   "migrate": MIGRATE_PORT},
@@ -186,13 +192,57 @@ def _reconstructContexts(prj, report):
                 if basePath not in layout["segments"]:
                     continue
                 if layout["mode"] != "functional":
-                    _reportUnsupportedLayout(report, context, layout["mode"])
+                    # A hierarchical context's node-relative placement cannot be
+                    # inverted here (hierarchical layout is a separate opt-in
+                    # migration), so it is never swept. Report it ONLY when
+                    # un-migrated functional content is actually present: a legacy
+                    # header-mode orphan sibling of the current generated file still
+                    # on disk, which means the project opted into hierarchical
+                    # before finishing the format migration. A cleanly, fully
+                    # hierarchical context carries only its current artifact, so
+                    # nothing left to migrate fires no TODO.
+                    if _hierarchicalHasLegacyOrphan(prj, fileType, context, entry):
+                        _reportUnsupportedLayout(report, context, layout["mode"])
                     continue
                 segment = layout["segments"][basePath]["path"]
                 ctxDir[context] = os.path.relpath(os.path.dirname(entry["fileName"]),
                                                   segment)
                 validFor.setdefault(fileType, set()).add(context)
     return ctxDir, validFor
+
+
+def _hierarchicalHasLegacyOrphan(prj, fileType, context, entry):
+    """True when a hierarchical context still carries un-migrated functional
+    content: a LEGACY-form generated file for this context present on disk with the
+    generated marker in the current placement directory — the header-mode orphan
+    the format migration should have removed. The legacy basename is built from the
+    fileMap CONTRACT — the context's includeName (DB) and the legacy fileMap entry's
+    name+ext — never by string-manipulating the current filename. The header->cppm
+    migration is IN PLACE, so a legacy orphan sits beside the current artifact in
+    the same directory; a clean, fully hierarchical context has only the current
+    artifact. A legacy ext that names the current file itself (e.g. `package`'s
+    `.sv`, unchanged by the migration) is skipped, so it never spuriously trips.
+    Placement is INHERITED from the current artifact's directory rather than
+    re-resolved, which is only valid for a legacy entry without `blockDir` (a
+    blockDir entry adds a per-block level this join cannot reproduce)."""
+    legacyDef = LEGACY_FILEMAP.get(fileType)
+    if legacyDef is None:
+        return False
+    assert not legacyDef.get("blockDir"), (
+        f"legacy fileMap entry '{fileType}' sets blockDir: the legacy path here is "
+        f"joined onto the current artifact's own directory, which is only valid for "
+        f"entries without blockDir; a blockDir entry must resolve through "
+        f"expandNewModulePath")
+    placementDir = os.path.dirname(entry["fileName"])
+    includeName = prj.includeName[context]
+    legacyName = legacyDef["name"]
+    for ext in legacyDef["ext"].values():
+        legacyPath = os.path.join(placementDir, f"{includeName}{legacyName}.{ext}")
+        if legacyPath == entry["fileName"]:
+            continue
+        if os.path.exists(legacyPath) and _isGenerated(legacyPath):
+            return True
+    return False
 
 
 def _reportUnsupportedLayout(report, context, mode):
@@ -213,9 +263,15 @@ def _condRow(prj, blockRow, blocksParams):
     return condData
 
 
-def expandFileMap(prj, fileMap, report):
+def expandFileMap(prj, fileMap, report, contexts):
     """Expand `fileMap` over the current DB to the concrete set of generated file
     paths (each expanded path with each declared extension).
+
+    `contexts` is the `(ctxDir, validFor)` pair from `_reconstructContexts`. It is
+    passed in rather than rebuilt here because one sweep expands several maps and
+    the reconstruction reads the filesystem (the hierarchical legacy-orphan probe
+    opens candidate files), so rebuilding it per map re-reads the same files once
+    per expansion.
 
     Reuses the map-agnostic primitives expandNewModulePath + fileMapCondMatch and
     iterates the same DB collections createBuildManifest.create iterates for block
@@ -256,7 +312,7 @@ def expandFileMap(prj, fileMap, report):
 
     # context mode: expand each context entry over its valid contexts, mirroring
     # saveIncludeFiles (iterate valid contexts, resolve through expandNewModulePath).
-    ctxDir, validFor = _reconstructContexts(prj, report)
+    ctxDir, validFor = contexts
     for fileType, fileDef in fileMap.items():
         if fileDef.get("mode", "block") != "context":
             continue
@@ -382,10 +438,14 @@ def sweepOrphans(prj, write=False):
     # MIXED-segment delete entries that share a directory with `port` user code).
     fullyGenerated = _fullyGeneratedSegments(LEGACY_FILEMAP)
     fgDirs = _fullyGeneratedDirs(prj, fullyGenerated)
+    # Reconstructed once and shared by every expansion below: it reads the
+    # filesystem, so rebuilding it per map re-reads the same candidate files.
+    contexts = _reconstructContexts(prj, report)
     perFileDeleteMap = {ft: fd for ft, fd in _dispositionMap(MIGRATE_DELETE).items()
                         if fd["basePath"] not in fullyGenerated}
-    deleteTargets = expandFileMap(prj, perFileDeleteMap, report)
-    deleteTargets |= _literalDeletePaths(prj, report)
+    literalDeletes = _literalDeletePaths(prj, report)
+    deleteTargets = expandFileMap(prj, perFileDeleteMap, report, contexts)
+    deleteTargets |= literalDeletes
     # A literal aggregate (vl_wrap.*) lives in the vl_wrap fully-generated segment,
     # which is cleared by directory below; drop any per-file target inside a
     # fully-generated directory so it is not also deleted per-file (double delete).
@@ -425,8 +485,8 @@ def sweepOrphans(prj, write=False):
 
     # port: identify old-form user files the current map now produces differently;
     # report for the later agent-driven port. Never expanded for deletion.
-    portOldForm = expandFileMap(prj, _dispositionMap(MIGRATE_PORT), report)
-    currentForm = expandFileMap(prj, prj.filemap, report)
+    portOldForm = expandFileMap(prj, _dispositionMap(MIGRATE_PORT), report, contexts)
+    currentForm = expandFileMap(prj, prj.filemap, report, contexts)
     for path in sorted(portOldForm):
         if os.path.exists(path) and path not in currentForm:
             report.manual.append(ReportItem(
@@ -434,19 +494,35 @@ def sweepOrphans(prj, write=False):
                 f"user-code file {path} awaits .cpp/.h->.cppm port; agent-driven, "
                 f"do not delete"))
 
-    # Hand-off: user code that #includes a deleted header must switch to the
-    # current artifact (import <module>; for a migrated include/base, or the
-    # sibling header for other classes). Reuses migrateIncludes._userIncludeSites.
-    deletedHeaders = {os.path.basename(p) for p in deleted + wholesaleRemoved
-                      if p.endswith(".h")}
-    if deletedHeaders:
-        rootDir = prj.projectLayout[report.projectName]["root"]
-        projectData = {"dirs": {"root": "."}}
-        for path, line in _userIncludeSites(rootDir, projectData, deletedHeaders):
-            report.manual.append(ReportItem(
-                TODO_USER_INCLUDE, f"{os.path.basename(path)}:{line}",
-                f"user code #includes a deleted generated header; switch it to "
-                f"the current artifact (import the module, or include its sibling)"))
+    # Hand-off: user code that #includes a generated artifact the migration removed
+    # must switch to the current artifact (import <module>; for a migrated
+    # include/base, or the sibling header for other classes). The removed set is the
+    # fileMap DIFF — the legacy (old) map expansion MINUS the current (new) map
+    # expansion — i.e. exactly the artifacts that no longer exist under their old
+    # identity, plus the retired literal aggregates. Names come from the fileMap
+    # contract, never from string-manipulating one artifact's name into another.
+    # Keyed off the CURRENT map + tree, NOT the files deleted THIS run: a re-run of
+    # an already-swept tree deletes nothing, but a stale user include of a removed
+    # artifact is still stale and must be reported on every run until it is fixed.
+    # Only `delete`-disposition legacy entries feed the diff, because only those
+    # artifacts stop existing: a `port` artifact of a now-parameterized block (its
+    # .h/.cpp pair, current form .cppm) is also absent from the current map, but it
+    # SURVIVES the sweep until the agent-driven port converts it, so an #include of
+    # it is still valid and is reported as TODO_PORT instead. Disposition is the
+    # discriminator, not on-disk presence: under --write the deletes happen after
+    # this scan, so a still-present delete target must report on the first run too.
+    legacyDeleteForm = expandFileMap(prj, _dispositionMap(MIGRATE_DELETE),
+                                     report, contexts)
+    removedNames = {os.path.basename(p)
+                    for p in (legacyDeleteForm - currentForm) | literalDeletes}
+    rootDir = prj.projectLayout[report.projectName]["root"]
+    projectData = {"dirs": {"root": "."}}
+    for path, line in _userIncludeSites(rootDir, projectData, removedNames):
+        report.manual.append(ReportItem(
+            TODO_USER_INCLUDE, f"{os.path.basename(path)}:{line}",
+            f"user code #includes a header that no longer exists under its old "
+            f"identity; switch it to the current artifact (import the module, "
+            f"or include the current file)"))
 
     if write:
         # Mixed-segment per-file deletes plus the fully-generated segment files;

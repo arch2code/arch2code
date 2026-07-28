@@ -1,5 +1,5 @@
 +libext+.sv
-// GENERATED_CODE_PARAM --context=mixed.yaml
+// GENERATED_CODE_PARAM --project=mixed
 // GENERATED_CODE_BEGIN --template=rtlDotF
 +incdir+.
 mixedBlockC_package.sv

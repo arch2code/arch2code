@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 
-// GENERATED_CODE_PARAM --context=src/src.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=ip_test --context=../../src/yaml/src.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "ipLeafIncludesFW.h"
 #include "bitTwiddling.h"

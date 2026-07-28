@@ -34,6 +34,7 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # builder/base
 EXAMPLES_DIR = os.path.join(BASE_DIR, 'examples')
@@ -211,8 +212,20 @@ def main():
         failures.append('hierarchical-vl path')
     else:
         print('  [OK   ] hierarchical-vl path')
-    for name in discover_examples():
-        ok, problems, *rest = check_example(name)
+    examples = discover_examples()
+    # Examples are disjoint trees (each has its own DB/.gen and builds in its
+    # own cwd), so regenerate them concurrently. Cap workers to a quarter of the
+    # CPUs (min 1): each `make` can itself use multiple cores, so an unbounded
+    # fan-out would oversubscribe. Results are collected out of order then
+    # printed in sorted example order for a deterministic report.
+    max_workers = min(len(examples), max(1, (os.cpu_count() or 4) // 4))
+    results = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futs = {pool.submit(check_example, name): name for name in examples}
+        for fut in as_completed(futs):
+            results[futs[fut]] = fut.result()
+    for name in examples:
+        ok, problems, *rest = results[name]
         orphans = rest[0] if rest else []
         anticipated = rest[1] if len(rest) > 1 else []
         tag = 'OK   ' if ok else 'FAIL '

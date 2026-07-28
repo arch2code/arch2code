@@ -2,6 +2,7 @@
 from jinja2 import Template as J2Template
 from string import Template
 import pysrc.intf_gen_utils as intf_gen_utils
+from pysrc.genFileParam import contextParamTail, contextParamMode
 
 # Redefine the pattern to follow the format defined by dvt templates (i.e __name__, or __{name}__)
 class TemplateCustom(Template):
@@ -588,7 +589,7 @@ include_hdrTemplate = \
 
 #include "systemc.h"
 
-// GENERATED_CODE_PARAM --context=__context__
+// GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=include_hdr
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -607,12 +608,13 @@ def include_hdr(args, prj, data):
     t = TemplateCustom(include_hdrTemplate)
     return(t.substitute({
         'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
-        'context':data["context"],
+        'paramtail':contextParamTail(data["project"], data["context"],
+                                    contextParamMode(data["target"])),
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
 include_cppmTemplate = \
 """
-// GENERATED_CODE_PARAM --context=__context__ --mode=module
+// GENERATED_CODE_PARAM __paramtail__
 // __copyright__
 
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
@@ -641,7 +643,7 @@ config_hdrTemplate = \
 
 #include <cstdint>
 
-// GENERATED_CODE_PARAM --context=__context__
+// GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=config
 // GENERATED_CODE_END
 
@@ -651,21 +653,23 @@ config_hdrTemplate = \
 def include_cppm(args, prj, data):
     t = TemplateCustom(include_cppmTemplate)
     return(t.substitute({
-        'context':data["context"],
+        'paramtail':contextParamTail(data["project"], data["context"],
+                                    contextParamMode(data["target"])),
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
 def config_hdr(args, prj, data):
     t = TemplateCustom(config_hdrTemplate)
     return(t.substitute({
         'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
-        'context':data["context"],
+        'paramtail':contextParamTail(data["project"], data["context"],
+                                    contextParamMode(data["target"])),
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
 include_srcTemplate = \
 """
 // __copyright__
 #include "__headerName__"
-// GENERATED_CODE_PARAM --context=__context__
+// GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=structures --section=cppIncludes
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=cpp
@@ -675,7 +679,8 @@ def include_src(args, prj, data):
     t = TemplateCustom(include_srcTemplate)
     return(t.substitute({
         'headerName':data["siblingHeaderName"],
-        'context':data["context"],
+        'paramtail':contextParamTail(data["project"], data["context"],
+                                    contextParamMode(data["target"])),
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
 includeFW_hdrTemplate = \
@@ -687,7 +692,7 @@ includeFW_hdrTemplate = \
 #include <cstdint>
 #include <cstring>
 
-// GENERATED_CODE_PARAM --context=__context__ --mode=fw
+// GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
@@ -708,7 +713,8 @@ def includeFW_hdr(args, prj, data):
     t = TemplateCustom(includeFW_hdrTemplate)
     return(t.substitute({
         'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
-        'context':data["context"],
+        'paramtail':contextParamTail(data["project"], data["context"],
+                                    contextParamMode(data["target"])),
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
 includeFW_srcTemplate = \
@@ -716,7 +722,7 @@ includeFW_srcTemplate = \
 // __copyright__
 #include "__headerName__"
 using namespace fw_ns;
-// GENERATED_CODE_PARAM --context=__context__ --mode=fw
+// GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=structures --section=cppIncludes
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=cpp --namespace=fw_ns
@@ -726,30 +732,34 @@ def includeFW_src(args, prj, data):
     t = TemplateCustom(includeFW_srcTemplate)
     return(t.substitute({
         'headerName':data["siblingHeaderName"],
-        'context':data["context"],
+        'paramtail':contextParamTail(data["project"], data["context"],
+                                    contextParamMode(data["target"])),
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
 package_svTemplate = \
 """
 // __copyright__
-// GENERATED_CODE_PARAM --context=__context__
+// GENERATED_CODE_PARAM __paramtail__
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 // GENERATED_CODE_END
 """
 def package_sv(args, prj, data):
     t = TemplateCustom(package_svTemplate)
     return(t.substitute({
-        'context':data["context"],
+        'paramtail':contextParamTail(data["project"], data["context"],
+                                    contextParamMode(data["target"])),
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
-# Per-project verilator file list (rtl.f). The +libext line and the top-context
-# GENERATED_CODE_PARAM are the create-only skeleton; the rtlDotF template fills
-# the generated region with the +incdir lines and the ordered package list for
-# every context on the top context's include chain.
+# Per-project verilator file list (rtl.f). The +libext line and the
+# owning-project GENERATED_CODE_PARAM are the create-only skeleton; the rtlDotF
+# template fills the generated region with the +incdir lines and the ordered
+# package list for every context on the top context's include chain. The
+# --project stamp names the owning project directly, so owner resolution needs no
+# context/basename round-trip.
 def rtlDotF_f(args, prj, data):
     out = list()
     out.append('+libext+.sv\n')
-    out.append(f'// GENERATED_CODE_PARAM --context={data["context"]}\n')
+    out.append(f'// GENERATED_CODE_PARAM --project={data["project"]}\n')
     out.append('// GENERATED_CODE_BEGIN --template=rtlDotF\n')
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))

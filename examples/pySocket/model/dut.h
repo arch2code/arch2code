@@ -9,22 +9,15 @@
 // GENERATED_CODE_BEGIN --template=classDecl
 #include "logging.h"
 #include "instanceFactory.h"
-#include "dutBase.h"
-#include "pySocket_tbIncludes.h"
+import dut.base;
+#include "req_ack_channel.h"
+import pySocket_tb;
+using namespace pySocket_tb_ns;
 
 SC_MODULE(dut), public blockBase, public dutBase
 {
 private:
 
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("dut_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<dut>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 public:
 
     dut(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

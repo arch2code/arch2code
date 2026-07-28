@@ -16,8 +16,15 @@ make migrate
 ```
 
 `make migrate` is the single command — issue it once and everything happens. It
-is idempotent: a fully migrated, orphan-free project is a no-op. The target is a
-five-step pipeline. The first two steps halt the target on a non-zero exit, so an
+**converges**: a fully migrated, orphan-free project re-runs clean (exit zero,
+including an already-migrated hierarchical project) and makes no further
+*migration* changes, but it is **not a literal no-op**. The orphan sweep (step 3)
+unconditionally clears and regenerates the fully-generated segments (`base`,
+`vl_wrap`) at the directory level on every run — this is intended wholesale
+cleanup, not a defect — so the generated tree is deterministically re-created each
+pass. Non-source stray files (anything without a `GENERATED_CODE_BEGIN` marker
+that is not a delete-target) are left untouched and are not reported. The target
+is a five-step pipeline. The first two steps halt the target on a non-zero exit, so an
 unresolved yaml-stage item stops the run before the database is built. The sweep
 (step 3) does **not** halt: it applies its deletes, then `newmodule` and `gen`
 always run to rescaffold the purely-generated blocks, and only afterward is the
@@ -114,7 +121,8 @@ clean report.
 | `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 4 below |
 | `TODO_UNGENERATED_FILE` | orphan sweep, includes phase, or layout migration | A file that carries no `GENERATED_CODE_BEGIN` marker and either matches a per-file delete-target name **or** sits inside a wholesale-cleared fully-generated segment (`base`, `vl_wrap`). Skipped and reported, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
 | `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No file action is needed if the path genuinely no longer exists, but the item keeps the sweep's report non-clean, so `make migrate` still exits non-zero until the stale entry no longer applies. |
-| `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk. | Complete the format migration in functional layout, then migrate to hierarchical (Section 7). |
+| `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk, **and** a legacy header-mode artifact is still sitting next to that context's current generated file — i.e. hierarchical was opted into before the format migration finished. A cleanly hierarchical context with nothing left to migrate is silent. | Complete the format migration in functional layout, then migrate to hierarchical (Section 7). |
+| `TODO_MISSING_PARAM_LINE` | param phase | A generated artifact carries a `GENERATED_CODE_BEGIN` marker but no `GENERATED_CODE_PARAM` line, so there is no line to re-stamp with `--project`. | Add the `GENERATED_CODE_PARAM` line the report quotes verbatim at the top of the file's generated preamble, then re-run. |
 
 The address-control kinds are documented in depth in the `address-migration`
 skill; each converter message points at the resolving step or note named in the
@@ -158,14 +166,27 @@ and compile alongside the scaffolded set. The stock examples show the pattern �
 header and its `_package.sv`. The `manage-build` skill covers the make targets
 that regenerate and compile the wired files.
 
+A sibling seam, `EXTRA_PRJ_SRC_DIRS`, adds whole **source directories** (not
+generated-region hosts) to the compile — a project with hand-written firmware
+does `EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src` in its `rundir/Makefile` (see
+`examples/{simple_ip,ip_test}`). Like `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES`,
+these paths are **user-authored and the migrator never rewrites them**. They
+point at project-root segment roots (`fw/src`, `model/`, `rtl/`) that relocate
+under a hierarchical layout migration, so after that migration you must re-point
+every `EXTRA_*` line by hand — this is the same exposure covered in Section 7
+(C4), where the tool emits `TODO_UNREWRITABLE_PATH` for such paths.
+
 ### Sweep the retired vl build tree
 
 The whole-design Verilator build now lives under `rundir/build/vl`
 (`A2C_VL_BUILD_DIR = $(BIN_DIR)/vl`, driven by
-`include/make/a2c-vl-build-entry.mk`); the old per-project `prj/verif/` build
-`Makefile` is retired and is no longer relocated by any migration step. When
-migrating an existing project, delete any stale `prj/verif/` vl-build `Makefile`
-and its `obj_dir` / built lib so they do not shadow the new build location.
+`include/make/a2c-vl-build-entry.mk`); the old per-project vl-build `Makefile` is
+retired and is no longer relocated by any migration step. In a **functional**
+layout (the state a `make migrate` project is in) that stale build tree lives at
+`verif/vl_wrap/` — its `Makefile`, `obj_dir`, and built lib. Delete it so it does
+not shadow the new build location. (The hierarchical migration in Section 7
+flattens `verif/vl_wrap` into `prj/verif`, so post-migration the same stale build
+tree is swept from `prj/verif/` instead.)
 
 ## 4. Finish an includes (header → cppm) migration
 
@@ -207,6 +228,17 @@ hand-written code and stale build state:
    `#include "..."` — an angle-bracket `#include <...>` is not detected. Only
    user-authored files need this edit.
 
+   **The namespace rewrite is not mechanical.** Header mode put the context types
+   in the enclosing scope; module mode moves them into a per-context module
+   namespace (`<ctx>_ns`). Swapping the `#include` for `import <ctx>;` +
+   `using namespace <ctx>_ns;` is not sufficient where user code names those types
+   directly: a `::`-qualified reference to a context type (`::foo_t`) no longer
+   resolves once the type lives in `<ctx>_ns`, and pulling in a second
+   `using namespace` alongside an existing one can make a previously unambiguous
+   name ambiguous. Neither case is detected or rewritten by the tool — the build
+   will flag them, and you must disambiguate (re-qualify as `<ctx>_ns::foo_t`, or
+   drop/narrow the conflicting `using`) by hand.
+
 2. **Clear stale build artifacts.** A prior header-mode build leaves `.d`
    dependency files that reference the deleted `.h`. The example `clean` target
    removes only the database and `.gen`, not the rundir build tree, so a stale
@@ -219,7 +251,12 @@ hand-written code and stale build state:
 
 3. **Verify.** Rebuild and run the project's normal targets (for example
    `make -C <project>/rundir all run`). A clean build and run confirms the
-   migration.
+   migration. Also confirm no stale user `#include`/`import` of a removed or
+   renamed context header remains. The includes-phase `TODO_USER_IMPORT` is a
+   first-run advisory that flags the sites to switch from `#include` to `import`;
+   any such `#include` left in place is then re-reported by the orphan sweep as
+   `TODO_USER_INCLUDE` on **every** run until fixed, so a clean re-run of
+   `make migrate` is the independent check that none survived.
 
 ## 4a. Relocate a stray module import (`TODO_MODULE_IMPORT`)
 
@@ -514,7 +551,14 @@ byte-for-byte:
   harness change is the `A2C_PRJ_YAML` line in the root `include/make/shared.mk`,
   which the tool re-points at the moved project file
   (`$(REPO_ROOT)/prj/yaml/<projectName>Project.yaml`); every other
-  `$(REPO_ROOT)/include/make/...` reference keeps working unchanged. The moved
+  `$(REPO_ROOT)/include/make/...` reference keeps working unchanged. **This is not
+  the whole harness story, however:** any `EXTRA_*` make-variable line the project
+  added per Section 3 that points at a **relocatable segment root** — e.g.
+  `EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src`, or an `EXTRA_SC_GEN_FILES` /
+  `EXTRA_SV_GEN_FILES` pointing at `$(REPO_ROOT)/model` or `/rtl` — is **not**
+  re-pointed by the tool, because those roots (unlike `include/make/`) move under
+  hierarchical migration. Update each such line by hand to its new node-relative
+  location; the migrator flags each with `TODO_UNREWRITABLE_PATH`. The moved
   project file also has its **`dirs:` block reduced to `root:` only** — every
   functional segment override (`base`, `model`, `rtl`, `vl_wrap`, `tb`, `fwInc`,
   and any custom key) is dropped so node-relative placement is governed by the

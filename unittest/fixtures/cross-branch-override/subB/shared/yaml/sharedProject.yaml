@@ -1,0 +1,14 @@
+# subB's vendored copy of the shared types-only project. Carries the full
+# project sentinel set so it opens as a child project. projectName `shared` is
+# identical to the vendor copy; the override unifies them onto the vendor master.
+# Byte-identical to the vendor copy so the copies agree (no divergence).
+projectName: shared
+
+projectFiles:
+    - shared_types.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

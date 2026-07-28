@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 
-// GENERATED_CODE_PARAM --context=../../yaml/simple_ip.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=simple_ip --context=../../yaml/simple_ip.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "shared_typesIncludesFW.h"
 #include "ipIncludesFW.h"

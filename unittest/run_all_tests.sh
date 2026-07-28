@@ -221,6 +221,11 @@ echo "Test Suite 19o: Post-database legacy orphan sweep (migrateOrphans.py)"
 echo "------------------------------------------------------------------------"
 python3 test_migrate_orphans.py || FAILED=1
 
+echo ""
+echo "Test Suite 19p: Project-mode --project param + re-stamp (migrateProjectParam.py)"
+echo "------------------------------------------------------------------------"
+python3 test_project_param.py || FAILED=1
+
 # Address-control decode: register/memory decode topology, port-name
 # resolution, parameterized routers/leaves, the diagnostic error cases,
 # and the migrated ip_test view assertions. The synthetic-topology tests
@@ -321,6 +326,12 @@ echo ""
 echo "Test Suite ${idx}: provider override — selection and duplicate diagnostic"
 echo "------------------------------------------------------------------------"
 python3 test_provider_override.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: projectOverride multi-copy scan-all reconcile"
+echo "------------------------------------------------------------------------"
+python3 test_project_scan.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

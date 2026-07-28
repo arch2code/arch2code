@@ -1,6 +1,6 @@
 
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
-// GENERATED_CODE_PARAM --context=simple.yaml
+// GENERATED_CODE_PARAM --project=simple --context=simple.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package simple_package;
 localparam int unsigned NUM_TAGS = 32'h0000_0020;  // number of tags

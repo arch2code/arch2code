@@ -1,16 +1,19 @@
-#ifndef DUT_BASE_H
-#define DUT_BASE_H
-
 //
 
+// GENERATED_CODE_PARAM --block=dut --mode=module
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=baseModuleHeader
+module;
 #include "systemc.h"
-
-// GENERATED_CODE_PARAM --block=dut
-// GENERATED_CODE_BEGIN --template=baseClassDecl
 #include "req_ack_channel.h"
-#include "pySocket_tbIncludes.h"
 
-class dutBase : public virtual blockPortBase
+export module dut.base;
+import pySocket_tb;
+using namespace pySocket_tb_ns;
+// GENERATED_CODE_END
+
+// GENERATED_CODE_BEGIN --template=baseClassDecl
+
+export class dutBase : public virtual blockPortBase
 {
 public:
     virtual ~dutBase() = default;
@@ -44,7 +47,7 @@ public:
         test2Python_req_ack->setLogging(verbosity);
     };
 };
-class dutInverted : public virtual blockPortBase
+export class dutInverted : public virtual blockPortBase
 {
 public:
     // src ports
@@ -77,7 +80,7 @@ public:
         test2Python_req_ack->setLogging(verbosity);
     };
 };
-class dutChannels
+export class dutChannels
 {
 public:
     // src ports
@@ -108,4 +111,3 @@ public:
 };
 
 // GENERATED_CODE_END
-#endif //DUT_BASE_H

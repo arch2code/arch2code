@@ -95,7 +95,10 @@ def test_canonical_reaches_context_view_without_evaluation():
     evalExpr.evaluate = _trap_evaluate
     try:
         prj = projectOpen(db_path)
-        data = prj.getContextData(['ip'], genSystemC.dataTypeMappings)
+        # Derive the canonical context key from the block: resolveContextKey no
+        # longer accepts a bare name, so getContextData needs the exact yamlContext key.
+        ipCtx = prj.data['blocks'][prj.getQualBlock('ip')]['_context']
+        data = prj.getContextData([ipCtx], genSystemC.dataTypeMappings)
         constants = data['constants']
 
         eval_const = _resolve_const_key(constants, EVAL_CONST_NAME)

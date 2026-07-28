@@ -1,0 +1,12 @@
+# subA-owned leaf context. Drags subA's vendored shared copy through a normal
+# include: edge - the copy's shared_types.yaml is reached both here (subA scope,
+# shallower) and through the shared copy's own project closure (deeper), so the
+# deepest-provider rule reattributes it to the `shared` projectName.
+include:
+    - ../shared/yaml/shared_types.yaml
+
+blocks:
+    subALeafBlock:
+        desc: "subA-owned leaf block"
+        hasMdl: true
+        hasRtl: false

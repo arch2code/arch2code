@@ -1,6 +1,6 @@
 
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
-// GENERATED_CODE_PARAM --context=../../ip/yaml/ip.yaml
+// GENERATED_CODE_PARAM --project=ip --context=../../yaml/ip.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package ip_package;
 localparam int unsigned IP_FIXED_NIBBLE_COUNT = 32'h0000_0005;  // Fixed array length for non-parameterized type tests

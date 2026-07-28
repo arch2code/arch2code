@@ -341,13 +341,14 @@ class newModule:
             nodeDir = prj.data['blocks'][topBlockKey]['dir']
         else:
             nodeDir = ''
-        # The generated-code context stamp is the top context's basename, the
-        # spelling resolveContextKey matches back to the context key.
-        contextStamp = os.path.basename(topContext)
+        # The per-project artifact stamps its owning projectName directly on the
+        # GENERATED_CODE_PARAM line (--project). Owner resolution then reads that
+        # name without a context/basename round-trip. projectName is the owner
+        # resolved above (the project that owns the top context).
         for fileKey, fileDefinition in projectFileConfig.items():
-            self.create_project_file(fileGenerationConfig, fileKey, fileDefinition, contextStamp, nodeDir, layout, prj, args)
+            self.create_project_file(fileGenerationConfig, fileKey, fileDefinition, projectName, nodeDir, layout, prj, args)
 
-    def create_project_file(self, fileGenerationConfig, fileKey, fileDefinition, contextStamp, nodeDir, layout, prj, args):
+    def create_project_file(self, fileGenerationConfig, fileKey, fileDefinition, projectName, nodeDir, layout, prj, args):
         # The single per-project artifact lands at its segment root with no
         # module file stub, so the filename is composed purely from the fileMap
         # name + ext (e.g. rtl + f -> rtl.f). nodeDir is the top context's node
@@ -355,7 +356,7 @@ class newModule:
         # project tree) and empty in functional layout (segments are $root-
         # absolute).
         data = dict()
-        data['context'] = contextStamp
+        data['project'] = projectName
         filePath = processYaml.expandNewModulePath(fileDefinition, nodeDir, '', '', layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
         for ext in fileDefinition['ext']:
@@ -451,8 +452,16 @@ class newModule:
         # for each file target we need to build a path and filename to perform file template creation
         # the filename itself is based on the module name with prefix and suffixes applied
 
+        projectName = prj.config.getConfig('PROJECTNAME')
         for fileKey, fileKeyData in files.items():
             for context, fileDefinition in fileKeyData.items():
+                # Ownership gate (mirrors restampContextParam/_contextModeFiles and
+                # the render gate): only scaffold contexts this project owns, so a
+                # composed build never lays down a child's context file stamped with
+                # a parent-relative --context the child's own build cannot resolve.
+                # INCLUDEFILES is keyed identically to contextOwningProject.
+                if prj.contextOwningProject[context] != projectName:
+                    continue
                 baseName = fileDefinition['baseName']
                 fileName = fileDefinition['fileName']
                 moduleDirAbs = os.path.dirname(fileName)
@@ -466,6 +475,12 @@ class newModule:
                     data = dict()
                     data['target'] = fileKey
                     data['context'] = context
+                    # Context files carry BOTH --context (canonical yamlContext
+                    # key, used for rendering) and --project (the context's
+                    # owning project, used directly by resolveFileOwner). context
+                    # is the INCLUDEFILES key, keyed identically to
+                    # contextOwningProject.
+                    data['project'] = prj.contextOwningProject[context]
                     data['headerName'] = baseName
                     # Paired header basename for source artifacts, derived from
                     # the file type's ext map in saveIncludeFiles (filespec).

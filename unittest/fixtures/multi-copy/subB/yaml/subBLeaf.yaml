@@ -1,0 +1,11 @@
+# subB-owned leaf context. Drags subB's vendored shared copy through a normal
+# include: edge, mirroring subA. The reached shared_types.yaml is a physically
+# distinct file from subA's copy but shares one logical key.
+include:
+    - ../shared/yaml/shared_types.yaml
+
+blocks:
+    subBLeafBlock:
+        desc: "subB-owned leaf block"
+        hasMdl: true
+        hasRtl: false

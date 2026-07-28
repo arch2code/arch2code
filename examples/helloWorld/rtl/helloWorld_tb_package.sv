@@ -1,6 +1,6 @@
 
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
-// GENERATED_CODE_PARAM --context=helloWorld_tb.yaml
+// GENERATED_CODE_PARAM --project=helloWorld --context=helloWorld_tb.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package helloWorld_tb_package;
 localparam int unsigned BUFFER_SIZE = 32'h0000_0040;  // Buffer size

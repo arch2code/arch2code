@@ -1,5 +1,5 @@
 +libext+.sv
-// GENERATED_CODE_PARAM --context=bridgeStdTop.yaml
+// GENERATED_CODE_PARAM --project=ipBridge
 // GENERATED_CODE_BEGIN --template=rtlDotF
 +incdir+.
 +incdir+./../../common/rtl

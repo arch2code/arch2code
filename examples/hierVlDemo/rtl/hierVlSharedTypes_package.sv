@@ -1,6 +1,6 @@
 
 // 
-// GENERATED_CODE_PARAM --context=../../yaml/hierVlSharedTypes.yaml
+// GENERATED_CODE_PARAM --project=hierVlDemo --context=../../yaml/hierVlSharedTypes.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package hierVlSharedTypes_package;
 

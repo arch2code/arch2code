@@ -13,6 +13,7 @@ Use this skill when changing Arch2Code internals under `builder/base`, especiall
 2. Keep changes scoped to the requested behavior. Do not refactor unrelated code while touching generator internals.
 3. Prefer the simplest direct implementation that matches existing builder patterns.
 4. Do not edit generated regions by hand. Change the data creation, view helper, template, or generator logic, then rerun the normal make target.
+5. Optimize for user cases. Unit tests should not prevent optimizations. Work around via api's or other means.
 
 ## Generator Control Flow
 

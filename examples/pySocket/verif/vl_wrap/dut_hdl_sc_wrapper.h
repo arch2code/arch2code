@@ -5,37 +5,27 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=dut
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import dut.base;
 
-#include "dutBase.h"
-
-// Verilated RTL top (SystemC)
+// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
+// its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "dut_hdl_sv_wrapper.h"
 #else
 #include "Vdut_hdl_sv_wrapper.h"
 #endif
+// GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import pySocket_tb;
+using namespace pySocket_tb_ns;
 #include "req_ack_bfm.h"
 
 class dut_hdl_sc_wrapper: public sc_module, public blockBase, public dutBase {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "dut_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < dut_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
-        }
-    };
-
-    static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
     dut_hdl_sv_wrapper *dut_hdl;
@@ -82,17 +72,17 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        test_req_ack_bfm.if_p(test_req_ack);
+        test_req_ack_bfm.if_p(this->test_req_ack);
         test_req_ack_bfm.hdl_if_p(test_req_ack_hdl_if);
         test_req_ack_bfm.clk(clk);
         test_req_ack_bfm.rst_n(rst_n);
 
-        test2Python_req_ack_bfm.if_p(test2Python_req_ack);
+        test2Python_req_ack_bfm.if_p(this->test2Python_req_ack);
         test2Python_req_ack_bfm.hdl_if_p(test2Python_req_ack_hdl_if);
         test2Python_req_ack_bfm.clk(clk);
         test2Python_req_ack_bfm.rst_n(rst_n);
 
-        dut2Python_req_ack_bfm.if_p(dut2Python_req_ack);
+        dut2Python_req_ack_bfm.if_p(this->dut2Python_req_ack);
         dut2Python_req_ack_bfm.hdl_if_p(dut2Python_req_ack_hdl_if);
         dut2Python_req_ack_bfm.clk(clk);
         dut2Python_req_ack_bfm.rst_n(rst_n);

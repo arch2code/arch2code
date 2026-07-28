@@ -61,6 +61,11 @@ from pysrc.migrateAddressControl import migrateAddressControlInProject
 from pysrc.migrateIncludes import migrateIncludesInProject
 from pysrc.migrateModuleHeader import migrateModuleHeaderInProject
 from pysrc.migrateOrphans import renderReport as renderOrphanReport, sweepOrphans
+from pysrc.migrateProjectParam import (
+    renderReport as renderProjectParamReport,
+    restampProjectParam,
+    restampContextParam,
+)
 from pysrc.processYaml import CURRENT_YAML_FORMAT, projectOpen
 
 
@@ -398,10 +403,24 @@ def main(argv=None):
         prj = projectOpen(args.db)
         report = sweepOrphans(prj, write=args.write)
         print(renderOrphanReport(report, args.write))
+        # Re-stamp project-mode artifacts (rtl.f) from the retired context form to
+        # the --project form. Same DB-backed --sweep phase: identifying a
+        # project-mode file needs the merged fileMap and layout placement.
+        paramReport = restampProjectParam(prj, write=args.write)
+        print(renderProjectParamReport(paramReport, args.write))
+        # Re-stamp context-mode artifacts (module Includes, VariantConfig,
+        # _package, firmware IncludesFW) to carry both --context (canonical
+        # yamlContext key) and --project (owning project). Same DB-backed phase:
+        # the owned-file set and canonical keys come from INCLUDEFILES +
+        # contextOwningProject.
+        contextReport = restampContextParam(prj, write=args.write)
+        print(renderProjectParamReport(contextReport, args.write, label="context-mode"))
         # A sweep that leaves manual items (ungenerated delete targets, pending
-        # ports, user include sites) signals work remains, mirroring how the
+        # ports, user include sites), or a re-stamp that hit an ungenerated
+        # project- or context-mode path, signals work remains, mirroring how the
         # text phases fail when manual TODOs block the stamp.
-        return 0 if report.clean else 1
+        return 0 if (report.clean and paramReport.clean
+                     and contextReport.clean) else 1
 
     if not args.projectYaml:
         parser.error("projectYaml is required unless --sweep is given")

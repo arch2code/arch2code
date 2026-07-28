@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 
-// GENERATED_CODE_PARAM --context=axiDemo.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=axiDemo --context=axiDemo.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "axiStdIncludesFW.h"
 

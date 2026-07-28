@@ -2,7 +2,7 @@
 // 
 #include "hierVlDemo_tbIncludesFW.h"
 using namespace fw_ns;
-// GENERATED_CODE_PARAM --context=hierVlDemo_tb.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=hierVlDemo --context=../../yaml/hierVlDemo_tb.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=structures --section=cppIncludes
 
 // GENERATED_CODE_END

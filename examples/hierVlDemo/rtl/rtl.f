@@ -1,5 +1,5 @@
 +libext+.sv
-// GENERATED_CODE_PARAM --context=hierVlDemo_tb.yaml
+// GENERATED_CODE_PARAM --project=hierVlDemo
 // GENERATED_CODE_BEGIN --template=rtlDotF
 +incdir+.
 hierVlSharedTypes_package.sv

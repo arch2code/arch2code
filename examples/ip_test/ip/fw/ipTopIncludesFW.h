@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 
-// GENERATED_CODE_PARAM --context=ip/ipTop.yaml --mode=fw
+// GENERATED_CODE_PARAM --project=ip --context=../../yaml/ipTop.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "ipIncludesFW.h"
 #include "bitTwiddling.h"
