@@ -53,7 +53,12 @@ leaves the tree scaffolded while `make migrate` still signals non-zero:
    keeps the per-file delete-by-map-expansion for its generated context files
    (`<context>Includes.{h,cpp}`, `<context>_package.sv`) and preserves the user
    code beside them; the `tb` segment is left untouched. `make newmodule` / `make
-   gen` then recreate the cleared artifacts.
+   gen` then recreate the cleared artifacts. This step also carries the
+   `GENERATED_CODE_PARAM` re-stamp phases (`pysrc/migrateProjectParam.py`), which
+   rewrite each surviving generated artifact's PARAM line to the canonical
+   `--project` / `--context` form. They are DB-backed and live here, so
+   `make migrate` is the **only** way to reach them — a tree whose PARAM lines
+   have gone stale cannot be repaired by `make gen` alone (Section 7).
 4. **`make newmodule`** — create-only; scaffolds the new-form files (for example
    the `<context>Includes.cppm` module interfaces). It runs after the sweep so
    the orphans are gone before regeneration.
@@ -129,7 +134,7 @@ skill; each converter message points at the resolving step or note named in the
 table above. The sweep only ever **deletes** purely-generated orphans; every
 user-owned file it encounters is reported, not touched.
 
-## 3. Wire user-hosted generated-region files into the build
+## 3. Wire user-owned files and source directories into the build
 
 After migration the build enumerates generated source from the DB-derived
 manifest (`A2C_SC_GEN_FILES` / `A2C_SV_GEN_FILES`, emitted by
@@ -166,27 +171,79 @@ and compile alongside the scaffolded set. The stock examples show the pattern �
 header and its `_package.sv`. The `manage-build` skill covers the make targets
 that regenerate and compile the wired files.
 
+### Wire hand-written source directories onto `EXTRA_PRJ_SRC_DIRS`
+
 A sibling seam, `EXTRA_PRJ_SRC_DIRS`, adds whole **source directories** (not
-generated-region hosts) to the compile — a project with hand-written firmware
-does `EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src` in its `rundir/Makefile` (see
-`examples/{simple_ip,ip_test}`). Like `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES`,
-these paths are **user-authored and the migrator never rewrites them**. They
-point at project-root segment roots (`fw/src`, `model/`, `rtl/`) that relocate
-under a hierarchical layout migration, so after that migration you must re-point
-every `EXTRA_*` line by hand — this is the same exposure covered in Section 7
-(C4), where the tool emits `TODO_UNREWRITABLE_PATH` for such paths.
+generated-region hosts) to the compile. The manifest switch makes declaring them
+a **required migration step**, not just a maintenance note. `PRJ_SRC_DIRS` is
+seeded from the manifest (`PRJ_SRC_DIRS = $(A2C_SC_SRC_DIRS)` in
+`a2c-systemc.mk`), which enumerates only the segment roots arch2code itself
+places artifacts in, and each listed directory is globbed **one level deep**
+(`$(wildcard $(dir)/*.cpp)`). The retired `find`-based scan walked the whole tree,
+so a project holding C++ outside those roots — a firmware directory, a shared
+helper directory, a subdirectory of a segment root — never had to declare it, and
+nothing in the project does. Nothing reports the loss either: the directory
+simply stops contributing, and since the same list also feeds the include path
+(one `-I` per directory), the symptom is usually a missing header or an undefined
+symbol in an **unrelated** translation unit, a long way from the cause.
+
+So after the manifest switch, enumerate the hand-written source directories and
+wire up every one the manifest does not already cover:
+
+1. List the roots the manifest produced:
+   `grep A2C_SC_SRC_DIRS <project>/.gen/build.mk`.
+2. Find every directory under the project root holding hand-written `.cpp` /
+   `.cppm` (skipping `build/`, `.gen/`, `obj_dir/`).
+3. Add each directory from step 2 that is not itself a root from step 1. A
+   **subdirectory** of a root counts as missing too — the glob does not recurse:
+
+   ```make
+   EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src
+   ```
+
+   in the project's `rundir/Makefile` (see `examples/{simple_ip,ip_test}`).
+
+Like `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES`, these paths are
+**user-authored and the migrator never rewrites them**. Any of them pointing into
+a segment root relocates under a hierarchical layout migration, so you must
+re-point the affected lines by hand afterwards. What moves is the `dirs:` /
+`hierarchicalDirs:` pair as **merged** from the base `config/project.yaml` and
+the project file's own overrides, the project's entries winning — so read the
+project file first to know which of your paths are affected. This is the same
+exposure covered in Section 7, where the tool emits `TODO_UNREWRITABLE_PATH`.
+That warning matches on the **top-level path component**, so it over-reports: a
+path that merely sits under a relocating top, without moving itself, is flagged
+too. Check each reported path against the new tree before editing it.
 
 ### Sweep the retired vl build tree
 
 The whole-design Verilator build now lives under `rundir/build/vl`
 (`A2C_VL_BUILD_DIR = $(BIN_DIR)/vl`, driven by
 `include/make/a2c-vl-build-entry.mk`); the old per-project vl-build `Makefile` is
-retired and is no longer relocated by any migration step. In a **functional**
-layout (the state a `make migrate` project is in) that stale build tree lives at
-`verif/vl_wrap/` — its `Makefile`, `obj_dir`, and built lib. Delete it so it does
-not shadow the new build location. (The hierarchical migration in Section 7
-flattens `verif/vl_wrap` into `prj/verif`, so post-migration the same stale build
-tree is swept from `prj/verif/` instead.)
+retired and is no longer relocated by any migration step. The stale tree is its
+`Makefile`, `obj_dir`, and built lib; delete it so it does not shadow the new
+build location.
+
+It sits at the project's **`vl_wrap` segment**, so its location is whatever the
+layout resolves that segment to. Resolve it rather than assuming a path: segment
+placement is the **merge** of the base `config/project.yaml` and the project
+file's own `fileGeneration:` / `dirs:`, with the project's entries winning — so
+check the project file first and fall back to the base for anything it does not
+restate. `dirs:` gives the functional placement (a `$root` tail),
+`hierarchicalDirs:` the node-relative one, and a project may override either.
+Projects do diverge here (`examples/hierInclude` renames the `rtl` segment), so
+the base defaults are a fallback, not the answer. Note the asymmetry a
+hierarchical migration introduces: it reduces the moved project file's `dirs:`
+block to `root:` only (Section 7), so afterwards the functional segment overrides
+that placed the old tree are **gone from the project file** and only the
+`hierarchicalDirs:` side is still declared.
+
+The two placements differ, so a project that **migrated** functional →
+hierarchical must check **both**: the relocation moves only source files (a
+`Makefile` is not a source extension and `obj_dir` is skipped outright), so a
+build tree predating the move stays at the functional location while the segment
+itself has moved on. Section 7 relocates only the retired project-scope
+**aggregator sources** into `prj/verif`; no build tree is ever placed there.
 
 ## 4. Finish an includes (header → cppm) migration
 
@@ -455,11 +512,16 @@ is still laid out functionally on disk.
 **Order matters — migrate to format-2 *while still functional*, then opt in.**
 Run `make migrate` **first, before adding any `layout:` key**, so the project
 reaches `yamlFormat: 2` in functional layout. Do not opt into hierarchical before
-`make migrate`: its orphan sweep does not walk a hierarchical context owner and
-would report `TODO_UNSUPPORTED_LAYOUT` and stop. Only after `make migrate` is
-clean, **opt in** by hand-adding `layout: hierarchical` under `fileGeneration:` in
-the project YAML (the base default is `functional`) — that declaration is what
-makes the project a migration candidate. Then run:
+`make migrate`: a project carrying un-migrated legacy artifacts under a
+hierarchical context owner is reported as `TODO_UNSUPPORTED_LAYOUT` and the sweep
+stops. That is a statement about *un-migrated* artifacts, **not** a ban on running
+`make migrate` once the tree is hierarchical — a cleanly hierarchical project
+sweeps silently, and the finish step below **requires** a final `make migrate`.
+
+Only after `make migrate` is clean, **opt in** by hand-adding
+`layout: hierarchical` under `fileGeneration:` in the project YAML (the base
+default is `functional`) — that declaration is what makes the project a migration
+candidate. Then run:
 
 ```text
 make migrate-hierarchical
@@ -544,8 +606,10 @@ byte-for-byte:
   `vl_wrap.{cpp,h,sv}` / `vl_dummy.sv`) → `prj/fw/` / `prj/verif/` (flattened). No
   vl-build `Makefile` is relocated: the whole-design Verilator build is make
   infrastructure under `rundir/build/vl` (`A2C_VL_BUILD_DIR`, driven by
-  `a2c-vl-build-entry.mk`), not a per-project file — sweep any stale
-  `prj/verif/` build `Makefile`/`obj_dir` (Section 3). **Build-config `include/`
+  `a2c-vl-build-entry.mk`), not a per-project file. Only the aggregator *sources*
+  move here — a stale build `Makefile`/`obj_dir` is not source, so it stays at its
+  pre-move segment location instead of following the segment; Section 3 covers
+  sweeping it. **Build-config `include/`
   and `rundir/` stay at the project root** — they are user-owned entry points,
   not `prj/` orphans. The only
   harness change is the `A2C_PRJ_YAML` line in the root `include/make/shared.mk`,
@@ -596,7 +660,7 @@ using the same `<file>:<line>  <KIND>  <message>` format as the other phases:
 | --- | --- | --- |
 | `TODO_NOT_FORMAT2` | Hierarchical opted in before the project is `yamlFormat: 2`. Nothing is moved. | Run `make migrate` first, then `make migrate-hierarchical`. |
 | `TODO_UNGENERATED_FILE` | A source file matches a fully-generated name but carries no `GENERATED_CODE_BEGIN` marker. Left in place, **never deleted**. | Inspect the file: hand-move it to its hierarchical location, or add the marker if it should be generated. |
-| `TODO_UNREWRITABLE_PATH` | A relative `include:` / `projectFiles:` reference (or an authored YAML) resolves outside the migrated tree. Left byte-for-byte. | Re-point the reference by hand after the move. |
+| `TODO_UNREWRITABLE_PATH` | Either a relative `include:` / `projectFiles:` reference (or an authored YAML) that resolves outside the migrated tree, or an `EXTRA_*` make variable in `include/make/shared.mk` / `rundir/Makefile` naming a segment root that relocates. Left byte-for-byte. | Re-point the reference by hand after the move. The `EXTRA_*` form matches on the **top-level** path component, so it over-reports: a path that merely sits under a relocating top, without moving itself, is flagged and needs no edit. Check each against the new tree (Section 3). |
 
 ### Finish the migration
 
@@ -604,9 +668,25 @@ The deleted fully-generated source is recreated at the hierarchical location:
 
 ```text
 make clean      # rebuild the database from the relocated project.yaml
-make newmodule  # create the generated modules at the hierarchical location
-make gen        # fill the generated regions
+make migrate    # REQUIRED: re-stamp the moved artifacts, then rescaffold + regenerate
 ```
+
+**The final `make migrate` is not optional.** Relocation moves each context's
+generated artifacts but leaves their `GENERATED_CODE_PARAM` lines byte-for-byte,
+and a context's canonical key is derived from its authored-YAML location — which
+just changed. The moved firmware includes (`<context>IncludesFW.{h,cpp}`, which
+stay header-mode and therefore move rather than being regenerated) still name
+their context relative to the old tree, so the next `make gen` aborts with:
+
+```text
+The context specified in GENERATED_CODE_PARAM: <ctx>.yaml is not a known context.
+```
+
+The `migrateProjectParam` re-stamp that fixes this is DB-backed, so it runs in the
+`migrateYaml.py --sweep` phase — reachable **only** through `make migrate`, never
+through `make gen` or `make newmodule`. `make migrate` also runs `db`, the sweep,
+`newmodule`, and `gen` in the right order, so it subsumes the scaffold and
+regenerate steps: run it instead of them, not after them.
 
 As in Section 4, a prior build leaves `.d` dependency files that reference the
 old paths; remove the rundir build tree (`rm -rf <project>/rundir/build`) before
@@ -621,6 +701,9 @@ migration, and resolve any manual item the report listed.
 - `pysrc/evalPyToSv.py` (Phase A), `pysrc/migrateAddressControl.py` (Phase B),
   `pysrc/migrateIncludes.py` (Includes phase), `pysrc/migrateModuleHeader.py`
   (Module-header phase) — the text-conversion phase libraries.
+- `pysrc/migrateProjectParam.py` — the `GENERATED_CODE_PARAM` re-stamp phases
+  (project-mode and context-mode), also part of `migrateYaml.py --sweep`. The
+  required finish step after a hierarchical migration (Section 7).
 - `pysrc/migrateOrphans.py` — the orphan sweep (`migrateYaml.py --sweep`): the
   embedded legacy file map, its `delete`/`port`/`leave` dispositions, and the
   `TODO_PORT` / `TODO_USER_INCLUDE` / `TODO_UNGENERATED_FILE` reports.
