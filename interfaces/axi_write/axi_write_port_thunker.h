@@ -38,26 +38,30 @@
 // list carries six types — three per side — matching the buildThunkerView
 // enumeration order.
 //
-// Three construction shapes are supported. The first two are consumer-side
-// (the downstream child end is an axi_write consumer,
-// axi_write_in<DownA, DownD, DownS>&); the third is producer-side (the
-// downstream child end is an axi_write producer,
-// axi_write_out<DownA, DownD, DownS>&):
-//   * connectionMap shape — the up side is a parent port
-//     (axi_write_in<UpA, UpD, UpS>&). The port's bound interface is not
-//     available until SystemC elaboration completes, so it is resolved
-//     lazily on the first iteration of thunkIn().
-//   * connections shape — the up side is the parent-side channel,
-//     bound directly to its axi_write_in_if<UpA, UpD, UpS> interface
-//     base. The channel is fully constructed before the thunker is, so
-//     the interface pointer is captured immediately.
-//   * producer (out) shape — the downstream child end is a producer
-//     port (axi_write_out<DownA, DownD, DownS>&) that drives the owned
-//     channel; the thunker consumes from the owned channel and drives the
-//     bridged payload onto the parent-side channel's
-//     axi_write_out_if<UpA, UpD, UpS>. Data flows child -> parent here,
-//     the reverse of the consumer shapes. Used when a parameterized
-//     producer instance feeds a non-parameterized container channel.
+// Four construction shapes are supported, spanning a 2x2 family: the child
+// (down) end is either a consumer (axi_write_in<DownA, DownD, DownS>&) or a
+// producer (axi_write_out<DownA, DownD, DownS>&), and the parent (up) end is
+// either a fully-bound channel interface base (captured eagerly) or an
+// unbound parent port (resolved lazily on the spawned thread's first
+// iteration, since the port's interface is not available until SystemC
+// elaboration completes):
+//   * connectionMap shape (consumer child, up port) — up is a parent port
+//     axi_write_in<UpA, UpD, UpS>&, resolved lazily in thunkIn().
+//   * connections shape (consumer child, up channel) — up is the parent-side
+//     channel bound directly by its axi_write_in_if<UpA, UpD, UpS> interface
+//     base, captured immediately.
+//   * producer (out) shape (producer child, up channel) — the child producer
+//     port axi_write_out<DownA, DownD, DownS>& drives the owned channel; the
+//     thunker consumes from it and drives the bridged payload onto the
+//     parent-side channel's axi_write_out_if<UpA, UpD, UpS>, captured
+//     immediately. Data flows child -> parent, the reverse of the consumer
+//     shapes.
+//   * producer (out) port shape (producer child, up port) — as the producer
+//     shape, but the up side is an unbound parent port
+//     axi_write_out<UpA, UpD, UpS>& (e.g. a testbench External's inherited
+//     <DUT>Inverted boundary port), resolved lazily in thunkOut(). Used when
+//     a parameterized producer instance feeds a non-parameterized boundary at
+//     an excluded-instance (tb/DUT) boundary.
 //
 // In every shape the child-side port bind to the owned channel must occur
 // during SystemC elaboration; that bind is performed in the constructor
@@ -76,6 +80,7 @@ public:
       : m_up_port( &upPort ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( nullptr ),
+        m_up_out_port( nullptr ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -90,6 +95,7 @@ public:
       : m_up_port( nullptr ),
         m_up_in_iface( &upInIface ),
         m_up_out_iface( nullptr ),
+        m_up_out_port( nullptr ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -106,6 +112,25 @@ public:
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( &upOutIface ),
+        m_up_out_port( nullptr ),
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
+    {
+        downPort( m_down_channel );
+        sc_core::sc_spawn( [this]() { this->thunkOut(); } );
+    }
+
+    // producer (out) port shape: the up side is an unbound parent OUT port
+    // (axi_write_out<UpA, UpD, UpS>&), resolved lazily in thunkOut() once its
+    // interface binds during elaboration. Mirrors the connectionMap shape's
+    // lazy port handling for the producer direction.
+    axi_write_port_thunker( const char* name_,
+                            axi_write_out<UpA, UpD, UpS>&     upPort,
+                            axi_write_out<DownA, DownD, DownS>& downPort,
+                            std::string block_ )
+      : m_up_port( nullptr ),
+        m_up_in_iface( nullptr ),
+        m_up_out_iface( nullptr ),
+        m_up_out_port( &upPort ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -167,7 +192,10 @@ private:
         // onto the parent-side channel. Mirrors thunkIn() with the consumer
         // object (upIn) replaced by m_down_channel, the producer object
         // (m_down_channel) replaced by m_up_out_iface, and every Up<->Down
-        // type swapped.
+        // type swapped. Resolve the up-side interface once, from the eager
+        // channel iface or (port shape) the lazily-bound parent out port.
+        axi_write_out_if<UpA, UpD, UpS>* upOut =
+            m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
         while (true) {
             // Address phase: downstream receives, upstream sends.
             axiWriteAddressSt<DownA> addrIn;
@@ -183,7 +211,7 @@ private:
             // The out interface's sendAddr() carries a default optional
             // argument; the std::nullopt is supplied explicitly to mirror
             // thunkIn() and the channel's two-argument signature.
-            m_up_out_iface->sendAddr( addrOut, std::nullopt );
+            upOut->sendAddr( addrOut, std::nullopt );
 
             // Data phase: downstream receives, upstream sends.
             axiWriteDataSt<DownD, DownS> dataIn;
@@ -194,14 +222,14 @@ private:
             dataIn.pack( dataPacked );
             copy_packed_bits( dataOutPacked, dataPacked, axiWriteDataSt<UpD, UpS>::_bitWidth );
             dataOut.unpack( dataOutPacked );
-            m_up_out_iface->sendData( dataOut );
+            upOut->sendData( dataOut );
 
             // Response phase: upstream returns, downstream answered.
             axiWriteRespSt respIn;
             axiWriteRespSt respOut;
             typename axiWriteRespSt::_packedSt respPacked;
             typename axiWriteRespSt::_packedSt respOutPacked;
-            m_up_out_iface->receiveResp( respIn );
+            upOut->receiveResp( respIn );
             respIn.pack( respPacked );
             copy_packed_bits( respOutPacked, respPacked, axiWriteRespSt::_bitWidth );
             respOut.unpack( respOutPacked );
@@ -212,6 +240,7 @@ private:
     axi_write_in<UpA, UpD, UpS>*    m_up_port;
     axi_write_in_if<UpA, UpD, UpS>* m_up_in_iface;
     axi_write_out_if<UpA, UpD, UpS>* m_up_out_iface;
+    axi_write_out<UpA, UpD, UpS>* m_up_out_port;
     axi_write_channel<DownA, DownD, DownS> m_down_channel;
 };
 

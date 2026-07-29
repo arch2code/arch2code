@@ -22,25 +22,28 @@
 // is a topological position, not a data-flow direction (the producer shape
 // below flows Down -> Up).
 //
-// Three construction shapes are supported. The first two are consumer-side
-// (the downstream child end is a req_ack consumer, req_ack_in<DownR, DownA>&);
-// the third is producer-side (the downstream child end is a req_ack producer,
-// req_ack_out<DownR, DownA>&):
-//   * connectionMap shape — the up side is a parent port
-//     (req_ack_in<UpR, UpA>&). The port's bound interface is not
-//     available until SystemC elaboration completes, so it is resolved
-//     lazily on the first iteration of thunkIn().
-//   * connections shape — the up side is the parent-side channel,
-//     bound directly to its req_ack_in_if<UpR, UpA> interface base.
-//     The channel is fully constructed before the thunker is, so the
-//     interface pointer is captured immediately.
-//   * producer (out) shape — the downstream child end is a producer
-//     port (req_ack_out<DownR, DownA>&) that drives the owned channel;
-//     the thunker consumes from the owned channel and issues the bridged
-//     request onto the parent-side channel's req_ack_out_if<UpR, UpA>.
-//     Data flows child -> parent here, the reverse of the consumer
-//     shapes. Used when a parameterized producer instance feeds a
-//     non-parameterized container channel.
+// Four construction shapes are supported, spanning a 2x2 family: the child
+// (down) end is either a consumer (req_ack_in<DownR, DownA>&) or a producer
+// (req_ack_out<DownR, DownA>&), and the parent (up) end is either a
+// fully-bound channel interface base (captured eagerly) or an unbound parent
+// port (resolved lazily on the spawned thread's first iteration, since the
+// port's interface is not available until SystemC elaboration completes):
+//   * connectionMap shape (consumer child, up port) — up is a parent port
+//     req_ack_in<UpR, UpA>&, resolved lazily in thunkIn().
+//   * connections shape (consumer child, up channel) — up is the parent-side
+//     channel bound directly by its req_ack_in_if<UpR, UpA> interface base,
+//     captured immediately.
+//   * producer (out) shape (producer child, up channel) — the child producer
+//     port req_ack_out<DownR, DownA>& drives the owned channel; the thunker
+//     consumes from it and issues the bridged request onto the parent-side
+//     channel's req_ack_out_if<UpR, UpA>, captured immediately. Data flows
+//     child -> parent, the reverse of the consumer shapes.
+//   * producer (out) port shape (producer child, up port) — as the producer
+//     shape, but the up side is an unbound parent port req_ack_out<UpR, UpA>&
+//     (e.g. a testbench External's inherited <DUT>Inverted boundary port),
+//     resolved lazily in thunkOut(). Used when a parameterized producer
+//     instance feeds a non-parameterized boundary at an excluded-instance
+//     (tb/DUT) boundary.
 //
 // In every shape the child-side port bind to the owned channel must occur
 // during SystemC elaboration; that bind is performed in the constructor
@@ -60,6 +63,7 @@ public:
       : m_up_port( &upPort ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( nullptr ),
+        m_up_out_port( nullptr ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -74,6 +78,7 @@ public:
       : m_up_port( nullptr ),
         m_up_in_iface( &upInIface ),
         m_up_out_iface( nullptr ),
+        m_up_out_port( nullptr ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -90,6 +95,25 @@ public:
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( &upOutIface ),
+        m_up_out_port( nullptr ),
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
+    {
+        downPort( m_down_channel );
+        sc_core::sc_spawn( [this]() { this->thunkOut(); } );
+    }
+
+    // producer (out) port shape: the up side is an unbound parent OUT port
+    // (req_ack_out<UpR, UpA>&), resolved lazily in thunkOut() once its
+    // interface binds during elaboration. Mirrors the connectionMap shape's
+    // lazy port handling for the producer direction.
+    req_ack_port_thunker( const char* name_,
+                          req_ack_out<UpR, UpA>&     upPort,
+                          req_ack_out<DownR, DownA>& downPort,
+                          std::string block_ )
+      : m_up_port( nullptr ),
+        m_up_in_iface( nullptr ),
+        m_up_out_iface( nullptr ),
+        m_up_out_port( &upPort ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -133,7 +157,10 @@ private:
         // parent-side channel, then bridge the returned UpA acknowledge back
         // to DownA and ack the child. Acking the child only after the parent
         // request completes preserves end-to-end backpressure, mirroring
-        // thunkIn().
+        // thunkIn(). Resolve the up-side interface once, from the eager
+        // channel iface or (port shape) the lazily-bound parent out port.
+        req_ack_out_if<UpR, UpA>* upOut =
+            m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
         while (true) {
             DownR reqIn;
             UpR   reqOut;
@@ -147,7 +174,7 @@ private:
             reqIn.pack( reqPacked );
             copy_packed_bits( reqOutPacked, reqPacked, UpR::_bitWidth );
             reqOut.unpack( reqOutPacked );
-            m_up_out_iface->req( reqOut, ackIn );
+            upOut->req( reqOut, ackIn );
             ackIn.pack( ackPacked );
             copy_packed_bits( ackOutPacked, ackPacked, DownA::_bitWidth );
             ackOut.unpack( ackOutPacked );
@@ -158,6 +185,7 @@ private:
     req_ack_in<UpR, UpA>*             m_up_port;
     req_ack_in_if<UpR, UpA>* m_up_in_iface;
     req_ack_out_if<UpR, UpA>* m_up_out_iface;
+    req_ack_out<UpR, UpA>* m_up_out_port;
     req_ack_channel<DownR, DownA> m_down_channel;
 };
 

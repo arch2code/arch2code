@@ -20,25 +20,28 @@
 // is a topological position, not a data-flow direction (the producer shape
 // below flows Down -> Up).
 //
-// Three construction shapes are supported. The first two are consumer-side
-// (the downstream child end is a rdy_vld consumer, rdy_vld_in<DownT>&); the
-// third is producer-side (the downstream child end is a rdy_vld producer,
-// rdy_vld_out<DownT>&):
-//   * connectionMap shape — the up side is a parent port
-//     (rdy_vld_in<UpT>&). The port's bound interface is not available
-//     until SystemC elaboration completes, so it is resolved lazily on
-//     the first iteration of thunkIn().
-//   * connections shape — the up side is the parent-side channel,
-//     bound directly to its rdy_vld_in_if<UpT> interface base. The
-//     channel is fully constructed before the thunker is, so the
-//     interface pointer is captured immediately.
-//   * producer (out) shape — the downstream child end is a producer
-//     port (rdy_vld_out<DownT>&) that writes into the owned channel;
-//     the thunker reads from the owned channel and writes the bridged
-//     payload onto the parent-side channel's rdy_vld_out_if<UpT>. Data
-//     flows child -> parent here, the reverse of the consumer shapes.
-//     Used when a parameterized producer instance feeds a
-//     non-parameterized container channel.
+// Four construction shapes are supported, spanning a 2x2 family: the child
+// (down) end is either a consumer (rdy_vld_in<DownT>&) or a producer
+// (rdy_vld_out<DownT>&), and the parent (up) end is either a fully-bound
+// channel interface base (captured eagerly) or an unbound parent port
+// (resolved lazily on the spawned thread's first iteration, since the port's
+// interface is not available until SystemC elaboration completes):
+//   * connectionMap shape (consumer child, up port) — up is a parent port
+//     rdy_vld_in<UpT>&, resolved lazily in thunkIn().
+//   * connections shape (consumer child, up channel) — up is the parent-side
+//     channel bound directly by its rdy_vld_in_if<UpT> interface base,
+//     captured immediately.
+//   * producer (out) shape (producer child, up channel) — the child producer
+//     port rdy_vld_out<DownT>& writes into the owned channel; the thunker
+//     reads from it and writes the bridged payload onto the parent-side
+//     channel's rdy_vld_out_if<UpT>, captured immediately. Data flows
+//     child -> parent, the reverse of the consumer shapes.
+//   * producer (out) port shape (producer child, up port) — as the producer
+//     shape, but the up side is an unbound parent port rdy_vld_out<UpT>&
+//     (e.g. a testbench External's inherited <DUT>Inverted boundary port),
+//     resolved lazily in thunkOut(). Used when a parameterized producer
+//     instance feeds a non-parameterized boundary at an excluded-instance
+//     (tb/DUT) boundary.
 //
 // In every shape the child-side port bind to the owned channel must occur
 // during SystemC elaboration; that bind is performed in the constructor
@@ -56,6 +59,7 @@ public:
       : m_up_port( &upPort ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( nullptr ),
+        m_up_out_port( nullptr ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -70,6 +74,7 @@ public:
       : m_up_port( nullptr ),
         m_up_in_iface( &upInIface ),
         m_up_out_iface( nullptr ),
+        m_up_out_port( nullptr ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -86,6 +91,25 @@ public:
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( &upOutIface ),
+        m_up_out_port( nullptr ),
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
+    {
+        downPort( m_down_channel );
+        sc_core::sc_spawn( [this]() { this->thunkOut(); } );
+    }
+
+    // producer (out) port shape: the up side is an unbound parent OUT port
+    // (rdy_vld_out<UpT>&), resolved lazily in thunkOut() once its interface
+    // binds during elaboration. Mirrors the connectionMap shape's lazy port
+    // handling for the producer direction.
+    rdy_vld_port_thunker( const char* name_,
+                          rdy_vld_out<UpT>&   upPort,
+                          rdy_vld_out<DownT>& downPort,
+                          std::string block_ )
+      : m_up_port( nullptr ),
+        m_up_in_iface( nullptr ),
+        m_up_out_iface( nullptr ),
+        m_up_out_port( &upPort ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -119,7 +143,10 @@ private:
         // Producer (out) shape: the child producer writes DownT into the
         // owned m_down_channel; bridge each payload and write UpT onto the
         // parent-side channel, mirroring thunkIn() with the data flowing
-        // child -> parent.
+        // child -> parent. Resolve the up-side interface once, from the eager
+        // channel iface or (port shape) the lazily-bound parent out port.
+        rdy_vld_out_if<UpT>* upOut =
+            m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
         while (true) {
             DownT inVal;
             UpT   outVal;
@@ -131,13 +158,14 @@ private:
             inVal.pack( inPacked );
             copy_packed_bits( outPacked, inPacked, UpT::_bitWidth );
             outVal.unpack( outPacked );
-            m_up_out_iface->writeClocked( outVal );
+            upOut->writeClocked( outVal );
         }
     }
 
     rdy_vld_in<UpT>*                m_up_port;
     rdy_vld_in_if<UpT>*    m_up_in_iface;
     rdy_vld_out_if<UpT>*   m_up_out_iface;
+    rdy_vld_out<UpT>*      m_up_out_port;
     rdy_vld_channel<DownT> m_down_channel;
 };
 

@@ -1,0 +1,110 @@
+# BUG 7 trigger fixture: cross-interface boundary thunker at the testbench/DUT
+# boundary. Model-only.
+#
+# Topology:  uSrc --> uDut --> uSink   (both connections on dutStreamIf, the
+#            parameterized interface A; the DUT's own port interface)
+#
+#   * uDut is parameterized on the SUBSET [DATA_WIDTH]; its ports are on the
+#     parameterized dutStreamIf (payload streamSt<Config>). The connections are
+#     carried on this same interface A, so the tb External's inherited
+#     dutInverted boundary port (streamSt<Config>) is the thunker's up side.
+#   * uSrc / uSink are parameterized on the SUPERSET [DATA_WIDTH, FRAME_HEIGHT,
+#     FRAME_WIDTH] (FRAME_* are scalar per-variant Config constants the subset
+#     DUT drops). Their ports are declared on the NON-parameterized boundary
+#     interface streamBndryIf (B), payload the plain streamBndrySt whose packed
+#     layout matches streamSt<dutV0>.
+#
+# Each edge port's declared interface (B) differs in NAME from the connection
+# interface (A), so the surviving (uSrc / uSink) end of each pruned connection
+# is a cross-interface bind. The DUT is the --excludeInst of its own model
+# testbench, so both connections land in prunedConnections. Without the BUG 7
+# fix the surviving ends bind push_ack_*<streamBndrySt> to the inherited
+# push_ack_*_if<streamSt<Config>> boundary ports unadapted, failing to compile.
+# With the fix a per-end boundary thunker bridges streamBndrySt <->
+# streamSt<dutV0Config>.
+
+ipParameters:
+    constants:
+        DATA_WIDTH:   { value: 16, maxValue: 32, desc: "Stream payload width (DUT + edge blocks)" }
+        FRAME_HEIGHT: { value: 8,  maxValue: 16, desc: "Edge-only scalar param the subset DUT drops" }
+        FRAME_WIDTH:  { value: 8,  maxValue: 16, desc: "Edge-only scalar param the subset DUT drops" }
+
+types:
+    streamDataT:      { width: DATA_WIDTH, maxBitwidth: 32, desc: "Parameterized stream payload word" }
+    streamBndryDataT: { width: 16,         desc: "Non-parameterized boundary payload word (matches DATA_WIDTH=16)" }
+
+structures:
+    streamSt:
+        data: { varType: streamDataT, desc: "Parameterized stream payload" }
+    streamBndrySt:
+        data: { varType: streamBndryDataT, desc: "Boundary payload; packed layout matches streamSt<dutV0>" }
+
+interfaces:
+    dutStreamIf:
+        desc: "Parameterized DUT stream (also the connection interface A)"
+        interfaceType: push_ack
+        structures:
+            - { structure: streamSt, structureType: data_t }
+    streamBndryIf:
+        desc: "Non-parameterized boundary interface B (differing name) declared on the edge ports"
+        interfaceType: push_ack
+        structures:
+            - { structure: streamBndrySt, structureType: data_t }
+
+blocks:
+    xif_tb:
+        desc: "Testbench container (root). Holds uSrc, uDut, uSink."
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false
+    dut:
+        desc: "Subset-parameterized DUT: forwards streamIn to streamOut"
+        params: [DATA_WIDTH]
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: true
+        ports:
+            streamIn:  { interface: dutStreamIf, direction: dst }
+            streamOut: { interface: dutStreamIf, direction: src }
+    src:
+        desc: "Superset-parameterized stimulus source; boundary port on B"
+        params: [DATA_WIDTH, FRAME_HEIGHT, FRAME_WIDTH]
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            out: { interface: streamBndryIf, direction: src }
+    sink:
+        desc: "Superset-parameterized stream sink; boundary port on B"
+        params: [DATA_WIDTH, FRAME_HEIGHT, FRAME_WIDTH]
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            in: { interface: streamBndryIf, direction: dst }
+
+instances:
+    xif_tb: { container: xif_tb, instanceType: xif_tb, instGroup: top }
+    uSrc:   { container: xif_tb, instanceType: src,  instGroup: top, variant: srcV0 }
+    uDut:   { container: xif_tb, instanceType: dut,  instGroup: top, variant: dutV0 }
+    uSink:  { container: xif_tb, instanceType: sink, instGroup: top, variant: sinkV0 }
+
+connections:
+    - { interface: dutStreamIf, src: uSrc, srcport: out,       dst: uDut,  dstport: streamIn, name: s2d }
+    - { interface: dutStreamIf, src: uDut, srcport: streamOut, dst: uSink, dstport: in,       name: d2s }
+
+parameters:
+    dut:
+        - { variant: dutV0, param: DATA_WIDTH, value: 16 }
+    src:
+        - { variant: srcV0, param: DATA_WIDTH,   value: 16 }
+        - { variant: srcV0, param: FRAME_HEIGHT, value: 8 }
+        - { variant: srcV0, param: FRAME_WIDTH,  value: 8 }
+    sink:
+        - { variant: sinkV0, param: DATA_WIDTH,   value: 16 }
+        - { variant: sinkV0, param: FRAME_HEIGHT, value: 8 }
+        - { variant: sinkV0, param: FRAME_WIDTH,  value: 8 }

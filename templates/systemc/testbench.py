@@ -182,6 +182,26 @@ def ext_sec_init(args, prj, data):
             f'"_ext_cm_{instName}_{instPort}", "{instName}")'
         )
 
+    # DUT-boundary thunkers: for each connection pruned to the excluded DUT
+    # instance whose surviving end is a cross-interface bind, construct the
+    # thunker adapting the contained instance's port to the inherited
+    # <DUT>Inverted boundary port (the same port the raw prunedConnections bind
+    # would target). Constructing the thunker performs the bind, so ext_sec_body
+    # suppresses the raw bind for these ends. The <proto>_port_thunker overload
+    # resolves by port direction: consumer surviving end -> connectionMap shape,
+    # producer surviving end -> producer-port shape.
+    for key, value in data.get('prunedConnections', dict()).items():
+        for end, endvalue in value['ends'].items():
+            flagged = endvalue.get('crossInterface')
+            if not flagged:
+                continue
+            boundaryPort = getPortChannelName(value, inverse_portdir(endvalue['direction']) + 'port')
+            memberName = _thunker_member_name(flagged, value, is_connection_map=False)
+            out.append(
+                f'   ,{memberName}("{memberName}", {boundaryPort}, '
+                f'{flagged["instance"]}->{flagged["portName"]}, name())'
+            )
+
     return "\n".join(out)
 
 def ext_sec_body(args, prj, data):
@@ -200,6 +220,11 @@ def ext_sec_body(args, prj, data):
             if not multiDst:
                 printError(f"connection {key} has more than 2 ends. Only status interfaces (including ro registers) can have multiple dst connections")
         for end, endvalue in value["ends"].items():
+            # Cross-interface ends are bound through a thunker constructed in
+            # ext_sec_init; emitting the raw bind here too would double-bind
+            # (and would not type-check across the differing interfaces).
+            if 'crossInterface' in endvalue:
+                continue
             port_name = getPortChannelName(value, inverse_portdir(endvalue['direction']) + 'port')
             port_names.add(port_name)
             prunedConnections.append(f'{indent}{ endvalue["instance"] }->{ endvalue["portName"]}({ port_name });')
@@ -248,12 +273,20 @@ def ext_sec_header(args, prj, data):
     # The Inverted base's template argument is the excluded DUT instance's
     # Config when present; otherwise `data` is the DUT block itself.
     cfg = data['dutInvertedCfg'] if data['dutInvertedCfg'] is not None else sel['cfg']
-    # Child Base forward declarations are class templates only when the child
-    # has its own params.
+    # A non-parameterizable child's Base is a plain class: a global-module
+    # forward declaration merges with the module's exported class, so
+    # forward-declaring keeps the header light. A parameterizable child's Base
+    # is a class template; a global-module forward declaration would be a
+    # DISTINCT entity from the module's exported template, so the member type
+    # and the createInstance dynamic_pointer_cast target would carry mismatched
+    # RTTI and the cast would return null. Import the child's Base module
+    # instead so the member type is the real module type (mirrors the DUT's own
+    # <DUT>Testbench importing <DUT>.base).
+    ext_child_base_imports_s = []
     for blockKey, blockName in sorted(data['subBlocks'].items(), key=lambda item: item[1]):
         childHasOwnParams = data['subBlockTypes'][blockKey]['hasOwnParams']
         if childHasOwnParams:
-            ext_fwd_decl_s.append(f'template<typename Config> class {blockName}Base;')
+            ext_child_base_imports_s.append(f'import {cpp_base_module_name(blockName)};')
         else:
             ext_fwd_decl_s.append(f'class {blockName}Base;')
 
@@ -352,6 +385,7 @@ def ext_sec_header(args, prj, data):
         config_includes='\n'.join(config_includes),
         channel_includes='\n'.join(channel_include_lines),
         thunker_includes='\n'.join(thunker_include_lines),
+        child_base_imports='\n'.join(ext_child_base_imports_s),
         ext_fwd_decl='\n'.join(ext_fwd_decl_s),
         ext_inst_decl='\n'.join(ext_inst_decl_s),
         ext_chnl_decl='\n'.join(ext_chnl_decl_s),
@@ -440,6 +474,9 @@ sec_tb_external_header_template = """\
 
 #include "instanceFactory.h"
 import {{basemodule}};
+{%- if child_base_imports %}
+{{child_base_imports}}
+{%- endif %}
 {%- if channel_includes %}
 {{channel_includes}}
 {%- endif %}

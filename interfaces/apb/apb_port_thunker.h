@@ -34,25 +34,28 @@
 //     response is in dataInOut for reads, and returns after acknowledging
 //     the write for writes.
 //
-// Three construction shapes are supported. The first two are
-// consumer-side (the downstream child end is an APB consumer,
-// apb_in<DownA, DownD>&); the third is producer-side (the downstream
-// child end is an APB producer, apb_out<DownA, DownD>&):
-//   * connectionMap shape — the up side is a parent port
-//     (apb_in<UpA, UpD>&). The port's bound interface is not available
-//     until SystemC elaboration completes, so it is resolved lazily on
-//     the first iteration of thunkIn().
-//   * connections shape — the up side is the parent-side channel,
-//     bound directly to its apb_in_if<UpA, UpD> interface base. The
-//     channel is fully constructed before the thunker is, so the
-//     interface pointer is captured immediately.
-//   * producer (out) shape — the downstream child end is a producer
-//     port (apb_out<DownA, DownD>&) that drives the owned channel; the
-//     thunker receives from the owned channel and issues the bridged
-//     request onto the parent-side channel's apb_out_if<UpA, UpD>.
-//     Data flows child -> parent here, the reverse of the consumer
-//     shapes. Used when a parameterized producer instance feeds a
-//     non-parameterized container channel.
+// Four construction shapes are supported, spanning a 2x2 family: the child
+// (down) end is either a consumer (apb_in<DownA, DownD>&) or a producer
+// (apb_out<DownA, DownD>&), and the parent (up) end is either a fully-bound
+// channel interface base (captured eagerly) or an unbound parent port
+// (resolved lazily on the spawned thread's first iteration, since the port's
+// interface is not available until SystemC elaboration completes):
+//   * connectionMap shape (consumer child, up port) — up is a parent port
+//     apb_in<UpA, UpD>&, resolved lazily in thunkIn().
+//   * connections shape (consumer child, up channel) — up is the parent-side
+//     channel bound directly by its apb_in_if<UpA, UpD> interface base,
+//     captured immediately.
+//   * producer (out) shape (producer child, up channel) — the child producer
+//     port apb_out<DownA, DownD>& drives the owned channel; the thunker
+//     receives from it and issues the bridged request onto the parent-side
+//     channel's apb_out_if<UpA, UpD>, captured immediately. Data flows
+//     child -> parent, the reverse of the consumer shapes.
+//   * producer (out) port shape (producer child, up port) — as the producer
+//     shape, but the up side is an unbound parent port apb_out<UpA, UpD>&
+//     (e.g. a testbench External's inherited <DUT>Inverted boundary port),
+//     resolved lazily in thunkOut(). Used when a parameterized producer
+//     instance feeds a non-parameterized boundary at an excluded-instance
+//     (tb/DUT) boundary.
 //
 // In every shape the child-side port bind to the owned channel must occur
 // during SystemC elaboration; that bind is performed in the constructor
@@ -72,6 +75,7 @@ public:
       : m_up_port( &upPort ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( nullptr ),
+        m_up_out_port( nullptr ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -86,6 +90,7 @@ public:
       : m_up_port( nullptr ),
         m_up_in_iface( &upInIface ),
         m_up_out_iface( nullptr ),
+        m_up_out_port( nullptr ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -102,6 +107,25 @@ public:
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
         m_up_out_iface( &upOutIface ),
+        m_up_out_port( nullptr ),
+        m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
+    {
+        downPort( m_down_channel );
+        sc_core::sc_spawn( [this]() { this->thunkOut(); } );
+    }
+
+    // producer (out) port shape: the up side is an unbound parent OUT port
+    // (apb_out<UpA, UpD>&), resolved lazily in thunkOut() once its interface
+    // binds during elaboration. Mirrors the connectionMap shape's lazy port
+    // handling for the producer direction.
+    apb_port_thunker( const char* name_,
+                      apb_out<UpA, UpD>&     upPort,
+                      apb_out<DownA, DownD>& downPort,
+                      std::string block_ )
+      : m_up_port( nullptr ),
+        m_up_in_iface( nullptr ),
+        m_up_out_iface( nullptr ),
+        m_up_out_port( &upPort ),
         m_down_channel( (std::string(name_) + "_ch").c_str(), block_ )
     {
         downPort( m_down_channel );
@@ -165,7 +189,11 @@ private:
         // issue the request onto the parent-side channel. This is
         // thunkIn() with the consumer and producer objects swapped and
         // every Up<->Down type swapped, preserving the same APB handshake
-        // asymmetry (complete() only on reads).
+        // asymmetry (complete() only on reads). Resolve the up-side
+        // interface once, from the eager channel iface or (port shape) the
+        // lazily-bound parent out port.
+        apb_out_if<UpA, UpD>* upOut =
+            m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
         while (true) {
             bool   isWrite = false;
             DownA  addrIn;
@@ -189,7 +217,7 @@ private:
             dataOut.unpack( dataOutPacked );
             // request() blocks until the read response arrives, or until
             // the write ack is observed for writes.
-            m_up_out_iface->request( isWrite, addrOut, dataOut );
+            upOut->request( isWrite, addrOut, dataOut );
             if (!isWrite) {
                 // Convert the up-side read response back to down-side
                 // typing and complete the transaction. Writes are
@@ -209,6 +237,7 @@ private:
     apb_in<UpA, UpD>*              m_up_port;
     apb_in_if<UpA, UpD>*  m_up_in_iface;
     apb_out_if<UpA, UpD>* m_up_out_iface;
+    apb_out<UpA, UpD>*    m_up_out_port;
     apb_channel<DownA, DownD> m_down_channel;
 };
 

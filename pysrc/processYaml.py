@@ -2288,7 +2288,13 @@ class projectOpen:
                     tempPorts[end] = endVal
                 if endVal['instanceKey'] in excludeInstances:
                     pop_ends.append(end)
-                    prunedConnections[conn] = 0
+                    # Capture the excluded (DUT) end's Config selection before
+                    # the end is popped. A pruned cross-interface boundary needs
+                    # it as the up/parent-side Config: once the DUT end is gone
+                    # the surviving-end classifier cannot recover the DUT's
+                    # typing, so the boundary thunker payload would emit an
+                    # unresolved template parameter.
+                    prunedConnections[conn] = excludeInstances[endVal['instanceKey']]['instanceConfigSelection']
             # filter out any excluded instances after looping
             for end in pop_ends:
                 connVal['ends'].pop(end)
@@ -2316,9 +2322,12 @@ class projectOpen:
             connVal['interfaceType'] = intfInfo['interfaceType']
             for end, endVal in connVal['ends'].items():
                 endVal['name'] = endVal['portName']
-        # move all the pruned connections to a separate dict
+        # move all the pruned connections to a separate dict, carrying the
+        # excluded (DUT) end's Config selection for boundary-thunker typing
         for conn in prunedConnections:
-            ret['prunedConnections'][conn] = connections.pop(conn)
+            connMoved = connections.pop(conn)
+            connMoved['excludedEndConfig'] = prunedConnections[conn]
+            ret['prunedConnections'][conn] = connMoved
 
         ret['connections'] = connections
         ret['connectionPorts'] = ports
@@ -2517,7 +2526,8 @@ class projectOpen:
                     return interfaceKey, ifaceRow.get('interface')
             return None
 
-        def annotate(connVal, endKey, instanceKey, portName, instanceName, inferredDirection):
+        def annotate(connVal, endKey, instanceKey, portName, instanceName, inferredDirection,
+                     parentConfigOverride=None):
             if connVal['_context'] == '_global':
                 return None
             parentInterfaceKey = connVal.get('interfaceKey') or ''
@@ -2557,7 +2567,14 @@ class projectOpen:
                     return None
             childInterface = self.data['interfaces'][childInterfaceKey]
             childConfigSelection = resolveInstanceConfig(instanceData)
-            parentConfigSelection = resolveConnectionConfig(connVal, excludeEndKey=endKey)
+            # For a pruned tb/DUT boundary the up-side (parent) end is the
+            # excluded DUT instance, no longer present in connVal['ends']; its
+            # Config is supplied explicitly. Otherwise the parent Config is the
+            # connection's surviving up-side end.
+            if parentConfigOverride is not None:
+                parentConfigSelection = parentConfigOverride
+            else:
+                parentConfigSelection = resolveConnectionConfig(connVal, excludeEndKey=endKey)
             thunkerView = buildThunkerView(
                 parentInterface, childInterface, parentConfigSelection, childConfigSelection)
             if not thunkerView:
@@ -2599,6 +2616,34 @@ class projectOpen:
                     endVal.get('portName') or '',
                     endVal.get('instance') or '',
                     endVal.get('direction') or '',
+                )
+                if bind:
+                    endVal['crossInterface'] = bind
+                    crossInterfaceEnds.append(bind)
+            if crossInterfaceEnds:
+                connVal['crossInterfaceEnds'] = crossInterfaceEnds
+
+        # Pruned connections are the tb/DUT boundary connections getBDConnections
+        # moved out of `connections` because their DUT end is an excluded
+        # instance (--excludeInst). Their surviving (contained) end can still be a
+        # cross-interface bind whose declared port interface differs from the
+        # connection interface; without classifying it the tbExternal would bind
+        # the surviving instance port to the inherited DUT-boundary port unadapted.
+        # Classification runs here (after the prune at getBDConnections) over the
+        # surviving ends only, attaching the same crossInterfaceEnds annotation the
+        # connectDouble path produces so the thunker emission carries to the
+        # boundary.
+        for connVal in ret['prunedConnections'].values():
+            crossInterfaceEnds = []
+            for endKey, endVal in connVal.get('ends', {}).items():
+                bind = annotate(
+                    connVal,
+                    endKey,
+                    endVal.get('instanceKey') or '',
+                    endVal.get('portName') or '',
+                    endVal.get('instance') or '',
+                    endVal.get('direction') or '',
+                    parentConfigOverride=connVal['excludedEndConfig'],
                 )
                 if bind:
                     endVal['crossInterface'] = bind

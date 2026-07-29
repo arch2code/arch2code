@@ -839,6 +839,18 @@ def sc_declare_thunkers(data, prj, indent, block_data):
             member_type = _thunker_member_type(flagged, prj)
             member_name = _thunker_member_name(flagged, value, is_connection_map=True)
             out.append(f"{indent}{member_type} {member_name};")
+    # Testbench External DUT-boundary binds: connections pruned to an excluded
+    # DUT instance whose surviving end is a cross-interface bind. Flat dict
+    # (not grouped by channelType like connectDouble); the peer-to-peer member
+    # naming applies since the surviving end is a contained instance port.
+    for value in data.get("prunedConnections", {}).values():
+        flagged_ends = _resolve_cross_interface_ends(value, prj)
+        if not flagged_ends:
+            continue
+        for flagged in flagged_ends:
+            member_type = _thunker_member_type(flagged, prj)
+            member_name = _thunker_member_name(flagged, value, is_connection_map=False)
+            out.append(f"{indent}{member_type} {member_name};")
     return out
 
 
@@ -857,6 +869,11 @@ def sc_thunker_protocols(data, prj):
                 if protocol:
                     protocols.add(protocol)
     for value in data.get("connectionMaps", {}).values():
+        for flagged in _resolve_cross_interface_ends(value, prj):
+            protocol = (flagged.get('thunker') or {}).get('channelType')
+            if protocol:
+                protocols.add(protocol)
+    for value in data.get("prunedConnections", {}).values():
         for flagged in _resolve_cross_interface_ends(value, prj):
             protocol = (flagged.get('thunker') or {}).get('channelType')
             if protocol:
