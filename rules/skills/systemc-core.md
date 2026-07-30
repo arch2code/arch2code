@@ -14,41 +14,63 @@ Guide the user in writing core SystemC modules, focusing on module structure, th
 ## Instructions
 
 1.  **Module Structure & Generated Code:**
-    *   **Auto-Generation:** The class declaration, inheritance, factory registration, and member declarations (registers/memories/ports) are **auto-generated** in the `.h` file.
-    *   **Constructor:** The constructor signature and initialization list are **auto-generated** in the `.cpp` file.
+    *   **Single Module File:** A block implementation is one C++20 module file, `model/<block>.cppm`. It opens with a global-module-fragment (`module;` plus `#include`s), declares the module, then declares the templated class and its constructor — all in the same file. There is no separate `.h`/`.cpp` pair.
+    *   **Generated Regions:** Three generated regions carry the block's scaffolding, in order:
+        *   `moduleScaffold --section=blockModuleHeader` — the global module fragment: `module;` and the generated `#include`s.
+        *   `moduleExport` — `export module <block>.block;` and `import <block>.base;` (module names may be `<project>_<block>`-qualified on cross-project collision).
+        *   `classDecl` — `export template<typename Config> SC_MODULE(<block>), public blockBase, public <block>Base<Config>`, the factory registration, the `using <block>Base<Config>::...;` re-exports of inherited names/types, and the constructor declaration.
+    *   **Constructor:** The constructor definition lives in the same `.cppm`, split across `constructor --section=init` (the initialization list) and `constructor --section=body`.
     *   **Safe Zones:** **NEVER** modify code between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers.
 
 2.  **Implementation Location:**
-    *   **Header (.h):** Add manual member variables and function declarations **after** the `// GENERATED_CODE_END` marker in the class definition.
-    *   **Source (.cpp):**
-        *   **Initialization List:** Add manual member initializers (starting with a comma `,`) **between** the first `// GENERATED_CODE_END` and the next `// GENERATED_CODE_BEGIN`.
-        *   **Constructor Body:** Add manual logic (like `SC_THREAD` registration) **after** the final `// GENERATED_CODE_END` in the constructor.
+    *   **User `#includes`:** Add manual `#include`s after the `blockModuleHeader` region's `// GENERATED_CODE_END`, in the global-module-fragment zone (before `export module`).
+    *   **Body-only context types:** Types or constants used only by the block body — not on the interface, so not imported by the generated `moduleExport` region — need a hand-written `import <ctx>; using namespace <ctx>_ns;` in the preamble gap between the `moduleExport` region and the `classDecl` region.
+    *   **Members:** Add manual member variables and function declarations **after** the `classDecl` region's `// GENERATED_CODE_END`, inside the class body.
+    *   **Initialization List:** Add manual member initializers (starting with a comma `,`) **between** the `constructor --section=init` `// GENERATED_CODE_END` and the next `// GENERATED_CODE_BEGIN`.
+    *   **Constructor Body:** Add manual logic (like `SC_THREAD` registration) **after** the `constructor --section=body` `// GENERATED_CODE_END`.
+    *   **Inherited names:** Use the generated `using <block>Base<Config>::name;` declarations to refer to inherited constants, parameterized types, and ports unqualified (no `Config::` / `this->`).
 
     ```cpp
-    // MyBlock.h
-    SC_MODULE(MyBlock), public blockBase, public MyBlockBase
+    // myBlock.cppm
+    // GENERATED_CODE_BEGIN --template=moduleScaffold --section=blockModuleHeader
+    module;
+    #include "systemc.h"
+    // ... generated #includes ...
+    // GENERATED_CODE_END
+    // <--- Add manual #includes here --->
+
+    // GENERATED_CODE_BEGIN --template=moduleExport
+    export module myBlock.block;
+    import myBlock.base;
+    // GENERATED_CODE_END
+    // <--- body-only context types: import <ctx>; using namespace <ctx>_ns; --->
+
+    // GENERATED_CODE_BEGIN --template=classDecl
+    export template<typename Config>
+    SC_MODULE(myBlock), public blockBase, public myBlockBase<Config>
     {
-        // GENERATED_CODE_BEGIN
-        // ... auto-generated members ...
+        SC_HAS_PROCESS(myBlock);
+        using myBlockBase<Config>::somePort;   // inherited names usable unqualified
+        myBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
         // GENERATED_CODE_END
 
         // <--- Add manual members here --->
         sc_event myEvent;
         void myThread();
     };
-    ```
 
-    ```cpp
-    // MyBlock.cpp
-    MyBlock::MyBlock(...) : ...
-         // GENERATED_CODE_BEGIN --template=constructor --section=init
-         ,autoGenMember(...)
-         // GENERATED_CODE_END
-         
+    // GENERATED_CODE_BEGIN --template=constructor --section=init
+    template<typename Config>
+    myBlock<Config>::myBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+         : sc_module(blockName)
+          ,blockBase("myBlock", name(), bbMode)
+          ,myBlockBase<Config>(name(), variant)
+    // GENERATED_CODE_END
+
          // <--- Add manual initializers here --->
-         ,myEvent("myEvent") 
+         ,myEvent("myEvent")
 
-         // GENERATED_CODE_BEGIN --template=constructor --section=body
+    // GENERATED_CODE_BEGIN --template=constructor --section=body
     {
          // ... auto-generated body ...
          // GENERATED_CODE_END

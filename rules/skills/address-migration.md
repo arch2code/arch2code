@@ -349,7 +349,7 @@ diagnostics below word for word, so a reported TODO and the eventual build error
 for the same unresolved relationship read identically.
 
 A note on `registerPorts:`: a reusable-IP leaf (one whose
-`<block>Base.h` must carry its own register-bus interface) declares a
+`<block>Base.cppm` must carry its own register-bus interface) declares a
 single `registerPorts:` row naming that interface. A plain top-down
 leaf needs no `registerPorts:` — it infers its register bus from the
 serving router. The first group below only applies when the migration
@@ -399,7 +399,7 @@ outstanding task. Read it once per leaf and move on.
 - A `registerPorts:` row's interface is not visible in the leaf's
   load-time scope: `no interfaces row named` ... in
   `any context processed before` this one. Author or `include:` the interface in
-  the leaf's own scope so its `<block>Base.h` is self-contained.
+  the leaf's own scope so its `<block>Base.cppm` is self-contained.
 
 ### Router topology (post parse)
 

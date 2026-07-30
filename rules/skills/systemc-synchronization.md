@@ -8,7 +8,7 @@ description: Guide for using synchLock, events, and arbitration patterns in Syst
 Guide the user on using `synchLock`, events, and arbitration patterns in SystemC to model concurrency and shared resources correctly.
 
 ## Implementation Location
-All logic and member usage described below must be implemented in the manual sections of your `.h` and `.cpp` files, specifically **after** the `// GENERATED_CODE_END` markers.
+All logic and member usage described below must be implemented in the user regions of the block's `model/<block>.cppm` module file, specifically **after** the `// GENERATED_CODE_END` markers.
 
 ## Instructions
 

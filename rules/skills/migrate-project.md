@@ -58,7 +58,17 @@ leaves the tree scaffolded while `make migrate` still signals non-zero:
    rewrite each surviving generated artifact's PARAM line to the canonical
    `--project` / `--context` form. They are DB-backed and live here, so
    `make migrate` is the **only** way to reach them — a tree whose PARAM lines
-   have gone stale cannot be repaired by `make gen` alone (Section 7).
+   have gone stale cannot be repaired by `make gen` alone (Section 7). It also
+   carries the **module end-label re-stamp** (`pysrc/migrateModuleEndlabel.py`),
+   which — like `migrateProjectParam`, and for the same DB-backed reason — runs
+   here to rewrite each RTL block module's user-owned `endmodule: <label>` to the
+   project-qualified `blockModuleName`. The module begin-declaration is
+   generator-owned and already emits the qualified name; without the matching
+   end-label Verilator raises `%Error-ENDLABEL`. It is idempotent (a file already
+   carrying the qualified label is a no-op) and owner-gated (a composed build
+   never rewrites a referenced child's file); a fully-generated RTL block that
+   closes its module inside a generated region carries no user end-label and is
+   left untouched.
 4. **`make newmodule`** — create-only; scaffolds the new-form files (for example
    the `<context>Includes.cppm` module interfaces). It runs after the sweep so
    the orphans are gone before regeneration.
@@ -74,6 +84,14 @@ The text conversion (step 1) runs these phases over the project's YAML file set:
   `addressControl.yaml` when clean. While manual items remain the file is kept as
   reference and the report says so (`DELETE_DEFERRED`); the next run removes it
   automatically once the pointer is gone, so **never delete it by hand**.
+- **Variant schema — per-row bindings → nested mapping.** Rewrites each
+  `parameters:` block entry from the retired per-row list
+  (`- {variant: v, param: P, value: n}`) into the nested mapping form (the
+  variant label stated once, its parameters nested beneath it:
+  `v: {P: n}`). Standalone and text-only, scoped to `parameters:` sections only
+  (instance `variant:` selectors are never touched). Part of `yamlFormat: 2`,
+  purely mechanical and lossless — it groups rows by variant in first-seen order
+  and produces no manual TODOs; an already-nested file is a no-op.
 - **Includes — include header → cppm module.** Removes a legacy
   `fileGeneration.fileMap` `include` override (paired `.h`/`.cpp`) so the project
   inherits the base `cppm` module-interface definition, and deletes the orphaned
@@ -147,6 +165,17 @@ project, and leaves the top-level report about the top-level project alone. The
 check reports **direct** children only — a grandchild surfaces in its own
 parent's run — so bottom-up also walks the composition one level at a time
 instead of leaving a deep child for last.
+
+**An already-`yamlFormat: 2` child still needs its own run when the builder has
+changed cross-project identifiers.** `TODO_UNMIGRATED_SUBPROJECT` fires only on an
+*unstamped* child, so an already-migrated one draws no report — but if the parent
+is regenerated with a builder that project-qualifies cross-project module/context
+names (`contextModuleIdentity` → `<owner>_<ctx>`), the parent now `import`s the
+qualified name while the stale child still `export`s the bare one (and its
+`-fmodule-file` keys stay bare). The composed build then fails with
+`module '<owner>_<ctx>' not found`, which no `TODO_*` catches. Re-run `make migrate`
+in each child even when it is already stamped, so its regenerated exports and
+module-file keys carry the qualified names the parent now imports.
 
 Reaching one file from several projects is fine: under `projectOverrides:`, or
 where a sub-project vendors another by symlink (`ip_test/bridge/ip` is
@@ -786,11 +815,15 @@ migration, and resolve any manual item the report listed.
 - `make migrate-hierarchical` / `migrateYaml.py --to-hierarchical` — the opt-in
   layout migration (`pysrc/migrateLayout.py`).
 - `pysrc/evalPyToSv.py` (Phase A), `pysrc/migrateAddressControl.py` (Phase B),
+  `pysrc/migrateVariantSchema.py` (Variant-schema phase),
   `pysrc/migrateIncludes.py` (Includes phase), `pysrc/migrateModuleHeader.py`
   (Module-header phase) — the text-conversion phase libraries.
 - `pysrc/migrateProjectParam.py` — the `GENERATED_CODE_PARAM` re-stamp phases
   (project-mode and context-mode), also part of `migrateYaml.py --sweep`. The
   required finish step after a hierarchical migration (Section 7).
+- `pysrc/migrateModuleEndlabel.py` — the RTL module end-label re-stamp
+  (user-owned `endmodule: <label>` → qualified `blockModuleName`), DB-backed and
+  part of `migrateYaml.py --sweep`.
 - `pysrc/migrateOrphans.py` — the orphan sweep (`migrateYaml.py --sweep`): the
   embedded legacy file map, its `delete`/`port`/`leave` dispositions, and the
   `TODO_PORT` / `TODO_USER_INCLUDE` / `TODO_UNGENERATED_FILE` reports.

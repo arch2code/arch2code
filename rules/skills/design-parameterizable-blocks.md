@@ -78,15 +78,17 @@ The `ports:` map is keyed by port name. Each entry has:
 
 ## Variant Bindings
 
-Concrete values are bound in the top-level `parameters:` dictionary. Each list entry names a `variant`, a `param`, and a `value`.
+Concrete values are bound in the top-level `parameters:` dictionary, keyed by block and then by variant. Each variant maps its parameter names to values.
 
 ```yaml
 parameters:
   ip:
-    - {variant: variant0, param: IP_DATA_WIDTH, value: 8}
-    - {variant: variant0, param: IP_MEM_DEPTH, value: 16}
-    - {variant: variant1, param: IP_DATA_WIDTH, value: 12}
-    - {variant: variant1, param: IP_MEM_DEPTH, value: 8}
+    variant0:
+      IP_DATA_WIDTH: 8
+      IP_MEM_DEPTH: 16
+    variant1:
+      IP_DATA_WIDTH: 12
+      IP_MEM_DEPTH: 8
 ```
 
 Instances select variants with `variant:`.
@@ -97,7 +99,11 @@ instances:
   uIp1: {container: top, instanceType: ip, variant: variant1}
 ```
 
-Every variant should bind at least one parameter. Avoid label-only variants unless the generator flow explicitly requires them.
+Every variant must bind **all** of the block's declared `params:` — there is no default-fill for an omitted parameter. Avoid label-only variants unless the generator flow explicitly requires them.
+
+## Emitted Config
+
+A block with `ipParameters` always emits configuration types: a `<block>DefaultConfig` plus one `<block><Variant>Config` per variant, with no folding of common values. The block class is templated on that Config (`template<typename Config> ... <block>Base<Config>`), and each instance's variant selects which `<block><Variant>Config` binds the class.
 
 ## Per-Port Parameters
 
@@ -144,8 +150,9 @@ Bind both per-port parameters in the selected producer variant.
 ```yaml
 parameters:
   src:
-    - {variant: src_variant0, param: OUT0_DATA_WIDTH, value: 8}
-    - {variant: src_variant0, param: OUT1_DATA_WIDTH, value: 12}
+    src_variant0:
+      OUT0_DATA_WIDTH: 8
+      OUT1_DATA_WIDTH: 12
 ```
 
 Use this pattern only when the output ports genuinely have different parameter values. If all consumers share the same shape, use one shared parameter.
