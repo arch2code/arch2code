@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "apb_channel.h"
 
-export module ipStdDecode.base;
+export module ip_ipStdDecode.base;
 import ip;
 using namespace ip_ns;
 // GENERATED_CODE_END

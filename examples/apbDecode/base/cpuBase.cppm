@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "apb_channel.h"
 
-export module cpu.base;
+export module apbDecode_cpu.base;
 import apbDecode;
 using namespace apbDecode_ns;
 // GENERATED_CODE_END

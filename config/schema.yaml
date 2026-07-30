@@ -292,6 +292,19 @@ blocks:
     upstreamPort: optional(apbReg)
     registerDecoderPort: optional(apbReg)
 
+# Variants are authored as a nested mapping: the variant label is stated once
+# and its parameters are listed underneath it as `<param>: <value>`.
+#     ip:
+#         variant1:
+#             IP_DATA_WIDTH: 70
+#             IP_MEM_DEPTH: 8
+# The nesting is declared here, so the parser walks it natively (Pattern 4,
+# collapsed + anchor, one level deeper than modports -> modportGroups):
+#   parameters -> variants (collapsed, anchor = variant)
+#              -> params    (collapsed, anchor = param, scalar value via _singular)
+# The machinery auto-adds the outer keys (block, variant), their qualified
+# {field}Key fields, and the parent-key chain; only the genuine per-level deltas
+# are declared. The leaf table is `parametersvariantsparams`.
 parameters:
   block:
     _type: key
@@ -299,30 +312,33 @@ parameters:
       section: blocks
       field: block
   variants:
-    _attribs: [multiple, collapsed, post(validateVariantBindingSizing)]
-    variant: required
-    param: required
-    blockParam:
-      _type: required
-      _combo:
-        block: required
-        param: required
-      _validate:
-        section: blocksparams
-        field: blockparam
-    value: const
-    # Declaring project of this binding row (the project owning the row's
-    # context file). Distinguishes two assembler projects that declare the
-    # same local (block, variant) so both survive as distinct Config identities
-    # in one composed database. Declared before blockVariantParam so it is
-    # populated when the combo key is built.
-    projectName: auto(variantProjectName)
-    blockVariantParam:
-      _key:
-        block: required
-        variant: required
-        param: required
-        projectName: required
+    _attribs: [collapsed, multiple, post(validateVariantParameterCompleteness)]
+    variant: key
+    params:
+      _attribs: [collapsed, multiple, post(validateVariantBindingSizing)]
+      _singular: value       # `<param>: <scalar>` -> the scalar is the `value`
+      param: anchor
+      value: const
+      blockParam:
+        _type: required
+        _combo:
+          block: required
+          param: required
+        _validate:
+          section: blocksparams
+          field: blockparam
+      # Declaring project of this binding row (the project owning the row's
+      # context file). Distinguishes two assembler projects that declare the
+      # same local (block, variant) so both survive as distinct Config identities
+      # in one composed database. Declared before blockVariantParam so it is
+      # populated when the combo key is built.
+      projectName: auto(variantProjectName)
+      blockVariantParam:
+        _key:
+          block: required
+          variant: required
+          param: required
+          projectName: required
 
 connections: # custom handler
   _attribs: [flat]

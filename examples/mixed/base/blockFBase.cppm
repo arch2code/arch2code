@@ -7,10 +7,10 @@ module;
 #include "rdy_vld_channel.h"
 #include "status_channel.h"
 
-export module blockF.base;
-import mixedBlockC;
+export module mixed_blockF.base;
+import mixed_mixedBlockC;
 import mixed;
-using namespace mixedBlockC_ns;
+using namespace mixed_mixedBlockC_ns;
 using namespace mixed_ns;
 // GENERATED_CODE_END
 

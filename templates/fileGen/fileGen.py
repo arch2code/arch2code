@@ -314,7 +314,9 @@ def rtlModule(args, prj, data):
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]}\n')
     out.append('// GENERATED_CODE_BEGIN --template=moduleInterfacesInstances\n')
     out.append('// GENERATED_CODE_END\n')
-    out.append(f'\nendmodule: {data["block"]}\n')
+    # The module begin-label is generator-owned and project-qualified; this
+    # user-owned end-label must match it, so scaffold the qualified name.
+    out.append(f'\nendmodule: {data["blockModuleName"]}\n')
     return("".join(out))
 
 def rtlModuleRegs(args, prj, data):

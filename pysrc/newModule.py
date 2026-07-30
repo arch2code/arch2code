@@ -81,6 +81,10 @@ class newModule:
             data['variants'] = prj.getQualBlockVariants(qualBlock)
             data['block'] = block
             data['qualBlock'] = qualBlock
+            # Project-qualified module name for the scaffold's user-owned
+            # `endmodule: <label>` so a freshly created block matches its
+            # generator-emitted (qualified) module begin-label.
+            data['blockModuleName'] = prj.blockModuleName[qualBlock]
             for fileKey, fileDefinition in blockFileGenerationConfig.items():
                 if self._condMatch(fileDefinition, blockCondData[qualBlock]):
                     hasVariant = fileDefinition.get('variant', False)

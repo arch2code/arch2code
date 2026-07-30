@@ -7,11 +7,11 @@ module;
 #include "apb_channel.h"
 #include "push_ack_channel.h"
 
-export module ipStdTop.base;
+export module ip_ipStdTop.base;
 import ip;
-import ipTop;
+import ip_ipTop;
 using namespace ip_ns;
-using namespace ipTop_ns;
+using namespace ip_ipTop_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

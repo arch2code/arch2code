@@ -1,9 +1,9 @@
 // GENERATED_CODE_PARAM --block=blockC
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockC
-module blockC
+//module as defined by block: mixed_blockC
+module mixed_blockC
 // Generated Import package statement(s)
-import mixedBlockC_package::*;
+import mixed_mixedBlockC_package::*;
 (
     rdy_vld_if.dst see,
     input clk, rst_n
@@ -14,5 +14,5 @@ import mixedBlockC_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: blockC
+endmodule: mixed_blockC
 

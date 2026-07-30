@@ -69,9 +69,9 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping suites: the serial runner runs 82 suites.
-if [[ ${#ALL[@]} -ne 82 ]]; then
-    echo "WARNING: expected 82 suites (serial-runner set), found ${#ALL[@]}." >&2
+# Guard against silently dropping suites: the serial runner runs 84 suites.
+if [[ ${#ALL[@]} -ne 84 ]]; then
+    echo "WARNING: expected 84 suites (serial-runner set), found ${#ALL[@]}." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 

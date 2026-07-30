@@ -86,9 +86,11 @@ instances:
 
 parameters:
     paramTopDecode:
-        - { variant: topV0, param: PARAM_PARENT_WIDTH, value: 32 }
+        topV0:
+            PARAM_PARENT_WIDTH: 32
     leaf:
-        - { variant: leafV0, param: PARAM_PARENT_WIDTH, value: 32 }
+        leafV0:
+            PARAM_PARENT_WIDTH: 32
 
 registers:
     - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "" }

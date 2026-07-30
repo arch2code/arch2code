@@ -15,11 +15,11 @@ module;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=moduleExport
-export module blockG.block;
-import blockG.base;
+export module mixed_blockG.block;
+import mixed_blockG.base;
 import mixed;
-import blockGLeaf.base;
-import blockGRegs.base;
+import mixed_blockGLeaf.base;
+import mixed_blockGRegs.base;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl

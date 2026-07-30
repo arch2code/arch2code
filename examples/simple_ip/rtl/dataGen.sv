@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=dataGen
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: dataGen
-module dataGen
+//module as defined by block: simple_ip_dataGen
+module simple_ip_dataGen
 // Generated Import package statement(s)
 import simple_ip_package::*;
 (
@@ -16,4 +16,4 @@ import simple_ip_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: dataGen
+endmodule: simple_ip_dataGen

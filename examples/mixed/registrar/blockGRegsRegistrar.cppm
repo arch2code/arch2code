@@ -8,7 +8,7 @@ module;
 #include "mixedVariantConfig.h"
 
 export module mixed.blockG.blockGRegs.registrar;
-import blockGRegs.block;
+import mixed_blockGRegs.block;
 
 namespace {
 struct _blockGRegs_registrar {

@@ -181,7 +181,7 @@ def render_sc(args, prj, data):
         # `<DUT_T, Config>` template; its concrete DUT header + `_verif`
         # registration live in the per-assembler VlRegistrar, not here.
         t = Template(sec_preamble_template)
-        basemodule = intf_gen_utils.cpp_base_module_name(data['blockName'])
+        basemodule = intf_gen_utils.cpp_base_module_name(data['blockModuleName'])
         return(t.render(variants=data['variants'], basemodule=basemodule,
                         dut_header=data['svWrapper']['dutHeader'],
                         sv_wrapper_header=f"{data['svWrapper']['bodyModule']}.h"))

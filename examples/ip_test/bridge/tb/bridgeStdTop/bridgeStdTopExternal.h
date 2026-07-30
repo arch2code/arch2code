@@ -9,7 +9,7 @@
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
 #include "instanceFactory.h"
-import bridgeStdTop.base;
+import ipBridge_bridgeStdTop.base;
 #include "endOfTest.h"
 
 class bridgeStdTopExternal: public sc_module, public bridgeStdTopInverted {

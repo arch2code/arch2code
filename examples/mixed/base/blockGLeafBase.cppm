@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "status_channel.h"
 
-export module blockGLeaf.base;
+export module mixed_blockGLeaf.base;
 import mixed;
 using namespace mixed_ns;
 // GENERATED_CODE_END

@@ -14,6 +14,11 @@ struct srcDefaultConfig {
     static constexpr uint32_t OUT1_DATA_WIDTH = 70;
 };
 
+struct srcVariantSrc0Config {
+    static constexpr uint32_t OUT0_DATA_WIDTH = 8;
+    static constexpr uint32_t OUT1_DATA_WIDTH = 70;
+};
+
 // GENERATED_CODE_END
 
 #endif //SRCVARIANTCONFIG_H_CONFIG_H

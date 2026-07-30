@@ -85,7 +85,7 @@ def moduleExport(args, prj, data):
     # let the constructor body's createInstance / dynamic_pointer_cast see the
     # complete child Base type.
     deps = intf_gen_utils.sc_class_dependency_includes(args, prj, data)
-    out = [f'export module {cpp_block_module_name(data["blockName"])};']
+    out = [f'export module {cpp_block_module_name(data["blockModuleName"])};']
     isRegHandler = data['blockInfo']['isRegHandler']
     usings = []
     for kind, line in deps:
@@ -124,7 +124,7 @@ def baseModuleHeader(args, prj, data):
             out.append(line)
             emitted.add(line)
     out.append('')
-    out.append(f'export module {cpp_base_module_name(data["blockName"])};')
+    out.append(f'export module {cpp_base_module_name(data["blockModuleName"])};')
     # All import declarations must immediately follow the module declaration,
     # before any other declaration (e.g. a using-namespace); emit the context
     # imports first and defer their `using namespace` lines after them.

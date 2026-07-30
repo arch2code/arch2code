@@ -4,9 +4,9 @@
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package mixed_package;
 // Generated Import package statement(s)
-import mixedBlockC_package::*;
-import mixedNestedInclude_package::*;
-import mixedInclude_package::*;
+import mixed_mixedBlockC_package::*;
+import mixed_mixedNestedInclude_package::*;
+import mixed_mixedInclude_package::*;
 localparam int unsigned ASIZE = 32'h0000_0001;  // The size of A
 localparam int unsigned ASIZE2 = 32'h0000_0002;  // The size of A+1
 localparam int unsigned INTP = 32'hFFFF_FC00;  // Test constant for numbers of unsigned integer type 

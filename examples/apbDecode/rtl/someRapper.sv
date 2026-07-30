@@ -1,7 +1,7 @@
 // GENERATED_CODE_PARAM --block=someRapper
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: someRapper
-module someRapper
+//module as defined by block: apbDecode_someRapper
+module apbDecode_someRapper
 // Generated Import package statement(s)
 import apbDecode_package::*;
 (
@@ -22,13 +22,13 @@ apbDecode uAPBDecode (
     .rst_n (rst_n)
 );
 
-blockA uBlockA (
+apbDecode_blockA uBlockA (
     .apbReg (apbReg_uBlockA),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-blockB uBlockB (
+apbDecode_blockB uBlockB (
     .apbReg (apbReg_uBlockB),
     .clk (clk),
     .rst_n (rst_n)
@@ -36,4 +36,4 @@ blockB uBlockB (
 
 // GENERATED_CODE_END
 
-endmodule : someRapper
+endmodule : apbDecode_someRapper

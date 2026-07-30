@@ -90,7 +90,7 @@ def render(args, prj, data):
     t = Template(regs_module_sv_j2_template)
 
     return(t.render(
-        modulename=data['blockName'],
+        modulename=data['blockModuleName'],
         packages_imports=section_package_imports(args, prj, data),
         module_params=section_module_params(prj, data),
         param_decls=section_param_decls(prj, data),

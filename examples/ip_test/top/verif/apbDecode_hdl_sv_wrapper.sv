@@ -6,7 +6,7 @@
 
 module apbDecode_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import shared_types_package::*;
+    import common_shared_types_package::*;
 (
     // apb_if.src
     output bit [31:0] apbReg_uBridge_paddr,
@@ -99,7 +99,7 @@ module apbDecode_hdl_sv_wrapper
     assign #0 cpu_main_prdata = cpu_main.prdata;
     assign #0 cpu_main_pslverr = cpu_main.pslverr;
 
-    apbDecode dut (
+    ip_test_apbDecode dut (
         .apbReg_uBridge(apbReg_uBridge), // apb_if.src
         .apbReg_uIp0(apbReg_uIp0), // apb_if.src
         .apbReg_uIp1(apbReg_uIp1), // apb_if.src

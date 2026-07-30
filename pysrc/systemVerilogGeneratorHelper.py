@@ -23,7 +23,7 @@ def importPackages(args, prj, sc, data, excludeSelf=False):
             # package imports its sibling packages.
             if excludeSelf and context == sc:
                 continue
-            packageName = prj.includeName[context] + '_package'
+            packageName = prj.contextModuleIdentity[context] + '_package'
             packageList.insert(0, packageName)
     if packageList:
         out.append(f"// Generated Import package statement(s)")

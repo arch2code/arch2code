@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "push_ack_channel.h"
 
-export module producer.base;
+export module simple_producer.base;
 import simple;
 using namespace simple_ns;
 // GENERATED_CODE_END

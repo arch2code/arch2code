@@ -10,6 +10,8 @@ def postProcess(prj):
     # perform checks on the project
     #
     sql = "select instance, variant, _context from instances where variant != '' and variant not in (select variant from parametersvariants where blockKey = instances.instanceTypeKey)"
+    # 'parametersvariants' is the intermediate (block, variant) table; the leaf
+    # binding rows live in 'parametersvariantsparams'.
     cursor = g.db.cursor()
     cursor.execute(sql)
     rows = cursor.fetchall()
@@ -20,7 +22,7 @@ def postProcess(prj):
 
     sql = """
 select b.param, b._context, i.variant, b.block from blocksparams b join instances i on b.blockKey = i.instanceTypeKey where i.variant != '' 
-   and not exists (select 1 from parametersvariants p where p.blockKey = b.blockKey and p.blockParamKey = b.blockparamKey and p.variant = i.variant)
+   and not exists (select 1 from parametersvariantsparams p where p.blockKey = b.blockKey and p.blockParamKey = b.blockparamKey and p.variant = i.variant)
 """
     cursor.execute(sql)
     rows = cursor.fetchall()

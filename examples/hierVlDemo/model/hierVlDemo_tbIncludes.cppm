@@ -13,8 +13,8 @@ module;
 export module hierVlDemo_tb;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
-import hierVlSharedTypes;
-using namespace hierVlSharedTypes_ns;
+import hierVlDemo_hierVlSharedTypes;
+using namespace hierVlDemo_hierVlSharedTypes_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants

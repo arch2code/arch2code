@@ -6,9 +6,9 @@ module;
 #include "systemc.h"
 #include "push_ack_channel.h"
 
-export module ipStdDriver.base;
-import ipTop;
-using namespace ipTop_ns;
+export module ip_ipStdDriver.base;
+import ip_ipTop;
+using namespace ip_ipTop_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

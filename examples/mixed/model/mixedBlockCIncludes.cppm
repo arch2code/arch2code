@@ -10,36 +10,36 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 
-export module mixedBlockC;
+export module mixed_mixedBlockC;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-export namespace mixedBlockC_ns {
+export namespace mixed_mixedBlockC_ns {
 //constants
 inline constexpr uint32_t CSIZE = 2;  // The size of C
 inline constexpr uint32_t CSIZE_PLUS = 3;  // The size of C plus 1
 
-} // namespace mixedBlockC_ns
+} // namespace mixed_mixedBlockC_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-export namespace mixedBlockC_ns {
+export namespace mixed_mixedBlockC_ns {
 // types
 typedef uint8_t cSizeT; // [2] size of c
 typedef uint8_t cSizePlusT; // [3] size of c plus 1
 typedef uint16_t cBiggerT; // [13] yet another type
 
-} // namespace mixedBlockC_ns
+} // namespace mixed_mixedBlockC_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-export namespace mixedBlockC_ns {
+export namespace mixed_mixedBlockC_ns {
 // enums
 
-} // namespace mixedBlockC_ns
+} // namespace mixed_mixedBlockC_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-export namespace mixedBlockC_ns {
+export namespace mixed_mixedBlockC_ns {
 // structures
 struct seeSt {
     cSizePlusT variablec2; //Three bits of C
@@ -163,11 +163,11 @@ struct cHeaderSt {
     explicit cHeaderSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-} // namespace mixedBlockC_ns
+} // namespace mixed_mixedBlockC_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace mixedBlockC_test_ns {
+export namespace mixed_mixedBlockC_test_ns {
 class test_mixedBlockC_structs {
 public:
     static std::string name(void);
@@ -218,12 +218,12 @@ private:
         }
     }
 };
-} // namespace mixedBlockC_test_ns
+} // namespace mixed_mixedBlockC_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace mixedBlockC_test_ns {
-using namespace mixedBlockC_ns;
+export namespace mixed_mixedBlockC_test_ns {
+using namespace mixed_mixedBlockC_ns;
 std::string test_mixedBlockC_structs::name(void) { return "test_mixedBlockC_structs"; }
 void test_mixedBlockC_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
@@ -232,6 +232,6 @@ void test_mixedBlockC_structs::test(void) {
     roundTrip<seeSt>("seeSt", patterns);
     roundTrip<cHeaderSt>("cHeaderSt", patterns);
 }
-} // namespace mixedBlockC_test_ns
+} // namespace mixed_mixedBlockC_test_ns
 
 // GENERATED_CODE_END

@@ -1,0 +1,125 @@
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
+
+// GENERATED_CODE_PARAM --block=testBlock --mode=module
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=blockModuleHeader
+module;
+#include "systemc.h"
+#include "logging.h"
+#include "bitTwiddling.h"
+#include "q_assert.h"
+#include <algorithm>
+#include "instanceFactory.h"
+#include "rdy_vld_channel.h"
+// GENERATED_CODE_END
+#include "testController.h"
+// user #includes here
+// GENERATED_CODE_BEGIN --template=moduleExport
+export module nested_testBlock.block;
+import nested_testBlock.base;
+// GENERATED_CODE_END
+import nested_subBlockContainer.block;
+// user imports here
+// GENERATED_CODE_BEGIN --template=classDecl
+import nested;
+using namespace nested_ns;
+
+export SC_MODULE(testBlock), public blockBase, public testBlockBase
+{
+private:
+
+public:
+
+    testBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
+    ~testBlock() override = default;
+
+    // GENERATED_CODE_END
+    // block implementation members
+
+    void producerLoop1();
+    void producerLoop2();
+    void consumerLoop1();
+    void consumerLoop2();
+    void producer(rdy_vld_out< test_st > &dataOut);
+    void consumer(rdy_vld_in< test_st > &dataIn); 
+    sc_event  *test1;
+};
+
+// GENERATED_CODE_BEGIN --template=constructor --section=init
+SC_HAS_PROCESS(testBlock);
+
+// === Block factory registration (testBlock) ===
+void register_testBlock_variants() {
+    instanceFactory::registerBlock("testBlock_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<testBlock>(blockName, variant, bbMode)); }, "", "nested");
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _testBlock_registered = (register_testBlock_variants(), 0);
+} // namespace
+// === End block factory registration ===
+
+testBlock::testBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+       : sc_module(blockName)
+        ,blockBase("testBlock", name(), bbMode)
+        ,testBlockBase(name(), variant)
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=constructor --section=body
+{
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    // GENERATED_CODE_END
+    SC_THREAD(producerLoop1);
+    SC_THREAD(producerLoop2);
+    SC_THREAD(consumerLoop1);
+    SC_THREAD(consumerLoop2);
+};
+
+void testBlock::producerLoop1()
+{
+    producer(loop1src);
+}
+void testBlock::producerLoop2()
+{
+    producer(loop2src);
+}
+void testBlock::consumerLoop1()
+{
+    consumer(loop1dst);
+}
+void testBlock::consumerLoop2()
+{
+    consumer(loop2dst);
+}
+
+void testBlock::producer(rdy_vld_out< test_st > &dataOut)
+{
+    testController &controller = testController::GetInstance();
+    controller.register_test_name("test1");
+    controller.wait_test("test1");
+
+    test_st data;
+    data.a = 0;
+    wait(SC_ZERO_TIME);
+    for(int i=0; i<10; i++) {
+        data.a = i;
+        std::cout << "write test " << data.a << endl;
+        dataOut->write(data);
+    }
+    controller.test_complete("test1");
+};
+
+void testBlock::consumer(rdy_vld_in< test_st > &dataIn)
+{
+    testController &controller = testController::GetInstance();
+    controller.register_test_name("test1");
+    controller.wait_test("test1");
+
+    test_st data;
+    data.a=0;
+    while (data.a < 9)
+    {
+        dataIn->read(data);
+        std::cout << "read test " << data.a << endl;
+    }
+    controller.test_complete("test1");
+
+}
+

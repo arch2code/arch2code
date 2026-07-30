@@ -6,9 +6,9 @@ module;
 #include "systemc.h"
 #include "blockBase.h"
 
-export module ipLeaf.base;
-import ipLeaf;
-using namespace ipLeaf_ns;
+export module ip_test_ipLeaf.base;
+import ip_test_ipLeaf;
+using namespace ip_test_ipLeaf_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

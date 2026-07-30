@@ -8,7 +8,7 @@ module;
 #include "axi_read_channel.h"
 #include "axi_write_channel.h"
 
-export module consumer.base;
+export module axiDemo_consumer.base;
 import axiDemo;
 using namespace axiDemo_ns;
 // GENERATED_CODE_END

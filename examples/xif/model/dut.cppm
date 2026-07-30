@@ -16,11 +16,13 @@ module;
 #include "testController.h"
 #include "endOfTest.h"
 // GENERATED_CODE_BEGIN --template=moduleExport
-export module dut.block;
-import dut.base;
+export module xif_dut.block;
+import xif_dut.base;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+import xif;
+using namespace xif_ns;
 
 export template<typename Config>
 SC_MODULE(dut), public blockBase, public dutBase<Config>

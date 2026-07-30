@@ -6,7 +6,7 @@
 
 // GENERATED_CODE_PARAM --block=someRapper
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import someRapper.base;
+import apbDecode_someRapper.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
 // its DUT concretely, so it includes the DUT header directly.

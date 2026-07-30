@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "axi4_stream_channel.h"
 
-export module axi4s_s_drv.base;
+export module hierVlDemo_axi4s_s_drv.base;
 import hierVlDemo_tb;
 using namespace hierVlDemo_tb_ns;
 // GENERATED_CODE_END

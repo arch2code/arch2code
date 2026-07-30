@@ -6,7 +6,7 @@
 
 module ipLeaf_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import ipLeaf_package::*;
+    import ip_test_ipLeaf_package::*;
 #(
     parameter LEAF_DATA_WIDTH,
     parameter LEAF_MEM_DEPTH
@@ -23,7 +23,7 @@ module ipLeaf_hdl_sv_wrapper
         ipLeafMemAddrT address; //Leaf memory address
     } ipLeafMemAddrSt;
 
-    ipLeaf #(.LEAF_DATA_WIDTH(LEAF_DATA_WIDTH), .LEAF_MEM_DEPTH(LEAF_MEM_DEPTH)) dut (
+    ip_test_ipLeaf #(.LEAF_DATA_WIDTH(LEAF_DATA_WIDTH), .LEAF_MEM_DEPTH(LEAF_MEM_DEPTH)) dut (
         .clk(clk),
         .rst_n(rst_n)
     );

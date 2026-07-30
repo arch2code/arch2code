@@ -19,8 +19,8 @@ import simple_ip.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
-import shared_types;
-using namespace shared_types_ns;
+import common_shared_types;
+using namespace common_shared_types_ns;
 import simple_ip;
 using namespace simple_ip_ns;
 import ip;

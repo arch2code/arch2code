@@ -4,8 +4,8 @@
 // GENERATED_CODE_PARAM --block=hierVlDemo_tb --excludeInst=u_hierVlDemo
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
-import axi4s_m_drv.base;
-import axi4s_s_drv.base;
+import hierVlDemo_axi4s_m_drv.base;
+import hierVlDemo_axi4s_s_drv.base;
 
 hierVlDemoExternal::hierVlDemoExternal(sc_module_name modulename) :
     hierVlDemoInverted("Chnl"),

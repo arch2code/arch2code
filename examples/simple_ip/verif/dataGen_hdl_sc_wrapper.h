@@ -6,7 +6,7 @@
 
 // GENERATED_CODE_PARAM --block=dataGen
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import dataGen.base;
+import simple_ip_dataGen.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
 // its DUT concretely, so it includes the DUT header directly.

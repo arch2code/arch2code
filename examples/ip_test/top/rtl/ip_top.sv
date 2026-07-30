@@ -2,14 +2,14 @@
 
 // GENERATED_CODE_PARAM --block=ip_top
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: ip_top
-module ip_top
+//module as defined by block: ip_test_ip_top
+module ip_test_ip_top
 // Generated Import package statement(s)
 import ipBridge_package::*;
 import ip_package::*;
-import src_package::*;
-import ip_top_package::*;
-import shared_types_package::*;
+import ip_test_src_package::*;
+import ip_test_ip_top_package::*;
+import common_shared_types_package::*;
 (
     apb_if.dst cpu_main,
     input clk, rst_n
@@ -25,7 +25,7 @@ import shared_types_package::*;
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uIp1();
 
 // Instances
-apbDecode uAPBDecode (
+ip_test_apbDecode uAPBDecode (
     .cpu_main (cpu_main),
     .apbReg_uBridge (apbReg_uBridge),
     .apbReg_uIp0 (apbReg_uIp0),
@@ -34,7 +34,7 @@ apbDecode uAPBDecode (
     .rst_n (rst_n)
 );
 
-src #(.OUT0_DATA_WIDTH(8), .OUT1_DATA_WIDTH(70)) uSrc (
+ip_test_src #(.OUT0_DATA_WIDTH(8), .OUT1_DATA_WIDTH(70)) uSrc (
     .out0 (out0),
     .out1 (out1),
     .out2 (out2),
@@ -67,4 +67,4 @@ ipBridge uBridge (
 
 // GENERATED_CODE_END
 
-endmodule: ip_top
+endmodule: ip_test_ip_top

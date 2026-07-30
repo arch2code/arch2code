@@ -9,7 +9,7 @@ module;
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 
-export module consumer.base;
+export module helloWorld_consumer.base;
 import helloWorld_tb;
 using namespace helloWorld_tb_ns;
 // GENERATED_CODE_END

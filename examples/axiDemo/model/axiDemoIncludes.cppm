@@ -13,8 +13,8 @@ module;
 export module axiDemo;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
-import axiStd;
-using namespace axiStd_ns;
+import axiDemo_axiStd;
+using namespace axiDemo_axiStd_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants

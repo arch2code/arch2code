@@ -220,7 +220,8 @@ instances:
 
 parameters:
   ip:
-    - { variant: big, param: W, value: 64 }
+    big:
+      W: 64
 """
     return _expect_error(
         arch,
@@ -287,7 +288,8 @@ connections:
 
 parameters:
   producer:
-    - { variant: v0, param: WIDTH, value: 8 }
+    v0:
+      WIDTH: 8
 """
     return _expect_error(
         arch,
@@ -315,9 +317,11 @@ connections:
 
 parameters:
   producer:
-    - { variant: v0, param: WIDTH, value: 8 }
+    v0:
+      WIDTH: 8
   consumer:
-    - { variant: v0, param: WIDTH, value: 8 }
+    v0:
+      WIDTH: 8
 """
     return _expect_success(
         arch,
@@ -370,9 +374,11 @@ connections:
 
 parameters:
   producer:
-    - { variant: v0, param: WIDTH, value: 8 }
+    v0:
+      WIDTH: 8
   consumer:
-    - { variant: v0, param: OTHER_W, value: 8 }
+    v0:
+      OTHER_W: 8
 """
     return _expect_error(
         arch,
@@ -424,7 +430,8 @@ connections:
 
 parameters:
   consumer:
-    - { variant: v0, param: WIDTH, value: 8 }
+    v0:
+      WIDTH: 8
 """
     return _expect_error(
         arch,
@@ -522,9 +529,11 @@ connections:
 
 parameters:
   producer:
-    - { variant: v0, param: WIDTH, value: 8 }
+    v0:
+      WIDTH: 8
   consumer:
-    - { variant: v1, param: WIDTH, value: 16 }
+    v1:
+      WIDTH: 16
 """
     return _expect_success(
         arch,
@@ -568,9 +577,11 @@ instances:
 
 parameters:
   blockA:
-    - { variant: v0, param: SHARED_WIDTH, value: 12 }
+    v0:
+      SHARED_WIDTH: 12
   blockB:
-    - { variant: v0, param: SHARED_WIDTH, value: 16 }
+    v0:
+      SHARED_WIDTH: 16
 """
     arch_path = _write_temp(arch, '.yaml', 'arch_linkage_pos_')
     project_path = _project_for(arch_path)

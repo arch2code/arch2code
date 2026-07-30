@@ -10,34 +10,34 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 
-export module shared_types;
+export module common_shared_types;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-export namespace shared_types_ns {
+export namespace common_shared_types_ns {
 //constants
 inline constexpr uint32_t DWORD = 32;  // Width of an APB dword
 
-} // namespace shared_types_ns
+} // namespace common_shared_types_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-export namespace shared_types_ns {
+export namespace common_shared_types_ns {
 // types
 typedef uint32_t apbAddrT; // [32] APB address
 typedef uint32_t apbDataT; // [32] APB data
 
-} // namespace shared_types_ns
+} // namespace common_shared_types_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-export namespace shared_types_ns {
+export namespace common_shared_types_ns {
 // enums
 
-} // namespace shared_types_ns
+} // namespace common_shared_types_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-export namespace shared_types_ns {
+export namespace common_shared_types_ns {
 // structures
 struct apbAddrSt {
     apbAddrT address; //
@@ -152,11 +152,11 @@ struct apbDataSt {
     explicit apbDataSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-} // namespace shared_types_ns
+} // namespace common_shared_types_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace shared_types_test_ns {
+export namespace common_shared_types_test_ns {
 class test_shared_types_structs {
 public:
     static std::string name(void);
@@ -207,12 +207,12 @@ private:
         }
     }
 };
-} // namespace shared_types_test_ns
+} // namespace common_shared_types_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace shared_types_test_ns {
-using namespace shared_types_ns;
+export namespace common_shared_types_test_ns {
+using namespace common_shared_types_ns;
 std::string test_shared_types_structs::name(void) { return "test_shared_types_structs"; }
 void test_shared_types_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
@@ -221,6 +221,6 @@ void test_shared_types_structs::test(void) {
     roundTrip<apbAddrSt>("apbAddrSt", patterns);
     roundTrip<apbDataSt>("apbDataSt", patterns);
 }
-} // namespace shared_types_test_ns
+} // namespace common_shared_types_test_ns
 
 // GENERATED_CODE_END

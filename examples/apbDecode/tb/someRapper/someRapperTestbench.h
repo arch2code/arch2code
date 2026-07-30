@@ -7,7 +7,7 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-import someRapper.base;
+import apbDecode_someRapper.base;
 import apbDecode;
 using namespace apbDecode_ns;
 #include "someRapperExternal.h"

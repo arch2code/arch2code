@@ -102,8 +102,9 @@ instances:
 
 parameters:
   parentIp:
-    - {{ variant: pv0, param: OUT_WIDTH, value: 8 }}
-    - {{ variant: pv0, param: PWIDTH, value: 8 }}
+    pv0:
+      OUT_WIDTH: 8
+      PWIDTH: 8
   childIp:
 {child_binding}
 """
@@ -125,9 +126,10 @@ projectFiles:
 
 # Valid binding: LEAF_DATA_WIDTH bound to parent symbol OUT_WIDTH (diff-named),
 # LEAF_MEM_DEPTH literal, PWIDTH bound to a child literal (same name as parent).
-VALID_BINDING = """    - { variant: v0, param: LEAF_DATA_WIDTH, value: OUT_WIDTH }
-    - { variant: v0, param: LEAF_MEM_DEPTH,  value: 4 }
-    - { variant: v0, param: PWIDTH,          value: 4 }
+VALID_BINDING = """    v0:
+      LEAF_DATA_WIDTH: OUT_WIDTH
+      LEAF_MEM_DEPTH: 4
+      PWIDTH: 4
 """
 
 # Oversize binding: bind child PWIDTH (maxValue 32) is fine, but bind
@@ -174,9 +176,11 @@ instances:
 
 parameters:
   parentIp:
-    - {{ variant: pv0, param: OUT_WIDTH, value: 8 }}
+    pv0:
+      OUT_WIDTH: 8
   childIp:
-    - {{ variant: v0, param: SMALL, value: OUT_WIDTH }}
+    v0:
+      SMALL: OUT_WIDTH
 """
     arch_path = _write_temp(arch_yaml, '.yaml', 'symfwd_osarch_')
     project_yaml = f"""projectName: param_symbol_forwarding_oversize_test
@@ -210,7 +214,7 @@ def _run_valid():
         c.execute("SELECT blockKey FROM blocks WHERE block = ?", ('childIp',))
         child_block_key = c.fetchone()['blockKey']
         c.execute(
-            "SELECT param, value, valueKey FROM parametersvariants "
+            "SELECT param, value, valueKey FROM parametersvariantsparams "
             "WHERE blockKey = ? AND variant = ?", (child_block_key, 'v0'))
         rows = {r['param']: r for r in c.fetchall()}
 

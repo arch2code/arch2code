@@ -164,11 +164,20 @@ db : $(A2C_SQLDB_FILE)
 # gen only fills generated regions of files that already exist, so newmodule
 # (create-only) must scaffold the missing new-form files first, and the orphans must
 # be gone before it so stale markers do not feed the scgen step.
+# The block-module port (--port) runs LAST, after gen: it transplants each legacy
+# .cpp/.h block pair's user code into the now-gen-filled .cppm (the transplant
+# target must already carry its generated regions) and deletes the legacy pair. It
+# is idempotent (a block already ported is a no-op) and runs inside the && chain so
+# a block it flags for a hand port (parameterized, reg-handler, hostile library,
+# non-boilerplate slot-0) surfaces as a non-zero exit; otherwise the sweep's rc is
+# re-raised, so a first run that ports cleanly still signals non-zero for the
+# pending-then-done TODO_PORT and the idempotent re-run goes clean.
 migrate:
 	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
 	$(MAKE) db
 	$(A2C_ROOT)/migrateYaml.py --sweep --write --db $(A2C_SQLDB_FILE); rc=$$?; \
-	$(MAKE) newmodule && $(MAKE) gen && exit $$rc
+	$(MAKE) newmodule && $(MAKE) gen && \
+	$(A2C_ROOT)/migrateYaml.py --port --write --db $(A2C_SQLDB_FILE) && exit $$rc
 
 
 # Opt-in functional -> hierarchical layout migration. Separate from `migrate`:

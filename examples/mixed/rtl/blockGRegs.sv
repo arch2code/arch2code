@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=blockGRegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
-module blockGRegs
+module mixed_blockGRegs
     // Generated Import package statement(s)
     import mixed_package::*;
     #(
@@ -85,5 +85,5 @@ module blockGRegs
     assign apbReg.pready  = rd_ready | wr_ready;
     assign apbReg.pslverr = 1'b0;
 
-endmodule : blockGRegs
+endmodule : mixed_blockGRegs
 // GENERATED_CODE_END

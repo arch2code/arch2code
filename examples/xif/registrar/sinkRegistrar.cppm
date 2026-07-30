@@ -8,7 +8,7 @@ module;
 #include "xifVariantConfig.h"
 
 export module xif.xif_tb.sink.registrar;
-import sink.block;
+import xif_sink.block;
 
 namespace {
 struct _sink_registrar {
@@ -16,7 +16,7 @@ struct _sink_registrar {
         instanceFactory::registerBlock(
             "sink_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<sink<xifDefaultConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<sink<sinkSinkV0Config>>(blockName, variant, bbMode));
             },
             "sinkV0", "xif");
     }

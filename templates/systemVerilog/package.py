@@ -93,7 +93,7 @@ def render(args, prj, data):
     indent  = ' ' *4
     if data['context'] is None:
         return out
-    packageName = prj.includeName[data['context'][0]] + '_package'
+    packageName = prj.contextModuleIdentity[data['context'][0]] + '_package'
 
     out += f"package {packageName};\n"
     pkg_str = importPackages(args, prj, data['context'][0], data, excludeSelf=True) 

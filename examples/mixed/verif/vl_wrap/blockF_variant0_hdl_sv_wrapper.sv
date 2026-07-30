@@ -9,7 +9,7 @@
 module blockF_variant0_hdl_sv_wrapper
     // Generated Import package statement(s)
     import mixed_package::*;
-    import mixedBlockC_package::*;
+    import mixed_mixedBlockC_package::*;
 #(
     localparam bob = 16,
     localparam fred = 0

@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "rdy_vld_channel.h"
 
-export module testContainer.base;
+export module nested_testContainer.base;
 import nested;
 using namespace nested_ns;
 // GENERATED_CODE_END

@@ -6,13 +6,13 @@
 
 // GENERATED_CODE_PARAM --block=blockF
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import blockF.base;
+import mixed_blockF.base;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
-import mixedBlockC;
-using namespace mixedBlockC_ns;
+import mixed_mixedBlockC;
+using namespace mixed_mixedBlockC_ns;
 import mixed;
 using namespace mixed_ns;
 #include "mixedVariantConfig.h"

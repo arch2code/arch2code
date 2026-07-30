@@ -6,9 +6,9 @@ module;
 #include "systemc.h"
 #include "apb_channel.h"
 
-export module cpu.base;
-import shared_types;
-using namespace shared_types_ns;
+export module common_cpu.base;
+import common_shared_types;
+using namespace common_shared_types_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

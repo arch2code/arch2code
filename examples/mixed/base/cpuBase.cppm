@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "apb_channel.h"
 
-export module cpu.base;
+export module mixed_cpu.base;
 import mixed;
 using namespace mixed_ns;
 // GENERATED_CODE_END

@@ -15,13 +15,13 @@ module;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=moduleExport
-export module ipLeaf.block;
-import ipLeaf.base;
-import ipLeaf;
+export module ip_test_ipLeaf.block;
+import ip_test_ipLeaf.base;
+import ip_test_ipLeaf;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-using namespace ipLeaf_ns;
+using namespace ip_test_ipLeaf_ns;
 
 export template<typename Config>
 SC_MODULE(ipLeaf), public blockBase, public ipLeafBase<Config>

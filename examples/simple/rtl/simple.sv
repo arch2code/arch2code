@@ -15,14 +15,14 @@ import simple_package::*;
     push_ack_if #(.data_t(tag_st)) tag1();
 
 // Instances
-producer u_producer (
+simple_producer u_producer (
     .tag0 (tag0),
     .tag1 (tag1),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-consumer u_consumer (
+simple_consumer u_consumer (
     .tag0 (tag0),
     .tag1 (tag1),
     .clk (clk),

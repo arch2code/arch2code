@@ -11,9 +11,9 @@ module;
 
 export module mixed.base;
 import mixed;
-import mixedBlockC;
+import mixed_mixedBlockC;
 using namespace mixed_ns;
-using namespace mixedBlockC_ns;
+using namespace mixed_mixedBlockC_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

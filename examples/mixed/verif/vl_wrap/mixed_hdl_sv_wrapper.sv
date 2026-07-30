@@ -6,7 +6,7 @@
 
 module mixed_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import mixedBlockC_package::*;
+    import mixed_mixedBlockC_package::*;
     import mixed_package::*;
 (
     // apb_if.dst

@@ -10,8 +10,8 @@
 
 #include "instanceFactory.h"
 import simple_ip.base;
-import shared_types;
-using namespace shared_types_ns;
+import common_shared_types;
+using namespace common_shared_types_ns;
 #include "endOfTest.h"
 
 //contained instances forward class declaration

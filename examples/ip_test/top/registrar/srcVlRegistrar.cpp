@@ -16,7 +16,7 @@ struct _src_vl_registrar {
         instanceFactory::registerBlock(
             "src_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src_hdl_sc_wrapper<Vsrc_variantSrc0_hdl_sv_wrapper, srcDefaultConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src_hdl_sc_wrapper<Vsrc_variantSrc0_hdl_sv_wrapper, srcVariantSrc0Config>>(blockName, variant, bbMode));
             },
             "variantSrc0", "ip_test");
     }

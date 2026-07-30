@@ -71,7 +71,8 @@ instances:
 
 parameters:
   targetBlock:
-    - {{ variant: wide, param: WIDTH, value: 13 }}
+    wide:
+      WIDTH: 13
 """
     arch_path = _write_temp(arch_yaml, '.yaml', 'param_ident_arch_')
     project_yaml = f"""projectName: parameter_variant_identity_test
@@ -114,7 +115,7 @@ projectFiles:
         other_param_key = g.cur.fetchone()['blockparamKey']
 
         g.cur.execute(
-            "SELECT param, blockParamKey, value FROM parametersvariants "
+            "SELECT param, blockParamKey, value FROM parametersvariantsparams "
             "WHERE blockKey = ? AND variant = ?",
             (target_block_key, 'wide'))
         variant_row = g.cur.fetchone()

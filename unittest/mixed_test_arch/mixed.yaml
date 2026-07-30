@@ -357,10 +357,12 @@ memories:
 
 parameters:
   blockF:
-    - {variant: variant0, param: bob,  value: BOB0 }
-    - {variant: variant0, param: fred, value: 0    }
-    - {variant: variant1, param: bob,  value: BOB1 }
-    - {variant: variant1, param: fred, value: 1    }
+    variant0:
+      bob: BOB0
+      fred: 0
+    variant1:
+      bob: BOB1
+      fred: 1
 
 memoryConnections:
   - {memory: blockBTable1,  block: blockB, instance: uBlockD, port: port1}

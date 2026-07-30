@@ -133,8 +133,10 @@ instances:
 
 parameters:
     paramSubDecode:
-        - { variant: paramSubV0, param: PARAM_ROUTER_KNOB, value: 4 }
-        - { variant: paramSubV1, param: PARAM_ROUTER_KNOB, value: 8 }
+        paramSubV0:
+            PARAM_ROUTER_KNOB: 4
+        paramSubV1:
+            PARAM_ROUTER_KNOB: 8
 
 registers:
     - { register: cfg, regType: rw, block: subLeaf, structure: cfgRegSt, desc: "" }

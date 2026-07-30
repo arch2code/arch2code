@@ -2,7 +2,7 @@
 // 
 // GENERATED_CODE_PARAM --project=hierVlDemo --context=../../yaml/hierVlSharedTypes.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package hierVlSharedTypes_package;
+package hierVlDemo_hierVlSharedTypes_package;
 
 // types
 typedef logic[8-1:0] shared_bv8_t; //Shared 8-bit vector
@@ -16,5 +16,5 @@ typedef struct packed {
     shared_bv32_t value; //
 } sharedInfoSt;
 
-endpackage : hierVlSharedTypes_package
+endpackage : hierVlDemo_hierVlSharedTypes_package
 // GENERATED_CODE_END

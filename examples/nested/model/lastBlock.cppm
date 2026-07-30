@@ -1,0 +1,77 @@
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
+
+// GENERATED_CODE_PARAM --block=lastBlock --mode=module
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=blockModuleHeader
+module;
+#include "systemc.h"
+#include "logging.h"
+#include "bitTwiddling.h"
+#include "q_assert.h"
+#include <algorithm>
+#include "instanceFactory.h"
+#include "rdy_vld_channel.h"
+// GENERATED_CODE_END
+// user #includes here
+// GENERATED_CODE_BEGIN --template=moduleExport
+export module nested_lastBlock.block;
+import nested_lastBlock.base;
+// GENERATED_CODE_END
+// user imports here
+// GENERATED_CODE_BEGIN --template=classDecl
+import nested;
+using namespace nested_ns;
+
+export SC_MODULE(lastBlock), public blockBase, public lastBlockBase
+{
+private:
+
+public:
+
+    lastBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
+    ~lastBlock() override = default;
+
+    // GENERATED_CODE_END
+    // block implementation members
+
+    void forwarder(void);
+};
+
+// GENERATED_CODE_BEGIN --template=constructor --section=init
+SC_HAS_PROCESS(lastBlock);
+
+// === Block factory registration (lastBlock) ===
+void register_lastBlock_variants() {
+    instanceFactory::registerBlock("lastBlock_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<lastBlock>(blockName, variant, bbMode)); }, "", "nested");
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _lastBlock_registered = (register_lastBlock_variants(), 0);
+} // namespace
+// === End block factory registration ===
+
+lastBlock::lastBlock(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+       : sc_module(blockName)
+        ,blockBase("lastBlock", name(), bbMode)
+        ,lastBlockBase(name(), variant)
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=constructor --section=body
+{
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    // GENERATED_CODE_END
+    SC_THREAD(forwarder)
+};
+
+// this module just takes data from the input and sends it to the output
+void lastBlock::forwarder()
+{
+    test_st data;
+    data.a = 0;
+    wait(SC_ZERO_TIME);
+    while (true)
+    {
+        beta->read(data);
+        std::cout << "write " << this->name() << " " << data.a << endl;
+        response->write(data);
+    }
+}
+

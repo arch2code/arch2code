@@ -1,6 +1,6 @@
 // GENERATED_CODE_PARAM --block=blockARegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
-module blockARegs
+module apbDecode_blockARegs
     // Generated Import package statement(s)
     import apbDecode_package::*;
     #(
@@ -262,5 +262,5 @@ module blockARegs
     assign apbReg.pready  = rd_ready | wr_ready;
     assign apbReg.pslverr = 1'b0;
 
-endmodule : blockARegs
+endmodule : apbDecode_blockARegs
 // GENERATED_CODE_END

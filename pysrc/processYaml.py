@@ -91,6 +91,26 @@ def sanitizeModuleToken(name):
     # two cannot drift.
     return name.replace('-', '_').replace('.', '_')
 
+def qualifyModuleIdentity(name, projectName):
+    # Project-qualify a module / package / namespace identifier for cross-project
+    # uniqueness, deduping when the name already leads with its owning project so
+    # a single-project name (or an already-qualified one) stays byte-identical.
+    # The '_' boundary is load-bearing: it prevents a false dedup of a name such
+    # as 'debayering' under project 'debayer'. Owner comes from the intrinsic
+    # per-context CONTEXTOWNINGPROJECT, so the identity is build-independent (a
+    # child IP spells the same name standalone and composed).
+    #
+    # Sanitize both tokens so the returned identifier is a legal SV/C++
+    # module/package/namespace name even when the project name carries a '-' or
+    # '.' (e.g. 'my-project' -> 'my_project_ip'); the dedup test then compares
+    # sanitized-vs-sanitized. sanitizeModuleToken is idempotent, so an
+    # already-underscore project name stays byte-identical.
+    name = sanitizeModuleToken(name)
+    projectName = sanitizeModuleToken(projectName)
+    if name == projectName or name.startswith(projectName + '_'):
+        return name
+    return f'{projectName}_{name}'
+
 def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layout, missingDirOk = False):
     # layout is the owning project's layoutConfig (PROJECTLAYOUT[owner]); the
     # caller selects it by the object's defining-context owner so a child-owned
@@ -444,6 +464,7 @@ class projectOpen:
         self.contextNodeDir = self.config.getConfig('CONTEXTNODEDIR')
         self.reachableInstances = self.config.getConfig('REACHABLEINSTANCES')
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
+        self.blockModuleName = self.config.getConfig('BLOCKMODULENAME')
         self.filemap = self.config.getConfig('FILEMAP')
         global dirMacros
         dirMacros = self.config.getConfig('DIRS')
@@ -1624,12 +1645,12 @@ class projectOpen:
         #    'useDefault': bool,          # emitted name is the block defaultConfig
         #    'duplicateOf': None | dict}  # non-None marks a non-canonical descriptor
         #
-        # 'duplicateOf' is None for the canonical descriptor of a value signature
-        # and a neutral marker otherwise, recording the intra-block dedup that
-        # folds byte-identical variants onto a single struct. Templates emit a
-        # struct only for canonical descriptors; the emitted NAME of any
-        # descriptor is (useDefault ? block defaultConfig : the struct of
-        # emitVariant).
+        # Every declared variant is canonical (duplicateOf=None, useDefault=False,
+        # emitVariant=variant): the config structs map 1:1 onto the declared
+        # variant set with no dedup fold, so each variant gets a distinctly
+        # variant-named struct even when its values equal the block default. The
+        # 'useDefault' / 'duplicateOf' / 'emitVariant' fields are retained on the
+        # descriptor contract that consumers read; they no longer vary.
         block_row = self.data['blocks'][qualBlock]
         if not bool(block_row['isParameterizable']):
             return []
@@ -1644,8 +1665,19 @@ class projectOpen:
         # variants (parameterizable only transitively through its children)
         # produces no per-variant struct here; its context still emits the
         # shared default Config.
-        variant_data = self.data['parameters'].get(qualBlock, {}).get('variants', {})
-        if not variant_data:
+        #
+        # Source the bindings from the LEAF parametersvariantsparams table,
+        # whose combo key carries projectName, not the projectName-blind nested
+        # `parameters` view (keyed block -> variant -> bare param): in a composed
+        # build two projects binding the same (block, variant) param collapse
+        # onto one entry in the nested view (last loaded wins), so only the
+        # last project's descriptors would survive. Variant-parameter
+        # completeness (validateVariantParameterCompleteness) guarantees every
+        # declared variant binds every param, so the leaf rows recover the full
+        # declared variant set that the early return keys off.
+        block_binding_rows = [row for row in self.data['parametersvariantsparams'].values()
+                              if row['blockKey'] == qualBlock]
+        if not block_binding_rows:
             return []
         # A variant binding is FOREIGN when its declaring project differs from
         # the project that owns the block's config context (an assembler declared
@@ -1687,14 +1719,10 @@ class projectOpen:
         # processed first so its bare-named descriptors keep their emission
         # order; foreign groups follow in sorted project order.
         rows_by_project = OrderedDict()
-        for row in variant_data.values():
+        for row in block_binding_rows:
             rows_by_project.setdefault(row['projectName'], []).append(row)
         projects_ordered = ([owner_project] if owner_project in rows_by_project else []) + \
             sorted(p for p in rows_by_project if p != owner_project)
-
-        # Neutral sentinel: a value signature whose canonical struct is the
-        # block's shared context default Config (same-project nominal collapse).
-        _DEFAULT_SIGNATURE = object()
 
         descriptors = []
         for declaring_project in projects_ordered:
@@ -1708,18 +1736,6 @@ class projectOpen:
             for row in rows_by_project[declaring_project]:
                 declared.add(row['variant'])
                 overrides[(row['variant'], row['param'])] = self._resolveBindingValueOpen(row)
-            canonical_by_signature = dict()
-            # Seed the shared context-default Config as the canonical struct for
-            # the nominal signature, so a same-project variant resolving to the
-            # nominal collapses onto <context>DefaultConfig and cross-block binds
-            # stay well-typed. Foreign variants are independent owner-qualified
-            # types and are never folded onto the child's bare default.
-            if param_constants and not is_foreign:
-                default_signature = tuple(sorted(
-                    (const_data['constant'], const_data['value'])
-                    for const_data in param_constants
-                ))
-                canonical_by_signature[default_signature] = _DEFAULT_SIGNATURE
             for variant in sorted(declared):
                 values = dict()
                 for const_data in param_constants:
@@ -1730,36 +1746,21 @@ class projectOpen:
                         values[const_name] = const_data['value']
                 for name in block_param_names:
                     values[name] = overrides.get((variant, name), 0)
-                # Intra-project dedup on the value signature. The canonical
-                # descriptor of a signature emits its own struct; a later variant
-                # with the same signature is a duplicate that emits AS the
-                # canonical (the shared default Config, or an earlier sibling
-                # variant). Only neutral identity is stored; the struct name is
-                # spelled in the template layer.
-                signature = tuple(sorted(values.items()))
-                canonical = canonical_by_signature.get(signature)
-                if canonical is None:
-                    canonical_by_signature[signature] = variant
-                    duplicate_of = None
-                    use_default = False
-                    emit_variant = variant
-                elif canonical is _DEFAULT_SIGNATURE:
-                    duplicate_of = {'kind': 'default'}
-                    use_default = True
-                    emit_variant = variant
-                else:
-                    duplicate_of = {'kind': 'variant', 'variant': canonical}
-                    use_default = False
-                    emit_variant = canonical
+                # Every declared variant gets its own canonical struct, 1:1 with
+                # the declared variant set: no fold onto the shared context
+                # default and no fold of byte-identical siblings. A variant whose
+                # resolved values equal the block default therefore still emits a
+                # distinctly variant-named struct (equal in content to
+                # <context>DefaultConfig but a distinct C++ type).
                 descriptors.append({
                     'variant':          variant,
                     'declaringProject': declaring_project,
                     'block':            block_name,
                     'isForeign':        is_foreign,
                     'values':           values,
-                    'emitVariant':      emit_variant,
-                    'useDefault':       use_default,
-                    'duplicateOf':      duplicate_of,
+                    'emitVariant':      variant,
+                    'useDefault':       False,
+                    'duplicateOf':      None,
                 })
         return descriptors
 
@@ -1842,8 +1843,9 @@ class projectOpen:
         # case there are no rows and every param must forward the parent symbol.
         variantValues = dict()
         childVariants = self.data['parameters'].get(childTypeKey, {}).get('variants', {})
-        for row in childVariants.values():
-            if row['variant'] == variant:
+        variantEntry = childVariants.get(variant)
+        if variantEntry:
+            for row in variantEntry['params'].values():
                 variantValues[row['param']] = row['value']
         result = []
         for paramRow in childBlock['params']:
@@ -1890,10 +1892,16 @@ class projectOpen:
                 qualBlockInstances[inst_key] = inst_data
                 containerBlocks[inst_data['containerKey']] = 0
                 if inst_data['variant'] != '':
+                    # Under the variant != '' guard, postParseChecks guarantees
+                    # the (block, variant) row exists; index it directly so a
+                    # missing entry surfaces as the projectCreate/postParse defect
+                    # it would be rather than being masked by an empty binding set.
+                    variantEntry = self.data['parameters'][qualBlock]['variants'][
+                        inst_data['variant']]
+                    binding_rows = variantEntry['params']
                     filtered_variants_data = {
                         k: {**v, 'resolvedValue': self._resolveBindingValueOpen(v)}
-                        for k, v in self.data['parameters'][qualBlock]['variants'].items()
-                        if v.get('variant') == inst_data['variant']}
+                        for k, v in binding_rows.items()}
                     ret['variants'][inst_data['variant']] = filtered_variants_data
         # A block with zero instances is a valid render target for an exported /
         # library leaf that its owning project never instantiates (projectCreate
@@ -1911,6 +1919,8 @@ class projectOpen:
         ret['subBlockInstances'] = containedInstances
         ret['containerBlocks'] = containerBlocks
         ret['blockName'] = self.data['blocks'][qualBlock]['block']
+        # Emit-only project-qualified module name (blockName stays the lookup key).
+        ret['blockModuleName'] = self.blockModuleName[qualBlock]
         # Sibling view: per child block type, surface the config facts
         # templates need for forward-declaring child Base classes
         # (`hasOwnParams`) and for resolving per-instance Config struct
@@ -1928,12 +1938,16 @@ class projectOpen:
         for inst, instInfo in containedInstances.items():
             childTypeKey = instInfo['instanceTypeKey']
             ret['subBlocks'][childTypeKey] = instInfo['instanceType']
+            # Emit-only project-qualified module name of the instantiated block
+            # (instanceType stays the lookup key).
+            instInfo['instanceTypeModuleName'] = self.blockModuleName[childTypeKey]
             instInfo['svInstanceParams'] = self._resolveSvInstanceParams(
                 childTypeKey, instInfo['variant'], parentParamNames)
             if childTypeKey not in ret['subBlockTypes']:
                 bundle = self.getBlockConfigView(childTypeKey)
                 ret['subBlockTypes'][childTypeKey] = {
                     'instanceType':      instInfo['instanceType'],
+                    'blockModuleName':   self.blockModuleName[childTypeKey],
                     'isParameterizable': bundle['isParameterizable'],
                     'hasOwnParams':      bundle['hasOwnParams'],
                     'defaultConfig':     bundle['defaultConfig'],
@@ -1985,6 +1999,10 @@ class projectOpen:
             instInfo['instanceTypeIsParameterizable'] = configFields['isParameterizable']
             instInfo['instanceTypeHasOwnParams']      = configFields['hasOwnParams']
             instInfo['instanceTypeDefaultConfig']     = configFields['defaultConfig']
+            # Emit-only project-qualified module name of the excluded DUT block
+            # (instanceType stays the lookup key). The tbExternal template's
+            # `<DUT>.base` import must match the DUT's own qualified export.
+            instInfo['instanceTypeModuleName'] = self.blockModuleName[instInfo['instanceTypeKey']]
         ret['excludedInstances'] = excluded
 
     def getBDRegistersMemories(self, qualBlock, ret):
@@ -3560,9 +3578,6 @@ class projectCreate:
         self.generateIndexes()
         # perform all address calculations
         self.calcAddresses()
-        # variant bindings that fold onto one (block, variant, param, project)
-        # identity across contexts must agree on their bound value
-        self.validateVariantConfigFold()
         # derive per-block config info (isParameterizable, defaultConfig)
         # from a one-shot structure walk and persist on the blocks row
         self.calcBlockConfigInfo()
@@ -3623,23 +3638,36 @@ class projectCreate:
                 f"blocks) may omit topInstance.")
         self.generateHierarchy()
         self.config.setConfig('REACHABLEINSTANCES', self.reachableInstanceKeys(), bin=True)
+        # derive per-context and per-block module/package identities and enforce
+        # their cross-build uniqueness
+        self.deriveModuleIdentities()
+
+        g.db.commit()
+        g.db.close()
+        printIfDebug("Process Complete")
+
+    def deriveModuleIdentities(self):
         # Per-context C++ module/namespace linkage identity, keyed identically to
         # includeName. Role A emitters (the SystemC `export module` and namespace
         # names) spell this identity; it is deliberately separate from the raw
         # include stem, which continues to name generated files and SystemVerilog
         # packages so those stay unqualified.
         #
-        # The identity is the bare include stem in every build: a context spells
-        # the same C++ module name whether it is built standalone or imported by a
-        # referencing parent project, so the owning file's `export module <stem>;`
-        # and a referencing file's `import <stem>;` always match. The
-        # field/persist/reload path is retained as the seam for a future
-        # owner-qualification scheme (Q-C8); this build neutralizes the
-        # qualification. Ownership itself lives in CONTEXTOWNINGPROJECT, consumed
-        # by the generator gate and per-owner layout resolution.
+        # The identity is the include stem project-qualified by the context's
+        # intrinsic owner (CONTEXTOWNINGPROJECT), with a prefix dedup: a context
+        # whose stem already equals or leads with its owning project stays
+        # byte-identical, every genuinely cross-named context gets prefixed.
+        # Because the owner is intrinsic (not the current build root), a context
+        # spells the same C++ module name and SystemVerilog package name whether
+        # built standalone or imported by a referencing parent project, so the
+        # owning file's `export module <id>;` and a referencing file's
+        # `import <id>;` always match. The raw include stem continues to name
+        # generated files (filenames stay unqualified); only the in-file
+        # identifier is qualified.
         self.contextModuleIdentity = {}
         for context, stem in self.includeName.items():
-            self.contextModuleIdentity[context] = stem
+            self.contextModuleIdentity[context] = qualifyModuleIdentity(
+                stem, self.contextOwningProject[context])
         self.config.setConfig('CONTEXTMODULEIDENTITY', self.contextModuleIdentity, bin=True)
 
         # A context's module/package identity names its generated SystemC module
@@ -3660,9 +3688,41 @@ class projectCreate:
                 exit(warningAndErrorReport())
             identityToContext[identity] = context
 
-        g.db.commit()
-        g.db.close()
-        printIfDebug("Process Complete")
+        # Per-block SystemVerilog module-name identity, keyed by blockKey and
+        # analogous to contextModuleIdentity: the block name project-qualified by
+        # its owning context with the same prefix dedup. Emit-only — the plain
+        # blockName / instanceType stay the internal lookup keys. Consumed by the
+        # module begin-declaration, the generator-owned endmodule, parent
+        # instantiation, and the HDL wrapper's DUT instantiation so a same-named
+        # block from two projects does not collide. The HDL wrapper's own
+        # body/top module names stay plain: they are the filename-coupled
+        # verilated tops (A2C_VL_TOP / --top-module derive from the unqualified
+        # filename basename).
+        blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
+        self.blockModuleName = {}
+        for blockKey, blockRow in blockByKey.items():
+            self.blockModuleName[blockKey] = qualifyModuleIdentity(
+                blockRow['block'], self.contextOwningProject[blockRow['_context']])
+        self.config.setConfig('BLOCKMODULENAME', self.blockModuleName, bin=True)
+
+        # Two distinct blocks resolving to one qualified module name would emit
+        # the same SystemVerilog module and silently clobber each other, so reject
+        # it here (parallel to the context-identity gate above).
+        moduleNameToBlock = {}
+        for blockKey, moduleName in self.blockModuleName.items():
+            prior = moduleNameToBlock.get(moduleName)
+            if prior is not None:
+                priorRow = blockByKey[prior]
+                thisRow = blockByKey[blockKey]
+                printError(f"SystemVerilog module name '{moduleName}' is used by "
+                           f"two distinct blocks: '{priorRow['block']}' (project "
+                           f"'{self.contextOwningProject[priorRow['_context']]}') and "
+                           f"'{thisRow['block']}' (project "
+                           f"'{self.contextOwningProject[thisRow['_context']]}'). "
+                           f"Module names must be unique across all blocks in a "
+                           f"build; rename one block.")
+                exit(warningAndErrorReport())
+            moduleNameToBlock[moduleName] = blockKey
 
     def _resolveDirMacros(self, dirsDict, baseDir):
         # Resolve a project's dirs: block into an absolute macro dict, seeded
@@ -4369,32 +4429,64 @@ class projectCreate:
             sql = f"UPDATE blocks SET maxAddress = {address-1} WHERE blockKey = '{blockKey}'"
             g.cur.execute(sql)
 
+        # Nested-decoder address containment. A routed slot whose block contains
+        # a nested register decoder must fit that decoder's entire routed
+        # footprint (addressIncrement * maxAddressSpaces) inside the per-child
+        # window its parent decoder allocates to the slot. The space check above
+        # keys on a block's decoded span (blockAddressCurrent) and so covers the
+        # bare register-block slot; a router block owns no registers/memories,
+        # never enters blockAddressCurrent, and is invisible to that check.
+        # A project with no addressBlock: declarations has no AddressGroups.
+        if isinstance(self.addressControl, dict) and 'AddressGroups' in self.addressControl:
+            addressGroups = self.addressControl['AddressGroups']
+            blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
+            # Map each container block key to the nested router group(s) it
+            # instances. Resolve every group's router block through its block row
+            # (declared name plus declaring file) rather than a raw name compare,
+            # so composed builds with same-named blocks in different files stay
+            # distinct.
+            routerContainerGroups = dict()
+            for group, groupRow in addressGroups.items():
+                routerBlockKey = None
+                for blockKey, blockRow in blockByKey.items():
+                    if (blockRow['block'] == groupRow['_declaringBlock']
+                            and blockRow['_context'] == groupRow['_declaringFile']):
+                        routerBlockKey = blockKey
+                        break
+                if routerBlockKey is None:
+                    continue
+                for instRow in self.flatData['instances'].values():
+                    if instRow['instanceTypeKey'] == routerBlockKey:
+                        routerContainerGroups.setdefault(
+                            instRow['containerKey'], list()).append(group)
+            for instRow in self.flatData['instances'].values():
+                parentGroup = instRow['addressGroup']
+                # only routed slots (those carrying an addressGroup) have a
+                # parent window; a router at the dispatch-tree root has none.
+                if not parentGroup:
+                    continue
+                for childGroup in routerContainerGroups.get(instRow['instanceTypeKey'], list()):
+                    childRow = addressGroups[childGroup]
+                    childFootprint = childRow['addressIncrement'] * childRow['maxAddressSpaces']
+                    parentRow = addressGroups[parentGroup]
+                    parentWindow = parentRow['addressIncrement'] * instRow['addressMultiples']
+                    if childFootprint > parentWindow:
+                        printError(
+                            f"Nested register decoder '{childRow['_declaringBlock']}' "
+                            f"(group '{childGroup}') routes a {hex(childFootprint)}-byte footprint "
+                            f"(addressIncrement {hex(childRow['addressIncrement'])} x "
+                            f"maxAddressSpaces {childRow['maxAddressSpaces']}), which exceeds "
+                            f"the {hex(parentWindow)}-byte window that parent decoder "
+                            f"'{parentRow['_declaringBlock']}' (group '{parentGroup}') allocates "
+                            f"to slot '{instRow['instanceKey']}' (addressIncrement "
+                            f"{hex(parentRow['addressIncrement'])} x addressMultiples "
+                            f"{instRow['addressMultiples']}). Reduce the nested decoder's "
+                            f"increment or maxAddressSpaces, or widen the parent's addressIncrement.")
+                        exit(warningAndErrorReport())
+
         if isinstance(self.addressControl, dict):
             self.config.setConfig("ADDRESS_CONFIG", self.addressControl, bin=True)
 
-
-    def validateVariantConfigFold(self):
-        # The variant-binding key is (block, variant, param, projectName). Two
-        # contexts owned by the same project may declare the same binding row; it
-        # folds onto one Config identity. Enforce the within-project one-Config
-        # invariant: every row folding onto one key must bind the same value
-        # (literal or referenced constant). Fatal on conflict.
-        folds = dict()
-        for contextRows in self.data['parametersvariants'].values():
-            for row in contextRows.values():
-                key = row['blockVariantParam']
-                signature = (row['value'], row['valueKey'])
-                prior = folds.get(key)
-                if prior is None:
-                    folds[key] = (signature, row)
-                elif prior[0] != signature:
-                    first = prior[1]
-                    self.logError(
-                        f"Variant binding '{row['variant']}'/'{row['param']}' for block "
-                        f"'{row['block']}' is declared with conflicting values in project "
-                        f"'{row['projectName']}': {first['_context']} binds {first['value']!r} "
-                        f"but {row['_context']} binds {row['value']!r}; a (block, variant, "
-                        f"param) within one project must resolve to a single Config value")
 
     def calcBlockConfigInfo(self):
         # One-shot post-processing pass: for each block, walk every
@@ -4664,7 +4756,7 @@ class projectCreate:
         # consumed, so the moduleDir/module inputs do not affect the result.
         foreignDef = self.proj['fileGeneration']['fileMap']['foreignConfig']
         headers = dict()
-        for contextRows in self.data['parametersvariants'].values():
+        for contextRows in self.data['parametersvariantsparams'].values():
             for row in contextRows.values():
                 childKey = row['blockKey']
                 configContext = blockByKey[childKey]['configContext']
@@ -5457,7 +5549,7 @@ class projectCreate:
         bindings = dict()
         g.cur.execute(
             "SELECT p.param, p.blockParamKey, b.paramKey, p.value, p.valueKey "
-            "FROM parametersvariants p "
+            "FROM parametersvariantsparams p "
             "JOIN blocksparams b "
             "ON p.blockParamKey = b.blockparamKey "
             "AND p.blockKey = b.blockKey "
@@ -5978,7 +6070,7 @@ class projectCreate:
     # note that auto fields are ignored
     def processSimple(self, section, anchor, item, yamlFile, schema = None, context='', outer = None):
         ret = {'_context': yamlFile}
-        if 'lc' in item:
+        if isinstance(item, dict) and 'lc' in item:
             myLineNumber = item['lc'].line + 1
             ret['lc'] = item['lc']
         elif hasattr(item, 'lc'):
@@ -5992,12 +6084,15 @@ class projectCreate:
             # default schema for non nested uses
             schema = self.schema.get_section(section).get_fields_dict() if self.schema.get_section(section) else {}
 
-        # handle singular case and convert item to a dict
-        if not isinstance(item, dict):
-            if context+section in self.schema.data['singular']:
-                item = {self.schema.data['singular'][context+section]: item}
-
         if outer == None:
+            # A top-level section entry must be a mapping of fields. Singular
+            # scalars are coerced to a dict upstream in processSubTable before
+            # dispatch (outer != None), so a non-dict reaching the top-level
+            # walk is malformed YAML; report it cleanly instead of crashing on
+            # the field iteration below.
+            if not isinstance(item, dict):
+                printError(f"In file {yamlFile}:{myLineNumber}, section {section}, key:{anchor} must be a mapping of fields but got {type(item).__name__}")
+                exit(warningAndErrorReport())
             # loop through the fields in the item to make sure they are all in the schema
             for field in item:
                 if not isinstance(field, dict) and not isinstance(item[field], dict):
@@ -6295,7 +6390,7 @@ class projectCreate:
             elif declaredType == 'real':
                 # The integer symbolic-eval pipeline does not support real eval
                 # expressions; a real constant must carry a literal 'value'.
-                if isinstance(item, dict) and 'eval' in item and 'value' not in item:
+                if 'eval' in item and 'value' not in item:
                     self.logError(f"In {yamlFile}:{ret['lc'].line + 1}, constant '{itemkey}': valueType 'real' with an "
                                   f"'eval' expression is not supported; real constants must use a literal 'value'.")
         # Parameterizable constant propagation.
@@ -6309,10 +6404,9 @@ class projectCreate:
         # Referenced constants must already be finalized in self.data['constants'].
         lineNo = (ret['lc'].line + 1) if 'lc' in ret else '?'
         ipActive = getattr(self, '_ipParametersActive', False)
-        rawMaxValue = item.get('maxValue', 0) if isinstance(item, dict) else 0
-        # Validate maxValue is a clean integer before any arithmetic. YAML
-        # can deliver strings, lists, dicts, floats, bools — all of which
-        # would crash downstream comparisons with an opaque TypeError.
+        rawMaxValue = item.get('maxValue', 0)
+        # Normalize maxValue to an integer and report malformed values before
+        # downstream arithmetic or comparisons.
         userMaxProvided = rawMaxValue not in (0, None, '')
         if userMaxProvided:
             # Reject bool explicitly (bool is a subclass of int in Python).
@@ -6334,7 +6428,7 @@ class projectCreate:
                 else:
                     rawMaxValue = coerced
         userMaxValue = rawMaxValue if userMaxProvided else 0
-        userParamFlag = bool(item.get('isParameterizable', False)) if isinstance(item, dict) else False
+        userParamFlag = bool(item.get('isParameterizable', False))
 
         # The parsed eval IR (if this is an eval constant) was stashed by
         # processSimple keyed by (yamlFile, name).
@@ -7460,6 +7554,33 @@ class projectCreate:
                           f"{backing['maxValue']}; raise the constant's maxValue to cover the worst-case binding")
         return item
 
+    def _post_validateVariantParameterCompleteness(self, itemkey, item, yamlFile):
+        # Per-variant-row check: every declared variant must bind EVERY parameter
+        # its block declares; the nested variant schema has no default-fill for an
+        # omitted parameter. Fires once per (block, variant) row with its nested
+        # params children already populated, in the row's own file scope. The
+        # variant row's block foreign key orders the block (and its declared
+        # params) ahead of this row, so the block resolves by scope here with no
+        # global bucket iteration.
+        block = item['block']
+        blockRow, _q = self.lookupInScope('blocks', yamlFile, block)
+        if blockRow is None:
+            # An out-of-scope block is already rejected by the leaf binding rows'
+            # blockParam foreign-key validation; nothing to add here.
+            return item
+        reference = set(blockRow.get('params', {}))
+        bound = set(item.get('params', {}))
+        missing = reference - bound
+        if missing:
+            projectName = self.contextOwningProject[yamlFile]
+            self.logError(
+                f"Variant '{item['variant']}' of block '{block}' (project '{projectName}') "
+                f"is missing required parameter(s): {', '.join(sorted(missing))}. "
+                f"Every variant must bind all block parameters "
+                f"[{', '.join(sorted(reference))}]; there is no default for an "
+                f"omitted parameter.")
+        return item
+
     def _resolveVariantBindingValue(self, row):
         # A binding value is either a literal int or the name of a constant the
         # user referenced; in the latter case valueKey is the qualified const key.
@@ -7524,11 +7645,13 @@ class projectCreate:
         the source field selects the branch:
 
         - Plain FK: resolve `sourceRow[sourceField]` through scoped
-          lookup. Invariant 3 guarantees the target section is `flat`
-          and `validator.field` names its storage key.
+          lookup. SCHEMA_SPECIFICATION.md, Foreign-Key Invariants
+          guarantees the target section is `flat` and `validator.field`
+          names its storage key.
         - Combo FK: walk rows of the target section in scope order and
           match the source row's components against the target's
-          component fields. Invariant 4 guarantees the combo sources
+          component fields. SCHEMA_SPECIFICATION.md, Foreign-Key
+          Invariants guarantees the combo sources
           on source and target are identical, so reading the unqualified
           component values on `sourceRow` is safe and the match is
           immune to `is_foreign_key` asymmetry between sections.
@@ -7568,6 +7691,16 @@ class projectCreate:
         lc.line = line
         lc.col = col
         return lc
+
+    def _coerceSingular(self, sectionKey, item):
+        # A _singular sub-table (e.g. signals.signalType, variants.params.value)
+        # authors each entry as `<key>: <scalar>`. Wrap that scalar in a dict
+        # keyed by the section's singular field so processSimple sees the normal
+        # field mapping. Non-singular sections and dict items pass through
+        # unchanged.
+        if not isinstance(item, dict) and sectionKey in self.schema.data['singular']:
+            return {self.schema.data['singular'][sectionKey]: item}
+        return item
 
     def processSubTable(self, section, nested, yamlFile, nestedSchema, outerItemKey, context, outer = None):
         # Process nested table entries using the schema for the child section.
@@ -7650,6 +7783,7 @@ class projectCreate:
                     ret = self.processSimple(section, outerItemKey, nested, yamlFile, schema=nestedSchema, context=context, outer=outer)
                 else:
                     for itemkey, item in nested.items():
+                        item = self._coerceSingular(nestedContext, item)
                         processed = self.processSimple(section, itemkey, item, yamlFile, schema=nestedSchema, context=context, outer=outer)
                         storageKey = self.schema.data['key'][nestedContext]
                         storageKey = processed[storageKey]

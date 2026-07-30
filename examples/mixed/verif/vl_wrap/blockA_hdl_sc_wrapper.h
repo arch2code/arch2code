@@ -6,7 +6,7 @@
 
 // GENERATED_CODE_PARAM --block=blockA
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import blockA.base;
+import mixed_blockA.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
 // its DUT concretely, so it includes the DUT header directly.
@@ -21,10 +21,10 @@ import blockA.base;
 
 import mixed;
 using namespace mixed_ns;
-import mixedBlockC;
-using namespace mixedBlockC_ns;
-import mixedInclude;
-using namespace mixedInclude_ns;
+import mixed_mixedBlockC;
+using namespace mixed_mixedBlockC_ns;
+import mixed_mixedInclude;
+using namespace mixed_mixedInclude_ns;
 #include "apb_bfm.h"
 #include "notify_ack_bfm.h"
 #include "rdy_vld_bfm.h"

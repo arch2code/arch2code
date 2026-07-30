@@ -10,34 +10,34 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 
-export module mixedNestedInclude;
+export module mixed_mixedNestedInclude;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-export namespace mixedNestedInclude_ns {
+export namespace mixed_mixedNestedInclude_ns {
 //constants
 inline constexpr uint32_t DSIZE = 1;  // The size of D
 inline constexpr uint32_t DSIZE2 = 2;  // The size of D2
 
-} // namespace mixedNestedInclude_ns
+} // namespace mixed_mixedNestedInclude_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-export namespace mixedNestedInclude_ns {
+export namespace mixed_mixedNestedInclude_ns {
 // types
 typedef uint16_t dupTestT; // [13] yet another type
 
-} // namespace mixedNestedInclude_ns
+} // namespace mixed_mixedNestedInclude_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-export namespace mixedNestedInclude_ns {
+export namespace mixed_mixedNestedInclude_ns {
 // enums
 
-} // namespace mixedNestedInclude_ns
+} // namespace mixed_mixedNestedInclude_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-export namespace mixedNestedInclude_ns {
+export namespace mixed_mixedNestedInclude_ns {
 // structures
 struct dupTestSt {
     dupTestT bob; //A test structure
@@ -94,11 +94,11 @@ struct dupTestSt {
     explicit dupTestSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-} // namespace mixedNestedInclude_ns
+} // namespace mixed_mixedNestedInclude_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace mixedNestedInclude_test_ns {
+export namespace mixed_mixedNestedInclude_test_ns {
 class test_mixedNestedInclude_structs {
 public:
     static std::string name(void);
@@ -149,12 +149,12 @@ private:
         }
     }
 };
-} // namespace mixedNestedInclude_test_ns
+} // namespace mixed_mixedNestedInclude_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace mixedNestedInclude_test_ns {
-using namespace mixedNestedInclude_ns;
+export namespace mixed_mixedNestedInclude_test_ns {
+using namespace mixed_mixedNestedInclude_ns;
 std::string test_mixedNestedInclude_structs::name(void) { return "test_mixedNestedInclude_structs"; }
 void test_mixedNestedInclude_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
@@ -162,6 +162,6 @@ void test_mixedNestedInclude_structs::test(void) {
     cout << "Running " << name() << endl;
     roundTrip<dupTestSt>("dupTestSt", patterns);
 }
-} // namespace mixedNestedInclude_test_ns
+} // namespace mixed_mixedNestedInclude_test_ns
 
 // GENERATED_CODE_END

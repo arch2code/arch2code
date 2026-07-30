@@ -91,7 +91,7 @@ public:
     {
         instanceFactory::registerInstance("pySocket_tb.u_pySocket", "socket");
 
-        std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "");
+        std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "", "pySocket");
 
         if (socketFactory::registerInterface("test_req_ack") == 0) {
             return false;

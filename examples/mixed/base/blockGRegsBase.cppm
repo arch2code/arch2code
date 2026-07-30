@@ -7,7 +7,7 @@ module;
 #include "apb_channel.h"
 #include "status_channel.h"
 
-export module blockGRegs.base;
+export module mixed_blockGRegs.base;
 import mixed;
 using namespace mixed_ns;
 // GENERATED_CODE_END

@@ -125,8 +125,10 @@ instances:
 
 parameters:
     paramLeaf:
-        - { variant: paramVar0, param: PARAM_REG_DATA_WIDTH, value: 32 }
-        - { variant: paramVar1, param: PARAM_REG_DATA_WIDTH, value: 32 }
+        paramVar0:
+            PARAM_REG_DATA_WIDTH: 32
+        paramVar1:
+            PARAM_REG_DATA_WIDTH: 32
 
 registers:
     - { register: cfg, regType: rw, block: paramLeaf, structure: cfgRegSt, desc: "" }

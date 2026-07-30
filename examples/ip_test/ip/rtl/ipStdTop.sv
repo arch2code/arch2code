@@ -2,10 +2,10 @@
 
 // GENERATED_CODE_PARAM --block=ipStdTop
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: ipStdTop
-module ipStdTop
+//module as defined by block: ip_ipStdTop
+module ip_ipStdTop
 // Generated Import package statement(s)
-import ipTop_package::*;
+import ip_ipTop_package::*;
 import ip_package::*;
 (
     input clk, rst_n
@@ -17,19 +17,19 @@ import ip_package::*;
     apb_if #(.addr_t(ipRegAddrSt), .data_t(ipRegDataSt)) ipReg_uIp();
 
 // Instances
-ipStdMaster uIpStdMaster (
+ip_ipStdMaster uIpStdMaster (
     .apbOut (apbOut),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-ipStdDriver uIpStdDriver (
+ip_ipStdDriver uIpStdDriver (
     .out0 (out0),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-ipStdDecode uIpStdDecode (
+ip_ipStdDecode uIpStdDecode (
     .ipReg (apbOut),
     .ipReg_uIp (ipReg_uIp),
     .clk (clk),
@@ -45,4 +45,4 @@ ip #(.IP_DATA_WIDTH(8), .IP_MEM_DEPTH(16), .IP_NONCONST_DEPTH(24)) uIp (
 
 // GENERATED_CODE_END
 
-endmodule: ipStdTop
+endmodule: ip_ipStdTop

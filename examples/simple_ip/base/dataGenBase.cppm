@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "push_ack_channel.h"
 
-export module dataGen.base;
+export module simple_ip_dataGen.base;
 import simple_ip;
 using namespace simple_ip_ns;
 // GENERATED_CODE_END

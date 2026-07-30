@@ -61,12 +61,21 @@ from pysrc.migrateAddressControl import (migrateAddressControlInProject,
                                          routedLeafRegisterPortsAdvisory)
 from pysrc.migrateIncludes import migrateIncludesInProject
 from pysrc.migrateModuleHeader import migrateModuleHeaderInProject
+from pysrc.migrateVariantSchema import migrateVariantSchemaInProject
 from pysrc.migrateOrphans import renderReport as renderOrphanReport, sweepOrphans
 from pysrc.migrateSubProjects import checkSubProjects
 from pysrc.migrateProjectParam import (
     renderReport as renderProjectParamReport,
     restampProjectParam,
     restampContextParam,
+)
+from pysrc.migrateModuleEndlabel import (
+    restampModuleEndlabel,
+    renderModuleEndlabelReport,
+)
+from pysrc.migrateBlockModulePort import (
+    portBlockModules,
+    renderBlockPortReport,
 )
 from pysrc.processYaml import CURRENT_YAML_FORMAT, projectOpen
 
@@ -79,6 +88,7 @@ class MigrateResult:
     addressReport: object = None                      # migrateAddressControl.MigrationReport
     includesReport: object = None                     # migrateIncludes.IncludesReport
     moduleHeaderReport: object = None                 # migrateModuleHeader.ModuleHeaderReport
+    variantReport: object = None                      # migrateVariantSchema.VariantReport
     subProjectsReport: object = None                  # migrateSubProjects.SubProjectsReport
     leafAdvisory: list = field(default_factory=list)  # list[migrateAddressControl.ReportItem]
     stamped: bool = False
@@ -103,10 +113,12 @@ class MigrateResult:
         composition is migrated too. All are part of yamlFormat: 2."""
         if (self.addressReport is None or self.includesReport is None
                 or self.moduleHeaderReport is None
+                or self.variantReport is None
                 or self.subProjectsReport is None):
             return False
         return (not self.evalManual and self.addressReport.clean
                 and self.includesReport.clean and self.moduleHeaderReport.clean
+                and self.variantReport.clean
                 and self.subProjectsReport.clean)
 
 
@@ -138,6 +150,14 @@ def migrateProject(projectYamlPath, write=False):
     # existed still gets its block `.cppm` headers restructured.
     result.moduleHeaderReport = migrateModuleHeaderInProject(projectYamlPath, write=write)
 
+    # The nested variant-schema rewrite (per-row variant list -> nested mapping)
+    # is part of yamlFormat: 2. It edits authored `parameters:` sections,
+    # unrelated to addressControl, so it runs on every invocation, is idempotent
+    # (an already-nested file is a no-op), and runs before the stamp short-circuit
+    # so a project stamped before this phase existed still gets its variant
+    # bindings regrouped.
+    result.variantReport = migrateVariantSchemaInProject(projectYamlPath, write=write)
+
     # Composed builds: every child project this one names must be migrated in its
     # own tree. Runs before the short-circuit so a top stamped before a child was
     # added still reports it, and because it is the only check that looks past
@@ -154,7 +174,8 @@ def migrateProject(projectYamlPath, write=False):
     if projectData.get("yamlFormat") == CURRENT_YAML_FORMAT:
         result.alreadyMigrated = True
         result.wrote = write and (result.includesReport.written
-                                  or result.moduleHeaderReport.written)
+                                  or result.moduleHeaderReport.written
+                                  or result.variantReport.written)
         return result
 
     projectDir = os.path.dirname(projectYamlPath)
@@ -194,6 +215,7 @@ def migrateProject(projectYamlPath, write=False):
         or result.addressReport.written
         or result.includesReport.written
         or result.moduleHeaderReport.written
+        or result.variantReport.written
         or result.stamped
     )
     return result
@@ -219,6 +241,7 @@ def renderReport(result, write):
                      f"eval/address phases skipped.")
         _renderIncludes(result, lines)
         _renderModuleHeader(result, lines)
+        _renderVariant(result, lines)
         _renderSubProjects(result, lines)
         _renderLeafAdvisory(result, lines)
         return "\n".join(lines)
@@ -227,6 +250,7 @@ def renderReport(result, write):
     _renderPhaseB(result, lines)
     _renderIncludes(result, lines)
     _renderModuleHeader(result, lines)
+    _renderVariant(result, lines)
     _renderSubProjects(result, lines)
     _renderLeafAdvisory(result, lines)
     _renderPhaseC(result, write, lines)
@@ -305,6 +329,23 @@ def _renderModuleHeader(result, lines):
             lines.append(f"    {item.location}  {item.kind}  {item.message}")
 
 
+def _renderVariant(result, lines):
+    lines.append("")
+    lines.append("Variant schema - per-row variant list -> nested mapping")
+    report = result.variantReport
+    if report is None or (not report.applied and not report.manual):
+        lines.append("  variant bindings already nested; nothing to do")
+        return
+    if report.applied:
+        lines.append("  applied:")
+        for item in report.applied:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+    if report.manual:
+        lines.append("  manual TODO (see the migration skill):")
+        for item in report.manual:
+            lines.append(f"    {item.location}  {item.kind}  {item.message}")
+
+
 def _renderSubProjects(result, lines):
     """Render the composed-build check. Silent on a project that references no
     child projects, which is most of them."""
@@ -349,6 +390,8 @@ def _renderPhaseC(result, write, lines):
     for item in result.includesReport.manual:
         lines.append(f"    - {item.location} {item.message}")
     for item in result.moduleHeaderReport.manual:
+        lines.append(f"    - {item.location} {item.message}")
+    for item in result.variantReport.manual:
         lines.append(f"    - {item.location} {item.message}")
     for item in result.subProjectsReport.manual:
         lines.append(f"    - {item.location} {item.message}")
@@ -441,6 +484,12 @@ def main(argv=None):
                         help="Run the post-database orphan sweep instead of the "
                              "text-conversion phases. Requires --db and opens the "
                              "database READ-ONLY; run after `make db`.")
+    parser.add_argument("--port", action="store_true",
+                        help="Run the block-module port (.h/.cpp -> .cppm) instead "
+                             "of the text-conversion phases. Requires --db and opens "
+                             "the database READ-ONLY; run after `make gen` so the "
+                             ".cppm transplant target already carries its generated "
+                             "regions.")
     parser.add_argument("--db",
                         help="Path to the built project database (required with "
                              "--sweep).")
@@ -467,15 +516,32 @@ def main(argv=None):
         # contextOwningProject.
         contextReport = restampContextParam(prj, write=args.write)
         print(renderProjectParamReport(contextReport, args.write, label="context-mode"))
+        # Re-stamp the user-owned `endmodule: <label>` of each RTL block module to
+        # the qualified module name (blockModuleName), aligning it with the
+        # generator-owned, project-qualified module begin-label. DB-backed because
+        # the qualified name is owner-derived and only exists post-db.
+        endlabelReport = restampModuleEndlabel(prj, write=args.write)
+        print(renderModuleEndlabelReport(endlabelReport, args.write))
         # A sweep that leaves manual items (ungenerated delete targets, pending
         # ports, user include sites), or a re-stamp that hit an ungenerated
         # project- or context-mode path, signals work remains, mirroring how the
         # text phases fail when manual TODOs block the stamp.
         return 0 if (report.clean and paramReport.clean
-                     and contextReport.clean) else 1
+                     and contextReport.clean and endlabelReport.clean) else 1
+
+    if args.port:
+        if not args.db:
+            parser.error("--port requires --db")
+        prj = projectOpen(args.db)
+        report = portBlockModules(prj, write=args.write)
+        print(renderBlockPortReport(report, args.write))
+        # Non-zero while any block is flagged for a hand port (parameterized,
+        # reg-handler, module-hostile library, non-boilerplate slot-0), mirroring
+        # how the sweep signals remaining TODO_PORT work.
+        return 0 if report.clean else 1
 
     if not args.projectYaml:
-        parser.error("projectYaml is required unless --sweep is given")
+        parser.error("projectYaml is required unless --sweep or --port is given")
 
     if args.toHierarchical:
         report = migrateLayoutInProject(args.projectYaml, write=args.write)
@@ -501,6 +567,7 @@ def main(argv=None):
         ok = result.stamped or (result.alreadyMigrated
                                 and result.includesReport.clean
                                 and result.moduleHeaderReport.clean
+                                and result.variantReport.clean
                                 and result.subProjectsReport.clean)
         if not ok:
             return 1

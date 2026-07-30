@@ -4,7 +4,7 @@
 // GENERATED_CODE_PARAM --block=mixed_tb --excludeInst=u_mixed
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
-import cpu.base;
+import mixed_cpu.base;
 
 mixedExternal::mixedExternal(sc_module_name modulename) :
     mixedInverted("Chnl"),

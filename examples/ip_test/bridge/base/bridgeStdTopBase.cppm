@@ -7,11 +7,11 @@ module;
 #include "apb_channel.h"
 #include "push_ack_channel.h"
 
-export module bridgeStdTop.base;
+export module ipBridge_bridgeStdTop.base;
 import ipBridge;
-import shared_types;
+import common_shared_types;
 using namespace ipBridge_ns;
-using namespace shared_types_ns;
+using namespace common_shared_types_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

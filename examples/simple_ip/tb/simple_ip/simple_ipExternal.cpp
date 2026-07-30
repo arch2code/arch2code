@@ -4,7 +4,7 @@
 // GENERATED_CODE_PARAM --block=simple_ip_tb --excludeInst=u_simple_ip
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
-import cpu.base;
+import common_cpu.base;
 
 simple_ipExternal::simple_ipExternal(sc_module_name modulename) :
     simple_ipInverted("Chnl"),

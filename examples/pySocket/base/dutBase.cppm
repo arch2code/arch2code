@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "req_ack_channel.h"
 
-export module dut.base;
+export module pySocket_dut.base;
 import pySocket_tb;
 using namespace pySocket_tb_ns;
 // GENERATED_CODE_END

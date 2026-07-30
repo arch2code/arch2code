@@ -58,7 +58,8 @@ instances:
 
 parameters:
     paramLeaf:
-        - { variant: variantA, param: LEAF_WIDTH, value: 8 }
+        variantA:
+            LEAF_WIDTH: 8
 
 registers:
     - { register: cfgP, regType: rw, block: paramLeaf, structure: cfgRegSt, desc: "" }

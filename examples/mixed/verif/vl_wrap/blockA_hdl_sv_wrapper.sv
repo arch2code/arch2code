@@ -6,8 +6,8 @@
 
 module blockA_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import mixedInclude_package::*;
-    import mixedBlockC_package::*;
+    import mixed_mixedInclude_package::*;
+    import mixed_mixedBlockC_package::*;
     import mixed_package::*;
 (
     // req_ack_if.src
@@ -83,7 +83,7 @@ module blockA_hdl_sv_wrapper
     assign #0 apbReg_prdata = apbReg.prdata;
     assign #0 apbReg_pslverr = apbReg.pslverr;
 
-    blockA dut (
+    mixed_blockA dut (
         .aStuffIf(aStuffIf), // req_ack_if.src
         .cStuffIf(cStuffIf), // rdy_vld_if.src
         .startDone(startDone), // notify_ack_if.src

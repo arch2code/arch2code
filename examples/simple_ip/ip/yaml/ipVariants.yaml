@@ -3,9 +3,10 @@ include:
 
 parameters:
     ip:
-        - { variant: variant0, param: IP_DATA_WIDTH, value: 8 }
-        - { variant: variant0, param: IP_MEM_DEPTH, value: 16 }
-        - { variant: variant0, param: IP_NONCONST_DEPTH, value: 24 }
+        variant0:
+            IP_DATA_WIDTH: 8
+            IP_MEM_DEPTH: 16
+            IP_NONCONST_DEPTH: 24
         # PROTOTYPE (P1): variant1 removed from the ip sub-project. variant1 of
         # ip is now DECLARED at the higher-level assembler (ip_top.yaml) to prove
         # a variant can be created above the sub-project without editing it.

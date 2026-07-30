@@ -8,9 +8,9 @@ module ip_top_hdl_sv_wrapper
     // Generated Import package statement(s)
     import ipBridge_package::*;
     import ip_package::*;
-    import src_package::*;
-    import ip_top_package::*;
-    import shared_types_package::*;
+    import ip_test_src_package::*;
+    import ip_test_ip_top_package::*;
+    import common_shared_types_package::*;
 (
     // apb_if.dst
     input bit [31:0] cpu_main_paddr,
@@ -37,7 +37,7 @@ module ip_top_hdl_sv_wrapper
     assign #0 cpu_main_prdata = cpu_main.prdata;
     assign #0 cpu_main_pslverr = cpu_main.pslverr;
 
-    ip_top dut (
+    ip_test_ip_top dut (
         .cpu_main(cpu_main), // apb_if.dst
         .clk(clk),
         .rst_n(rst_n)

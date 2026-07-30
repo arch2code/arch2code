@@ -16,8 +16,8 @@ fileGeneration:
   layout: hierarchical
   template: $a2c/templates/fileGen/fileGen.py
   fileMap:
-    blockBase   : { name : "Base",            ext: {hdr: "h"},             cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    desc: "Module Base class header file"}
-    block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
+    # blockBase (.cppm) and blockModule (.cppm) are inherited from the base
+    # config fileMap; only the entries this fixture genuinely needs are overridden.
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
     testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
     tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench config files"}

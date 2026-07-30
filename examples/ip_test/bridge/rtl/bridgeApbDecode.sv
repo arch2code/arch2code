@@ -2,10 +2,10 @@
 
 // GENERATED_CODE_PARAM --block=bridgeApbDecode
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
-//module as defined by block: bridgeApbDecode
-module bridgeApbDecode
+//module as defined by block: ipBridge_bridgeApbDecode
+module ipBridge_bridgeApbDecode
 // Generated Import package statement(s)
-import shared_types_package::*;
+import common_shared_types_package::*;
 (
     apb_if.src apbReg_uBridgeIp0,
     apb_if.src apbReg_uBridgeIp1,
@@ -91,5 +91,5 @@ assign apbReg.pready  = pready;
 assign apbReg.prdata  = prdata;
 assign apbReg.pslverr = pslverr;
 
-endmodule: bridgeApbDecode
+endmodule: ipBridge_bridgeApbDecode
 // GENERATED_CODE_END

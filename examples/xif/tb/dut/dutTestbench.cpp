@@ -17,8 +17,8 @@ namespace {
 
 dutTestbench::dutTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("dutTestbench", name(), bbMode)
-        ,dutChannels<xifDefaultConfig>("Chnl", "tb")
-        ,dut(std::dynamic_pointer_cast<dutBase<xifDefaultConfig>>( instanceFactory::createInstance(name(), "dut", "dut", "dutV0", "xif")))
+        ,dutChannels<dutDutV0Config>("Chnl", "tb")
+        ,dut(std::dynamic_pointer_cast<dutBase<dutDutV0Config>>( instanceFactory::createInstance(name(), "dut", "dut", "dutV0", "xif")))
         ,external("external")
 {
     bind(dut.get(), &external);

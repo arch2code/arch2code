@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "push_ack_channel.h"
 
-export module dut.base;
+export module xif_dut.base;
 import xif;
 using namespace xif_ns;
 // GENERATED_CODE_END

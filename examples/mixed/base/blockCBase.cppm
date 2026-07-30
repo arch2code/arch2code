@@ -6,9 +6,9 @@ module;
 #include "systemc.h"
 #include "rdy_vld_channel.h"
 
-export module blockC.base;
-import mixedBlockC;
-using namespace mixedBlockC_ns;
+export module mixed_blockC.base;
+import mixed_mixedBlockC;
+using namespace mixed_mixedBlockC_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

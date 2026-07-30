@@ -21,8 +21,8 @@ import ipBridge.base;
 
 import ipBridge;
 using namespace ipBridge_ns;
-import shared_types;
-using namespace shared_types_ns;
+import common_shared_types;
+using namespace common_shared_types_ns;
 import ip;
 using namespace ip_ns;
 #include "ipVariantConfig.h"

@@ -6,7 +6,7 @@
 
 // GENERATED_CODE_PARAM --block=ip_top
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import ip_top.base;
+import ip_test_ip_top.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
 // its DUT concretely, so it includes the DUT header directly.
@@ -19,12 +19,12 @@ import ip_top.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
-import shared_types;
-using namespace shared_types_ns;
-import ip_top;
-using namespace ip_top_ns;
-import src;
-using namespace src_ns;
+import common_shared_types;
+using namespace common_shared_types_ns;
+import ip_test_ip_top;
+using namespace ip_test_ip_top_ns;
+import ip_test_src;
+using namespace ip_test_src_ns;
 import ip;
 using namespace ip_ns;
 import ipBridge;

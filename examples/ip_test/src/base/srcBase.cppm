@@ -6,11 +6,11 @@ module;
 #include "systemc.h"
 #include "push_ack_channel.h"
 
-export module src.base;
-import src;
-import ipLeaf;
-using namespace src_ns;
-using namespace ipLeaf_ns;
+export module ip_test_src.base;
+import ip_test_src;
+import ip_test_ipLeaf;
+using namespace ip_test_src_ns;
+using namespace ip_test_ipLeaf_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl

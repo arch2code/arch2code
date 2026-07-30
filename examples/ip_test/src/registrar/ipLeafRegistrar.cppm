@@ -8,7 +8,7 @@ module;
 #include "ipLeafVariantConfig.h"
 
 export module ip_test.src.ipLeaf.registrar;
-import ipLeaf.block;
+import ip_test_ipLeaf.block;
 
 namespace {
 struct _ipLeaf_registrar {

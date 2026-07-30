@@ -2,7 +2,7 @@
 
 // GENERATED_CODE_PARAM --block=ipRegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
-module ipRegs
+module ip_ipRegs
     // Generated Import package statement(s)
     import ip_package::*;
     #(
@@ -352,5 +352,5 @@ module ipRegs
     assign ipReg.pready  = rd_ready | wr_ready;
     assign ipReg.pslverr = 1'b0;
 
-endmodule : ipRegs
+endmodule : ip_ipRegs
 // GENERATED_CODE_END

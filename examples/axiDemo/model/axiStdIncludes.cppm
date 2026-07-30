@@ -10,19 +10,19 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 
-export module axiStd;
+export module axiDemo_axiStd;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-export namespace axiStd_ns {
+export namespace axiDemo_axiStd_ns {
 //constants
 
-} // namespace axiStd_ns
+} // namespace axiDemo_axiStd_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-export namespace axiStd_ns {
+export namespace axiDemo_axiStd_ns {
 // types
 typedef uint8_t _axiIdT; // [4] Type for axi ID tags. Used for ARID, RID, AWID, BID.
 typedef uint8_t _axiLenT; // [8] Exact number of transfers in a burst.
@@ -31,10 +31,10 @@ typedef uint8_t _axiProtT; // [3] Protection type for the AXI protocol Bit 0 - P
 typedef uint8_t _axiQoST; // [4] QoS type for the AXI protocol
 typedef uint8_t _axiRegionT; // [4] Region type for the AXI protocol
 
-} // namespace axiStd_ns
+} // namespace axiDemo_axiStd_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-export namespace axiStd_ns {
+export namespace axiDemo_axiStd_ns {
 // enums
 enum  _axiResponseT {        //Response type for the AXI protocol
     AXIRESP_OKAY=0,          // OKAY
@@ -115,7 +115,7 @@ inline const char* _axiWrCacheT_prt( _axiWrCacheT val )
     return("!!!BADENUM!!!");
 }
 
-} // namespace axiStd_ns
+} // namespace axiDemo_axiStd_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
 

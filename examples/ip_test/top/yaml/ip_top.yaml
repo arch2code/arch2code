@@ -120,14 +120,16 @@ connectionMaps:
 
 parameters:
     src:
-        - { variant: variantSrc0, param: OUT0_DATA_WIDTH, value: 8 }
-        - { variant: variantSrc0, param: OUT1_DATA_WIDTH, value: 70 }
+        variantSrc0:
+            OUT0_DATA_WIDTH: 8
+            OUT1_DATA_WIDTH: 70
     # PROTOTYPE (P1): variant1 of the FOREIGN 'ip' block (owned by the ip
     # sub-project) is DECLARED here, at the higher-level assembler, not in the
     # ip sub-project. Resolved values mirror the removed ip/ipVariants.yaml
     # binding (IP_DATA_WIDTH=70, IP_MEM_DEPTH=8, IP_NONCONST_DEPTH=12). Serves
     # both ip_top.uIp1 and bridge.uBridgeIp1 (single project-wide declaration).
     ip:
-        - { variant: variant1, param: IP_DATA_WIDTH, value: 70 }
-        - { variant: variant1, param: IP_MEM_DEPTH, value: 8 }
-        - { variant: variant1, param: IP_NONCONST_DEPTH, value: 12 }
+        variant1:
+            IP_DATA_WIDTH: 70
+            IP_MEM_DEPTH: 8
+            IP_NONCONST_DEPTH: 12

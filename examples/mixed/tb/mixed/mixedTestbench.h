@@ -10,8 +10,8 @@
 import mixed.base;
 import mixed;
 using namespace mixed_ns;
-import mixedBlockC;
-using namespace mixedBlockC_ns;
+import mixed_mixedBlockC;
+using namespace mixed_mixedBlockC_ns;
 #include "mixedExternal.h"
 
 class mixedTestbench: public sc_module, public blockBase, public mixedChannels {

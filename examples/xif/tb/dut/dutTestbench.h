@@ -7,16 +7,16 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-import dut.base;
+import xif_dut.base;
 import xif;
 using namespace xif_ns;
 #include "dutExternal.h"
 
-class dutTestbench: public sc_module, public blockBase, public dutChannels<xifDefaultConfig> {
+class dutTestbench: public sc_module, public blockBase, public dutChannels<dutDutV0Config> {
 
 public:
 
-    std::shared_ptr<dutBase<xifDefaultConfig>> dut;
+    std::shared_ptr<dutBase<dutDutV0Config>> dut;
     dutExternal external;
 
     dutTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);

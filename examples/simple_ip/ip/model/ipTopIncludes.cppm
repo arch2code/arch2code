@@ -10,7 +10,7 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 
-export module ipTop;
+export module ip_ipTop;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
 import ip;
@@ -18,21 +18,21 @@ using namespace ip_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-export namespace ipTop_ns {
+export namespace ip_ipTop_ns {
 //constants
 
-} // namespace ipTop_ns
+} // namespace ip_ipTop_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-export namespace ipTop_ns {
+export namespace ip_ipTop_ns {
 // types
 typedef uint8_t ipStdMarkerT; // [1] Boundary marker bit; matches ipDataSt::marker
 typedef uint8_t ipStdData8T; // [8] Non-param 8-bit boundary payload; matches ipDataSt::data @variant0
 
-} // namespace ipTop_ns
+} // namespace ip_ipTop_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-export namespace ipTop_ns {
+export namespace ip_ipTop_ns {
 // enums
 enum  addr_id_ipstd {        //Generated type for addressing ipStd instances
     ADDR_ID_IPSTD_UIP=0 };   // uIp instance address
@@ -45,10 +45,10 @@ inline const char* addr_id_ipstd_prt( addr_id_ipstd val )
     return("!!!BADENUM!!!");
 }
 
-} // namespace ipTop_ns
+} // namespace ip_ipTop_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-export namespace ipTop_ns {
+export namespace ip_ipTop_ns {
 // structures
 struct ipStdData8St {
     ipStdData8T data; //8-bit payload; matches ipDataSt::data @variant0
@@ -117,11 +117,11 @@ struct ipStdData8St {
     explicit ipStdData8St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-} // namespace ipTop_ns
+} // namespace ip_ipTop_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace ipTop_test_ns {
+export namespace ip_ipTop_test_ns {
 class test_ipTop_structs {
 public:
     static std::string name(void);
@@ -172,12 +172,12 @@ private:
         }
     }
 };
-} // namespace ipTop_test_ns
+} // namespace ip_ipTop_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace ipTop_test_ns {
-using namespace ipTop_ns;
+export namespace ip_ipTop_test_ns {
+using namespace ip_ipTop_ns;
 std::string test_ipTop_structs::name(void) { return "test_ipTop_structs"; }
 void test_ipTop_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
@@ -185,6 +185,6 @@ void test_ipTop_structs::test(void) {
     cout << "Running " << name() << endl;
     roundTrip<ipStdData8St>("ipStdData8St", patterns);
 }
-} // namespace ipTop_test_ns
+} // namespace ip_ipTop_test_ns
 
 // GENERATED_CODE_END

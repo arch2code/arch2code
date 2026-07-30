@@ -6,7 +6,7 @@
 module ipBridge
 // Generated Import package statement(s)
 import ip_package::*;
-import shared_types_package::*;
+import common_shared_types_package::*;
 import ipBridge_package::*;
 (
     push_ack_if.dst data8In,
@@ -20,7 +20,7 @@ import ipBridge_package::*;
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBridgeIp1();
 
 // Instances
-bridgeApbDecode uBridgeAPBDecode (
+ipBridge_bridgeApbDecode uBridgeAPBDecode (
     .apbReg (apbReg),
     .apbReg_uBridgeIp0 (apbReg_uBridgeIp0),
     .apbReg_uBridgeIp1 (apbReg_uBridgeIp1),

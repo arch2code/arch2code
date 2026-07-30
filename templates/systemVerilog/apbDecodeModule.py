@@ -27,9 +27,9 @@ def render(args, prj, data):
     indentSize = 4
     indent = ' ' * indentSize
 
-    # Module declaration is emitted from the block name; filename/block
-    # consistency is validated by the generator before rendering.
-    out.append(moduleDeclaration(data['blockName']))
+    # Module declaration is emitted from the project-qualified module name;
+    # filename/block consistency is validated by the generator before rendering.
+    out.append(moduleDeclaration(data['blockModuleName']))
 
     # Packages
     startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
@@ -145,7 +145,7 @@ def render(args, prj, data):
 
     out.append("")
 
-    out.append(f"endmodule: {data['blockName']}")
+    out.append(f"endmodule: {data['blockModuleName']}")
     return ("\n".join(out))
 
 #------------------------------------------------------------------------------

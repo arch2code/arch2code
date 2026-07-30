@@ -1,7 +1,7 @@
 // GENERATED_CODE_PARAM --block=producer
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: producer
-module producer
+//module as defined by block: axiDemo_producer
+module axiDemo_producer
 // Generated Import package statement(s)
 import axiDemo_package::*;
 (
@@ -23,4 +23,4 @@ import axiDemo_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: producer
+endmodule: axiDemo_producer

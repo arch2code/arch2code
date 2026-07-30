@@ -15,9 +15,10 @@ authoring error (test_error_child_project_via_include).
 
 It also proves the ownership contract consumed downstream:
 
-  * CONTEXTMODULEIDENTITY is the BARE include stem for BOTH root- and
-    child-owned contexts, so a context's `export module` and a referencing
-    file's `import` spell the same name in every build;
+  * CONTEXTMODULEIDENTITY is the include stem project-qualified by each
+    context's intrinsic owner (with prefix dedup), identical whether the
+    context is built standalone or imported, so a context's `export module`
+    and a referencing file's `import` spell the same name in every build;
   * resolveFileOwner() maps every generated file (block / registrar-parent /
     context) to the absolute owning projectName from the DB, and None for a
     file that names no owning context;
@@ -41,7 +42,7 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 import pysrc.arch2codeGlobals as g
-from pysrc.processYaml import projectOpen, expandNewModulePath
+from pysrc.processYaml import projectOpen, expandNewModulePath, qualifyModuleIdentity
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'nested-ownership')
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
@@ -144,13 +145,15 @@ def _newmodule_no_token(work):
             except (UnicodeDecodeError, IsADirectoryError):
                 continue
 
-    # Run from the root project, only root-owned scaffolds are created.
-    for name in ('rootLeaf.h', 'rootLeaf.cpp', 'rootLeafBase.cppm'):
+    # Run from the root project, only root-owned scaffolds are created. Each block
+    # model artifact is now a single .cppm module interface unit (blockModule);
+    # the legacy .h/.cpp split is retired.
+    for name in ('rootLeaf.cppm', 'rootLeafBase.cppm'):
         assert name in param_lines, f"expected root-owned scaffold '{name}' not generated"
     # Child-owned blocks are skipped by the ownership gate, so their files must
     # never be written across the ownership boundary.
-    for name in ('childProjBlock.h', 'childProjBlock.cpp', 'childProjBlockBase.cppm',
-                 'childLeafBlock.h', 'childLeafBlock.cpp', 'childLeafBlockBase.cppm'):
+    for name in ('childProjBlock.cppm', 'childProjBlockBase.cppm',
+                 'childLeafBlock.cppm', 'childLeafBlockBase.cppm'):
         assert name not in param_lines, \
             f"child-owned scaffold '{name}' must be skipped when run from the root project"
     # Child-owned CONTEXT files are skipped by the same ownership gate: a build
@@ -322,7 +325,7 @@ def _check_per_owner_resolution(prj):
         "root and child layouts must have distinct model segments"
 
     # block-mode fileMap entry (basePath: model) drives a hasMdl block's path.
-    blockDef = prj.config.getConfig('FILEMAP')['block']
+    blockDef = prj.config.getConfig('FILEMAP')['blockModule']
     expected_prj = {
         'rootLeaf':       (root_prj,  child_prj),
         'childProjBlock': (child_prj, root_prj),
@@ -357,25 +360,31 @@ def run_all_tests():
         identity = prj.contextModuleIdentity
 
         # Root-owned closure: the root top file and the root project's own leaf
-        # stay root-owned. Identity is the bare include stem.
+        # stay root-owned. Identity is the include stem project-qualified by its
+        # owning project (dedup inactive here: 'rootTop' does not lead with
+        # 'rootProj'), so it resolves to 'rootProj_rootTop'.
         for stem in ('rootTop',):
             _, owner = _context_by_stem(owners, stem)
             assert owner == ROOT_PROJECT_NAME, \
                 f"context '{stem}' expected root-owned, got '{owner}'"
             _, ident = _context_by_stem(identity, stem)
-            assert ident == stem, \
-                f"root-owned '{stem}' identity expected bare stem, got '{ident}'"
+            expected = qualifyModuleIdentity(stem, owner)
+            assert ident == expected, \
+                f"root-owned '{stem}' identity expected '{expected}', got '{ident}'"
 
         # Child-owned closure: the child project file itself and the leaf reached
         # through the child's own projectFiles: slot are owned by the child.
-        # Identity is the bare include stem here too (no owner qualification).
+        # Identity is the include stem project-qualified by the CHILD project
+        # (intrinsic owner, build-independent), so 'childProject' ->
+        # 'childProj_childProject' and 'childLeaf' -> 'childProj_childLeaf'.
         for stem in ('childProject', 'childLeaf'):
             _, owner = _context_by_stem(owners, stem)
             assert owner == CHILD_PROJECT_NAME, \
                 f"context '{stem}' expected child-owned, got '{owner}'"
             _, ident = _context_by_stem(identity, stem)
-            assert ident == stem, \
-                f"child-owned '{stem}' identity expected bare stem, got '{ident}'"
+            expected = qualifyModuleIdentity(stem, owner)
+            assert ident == expected, \
+                f"child-owned '{stem}' identity expected '{expected}', got '{ident}'"
 
         # Non-uniformity: at least two distinct owners must appear.
         distinct = set(owners.values())
@@ -383,7 +392,7 @@ def run_all_tests():
             f"ownership not non-uniform: {distinct}"
 
         print(f"PASS: nested ownership non-uniform ({sorted(distinct)})")
-        print("PASS: CONTEXTMODULEIDENTITY is bare stem for root- and child-owned contexts")
+        print("PASS: CONTEXTMODULEIDENTITY is owner-qualified for root- and child-owned contexts")
 
         # Unit-level owner resolution across every param shape.
         _resolve_owner_unit(prj)

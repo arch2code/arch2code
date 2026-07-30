@@ -129,15 +129,15 @@ fileGeneration:
     # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file
     # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
     blockBase   : { name : "Base",            ext: {cppm: "cppm"},         cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    desc: "Module Base class interface unit (Base/Inverted/Channels)"}
-    # A parameterizable leaf block (hasOwnParams: declares its own params:, so
-    # it is a template<typename Config> class) is emitted as a single C++20
-    # module interface unit (blockModule, .cppm) whose member bodies are
-    # module-visible so a consumer registrar can `import` it and instantiate
-    # block<Config>. All other blocks (non-templated, including
-    # container-parameterizable ones) keep the classic .h/.cpp split. The two
-    # entries are mutually exclusive on hasOwnParams.
-    block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true}, condAnd: {hasOwnParams: false}, mode: block, basePath: model, desc: "Model implementation file (non-templated blocks)"}
-    blockModule : { name : "",                ext: {cppm: "cppm"},         cond: {hasOwnParams: true}, condAnd: {hasMdl: true}, mode: block, basePath: model, desc: "Parameterizable block module interface unit (templated blocks)"}
+    # Every block implementation is a single C++20 module interface unit
+    # (blockModule, .cppm) whose member bodies are module-visible, regardless of
+    # parameterization (item 5, module conversion standardization). A
+    # parameterizable leaf block (hasOwnParams: declares its own params:) becomes
+    # a template<typename Config> class; a non-templated block emits an
+    # untemplated `export SC_MODULE(...)`. classDecl selects the two forms on
+    # hasOwnParams. The legacy `block` (.h/.cpp split) entry is retired; the
+    # migration ports each existing .h/.cpp pair into the .cppm.
+    blockModule : { name : "",                ext: {cppm: "cppm"},         cond: {hasMdl: true}, mode: block, basePath: model, desc: "Block module interface unit (.cppm, all blocks)"}
     # blockRegistrar emits the per-assembler trampoline TUs described in
     # plan-reusable-ip-registrar.md. mode: registrar iterates each assembling
     # block and emits one <child>Registrar.cpp per distinct parameterizable

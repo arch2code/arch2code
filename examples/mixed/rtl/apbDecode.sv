@@ -1,7 +1,7 @@
 // GENERATED_CODE_PARAM --block=apbDecode
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
-//module as defined by block: apbDecode
-module apbDecode
+//module as defined by block: mixed_apbDecode
+module mixed_apbDecode
 // Generated Import package statement(s)
 import mixed_package::*;
 (
@@ -108,5 +108,5 @@ assign cpu_main.pready  = pready;
 assign cpu_main.prdata  = prdata;
 assign cpu_main.pslverr = pslverr;
 
-endmodule: apbDecode
+endmodule: mixed_apbDecode
 // GENERATED_CODE_END

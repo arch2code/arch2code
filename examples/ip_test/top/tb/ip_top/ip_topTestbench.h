@@ -7,13 +7,13 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-import ip_top.base;
-import shared_types;
-using namespace shared_types_ns;
-import ip_top;
-using namespace ip_top_ns;
-import src;
-using namespace src_ns;
+import ip_test_ip_top.base;
+import common_shared_types;
+using namespace common_shared_types_ns;
+import ip_test_ip_top;
+using namespace ip_test_ip_top_ns;
+import ip_test_src;
+using namespace ip_test_src_ns;
 import ip;
 using namespace ip_ns;
 import ipBridge;

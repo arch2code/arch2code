@@ -1,7 +1,7 @@
 // GENERATED_CODE_PARAM --block=cpu
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: cpu
-module cpu
+//module as defined by block: mixed_cpu
+module mixed_cpu
 // Generated Import package statement(s)
 import mixed_package::*;
 (
@@ -14,4 +14,4 @@ import mixed_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: cpu
+endmodule: mixed_cpu

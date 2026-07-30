@@ -256,9 +256,10 @@ def sc_connect_channel_type(data, indent, block_data, prj=None):
 def sc_instance_includes(data, prj):
     out = []
     includes = dict()
-    # create a dict of unique includes
+    # create a dict of unique includes, keyed by the child's project-qualified
+    # module name so the import matches the child's own qualified `.base` export.
     for key, value in data['subBlockInstances'].items():
-        includes[value["instanceType"]] = None
+        includes[value["instanceTypeModuleName"]] = None
     # Each contained instance's Base is a C++20 module interface unit
     # (`<child>Base.cppm`, `export module <child>.base;`); consumers import it.
     # In a classic TU (constructor/testbench .cpp) the import sits at namespace
@@ -525,7 +526,7 @@ def sc_class_dependency_includes(args, prj, data):
     # As an 'import' pair it is emitted inline in classic mode (namespace-scope
     # import in a plain header) and, in the block-module GMF, after
     # `export module` alongside the context imports.
-    out.append(('import', f'import {cpp_base_module_name(data["blockName"])};'))
+    out.append(('import', f'import {cpp_base_module_name(data["blockModuleName"])};'))
     # The class declaration names each port's channel type (e.g.
     # push_ack_channel<...>) directly as a member, so it needs the channel
     # header for every interface the block uses, matching sc_base_dependency_includes.

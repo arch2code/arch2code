@@ -10,33 +10,33 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 
-export module hierVlSharedTypes;
+export module hierVlDemo_hierVlSharedTypes;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-export namespace hierVlSharedTypes_ns {
+export namespace hierVlDemo_hierVlSharedTypes_ns {
 //constants
 
-} // namespace hierVlSharedTypes_ns
+} // namespace hierVlDemo_hierVlSharedTypes_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-export namespace hierVlSharedTypes_ns {
+export namespace hierVlDemo_hierVlSharedTypes_ns {
 // types
 typedef uint8_t shared_bv8_t; // [8] Shared 8-bit vector
 typedef uint32_t shared_bv32_t; // [32] Shared 32-bit vector
 
-} // namespace hierVlSharedTypes_ns
+} // namespace hierVlDemo_hierVlSharedTypes_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-export namespace hierVlSharedTypes_ns {
+export namespace hierVlDemo_hierVlSharedTypes_ns {
 // enums
 
-} // namespace hierVlSharedTypes_ns
+} // namespace hierVlDemo_hierVlSharedTypes_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-export namespace hierVlSharedTypes_ns {
+export namespace hierVlDemo_hierVlSharedTypes_ns {
 // structures
 struct sharedInfoSt {
     shared_bv32_t value; //
@@ -105,11 +105,11 @@ struct sharedInfoSt {
     explicit sharedInfoSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-} // namespace hierVlSharedTypes_ns
+} // namespace hierVlDemo_hierVlSharedTypes_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace hierVlSharedTypes_test_ns {
+export namespace hierVlDemo_hierVlSharedTypes_test_ns {
 class test_hierVlSharedTypes_structs {
 public:
     static std::string name(void);
@@ -160,12 +160,12 @@ private:
         }
     }
 };
-} // namespace hierVlSharedTypes_test_ns
+} // namespace hierVlDemo_hierVlSharedTypes_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace hierVlSharedTypes_test_ns {
-using namespace hierVlSharedTypes_ns;
+export namespace hierVlDemo_hierVlSharedTypes_test_ns {
+using namespace hierVlDemo_hierVlSharedTypes_ns;
 std::string test_hierVlSharedTypes_structs::name(void) { return "test_hierVlSharedTypes_structs"; }
 void test_hierVlSharedTypes_structs::test(void) {
     std::vector<uint8_t> patterns{0x6a, 0xa6};
@@ -173,6 +173,6 @@ void test_hierVlSharedTypes_structs::test(void) {
     cout << "Running " << name() << endl;
     roundTrip<sharedInfoSt>("sharedInfoSt", patterns);
 }
-} // namespace hierVlSharedTypes_test_ns
+} // namespace hierVlDemo_hierVlSharedTypes_test_ns
 
 // GENERATED_CODE_END

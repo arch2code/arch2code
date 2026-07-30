@@ -7,7 +7,7 @@
 module blockF_hdl_sv_wrapper
     // Generated Import package statement(s)
     import mixed_package::*;
-    import mixedBlockC_package::*;
+    import mixed_mixedBlockC_package::*;
 #(
     parameter bob,
     parameter fred
@@ -71,7 +71,7 @@ module blockF_hdl_sv_wrapper
 
     assign #0 rwD.data = rwD_data;
 
-    blockF #(.bob(bob), .fred(fred)) dut (
+    mixed_blockF #(.bob(bob), .fred(fred)) dut (
         .cStuffIf(cStuffIf), // rdy_vld_if.src
         .dStuffIf(dStuffIf), // rdy_vld_if.dst
         .dSin(dSin), // rdy_vld_if.dst

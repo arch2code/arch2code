@@ -10,32 +10,32 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 
-export module mixedInclude;
+export module mixed_mixedInclude;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
-import mixedNestedInclude;
-using namespace mixedNestedInclude_ns;
+import mixed_mixedNestedInclude;
+using namespace mixed_mixedNestedInclude_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-export namespace mixedInclude_ns {
+export namespace mixed_mixedInclude_ns {
 //constants
 inline constexpr uint32_t BSIZE = 10;  // The size of B, used for memory wordlines
 inline constexpr uint32_t BSIZE_LOG2 = 4;  // The size of B, used for memory wordlines log 2
 
-} // namespace mixedInclude_ns
+} // namespace mixed_mixedInclude_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-export namespace mixedInclude_ns {
+export namespace mixed_mixedInclude_ns {
 // types
 
-} // namespace mixedInclude_ns
+} // namespace mixed_mixedInclude_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-export namespace mixedInclude_ns {
+export namespace mixed_mixedInclude_ns {
 // enums
 
-} // namespace mixedInclude_ns
+} // namespace mixed_mixedInclude_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
 

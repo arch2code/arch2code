@@ -7,11 +7,11 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-import bridgeStdTop.base;
+import ipBridge_bridgeStdTop.base;
 import ipBridge;
 using namespace ipBridge_ns;
-import shared_types;
-using namespace shared_types_ns;
+import common_shared_types;
+using namespace common_shared_types_ns;
 #include "bridgeStdTopExternal.h"
 
 class bridgeStdTopTestbench: public sc_module, public blockBase, public bridgeStdTopChannels {

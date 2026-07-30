@@ -13,12 +13,12 @@ module;
 export module mixed;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
-import mixedInclude;
-import mixedNestedInclude;
-import mixedBlockC;
-using namespace mixedInclude_ns;
-using namespace mixedNestedInclude_ns;
-using namespace mixedBlockC_ns;
+import mixed_mixedInclude;
+import mixed_mixedNestedInclude;
+import mixed_mixedBlockC;
+using namespace mixed_mixedInclude_ns;
+using namespace mixed_mixedNestedInclude_ns;
+using namespace mixed_mixedBlockC_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants

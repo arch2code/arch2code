@@ -8,10 +8,10 @@ module;
 #include "push_ack_channel.h"
 
 export module simple_ip.base;
-import shared_types;
+import common_shared_types;
 import simple_ip;
 import ip;
-using namespace shared_types_ns;
+using namespace common_shared_types_ns;
 using namespace simple_ip_ns;
 using namespace ip_ns;
 // GENERATED_CODE_END

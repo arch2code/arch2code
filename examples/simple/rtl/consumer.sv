@@ -2,8 +2,8 @@
 
 // GENERATED_CODE_PARAM --block=consumer
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: consumer
-module consumer
+//module as defined by block: simple_consumer
+module simple_consumer
 // Generated Import package statement(s)
 import simple_package::*;
 (
@@ -17,4 +17,4 @@ import simple_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: consumer
+endmodule: simple_consumer

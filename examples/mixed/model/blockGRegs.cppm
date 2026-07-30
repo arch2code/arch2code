@@ -17,8 +17,8 @@ module;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=moduleExport
-export module blockGRegs.block;
-import blockGRegs.base;
+export module mixed_blockGRegs.block;
+import mixed_blockGRegs.base;
 import mixed;
 using namespace mixed_ns;
 // GENERATED_CODE_END

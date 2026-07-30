@@ -79,6 +79,7 @@ connections:
 # there is no duplicate.
 parameters:
     ip:
-        - { variant: variant1, param: IP_DATA_WIDTH, value: 70 }
-        - { variant: variant1, param: IP_MEM_DEPTH, value: 8 }
-        - { variant: variant1, param: IP_NONCONST_DEPTH, value: 12 }
+        variant1:
+            IP_DATA_WIDTH: 70
+            IP_MEM_DEPTH: 8
+            IP_NONCONST_DEPTH: 12

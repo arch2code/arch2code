@@ -1,7 +1,7 @@
 // GENERATED_CODE_PARAM --block=consumer
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: consumer
-module consumer
+//module as defined by block: axiDemo_consumer
+module axiDemo_consumer
 // Generated Import package statement(s)
 import axiDemo_package::*;
 (
@@ -23,4 +23,4 @@ import axiDemo_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: consumer
+endmodule: axiDemo_consumer

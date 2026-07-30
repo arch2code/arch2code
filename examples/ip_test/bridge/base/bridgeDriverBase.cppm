@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "push_ack_channel.h"
 
-export module bridgeDriver.base;
+export module ipBridge_bridgeDriver.base;
 import ipBridge;
 using namespace ipBridge_ns;
 // GENERATED_CODE_END

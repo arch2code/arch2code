@@ -100,7 +100,7 @@ def tb_sec_header(args, prj, data):
                  dutinstname=instName, extinstname="external",
                  is_parameterizable=isParameterizable, cfg=sel['cfg'],
                  default_config=sel['configName'],
-                 basemodule=cpp_base_module_name(blockName),
+                 basemodule=cpp_base_module_name(data['blockModuleName']),
                  context_includes=_tb_context_import_lines(prj, data))
     return s
 
@@ -286,7 +286,7 @@ def ext_sec_header(args, prj, data):
     for blockKey, blockName in sorted(data['subBlocks'].items(), key=lambda item: item[1]):
         childHasOwnParams = data['subBlockTypes'][blockKey]['hasOwnParams']
         if childHasOwnParams:
-            ext_child_base_imports_s.append(f'import {cpp_base_module_name(blockName)};')
+            ext_child_base_imports_s.append(f'import {cpp_base_module_name(data["subBlockTypes"][blockKey]["blockModuleName"])};')
         else:
             ext_fwd_decl_s.append(f'class {blockName}Base;')
 
@@ -376,7 +376,7 @@ def ext_sec_header(args, prj, data):
             config_includes.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
     s = t.render(
         blockname=data['blockName'],
-        basemodule=cpp_base_module_name(data['blockName']),
+        basemodule=cpp_base_module_name(data['blockModuleName']),
         context_includes=_tb_context_import_lines(prj, data),
         tbclassname=sel['tbClassName'],
         is_parameterizable=isParameterizable,
@@ -406,12 +406,17 @@ def refactor_tbExternal(args, prj, data):
         # template argument is that instance's Config, not the (possibly
         # param-less) testbench-top block's cfg from _tb_selection.
         data['dutInvertedCfg'] = cpp_config_arg(dutInst['instanceConfigSelection'])
+        # The External's `<DUT>.base` import must match the DUT's own qualified
+        # export, which is the excluded instance's block, not the testbench-top.
+        blockModuleName = dutInst['instanceTypeModuleName']
     else:
         # No excluded instance: `data` already is the DUT block, so the
         # Inverted base cfg comes from _tb_selection (sentinel None).
         blockname = data['blockName']
         data['dutInvertedCfg'] = None
+        blockModuleName = data['blockModuleName']
     data['blockName'] = blockname
+    data['blockModuleName'] = blockModuleName
 
 sec_tb_class_header_template = """\
 #include "systemc.h"

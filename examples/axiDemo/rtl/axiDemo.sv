@@ -23,7 +23,7 @@ import axiDemo_package::*;
     axi4_stream_if #(.tdata_t(axiDataSt), .tid_t(axiAddrSt), .tdest_t(axiAddrSt), .tuser_t(axiAddrSt)) axiStr1();
 
 // Instances
-producer uProducer (
+axiDemo_producer uProducer (
     .axiRd0 (axiRd0),
     .axiRd1 (axiRd1),
     .axiRd2 (axiRd2),
@@ -38,7 +38,7 @@ producer uProducer (
     .rst_n (rst_n)
 );
 
-consumer uConsumer (
+axiDemo_consumer uConsumer (
     .axiRd0 (axiRd0),
     .axiRd1 (axiRd1),
     .axiRd2 (axiRd2),

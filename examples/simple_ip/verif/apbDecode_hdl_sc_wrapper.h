@@ -6,7 +6,7 @@
 
 // GENERATED_CODE_PARAM --block=apbDecode
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import apbDecode.base;
+import simple_ip_apbDecode.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
 // its DUT concretely, so it includes the DUT header directly.
@@ -19,8 +19,8 @@ import apbDecode.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
-import shared_types;
-using namespace shared_types_ns;
+import common_shared_types;
+using namespace common_shared_types_ns;
 #include "apb_bfm.h"
 
 class apbDecode_hdl_sc_wrapper: public sc_module, public blockBase, public apbDecodeBase {

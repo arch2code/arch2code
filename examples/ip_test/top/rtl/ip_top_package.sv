@@ -2,13 +2,13 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 // GENERATED_CODE_PARAM --project=ip_test --context=../../top/yaml/ip_top.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package ip_top_package;
+package ip_test_ip_top_package;
 // Generated Import package statement(s)
 import ipBridge_package::*;
 import ip_package::*;
-import ipLeaf_package::*;
-import src_package::*;
-import shared_types_package::*;
+import ip_test_ipLeaf_package::*;
+import ip_test_src_package::*;
+import common_shared_types_package::*;
 
 // types
 typedef logic[1-1:0] boundaryMarkerT; //Boundary marker bit; matches srcOut*St::marker and ipDataSt::marker
@@ -33,5 +33,5 @@ typedef struct packed {
     srcOut1BoundaryT data; //70-bit payload; matches srcOut1St::data@variantSrc0 and ipDataSt::data@variant1
 } srcOut1BoundarySt;
 
-endpackage : ip_top_package
+endpackage : ip_test_ip_top_package
 // GENERATED_CODE_END

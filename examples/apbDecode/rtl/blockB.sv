@@ -1,7 +1,7 @@
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockB
-module blockB
+//module as defined by block: apbDecode_blockB
+module apbDecode_blockB
 // Generated Import package statement(s)
 import apbDecode_package::*;
 (
@@ -18,7 +18,7 @@ import apbDecode_package::*;
     memory_if #(.data_t(bMemSt), .addr_t(bMemAddrSt)) blockBTable_reg();
 
 // Instances
-blockBRegs ublockBRegs (
+apbDecode_blockBRegs ublockBRegs (
     .apbReg (apbReg),
     .blockBTable (blockBTable_reg),
     .rwUn0B (rwUn0B),

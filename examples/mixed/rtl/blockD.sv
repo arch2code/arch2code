@@ -1,10 +1,10 @@
 // GENERATED_CODE_PARAM --block=blockD
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockD
-module blockD
+//module as defined by block: mixed_blockD
+module mixed_blockD
 // Generated Import package statement(s)
-import mixedInclude_package::*;
-import mixedBlockC_package::*;
+import mixed_mixedInclude_package::*;
+import mixed_mixedBlockC_package::*;
 import mixed_package::*;
 (
     rdy_vld_if.src cStuffIf,
@@ -55,4 +55,4 @@ always_ff @(posedge clk or negedge rst_n) begin
     end
 end
 
-endmodule: blockD
+endmodule: mixed_blockD

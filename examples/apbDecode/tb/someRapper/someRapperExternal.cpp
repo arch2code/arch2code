@@ -4,7 +4,7 @@
 // GENERATED_CODE_PARAM --block=top --excludeInst=uSomeRapper
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
-import cpu.base;
+import apbDecode_cpu.base;
 
 someRapperExternal::someRapperExternal(sc_module_name modulename) :
     someRapperInverted("Chnl"),

@@ -8,7 +8,7 @@ module;
 #include "xifVariantConfig.h"
 
 export module xif.xif_tb.dut.registrar;
-import dut.block;
+import xif_dut.block;
 
 namespace {
 struct _dut_registrar {
@@ -16,7 +16,7 @@ struct _dut_registrar {
         instanceFactory::registerBlock(
             "dut_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dut<xifDefaultConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dut<dutDutV0Config>>(blockName, variant, bbMode));
             },
             "dutV0", "xif");
     }

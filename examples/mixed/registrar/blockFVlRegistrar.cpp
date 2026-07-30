@@ -16,7 +16,7 @@ struct _blockF_vl_registrar {
         instanceFactory::registerBlock(
             "blockF_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockF_hdl_sc_wrapper<VblockF_variant0_hdl_sv_wrapper, mixedDefaultConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockF_hdl_sc_wrapper<VblockF_variant0_hdl_sv_wrapper, blockFVariant0Config>>(blockName, variant, bbMode));
             },
             "variant0", "mixed");
         instanceFactory::registerBlock(

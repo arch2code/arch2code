@@ -275,7 +275,7 @@ def create(prj):
     # owner-qualified top (vlSvWrapForeign), not a block-mode wrapper, so it is
     # excluded here -- mirroring the config emit gate in calcForeignConfigHeaders.
     blockVariants = dict()
-    for contextRows in prj.data['parametersvariants'].values():
+    for contextRows in prj.data['parametersvariantsparams'].values():
         for row in contextRows.values():
             configContext = blockByKey[row['blockKey']]['configContext']
             if configContext and row['projectName'] != prj.contextOwningProject[configContext]:

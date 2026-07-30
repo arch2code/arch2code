@@ -10,33 +10,33 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 
-export module ipLeaf;
+export module ip_test_ipLeaf;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-export namespace ipLeaf_ns {
+export namespace ip_test_ipLeaf_ns {
 //constants
 
-} // namespace ipLeaf_ns
+} // namespace ip_test_ipLeaf_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-export namespace ipLeaf_ns {
+export namespace ip_test_ipLeaf_ns {
 // types
 template<typename Config> using ipLeafMemAddrT = uint64_t; // [max:3] Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)
 template<typename Config> using ipLeafDataT = uint64_t; // [max:16] ipLeaf data word, parameterizable
 
-} // namespace ipLeaf_ns
+} // namespace ip_test_ipLeaf_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-export namespace ipLeaf_ns {
+export namespace ip_test_ipLeaf_ns {
 // enums
 
-} // namespace ipLeaf_ns
+} // namespace ip_test_ipLeaf_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-export namespace ipLeaf_ns {
+export namespace ip_test_ipLeaf_ns {
 // structures
 template<typename Config>
 struct ipLeafMemSt {
@@ -162,11 +162,11 @@ struct ipLeafMemAddrSt {
     explicit ipLeafMemAddrSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-} // namespace ipLeaf_ns
+} // namespace ip_test_ipLeaf_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace ipLeaf_test_ns {
+export namespace ip_test_ipLeaf_test_ns {
 class test_ipLeaf_structs {
 public:
     static std::string name(void);
@@ -217,12 +217,12 @@ private:
         }
     }
 };
-} // namespace ipLeaf_test_ns
+} // namespace ip_test_ipLeaf_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace ipLeaf_test_ns {
-using namespace ipLeaf_ns;
+export namespace ip_test_ipLeaf_test_ns {
+using namespace ip_test_ipLeaf_ns;
 struct ipLeafTestConfigDefault {
     static constexpr uint32_t LEAF_DATA_WIDTH = 4;
     static constexpr uint32_t LEAF_MEM_DEPTH = 4;
@@ -247,6 +247,6 @@ void test_ipLeaf_structs::test(void) {
     roundTrip<ipLeafMemAddrSt<ipLeafTestConfigMid>>("ipLeafMemAddrSt", patterns);
     roundTrip<ipLeafMemAddrSt<ipLeafTestConfigMax>>("ipLeafMemAddrSt", patterns);
 }
-} // namespace ipLeaf_test_ns
+} // namespace ip_test_ipLeaf_test_ns
 
 // GENERATED_CODE_END

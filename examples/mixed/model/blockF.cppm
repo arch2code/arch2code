@@ -17,13 +17,15 @@ module;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=moduleExport
-export module blockF.block;
-import blockF.base;
-import mixedBlockC;
+export module mixed_blockF.block;
+import mixed_blockF.base;
+import mixed_mixedBlockC;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-using namespace mixedBlockC_ns;
+import mixed;
+using namespace mixed_mixedBlockC_ns;
+using namespace mixed_ns;
 
 export template<typename Config>
 SC_MODULE(blockF), public blockBase, public blockFBase<Config>

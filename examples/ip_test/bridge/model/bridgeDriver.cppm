@@ -1,0 +1,92 @@
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
+
+// GENERATED_CODE_PARAM --block=bridgeDriver --mode=module
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=blockModuleHeader
+module;
+#include "systemc.h"
+#include "logging.h"
+#include "bitTwiddling.h"
+#include "q_assert.h"
+#include <algorithm>
+#include "instanceFactory.h"
+#include "push_ack_channel.h"
+// GENERATED_CODE_END
+#include "endOfTest.h"
+// user #includes here
+// GENERATED_CODE_BEGIN --template=moduleExport
+export module ipBridge_bridgeDriver.block;
+import ipBridge_bridgeDriver.base;
+// GENERATED_CODE_END
+// user imports here
+// GENERATED_CODE_BEGIN --template=classDecl
+import ipBridge;
+using namespace ipBridge_ns;
+
+export SC_MODULE(bridgeDriver), public blockBase, public bridgeDriverBase
+{
+private:
+
+public:
+
+    bridgeDriver(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
+    ~bridgeDriver() override = default;
+
+    // GENERATED_CODE_END
+    // block implementation members
+
+private:
+    void driveOut8(void);
+    void driveOut70(void);
+    // One voter per stimulus stream; each votes once its push is acked through
+    // the bridge, so the test ends only after both data paths have run.
+    endOfTest eotOut8_{true};
+    endOfTest eotOut70_{true};
+};
+
+// GENERATED_CODE_BEGIN --template=constructor --section=init
+SC_HAS_PROCESS(bridgeDriver);
+
+// === Block factory registration (bridgeDriver) ===
+void register_bridgeDriver_variants() {
+    instanceFactory::registerBlock("bridgeDriver_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<bridgeDriver>(blockName, variant, bbMode)); }, "", "ipBridge");
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _bridgeDriver_registered = (register_bridgeDriver_variants(), 0);
+} // namespace
+// === End block factory registration ===
+
+bridgeDriver::bridgeDriver(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+       : sc_module(blockName)
+        ,blockBase("bridgeDriver", name(), bbMode)
+        ,bridgeDriverBase(name(), variant)
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=constructor --section=body
+{
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    // GENERATED_CODE_END
+    SC_THREAD(driveOut8);
+    SC_THREAD(driveOut70);
+};
+
+void bridgeDriver::driveOut8(void)
+{
+    data8St d{};
+    d.data = 0xA5;
+    d.marker = 1;
+    log_.logPrint(std::format("{} pushing 0x{:x} marker {} on out8", this->name(), (uint64_t)d.data, (uint64_t)d.marker), LOG_IMPORTANT);
+    this->out8->push(d);
+    eotOut8_.setEndOfTest(true);
+}
+
+void bridgeDriver::driveOut70(void)
+{
+    data70St d{};
+    d.data.word[0] = 0x5A;
+    d.data.word[1] = 0x2A;
+    d.marker = 1;
+    log_.logPrint(std::format("{} pushing 0x{:x}{:016x} marker {} on out70", this->name(), d.data.word[1], d.data.word[0], (uint64_t)d.marker), LOG_IMPORTANT);
+    this->out70->push(d);
+    eotOut70_.setEndOfTest(true);
+}
+

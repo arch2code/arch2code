@@ -6,13 +6,13 @@
 
 // GENERATED_CODE_PARAM --block=ipLeaf
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import ipLeaf.base;
+import ip_test_ipLeaf.base;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
-import ipLeaf;
-using namespace ipLeaf_ns;
+import ip_test_ipLeaf;
+using namespace ip_test_ipLeaf_ns;
 #include "ipLeafVariantConfig.h"
 
 template <typename DUT_T, typename Config>

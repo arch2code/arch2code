@@ -4,7 +4,7 @@
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package hierVlDemo_tb_package;
 // Generated Import package statement(s)
-import hierVlSharedTypes_package::*;
+import hierVlDemo_hierVlSharedTypes_package::*;
 
 // types
 typedef logic[4-1:0] bv4_t; //Bit Vector 4 bits

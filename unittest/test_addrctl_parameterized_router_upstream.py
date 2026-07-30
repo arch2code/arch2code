@@ -146,13 +146,17 @@ instances:
 
 parameters:
     paramMidRouter:
-        - { variant: paramMidV0, param: PARAM_UPSTREAM_WIDTH, value: 32 }
+        paramMidV0:
+            PARAM_UPSTREAM_WIDTH: 32
     apbDecode:
-        - { variant: apbV0, param: PARAM_UPSTREAM_WIDTH, value: 32 }
+        apbV0:
+            PARAM_UPSTREAM_WIDTH: 32
     mid:
-        - { variant: midV0, param: PARAM_UPSTREAM_WIDTH, value: 32 }
+        midV0:
+            PARAM_UPSTREAM_WIDTH: 32
     midLeaf:
-        - { variant: midLeafV0, param: PARAM_UPSTREAM_WIDTH, value: 32 }
+        midLeafV0:
+            PARAM_UPSTREAM_WIDTH: 32
 
 registers:
     - { register: cfg, regType: rw, block: midLeaf, structure: cfgRegSt, desc: "" }

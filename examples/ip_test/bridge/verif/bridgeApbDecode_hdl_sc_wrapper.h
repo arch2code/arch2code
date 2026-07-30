@@ -6,7 +6,7 @@
 
 // GENERATED_CODE_PARAM --block=bridgeApbDecode
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import bridgeApbDecode.base;
+import ipBridge_bridgeApbDecode.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
 // its DUT concretely, so it includes the DUT header directly.
@@ -19,8 +19,8 @@ import bridgeApbDecode.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
-import shared_types;
-using namespace shared_types_ns;
+import common_shared_types;
+using namespace common_shared_types_ns;
 #include "apb_bfm.h"
 
 class bridgeApbDecode_hdl_sc_wrapper: public sc_module, public blockBase, public bridgeApbDecodeBase {

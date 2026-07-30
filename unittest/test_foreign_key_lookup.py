@@ -49,14 +49,21 @@ def _build_project():
     width: 16
 """
     types_path = _write_temp(types_yaml, '.yaml', 'fk_types_')
-    duplicate_block_yaml = """blocks:
-  sharedBlock:
-    desc: "Block defined in duplicate-A; same name lives in duplicate-B"
+    # A duplicate object for the scope: global duplicate-diagnostic case. It is a
+    # TYPE (not a block) on purpose: two same-named blocks in one project resolve
+    # to one qualified SystemVerilog module name and are rejected by the
+    # per-block module-name uniqueness gate at db-creation, so a duplicate-block
+    # project no longer builds. A duplicate type carries no such gate, so the
+    # project builds and _lookupInGlobal's duplicate path is still exercised.
+    duplicate_type_yaml = """types:
+  sharedType:
+    desc: "Type defined in duplicate-A; same name lives in duplicate-B"
+    width: 8
 """
     duplicate_a_path = _write_temp(
-        duplicate_block_yaml, '.yaml', 'fk_dup_a_')
+        duplicate_type_yaml, '.yaml', 'fk_dup_a_')
     duplicate_b_path = _write_temp(
-        duplicate_block_yaml, '.yaml', 'fk_dup_b_')
+        duplicate_type_yaml, '.yaml', 'fk_dup_b_')
     arch_yaml = f"""include:
   - {os.path.basename(types_path)}
   - {os.path.basename(duplicate_a_path)}
@@ -82,7 +89,8 @@ instances:
 
 parameters:
   leafBlock:
-    - {{ variant: wide, param: WIDTH, value: 13 }}
+    wide:
+      WIDTH: 13
 """
     arch_path = _write_temp(arch_yaml, '.yaml', 'fk_arch_')
     project_yaml = f"""projectName: fk_lookup_test
@@ -165,12 +173,12 @@ def _run():
             return row is None and qualification is None
 
         def global_duplicate_diagnostic():
-            # sharedBlock is defined in both duplicate-A and duplicate-B
+            # sharedType is defined in both duplicate-A and duplicate-B
             # files, so a `scope: global` lookup must record an error
             # via printError while still returning the last match.
             before = g.errorCount
             row, qualification = creator.lookupInScope(
-                'blocks', 'global', 'sharedBlock')
+                'types', 'global', 'sharedType')
             after = g.errorCount
             return row is not None and after > before
 
@@ -178,15 +186,15 @@ def _run():
             return creator.schema.data['validator'][section + field]
 
         def combo_fk_hit():
-            # parameters.variants.blockParam is a combo FK over
+            # parameters.variants.params.blockParam is a combo FK over
             # (block, param) validating against blocksparams.blockparam.
             # The arch yaml binds leafBlock.WIDTH to 13; the same
             # source row must resolve back to the matching blocksparams
             # entry.
             source_row = {'block': 'leafBlock', 'param': 'WIDTH'}
-            validator = _validator_for('parametersvariants', 'blockParam')
+            validator = _validator_for('parametersvariantsparams', 'blockParam')
             row, qualification = creator.validateForeignKey(
-                source_row, 'parametersvariants', 'blockParam',
+                source_row, 'parametersvariantsparams', 'blockParam',
                 arch_context)
             return row is not None \
                 and validator['section'] == 'blocksparams' \
@@ -197,7 +205,7 @@ def _run():
         def combo_fk_miss():
             source_row = {'block': 'leafBlock', 'param': 'NOT_DECLARED'}
             row, qualification = creator.validateForeignKey(
-                source_row, 'parametersvariants', 'blockParam',
+                source_row, 'parametersvariantsparams', 'blockParam',
                 arch_context)
             return row is None and qualification is None
 

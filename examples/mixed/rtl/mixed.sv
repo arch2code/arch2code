@@ -3,7 +3,7 @@
 //module as defined by block: mixed
 module mixed
 // Generated Import package statement(s)
-import mixedBlockC_package::*;
+import mixed_mixedBlockC_package::*;
 import mixed_package::*;
 (
     apb_if.dst cpu_main,
@@ -20,7 +20,7 @@ import mixed_package::*;
     apb_if #(.addr_t(apbAddrSt), .data_t(apbDataSt)) apbReg_uBlockG();
 
 // Instances
-blockA uBlockA (
+mixed_blockA uBlockA (
     .aStuffIf (aStuffIf),
     .cStuffIf (cStuffIf),
     .startDone (startDone),
@@ -30,7 +30,7 @@ blockA uBlockA (
     .rst_n (rst_n)
 );
 
-apbDecode uAPBDecode (
+mixed_apbDecode uAPBDecode (
     .cpu_main (cpu_main),
     .apbReg_uBlockA (apbReg_uBlockA),
     .apbReg_uBlockB (apbReg_uBlockB),
@@ -39,13 +39,13 @@ apbDecode uAPBDecode (
     .rst_n (rst_n)
 );
 
-blockC uBlockC (
+mixed_blockC uBlockC (
     .see (cStuffIf),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-blockB uBlockB (
+mixed_blockB uBlockB (
     .btod (aStuffIf),
     .startDone (startDone),
     .dupIf (dupIf),
@@ -54,7 +54,7 @@ blockB uBlockB (
     .rst_n (rst_n)
 );
 
-blockG #(.fred(0)) uBlockG (
+mixed_blockG #(.fred(0)) uBlockG (
     .apbReg (apbReg_uBlockG),
     .clk (clk),
     .rst_n (rst_n)

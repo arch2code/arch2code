@@ -2,7 +2,7 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 // GENERATED_CODE_PARAM --project=axiDemo --context=axiStd.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package axiStd_package;
+package axiDemo_axiStd_package;
 
 // types
 typedef logic[4-1:0] _axiIdT; //Type for axi ID tags. Used for ARID, RID, AWID, BID.
@@ -46,5 +46,5 @@ typedef enum logic[4-1:0] {         //Read Cache type for the AXI protocol
 } _axiWrCacheT;
 
 // structures
-endpackage : axiStd_package
+endpackage : axiDemo_axiStd_package
 // GENERATED_CODE_END

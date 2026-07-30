@@ -99,12 +99,15 @@ connections:
 
 parameters:
     dut:
-        - { variant: dutV0, param: DATA_WIDTH, value: 16 }
+        dutV0:
+            DATA_WIDTH: 16
     src:
-        - { variant: srcV0, param: DATA_WIDTH,   value: 16 }
-        - { variant: srcV0, param: FRAME_HEIGHT, value: 8 }
-        - { variant: srcV0, param: FRAME_WIDTH,  value: 8 }
+        srcV0:
+            DATA_WIDTH: 16
+            FRAME_HEIGHT: 8
+            FRAME_WIDTH: 8
     sink:
-        - { variant: sinkV0, param: DATA_WIDTH,   value: 16 }
-        - { variant: sinkV0, param: FRAME_HEIGHT, value: 8 }
-        - { variant: sinkV0, param: FRAME_WIDTH,  value: 8 }
+        sinkV0:
+            DATA_WIDTH: 16
+            FRAME_HEIGHT: 8
+            FRAME_WIDTH: 8

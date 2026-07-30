@@ -9,10 +9,10 @@ module;
 
 export module ipBridge.base;
 import ipBridge;
-import shared_types;
+import common_shared_types;
 import ip;
 using namespace ipBridge_ns;
-using namespace shared_types_ns;
+using namespace common_shared_types_ns;
 using namespace ip_ns;
 // GENERATED_CODE_END
 

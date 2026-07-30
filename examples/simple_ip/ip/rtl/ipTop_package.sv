@@ -2,7 +2,7 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 // GENERATED_CODE_PARAM --project=ip --context=../../yaml/ipTop.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package ipTop_package;
+package ip_ipTop_package;
 // Generated Import package statement(s)
 import ip_package::*;
 
@@ -21,5 +21,5 @@ typedef struct packed {
     ipStdData8T data; //8-bit payload; matches ipDataSt::data @variant0
 } ipStdData8St;
 
-endpackage : ipTop_package
+endpackage : ip_ipTop_package
 // GENERATED_CODE_END

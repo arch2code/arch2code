@@ -6,7 +6,7 @@ module;
 #include "systemc.h"
 #include "axi4_stream_channel.h"
 
-export module axi4s_s_drv.base;
+export module axi4sDemo_axi4s_s_drv.base;
 import axi4sDemo_tb;
 using namespace axi4sDemo_tb_ns;
 // GENERATED_CODE_END

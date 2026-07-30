@@ -5,7 +5,7 @@
 package ipBridge_package;
 // Generated Import package statement(s)
 import ip_package::*;
-import shared_types_package::*;
+import common_shared_types_package::*;
 
 // types
 typedef logic[1-1:0] bridgeMarkerT; //1-bit marker; bit-width matches ipDataSt::marker (packed-form compatibility)

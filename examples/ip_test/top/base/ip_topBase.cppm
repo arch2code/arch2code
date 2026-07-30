@@ -7,15 +7,15 @@ module;
 #include "apb_channel.h"
 #include "push_ack_channel.h"
 
-export module ip_top.base;
-import shared_types;
-import ip_top;
-import src;
+export module ip_test_ip_top.base;
+import common_shared_types;
+import ip_test_ip_top;
+import ip_test_src;
 import ip;
 import ipBridge;
-using namespace shared_types_ns;
-using namespace ip_top_ns;
-using namespace src_ns;
+using namespace common_shared_types_ns;
+using namespace ip_test_ip_top_ns;
+using namespace ip_test_src_ns;
 using namespace ip_ns;
 using namespace ipBridge_ns;
 // GENERATED_CODE_END

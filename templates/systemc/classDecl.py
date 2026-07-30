@@ -38,8 +38,9 @@ def render_default(args, prj, data):
     # them here.
     emittedDepLines = set()
     if args.mode == 'module':
-        # The block-module header (moduleScaffold.blockModuleHeader) emits the
-        # dependency imports but NOT the context `using namespace` lines: a
+        # The block-module header (moduleScaffold.blockModuleHeader / moduleExport)
+        # emits the STRUCTURAL dependency imports (classIncludeContext) into the
+        # module preamble but NOT the context `using namespace` lines: a
         # using-namespace closes the module preamble and every `import` must
         # precede it. Emitting the usings here, at the head of the classDecl
         # region (after the header region's trailing user gap), keeps that gap
@@ -47,9 +48,35 @@ def render_default(args, prj, data):
         # legal. They sit at module scope, before the class template, so the
         # unqualified-name coverage over the class and all user regions matches
         # classic mode.
+        #
+        # A C++20 module import is NOT transitive: the block module imports its
+        # own Base module, but the interface-context types the base pulls in
+        # (e.g. tag_st / NUM_TAGS, reached only through a payload context) do not
+        # become visible in the block module just because the base has them. The
+        # block BODY may spell those types unqualified, so re-emit them here for
+        # every includeContext context beyond the structural classIncludeContext
+        # the header already imports — mirroring what classic `.h/.cpp` mode
+        # re-emitted below at the classDecl head. Emit the extra imports FIRST
+        # (still inside the open, import-only preamble), then all using-namespace
+        # lines. Deduplicated by line against the structural set moduleScaffold
+        # already emits, so a context covered structurally is never re-imported.
+        usings = list()
         for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
-            if kind == 'import' and line.startswith('using namespace '):
-                out.append(line)
+            emittedDepLines.add(line)
+            if line.startswith('using namespace '):
+                usings.append(line)
+        fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
+        for context in data['includeContext']:
+            if context in data['includeFiles'].get(fileMapKey, {}):
+                for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey):
+                    if line in emittedDepLines:
+                        continue
+                    emittedDepLines.add(line)
+                    if line.startswith('using namespace '):
+                        usings.append(line)
+                    else:
+                        out.append(line)
+        out.extend(usings)
     else:
         for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
             out.append(line)

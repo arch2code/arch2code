@@ -4,7 +4,7 @@
 // GENERATED_CODE_PARAM --block=ip_top_tb --excludeInst=u_ip_top
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
-import cpu.base;
+import common_cpu.base;
 
 ip_topExternal::ip_topExternal(sc_module_name modulename) :
     ip_topInverted("Chnl"),

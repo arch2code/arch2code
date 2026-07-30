@@ -2,7 +2,7 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 // GENERATED_CODE_PARAM --project=mixed --context=mixedBlockC.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package mixedBlockC_package;
+package mixed_mixedBlockC_package;
 localparam int unsigned CSIZE = 32'h0000_0002;  // The size of C
 localparam int unsigned CSIZE_PLUS = 32'h0000_0003;  // The size of C plus 1
 
@@ -23,5 +23,5 @@ typedef struct packed {
     cBiggerT hdr; //
 } cHeaderSt;
 
-endpackage : mixedBlockC_package
+endpackage : mixed_mixedBlockC_package
 // GENERATED_CODE_END

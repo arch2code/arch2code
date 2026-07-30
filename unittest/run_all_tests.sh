@@ -192,6 +192,11 @@ echo "------------------------------------------------------------------------"
 python3 test_param_symbol_forwarding.py || FAILED=1
 
 echo ""
+echo "Test Suite 19m2: Variant omitting a declared block parameter is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_variant_incomplete_params.py || FAILED=1
+
+echo ""
 echo "Test Suite 19n: Implied register connection stays in-container scope"
 echo "------------------------------------------------------------------------"
 python3 test_implied_register_in_container_scope.py || FAILED=1

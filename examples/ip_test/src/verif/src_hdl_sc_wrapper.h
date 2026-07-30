@@ -6,15 +6,15 @@
 
 // GENERATED_CODE_PARAM --block=src
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import src.base;
+import ip_test_src.base;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
-import src;
-using namespace src_ns;
-import ipLeaf;
-using namespace ipLeaf_ns;
+import ip_test_src;
+using namespace ip_test_src_ns;
+import ip_test_ipLeaf;
+using namespace ip_test_ipLeaf_ns;
 #include "ipLeafVariantConfig.h"
 #include "srcVariantConfig.h"
 #include "push_ack_bfm.h"

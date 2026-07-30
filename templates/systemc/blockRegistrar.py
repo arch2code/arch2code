@@ -109,7 +109,7 @@ def render_default(args, prj, data):
     # PRIVATE import (plain `import`, not `export import`): the registrar exports
     # nothing, it only runs its trampoline static.
     if isParameterizable and hasOwnParams:
-        out.append(f'import {intf_gen_utils.cpp_block_module_name(blockName)};')
+        out.append(f'import {intf_gen_utils.cpp_block_module_name(data["blockModuleName"])};')
 
     # Owner-qualified foreign-Config modules for variants the parent declares as
     # foreign variants of the reused child; the lambda body spells those owner-

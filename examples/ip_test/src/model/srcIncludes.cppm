@@ -10,36 +10,36 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 
-export module src;
+export module ip_test_src;
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=headers
-import ipLeaf;
-using namespace ipLeaf_ns;
+import ip_test_ipLeaf;
+using namespace ip_test_ipLeaf_ns;
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
-export namespace src_ns {
+export namespace ip_test_src_ns {
 //constants
 
-} // namespace src_ns
+} // namespace ip_test_src_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
-export namespace src_ns {
+export namespace ip_test_src_ns {
 // types
 template<typename Config> using srcOut0DataT = uint64_t; // [max:16] src out0 data word, parameterizable
 template<typename Config> struct srcOut1DataT { uint64_t word[ 2 ]; }; // [max:128] src out1 data word, parameterizable
 typedef uint8_t srcMarkerT; // [1] src high-word marker bit
 
-} // namespace src_ns
+} // namespace ip_test_src_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
-export namespace src_ns {
+export namespace ip_test_src_ns {
 // enums
 
-} // namespace src_ns
+} // namespace ip_test_src_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
-export namespace src_ns {
+export namespace ip_test_src_ns {
 // structures
 template<typename Config>
 struct srcOut0St {
@@ -214,11 +214,11 @@ struct srcOut1St {
     explicit srcOut1St(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-} // namespace src_ns
+} // namespace ip_test_src_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
-export namespace src_test_ns {
+export namespace ip_test_src_test_ns {
 class test_src_structs {
 public:
     static std::string name(void);
@@ -269,12 +269,12 @@ private:
         }
     }
 };
-} // namespace src_test_ns
+} // namespace ip_test_src_test_ns
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
-export namespace src_test_ns {
-using namespace src_ns;
+export namespace ip_test_src_test_ns {
+using namespace ip_test_src_ns;
 struct srcTestConfigDefault {
     static constexpr uint32_t OUT0_DATA_WIDTH = 8;
     static constexpr uint32_t OUT1_DATA_WIDTH = 70;
@@ -299,6 +299,6 @@ void test_src_structs::test(void) {
     roundTrip<srcOut1St<srcTestConfigMid>>("srcOut1St", patterns);
     roundTrip<srcOut1St<srcTestConfigMax>>("srcOut1St", patterns);
 }
-} // namespace src_test_ns
+} // namespace ip_test_src_test_ns
 
 // GENERATED_CODE_END

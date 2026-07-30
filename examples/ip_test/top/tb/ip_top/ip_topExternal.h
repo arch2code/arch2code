@@ -9,9 +9,9 @@
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
 #include "instanceFactory.h"
-import ip_top.base;
-import shared_types;
-using namespace shared_types_ns;
+import ip_test_ip_top.base;
+import common_shared_types;
+using namespace common_shared_types_ns;
 #include "endOfTest.h"
 
 //contained instances forward class declaration

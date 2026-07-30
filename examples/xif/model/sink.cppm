@@ -15,13 +15,13 @@ module;
 // user #includes here
 #include "testController.h"
 // GENERATED_CODE_BEGIN --template=moduleExport
-export module sink.block;
-import sink.base;
+export module xif_sink.block;
+import xif_sink.base;
 // GENERATED_CODE_END
 // user imports here
+// GENERATED_CODE_BEGIN --template=classDecl
 import xif;
 using namespace xif_ns;
-// GENERATED_CODE_BEGIN --template=classDecl
 
 export template<typename Config>
 SC_MODULE(sink), public blockBase, public sinkBase<Config>

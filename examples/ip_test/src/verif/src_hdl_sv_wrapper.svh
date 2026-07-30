@@ -6,8 +6,8 @@
 
 module src_hdl_sv_wrapper
     // Generated Import package statement(s)
-    import ipLeaf_package::*;
-    import src_package::*;
+    import ip_test_ipLeaf_package::*;
+    import ip_test_src_package::*;
 #(
     parameter OUT0_DATA_WIDTH,
     parameter OUT1_DATA_WIDTH
@@ -74,7 +74,7 @@ module src_hdl_sv_wrapper
     assign #0 out3_data = out3.data;
     assign #0 out3.ack = out3_ack;
 
-    src #(.OUT0_DATA_WIDTH(OUT0_DATA_WIDTH), .OUT1_DATA_WIDTH(OUT1_DATA_WIDTH)) dut (
+    ip_test_src #(.OUT0_DATA_WIDTH(OUT0_DATA_WIDTH), .OUT1_DATA_WIDTH(OUT1_DATA_WIDTH)) dut (
         .out0(out0), // push_ack_if.src
         .out1(out1), // push_ack_if.src
         .out2(out2), // push_ack_if.src

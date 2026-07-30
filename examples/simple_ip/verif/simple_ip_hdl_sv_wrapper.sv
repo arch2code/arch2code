@@ -8,7 +8,7 @@ module simple_ip_hdl_sv_wrapper
     // Generated Import package statement(s)
     import ip_package::*;
     import simple_ip_package::*;
-    import shared_types_package::*;
+    import common_shared_types_package::*;
 (
     // apb_if.dst
     input bit [31:0] cpu_main_paddr,

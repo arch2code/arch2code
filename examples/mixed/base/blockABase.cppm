@@ -9,13 +9,13 @@ module;
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 
-export module blockA.base;
+export module mixed_blockA.base;
 import mixed;
-import mixedBlockC;
-import mixedInclude;
+import mixed_mixedBlockC;
+import mixed_mixedInclude;
 using namespace mixed_ns;
-using namespace mixedBlockC_ns;
-using namespace mixedInclude_ns;
+using namespace mixed_mixedBlockC_ns;
+using namespace mixed_mixedInclude_ns;
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=baseClassDecl
