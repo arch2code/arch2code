@@ -1,0 +1,5 @@
+# Test scratch written directly into this dir (mkstemp dir=test_dir).
+# Leading slash = top level only, so real fixtures under fixtures/ and
+# mixed_test_arch/ stay tracked.
+/*.yaml
+/*.db

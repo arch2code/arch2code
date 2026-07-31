@@ -101,9 +101,32 @@ instances:
 
 Every variant must bind **all** of the block's declared `params:` — there is no default-fill for an omitted parameter. Avoid label-only variants unless the generator flow explicitly requires them.
 
+Instead of selecting a variant, a contained instance may inherit its container's active config with `inheritContainerParam:` — see [Container Config Inheritance](#container-config-inheritance-inheritcontainerparam).
+
 ## Emitted Config
 
 A block with `ipParameters` always emits configuration types: a `<block>DefaultConfig` plus one `<block><Variant>Config` per variant, with no folding of common values. The block class is templated on that Config (`template<typename Config> ... <block>Base<Config>`), and each instance's variant selects which `<block><Variant>Config` binds the class.
+
+## Container Config Inheritance (`inheritContainerParam`)
+
+A contained instance may set `inheritContainerParam: true` **in place of** `variant:`. That instance is then typed with the **container** block's active `Config` template symbol rather than with one of the child's own `<block><Variant>Config` structs. Because a contained child renders inside the container's templated class scope, C++ template instantiation resolves the concrete struct — including the container's own variant, transitively — at the container's instantiation site; no config value is plumbed. The child block still keeps its own `params:` and still emits its own `<block>DefaultConfig` for standalone use.
+
+Use this when **two sibling contained blocks share one config context** and must bind a `Config`-parameterized channel payload between them (e.g. `bayer_preprocess_stream_t<Config>`). Without inheritance each sibling is typed with its own distinct block-named config struct (`preprocessDefaultConfig` vs `interpolateDefaultConfig`) — byte-identical but distinct C++ types — so no single `Config` satisfies both the producer and consumer ports and the channel cannot bind. Typing both siblings on the container's `Config` unifies them.
+
+```yaml
+instances:
+  u_preprocess:  {container: debayer, instanceType: preprocess,  inheritContainerParam: true}
+  u_interpolate: {container: debayer, instanceType: interpolate, inheritContainerParam: true}
+```
+
+Preconditions (all `make db`-time errors):
+
+*   The child's `params:` must be a by-**name** subset of the container's params.
+*   `inheritContainerParam:` is mutually exclusive with `variant:` on one instance.
+*   The container block must be parameterized (declare `params:`).
+*   The child block must declare `params:`.
+*   Container and child must be the **same owning project** (no cross-project inheritance for now).
+*   The instance must be contained in a block (not the root top instance).
 
 ## Per-Port Parameters
 

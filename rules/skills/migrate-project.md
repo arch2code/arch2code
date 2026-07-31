@@ -441,6 +441,18 @@ legal. Order within the slot: every `import` first, then any `using namespace`.
 Do **not** paste inside a generated region. Re-run `make migrate` to confirm the
 `TODO_MODULE_IMPORT` is gone.
 
+A distinct case is a **redundant** import left in the `// user imports here`
+preamble slot (not the GMF zone). When the generated class region (`classDecl`)
+already re-emits a context (or self) `import <ctx>;` **and** its paired
+`using namespace <ctx>_ns;`, a hand-written copy of that same pair in the preamble
+slot is redundant — **remove it, do not relocate**. The stray
+`using namespace <ctx>_ns;` is a non-import declaration that closes the module
+preamble, so the generated `classDecl` imports that follow it become an illegal
+import-after-declaration (`imports must immediately follow the module
+declaration`). Removing the redundant pair leaves the slot empty and the generated
+imports valid. Only a body-only import the generated region does **not** re-emit
+must stay (see "Restore body-only context imports").
+
 ## 5. Adopt the generated `createTbTop()` helper
 
 The testbench top is instantiated through a generated helper. `make gen` emits,

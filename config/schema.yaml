@@ -220,6 +220,11 @@ instances:
       section: blocks
       field: block
   variant: optional
+  # type this contained instance with the CONTAINER block's active Config
+  # template symbol instead of a variant selector; mutually exclusive with
+  # variant. Preconditions are validated in calcBlockConfigInfo
+  # (validate_inherit_container_params).
+  inheritContainerParam: optional(false)
   color: optional
   count: optional(1)
   container:

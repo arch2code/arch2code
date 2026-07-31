@@ -1489,6 +1489,27 @@ class projectOpen:
         default_config     = bundle['defaultConfig']
         variant_configs    = bundle['variantConfigs']
 
+        if instanceData['inheritContainerParam']:
+            # Contained-block config inheritance: type this instance with the
+            # CONTAINER block's active Config template symbol (`Config`) rather
+            # than the child's own variant/default. Because a contained child
+            # renders inside the container's templated class scope, C++ template
+            # instantiation resolves the concrete struct (including the
+            # transitive variant case) at the container's own site; no config
+            # value is plumbed. The child keeps its own params/DefaultConfig for
+            # standalone use. Preconditions are enforced at db-create in
+            # calcBlockConfigInfo (validate_inherit_container_params). The
+            # template layer spells `Config` off the contracted inheritContainer
+            # flag.
+            return {
+                'isParameterizable':   is_parameterizable,
+                'hasOwnParams':        has_own_params,
+                'defaultConfig':       default_config,
+                'descriptor':          None,
+                'foreignConfigModule': None,
+                'inheritContainer':    True,
+            }
+
         descriptor = None
         foreign_config_module = None
         if is_parameterizable:
@@ -1510,6 +1531,7 @@ class projectOpen:
             'defaultConfig':     default_config,
             'descriptor':        descriptor,
             'foreignConfigModule': foreign_config_module,
+            'inheritContainer':  False,
         }
 
     def _selectVariantDescriptor(self, variant_configs, variant, consumerProject):
@@ -4515,12 +4537,15 @@ class projectCreate:
         instances_by_type = dict()
         instances_by_container = dict()
         instance_container = dict()
+        inherit_instances = list()  # rows using inheritContainerParam (validated below)
         for r in flat_rows('instances'):
             instances_by_type.setdefault(r['instanceTypeKey'], list()).append(r['instanceKey'])
             cont = r['containerKey']
             if cont:
                 instances_by_container.setdefault(cont, list()).append(r['instanceKey'])
                 instance_container[r['instanceKey']] = cont
+            if r['inheritContainerParam']:
+                inherit_instances.append(r)
 
         conn_end_instances = dict()
         for r in flat_rows('connectionsends'):
@@ -4550,8 +4575,89 @@ class projectCreate:
         # per-variant Config descriptors that emit `<block><Variant>Config`
         # structs and feed the trampoline.
         blocks_with_own_params = dict()
+        params_by_block = dict()
         for r in flat_rows('blocksparams'):
             blocks_with_own_params.setdefault(r['blockKey'], r['_context'] or '')
+            params_by_block.setdefault(r['blockKey'], set()).add(r['param'])
+
+        block_name = {r['blockKey']: r['block'] for r in block_rows}
+        block_context = {r['blockKey']: r['_context'] for r in block_rows}
+
+        def validate_inherit_container_params():
+            # A contained-block instance may declare `inheritContainerParam: true`
+            # (schema.yaml instances section) to be typed with the CONTAINER
+            # block's active Config template symbol instead of a variant. Enforce
+            # the preconditions here (once, reusing this pass's prebuilt maps):
+            # (a) the child's params are a by-name subset of the container's;
+            # (b) variant and inheritContainerParam are mutually exclusive on one
+            # instance (per instance row); (c) the container block is
+            # parameterized (declares params); (d) the child block declares
+            # params; (e) container and child are the same owning project. A
+            # block declares params iff it has blocksparams rows (params_by_block),
+            # so parameterized == has-params here. The subset relationship is
+            # load-bearing for the SV parent->child param name-forwarding path.
+            seen_pairs = set()
+            for inst in inherit_instances:
+                childKey = inst['instanceTypeKey']
+                containerKey = instance_container[inst['instanceKey']]
+                # The container must be a real block (block_name spans every
+                # block row; the root top instance's container is `_topInstance`,
+                # which is not a block). Emit a clean diagnostic instead of a
+                # KeyError on the block_name/block_context lookups below.
+                if containerKey not in block_name:
+                    self.logError(
+                        f"instance {inst['instance']} in file {inst['_context']}: "
+                        f"inheritContainerParam requires the instance to be "
+                        f"contained in a block")
+                    continue
+                childName = block_name[childKey]
+                containerName = block_name[containerKey]
+                # (b) per-instance-row: variant is mutually exclusive.
+                if inst['variant'] != '':
+                    self.logError(
+                        f"instance {inst['instance']} in file {inst['_context']}: "
+                        f"variant and inheritContainerParam are mutually exclusive "
+                        f"on one instance")
+                # The remaining checks depend only on the (container, child) pair;
+                # fire them once per distinct pair.
+                if (containerKey, childKey) in seen_pairs:
+                    continue
+                seen_pairs.add((containerKey, childKey))
+                childParams = params_by_block.get(childKey, set())
+                containerParams = params_by_block.get(containerKey, set())
+                # (e) same owning project.
+                containerProj = self.contextOwningProject[block_context[containerKey]]
+                childProj = self.contextOwningProject[block_context[childKey]]
+                if containerProj != childProj:
+                    self.logError(
+                        f"instance {inst['instance']} in file {inst['_context']}: "
+                        f"inheritContainerParam requires container block "
+                        f"'{containerName}' (project '{containerProj}') and child "
+                        f"block '{childName}' (project '{childProj}') to be the "
+                        f"same owning project")
+                # (d) child has params; (c) container parameterized;
+                # (a) child params by-name subset of the container's.
+                if not childParams:
+                    self.logError(
+                        f"instance {inst['instance']} in file {inst['_context']}: "
+                        f"inheritContainerParam requires child block '{childName}' "
+                        f"to declare params")
+                elif not containerParams:
+                    self.logError(
+                        f"instance {inst['instance']} in file {inst['_context']}: "
+                        f"inheritContainerParam requires container block "
+                        f"'{containerName}' to be parameterized (declare params)")
+                else:
+                    missing = childParams - containerParams
+                    if missing:
+                        self.logError(
+                            f"instance {inst['instance']} in file {inst['_context']}: "
+                            f"inheritContainerParam child block '{childName}' "
+                            f"param(s) {sorted(missing)} are not a by-name subset of "
+                            f"container block '{containerName}' params "
+                            f"{sorted(containerParams)}")
+
+        validate_inherit_container_params()
 
         for block_row in block_rows:
             qualBlock = block_row['blockKey']

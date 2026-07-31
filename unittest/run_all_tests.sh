@@ -197,6 +197,11 @@ echo "------------------------------------------------------------------------"
 python3 test_error_variant_incomplete_params.py || FAILED=1
 
 echo ""
+echo "Test Suite 19m3: Contained-block config inheritance (inheritContainerParam)"
+echo "------------------------------------------------------------------------"
+python3 test_inherit_container_param.py || FAILED=1
+
+echo ""
 echo "Test Suite 19n: Implied register connection stays in-container scope"
 echo "------------------------------------------------------------------------"
 python3 test_implied_register_in_container_scope.py || FAILED=1

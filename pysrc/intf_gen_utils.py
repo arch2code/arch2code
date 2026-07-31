@@ -437,6 +437,10 @@ def cpp_config_struct_name(configSelection):
     # _resolveInstanceConfigFields: '' when the block is not parameterizable, the
     # selected descriptor's struct when it binds a per-variant override, else the
     # block's default Config.
+    if configSelection['inheritContainer']:
+        # Contained-block config inheritance: spell the container's own template
+        # symbol; C++ resolves the concrete struct at the container's site.
+        return 'Config'
     if not configSelection['isParameterizable']:
         return ''
     desc = configSelection['descriptor']
