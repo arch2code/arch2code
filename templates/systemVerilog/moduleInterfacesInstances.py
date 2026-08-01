@@ -15,13 +15,13 @@ def render(args, prj, data):
     out.append(moduleDeclaration(data['blockModuleName']))
 
     # Packages
-    startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
+    startingContext = data['blockInfo']['_context']
     out.append(importPackages(args, prj, startingContext, data))
 
     # Parameters
-    if ( prj.data['blocks'][data['qualBlock']]['params'] ):
+    if ( data['blockInfo']['params'] ):
         out.append('#(')
-        out.append(",\n".join([f"{indent}parameter {param['param']}" for param in prj.data['blocks'][data['qualBlock']]['params']]))
+        out.append(",\n".join([f"{indent}parameter {param['param']}" for param in data['blockInfo']['params']]))
         out.append(')')
 
     out.append("(")
@@ -36,7 +36,7 @@ def render(args, prj, data):
     # non-parameterized blocks.
     if data['parameterizedDecls']:
         out.append(f"{indent}// Module-local parameterizable type/struct declarations")
-        for entry in parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][data['qualBlock']]['params']):
+        for entry in parameterizedDeclLines(data['parameterizedDecls'], prj, data['blockInfo']['params']):
             out.append(f"{indent}{entry['line']}")
         out.append("")
 

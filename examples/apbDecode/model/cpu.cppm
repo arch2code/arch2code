@@ -18,12 +18,11 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module apbDecode_cpu.block;
 import apbDecode_cpu.base;
+import apbDecode;
+using namespace apbDecode_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-import apbDecode;
-using namespace apbDecode_ns;
-
 export SC_MODULE(cpu), public blockBase, public cpuBase
 {
 private:

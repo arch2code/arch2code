@@ -1,6 +1,6 @@
 // GENERATED_CODE_PARAM --context hierIncludeNestedTop.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
-package hierIncludeNestedTop_package;
+package hierInclude_hierIncludeNestedTop_package;
 localparam int unsigned YET_ANOTHER_SIZE = 32'h0000_0008;  // The size of yet another size
 
 // types
@@ -8,5 +8,5 @@ localparam int unsigned YET_ANOTHER_SIZE = 32'h0000_0008;  // The size of yet an
 // enums
 
 // structures
-endpackage : hierIncludeNestedTop_package
+endpackage : hierInclude_hierIncludeNestedTop_package
 // GENERATED_CODE_END

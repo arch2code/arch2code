@@ -50,5 +50,3 @@ compile_commands.json
 .cache/
 **/.cache/**
 .container-prerequisites
-# ignore local planning/prompt/research notes
-plans/

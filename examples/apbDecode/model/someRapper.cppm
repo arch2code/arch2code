@@ -19,11 +19,10 @@ import apbDecode;
 import apbDecode.base;
 import apbDecode_blockA.base;
 import apbDecode_blockB.base;
+using namespace apbDecode_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-using namespace apbDecode_ns;
-
 export SC_MODULE(someRapper), public blockBase, public someRapperBase
 {
 private:

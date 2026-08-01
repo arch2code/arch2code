@@ -16,13 +16,11 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module nested_testBlock.block;
 import nested_testBlock.base;
-// GENERATED_CODE_END
-import nested_subBlockContainer.block;
-// user imports here
-// GENERATED_CODE_BEGIN --template=classDecl
 import nested;
 using namespace nested_ns;
-
+// GENERATED_CODE_END
+// user imports here
+// GENERATED_CODE_BEGIN --template=classDecl
 export SC_MODULE(testBlock), public blockBase, public testBlockBase
 {
 private:

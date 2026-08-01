@@ -22,11 +22,10 @@ import axiDemo.base;
 import axiDemo;
 import axiDemo_producer.base;
 import axiDemo_consumer.base;
+using namespace axiDemo_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-using namespace axiDemo_ns;
-
 export SC_MODULE(axiDemo), public blockBase, public axiDemoBase
 {
 private:

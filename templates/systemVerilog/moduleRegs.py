@@ -117,15 +117,14 @@ def sv_hex(value):
     return f"32'h{value:08x}"
 
 def section_package_imports(args, prj, data):
-    startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
+    startingContext = data['blockInfo']['_context']
     return importPackages(args, prj, startingContext, data)
 
 def section_module_params(prj, data):
     # Inherited module parameters (a reg handler inherits its parent block's
     # params). Emitted byte-identical to the owning module's header so a
     # parameterized handler can declare variant-width module-local storage.
-    qualBlock = prj.getQualBlock(data['blockName'])
-    params = prj.data['blocks'][qualBlock]['params']
+    params = data['blockInfo']['params']
     if not params:
         return ""
     return string_joiner(
@@ -139,8 +138,7 @@ def section_param_decls(prj, data):
     # block, whose owning block has no params.
     if not data['parameterizedDecls']:
         return ""
-    qualBlock = prj.getQualBlock(data['blockName'])
-    return string_joiner([entry['line'] for entry in parameterizedDeclLines(data['parameterizedDecls'], prj, prj.data['blocks'][qualBlock]['params'])], '\n')
+    return string_joiner([entry['line'] for entry in parameterizedDeclLines(data['parameterizedDecls'], prj, data['blockInfo']['params'])], '\n')
 
 def section_intf_ports(prj, data):
 

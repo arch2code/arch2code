@@ -69,35 +69,47 @@ def blockModuleHeader(args, prj, data):
 
 
 def moduleExport(args, prj, data):
-    # `export module <block>.block;` plus every import for a parameterizable
-    # block's interface unit. Imports are illegal in the global module fragment
-    # (blockModuleHeader), so they all live here in the module preamble. Every
-    # `import` must precede the first non-import declaration, and a using-namespace
-    # permanently closes the preamble. For a classDecl-rendered block this region
-    # emits imports ONLY — the context `using namespace` lines are relocated to the
-    # head of the classDecl region (templates/systemc/classDecl.py). That keeps
-    # this region import-only so the trailing `// user imports here` user slot
-    # inherits an open preamble where a hand-added `import` stays legal. A
-    # reg-handler block is the exception: its class is rendered by the blockRegs
-    # template, which does not re-emit the usings, so they ride at the TAIL of this
-    # region (after the imports, before the region end). Emit context imports
-    # first, then contained-instance Base imports (`import <child>.base;`), which
-    # let the constructor body's createInstance / dynamic_pointer_cast see the
-    # complete child Base type.
+    # The COMPLETE module preamble for a parameterizable block's interface unit:
+    # `export module <block>.block;` + every import + the using-namespace lines
+    # that CLOSE the preamble. Imports are illegal in the global module fragment
+    # (blockModuleHeader), and every `import` must precede the first non-import
+    # declaration (a using-namespace permanently closes the preamble), so the
+    # whole preamble lives here. The class (classDecl / blockRegs) and the
+    # trailing `// user imports here` slot therefore both sit in module PURVIEW:
+    # a hand-added purview #include there references module types and can feed a
+    # class value member. Emit order: the structural dependency imports, then the
+    # contained-instance Base imports (`import <child>.base;`, so the constructor
+    # body's createInstance / dynamic_pointer_cast sees the complete child Base
+    # type), then the interface-context imports beyond the structural set (a
+    # C++20 import is not transitive, so the block body's unqualified spellings of
+    # types the base pulls in need these re-imported here), and finally every
+    # using-namespace line at the tail. classDecl/blockRegs emit ONLY the class in
+    # module mode; this region is their single source of imports and usings.
     deps = intf_gen_utils.sc_class_dependency_includes(args, prj, data)
     out = [f'export module {cpp_block_module_name(data["blockModuleName"])};']
-    isRegHandler = data['blockInfo']['isRegHandler']
+    emitted = set()
     usings = []
     for kind, line in deps:
+        emitted.add(line)
         if kind != 'import':
             continue
         if line.startswith('using namespace '):
-            if isRegHandler:
-                usings.append(line)
-            continue
-        out.append(line)
+            usings.append(line)
+        else:
+            out.append(line)
     for line in intf_gen_utils.sc_instance_includes(data, prj):
         out.append(line)
+    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
+    for context in data['includeContext']:
+        if context in data['includeFiles'].get(fileMapKey, {}):
+            for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey):
+                if line in emitted:
+                    continue
+                emitted.add(line)
+                if line.startswith('using namespace '):
+                    usings.append(line)
+                else:
+                    out.append(line)
     out.extend(usings)
     return "\n".join(out)
 

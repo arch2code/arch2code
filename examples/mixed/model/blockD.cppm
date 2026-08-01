@@ -19,16 +19,15 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module mixed_blockD.block;
 import mixed_blockD.base;
-// GENERATED_CODE_END
-// user imports here
-// GENERATED_CODE_BEGIN --template=classDecl
 import mixed;
 import mixed_mixedBlockC;
 import mixed_mixedInclude;
 using namespace mixed_ns;
 using namespace mixed_mixedBlockC_ns;
 using namespace mixed_mixedInclude_ns;
-
+// GENERATED_CODE_END
+// user imports here
+// GENERATED_CODE_BEGIN --template=classDecl
 export SC_MODULE(blockD), public blockBase, public blockDBase
 {
 private:

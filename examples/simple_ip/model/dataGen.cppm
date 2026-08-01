@@ -15,12 +15,11 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module simple_ip_dataGen.block;
 import simple_ip_dataGen.base;
+import simple_ip;
+using namespace simple_ip_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-import simple_ip;
-using namespace simple_ip_ns;
-
 export SC_MODULE(dataGen), public blockBase, public dataGenBase
 {
 private:

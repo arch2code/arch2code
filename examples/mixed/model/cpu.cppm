@@ -17,12 +17,11 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module mixed_cpu.block;
 import mixed_cpu.base;
+import mixed;
+using namespace mixed_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-import mixed;
-using namespace mixed_ns;
-
 export SC_MODULE(cpu), public blockBase, public cpuBase
 {
 private:

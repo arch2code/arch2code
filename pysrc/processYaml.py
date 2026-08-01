@@ -1294,7 +1294,7 @@ class projectOpen:
         blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts',
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
                         'classIncludeContext', 'configIncludeContext', 'foreignConfigModules',
-                        'addressDecode', 'variants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
+                        'addressDecode', 'variants', 'declaredVariants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
                         'interface_type_mappings_qualified'}
         ret = dict()
         # create some of the simple returns
@@ -1402,10 +1402,16 @@ class projectOpen:
         blockName = ret['blockName']
         project = self.config.getConfig('PROJECTNAME')
         bodyModule = f'{blockName}{wrapTail}'
-        variantTops = {v: f'{blockName}_{v}{wrapTail}' for v in ret['variants']}
+        # Keyed over the block's DECLARED variants: one standalone SV top exists
+        # per declared variant (the .sv scaffold set), independent of which
+        # variants an instance selects. vlRegistrar only LOOKS UP these dicts by
+        # an instance-bound variant (a subset), so the superset keying leaves its
+        # output unchanged while giving an inheriting-only leaf's trampoline the
+        # top name it needs.
+        variantTops = {v: f'{blockName}_{v}{wrapTail}' for v in ret['declaredVariants']}
         foreignVariantTops = {
             v: f'{sanitizeModuleToken(project)}_{blockName}_{v}{foreignTail}'
-            for v in ret['variants']}
+            for v in ret['declaredVariants']}
         ret['svWrapper'] = {
             'bodyModule': bodyModule,
             'bodyInclude': f'{bodyModule}.{bodyExt}',
@@ -1925,6 +1931,20 @@ class projectOpen:
                         k: {**v, 'resolvedValue': self._resolveBindingValueOpen(v)}
                         for k, v in binding_rows.items()}
                     ret['variants'][inst_data['variant']] = filtered_variants_data
+        # Declared-variant view: every variant the block DECLARES (independent of
+        # whether an instance selects it), each binding row enriched with its
+        # resolved literal value — the same shape and enrichment as ret['variants']
+        # above. A parameterized hasVl leaf reached only via inheritContainerParam
+        # is never instance-bound to a variant, so its instantiated ret['variants']
+        # is empty; the standalone per-variant SV wrapper trampoline (one .sv per
+        # DECLARED variant, scaffolded from getQualBlockVariants) sources its
+        # variant set and resolved binding values from here so it emits a correct
+        # parameterized top rather than falling through to the non-parameterizable
+        # render path.
+        for variantEntry in self.data['parameters'].get(qualBlock, {}).get('variants', {}).values():
+            ret['declaredVariants'][variantEntry['variant']] = {
+                k: {**v, 'resolvedValue': self._resolveBindingValueOpen(v)}
+                for k, v in variantEntry['params'].items()}
         # A block with zero instances is a valid render target for an exported /
         # library leaf that its owning project never instantiates (projectCreate
         # gates which blocks are allowed to be uninstantiated). The rest of this

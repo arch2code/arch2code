@@ -18,11 +18,10 @@ import pySocket_tb.base;
 import pySocket_tb;
 import pySocket.base;
 import pySocket_dut.base;
+using namespace pySocket_tb_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-using namespace pySocket_tb_ns;
-
 export SC_MODULE(pySocket_tb), public blockBase, public pySocket_tbBase
 {
 private:

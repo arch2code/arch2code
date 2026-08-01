@@ -86,12 +86,12 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
         out.append( indent + ifMapping['destructor'] )
 
     if ifMapping['addConsts']:
-        if prj.data['blocks'][data['qualBlock']]['params']:
+        if data['blockInfo']['params']:
             # Block params are exposed as compile-time constants drawn from the
             # Config policy. static constexpr (rather than a runtime const member)
             # lets derived/user code use the bare name in constexpr contexts
             # (if constexpr, template/width arguments) after re-importing it.
-            for param in prj.data['blocks'][data['qualBlock']]['params']:
+            for param in data['blockInfo']['params']:
                 out.append(f'    static constexpr auto {param["param"]} = Config::{param["param"]};')
 
     mp_sig = dict()

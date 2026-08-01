@@ -20,11 +20,10 @@ import simple.base;
 import simple;
 import simple_producer.base;
 import simple_consumer.base;
+using namespace simple_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-using namespace simple_ns;
-
 export SC_MODULE(simple), public blockBase, public simpleBase
 {
 private:

@@ -17,12 +17,11 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module pySocket.block;
 import pySocket.base;
+import pySocket_tb;
+using namespace pySocket_tb_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-import pySocket_tb;
-using namespace pySocket_tb_ns;
-
 export SC_MODULE(pySocket), public blockBase, public pySocketBase
 {
 private:

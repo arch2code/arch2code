@@ -1,9 +1,9 @@
 // GENERATED_CODE_PARAM --block=blockCZ
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockCZ
-module blockCZ
+//module as defined by block: hierInclude_blockCZ
+module hierInclude_blockCZ
 // Generated Import package statement(s)
-import hierIncludeC_package::*;
+import hierInclude_hierIncludeC_package::*;
 (
     rdy_vld_if.dst x,
     input clk, rst_n

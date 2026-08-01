@@ -16,12 +16,11 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module axi4sDemo_axi4s_m_drv.block;
 import axi4sDemo_axi4s_m_drv.base;
+import axi4sDemo_tb;
+using namespace axi4sDemo_tb_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-import axi4sDemo_tb;
-using namespace axi4sDemo_tb_ns;
-
 export SC_MODULE(axi4s_m_drv), public blockBase, public axi4s_m_drvBase
 {
 private:

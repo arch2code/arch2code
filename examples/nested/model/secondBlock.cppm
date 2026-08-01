@@ -18,11 +18,10 @@ import nested_secondBlock.base;
 import nested;
 import nested_secondSubA.base;
 import nested_secondSubB.base;
+using namespace nested_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-using namespace nested_ns;
-
 export SC_MODULE(secondBlock), public blockBase, public secondBlockBase
 {
 private:

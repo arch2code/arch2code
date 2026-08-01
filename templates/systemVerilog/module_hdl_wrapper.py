@@ -34,19 +34,27 @@ def render_sv(args, prj, data):
     # A parent-owned foreign wrapper carries --parent on its param line: the top
     # is owner-qualified and instantiates the child's canonical .svh body. A bare
     # same-project variant trampoline has no --parent.
-    if args.parent and args.variant and args.variant in data['variants']:
-        return render_trampoline(args, prj, data, mp_sig, blk_name, foreign=True)
-    if args.variant and args.variant in data['variants']:
-        return render_trampoline(args, prj, data, mp_sig, blk_name)
+    # Dispatch on the block's DECLARED variants: one standalone .sv top is
+    # scaffolded per declared variant, whether or not an instance selects it. A
+    # parameterized hasVl leaf reached only via inheritContainerParam has an empty
+    # instantiated-variant view, so keying on declared variants keeps its
+    # per-variant tops on the parameterized trampoline path instead of the
+    # non-parameterizable fallback.
+    if args.parent and args.variant and args.variant in data['declaredVariants']:
+        return render_trampoline(args, prj, data, mp_sig, foreign=True)
+    if args.variant and args.variant in data['declaredVariants']:
+        return render_trampoline(args, prj, data, mp_sig)
     return render_non_parameterizable(args, prj, data, mp_sig, blk_name)
 
 def param_names(data):
-    # Default-less DUT parameter names. The parameter set is identical across a
-    # block's variants, so read the first variant's bound-parameter rows.
-    first_variant = next(iter(data['variants'].values()))
-    return [var_data['param'] for var_data in first_variant.values()]
+    # Default-less DUT parameter names, from the block's declared params on the
+    # view (data['blockInfo'] is the block row). The parameter set is a property
+    # of the block (identical across variants) and is present whether the block
+    # is reached by an explicit variant: selector or by inheritContainerParam
+    # (which leaves the instantiated-variant view empty).
+    return [p['param'] for p in data['blockInfo']['params']]
 
-def parameterized_decls(prj, data, blk_name):
+def parameterized_decls(prj, data):
     # Split the block's module-local parameterized declaration set into the
     # eval-derived constant localparams and the type/struct declarations. The
     # flattened port widths reuse the constants, so they go in the parameter
@@ -54,8 +62,7 @@ def parameterized_decls(prj, data, blk_name):
     if not data['parameterizedDecls']:
         return [], []
     entries = parameterizedDeclLines(
-        data['parameterizedDecls'], prj,
-        prj.data['blocks'][prj.getQualBlock(blk_name)]['params'])
+        data['parameterizedDecls'], prj, data['blockInfo']['params'])
     constDecls = [e for e in entries if e['declKind'] == 'constant']
     typeDecls = [e for e in entries if e['declKind'] != 'constant']
     return constDecls, typeDecls
@@ -129,11 +136,11 @@ def render_body(args, prj, data, mp_sig, blk_name):
     out = '\n'
     out += f'module {module_name}\n'
 
-    startingContext = prj.data['blocks'][prj.getQualBlock(blk_name)]['_context']
+    startingContext = data['blockInfo']['_context']
     out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
 
     params = param_names(data)
-    constDecls, typeDecls = parameterized_decls(prj, data, blk_name)
+    constDecls, typeDecls = parameterized_decls(prj, data)
 
     # Eval-derived localparams that a flattened port width references (e.g. a
     # grid width used as an array size) must be in scope in the port list, so
@@ -164,7 +171,7 @@ def render_body(args, prj, data, mp_sig, blk_name):
     out += f'\nendmodule : {module_name}\n'
     return out
 
-def render_trampoline(args, prj, data, mp_sig, blk_name, foreign=False):
+def render_trampoline(args, prj, data, mp_sig, foreign=False):
     # Variant top trampoline (.sv). The canonical body is made visible by the
     # `include in the scaffold. The trampoline declares the variant's concrete
     # parameter values as localparams, reuses the Stage-1 symbolic port widths,
@@ -177,7 +184,9 @@ def render_trampoline(args, prj, data, mp_sig, blk_name, foreign=False):
     # keeps the bare child-emitted top name. The body module (the `include`d
     # .svh) is the child's canonical wrapper either way.
     variant_name = args.variant
-    variant_data = data['variants'][variant_name]
+    # Declared-variant bindings (with resolved literal values); a standalone top
+    # exists for every declared variant, not only instance-bound ones.
+    variant_data = data['declaredVariants'][variant_name]
     if foreign:
         module_name = data['svWrapper']['foreignVariantTops'][variant_name]
     else:
@@ -192,14 +201,14 @@ def render_trampoline(args, prj, data, mp_sig, blk_name, foreign=False):
     # list. The parent instantiation and the canonical body already import
     # these; the trampoline names the bound values directly, so it needs them
     # in scope too.
-    startingContext = prj.data['blocks'][prj.getQualBlock(blk_name)]['_context']
+    startingContext = data['blockInfo']['_context']
     out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
     # Bind the variant's concrete parameter values as localparams in the
     # parameter port list, then declare the eval-derived constant localparams
     # the flattened port widths reuse (e.g. a grid width used as an array
     # size). Both precede (and are in scope for) the port list; the derived
     # constants follow the bound root parameters they depend on.
-    constDecls, _unusedTypeDecls = parameterized_decls(prj, data, blk_name)
+    constDecls, _unusedTypeDecls = parameterized_decls(prj, data)
     # One binding row per parameter, first occurrence wins. A reused child bound
     # to the same variant name by more than one declaring context (the foreign
     # case) surfaces duplicate per-param rows in the view; a single-context
@@ -247,7 +256,7 @@ def render_non_parameterizable(args, prj, data, mp_sig, blk_name):
     out += f'module {module_name}\n'
 
     # packages
-    startingContext = prj.data['blocks'][prj.getQualBlock(blk_name)]['_context']
+    startingContext = data['blockInfo']['_context']
     out += textwrap.indent(importPackages(args, prj, startingContext, data), ' '*4)
     out += '\n(\n'
 

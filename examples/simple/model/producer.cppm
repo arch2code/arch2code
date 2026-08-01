@@ -16,12 +16,11 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module simple_producer.block;
 import simple_producer.base;
+import simple;
+using namespace simple_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-import simple;
-using namespace simple_ns;
-
 export SC_MODULE(producer), public blockBase, public producerBase
 {
 private:

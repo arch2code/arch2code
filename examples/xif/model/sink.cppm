@@ -17,12 +17,11 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xif_sink.block;
 import xif_sink.base;
+import xif;
+using namespace xif_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-import xif;
-using namespace xif_ns;
-
 export template<typename Config>
 SC_MODULE(sink), public blockBase, public sinkBase<Config>
 {

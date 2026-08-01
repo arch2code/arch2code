@@ -32,7 +32,7 @@ def render(args, prj, data):
     out.append(moduleDeclaration(data['blockModuleName']))
 
     # Packages
-    startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
+    startingContext = data['blockInfo']['_context']
     out.append(importPackages(args, prj, startingContext, data))
     out.append("(")
 

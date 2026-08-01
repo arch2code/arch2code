@@ -1,9 +1,9 @@
 // GENERATED_CODE_PARAM --block=blockCX --importPackage=hierIncludeCInclude_package
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockCX
-module blockCX
+//module as defined by block: hierInclude_blockCX
+module hierInclude_blockCX
 // Generated Import package statement(s)
-import hierIncludeC_package::*;
+import hierInclude_hierIncludeC_package::*;
 import hierInclude_package::*;
 // User supplied Import package statement(s)
 import hierIncludeCInclude_package::*;

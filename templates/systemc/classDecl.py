@@ -30,54 +30,17 @@ def render_default(args, prj, data):
     # shared helper) and the in-class register-handler members emitted below.
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
 
-    # Class dependency lines. In classic mode they are emitted inline ahead of
-    # the class. In module mode the block-module global module fragment owns the
-    # #includes and the `export module`/import lines
-    # (templates/systemc/moduleScaffold.py blockModuleHeader); a module interface
-    # forbids #include after the module declaration, so classDecl suppresses
-    # them here.
-    emittedDepLines = set()
-    if args.mode == 'module':
-        # The block-module header (moduleScaffold.blockModuleHeader / moduleExport)
-        # emits the STRUCTURAL dependency imports (classIncludeContext) into the
-        # module preamble but NOT the context `using namespace` lines: a
-        # using-namespace closes the module preamble and every `import` must
-        # precede it. Emitting the usings here, at the head of the classDecl
-        # region (after the header region's trailing user gap), keeps that gap
-        # inside an open, import-only preamble so a hand-added `import` stays
-        # legal. They sit at module scope, before the class template, so the
-        # unqualified-name coverage over the class and all user regions matches
-        # classic mode.
-        #
-        # A C++20 module import is NOT transitive: the block module imports its
-        # own Base module, but the interface-context types the base pulls in
-        # (e.g. tag_st / NUM_TAGS, reached only through a payload context) do not
-        # become visible in the block module just because the base has them. The
-        # block BODY may spell those types unqualified, so re-emit them here for
-        # every includeContext context beyond the structural classIncludeContext
-        # the header already imports — mirroring what classic `.h/.cpp` mode
-        # re-emitted below at the classDecl head. Emit the extra imports FIRST
-        # (still inside the open, import-only preamble), then all using-namespace
-        # lines. Deduplicated by line against the structural set moduleScaffold
-        # already emits, so a context covered structurally is never re-imported.
-        usings = list()
-        for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
-            emittedDepLines.add(line)
-            if line.startswith('using namespace '):
-                usings.append(line)
-        fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
-        for context in data['includeContext']:
-            if context in data['includeFiles'].get(fileMapKey, {}):
-                for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey):
-                    if line in emittedDepLines:
-                        continue
-                    emittedDepLines.add(line)
-                    if line.startswith('using namespace '):
-                        usings.append(line)
-                    else:
-                        out.append(line)
-        out.extend(usings)
-    else:
+    # Class dependency lines. In classic (.h/.cpp) mode they are emitted inline
+    # ahead of the class. In module mode the block-module interface unit's
+    # preamble owns every import and using-namespace: the global module fragment
+    # (moduleScaffold.blockModuleHeader) carries the #includes, and the
+    # moduleExport region carries `export module`, all imports, and the
+    # using-namespace lines that CLOSE the preamble. classDecl therefore emits
+    # ONLY the exported class in module mode; the trailing `// user imports here`
+    # slot is a module-purview zone (a hand-added purview #include there attaches
+    # to the block module and can feed a class member).
+    if args.mode != 'module':
+        emittedDepLines = set()
         for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
             out.append(line)
             emittedDepLines.add(line)
@@ -109,7 +72,10 @@ def render_default(args, prj, data):
         out.append(f'//contained instances base module imports')
         for line in intf_gen_utils.sc_instance_includes(data, prj):
             out.append(line)
-    out.append('')
+    # In module mode classDecl emits only the class (the preamble closed in
+    # moduleExport), so there are no dependency lines to separate from it.
+    if args.mode != 'module':
+        out.append('')
 
     # In module mode the block class is exported from the block-module
     # interface unit; `export` prefixes the first line of the declaration (the
@@ -150,7 +116,7 @@ def render_default(args, prj, data):
     # base; non-templated blocks need no re-import.
     if hasOwnParams:
         reimports = list()
-        for param in prj.data['blocks'][data['qualBlock']]['params']:
+        for param in data['blockInfo']['params']:
             reimports.append(f'using { baseClassName }::{ param["param"] };')
         seenPorts = set()
         for port_type in data['ports']:

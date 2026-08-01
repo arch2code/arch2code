@@ -23,11 +23,10 @@ import nested_secondBlock.base;
 import nested_lastBlock.base;
 import nested_producer.base;
 import nested_consumer.base;
+using namespace nested_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-using namespace nested_ns;
-
 export SC_MODULE(testContainer), public blockBase, public testContainerBase
 {
 private:

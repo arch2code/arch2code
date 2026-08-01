@@ -16,12 +16,11 @@ module;
 export module mixed_threeCs.block;
 import mixed_threeCs.base;
 import mixed_blockC.base;
+import mixed_mixedBlockC;
+using namespace mixed_mixedBlockC_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-import mixed_mixedBlockC;
-using namespace mixed_mixedBlockC_ns;
-
 export SC_MODULE(threeCs), public blockBase, public threeCsBase
 {
 private:
