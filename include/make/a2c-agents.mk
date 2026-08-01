@@ -14,8 +14,17 @@ endif
 
 #------------------------------------------------------------------------
 # AI rule source roots; base always, extensions (e.g. pro) append via EXTRA_A2C_RULES_DIRS
+#
+# Base content sits at $(A2C_ROOT) when running standalone; under pro (which
+# nests base and may not symlink every dir) it sits at $(A2C_ROOT)/base. Detect
+# pro by its directory rather than relying on the base-dir symlinks.
 #------------------------------------------------------------------------
-A2C_RULES_DIRS := $(A2C_ROOT)/base/rules $(EXTRA_A2C_RULES_DIRS)
+ifneq ($(wildcard $(A2C_ROOT)/pro),)
+A2C_BASE_DIR := $(A2C_ROOT)/base
+else
+A2C_BASE_DIR := $(A2C_ROOT)
+endif
+A2C_RULES_DIRS := $(A2C_BASE_DIR)/rules $(EXTRA_A2C_RULES_DIRS)
 
 #------------------------------------------------------------------------
 # AI Agent Setup Targets
@@ -39,8 +48,8 @@ agents-setup agents_setup:
 	@echo "Setting up AI agent rules (OpenCode, Claude Code, Gemini CLI)..."
 	@# Create AGENTS.md from template and record its checksum
 	@if [ ! -e "$(REPO_ROOT)/AGENTS.md" ]; then \
-		if [ -f "$(A2C_ROOT)/base/AGENTS.md.template" ]; then \
-			cp $(A2C_ROOT)/base/AGENTS.md.template $(REPO_ROOT)/AGENTS.md && \
+		if [ -f "$(A2C_BASE_DIR)/AGENTS.md.template" ]; then \
+			cp $(A2C_BASE_DIR)/AGENTS.md.template $(REPO_ROOT)/AGENTS.md && \
 			echo "  + Created AGENTS.md from template"; \
 			for root in $(A2C_RULES_DIRS); do \
 				frag="$$(dirname $$root)/AGENTS.append.md"; \

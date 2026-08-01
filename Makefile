@@ -1,4 +1,6 @@
 REPO_ROOT = $(shell git rev-parse --show-toplevel)
+# Base-only checkout: the builder root and the repo root are the same tree.
+A2C_ROOT = $(REPO_ROOT)
 
 SV_COM = $(REPO_ROOT)/common/systemVerilog
 # Location of the mixed outptus for lint test
@@ -227,3 +229,7 @@ unittest:
 .PHONY : push-test pipeline-test
 pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip
 push-test: clean unittest pipeline-test
+
+# AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).
+# Included last so the default goal stays the first target above.
+include $(REPO_ROOT)/include/make/a2c-agents.mk
