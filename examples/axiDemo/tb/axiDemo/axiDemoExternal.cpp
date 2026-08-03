@@ -5,6 +5,8 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=axiDemo_tb --excludeInst=u_axiDemo
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
+#include "axiDemoExternal.h"
 
 axiDemoExternal::axiDemoExternal(sc_module_name modulename) :
     axiDemoInverted("Chnl"),

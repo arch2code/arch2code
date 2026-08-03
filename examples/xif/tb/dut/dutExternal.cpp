@@ -5,8 +5,10 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=xif_tb --excludeInst=uDut
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
 import xif_src.base;
 import xif_sink.base;
+#include "dutExternal.h"
 
 dutExternal::dutExternal(sc_module_name modulename) :
     dutInverted<dutDutV0Config>("Chnl"),

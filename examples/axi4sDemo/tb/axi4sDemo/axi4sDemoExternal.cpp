@@ -5,8 +5,10 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=axi4sDemo_tb --excludeInst=u_axi4sDemo
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
 import axi4sDemo_axi4s_m_drv.base;
 import axi4sDemo_axi4s_s_drv.base;
+#include "axi4sDemoExternal.h"
 
 axi4sDemoExternal::axi4sDemoExternal(sc_module_name modulename) :
     axi4sDemoInverted("Chnl"),

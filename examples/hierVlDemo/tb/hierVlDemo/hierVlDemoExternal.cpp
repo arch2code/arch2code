@@ -5,8 +5,10 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=hierVlDemo_tb --excludeInst=u_hierVlDemo
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
 import hierVlDemo_axi4s_m_drv.base;
 import hierVlDemo_axi4s_s_drv.base;
+#include "hierVlDemoExternal.h"
 
 hierVlDemoExternal::hierVlDemoExternal(sc_module_name modulename) :
     hierVlDemoInverted("Chnl"),

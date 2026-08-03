@@ -5,6 +5,8 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=helloWorld_tb --excludeInst=u_helloWorld
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
+#include "helloWorldExternal.h"
 
 helloWorldExternal::helloWorldExternal(sc_module_name modulename) :
     helloWorldInverted("Chnl"),

@@ -1,6 +1,7 @@
 import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=simple_ip
 // GENERATED_CODE_BEGIN --template=testbench --section=init
+import a2c.endOfTest;
 #include "simple_ipTestbench.h"
 
 // === Block factory registration (simple_ipTestbench) ===

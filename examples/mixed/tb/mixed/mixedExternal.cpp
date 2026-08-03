@@ -5,7 +5,9 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=mixed_tb --excludeInst=u_mixed
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
 import mixed_cpu.base;
+#include "mixedExternal.h"
 
 mixedExternal::mixedExternal(sc_module_name modulename) :
     mixedInverted("Chnl"),

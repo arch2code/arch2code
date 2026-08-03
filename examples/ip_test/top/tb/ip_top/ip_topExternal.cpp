@@ -5,7 +5,9 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=ip_top_tb --excludeInst=u_ip_top
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
 import common_cpu.base;
+#include "ip_topExternal.h"
 
 ip_topExternal::ip_topExternal(sc_module_name modulename) :
     ip_topInverted("Chnl"),

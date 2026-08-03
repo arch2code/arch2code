@@ -1,6 +1,7 @@
 import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=helloWorld
 // GENERATED_CODE_BEGIN --template=testbench --section=init
+import a2c.endOfTest;
 #include "helloWorldTestbench.h"
 
 // === Block factory registration (helloWorldTestbench) ===

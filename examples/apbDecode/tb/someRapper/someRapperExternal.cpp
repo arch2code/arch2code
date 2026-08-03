@@ -5,7 +5,9 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=top --excludeInst=uSomeRapper
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
 import apbDecode_cpu.base;
+#include "someRapperExternal.h"
 
 someRapperExternal::someRapperExternal(sc_module_name modulename) :
     someRapperInverted("Chnl"),

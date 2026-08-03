@@ -5,7 +5,9 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=simple_ip_tb --excludeInst=u_simple_ip
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
 import common_cpu.base;
+#include "simple_ipExternal.h"
 
 simple_ipExternal::simple_ipExternal(sc_module_name modulename) :
     simple_ipInverted("Chnl"),
