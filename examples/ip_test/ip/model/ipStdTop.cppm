@@ -24,12 +24,11 @@ import ip_ipStdMaster.base;
 import ip_ipStdDriver.base;
 import ip_ipStdDecode.base;
 import ip.base;
+using namespace ip_ns;
+using namespace ip_ipTop_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-using namespace ip_ns;
-using namespace ip_ipTop_ns;
-
 export SC_MODULE(ipStdTop), public blockBase, public ipStdTopBase
 {
 private:

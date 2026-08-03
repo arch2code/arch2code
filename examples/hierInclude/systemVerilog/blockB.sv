@@ -39,4 +39,4 @@ hierInclude_blockBZ uBlockBZ (
 
 // GENERATED_CODE_END
 
-endmodule: blockB
+endmodule: hierInclude_blockB

@@ -79,6 +79,39 @@ def create(prj):
     blocksParams = {row['blockKey'] for row in prj.flatData['blocksparams'].values()}
     blockByKey = {row['blockKey']: row for row in prj.flatData['blocks'].values()}
 
+    # Restrict the managed SV compile set to this build's design hierarchy. A
+    # referenced child project's standalone harness (e.g. a reusable IP's own
+    # ipStdTop verification top) is parsed into the same database but is not
+    # contained by this build's topInstance; its modules import that harness
+    # context's package, which the reachability-scoped rtl.f (correctly) does not
+    # list, so verilating them here fails with an unresolved package import.
+    # Scoping svModuleFiles to reachable blocks keeps A2C_SV_FILES aligned with
+    # rtl.f. For a single-project build every block is reachable and this is a
+    # no-op.
+    #
+    # Reachability is walked directly over the current instance table rather than
+    # via prj.reachableInstanceKeys(): the shared hierKey it consults is rebuilt
+    # only later (at the REACHABLEINSTANCES persist, after runCreateArtifacts) so
+    # it is stale here w.r.t. post-parse synthesized register handlers, and
+    # generateHierarchy is not idempotent so it must not be re-run to refresh it.
+    # flatData is already current. Each instance's containerKey is the block that
+    # contains it and instanceTypeKey is its own block; walk block containment
+    # from every topInstance anchor to the blocks in this build's design tree.
+    containedBlocks = dict()
+    topBlockKeys = list()
+    for instRow in prj.flatData['instances'].values():
+        containedBlocks.setdefault(instRow['containerKey'], list()).append(instRow['instanceTypeKey'])
+        if instRow['container'] == '_topInstance':
+            topBlockKeys.append(instRow['instanceTypeKey'])
+    reachableBlockKeys = set()
+    blockQueue = list(topBlockKeys)
+    while blockQueue:
+        blockKey = blockQueue.pop()
+        if blockKey in reachableBlockKeys:
+            continue
+        reachableBlockKeys.add(blockKey)
+        blockQueue.extend(containedBlocks.get(blockKey, ()))
+
     def layoutForContext(context):
         return projectLayout[prj.contextOwningProject[context]]
 
@@ -89,7 +122,7 @@ def create(prj):
         condData['hasOwnParams'] = int(blockRow['blockKey'] in blocksParams)
         return condData
 
-    def record(fileDef, filePath, objLayout, rootOwnedGen):
+    def record(fileDef, filePath, objLayout, rootOwnedGen, svCompile=True):
         role = objLayout['segments'][fileDef['basePath']]['buildGroup']
         if role is None:
             return
@@ -111,8 +144,11 @@ def create(prj):
             moduleFiles.add(filePath + '.' + fileDef['ext']['cppm'])
         # Explicit managed SV module files. role=='sv' selects rtlModule and
         # excludes the vl_wrap wrappers (buildGroup vl); packages (context mode)
-        # are listed separately by the rtl.f template, not here.
-        if 'sv' in fileDef['ext'] and role == 'sv':
+        # are listed separately by the rtl.f template, not here. svCompile gates
+        # out blocks outside this build's design hierarchy (a referenced child's
+        # standalone harness) so the compile set matches the reachability-scoped
+        # rtl.f.
+        if svCompile and 'sv' in fileDef['ext'] and role == 'sv':
             svModuleFiles.add(filePath + '.' + fileDef['ext']['sv'])
 
     # block mode: one artifact per block per matching block-mode entry.
@@ -128,7 +164,8 @@ def create(prj):
             filePath = processYaml.expandNewModulePath(fileDef, blockRow['dir'],
                                                        blockRow['block'], blockRow['block'],
                                                        objLayout, missingDirOk=True)
-            record(fileDef, filePath, objLayout, rootOwnedGen)
+            record(fileDef, filePath, objLayout, rootOwnedGen,
+                   svCompile=blockRow['blockKey'] in reachableBlockKeys)
 
     # registrar mode: one trampoline per assembler per distinct matching child it
     # instantiates, under the assembler's directory.

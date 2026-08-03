@@ -37,4 +37,4 @@ hierInclude_blockC uBlockC (
 
 // GENERATED_CODE_END
 
-endmodule: top
+endmodule: hierInclude_top

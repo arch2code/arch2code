@@ -10,6 +10,7 @@ digraph {
 		"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uAPBDecode/mixed.yaml" [label=apbDecode fillcolor=pink style=filled tooltip="The block to decode apb addresses"]
 		"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockC/mixed.yaml" [label=blockC fillcolor=orange style=filled tooltip="The block named C"]
 		"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml" [label=blockB fillcolor=lightslateblue style=filled tooltip="The block named B"]
+		"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockG/mixed.yaml" [label=blockG fillcolor=white style=filled tooltip="Parameterized container that owns a rw register and forwards it to a leaf child (parameterized model reg-handler fixture)"]
 	}
 	"mixed_tb/mixed.yaml.uCPU/mixed.yaml" [label=cpu fillcolor=pink style=filled tooltip="A RISC-V CPU"]
 	"mixed_tb/mixed.yaml.uCPU/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
@@ -19,4 +20,5 @@ digraph {
 	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockA/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml" [tooltip="dupIf(seeSt) Duplicate interface def"]
 	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uAPBDecode/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockA/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
 	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uAPBDecode/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
+	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uAPBDecode/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockG/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
 }

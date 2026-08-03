@@ -15,4 +15,4 @@ import hierInclude_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: blockA
+endmodule: hierInclude_blockA

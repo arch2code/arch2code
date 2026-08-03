@@ -23,7 +23,7 @@ endif
 run-vl:
 	$(MAKE) clean
 	$(MAKE) all VL_DUT=1
-	$(MAKE) run-vl-dut
+	$(MAKE) run-vl-dut VL_DUT=1
 
 run-vl-dut: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst tb.bridgeStdTop.uBridge
