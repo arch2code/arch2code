@@ -107,6 +107,10 @@ def tb_sec_header(args, prj, data):
 def ext_sec_init(args, prj, data):
 
     out = []
+    # The eotThread() defined in the External header uses endOfTestState from
+    # module a2c.endOfTest. Emit its import at the top of this TU's init region,
+    # among the contained-instance .base imports, so the header's use resolves.
+    out.append('import a2c.endOfTest;')
     out += sc_instance_includes(data, prj)
     isParameterizable = data['isParameterizable']
     # The External pseudo-block inherits `<DUT>Inverted{cfg}`, which loses its
@@ -117,6 +121,12 @@ def ext_sec_init(args, prj, data):
     # The Inverted base's template argument is the excluded DUT instance's
     # Config when present; otherwise `data` is the DUT block itself.
     cfg = data['dutInvertedCfg'] if data['dutInvertedCfg'] is not None else sel['cfg']
+
+    # Emit the External header include here, after the imports above, so the
+    # a2c.endOfTest import precedes the header's use of endOfTestState in
+    # eotThread(). Generating the include (rather than a manual scaffold preamble)
+    # means a fresh External.cpp compiles with no hand-written preamble import.
+    out.append(f'#include "{sel["tbClassName"]}External.h"')
 
     s = """
 {tbClassName}External::{tbClassName}External(sc_module_name modulename) :
@@ -450,6 +460,7 @@ public:
 """
 
 sec_tb_class_init_template = """\
+import a2c.endOfTest;
 #include "{{tbclassname}}Testbench.h"
 
 // === Block factory registration ({{tbclassname}}Testbench) ===

@@ -1,10 +1,10 @@
-import a2c.endOfTest;
-#include "simpleExternal.h"
 #include "workerThread.h"
 
 // GENERATED_CODE_PARAM --block=simple_tb --excludeInst=u_simple
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
+#include "simpleExternal.h"
 
 simpleExternal::simpleExternal(sc_module_name modulename) :
     simpleInverted("Chnl"),

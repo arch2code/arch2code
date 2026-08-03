@@ -565,8 +565,7 @@ def tbExternal_hdr(args, prj, data):
     return(t.substitute(subst))
 
 tbExternal_srcTemplate = \
-"""#include "__tbclassname__External.h"
-#include "workerThread.h"
+"""#include "workerThread.h"
 
 // GENERATED_CODE_PARAM --block=__modulename____variantparam__
 
