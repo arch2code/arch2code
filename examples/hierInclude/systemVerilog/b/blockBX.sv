@@ -18,4 +18,4 @@ import hierInclude_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: blockBX
+endmodule: hierInclude_blockBX

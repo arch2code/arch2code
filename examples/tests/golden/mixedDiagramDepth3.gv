@@ -24,6 +24,13 @@ digraph {
 			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uThreeCs/mixed.yaml" [label=threeCs fillcolor=green style=filled tooltip="A block that contains three copies of blockC"]
 			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uBlockBRegs/mixed.yaml" [label=blockBRegs fillcolor=white style=filled tooltip="blockB Register handler"]
 		}
+		// mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockG/mixed.yaml subgraph
+		subgraph "cluster_mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockG/mixed.yaml" {
+			graph [color="" label=blockG style="" tooltip="Parameterized container that owns a rw register and forwards it to a leaf child (parameterized model reg-handler fixture)"]
+			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockG/mixed.yaml" [label=blockG style=invis]
+			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockG/mixed.yaml.uBlockGLeaf/mixed.yaml" [label=blockGLeaf fillcolor=white style=filled tooltip="Minimal leaf that receives the forwarded register"]
+			"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockG/mixed.yaml.uBlockGRegs/mixed.yaml" [label=blockGRegs fillcolor=white style=filled tooltip="blockG Register handler"]
+		}
 	}
 	"mixed_tb/mixed.yaml.uCPU/mixed.yaml" [label=cpu fillcolor=pink style=filled tooltip="A RISC-V CPU"]
 	"mixed_tb/mixed.yaml.uCPU/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
@@ -33,6 +40,7 @@ digraph {
 	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockA/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml" [tooltip="dupIf(seeSt) Duplicate interface def"]
 	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uAPBDecode/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockA/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
 	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uAPBDecode/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
+	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uAPBDecode/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockG/mixed.yaml" [tooltip="apbReg(apbAddrSt, apbDataSt) CPU access to SoC registers in the design"]
 	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uBlockD/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uThreeCs/mixed.yaml" [tooltip="cStuffIf(seeSt) An interface for C"]
 	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uBlockF0/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uThreeCs/mixed.yaml" [tooltip="cStuffIf(seeSt) An interface for C"]
 	"mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uBlockF1/mixed.yaml" -> "mixed_tb/mixed.yaml.u_mixed/mixed.yaml.uBlockB/mixed.yaml.uThreeCs/mixed.yaml" [tooltip="cStuffIf(seeSt) An interface for C"]

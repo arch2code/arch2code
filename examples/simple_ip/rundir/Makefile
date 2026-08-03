@@ -26,7 +26,7 @@ endif
 run-vl:
 	$(MAKE) clean
 	$(MAKE) all VL_DUT=1
-	$(MAKE) run-vl-ip
+	$(MAKE) run-vl-ip VL_DUT=1
 
 # The block-level testbench roots its hierarchy at tb, so the DUT is
 # tb.simple_ip and the reused ip leaf is tb.simple_ip.uIp.

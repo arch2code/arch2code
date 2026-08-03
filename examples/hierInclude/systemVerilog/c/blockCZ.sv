@@ -14,4 +14,4 @@ import hierInclude_hierIncludeC_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: blockCZ
+endmodule: hierInclude_blockCZ

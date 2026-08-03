@@ -21,7 +21,7 @@ def displayInstancesDiagram(prj, instanceTop, depth, noConnections):
     instancesDictionary = prj.setRangeOfInstancesByHier(top, depth)
     prj.setContainedConnections(top, flatInstancesDictionary)
     connectionList = prj.getHierConnections(top, instancesDictionary, flatInstancesDictionary)
-    dot = Digraph(comment='Instances Diagram', node_attr={'shape': 'rect'}, graph_attr={'bgcolor': globals.bgcolor, 'tooltip': '{} + depth {}'.format(top, depth)})
+    dot = Digraph(comment='Instances Diagram', node_attr={'shape': 'rect'}, graph_attr={'bgcolor': globals.bgcolor, 'tooltip': '{} + depth {}'.format(prj.hierNodeName(top), depth)})
 
     # draw nodes / blocks and if a block has blocks inside of it recurse and draw subgraphs
     #   until no more blocks insde

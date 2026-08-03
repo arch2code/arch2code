@@ -25,13 +25,12 @@ import common_shared_types;
 import ip;
 import ipBridge_bridgeApbDecode.base;
 import ip.base;
-// GENERATED_CODE_END
-// user imports here
-// GENERATED_CODE_BEGIN --template=classDecl
 using namespace ipBridge_ns;
 using namespace common_shared_types_ns;
 using namespace ip_ns;
-
+// GENERATED_CODE_END
+// user imports here
+// GENERATED_CODE_BEGIN --template=classDecl
 export SC_MODULE(ipBridge), public blockBase, public ipBridgeBase
 {
 private:

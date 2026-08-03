@@ -12,8 +12,11 @@ instance uThreeCs is of type threeCs
 instance uBlockC0 is of type blockC
 instance uBlockC1 is of type blockC
 instance uBlockC2 is of type blockC
+instance uBlockG is of type blockG
+instance uBlockGLeaf is of type blockGLeaf
 instance uBlockBRegs is of type blockBRegs
 instance uBlockARegs is of type blockARegs
+instance uBlockGRegs is of type blockGRegs
 Block: mixed
 Connection: uCPU -> u_mixed
 Interface: apbReg

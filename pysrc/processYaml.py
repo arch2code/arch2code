@@ -3280,9 +3280,18 @@ class projectOpen:
     # The result is a dictionary of instance keys in heirarchical form
     def setRangeOfInstancesByHier(self, startInstance, depth):
         newInstances = self.addHierEntry(startInstance, '')
-        newInstances['more'] = self.recursiveHier(startInstance, (self.hierKey[self.data['instances'][startInstance]['instanceTypeKey']]), 0, depth)
+        newInstances['more'] = self.recursiveHier(newInstances['hierarchyName'], (self.hierKey[self.data['instances'][startInstance]['instanceTypeKey']]), 0, depth)
 
         return newInstances
+
+    # Per-instance diagram node segment. An instance is qualified by its
+    # declaring file, but the stored _context is a relpath from the project
+    # file directory, so it leaks leading ../ segments whenever the project
+    # file does not sit alongside the design yaml. Qualify with the context
+    # file basename instead so the segment is stable across project layouts.
+    def hierNodeName(self, instanceKey):
+        instance = self.data['instances'][instanceKey]
+        return instance['instance'] + '/' + os.path.basename(instance['_context'])
 
     def addHierEntry(self, inst, parentName):
         ret = dict()
@@ -3290,10 +3299,11 @@ class projectOpen:
         ret['instanceTypeKey']  = self.data['instances'][inst]['instanceTypeKey']
         ret['color']         = self.data['instances'][inst]['color']
         ret['desc']          = self.data['blocks'][self.blocks[ret['instanceType']]]['desc']
+        segment = self.hierNodeName(inst)
         if len(parentName)>0:
-            ret['hierarchyName'] = parentName+'.'+inst
+            ret['hierarchyName'] = parentName+'.'+segment
         else:
-            ret['hierarchyName'] = inst
+            ret['hierarchyName'] = segment
         return ret
 
     # This is a helper furnction for setRangeOfInstancesByHier
@@ -3304,7 +3314,7 @@ class projectOpen:
         for inst in instances:
             newInstances[inst] = self.addHierEntry(inst, parentName)
             if (len(self.hierKey[self.data['instances'][inst]['instanceTypeKey']]) > 0 and currentDepth != depth):
-                newInstances[inst]['more'] = self.recursiveHier(parentName+'.'+inst, (self.hierKey[self.data['instances'][inst]['instanceTypeKey']]), currentDepth, depth)
+                newInstances[inst]['more'] = self.recursiveHier(newInstances[inst]['hierarchyName'], (self.hierKey[self.data['instances'][inst]['instanceTypeKey']]), currentDepth, depth)
             else:
                 newInstances[inst]['more'] = None
 

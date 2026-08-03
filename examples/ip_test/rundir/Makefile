@@ -28,10 +28,10 @@ endif
 run-vl:
 	$(MAKE) clean
 	$(MAKE) all VL_DUT=1
-	$(MAKE) run-vl-src
-	$(MAKE) run-vl-ip0
-	$(MAKE) run-vl-ip1
-	$(MAKE) run-vl-uBridgeIp1
+	$(MAKE) run-vl-src VL_DUT=1
+	$(MAKE) run-vl-ip0 VL_DUT=1
+	$(MAKE) run-vl-ip1 VL_DUT=1
+	$(MAKE) run-vl-uBridgeIp1 VL_DUT=1
 
 run-vl-src: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uSrc
