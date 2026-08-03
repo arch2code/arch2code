@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 #include "pySocketExternal.h"
 #include "workerThread.h"
 

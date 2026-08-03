@@ -12,7 +12,6 @@
 import axi4sDemo.base;
 import axi4sDemo_tb;
 using namespace axi4sDemo_tb_ns;
-#include "endOfTest.h"
 
 //contained instances forward class declaration
 class axi4s_m_drvBase;

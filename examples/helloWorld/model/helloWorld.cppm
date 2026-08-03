@@ -16,7 +16,6 @@ module;
 // GENERATED_CODE_END
 #include <memory>
 #include "instanceFactory.h"
-#include "endOfTest.h"
 #include "testController.h"
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
@@ -25,10 +24,11 @@ import helloWorld.base;
 import helloWorld_tb;
 import helloWorld_producer.base;
 import helloWorld_consumer.base;
-using namespace helloWorld_tb_ns;
 // GENERATED_CODE_END
 // user imports here
+import a2c.endOfTest;
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace helloWorld_tb_ns;
 export SC_MODULE(helloWorld), public blockBase, public helloWorldBase
 {
 private:

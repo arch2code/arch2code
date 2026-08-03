@@ -10,7 +10,6 @@
 
 #include "instanceFactory.h"
 import helloWorld.base;
-#include "endOfTest.h"
 
 class helloWorldExternal: public sc_module, public helloWorldInverted {
 

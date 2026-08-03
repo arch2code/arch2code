@@ -13,7 +13,7 @@
 #include "socketFactory.h"
 #include "socketTransport.h"
 #include "testBenchConfigFactory.h"
-#include "endOfTest.h"
+import a2c.endOfTest;
 #include "testController.h"
 
 // Absolute path to pySocket.py: do not rely on getcwd() — runs may start from FIPS/rundir or .../pySocket/rundir.

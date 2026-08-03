@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 #include "someRapperExternal.h"
 #include "workerThread.h"
 

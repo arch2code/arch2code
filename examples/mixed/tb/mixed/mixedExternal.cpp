@@ -1,5 +1,6 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
+import a2c.endOfTest;
 #include "mixedExternal.h"
 // GENERATED_CODE_PARAM --block=mixed_tb --excludeInst=u_mixed
 

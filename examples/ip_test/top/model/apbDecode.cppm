@@ -17,10 +17,10 @@ module;
 export module ip_test_apbDecode.block;
 import ip_test_apbDecode.base;
 import common_shared_types;
-using namespace common_shared_types_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace common_shared_types_ns;
 export SC_MODULE(apbDecode), public blockBase, public apbDecodeBase
 {
 private:

@@ -72,9 +72,30 @@ def render_default(args, prj, data):
         out.append(f'//contained instances base module imports')
         for line in intf_gen_utils.sc_instance_includes(data, prj):
             out.append(line)
-    # In module mode classDecl emits only the class (the preamble closed in
-    # moduleExport), so there are no dependency lines to separate from it.
-    if args.mode != 'module':
+    # In module mode moduleExport owns the preamble (export module + imports) and,
+    # for a non-reg-handler block, emits imports ONLY so the sibling
+    # `// user imports here` slot stays a legal preamble slot for hand-authored
+    # body-only imports. The context using-directives that let the block body spell
+    # imported types unqualified are therefore emitted HERE at the class-region head
+    # (after the user-import slot, where the preamble has closed). This mirrors
+    # moduleExport's using set (dependency + context sources); reg-handlers keep
+    # their usings at the moduleExport tail and never reach classDecl.
+    if args.mode == 'module':
+        seenUsing = set()
+        moduleUsings = []
+        for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
+            if line.startswith('using namespace ') and line not in seenUsing:
+                moduleUsings.append(line)
+                seenUsing.add(line)
+        moduleFileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
+        for context in data['includeContext']:
+            if context in data['includeFiles'].get(moduleFileMapKey, {}):
+                for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, moduleFileMapKey):
+                    if line.startswith('using namespace ') and line not in seenUsing:
+                        moduleUsings.append(line)
+                        seenUsing.add(line)
+        out.extend(moduleUsings)
+    else:
         out.append('')
 
     # In module mode the block class is exported from the block-module

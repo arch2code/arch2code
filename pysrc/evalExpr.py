@@ -5,12 +5,15 @@ parser, and the IR node classes for the integer SystemVerilog
 constant-expression subset described in
 `builder/base/plan-eval-symbolic-emission.md`.
 
-The grammar is frozen: SystemVerilog integer literals (unsized decimal and
+The grammar covers SystemVerilog integer literals (unsized decimal and
 SV based literals such as `8'hFF`, `'hFF`, `'b1010`, `12'd9`), arithmetic
-`+ - * / %`, bitwise `& | ^ ~`, logical shifts `<< >>`, `$clog2`, `$symbol`
-references, and parentheses. The authoring language is SV, so literals are
-spelled in SV: C-style `0x` / `0o` / `0b` prefixes, `x` / `z` digits, real
-literals, and out-of-grammar operators are all rejected at parse time.
+`+ - * / %`, bitwise `& | ^ ~`, logical shifts `<< >>`, relational
+`< <= > >=`, equality `== !=`, the ternary conditional `?:`, `$clog2`,
+`$symbol` references, and parentheses. Every operator has a direct, identical
+SV/C++/C spelling, so the emitters pass it through 1:1. The authoring language
+is SV, so literals are spelled in SV: C-style `0x` / `0o` / `0b` prefixes,
+`x` / `z` digits, real literals, and out-of-grammar operators are all rejected
+at parse time.
 
 This module owns the language-neutral core: parsing into the IR (`parse`),
 numeric evaluation (`evaluate`), canonical serialization for persistence
@@ -59,6 +62,16 @@ class Clog2:
     operand: object
 
 
+@dataclass(frozen=True)
+class Cond:
+    # Ternary conditional `cond ? then : otherwise`. `cond` evaluates as a
+    # boolean (nonzero is true), matching the shared SV/C++/C spelling emitted
+    # verbatim by the per-language emitters.
+    cond: object
+    then: object
+    otherwise: object
+
+
 class EvalParseError(Exception):
     """Raised for user-facing parse failures: bad syntax, real or sized
     literals, or an unresolved bare symbol. Carries the source column so
@@ -72,14 +85,19 @@ class EvalParseError(Exception):
 
 # Binary-operator precedence. Higher binds tighter. The SV and C++ orderings
 # coincide for this subset, so one table serves the parser, `unparse`, and the
-# per-language emitters. All binary operators are left-associative.
+# per-language emitters. All binary operators are left-associative. Relational
+# and equality bind looser than the shifts and tighter than the bitwise ops,
+# matching the shared SV/C++ ordering; the ternary conditional binds looser than
+# every binary operator and is parsed as its own right-associative layer.
 PRECEDENCE = {
     '|': 1,
     '^': 2,
     '&': 3,
-    '<<': 4, '>>': 4,
-    '+': 5, '-': 5,
-    '*': 6, '/': 6, '%': 6,
+    '==': 4, '!=': 4,
+    '<': 5, '<=': 5, '>': 5, '>=': 5,
+    '<<': 6, '>>': 6,
+    '+': 7, '-': 7,
+    '*': 8, '/': 8, '%': 8,
 }
 
 # Prefix unary operators.
@@ -126,13 +144,45 @@ def _tokenize(text):
                 toks.append(('OP', '<<', i))
                 i += 2
                 continue
-            raise EvalParseError("'<' is not a valid operator; did you mean '<<'?", i)
+            if text[i:i + 2] == '<=':
+                toks.append(('OP', '<=', i))
+                i += 2
+                continue
+            toks.append(('OP', '<', i))
+            i += 1
+            continue
         if c == '>':
             if text[i:i + 2] == '>>':
                 toks.append(('OP', '>>', i))
                 i += 2
                 continue
-            raise EvalParseError("'>' is not a valid operator; did you mean '>>'?", i)
+            if text[i:i + 2] == '>=':
+                toks.append(('OP', '>=', i))
+                i += 2
+                continue
+            toks.append(('OP', '>', i))
+            i += 1
+            continue
+        if c == '=':
+            if text[i:i + 2] == '==':
+                toks.append(('OP', '==', i))
+                i += 2
+                continue
+            raise EvalParseError("'=' is not a valid operator; did you mean '=='?", i)
+        if c == '!':
+            if text[i:i + 2] == '!=':
+                toks.append(('OP', '!=', i))
+                i += 2
+                continue
+            raise EvalParseError("'!' is not a valid operator; did you mean '!='?", i)
+        if c == '?':
+            toks.append(('QUESTION', '?', i))
+            i += 1
+            continue
+        if c == ':':
+            toks.append(('COLON', ':', i))
+            i += 1
+            continue
         if c in '+-*/%&|^~':
             toks.append(('OP', c, i))
             i += 1
@@ -264,11 +314,26 @@ class _Parser:
         return tok
 
     def parse(self):
-        node = self._expr(0)
+        node = self._ternary()
         tok = self._peek()
         if tok[0] != 'EOF':
             raise EvalParseError(f"unexpected token {tok[1]!r}", tok[2])
         return node
+
+    def _ternary(self):
+        # The conditional binds looser than every binary operator and is
+        # right-associative (`a ? b : c ? d : e` == `a ? b : (c ? d : e)`), so
+        # the branches recurse back into `_ternary` while the condition is a
+        # full binary expression.
+        cond = self._expr(0)
+        if self._peek()[0] == 'QUESTION':
+            self._advance()
+            then = self._ternary()
+            colon = self._advance()
+            if colon[0] != 'COLON':
+                raise EvalParseError("expected ':' in conditional expression", colon[2])
+            return Cond(cond, then, self._ternary())
+        return cond
 
     def _expr(self, minPrec):
         left = self._unary()
@@ -312,13 +377,13 @@ class _Parser:
             lparen = self._advance()
             if lparen[0] != 'LPAREN':
                 raise EvalParseError("expected '(' after $clog2", lparen[2])
-            inner = self._expr(0)
+            inner = self._ternary()
             rparen = self._advance()
             if rparen[0] != 'RPAREN':
                 raise EvalParseError("expected ')' to close $clog2(", rparen[2])
             return Clog2(inner)
         if typ == 'LPAREN':
-            inner = self._expr(0)
+            inner = self._ternary()
             rparen = self._advance()
             if rparen[0] != 'RPAREN':
                 raise EvalParseError("expected ')'", rparen[2])
@@ -351,6 +416,10 @@ def needsParens(parentOp, child, side):
     `parentOp`) must be parenthesized to preserve the tree's grouping when
     re-emitted. Precedence is grammar, shared by `unparse` and the per-language
     emitters; all binary operators are left-associative."""
+    if isinstance(child, Cond):
+        # The conditional binds looser than every binary operator, so a Cond
+        # operand of a binary op is always wrapped regardless of side.
+        return True
     if not isinstance(child, Bin):
         # Atoms, unary operators, and $clog2 all bind at least as tightly as
         # any binary operator, so they never need wrapping.
@@ -402,6 +471,14 @@ def unparse(node):
         if needsParens(node.op, node.rhs, 'right'):
             rhs = f"({rhs})"
         return f"{lhs} {node.op} {rhs}"
+    if isinstance(node, Cond):
+        # Only a Cond condition needs wrapping: `_expr` never parses a bare
+        # conditional, so a nested Cond in the condition slot would otherwise
+        # re-parse wrong. Branches recurse through `_ternary` and stay bare.
+        cond = unparse(node.cond)
+        if isinstance(node.cond, Cond):
+            cond = f"({cond})"
+        return f"{cond} ? {unparse(node.then)} : {unparse(node.otherwise)}"
     return f"$clog2({unparse(node.operand)})"  # Clog2
 
 
@@ -419,6 +496,8 @@ def symbolKeys(node):
         return symbolKeys(node.operand)
     if isinstance(node, Bin):
         return symbolKeys(node.lhs) | symbolKeys(node.rhs)
+    if isinstance(node, Cond):
+        return symbolKeys(node.cond) | symbolKeys(node.then) | symbolKeys(node.otherwise)
     return symbolKeys(node.operand)  # Clog2
 
 
@@ -480,6 +559,20 @@ def evaluate(node, resolve):
             return lhs | rhs
         if op == '^':
             return lhs ^ rhs
+        # Relational and equality yield a 0/1 int, matching SV/C++ where a
+        # comparison is an integer usable as a ternary condition.
+        if op == '<':
+            return int(lhs < rhs)
+        if op == '<=':
+            return int(lhs <= rhs)
+        if op == '>':
+            return int(lhs > rhs)
+        if op == '>=':
+            return int(lhs >= rhs)
+        if op == '==':
+            return int(lhs == rhs)
+        if op == '!=':
+            return int(lhs != rhs)
         if op == '<<':
             if rhs < 0:
                 raise EvalEvalError("negative shift count")
@@ -487,6 +580,11 @@ def evaluate(node, resolve):
         if rhs < 0:
             raise EvalEvalError("negative shift count")
         return lhs >> rhs  # '>>', the only remaining binary operator
+    if isinstance(node, Cond):
+        # Nonzero condition selects the `then` branch (SV/C++ truthiness).
+        if evaluate(node.cond, resolve) != 0:
+            return evaluate(node.then, resolve)
+        return evaluate(node.otherwise, resolve)
     operand = evaluate(node.operand, resolve)  # Clog2
     if operand <= 0:
         raise EvalEvalError("$clog2 argument must be positive")

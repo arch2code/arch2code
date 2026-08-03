@@ -20,11 +20,11 @@ import ip_test_src.base;
 import ip_test_ipLeaf.base;
 import ip_test_src;
 import ip_test_ipLeaf;
-using namespace ip_test_src_ns;
-using namespace ip_test_ipLeaf_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace ip_test_src_ns;
+using namespace ip_test_ipLeaf_ns;
 export template<typename Config>
 SC_MODULE(src), public blockBase, public srcBase<Config>
 {

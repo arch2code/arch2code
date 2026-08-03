@@ -19,10 +19,10 @@ module;
 export module axiDemo_consumer.block;
 import axiDemo_consumer.base;
 import axiDemo;
-using namespace axiDemo_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace axiDemo_ns;
 export SC_MODULE(consumer), public blockBase, public consumerBase
 {
 private:

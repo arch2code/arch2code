@@ -46,8 +46,10 @@ def blockModuleHeader(args, prj, data):
     # here (global module fragment); classDecl suppresses all of these in module
     # mode so they live here exactly once. The trailing `// user #includes here`
     # user slot sits after this region's end, in the same GMF zone, so a
-    # non-modular shared header (e.g. endOfTest.h) added there attaches to the
-    # global module rather than the block module.
+    # non-modular shared header added there attaches to the global module rather
+    # than the block module. Framework singletons such as endOfTestState are now
+    # C++20 modules (`import a2c.endOfTest;`), added by hand in the `// user
+    # imports here` purview slot below, not included here.
     baseline = [
         '#include "systemc.h"',
         '#include "logging.h"',
@@ -110,7 +112,14 @@ def moduleExport(args, prj, data):
                     usings.append(line)
                 else:
                     out.append(line)
-    out.extend(usings)
+    # The using-directives CLOSE the module preamble. A reg-handler renders via
+    # blockRegs (which emits no context usings in module mode), so its usings ride
+    # here at the moduleExport tail. A non-reg-handler renders via classDecl, which
+    # emits the usings at its class-region head instead; keeping them out of
+    # moduleExport leaves the sibling `// user imports here` slot a legal preamble
+    # slot for hand-authored body-only imports.
+    if data['blockInfo']['isRegHandler']:
+        out.extend(usings)
     return "\n".join(out)
 
 

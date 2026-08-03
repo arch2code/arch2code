@@ -10,7 +10,6 @@
 
 #include "instanceFactory.h"
 import ipBridge_bridgeStdTop.base;
-#include "endOfTest.h"
 
 class bridgeStdTopExternal: public sc_module, public bridgeStdTopInverted {
 

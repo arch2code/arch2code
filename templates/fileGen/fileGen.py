@@ -465,7 +465,6 @@ tbConfigTemplate = \
 
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
-#include "endOfTest.h"
 
 // GENERATED_CODE_PARAM --block=__modulename____variantparam__
 // GENERATED_CODE_BEGIN --template=tbConfig

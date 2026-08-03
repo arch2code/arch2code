@@ -494,7 +494,6 @@ import {{basemodule}};
 {%- if thunker_includes %}
 {{thunker_includes}}
 {%- endif %}
-#include "endOfTest.h"
 
 {%- if ext_fwd_decl %}
 

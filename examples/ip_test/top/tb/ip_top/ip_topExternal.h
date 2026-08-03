@@ -12,7 +12,6 @@
 import ip_test_ip_top.base;
 import common_shared_types;
 using namespace common_shared_types_ns;
-#include "endOfTest.h"
 
 //contained instances forward class declaration
 class cpuBase;

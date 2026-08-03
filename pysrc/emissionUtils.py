@@ -63,6 +63,16 @@ def _emitNode(node, symSpelling, lang):
         if evalExpr.needsParens(node.op, node.rhs, 'right'):
             rhs = f"({rhs})"
         return f"{lhs} {node.op} {rhs}"
+    if isinstance(node, evalExpr.Cond):
+        # The ternary spells identically in SV/C++/C, so it passes through 1:1
+        # like the binary operators; only a nested Cond in the condition slot
+        # needs wrapping (see evalExpr.unparse).
+        cond = _emitNode(node.cond, symSpelling, lang)
+        if isinstance(node.cond, evalExpr.Cond):
+            cond = f"({cond})"
+        then = _emitNode(node.then, symSpelling, lang)
+        otherwise = _emitNode(node.otherwise, symSpelling, lang)
+        return f"{cond} ? {then} : {otherwise}"
     return f"{lang.clog2}({_emitNode(node.operand, symSpelling, lang)})"  # Clog2
 
 

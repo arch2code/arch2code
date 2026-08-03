@@ -20,10 +20,10 @@ import mixed_blockG.base;
 import mixed;
 import mixed_blockGLeaf.base;
 import mixed_blockGRegs.base;
-using namespace mixed_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace mixed_ns;
 export template<typename Config>
 SC_MODULE(blockG), public blockBase, public blockGBase<Config>
 {

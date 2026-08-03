@@ -11,17 +11,17 @@ module;
 #include "instanceFactory.h"
 #include "axi4_stream_channel.h"
 // GENERATED_CODE_END
-#include "endOfTest.h"
 #include "hierVlDemo_utils.h"
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module hierVlDemo_axi4s_s_drv.block;
 import hierVlDemo_axi4s_s_drv.base;
 import hierVlDemo_tb;
-using namespace hierVlDemo_tb_ns;
 // GENERATED_CODE_END
 // user imports here
+import a2c.endOfTest;
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace hierVlDemo_tb_ns;
 export SC_MODULE(axi4s_s_drv), public blockBase, public axi4s_s_drvBase
 {
 private:

@@ -2,7 +2,7 @@
 
 #include "fwModelMain.h"
 #include "testController.h"
-#include "endOfTest.h"
+import a2c.endOfTest;
 #include "q_assert.h"
 
 void fwModelMain::startupInit(void)

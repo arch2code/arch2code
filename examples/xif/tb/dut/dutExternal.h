@@ -16,7 +16,6 @@ import xif;
 using namespace xif_ns;
 #include "xifVariantConfig.h"
 #include "push_ack_port_thunker.h"
-#include "endOfTest.h"
 
 class dutExternal: public sc_module, public dutInverted<dutDutV0Config> {
 

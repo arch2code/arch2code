@@ -17,10 +17,10 @@ module;
 export module hierVlDemo_axi4s_m_drv.block;
 import hierVlDemo_axi4s_m_drv.base;
 import hierVlDemo_tb;
-using namespace hierVlDemo_tb_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace hierVlDemo_tb_ns;
 export SC_MODULE(axi4s_m_drv), public blockBase, public axi4s_m_drvBase
 {
 private:

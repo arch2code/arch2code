@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 #include "axi4sDemoExternal.h"
 #include "workerThread.h"
 

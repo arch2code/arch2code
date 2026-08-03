@@ -1,6 +1,6 @@
 #include "logging.h"
 #include <boost/stacktrace.hpp>
-#include "endOfTest.h"
+import a2c.endOfTest;
 
 #include "systemc.h"
 

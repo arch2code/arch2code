@@ -18,10 +18,10 @@ module;
 export module nested_producer.block;
 import nested_producer.base;
 import nested;
-using namespace nested_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace nested_ns;
 export SC_MODULE(producer), public blockBase, public producerBase
 {
 private:

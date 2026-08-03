@@ -9,7 +9,6 @@
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
 #include "coreBase.h"
-#include "endOfTest.h"
 
 class coreExternal: public sc_module, public coreInverted {
 

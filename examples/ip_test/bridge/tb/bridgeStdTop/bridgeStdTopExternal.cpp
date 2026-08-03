@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 #include "bridgeStdTopExternal.h"
 #include "workerThread.h"
 

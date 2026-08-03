@@ -5,7 +5,7 @@
 
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
-#include "endOfTest.h"
+import a2c.endOfTest;
 #include "testController.h"
 
 // GENERATED_CODE_PARAM --block=someRapper

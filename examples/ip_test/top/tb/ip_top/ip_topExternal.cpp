@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 #include "ip_topExternal.h"
 #include "workerThread.h"
 

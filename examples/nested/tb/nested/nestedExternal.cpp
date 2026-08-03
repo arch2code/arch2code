@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 #include "nestedExternal.h"
 #include "workerThread.h"
 

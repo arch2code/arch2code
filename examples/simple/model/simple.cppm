@@ -11,7 +11,6 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 // GENERATED_CODE_END
-#include "endOfTest.h"
 #include "testController.h"
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
@@ -20,10 +19,11 @@ import simple.base;
 import simple;
 import simple_producer.base;
 import simple_consumer.base;
-using namespace simple_ns;
 // GENERATED_CODE_END
 // user imports here
+import a2c.endOfTest;
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace simple_ns;
 export SC_MODULE(simple), public blockBase, public simpleBase
 {
 private:

@@ -22,10 +22,10 @@ module;
 export module helloWorld_producer.block;
 import helloWorld_producer.base;
 import helloWorld_tb;
-using namespace helloWorld_tb_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace helloWorld_tb_ns;
 export SC_MODULE(producer), public blockBase, public producerBase
 {
 private:

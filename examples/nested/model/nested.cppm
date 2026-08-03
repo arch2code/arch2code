@@ -11,7 +11,6 @@ module;
 #include "instanceFactory.h"
 #include "rdy_vld_channel.h"
 // GENERATED_CODE_END
-#include "endOfTest.h"
 #include "testController.h"
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
@@ -20,10 +19,11 @@ import nested.base;
 import nested;
 import nested_testContainer.base;
 import nested_nestedL1.base;
-using namespace nested_ns;
 // GENERATED_CODE_END
 // user imports here
+import a2c.endOfTest;
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace nested_ns;
 export SC_MODULE(nested), public blockBase, public nestedBase
 {
 private:

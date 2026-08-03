@@ -11,13 +11,13 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 // GENERATED_CODE_END
-#include "endOfTest.h"
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ipBridge_bridgeDriver.block;
 import ipBridge_bridgeDriver.base;
 // GENERATED_CODE_END
 // user imports here
+import a2c.endOfTest;
 // GENERATED_CODE_BEGIN --template=classDecl
 import ipBridge;
 using namespace ipBridge_ns;

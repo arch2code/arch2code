@@ -27,11 +27,11 @@ import mixed_apbDecode.base;
 import mixed_blockC.base;
 import mixed_blockB.base;
 import mixed_blockG.base;
-using namespace mixed_ns;
-using namespace mixed_mixedBlockC_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace mixed_ns;
+using namespace mixed_mixedBlockC_ns;
 export SC_MODULE(mixed), public blockBase, public mixedBase
 {
 private:

@@ -30,14 +30,14 @@ import ip_test_apbDecode.base;
 import ip_test_src.base;
 import ip.base;
 import ipBridge.base;
+// GENERATED_CODE_END
+// user imports here
+// GENERATED_CODE_BEGIN --template=classDecl
 using namespace common_shared_types_ns;
 using namespace ip_test_ip_top_ns;
 using namespace ip_test_src_ns;
 using namespace ip_ns;
 using namespace ipBridge_ns;
-// GENERATED_CODE_END
-// user imports here
-// GENERATED_CODE_BEGIN --template=classDecl
 export SC_MODULE(ip_top), public blockBase, public ip_topBase
 {
 private:

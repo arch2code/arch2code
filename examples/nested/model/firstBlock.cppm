@@ -17,10 +17,10 @@ module;
 export module nested_firstBlock.block;
 import nested_firstBlock.base;
 import nested;
-using namespace nested_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace nested_ns;
 export SC_MODULE(firstBlock), public blockBase, public firstBlockBase
 {
 private:

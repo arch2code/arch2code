@@ -17,10 +17,10 @@ export module nested_nestedL3.block;
 import nested_nestedL3.base;
 import nested_nestedL4.base;
 import nested;
-using namespace nested_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace nested_ns;
 export SC_MODULE(nestedL3), public blockBase, public nestedL3Base
 {
 private:

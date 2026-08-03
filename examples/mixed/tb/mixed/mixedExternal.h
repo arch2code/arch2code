@@ -12,7 +12,6 @@
 import mixed.base;
 import mixed;
 using namespace mixed_ns;
-#include "endOfTest.h"
 
 //contained instances forward class declaration
 class cpuBase;

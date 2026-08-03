@@ -14,15 +14,15 @@ module;
 // GENERATED_CODE_END
 // user #includes here
 #include "testController.h"
-#include "endOfTest.h"
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xif_dut.block;
 import xif_dut.base;
 import xif;
-using namespace xif_ns;
 // GENERATED_CODE_END
 // user imports here
+import a2c.endOfTest;
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace xif_ns;
 export template<typename Config>
 SC_MODULE(dut), public blockBase, public dutBase<Config>
 {

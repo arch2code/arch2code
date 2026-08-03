@@ -15,7 +15,7 @@ sys.path.insert(0, base_dir)
 
 from pysrc.evalExpr import (
     parse, unparse, symbolKeys,
-    Num, Sym, Unary, Bin, Clog2, EvalParseError,
+    Num, Sym, Unary, Bin, Clog2, Cond, EvalParseError,
 )
 
 
@@ -164,13 +164,41 @@ def test_reject_malformed_based_literal():
     return True
 
 
+def test_relational_equality():
+    # Relational and equality bind looser than the shifts, tighter than bitwise.
+    _expect("$A > $B", Bin('>', _sym('A'), _sym('B')))
+    _expect("$A <= $B", Bin('<=', _sym('A'), _sym('B')))
+    _expect("$A == $B", Bin('==', _sym('A'), _sym('B')))
+    _expect("$A != $B", Bin('!=', _sym('A'), _sym('B')))
+    # $A + 1 > $B  ->  ($A + 1) > $B  (additive binds tighter than relational)
+    _expect("$A + 1 > $B",
+            Bin('>', Bin('+', _sym('A'), Num(1)), _sym('B')))
+    return True
+
+
+def test_ternary():
+    # cond ? then : otherwise, right-associative.
+    _expect("($A > $B) ? $A : $B",
+            Cond(Bin('>', _sym('A'), _sym('B')), _sym('A'), _sym('B')))
+    # right-assoc: a ? b : c ? n : w  ==  a ? b : (c ? n : w)
+    _expect("$A ? $B : $C ? $N : $W",
+            Cond(_sym('A'), _sym('B'),
+                 Cond(_sym('C'), _sym('N'), _sym('W'))))
+    # a Cond operand of $clog2 keeps its grouping through the round trip
+    _expect("$clog2(($A > $B) ? $A : $B)",
+            Clog2(Cond(Bin('>', _sym('A'), _sym('B')), _sym('A'), _sym('B'))))
+    return True
+
+
 def test_reject_bad_syntax():
     _expectReject("")                 # empty
     _expectReject("$A +")             # dangling operator
     _expectReject("($A + $B")         # unbalanced paren
     _expectReject("$A $B")            # missing operator
     _expectReject("$A @ $B")          # unknown character
-    _expectReject("$A < $B")          # single '<' is not an operator
+    _expectReject("$A = $B")          # single '=' is not an operator
+    _expectReject("$A ! $B")          # single '!' is not an operator
+    _expectReject("$A ? $B")          # ternary missing ': otherwise'
     _expectReject("$clog2 $A")        # clog2 without parentheses
     return True
 
@@ -242,6 +270,8 @@ _TESTS = [
     ("parentheses regrouping", test_parentheses),
     ("$clog2 over an expression", test_clog2),
     ("bitwise/shift combination", test_bitwise_shift_combo),
+    ("relational and equality operators", test_relational_equality),
+    ("ternary conditional", test_ternary),
     ("truncating-division idiom shape", test_truncating_division_idiom_shape),
     ("unparse canonical serialization", test_unparse_canonical),
     ("unparse associativity parens", test_unparse_associativity_parens),

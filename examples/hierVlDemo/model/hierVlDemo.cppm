@@ -17,10 +17,10 @@ module;
 export module hierVlDemo.block;
 import hierVlDemo.base;
 import hierVlDemo_tb;
-using namespace hierVlDemo_tb_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace hierVlDemo_tb_ns;
 export SC_MODULE(hierVlDemo), public blockBase, public hierVlDemoBase
 {
 private:

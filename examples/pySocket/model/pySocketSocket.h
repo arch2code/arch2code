@@ -6,7 +6,6 @@
 #include "socketFactory.h"
 #include "systemc.h"
 #include "testController.h"
-#include "endOfTest.h"
 
 // pySocketBase moved to a C++20 module by the base->cppm migration; import it
 // after the textual includes so the module's global-module-fragment STL decls

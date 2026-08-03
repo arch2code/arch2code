@@ -12,7 +12,6 @@
 import pySocket.base;
 import pySocket_tb;
 using namespace pySocket_tb_ns;
-#include "endOfTest.h"
 
 class pySocketExternal: public sc_module, public pySocketInverted {
 

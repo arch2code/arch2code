@@ -7,6 +7,11 @@ EXTRA_CPP_INCLUDES =
 EXTRA_LD_FLAGS     =
 EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src
 
+# This firmware example relies on the arch2code default BSP stubs. The BSP is no
+# longer in the default source set, so opt in here: EXTRA_A2C_SRC_DIRS adds both
+# the -I include path and the .cpp glob (regRdWr.cpp, fwlog.cpp).
+EXTRA_A2C_SRC_DIRS += $(A2C_ROOT)/common/fw/bsp
+
 # Include generated files with names matching '*Includes*.cpp' in SC_GEN_FILES.
 EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 

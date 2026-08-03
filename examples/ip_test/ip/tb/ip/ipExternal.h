@@ -13,7 +13,6 @@ import ip.base;
 import ip;
 using namespace ip_ns;
 #include "ipVariantConfig.h"
-#include "endOfTest.h"
 
 class ipExternal: public sc_module, public ipInverted<ipVariant0Config> {
 

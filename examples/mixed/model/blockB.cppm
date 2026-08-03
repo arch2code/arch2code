@@ -20,7 +20,6 @@ module;
 #include "mixedVariantConfig.h"
 // GENERATED_CODE_END
 #include <vector>
-#include "endOfTest.h"
 #include "testController.h"
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
@@ -33,12 +32,13 @@ import mixed_blockD.base;
 import mixed_blockF.base;
 import mixed_threeCs.base;
 import mixed_blockBRegs.base;
+// GENERATED_CODE_END
+// user imports here
+import a2c.endOfTest;
+// GENERATED_CODE_BEGIN --template=classDecl
 using namespace mixed_ns;
 using namespace mixed_mixedBlockC_ns;
 using namespace mixed_mixedInclude_ns;
-// GENERATED_CODE_END
-// user imports here
-// GENERATED_CODE_BEGIN --template=classDecl
 export SC_MODULE(blockB), public blockBase, public blockBBase
 {
 private:

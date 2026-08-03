@@ -189,11 +189,25 @@ def _src(node, src):
     return src[node.col_offset:node.end_col_offset]
 
 
+def _cStyleIntRespell(slice_):
+    """SV-subset spelling of a C-style integer-literal source slice, or None if
+    `slice_` is not one. Python accepts `0x`/`0o`/`0b` integer literals but the
+    SV grammar rejects them, spelling based literals `'hFF` / `'b1010`. A C-style
+    literal parses to a bare `ast.Constant` int with no operator for the span
+    walk to key on, so its own source span is re-spelled here. Octal folds to
+    hex, matching the eval IR's octal->hex normalization (`evalExpr`)."""
+    if len(slice_) < 3 or slice_[0] != '0' or slice_[1] not in 'xXoObB':
+        return None
+    radix = {'x': 16, 'o': 8, 'b': 2}[slice_[1].lower()]
+    value = int(slice_[2:].replace('_', ''), radix)
+    return f"'b{value:b}" if radix == 2 else f"'h{value:x}"
+
+
 def _collectSpans(node, src, spans):
     """Append `(start, end, replacement)` rewrite spans for every Python-only
-    construct in the tree. Only `.bit_length()` calls are rewritten; everything
-    else is copied verbatim. (Floor division is never reached here - it is
-    routed to NEEDS_MANUAL up front in convertExpr.)
+    construct in the tree. `.bit_length()` calls and C-style integer literals
+    are rewritten; everything else is copied verbatim. (Floor division is never
+    reached here - it is routed to NEEDS_MANUAL up front in convertExpr.)
 
     A `.bit_length()` receiver is carried through by its verbatim source slice
     and is not descended into: a convertible construct nested inside a receiver
@@ -222,7 +236,13 @@ def _collectSpans(node, src, spans):
     if isinstance(node, ast.UnaryOp):
         _collectSpans(node.operand, src, spans)
         return
-    # Name / Constant: nothing to rewrite.
+    if (isinstance(node, ast.Constant) and isinstance(node.value, int)
+            and not isinstance(node.value, bool)):
+        respelled = _cStyleIntRespell(_src(node, src))
+        if respelled is not None:
+            spans.append((node.col_offset, node.end_col_offset, respelled))
+        return
+    # Name / decimal Constant: nothing to rewrite.
 
 
 def _applySpans(src, spans):

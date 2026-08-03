@@ -19,10 +19,10 @@ module;
 export module apbDecode_blockA.block;
 import apbDecode_blockA.base;
 import apbDecode;
-using namespace apbDecode_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace apbDecode_ns;
 export SC_MODULE(blockA), public blockBase, public blockABase
 {
 private:

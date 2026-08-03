@@ -20,10 +20,10 @@ module;
 export module helloWorld_consumer.block;
 import helloWorld_consumer.base;
 import helloWorld_tb;
-using namespace helloWorld_tb_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace helloWorld_tb_ns;
 export SC_MODULE(consumer), public blockBase, public consumerBase
 {
 private:

@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=core
 // GENERATED_CODE_BEGIN --template=testbench --section=init
 #include "coreTestbench.h"

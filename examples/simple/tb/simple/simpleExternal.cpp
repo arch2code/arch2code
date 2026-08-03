@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 #include "simpleExternal.h"
 #include "workerThread.h"
 

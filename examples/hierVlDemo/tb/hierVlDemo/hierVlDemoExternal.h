@@ -12,7 +12,6 @@
 import hierVlDemo.base;
 import hierVlDemo_tb;
 using namespace hierVlDemo_tb_ns;
-#include "endOfTest.h"
 
 //contained instances forward class declaration
 class axi4s_m_drvBase;

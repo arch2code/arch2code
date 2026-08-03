@@ -12,7 +12,6 @@
 import apbDecode_someRapper.base;
 import apbDecode;
 using namespace apbDecode_ns;
-#include "endOfTest.h"
 
 //contained instances forward class declaration
 class cpuBase;

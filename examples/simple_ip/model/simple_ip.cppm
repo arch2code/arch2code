@@ -25,12 +25,12 @@ import ip;
 import simple_ip_apbDecode.base;
 import simple_ip_dataGen.base;
 import ip.base;
-using namespace common_shared_types_ns;
-using namespace simple_ip_ns;
-using namespace ip_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace common_shared_types_ns;
+using namespace simple_ip_ns;
+using namespace ip_ns;
 export SC_MODULE(simple_ip), public blockBase, public simple_ipBase
 {
 private:

@@ -1,7 +1,7 @@
 // copyright QiStor 2025
 
 #include "logging.h"
-#include "endOfTest.h"
+import a2c.endOfTest;
 #include "simController.h"
 #include "systemc.h"
 #include "instanceFactory.h"

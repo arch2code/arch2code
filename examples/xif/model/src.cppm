@@ -18,10 +18,10 @@ module;
 export module xif_src.block;
 import xif_src.base;
 import xif;
-using namespace xif_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace xif_ns;
 export template<typename Config>
 SC_MODULE(src), public blockBase, public srcBase<Config>
 {

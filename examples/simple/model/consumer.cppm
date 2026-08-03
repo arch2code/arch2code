@@ -17,10 +17,10 @@ module;
 export module simple_consumer.block;
 import simple_consumer.base;
 import simple;
-using namespace simple_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace simple_ns;
 export SC_MODULE(consumer), public blockBase, public consumerBase
 {
 private:

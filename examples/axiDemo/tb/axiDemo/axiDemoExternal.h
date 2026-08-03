@@ -10,7 +10,6 @@
 
 #include "instanceFactory.h"
 import axiDemo.base;
-#include "endOfTest.h"
 
 class axiDemoExternal: public sc_module, public axiDemoInverted {
 

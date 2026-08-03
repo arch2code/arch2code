@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 #include "dutExternal.h"
 #include "workerThread.h"
 

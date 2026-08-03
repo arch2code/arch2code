@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=dut --variant=dutV0
 // GENERATED_CODE_BEGIN --template=testbench --section=init
 #include "dutTestbench.h"

@@ -10,7 +10,6 @@
 
 #include "instanceFactory.h"
 import nested.base;
-#include "endOfTest.h"
 
 class nestedExternal: public sc_module, public nestedInverted {
 

@@ -17,10 +17,10 @@ module;
 export module mixed_apbDecode.block;
 import mixed_apbDecode.base;
 import mixed;
-using namespace mixed_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace mixed_ns;
 export SC_MODULE(apbDecode), public blockBase, public apbDecodeBase
 {
 private:

@@ -10,7 +10,6 @@
 
 #include "instanceFactory.h"
 import simple.base;
-#include "endOfTest.h"
 
 class simpleExternal: public sc_module, public simpleInverted {
 

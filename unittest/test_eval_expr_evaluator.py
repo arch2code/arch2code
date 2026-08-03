@@ -80,6 +80,27 @@ def test_binary_operators():
     return True
 
 
+def test_relational_equality():
+    # Comparisons evaluate to a 0/1 int (A=1, B=3).
+    _expect("$A < $B", 1)
+    _expect("$B < $A", 0)
+    _expect("$B >= $B", 1)
+    _expect("$A > $B", 0)
+    _expect("$A == $A", 1)
+    _expect("$A != $B", 1)
+    return True
+
+
+def test_ternary():
+    # Nonzero condition selects `then`; right-associative chaining.
+    _expect("($A < $B) ? 10 : 20", 10)
+    _expect("($B < $A) ? 10 : 20", 20)
+    _expect("0 ? 10 : ($A < $B) ? 30 : 40", 30)
+    # emulate max($A, $B) via ternary
+    _expect("($A > $B) ? $A : $B", 3)
+    return True
+
+
 def test_unary_operators():
     _expect("+5", 5)
     _expect("-5", -5)
@@ -170,6 +191,8 @@ def test_clog2_non_positive():
 _TESTS = [
     ("literals across bases", test_literals_and_bases),
     ("binary operators", test_binary_operators),
+    ("relational and equality to value", test_relational_equality),
+    ("ternary conditional to value", test_ternary),
     ("unary operators", test_unary_operators),
     ("precedence flows to value", test_precedence_to_value),
     ("associativity flows to value", test_associativity_to_value),

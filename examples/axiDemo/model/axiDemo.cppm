@@ -13,7 +13,6 @@ module;
 #include "axi_read_channel.h"
 #include "axi_write_channel.h"
 // GENERATED_CODE_END
-#include "endOfTest.h"
 #include "testController.h"
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
@@ -22,10 +21,11 @@ import axiDemo.base;
 import axiDemo;
 import axiDemo_producer.base;
 import axiDemo_consumer.base;
-using namespace axiDemo_ns;
 // GENERATED_CODE_END
 // user imports here
+import a2c.endOfTest;
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace axiDemo_ns;
 export SC_MODULE(axiDemo), public blockBase, public axiDemoBase
 {
 private:

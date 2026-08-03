@@ -13,16 +13,16 @@ module;
 // GENERATED_CODE_END
 #include "regAddresses.h"
 #include "testController.h"
-#include "endOfTest.h"
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module apbDecode_cpu.block;
 import apbDecode_cpu.base;
 import apbDecode;
-using namespace apbDecode_ns;
 // GENERATED_CODE_END
 // user imports here
+import a2c.endOfTest;
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace apbDecode_ns;
 export SC_MODULE(cpu), public blockBase, public cpuBase
 {
 private:

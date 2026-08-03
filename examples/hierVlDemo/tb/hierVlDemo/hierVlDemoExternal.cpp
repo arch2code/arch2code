@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 #include "hierVlDemoExternal.h"
 #include "workerThread.h"
 
