@@ -159,6 +159,8 @@ def render_sc(args, prj, data):
         s = t.render(
             blockname=data['blockName'], variants=variants,
             is_parameterizable=isParameterizable,
+            concrete_sv_module=data['svWrapper']['concreteSvModule'],
+            concrete_dut_class=data['svWrapper']['concreteDutClass'],
             cfg=baseCfg,
             default_config=defaultConfig,
             use_own_variant_config=useOwnVariantTemplateArg,
@@ -183,8 +185,8 @@ def render_sc(args, prj, data):
         t = Template(sec_preamble_template)
         basemodule = intf_gen_utils.cpp_base_module_name(data['blockModuleName'])
         return(t.render(variants=data['variants'], basemodule=basemodule,
-                        dut_header=data['svWrapper']['dutHeader'],
-                        sv_wrapper_header=f"{data['svWrapper']['bodyModule']}.h"))
+                        dut_header=data['svWrapper']['concreteDutHeader'],
+                        sv_wrapper_header=f"{data['svWrapper']['concreteSvModule']}.h"))
 
     # ports blaster
     mp_sig = dict()
@@ -200,7 +202,7 @@ def render_sc(args, prj, data):
                 # type.
                 if isParameterizable and not wrapperIsConfigTemplated:
                     for key in ['bfm_decl', 'hdl_if_decl']:
-                        mp_sig[port][key] = mp_sig[port][key].replace('<Config>', f'<{defaultConfig}>')
+                        mp_sig[port][key] = mp_sig[port][key].replace('<Config>', '')
 
     match args.section:
         case 'preamble' : return sec_preamble(args, prj, data)
@@ -245,9 +247,9 @@ public:
 {%- if not variants %}
 
 #if !defined(VERILATOR) && defined(VCS)
-    {{blockname}}_hdl_sv_wrapper *dut_hdl;
+    {{concrete_sv_module}} *dut_hdl;
 #else
-    V{{blockname}}_hdl_sv_wrapper *dut_hdl;
+    {{concrete_dut_class}} *dut_hdl;
 #endif
 {% else %}
 
@@ -279,9 +281,9 @@ public:
     {
 {%- if not variants %}
 #if !defined(VERILATOR) && defined(VCS)
-        dut_hdl = new {{blockname}}_hdl_sv_wrapper("dut_hdl");
+        dut_hdl = new {{concrete_sv_module}}("dut_hdl");
 #else
-        dut_hdl = new V{{blockname}}_hdl_sv_wrapper("dut_hdl");
+        dut_hdl = new {{concrete_dut_class}}("dut_hdl");
 #endif
 {%- else %}
         dut_hdl = new DUT_T("dut_hdl");

@@ -69,7 +69,7 @@ def render(args, prj, data):
 
     # Verilated DUT header(s): one per variant, or the block's single body header
     # for a wrapper with no instance-bound variants. First occurrence preserved.
-    dutHeaders = [dutHeader(v) for v in variants] if variants else [sv['dutHeader']]
+    dutHeaders = [dutHeader(v) for v in variants] if variants else [sv['concreteDutHeader']]
     seenHdr = set()
     for hdr in dutHeaders:
         if hdr in seenHdr:
