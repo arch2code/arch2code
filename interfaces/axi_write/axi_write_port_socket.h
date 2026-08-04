@@ -132,7 +132,7 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
         }
 
         socket_observe_axi_wr_req(interface_name, wire_req.awid, wire_req.awaddr, wire_req.awlen,
-                                  wire_req.awsize, wire_req.awburst, wire_req.data);
+                                  wire_req.awsize, wire_req.awburst, wire_req.data, wire_req.strb);
 
         if (!socket_send_msg(fd, MSG_AXI_WR_REQ, &wire_req, static_cast<uint16_t>(sizeof(wire_req)))) {
             running->store(false, std::memory_order_release);

@@ -49,6 +49,8 @@ struct socket_axi_wr_obs_req_st {
     uint8_t awburst;
     uint8_t pad1;
     uint8_t data_preview[SOCKET_AXI_OBS_PREVIEW_BYTES];
+    // Per-beat write strobes (index 0 .. awlen). Unused entries are zero.
+    uint16_t strb[SOCKET_AXI_BURST_BYTES / 16];
 };
 struct socket_axi_wr_obs_resp_st {
     uint64_t sc_time_ns;
@@ -67,7 +69,7 @@ struct socket_irq_obs_st {
 static_assert(sizeof(socket_apb_obs_st) == 20, "socket_apb_obs_st wire layout");
 static_assert(sizeof(socket_axi_rd_obs_req_st) == 20, "socket_axi_rd_obs_req_st wire layout");
 static_assert(sizeof(socket_axi_rd_obs_resp_st) == 28, "socket_axi_rd_obs_resp_st wire layout");
-static_assert(sizeof(socket_axi_wr_obs_req_st) == 36, "socket_axi_wr_obs_req_st wire layout");
+static_assert(sizeof(socket_axi_wr_obs_req_st) == 548, "socket_axi_wr_obs_req_st wire layout");
 static_assert(sizeof(socket_axi_wr_obs_resp_st) == 12, "socket_axi_wr_obs_resp_st wire layout");
 static_assert(sizeof(socket_irq_obs_st) == 16, "socket_irq_obs_st wire layout");
 
@@ -181,7 +183,8 @@ inline void socket_observe_axi_rd_resp(const std::string &interface_name, uint8_
 }
 
 inline void socket_observe_axi_wr_req(const std::string &interface_name, uint8_t awid, uint32_t awaddr,
-                                      uint8_t awlen, uint8_t awsize, uint8_t awburst, const uint8_t *burst_data)
+                                      uint8_t awlen, uint8_t awsize, uint8_t awburst, const uint8_t *burst_data,
+                                      const uint16_t *burst_strb = nullptr)
 {
     socket_axi_wr_obs_req_st obs{};
     obs.sc_time_ns = socket_sc_time_ns();
@@ -193,9 +196,14 @@ inline void socket_observe_axi_wr_req(const std::string &interface_name, uint8_t
     if (burst_data != nullptr) {
         std::memcpy(obs.data_preview, burst_data, SOCKET_AXI_OBS_PREVIEW_BYTES);
     }
+    const unsigned beat_count = static_cast<unsigned>(awlen) + 1u;
+    if (burst_strb != nullptr && beat_count <= (SOCKET_AXI_BURST_BYTES / 16)) {
+        std::memcpy(obs.strb, burst_strb, beat_count * sizeof(uint16_t));
+    }
 
     logging::GetInstance().logDirect(std::format(
-        "AXI_WR_OBS {} REQ @ {}ns awid={} awaddr={:#x} awlen={} awsize={} awburst={} preview={:02x}{:02x}{:02x}{:02x}...",
+        "AXI_WR_OBS {} REQ @ {}ns awid={} awaddr={:#x} awlen={} awsize={} awburst={} "
+        "strb0={:#06x} preview={:02x}{:02x}{:02x}{:02x}...",
         interface_name,
         obs.sc_time_ns,
         awid,
@@ -203,6 +211,7 @@ inline void socket_observe_axi_wr_req(const std::string &interface_name, uint8_t
         awlen,
         awsize,
         awburst,
+        obs.strb[0],
         obs.data_preview[0],
         obs.data_preview[1],
         obs.data_preview[2],
