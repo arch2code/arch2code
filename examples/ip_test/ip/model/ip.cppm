@@ -21,10 +21,10 @@ module;
 export module ip.block;
 import ip.base;
 import ip;
-using namespace ip_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace ip_ns;
 export template<typename Config>
 SC_MODULE(ip), public blockBase, public ipBase<Config>
 {
@@ -96,7 +96,7 @@ ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockBase("ip", name(), bbMode)
         ,ipBase<Config>(name(), variant)
         ,_a2cRegs(log_)
-        ,ipCfg(typename ipCfgSt::_packedSt(0x0))
+        ,ipCfg(typename ipCfgSt::_packedSt(0x42))
         ,ipLastData()
         ,ipMem(name(), "ipMem", mems, Config::IP_MEM_DEPTH)
         ,ipFixedMem(name(), "ipFixedMem", mems, Config::IP_MEM_DEPTH)

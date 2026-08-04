@@ -17,6 +17,13 @@ bool fwCheckUIp0(void)
         return false;
     }
 
+    // Verify reset value from defaultValue — exercises fixed RTL template reset path
+    uint32_t resetVal0 = regRead32(BASE_ADDR_UIP0 + REG_IP_IPCFG);
+    if ((resetVal0 & 0xFF) != 0x42)
+    {
+        return false;
+    }
+
     // Exercise the rw ipCfg register: write a known pattern to the low word and
     // read it back. The pattern uses a generated firmware constant from
     // ipIncludesFW.h so this firmware is a real consumer of the per-context FW
@@ -32,6 +39,13 @@ bool fwCheckUIp1(void)
     // uIp1 receives the 70-bit boundary payload. Issue the ipLastData read to
     // exercise the path; the captured value is not asserted on here.
     (void)regRead32(BASE_ADDR_UIP1 + REG_IP_IPLASTDATA);
+
+    // Verify reset value from defaultValue — exercises fixed RTL template reset path
+    uint32_t resetVal1 = regRead32(BASE_ADDR_UIP1 + REG_IP_IPCFG);
+    if ((resetVal1 & 0xFF) != 0x42)
+    {
+        return false;
+    }
 
     // Consume a parameterizable eval-derived FW constant: IP_DATA_WIDTH_X2 is
     // generated symbolically (IP_DATA_WIDTH * 2) into ipIncludesFW.h, so this

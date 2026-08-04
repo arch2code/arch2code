@@ -202,25 +202,33 @@ def width_lp_name(intf):
 def top_lp_name(intf):
     return intf.upper() + '_TOP'
 
-def param_word_generate(reg_intf, struct, width_lp, max_words, flop_macro, flop_src, rword_src):
+def param_word_generate(reg_intf, struct, width_lp, max_words, flop_macro, flop_src, rword_src, rst_words=None):
     # Emit a generate loop over the worst-case words. Present words get their
     # variant-width data flop (when flop_macro is set) and 32-bit read view;
     # absent words (narrow variant) are elaborated away and read 0. The decode
     # always_comb only ever touches the fixed-width <intf>_rword/_update arrays,
     # so no parameterized part-select appears outside this guard.
     reg_local = reg_intf + '_reg'
-    reset_arg = ", '0" if flop_macro == 'DFFREN' else ''  # DFFREN takes a reset value, DFFEN does not
-    s = []
+    if flop_macro == 'DFFREN':
+        assert rst_words, f"rst_words required for DFFREN register {reg_intf}"
+        rst_init = ', '.join(f"32'h{d:08x}" for d in rst_words)
+        s = [f"localparam logic [31:0] {reg_intf}_rst [0:{max_words-1}] = '{{ {rst_init} }};"]
+        full_reset_arg = f", {reg_intf}_rst[gi]"
+        partial_reset_arg = f", {reg_intf}_rst[gi][({width_lp}-32*gi-1):0]"
+    else:
+        s = []
+        full_reset_arg = ''
+        partial_reset_arg = ''
     s += [ f"generate" ]
     s += [ f"    for (gi = 0; gi < {max_words}; gi++) begin : g_{reg_intf}" ]
     s += [ f"        if ({width_lp} > 32*gi) begin : present" ]
     s += [ f"            if ({width_lp} >= 32*(gi+1)) begin : full" ]
     if flop_macro:
-        s += [ f"                `{flop_macro}({reg_local}[32*gi +: 32], {flop_src}[31:0], {reg_intf}_update[gi]{reset_arg})" ]
+        s += [ f"                `{flop_macro}({reg_local}[32*gi +: 32], {flop_src}[31:0], {reg_intf}_update[gi]{full_reset_arg})" ]
     s += [ f"                assign {reg_intf}_rword[gi] = {rword_src}[32*gi +: 32];" ]
     s += [ f"            end else begin : partial" ]
     if flop_macro:
-        s += [ f"                `{flop_macro}({reg_local}[32*gi +: ({width_lp}-32*gi)], {flop_src}[{width_lp}-32*gi-1:0], {reg_intf}_update[gi]{reset_arg})" ]
+        s += [ f"                `{flop_macro}({reg_local}[32*gi +: ({width_lp}-32*gi)], {flop_src}[{width_lp}-32*gi-1:0], {reg_intf}_update[gi]{partial_reset_arg})" ]
     s += [ f"                assign {reg_intf}_rword[gi] = 32'({rword_src}[32*gi +: ({width_lp}-32*gi)]);" ]
     s += [ f"            end" ]
     s += [ f"        end else begin : absent" ]
@@ -243,8 +251,9 @@ def section_01_regs_param(reg_data):
     if reg_data['regType'] == 'rw':
         s += [ f"logic [{max_words-1}:0] {reg_intf}_update;" ]
         s += [ f"assign {reg_intf}.data = {reg_local};" ]
+        rst_words = [d for (o, u, l, w, d) in reg_data['segments']]
         s += param_word_generate(reg_intf, struct, width_lp, max_words, 'DFFREN',
-                                 f"{regs_intf}.pwdata", reg_local)
+                                 f"{regs_intf}.pwdata", reg_local, rst_words=rst_words)
     else: # ro
         s += [ f"assign {reg_local} = {reg_intf}.data;" ]
         s += param_word_generate(reg_intf, struct, width_lp, max_words, None,

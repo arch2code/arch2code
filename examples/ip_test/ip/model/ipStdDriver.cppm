@@ -16,10 +16,10 @@ module;
 export module ip_ipStdDriver.block;
 import ip_ipStdDriver.base;
 import ip_ipTop;
-using namespace ip_ipTop_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace ip_ipTop_ns;
 export SC_MODULE(ipStdDriver), public blockBase, public ipStdDriverBase
 {
 private:
