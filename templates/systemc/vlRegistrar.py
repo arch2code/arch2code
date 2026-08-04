@@ -16,6 +16,7 @@
 # registered wrapper is built on that exact Config type.
 
 import pysrc.intf_gen_utils as intf_gen_utils
+from pysrc.intf_gen_utils import sc_concrete_dut
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 
 
@@ -69,7 +70,7 @@ def render(args, prj, data):
 
     # Verilated DUT header(s): one per variant, or the block's single body header
     # for a wrapper with no instance-bound variants. First occurrence preserved.
-    dutHeaders = [dutHeader(v) for v in variants] if variants else [sv['concreteDutHeader']]
+    dutHeaders = [dutHeader(v) for v in variants] if variants else [sc_concrete_dut(sv, data['declaredVariants'])['dutHeader']]
     seenHdr = set()
     for hdr in dutHeaders:
         if hdr in seenHdr:

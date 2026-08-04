@@ -912,6 +912,22 @@ def get_sorted_memories(data):
     mems = dict(sorted(mems.items(), key=lambda item: item[1]["offset"]))
     return mems
 
+def sc_concrete_dut(sv_wrapper, declared_variants):
+    # Select the non-templated SC wrapper's single DUT top: first-declared
+    # variant's trampoline when the block declares variants, body DUT otherwise.
+    if declared_variants:
+        v = next(iter(declared_variants))
+        return {
+            'svModule':  sv_wrapper['variantTops'][v],
+            'dutClass':  sv_wrapper['variantDutClasses'][v],
+            'dutHeader': sv_wrapper['variantDutHeaders'][v],
+        }
+    return {
+        'svModule':  sv_wrapper['bodyModule'],
+        'dutClass':  sv_wrapper['dutClass'],
+        'dutHeader': sv_wrapper['dutHeader'],
+    }
+
 def get_intf_defs(intf_type, block_data):
     """Get interface definition for given interface type
     

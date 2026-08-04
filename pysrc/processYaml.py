@@ -1430,25 +1430,6 @@ class projectOpen:
             'foreignVariantDutClasses': {v: f'V{t}' for v, t in foreignVariantTops.items()},
             'foreignVariantDutHeaders': {v: f'V{t}.h' for v, t in foreignVariantTops.items()},
         }
-        # Concrete (non-templated) DUT top for a wrapper/registrar that binds a
-        # single top. Keyed on whether the block DECLARES variants: a block with
-        # declared variants (a parameterizable standalone leaf) never verilates
-        # its parameter-carrying body, so its concrete top is the first-declared
-        # variant's standalone trampoline (V<block>_<variant>_hdl_sv_wrapper),
-        # matching newModule's first-declared-variant default convention. A block
-        # with no declared variants — non-parameterizable, or parameterizable
-        # only through contained children (its wrapper renders on the templated
-        # path where this field is unused) — verilates its body directly
-        # (V<block>_hdl_sv_wrapper).
-        if ret['declaredVariants']:
-            defaultVariant = next(iter(ret['declaredVariants']))
-            ret['svWrapper']['concreteSvModule'] = variantTops[defaultVariant]
-            ret['svWrapper']['concreteDutClass'] = ret['svWrapper']['variantDutClasses'][defaultVariant]
-            ret['svWrapper']['concreteDutHeader'] = ret['svWrapper']['variantDutHeaders'][defaultVariant]
-        else:
-            ret['svWrapper']['concreteSvModule'] = bodyModule
-            ret['svWrapper']['concreteDutClass'] = ret['svWrapper']['dutClass']
-            ret['svWrapper']['concreteDutHeader'] = ret['svWrapper']['dutHeader']
 
     def getBDConfigInfo(self, ret):
         # View assembly: read persisted truths and derive view-side fields.

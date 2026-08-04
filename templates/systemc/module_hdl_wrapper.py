@@ -1,4 +1,5 @@
 import pysrc.intf_gen_utils as intf_gen_utils
+from pysrc.intf_gen_utils import sc_concrete_dut
 
 import textwrap
 
@@ -147,6 +148,7 @@ def render_sc(args, prj, data):
         return s
 
     def sec_hdl_sc_wrapper_class(args, prj, data):
+        concrete = sc_concrete_dut(data['svWrapper'], data['declaredVariants'])
         t = Template(sec_hdl_sc_wrapper_class_template)
         # When the wrapper exposes Config as a second template
         # parameter, the base-class binding uses that template name
@@ -159,8 +161,8 @@ def render_sc(args, prj, data):
         s = t.render(
             blockname=data['blockName'], variants=variants,
             is_parameterizable=isParameterizable,
-            concrete_sv_module=data['svWrapper']['concreteSvModule'],
-            concrete_dut_class=data['svWrapper']['concreteDutClass'],
+            concrete_sv_module=concrete['svModule'],
+            concrete_dut_class=concrete['dutClass'],
             cfg=baseCfg,
             default_config=defaultConfig,
             use_own_variant_config=useOwnVariantTemplateArg,
@@ -182,11 +184,12 @@ def render_sc(args, prj, data):
         # (from the svWrapper view). A parameterizable wrapper is a reusable
         # `<DUT_T, Config>` template; its concrete DUT header + `_verif`
         # registration live in the per-assembler VlRegistrar, not here.
+        concrete = sc_concrete_dut(data['svWrapper'], data['declaredVariants'])
         t = Template(sec_preamble_template)
         basemodule = intf_gen_utils.cpp_base_module_name(data['blockModuleName'])
         return(t.render(variants=data['variants'], basemodule=basemodule,
-                        dut_header=data['svWrapper']['concreteDutHeader'],
-                        sv_wrapper_header=f"{data['svWrapper']['concreteSvModule']}.h"))
+                        dut_header=concrete['dutHeader'],
+                        sv_wrapper_header=f"{concrete['svModule']}.h"))
 
     # ports blaster
     mp_sig = dict()
