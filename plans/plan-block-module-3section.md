@@ -1,6 +1,61 @@
 # Plan: Three-Section Block-Module Header
 
-Status: proposed (2026-07-25). Awaiting review before implementation.
+Status: **LANDED (reconciled 2026-08-04).** The three-zone split, the
+`moduleExport` section, the migration phase, and the example updates are
+committed (`33d0095`, `e2002d8`). Three later changes extend this plan and are
+also committed:
+
+- **Scope widened to every block (review item 5, `14ce4c4`).** The `blockModule`
+  fileMap gate is `cond: {hasMdl: true}` (`config/project.yaml:140`), so a block
+  implementation is a single `.cppm` regardless of parameterization. Every base
+  and pro example block implementation is converted and the paired `.cpp`/`.h`
+  files are gone. The mechanized four-slot transplant recommended in
+  [`plan-item5-port-mechanization-assessment.md`](./plan-item5-port-mechanization-assessment.md)
+  carried the ordinary cases and flagged the edges it declines to attempt.
+- **Preamble slot made legal for non-register-handler blocks (`b17a0fc`).** The
+  generated `using namespace <ctx>_ns;` moved out of the `moduleExport` region
+  into the `classDecl` region head for every block that renders through
+  `classDecl`; only a register handler, which has no `classDecl` region, still
+  emits the usings at the `moduleExport` tail
+  (`templates/systemc/moduleScaffold.py`, `moduleExport()`). A `using namespace`
+  is a non-import declaration that closes the module preamble, so leaving it in
+  `moduleExport` made the following `// user imports here` slot unusable for a
+  body-only `import`.
+- **`endOfTest` became a module (`7274b9c`).** This plan's GMF slot originally
+  existed partly to host `endOfTest.h` as a shared non-modular header.
+  `common/systemc/endOfTest.h` is deleted and replaced by
+  `common/systemc/endOfTest.cppm` (`export module a2c.endOfTest;`), consumed as
+  `import a2c.endOfTest;` from the preamble user slot, which guarantees one
+  `endOfTestState` singleton across module boundaries. Framework `.cppm` files
+  under the common SystemC directory are now discovered automatically by the
+  build (`include/make/a2c-systemc.mk`, `CPP_MODULE_CANDIDATES`), and the
+  firmware board-support package moved to `common/fw/bsp` and out of the default
+  `A2C_SRC_DIRS`.
+
+**Four defects traced to this work and are all fixed** (2026-08-04, working tree,
+not committed); they are recorded in
+[`plan-116-status-report.md`](./plan-116-status-report.md) under
+"Release-blocking defects found and fixed 2026-08-04":
+
+- **B1** — the startup gate that shipped with the `a2c.endOfTest` module
+  discarded an end-of-test vote cast inside `simController::startupDelay`,
+  aborting five base examples with `Premature end of test detected`. Fixed by
+  recording the vote at vote time (`voteCast`) instead of inferring activity at
+  evaluation time.
+- **B3** — composed CHILD projects were never regenerated onto the relocated
+  preamble or the new module import, so sixteen files across `ip_test/bridge`,
+  `ip_test/common`, and `simple_ip` were stale. Every root-owned project was
+  already current, which confirms that a child must be regenerated in its own
+  project rather than through its parent.
+- **B4** — `make clean` from a project root did not remove `rundir/build`, so
+  dependency files naming the deleted `endOfTest.h` broke the next build. `BIN_DIR`
+  now lives in `a2c-common.mk` so the shared `clean` owns it.
+- **B5** — the firmware board-support relocation to `common/fw/bsp` was not
+  opted into by the `bridge` sub-project, which compiles the common project's
+  `cpu` block.
+
+Original status line, retained for the record: proposed (2026-07-25), awaiting
+review before implementation.
 
 ## Goal
 

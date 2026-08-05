@@ -726,3 +726,76 @@ folds; confirm with the reviewer if sibling dedup should be preserved. (b) the
 `examples/ip_test` `src`/`ipLeaf` default-equality status is unresolved in this
 read-only pass. (c) the xif hand-testbench sweep scope depends on which of those
 `tb/dut/*` files are user regions vs generated helpers — verify at execution.
+
+## Update 2026-08-04 — review items 3 and 8 LANDED
+
+This plan is the owner for two #116 review outcomes. Both are closed.
+
+### Item 3 — one configuration structure per variant
+
+Previously a variant whose resolved values equalled the default, or equalled a
+sibling variant, received no distinct structure, so consumers silently fell back
+to the default-named structure and a reader could not tell from the generated
+code which variants existed. **Both folds are removed** in
+`_buildVariantConfigDescriptors` (`pysrc/processYaml.py`, comments at `:1678` and
+`:1778-1779`): the default fold and the sibling value-signature fold. Every
+declared variant is now an independent canonical descriptor.
+
+The emitted shape is **N+1**: a block with `ipParameters` always emits
+`<stem>DefaultConfig` from the ipParameters' declared values — this is the
+baseline, never a fold, and never suppressed — plus exactly one
+`<block><Variant>Config` per declared variant. Confirmed in
+`examples/xif/model/xifVariantConfig.h`, which emits `xifDefaultConfig` alongside
+`dutDutV0Config`, `sinkSinkV0Config`, and `srcSrcV0Config`. A block with no
+`ipParameters` has no parameters and so raises no variant question at all. This
+composes with item 2's completeness rule: because every variant binds every
+parameter, each variant's configuration is fully explicit and independent.
+
+### Item 8 — `inheritContainerParam`
+
+Item 3's strict one-to-one per-block configuration exposed a real limitation,
+found by dogfooding on the debayer product: two sibling contained blocks sharing
+one configuration context each received a distinctly *block*-named structure with
+byte-identical fields but distinct C++ types, so a shared
+configuration-parameterized channel payload between them could not bind — no
+single `Config` satisfied both the producer and the consumer port.
+
+Resolution is an explicit per-**instance** flag. A contained-block instance may
+declare `inheritContainerParam: true` **in place of** its `variant:` selector and
+is then typed with the container block's active configuration, transitively: if
+the container is itself instantiated as variant `V1`, the child gets
+`<container>V1Config`. The child block keeps its own `params:` and still emits its
+own `DefaultConfig` for standalone use, so item 3 is untouched — only the
+contained instance's configuration *selection* changes.
+
+The mechanism is the key simplification: a contained child renders inside the
+container's templated class scope, so inheritance reduces to spelling the
+container's own template symbol `Config` for that instance
+(`pysrc/intf_gen_utils.py:440`), and C++ template instantiation resolves the
+concrete struct, including the transitive variant case, at the container's own
+instantiation site. No configuration value is plumbed.
+
+Five preconditions are enforced at database time in
+`calcBlockConfigInfo::validate_inherit_container_params`
+(`pysrc/processYaml.py:4570-4617`), relocated there from an initial
+`postParseChecks` home so they run once off that pass's prebuilt maps with no
+parse-timing or SQL concerns: the child's params must be a by-name subset of the
+container's; `variant:` and `inheritContainerParam:` are mutually exclusive; the
+container must be parameterized; the child must have params; and the container and
+child must share an owning project. The same-project restriction is what preserves
+item 1's owner-qualified identity. The subset check is load-bearing for the
+untouched SystemVerilog parameter-forwarding path, which is why it must run in
+`projectCreate`. Coverage: `unittest/test_inherit_container_param.py`.
+
+Two HDL-wrapper follow-ons were surfaced by the debayer acceptance and landed with
+it: a `hasVl` leaf instantiated *only* via `inheritContainerParam` has an empty
+*instantiated*-variant view, which broke wrappers keyed off it. Both now source
+from the block's DECLARED variants and params instead — `param_names` reads the
+declared `params`, and a new `projectOpen` `declaredVariants` view field feeds the
+per-variant trampoline dispatch. The second of those fixed a *silent* misrender:
+a declared-but-uninstantiated variant had fallen through to the
+non-parameterizable render path and emitted a broken parameterless `.sv`.
+
+**Deferred:** the cross-project negative fixture for precondition (e), because it
+needs a composed multi-project fixture rather than a single-file unit fixture. The
+precondition itself is implemented and enforced.

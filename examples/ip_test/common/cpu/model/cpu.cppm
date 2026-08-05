@@ -18,12 +18,11 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module common_cpu.block;
 import common_cpu.base;
+import common_shared_types;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-import common_shared_types;
 using namespace common_shared_types_ns;
-
 export SC_MODULE(cpu), public blockBase, public cpuBase
 {
 private:

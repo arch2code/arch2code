@@ -410,3 +410,36 @@ S5 LANDED this session (staged) — registrar S0–S6 complete.** Composed VL is
 now GREEN. Full C5/L5
 (byte-identical address proof, cross-project eval Q-C12, `src`/`ipLeaf` split)
 remains, downstream of M-split, not a precondition to it.
+
+## Update 2026-08-04 — hierarchical co-simulation file-list gap CLOSED
+
+The last known composed-verification gap is closed by `38b17af`. Symptom: the
+top-level `rtl.f` for a composed build listed a referenced child's package but
+omitted a nested sub-context package (`ipTop_package.sv`), so top-scope modules
+imported an uncompiled package and `ip_test`/`simple_ip` `run-vl` failed while
+their model paths passed. It had been carried as a "hierarchical-VL filelist gap"
+track and considered for promotion to a generator fix.
+
+Resolution went the other way from the original framing, and the framing matters:
+the reachability-scoped `rtl.f` was **correct** and the managed SV compile set
+(`A2C_SV_FILES`) was the side that was wrong — it listed blocks outside the
+build's design hierarchy. A referenced child's own standalone verification
+harness (for example a reusable IP's `ipStdTop`) is parsed into the same database
+but is not contained by this build's `topInstance`; its modules import that
+harness context's package, which the reachability-scoped `rtl.f` legitimately
+does not list. `config/createBuildManifest.py` now walks block containment from
+every `_topInstance` anchor and gates `svModuleFiles` on reachability, so the
+compile set matches `rtl.f`. For a single-project build every block is reachable
+and the change is a no-op.
+
+Two implementation notes are recorded in the code and worth preserving here:
+reachability is walked directly over the current instance table rather than
+through `prj.reachableInstanceKeys()`, because the shared `hierKey` it consults is
+rebuilt only later (at the `REACHABLEINSTANCES` persist, after
+`runCreateArtifacts`) and is therefore stale with respect to post-parse
+synthesized register handlers, while `generateHierarchy` is not idempotent and so
+must not be re-run to refresh it. `flatData` is already current.
+
+The same commit propagated `VL_DUT=1` into the `run-vl-*` recipes of the
+`ip_test`, `ip`, `bridge`, and `simple_ip` rundir Makefiles, which had invoked
+the run targets without it.

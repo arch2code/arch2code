@@ -6,6 +6,12 @@ EXTRA_CPP_INCLUDES =
 EXTRA_LD_FLAGS     =
 EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 
+# Including the common project puts its cpu block in this project's compile
+# closure, and that block uses the arch2code default BSP stubs. The BSP is not in
+# the default source set, so opt in here: EXTRA_A2C_SRC_DIRS adds both the -I
+# include path and the .cpp glob (regRdWr.cpp, fwlog.cpp).
+EXTRA_A2C_SRC_DIRS += $(A2C_ROOT)/common/fw/bsp
+
 include $(A2C_ROOT)/include/make/a2c-systemc.mk
 include $(A2C_ROOT)/include/make/a2c-agents.mk
 

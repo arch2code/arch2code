@@ -277,6 +277,7 @@ ADDRCTL_TESTS=(
     "no serving router for reg leaf"            "test_error_leaf_no_serving_router.py"
     "register interfaceType mismatch"           "test_error_register_interface_type_mismatch.py"
     "register packed-form mismatch"             "test_error_register_packed_form.py"
+    "nested decoder exceeds parent window"      "test_error_nested_decoder_overflow.py"
     "registerPorts independent of ports"        "test_register_ports_independent_of_ports.py"
     "migrated ip_test view"                     "test_addrctl_ip_test_view.py"
     "zero-instance exported leaf ports"         "test_zero_instance_ported_block.py"
@@ -348,6 +349,24 @@ echo ""
 echo "Test Suite ${idx}: C++ module provider/import map"
 echo "------------------------------------------------------------------------"
 python3 test_cpp_module_map.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: module/package identity uniqueness guard"
+echo "------------------------------------------------------------------------"
+python3 test_module_identity_uniqueness.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: parameter variant block-scoped param identity"
+echo "------------------------------------------------------------------------"
+python3 test_parameter_variant_block_param_identity.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: parameterizable C++ type alias signedness"
+echo "------------------------------------------------------------------------"
+python3 test_param_type_signedness.py || FAILED=1
 
 echo ""
 echo "========================================================================"

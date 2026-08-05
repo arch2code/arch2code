@@ -38,6 +38,7 @@ module ip_hdl_sv_wrapper
     typedef logic[$clog2(IP_MEM_DEPTH)-1:0] ipMemAddrT; //Index into ipMem (0 .. IP_MEM_DEPTH-1)
     typedef logic[IP_DATA_WIDTH_X4-1:0] ipDerivedWidthT; //Type sized by a second-level eval-derived localparam
     typedef logic[$clog2(IP_MEM_DEPTH_X4)-1:0] ipDerivedMemAddrT; //Index into second-level derived-depth memory
+    typedef logic signed[IP_MEM_DEPTH-1:0] ipSignedParamT; //Signed parameterizable value, width tracks IP_MEM_DEPTH
     typedef struct packed {
         enableT marker; //Marker bit expected after the data payload
         ipDataT data; //Data word
@@ -63,6 +64,10 @@ module ip_hdl_sv_wrapper
         ipCfgSt cfg; //Single nested parameterizable config sub-struct
         ipDataSt [2-1:0] payloads; //Parameterizable nested sub-struct array
     } ipParamNestedSt;
+    typedef struct packed {
+        ipSignedParamT offset; //Signed parameterizable field
+        ipMemAddrT index; //Unsigned parameterizable field below it
+    } ipSignedParamSt;
 
     // push_ack_if.dst
     push_ack_if #(.data_t(ipDataSt)) ipDataIf();

@@ -23,6 +23,10 @@ base_dir = os.path.dirname(test_dir)
 if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
+from pysrc.processYaml import qualifyModuleIdentity
+
+PROJECT_NAME = 'module_identity_test'
+
 
 def _write_temp(content, suffix, prefix):
     fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=test_dir)
@@ -46,7 +50,7 @@ def _run_project(arch_a, arch_b):
     projectCreate as a subprocess, and return (returncode, combined output)."""
     arch_a_path = _write_temp(arch_a, '.yaml', 'arch_ident_a_')
     arch_b_path = _write_temp(arch_b, '.yaml', 'arch_ident_b_')
-    project_content = f"""projectName: module_identity_test
+    project_content = f"""projectName: {PROJECT_NAME}
 yamlFormat: 2
 topInstance: uTop
 
@@ -88,9 +92,13 @@ _ARCH_TYPES = """constants:
 def test_identity_collision_rejected():
     print(f"\n{'='*70}\nTest: duplicate module identity rejected\n{'='*70}")
     # Both context files carry the same explicit includeName, so both resolve to
-    # module/package identity 'dupctx' - a collision the guard must catch.
+    # the same module/package identity - a collision the guard must catch. The
+    # reported identity is the shared include stem project-qualified by the
+    # owning project, derived here from the generator's own identity function so
+    # this expectation cannot drift from the identity rule.
     arch_a = "includeName: dupctx\n" + _ARCH_DESIGN
     arch_b = "includeName: dupctx\n" + _ARCH_TYPES
+    identity = qualifyModuleIdentity('dupctx', PROJECT_NAME)
     rc, out = _run_project(arch_a, arch_b)
     if rc == 0:
         print("  FAIL: expected error but build succeeded")
@@ -99,9 +107,9 @@ def test_identity_collision_rejected():
         print("  FAIL: got Python stack trace instead of clean error")
         print('  ' + '\n  '.join(out.split('\n')[:25]))
         return False
-    expected = ["Module/package identity 'dupctx'",
+    expected = [f"Module/package identity '{identity}'",
                 "two distinct contexts",
-                "module_identity_test",
+                PROJECT_NAME,
                 "distinct includeName"]
     missing = [p for p in expected if p.lower() not in out.lower()]
     if missing:

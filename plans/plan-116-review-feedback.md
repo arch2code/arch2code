@@ -2,13 +2,29 @@
 
 ## Current Status
 
+- **Overall (2026-08-04): all items are CLOSED.** Items 1 through 6 from the
+  review, item 7's release-planning deliverable, and item 8 (raised by the
+  product migration rather than the review) are delivered and committed at
+  `builder/base` HEAD `2b3f6d1`. Two narrow residuals are recorded and carried
+  by the owning plans: item 8's cross-project negative fixture, and the deferred
+  whole-suite orphan-sweep migration for legacy-layout examples. Neither blocks
+  the release.
+- **Verification caveat:** the base acceptance suite run for the 2026-08-04
+  status refresh surfaced four release-blocking defects that are **not** review
+  items and are not caused by them — an end-of-test startup-gate regression, a
+  stale unit-test expectation in an unregistered suite, stale composed-child
+  artifacts in the committed example tree, and a stale build directory on
+  upgrade. They are recorded under "Release-blocking defects found 2026-08-04" in
+  [`plan-116-status-report.md`](./plan-116-status-report.md), which is the single
+  place they are tracked.
 - **Classification:** feedback capture. This document records action items
   raised during the `feature/116-parameterized-types` review and assigns each a
   disposition. It is not itself an execution plan; each item either links to an
   owning plan or names the owner that must produce one.
-- **Status taxonomy:** every item below is `OPEN` until triaged into the
-  release-planning table at the end of this document.
-- **Source:** review feedback recorded by Andy. Companion to
+- **Status taxonomy:** every item was `OPEN` until triaged into the
+  release-planning table at the end of this document; that triage is complete
+  and each item now carries a dated disposition.
+- **Source:** review feedback recorded by the branch owner. Companion to
   [`plan-116-status-report.md`](./plan-116-status-report.md), which is the
   definitive status index for the branch.
 
@@ -139,7 +155,24 @@ owning plan named per item.
     (apbDecode/axi4sDemo verilate renamed modules); both uniqueness gates pass.
     Pre-existing `ip_test` run-vl failures (`ipTop_package` rtl.f-aggregation gap;
     F4 `q_assert`) proven unchanged vs baseline — not new breaks.
-  - **OPEN (item 1):** (1) lint-only examples with no `make migrate` (e.g.
+  - **CLOSED (2026-08-03/04).** All three residuals below are resolved.
+    (1) `hierInclude` is relabelled in `38b17af`: begin labels, `endmodule:`
+    labels, the user `--importPackage` directive, and the lint top module all
+    carry the qualified name (`module hierInclude_blockCX` /
+    `endmodule: hierInclude_blockCX`, `--top-module $(PROJECTNAME)_top`), so the
+    example no longer needs the migrate pipeline to be wired for this purpose.
+    (2) the debayer **product** relabel is executed —
+    `rtl/preprocess.sv` declares and closes `debayer_preprocess`,
+    `rtl/interpolate.sv` declares and closes `debayer_interpolate`, and
+    `debayer.sv`/`debayer_regs.sv` are unchanged by the dedup rule, exactly as
+    predicted. (3) the two regressed unit tests were fixed as recorded below.
+    One caveat carried to the status report as defect B2: a THIRD suite,
+    `unittest/test_module_identity_uniqueness.py`, has the same class of stale
+    expectation (it asserts the unqualified identity in the collision message)
+    and is not run by either test runner, so it was never surfaced. The guard
+    itself is correct.
+  - **Former OPEN list (item 1), retained for the record:** (1) lint-only
+    examples with no `make migrate` (e.g.
     `hierInclude`) qualify the begin-label via gen but cannot run the endlabel
     restamp through the standard flow → lint `ENDLABEL`; needs `make migrate`
     wiring (example-Makefile work). (2) debayer **product** relabel
@@ -375,7 +408,23 @@ owning plan named per item.
   `.cpp/.h` → `.cppm` port — so item 6 must document this conversion as part of
   migration.
 - **Owning plan:** [`plan-block-module-3section.md`](./plan-block-module-3section.md).
-- **Disposition:** GO (2026-07-29, reviewer green-light). Starts after item 2
+- **Disposition:** LANDED (2026-07-30, committed in `14ce4c4`; pro overlay in
+  `7ee8fa3`). The `blockModule` gate is relaxed to all `hasMdl` blocks and every
+  in-tree block implementation is a single `.cppm`: the paired `.cpp`/`.h` files
+  are removed across all base examples and the pro `lmmiDemo`. The mechanized
+  four-slot transplant carried the ordinary cases and flagged the edges it
+  declines to attempt. Two follow-ons landed with it: the module-preamble import
+  relocation (`b17a0fc`), which moves the generated `using namespace` out of the
+  `moduleExport` region for non-register-handler blocks so the
+  `// user imports here` slot is a legal preamble slot, and the migration of
+  `endOfTest` to the `a2c.endOfTest` module (`7274b9c`) so a framework singleton
+  is no longer a textual header in a module purview. Two consequences were
+  recorded as status-report defects rather than item-5 residuals: the committed
+  `ip_test/bridge` child was not regenerated onto the relocated preamble (B3),
+  and the end-of-test startup gate added alongside the module regressed fast
+  model-only examples (B1).
+- **Original campaign plan (retained for the record):** GO (2026-07-29, reviewer
+  green-light). Starts after item 2
   completes (sequential generator-editing on the shared `builder/base`
   submodule — no concurrent generator agents). Campaign plan:
   1. **Gate flip + pilot** on one simple non-parameterized single-block example
@@ -407,8 +456,27 @@ owning plan named per item.
   agent-driven port and any schema changes introduced by item 2.
 - **Owning plan:** the `migrate-project` skill and
   [`plan-yaml-migration.md`](./plan-yaml-migration.md).
-- **Disposition:** OPEN — documentation. Should track items 2 and 5, since both
-  add migration surface.
+- **Disposition:** LANDED (2026-07-30, committed in `3ee90d5` and `477d6c6`).
+  `migrate-project.md` now states, per phase, what is automated and what is not:
+  - the **variant-schema phase** is documented as standalone, text-only, scoped
+    to `parameters:` sections, lossless, idempotent, and free of manual items
+    (item 2's migration surface);
+  - the **`endmodule:` label re-stamp** is documented with the reason it is
+    database-backed and therefore reachable only through `make migrate`, plus the
+    idempotence and owner-gating rules and the fact that a fully-generated RTL
+    block carries no user end label (item 1's migration surface);
+  - the **already-migrated child** case is documented explicitly: a child stamped
+    `yamlFormat: 2` draws no `TODO_*` report, yet must still be re-migrated once
+    the builder qualifies cross-project identifiers, because the parent imports
+    the qualified name that a stale child still exports;
+  - the **redundant preamble import** case is documented with the rule to remove
+    rather than relocate, and why a stray `using namespace` makes the following
+    generated imports illegal (item 5's migration surface);
+  - `pysrc/migrateVariantSchema.py` and `pysrc/migrateModuleEndlabel.py` are
+    listed in the phase-library reference.
+  The `address-migration.md` and `manage-build.md` skills were reconciled in the
+  same pass. What remains is not documentation: the `TODO_PORT` transplant for
+  the cases the mechanizer declines, which is item 5's recorded scope.
 
 ### 7. Action Item Release Planning
 
@@ -527,14 +595,19 @@ Landing them together avoids forcing users through multiple migrations — items
 and 5 both add migration surface, and splitting them across releases would make
 users run `make migrate` more than once. Execution is therefore in scope now.
 
-| # | Item | Type | Owning Plan | Target |
-| :- | :--- | :--- | :--- | :--- |
-| 1 | Project naming in package | Bug fix | plan-param-constant-collision | This release |
-| 2 | Variant definition schema | Schema change | plan-ip-namespaces-and-parameterization | This release |
-| 3 | Variant config generation | Correctness | plan-parameterizable-config-template | This release |
-| 4 | Address increment validation | New validation | plan-address-control-refactor | This release |
-| 5 | Module conversion standardization | Consistency | plan-block-module-3section | This release |
-| 6 | Migration guide clarification | Documentation | migrate-project skill | This release |
+| # | Item | Type | Owning Plan | Target | Status |
+| :- | :--- | :--- | :--- | :--- | :--- |
+| 1 | Project naming in package | Bug fix | plan-param-constant-collision | This release | **CLOSED** 2026-08-03 |
+| 2 | Variant definition schema | Schema change | plan-ip-namespaces-and-parameterization | This release | **CLOSED** 2026-07-29 |
+| 3 | Variant config generation | Correctness | plan-parameterizable-config-template | This release | **CLOSED** 2026-07-29 |
+| 4 | Address increment validation | New validation | plan-address-control-refactor | This release | **CLOSED** 2026-07-29 |
+| 5 | Module conversion standardization | Consistency | plan-block-module-3section | This release | **CLOSED** 2026-07-30 |
+| 6 | Migration guide clarification | Documentation | migrate-project skill | This release | **CLOSED** 2026-07-30 |
+| 8 | Contained-block config inheritance | New capability | plan-parameterizable-config-template | This release | **CLOSED** 2026-07-30 (cross-project negative fixture deferred) |
+
+Item 7 is this table. Item 8 was raised by the product migration rather than the
+review and is listed here because it shares the release and the migration
+surface.
 
 ## Change Log
 
@@ -968,3 +1041,20 @@ users run `make migrate` more than once. Execution is therefore in scope now.
   green except the 4 triaged failures, ALL now mapped to already-deferred tracks (lint-hier + mixed = orphan-sweep;
   ip-test/simple-ip = hierarchical-VL filelist gap). No example failure remains that is both this-session-caused AND
   safely closable without an architect decision (nested — the one such case — was fixed).
+- 2026-08-04: **All items CLOSED; item statuses reconciled to committed branch state at `2b3f6d1`.** Item 1's three
+  residuals are resolved: `hierInclude` carries qualified begin labels, `endmodule:` labels, user `--importPackage`
+  directives and lint top module (`38b17af`); the debayer product relabel is executed (`rtl/preprocess.sv` →
+  `debayer_preprocess`, `rtl/interpolate.sv` → `debayer_interpolate`, `debayer.sv`/`debayer_regs.sv` unchanged by
+  dedup); and the two regressed unit tests were corrected earlier. Item 5 moved GO → LANDED: the `blockModule` gate is
+  relaxed to all `hasMdl` blocks, every base and pro block implementation is a single `.cppm`, and the paired `.cpp`/`.h`
+  files are gone. Item 6 moved OPEN → LANDED: the migration skill now separates automated from manual per phase and
+  documents the variant-schema phase, the end-label re-stamp, the already-migrated-child rule, and the redundant-preamble
+  -import rule. The release-triage table gained a Status column and an item-8 row. Three further changes in the same
+  window are recorded in the status report rather than here because they are not review items: the `a2c.endOfTest` module
+  and expression-evaluator operator expansion (`7274b9c`), the reachability-scoped SystemVerilog compile set that closed
+  the hierarchical co-simulation file-list gap (`38b17af`), and the parameterized register reset-value fix (`de022a1`),
+  which is the fix for BUG 8 in the external ISP parameterization bug report. Four release-blocking defects found while
+  running the base acceptance suite for this refresh are tracked in the status report, not here: the end-of-test
+  startup-gate regression (B1), the unregistered failing identity-uniqueness suite (B2), stale composed-child artifacts
+  in the committed tree (B3), and the stale build directory on upgrade (B4). B1 and B3 are consequences of item 5's
+  module work; B2 is a consequence of item 1's qualification; none is a defect in the delivered item behaviour.

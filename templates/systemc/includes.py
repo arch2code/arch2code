@@ -119,8 +119,14 @@ def includeTypes(args, prj, data):
         widthComment = str(value['realwidth'])
         if value['isParameterizable']:
             if value['maxBitwidth'] <= 64:
+                # The container is fixed 64-bit because a parameterizable type must
+                # hold its worst case across variants (maxBitwidth), not its width at
+                # default parameter values (realwidth, which platformDataType encodes).
+                # Only the signedness varies, so arithmetic on the alias (>>, <, /, %)
+                # matches the declared type.
+                containerType = 'int64_t' if value['isSigned'] else 'uint64_t'
                 out.append(
-                    f"template<typename Config> using { value['type'] } = uint64_t; // [max:{value['maxBitwidth']}] {value['desc']}"
+                    f"template<typename Config> using { value['type'] } = {containerType}; // [max:{value['maxBitwidth']}] {value['desc']}"
                 )
             else:
                 typeArraySize = (value['maxBitwidth'] + 63) // 64

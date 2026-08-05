@@ -1,6 +1,7 @@
 import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=bridgeStdTop
 // GENERATED_CODE_BEGIN --template=testbench --section=init
+import a2c.endOfTest;
 #include "bridgeStdTopTestbench.h"
 
 // === Block factory registration (bridgeStdTopTestbench) ===

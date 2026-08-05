@@ -5,6 +5,8 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=ip --variant=variant0
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
+#include "ipExternal.h"
 
 ipExternal::ipExternal(sc_module_name modulename) :
     ipInverted<ipVariant0Config>("Chnl"),

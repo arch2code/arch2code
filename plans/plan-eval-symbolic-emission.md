@@ -15,6 +15,23 @@ The E1.5 Python→SV converter (`pysrc/evalPyToSv.py`) is committed and
 is exercised by the unified YAML migration path (Suite 19h). The old standalone
 CLI ownership wording in `plan-eval-python-to-sv-migration.md` is superseded by
 `migrateYaml.py` / `make migrate`.
+**Grammar extended 2026-08-03 (`7274b9c`).** The expression grammar is no longer
+frozen at the original arithmetic, bitwise, shift, `$clog2`, and `$symbol` set.
+It now also accepts **relational** (`< <= > >=`), **equality** (`== !=`), and the
+**ternary conditional** (`?:`). Every added operator has one identical
+SystemVerilog, C++, and C spelling, so all three emitters pass it through
+unchanged and no per-language special case was needed. Precedence was extended in
+the single shared `PRECEDENCE` table — equality and relational bind looser than
+the shifts and tighter than the bitwise operators, matching the coincident
+SystemVerilog and C++ ordering — and the ternary is parsed as its own
+right-associative layer looser than every binary operator. A `Cond` IR node
+carries it. In the same commit the Python-to-SystemVerilog converter gained
+C-style integer-literal re-spelling (`0x`/`0o`/`0b` to the SystemVerilog based
+form, with octal folded to hex to match the IR's normalization), because such a
+literal parses to a bare `ast.Constant` with no operator for the span walk to key
+on. Coverage: `unittest/test_eval_expr_parser.py` and
+`unittest/test_eval_expr_evaluator.py`.
+
 Source: [`research-eval-symbolic-emission.md`](./research-eval-symbolic-emission.md).
 Owner: C4 (`plan-param-constant-collision.md`).
 

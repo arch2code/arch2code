@@ -155,9 +155,9 @@ endif
 CPP_INCLUDES += $(foreach dir, $(A2C_SRC_DIRS), -I$(dir))
 CPP_INCLUDES += $(foreach dir, $(PRJ_SRC_DIRS), -I$(dir))
 
-# Put all auto generated stuff to this build dir.
+# Put all auto generated stuff to this build dir. BIN_DIR comes from a2c-common.mk
+# so that `clean` owns it from either directory.
 BIN = run
-BIN_DIR = $(PROJECT_RUNDIR)/build
 BUILD_DIR = $(BIN_DIR)/$(PROJECTNAME).build
 # Whole-design verilation build-output dir: holds the per-top obj_dir/<top> Mdirs
 # and the single lib<proj>vl_s_wrap.a. A fixed tooling location under the build
@@ -301,7 +301,6 @@ endif
 	$(MAKE) $(BIN_DIR)/$(BIN)
 
 clean::
-	$(RM) -r $(BIN_DIR)
 	$(RM) -rf simx.*
 	# GCC C++20 module cache, written to the make working directory.
 	$(RM) -rf gcm.cache

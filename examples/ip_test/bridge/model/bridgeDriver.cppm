@@ -16,11 +16,11 @@ module;
 export module ipBridge_bridgeDriver.block;
 import ipBridge_bridgeDriver.base;
 import ipBridge;
-using namespace ipBridge_ns;
 // GENERATED_CODE_END
 // user imports here
 import a2c.endOfTest;
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace ipBridge_ns;
 export SC_MODULE(bridgeDriver), public blockBase, public bridgeDriverBase
 {
 private:

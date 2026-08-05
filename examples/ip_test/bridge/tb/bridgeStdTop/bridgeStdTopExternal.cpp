@@ -5,6 +5,8 @@ import a2c.endOfTest;
 // GENERATED_CODE_PARAM --block=bridgeStdTop_tb --excludeInst=u_bridgeStdTop
 
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
+import a2c.endOfTest;
+#include "bridgeStdTopExternal.h"
 
 bridgeStdTopExternal::bridgeStdTopExternal(sc_module_name modulename) :
     bridgeStdTopInverted("Chnl"),

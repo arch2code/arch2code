@@ -67,6 +67,12 @@ A2C_SQLDB_DOTFILE = $(REPO_ROOT)/.$(PROJECTNAME).db
 
 PROJECT_RUNDIR = $(REPO_ROOT)/rundir
 
+# Binary/object/dependency tree of the rundir build. Defined here rather than in
+# a2c-systemc.mk so `clean` from the project root removes it too: dependency
+# files left behind name sources that a later release may have deleted, and the
+# next build then fails with "No rule to make target".
+BIN_DIR = $(PROJECT_RUNDIR)/build
+
 GEN_BUILD_DIR = $(REPO_ROOT)/.gen
 
 # Build directory/file set is derived by projectCreate (buildManifest) and
@@ -202,7 +208,7 @@ newmodule: $(A2C_SQLDB_FILE)
 	@$(MAKE) -C $(PROJECT_RUNDIR) compdb >/dev/null 2>&1 || true
 
 clean::
-	rm -rf $(GEN_BUILD_DIR)
+	rm -rf $(GEN_BUILD_DIR) $(BIN_DIR)
 	rm -f $(A2C_SQLDB_FILE) $(A2C_SQLDB_DOTFILE)
 
 

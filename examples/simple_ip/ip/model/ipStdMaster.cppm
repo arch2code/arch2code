@@ -15,12 +15,11 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ip_ipStdMaster.block;
 import ip_ipStdMaster.base;
+import ip;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
-import ip;
 using namespace ip_ns;
-
 export SC_MODULE(ipStdMaster), public blockBase, public ipStdMasterBase
 {
 private:

@@ -29,7 +29,6 @@ import ip.base;
 // GENERATED_CODE_BEGIN --template=classDecl
 using namespace ip_ns;
 using namespace ip_ipTop_ns;
-
 export SC_MODULE(ipStdTop), public blockBase, public ipStdTopBase
 {
 private:

@@ -50,6 +50,14 @@ types:
     ipDerivedMemAddrT:
         widthLog2minus1: IP_MEM_DEPTH_X4
         desc: "Index into second-level derived-depth memory"
+    # Signed and parameterizable on the same type. Its worst case across variants
+    # (IP_MEM_DEPTH maxValue = 32 bits) is wider than its width at default
+    # parameters (16 bits), so the C++ container must be sized from the worst case
+    # and must still be signed.
+    ipSignedParamT:
+        width: IP_MEM_DEPTH
+        isSigned: true
+        desc: "Signed parameterizable value, width tracks IP_MEM_DEPTH"
     # Fixed-width type used to exercise the F2.4 case where a memory's
     # structure is NOT parameterizable but its wordLines IS a block parameter.
     ipFixedT:
@@ -160,6 +168,14 @@ structures:
     ipParamNestedSt:
         cfg: { subStruct: ipCfgSt, desc: "Single nested parameterizable config sub-struct" }
         payloads: { subStruct: ipDataSt, arraySize: IP_FIXED_PAIR_COUNT, desc: "Parameterizable nested sub-struct array" }
+    # Templated struct that structContainsSignedTypes classifies as signed, so the
+    # generated round-trip exercises it with the signed pattern set at every sample
+    # point. The unsigned field places offset above bit 0, so the shifted-extract
+    # and sign-extend path is covered rather than the bit-0 special case. The
+    # value-level signedness check lives in top/tb/ip_top/ip_topConfig.cpp.
+    ipSignedParamSt:
+        offset: { varType: ipSignedParamT, desc: "Signed parameterizable field" }
+        index: { varType: ipMemAddrT, desc: "Unsigned parameterizable field below it" }
     ipRegAddrSt:
         address: { varType: ipRegAddrT, generator: address }
     ipRegDataSt:

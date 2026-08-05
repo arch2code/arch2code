@@ -412,3 +412,41 @@ P0: Prototype (validate both)
 3. **M\*+T\* combined** edits each generator once and migrates hand-written code once.
 
 **Fallback**: If P0 reveals problems with modules that require significant iteration (e.g., SystemC macro incompatibilities), fall back to **Option 2** -- get Config templates working on headers, then migrate to modules once toolchain issues are resolved. The template content won't need to change; only file-level wrapping gets added.
+
+## Control State Update 2026-08-04
+
+The #116 review action items are the last workstream this control document needs
+to sequence, and they are complete. Use
+[`plan-116-status-report.md`](./plan-116-status-report.md) as the definitive
+status index; this section only records the control decision and the ordering that
+was actually used.
+
+**Control decision (2026-07-29): land all review items in one release.** Items 2
+(variant schema) and 5 (block-module conversion) each add migration surface, so
+splitting them across releases would force users through `make migrate` more than
+once. Execution was therefore pulled into scope together rather than triaged
+across releases.
+
+**Ordering constraint that governed execution:** the items could not be
+parallelised across agents, because they all edit the shared `builder/base`
+generator and the submodule cannot be isolated into a per-agent worktree. Item 5
+was explicitly sequenced to start only after item 2 completed, and generator-editing
+work ran sequentially on the primary tree throughout.
+
+**Delivered order:** item 2 (variant schema, schema-native after one rejected
+parse-layer attempt) → item 3 (one config per variant) → item 4 (nested decode
+containment) → item 1 (identity qualification, in two stages, with the
+`endmodule:` user-RTL migration as the blocker that made stage two non-trivial) →
+item 5 (all block implementations to `.cppm`) → item 8 (`inheritContainerParam`,
+raised by dogfooding item 3 on the debayer product, not by the review) → item 6
+(migration guide, tracking the surface added by 2 and 5).
+
+**Next work is no longer review-driven.** What remains is the deferred and
+conditional backlog enumerated in the status report's Open Items: the
+`inheritContainerParam` cross-project fixture, C2.5 header-path disambiguation,
+Option-D collision hardening, cross-level wrapper gaps 1/3/4, the Q-C12/G5
+cross-project eval fixture, file-ownership W4 clean-start, the whole-suite
+orphan-sweep migration, the `processYaml.py` split, authored namespace semantics,
+the `wordLines` resolver-lifecycle cleanup, and the status-port tandem compare
+design (status report item 11), which is the only one with an open design question
+rather than an agreed shape.

@@ -63,6 +63,7 @@ public:
     using typename ipBase<Config>::ipMemAddrT;
     using typename ipBase<Config>::ipDerivedWidthT;
     using typename ipBase<Config>::ipDerivedMemAddrT;
+    using typename ipBase<Config>::ipSignedParamT;
     using typename ipBase<Config>::ipDataSt;
     using typename ipBase<Config>::ipCfgSt;
     using typename ipBase<Config>::ipMemSt;
@@ -70,6 +71,7 @@ public:
     using typename ipBase<Config>::ipBurstSt;
     using typename ipBase<Config>::ipDerivedMemAddrSt;
     using typename ipBase<Config>::ipParamNestedSt;
+    using typename ipBase<Config>::ipSignedParamSt;
 
     ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ip() override = default;

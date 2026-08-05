@@ -661,3 +661,52 @@ the converter over synthetic temp legacy projects per the assertions above.
   new `config/postParseRegisterPorts.py`, not dropped; base-script duplicates
   (including the converted entry, if it duplicates a base entry) are then
   stripped. See Phase B.
+
+## Update 2026-08-04 — two migration phases added; review item 6 closed
+
+Two phases were added to `make migrate` for the #116 review items, both riding the
+existing `yamlFormat: 2` sentinel:
+
+- **Variant schema (`pysrc/migrateVariantSchema.py`).** Rewrites each
+  `parameters:` block entry from the retired per-row list
+  (`- {variant: v, param: P, value: n}`) into the nested mapping form
+  (`v: {P: n}`). Standalone and text-only, scoped to `parameters:` sections so
+  instance `variant:` selectors are never touched, lossless — it groups rows by
+  variant in first-seen order — idempotent, and it produces no manual TODOs.
+  Owner: `plan-ip-namespaces-and-parameterization.md` (review item 2).
+- **Module end-label re-stamp (`pysrc/migrateModuleEndlabel.py`).** Rewrites each
+  RTL block module's user-owned `endmodule: <label>` to the project-qualified
+  `blockModuleName`. This one is **database-backed** and therefore part of
+  `migrateYaml.py --sweep` rather than the text-conversion phase, for the same
+  reason as `migrateProjectParam`: the qualified name comes from
+  `BLOCKMODULENAME` / `qualifyModuleIdentity`, the same identity function the
+  generator uses, not from string manipulation. Owner-gated so a composed build
+  never rewrites a referenced child's file, and idempotent. A fully generated RTL
+  block that closes its module inside a generated region carries no user end label
+  and is left untouched. The scaffold seam was updated in lockstep
+  (`newModule.py` / `fileGen.py::rtlModule` emit `endmodule: {blockModuleName}`).
+  Owner: `plan-param-constant-collision.md` (review item 1).
+
+**Review item 6 (migration guide clarification) is closed here and in the
+`migrate-project` skill.** The skill now separates automated from manual per
+phase and documents both new phases, plus two cases that had caused real
+failures:
+
+- **An already-`yamlFormat: 2` child still needs its own run** when the builder
+  has begun qualifying cross-project identifiers. `TODO_UNMIGRATED_SUBPROJECT`
+  fires only on an *unstamped* child, so an already-migrated one draws no report —
+  but the parent now imports `<owner>_<ctx>` while the stale child still exports
+  the bare name and keys its `-fmodule-file` entries bare, and the composed build
+  fails with `module '<owner>_<ctx>' not found`, which no `TODO_*` catches.
+- **A redundant import in the preamble user slot must be removed, not
+  relocated.** When the generated `classDecl` region already re-emits a context
+  `import` and its paired `using namespace`, a hand-written copy of that pair in
+  the preamble slot is redundant, and the stray `using namespace` closes the
+  module preamble so the generated imports that follow become an illegal
+  import-after-declaration. Only a body-only import the generated region does not
+  re-emit must stay.
+
+The 2026-08-04 acceptance run confirmed the practical consequence of the first
+case at scale: every stale generated artifact found in the committed example tree
+was in a composed CHILD project, and every root-owned project was already
+current.

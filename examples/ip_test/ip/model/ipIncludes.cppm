@@ -35,6 +35,7 @@ typedef uint8_t enableT; // [1] Single enable bit
 template<typename Config> using ipMemAddrT = uint64_t; // [max:5] Index into ipMem (0 .. IP_MEM_DEPTH-1)
 template<typename Config> struct ipDerivedWidthT { uint64_t word[ 8 ]; }; // [max:512] Type sized by a second-level eval-derived localparam
 template<typename Config> using ipDerivedMemAddrT = uint64_t; // [max:7] Index into second-level derived-depth memory
+template<typename Config> using ipSignedParamT = int64_t; // [max:32] Signed parameterizable value, width tracks IP_MEM_DEPTH
 typedef uint8_t ipFixedT; // [8] Fixed 8-bit byte (non-parameterizable)
 typedef uint8_t ipFixedAddrT; // [8] Fixed 8-bit address index (non-parameterizable)
 typedef uint8_t ipNibbleT; // [4] Fixed unsigned nibble
@@ -1338,6 +1339,92 @@ struct ipParamNestedSt {
     explicit ipParamNestedSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config>
+struct ipSignedParamSt {
+    ipMemAddrT<Config> index; //Unsigned parameterizable field below it
+    ipSignedParamT<Config> offset; //Signed parameterizable field
+
+    ipSignedParamSt() {}
+
+    static constexpr uint16_t _bitWidth = clog2(Config::IP_MEM_DEPTH) + Config::IP_MEM_DEPTH;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint64_t _packedSt;
+    inline bool operator == (const ipSignedParamSt<Config> & rhs) const {
+        bool ret = true;
+        ret = ret && (offset == rhs.offset);
+        ret = ret && (index == rhs.index);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const ipSignedParamSt<Config> & v, const std::string & NAME ) {
+        sc_trace(tf,v.offset, NAME + ".offset");
+        sc_trace(tf,v.index, NAME + ".index");
+    }
+    inline friend ostream& operator << ( ostream& os,  ipSignedParamSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("offset:0x{:04x} index:0x{:01x}",
+           (uint64_t) offset,
+           (uint64_t) index
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, ipSignedParamSt<Config>::_byteWidth);
+        uint16_t _pos{0};
+        pack_bits((uint64_t *)&_ret, _pos, index, clog2(Config::IP_MEM_DEPTH));
+        _pos += clog2(Config::IP_MEM_DEPTH);
+        pack_bits((uint64_t *)&_ret, _pos, offset & ((1ULL << (Config::IP_MEM_DEPTH)) - 1), Config::IP_MEM_DEPTH);
+        _pos += Config::IP_MEM_DEPTH;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        uint16_t _pos{0};
+        index = (ipMemAddrT<Config>)((_src >> (_pos & 63)) & ((1ULL << (clog2(Config::IP_MEM_DEPTH))) - 1));
+        _pos += clog2(Config::IP_MEM_DEPTH);
+        offset = (ipSignedParamT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::IP_MEM_DEPTH)) - 1));
+        _pos += Config::IP_MEM_DEPTH;
+        // Sign extension for signed type
+        if (offset & (1ULL << (Config::IP_MEM_DEPTH - 1))) {
+            offset = (ipSignedParamT<Config>)(offset | ~((1ULL << (Config::IP_MEM_DEPTH)) - 1));
+        }
+    }
+    inline sc_bv<ipSignedParamSt<Config>::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<ipSignedParamSt<Config>::_bitWidth> packed_data;
+        uint16_t _pos{0};
+        packed_data.range(_pos+clog2(Config::IP_MEM_DEPTH)-1, _pos) = index;
+        _pos += clog2(Config::IP_MEM_DEPTH);
+        packed_data.range(_pos+Config::IP_MEM_DEPTH-1, _pos) = offset;
+        _pos += Config::IP_MEM_DEPTH;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<ipSignedParamSt<Config>::_bitWidth> packed_data)
+    {
+    uint16_t _pos{0};
+        index = (ipMemAddrT<Config>) packed_data.range(_pos+clog2(Config::IP_MEM_DEPTH)-1, _pos).to_uint64();
+        _pos += clog2(Config::IP_MEM_DEPTH);
+        offset = (ipSignedParamT<Config>) packed_data.range(_pos+Config::IP_MEM_DEPTH-1, _pos).to_uint64();
+        // Sign extension for signed type
+        if (offset & (1ULL << (Config::IP_MEM_DEPTH - 1))) {
+            offset = (ipSignedParamT<Config>)(offset | ~((1ULL << (Config::IP_MEM_DEPTH)) - 1));
+        }
+        _pos += Config::IP_MEM_DEPTH;
+    }
+    explicit ipSignedParamSt(sc_bv<ipSignedParamSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit ipSignedParamSt(
+        ipMemAddrT<Config> index_,
+        ipSignedParamT<Config> offset_) :
+        index(index_),
+        offset(offset_)
+    {}
+    explicit ipSignedParamSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
 struct ipRegAddrSt {
     ipRegAddrT address; //
 
@@ -1572,6 +1659,9 @@ void test_ip_structs::test(void) {
     roundTrip<ipParamNestedSt<ipTestConfigDefault>>("ipParamNestedSt", patterns);
     roundTrip<ipParamNestedSt<ipTestConfigMid>>("ipParamNestedSt", patterns);
     roundTrip<ipParamNestedSt<ipTestConfigMax>>("ipParamNestedSt", patterns);
+    roundTrip<ipSignedParamSt<ipTestConfigDefault>>("ipSignedParamSt", signedPatterns);
+    roundTrip<ipSignedParamSt<ipTestConfigMid>>("ipSignedParamSt", signedPatterns);
+    roundTrip<ipSignedParamSt<ipTestConfigMax>>("ipSignedParamSt", signedPatterns);
     roundTrip<ipRegAddrSt>("ipRegAddrSt", patterns);
     roundTrip<ipRegDataSt>("ipRegDataSt", patterns);
 }

@@ -1241,3 +1241,35 @@ subsection:
   their diagnostic substrings asserted verbatim.
 - Per the `builder-base` submodule rule, do not stage or commit
   `builder/base`; the user manages that tree.
+
+## Update 2026-08-04 — review item 4: nested decode containment validation LANDED
+
+This plan is the owner for #116 review item 4 ("add a check that a nested
+decoder's address footprint is contained within the higher-level decoder that
+routes to it"). It is closed.
+
+A containment pass runs in `calcAddresses` (`pysrc/processYaml.py:4484` onward,
+guarded so a project with no `AddressGroups` is unaffected) and reports a durable
+error naming the offending nested block and both spans — the window the parent
+allocates versus the span actually needed (`:4535`).
+
+The rule deliberately checks **two different quantities**, which is the substance
+of the item rather than an implementation detail:
+
+- **Nested decoder present:** validate against the nested decoder's routed
+  footprint, `addressIncrement × addressMultiples`. The increment alone would miss
+  escapes past the first multiple.
+- **No nested decoder:** validate against the decode space actually occupied by
+  the nested register block — the space genuinely decoded, not any larger nominal
+  allocation.
+
+`ip_test` is the regression fixture for the second case and is why the no-decoder
+check must be decode-space-based: it is a nested register block whose nominal
+space is larger than the parent's per-child window but whose decoded span fits, so
+it is valid and a nominal-space check would reject it incorrectly. The negative
+fixture is `unittest/test_error_nested_decoder_overflow.py`.
+
+One coverage note recorded during the 2026-08-04 status refresh: that negative
+fixture was never registered in `unittest/run_all_tests.sh` and was only picked up
+implicitly by the parallel runner's globbing. It is now registered in the
+`ADDRCTL_TESTS` array, so it runs in both runners.

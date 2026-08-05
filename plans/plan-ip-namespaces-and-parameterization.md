@@ -1271,3 +1271,63 @@ the `include:` chain (`processYaml.py:6297-6313`). `ip_test` complies:
 declared. **No separate "block-not-in-scope-for-variant" diagnostic is
 warranted**; the completeness validator (previous subsection) can therefore
 resolve the reference set in the variant's scope with confidence.
+
+## Update 2026-08-04 — review item 2: nested variant declaration schema LANDED
+
+This plan is the owner for #116 review item 2. It is closed.
+
+The authored form changed from a per-row list that repeated the variant label on
+every parameter:
+
+```yaml
+ip:
+    - { variant: variant1, param: IP_DATA_WIDTH, value: 70 }
+    - { variant: variant1, param: IP_MEM_DEPTH,  value: 8 }
+```
+
+to the variant label stated once with its parameters nested beneath it:
+
+```yaml
+ip:
+    variant1:
+        IP_DATA_WIDTH: 70
+        IP_MEM_DEPTH: 8
+```
+
+**The nesting is expressed declaratively in the schema, not reshaped in code.**
+The first implementation kept the old per-row sub-table and added a
+`_normalizeVariantBindings()` pass in `processSimple` to convert the nested YAML
+back into it; that was an antipattern under `SCHEMA_SPECIFICATION.md` — a
+structural format change belongs in the schema — and it was redone. The schema now
+carries `parameters → variants [collapsed, multiple] → params [collapsed,
+multiple]` with `_singular: value`, `param: anchor`, and `value: const`, relying
+on the schema's automatic nested-table field generation (auto `outerkey`,
+`{field}Key` qualified keys, parent-key chain) and declaring only the deltas. The
+leaf table is `parametersvariantsparams`; leaf content and identity are preserved
+(`block`/`variant`/`param`/`value` plus the `blockParam`/`blockVariantParam`
+combinations and `projectName`) and every downstream consumer was repointed to the
+leaf. `_normalizeVariantBindings` and its `_mappingKeyLc` helper are deleted.
+
+**Parameter completeness is now mandatory.** Every variant must explicitly bind
+every parameter its block declares; an omission is a database-time error, and
+there is no default-fill. This is well-founded because a variant may only be
+declared where the block definition is in scope, so the block's full declared
+parameter set is resolvable at the variant's parse point. Enforcement is a single
+post-parse pass (`_post_validateVariantParameterCompleteness`,
+`pysrc/processYaml.py:7693`) rather than an at-parse per-row check — chosen for
+uniformity, because it reuses the existing grouping, covers same-file and
+cross-file authoring through one path, and sidesteps a same-file
+`parameters:`-before-`blocks:` ordering hazard. Negative fixture:
+`unittest/test_error_variant_incomplete_params.py`.
+
+**A variant may be declared in a file separate from its block**, and this is
+*required* for composed IP: a reusable child's use-case variants cannot live in the
+child's own uneditable definition file. The only condition is that the block
+definition is in scope, whether same-file or reachable via `include`.
+
+**Hard cutover, no coexistence.** The retired per-row form is rejected with a
+durable error directing the user to `make migrate`, and
+`pysrc/migrateVariantSchema.py` performs the rewrite as a pure regroup — text
+only, scoped to `parameters:` sections, instance `variant:` selectors never
+touched, first-seen variant order preserved, idempotent, and producing no manual
+TODOs.

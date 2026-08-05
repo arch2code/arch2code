@@ -21,7 +21,6 @@ import ip;
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
 using namespace ip_ns;
-
 export SC_MODULE(ipStdDecode), public blockBase, public ipStdDecodeBase
 {
 private:

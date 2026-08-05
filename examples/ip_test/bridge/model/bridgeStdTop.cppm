@@ -21,11 +21,11 @@ import common_shared_types;
 import common_cpu.base;
 import ipBridge_bridgeDriver.base;
 import ipBridge.base;
-using namespace ipBridge_ns;
-using namespace common_shared_types_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace ipBridge_ns;
+using namespace common_shared_types_ns;
 export SC_MODULE(bridgeStdTop), public blockBase, public bridgeStdTopBase
 {
 private:

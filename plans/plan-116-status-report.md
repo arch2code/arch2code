@@ -1,11 +1,18 @@
 # Report: 116 Plan Hierarchy and Status
 
-Status as of: 2026-07-27
+Status as of: 2026-08-04
 Branch context: `feature/116-parameterized-types` in `builder/base`
+(HEAD `2b3f6d1`), with the matching `builder` pro overlay (HEAD `6b29e75`) and
+the `debayer` product (HEAD `e9fc5ec`) as the integration vehicle.
 
 This is the status index for the `plan-*.md` files under `builder/base`.
 It states current status definitively; detailed execution records live in
 the owning plans named below. A dated change log is kept at the end.
+
+The `plans/` directory is now tracked in the `builder/base` repository
+(committed 2026-08-01 in `b17a0fc`, 64 documents). Earlier revisions of this
+report carried a caveat that no plan document was under version control; that
+caveat is retired.
 
 ## Executive Overview
 
@@ -20,7 +27,9 @@ Key capabilities delivered:
   depths, types, structures, registers, and memories once in YAML. Arch2Code
   propagates those parameters consistently into SystemC models, SystemVerilog,
   register decode, firmware constants, testbench selection, and exact-width
-  Verilated wrappers.
+  Verilated wrappers. Variants are declared once with their parameters nested
+  beneath them, every variant must bind every parameter, and every declared
+  variant receives its own named configuration structure.
 - **Reusable standalone IP projects.** Reusable leaves and assembling IPs can
   live in their own project trees, build and test independently, and be
   referenced by parent projects. Verification covers standalone leaves,
@@ -43,42 +52,163 @@ Key capabilities delivered:
   isolated build directories. `make newmodule` creates missing project artifacts
   and reference Makefiles without overwriting user-owned files; standalone and
   composed `compdb`/clangd flows use the same manifest as normal builds.
-- **One-command migration and regeneration.** `make migrate` now sequences YAML
+- **One-command migration and regeneration.** `make migrate` sequences YAML
   conversion, database creation, the frozen-map orphan sweep, create-once
-  scaffolding, and regeneration. Generated legacy artifacts are removed
+  scaffolding, and regeneration. The conversion covers Python-to-SystemVerilog
+  expression rewriting, project-wide address control to per-block declarations,
+  include headers to C++ modules, the per-row-to-nested variant schema, and the
+  database-backed re-stamps of `GENERATED_CODE_PARAM` lines and user-owned
+  SystemVerilog `endmodule:` labels. Generated legacy artifacts are removed
   deterministically, user-owned files are preserved or reported for an
   agent-driven port, and both functional and hierarchical layouts use the same
   ownership policy.
-- **Cleaner registration and module boundaries.** Parameterized block classes,
-  Base interfaces, and registrar trampolines use explicit C++20 module and
-  per-assembler ownership. Registration is retained through a defined
-  build-system contract, and reusable implementation trees do not carry
-  consumer-specific registration anchors.
+- **Cleaner registration and module boundaries.** Every block implementation is
+  a single C++20 module interface unit (`.cppm`), independent of whether the
+  block is parameterized. Block classes, Base interfaces, framework services,
+  and registrar trampolines use explicit C++20 module and per-assembler
+  ownership. Registration is retained through a defined build-system contract,
+  and reusable implementation trees do not carry consumer-specific registration
+  anchors.
+- **Collision-free generated identity across projects.** Generated C++ module
+  and namespace names, SystemVerilog package names, and SystemVerilog module
+  names are qualified by their owning project, with a prefix-dedup rule that
+  leaves an identifier already leading with the project name unchanged. File
+  names on disk keep the plain authored spelling. Two fail-fast database-time
+  uniqueness gates reject any pair of contexts or blocks that would resolve to
+  one identifier.
 - **Migration and compatibility support.** The branch completes the unified
   YAML migration path, replaces project-wide address-control input with
   block-owned address declarations, adds hierarchical-layout migration support,
   and ports the in-tree examples to the current contracts.
-- **Expanded verification.** Standalone and composed model flows reach clean
-  end-of-test. Automated coverage includes parameterized declarations and
-  expressions, register decode, ownership, layout, zero-instance blocks,
-  provider overrides, build manifests, and parent-owned configuration emission.
+- **Expanded verification.** Standalone and composed model and co-simulation
+  flows reach clean end-of-test. Automated coverage includes parameterized
+  declarations and expressions, register decode, address containment, ownership,
+  layout, zero-instance blocks, provider overrides, build manifests,
+  parent-owned configuration emission, variant completeness, container
+  configuration inheritance, and generated-identity uniqueness.
 
-For program planning, the 116 critical path is complete. The branch now
+## New In This Release Cycle
+
+The following items landed between 2026-07-29 and 2026-08-04. They are the
+outcome of the `feature/116-parameterized-types` review plus the `debayer`
+product migration that exercised the result. All six review action items and
+the one item the product migration added are now closed. Execution detail is
+recorded in [`plan-116-review-feedback.md`](./plan-116-review-feedback.md).
+
+- **Project-qualified generated identity (review item 1).** Generated C++
+  module and namespace names, SystemVerilog package names, and SystemVerilog
+  module names are now qualified by their owning project through one identity
+  function, so two projects containing a same-named context or block no longer
+  collide. File names keep the plain authored spelling. `make migrate`
+  re-stamps the user-owned `endmodule:` labels that pair with the generated
+  module declaration.
+- **Variant declaration schema (review item 2).** A variant is declared once
+  with its parameters nested beneath it, replacing the per-row form that
+  repeated the variant label on every parameter. The nesting is expressed
+  declaratively in the schema rather than reshaped in code. Every variant must
+  bind every declared parameter of its block; an omission is a database-time
+  error rather than a silent default. The retired per-row form is rejected with
+  a durable message directing the user to `make migrate`, and the migration
+  phase performs the rewrite mechanically.
+- **One configuration structure per variant (review item 3).** Both previous
+  deduplications are removed: a variant whose values equal the default, or
+  equal a sibling variant, still receives its own variant-named configuration
+  structure. A parameterized block therefore emits one default structure plus
+  exactly one structure per declared variant, so the generated code shows which
+  variants exist.
+- **Nested address-decode containment validation (review item 4).** Database
+  creation now proves that each nested decode footprint fits inside the window
+  its parent router allocates. A nested decoder is judged by its routed
+  footprint, and a routed register block by the space it actually decodes. A
+  violation is a durable error naming the offending block and both spans.
+- **Uniform C++20 block modules (review item 5).** Every block implementation
+  is now a single module interface unit, independent of parameterization,
+  replacing the paired implementation and header files. The migration performs
+  the four-slot user-code transplant mechanically for the ordinary cases and
+  reports the edge cases it deliberately declines to attempt.
+- **Migration guide clarification (review item 6).** The `migrate-project`
+  skill now separates automated phases from manual follow-up explicitly, and
+  documents the variant-schema phase, the `endmodule:` label re-stamp, the
+  redundant-preamble-import case, and the requirement to re-run migration in
+  each composed child so its exported identifiers match what the parent now
+  imports.
+- **Container configuration inheritance (`inheritContainerParam`).** A
+  contained-block instance may declare `inheritContainerParam: true` in place
+  of a variant selector and is then typed with the container's active
+  configuration, transitively. This makes a configuration-parameterized channel
+  between two sibling children bind, which strict one-to-one per-block
+  configuration otherwise prevents. Five preconditions are enforced at database
+  time, including a same-owning-project restriction that preserves qualified
+  identity.
+- **Parameterized register reset values (defect fix).** A parameterized
+  read/write register generated a reset of zero instead of its declared
+  per-word default. The generated decoder now carries the declared reset values
+  in a local parameter array and applies them on both the full-word and
+  partial-word paths.
+- **Framework services as modules.** `endOfTest` is now the `a2c.endOfTest`
+  module rather than a header, which guarantees one shared singleton across
+  module boundaries. Framework module interface units under the common
+  SystemC directory are discovered automatically by the build. The firmware
+  board-support package moved to its own directory and is no longer compiled
+  into every SystemC target by default.
+- **Expression evaluator coverage.** The shared constant-expression grammar
+  gained relational, equality, and ternary-conditional operators, each with one
+  identical SystemVerilog, C++, and C spelling so the emitters pass it through
+  unchanged. The Python-to-SystemVerilog converter also re-spells C-style
+  integer literals into the SystemVerilog based form.
+- **Reachability-scoped SystemVerilog compile set.** The managed
+  SystemVerilog file list is now restricted to the blocks reachable from the
+  build's top instance, so a referenced child project's own standalone
+  verification harness is no longer compiled into a parent build where its
+  package is legitimately absent. This closes the last known hierarchical
+  co-simulation file-list gap.
+- **Cross-interface boundary thunker in production.** The boundary thunker now
+  has its first product consumer: a parameterized device under test can be
+  driven by non-parameterized testbench peers without re-typing the device
+  under test, with field name, order, width, and offset parity machine-enforced
+  at generation time.
+- **Generator-architecture hygiene.** Wrapper-selection logic that had been
+  placed in a `projectOpen` view was moved into the template utility layer,
+  restoring the documented ownership split between database truth,
+  language-neutral views, and language-specific rendering.
+
+## Upgrade Path For Existing Projects
+
+This release changes authored YAML, generated identifiers, and generated file
+shapes. Existing projects must migrate; the changes were deliberately landed
+together so that a project migrates once rather than repeatedly.
+
+- Run `make migrate` in each project. In a composed design, run it in every
+  child project bottom-up, including children that are already stamped
+  `yamlFormat: 2`, because the parent now imports project-qualified identifiers
+  that a stale child still exports under its bare name.
+- Automated phases cover the variant-schema rewrite, address-control
+  conversion, include-to-module conversion, Python-to-SystemVerilog expression
+  conversion, the `GENERATED_CODE_PARAM` re-stamps, the user-owned
+  `endmodule:` label re-stamp, the orphan sweep, create-once scaffolding, and
+  regeneration.
+- Manual follow-up is limited to the cases the tool reports: block
+  implementations it declines to transplant automatically (parameterized
+  blocks, module-hostile third-party libraries, non-boilerplate content in the
+  preamble slot), and any hand-authored code that spells a generated identifier
+  which is now project-qualified.
+- Consumers that referenced a default-named configuration structure for a
+  declared variant now reference that variant's own structure. Generated
+  regions are re-rendered automatically; only hand-written references need
+  attention.
+
+For program planning, the 116 critical path is complete. The branch
 demonstrates the full standalone and composed SystemC/model path, explicit
 managed SystemVerilog source selection, owner-qualified per-variant Verilated
 tops, standalone and composed RTL co-simulation, cross-project clangd, and the
 final registrar/config placement. Builds and migrations are reproducible from
-YAML/DB ownership data without source-tree discovery, including clean
-standalone and composed regeneration. Since the previous refresh, the branch
-also landed the three-zone C++ module scaffold/migration, generated C++ module
-map acceleration, and stricter project-scoped build-manifest handling. The
-scan-all/parse-master logical file ownership, project-name ownership stamps,
-canonical context stamping, and the `pySocket` migration are now committed as
-well, alongside migration hardening, ISP-porting bugfixes, and cross-interface
-boundary thunker support. These are post-critical-path robustness and
-migration improvements, not a reopening of composition acceptance. The branch
-remains **feature-complete for the planned reusable-IP composition and
-verification workflow**.
+YAML and database ownership data without source-tree discovery, including clean
+standalone and composed regeneration. The review action items above are
+delivery hardening and authoring-surface corrections, not a reopening of
+composition acceptance. The branch is **feature-complete for the planned
+reusable-IP composition and verification workflow**, and the `debayer` product
+now builds and runs through that workflow as a composed, parameterized,
+hierarchical-layout project.
 
 ## Functional Skill Improvements
 
@@ -107,6 +237,23 @@ correctly instead of following obsolete manual patterns.
   `--excludeInst`, and the agent routing templates direct architecture,
   register-decode, RTL-register, and testbench tasks to their authoritative
   skills.
+- **Migration guidance separated into automated and manual steps** (review item
+  6). `migrate-project.md` now documents the variant-schema rewrite phase, the
+  user-owned `endmodule:` label re-stamp and why it is database-backed, the
+  requirement to re-run migration in every composed child once cross-project
+  identifiers are qualified, and how to resolve a redundant import left in the
+  module preamble slot. `address-migration.md` and `manage-build.md` were
+  reconciled to match.
+- **Parameterizable authoring guidance refreshed.**
+  `design-parameterizable-blocks.md` documents the nested variant declaration
+  form, the all-parameters-per-variant completeness rule, and
+  `inheritContainerParam` for a contained instance that must share its
+  container's configuration.
+- **SystemC module authoring guidance.** `systemc-core.md`, together with
+  `rtl-to-systemc.md`, `systemc-to-rtl.md`, `systemc-interfaces.md`,
+  `systemc-synchronization.md`, and `review-model.md`, now describes the single
+  block module interface unit, its three zones, and which user slot legally
+  hosts an `#include` versus an `import`.
 
 ## Current Status Summary
 
@@ -129,57 +276,71 @@ correctly instead of following obsolete manual patterns.
 | Cross-project ownership, provider selection, and reachability | **Complete for the selected-provider contract; Option-D collision hardening deferred** | `plan-cross-project-block-resolution.md`, `plan-cross-project-shared-definitions.md` |
 | Project layout (`functional` / `hierarchical`) | **Complete: L1-L5 accepted** | `plan-decomp-functional-layout.md` |
 | Reusable-IP registrar relocation | **Complete: S0-S6 landed; S5 is committed in the post-`c42b535` branch history** | `plan-reusable-ip-registrar.md`, `proposal-config-ownership-header-relocation.md` |
-| Owner-qualified language identity (Q-C8) | **Interim uniqueness gate complete; absolute owner qualification / SV Role C deferred as latent** | `proposal-qc8-identity-field.md` |
+| Owner-qualified language identity (Q-C8 / review item 1) | **Complete.** Project qualification landed for the C++ module/namespace, the SystemVerilog package, and the SystemVerilog module name, with prefix-dedup, two uniqueness gates, and the `endmodule:` label migration. Examples and the `debayer` product are relabelled | `proposal-qc8-identity-field.md`, `plan-param-constant-collision.md`, `plan-116-review-feedback.md` |
+| Nested variant declaration schema (review item 2) | **Complete.** Schema-native nesting (`parameters → variants → params`), leaf table `parametersvariantsparams`, completeness validator, old-form rejection, and `migrateVariantSchema.py` | `plan-ip-namespaces-and-parameterization.md`, `plan-116-review-feedback.md` |
+| One configuration structure per variant (review item 3) | **Complete.** Default fold and sibling value-signature fold both removed; default plus one structure per declared variant | `plan-parameterizable-config-template.md`, `plan-116-review-feedback.md` |
+| Nested address-decode containment validation (review item 4) | **Complete.** Database-time containment pass in `calcAddresses` plus negative fixture `test_error_nested_decoder_overflow.py` | `plan-address-control-refactor.md`, `plan-address-control-test-coverage.md` |
+| Uniform C++20 block-implementation modules (review item 5) | **Complete.** Gate flipped to all `hasMdl` blocks; every in-tree base and pro block implementation converted; mechanized four-slot port with detect-and-flag edges | `plan-block-module-3section.md`, `plan-item5-port-mechanization-assessment.md` |
+| Container configuration inheritance (`inheritContainerParam`) | **Complete for the same-project case.** Schema field, config-selection branch, five database-time preconditions, six unit tests, and the declared-variant HDL-wrapper follow-ons. Cross-project negative fixture deferred | `plan-parameterizable-config-template.md`, `plan-116-review-feedback.md` |
+| Framework services as C++20 modules | **Complete.** `a2c.endOfTest` module replaces the header, framework `.cppm` auto-discovery in the build, firmware board-support package relocated | `plan-block-module-3section.md` |
+| Expression-evaluator operator coverage | **Complete.** Relational, equality, and ternary operators plus C-style literal re-spelling in the Python-to-SystemVerilog converter | `plan-eval-symbolic-emission.md`, `plan-eval-python-to-sv-migration.md` |
+| Hierarchical co-simulation file lists | **Complete.** Managed SystemVerilog compile set scoped to blocks reachable from the build top, matching the reachability-scoped `rtl.f` | `plan-decomp-functional-layout.md`, `plan-composition-ordering.md` |
+| Tandem emission contract under parameterized types | **Specified** (`spec-tandem-parameterized-types.md`, normative); pro-side emitters aligned to the qualified block module name | `spec-tandem-parameterized-types.md` |
 | Cross-level foreign-variant wrappers | **Complete against the architect-selected proof bar; hardening gaps deferred** | `plan-cross-level-variant-wrappers.md` |
 | File ownership + one-command project migration | **Mechanical pipeline landed; parameterized `.cpp/.h`→`.cppm` user-code port remains agent-driven** | `plan-file-ownership-classification.md`, `rules/skills/migrate-project.md` |
 | Canonical examples and layout cleanup | **Complete: `simple_ip`, `hierVlDemo`, and collapsed `ip_test` hierarchy landed** | `plan-simple-ip-example.md`, `plan-ip_test-dir-cleanup.md` |
 | Three-section C++ block modules | **Complete in committed generator/example infrastructure; GMF and module-import user zones plus migration support landed** | `plan-block-module-3section.md` |
 | Multi-copy project override / logical file ownership | **Committed in `e59ad94` with `test_project_scan.py` / `test_project_param.py`; `resolveContextKey` now requires an exact canonical key, retiring the basename fallback. Owner-plan sign-off pending** | `plan-projectoverride-file-ownership.md` |
 | `pySocket` current-format migration | **Committed in `e59ad94` (26 files): YAML/address/include conversion, `.cppm` base and include modules, registrar output, and user-code port. Standalone model/VL acceptance not rerun here** | `plan-file-ownership-classification.md`, `plan-projectoverride-file-ownership.md` |
-| Functional skills and agent guidance | **Updated: register decode, architecture/address placement, parameterization, RTL registers, and testbench guidance** | `rules/skills/`, `AGENTS.md.template`, `ARCH2CODE_AI_RULES.md` |
+| Functional skills and agent guidance | **Updated: register decode, architecture/address placement, parameterization, migration, SystemC module authoring, RTL registers, and testbench guidance** | `rules/skills/`, `AGENTS.md.template`, `ARCH2CODE_AI_RULES.md` |
+| `debayer` product integration | **Complete.** The product is migrated to hierarchical layout, composes the `isp_shared` definitions-only project, uses nested variant declarations and `inheritContainerParam`, carries qualified module names, and builds and runs green with an image-quality reference check | `plan-116-review-feedback.md` |
 
 Branch-state caveat: the workstream code is committed in branch history
-(the original range began at `ca0afec`; current HEAD is `1b58623`), but
-`plans/` is ignored and no plan document is tracked in the `builder/base`
-repository. "Complete" above refers to implementation state, not plan-file
-tracking. As of 2026-07-28 the `builder/base` working tree is **clean**: the
-S1/S2 scanner integration, project-mode `--project` stamping, and `pySocket`
-migration previously carried as implemented-in-working-tree are now committed in
-`e59ad94`. Rows describing those items as uncommitted have been corrected below;
-their formal open/closed classification is left to the owning plans, since no
-acceptance suite was rerun for this metrics refresh.
+(the original range began at `ca0afec`; current HEAD is `2b3f6d1`), and
+`plans/` is now tracked as well. "Complete" above refers to implementation
+state. The `builder/base` working tree was clean at HEAD `2b3f6d1` before this
+refresh. The formal open/closed classification of each row remains with the
+owning plans named in the same row.
 
 ## Branch Metrics
 
 Metrics below cover the report's implementation range: the parent of
-`ca0afec` (`1229582`) through current HEAD `1b58623`, 2026-06-11 through
-2026-07-28. Commit counts use first-parent history so unrelated commits brought
+`ca0afec` (`1229582`) through current HEAD `2b3f6d1`, 2026-06-11 through
+2026-08-04. Commit counts use first-parent history so unrelated commits brought
 in by merges are not presented as direct branch work; line and file counts are
 the net tree diff across the endpoints, not cumulative per-commit churn.
 Renamed paths are attributed to their source directory.
 
 | Metric | Value |
 |---|---:|
-| First-parent commits | 88 |
-| Merge commits on first-parent history | 2 |
-| Non-merge first-parent commits | 86 |
-| Non-merge first-parent commits carrying `#116` | 85 |
-| All reachable commits, including merged side histories | 109 |
+| First-parent commits | 101 |
+| Merge commits on first-parent history | 4 |
+| Non-merge first-parent commits | 97 |
+| Non-merge first-parent commits carrying `#116` | 93 |
+| All reachable commits, including merged side histories | 125 |
 | Author identities across reachable commits | 3 |
-| Paths changed | 1,198 |
-| Files added / modified / deleted / renamed | 565 / 275 / 197 / 161 |
-| Insertions | 58,072 |
-| Deletions | 23,087 |
-| Net lines | +34,985 |
+| Paths changed | 1,311 |
+| Files added / modified / deleted / renamed | 630 / 242 / 273 / 166 |
+| Insertions | 101,292 |
+| Deletions | 26,552 |
+| Net lines | +74,740 |
+| Unit-test suites in `unittest/` | 88 |
+| Base examples | 16 |
 
-The one non-merge first-parent commit whose subject does not carry `#116` is
-`894f101`, which is typed `#166`; it is branch work despite the typo.
+Two figures need context. Insertions grew by roughly 43,000 lines relative to
+the previous refresh mostly because `plans/` became tracked: the 64 plan and
+research documents account for 37,689 of those lines and contain no product
+code. Four non-merge first-parent commits do not carry `#116` in the subject:
+`894f101` is typed `#166` (a typo, and it is branch work), and the three
+commits `38b17af`, `7274b9c`, and `59b7329` carry descriptive subjects instead
+of the issue tag.
 
 The first 11 first-parent commits (`ca0afec` through `5ff43e1`) close the
 pre-composition work summarized in the 2026-06-23 entries. The following 77
 first-parent commits carry the branch through project composition, layout,
 ownership, provider selection, registrar relocation, migration, and example
-cleanup. Major composition
+cleanup. The final 13 commits (`14ce4c4` through `2b3f6d1`) deliver the review
+action items and the product integration. Major composition
 milestones include:
 
 - `5810dd5` — introduce `projectName` into the instance-factory path.
@@ -228,24 +389,99 @@ milestones include:
 - `1b58623` — cross-interface boundary thunker support on testbench externals,
   plus the new `xif` example exercising it.
 
-Change volume is dominated by regenerated and reorganized examples:
+Review-cycle milestones (2026-07-29 through 2026-08-04):
+
+- `14ce4c4` — the combined review-item landing: project-qualified identity,
+  the schema-native nested variant form and its completeness validator, strict
+  one-to-one variant configuration, nested address containment with its negative
+  fixture, and the conversion of every block implementation to a single `.cppm`.
+- `3ee90d5` — skill refresh for migration, parameterizable authoring, SystemC
+  module authoring, and model review.
+- `477d6c6` — `inheritContainerParam`: schema field, configuration-selection
+  branch, five database-time preconditions, and `test_inherit_container_param.py`.
+- `b17a0fc` / `5565acd` — `plans/` placed under version control (64 documents),
+  the module-preamble import relocation in the SystemC templates, and the
+  normative tandem emission specification.
+- `bc81ff2` — standalone `make` invocation fix for the agent-rules target.
+- `38b17af` — reachability-scoped managed SystemVerilog compile set, stable
+  hierarchy node identifiers for diagrams and documents, qualified `endmodule:`
+  labels and user import packages in `hierInclude`, deletion of the superseded
+  `mixed` block header orphan, and `VL_DUT` propagation into the co-simulation
+  run targets.
+- `7274b9c` / `59b7329` / `b523777` — `endOfTest` migrated to the
+  `a2c.endOfTest` module with a single shared singleton and a framework
+  startup gate, firmware board-support package relocated, relational, equality,
+  and ternary operators added to the expression evaluator, and the examples
+  rebuilt onto the module.
+- `6a9330c` / `2b3f6d1` — concrete Verilated-top selection for a non-templated
+  wrapper, then relocation of that selection from the `projectOpen` view into
+  the template utility layer to restore the ownership split.
+- `de022a1` — parameterized read/write registers carry their declared reset
+  values into the generated multi-word decoder instead of resetting to zero.
+
+Change volume is dominated by plan documents plus regenerated and reorganized
+examples:
 
 | Top-level area | Paths | Insertions | Deletions |
 |---|---:|---:|---:|
-| `examples/` | 907 | 31,823 | 19,652 |
-| `unittest/` | 162 | 11,230 | 382 |
-| `pysrc/` | 26 | 7,815 | 953 |
-| `templates/` | 26 | 1,775 | 941 |
-| `rules/` | 14 | 1,449 | 195 |
-| `config/` | 5 | 899 | 316 |
-| `common/` | 19 | 691 | 54 |
+| `examples/` | 942 | 34,890 | 22,703 |
+| `plans/` | 64 | 37,689 | 0 |
+| `unittest/` | 160 | 11,478 | 512 |
+| `pysrc/` | 30 | 9,285 | 977 |
+| `templates/` | 26 | 1,894 | 984 |
+| `rules/` | 20 | 1,594 | 242 |
+| `config/` | 7 | 1,146 | 404 |
+| `common/` | 23 | 827 | 135 |
 | `interfaces/` | 17 | 520 | 173 |
-| `include/` | 6 | 381 | 152 |
+| `include/` | 6 | 401 | 153 |
 
 ## Recorded Acceptance Runs
 
-These are exact counts recorded by the dated owner-plan acceptance entries; no
-new full regression was run solely for this documentation refresh:
+### Executed for this refresh (2026-08-04)
+
+Unlike previous refreshes, this one ran acceptance rather than only citing
+owner-plan records. Results are stated exactly as observed at HEAD `2b3f6d1`.
+
+- **Unit suites: 88 of 88 pass**, 25-42 s wall clock depending on machine load,
+  via `unittest/run_all_tests_parallel.sh`. The first run of this refresh covered
+  every `test_*.py` file present and passed 87 of 87; the eighty-eighth is
+  `test_param_type_signedness.py`, added with the BUG 10 fix. The pre-fix run was
+  85 of 85 selected out of 87 present; the two unselected suites plus one further
+  unregistered suite were defect B2, and after that fix both runners select all.
+- **Generation across every base example is clean.** `test_build_manifest.py`
+  performs an in-place `make clean/db/gen` on all 16 base examples and passes,
+  and the `builder/base` working tree stayed clean through it, so generation is
+  byte-idempotent at HEAD.
+- **Base example execution suite: all 14 targets pass.** Before the fixes,
+  `make pipeline-test` failed at `nested`, `helloWorld`, `mixed`, `apbDecode`, and
+  `axiDemo`, every one with the identical `Premature end of test detected`
+  assertion — one cause, five symptoms (defect B1). After the five fixes the suite
+  was re-run from clean and independently re-verified: exit code 0, **38
+  `No error` reports**, and zero occurrences of `make: ***`, `Premature`,
+  `Fatal`, `error:`, or `%Error` across the 4,558-line log. Coverage includes
+  `diagram-and-doc` golden comparison, model runs for `nested`, `helloWorld`,
+  `mixed`, `pySocket`, `apbDecode`, `axiDemo`, Verilator co-simulation for
+  `axi4sDemo`, `hierVlDemo`, composed `ip_test` (root model plus four co-simulated
+  instances), standalone `ip` and `bridge` (model and co-simulation each), and
+  `simple_ip` (model and co-simulation), plus `rtl lint` for `mixed`, `pySocket`,
+  `apbDecode`, `axiDemo`, `hierInclude`, and `inAndOut`.
+- **Generation is idempotent and the suite is side-effect free.** After the full
+  suite, the only modified files in `builder/base` are the 23 belonging to the
+  five fixes and the plan documents. The suite performs in-place generation across
+  every example and left no other change, so the committed tree and a freshly
+  generated tree agree byte for byte.
+- **Two invocation hazards were confirmed and are worth recording.** A top-level
+  `make -j pipeline-test` is unsafe: several targets share the `mixed` database
+  and race in `projectOpen`, producing `Invalid config item ... not found`
+  followed by `KeyError: 'instances'`. Inner recursive makes already use `-j`, so
+  the top-level target must run serially. Separately, an example directory
+  regenerated with `make clean gen -j` in one invocation does not guarantee
+  `clean` before `gen`; the two must be separate invocations.
+
+### Recorded by owner plans
+
+These are exact counts recorded by the dated owner-plan acceptance entries and
+were not re-executed for this refresh:
 
 - **8/8 L5 executions:** standalone `ip` model+VL (2), standalone `ipBridge`
   model+VL (2), and composed `ip_test` model + VL-src/ip0/ip1 (4), all
@@ -274,9 +510,29 @@ new full regression was run solely for this documentation refresh:
 
 ## Open Items
 
-No active item remains on the 116 composition/layout/registrar critical path.
-The following active hardening plus deferred, conditional, or independent
-backlog remains:
+No active item remains on the 116 composition, layout, registrar, or review
+action-item critical path. Defect detail lives in the separate bug register
+[`bugs-116.md`](./bugs-116.md); this section carries only status and pointers.
+
+### Release-blocking defects found and fixed 2026-08-04
+
+Five defects (B1-B5) were found by running acceptance for this refresh and are
+all fixed in the working tree and verified. They are recorded, with full
+diagnosis and fix detail, in [`bugs-116.md`](./bugs-116.md) Section 1:
+
+| | Defect | Fix |
+|---|---|---|
+| B1 | End-of-test startup gate discarded a vote cast inside `startupDelay`, aborting five examples with `Premature end of test detected` | Activity recorded at vote time (`voteCast`) instead of inferred at evaluation time |
+| B2 | One unit suite failing on a stale expectation; three suites unregistered in the serial runner | Expectation derived from `qualifyModuleIdentity`; all three registered; both runners now select 87 of 87 |
+| B3 | Sixteen stale generated artifacts in the committed example tree, every one in a composed child | All 17 projects regenerated, children before parents |
+| B4 | `clean` from a project root left `rundir/build`, so dependency files naming the deleted `endOfTest.h` broke the next build | `BIN_DIR` moved to `a2c-common.mk` so the shared `clean` owns it |
+| B5 | Firmware board-support relocation not opted into by the `bridge` sub-project | `EXTRA_A2C_SRC_DIRS` mirrored in its Makefile |
+
+None was caused by a review action item, though item 5's module work exposed B1,
+B3, and B5. B1's fix is a deliberate strict relaxation of the startup guard; its
+semantic consequence is recorded with the defect.
+
+### Deferred, conditional, and independent backlog
 
 1. **Logical file ownership S3-context — committed, sign-off pending:** the
    S1/S2 scan-all/parse-master ownership, S3-project `--project` stamping, and
@@ -287,8 +543,15 @@ backlog remains:
    2026-07-28 metrics refresh.
 2. **`pySocket` project migration / registrar S7:** the YAML/address/include
    conversion, `.cppm` base and include modules, registrar output, and user-code
-   port are committed in `e59ad94`. The item stays open only pending a recorded
-   pass of its standalone model/VL paths; the code is no longer uncommitted.
+   port are committed in `e59ad94`. The `pySocket` target passes in the
+   2026-08-04 base suite run, which satisfies the model half of the recorded-pass
+   condition; the VL half is still not separately recorded. One residual was
+   found while verifying: `examples/pySocket/model/pySocketIncludes.cpp` and
+   `.h` are header-mode leftovers from `#107`, superseded and unreferenced — the
+   design imports `pySocket_tb`, and `pySocket_tbIncludes.cppm` is the live
+   module — so they are unswept orphans rather than an active header-mode
+   context. They belong to the orphan-sweep backlog, not to this item's
+   acceptance.
 3. **Parameterized user-code migration:** `make migrate` now performs the
    mechanical text conversion, DB build, frozen-map orphan sweep, create-once
    scaffolding, and regeneration. When a parameterized legacy block must move
@@ -299,11 +562,13 @@ backlog remains:
    boundary explicitly aligned to the child Base module plus parent-owned
    per-variant Config. The delivered fixtures satisfy this shape, but the
    composition owner index still marks the contract-refresh task open.
-5. **Q-C8 absolute language identity / C2.5 — latent/deferred:** the fail-fast
-   generated-name uniqueness gate is landed. Absolute
-   `{owningProject}_{stem}` C++/SV linkage qualification, SV Role C, and
-   C2.5 header-path disambiguation activate only when a real cross-project
-   same-stem collision is introduced.
+5. **Q-C8 absolute language identity — CLOSED (2026-07-30):** review item 1
+   delivered the absolute `{owningProject}_{stem}` qualification for the C++
+   module and namespace, the SystemVerilog package, and the SystemVerilog module
+   name, with prefix-dedup and two uniqueness gates. This item is no longer
+   latent and must not be carried forward as open work. Only **C2.5 header-path
+   disambiguation** remains deferred, and it activates only if two projects ever
+   ship generated headers with the same basename on one include path.
 6. **Option-D collision hardening — deferred, now unblocked:** the stated
    precondition is met, since `e59ad94` retired the provisional basename-based
    `resolveContextKey` ownership resolution. Adding the duplicate-definition
@@ -328,24 +593,42 @@ backlog remains:
    `hierVlDemo` PASS closes the issue yet. None is required for the delivered
    116 workflow.
 
-10. **#116 review action items — targeted for this release:** the review of
-   `feature/116-parameterized-types` produced five substantive action items plus
-   a documentation item, captured with implementation detail in
-   [`plan-116-review-feedback.md`](./plan-116-review-feedback.md):
-   project-name qualification of module/package identifiers (item 1), the
-   nested-variant schema (item 2), always-emit variant-named config (item 3),
-   nested address containment validation (item 4), full block-implementation
-   module conversion (item 5), and migration-guide clarification (item 6). All
-   are targeted for this release so users migrate once rather than repeatedly
-   (items 2 and 5 both add migration surface). This supersedes the
-   "latent/deferred" status of Q-C8 Role C in open item 5 above — item 1
-   activates SV Role C qualification, simplified because `projectName` is now
-   first-class — and the variant-config deferral in open item 9, since item 3
-   requires per-variant Config emission.
-
-The old `mixed` registrar-orphan deferral is closed. The earlier C2/L2b, C5/L5,
-registrar S5, cross-project clangd, composed VL, and wrapper P2 items are also
-closed and must not be carried forward as open work.
+10. **#116 review action items — CLOSED (2026-07-30):** all six review action
+   items and the seventh item that the product migration added
+   (`inheritContainerParam`) are delivered; execution detail is in
+   [`plan-116-review-feedback.md`](./plan-116-review-feedback.md). Two residuals
+   from that work remain, both narrow:
+   - the `inheritContainerParam` **cross-project negative fixture**, deferred
+     because it needs a composed multi-project fixture rather than a single-file
+     unit fixture; the precondition it would prove is implemented and enforced;
+   - the deferred **whole-suite orphan-sweep migration** for legacy-layout
+     examples. The `hierInclude` symptom that surfaced it is resolved
+     (`38b17af` qualified its begin labels, end labels, user import packages, and
+     lint top module), and the superseded `mixed` block header orphan was
+     deleted in the same commit, so no example failure is attributable to this
+     item any longer. The generic clean-start operation it belongs to is
+     file-ownership W4, tracked in item 3 above.
+11. **Externally reported defects — see the bug register:** BUG 10
+   (parameterizable types lose signedness) was a real generator defect that the
+   entire example suite was blind to; it is **FIXED**, and it ships with both a new
+   unit suite pinning the emitted alias and an executed example fixture, each shown
+   to fail without the fix. BUG 12 (LUT unsigned saturate) needed no separate fix,
+   since BUG 10 was its root cause. BUG 13 (LUT regression coverage gap) is
+   **analysed to an executable specification but not closeable from this tree**,
+   because every file it changes is in `/work/ws/isp`. One finding is deliberately
+   left open: signed parameterizable types wider than 64 bits get no sign
+   extension, latent because no such type exists today. Full analysis, including
+   what each originating report got wrong, is in
+   [`bugs-116.md`](./bugs-116.md) Section 2.
+12. **Status-port comparison under tandem — open design question, own document:**
+   a status port has no transaction on either side, so the per-notification
+   comparison the tee performs is unsound in principle rather than merely
+   mistuned, and `status_port_tee.h` is instantiated by zero examples in the
+   repository. This is a verification-harness design problem needing study and
+   probably a prototype, not a defect with a determinate fix, so it is tracked
+   separately in
+   [`bug-status-port-tandem-compare.md`](./bug-status-port-tandem-compare.md)
+   rather than in the bug register.
 
 ## Plan Hierarchy
 
@@ -353,6 +636,14 @@ closed and must not be carried forward as open work.
 
 - `plan-development-ordering.md` — active high-level control document and
   next-work index; points to the owner plans below.
+- `bugs-116.md` — defect register for this release. Section 1 holds the five
+  release blockers found and fixed while verifying the 2026-08-04 refresh;
+  Section 2 holds the reviewed external bug reports (BUG 10, 12, 13) that are
+  confirmed but not fixed. Defect detail belongs there, not in this status index.
+- `bug-status-port-tandem-compare.md` — open investigation into what a status-port
+  comparison under tandem should mean. Kept separate from the bug register because
+  it needs a design decision and a prototype before any code change, and because
+  no in-tree harness exercises the code in question.
 - `plan-ip-namespaces-and-parameterization.md` — original umbrella plan
   (historical context).
 
@@ -450,7 +741,20 @@ closed and must not be carried forward as open work.
 - `plan-block-module-3section.md` — its header still says proposed, but the
   generator split, `moduleExport` section, migration tool, example updates, and
   supporting build work are committed in `33d0095`/`e2002d8`; current branch
-  history is authoritative.
+  history is authoritative. Extended by review item 5: the `blockModule` gate is
+  now all `hasMdl` blocks, the generated `using namespace` moved out of the
+  `moduleExport` region for non-register-handler blocks so the preamble user slot
+  is legal (`b17a0fc`), and `endOfTest` became the `a2c.endOfTest` module
+  (`7274b9c`) so a framework singleton is no longer a header in a module purview.
+- `plan-item5-port-mechanization-assessment.md` — read-only feasibility
+  assessment of mechanizing the `.cpp/.h` → `.cppm` user-region transplant over
+  the `codeText` region splitter. Its hybrid recommendation was adopted and
+  executed as review item 5.
+- `spec-tandem-parameterized-types.md` — normative descriptive specification of
+  the tandem wrapper emission contract under parameterized types, written to be
+  portable across generator implementations. Tandem is pro-only and base contains
+  no tandem artifact, so its worked examples are derived renderings anchored on
+  base blocks rather than copied output; Section 5.0 states what is real.
 - `plan-simple-ip-example.md` — complete and committed; model/VL/firmware gates
   green.
 - `plan-ip_test-dir-cleanup.md` — complete and committed; the primary
@@ -763,3 +1067,81 @@ historical/superseded. In particular:
   because this refresh verified git history only and reran no acceptance suite.
   All figures in the previous refresh were re-verified against the repository
   and reproduced exactly at `f07ae17` before being recomputed.
+- **2026-08-04 — Review-cycle refresh; acceptance executed; four release blockers
+  found.** Thirteen first-parent commits land after `1b58623`, advancing HEAD to
+  `2b3f6d1`, and they close every one of the review action items: `14ce4c4`
+  (project-qualified identity, schema-native nested variants with a completeness
+  validator, strict one-to-one variant configuration, nested address containment,
+  and all block implementations converted to `.cppm`), `3ee90d5` (skill refresh),
+  `477d6c6` (`inheritContainerParam`), `b17a0fc` (plans placed under version
+  control, module-preamble import relocation) and `5565acd` (tandem emission
+  specification), `bc81ff2` (standalone make fix), `38b17af` (reachability-scoped
+  managed SystemVerilog compile set, stable hierarchy node identifiers,
+  `hierInclude` relabelling, `mixed` orphan deletion, `VL_DUT` propagation),
+  `7274b9c` / `59b7329` / `b523777` (`a2c.endOfTest` module, firmware
+  board-support relocation, relational/equality/ternary evaluator operators,
+  examples rebuilt), `6a9330c` / `2b3f6d1` (concrete Verilated-top selection,
+  then its relocation out of the `projectOpen` view into the template utility
+  layer), and `de022a1` (parameterized register reset values, which is also the
+  fix for BUG 8 in the external ISP parameterization bug report). Recomputed
+  metrics are 101 first-parent commits (97 non-merge, 93 carrying `#116`), 125
+  reachable commits, 1,311 changed paths, and +101,292/-26,552 lines; roughly
+  37,700 of those insertions are the newly tracked `plans/` documents and contain
+  no product code. Unit suites go 84 → 87 files and examples stay at 16.
+  Q-C8 and the whole review-item block are closed and must not be carried forward
+  as open work.
+  This refresh **executed acceptance** rather than only citing owner-plan
+  records, which is a departure from the previous four refreshes, and it found
+  **five release-blocking defects** that the review items did not cause but that
+  their work exposed: B1, the end-of-test startup gate discarding an early
+  explicit vote, which aborted five base examples with `Premature end of test
+  detected` and was the single cause of every example failure observed; B2, a
+  failing identity-uniqueness suite that neither test runner executed, plus two
+  further unregistered suites — one of them review item 4's own negative fixture;
+  B3, stale composed-child artifacts in the committed example tree, sixteen files
+  in total and every one of them in a composed child rather than a root-owned
+  project; B4, a surviving build directory whose dependency files name the
+  deleted `endOfTest.h`, caused by `BIN_DIR` being defined only in
+  `a2c-systemc.mk` so a project-root `clean` did not own it; and B5, the firmware
+  board-support relocation not opted into by the `bridge` sub-project, which
+  compiles the common project's `cpu` block. **All five are fixed in the working
+  tree** and none is committed, since `builder/base` is a submodule the user
+  stages. The B1 fix is a deliberate strict relaxation of the startup guard and
+  its semantic consequence is recorded with the defect. **Post-fix acceptance was
+  re-run and independently verified: unit suites 87 of 87 in 25 s — the first run
+  covering every present suite — and `make pipeline-test` exit code 0 with 38
+  `No error` reports and zero failure markers of any kind across all 14 targets,
+  leaving no tree change beyond the fixes themselves.**
+  Two invocation hazards are now recorded because both cost real diagnosis time:
+  a top-level `make -j pipeline-test` races on the shared `mixed` database and
+  fails with `Invalid config item ... not found` then `KeyError: 'instances'`, so
+  that target must run serially while inner makes use `-j`; and
+  `make clean gen -j` in one invocation does not guarantee `clean` before `gen`.
+  **Defect detail was then moved out of this report into a separate register,
+  `bugs-116.md`**, on the same date and at the user's direction: a status index
+  states what shipped, the register states what was broken. That register also
+  absorbed the reviews of four externally reported defects — BUG 9, 10, 12, and
+  13 — which are confirmed against the code but not fixed, and which this report
+  now references from a single Open Items entry rather than describing inline.
+- **2026-08-04 (later, same day) — BUG 10 fixed with coverage; BUG 13 analysed to
+  a specification.** `templates/systemc/includes.py::includeTypes` now selects
+  `int64_t` or `uint64_t` from the declared `isSigned` on the parameterizable
+  scalar arm, which previously hardcoded `uint64_t` and so silently contradicted
+  both the YAML declaration and the SystemVerilog emitter. The container stays
+  fixed 64-bit deliberately, because a parameterizable type must hold its worst
+  case across variants, and that reasoning is now a durable comment in the
+  template rather than only a plan note. Coverage landed with the fix at two
+  levels, since the entire example corpus was previously blind to the defect: a
+  new `unittest/test_param_type_signedness.py` pins the emitted alias text for
+  four cases, and a signed parameterizable fixture in `examples/ip_test` asserts
+  at runtime that the field unpacks negative and shifts arithmetically. Both were
+  shown to **fail with the fix reverted and pass with it applied**, which was the
+  acceptance gate; a plain pack/unpack round-trip passes either way and therefore
+  could not have guarded it. **Unit suites are now 88 of 88** and
+  `make pipeline-test` remains exit code 0 with 38 `No error` reports. The one
+  finding deliberately left open is the multi-word arm: signed types wider than 64
+  bits receive no sign extension at all, latent today because no such type exists,
+  and recorded in the register rather than fixed. BUG 13 was investigated to
+  completion in parallel but **cannot be closed from this tree** — every artefact
+  it changes lives in `/work/ws/isp`, which is out of tree. The register now
+  carries the settled reachability analysis it previously lacked.

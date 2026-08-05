@@ -3171,3 +3171,46 @@ USER `endmodule:` of exactly:
 `rtl/debayer.sv` (== project) and `rtl/debayer_regs.sv` (leads `debayer_`, and
 generator-owned endmodule) are unchanged. Run as a separate confirmed product
 migration step.
+
+## Update 2026-08-04 — review item 1: project-qualified generated identity LANDED
+
+This plan is the owner for #116 review item 1 ("project names must be included in
+module and package names to avoid collisions"). It is closed.
+
+`qualifyModuleIdentity(name, projectName)` (`pysrc/processYaml.py:94`) is the
+single identity function. The rule is prefix-dedup: the name is returned
+unchanged when it equals the project name or already begins with
+`projectName + "_"`, otherwise the project name is prepended. The `_`-boundary
+test prevents a false dedup on a name such as `debayering` under project
+`debayer`. It is applied in `projectCreate` at two sites — `contextModuleIdentity`
+(`:3721`), which names each context's C++ module and namespace and its
+SystemVerilog package, and `blockModuleName` (`:3756`), which names each block's
+SystemVerilog `module`. Qualification is build-independent by construction,
+because the owner is an intrinsic per-context fact (`contextOwningProject`) rather
+than something derived from the current build root, so a child IP spells the same
+package name standalone and composed.
+
+Scope covered: the C++ module and namespace, the SystemVerilog package name, and
+the SystemVerilog `module` name. **File names on disk keep the plain authored
+spelling** — the filesystem name is not a SystemVerilog identifier, and this
+project compiles from an explicit file list with no `-y` library lookup, so
+nothing requires the basename to equal the unit name. Two fail-fast
+database-time uniqueness gates reject any pair of contexts or blocks that would
+resolve to one identifier, which also covers the pathological prefix-dedup
+aliasing case (project `a` block `a_b` versus project `a_b` block `a_b`).
+
+The one genuinely hard part was not the generator: the `module` begin-declaration
+is generator-owned but `endmodule: <label>` sits in a USER region in every
+`moduleInterfacesInstances`-style file, so qualifying the declaration alone
+produced Verilator `%Error-ENDLABEL`. That required a user-RTL migration, which
+landed as the database-backed `pysrc/migrateModuleEndlabel.py` re-stamp wired
+into `migrateYaml.py --sweep` — owner-gated, idempotent, and sourcing the
+qualified name from the same identity function the generator uses rather than
+string-munging. A fully generated RTL block that closes its module inside a
+generated region carries no user end label and is left untouched.
+
+Related: this closes the Q-C8 "absolute versus conditional qualification"
+question recorded in `proposal-qc8-identity-field.md`. With `projectName`
+first-class, only the absolute form is possible. C2.5 header-path
+disambiguation remains deferred and activates only if two projects ship
+generated headers with the same basename on one include path.

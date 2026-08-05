@@ -1,6 +1,7 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
+#include <cstring>
 #include <string>
 
 #include "instanceFactory.h"
@@ -39,9 +40,31 @@ protected:
 public:
 // GENERATED_CODE_END
 
+    // A signed parameterizable type must resolve to a signed C++ container, not
+    // merely to a correct bit pattern. pack/unpack sign-extend identically into a
+    // signed or an unsigned container, so the generated round-trip cannot tell the
+    // two apart; only arithmetic on the alias itself can. An all-ones field is -1,
+    // so it compares negative and an arithmetic shift right is value preserving,
+    // neither of which holds for an unsigned container.
+    template<typename Config>
+    static void checkSignedParameterizableField(void)
+    {
+        typename ipSignedParamSt<Config>::_packedSt allOnes;
+        memset(&allOnes, 0xFF, sizeof(allOnes));
+        ipSignedParamSt<Config> sample;
+        sample.unpack(allOnes);
+        Q_ASSERT_CTX(sample.offset < 0, "checkSignedParameterizableField",
+            "signed parameterizable field did not unpack negative");
+        Q_ASSERT_CTX((sample.offset >> 1) == sample.offset, "checkSignedParameterizableField",
+            "signed parameterizable field shifted logically instead of arithmetically");
+    }
+
     bool createTestBench(void) override
     {
         ip_test_ns::test_ip_structs::test();
+        checkSignedParameterizableField<ip_test_ns::ipTestConfigDefault>();
+        checkSignedParameterizableField<ip_test_ns::ipTestConfigMid>();
+        checkSignedParameterizableField<ip_test_ns::ipTestConfigMax>();
 
         testController::GetInstance().set_test_names({
             "test_ip_uIp0_check",

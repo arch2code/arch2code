@@ -37,10 +37,9 @@ public:
     void setStartupComplete(void)
     {
         startupComplete = true;
-        // Re-evaluate once now that latching is permitted. This only latches if
-        // the test has already been active and every voter is now idle; a
-        // startup transient (all registered voters momentarily idle) is ignored
-        // because the test was never active.
+        // Re-evaluate once now that latching is permitted, so a vote cast while
+        // the gate was closed still latches. A project that has never voted is
+        // ignored here (see evaluateEndOfTest).
         evaluateEndOfTest();
     }
 
@@ -50,6 +49,9 @@ private:
     // for explicit use cases where you just want to explicitly declare end of test
     inline void setEndOfTest(bool isEnd)
     {
+        // Activity is recorded at vote time, never at evaluation time, so it
+        // survives the closed startup gate (see evaluateEndOfTest).
+        voteCast = true;
         if (isEnd) {
             endOfTestCounter++;
         } else {
@@ -57,25 +59,29 @@ private:
         }
         evaluateEndOfTest();
     }
-    // Latch and notify end-of-test only once startup is complete, the test has
-    // actually run, and the vote threshold is met. Called on each vote change
-    // and once when startup completes, so a genuine end-of-test after startup is
-    // never missed.
+    // Latch and notify end-of-test only once startup is complete, at least one
+    // voter has cast a vote, and the vote threshold is met. Called on each vote
+    // change and once when startup completes, so an end-of-test is never missed:
+    // a self-driving model-only test can register its voter, run to completion
+    // and vote done entirely inside startupDelay, and that vote must still latch
+    // when the gate opens.
     //
-    // endOfTestCounter < voters means at least one voter is busy (a busy vote
-    // decrements the counter; an idle/done vote increments it toward voters), so
-    // it is direct evidence the test became active. Requiring this before
-    // latching prevents the transient all-idle threshold that occurs while the
-    // framework is still starting up and lazily-registered voters (firmware and
-    // runtime host threads) have not yet begun driving stimulus - a window that
-    // overlaps startupComplete because stimulus release is itself keyed to
-    // startupDelay. A project that never becomes active (e.g. no voters) never
-    // latches here and instead terminates by scTimeLimit or event starvation.
+    // Invariant: a cast vote is the evidence that the test ran, and it is
+    // recorded when the vote happens. Do NOT infer activity from
+    // endOfTestCounter < voters here - evaluation does not run while the gate is
+    // closed, so a test that finishes before the gate opens never presents that
+    // condition and would never latch. voteCast is what stops the gate opening
+    // from latching a project that has never voted at all, for which voters == 0
+    // makes endOfTestCounter >= voters trivially true; such a project terminates
+    // by scTimeLimit or event starvation instead. Not latching before
+    // startupComplete is therefore the only barrier against the transient
+    // all-idle threshold seen while lazily-registered voters (firmware and
+    // runtime host threads) are still registering, which is exactly what
+    // startupDelay is sized for.
     void evaluateEndOfTest(void)
     {
         if (!startupComplete) return; // do not latch or notify during startup
-        if (endOfTestCounter<voters) hasBeenActive = true; // the test actually ran
-        if (hasBeenActive && endOfTestCounter>=voters) {
+        if (voteCast && endOfTestCounter>=voters) {
             done = true;
             eotEvent.notify(SC_ZERO_TIME); // notify the event
         }
@@ -89,7 +95,7 @@ private:
     std::atomic<int> voters = 0;
     std::atomic<bool> done = false;
     std::atomic<bool> startupComplete = false;
-    std::atomic<bool> hasBeenActive = false;
+    std::atomic<bool> voteCast = false;
     endOfTestState() {};
 
 };

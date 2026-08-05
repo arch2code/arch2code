@@ -76,14 +76,15 @@ module ip_ipRegs
     logic [31:0] ipCfg_rword [0:2];
     logic [2:0] ipCfg_update;
     assign ipCfg.data = ipCfg_reg;
+    localparam logic [31:0] ipCfg_rst [0:2] = '{ 32'h00000000, 32'h00000000, 32'h00000000 };
     generate
         for (gi = 0; gi < 3; gi++) begin : g_ipCfg
             if (IPCFG_W > 32*gi) begin : present
                 if (IPCFG_W >= 32*(gi+1)) begin : full
-                    `DFFREN(ipCfg_reg[32*gi +: 32], ipReg.pwdata[31:0], ipCfg_update[gi], '0)
+                    `DFFREN(ipCfg_reg[32*gi +: 32], ipReg.pwdata[31:0], ipCfg_update[gi], ipCfg_rst[gi])
                     assign ipCfg_rword[gi] = ipCfg_reg[32*gi +: 32];
                 end else begin : partial
-                    `DFFREN(ipCfg_reg[32*gi +: (IPCFG_W-32*gi)], ipReg.pwdata[IPCFG_W-32*gi-1:0], ipCfg_update[gi], '0)
+                    `DFFREN(ipCfg_reg[32*gi +: (IPCFG_W-32*gi)], ipReg.pwdata[IPCFG_W-32*gi-1:0], ipCfg_update[gi], ipCfg_rst[gi][(IPCFG_W-32*gi-1):0])
                     assign ipCfg_rword[gi] = 32'(ipCfg_reg[32*gi +: (IPCFG_W-32*gi)]);
                 end
             end else begin : absent

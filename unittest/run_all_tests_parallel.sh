@@ -37,12 +37,6 @@ cd "$(dirname "$0")" || exit 2
 
 JOBS="$(nproc)"
 
-# Suites the serial run_all_tests.sh intentionally does NOT run.
-EXCLUDE=(
-    test_module_identity_uniqueness.py
-    test_parameter_variant_block_param_identity.py
-)
-
 # Read-only on shared examples/ trees. Run concurrently among themselves.
 EXAMPLE_READERS=(
     test_eval_canonical_view.py       # reads examples/ip_test
@@ -57,9 +51,9 @@ EXAMPLE_READERS=(
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.
 EXAMPLE_WRITER="test_build_manifest.py"
 
-# ISOLATED = all test_*.py minus EXCLUDE minus readers minus writer.
+# ISOLATED = all test_*.py minus readers minus writer.
 declare -A SKIP=()
-for s in "${EXCLUDE[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER"; do SKIP["$s"]=1; done
+for s in "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER"; do SKIP["$s"]=1; done
 ISOLATED=()
 for f in test_*.py; do
     [[ -n "${SKIP[$f]:-}" ]] && continue
@@ -69,9 +63,9 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping suites: the serial runner runs 84 suites.
-if [[ ${#ALL[@]} -ne 84 ]]; then
-    echo "WARNING: expected 84 suites (serial-runner set), found ${#ALL[@]}." >&2
+# Guard against silently dropping suites: the serial runner runs 88 suites.
+if [[ ${#ALL[@]} -ne 88 ]]; then
+    echo "WARNING: expected 88 suites (serial-runner set), found ${#ALL[@]}." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 
