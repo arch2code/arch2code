@@ -1,10 +1,12 @@
-// GENERATED_CODE_PARAM --context mixed.yaml
+
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
+// GENERATED_CODE_PARAM --project=mixed --context=mixed.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package mixed_package;
 // Generated Import package statement(s)
-import mixedBlockC_package::*;
-import mixedNestedInclude_package::*;
-import mixedInclude_package::*;
+import mixed_mixedBlockC_package::*;
+import mixed_mixedNestedInclude_package::*;
+import mixed_mixedInclude_package::*;
 localparam int unsigned ASIZE = 32'h0000_0001;  // The size of A
 localparam int unsigned ASIZE2 = 32'h0000_0002;  // The size of A+1
 localparam int unsigned INTP = 32'hFFFF_FC00;  // Test constant for numbers of unsigned integer type 
@@ -84,14 +86,11 @@ typedef enum logic[8-1:0] {              //opcode with fixed width
     ADD = 0,                 // Add
     SUB = 5                 // Subtract
 } opcodeT;
-typedef enum logic[1-1:0] {          //Generated type for addressing top instances
+typedef enum logic[2-1:0] {          //Generated type for addressing top instances
     ADDR_ID_TOP_UBLOCKA = 0, // uBlockA instance address
-    ADDR_ID_TOP_UBLOCKB = 1 // uBlockB instance address
+    ADDR_ID_TOP_UBLOCKB = 1, // uBlockB instance address
+    ADDR_ID_TOP_UBLOCKG = 2 // uBlockG instance address
 } addr_id_top;
-typedef enum logic[2-1:0] {          //Generated type for addressing ip1 instances
-    ADDR_ID_IP1_UBLOCKD = 0, // uBlockD instance address
-    ADDR_ID_IP1_UBLOCKF0 = 2 // uBlockF0 instance address
-} addr_id_ip1;
 
 // structures
 typedef struct packed {

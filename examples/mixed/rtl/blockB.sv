@@ -1,10 +1,10 @@
 // GENERATED_CODE_PARAM --block=blockB
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockB
-module blockB
+//module as defined by block: mixed_blockB
+module mixed_blockB
 // Generated Import package statement(s)
-import mixedInclude_package::*;
-import mixedBlockC_package::*;
+import mixed_mixedInclude_package::*;
+import mixed_mixedBlockC_package::*;
 import mixed_package::*;
 (
     req_ack_if.dst btod,
@@ -41,7 +41,7 @@ import mixed_package::*;
     memory_if #(.data_t(nestedSt), .addr_t(bSizeSt)) blockBTableSP_bob();
 
 // Instances
-blockD uBlockD (
+mixed_blockD uBlockD (
     .btod (btod),
     .blockBTable1 (blockBTable1_port1),
     .blockBTableSP (blockBTableSP_bob),
@@ -58,7 +58,7 @@ blockD uBlockD (
     .rst_n (rst_n)
 );
 
-blockF #(.bob(BOB0), .fred(0)) uBlockF0 (
+mixed_blockF #(.bob(BOB0), .fred(0)) uBlockF0 (
     .cStuffIf (cStuff1),
     .dStuffIf (dee0),
     .dSin (loopDF),
@@ -68,7 +68,7 @@ blockF #(.bob(BOB0), .fred(0)) uBlockF0 (
     .rst_n (rst_n)
 );
 
-blockF #(.bob(BOB1), .fred(1)) uBlockF1 (
+mixed_blockF #(.bob(BOB1), .fred(1)) uBlockF1 (
     .cStuffIf (cStuff2),
     .dStuffIf (dee1),
     .dSin (loopFF),
@@ -78,7 +78,7 @@ blockF #(.bob(BOB1), .fred(1)) uBlockF1 (
     .rst_n (rst_n)
 );
 
-threeCs uThreeCs (
+mixed_threeCs uThreeCs (
     .see0 (cStuffIf),
     .see1 (cStuff1),
     .see2 (cStuff2),
@@ -86,7 +86,7 @@ threeCs uThreeCs (
     .rst_n (rst_n)
 );
 
-blockBRegs uBlockBRegs (
+mixed_blockBRegs uBlockBRegs (
     .apbReg (apbReg),
     .blockBTable1 (blockBTable1_reg),
     .rwD (rwD),
@@ -136,4 +136,4 @@ memory_sp #(.DEPTH(BSIZE), .data_t(nestedSt)) uBlockBTableSP (
 
 // GENERATED_CODE_END
 
-endmodule: blockB
+endmodule: mixed_blockB

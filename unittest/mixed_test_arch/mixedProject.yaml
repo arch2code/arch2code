@@ -1,6 +1,7 @@
 # Example project file that defines project level information
 
 
+yamlFormat: 2
 projectName: mixed
 
 # project files can be regular input files, regular input files with additional projectFiles sections, or additional ProjectFiles.
@@ -11,9 +12,27 @@ projectFiles:
   - mixedBlockC.yaml
 
 
-addressControl: exampleAddress.yaml
-
 topInstance: uTop
+
+# Address-policy sections (formerly exampleAddress.yaml InstanceGroups /
+# AddressObjects). Address groups with a decoder are declared per-router via
+# addressBlock: (see apbDecode in mixed.yaml).
+instanceGroups:
+  top:
+    varType: inst_top
+    enumPrefix: INST_TOP_
+  blocks:
+    varType: blockID
+    enumPrefix: BLOCK_TOP_
+
+addressObjects:
+  memories: # order matters: memories first as they are larger and have alignment restrictions
+    alignment: memsize
+    sizeRoundUpPowerOf2: True
+    sortDescending: True
+  registers:
+    alignment: 8
+    sortDescending: True
 
 dirs: # this is list of locations that can be referenced as base path in fileMap section
   root: ..    # project root directory relative to project file - required
@@ -49,5 +68,5 @@ fileGeneration:
   fileCopyrightStatement: "copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE"
   regBlockNaming: {instancePrefix: 'u', blockSuffix: 'Regs', camelCase: true} # naming convention for register handler blocks - instancePrefix is prefix for instance names, blockSuffix is suffix for block names
 postProcess:
-  - $a2c/config/postParseRegister.py
+  - $a2c/config/postParseRegisterPorts.py
   - $a2c/config/postParseChecks.py

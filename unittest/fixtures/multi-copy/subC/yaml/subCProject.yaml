@@ -1,0 +1,22 @@
+# Sub-project subC. A third standalone sub-block vendoring its OWN copy of the
+# shared project, mirroring subB. It exists so `shared` has TWO non-master
+# copies: divergence is only warned when the non-master copies disagree with
+# EACH OTHER (a difference against the master copy is expected development), so
+# a two-copy composition cannot exercise the warning.
+projectName: subC
+
+projectFiles:
+    - subCLeaf.yaml
+    - ../shared/yaml/sharedProject.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
+
+blocks:
+    subCBlock:
+        desc: "block owned by sub-project subC"
+        hasMdl: true
+        hasRtl: false

@@ -21,16 +21,31 @@ Guide the user through initializing a new project, setting up the directory stru
     project_root/
     ├── arch/
     │   └── yaml/
-    │       ├── project.yaml          # Main configuration
-    │       ├── config/
-    │       │   └── addressControl.yaml
-    │       └── <module>/             # Module-specific architecture
-    ├── model/                        # SystemC models
-    ├── rtl/                          # SystemVerilog RTL
-    ├── tb/                           # Testbench files
+    │       ├── project.yaml          # Main configuration (defines the mirror root)
+    │       ├── config/                    # Optional legacy address-control files
+    │       └── <group>/             # Subsystem/module architecture (e.g. ip/, top/)
+    │           └── <module>.yaml
+    ├── model/                        # SystemC models      (mirrors arch/yaml layout)
+    ├── rtl/                          # SystemVerilog RTL   (mirrors arch/yaml layout)
+    ├── base/                         # Generated base classes (mirrors arch/yaml layout)
+    ├── tb/                           # Testbench files     (mirrors arch/yaml layout)
+    ├── verif/vl_wrap/                # Verilator wrappers  (mirrors arch/yaml layout)
     ├── rundir/                       # Run directory containing Makefile (standard practice)
     └── Makefile                      # Top-level Makefile
     ```
+
+    ### Directory Mirroring (default behavior)
+    *   **The generated implementation tree mirrors the architecture YAML tree.** A block's (and a YAML file's context) generated files are placed in a subdirectory, **relative to `arch/yaml/`**, that matches the location of the YAML file that defines it. There is no separate setting to enable this; it is the default.
+    *   Example: a block defined in `arch/yaml/ip/ip.yaml` generates to `model/ip/`, `rtl/ip/`, `base/ip/`, and `verif/vl_wrap/ip/`. Per-file context artifacts (SystemC `*Includes.cppm`, SV `*_package.sv`) follow the same rule (e.g. `rtl/ip/ip_package.sv`).
+    *   **Testbench files nest one extra level** by the block name: a `hasTb` block in `arch/yaml/top/ip_top.yaml` generates testbench files into `tb/top/ip_top/`.
+    *   Put YAML into subdirectories purely to organize; keep `project.yaml` at the `arch/yaml/` root (it defines the mirror root). Update relative `include:` / `projectFiles:` paths accordingly (e.g. `include: [../common/shared_types.yaml]`).
+    *   Source discovery is manifest-driven: `projectCreate` records the layout's source/include dirs in the DB and emits them to `.gen/build.mk`, so no Makefile changes are needed when you add subdirectories.
+
+    ### `blockDir` override (exception only)
+    *   The default mirror is almost always what you want. **Do not add `blockDir:` just to reproduce the default.**
+    *   A top-level `blockDir:` directive in a YAML file overrides the output directory for **all** blocks and context artifacts defined in that file (relative to each `dirs` base path). For example `blockDir: .` forces a flat layout (everything directly under `model/`, `rtl/`, etc.) regardless of where the YAML file lives.
+    *   A per-block `dir:` field overrides the output directory for a single block.
+    *   Use these only for genuine exceptions (e.g. placing one block's files outside the mirrored tree). Otherwise omit them and let the YAML location drive the layout.
 
 2.  **`project.yaml` Configuration:**
     *   **Must** define `projectName`, `topInstance`, and `dirs`.
@@ -53,19 +68,38 @@ Guide the user through initializing a new project, setting up the directory stru
       rtl: $root/rtl
       # ... standard paths
     
-    # Optional: Custom schema or address control
+    # Optional: Custom schema
     dbSchema: config/schema.yaml
-    addressControl: config/addressControl.yaml
+
+    # Project-level address-policy sections
+    instanceGroups:
+      all_instances:
+        varType: global_inst_id_t
+        enumPrefix: GID_
+
+    addressObjects:
+      memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+      registers:
+        alignment: 8
+        sortDescending: true
     ```
 
-3.  **Address Control:**
-    *   Create `arch/yaml/config/addressControl.yaml` early.
-    *   Define at least one `AddressGroup` (usually `system`) with a `decoderInstance`.
-    *   **Critical:** You must manually define the decoder block and instance in your architecture YAML (e.g., `apb_decode_system`).
+3.  **Address Policy and Register Decode:**
+    *   Place reusable address-policy sections in `project.yaml`:
+        *   `instanceGroups:` for non-address-space ID enumeration.
+        *   `addressObjects:` for register and memory packing policy.
+    *   If the project has register access, define at least one address group via the per-block schema: a router block carries `addressBlock:` and routed leaves tag their instance `addressGroup:`.
+    *   The register-bus decoder/router is a **generated** block: declare it with a populated `addressBlock:` and instance it in the container of the leaves it serves (its RTL comes from `apbDecodeModule`). Do **not** hand-author it. For the decode hierarchy decision rule and the upstream feed you do author, use the **Register/Memory Decode** skill (`design-register-decode.md`).
+    *   Converting an existing `addressControl.yaml` project to this schema is a one-time migration — see `migrate-project.md` / `address-migration.md`.
 
 4.  **Makefile Setup:**
-    *   Ensure the project `Makefile` includes `shared.mk` from the repository root.
-    *   Include `a2c-systemc.mk` and `a2c-agents.mk` from the builder logic.
+    *   `newProject` scaffolds `project.yaml` and the directory tree only; the build `Makefile` and its `include/make/shared.mk` are copied from an existing example (e.g. `examples/helloWorld`) and renamed for the project.
+    *   The per-project `include/make/shared.mk` sets `PROJECTNAME` / `TB_TOP_MODULE` / `HDL_TOP_MODULE` and then includes `a2c-common.mk`; the `rundir/Makefile` includes it and then `a2c-systemc.mk`.
+    *   The build is manifest-driven: `make db` derives the source/include dirs and the generated-file set from the layout and emits `.gen/build.mk`; no Makefile edits are needed as blocks are added. Model output lands in `rundir/build/run`, the whole-design Verilator build in `rundir/build/vl`.
+    *   If the project hosts **user-authored files that arch2code injects generated regions into** (address headers, encoder units — files `make newmodule` does not scaffold), wire them onto the `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES` seam in `shared.mk`. See the **Build/Run** skill (`manage-build.md`).
 
 ## Validation
 *   Run `make db` to verify the project configuration loads correctly.

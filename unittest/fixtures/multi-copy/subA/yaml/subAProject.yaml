@@ -1,0 +1,21 @@
+# Sub-project subA. A standalone sub-block that vendors its OWN copy of the
+# shared types-only project under subA/shared. It reaches that copy's project
+# file through its projectFiles: slot (opening the `shared` copy scope) and its
+# leaf drags the same copy's types via a normal include: edge.
+projectName: subA
+
+projectFiles:
+    - subALeaf.yaml
+    - ../shared/yaml/sharedProject.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
+
+blocks:
+    subABlock:
+        desc: "block owned by sub-project subA"
+        hasMdl: true
+        hasRtl: false

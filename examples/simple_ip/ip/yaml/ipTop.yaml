@@ -1,0 +1,92 @@
+# ip standalone top harness.
+#
+# The reusable 'ip' block is a registerPorts leaf: its FW-accessible
+# registers/memories must be served by a register-bus router. For the
+# standalone build we supply a minimal self-contained decode harness:
+#   ipStdTop     - top container
+#   ipStdDecode  - APB register-bus router (generated apbDecodeModule)
+#   uIp          - the ip DUT (variant0)
+# The router reuses ip's own ipReg apb interface for both its upstream feed
+# and its downstream register bus, so the ip project stays self-contained
+# (no shared_types dependency).
+#
+# The block-level testbench generated for block ip (hasTb: true ->
+# ipTestbench / ipExternal / ipConfig) is the runnable top (TB_TOP_MODULE=ip);
+# this harness exists so calcAddresses can place ip's register bus.
+include:
+    - ipVariants.yaml
+
+# Non-parameterized container boundary interface for uIp.ipDataIf (variant0:
+# marker 1 bit + data 8 bits, matching ipDataSt under IP_DATA_WIDTH=8). uIp is
+# parameterized, so its module-local payload typedef cannot be named at
+# container scope; the container declares a concrete non-parameterized channel
+# whose field order / bit widths match variant0 and cross-binds on the consumer
+# side (push_ack thunker adapts). Mirrors ip_top's srcOut0Boundary* pattern.
+types:
+    ipStdMarkerT: { width: 1, desc: "Boundary marker bit; matches ipDataSt::marker" }
+    ipStdData8T:  { width: 8, desc: "Non-param 8-bit boundary payload; matches ipDataSt::data @variant0" }
+
+structures:
+    ipStdData8St:
+        marker: { varType: ipStdMarkerT, desc: "Marker bit; matches ipDataSt::marker" }
+        data:   { varType: ipStdData8T,  desc: "8-bit payload; matches ipDataSt::data @variant0" }
+
+interfaces:
+    ipStdData8If:
+        desc: "Non-parameterized container boundary interface for uIp.ipDataIf"
+        interfaceType: push_ack
+        structures:
+            - { structure: ipStdData8St, structureType: data_t }
+
+blocks:
+    ipStdTop:
+        desc: "Standalone top container: ip DUT plus its register-bus decoder"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+    ipStdDriver:
+        desc: "Standalone stimulus stub: drives the non-param ipDataIf boundary into uIp"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            out0: { interface: ipStdData8If, direction: src }
+    ipStdMaster:
+        desc: "Standalone APB master stub: feeds the register-bus router upstream"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            apbOut: { interface: ipReg, direction: src }
+    ipStdDecode:
+        desc: "Standalone APB decoder that routes the ip register bus"
+        hasVl: false
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        addressBlock:
+            addressGroup: ipStd
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_ipstd
+            enumPrefix: ADDR_ID_IPSTD_
+            upstreamPort: ipReg
+            registerDecoderPort: ipReg
+
+instances:
+    ipStdTop:      { container: ipStdTop, instanceType: ipStdTop,    instGroup: top }
+    uIpStdMaster:  { container: ipStdTop, instanceType: ipStdMaster, instGroup: top }
+    uIpStdDriver:  { container: ipStdTop, instanceType: ipStdDriver, instGroup: top }
+    uIpStdDecode:  { container: ipStdTop, instanceType: ipStdDecode, instGroup: top }
+    uIp:           { container: ipStdTop, instanceType: ip,          instGroup: top, addressGroup: ipStd, variant: variant0 }
+
+connections:
+    # APB master stub -> register-bus router upstream (the authored upstream feed).
+    - { interface: ipReg, src: uIpStdMaster, srcport: apbOut, dst: uIpStdDecode }
+    # Internal producer -> uIp.ipDataIf via the non-param boundary interface;
+    # uIp cross-binds its parameterized ipDataIf to this channel (push_ack
+    # thunker adapts). Mirrors ip_top's uSrc.out0 -> uIp0.ipDataIf.
+    - { interface: ipStdData8If, src: uIpStdDriver, srcport: out0, dst: uIp, dstport: ipDataIf }

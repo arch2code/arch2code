@@ -10,7 +10,6 @@
 include:
   - mixedInclude.yaml
   - mixedBlockC.yaml
-blockDir: .
 enums:
   test1EnumT:
     desc: a test enum
@@ -41,13 +40,12 @@ constants:
  #YUGE  : {value: 0xFFFFFFFFFFFFFFFF, desc: "Test constant for numbers of 64 bits"}
   YUGE  : {value: 0x7FFFFFFFFFFFFFFF, desc: "Test constant for numbers of 63 bits"}
   DWORD : {value: 32, desc: size of a double word}
-  DWORD_LOG2 : {eval: "($DWORD).bit_length()", desc: "size of a double word log2"}
+  DWORD_LOG2 : {eval: "$clog2($DWORD + 1)", desc: "size of a double word log2"}
   BOB0  : {value: 16, desc: "Memory size for instance 0"}
   BOB1  : {value: 15, desc: "Memory size for instance 1"}
   TESTCONST1 : {value: 1, desc: "A test constant"}
   TESTCONST2 : {eval: "$TEST1_C+4", desc: "A test constant using an enum value"}
   REAL_PI    : {value: 3.14159, valueType: real, desc: "Test constant for floating point (real) type"}
-  REAL_HALF  : {eval: "$DWORD / 2.0", valueType: real, desc: "Test constant for real from eval expression"}
 
 encoders:
   opcodeEnA:
@@ -232,6 +230,17 @@ interfaces:
     desc: "A start done interface"
     interfaceType: notify_ack
 
+# Backing constants for blockF's block params (params: [bob, fred]). Every block
+# param must be declared as a same-name parameterizable ipParameters constant
+# with an explicit maxValue, which caps the worst-case variant binding.
+# Declared just before blocks: so the block-param backing resolves, and after
+# encoders: whose nested parse pass would otherwise trip the linkage check
+# before blocks are parsed.
+ipParameters:
+  constants:
+    bob:  {value: 16, maxValue: 16, desc: "blockF param: memory depth (variant bindings BOB0=16, BOB1=15)"}
+    fred: {value: 1,  maxValue: 1,  desc: "blockF param: exercises the param machinery (variant bindings 0, 1)"}
+
 # blocks these are subsystems or blocks that can be instanced one or more times
 ## blockname: followed by a name that gives this object (block) a unique key
 ### portname: followed by a name that gives this port a unique key for this block, this is used when a block is instanced
@@ -254,6 +263,14 @@ blocks:
   apbDecode:
     desc: The block to decode apb addresses
     hasVl: false
+    addressBlock:
+      addressGroup: top
+      addressIncrement: 0x01000000
+      maxAddressSpaces: 16
+      varType: addr_id_top
+      enumPrefix: ADDR_ID_TOP_
+      upstreamPort: apbReg
+      registerDecoderPort: apbReg
   blockD:
     desc: The block named D
     hasVl: false
@@ -288,8 +305,8 @@ instances:
   uAPBDecode:  {container: top,     instanceType: apbDecode,                      instGroup: top,                             color: pink}
   uBlockC:     {container: top,     instanceType: blockC,                         instGroup: top,                             color: orange}
   uBlockB:     {container: top,     instanceType: blockB,     addressGroup: top,  instGroup: top,                             color: lightslateblue}
-  uBlockD:     {container: blockB,  instanceType: blockD,     addressGroup: ip1,  instGroup: top, addressMultiples: 2 } #get 2x the number of addresses
-  uBlockF0:    {container: blockB,  instanceType: blockF,     addressGroup: ip1,  instGroup: top, variant: variant0   }
+  uBlockD:     {container: blockB,  instanceType: blockD,                         instGroup: top}
+  uBlockF0:    {container: blockB,  instanceType: blockF,                         instGroup: top, variant: variant0   }
   uBlockF1:    {container: blockB,  instanceType: blockF,                         instGroup: top, variant: variant1   }
   uThreeCs:    {container: blockB,  instanceType: threeCs,                        instGroup: top,                             color: green}
   uBlockC0:    {container: threeCs, instanceType: blockC,                         instGroup: top,                             color: orange}
@@ -340,10 +357,12 @@ memories:
 
 parameters:
   blockF:
-    - {variant: variant0, param: bob,  value: BOB0 }
-    - {variant: variant0, param: fred, value: 0    }
-    - {variant: variant1, param: bob,  value: BOB1 }
-    - {variant: variant1, param: fred, value: 1    }
+    variant0:
+      bob: BOB0
+      fred: 0
+    variant1:
+      bob: BOB1
+      fred: 1
 
 memoryConnections:
   - {memory: blockBTable1,  block: blockB, instance: uBlockD, port: port1}

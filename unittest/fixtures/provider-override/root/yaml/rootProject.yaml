@@ -1,0 +1,34 @@
+yamlFormat: 2
+
+# Provider-override composition fixture root.
+# projectName sharedIp is reachable by two lexically-distinct projectFiles:
+# paths: this root references the real provider directly, while the mid child
+# reaches the same provider through its mid/ip -> ../provider symlink (paths are
+# normalized lexically, so the symlink is not dereferenced and the two keys stay
+# distinct). The projectOverrides entry below selects the real provider as the
+# single sharedIp provider; removing it leaves two providers and triggers the
+# duplicate-provider diagnostic that names both paths.
+projectName: rootProj
+
+projectFiles:
+    - rootTop.yaml
+    - ../../provider/yaml/sharedProject.yaml
+    - ../../mid/yaml/midProject.yaml
+
+projectOverrides:
+    sharedIp: ../../provider/yaml/sharedProject.yaml
+
+topInstance: root_tb
+
+dirs:
+    root: ..
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    registers:
+        alignment: 8
+        sortDescending: true

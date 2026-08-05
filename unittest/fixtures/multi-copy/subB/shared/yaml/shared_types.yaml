@@ -1,0 +1,6 @@
+# Shared types authored in the shared project. This file is byte-identical
+# across the vendored copies so the copies of this logical file agree (no
+# divergence) until a test deliberately edits one.
+types:
+    sharedPixel: { width: 8, desc: "shared pixel type" }
+    sharedCoord: { width: 12, desc: "shared coordinate type" }

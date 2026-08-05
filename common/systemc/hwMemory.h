@@ -183,7 +183,7 @@ public:
 
     // Binds a channel (passed by reference) to a new service thread
     template <class ADDR>
-    void bindPort(sc_core::memory_in_if<ADDR, MEM_DATA>& port) {
+    void bindPort(memory_in_if<ADDR, MEM_DATA>& port) {
         // sc_bind creates a callback to serviceThread, passing '&port' as the argument.
         // sc_spawn creates a new SystemC process to run that callback.
         sc_core::sc_spawn(sc_core::sc_bind(&hwMemory::serviceThread<ADDR>, this, &port));
@@ -191,7 +191,7 @@ public:
 
     // The thread loop that services the specific channel
     template <class ADDR>
-    void serviceThread(sc_core::memory_in_if<ADDR, MEM_DATA>* port) {
+    void serviceThread(memory_in_if<ADDR, MEM_DATA>* port) {
         bool isWrite;
         ADDR addrStruct;
         MEM_DATA data;

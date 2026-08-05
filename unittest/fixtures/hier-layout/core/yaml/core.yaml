@@ -1,0 +1,65 @@
+# core node: the tb container, the core DUT, the gen driver/checker, and the
+# data interface/types the pipeline is wired with. Lives in core/yaml/;
+# generated functional segments (base/model/rtl/tb/fw) are created beside it
+# under core/.
+
+# Cross-node include: leaf lives in a sibling node. The relative include
+# re-roots through the yaml/ level (N6) — ../../leaf/yaml from core/yaml.
+include:
+  - ../../leaf/yaml/leaf.yaml
+
+constants:
+  W: { value: 8, desc: data width }
+
+types:
+  dat: { width: W, desc: data word }
+
+structures:
+  dat_st:
+    d: { varType: dat, desc: data }
+
+interfaces:
+  datIf:
+    desc: data interface
+    interfaceType: push_ack
+    structures:
+      - { structure: dat_st, structureType: data_t }
+
+blocks:
+  hier_tb:
+    desc: "Testbench container (root)"
+    hasVl: false
+    hasRtl: false
+    hasMdl: false
+    hasTb: false
+  core:
+    desc: "Core DUT: drives a two-stage leaf pipeline as a closed loop"
+    hasVl: false
+    hasRtl: true
+    hasMdl: true
+    hasTb: true
+  gen:
+    desc: "Generator/checker: a block with both src and dst that injects data
+           into the pipeline and verifies the looped-back result"
+    hasVl: false
+    hasRtl: true
+    hasMdl: true
+    hasTb: false
+
+# The leaf block (sibling node) is a pass-through pipeline stage: it has a dIn
+# (dst) and a dOut (src) port. Two leaf instances are wired in series, and the
+# gen block closes the loop so no port is left dangling
+# (gen -> u_leaf0 -> u_leaf1 -> gen). srcport/dstport name the per-direction
+# ports so a single block type carries both an input and an output (the
+# inAndOut pattern), instead of one collapsed port.
+instances:
+  hier_tb:    { container: hier_tb, instanceType: hier_tb, instGroup: top }
+  u_core:     { container: hier_tb, instanceType: core,    instGroup: top }
+  u_gen:      { container: core,    instanceType: gen,     instGroup: top }
+  u_leaf0:    { container: core,    instanceType: leaf,    instGroup: top }
+  u_leaf1:    { container: core,    instanceType: leaf,    instGroup: top }
+
+connections:
+  - { interface: datIf, src: u_gen,   srcport: dOut, dst: u_leaf0, dstport: dIn }
+  - { interface: datIf, src: u_leaf0, srcport: dOut, dst: u_leaf1, dstport: dIn }
+  - { interface: datIf, src: u_leaf1, srcport: dOut, dst: u_gen,   dstport: dIn }

@@ -1,0 +1,8 @@
+# Integrator-owned top context.
+blocks:
+    integrator_tb:
+        desc: "integrator testbench container"
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false

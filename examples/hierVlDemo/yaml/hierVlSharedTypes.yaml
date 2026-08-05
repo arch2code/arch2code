@@ -1,0 +1,16 @@
+# Block-less shared-definitions context: types/structures only, no blocks or
+# instances. Included on the tb context's include chain so it emits its own RTL
+# package (hierVlSharedTypes_package.sv). Under hierarchical layout this exercises
+# the types-only-context branch of the rtl.f <-> package path resolution.
+types:
+  shared_bv8_t:
+    width: 8
+    desc: "Shared 8-bit vector"
+  shared_bv32_t:
+    width: 32
+    desc: "Shared 32-bit vector"
+
+structures:
+  sharedInfoSt:
+    tag:   {varType: shared_bv8_t}
+    value: {varType: shared_bv32_t}

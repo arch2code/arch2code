@@ -1,8 +1,8 @@
 // GENERATED_CODE_PARAM --block=blockARegs
 // GENERATED_CODE_BEGIN --template=moduleRegs
-module blockARegs
+module mixed_blockARegs
     // Generated Import package statement(s)
-    import mixedInclude_package::*;
+    import mixed_mixedInclude_package::*;
     import mixed_package::*;
     #(
         parameter bit APB_READY_1WS = 0
@@ -18,6 +18,12 @@ module blockARegs
 
     apbAddrSt apb_addr;
     assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'hff;
+    // Register/memory address offsets for decode documentation
+    localparam int unsigned REG_BLOCKA_BLOCKATABLE37BIT = 32'h00000000; // Local 37-bit memory register - serviced directly by blockA with 8-byte stride
+    localparam int unsigned REG_BLOCKA_BLOCKATABLE37BIT_SIZE = 32'h00000050; // Decode range size
+    localparam int unsigned REG_BLOCKA_BLOCKATABLELOCAL = 32'h00000080; // Local memory register - serviced directly by blockA
+    localparam int unsigned REG_BLOCKA_BLOCKATABLELOCAL_SIZE = 32'h00000028; // Decode range size
+    localparam int unsigned REG_BLOCKA_ROA = 32'h000000c0; // A Read Only register
 
     aRegSt roA_reg;
     assign roA_reg = roA.data;
@@ -69,10 +75,8 @@ module blockARegs
     assign wr_select = apbReg.psel & apbReg.penable & apbReg.pwrite & rst_n;
     assign rd_select = apbReg.psel & apbReg.penable & !apbReg.pwrite & rst_n;
 
-    logic nxt_wr_pslverr, wr_pslverr;
     logic nxt_wr_ready, wr_ready;
     always_comb begin
-        nxt_wr_pslverr = 1'b0;
         nxt_wr_ready = 1'b0;
         blockATableLocal_update_0 = 1'b0;
         nxt_blockATableLocal_data = blockATableLocal_data;
@@ -81,7 +85,7 @@ module blockARegs
         nxt_blockATable37Bit_data = blockATable37Bit_data;
         if (wr_select) begin
             case (apb_addr) inside
-                [32'h80:32'ha4]: begin
+                [REG_BLOCKA_BLOCKATABLELOCAL:REG_BLOCKA_BLOCKATABLELOCAL + REG_BLOCKA_BLOCKATABLELOCAL_SIZE - 32'd4]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             blockATableLocal_update_0 = 1'b1;
@@ -90,7 +94,7 @@ module blockARegs
                         default: ;
                     endcase
                 end
-                [32'h0:32'h4c]: begin
+                [REG_BLOCKA_BLOCKATABLE37BIT:REG_BLOCKA_BLOCKATABLE37BIT + REG_BLOCKA_BLOCKATABLE37BIT_SIZE - 32'd4]: begin
                     case (apb_addr[3-1:0])
                         3'h0: begin
                             blockATable37Bit_update_0 = 1'b1;
@@ -103,30 +107,26 @@ module blockARegs
                         default: ;
                     endcase
                 end
-                default: begin
-                    nxt_wr_pslverr = 1'b1;
-                end
+                default: ; // unmapped/ro write: silently ignored (ACK below)
             endcase
             nxt_wr_ready = 1'b1;
         end
     end
 
-    logic nxt_rd_pslverr, rd_pslverr;
     logic nxt_rd_ready, rd_ready;
     apbDataSt nxt_rd_data, rd_data;
     always_comb begin
-        nxt_rd_pslverr = 1'b0;
         nxt_rd_ready = 1'b0;
         nxt_rd_data = '0;
         nxt_blockATableLocal_rd_enable = 1'b0;
         nxt_blockATable37Bit_rd_enable = 1'b0;
         if (rd_select) begin
             case (apb_addr) inside
-                32'hc0 : begin
+                REG_BLOCKA_ROA : begin
                     nxt_rd_ready = 1'b1;
                     nxt_rd_data = apbDataSt'(roA_reg[6:0]);
                 end
-                [32'h80:32'ha4]: begin
+                [REG_BLOCKA_BLOCKATABLELOCAL:REG_BLOCKA_BLOCKATABLELOCAL + REG_BLOCKA_BLOCKATABLELOCAL_SIZE - 32'd4]: begin
                     case (apb_addr[2-1:0])
                         2'h0: begin
                             if (blockATableLocal_rd_capture) begin
@@ -138,7 +138,7 @@ module blockARegs
                     endcase
                     nxt_blockATableLocal_rd_enable = ~blockATableLocal_rd_capture;
                 end
-                [32'h0:32'h4c]: begin
+                [REG_BLOCKA_BLOCKATABLE37BIT:REG_BLOCKA_BLOCKATABLE37BIT + REG_BLOCKA_BLOCKATABLE37BIT_SIZE - 32'd4]: begin
                     case (apb_addr[3-1:0])
                         3'h0: begin
                             if (blockATable37Bit_rd_capture) begin
@@ -156,35 +156,32 @@ module blockARegs
                     endcase
                     nxt_blockATable37Bit_rd_enable = ~blockATable37Bit_rd_capture;
                 end
-                default: begin
-                    nxt_rd_data = apbDataSt'(32'hBADD_C0DE);
-                    nxt_rd_pslverr = 1'b1;
+                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = '0;
                 end
             endcase
         end
     end
 
-    // Update APB ready, pslverr, and read data
+    // Update APB ready and read data. The bus is never stalled and slave
+    // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
             `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(wr_pslverr, nxt_wr_pslverr, '0)
             `DFFR(rd_ready,   nxt_rd_ready,   '0)
             `DFFR(rd_data,    nxt_rd_data,    '0)
-            `DFFR(rd_pslverr, nxt_rd_pslverr, '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
-            assign wr_pslverr = nxt_wr_pslverr;
             assign rd_ready   = nxt_rd_ready;
             assign rd_data    = nxt_rd_data;
-            assign rd_pslverr = nxt_rd_pslverr;
         end
     endgenerate
 
     // Update the APB interface
     assign apbReg.prdata  = rd_data;
     assign apbReg.pready  = rd_ready | wr_ready;
-    assign apbReg.pslverr = rd_pslverr | wr_pslverr;
+    assign apbReg.pslverr = 1'b0;
 
-endmodule : blockARegs
+endmodule : mixed_blockARegs
 // GENERATED_CODE_END

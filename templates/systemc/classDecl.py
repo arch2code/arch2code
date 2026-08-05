@@ -15,69 +15,144 @@ def render(args, prj, data):
 def render_default(args, prj, data):
     out = list()
     className = f'{ data["blockName"] }'
-    baseClassName = f'{ data["blockName"] }Base' 
-    out.append('#include "logging.h"')
-    out.append('#include "instanceFactory.h"')
-    baseInclude = prj.getModuleFilename('blockBase', data["blockName"], 'hdr')
-    out.append(f'#include "{baseInclude}"')
-    if  len(data['registers']) > 0 or len(data["memories"]) > 0:
-        out.append('#include "addressMap.h"')
-    if  len(data['registers']) > 0:
-        out.append('#include "hwRegister.h"')
-    
-    # Check if we need hwMemory.h include
-    needsHwMemory = len(data["memories"]) > 0 or len(data.get('memoriesParent', {})) > 0
-    # Also need it if block has local memory registers (not isRegHandler but has registerDecode and memory registers)
+    isParameterizable = data['isParameterizable']
+    # The parent class is itself a class template only when the block has its
+    # own `params:` (a "leaf parameterizable" block such as `ip` or `ipLeaf`).
+    # Containers
+    # that are flagged isParameterizable solely because parameterizable
+    # structures transit their interface surface (e.g., `ip_top`) become
+    # non-templated.
+    hasOwnParams = data['hasOwnParams']
+    cfg = intf_gen_utils.block_config_arg(hasOwnParams)
+    defaultConfig = data['defaultConfig'] if isParameterizable else ''
+    baseClassName = f'{ data["blockName"] }Base{cfg}'
+    # registerDecode drives both the dependency includes (computed by the
+    # shared helper) and the in-class register-handler members emitted below.
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
-    if registerDecode and not data['blockInfo'].get('isRegHandler'):
-        for reg, regData in data['registers'].items():
-            if regData['regType'] == 'memory':
-                needsHwMemory = True
-                break
-    if needsHwMemory:
-        out.append('#include "hwMemory.h"')
-    
-    if args.fileMapKey:
-        fileMapKey = args.fileMapKey
+
+    # Class dependency lines. In classic (.h/.cpp) mode they are emitted inline
+    # ahead of the class. In module mode the block-module interface unit's
+    # preamble owns every import and using-namespace: the global module fragment
+    # (moduleScaffold.blockModuleHeader) carries the #includes, and the
+    # moduleExport region carries `export module`, all imports, and the
+    # using-namespace lines that CLOSE the preamble. classDecl therefore emits
+    # ONLY the exported class in module mode; the trailing `// user imports here`
+    # slot is a module-purview zone (a hand-added purview #include there attaches
+    # to the block module and can feed a class member).
+    if args.mode != 'module':
+        emittedDepLines = set()
+        for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
+            out.append(line)
+            emittedDepLines.add(line)
+        # A module import does not propagate the imported base module's own
+        # context imports / using-directives the way the old textual
+        # `<block>Base.h` did (a textual include re-ran those lines in the
+        # includer's TU). The block implementation — this classic `.h` and the
+        # `.cpp` that includes it — still spells the base's interface types
+        # unqualified, so re-emit the base's interface-context imports (and their
+        # using-directives) here for the ones the derived class does not already
+        # reference directly. Deduplicated against the lines emitted above.
+        fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
+        for context in data['includeContext']:
+            if context in data['includeFiles'].get(fileMapKey, {}):
+                for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey):
+                    if line not in emittedDepLines:
+                        out.append(line)
+                        emittedDepLines.add(line)
+
+    # Contained-instance Base modules. Each child's Base/Inverted/Channels lives
+    # in a C++20 module interface unit (`<child>.base`), so its class is attached
+    # to that module. A global-module forward declaration of `<child>Base` would
+    # name a DIFFERENT (global) entity than the module-attached class and would
+    # not match the shared_ptr member's type, so classic mode imports the child
+    # base module here to bring the complete, correctly-attached type into scope.
+    # Module mode omits it: the block-module GMF/purview already imports each
+    # child base (moduleScaffold.blockModuleHeader via sc_instance_includes).
+    if data["subBlocks"] and args.mode != 'module':
+        out.append(f'//contained instances base module imports')
+        for line in intf_gen_utils.sc_instance_includes(data, prj):
+            out.append(line)
+    # In module mode moduleExport owns the preamble (export module + imports) and,
+    # for a non-reg-handler block, emits imports ONLY so the sibling
+    # `// user imports here` slot stays a legal preamble slot for hand-authored
+    # body-only imports. The context using-directives that let the block body spell
+    # imported types unqualified are therefore emitted HERE at the class-region head
+    # (after the user-import slot, where the preamble has closed). This mirrors
+    # moduleExport's using set (dependency + context sources); reg-handlers keep
+    # their usings at the moduleExport tail and never reach classDecl.
+    if args.mode == 'module':
+        seenUsing = set()
+        moduleUsings = []
+        for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
+            if line.startswith('using namespace ') and line not in seenUsing:
+                moduleUsings.append(line)
+                seenUsing.add(line)
+        moduleFileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
+        for context in data['includeContext']:
+            if context in data['includeFiles'].get(moduleFileMapKey, {}):
+                for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, moduleFileMapKey):
+                    if line.startswith('using namespace ') and line not in seenUsing:
+                        moduleUsings.append(line)
+                        seenUsing.add(line)
+        out.extend(moduleUsings)
     else:
-        fileMapKey = 'include_hdr'
+        out.append('')
 
-    for context in data['includeContext']:
-        if context in data['includeFiles'][fileMapKey]:
-            out.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
-    if data['addressDecode']['isApbRouter']:
-        out.append(f'#include "apbBusDecode.h"')
-
-    if data["subBlocks"]:
-        out.append(f'//contained instances forward class declaration')
-        for key, value in data["subBlocks"].items():
-            out.append(f'class { value }Base;')
-    out.append('')
-
-    out.append(f'SC_MODULE({ className }), public blockBase, public { baseClassName }')
+    # In module mode the block class is exported from the block-module
+    # interface unit; `export` prefixes the first line of the declaration (the
+    # template-head for own-params blocks, otherwise the SC_MODULE line).
+    exportKw = 'export ' if args.mode == 'module' else ''
+    if hasOwnParams:
+        out.append(exportKw + intf_gen_utils.block_config_decl(hasOwnParams))
+        out.append(f'SC_MODULE({ className }), public blockBase, public { baseClassName }')
+    else:
+        out.append(exportKw + f'SC_MODULE({ className }), public blockBase, public { baseClassName }')
     out.append('{')
     out.append('private:')
     if registerDecode:
         out.append('    void regHandler(void);')
-        out.append('    addressMap regs;')
+        out.append('    addressMap _a2cRegs;')
     if data['addressDecode']['isApbRouter']:
         busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
         out.append('    void routerDecode(void);')
         out.append(f'    abpBusDecode< {busStructs} > decoder;')
     out.append('')
     indent = ' '*4
-    out.append(indent + 'struct registerBlock')
-    out.append(indent + '{')
-    out.append(indent + '    registerBlock()')
-    out.append(indent + '    {')
-    if data['variants']:
-        out.append(textwrap.indent(addParams(args, prj, data), indent*2))
-    out.append(indent + '        // lamda function to construct the block')
-    out.append(indent + f'        instanceFactory::registerBlock("{ className }_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {{ return static_cast<std::shared_ptr<blockBase>> (std::make_shared<{ className }>(blockName, variant, bbMode));}}, "" );')
-    out.append(indent + '    }')
-    out.append(indent + '};')
-    out.append(indent + 'static registerBlock registerBlock_;')
+    # Registration moved out of the class body. Parameterized and
+    # non-templated blocks reach the factory through a self-registering
+    # static emitted by templates/systemc/constructor.py. Non-templated
+    # blocks additionally carry an active force-link function in
+    # <block>Base.h so that modules-mode and static-archive linking pull
+    # the implementation TU into the program.
     out.append('public:')
+    if hasOwnParams:
+        out.append(indent + f'SC_HAS_PROCESS({ className });')
+        out.append('')
+
+    # Re-import inherited param constants and interface ports from the
+    # templated base so block code uses the bare name (no Config:: on
+    # constants, no this-> on ports). Two-phase lookup does not search a
+    # dependent base, so the using-declarations are what make the bare
+    # names resolve. Only templated (own-params) blocks have a dependent
+    # base; non-templated blocks need no re-import.
+    if hasOwnParams:
+        reimports = list()
+        for param in data['blockInfo']['params']:
+            reimports.append(f'using { baseClassName }::{ param["param"] };')
+        seenPorts = set()
+        for port_type in data['ports']:
+            for port, port_data in data['ports'][port_type].items():
+                if intf_gen_utils.sc_gen_modport_signal_blast(port_data, prj, data, swap_dir=False)['is_skip']:
+                    continue
+                if port_data['name'] in seenPorts:
+                    continue
+                seenPorts.add(port_data['name'])
+                reimports.append(f'using { baseClassName }::{ port_data["name"] };')
+        if reimports:
+            out.append(indent + '// inherited names usable unqualified (no Config:: / this->)')
+            for line in reimports:
+                out.append(indent + line)
+            out.append('')
 
     channels = intf_gen_utils.sc_declare_channels(data, prj, indent, data)
     if len(channels):
@@ -92,7 +167,29 @@ def render_default(args, prj, data):
             out.append( indent + f'//instances contained in block')
             first = False
 
-        out.append( indent + f'std::shared_ptr<{ instData["instanceType"] }Base> { instData["instance"] };')
+        # The child shared_ptr is typed by the child's per-variant Config
+        # (e.g., `ipBase<ipVariant0Config>`), not the parent's `Config`.
+        # Falls back to the child block's default Config when the descriptor's
+        # values are empty.
+        # The child Config is frozen from the child's own variant binding and
+        # does NOT follow the parent's Config template parameter. A
+        # Config-strict interface link from a multi-variant parent to a
+        # parameterized child is therefore unsupported; use a single-variant
+        # child, a Config-agnostic interface, or a thunker bind.
+        instCfg = intf_gen_utils.cpp_config_arg(instData['instanceConfigSelection'])
+        out.append( indent + f'std::shared_ptr<{ instData["instanceType"] }Base{instCfg}> { instData["instance"] };')
+
+    # Cross-interface thunker member declarations. Emitted after the
+    # subBlockInstances loop so the thunker's mem-init can reference
+    # `instance->port` (C++ runs mem-inits in declaration order). When no
+    # cross-interface ends are flagged, sc_declare_thunkers returns [] and no
+    # line is emitted.
+    thunkers = intf_gen_utils.sc_declare_thunkers(data, prj, indent, data)
+    if thunkers:
+        out.append('')
+        out.append(indent + '// cross-interface thunkers')
+        out.extend(thunkers)
+
     first = True
 
     for reg, regData in data["registers"].items():
@@ -104,26 +201,32 @@ def render_default(args, prj, data):
             out.append( indent + f'//registers')
             first = False
         # Register data size from cpu is always 4-bytes aligned
-        size = roundup_multiple(regData["bytes"], 4)
-        out.append( indent + f'hwRegister< { regData["structure"] }, {size} > { regData["register"] }; // { regData["desc"] }')
+        size = roundup_multiple(regData.get("maxBytes", regData["bytes"]), 4)
+        regType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
+        out.append( indent + f'hwRegister< { regType }, {size} > { regData["register"] }; // { regData["desc"] }')
 
     if len(data["memories"]):
         out.append('')
         out.append( indent + f'memories mems;')
         out.append( indent + f'//memories')
 
-    if data['blockInfo'].get('isRegHandler'):
+    if data['blockInfo']['isRegHandler']:
         # For register handlers, use hwMemoryPort for all register-accessible memories
         mems = intf_gen_utils.get_sorted_memories(data)
         for mem, memData in mems.items():
-            out.append( indent + f'hwMemoryPort< { memData["addressStruct"] }, { memData["structure"] } > { memData["memory"] }_adapter;')
+            addrType = intf_gen_utils.sc_structure_field_type(memData, 'addressStruct', 'addressStructKey', prj)
+            dataType = intf_gen_utils.sc_structure_field_type(memData, 'structure', 'structureKey', prj)
+            out.append( indent + f'hwMemoryPort< { addrType }, { dataType } > { memData["memory"] }_adapter;')
         # Also handle memory registers
         for reg, regData in data['registers'].items():
             if regData.get('regType') == 'memory':
-                out.append( indent + f'hwMemoryPort< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_adapter;')
+                addrType = intf_gen_utils.sc_structure_field_type(regData, 'addressStruct', 'addressStructKey', prj)
+                dataType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
+                out.append( indent + f'hwMemoryPort< { addrType }, { dataType } > { regData["register"] }_adapter;')
     else:
         for mem, memData in data["memories"].items():
-            out.append( indent + f'hwMemory< { memData["structure"] } > { memData["memory"] };')
+            dataType = intf_gen_utils.sc_structure_field_type(memData, 'structure', 'structureKey', prj)
+            out.append( indent + f'hwMemory< { dataType } > { memData["memory"] };')
         
         # Handle LOCAL memory registers (block has registerDecode but not isRegHandler)
         if registerDecode:
@@ -135,9 +238,11 @@ def render_default(args, prj, data):
                         out.append('')
                         out.append( indent + f'//local memory register infrastructure')
                         first = False
-                    out.append( indent + f'memory_channel< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_channel;')
-                    out.append( indent + f'memory_out< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_port;')
-                    out.append( indent + f'hwMemoryPort< { regData["addressStruct"] }, { regData["structure"] } > { regData["register"] }_adapter;')
+                    addrType = intf_gen_utils.sc_structure_field_type(regData, 'addressStruct', 'addressStructKey', prj)
+                    dataType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
+                    out.append( indent + f'memory_channel< { addrType }, { dataType } > { regData["register"] }_channel;')
+                    out.append( indent + f'memory_out< { addrType }, { dataType } > { regData["register"] }_port;')
+                    out.append( indent + f'hwMemoryPort< { addrType }, { dataType } > { regData["register"] }_adapter;')
 
     # Memory connections (channel declarations)
     if 'memoryConnections' in data:
@@ -145,9 +250,30 @@ def render_default(args, prj, data):
             channelName = f'{val["interfaceName"]}'
             memKey = val['memoryBlockKey']
             memData = data['memories'][memKey]
-            addrStruct = memData['addressStruct']
-            dataStruct = memData['structure']
+            addrStruct = intf_gen_utils.sc_structure_field_type(memData, 'addressStruct', 'addressStructKey', prj)
+            dataStruct = intf_gen_utils.sc_structure_field_type(memData, 'structure', 'structureKey', prj)
             out.append( indent + f'memory_channel<{addrStruct}, {dataStruct}> {channelName};')
+
+    # Re-import inherited parameterized types from the templated base so block
+    # code uses the bare type name (no <Config>). Two-phase lookup does not
+    # search a dependent base, so the using-declarations are what make the bare
+    # names resolve; `typename` is required for type re-imports. Emitted at the
+    # END of the generated region, AFTER the register/memory/instance member
+    # declarations above: those declare NAME<Config> in-class, and a same-named
+    # alias placed before them would turn NAME into a non-template and break
+    # those decls. Only templated (own-params) blocks have a dependent base.
+    if hasOwnParams and data['parameterizedDecls']:
+        out.append('')
+        out.append(indent + '// inherited parameterized types usable unqualified (no <Config>)')
+        for decl in data['parameterizedDecls']:
+            name = decl['body'][decl['declKind']]
+            # An eval-derived parameterizable constant is re-imported as a value
+            # (no `typename`); the base declares it as a class-local constexpr
+            # drawn from Config, so the bare name resolves in this derived class.
+            if decl['declKind'] == 'constant':
+                out.append(indent + f'using { baseClassName }::{name};')
+            else:
+                out.append(indent + f'using typename { baseClassName }::{name};')
 
     out.append('')
     out.append( indent + f'{ className }(sc_module_name blockName, const char * variant, blockBaseMode bbMode);')
@@ -156,7 +282,7 @@ def render_default(args, prj, data):
     if len(data["memories"]):
         out.append( indent + f'void setTimed(int nsec, timedDelayMode mode) override')
         out.append( indent + f'{{')
-        out.append( indent + f'    { className }Base::setTimed(nsec, mode);')
+        out.append( indent + f'    { baseClassName }::setTimed(nsec, mode);')
         out.append( indent + f'    mems.setTimed(nsec, mode);')
         out.append( indent + f'}}')
 #    else:
@@ -167,12 +293,3 @@ def render_default(args, prj, data):
     out.append('')
     return("\n".join(out))
 
-def addParams(args, prj, data):
-    out = list()
-    out.append('    // Register parameter variants with factory')
-    out.append('    instanceFactory::addParam({')
-    for variantKey, variantData in data["variants"].items():
-        for key, value in variantData.items():
-            out.append(f'        {{ "{data["blockName"]}.{value["variant"]}.{value["param"]}", {value["value"]} }},')
-    out.append('    });')
-    return("\n".join(out))

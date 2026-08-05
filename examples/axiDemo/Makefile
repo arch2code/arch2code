@@ -1,14 +1,8 @@
+REPO_ROOT = $(shell git rev-parse --show-toplevel)/examples/axiDemo
 
-all:
-	$(MAKE) -C model all
-	$(MAKE) -C systemVerilog all
-	$(MAKE) -C verif all
+include $(REPO_ROOT)/include/make/shared.mk
 
-run:
-	$(MAKE) -C model run
-	$(MAKE) -C verif run
+.PHONY : clean
 
-clean:
-	$(MAKE) -C model clean
-	$(MAKE) -C systemVerilog clean
-	$(MAKE) -C verif clean
+clean::
+	rm -rf $(A2C_SQLDB_DOTFILE) $(A2C_SQLDB_FILE) $(GEN_BUILD_DIR)

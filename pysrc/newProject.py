@@ -21,6 +21,10 @@ projectTemplate = \
 """
 # Example project file that defines project level information
 
+# marks the project as using the current YAML authoring format; the generator
+# gate rejects a project without this sentinel
+yamlFormat: 2
+
 projectName: {{data.projectName}}
 
 # project files can be regular input files, regular input files with additional projectFiles sections, or additional ProjectFiles.
@@ -32,8 +36,6 @@ projectFiles:
 # uncomment to use a custom schema file, otherwise the default schema is used
 #dbSchema: config/schema.yaml
 
-addressControl: {{data.addressControlFile}}
-
 topInstance: testbench
 
 #templates: # uncomment to use custom templates or to override base templates
@@ -43,9 +45,10 @@ topInstance: testbench
 # $xxx is a macro that is replaced by the directory. Note macro replacement only works as first character 
 # root defines the top level directory for the project, and other directories are defined relative to this.
 # note that $a2c is automatically created by the system and points to the a2c directory
-dirs: 
+dirs:
   root: ../..    # project root directory relative to project file - required
   base: $root/base             # for block base classes
+  registrar: $root/registrar   # per-assembler block-registration trampolines + consumer-selected configs
   model: $root/model           # systemC model implementation
   rtl: $root/rtl               # RTL implementation
   vl_wrap: $root/verif/vl_wrap # rtl wrapper files
@@ -68,16 +71,17 @@ fileGeneration:
     # cond: matches fields in the block definition, if all fields are true then the file is generated
     # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file 
     # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
-    blockBase   : { name : "Base",            ext: {hdr: "h"},             cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class header file"}
+    blockBase   : { name : "Base",            ext: {cppm: "cppm"},         cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class interface unit"}
     block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
     vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
     # tandem      : { name : "Tandem",          ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true, hasRtl: true},  mode: block,   basePath: base,    desc: "Model tandem module wrapper class header file"}
-    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
-    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench config files"}
-    tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench external files"}
-    include     : { name : "Includes",        ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include file"}
+    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench implementation file"}
+    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench config files"}
+    tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench external files"}
+    include     : { name : "Includes",        ext: {cppm: "cppm"},           cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include module interface"}
+    config      : { name : "VariantConfig",   ext: {hdr: "h"},               cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based default config header"}
     includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
     package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     desc: "yaml based package file"}
   # standard copyright statement to be added to all generated files - change to suite your company
@@ -165,7 +169,7 @@ class newProject:
         copywrite = input()
 
         tm = Template(projectTemplate, trim_blocks=True, lstrip_blocks=True)
-        data = {"projectName": self.name, "addressControlFile": "config/addressControl.yaml", "copywrite": copywrite}
+        data = {"projectName": self.name, "copywrite": copywrite}
         projectFileContents = tm.render(data=data)
         print("Creating directories")
         with open (f"{functionalDirectories['yaml']}/project.yaml", "w") as f:

@@ -54,8 +54,7 @@ blocks:
 ```
 arch/yaml/
   project.yaml
-  config/
-    addressControl.yaml
+  config/                      # Optional legacy address-control files
   shared/
     shared_types.yaml        # Common types and constants
     shared_interfaces.yaml   # Common interfaces

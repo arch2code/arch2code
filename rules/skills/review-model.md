@@ -20,12 +20,12 @@ Perform a structured code review of a SystemC model module within the arch2code 
 
 ### 1. Arch2code Convention Checks
 
-*   **Generated Code Zones:** Verify no manual edits exist between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers in both `.h` and `.cpp` files.
-*   **Header (.h) Layout:** Manual member variables and function declarations are placed **after** `// GENERATED_CODE_END` in the class definition.
-*   **Constructor Initializers:** Manual member initializers (starting with `,`) are placed **between** the first `// GENERATED_CODE_END` and the next `// GENERATED_CODE_BEGIN` in the constructor.
-*   **Constructor Body:** `SC_THREAD` registrations and other manual logic are placed **after** the final `// GENERATED_CODE_END` in the constructor.
-*   **Types -- Arch2code Typedefs Only:** All variables representing hardware signals, registers, counters, factors, addresses, or pixel data **must** use the arch2code-generated typedefs from `*Includes.h` (e.g., `lsc_factor_t`, `pixel_t`, `x_pos_t`), **not** raw C++ integer types (`int32_t`, `uint8_t`, etc.). The generator maps YAML-defined bit-widths to the smallest C++ type that fits (e.g., a 6-bit field becomes `uint8_t`), and the typedef carries the semantic meaning and RTL correspondence. Using raw types loses that traceability and risks width mismatches if the YAML changes. Native C++ types are acceptable **only** for loop iterators, boolean flags (`bool`), and temporaries that have no RTL counterpart. Do not redefine types that exist in the package.
-*   **Base Files:** Never modify `*Base.h` files.
+*   **Generated Code Zones:** Verify no manual edits exist between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers in the block's single `model/<block>.cppm` module file. Its generated regions are `moduleScaffold --section=blockModuleHeader` (global module fragment), `moduleExport` (`export module`/`import`), `classDecl` (the templated class), and the `constructor --section=init` / `--section=body` regions.
+*   **Class Layout:** Manual member variables and function declarations are placed **after** the `classDecl` region's `// GENERATED_CODE_END`, inside the class body.
+*   **Constructor Initializers:** Manual member initializers (starting with `,`) are placed **between** the `constructor --section=init` `// GENERATED_CODE_END` and the next `// GENERATED_CODE_BEGIN`.
+*   **Constructor Body:** `SC_THREAD` registrations and other manual logic are placed **after** the `constructor --section=body` `// GENERATED_CODE_END`.
+*   **Types -- Arch2code Typedefs Only:** All variables representing hardware signals, registers, counters, factors, addresses, or pixel data **must** use the arch2code-generated typedefs imported from the context modules (`*Includes.cppm`, via `import <ctx>;`) and inherited through the `using <block>Base<Config>::...;` declarations (e.g., `lsc_factor_t`, `pixel_t`, `x_pos_t`), **not** raw C++ integer types (`int32_t`, `uint8_t`, etc.). The generator maps YAML-defined bit-widths to the smallest C++ type that fits (e.g., a 6-bit field becomes `uint8_t`), and the typedef carries the semantic meaning and RTL correspondence. Using raw types loses that traceability and risks width mismatches if the YAML changes. Native C++ types are acceptable **only** for loop iterators, boolean flags (`bool`), and temporaries that have no RTL counterpart. Do not redefine types that exist in the package.
+*   **Base Files:** Never modify `*Base.cppm` files.
 
 ### 2. Behavioral Correctness Checks
 
@@ -49,7 +49,7 @@ Perform a structured code review of a SystemC model module within the arch2code 
 *   **Read the RTL:** Open the corresponding `rtl/<block>.sv` alongside the model.
 *   **Naming Consistency:** Model variable names should be recognizable counterparts of RTL signal names (e.g., RTL `pos_x` maps to model `pos_x`, RTL `gain_factor` maps to model `gain_factor`).
 *   **Type/Width Alignment via Typedefs:** Verify that model variables use the **same arch2code typedef** as the corresponding RTL signal's type. For example, if the RTL declares `lsc_factor_t`, the model variable must also be `lsc_factor_t` -- not a raw `int32_t` that happens to be wide enough. This ensures that if the YAML-defined bit-width changes, both model and RTL update automatically via regeneration. Flag any variable representing a hardware-visible value that uses a raw C++ type (`int32_t`, `uint16_t`, etc.) instead of its arch2code typedef as `[FAIL]`.
-*   **No Native C++ Types for Signals:** Scan the model `.cpp` and `.h` files for raw C++ integer types (`int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t`). Each occurrence must be justified: loop iterators and non-signal temporaries are acceptable; variables that correspond to RTL signals, struct fields, or intermediate pipeline values must use arch2code typedefs. Cast expressions (e.g., `(lsc_pixel_m_factor_t)value`) are acceptable when converting between types.
+*   **No Native C++ Types for Signals:** Scan the model `.cppm` module file for raw C++ integer types (`int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t`). Each occurrence must be justified: loop iterators and non-signal temporaries are acceptable; variables that correspond to RTL signals, struct fields, or intermediate pipeline values must use arch2code typedefs. Cast expressions (e.g., `(lsc_pixel_m_factor_t)value`) are acceptable when converting between types.
 *   **Scope:** Functional equivalence (algorithm correctness, rounding behavior, transaction ordering) is proven by tandem mode. Do not duplicate that verification here.
 
 ### 5. Code Quality Checks
@@ -77,7 +77,7 @@ Present findings as a checklist. For each category, report:
 Summarize with a count: `X PASS, Y FAIL, Z WARN, W N/A`.
 
 ## Constraints
-*   This review is for **model code only** (`model/**/*.cpp`, `model/**/*.h`). For RTL code, use the **review-rtl** skill.
-*   Do not modify generated code zones or `*Base.h` files.
+*   This review is for **model code only** (`model/**/*.cppm`, and any `model/**/*.cpp`, `model/**/*.h` testbench/wrapper files). For RTL code, use the **review-rtl** skill.
+*   Do not modify generated code zones or `*Base.cppm` files.
 *   Do not attempt to verify algorithmic equivalence with the RTL -- that is the role of tandem verification.
 *   Flag items as `[WARN]` rather than `[FAIL]` when the issue is stylistic rather than functional.

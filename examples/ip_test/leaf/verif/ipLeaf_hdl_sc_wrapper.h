@@ -1,0 +1,83 @@
+#ifndef IPLEAF_HDL_SC_WRAPPER_H_
+#define IPLEAF_HDL_SC_WRAPPER_H_
+
+#include "systemc.h"
+#include "instanceFactory.h"
+
+// GENERATED_CODE_PARAM --block=ipLeaf
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import ip_test_ipLeaf.base;
+// GENERATED_CODE_END
+
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
+
+import ip_test_ipLeaf;
+using namespace ip_test_ipLeaf_ns;
+#include "ipLeafVariantConfig.h"
+
+template <typename DUT_T, typename Config>
+class ipLeaf_hdl_sc_wrapper: public sc_module, public blockBase, public ipLeafBase<Config> {
+
+public:
+
+    DUT_T *dut_hdl;
+
+    sc_clock clk;
+
+    
+
+    // SC_HAS_PROCESS expects a single macro argument; the Config-templated
+    // self type carries a comma in its argument list and must be aliased.
+    using ipLeaf_hdl_sc_wrapper_self_t = ipLeaf_hdl_sc_wrapper<DUT_T, Config>;
+    SC_HAS_PROCESS (ipLeaf_hdl_sc_wrapper_self_t);
+
+    ipLeaf_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
+        sc_module(modulename),
+        blockBase("ipLeaf_hdl_sc_wrapper", name(), bbMode),
+        ipLeafBase<Config>(name(), variant),
+        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
+        
+        rst_n(0)
+    {
+        dut_hdl = new DUT_T("dut_hdl");
+
+        dut_hdl->clk(clk);
+        dut_hdl->rst_n(rst_n);
+
+        
+
+        SC_THREAD(reset_driver);
+
+        end_ctor_init();
+
+    }
+
+public:
+
+#ifdef VERILATOR
+    void vl_trace(VerilatedVcdC* tfp, int levels, int options = 0) override {
+        dut_hdl->trace(tfp, levels, options);
+    }
+#endif
+
+private:
+
+    
+
+    sc_signal<bool> rst_n;
+
+    void reset_driver() {
+        wait(5, SC_NS);
+        rst_n = true;
+    }
+
+// GENERATED_CODE_END
+
+    // Callback executed at the end of module constructor
+    void end_ctor_init() {
+        // Register synchLock,...
+    }
+
+};
+
+#endif // IPLEAF_HDL_SC_WRAPPER_H_

@@ -19,7 +19,6 @@
 // |                     |
 // |<----------A---- ack(A)
 
-namespace sc_core {
 
 template <class A>
 class pop_ack_in_if
@@ -311,7 +310,6 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const pop_ack_channel<A
     return os;
 }
 
-} // namespace sc_core
 
 template <class A>
 using pop_ack_out = sc_port<pop_ack_out_if< A > >;

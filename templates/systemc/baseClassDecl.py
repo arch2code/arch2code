@@ -11,25 +11,21 @@ def render(args, prj, data):
 
     out = list()
 
-    block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'], data)
+    # Dependency lines. In classic mode they are emitted inline ahead of the
+    # Base/Inverted/Channels classes. In module mode the base-module global
+    # module fragment owns the #includes and the `export module`/import lines
+    # (templates/systemc/moduleScaffold.py baseModuleHeader); a module interface
+    # forbids #include after the module declaration, so baseClassDecl suppresses
+    # them here.
+    if args.mode != 'module':
+        for kind, line in intf_gen_utils.sc_base_dependency_includes(args, prj, data):
+            out.append(line)
 
-    if not block_intf_set:
-        out.append('#include "blockBase.h"')
-
-    for intfType in sorted(block_intf_set):
-        intf_def = intf_gen_utils.get_intf_defs(intfType, data)
-        chnlType = intf_def['sc_channel']['type']
-        out.append(f'#include "{chnlType}_channel.h"')
-
-    if args.fileMapKey:
-        fileMapKey = args.fileMapKey
-    else:
-        fileMapKey = 'include_hdr'
-
-    for context in data['includeContext']:
-        if context in data['includeFiles'][fileMapKey]:
-            out.append(f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"')
-
+    isParameterizable = data['isParameterizable']
+    # Base/Inverted/Channels companions inherit the parent's "leaf
+    # parameterizable" status. A block is a class template only when it
+    # declares its own `params:`.
+    hasOwnParams = data['hasOwnParams']
 
     out.append('')
     blockName = data["blockName"]
@@ -44,7 +40,7 @@ def render(args, prj, data):
         'addConsts' : True
     }
 
-    out.extend( renderClass(args, prj, data, blockName, ifMapping) )
+    out.extend( renderClass(args, prj, data, blockName, ifMapping, hasOwnParams) )
     blockName = data["blockName"]
     ifMapping = {
         'classNamePostfix' : 'Inverted',
@@ -56,18 +52,33 @@ def render(args, prj, data):
         'ctorStringHasParam' : True,
         'addConsts' : False
     }
-    out.extend( renderClass(args, prj, data, blockName, ifMapping) )
+    out.extend( renderClass(args, prj, data, blockName, ifMapping, hasOwnParams) )
 
-    out.extend( renderChannels(args, prj, data) )
+    out.extend( renderChannels(args, prj, data, hasOwnParams) )
+
+    # No force-link declaration is emitted. Non-templated blocks self-register
+    # via an A2C_REGISTRATION_RETAIN static in their own TU (see
+    # templates/systemc/constructor.py and instanceFactory.h), reachable
+    # through direct-.o linking. Parents and the testbench therefore hold no
+    # compile-time symbol reference to the block.
+
     if warningAndErrorReport() != 0:
         exit(1)
     return("\n".join(out))
 
 
-def renderClass(args, prj, data, blockName, ifMapping):
+def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
     out = list()
     className = blockName + ifMapping['classNamePostfix']
-    out.append(f'class { className } : public virtual blockPortBase')
+    # In module mode the Base/Inverted classes are exported from the base-module
+    # interface unit; `export` prefixes the first line of the declaration (the
+    # template-head for own-params blocks, otherwise the class line).
+    exportKw = 'export ' if args.mode == 'module' else ''
+    if isParameterizable:
+        out.append(exportKw + 'template<typename Config>')
+        out.append(f'class { className } : public virtual blockPortBase')
+    else:
+        out.append(exportKw + f'class { className } : public virtual blockPortBase')
     out.append('{')
     out.append('public:')
     indent = ' '*4
@@ -75,9 +86,13 @@ def renderClass(args, prj, data, blockName, ifMapping):
         out.append( indent + ifMapping['destructor'] )
 
     if ifMapping['addConsts']:
-        if prj.data['blocks'][data['qualBlock']]['params']:
-            for param in prj.data['blocks'][data['qualBlock']]['params']:
-                out.append(f'    const uint64_t {param["param"]};')
+        if data['blockInfo']['params']:
+            # Block params are exposed as compile-time constants drawn from the
+            # Config policy. static constexpr (rather than a runtime const member)
+            # lets derived/user code use the bare name in constexpr contexts
+            # (if constexpr, template/width arguments) after re-importing it.
+            for param in data['blockInfo']['params']:
+                out.append(f'    static constexpr auto {param["param"]} = Config::{param["param"]};')
 
     mp_sig = dict()
     portNames = dict()
@@ -137,6 +152,8 @@ def renderClass(args, prj, data, blockName, ifMapping):
     out.append(textwrap.indent(gen_sc_ports_decl(args, prj, data), indent))
 
     out.append('')
+    # Param constants are static constexpr (see above), so they carry no
+    # mem-initialiser; only ports are constructed here.
     colon = ':' if port_count > 0 else ''
     out.append( indent + f'{ className }({ ifMapping["parameter"] }) {colon}')
     comma = ''
@@ -146,12 +163,6 @@ def renderClass(args, prj, data, blockName, ifMapping):
     else:
         prefix = ''
         postfix = ''
-    if ifMapping['addConsts']:
-        if prj.data['blocks'][data['qualBlock']]['params']:
-            for param in prj.data['blocks'][data['qualBlock']]['params']:
-                out.append(f'        {comma}{param["param"]}(instanceFactory::getParam("{ blockName }", variant, "{param["param"]}"))')
-                comma = ','
-
 
     for direction in ['src', 'dst']:
         for port_type in data['ports']:
@@ -186,13 +197,41 @@ def renderClass(args, prj, data, blockName, ifMapping):
                     out.append(f'        { value["name"] }->setLogging(verbosity);')
     out.append( indent + '};')
 
+    if ifMapping['addConsts']:
+        # Class-local type aliases let derived/user code use the bare type name
+        # (no <Config>). Emitted at the END of the class body, AFTER the port
+        # declarations above: those ports declare NAME<Config>, and a same-named
+        # alias introduced before them would shadow the namespace template and
+        # break the port decls. An alias-declaration's own name is not in scope
+        # within its right-hand side, so `using NAME = NAME<Config>;` resolves
+        # NAME<Config> to the namespace template (brought in via using-namespace).
+        for decl in data['parameterizedDecls']:
+            name = decl['body'][decl['declKind']]
+            # An eval-derived parameterizable constant lives on Config (like a
+            # block param); expose it as a class-local compile-time constant drawn
+            # from Config so bare-name use resolves, mirroring the block-param
+            # constants above. It is a value, not a type, so it takes no <Config>
+            # alias.
+            if decl['declKind'] == 'constant':
+                out.append( indent + f'static constexpr auto {name} = Config::{name};')
+            else:
+                out.append( indent + f'using {name} = {name}<Config>;')
+
     out.append( '};')
     return out
 
-def renderChannels(args, prj, data):
+def renderChannels(args, prj, data, isParameterizable=False):
     out = list()
     className = data["blockName"] + 'Channels'
-    out.append(f'class { className }')
+    # In module mode the Channels class is exported from the base-module
+    # interface unit; `export` prefixes the template-head (own-params blocks) or
+    # the class line.
+    exportKw = 'export ' if args.mode == 'module' else ''
+    if isParameterizable:
+        out.append(exportKw + 'template<typename Config>')
+        out.append(f'class { className }')
+    else:
+        out.append(exportKw + f'class { className }')
     out.append('{')
     out.append('public:')
     indent = ' '*4
@@ -242,7 +281,8 @@ def renderChannels(args, prj, data):
                     out.append(indent + comma + channelConstructor(args, prj, data, value, mp_sig[port]['multicycle_types']) )
                     comma = ','
     out.append( indent + '{};')
-    out.append( indent + f'void bind( {data["blockName"]}Base *a, {data["blockName"]}Inverted *b)')
+    cfg = '<Config>' if isParameterizable else ''
+    out.append( indent + f'void bind( {data["blockName"]}Base{cfg} *a, {data["blockName"]}Inverted{cfg} *b)')
     out.append( indent + '{')
     indent = indent + ' '*4
     for direction in ['src', 'dst']:

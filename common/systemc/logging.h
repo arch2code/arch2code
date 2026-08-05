@@ -15,8 +15,15 @@
 
 const int unsigned MAX_DUMP_HALF_LIMIT = 5;
 
+// Array-print helpers must keep external linkage (plain `inline`, never `inline
+// static`). They are included in the global module fragment of generated SystemC
+// modules and are instantiated from the prt() of parameterized (templated)
+// structs in importing translation units. An internal-linkage entity in the
+// global module fragment is not reachable across that module boundary, so a
+// `static` qualifier here makes those instantiations fail with "no matching
+// function for call to 'staticArrayPrt'".
 template<typename T, int unsigned M>
-inline static std::string staticArrayPrt(const T* array, bool dumpAll = false) {
+inline std::string staticArrayPrt(const T* array, bool dumpAll = false) {
     if ( dumpAll == true || M <= (2*MAX_DUMP_HALF_LIMIT) || MAX_DUMP_HALF_LIMIT == 0 ) {
         std::ostringstream oss;
         const T* ptr = array;
@@ -40,7 +47,7 @@ inline static std::string staticArrayPrt(const T* array, bool dumpAll = false) {
 }
 
 template<typename T, typename T2, int unsigned M, int unsigned N>
-inline static std::string static2DArrayPrt(const T* array, bool dumpAll = false) {
+inline std::string static2DArrayPrt(const T* array, bool dumpAll = false) {
     static_assert(sizeof(T) == N*sizeof(T2));
     if ( dumpAll == true || (M*N) <= MAX_DUMP_HALF_LIMIT || MAX_DUMP_HALF_LIMIT == 0 ) {
         std::ostringstream oss;
@@ -65,7 +72,7 @@ inline static std::string static2DArrayPrt(const T* array, bool dumpAll = false)
 }
 
 template<typename T, int unsigned M>
-inline static std::string structArrayPrt(const T* array, const char *name, bool dumpAll = false) {
+inline std::string structArrayPrt(const T* array, const char *name, bool dumpAll = false) {
     if ( dumpAll == true || M <= (2*MAX_DUMP_HALF_LIMIT) || MAX_DUMP_HALF_LIMIT == 0 ) {
         std::ostringstream oss;
         int unsigned index = 0;

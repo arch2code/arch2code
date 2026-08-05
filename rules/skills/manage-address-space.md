@@ -1,47 +1,46 @@
 ---
 name: manage-address-space
-description: Guide for configuring address maps, address groups, and firmware header generation using addressControl.yaml and project.yaml
+description: Guide for configuring address-policy sections (instance groups, address-object packing) and firmware header generation in project.yaml
 ---
 # Skill: Manage Address Space
 
 ## Purpose
-Guide the user in configuring the project's address map, managing address groups, and setting up firmware header generation using `addressControl.yaml` and `project.yaml`.
+Guide the user in configuring the project's address **policy** (instance groups,
+address-object sorting/alignment) and setting up firmware header generation.
+
+For the **decode hierarchy** itself — where registers/memories live, declaring
+the generated `addressBlock:` router, routed leaves, nested routers, and the one
+upstream feed you author — use the **Register/Memory Decode** skill
+(`design-register-decode.md`). The router is a generated block; you never
+hand-create a top-level decoder.
 
 ## References
-*   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Registers & Address Management" and "Address Control File")
+*   **Decode hierarchy:** `design-register-decode.md` (router/leaf model, `regAccess`)
+*   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Registers & Address Management" and "Address Policy and Address Control")
 
 ## Instructions
 
-1.  **Address Control File (`addressControl.yaml`):**
-    *   This file is central to the project's memory map.
-    *   **Location:** Typically `arch/yaml/config/addressControl.yaml`.
-    *   **Key Sections:** `AddressGroups`, `InstanceGroups`, `AddressObjects`, `RegisterBusInterface`.
+1.  **Address Configuration Sources:**
+    *   Address-policy sections live in top-level `project.yaml`:
+        *   `instanceGroups:` — ID enumeration (see step 4).
+        *   `addressObjects:` — register/memory packing policy (see step 6).
+    *   The decode hierarchy is declared per-block: routers carry `addressBlock:` and reusable-IP leaves carry `registerPorts:`. There is no project-wide address-decode file to author. See `design-register-decode.md`.
+    *   Converting a pre-existing `addressControl.yaml` project to this schema is a one-time migration handled entirely by `migrate-project.md` / `address-migration.md`.
 
-2.  **Defining Address Groups (`AddressGroups`):**
-    *   Address groups define hierarchical address spaces.
-    *   **Top-Level Group:** Must have `primaryDecode: true` and define the `decoderInstance` that routes the system bus.
-    *   **Sub-Groups:** Define regions for subsystems.
+2.  **Address groups (per-block schema):**
+    *   An address group is named by a router block's `addressBlock.addressGroup`; routed leaves select it via their instance `addressGroup:`. The router block defines the group and its RTL is generated (`apbDecodeModule`); the primary router is inferred by hierarchy walk. There is no `decoderInstance:`/`primaryDecode:` to author.
+    *   Multi-level decode uses **nested routers** (a second `addressBlock:` block inside a container that is itself a routed leaf of the parent). See `design-register-decode.md`.
 
-    ```yaml
-    AddressGroups:
-      system:
-        addressIncrement: 0x01000000  # 16MB per block in this group
-        maxAddressSpaces: 16
-        varType: system_addr_id_t
-        enumPrefix: SYSTEM_ADDR_
-        decoderInstance: u_apb_decode_system  # CRITICAL: References your manual top-level decoder
-        primaryDecode: true
-    ```
+3.  **Making memory firmware-accessible:**
+    *   `regAccess: true` (with `local:` absent) is the single switch. No custom interface is needed. The serving router is a generated `addressBlock:` block. See `design-register-decode.md`.
 
-3.  **Connecting the Decoder (`decoderInstance`):**
-    *   The `decoderInstance` field **must** reference a valid instance in your architecture YAML.
-    *   This instance (e.g., `u_apb_decode_system`) corresponds to the manual top-level decoder you created to route the register bus.
-
-4.  **Instance Groups (`InstanceGroups`):**
+4.  **Instance Groups (`instanceGroups:`):**
     *   Used for ID enumeration without address space implications (e.g., for error reporting IDs).
+    *   Declared in top-level `project.yaml`.
 
     ```yaml
-    InstanceGroups:
+    # In project.yaml
+    instanceGroups:
       all_instances:
         varType: global_inst_id_t
         enumPrefix: GID_
@@ -67,12 +66,14 @@ Guide the user in configuring the project's address map, managing address groups
           desc: "Firmware include file"
     ```
 
-6.  **Address Object Sorting:**
-    *   Control how objects are packed in the address space using `AddressObjects`.
+6.  **Address Object Sorting (`addressObjects:`):**
+    *   Control how objects are packed in the address space using `addressObjects`.
     *   **Best Practice:** Sort memories by size (`memsize` alignment) to optimize decoding.
+    *   Declared in top-level `project.yaml`.
 
     ```yaml
-    AddressObjects:
+    # In project.yaml
+    addressObjects:
       memories:
         alignment: memsize
         sizeRoundUpPowerOf2: true
@@ -80,4 +81,36 @@ Guide the user in configuring the project's address map, managing address groups
       registers:
         alignment: 8
         sortDescending: true
+    ```
+
+7.  **Parameterizable Register/Memory Sizing:**
+    *   Register and firmware-accessible memory offsets are allocated from worst-case sizes when the referenced structure or `wordLines` is parameterizable.
+    *   Structure width uses generated `maxBitwidth`; `wordLines` uses a parameterizable constant's `maxValue` or the maximum value bound in `parameters:` for pure block params.
+    *   YAML authors should provide explicit bounds (`maxValue` for constants, `maxBitwidth` for literal-width types) so the address map reserves enough space for every variant.
+
+    ```yaml
+    ipParameters:
+      constants:
+        IP_MEM_DEPTH: {value: 16, maxValue: 32, desc: "Per-instance memory depth"}
+
+    blocks:
+      ip:
+        desc: "Parameterized IP"
+        params: [IP_MEM_DEPTH, IP_NONCONST_DEPTH]
+
+    memories:
+      - memory: ip_mem
+        block: ip
+        structure: ip_data_st
+        addressStruct: ip_mem_addr_st
+        wordLines: IP_MEM_DEPTH   # Address sizing uses maxValue=32
+        regAccess: true
+        desc: "Parameterized memory"
+      - memory: ip_variant_mem
+        block: ip
+        structure: ip_data_st
+        addressStruct: ip_mem_addr_st
+        wordLines: IP_NONCONST_DEPTH  # Uses max variant binding
+        regAccess: true
+        desc: "Pure block-param memory depth"
     ```

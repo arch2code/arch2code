@@ -1,0 +1,21 @@
+# Sub-project subB. Nests its OWN copy of the `shared` project and declares no
+# override, so subB's branch-local override map never contains `shared`. The
+# global effective map (fed by subA) still redirects `shared` to the vendor copy,
+# so subB's copy is a non-master that must alias onto the vendor master.
+projectName: subB
+
+projectFiles:
+    - subBLeaf.yaml
+    - ../shared/yaml/sharedProject.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
+
+blocks:
+    subBBlock:
+        desc: "block owned by sub-project subB"
+        hasMdl: true
+        hasRtl: false

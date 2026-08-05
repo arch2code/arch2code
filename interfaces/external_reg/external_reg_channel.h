@@ -13,7 +13,6 @@
 #include "interfaceBase.h"
 #include "synchLock.h"
 
-namespace sc_core {
 
 
 // write(T)
@@ -294,7 +293,6 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const external_reg_chan
     return os;
 }
 
-} // namespace sc_core
 
 template <class T>
 using external_reg_out = sc_port<external_reg_out_if< T > >;

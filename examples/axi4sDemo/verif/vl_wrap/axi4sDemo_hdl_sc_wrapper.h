@@ -5,37 +5,27 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=axi4sDemo
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import axi4sDemo.base;
 
-#include "axi4sDemoBase.h"
-
-// Verilated RTL top (SystemC)
+// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
+// its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "axi4sDemo_hdl_sv_wrapper.h"
 #else
 #include "Vaxi4sDemo_hdl_sv_wrapper.h"
 #endif
+// GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import axi4sDemo_tb;
+using namespace axi4sDemo_tb_ns;
 #include "axi4_stream_bfm.h"
 
 class axi4sDemo_hdl_sc_wrapper: public sc_module, public blockBase, public axi4sDemoBase {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "axi4sDemo_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < axi4sDemo_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
-        }
-    };
-
-    static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
     axi4sDemo_hdl_sv_wrapper *dut_hdl;
@@ -86,12 +76,12 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        axis4_t1_bfm.if_p(axis4_t1);
+        axis4_t1_bfm.if_p(this->axis4_t1);
         axis4_t1_bfm.hdl_if_p(axis4_t1_hdl_if);
         axis4_t1_bfm.clk(clk);
         axis4_t1_bfm.rst_n(rst_n);
 
-        axis4_t2_bfm.if_p(axis4_t2);
+        axis4_t2_bfm.if_p(this->axis4_t2);
         axis4_t2_bfm.hdl_if_p(axis4_t2_hdl_if);
         axis4_t2_bfm.clk(clk);
         axis4_t2_bfm.rst_n(rst_n);

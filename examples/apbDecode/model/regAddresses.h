@@ -1,14 +1,14 @@
 #ifndef REGADDRESSES_H
 #define REGADDRESSES_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 // GENERATED_CODE_PARAM --block=top
 // GENERATED_CODE_BEGIN --template=includes --section=addresses 
 //instance base addresses
-#define BASE_ADDR_UTOP                 0x0
+#define BASE_ADDR_TOP                  0x0
 #define BASE_ADDR_UCPU                 0x0
-#define BASE_ADDR_UAPBDECODE           0x0
 #define BASE_ADDR_USOMERAPPER          0x0
+#define BASE_ADDR_UAPBDECODE           0x0
 #define BASE_ADDR_UBLOCKA              0x0
 #define BASE_ADDR_UBLOCKB              0x1000000
 #define BASE_ADDR_UBLOCKBREGS          0x0

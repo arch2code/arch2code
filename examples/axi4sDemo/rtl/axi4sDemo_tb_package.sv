@@ -1,6 +1,6 @@
 
 // 
-// GENERATED_CODE_PARAM --context=axi4sDemo_tb.yaml
+// GENERATED_CODE_PARAM --project=axi4sDemo --context=axi4sDemo_tb.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package axi4sDemo_tb_package;
 

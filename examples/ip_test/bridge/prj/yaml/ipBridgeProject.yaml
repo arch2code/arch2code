@@ -1,0 +1,80 @@
+# Standalone project file for the ipBridge IP.
+#
+# References the shared 'ip' IP via a projectFiles: entry (Q-C10 composition):
+# ipBridge owns its own instances of ip (uBridgeIp0/uBridgeIp1) while the ip
+# project owns generation of ip's implementation files.
+
+yamlFormat: 2
+projectName: ipBridge
+
+projectFiles:
+    # The shared 'common' definitions sub-project reached through the vendored
+    # provider symlink (bridge/common -> ../common, i.e. examples/ip_test/common).
+    # ipBridge includes shared_types; the projectOverrides entry below selects the
+    # canonical provider so shared_types is owned by projectName common and its
+    # artifacts generate in the common sub-project's tree (not reached up into
+    # another tree). Mirrors the bridge/ip provider reference below.
+    - ../../common/prj/yaml/commonProject.yaml
+    # The 'ip' child project reached through the vendored provider symlink
+    # (bridge/ip -> ../../ip). Standalone, ipBridge selects this nested provider;
+    # in composition the root's projectOverrides selects the root ip and this
+    # reference is redirected there. Path identity is lexical (symlink is not
+    # dereferenced), so the two provider paths stay distinct.
+    - ../../ip/prj/yaml/ipProject.yaml
+    - ../../yaml/bridgeStdTop.yaml
+
+topInstance: bridgeStdTop_tb
+
+# Standalone, projectName ip is reached by two lexically-distinct paths: the
+# projectFiles reference resolves through the bridge/ip symlink (../../ip), while
+# ipBridge.yaml's direct include of ipVariants.yaml resolves through the real
+# tree (../../../ip). The two keys collide as a duplicate ip block. This override
+# redirects the projectFiles provider onto the real-tree ipProject so both paths
+# normalize to the same context key. In composition the root project's
+# projectOverrides for ip wins (highest ancestor), so this entry is ignored there
+# and composed output is unaffected.
+projectOverrides:
+    ip: ../../../ip/prj/yaml/ipProject.yaml
+    # Standalone, projectName common is reached by two lexically-distinct paths:
+    # the projectFiles reference resolves through the bridge/common symlink
+    # (../../common), while ipBridge.yaml's direct include of shared_types
+    # resolves through the real tree (../../../common = examples/ip_test/common).
+    # This override redirects the projectFiles provider onto the real-tree
+    # commonProject so both paths normalize to the same context key (no Duplicate
+    # key common) and artifacts generate in the common sub-project's tree, not the
+    # bridge tree. In composition the root project's projectOverrides for common
+    # wins (highest ancestor), so this entry is ignored there and composed output
+    # is unaffected.
+    common: ../../../common/prj/yaml/commonProject.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs: # only root is supplied; other segments + hierarchicalDirs inherit the base config
+    root: ../.. # ipBridge project root (examples/ip_test/bridge), relative to this project file
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileMap:
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+    regBlockNaming: {
+            instancePrefix: "u",
+            blockSuffix: "Regs",
+            camelCase: true,
+        }

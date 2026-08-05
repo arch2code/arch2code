@@ -37,6 +37,7 @@ def create_test_files(arch_content):
     
     # Create project file that references the architecture file
     project_content = f"""projectName: error_test
+yamlFormat: 2
 topInstance: uTop
 
 dirs:

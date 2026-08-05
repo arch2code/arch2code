@@ -8,7 +8,6 @@
 #include "pop_ack_channel.h"
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
-#include "inAndOutIncludes.h"
 
 class inAndOutBase : public virtual blockPortBase
 {

@@ -102,6 +102,7 @@ class Node:
         self.is_list = False  # User provides list, not dict
         self.is_single_entry_list = False  # List converted to dict
         self.is_data_group = False  # Subtable shares parent's key
+        self.is_flat = False  # Maintain a top-level qualified-key index during parsing
         
         # Special behaviors
         self.is_singular = False  # Single value converted to dict
@@ -410,10 +411,14 @@ class Node:
     
     def add_field(self, field: Field):
         """Add a field to this node (with case-insensitive duplicate detection)"""
-        if not self.has_field(field.name):
-            self.fields[field.name] = field
-            self.fields_lower[field.name.lower()] = field.name
-            self._item_order.append((field.name, 'field'))
+        if self.has_field(field.name):
+            actual_name = self.fields_lower[field.name.lower()]
+            if actual_name != field.name:
+                raise ValueError(f"Field '{field.name}' collides with existing field '{actual_name}' by case only")
+            return
+        self.fields[field.name] = field
+        self.fields_lower[field.name.lower()] = field.name
+        self._item_order.append((field.name, 'field'))
         
     def add_sub_node(self, node: 'Node'):
         """Add a sub-node to this node"""
@@ -439,6 +444,11 @@ class Node:
         Returns:
             The created combo Field object for further manipulation if needed
         """
+        if self.has_field(field_name):
+            existing_name = self.fields_lower[field_name.lower()]
+            if existing_name != field_name:
+                raise ValueError(f"field '{field_name}' differs only by case from existing field '{existing_name}'")
+
         # Ensure all combo source fields exist
         for source in combo_sources:
             if not self.has_field(source):
@@ -504,6 +514,9 @@ class Node:
                 
             if 'dataGroup' in attrib_list:
                 self.is_data_group = True
+
+            if 'flat' in attrib_list:
+                self.is_flat = True
                 
             if 'collapsed' in attrib_list:
                 self.is_collapsed = True
@@ -652,6 +665,85 @@ class Schema:
         # Verify the types section has the required fields and post function for widthLog2 support
         self._validateTypesSchema(schema_file)
         self._validate_context_key_sources(schema_file)
+        self._validate_foreign_key_lookups(schema_file)
+
+    def _validate_foreign_key_lookups(self, schema_file: str):
+        """Validate schema contracts required by parse-time FK lookup."""
+        for source_node in self.nodes.values():
+            for source_field_name, source_field in source_node.fields.items():
+                validator = source_field.validator
+                if not validator or validator.rule_type != 'section':
+                    continue
+
+                target_node = self.get_node(validator.section)
+                if target_node is None:
+                    printError(
+                        f"Bad schema detected in {schema_file}. "
+                        f"Section {source_node.full_path}, field '{source_field_name}' validates "
+                        f"against unknown section '{validator.section}'."
+                    )
+                    exit(warningAndErrorReport())
+
+                target_field = target_node.get_field(validator.field)
+                if target_field is None:
+                    printError(
+                        f"Bad schema detected in {schema_file}. "
+                        f"Section {source_node.full_path}, field '{source_field_name}' validates "
+                        f"against missing field '{validator.field}' in section '{validator.section}'."
+                    )
+                    exit(warningAndErrorReport())
+
+                if source_field.is_combo:
+                    for combo_source in source_field.combo_sources:
+                        if not source_node.has_field(combo_source):
+                            printError(
+                                f"Bad schema detected in {schema_file}. "
+                                f"Section {source_node.full_path}, combo FK field '{source_field_name}' "
+                                f"uses missing source field '{combo_source}'."
+                            )
+                            exit(warningAndErrorReport())
+                    if not target_field.is_combo:
+                        printError(
+                            f"Bad schema detected in {schema_file}. "
+                            f"Section {source_node.full_path}, combo FK field '{source_field_name}' "
+                            f"validates against non-combo target '{validator.section}.{validator.field}'."
+                        )
+                        exit(warningAndErrorReport())
+                    if target_field.combo_sources != source_field.combo_sources:
+                        printError(
+                            f"Bad schema detected in {schema_file}. "
+                            f"Section {source_node.full_path}, combo FK field '{source_field_name}' "
+                            f"uses sources {source_field.combo_sources}, but target "
+                            f"'{validator.section}.{validator.field}' uses {target_field.combo_sources}."
+                        )
+                        exit(warningAndErrorReport())
+                else:
+                    if not target_node.is_flat:
+                        printError(
+                            f"Bad schema detected in {schema_file}. "
+                            f"Section {source_node.full_path}, field '{source_field_name}' validates "
+                            f"against non-flat target section '{validator.section}'."
+                        )
+                        exit(warningAndErrorReport())
+                    if validator.field != target_node.get_storage_key_field_name():
+                        printError(
+                            f"Bad schema detected in {schema_file}. "
+                            f"Section {source_node.full_path}, field '{source_field_name}' validates "
+                            f"against '{validator.section}.{validator.field}', but plain FK targets "
+                            f"must name the target storage key '{target_node.get_storage_key_field_name()}'."
+                        )
+                        exit(warningAndErrorReport())
+
+        for node in self.nodes.values():
+            if not node.is_flat:
+                continue
+            storage_key_field_qualified = node.get_storage_key_field_name_qualified()
+            if not storage_key_field_qualified or not node.has_field(storage_key_field_qualified):
+                printError(
+                    f"Bad schema detected in {schema_file}. "
+                    f"Flat section {node.full_path} has no qualified storage key field."
+                )
+                exit(warningAndErrorReport())
 
     def _validate_context_key_sources(self, schema_file: str):
         """Validate that each contextKey field has a resolvable source producer."""
@@ -714,6 +806,10 @@ class Schema:
             item_key_name = None
             indexes = []
             optional_defaults = {}
+            section_has_explicit_key = any(
+                isinstance(field_def, dict) and '_key' in field_def
+                for field_def in schema[section].values()
+            )
             
             # Process all fields in this section
             for field_name, ftype in schema[section].items():
@@ -864,7 +960,11 @@ class Schema:
                         # Use the set_key API which internally uses add_combo for all setup
                         current_keys = combo_sources  # override any inheritance from parent keys
                         is_combo_override = True
-                        node.set_key(field_name, is_combo=True, combo_sources=combo_sources)
+                        try:
+                            node.set_key(field_name, is_combo=True, combo_sources=combo_sources)
+                        except ValueError as e:
+                            printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} combo key, {e}")
+                            exit(warningAndErrorReport())
                         my_type = 'key'
                         item_key_name = field_name
                         
@@ -880,7 +980,14 @@ class Schema:
                         
                         # Use add_combo which handles all setup including qualified sources
                         # Update field reference to the one created by add_combo
-                        field = node.add_combo(field_name, combo_sources, field_type='combo')
+                        try:
+                            combo_field = node.add_combo(field_name, combo_sources, field_type='combo')
+                        except ValueError as e:
+                            printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} combo field, {e}")
+                            exit(warningAndErrorReport())
+                        combo_field.validator = field.validator
+                        combo_field.is_foreign_key = field.is_foreign_key
+                        field = combo_field
                         
                     node.add_field(field)
                 else:
@@ -978,7 +1085,7 @@ class Schema:
                 # Handle listkey field (for singleEntryList)
                 # Only set as key if no key has been set yet (combo keys take precedence)
                 if my_type == 'listkey':
-                    if not item_key_name:  # Only set if not already set by a combo key
+                    if not item_key_name and not section_has_explicit_key:
                         item_key_name = field_name
                         node.set_key(field_name, is_combo=False)
                     # Add contextKey field regardless
@@ -1097,7 +1204,8 @@ class Schema:
             'tables': {t: t for t in self.tables},
             'comboKey': {},
             'comboField': {},
-            'singular': {}
+            'singular': {},
+            'flat': {}
         }
         
         # Convert nodes back to dict structure
@@ -1127,6 +1235,9 @@ class Schema:
                 
             # Store multi-entry flag
             data['multiEntry'][full_path] = node.is_multi_entry
+
+            # Store flat-index policy
+            data['flat'][full_path] = node.is_flat
             
             # Store indexes
             data['indexes'][full_path] = node.indexes
@@ -1214,4 +1325,3 @@ class Schema:
         for field_name, field in node.fields.items():
             result[field_name] = field.field_type
         return result
-

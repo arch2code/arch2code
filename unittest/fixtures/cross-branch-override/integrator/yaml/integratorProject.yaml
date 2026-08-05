@@ -1,0 +1,23 @@
+yamlFormat: 2
+
+# Cross-branch override fixture root (Tier-1 scan-all, Fix 1).
+# The integrator references two sub-projects. subA declares a projectOverride
+# redirecting `shared` onto a THIRD, standalone vendored copy under vendor/shared
+# that NO projectFiles:/include: edge reaches - it is named only by the override.
+# subB nests its OWN `shared` copy and declares no override, so subB's branch-
+# local override map never contains `shared`. The scanner's GLOBAL effective map
+# still selects the vendor copy as master (subA folded it), so the master is a
+# target the branch-local walk never reaches. Before Fix 1 that master was never
+# recorded as a provider and _reconcile raised a bare KeyError; the master-
+# discovery pass must now scan it so both copies reconcile onto it.
+projectName: integrator
+
+projectFiles:
+    - integratorTop.yaml
+    - ../../subA/yaml/subAProject.yaml
+    - ../../subB/yaml/subBProject.yaml
+
+topInstance: integrator_tb
+
+dirs:
+    root: ..

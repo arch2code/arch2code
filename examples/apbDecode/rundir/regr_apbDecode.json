@@ -1,0 +1,38 @@
+{
+  "session" : {
+    "name" : "regr_apbDecode",
+    "jobs" : 1,
+    "lrp" : 0
+  },
+  "build" : {
+    "command" : "make -j all VL_DUT=1",
+    "timeout" : 120
+  },
+  "run" : {
+    "command" : "build/run someRapper",
+    "args" : "",
+    "timeout" : 240,
+    "rules" : [ "default.json" ],
+    "count" : 1,
+    "seed" : 0,
+    "labels" : [],
+    "model_tests" : {
+      "labels+" : [ "mdl" ],
+      "test_group" : {
+        "model_model" : { }
+      }
+    },
+    "hdl_tests" : {
+      "labels+" : [ "hdl" ],
+      "default" : {
+        "args+" : "--vlType verif",
+        "test_group" : {
+          "cosim" : { "args+" : "--vlInst someRapper" },
+          "apb_decode" : { "args+" : "--vlInst someRapper.uAPBDecode" },
+          "blockA" : { "args+" : "--vlInst someRapper.uBlockA" },
+          "blockB" : { "args+" : "--vlInst someRapper.uBlockB" }
+        }
+      }
+    }
+  }
+}

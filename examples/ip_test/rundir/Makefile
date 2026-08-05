@@ -1,0 +1,51 @@
+REPO_ROOT = $(shell git rev-parse --show-toplevel)/examples/ip_test
+include $(REPO_ROOT)/include/make/shared.mk
+
+# Include External dependencies in compilation
+EXTRA_CPP_SRC      =
+EXTRA_CPP_INCLUDES =
+EXTRA_LD_FLAGS     =
+EXTRA_PRJ_SRC_DIRS += $(REPO_ROOT)/fw/src
+
+# This firmware example relies on the arch2code default BSP stubs. The BSP is no
+# longer in the default source set, so opt in here: EXTRA_A2C_SRC_DIRS adds both
+# the -I include path and the .cpp glob (regRdWr.cpp, fwlog.cpp).
+EXTRA_A2C_SRC_DIRS += $(A2C_ROOT)/common/fw/bsp
+
+# Include generated files with names matching '*Includes*.cpp' in SC_GEN_FILES.
+EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
+
+include $(A2C_ROOT)/include/make/a2c-systemc.mk
+include $(A2C_ROOT)/include/make/a2c-agents.mk
+
+.PHONY : run run-vl run-vl-src run-vl-ip0 run-vl-ip1 run-vl-uBridgeIp1 regr
+
+regr:
+	$(A2C_ROOT)/regrLauncher.py --build -j8 regr_ip_test.json $(REGR_USER_OPTS)
+
+run: $(BIN_DIR)/$(BIN)
+ifndef VL_DUT
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE)
+else
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(HDL_TOP_MODULE)
+endif
+
+run-vl:
+	$(MAKE) clean
+	$(MAKE) all VL_DUT=1
+	$(MAKE) run-vl-src VL_DUT=1
+	$(MAKE) run-vl-ip0 VL_DUT=1
+	$(MAKE) run-vl-ip1 VL_DUT=1
+	$(MAKE) run-vl-uBridgeIp1 VL_DUT=1
+
+run-vl-src: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uSrc
+
+run-vl-ip0: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uIp0
+
+run-vl-ip1: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uIp1
+
+run-vl-uBridgeIp1: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uBridge.uBridgeIp1

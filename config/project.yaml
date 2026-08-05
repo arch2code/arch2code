@@ -27,8 +27,14 @@ templates:
   constructor: $a2c/templates/systemc/constructor.py
   baseConstructor: $a2c/templates/systemc/baseConstructor.py
   blockRegs: $a2c/templates/systemc/blockRegs.py
+  blockRegistrar: $a2c/templates/systemc/blockRegistrar.py
+  vlRegistrar: $a2c/templates/systemc/vlRegistrar.py
+  moduleScaffold: $a2c/templates/systemc/moduleScaffold.py
+  moduleExport: $a2c/templates/systemc/moduleScaffold.py
+  scaffold: $a2c/templates/fileGen/scaffold.py
   headers: $a2c/templates/systemc/headers.py
   includes: $a2c/templates/systemc/includes.py
+  config: $a2c/templates/systemc/config.py
   structures: $a2c/templates/systemc/structures.py
   cpp_encoder: $a2c/templates/systemc/encoder.py
   module_hdl_sc_wrapper: $a2c/templates/systemc/module_hdl_wrapper.py
@@ -57,6 +63,7 @@ templates:
 dirs: # this is list of locations that can be referenced as base path in fileMap section
   #root: ../..                  # project root directory relative to project file - required to be supplied by
   base: $root/base             # for block base classes
+  registrar: $root/registrar   # per-assembler block-registration trampolines + consumer-selected configs
   model: $root/model           # systemC model implementation
   rtl: $root/rtl               # RTL implementation
   vl_wrap: $root/verif/vl_wrap # rtl wrapper files
@@ -70,6 +77,45 @@ dirs: # this is list of locations that can be referenced as base path in fileMap
 # architecture hierarchy.
 fileGeneration:
   template: $a2c/templates/fileGen/fileGen.py
+  # Project layout mode (decomposition vs functional axis ordering):
+  #   functional   - functional axis outer: $root/<model|rtl|...>/<decomp>/file
+  #                  (today's behavior; default for back-compat / no regression)
+  #   hierarchical - decomposition axis outer: <node>/<model|rtl|...>/file
+  # Selected per project file; a nested project uses its own setting.
+  layout: functional
+  # Directory defaults for hierarchical layout. The functional placement is the
+  # top-level dirs: section (the compatibility surface); these are the
+  # node-relative segments created beside each block's yaml/ in hierarchical
+  # mode. The multi-level functional tails are flattened (verif/vl_wrap -> verif,
+  # fw/include -> fw). yaml/prj/rundir/include are project-scope conventions, not
+  # fileMap segments: yaml is the authored-YAML subdir of a node, prj is the
+  # container for generated orphan artifacts, rundir is the per-project build dir,
+  # and include is the user-owned build config. rundir and include stay at the
+  # project root ($root-anchored) as user-owned entry points; only the generated
+  # orphans live under prj/.
+  hierarchicalDirs:
+    base: base
+    registrar: registrar
+    model: model
+    rtl: rtl
+    tb: tb
+    vl_wrap: verif      # flattened (functional: $root/verif/vl_wrap)
+    fwInc: fw           # flattened (functional: $root/fw/include)
+    yaml: yaml
+    prj: $root/prj
+    rundir: $root/rundir
+    include: $root/include  # build config stays at project root (user-owned, not under prj/)
+  # Build manifest groups for fileMap basePath segments. Artifact placement is
+  # selected by fileMap[*].basePath; this map records how each segment
+  # participates in generated build discovery.
+  buildGroups:
+    base: sc
+    registrar: sc
+    model: sc
+    tb: sc
+    fwInc: sc
+    rtl: sv
+    vl_wrap: vl
   fileMap:
     # generation has 2 modes, block and context
     # block creates a file per design block and cond: depend on the block definition
@@ -82,20 +128,121 @@ fileGeneration:
     # cond: matches fields in the block definition, if all fields are true then the file is generated
     # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file
     # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
-    blockBase   : { name : "Base",            ext: {hdr: "h"},             cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    desc: "Module Base class header file"}
-    block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
+    blockBase   : { name : "Base",            ext: {cppm: "cppm"},         cond: {hasMdl: true, hasTb: true},   mode: block,   basePath: base,    desc: "Module Base class interface unit (Base/Inverted/Channels)"}
+    # Every block implementation is a single C++20 module interface unit
+    # (blockModule, .cppm) whose member bodies are module-visible, regardless of
+    # parameterization (item 5, module conversion standardization). A
+    # parameterizable leaf block (hasOwnParams: declares its own params:) becomes
+    # a template<typename Config> class; a non-templated block emits an
+    # untemplated `export SC_MODULE(...)`. classDecl selects the two forms on
+    # hasOwnParams. The legacy `block` (.h/.cpp split) entry is retired; the
+    # migration ports each existing .h/.cpp pair into the .cppm.
+    blockModule : { name : "",                ext: {cppm: "cppm"},         cond: {hasMdl: true}, mode: block, basePath: model, desc: "Block module interface unit (.cppm, all blocks)"}
+    # blockRegistrar emits the per-assembler trampoline TUs described in
+    # plan-reusable-ip-registrar.md. mode: registrar iterates each assembling
+    # block and emits one <child>Registrar.cpp per distinct parameterizable
+    # child it instantiates, under the assembler's directory in the registrar
+    # root (mirroring how base mirrors the yaml tree). The cond/condAnd
+    # predicate is applied to the instantiated child: only parameterizable
+    # children with a model get a trampoline. Pure non-templated SC-only
+    # blocks self-register from their own .cpp and gain no trampoline.
+    blockRegistrar : { name : "Registrar",    ext: {cppm: "cppm"},         cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, desc: "Per-assembler per-child trampoline registrar TU"}
+    # blockVlRegistrar emits the verilated counterpart of blockRegistrar: one
+    # per-assembler <child>VlRegistrar.cpp per distinct verilated (hasVl) child an
+    # assembler instantiates, under the assembler's registrar domain. The whole TU
+    # is guarded by #ifdef VERILATOR; it owns the `_verif` factory registrations
+    # that the retired vl_wrap.cpp aggregator + wrapper-local registerBlock struct
+    # used to carry. Discovered as an ordinary registrar/ source by A2C_SC_SRC_DIRS.
+    blockVlRegistrar : { name : "VlRegistrar", ext: {src: "cpp"},           cond: {hasVl: true},              mode: registrar, basePath: registrar, desc: "Per-assembler per-child Verilated-wrapper registrar TU"}
+    # foreignConfig emits one owner-qualified per-variant Config module interface
+    # unit per (declaring project, reused child) into the assembler's registrar
+    # domain, aggregating the assembler-declared (foreign) variants of that child.
+    # Only emitted when the assembler's owning project actually declares a foreign
+    # variant of the child; same-project/default variants stay in the child's
+    # context config header. foreignConfig: true owner-qualifies the basename. The
+    # cppm ext routes the unit into A2C_CPP_MODULE_FILES; the container and the SC
+    # registrar `import` the module (`<project>.<child>.config`) rather than
+    # textually including a header.
+    foreignConfig : { name : "VariantConfig", ext: {cppm: "cppm"},         cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, foreignConfig: true, desc: "Owner-qualified foreign per-variant Config module interface unit"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
+    # Canonical parameterized SV wrapper body, emitted once per parameterizable
+    # block as an include-only .svh that each variant trampoline `include`s.
+    # Restricted to parameterizable VL blocks so non-parameterizable blocks emit
+    # only their single .sv top (no .svh, no name collision).
+    vlSvWrapBody: { name : "_hdl_sv_wrapper", ext: {svh: "svh"},           cond: {isParameterizable: true}, condAnd: {hasVl: true}, mode: block, basePath: vl_wrap, variant: false, desc: "Canonical parameterized SV wrapper body (include-only)"}
     vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
-    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench implementation file"}
-    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench config files"}
-    tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,      desc: "Testbench external files"}
-    include     : { name : "Includes",        ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include file"}
+    # vlSvWrapForeign emits one PARENT-OWNED owner-qualified per-variant SV
+    # verilated wrapper top per (declaring project, reused child, foreign variant),
+    # into the assembler's vl_wrap domain. Only the declaring assembler project
+    # emits it (foreignConfig gate); same-project variants keep the bare
+    # child-emitted vlSvWrap top. The trampoline `include`s the child's canonical
+    # .svh body and binds the foreign variant's resolved literals. The top module
+    # name is owner-qualified (<project>_<child>_<variant>_hdl_sv_wrapper) so a
+    # variant of the same reused child declared by two projects stays a distinct
+    # Verilator top.
+    vlSvWrapForeign : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},         cond: {isParameterizable: true},  condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, variant: true, foreignConfig: true, desc: "Owner-qualified foreign per-variant SV verilated wrapper top"}
+    # plan-step-11-variant-aware-testbenches.md scope boundary: exactly one
+    # testbench artifact and class family per block (no variant: true). The
+    # `--variant` parameter is solely a generated-code parameter consumed by
+    # templates to select the DUT Config and factory variant string.
+    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench implementation file"}
+    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench config files"}
+    tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench external files"}
+    include     : { name : "Includes",        ext: {cppm: "cppm"},           cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include module interface"}
+    config      : { name : "VariantConfig",   ext: {hdr: "h"},               cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based default config header"}
     #includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
     package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     desc: "yaml based package file"}
+    # project mode creates exactly one artifact per project at its basePath
+    # segment root, keyed to the project's top context (not a block/context/
+    # registrar). rtl.f is the verilator file list (-F) for the whole build; its
+    # rtlDotF-template region lists every package on the top context's include
+    # chain. name+ext compose the fixed filename rtl.f at the rtl segment root.
+    rtlDotF     : { name : "rtl",              ext: {f: "f"},                                                    mode: project, basePath: rtl,     desc: "Per-project verilator file list (rtl.f)"}
+  # Create-once user-owned build makefiles (top Makefile, include/make/shared.mk,
+  # rundir/Makefile, rtl/Makefile). This is NOT a fileMap section: the files carry
+  # no GENERATED_CODE regions, so make gen never touches them and the build
+  # manifest never lists them. newModule writes each only if absent and never
+  # rewrites or deletes it (the user owns it thereafter), so a repeated
+  # migrate/newmodule on a project that already has its makefiles is a silent
+  # no-op. `place` names a layout convention (root/include/rundir) or a fileMap
+  # segment (rtl); `sub` is the file's path under that location. shared.mk always
+  # emits the pro a2cPro.mk `-include` line; the leading dash makes it conditional
+  # at make time, so a base-only project silently skips the missing file.
+  scaffold:
+    template: $a2c/templates/fileGen/scaffold.py
+    files:
+      topMakefile : { place: root,    sub: "Makefile" }
+      sharedMk    : { place: include, sub: "make/shared.mk" }
+      rundirMk    : { place: rundir,  sub: "Makefile" }
+      rtlMk       : { place: rtl,     sub: "Makefile" }
   # standard copyright statement to be added to all generated files - change to suite your company
   fileCopyrightStatement: "Update your copywright statement in your project yaml file"
   regBlockNaming: {instancePrefix: 'u_', blockSuffix: '_regs'} # naming convention for register handler blocks - instancePrefix is prefix for instance names, blockSuffix is suffix for block names
 postProcess:
-  - $a2c/config/postParseRegister.py
+  # Register-bus distribution. A no-op when no block declares
+  # addressBlock:; otherwise it builds the router index, routes
+  # register-owning leaves, and synthesises register handlers.
+  - $a2c/config/postParseRegisterPorts.py
   - $a2c/config/postParseChecks.py
+
+createArtifacts:
+  - $a2c/config/createBuildManifest.py
+
+# Top-level address-policy sections. Prefer these project.yaml fields for
+# new or migrated projects; they normalize into the same ADDRESS_CONFIG state
+# as the legacy addressControl.yaml InstanceGroups and AddressObjects sections.
+# The legacy addressControl.yaml path is supported during migration but is
+# expected to be deprecated.
+# If both spellings are present, their rows must match exactly.
+#
+# instanceGroups:
+#   <groupName>:
+#     varType: <type name>
+#     enumPrefix: <enum prefix>
+#
+# addressObjects:
+#   <objectName>:
+#     alignment: <memsize|number-of-bytes>
+#     sizeRoundUpPowerOf2: <bool>
+#     sortDescending: <bool>

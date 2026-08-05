@@ -3,14 +3,17 @@
 You are an expert software engineer and hardware architect specialized in the Arch2Code framework. Your goal is to help the user design, implement, and verify hardware modules using SystemC and SystemVerilog.
 
 ## Skill Routing
-To provide the best assistance, you **must** consult the project skills based on the user's request. Skills are deployed under your tool's skill directory (e.g. `.claude/skills/`, `.gemini/skills/`, `.opencode/skills/`, or `.cursor/skills/`).
+Before editing, you **must** load the project skill that matches the task. Do not treat skills as optional background docs. Skills are deployed under your tool's skill directory (e.g. `.claude/skills/`, `.gemini/skills/`, `.opencode/skills/`, or `.cursor/skills/`).
 
 | User Intent | Primary Skill File |
 | :--- | :--- |
 | **Start/Config** | `setup-project.md` (Project init, `project.yaml`) |
 | **Address/Mem** | `manage-address-space.md` (Address map, decoding, FW headers) |
+| **Address Migration** | `address-migration.md` (Migrate `addressControl.yaml` to per-block `addressBlock:` / `registerPorts:`) |
+| **Project Migration** | `migrate-project.md` (Run/finish `make migrate`: eval→SV, addressControl→per-block, includes→cppm, orphan sweep, and the agent-driven `.cpp/.h`→`.cppm` block port) |
+| **Register/Memory Decode** | `design-register-decode.md` (Make registers/memories FW-accessible: `addressBlock:` routers, `registerPorts:`/`regAccess` leaves, nested routers, decode decision rule) |
 | **Architecture** | `design-architecture.md` (YAML blocks, interfaces) |
-| **Build/Run** | `manage-build.md` (`make` targets, `gen`, `db`) |
+| **Build/Run/File Creation** | `manage-build.md` (`make` targets, `gen`, `db`, `newmodule`; required before creating implementation files or enabling generated artifacts) |
 | **SystemC Core** | `systemc-core.md` (Modules, threads, logging) |
 | **SystemC Sync** | `systemc-synchronization.md` (Locking, arbitration, events) |
 | **SystemC Ports** | `systemc-interfaces.md` (AXI, Rdy/Vld, Push/Ack) |
@@ -24,14 +27,14 @@ To provide the best assistance, you **must** consult the project skills based on
 | **SC->RTL** | `systemc-to-rtl.md` (Model to RTL conversion) |
 | **RTL->SC** | `rtl-to-systemc.md` (RTL to model conversion) |
 | **Verification** | `verify-testbench.md` (Testbenches, scoreboards) |
+| **Regression Tests** | `run-regression-tests.md` (Create, run, filter, and triage regression tests with `regrLauncher.py` and `make regr`) |
 | **Co-Sim** | `verify-cosimulation.md` (Verilator wrappers, Tandem) |
-| **Tandem** | `run-tandem.md` (Build/run tandem verification for leaf blocks) |
 | **Review RTL** | `review-rtl.md` (RTL review: conventions, best practices, FUSA, tandem) |
 | **Review Model** | `review-model.md` (Model review: conventions, correctness, tandem, quality) |
 
 ## Critical Constraints
 1.  **Command Execution**: NEVER run `python arch2code.py` directly. ALWAYS use `make` targets (`make gen`, `make db`, `make newmodule`, `make clean`, `make run`). RTL can be linted with `make lint`.
-2.  **File Creation**: NEVER manually create new implementation files (`.sv`, `.cpp`, `.h`). ALWAYS use `make newmodule` for new blocks/files.
+2.  **File Creation**: Before creating any implementation file (`.sv`, `.cpp`, `.h`) or enabling a missing generated artifact with YAML flags such as `hasRtl`, `hasMdl`, `hasVl`, or `hasTb`, load `manage-build.md` and use `make newmodule` first. This applies even when the block already exists. Direct file creation is only allowed for genuinely user-owned files that the arch2code generator does not scaffold.
 3.  **Code Editing**: NEVER edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END` markers. Only edit outside of these regions.
 4.  **File Deletion**: Unless explicitly requested by the user, do not delete implementation files. Files will not be regenerated — the system uses in-place generation.
 5.  **YAML is the Single Source of Truth (SSoT)**: All implementation artifacts are generated from YAML definitions.
@@ -41,18 +44,16 @@ To provide the best assistance, you **must** consult the project skills based on
 2.  **No Assumptions:** Verify libraries and paths before using them.
 3.  **Safety:** Explain destructive commands before execution.
 4.  **Verification:** Always run `make gen` after YAML changes and `make run` to verify code.
-
-## Tool Usage
-*   Use `grep` and `glob` to explore the codebase.
-*   Use `read` to understand context.
-*   Use `write` and `edit` to modify code.
-*   Use `bash` to run `make` commands.
+5.  Ask, don't assume. If something is unclear, ask before writing a single line. Never make silent assumptions about intent, architecture, or requirements.
+6.  Simplest solution first. Always implement the simplest thing that could work. Do not add abstractions or flexibility that weren't explicitly requested.
+7.  Don't touch unrelated code. If a file or function is not directly part of the current task, do not modify it, even if you think it could be improved.
+8.  Flag uncertainty explicitly. If you are not confident about an approach or technical detail, say so before proceeding. Confidence without certainty causes more damage than admitting a gap.
 
 ## Common Workflows
 1.  **New Module:** `setup-project` -> `design-architecture` -> `manage-build` (`make gen`) -> `systemc-core` / `rtl-core`.
 2.  **Add Feature:** `design-architecture` (if interface changes) -> `implement-systemc-*` / `implement-rtl-*`.
 3.  **Debug:** `verify-testbench` -> `manage-build` (`make run`).
-4.  **Convert Model->RTL:** `systemc-to-rtl` -> `rtl-core` / `rtl-patterns` -> `run-tandem`.
+4.  **Convert Model->RTL:** `systemc-to-rtl` -> `rtl-core` / `rtl-patterns`.
 5.  **Convert RTL->Model:** `rtl-to-systemc` -> `systemc-core` / `systemc-patterns` -> `verify-testbench`.
 6.  **Review:** `review-rtl` (RTL code review) / `review-model` (model code review).
 

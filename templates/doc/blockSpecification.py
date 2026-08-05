@@ -25,7 +25,7 @@ def render(args, prj, data):
         Formatted Asciidoctor string
     """
     # Belt-and-suspenders check: reject register-handler blocks
-    if data['blockInfo'].get('isRegHandler', False):
+    if data['blockInfo']['isRegHandler']:
         printError(f"blockSpecification template does not support register-handler blocks. "
                   f"Block '{data['blockName']}' is a register handler (implementation detail). "
                   f"Please point the marker at the parent block instead.")
@@ -245,8 +245,8 @@ def render_memories_section(prj, data, block_name):
     
     rows = []
     for mem_key, mem_data in memories.items():
-        mem_name = mem_data.get('memory', mem_key)
-        block_containing = mem_data.get('block', block_name)
+        mem_name = mem_data['memory']
+        block_containing = mem_data['block']
         
         # Word lines (with constant if available)
         word_lines_key = mem_data.get('wordLinesKey', '')
@@ -281,7 +281,7 @@ def render_memories_section(prj, data, block_name):
         else:
             data_struct_ref = "unknown"
         
-        desc = mem_data.get('desc', '')
+        desc = mem_data['desc']
         reg_access = "Yes" if mem_data.get('regAccess', False) else "No"
         
         rows.append([

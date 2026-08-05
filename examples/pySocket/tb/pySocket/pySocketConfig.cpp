@@ -13,7 +13,7 @@
 #include "socketFactory.h"
 #include "socketTransport.h"
 #include "testBenchConfigFactory.h"
-#include "endOfTest.h"
+import a2c.endOfTest;
 #include "testController.h"
 
 // Absolute path to pySocket.py: do not rely on getcwd() — runs may start from FIPS/rundir or .../pySocket/rundir.
@@ -72,6 +72,12 @@ public:
     static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~pySocketConfig() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
+protected:
+    // The testbench top is instantiated through this generated helper so its
+    // factory-key projectName is emitted here on every make gen (matching the
+    // tb-top registration), instead of being hand-written into the user body.
+    std::shared_ptr<blockBase> createTbTop(void) { return instanceFactory::createInstance("", "tb", "pySocketTestbench", "", "pySocket"); }
+public:
 // GENERATED_CODE_END
 
 private:
@@ -85,7 +91,7 @@ public:
     {
         instanceFactory::registerInstance("pySocket_tb.u_pySocket", "socket");
 
-        std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "");
+        std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "", "pySocket");
 
         if (socketFactory::registerInterface("test_req_ack") == 0) {
             return false;

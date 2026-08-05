@@ -1,0 +1,14 @@
+# Standalone vendored copy of the shared types-only project. Reached ONLY by
+# subA's projectOverride (no projectFiles:/include: edge names it). Carries the
+# full project sentinel set so the master-discovery pass opens it as the `shared`
+# master onto which every other copy reconciles.
+projectName: shared
+
+projectFiles:
+    - shared_types.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

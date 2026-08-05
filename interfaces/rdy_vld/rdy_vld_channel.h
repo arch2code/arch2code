@@ -17,7 +17,6 @@
 #include "synchLock.h"
 #include <format>
 
-namespace sc_core {
 
 // write( T )
 //          ----T---> read( &T )
@@ -533,7 +532,6 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const rdy_vld_channel<T
     return os;
 }
 
-} // namespace sc_core
 
 template <class T>
 using rdy_vld_out = sc_port<rdy_vld_out_if< T > >;
