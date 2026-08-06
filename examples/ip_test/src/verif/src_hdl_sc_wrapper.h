@@ -19,6 +19,7 @@ using namespace ip_test_ipLeaf_ns;
 #include "srcVariantConfig.h"
 #include "push_ack_bfm.h"
 
+#include "socketSync.h"
 template <typename DUT_T, typename Config>
 class src_hdl_sc_wrapper: public sc_module, public blockBase, public srcBase<Config> {
 
@@ -26,7 +27,7 @@ public:
 
     DUT_T *dut_hdl;
 
-    sc_clock clk;
+    sc_signal<bool> clk;
 
     push_ack_src_bfm<srcOut0St<Config>, sc_bv<srcOut0St<Config>::_bitWidth>> out0_bfm;
     push_ack_src_bfm<srcOut1St<Config>, sc_bv<srcOut1St<Config>::_bitWidth>> out1_bfm;
@@ -42,12 +43,13 @@ public:
         sc_module(modulename),
         blockBase("src_hdl_sc_wrapper", name(), bbMode),
         srcBase<Config>(name(), variant),
-        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
+        clk("clk"),
         out0_bfm("out0_bfm"),
         out1_bfm("out1_bfm"),
         out2_bfm("out2_bfm"),
         out3_bfm("out3_bfm"),
-        rst_n(0)
+        rst_n(0),
+        clk_half_(0.5, SC_NS)
     {
         dut_hdl = new DUT_T("dut_hdl");
 
@@ -86,6 +88,8 @@ public:
         out3_bfm.clk(clk);
         out3_bfm.rst_n(rst_n);
 
+        clk.write(true);
+        SC_THREAD(clock_gen);
         SC_THREAD(reset_driver);
 
         end_ctor_init();
@@ -108,9 +112,26 @@ private:
     push_ack_hdl_if<sc_bv<srcOut1St<Config>::_bitWidth>> out3_hdl_if;
 
     sc_signal<bool> rst_n;
+    sc_time clk_half_;
+
+    void clock_gen() {
+        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
+        // owns timed waits; we only toggle when an edge is requested.
+        while (true) {
+            if (socketSyncTimeGated()) {
+                socketSyncWaitClockEdge();
+                clk.write(!clk.read());
+            } else {
+                wait(clk_half_);
+                clk.write(!clk.read());
+            }
+        }
+    }
 
     void reset_driver() {
-        wait(5, SC_NS);
+        for (int i = 0; i < 5; ++i) {
+            wait(clk.posedge_event());
+        }
         rst_n = true;
     }
 

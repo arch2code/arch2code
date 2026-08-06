@@ -23,6 +23,7 @@ import simple_ip;
 using namespace simple_ip_ns;
 #include "push_ack_bfm.h"
 
+#include "socketSync.h"
 class dataGen_hdl_sc_wrapper: public sc_module, public blockBase, public dataGenBase {
 
 public:
@@ -33,7 +34,7 @@ public:
     VdataGen_hdl_sv_wrapper *dut_hdl;
 #endif
 
-    sc_clock clk;
+    sc_signal<bool> clk;
 
     push_ack_src_bfm<simpleData8St, sc_bv<9>> out_bfm;
 
@@ -43,9 +44,10 @@ public:
         sc_module(modulename),
         blockBase("dataGen_hdl_sc_wrapper", name(), bbMode),
         dataGenBase(name(), variant),
-        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
+        clk("clk"),
         out_bfm("out_bfm"),
-        rst_n(0)
+        rst_n(0),
+        clk_half_(0.5, SC_NS)
     {
 #if !defined(VERILATOR) && defined(VCS)
         dut_hdl = new dataGen_hdl_sv_wrapper("dut_hdl");
@@ -64,6 +66,8 @@ public:
         out_bfm.clk(clk);
         out_bfm.rst_n(rst_n);
 
+        clk.write(true);
+        SC_THREAD(clock_gen);
         SC_THREAD(reset_driver);
 
         end_ctor_init();
@@ -83,9 +87,26 @@ private:
     push_ack_hdl_if<sc_bv<9>> out_hdl_if;
 
     sc_signal<bool> rst_n;
+    sc_time clk_half_;
+
+    void clock_gen() {
+        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
+        // owns timed waits; we only toggle when an edge is requested.
+        while (true) {
+            if (socketSyncTimeGated()) {
+                socketSyncWaitClockEdge();
+                clk.write(!clk.read());
+            } else {
+                wait(clk_half_);
+                clk.write(!clk.read());
+            }
+        }
+    }
 
     void reset_driver() {
-        wait(5, SC_NS);
+        for (int i = 0; i < 5; ++i) {
+            wait(clk.posedge_event());
+        }
         rst_n = true;
     }
 
