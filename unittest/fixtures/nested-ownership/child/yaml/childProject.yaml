@@ -1,0 +1,21 @@
+# Child PROJECT file. Reached through the root's projectFiles: slot AND carries
+# the full project sentinel set (projectName + dirs + fileGeneration), so the
+# classifier opens it as a child project: its own projectName (childProj) owns
+# this context and its entire transitive closure (childLeaf.yaml below). The
+# sentinel keys are in ignoreSections, so only the block below is design data.
+projectName: childProj
+
+projectFiles:
+    - childLeaf.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
+
+blocks:
+    childProjBlock:
+        desc: "child-project-owned block declared in the child project file"
+        hasMdl: true
+        hasRtl: false

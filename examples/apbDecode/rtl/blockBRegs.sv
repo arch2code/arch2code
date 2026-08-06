@@ -1,0 +1,167 @@
+// GENERATED_CODE_PARAM --block=blockBRegs
+// GENERATED_CODE_BEGIN --template=moduleRegs
+module apbDecode_blockBRegs
+    // Generated Import package statement(s)
+    import apbDecode_package::*;
+    #(
+        parameter bit APB_READY_1WS = 0
+    )
+    (
+        apb_if.dst apbReg,
+        status_if.src rwUn0B,
+        status_if.dst roB,
+        memory_if.src blockBTable,
+        input clk,
+        input rst_n
+    );
+
+    apbAddrSt apb_addr;
+    assign apb_addr = apbAddrSt'(apbReg.paddr) & 32'h3ff;
+    // Register/memory address offsets for decode documentation
+    localparam int unsigned REG_BLOCKB_BLOCKBTABLE = 32'h00000000; // Table to test memory access from cpu
+    localparam int unsigned REG_BLOCKB_BLOCKBTABLE_SIZE = 32'h00000150; // Decode range size
+    localparam int unsigned REG_BLOCKB_RWUN0B = 32'h00000200; // A unaligned four bytes Read Write register
+    localparam int unsigned REG_BLOCKB_ROB = 32'h00000208; // A Read Only register
+
+    un0BRegSt rwUn0B_reg;
+    logic rwUn0B_reg_update_0;
+    assign rwUn0B.data = rwUn0B_reg;
+    `DFFREN(rwUn0B_reg[23:0], apbReg.pwdata[23:0], rwUn0B_reg_update_0, 24'h00000000)
+
+    aSizeRegSt roB_reg;
+    assign roB_reg = roB.data;
+
+    // blockBTable
+    bMemSt nxt_blockBTable_data, blockBTable_data;
+    bMemAddrSt blockBTable_addr;
+
+    logic blockBTable_update_0;
+    logic blockBTable_update_1;
+    logic blockBTable_update_2;
+    logic nxt_blockBTable_rd_enable, blockBTable_rd_enable, blockBTable_rd_capture;
+    logic blockBTable_wr_enable;
+
+    `DFF(blockBTable_addr, bMemAddrSt'(apb_addr[31:4]))
+    `DFF(blockBTable_wr_enable, blockBTable_update_2)
+    `DFF(blockBTable_rd_enable, nxt_blockBTable_rd_enable)
+    `DFF(blockBTable_rd_capture, blockBTable_rd_enable)
+
+    `DFFEN(blockBTable_data[31:0], nxt_blockBTable_data[31:0], blockBTable_update_0)
+    `DFFEN(blockBTable_data[63:32], nxt_blockBTable_data[63:32], blockBTable_update_1)
+    `DFFEN(blockBTable_data[95:64], nxt_blockBTable_data[95:64], blockBTable_update_2)
+
+    assign blockBTable.enable      = blockBTable_rd_enable | blockBTable_wr_enable;
+    assign blockBTable.wr_en       = blockBTable_wr_enable;
+    assign blockBTable.addr        = blockBTable_addr;
+    assign blockBTable.write_data  = blockBTable_data;
+
+    logic wr_select;
+    logic rd_select;
+    assign wr_select = apbReg.psel & apbReg.penable & apbReg.pwrite & rst_n;
+    assign rd_select = apbReg.psel & apbReg.penable & !apbReg.pwrite & rst_n;
+
+    logic nxt_wr_ready, wr_ready;
+    always_comb begin
+        nxt_wr_ready = 1'b0;
+        rwUn0B_reg_update_0 = 1'b0;
+        blockBTable_update_0 = 1'b0;
+        blockBTable_update_1 = 1'b0;
+        blockBTable_update_2 = 1'b0;
+        nxt_blockBTable_data = blockBTable_data;
+        if (wr_select) begin
+            case (apb_addr) inside
+                REG_BLOCKB_RWUN0B : begin
+                    rwUn0B_reg_update_0 = 1'b1;
+                end
+                [REG_BLOCKB_BLOCKBTABLE:REG_BLOCKB_BLOCKBTABLE + REG_BLOCKB_BLOCKBTABLE_SIZE - 32'd4]: begin
+                    case (apb_addr[3:0])
+                        4'h0: begin
+                            blockBTable_update_0 = 1'b1;
+                            nxt_blockBTable_data[31:0] = apbReg.pwdata[31:0];
+                        end
+                        4'h4: begin
+                            blockBTable_update_1 = 1'b1;
+                            nxt_blockBTable_data[63:32] = apbReg.pwdata[31:0];
+                        end
+                        4'h8: begin
+                            blockBTable_update_2 = 1'b1;
+                            nxt_blockBTable_data[95:64] = apbReg.pwdata[31:0];
+                        end
+                        default: ;
+                    endcase
+                end
+                default: ; // unmapped/ro write: silently ignored (ACK below)
+            endcase
+            nxt_wr_ready = 1'b1;
+        end
+    end
+
+    logic nxt_rd_ready, rd_ready;
+    apbDataSt nxt_rd_data, rd_data;
+    always_comb begin
+        nxt_rd_ready = 1'b0;
+        nxt_rd_data = '0;
+        nxt_blockBTable_rd_enable = 1'b0;
+        if (rd_select) begin
+            case (apb_addr) inside
+                REG_BLOCKB_RWUN0B : begin
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = apbDataSt'(rwUn0B_reg[23:0]);
+                end
+                REG_BLOCKB_ROB : begin
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = apbDataSt'(roB_reg[28:0]);
+                end
+                [REG_BLOCKB_BLOCKBTABLE:REG_BLOCKB_BLOCKBTABLE + REG_BLOCKB_BLOCKBTABLE_SIZE - 32'd4]: begin
+                    case (apb_addr[3:0])
+                        4'h0: begin
+                            if (blockBTable_rd_capture) begin
+                                nxt_rd_ready = 1'b1;
+                                nxt_rd_data = apbDataSt'(blockBTable.read_data[31:0]);
+                            end
+                        end
+                        4'h4: begin
+                            if (blockBTable_rd_capture) begin
+                                nxt_rd_ready = 1'b1;
+                                nxt_rd_data = apbDataSt'(blockBTable.read_data[63:32]);
+                            end
+                        end
+                        4'h8: begin
+                            if (blockBTable_rd_capture) begin
+                                nxt_rd_ready = 1'b1;
+                                nxt_rd_data = apbDataSt'(blockBTable.read_data[95:64]);
+                            end
+                        end
+                        default: ;
+                    endcase
+                    nxt_blockBTable_rd_enable = ~blockBTable_rd_capture;
+                end
+                default: begin // unmapped read: ACK with 0 (never stall, never error)
+                    nxt_rd_ready = 1'b1;
+                    nxt_rd_data = '0;
+                end
+            endcase
+        end
+    end
+
+    // Update APB ready and read data. The bus is never stalled and slave
+    // error is never asserted: every access ACKs, unmapped reads return 0.
+    generate if (APB_READY_1WS)
+        begin
+            `DFFR(wr_ready,   nxt_wr_ready,   '0)
+            `DFFR(rd_ready,   nxt_rd_ready,   '0)
+            `DFFR(rd_data,    nxt_rd_data,    '0)
+        end else begin
+            assign wr_ready   = nxt_wr_ready;
+            assign rd_ready   = nxt_rd_ready;
+            assign rd_data    = nxt_rd_data;
+        end
+    endgenerate
+
+    // Update the APB interface
+    assign apbReg.prdata  = rd_data;
+    assign apbReg.pready  = rd_ready | wr_ready;
+    assign apbReg.pslverr = 1'b0;
+
+endmodule : apbDecode_blockBRegs
+// GENERATED_CODE_END

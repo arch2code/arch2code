@@ -1,0 +1,13 @@
+# Negative-case project file: carries the full project sentinel key set
+# (projectName + dirs + fileGeneration). Under the strict invariant a project
+# file may only be reached through the projectFiles: slot; referencing it via
+# include: is a fatal authoring error. test_error_child_project_via_include
+# injects an include: edge to this file and asserts the guard fires.
+projectName: sneakyProj
+dirs:
+    root: ..
+fileGeneration:
+    template: none
+
+types:
+    sneakyT: { width: 4, desc: "type authored in an included sentinel-bearing file" }

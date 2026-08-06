@@ -1,0 +1,14 @@
+# Child-owned leaf context. Reached through the child project's own
+# projectFiles: slot, so ownership propagates from the child project (childProj)
+# even though this file itself is not a project file.
+blocks:
+    childLeafBlock:
+        desc: "child-owned leaf block reached through the child's closure"
+        hasMdl: true
+        hasRtl: false
+
+# A child-owned type gives this context a generated SystemVerilog package
+# (childLeaf_package.sv, --context=childLeaf.yaml), the child-owned SV artifact
+# the ownership-gate proof exercises against the SystemVerilog generator.
+types:
+    childLeafT: { width: 4, desc: "type authored in the child-owned leaf context" }

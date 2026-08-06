@@ -1,0 +1,7 @@
+# subA-owned leaf context. Deliberately references no `shared` copy, so subA's
+# branch never reaches a `shared` scope.
+blocks:
+    subALeafBlock:
+        desc: "subA-owned leaf block"
+        hasMdl: true
+        hasRtl: false

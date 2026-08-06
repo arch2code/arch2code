@@ -1,0 +1,309 @@
+# this file contains the top level definitions, blocks, instances and connections for nested
+
+# constants / parameters are architectural level variables that can be used to control the size of structures,
+# variables, number of instances, etc.
+constants:
+  NUM_COMMANDS:          {value: 1024, desc: "Number of Commands"}
+  NUM_COMMANDS_LOG2:     {eval: "$clog2($NUM_COMMANDS)", desc: "Number of Commands log2"}
+  BIG_WIDTH:             {value: 96, desc: big width test case}
+  NUM_FIRST_TAGS:      {value: 64,  desc: "Num first Tags" }
+  NUM_FIRST_TAGS_LOG2: {eval: "$clog2($NUM_FIRST_TAGS)",  desc: "Num first Tags Log2" }
+  NUM_SECOND_TAGS:       {value: 1024, desc: "Num second Tags" }
+  NUM_SECOND_TAGS_LOG2:  {eval: "$clog2($NUM_SECOND_TAGS)", desc: "Num second Tags Log2" }
+  NUM_THIRD_TAGS:        {value: 1024, desc: "Num third Tags" }
+  NUM_THIRD_TAGS_LOG2:   {eval: "$clog2($NUM_THIRD_TAGS)", desc: "Num third Tags Log2" }
+  NUM_TAGS:           {eval: "($NUM_FIRST_TAGS+$NUM_SECOND_TAGS+$NUM_THIRD_TAGS)", desc: "Num Tags" }
+  NUM_TAGS_LOG2:      {eval: "$clog2($NUM_TAGS)", desc: "Num Tags Log2" }
+
+
+encoders:
+  tag:
+    desc: "Tag Encoder"
+    encoderType: tagT
+    encoderTypeWidth: NUM_TAGS_LOG2
+    encoderTypeDesc: Read Tag
+    enumType: tagTypeT
+    enumPrefix: TAGTYPE_
+    enumDesc: type of tag for encode
+    baseConstPrefix: TAGBASE_
+    items:
+      firstTag: { numBits: NUM_FIRST_TAGS_LOG2, desc: "Tag type 1", varName: firstTag }
+      secondTag:  { numBits: NUM_SECOND_TAGS_LOG2, desc: "Tag type 2", varName: secondTag }
+      thirdTag:   { numBits: NUM_THIRD_TAGS_LOG2, desc: "Tag type 3", varName: thirdTag }
+  loc:
+    desc: "Location Encoder"
+    encoderType: cmdidT
+    encoderTypeWidth: NUM_COMMANDS_LOG2
+    encoderTypeDesc: Command ID
+    zeroBased: false
+    enumPrefix: LOC_
+    enumType: locT
+    enumDesc: type of location for encode
+    extendedRangeItem: flash
+    extendedRangeDesc: Flash location
+    items:
+      firstTag: { numBits: NUM_FIRST_TAGS_LOG2, desc: "Tag type 1", varName: firstTag }
+
+types:
+  enumType:
+    desc: Example of an enum
+    enum:
+      - {enumName: ENUM_TYPE_1, desc: this type of enum, value: 1}
+      - {enumName: ENUM_TYPE_2, desc: other type of enum, value: NUM_COMMANDS }
+  bigT:
+    width: BIG_WIDTH
+    desc: big width test case
+  dataT:
+    width: 128
+    desc: Data
+  lengthT:
+    width: 16
+    desc: Length of transfer
+
+# variables used as members of structures, only structures are attached to interfaces
+variables:
+  cmdid:
+    type: cmdidT
+    desc: Command context
+
+# structures are collections of variables, or other structures, structures are the main communication tool from block to block on any interface
+structures:
+  test_st:
+    a: {varType: cmdidT }
+  bigSt:
+    b: {varType: bigT }
+  testDataSt:
+    data: {varType: dataT }
+  testDataHdrSt:
+    cmdid: {}
+  lengthHdrSt:
+    length: {varType: lengthT, generator: tracker(length) } # length is a special tracker that indicates that the variable is a length field
+  cmdidHdrSt:
+    cmdid: {generator: tracker(cmdid) }
+
+# interfaces are needed to make any connection from one instance of a block to another block's instance
+interfaces:
+  test:
+    interfaceType: rdy_vld
+    desc: "Test interface"
+    structures:
+      - {structure: test_st, structureType: data_t}
+  alpha:
+    interfaceType: rdy_vld
+    desc: "Test interface alpha"
+    structures:
+      - {structure: test_st, structureType: data_t}
+  beta:
+    interfaceType: rdy_vld
+    desc: "Test interface beta"
+    structures:
+      - {structure: test_st, structureType: data_t}
+  gamma:
+    interfaceType: rdy_vld
+    desc: "Test interface gamma"
+    structures:
+      - {structure: test_st, structureType: data_t}
+  testrvSize:
+    interfaceType: rdy_vld
+    desc: "Data path test interface"
+    maxTransferSize: 2048
+    multiCycleMode: api_list_size
+    structures:
+      - {structure: testDataSt, structureType: data_t}
+  testrvTracker:
+    interfaceType: rdy_vld
+    desc: "Data path test interface"
+    maxTransferSize: 2048
+    multiCycleMode: api_list_tracker
+    trackerType: cmdid
+    structures:
+      - {structure: testDataSt, structureType: data_t}
+
+# blocks these are subsystems or blocks that can be instanced one or more times
+blocks:
+  nested_tb:
+    desc: "Testbench container for nested (root container)"
+    hasVl: false
+    hasRtl: false
+    hasMdl: false
+    hasTb: false
+  nested:
+    desc: "The top most block, the self-contained DUT"
+    hasVl: false
+    hasRtl: false
+    hasMdl: true
+    hasTb: true
+  testContainer:
+    desc: Top for test blocks
+    hasMdl: true
+    hasRtl: false
+  testBlock:
+    desc: Top test block
+    hasMdl: true
+    hasRtl: false
+  subBlockContainer:
+    desc: container of sub test blocks
+    hasMdl: true
+    hasRtl: false
+  subBlock:
+    desc: sub test block
+    hasMdl: true
+    hasRtl: false
+  firstBlock:
+    desc: initiator
+    hasMdl: true
+    hasRtl: false
+  secondBlock:
+    desc: middle Block
+    hasMdl: true
+    hasRtl: false
+  lastBlock:
+    desc: last block
+    hasMdl: true
+    hasRtl: false
+  secondSubA:
+    desc: sub block A of second
+    hasMdl: true
+    hasRtl: false
+  secondSubB:
+    desc: sub block B of second
+    hasMdl: true
+    hasRtl: false
+  nestedL1:
+    desc: Nested mapping test case L1
+    hasMdl: true
+    hasRtl: false
+  nestedL2:
+    desc: Nested mapping test case L2
+    hasMdl: true
+    hasRtl: false
+  nestedL3:
+    desc: Nested mapping test case L3
+    hasMdl: true
+    hasRtl: false
+  nestedL4:
+    desc: Nested mapping test case L4
+    hasMdl: true
+    hasRtl: false
+  nestedL5:
+    desc: Nested mapping test case L5
+    hasMdl: true
+    hasRtl: false
+  nestedL6:
+    desc: Nested mapping test case L6
+    hasMdl: true
+    hasRtl: false
+  producer:
+    desc: producer test block
+    hasMdl: true
+    hasRtl: false
+  consumer:
+    desc: consumer test block
+    hasMdl: true
+    hasRtl: false
+
+# instances, these are instantiations of objects
+instances:
+  nested_tb:
+    container: nested_tb # self referential
+    instanceType: nested_tb
+    instGroup: top
+  u_nested:
+    container: nested_tb
+    instanceType: nested
+    instGroup: top
+  uTestBlock0:
+    container: testContainer
+    instanceType: testBlock
+  uTestBlock1:
+    container: testContainer
+    instanceType: testBlock
+  uSubBlockContainer0:
+    container: testContainer
+    instanceType: subBlockContainer
+  uSubBlockContainer1:
+    container: testContainer
+    instanceType: subBlockContainer
+  uSubBlockContainer2:
+    container: testContainer
+    instanceType: subBlockContainer
+  uSubBlock0:
+    container: subBlockContainer
+    instanceType: subBlock
+  uSubBlock1:
+    container: subBlockContainer
+    instanceType: subBlock
+  uTestTop:
+    container: nested
+    instanceType: testContainer
+  uNestedL1:
+    container: nested
+    instanceType: nestedL1
+  uNestedL2:
+    container: nestedL1
+    instanceType: nestedL2
+  uNestedL3:
+    container: nestedL2
+    instanceType: nestedL3
+  uNestedL4:
+    container: nestedL3
+    instanceType: nestedL4
+  uNestedL5:
+    container: nestedL4
+    instanceType: nestedL5
+  uNestedL6:
+    container: nestedL5
+    instanceType: nestedL6
+  uFirst:
+    container: testContainer
+    instanceType: firstBlock
+  uSecond:
+    container: testContainer
+    instanceType: secondBlock
+  uLast:
+    container: testContainer
+    instanceType: lastBlock
+  uSecondSubA:
+    container: secondBlock
+    instanceType: secondSubA
+  uSecondSubB:
+    container: secondBlock
+    instanceType: secondSubB
+  uProducer:
+    container: testContainer
+    instanceType: producer
+  uConsumer:
+    container: testContainer
+    instanceType: consumer
+
+connections:
+  - {interface: test,                  src: uTestBlock0,         srcport: loop1src,  dst: uTestBlock1,         dstport: loop1dst, interfaceName: loop1a}
+  - {interface: test,                  src: uTestBlock1,         srcport: loop1src,  dst: uTestBlock0,         dstport: loop1dst, interfaceName: loop1b}
+  - {interface: test,                  src: uTestBlock0,         srcport: loop2src,  dst: uSubBlockContainer0, dstport: in,       interfaceName: loop2a}
+  - {interface: test,                  src: uSubBlockContainer0, srcport: out,       dst: uTestBlock0,         dstport: loop2dst, interfaceName: loop2b}
+  - {interface: test,                  src: uTestBlock1,         srcport: loop2src,  dst: uSubBlockContainer1, dstport: in,       interfaceName: loop3a}
+  - {interface: test,                  src: uSubBlockContainer1, srcport: out,       dst: uSubBlockContainer2, dstport: in,       interfaceName: loop3b}
+  - {interface: test,                  src: uSubBlockContainer2, srcport: out,       dst: uTestBlock1,         dstport: loop2dst, interfaceName: loop3c}
+  - {interface: test,                  src: uSubBlock0,          srcport: src,       dst: uSubBlock1,          dstport: dst}
+  - {interface: test,                  src: uTestTop,                                dst: uNestedL1,           dstport: nested1}
+  - {interface: alpha, name: primary,  src: uFirst,                                  dst: uSecond          } # no ports, but named
+  - {interface: beta,                  src: uSecond,                                 dst: uLast            } # no ports or name
+  - {interface: gamma, name: response, src: uLast,                                   dst: uFirst           }
+  - {interface: test,                  src: uSecondSubA,                             dst: uSecondSubB           }
+  - {interface: testrvTracker,         src: uProducer,                               dst: uConsumer,         name: src_trans_dest_trans_rv_tracker  }
+  - {interface: testrvTracker,         src: uProducer,                               dst: uConsumer,         name: src_clock_dest_trans_rv_tracker  }
+  - {interface: testrvTracker,         src: uProducer,                               dst: uConsumer,         name: src_trans_dest_clock_rv_tracker  }
+  - {interface: testrvSize,            src: uProducer,                               dst: uConsumer,         name: src_trans_dest_trans_rv_size, maxTransferSize: 1024  }
+  - {interface: testrvSize,            src: uProducer,                               dst: uConsumer,         name: src_clock_dest_trans_rv_size  }
+  - {interface: testrvSize,            src: uProducer,                               dst: uConsumer,         name: src_trans_dest_clock_rv_size  }
+
+connectionMaps:
+  - {interface: alpha, name: primary,  block: secondBlock,                      direction: dst, instance: uSecondSubA  } # mapping without ports
+  - {interface: beta,                  block: secondBlock,                      direction: src, instance: uSecondSubB  } #mapping without ports or name
+  - {interface: test,                  block: subBlockContainer, port: in,      direction: dst, instance: uSubBlock0, instancePort: dst }
+  - {interface: test,                  block: subBlockContainer, port: out,     direction: src, instance: uSubBlock1, instancePort: src }
+  - {interface: test,                  block: nestedL1,          port: nested1, direction: dst, instance: uNestedL2, instancePort: nested2 }
+  - {interface: test,                  block: nestedL2,          port: nested2, direction: dst, instance: uNestedL3, instancePort: nested3 }
+  - {interface: test,                  block: nestedL3,          port: nested3, direction: dst, instance: uNestedL4, instancePort: nested4 }
+  - {interface: test,                  block: nestedL4,          port: nested4, direction: dst, instance: uNestedL5, instancePort: nested5 }
+  - {interface: test,                  block: nestedL5,          port: nested5, direction: dst, instance: uNestedL6, instancePort: nested6 }

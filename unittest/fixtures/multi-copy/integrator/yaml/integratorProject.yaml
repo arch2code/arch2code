@@ -1,0 +1,27 @@
+yamlFormat: 2
+
+# Multi-copy projectOverride fixture root (Tier-1 scan-all).
+# The integrator references three standalone sub-projects (subA, subB, subC);
+# each nests its OWN physically distinct copy of the types-only `shared`
+# project, reached through normal include: edges and a projectFiles: reference
+# to that copy's project file. All three copies declare projectName `shared`.
+# The ROOT projectOverride below unifies them, selecting subA's copy as the
+# master; the sub-projects are left unedited. Three copies (not two) so the
+# non-master set has two members: copy divergence is warned only when the
+# NON-MASTER copies disagree with each other. This composition would raise a
+# duplicate-provider error in readRaw today - it is scanner-only input.
+projectName: integrator
+
+projectFiles:
+    - integratorTop.yaml
+    - ../../subA/yaml/subAProject.yaml
+    - ../../subB/yaml/subBProject.yaml
+    - ../../subC/yaml/subCProject.yaml
+
+projectOverrides:
+    shared: ../../subA/shared/yaml/sharedProject.yaml
+
+topInstance: integrator_tb
+
+dirs:
+    root: ..

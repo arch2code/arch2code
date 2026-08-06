@@ -4,6 +4,14 @@
 
 The schema system defines how YAML files are parsed, validated, and transformed into a relational database structure. It provides a declarative way to specify the structure of configuration data, handling everything from simple key-value pairs to complex nested hierarchies with composite keys.
 
+## Governing Invariants (read first)
+
+These properties govern every validator and post-hook. Violate them and your check will be wrong in composed/multi-file projects even when it passes on a single file. Read this section before deciding where any new validation belongs.
+
+- **Validation is scope-based, not global.** By default, a reference is resolved by walking the include chain of the *referring row's own context file* (`lookupInScope`, `validateForeignKey` in `processYaml.py`), with `_a2csystem` as an implicit fallback. Omit `scope` to select this behavior; `scope: yamlFile` is not a supported alias. Two rows in files that do not include each other are mutually invisible to scoped lookup. The explicit `scope: global` validator and the internal `_global` sentinel deliberately walk every loaded context. Global validation is architecturally undesirable because it discards include-chain isolation; adding or retaining `scope: global` requires explicit architect signoff.
+- **A successful foreign key proves that its target row was already parsed; it does not schedule parsing.** Files are processed in include-dependency order, then sections and rows in authored YAML order. `_validate: section:` resolves inline and reports an error when the target is not yet visible. A later `_post` hook may rely on the successfully resolved target row being complete, but it must not assume that every row in the target section has been parsed. For example, the `parameters.block` foreign key guarantees that the resolved block row and its nested params are available when a variant-row hook runs, provided the block definition was authored in an earlier-processed file, section, or row.
+- **Use a project-wide pass only when a row hook cannot express the invariant or cannot be given a reliable dependency.** The canonical case is an aggregate empty-set or orphan check where there is no row to hook (`_validateIpParametersLinkage`: every exposed ipParameters constant must be consumed by at least one block param). Run such passes from `projectCreate` after `processYamls()`. Whenever a pass resolves references, resolve them in each row's own scope via `lookupInScope`; do not treat all context buckets as one namespace. A check concerning one row and a target guaranteed by that row's successful FK normally belongs in `_validate` or `_post` (see `_post_validateVariantParameterCompleteness`).
+
 ## Core Concepts
 
 ### 1. YAML Anchors vs Database Keys
@@ -25,9 +33,9 @@ modports:
 
 ```
 # Database Structure (for collapsed nested table)
-modportGroupKey = "src/inputs"   # <- Database composite key
-modportGroup = "inputs"          # <- YAML anchor from nested structure
-modport = "src"                  # <- Parent key
+interface_typemodportmodportGroup = "statussrcinputs"               # <- Storage key
+interface_typemodportmodportGroupKey = "statussrcinputs/_a2csystem" # <- Qualified storage key
+modportGroup = "inputs"                                            # <- YAML anchor
 ```
 
 ### 2. Table Types
@@ -69,8 +77,9 @@ When the schema is validated, the system automatically derives a `parent_key_cha
 Each nested table tracks its immediate parent's storage key field via `parent_storage_key_field`. This enables efficient lookups during database loading.
 
 **Example**: For `modportGroups` nested under `modports`:
-- `parent_storage_key_field = 'modport'`
-- The field `'modportKey'` (parent_storage_key_field + 'Key') contains the parent's storage key value
+- `parent_storage_key_field = 'interface_typemodport'`
+- `interface_typemodportKey` contains the qualified parent storage key, such as
+  `statussrc/_a2csystem`
 
 #### Automatic Field Generation
 
@@ -80,20 +89,30 @@ During schema validation, the system automatically creates necessary fields:
 2. **Outer Fields**: For nested tables, automatically adds parent key fields marked as `outer`
 3. **Qualified Keys**: Automatically creates `{field}Key` fields with context appended
 
-**Example**: When defining modports with key `modport`:
+**Example**: When defining `modports` with key `modport`:
 - System creates: `modport` (anchor field)
-- System creates: `modportKey` (qualified key field with context)
+- System creates: `modportKey` (qualified anchor field, such as `src/_a2csystem`)
+- System creates: `interface_typemodport` (storage key, such as `apbsrc`)
+- System creates: `interface_typemodportKey` (qualified storage key, such as `apbsrc/_a2csystem`)
 - Child tables automatically inherit: `modport` (as outer field)
 
 #### Key Composition
 
-Keys are built hierarchically, with context appended once at the end (not duplicated at each level):
+Keys are built hierarchically. Component values are concatenated directly with
+**no separator**. Qualification then appends one `/` delimiter followed by the
+context string verbatim:
 
 - **Anchor**: Simple value (e.g., `'inputs'`)
-- **Storage Key**: Parent keys + anchor (e.g., `'src/inputs'`)
-- **Qualified Key**: Storage key + context (e.g., `'apb/src/inputs/_a2csystem'`)
+- **Storage Key**: Parent storage key + anchor (e.g., `'apbsrcinputs'`)
+- **Qualified Key**: Storage key + `/` + context (e.g., `'apbsrcinputs/_a2csystem'`)
 
-**Not**: `'apb/_a2csystem/src/_a2csystem/inputs/_a2csystem'` ❌
+The context is commonly a YAML filename or path and may itself contain `/`.
+Therefore, a qualified key may contain multiple slashes; only the first slash
+after the delimiter-free storage key is added by key qualification. Do not
+infer component boundaries by splitting a qualified key.
+
+**Not**: `'apb/src/inputs/_a2csystem'` ❌ — those first two slashes incorrectly
+separate storage-key components.
 
 ## Field Types
 
@@ -124,7 +143,7 @@ blocks:
 modportGroups:
   _attribs: [collapsed, multiple]
   modportGroup: anchor  # Captures "inputs"/"outputs" from YAML
-  modportGroupKey:      # Composite key for database
+  modportGroupId:       # Composite key for database
     _key:
       modport: outerkey
       modportGroup: anchor
@@ -256,6 +275,12 @@ Attributes modify how tables and fields are processed. Specified in `_attribs` a
 - **Database**: Creates table with multiple rows
 - **Absence**: If not specified, only single entry expected
 
+#### `flat`
+- **Meaning**: Maintain an additional top-level index of this section keyed by each row's qualified storage key (`flatData[section][qualifiedStorageKey]`), in parallel with the per-context-bucket storage (`data[section][context][name]`). Sets `Node.is_flat` in `schema.py`.
+- **Dedup consequence**: `addFlatRecord` enforces one row per qualified storage key **for flat sections only**. Non-flat sections are stored per-context bucket and are NOT deduplicated across files — two mutually-invisible files may legitimately hold same-named rows. (Example: `parametersvariantsparams` is non-flat, so its leaf binding rows are bucketed per context and are not cross-file deduplicated.)
+- **Foreign-key consequence**: A plain (non-combo) `_validate: section:` foreign key may target ONLY a flat section, and its `field:` must name that section's storage key. This is enforced at schema-validation time (`schema.py::_validate_foreign_key_lookups`). See "Foreign-Key Invariants" under `_validate`.
+- **Orthogonality**: `flat` describes an index/dedup policy; it is independent of `collapsed`/`multiple`/`dataGroup`, which describe nesting shape. A section may be both `flat` and `multiple`, or `flat` and `collapsed`.
+
 #### `optional`
 - **Meaning**: Entire table/field may be omitted
 - **Validation**: No error if missing
@@ -341,11 +366,11 @@ Special keys that define schema metadata (prefixed with underscore).
   - Composite key constructed by concatenating field values
 - **Example**:
 ```yaml
-modportGroupKey:
+modportGroupId:
   _key:
     modport: outerkey      # From parent
     modportGroup: anchor   # From YAML structure
-# Result: "src/inputs"
+# Result: "srcinputs"; generated qualified field is modportGroupIdKey
 ```
 
 ### `_combo`
@@ -368,30 +393,68 @@ _combo:
 blockType:
   _validate:
     section: blocks
-    scope: yamlFile  # or specific context
+    field: block
 ```
 
+Omit `scope` for the referring row's include-chain scope. Global lookup discards
+include-chain isolation and is therefore undesired. Adding or retaining
+`scope: global` requires explicit architect signoff.
+
+#### Foreign-Key Invariants (enforced in `schema.py::_validate_foreign_key_lookups`)
+
+These are checked at schema-validation time; a violation is a schema bug that fails fast. They also define exactly what `processYaml.py::validateForeignKey` may assume at parse time:
+
+1. A `_validate: section:` must name an existing section.
+2. Its `field:` must name an existing field in that section.
+3. **Plain (non-combo) FK**: the target section must be `flat`, and `field:` must name the target's storage key. Resolution is a scoped `lookupInScope` walking the referring row's include chain (plus the `_a2csystem` fallback).
+4. **Combo FK**: the target field must also be a combo, and the source and target combo sources must be identical. Resolution walks target rows in scope order and matches the component fields.
+
 ### `_post`
-- **Purpose**: Name of post-processing function to call after processing section
+- **Purpose**: Name a post-processing function invoked after a row of this section is fully processed.
+- **Firing contract** (see the tail dispatch in `processYaml.py::processSimple`):
+  - Fires at the **tail of `processSimple`**, AFTER all of the row's fields — including recursively processed nested/collapsed children — are populated. Child data and combo/`{field}Key` fields are therefore already available to the hook.
+  - Fires **once per row** of the section it is attached to. A hook on a collapsed leaf (e.g. `parametersvariantsparams`) fires per leaf binding row, not once per parent.
+  - Runs in the **row's own file scope**: the hook receives that row's `yamlFile` and must resolve references with `lookupInScope(objType, yamlFile, name)`. Do not iterate other context buckets from inside a `_post` hook — that breaks the scope model (see Governing Invariants and "Choosing Where a Validation Belongs").
+- **Not a project-wide pass.** For an inherently aggregate cross-file check, use a pass in `projectCreate` after `processYamls()`, not a `_post` hook. See `_post_validateBlockParamBacking` and `_post_validateVariantBindingSizing` for correct row-level, scope-respecting hooks.
 - **Example**: `_post: _post_process_blocks`
 
 ### `_singular`
 - **Purpose**: Handle single-value shorthand in YAML
 - **Example**: If YAML has `parameter: width` instead of `parameter: {name: width}`
 - **Maps**: Single value to specified field name
+- **Scope**: Applies only to sections that declare `_singular`. A scalar authored for a non-`_singular` section is not coerced and is malformed YAML.
 
 ### `_mapto`
 - **Purpose**: Rename field in database (maps YAML field to different DB column)
 - **Use Case**: When DB schema differs from YAML structure
+
+## Choosing Where a Validation Belongs
+
+Decide in this order; stop at the first that fits. See "Governing Invariants" for the scope and parse-ordering properties these choices depend on.
+
+- **Enum / fixed value set** → schema `_validate: values:`. No scope; a pure per-field check.
+- **Reference into another section that this row names directly** → schema `_validate: section:/field:`.
+  - Scope: omit `scope` for the referring row's include chain. `scope: yamlFile` is not a special value. `scope: global` is undesired and requires explicit architect signoff because it discards include-chain isolation.
+  - Requires the target to be `flat` (plain FK) or combo-matched (combo FK) — see Foreign-Key Invariants.
+  - Parse-time guarantee: when validation succeeds, the matched target row was already parsed and is in scope. The FK does not reorder sections or rows, and it says nothing about unmatched rows in the target section.
+- **One row, cross-checked against something a plain FK cannot express** (e.g. a context-scoped section like `constants`, a derived value, or a "this row must bind all of a related section's rows" completeness check) → a `_post` hook on that section.
+  - Runs per row, in the row's own file scope, after children are populated. Resolve references with `lookupInScope(objType, yamlFile, name)`.
+  - Every referenced row must be guaranteed to have been processed already, normally by an FK on this row or by an earlier included file/section. Otherwise use a post-`processYamls()` pass.
+  - Examples: `_post_validateBlockParamBacking`, `_post_validateVariantBindingSizing`, and `_post_validateVariantParameterCompleteness` — the last is the canonical case of a per-row `_post` that resolves a foreign reference in the row's own scope: it resolves each variant row's block via `lookupInScope('blocks', yamlFile, block)`, then compares the block's declared params against the row's bound params, with no global bucket iteration.
+- **Inherently aggregate, with no single row to hook, or dependent on rows whose parse order cannot be guaranteed** → a project-wide pass in `projectCreate`, after `processYamls()`.
+  - Prefer an FK plus a row hook when the source row directly names a target. Use the project-wide pass when the failing condition produces no row to attach to, or when all relevant rows must exist before the check can be evaluated.
+  - The real example is `_validateIpParametersLinkage`: for each file with exposed ipParameters constants, it checks that each constant appears in the file's consumed `blocksparams` set, flagging any unconsumed constant. There is no consuming row for an orphan constant, so it cannot be a per-row `_post`.
+  - When such a pass does resolve references, resolve each in its own scope via `lookupInScope`. Do NOT iterate every context bucket and treat co-existence of same-named rows as a conflict — that ignores include-chain visibility and produces false positives across mutually-invisible scopes. A completeness check like "a variant binds all its block's params" resolves by scope and therefore belongs in a per-row `_post` (`_post_validateVariantParameterCompleteness`), not here.
 
 ## Common Patterns
 
 ### Pattern 1: Simple Top-Level Table
 
 ```yaml
-constants:
+# illustrative section; see schema.yaml for real field lists
+settings:
   _attribs: [multiple]
-  constant: key
+  setting: key
   value: required
   description: optional
 ```
@@ -441,13 +504,8 @@ modports:
   modport: key
   modportGroups:
     _attribs: [optional, multiple, collapsed]
-    interface_type: outerkey
-    modport: outerkey
-    modportGroup: anchor        # Captures YAML anchor
-    modportGroupKey:            # Composite database key
-      _key:
-        modport: outerkey
-        modportGroup: anchor
+    modportGroup: key       # Nested key captures the YAML anchor;
+                            # parent fields and storage key are automatic
 ```
 
 **YAML**:
@@ -459,8 +517,8 @@ modports:
 ```
 
 **Database** (`interface_defsmodportsmodportGroups`):
-- `{interface_type: 'status', modport: 'src', modportGroup: 'inputs', modportGroupKey: 'src/inputs'}`
-- `{interface_type: 'status', modport: 'src', modportGroup: 'outputs', modportGroupKey: 'src/outputs'}`
+- `{interface_type: 'status', modport: 'src', modportGroup: 'inputs', interface_typemodportmodportGroup: 'statussrcinputs', interface_typemodportmodportGroupKey: 'statussrcinputs/_a2csystem'}`
+- `{interface_type: 'status', modport: 'src', modportGroup: 'outputs', interface_typemodportmodportGroup: 'statussrcoutputs', interface_typemodportmodportGroupKey: 'statussrcoutputs/_a2csystem'}`
 
 ### Pattern 5: Composite Key without Anchor
 
@@ -477,7 +535,8 @@ connections:
         direction: required
 ```
 
-**Database**: Key is `{connection}/{direction}` (e.g., `conn1/src`, `conn1/dst`)
+**Database**: Key is the direct concatenation `{connection}{direction}` (e.g.,
+`conn1src`, `conn1dst`); its qualified key appends `/context`.
 
 ### Pattern 6: Context-Aware Validation
 
@@ -488,10 +547,12 @@ blocks:
   parentBlockKey:
     _validate:
       section: blocks
-      scope: yamlFile  # Look in same context as current file
+      field: block
 ```
 
-**Behavior**: Validates `parentBlock` exists in the blocks table within the appropriate context
+**Behavior**: With `scope` omitted, validates that `parentBlock` exists in the
+referring row's include-chain scope. The referenced block must already have
+been processed.
 
 ### Pattern 7: DataGroup Table (1-to-1 Nested)
 
@@ -553,6 +614,14 @@ prj.data['interface_defs']['apb/_a2csystem']['sc_channel'] = {
    - `anchor` = YAML key for this entry
    - `item` = YAML value (dict or scalar)
 
+#### Custom Sections:
+Some YAML root sections are handled before schema lookup because they need custom dispatch instead of their own table schema.
+
+- `connections`: custom connection expansion and endpoint handling.
+- `ipParameters`: IP-local parameterization container. Its child sections (`constants`, `types`, and `_mapto` aliases such as `enums`) are processed through their normal schemas, then marked parameterizable by the section handlers.
+
+Custom sections may not have a top-level schema entry. When adding one, register it in `processYaml.py` and document whether it delegates to existing schemas or owns all processing itself.
+
 #### `processSimple` Flow:
 1. **Schema Lookup**: Get field definitions for this section
 2. **Singular Conversion**: If single value, wrap in dict
@@ -569,12 +638,14 @@ prj.data['interface_defs']['apb/_a2csystem']['sc_channel'] = {
 6. **Post-Processing**: Call `_post` function if defined
 7. **Return**: Processed entry dict
 
+**`item` shapes and the `outer` distinction**: At the top-level dispatch (`outer == None`), `item` is a mapping of fields, and a non-mapping there is malformed YAML. In nested processing (`outer != None`), `item` may instead be a scalar — coerced to a mapping for a `_singular` section — or a list, which a collapsed child table (for example a `singleEntryList` group) consumes directly rather than iterating as fields. Only the `outer == None` field walk requires a mapping.
+
 #### `processSubTable` Flow:
 1. **Schema Lookup**: Get nested schema definition
 2. **Attribute Check**: Check for `collapsed`, `singleEntryList`, `multiple`
 3. **Key Construction**:
    - Normal: Use YAML anchor as-is
-   - Collapsed + Anchor: Build composite key (`parent/anchor`)
+   - Nested/collapsed storage: Concatenate parent storage key and anchor with no separator (`parentanchor`)
 4. **Iterate Items**: Call `processSimple` for each nested entry
 5. **Store**: Add to both local return and global `self.data`
 
@@ -583,6 +654,28 @@ prj.data['interface_defs']['apb/_a2csystem']['sc_channel'] = {
 - Create tables from section names
 - Insert rows with all fields (including qualified keys)
 - Nested tables automatically linked via `outerkey` fields
+
+### Data Contract by Phase
+
+Do not interchange these shapes; they belong to different phases:
+
+1. **Parse-time `projectCreate.data`** stores every schema section in context
+   buckets: `data[section][yamlFile][storageKey]`.
+2. **Parse-time `projectCreate.flatData`** exists only for sections marked
+   `flat` and indexes the same row objects by qualified storage key:
+   `flatData[section][qualifiedStorageKey]`. The `flat` attribute describes
+   this parse-time index; it does not describe SQL table layout.
+3. **SQLite** stores every schema node as a relational table. Nested table names
+   concatenate their schema path, such as `parametersvariantsparams`.
+4. **Loaded `projectOpen.data`** indexes each table's rows by qualified storage
+   key. It also attaches nested children beneath their parent rows to reconstruct
+   the authored hierarchy.
+5. **Loaded `projectOpen.data_by_parent`** is the secondary index for nested
+   tables: `data_by_parent[table][qualifiedParentStorageKey][nestedIndex]`.
+
+Code running during parsing must use the first two contracts. Generator-facing
+code running after `projectOpen` must use the last two and should normally use
+the reconstructed parent hierarchy.
 
 ### 4. Database Loading (`projectOpen`)
 
@@ -626,28 +719,28 @@ The loading system maintains two data structures:
    - Format: `{storage_key: entry_dict}`
    - Example: `self.data['interface_defs']['apb/_a2csystem'] = {...}`
    - For multi-entry tables: Also stores individual entries by their qualified storage keys
-   - Example: `self.data['parametersvariants']['blockF/v1/width/mixed.yaml'] = {...}`
+   - Example: `self.data['parametersvariantsparams']['blockFv1widthmixed/mixed.yaml'] = {...}`
 
 2. **`self.data_by_parent[tableName]`**: Secondary index by parent's storage key (nested tables only)
    - Used for efficient child lookups when loading parent tables
    - Format: `{parent_storage_key: {unqualified_anchor: entry_dict}}`
    - Children indexed by unqualified anchor (just the anchor, e.g., `'inputs'`) for easier access
-   - Example: `self.data_by_parent['modportGroups']['apb/src/_a2csystem'] = {'inputs': {...}, 'outputs': {...}}`
+   - Example: `self.data_by_parent['interface_defsmodportsmodportGroups']['apbsrc/_a2csystem'] = {'inputs': {...}, 'outputs': {...}}`
    - For multi-entry tables: Both indexes maintained simultaneously during loading
 
 #### Multi-Entry Table Dual Storage
 
 Multi-entry nested tables (marked with `multiple` attribute) maintain **two simultaneous storage locations** during loading:
 
-**1. Flat Top-Level Storage** (`self.data[tableName]`):
+**1. Table-Level Storage** (`self.data[tableName]`):
 - Each individual entry stored with its own qualified storage key
 - Enables direct table-wide lookups and queries
-- Example for `parametersvariants`:
+- Example for the `parametersvariantsparams` leaf table:
 ```python
-self.data['parametersvariants'] = {
-    'blockF/v1/width/mixed.yaml': {block: 'blockF', variant: 'v1', param: 'width', ...},
-    'blockF/v1/height/mixed.yaml': {block: 'blockF', variant: 'v1', param: 'height', ...},
-    'blockF/v2/width/mixed.yaml': {block: 'blockF', variant: 'v2', param: 'width', ...},
+self.data['parametersvariantsparams'] = {
+    'blockFv1widthmixed/mixed.yaml': {'block': 'blockF', 'variant': 'v1', 'param': 'width', ...},
+    'blockFv1heightmixed/mixed.yaml': {'block': 'blockF', 'variant': 'v1', 'param': 'height', ...},
+    'blockFv2widthmixed/mixed.yaml': {'block': 'blockF', 'variant': 'v2', 'param': 'width', ...},
     ...
 }
 ```
@@ -655,13 +748,13 @@ self.data['parametersvariants'] = {
 **2. Grouped Parent-Indexed Storage** (`self.data_by_parent[tableName]`):
 - Entries grouped by parent's storage key, indexed by anchor within each group
 - Enables efficient nested structure reconstruction
-- Example for same `parametersvariants` data:
+- The outer key is the qualified storage key of the immediate parent row; the
+  inner key is selected from the child node's anchor or storage-key metadata.
 ```python
-self.data_by_parent['parametersvariants'] = {
-    'blockF/mixed.yaml': {  # Parent's storage key
-        'v1/width': {block: 'blockF', variant: 'v1', param: 'width', ...},
-        'v1/height': {block: 'blockF', variant: 'v1', param: 'height', ...},
-        'v2/width': {block: 'blockF', variant: 'v2', param: 'width', ...},
+self.data_by_parent['parametersvariantsparams'] = {
+    qualified_variant_key: {
+        'width': {'block': 'blockF', 'variant': 'v1', 'param': 'width', ...},
+        'height': {'block': 'blockF', 'variant': 'v1', 'param': 'height', ...},
         ...
     }
 }
@@ -671,6 +764,34 @@ self.data_by_parent['parametersvariants'] = {
 - Flat storage: For table-wide operations, SQL-like access patterns
 - Grouped storage: For reconstructing hierarchical in-memory structure that matches YAML
 - Both populated simultaneously during `loadTable()` for efficiency
+
+#### Parameter Variant Identity
+
+Variants are authored as a nested mapping (`<block>: { <variant>: { <param>: <value> } }`),
+so the `parameters` section is a 3-level nesting: `parameters` → `variants`
+(the intermediate `(block, variant)` table) → `params` (the leaf binding rows).
+The leaf table is therefore `parametersvariantsparams`; the individual binding
+rows and their identity fields live there. `parametersvariants` holds only the
+`(block, variant)` intermediate rows.
+
+- `parametersvariantsparams.param` is the bare user-authored parameter name and remains the emitted HDL/SystemC Config field name.
+- `parametersvariantsparams.blockParamKey` is the block-scoped target parameter identity. It validates the schema-built `blockParam` combo against `blocksparams.blockparam` and should be used for foreign-key joins, override maps, and other identity-sensitive comparisons.
+- `parametersvariantsparams.blockVariantParamKey` is the unique row key for one `(block, variant, param)` variant binding row (the combo also carries the declaring `projectName`).
+- Bare `parametersvariantsparams.param` is not sufficient as a foreign-key identity when multiple visible blocks declare the same parameter name, for example two blocks that both declare `WIDTH`.
+
+Example:
+```python
+self.data['parametersvariantsparams']['blockFv1widthmixed/mixed.yaml'] = {
+    'param': 'width',
+    'blockParamKey': 'blockFwidth/mixed.yaml',
+    'blockVariantParamKey': 'blockFv1widthmixed/mixed.yaml',
+    ...
+}
+# In-memory hierarchical access (leaf under variant under block):
+self.data['parameters'][qualBlock]['variants'][variant]['params'][param]
+```
+
+Template emission should continue to use `param` for generated field names; only identity-sensitive logic should use `blockParamKey`.
 
 #### Loading Process
 
@@ -685,24 +806,24 @@ self.data_by_parent['parametersvariants'] = {
 #### Example: Loading interface_defs → modports → modportGroups
 
 ```python
-# Step 1: Load modportGroups (deepest first)
+# Step 1: Load interface_defsmodportsmodportGroups (deepest first)
 # Creates:
-self.data['modportGroups']['apb/src/inputs/_a2csystem'] = {
+self.data['interface_defsmodportsmodportGroups']['apbsrcinputs/_a2csystem'] = {
     'modportGroup': 'inputs',
-    'modportKey': 'src/_a2csystem',  # Parent storage key
+    'interface_typemodportKey': 'apbsrc/_a2csystem',
     ...
 }
 
 # Also creates:
-self.data_by_parent['modportGroups']['apb/src/_a2csystem'] = {
+self.data_by_parent['interface_defsmodportsmodportGroups']['apbsrc/_a2csystem'] = {
     'inputs': {...},   # Indexed by unqualified anchor (easier access)
     'outputs': {...}
 }
 
 # Step 2: Load modports (parents of modportGroups)
 # When processing a modport row, looks up its children:
-parent_storage_key = 'apb/src/_a2csystem'  # From modportKey field
-children = self.data_by_parent['modportGroups'][parent_storage_key]
+parent_storage_key = 'apbsrc/_a2csystem'  # From interface_typemodportKey
+children = self.data_by_parent['interface_defsmodportsmodportGroups'][parent_storage_key]
 modport_row['modportGroups'] = children  # Attach with anchor-based keys
 
 # Step 3: Load interface_defs (top level)
@@ -726,13 +847,14 @@ The qualified field name (storage_key_field + 'Key') that stores the contextuali
 - Precomputed during schema validation to avoid string manipulation at runtime
 - Used for efficient lookups during database loading
 - Contains the full qualified key: `{storage_key_value}/{context}` (e.g., `'apb/_a2csystem'`)
-- Example: If `storage_key_field = 'modport'`, then `storage_key_field_qualified = 'modportKey'`
+- Example: If `storage_key_field = 'interface_typemodport'`, then
+  `storage_key_field_qualified = 'interface_typemodportKey'`
 
 #### `parent_storage_key_field: Optional[str]`
 The parent table's unqualified storage key field name.
 - Used by nested tables to reference parent's key
 - Enables efficient parent-child lookups during loading
-- Example: For `modportGroups` nested under `modports`, value is `'modport'`
+- Example: For `modportGroups` nested under `modports`, value is `'interface_typemodport'`
 
 #### `anchor_field: Optional[str]`
 The field name that captures the YAML anchor (the dict key the user types).
@@ -747,7 +869,7 @@ Called during schema validation to set up parent context.
 
 **Arguments**:
 - `parent_keys`: List of unqualified parent key field names (e.g., `['interface_type', 'modport']`)
-- `parent_storage_key`: Parent's storage key field name (e.g., `'modport'`)
+- `parent_storage_key`: Parent's storage key field name (e.g., `'interface_typemodport'`)
 
 **Effect**: Automatically creates `outer` fields for each parent key and sets up parent tracking.
 
@@ -769,7 +891,8 @@ Builds the composite storage key for a database row.
 **Arguments**:
 - `row`: Database row dict with all key field values
 
-**Returns**: Composite key string (e.g., `'apb/src/inputs/_a2csystem'`)
+**Returns**: Qualified storage or grouping key. For a multi-entry nested table,
+this is its qualified parent storage key (e.g., `'apbsrc/_a2csystem'`).
 
 **Used During**: Database loading (`projectOpen.loadTable()`)
 
@@ -780,25 +903,28 @@ row = {
     'interface_type': 'apb',
     'modport': 'src',
     'modportGroup': 'inputs',
+    'interface_typemodportKey': 'apbsrc/_a2csystem',
+    'interface_typemodportmodportGroupKey': 'apbsrcinputs/_a2csystem',
     '_context': '_a2csystem'
 }
 node.build_storage_key(row)
-# Returns: 'apb/src/inputs/_a2csystem'
+# Returns: 'apbsrc/_a2csystem'
 ```
 
 ### `get_parent_storage_key_field_name() -> Optional[str]`
 
 Returns the field name containing the parent's storage key.
 
-**Returns**: Parent storage key field name with 'Key' suffix (e.g., `'modportKey'`), or `None` for top-level tables
+**Returns**: Parent storage key field name with `Key` suffix (e.g.,
+`'interface_typemodportKey'`), or `None` for top-level tables
 
 **Used During**: Database loading to build `data_by_parent` index
 
 **Example**:
 ```python
-node = schema.get_node('modportGroups')
+node = schema.get_node('interface_defsmodportsmodportGroups')
 node.get_parent_storage_key_field_name()
-# Returns: 'modportKey'
+# Returns: 'interface_typemodportKey'
 ```
 
 ### `get_yaml_storage_key(row_dict: dict) -> str`
@@ -833,14 +959,14 @@ Extracts the storage key from a processed YAML row.
 ### 4. Context Management
 - Use `_a2csystem` for system-wide definitions
 - Use `yamlFile` for project-specific definitions
-- `getFromContext` automatically searches `_a2csystem` as fallback
-- Validators should use appropriate scope (usually `yamlFile`)
+- `lookupInScope` walks the include chain of the scope and falls back to `_a2csystem`
+- Validators resolve in the referring row's own scope; omit `scope` for that include-chain default and reserve `scope: global` for signed-off cross-context checks
 
 ### 5. Validation Strategy
 - Use `_validate` with `values` for enums
 - Use `_validate` with `section` for referential integrity
-- Specify `scope` to control lookup context
-- Use `NotFoundFatal=False` for optional references
+- Omit `scope` for the referring row's include-chain scope (the default); `scope: yamlFile` is not a special value, and `scope: global` requires architect signoff
+- Express optional references by marking the field `optional`/`optionalConst` (or via the special-value bypass); `validateForeignKey`/`lookupInScope` return `(None, None)` on a miss and the caller decides whether that is an error
 
 ### 6. Avoiding Common Pitfalls
 - **Don't** use `itemkey` in new code (use `anchor` parameter name)
@@ -898,8 +1024,8 @@ Extracts the storage key from a processed YAML row.
 ### Adding New Validators
 1. Define in schema using `_validate`
 2. Implement custom validation logic if needed
-3. Set appropriate scope for context
-4. Handle `NotFoundFatal` appropriately
+3. Omit `scope` for the referring row's include chain; reserve `scope: global` for signed-off cross-context checks
+4. Resolve via `validateForeignKey`/`lookupInScope`, which return `(None, None)` on a miss; decide in the caller whether a miss is an error
 
 ## Future Enhancements
 
@@ -928,4 +1054,3 @@ The schema system provides a powerful, declarative way to define configuration s
 - **Validation**: Built-in checks for data integrity with fail-fast error handling
 
 By following these specifications and best practices, you can effectively define, validate, and process complex hierarchical configuration data.
-

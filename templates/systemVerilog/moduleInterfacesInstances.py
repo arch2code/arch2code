@@ -1,6 +1,6 @@
-from pathlib import Path
-from pysrc.systemVerilogGeneratorHelper import fileNameBlockCheck, importPackages
+from pysrc.systemVerilogGeneratorHelper import moduleDeclaration, importPackages
 from pysrc.processYaml import camelCase
+from templates.systemVerilog.package import parameterizedDeclLines
 import pysrc.intf_gen_utils as intf_gen_utils
 
 # args from generator line
@@ -10,23 +10,35 @@ def render(args, prj, data):
     out = []
     indent = ' ' * 4
 
-    # Pass in the stem of fileName and the blockName
-    out.append(fileNameBlockCheck(Path(data['fileName']).resolve().stem, data['blockName']))
+    # Module declaration is emitted from the project-qualified module name;
+    # filename/block consistency is validated by the generator before rendering.
+    out.append(moduleDeclaration(data['blockModuleName']))
 
     # Packages
-    startingContext = prj.data['blocks'][prj.getQualBlock(data['blockName'])]['_context']
+    startingContext = data['blockInfo']['_context']
     out.append(importPackages(args, prj, startingContext, data))
 
     # Parameters
-    if ( prj.data['blocks'][data['qualBlock']]['params'] ):
+    if ( data['blockInfo']['params'] ):
         out.append('#(')
-        out.append(",\n".join([f"{indent}parameter {param['param']}" for param in prj.data['blocks'][data['qualBlock']]['params']]))
+        out.append(",\n".join([f"{indent}parameter {param['param']}" for param in data['blockInfo']['params']]))
         out.append(')')
 
     out.append("(")
 
     # Ports
     out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
+
+    # Module-local parameterizable type/struct declarations. SV cannot
+    # parameterize a package, so a parameterized block declares the
+    # types/structs sized from its own module parameters here (the same
+    # deriveParameterizedDeclSets set the package omits). Empty for
+    # non-parameterized blocks.
+    if data['parameterizedDecls']:
+        out.append(f"{indent}// Module-local parameterizable type/struct declarations")
+        for entry in parameterizedDeclLines(data['parameterizedDecls'], prj, data['blockInfo']['params']):
+            out.append(f"{indent}{entry['line']}")
+        out.append("")
 
     #// Interface Instances, needed for between instanced modules inside this module
     out.append(f"{indent}// Interface Instances, needed for between instanced modules inside this module")
@@ -75,20 +87,16 @@ def render(args, prj, data):
     out.append("// Instances")
     for unusedKey, value in data['subBlockInstances'].items():
 
-        qualBlockInst = prj.getQualBlock(value['instanceType'])
-
-        if qualBlockInst in prj.data['parameters'].keys():
-            variant_data = [v for _,v in prj.data['parameters'][qualBlockInst]['variants'].items() if v['variant'] == value['variant']]
-        else:
-            variant_data = None
-
+        # svInstanceParams (from the projectOpen view) gives each child param's
+        # override spelling: a parent param symbol when the parent forwards it,
+        # otherwise the bound literal. Empty for non-parameterized children.
         inst_params = ' '
-        if ( variant_data ):
+        if value['svInstanceParams']:
             inst_params += '#('
-            inst_params += ", ".join([f".{param['param']}({param['value']})" for param in variant_data])
+            inst_params += ", ".join([f".{param['param']}({param['spelling']})" for param in value['svInstanceParams']])
             inst_params += ') '
 
-        out.append(f"{value['instanceType']}{inst_params}{value['instance']} (")
+        out.append(f"{value['instanceTypeModuleName']}{inst_params}{value['instance']} (")
         # Declare connectionMaps that connect to this instance
         for unusedKey2, value2 in data['connectionMaps'].items():
             if (value['instance'] == value2['instance']):

@@ -14,7 +14,6 @@
 #include "trackerBase.h"
 #include "portBase.h"
 
-namespace sc_core {
 
 // ----------------------------------------------------------------------------
 //  CLASS : memory_in_if<A, D>
@@ -437,7 +436,6 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const memory_channel<A,
     return os;
 }
 
-} // namespace sc_core
 
 template <class A, class D>
 using memory_out = sc_port<memory_out_if<A, D> >;

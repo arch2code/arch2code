@@ -1,7 +1,8 @@
 #ifndef AXI4S_DEMO_UTILS_H
 #define AXI4S_DEMO_UTILS_H
 
-#include "axi4sDemo_tbIncludes.h"
+import axi4sDemo_tb;
+using namespace axi4sDemo_tb_ns;
 
 inline bv16_t calc_parity_t1(bv256_t data) {
     bv16_t parity = 0;

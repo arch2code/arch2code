@@ -13,7 +13,6 @@
 #include "interfaceBase.h"
 #include "synchLock.h"
 
-namespace sc_core {
 
 // notify( )
 // |        -------> waitNotify( )
@@ -298,7 +297,6 @@ inline ::std::ostream& operator << ( ::std::ostream& os, const notify_ack_channe
     return os;
 }
 
-} // namespace sc_core
 
 template <class T=bool>
 using notify_ack_out = sc_port<notify_ack_out_if< T > >;

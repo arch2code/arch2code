@@ -19,11 +19,6 @@ int sc_main(int, char*[]) {
     VerilatedVcdSc* tfp = new VerilatedVcdSc;
 #endif
 
-    instanceFactory::addParam({
-        { "blockF.variant0.bob", BOB0 },
-        { "blockF.variant0.fred", 0 }
-    });
-
     blockF_variant0_testbench *tb_i;
 
     tb_i = new blockF_variant0_testbench("tb_i");

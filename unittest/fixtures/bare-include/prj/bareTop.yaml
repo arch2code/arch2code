@@ -1,0 +1,25 @@
+# Root-dir top context. Its bare-basename include of shared.yaml seeds
+# shared.yaml as a known include dependency so the subdirectory bareSub.yaml can
+# reference it by the same bare basename.
+include:
+    - shared.yaml
+blocks:
+    bare_tb:
+        desc: "tb container"
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false
+    bareLeaf:
+        desc: "leaf"
+        hasMdl: true
+        hasRtl: false
+instances:
+    bare_tb:
+        container: bare_tb
+        instanceType: bare_tb
+        instGroup: top
+    uBareLeaf:
+        container: bare_tb
+        instanceType: bareLeaf
+        instGroup: top

@@ -1,0 +1,10 @@
+# Integrator-owned top context. Reached via the root projectFiles: slot but not
+# a project file (no projectName/dirs/fileGeneration), so it stays owned by the
+# integrator project.
+blocks:
+    integrator_tb:
+        desc: "integrator testbench container"
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false

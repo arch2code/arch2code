@@ -5,11 +5,11 @@ description: Convert a SystemVerilog RTL implementation to a SystemC behavioral 
 # Skill: RTL to SystemC Conversion
 
 ## Purpose
-Guide the user in creating a behavioral SystemC model (`.cpp`) that matches the functionality of an existing SystemVerilog RTL block (`.sv`). The model is used for fast, functional simulation in the arch2code environment.
+Guide the user in creating a behavioral SystemC model (`.cppm`) that matches the functionality of an existing SystemVerilog RTL block (`.sv`). The model is used for fast, functional simulation in the arch2code environment.
 
 ## Prerequisites
 1. **Read the RTL**: Analyze `rtl/<block>.sv` to understand the pipeline depth, math, and logic.
-2. **Read the Model Skeleton**: Read `model/<block>.cpp`. It will have the class structure and generated ports.
+2. **Read the Model Skeleton**: Read `model/<block>.cppm`. It is the single C++20 module file, templated on `Config`, with the class structure and generated ports.
 
 ## Conversion Workflow
 
@@ -189,8 +189,8 @@ RTL uses lane-specific `generate if` blocks and bit-manipulation rounding functi
 | `(a > b) ? (a - b) : 0` (floor-clamp) | Same pattern or `std::max(a - b, 0)` |
 
 ## Critical Rules
-- **NEVER** edit `*Base.h` files.
-- **Match Types**: Use types from `*_package.sv` which are generated into `*_types.h`.
+- **NEVER** edit `*Base.cppm` files.
+- **Match Types**: Use the arch2code-generated typedefs the model shares with `*_package.sv`. On the model side they arrive by importing the context modules (`import <ctx>;` from the generated `*Includes.cppm`) and are re-exported into the block through the `using <block>Base<Config>::...;` declarations — there is no `*_types.h` header.
 - **Events**: Use `wait(event)` to synchronize threads if buffering data.
 
 ## Example: Data Buffer

@@ -1,0 +1,27 @@
+# Bare-basename include key-parity fixture.
+#
+# bareTop.yaml (in the project root dir, == g.yamlBasePath) includes shared.yaml
+# by bare basename, establishing shared.yaml as a known include dependency.
+# bareSub.yaml lives in a SUBDIRECTORY and also includes shared.yaml by bare
+# basename: a plain relpath would resolve to the non-existent sub/shared.yaml,
+# so getFileList's bare-basename retention (keep the bare key when it is already
+# a known dependency) is load-bearing and both files share the one bare
+# `shared.yaml` context key. This fixture exists to prove the standalone
+# ProjectScanner accumulates its own include-dependency map and therefore keys
+# the bare-basename include IDENTICALLY to the live projectCreate parse.
+yamlFormat: 2
+projectName: bareProj
+projectFiles:
+    - bareTop.yaml
+    - ../sub/bareSub.yaml
+topInstance: bare_tb
+dirs:
+    root: ..
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+addressObjects:
+    registers:
+        alignment: 8
+        sortDescending: true

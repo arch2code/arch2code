@@ -107,32 +107,32 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        aOut_bfm.if_p(aOut);
+        aOut_bfm.if_p(this->aOut);
         aOut_bfm.hdl_if_p(aOut_hdl_if);
         aOut_bfm.clk(clk);
         aOut_bfm.rst_n(rst_n);
 
-        aIn_bfm.if_p(aIn);
+        aIn_bfm.if_p(this->aIn);
         aIn_bfm.hdl_if_p(aIn_hdl_if);
         aIn_bfm.clk(clk);
         aIn_bfm.rst_n(rst_n);
 
-        bOut_bfm.if_p(bOut);
+        bOut_bfm.if_p(this->bOut);
         bOut_bfm.hdl_if_p(bOut_hdl_if);
         bOut_bfm.clk(clk);
         bOut_bfm.rst_n(rst_n);
 
-        bIn_bfm.if_p(bIn);
+        bIn_bfm.if_p(this->bIn);
         bIn_bfm.hdl_if_p(bIn_hdl_if);
         bIn_bfm.clk(clk);
         bIn_bfm.rst_n(rst_n);
 
-        dOut_bfm.if_p(dOut);
+        dOut_bfm.if_p(this->dOut);
         dOut_bfm.hdl_if_p(dOut_hdl_if);
         dOut_bfm.clk(clk);
         dOut_bfm.rst_n(rst_n);
 
-        dIn_bfm.if_p(dIn);
+        dIn_bfm.if_p(this->dIn);
         dIn_bfm.hdl_if_p(dIn_hdl_if);
         dIn_bfm.clk(clk);
         dIn_bfm.rst_n(rst_n);

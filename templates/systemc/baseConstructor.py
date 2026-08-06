@@ -8,8 +8,7 @@ def render(args, prj, data):
         case 'body':
             return(constructorBody(args, prj, data))
         case _:
-            print("error missing section, valid values are implementation, externs, headerDecl")
-            exit()
+            raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are init, body")
 
 
 def constructorInit(args, prj, data):

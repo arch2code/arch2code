@@ -1,0 +1,4 @@
+# Shared types authored in the shared project (subB's vendored copy).
+types:
+    sharedPixel: { width: 8, desc: "shared pixel type" }
+    sharedCoord: { width: 12, desc: "shared coordinate type" }

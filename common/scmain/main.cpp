@@ -14,11 +14,7 @@
 #include "testBenchConfigFactory.h"
 #include "synchLock.h"
 #include "simController.h"
-#include "endOfTest.h"
-
-#if defined(VERILATOR) || defined(VCS)
-#include "vl_wrap.h"
-#endif
+import a2c.endOfTest;
 
 #ifdef VERILATOR
 #include "vl_tracer.h"
@@ -259,6 +255,18 @@ int sc_main(int argc, char* argv[])
 
 
     testBench->createTestBench();
+
+    // General framework startup process: after simController::startupDelay of
+    // simulation time, allow end-of-test to latch. This runs for EVERY project
+    // (independent of the watchDog and of the ascari/aura startupPhase voters),
+    // so an end-of-test cannot latch during startup before all voters have
+    // registered. startupDelay is a bounded sc_time, so this always fires and
+    // cannot hang a project. Spawned during elaboration, before any sc_start.
+    sc_spawn([]() {
+        wait(simController::startupDelay);
+        endOfTestState::GetInstance().setStartupComplete();
+    });
+
     std::stringstream exitMsg;
     //std::cout << instanceFactory::dumpInstances();
     // Validate the instance hierarchy registration immediately after top is constructed

@@ -1,0 +1,8 @@
+# Subdirectory context that includes the root-level shared.yaml by BARE
+# basename. A plain relpath would resolve to the non-existent sub/shared.yaml;
+# bare-basename retention (shared.yaml is already a known dependency, seeded by
+# bareTop.yaml) keeps the bare `shared.yaml` context key instead.
+include:
+    - shared.yaml
+types:
+    subBareT: { width: 8, desc: "type in a subdir file that bare-includes a root-level known dependency" }

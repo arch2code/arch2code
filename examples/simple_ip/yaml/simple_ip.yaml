@@ -1,0 +1,91 @@
+# simple_ip - top design for the simple IP-reuse reference.
+#
+# One reused 'ip' instance (native variant0) captures a marked word pushed by a
+# single fixed-width producer (dataGen); the 'cpu' APB master reaches ip's
+# registers through the generated apbDecode router and verifies the capture in
+# firmware.
+
+include:
+    # shared_types (apbReg bus) is owned by the vendored 'common' sub-project;
+    # its defining file stays on this context's include chain for resolution,
+    # ownership is set by child-project detection (CONTEXTOWNINGPROJECT).
+    - ../common/yaml/shared_types.yaml
+    # cpu: generic APB master owned by 'common', runs firmware via the worker.
+    - ../common/cpu/yaml/cpu.yaml
+    # ip block + its native variant0 binding, owned by the vendored 'ip' project.
+    - ../ip/yaml/ipVariants.yaml
+
+# Container-owned non-parameterized boundary declarations. uIp is parameterized,
+# so its module-local ipDataIf payload typedef cannot be named at container
+# scope; the container declares a concrete non-parameterized channel whose field
+# order / bit widths match ipDataSt under variant0 (marker 1 bit + data 8 bits),
+# and dataGen cross-binds onto it (the push_ack thunker adapts). Mirrors ip_top's
+# srcOut0Boundary* / ipTop's ipStdData8* pattern.
+types:
+    simpleMarkerT: { width: 1, desc: "Boundary marker bit; matches ipDataSt::marker" }
+    simpleData8T:  { width: 8, desc: "8-bit boundary payload; matches ipDataSt::data @variant0" }
+
+structures:
+    simpleData8St:
+        marker: { varType: simpleMarkerT, desc: "marker bit" }
+        data:   { varType: simpleData8T,  desc: "8-bit payload @variant0" }
+
+interfaces:
+    simpleDataIf:
+        desc: "Non-parameterized producer -> uIp.ipDataIf boundary"
+        interfaceType: push_ack
+        structures:
+            - { structure: simpleData8St, structureType: data_t }
+
+blocks:
+    simple_ip:
+        desc: "DUT: one reused ip + producer + register decoder"
+        hasVl: true
+        hasMdl: true
+        hasTb: true
+        hasRtl: true
+    simple_ip_tb:
+        desc: "Testbench harness container"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+    dataGen:
+        desc: "Fixed-width producer feeding uIp.ipDataIf"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            out: { interface: simpleDataIf, direction: src }
+    apbDecode:
+        desc: "APB register decoder"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+
+instances:
+    simple_ip_tb:  { container: simple_ip_tb, instanceType: simple_ip_tb, instGroup: top }
+    u_simple_ip:   { container: simple_ip_tb, instanceType: simple_ip,    instGroup: top }
+    uCPU:          { container: simple_ip_tb, instanceType: cpu,          instGroup: top }
+    uAPBDecode:    { container: simple_ip,    instanceType: apbDecode,    instGroup: top }
+    uDataGen:      { container: simple_ip,    instanceType: dataGen,      instGroup: top }
+    uIp:           { container: simple_ip,    instanceType: ip,           instGroup: top, addressGroup: top, variant: variant0 }
+
+connections:
+    - { interface: apbReg,       src: uCPU,     srcport: cpu_main, dst: u_simple_ip, name: cpu_main }
+    - { interface: simpleDataIf, src: uDataGen, srcport: out,      dst: uIp, dstport: ipDataIf }
+
+connectionMaps:
+    - { interface: apbReg, block: simple_ip, direction: dst, instance: uAPBDecode, name: cpu_main }
+
+# No parameters: block - variant0 is the IP's own native variant.

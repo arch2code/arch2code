@@ -1,0 +1,26 @@
+yamlFormat: 2
+
+# Minimal two-project fixture for the M-split ownership classifier.
+# The root project references a child PROJECT file through its projectFiles:
+# slot. The child owns its own transitive closure; everything reached through
+# the root's own closure stays root-owned.
+projectName: rootProj
+
+projectFiles:
+    - rootTop.yaml
+    - ../../child/yaml/childProject.yaml
+
+topInstance: root_tb
+
+dirs:
+    root: ..
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    registers:
+        alignment: 8
+        sortDescending: true

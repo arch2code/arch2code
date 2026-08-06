@@ -1,7 +1,7 @@
 // GENERATED_CODE_PARAM --block=top
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: top
-module top
+//module as defined by block: hierInclude_top
+module hierInclude_top
 // Generated Import package statement(s)
 import hierInclude_package::*;
 (
@@ -14,21 +14,21 @@ import hierInclude_package::*;
     req_ack_if #(.data_t(anotherSt), .rdata_t(yetAnotherSt)) b2C();
 
 // Instances
-blockA uBlockA (
+hierInclude_blockA uBlockA (
     .anInterfaceB (anInterfaceB),
     .anInterfaceC (anInterfaceC),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-blockB uBlockB (
+hierInclude_blockB uBlockB (
     .eh2b (anInterfaceB),
     .b2C (b2C),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-blockC uBlockC (
+hierInclude_blockC uBlockC (
     .eh2c (anInterfaceC),
     .b2C (b2C),
     .clk (clk),
@@ -37,4 +37,4 @@ blockC uBlockC (
 
 // GENERATED_CODE_END
 
-endmodule: top
+endmodule: hierInclude_top

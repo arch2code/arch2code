@@ -5,20 +5,27 @@ description: Guide for implementing register logic in SystemVerilog including de
 # Skill: RTL Registers
 
 ## Purpose
-Guide the user in implementing register logic in SystemVerilog, focusing on the two-level decoder architecture and manual logic for external registers.
+Guide the user in implementing the **RTL-side logic for external (`ext`)
+registers** and driving `ro`/`rw` register ports. The decoder and the register
+handlers are generated — this skill covers only the user RTL you write inside a
+block to back its registers.
 
 ## References
-*   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Registers & Address Management" for decoder architecture details)
+*   **Decode hierarchy (router/leaf model):** `design-register-decode.md`
+*   **Main Rules:** `ARCH2CODE_AI_RULES.md` (See "Register Decoder Architecture")
 
 ## Prerequisites
 *   Registers and memories must already be defined in the YAML architecture (see `design-architecture.md`).
-*   The top-level manual decoder (`apb_decode_system` etc.) must be instantiated in YAML.
+*   The block must be a routed leaf served by a generated `addressBlock:` router (see `design-register-decode.md`). You do **not** write the decoder.
 
 ## Instructions
 
-1.  **Register Decoder Architecture (RTL View):**
-    *   **Level 1 (Manual):** You implement the top-level decoder (e.g., `apb_decode_system`). This module receives the main bus and routes it to sub-blocks based on address ranges.
-    *   **Level 2 (Automatic):** The generated block (e.g., `dma_controller`) contains an auto-generated instance (e.g., `dma_controller_regs`). This handles the internal decoding for registers defined in YAML.
+1.  **Register Decoder Architecture (RTL View) — all generated:**
+    *   **Router (generated):** the `addressBlock:` block's RTL comes from the `apbDecodeModule` template (scaffolded by `make newmodule`). It routes the register bus to served instances. You never write it.
+    *   **Block-level handler (generated):** each routed leaf block (e.g., `dma_controller`) gets an auto-generated `<block>_regs` instance that decodes registers/memories defined in YAML. You never write it.
+    *   **Your RTL** only provides the storage/side-effects for `ext` registers and drives `ro` read data, as below.
+
+    > For reusable-IP leaves that ship their own register-bus port, the IP block authors one `registerPorts:` row (e.g. `registerPorts: { regs: { interface: ipReg } }`) so its generated `<block>Base` stays self-contained. Plain top-down leaves omit it. See `design-register-decode.md`.
 
 2.  **Implementing External Registers (`regType: ext`):**
     *   **Concept:** For `ext` registers, the auto-generated block provides ports but NO internal storage or logic. You must implement this in your RTL.

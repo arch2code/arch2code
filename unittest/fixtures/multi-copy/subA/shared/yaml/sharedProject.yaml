@@ -1,0 +1,16 @@
+# Vendored copy of the shared types-only project. Carries the full project
+# sentinel set (projectName + dirs + fileGeneration) so it opens as a child
+# project, and references its own types file so the copy's closure owns it.
+# projectName `shared` is intentionally identical across sub-projects; the root
+# projectOverride unifies the copies. This file is byte-identical to the peer
+# copies so the copies agree (no divergence).
+projectName: shared
+
+projectFiles:
+    - shared_types.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

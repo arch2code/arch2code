@@ -1,6 +1,6 @@
 
 // 
-// GENERATED_CODE_PARAM --context=pySocket_tb.yaml
+// GENERATED_CODE_PARAM --project=pySocket --context=pySocket_tb.yaml
 // GENERATED_CODE_BEGIN --template=package --fileMapKey=package_sv
 package pySocket_tb_package;
 

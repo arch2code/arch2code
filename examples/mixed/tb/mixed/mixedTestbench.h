@@ -1,28 +1,20 @@
 #ifndef MIXED_TESTBENCH_H
 #define MIXED_TESTBENCH_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=testbench --section=header
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "mixedBase.h"
+import mixed.base;
+import mixed;
+using namespace mixed_ns;
+import mixed_mixedBlockC;
+using namespace mixed_mixedBlockC_ns;
 #include "mixedExternal.h"
 
 class mixedTestbench: public sc_module, public blockBase, public mixedChannels {
-
-    private:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("mixedTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<mixedTestbench>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 
 public:
 

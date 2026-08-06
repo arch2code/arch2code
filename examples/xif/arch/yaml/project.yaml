@@ -1,0 +1,42 @@
+yamlFormat: 2
+
+# BUG 7 fixture project: a subset-parameterized DUT driven over a differing-name
+# non-parameterized boundary interface, with the DUT excluded from its model
+# testbench. Exercises the cross-interface thunker at the testbench/DUT boundary.
+
+projectName: xif
+
+projectFiles:
+  - xif.yaml
+
+# The DUT block owns the testbench; its External excludes the DUT instance.
+topInstance: xif_tb
+
+dirs:
+  root: ../..
+  base: $root/base             # for block base classes
+  model: $root/model           # systemC model implementation
+  rtl: $root/rtl               # RTL implementation
+  vl_wrap: $root/verif/vl_wrap # rtl wrapper files
+  tb: $root/tb                 # testbench definition files
+  fwInc: $root/fw/include      # firmware include files
+
+fileGeneration:
+  template: $a2c/templates/fileGen/fileGen.py
+  fileMap:
+    includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
+  fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true

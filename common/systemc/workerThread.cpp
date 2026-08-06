@@ -4,7 +4,7 @@
 #include <thread>
 #include "logging.h"
 #include "workerThread.h"
-#include "endOfTest.h"
+import a2c.endOfTest;
 #include <format>
 #include "simController.h"
 

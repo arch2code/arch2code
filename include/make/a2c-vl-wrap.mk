@@ -28,27 +28,47 @@ VERILATOR_OPTS += $(VERILATOR_USER_OPTS)
 VL_GEN_SV_FILES += $(call find_gen_sv_sources, $(VL_SRC_DIRS))
 VL_GEN_SC_FILES += $(call find_gen_cpp_sources, $(VL_SRC_DIRS))
 
-VL_OBJ_FILES = $(subst ./,obj_dir/V, $(patsubst %.sv, %.o, $(VL_GEN_SV_FILES)))
+# Verilated tops come from the build manifest's per-top records (A2C_VL_TOPS +
+# A2C_VL_SV_<top>), not from a filename scan. Each record names its design unit
+# and physical wrapper explicitly, so nothing is derived with $(notdir) and the
+# library is not globbed. The verilator object name follows verilator's
+# V<top>__ALL.o convention, reconstructed here rather than carried in the
+# manifest. The .svh body is never a record (a default-less parameterized module
+# cannot be a Verilated top). Each top gets its OWN --Mdir (obj_dir/<top>) so
+# concurrent verilate runs never write a shared obj_dir; the per-assembler
+# VlRegistrar picks up each V<top>.h from its own Mdir on the SystemC include
+# path (a2c-systemc.mk drives that from A2C_VL_TOPS).
+VL_OBJ_FILES = $(foreach t,$(A2C_VL_TOPS),obj_dir/$(t)/V$(t)__ALL.o)
 
-VL_LIB_OBJ_FILES = obj_dir/verilated.o obj_dir/verilated_dpi.o obj_dir/verilated_vcd_c.o obj_dir/verilated_threads.o
+VL_LIB_OBJ_FILES = obj_dir/vl_dummy/verilated.o obj_dir/vl_dummy/verilated_dpi.o obj_dir/vl_dummy/verilated_vcd_c.o obj_dir/vl_dummy/verilated_threads.o
 
 ifdef VL_COV
-VL_LIB_OBJ_FILES += obj_dir/verilated_cov.o
+VL_LIB_OBJ_FILES += obj_dir/vl_dummy/verilated_cov.o
 endif
 
 #------------------------------------------------------------------------
 # Systemc build file based targets
 #------------------------------------------------------------------------
 
-# Compile verilator common objects (verilated_dpi.o, verilated_vcd_c.o, verilated_threads.o)
-obj_dir/Vvl_dummy: $(VL_GEN_SV_FILES) $(GEN_DEPS)
-	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) $(A2C_ROOT)/common/verilator/vl_dummy.sv $(A2C_ROOT)/common/verilator/vl_dummy.cpp --top vl_dummy -exe
+# Compile the verilator common runtime objects (verilated.o, verilated_dpi.o,
+# verilated_vcd_c.o, verilated_threads.o) into their own Mdir.
+obj_dir/vl_dummy/Vvl_dummy: $(VL_GEN_SV_FILES) $(GEN_DEPS)
+	mkdir -p obj_dir/vl_dummy
+	verilator $(VERILATOR_OPTS) --Mdir obj_dir/vl_dummy -CFLAGS $(VERILATOR_CFLAG_OPTS) $(A2C_ROOT)/common/verilator/vl_dummy.sv $(A2C_ROOT)/common/verilator/vl_dummy.cpp --top vl_dummy -exe
 
-$(VL_OBJ_FILES): $(VL_GEN_SV_FILES)
-	verilator $(VERILATOR_OPTS) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(REPO_ROOT)/rtl/rtl.f $(subst obj_dir/V,, $(patsubst %.o, %.sv, $@)) -top $(notdir $(subst obj_dir/V,, $(patsubst %.o,%, $@)))
+# One verilate per recorded top into its own --Mdir: the explicit design unit
+# (--top), the recorded physical .sv, and the recorded include search path (so a
+# trampoline finds the `include`d canonical `_hdl_sv_wrapper.svh` body wherever
+# it lives, including a reused child's own vl_wrap dir).
+define vl_top_rule
+obj_dir/$(1)/V$(1)__ALL.o: $(VL_GEN_SV_FILES)
+	mkdir -p obj_dir/$(1)
+	verilator $(VERILATOR_OPTS) --Mdir obj_dir/$(1) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(A2C_VL_SV_$(1)) -top $(1)
+endef
+$(foreach t,$(A2C_VL_TOPS),$(eval $(call vl_top_rule,$(t))))
 
-lib$(PROJECTNAME)vl_s_wrap.a: obj_dir/Vvl_dummy $(VL_OBJ_FILES)
-	ar -rcs $@ $(VL_LIB_OBJ_FILES) obj_dir/V*_hdl_sv_wrapper*.o
+lib$(PROJECTNAME)vl_s_wrap.a: obj_dir/vl_dummy/Vvl_dummy $(VL_OBJ_FILES)
+	ar -rcs $@ $(VL_LIB_OBJ_FILES) $(VL_OBJ_FILES)
 
 #------------------------------------------------------------------------
 # Systemc build phony targets

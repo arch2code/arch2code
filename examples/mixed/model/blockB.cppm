@@ -1,0 +1,206 @@
+//copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
+
+// GENERATED_CODE_PARAM --block=blockB --mode=module
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=blockModuleHeader
+module;
+#include "systemc.h"
+#include "logging.h"
+#include "bitTwiddling.h"
+#include "q_assert.h"
+#include <algorithm>
+#include "instanceFactory.h"
+#include "apb_channel.h"
+#include "memory_channel.h"
+#include "notify_ack_channel.h"
+#include "rdy_vld_channel.h"
+#include "req_ack_channel.h"
+#include "status_channel.h"
+#include "addressMap.h"
+#include "hwMemory.h"
+#include "mixedVariantConfig.h"
+// GENERATED_CODE_END
+#include <vector>
+#include "testController.h"
+// user #includes here
+// GENERATED_CODE_BEGIN --template=moduleExport
+export module mixed_blockB.block;
+import mixed_blockB.base;
+import mixed;
+import mixed_mixedBlockC;
+import mixed_mixedInclude;
+import mixed_blockD.base;
+import mixed_blockF.base;
+import mixed_threeCs.base;
+import mixed_blockBRegs.base;
+// GENERATED_CODE_END
+// user imports here
+import a2c.endOfTest;
+// GENERATED_CODE_BEGIN --template=classDecl
+using namespace mixed_ns;
+using namespace mixed_mixedBlockC_ns;
+using namespace mixed_mixedInclude_ns;
+export SC_MODULE(blockB), public blockBase, public blockBBase
+{
+private:
+
+public:
+    // channels
+    // An interface for C
+    rdy_vld_channel< seeSt > cStuffIf;
+    // An interface for C
+    rdy_vld_channel< seeSt > cStuff1;
+    // An interface for C
+    rdy_vld_channel< seeSt > cStuff2;
+    // An interface for D
+    rdy_vld_channel< dSt > dee0;
+    // An interface for D
+    rdy_vld_channel< dSt > dee1;
+    // An interface for D
+    rdy_vld_channel< dSt > loopDF;
+    // An interface for D
+    rdy_vld_channel< dSt > loopFF;
+    // An interface for D
+    rdy_vld_channel< dSt > loopFD;
+    // A Read Write register
+    status_channel< dRegSt > rwD;
+    // A Read Only register with a structure that has a definition from an included context
+    status_channel< bSizeRegSt > roBsize;
+    // Memory register - firmware accessible memory-mapped storage
+    memory_channel< bSizeSt, seeSt > blockBTableExt;
+    // External 37-bit memory register - firmware accessible with 8-byte stride
+    memory_channel< bSizeSt, test37BitRegSt > blockBTable37Bit;
+
+    //instances contained in block
+    std::shared_ptr<blockDBase> uBlockD;
+    std::shared_ptr<blockFBase<blockFVariant0Config>> uBlockF0;
+    std::shared_ptr<blockFBase<blockFVariant1Config>> uBlockF1;
+    std::shared_ptr<threeCsBase> uThreeCs;
+    std::shared_ptr<blockBRegsBase> uBlockBRegs;
+
+    memories mems;
+    //memories
+    hwMemory< seeSt > blockBTable0;
+    hwMemory< bigSt > blockBTable1;
+    hwMemory< seeSt > blockBTable2;
+    hwMemory< seeSt > blockBTable3;
+    hwMemory< seeSt > blockBTableSP0;
+    hwMemory< nestedSt > blockBTableSP;
+    memory_channel<bSizeSt, bigSt> blockBTable1_port1;
+    memory_channel<bSizeSt, nestedSt> blockBTableSP_bob;
+    memory_channel<bSizeSt, bigSt> blockBTable1_reg;
+
+    blockB(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
+    ~blockB() override = default;
+    void setTimed(int nsec, timedDelayMode mode) override
+    {
+        blockBBase::setTimed(nsec, mode);
+        mems.setTimed(nsec, mode);
+    }
+
+    // GENERATED_CODE_END
+    // block implementation members
+
+    void doneTest(void);
+};
+
+// GENERATED_CODE_BEGIN --template=constructor --section=init
+SC_HAS_PROCESS(blockB);
+
+// === Block factory registration (blockB) ===
+void register_blockB_variants() {
+    instanceFactory::registerBlock("blockB_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockB>(blockName, variant, bbMode)); }, "", "mixed");
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _blockB_registered = (register_blockB_variants(), 0);
+} // namespace
+// === End block factory registration ===
+
+blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
+       : sc_module(blockName)
+        ,blockBase("blockB", name(), bbMode)
+        ,blockBBase(name(), variant)
+        ,cStuffIf("threeCs_cStuffIf", "blockD")
+        ,cStuff1("threeCs_cStuff1", "blockF")
+        ,cStuff2("threeCs_cStuff2", "blockF")
+        ,dee0("blockF_dee0", "blockD")
+        ,dee1("blockF_dee1", "blockD")
+        ,loopDF("blockF_loopDF", "blockD")
+        ,loopFF("blockF_loopFF", "blockF")
+        ,loopFD("blockD_loopFD", "blockF")
+        ,rwD("blockB_rwD", "blockB", dRegSt::_packedSt(0x0))
+        ,roBsize("blockB_roBsize", "blockB", bSizeRegSt::_packedSt(0x0))
+        ,blockBTableExt("blockB_blockBTableExt", "blockB")
+        ,blockBTable37Bit("blockB_blockBTable37Bit", "blockB")
+        ,uBlockD(std::dynamic_pointer_cast<blockDBase>(instanceFactory::createInstance(name(), "uBlockD", "blockD", "", "mixed")))
+        ,uBlockF0(std::dynamic_pointer_cast<blockFBase<blockFVariant0Config>>(instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0", "mixed")))
+        ,uBlockF1(std::dynamic_pointer_cast<blockFBase<blockFVariant1Config>>(instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1", "mixed")))
+        ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>(instanceFactory::createInstance(name(), "uThreeCs", "threeCs", "", "mixed")))
+        ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>(instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "", "mixed")))
+        ,blockBTable0(name(), "blockBTable0", mems, BSIZE, HWMEMORYTYPE_LOCAL)
+        ,blockBTable1(name(), "blockBTable1", mems, BSIZE)
+        ,blockBTable2(name(), "blockBTable2", mems, BSIZE)
+        ,blockBTable3(name(), "blockBTable3", mems, BSIZE)
+        ,blockBTableSP0(name(), "blockBTableSP0", mems, BSIZE)
+        ,blockBTableSP(name(), "blockBTableSP", mems, BSIZE)
+        ,blockBTable1_port1("blockBTable1_port1", "blockB")
+        ,blockBTableSP_bob("blockBTableSP_bob", "blockB")
+        ,blockBTable1_reg("blockBTable1_reg", "blockB")
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=constructor --section=body
+{
+// hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
+    uBlockD->btod(btod);
+    uBlockBRegs->apbReg(apbReg);
+    // instance to instance connections via channel
+    uBlockD->cStuffIf(cStuffIf);
+    uThreeCs->see0(cStuffIf);
+    uBlockF0->cStuffIf(cStuff1);
+    uThreeCs->see1(cStuff1);
+    uBlockF1->cStuffIf(cStuff2);
+    uThreeCs->see2(cStuff2);
+    uBlockD->dee0(dee0);
+    uBlockF0->dStuffIf(dee0);
+    uBlockD->dee1(dee1);
+    uBlockF1->dStuffIf(dee1);
+    uBlockD->outD(loopDF);
+    uBlockF0->dSin(loopDF);
+    uBlockF0->dSout(loopFF);
+    uBlockF1->dSin(loopFF);
+    uBlockF1->dSout(loopFD);
+    uBlockD->inD(loopFD);
+    uBlockF0->rwD(rwD);
+    uBlockBRegs->rwD(rwD);
+    uBlockF1->rwD(rwD);
+    uBlockD->rwD(rwD);
+    uBlockD->roBsize(roBsize);
+    uBlockBRegs->roBsize(roBsize);
+    uBlockD->blockBTableExt(blockBTableExt);
+    uBlockBRegs->blockBTableExt(blockBTableExt);
+    uBlockD->blockBTable37Bit(blockBTable37Bit);
+    uBlockBRegs->blockBTable37Bit(blockBTable37Bit);
+    // memory connections
+    uBlockD->blockBTable1(blockBTable1_port1);
+    blockBTable1.bindPort(blockBTable1_port1);
+    uBlockD->blockBTableSP(blockBTableSP_bob);
+    blockBTableSP.bindPort(blockBTableSP_bob);
+    uBlockBRegs->blockBTable1(blockBTable1_reg);
+    blockBTable1.bindPort(blockBTable1_reg);
+    log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
+    // GENERATED_CODE_END
+    SC_THREAD(doneTest);
+};
+
+void blockB::doneTest(void)
+{
+    endOfTest eot;
+    eot.registerVoter();
+    startDone->waitNotify();
+    startDone->ack();
+    // Do not end the simulation until all registered tests have completed.
+    // This prevents premature sc_stop() (see mixedExternal::eotThread) before
+    // late tests like test_mem_hier_cpu_read run.
+    testController::GetInstance().wait_all_tests_complete();
+    eot.setEndOfTest(true);
+}
+

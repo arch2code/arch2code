@@ -1,12 +1,13 @@
 // GENERATED_CODE_PARAM --block=apbDecode
 // GENERATED_CODE_BEGIN --template=apbDecodeModule
-//module as defined by block: apbDecode
-module apbDecode
+//module as defined by block: mixed_apbDecode
+module mixed_apbDecode
 // Generated Import package statement(s)
 import mixed_package::*;
 (
-    apb_if.src apb_uBlockA,
-    apb_if.src apb_uBlockB,
+    apb_if.src apbReg_uBlockA,
+    apb_if.src apbReg_uBlockB,
+    apb_if.src apbReg_uBlockG,
     apb_if.dst cpu_main,
     input clk, rst_n
 );
@@ -28,38 +29,52 @@ logic set_trans_active;
 logic trans_active;
 `SCFF(trans_active, set_trans_active, pready)
 
-//signals for interface apb_uBlockB
-logic apb_uBlockB_psel;
-logic apb_uBlockB_next_psel;
-`SCFF(apb_uBlockB_psel, apb_uBlockB_next_psel, apb_uBlockB.pready)
+//signals for interface apbReg_uBlockG
+logic apbReg_uBlockG_psel;
+logic apbReg_uBlockG_next_psel;
+`SCFF(apbReg_uBlockG_psel, apbReg_uBlockG_next_psel, apbReg_uBlockG.pready)
 
-assign apb_uBlockB.paddr   = paddr_q;
-assign apb_uBlockB.penable = penable_q & apb_uBlockB_psel;
-assign apb_uBlockB.psel    = apb_uBlockB_psel;
-assign apb_uBlockB.pwrite  = pwrite_q;
-assign apb_uBlockB.pwdata  = pwdata_q;
+assign apbReg_uBlockG.paddr   = paddr_q;
+assign apbReg_uBlockG.penable = penable_q & apbReg_uBlockG_psel;
+assign apbReg_uBlockG.psel    = apbReg_uBlockG_psel;
+assign apbReg_uBlockG.pwrite  = pwrite_q;
+assign apbReg_uBlockG.pwdata  = pwdata_q;
 
-//signals for interface apb_uBlockA
-logic apb_uBlockA_psel;
-logic apb_uBlockA_next_psel;
-`SCFF(apb_uBlockA_psel, apb_uBlockA_next_psel, apb_uBlockA.pready)
+//signals for interface apbReg_uBlockB
+logic apbReg_uBlockB_psel;
+logic apbReg_uBlockB_next_psel;
+`SCFF(apbReg_uBlockB_psel, apbReg_uBlockB_next_psel, apbReg_uBlockB.pready)
 
-assign apb_uBlockA.paddr   = paddr_q;
-assign apb_uBlockA.penable = penable_q & apb_uBlockA_psel;
-assign apb_uBlockA.psel    = apb_uBlockA_psel;
-assign apb_uBlockA.pwrite  = pwrite_q;
-assign apb_uBlockA.pwdata  = pwdata_q;
+assign apbReg_uBlockB.paddr   = paddr_q;
+assign apbReg_uBlockB.penable = penable_q & apbReg_uBlockB_psel;
+assign apbReg_uBlockB.psel    = apbReg_uBlockB_psel;
+assign apbReg_uBlockB.pwrite  = pwrite_q;
+assign apbReg_uBlockB.pwdata  = pwdata_q;
+
+//signals for interface apbReg_uBlockA
+logic apbReg_uBlockA_psel;
+logic apbReg_uBlockA_next_psel;
+`SCFF(apbReg_uBlockA_psel, apbReg_uBlockA_next_psel, apbReg_uBlockA.pready)
+
+assign apbReg_uBlockA.paddr   = paddr_q;
+assign apbReg_uBlockA.penable = penable_q & apbReg_uBlockA_psel;
+assign apbReg_uBlockA.psel    = apbReg_uBlockA_psel;
+assign apbReg_uBlockA.pwrite  = pwrite_q;
+assign apbReg_uBlockA.pwdata  = pwdata_q;
 
 always_comb begin
-    apb_uBlockB_next_psel = 1'b0;
-    apb_uBlockA_next_psel = 1'b0;
+    apbReg_uBlockG_next_psel = 1'b0;
+    apbReg_uBlockB_next_psel = 1'b0;
+    apbReg_uBlockA_next_psel = 1'b0;
     set_trans_active = 1'b0;
     if (cpu_main.psel & ~trans_active) begin
         set_trans_active = 1'b1;
-        if (apb_addr >= apbAddrSt'(32'h100_0000)) begin
-            apb_uBlockB_next_psel = '1;
+        if (apb_addr >= apbAddrSt'(32'h200_0000)) begin
+            apbReg_uBlockG_next_psel = '1;
+        end else if (apb_addr >= apbAddrSt'(32'h100_0000)) begin
+            apbReg_uBlockB_next_psel = '1;
         end else begin
-            apb_uBlockA_next_psel = '1;
+            apbReg_uBlockA_next_psel = '1;
         end
     end
 end
@@ -71,14 +86,18 @@ always_comb begin
     cpu_main_next_pready  = '0;
     cpu_main_next_prdata  = '0;
     cpu_main_next_pslverr = '0;
-    if (apb_uBlockB_psel) begin
-        cpu_main_next_pready  = apb_uBlockB.pready;
-        cpu_main_next_prdata  = apb_uBlockB.prdata;
-        cpu_main_next_pslverr = apb_uBlockB.pslverr;
-    end else if (apb_uBlockA_psel) begin
-        cpu_main_next_pready  = apb_uBlockA.pready;
-        cpu_main_next_prdata  = apb_uBlockA.prdata;
-        cpu_main_next_pslverr = apb_uBlockA.pslverr;
+    if (apbReg_uBlockG_psel) begin
+        cpu_main_next_pready  = apbReg_uBlockG.pready;
+        cpu_main_next_prdata  = apbReg_uBlockG.prdata;
+        cpu_main_next_pslverr = apbReg_uBlockG.pslverr;
+    end else if (apbReg_uBlockB_psel) begin
+        cpu_main_next_pready  = apbReg_uBlockB.pready;
+        cpu_main_next_prdata  = apbReg_uBlockB.prdata;
+        cpu_main_next_pslverr = apbReg_uBlockB.pslverr;
+    end else if (apbReg_uBlockA_psel) begin
+        cpu_main_next_pready  = apbReg_uBlockA.pready;
+        cpu_main_next_prdata  = apbReg_uBlockA.prdata;
+        cpu_main_next_pslverr = apbReg_uBlockA.pslverr;
     end
 end
 
@@ -89,5 +108,5 @@ assign cpu_main.pready  = pready;
 assign cpu_main.prdata  = prdata;
 assign cpu_main.pslverr = pslverr;
 
-endmodule: apbDecode
+endmodule: mixed_apbDecode
 // GENERATED_CODE_END

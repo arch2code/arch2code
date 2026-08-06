@@ -11,7 +11,7 @@ Guide the user on using communication interfaces (`rdy_vld`, `push_ack`, `axi`) 
 *   **API Reference:** `SYSTEMC_API_USER_REFERENCE.md` (See "Communication Channels")
 
 ## Implementation Location
-All logic and member usage described below must be implemented in the manual sections of your `.h` and `.cpp` files, specifically **after** the `// GENERATED_CODE_END` markers.
+All logic and member usage described below must be implemented in the user regions of the block's `model/<block>.cppm` module file, specifically **after** the `// GENERATED_CODE_END` markers.
 
 ## Instructions
 

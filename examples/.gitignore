@@ -1,0 +1,65 @@
+# Consolidated ignore rules for all example projects.
+#
+# Patterns are RECURSIVE (**/…) so they cover build/generated ARTIFACTS
+# regardless of the example's layout (functional or hierarchical). This
+# replaces the ~40 per-directory .gitignore files that only matched fixed
+# functional locations and stopped working after examples were flipped to
+# hierarchical layout (e.g. obj_dir moving to prj/verif/).
+#
+# IMPORTANT: only build/generated ARTIFACTS are ignored here. Generated
+# SOURCE (.cpp/.h/.sv/.svh/.cppm under model/ rtl/ tb/ base/ fw/
+# verif/vl_wrap/ registrar/) and authored YAML are tracked and must stay
+# visible — do not add patterns that would hide them.
+
+# --- Verilator / C++ build ---
+**/obj_dir/
+**/*.a
+**/*.o
+**/*.d
+**/build/
+**/.gen/
+**/.gen_file
+**/*.scgen
+**/*.svgen
+
+# --- Databases (arch2code generator output) ---
+**/*.db
+**/.*.db
+
+# --- Logs and waveforms ---
+**/*.log
+**/*.vcd
+
+# --- Simulator run output ---
+**/simx.*
+**/.simvision/
+**/regr/
+**/out/
+
+# --- Caches ---
+**/.cache/
+**/__pycache__/
+
+# --- Generated docs (antora / graphviz / plantuml) ---
+**/arch/*_specification/
+**/arch/spec/modules/ROOT/images/
+**/arch/spec/.blockDiagrams/
+# Regenerated on doc build; keep porcelain clean.
+**/arch/spec/modules/ROOT/pages/memory.adoc
+
+# --- DVT ---
+**/.dvt/*.xml
+**/.dvt/*.ls
+**/.dvt/.build_config_dict/*
+**/dvt_build.log
+
+# --- Docker cookie crumbs ---
+**/.container-prerequisites
+**/docker/Dockerfile
+
+# --- Editor / OS ---
+**/.vscode/
+**/.clangd
+**/compile_commands.json
+**/.DS_Store
+**/Thumbs.db

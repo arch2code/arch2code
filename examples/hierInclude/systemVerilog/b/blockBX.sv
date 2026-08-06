@@ -1,9 +1,9 @@
 // GENERATED_CODE_PARAM --block=blockBX
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockBX
-module blockBX
+//module as defined by block: hierInclude_blockBX
+module hierInclude_blockBX
 // Generated Import package statement(s)
-import hierIncludeB_package::*;
+import hierInclude_hierIncludeB_package::*;
 import hierInclude_package::*;
 (
     rdy_vld_if.src bx2y,
@@ -18,4 +18,4 @@ import hierInclude_package::*;
 // Instances
 // GENERATED_CODE_END
 
-endmodule: blockBX
+endmodule: hierInclude_blockBX

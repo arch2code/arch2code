@@ -1,0 +1,11 @@
+# subB's vendored copy of the shared types-only project.
+projectName: shared
+
+projectFiles:
+    - shared_types.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

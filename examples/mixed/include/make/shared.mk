@@ -19,6 +19,13 @@ HDL_TOP_MODULE = mixed
 
 # $(info "Using shared makefile from: $(PROJECT_ROOT)")
 
+# User-hosted generated-region files: arch2code injects generated sections into
+# these user-authored hosts - the address defines (includes template) and the
+# encoder C++/SV units (encoder templates). Not fileMap-scaffolded, so they ride
+# the EXTRA_ generation seam.
+EXTRA_SC_GEN_FILES = $(REPO_ROOT)/model/regAddresses.h $(REPO_ROOT)/model/mixedEncoders.h
+EXTRA_SV_GEN_FILES = $(REPO_ROOT)/rtl/mixedEncoder_package.sv
+
 -include $(A2C_ROOT)/pro/include/make/a2cPro.mk
 include $(A2C_ROOT)/include/make/a2c-common.mk
 

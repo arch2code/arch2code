@@ -1,0 +1,46 @@
+# Standalone project file for the reusable 'ip' IP.
+#
+# This project is referenced by parent projects (ip_top, ipBridge) via a
+# projectFiles: entry pointing at this file; those parents own their own
+# instances of 'ip' while this project owns the generation of ip's own
+# implementation files (Q-C10 composition).
+
+yamlFormat: 2
+projectName: ip
+
+projectFiles:
+    - ../../yaml/ipTop.yaml
+
+topInstance: ipStdTop
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs: # only root is supplied; other segments + hierarchicalDirs inherit the base config
+    root: ../.. # ip project root, relative to this project file
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileMap:
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+    regBlockNaming: {
+            instancePrefix: "u",
+            blockSuffix: "Regs",
+            camelCase: true,
+        }

@@ -1,0 +1,20 @@
+# Sub-project subB. Like subA, a standalone sub-block that vendors its OWN
+# physically distinct copy of the shared project under subB/shared, reached
+# through its projectFiles: slot and its leaf's include: edge.
+projectName: subB
+
+projectFiles:
+    - subBLeaf.yaml
+    - ../shared/yaml/sharedProject.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
+
+blocks:
+    subBBlock:
+        desc: "block owned by sub-project subB"
+        hasMdl: true
+        hasRtl: false

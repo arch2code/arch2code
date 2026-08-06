@@ -2,24 +2,29 @@
 #define BLOCKA_HDL_SC_WRAPPER_H_
 
 #include "systemc.h"
-
 #include "instanceFactory.h"
 
-
-
 // GENERATED_CODE_PARAM --block=blockA
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import mixed_blockA.base;
 
-#include "blockABase.h"
-
-// Verilated RTL top (SystemC)
+// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
+// its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "blockA_hdl_sv_wrapper.h"
 #else
 #include "VblockA_hdl_sv_wrapper.h"
 #endif
+// GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import mixed;
+using namespace mixed_ns;
+import mixed_mixedBlockC;
+using namespace mixed_mixedBlockC_ns;
+import mixed_mixedInclude;
+using namespace mixed_mixedInclude_ns;
 #include "apb_bfm.h"
 #include "notify_ack_bfm.h"
 #include "rdy_vld_bfm.h"
@@ -29,20 +34,6 @@
 class blockA_hdl_sc_wrapper: public sc_module, public blockBase, public blockABase {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "blockA_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < blockA_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
-        }
-    };
-
-    static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
     blockA_hdl_sv_wrapper *dut_hdl;
@@ -102,27 +93,27 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        aStuffIf_bfm.if_p(aStuffIf);
+        aStuffIf_bfm.if_p(this->aStuffIf);
         aStuffIf_bfm.hdl_if_p(aStuffIf_hdl_if);
         aStuffIf_bfm.clk(clk);
         aStuffIf_bfm.rst_n(rst_n);
 
-        cStuffIf_bfm.if_p(cStuffIf);
+        cStuffIf_bfm.if_p(this->cStuffIf);
         cStuffIf_bfm.hdl_if_p(cStuffIf_hdl_if);
         cStuffIf_bfm.clk(clk);
         cStuffIf_bfm.rst_n(rst_n);
 
-        startDone_bfm.if_p(startDone);
+        startDone_bfm.if_p(this->startDone);
         startDone_bfm.hdl_if_p(startDone_hdl_if);
         startDone_bfm.clk(clk);
         startDone_bfm.rst_n(rst_n);
 
-        dupIf_bfm.if_p(dupIf);
+        dupIf_bfm.if_p(this->dupIf);
         dupIf_bfm.hdl_if_p(dupIf_hdl_if);
         dupIf_bfm.clk(clk);
         dupIf_bfm.rst_n(rst_n);
 
-        apbReg_bfm.if_p(apbReg);
+        apbReg_bfm.if_p(this->apbReg);
         apbReg_bfm.hdl_if_p(apbReg_hdl_if);
         apbReg_bfm.clk(clk);
         apbReg_bfm.rst_n(rst_n);

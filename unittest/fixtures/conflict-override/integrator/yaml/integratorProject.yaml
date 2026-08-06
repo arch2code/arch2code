@@ -1,0 +1,20 @@
+yamlFormat: 2
+
+# Conflicting sibling override fixture root (Tier-1 scan-all, Fix 2).
+# The integrator references two sub-projects and declares NO override of its own.
+# subA and subB EACH declare a projectOverride redirecting the same projectName
+# `shared` onto their OWN, different copy. Neither is an ancestor of the other
+# (both fold at the same nesting depth), so there is no single dominating master
+# for `shared`. The scanner must reject this loud rather than silently keeping
+# the first-folded target.
+projectName: integrator
+
+projectFiles:
+    - integratorTop.yaml
+    - ../../subA/yaml/subAProject.yaml
+    - ../../subB/yaml/subBProject.yaml
+
+topInstance: integrator_tb
+
+dirs:
+    root: ..

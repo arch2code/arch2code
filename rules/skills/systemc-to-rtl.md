@@ -5,10 +5,10 @@ description: Convert a SystemC behavioral model to a SystemVerilog RTL implement
 # Skill: SystemC to RTL Conversion
 
 ## Purpose
-Guide the user in converting a high-level SystemC model (`.cpp`) to a synthesizable SystemVerilog implementation (`.sv`) within the arch2code framework.
+Guide the user in converting a high-level SystemC model (`.cppm`) to a synthesizable SystemVerilog implementation (`.sv`) within the arch2code framework.
 
 ## Prerequisites
-1. **Read the SystemC Model**: Analyze `model/<block>.cpp` to understand the algorithm, math (fixed-point), and control flow.
+1. **Read the SystemC Model**: Analyze `model/<block>.cppm` to understand the algorithm, math (fixed-point), and control flow.
 2. **Read the RTL Skeleton**: Read `rtl/<block>.sv`. It will have generated ports and imports.
 3. **Identify Interfaces**:
    - **Stream Inputs**: `rdy_vld_if.dst` (SystemC: `port->read()`)

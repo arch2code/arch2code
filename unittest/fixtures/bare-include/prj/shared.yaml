@@ -1,0 +1,4 @@
+# Root-level shared definitions, reached by a bare-basename include: from both
+# bareTop.yaml (same dir) and the subdirectory bareSub.yaml (bare-retention).
+types:
+    sharedBareT: { width: 4, desc: "shared type reached by bare basename include" }

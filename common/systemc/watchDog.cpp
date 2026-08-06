@@ -1,7 +1,7 @@
 // copyright QiStor 2025
 
 #include "logging.h"
-#include "endOfTest.h"
+import a2c.endOfTest;
 #include "simController.h"
 #include "systemc.h"
 #include "instanceFactory.h"
@@ -37,7 +37,9 @@ private:
         registerBlock()
         {
             // lamda function to construct the block
-            instanceFactory::registerBlock("watchDog_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<watchDogBlock>(blockName, variant, bbMode));}, "" );
+            // watchDog is a framework-shared block owned by no user project, so
+            // it registers under the unqualified (empty) projectName.
+            instanceFactory::registerBlock("watchDog_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<watchDogBlock>(blockName, variant, bbMode));}, "", "" );
         }
     };
     static registerBlock registerBlock_;

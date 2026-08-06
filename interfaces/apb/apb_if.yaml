@@ -1,9 +1,10 @@
 
 interface_defs:
-  apb : 
-    parameters : 
+  apb :
+    addressBus : true
+    parameters :
       addr_t : { datatype : struct, default : 'bit' }
-      data_t : { datatype : struct, default : 'bit' }    
+      data_t : { datatype : struct, default : 'bit' }
     signals: 
       paddr : addr_t
       psel : bool

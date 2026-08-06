@@ -2,12 +2,15 @@
 #define PYSOCKET_SOCKET_H
 
 #include "instanceFactory.h"
-#include "pySocketBase.h"
 #include "req_ack_port_socket.h"
 #include "socketFactory.h"
 #include "systemc.h"
 #include "testController.h"
-#include "endOfTest.h"
+
+// pySocketBase moved to a C++20 module by the base->cppm migration; import it
+// after the textual includes so the module's global-module-fragment STL decls
+// do not collide with these textual STL/systemc includes.
+import pySocket.base;
 
 SC_MODULE(pySocketSocket), public blockBase, public pySocketBase
 {
@@ -20,7 +23,7 @@ private:
                 [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                     return static_cast<std::shared_ptr<blockBase>>(std::make_shared<pySocketSocket>(blockName, variant, bbMode));
                 },
-                "");
+                "", "pySocket");
         }
     };
     static registerBlock registerBlock_;

@@ -1,0 +1,161 @@
+from pysrc.intf_gen_utils import cpp_module_name, cpp_block_module_name, cpp_base_module_name, cpp_namespace_name
+import pysrc.intf_gen_utils as intf_gen_utils
+
+# args from generator line
+# prj object
+# data set dict
+def render(args, prj, data):
+    # A block-module header is split across two generated regions: the GMF-only
+    # `moduleScaffold --section=blockModuleHeader` region and the sibling
+    # `moduleExport` region (its own template name, no --section) that owns the
+    # `export module` declaration plus every import. Dispatch moduleExport off the
+    # template name; the remaining scaffolds select on --section.
+    if args.template == 'moduleExport':
+        return moduleExport(args, prj, data)
+    match args.section:
+        case 'moduleHeader':
+            return moduleHeader(args, prj, data)
+        case 'blockModuleHeader':
+            return blockModuleHeader(args, prj, data)
+        case 'baseModuleHeader':
+            return baseModuleHeader(args, prj, data)
+        case _:
+            raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are moduleHeader, blockModuleHeader, baseModuleHeader")
+
+
+def moduleHeader(args, prj, data):
+    out = [
+        'module;',
+        '#include "systemc.h"',
+        '#include "logging.h"',
+        '#include "bitTwiddling.h"',
+        '#include "q_assert.h"',
+        '#include <algorithm>',
+        '',
+        f'export module {cpp_module_name(data["contextModuleIdentity"])};',
+    ]
+    return "\n".join(out)
+
+
+def blockModuleHeader(args, prj, data):
+    # Global module fragment ONLY for a parameterizable block's own interface unit
+    # (`<block>.cppm`). This region ends BEFORE `export module` — the declaration
+    # and every import live in the sibling `moduleExport` region. The GMF carries
+    # the SystemC baseline plus the block class's dependency #includes (shared
+    # with classDecl via sc_class_dependency_includes). Only #includes are legal
+    # here (global module fragment); classDecl suppresses all of these in module
+    # mode so they live here exactly once. The trailing `// user #includes here`
+    # user slot sits after this region's end, in the same GMF zone, so a
+    # non-modular shared header added there attaches to the global module rather
+    # than the block module. Framework singletons such as endOfTestState are now
+    # C++20 modules (`import a2c.endOfTest;`), added by hand in the `// user
+    # imports here` purview slot below, not included here.
+    baseline = [
+        '#include "systemc.h"',
+        '#include "logging.h"',
+        '#include "bitTwiddling.h"',
+        '#include "q_assert.h"',
+        '#include <algorithm>',
+    ]
+    deps = intf_gen_utils.sc_class_dependency_includes(args, prj, data)
+    out = ['module;']
+    emitted = set()
+    for line in baseline:
+        out.append(line)
+        emitted.add(line)
+    for kind, line in deps:
+        if kind == 'include' and line not in emitted:
+            out.append(line)
+            emitted.add(line)
+    return "\n".join(out)
+
+
+def moduleExport(args, prj, data):
+    # The COMPLETE module preamble for a parameterizable block's interface unit:
+    # `export module <block>.block;` + every import + the using-namespace lines
+    # that CLOSE the preamble. Imports are illegal in the global module fragment
+    # (blockModuleHeader), and every `import` must precede the first non-import
+    # declaration (a using-namespace permanently closes the preamble), so the
+    # whole preamble lives here. The class (classDecl / blockRegs) and the
+    # trailing `// user imports here` slot therefore both sit in module PURVIEW:
+    # a hand-added purview #include there references module types and can feed a
+    # class value member. Emit order: the structural dependency imports, then the
+    # contained-instance Base imports (`import <child>.base;`, so the constructor
+    # body's createInstance / dynamic_pointer_cast sees the complete child Base
+    # type), then the interface-context imports beyond the structural set (a
+    # C++20 import is not transitive, so the block body's unqualified spellings of
+    # types the base pulls in need these re-imported here), and finally every
+    # using-namespace line at the tail. classDecl/blockRegs emit ONLY the class in
+    # module mode; this region is their single source of imports and usings.
+    deps = intf_gen_utils.sc_class_dependency_includes(args, prj, data)
+    out = [f'export module {cpp_block_module_name(data["blockModuleName"])};']
+    emitted = set()
+    usings = []
+    for kind, line in deps:
+        emitted.add(line)
+        if kind != 'import':
+            continue
+        if line.startswith('using namespace '):
+            usings.append(line)
+        else:
+            out.append(line)
+    for line in intf_gen_utils.sc_instance_includes(data, prj):
+        out.append(line)
+    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
+    for context in data['includeContext']:
+        if context in data['includeFiles'].get(fileMapKey, {}):
+            for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey):
+                if line in emitted:
+                    continue
+                emitted.add(line)
+                if line.startswith('using namespace '):
+                    usings.append(line)
+                else:
+                    out.append(line)
+    # The using-directives CLOSE the module preamble. A reg-handler renders via
+    # blockRegs (which emits no context usings in module mode), so its usings ride
+    # here at the moduleExport tail. A non-reg-handler renders via classDecl, which
+    # emits the usings at its class-region head instead; keeping them out of
+    # moduleExport leaves the sibling `// user imports here` slot a legal preamble
+    # slot for hand-authored body-only imports.
+    if data['blockInfo']['isRegHandler']:
+        out.extend(usings)
+    return "\n".join(out)
+
+
+def baseModuleHeader(args, prj, data):
+    # Global module fragment + module declaration for a block's Base/Inverted/
+    # Channels interface unit (`<block>Base.cppm`, `export module <block>.base;`).
+    # The GMF carries the SystemC baseline plus baseClassDecl's dependency
+    # #includes (shared via sc_base_dependency_includes); the context types
+    # module the base imports is re-stated as `import <types>;` after the module
+    # declaration. baseClassDecl suppresses all of these in module mode so they
+    # live here exactly once.
+    baseline = [
+        '#include "systemc.h"',
+    ]
+    deps = intf_gen_utils.sc_base_dependency_includes(args, prj, data)
+    out = ['module;']
+    emitted = set()
+    for line in baseline:
+        out.append(line)
+        emitted.add(line)
+    for kind, line in deps:
+        if kind == 'include' and line not in emitted:
+            out.append(line)
+            emitted.add(line)
+    out.append('')
+    out.append(f'export module {cpp_base_module_name(data["blockModuleName"])};')
+    # All import declarations must immediately follow the module declaration,
+    # before any other declaration (e.g. a using-namespace); emit the context
+    # imports first and defer their `using namespace` lines after them.
+    usings = []
+    for kind, line in deps:
+        if kind != 'import':
+            continue
+        if line.startswith('using namespace '):
+            usings.append(line)
+        else:
+            out.append(line)
+    out.extend(usings)
+    return "\n".join(out)

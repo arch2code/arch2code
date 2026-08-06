@@ -1,0 +1,100 @@
+# this file contains the top level definitions and connections for helloWorld
+
+# constants / parameters are architectural level variables that can be used to control the size of structures,
+# variables, number of instances, etc.
+constants:
+  BUFFER_SIZE: {value: 64, desc: "Buffer size"}
+
+types:
+  byteT:
+    width: 8
+    desc: Byte
+  qwordT:
+    width: 64
+    desc: 64 bits
+
+# structures are collections of variables, structures are the main communication tool from block to block on any interface
+structures:
+  test_st:
+    a: {varType: byteT, generator: tracker(cmd)}
+  test_no_tracker_st:
+    a: {varType: byteT }
+  data_st:
+    b: {varType: qwordT }
+
+# interfaces are needed to make any connection from one instance of a block to another block's instance
+interfaces:
+  test_rdy_vld:
+    interfaceType: rdy_vld
+    desc: "Ready Valid Test interface"
+    structures:
+      - {structure: data_st, structureType: data_t}
+  test_req_ack:
+    interfaceType: req_ack
+    desc: "Req Ack Test interface"
+    structures:
+      - {structure: data_st, structureType: data_t}
+      - {structure: data_st, structureType: rdata_t}
+  test_push_ack:
+    interfaceType: push_ack
+    desc: "Valid Ack Test interface"
+    structures:
+      - {structure: data_st, structureType: data_t}
+  test_pop_ack:
+    interfaceType: pop_ack
+    desc: "Ready Ack Test interface"
+    structures:
+      - {structure: data_st, structureType: rdata_t}
+
+# blocks these are subsystems or blocks that can be instanced one or more times
+blocks:
+  helloWorld_tb:
+    desc: "Testbench container for helloWorld (root container)"
+    hasVl: false
+    hasRtl: false
+    hasMdl: false
+    hasTb: false
+  helloWorld:
+    desc: "The top most block, the self-contained DUT (producer + consumer)"
+    hasVl: false
+    hasRtl: false
+    hasMdl: true
+    hasTb: true
+  producer:
+    desc: Producer
+    hasVl: false
+    hasRtl: false
+    hasMdl: true
+    hasTb: false
+  consumer:
+    desc: Consumer
+    hasVl: false
+    hasRtl: false
+    hasMdl: true
+    hasTb: false
+
+# instances, these are instantiations of objects
+instances:
+  helloWorld_tb:
+    container: helloWorld_tb # self reference
+    instanceType: helloWorld_tb
+    instGroup: top
+  u_helloWorld:
+    container: helloWorld_tb
+    instanceType: helloWorld
+    instGroup: top
+  uProducer:
+    container: helloWorld
+    instanceType: producer
+    instGroup: top
+  uConsumer:
+    container: helloWorld
+    instanceType: consumer
+    instGroup: top
+
+# connections specify interface connections between different instances of objects
+connections:
+  - {interface: test_rdy_vld,  src: uProducer, dst: uConsumer }
+  - {interface: test_req_ack,  src: uProducer, dst: uConsumer }
+  - {interface: test_push_ack, src: uProducer, dst: uConsumer }
+  - {interface: test_pop_ack,  src: uProducer, dst: uConsumer }

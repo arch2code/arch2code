@@ -62,8 +62,8 @@ def get_field_width(prj: Any, field_data: Dict[str, Any], yamlFile: str) -> int:
     Returns:
         Width in bits
     """
-    entry_type = field_data.get('entryType', '')
-    
+    entry_type = field_data['entryType']
+
     if entry_type == 'NamedStruct':
         # Nested structure
         struct_key = field_data['subStructKey']
@@ -142,8 +142,8 @@ def render_structure_table(
             bit_range_str = f"[{msb}](1)"
         bit_position = lsb - 1  # Move to next field
         
-        entry_type = field_data.get('entryType', '')
-        
+        entry_type = field_data['entryType']
+
         if entry_type == 'NamedStruct':
             # Nested structure
             sub_struct = field_data['subStruct']
@@ -209,7 +209,7 @@ def render_structure_table(
                 desc = prj.data['variables'].get(var_key, {}).get('desc', '')
             else:
                 # NamedType - use type description
-                desc = prj.data['types'][var_type_key].get('desc', '')
+                desc = prj.data['types'][var_type_key]['desc']
         
         temp_rows.append([field_display, type_or_struct, bit_range_str, desc])
     
@@ -248,7 +248,7 @@ def collect_referenced_struct_keys(prj: Any, block_data: Dict[str, Any]) -> Set[
         
         struct_info = prj.data['structures'][struct_key]
         for field_name, field_data in struct_info['vars'].items():
-            if field_data.get('entryType') == 'NamedStruct':
+            if field_data['entryType'] == 'NamedStruct':
                 sub_struct_key = field_data['subStructKey']
                 collect_nested_structs(sub_struct_key)
     

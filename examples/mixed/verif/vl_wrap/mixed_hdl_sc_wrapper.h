@@ -5,18 +5,25 @@
 #include "instanceFactory.h"
 
 // GENERATED_CODE_PARAM --block=mixed
+// GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+import mixed.base;
 
-#include "mixedBase.h"
-
-// Verilated RTL top (SystemC)
+// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
+// its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "mixed_hdl_sv_wrapper.h"
 #else
 #include "Vmixed_hdl_sv_wrapper.h"
 #endif
+// GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import mixed;
+using namespace mixed_ns;
+import mixed_mixedBlockC;
+using namespace mixed_mixedBlockC_ns;
+#include "mixedVariantConfig.h"
 #include "apb_bfm.h"
 #include "notify_ack_bfm.h"
 #include "rdy_vld_bfm.h"
@@ -26,20 +33,6 @@
 class mixed_hdl_sc_wrapper: public sc_module, public blockBase, public mixedBase {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "mixed_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < mixed_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
-        }
-    };
-
-    static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
     mixed_hdl_sv_wrapper *dut_hdl;
@@ -79,7 +72,7 @@ public:
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
-        cpu_main_bfm.if_p(cpu_main);
+        cpu_main_bfm.if_p(this->cpu_main);
         cpu_main_bfm.hdl_if_p(cpu_main_hdl_if);
         cpu_main_bfm.clk(clk);
         cpu_main_bfm.rst_n(rst_n);

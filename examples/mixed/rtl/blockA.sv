@@ -1,10 +1,10 @@
 // GENERATED_CODE_PARAM --block=blockA
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: blockA
-module blockA
+//module as defined by block: mixed_blockA
+module mixed_blockA
 // Generated Import package statement(s)
-import mixedInclude_package::*;
-import mixedBlockC_package::*;
+import mixed_mixedInclude_package::*;
+import mixed_mixedBlockC_package::*;
 import mixed_package::*;
 (
     req_ack_if.src aStuffIf,
@@ -21,7 +21,7 @@ import mixed_package::*;
     memory_if #(.data_t(test37BitRegSt), .addr_t(bSizeSt)) blockATable37Bit();
 
 // Instances
-blockARegs uBlockARegs (
+mixed_blockARegs uBlockARegs (
     .apbReg (apbReg),
     .roA (roA),
     .blockATableLocal (blockATableLocal),
@@ -80,4 +80,4 @@ always_ff @(posedge clk or negedge rst_n) begin
     end
 end
 
-endmodule: blockA
+endmodule: mixed_blockA

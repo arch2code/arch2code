@@ -1,3 +1,4 @@
+import a2c.endOfTest;
 #include "pySocketSocket.h"
 
 #include "asyncEvent.h"

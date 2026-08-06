@@ -28,15 +28,15 @@ void aSt::pack(_packedSt &_ret) const
     memset(&_ret, 0, aSt::_byteWidth);
     uint16_t _pos{0};
     for(unsigned int i=0; i<ASIZE2; i++) {
-        pack_bits((uint64_t *)&_ret, _pos, variablea[i], 1);
-        _pos += 1;
+        pack_bits((uint64_t *)&_ret, _pos, variablea[i], ASIZE);
+        _pos += ASIZE;
     }
 }
 void aSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<ASIZE2; i++) {
-        uint16_t _bits = 1;
+        uint16_t _bits = ASIZE;
         uint16_t _consume;
         _consume = std::min(_bits, (uint16_t)(8-(_pos & 7)));
         variablea[i] = (aSizeT)((_src >> (_pos & 7)) & 1);
@@ -52,14 +52,14 @@ sc_bv<aSt::_bitWidth> aSt::sc_pack(void) const
 {
     sc_bv<aSt::_bitWidth> packed_data;
     for(unsigned int i=0; i<ASIZE2; i++) {
-        packed_data.range(0+(i+1)*1-1, 0+i*1) = variablea[i];
+        packed_data.range(0+(i+1)*ASIZE-1, 0+i*ASIZE) = variablea[i];
     }
     return packed_data;
 }
 void aSt::sc_unpack(sc_bv<aSt::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<ASIZE2; i++) {
-        variablea[i] = (aSizeT) packed_data.range(0+(i+1)*1-1, 0+i*1).to_uint64();
+        variablea[i] = (aSizeT) packed_data.range(0+(i+1)*ASIZE-1, 0+i*ASIZE).to_uint64();
     }
 }
 bool bSt::operator == (const bSt & rhs) const {
@@ -227,7 +227,7 @@ void eNestedSt::pack(_packedSt &_ret) const
         seeSt::_packedSt _tmp{0};
         joe[i].pack(_tmp);
         _ret |= (uint32_t)_tmp << (_pos & 31);
-        _pos += 5;
+        _pos += seeSt::_bitWidth;
     }
     {
         dSt::_packedSt _tmp{0};
@@ -240,28 +240,28 @@ void eNestedSt::unpack(const _packedSt &_src)
 {
     uint16_t _pos{0};
     for(unsigned int i=0; i<2; i++) {
-        uint16_t _bits = 5;
+        uint16_t _bits = seeSt::_bitWidth;
         uint16_t _consume;
         {
             uint64_t _tmp{0};
-            _tmp = (_src >> _pos) & ((1ULL << 5) - 1);
+            _tmp = (_src >> _pos) & ((1ULL << (seeSt::_bitWidth)) - 1);
             joe[i].unpack(*((seeSt::_packedSt*)&_tmp));
         }
-        _pos += 5;
+        _pos += seeSt::_bitWidth;
     }
     {
         uint64_t _tmp{0};
-        _tmp = (_src >> _pos) & ((1ULL << 7) - 1);
+        _tmp = (_src >> _pos) & ((1ULL << (dSt::_bitWidth)) - 1);
         bob.unpack(*((dSt::_packedSt*)&_tmp));
     }
-    _pos += 7;
+    _pos += dSt::_bitWidth;
     variablea = (aSizeT)((_src >> (_pos & 31)) & 1);
 }
 sc_bv<eNestedSt::_bitWidth> eNestedSt::sc_pack(void) const
 {
     sc_bv<eNestedSt::_bitWidth> packed_data;
     for(unsigned int i=0; i<2; i++) {
-        packed_data.range(0+(i+1)*5-1, 0+i*5) = joe[i].sc_pack();
+        packed_data.range(0+(i+1)*seeSt::_bitWidth-1, 0+i*seeSt::_bitWidth) = joe[i].sc_pack();
     }
     packed_data.range(16, 10) = bob.sc_pack();
     packed_data.range(17, 17) = variablea;
@@ -270,7 +270,7 @@ sc_bv<eNestedSt::_bitWidth> eNestedSt::sc_pack(void) const
 void eNestedSt::sc_unpack(sc_bv<eNestedSt::_bitWidth> packed_data)
 {
     for(unsigned int i=0; i<2; i++) {
-        joe[i].sc_unpack(packed_data.range(0+(i+1)*5-1, 0+i*5));
+        joe[i].sc_unpack(packed_data.range(0+(i+1)*seeSt::_bitWidth-1, 0+i*seeSt::_bitWidth));
     }
     bob.sc_unpack(packed_data.range(16, 10));
     variablea = (aSizeT) packed_data.range(17, 17).to_uint64();

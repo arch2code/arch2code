@@ -1,6 +1,6 @@
 #ifndef MIXED_EXTERNAL_H
 #define MIXED_EXTERNAL_H
-// copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
 #include "systemc.h"
 #include "logging.h"
@@ -8,8 +8,10 @@
 // GENERATED_CODE_PARAM --block=mixed_tb --excludeInst=u_mixed
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "mixedBase.h"
-#include "endOfTest.h"
+#include "instanceFactory.h"
+import mixed.base;
+import mixed;
+using namespace mixed_ns;
 
 //contained instances forward class declaration
 class cpuBase;

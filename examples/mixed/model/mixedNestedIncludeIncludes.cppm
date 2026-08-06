@@ -1,0 +1,167 @@
+
+// GENERATED_CODE_PARAM --project=mixed --context=mixedNestedInclude.yaml --mode=module
+// copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
+
+// GENERATED_CODE_BEGIN --template=moduleScaffold --section=moduleHeader
+module;
+#include "systemc.h"
+#include "logging.h"
+#include "bitTwiddling.h"
+#include "q_assert.h"
+#include <algorithm>
+
+export module mixed_mixedNestedInclude;
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=headers
+
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=constants
+export namespace mixed_mixedNestedInclude_ns {
+//constants
+inline constexpr uint32_t DSIZE = 1;  // The size of D
+inline constexpr uint32_t DSIZE2 = 2;  // The size of D2
+
+} // namespace mixed_mixedNestedInclude_ns
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=types
+export namespace mixed_mixedNestedInclude_ns {
+// types
+typedef uint16_t dupTestT; // [13] yet another type
+
+} // namespace mixed_mixedNestedInclude_ns
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=enums
+export namespace mixed_mixedNestedInclude_ns {
+// enums
+
+} // namespace mixed_mixedNestedInclude_ns
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=structures
+export namespace mixed_mixedNestedInclude_ns {
+// structures
+struct dupTestSt {
+    dupTestT bob; //A test structure
+
+    dupTestSt() {}
+
+    static constexpr uint16_t _bitWidth = 13;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint16_t _packedSt;
+    inline bool operator == (const dupTestSt & rhs) const {
+        bool ret = true;
+        ret = ret && (bob == rhs.bob);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const dupTestSt & v, const std::string & NAME ) {
+        sc_trace(tf,v.bob, NAME + ".bob");
+    }
+    inline friend ostream& operator << ( ostream& os,  dupTestSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("bob:0x{:04x}",
+           (uint64_t) bob
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, dupTestSt::_byteWidth);
+        _ret = bob;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        bob = (dupTestT)((_src) & ((1ULL << 13) - 1));
+    }
+    inline sc_bv<dupTestSt::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<dupTestSt::_bitWidth> packed_data;
+        packed_data.range(12, 0) = bob;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<dupTestSt::_bitWidth> packed_data)
+    {
+        bob = (dupTestT) packed_data.range(12, 0).to_uint64();
+    }
+    explicit dupTestSt(sc_bv<dupTestSt::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit dupTestSt(
+        dupTestT bob_) :
+        bob(bob_)
+    {}
+    explicit dupTestSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+} // namespace mixed_mixedNestedInclude_ns
+
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=structures --section=testStructsHeader
+export namespace mixed_mixedNestedInclude_test_ns {
+class test_mixedNestedInclude_structs {
+public:
+    static std::string name(void);
+    static void test(void);
+private:
+    template<typename T>
+    static void roundTrip(const char* sName, const std::vector<uint8_t>& patterns) {
+        for(auto pattern : patterns) {
+            typename T::_packedSt packed;
+            memset(&packed, pattern, T::_byteWidth);
+            sc_bv<T::_bitWidth> aInit;
+            sc_bv<T::_bitWidth> aTest;
+            for (int i = 0; i < T::_byteWidth; i++) {
+                int end = std::min((i+1)*8-1, T::_bitWidth-1);
+                aInit.range(end, i*8) = pattern;
+            }
+            T a;
+            a.sc_unpack(aInit);
+            T b;
+            b.unpack(packed);
+            if (!(b == a)) {;
+                cout << a.prt();
+                cout << b.prt();
+                Q_ASSERT(false, sName);
+            }
+            uint64_t test;
+            memset(&test, pattern, 8);
+            b.pack(packed);
+            aTest = a.sc_pack();
+            if (!(aTest == aInit)) {;
+                cout << a.prt();
+                cout << aTest;
+                Q_ASSERT(false, sName);
+            }
+            uint64_t *ptr = (uint64_t *)&packed;
+            uint16_t bitsLeft = T::_bitWidth;
+            do {
+                int bits = std::min((uint16_t)64, bitsLeft);
+                uint64_t mask = (bits == 64) ? -1 : ((1ULL << bits)-1);
+                if ((*ptr & mask) != (test & mask)) {;
+                    cout << a.prt();
+                    cout << b.prt();
+                    Q_ASSERT(false, sName);
+                }
+                bitsLeft -= bits;
+                ptr++;
+            } while(bitsLeft > 0);
+        }
+    }
+};
+} // namespace mixed_mixedNestedInclude_test_ns
+
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=structures --section=testStructsCPP
+export namespace mixed_mixedNestedInclude_test_ns {
+using namespace mixed_mixedNestedInclude_ns;
+std::string test_mixedNestedInclude_structs::name(void) { return "test_mixedNestedInclude_structs"; }
+void test_mixedNestedInclude_structs::test(void) {
+    std::vector<uint8_t> patterns{0x6a, 0xa6};
+    std::vector<uint8_t> signedPatterns{0x00, 0x6a, 0xa6, 0x77, 0x88, 0x55, 0xAA, 0xFF};
+    cout << "Running " << name() << endl;
+    roundTrip<dupTestSt>("dupTestSt", patterns);
+}
+} // namespace mixed_mixedNestedInclude_test_ns
+
+// GENERATED_CODE_END

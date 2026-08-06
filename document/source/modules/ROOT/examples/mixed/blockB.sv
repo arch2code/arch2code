@@ -1,1 +1,1 @@
-../../../../../../examples/mixed/systemVerilog/blockB.sv
+../../../../../../examples/mixed/rtl/blockB.sv

@@ -7,22 +7,12 @@
 #include "systemc.h"
 #include "instanceFactory.h"
 
-#include "axi4sDemoBase.h"
+import axi4sDemo.base;
+import axi4sDemo_tb;
+using namespace axi4sDemo_tb_ns;
 #include "axi4sDemoExternal.h"
 
 class axi4sDemoTestbench: public sc_module, public blockBase, public axi4sDemoChannels {
-
-    private:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock("axi4sDemoTestbench_model", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<axi4sDemoTestbench>(blockName, variant, bbMode));}, "" );
-        }
-    };
-    static registerBlock registerBlock_;
 
 public:
 

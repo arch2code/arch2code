@@ -5,7 +5,7 @@
 
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
-#include "endOfTest.h"
+import a2c.endOfTest;
 
 // GENERATED_CODE_PARAM --block=axi4sDemo
 // GENERATED_CODE_BEGIN --template=tbConfig
@@ -24,12 +24,18 @@ public:
     static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~axi4sDemoConfig() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
+protected:
+    // The testbench top is instantiated through this generated helper so its
+    // factory-key projectName is emitted here on every make gen (matching the
+    // tb-top registration), instead of being hand-written into the user body.
+    std::shared_ptr<blockBase> createTbTop(void) { return instanceFactory::createInstance("", "tb", "axi4sDemoTestbench", "", "axi4sDemo"); }
+public:
 // GENERATED_CODE_END
 
     bool createTestBench(void) override
     {
         //create hierarchy
-        std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "tb", "axi4sDemoTestbench", "");
+        std::shared_ptr<blockBase> tb = createTbTop();
         return true;
     }
 

@@ -28,6 +28,9 @@ systemVerilog/axiDemo/package.f
 # ignore the test output directory
 tests/out/*
 
+# ignore regression output directories
+**/regr/**
+
 # database files
 *.db
 
@@ -41,3 +44,17 @@ tests/out/*
 *.scgen
 *.svgen
 .clangd
+compile_commands.json
+.gen/
+**/.gen/**
+.cache/
+**/.cache/**
+.container-prerequisites
+
+# generated AI agent rule/skill deployments (make agents-setup / agent-dev-setup / cursor-setup)
+.claude/
+.gemini/
+.opencode/
+.agents/
+.cursor/
+GEMINI.md

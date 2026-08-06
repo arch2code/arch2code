@@ -1,0 +1,44 @@
+{
+  "session" : {
+    "name" : "regr_ip_test",
+    "jobs" : 1,
+    "lrp" : 0
+  },
+  "build" : {
+    "command" : "make -j all VL_DUT=1",
+    "timeout" : 120
+  },
+  "run" : {
+    "command" : "build/run ip_top",
+    "args" : "",
+    "timeout" : 240,
+    "rules" : [ "default.json" ],
+    "count" : 1,
+    "seed" : 0,
+    "labels" : [],
+    "model_tests" : {
+      "labels+" : [ "mdl" ],
+      "test_group" : {
+        "model_model" : { }
+      }
+    },
+    "hdl_tests" : {
+      "labels+" : [ "hdl" ],
+      "default" : {
+        "args+" : "--vlType verif",
+        "test_group" : {
+          "cosim" : { "args+" : "--vlInst ip_top" },
+          "boundary" : { "args+" : "--vlInst ip_top.uSrc" },
+          "narrow_le64" : { "args+" : "--vlInst ip_top.uIp0", "labels+" : [ "param" ] },
+          "wide_gt64" : { "args+" : "--vlInst ip_top.uIp1", "labels+" : [ "param", "wide" ] },
+          "apb_decode" : { "args+" : "--vlInst ip_top.uAPBDecode" },
+          "bridge" : { "args+" : "--vlInst ip_top.uBridge", "labels+" : [ "bridge" ] },
+          "bridge_driver" : { "args+" : "--vlInst ip_top.uBridgeDriver", "labels+" : [ "bridge" ] },
+          "bridge_apb_decode" : { "args+" : "--vlInst ip_top.uBridge.uBridgeAPBDecode", "labels+" : [ "bridge" ] },
+          "bridge_narrow_le64" : { "args+" : "--vlInst ip_top.uBridge.uBridgeIp0", "labels+" : [ "param", "bridge" ] },
+          "bridge_wide_gt64" : { "args+" : "--vlInst ip_top.uBridge.uBridgeIp1", "labels+" : [ "param", "bridge", "wide" ] }
+        }
+      }
+    }
+  }
+}

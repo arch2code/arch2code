@@ -76,6 +76,43 @@ arch2code generates two types of files:
 **Memories:** Arrays of structured data with optional CPU access
 **Trackers:** Transaction tracking system for debug
 
+### HW Dimensions vs. C++ Dimensions
+
+Every generated structure carries two separate notions of size:
+
+| Member | Represents | Used For |
+|--------|-----------|----------|
+| `_bitWidth` | **HW bit width** — sum of all field widths as defined in YAML | `sc_bv<>` sizing, pack/unpack serialization, address-map calculations |
+| `_byteWidth` | **HW byte width** — `(_bitWidth + 7) >> 3` | Register/memory byte footprint in address maps, `addMemory()` calls |
+| `sizeof(T)` | **C++ storage size** — actual memory footprint of the C++ struct | Multi-cycle burst sizing, `memcpy`, array allocation |
+
+These are **deliberately different**. C++ storage types are typically wider than the hardware reality they model. For example, a 1-bit `eol_t` field is stored in a `uint8_t` (8× wider), and a 3-field struct of single-bit types has `_byteWidth = 1` but `sizeof = 3`.
+
+**Concrete example:**
+
+```cpp
+struct video_frame_t {
+    eof_t eof;   // 1 HW bit, stored in uint8_t
+    sof_t sof;   // 1 HW bit, stored in uint8_t
+    eol_t eol;   // 1 HW bit, stored in uint8_t
+
+    static constexpr uint16_t _bitWidth  = 1 + 1 + 1;       // 3 HW bits
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3; // 1 HW byte
+    typedef uint8_t _packedSt;
+    // ...
+};
+// sizeof(video_frame_t) == 3  (three uint8_t members in C++)
+// _byteWidth            == 1  (3 HW bits → 1 byte on the wire)
+```
+
+**`_packedSt`** is the C++ integer type (or array of `uint64_t` for wide structs) chosen to hold the bit-packed HW representation. `pack()` serializes the C++ struct fields into `_packedSt` using HW-accurate bit positions; `unpack()` does the reverse.
+
+**When each size matters:**
+
+- Use **`_bitWidth` / `_byteWidth`** when reasoning about the hardware: register byte widths, address-space allocation, `sc_bv` template parameters, and pack/unpack operations.
+- Use **`sizeof`** when reasoning about C++ memory: multi-cycle channel burst lengths, buffer allocation, `memcpy` sizes, and pointer arithmetic.
+- Never assume `sizeof(T)` equals `_byteWidth` — they are independent by design.
+
 ### Understanding Code Markers
 
 ```cpp

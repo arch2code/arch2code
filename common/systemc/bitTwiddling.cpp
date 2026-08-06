@@ -1,6 +1,18 @@
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 #include "bitTwiddling.h"
 #include <algorithm>
+
+// Internal generated-code support only.
+//
+// User model code should not call pack_bits(), unpack_bits(), or
+// copy_packed_bits() directly. These helpers implement the generated
+// structure/thunker representation contract; user code should move typed
+// structures through the generated channels, ports, pack()/unpack() methods,
+// and register/memory APIs instead.
+//
+// Agent/maintainer warning: if you are about to modify this file, first read
+// STRUCTURES_AND_DATA_TYPES_REFERENCE.md. The masking differences
+// below are deliberate and are part of the SystemC/RTL equivalence contract.
 uint64_t findNextPowerOf2(uint64_t n)
 {
     if (n == 0) return 1;
@@ -28,9 +40,35 @@ uint16_t log2ofPowerOf2(uint64_t v)
     }
     return r;
 }
-// copy bits from src at offset srcPos to dest at offset destPos
-// this handles arbitrary bit offsets and lengths
-// destPos and srcPos are bit offsets within the destination and source words respectively
+// pack_bits / unpack_bits implementation notes (shared across the overloads).
+//
+// pack_bits intentionally does NOT mask the source word to `consume` bits per
+// iteration. The modeling platform tolerates oversized native C storage for
+// declared HW-width fields (e.g. an 8-bit field stored in a uint8_t, a 70-bit
+// field stored in uint64_t[2]); when a writer leaves bits set above the
+// declared width — uninitialized storage, or a true algorithm overflow —
+// those bits flow through pack() into the packed form at adjacent fields'
+// positions, and the generated test_ip_structs roundtrip canary surfaces
+// the mismatch noisily. That noise is the canonical fail-fast surface;
+// adding a source mask here would silently sanitize the overflow and hide
+// the underlying algorithm bug. Do not change that behavior without first
+// relocating the detection surface elsewhere (e.g. a per-field range assert
+// at the call site of the offending writer).
+//
+// unpack_bits DOES mask the source word to `consume` bits per iteration.
+// When extracting one field out of a packed form, the source word
+// legitimately carries adjacent fields' bits beyond the field being
+// extracted; those bits must not propagate into the destination field's
+// storage. Stage 8.2 of plan-variant-config-unification.md added the
+// helper, and templates/systemc/structures.py routes the templated
+// array-backed unpack codegen through it.
+//
+// Both functions require the caller to pre-clear the destination. pack()
+// emits memset(&_ret, 0, _byteWidth) at the top; the templated unpack()
+// emits memset(&field, 0, sizeof(field)) before each unpack_bits call.
+//
+// This overload (dest, destPos, src, srcPos, bits) supports arbitrary bit
+// offsets within both source and destination.
 void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits)
 {
     while (bits > 0) {
@@ -48,7 +86,10 @@ void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos,
         bits -= consume;
     }
 }
-// copy bits from aligned src to dest at offset pos
+// pack_bits — overload where the source pointer is known to be aligned to a
+// 64-bit word boundary at bit 0 (srcPos is implicitly 0). See the
+// implementation-notes block above the first overload for the shared
+// overflow-propagation rationale.
 void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t bits)
 {
     uint16_t srcPos = 0; // note starts at 0 ie aligned to the start of src
@@ -67,7 +108,9 @@ void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t bits)
         bits -= consume;
     }
 }
-// copy bits from src to dest at offset pos where src is a single 64-bit value
+// pack_bits — overload where the source is a single 64-bit value passed by
+// value rather than by pointer. See the implementation-notes block above
+// the first overload for the shared overflow-propagation rationale.
 void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t src, uint16_t bits)
 {
     uint16_t srcPos = 0;
@@ -84,5 +127,26 @@ void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t src, uint16_t bits)
         destPos += consume;
         srcPos += consume;
         bits -= consume;
+    }
+}
+
+// unpack_bits — see the implementation-notes block above the first pack_bits
+// overload for the shared rationale: pack_bits propagates source bits above
+// `consume` so overflow surfaces noisily through the test_ip_structs canary,
+// while unpack_bits masks them so adjacent packed-form fields' bits do not
+// leak into the destination field's storage.
+void unpack_bits(uint64_t* dest, uint16_t destPos, const uint64_t* src, uint16_t srcPos, uint16_t bits)
+{
+    while (bits > 0) {
+        uint16_t left_shift  = destPos & 63;
+        uint16_t right_shift = srcPos  & 63;
+        uint16_t consume = std::min(bits, (uint16_t)(64 - left_shift));
+        consume = std::min(consume, (uint16_t)(64 - right_shift));
+        uint64_t mask = (consume >= 64) ? ~0ULL : ((1ULL << consume) - 1);
+        uint64_t bits_to_write = (src[srcPos >> 6] >> right_shift) & mask;
+        dest[destPos >> 6] |= bits_to_write << left_shift;
+        destPos += consume;
+        srcPos  += consume;
+        bits    -= consume;
     }
 }

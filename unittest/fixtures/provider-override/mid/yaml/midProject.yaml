@@ -1,0 +1,21 @@
+# Intermediate child project (projectName midProj) that reaches the shared
+# provider through its own vendored symlink (mid/ip -> ../provider). This second
+# lexically-distinct path to projectName sharedIp is what the root's
+# projectOverrides collapses onto the real provider; without that override it is
+# a duplicate provider.
+projectName: midProj
+
+projectFiles:
+    - ../../mid/ip/yaml/sharedProject.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
+
+blocks:
+    midBlock:
+        desc: "block owned by the intermediate project"
+        hasMdl: true
+        hasRtl: false

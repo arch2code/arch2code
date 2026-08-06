@@ -1,0 +1,52 @@
+# Standalone project file for the shared 'common' definitions.
+#
+# This is a definitions-only project: it owns shared constants, types,
+# structures, and interfaces (shared_types.yaml) that several projects depend
+# on, and generates their package/include/firmware artifacts. It has no
+# instances or blocks, so it declares no topInstance.
+#
+# This project is a contained sub-project of the ip_test super-repo (it lives
+# at examples/ip_test/common, alongside the ip sub-project at examples/ip_test/ip),
+# simulating a git submodule of the super-repo. The root ip_top references it
+# directly (projectFiles: + include:), while ipBridge vendors it through a
+# symlink (bridge/common -> ../common); a projectOverrides: entry in each
+# consumer selects this canonical provider.
+
+yamlFormat: 2
+projectName: common
+
+projectFiles:
+    - ../../yaml/shared_types.yaml
+    - ../../cpu/yaml/cpu.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs: # only root is supplied; other segments + hierarchicalDirs inherit the base config
+    root: ../.. # common project root, relative to this project file
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileMap:
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+    regBlockNaming: {
+            instancePrefix: "u",
+            blockSuffix: "Regs",
+            camelCase: true,
+        }

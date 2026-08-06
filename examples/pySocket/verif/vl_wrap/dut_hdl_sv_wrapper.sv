@@ -53,7 +53,7 @@ module dut_hdl_sv_wrapper
     assign #0 dut2Python_req_ack.ack = dut2Python_req_ack_ack;
     assign #0 dut2Python_req_ack.rdata = dut2Python_req_ack_rdata;
 
-    dut dut (
+    pySocket_dut dut (
         .test_req_ack(test_req_ack), // req_ack_if.dst
         .test2Python_req_ack(test2Python_req_ack), // req_ack_if.dst
         .dut2Python_req_ack(dut2Python_req_ack), // req_ack_if.src
