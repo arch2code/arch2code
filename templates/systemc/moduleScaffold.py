@@ -1,12 +1,24 @@
 from pysrc.intf_gen_utils import cpp_module_name, cpp_block_module_name, cpp_base_module_name, cpp_namespace_name
 import pysrc.intf_gen_utils as intf_gen_utils
+from templates.systemc import structures
+from templates.systemc.testbench import ext_module_header, ext_module_export, tb_module_header, tb_module_export
+
+# The module interface units whose preamble moduleExport does NOT emit itself.
+# `--fileMapKey` on a moduleExport region names the fileMap entry of the unit the
+# preamble belongs to; absent means the block's own `<block>.cppm`. The
+# testbench-family units select their own emitter because their module name,
+# import set and excluded-DUT resolution are not a block's.
+TB_MODULE_EXPORTS = {
+    'tbExternal': ext_module_export,
+    'testBench':  tb_module_export,
+}
 
 # args from generator line
 # prj object
 # data set dict
 def render(args, prj, data):
-    # A block-module header is split across two generated regions: the GMF-only
-    # `moduleScaffold --section=blockModuleHeader` region and the sibling
+    # A module interface unit's header is split across two generated regions: the
+    # GMF-only `moduleScaffold --section=<unit>ModuleHeader` region and the sibling
     # `moduleExport` region (its own template name, no --section) that owns the
     # `export module` declaration plus every import. Dispatch moduleExport off the
     # template name; the remaining scaffolds select on --section.
@@ -19,21 +31,44 @@ def render(args, prj, data):
             return blockModuleHeader(args, prj, data)
         case 'baseModuleHeader':
             return baseModuleHeader(args, prj, data)
+        case 'tbExternalModuleHeader':
+            return ext_module_header(args, prj, data)
+        case 'testBenchModuleHeader':
+            return tb_module_header(args, prj, data)
         case _:
-            raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are moduleHeader, blockModuleHeader, baseModuleHeader")
+            raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are moduleHeader, blockModuleHeader, baseModuleHeader, tbExternalModuleHeader, testBenchModuleHeader")
 
 
 def moduleHeader(args, prj, data):
-    out = [
-        'module;',
-        '#include "systemc.h"',
-        '#include "logging.h"',
-        '#include "bitTwiddling.h"',
-        '#include "q_assert.h"',
-        '#include <algorithm>',
-        '',
-        f'export module {cpp_module_name(data["contextModuleIdentity"])};',
-    ]
+    # Global module fragment + module declaration for a context's types module
+    # (`<context>Includes.cppm`). An #include is legal only here, so this region
+    # carries every header the file's later regions need, derived rather than
+    # assumed:
+    #   * systemc.h is the whole-file baseline - the struct regions name sc_bv /
+    #     sc_trace, and a struct-less context's typedefs still need the uint*_t it
+    #     supplies, so it is deliberately NOT gated on the structure set.
+    #   * the struct-feature headers come from the same codeMapping/includeMapping
+    #     the non-module header path uses, so the two cannot drift.
+    #   * q_assert.h backs the struct round-trip test region's Q_ASSERT. The
+    #     non-module path emits that include at its own point of use inside the
+    #     test section, which a module unit cannot do.
+    #   * bitTwiddling.h additionally backs clog2() in a generated width
+    #     expression, which is independent of the struct set.
+    hasStructures = len(data['structures']) > 0
+    out = ['module;', '#include "systemc.h"']
+    includes = structures.systemIncludes('module', 'headerIncludes', hasStructures)
+    if hasStructures:
+        includes.append('#include "q_assert.h"')
+    if data['usesClog2']:
+        includes.append('#include "bitTwiddling.h"')
+    # The two sources of bitTwiddling.h overlap for a struct-bearing context that
+    # also uses clog2, so the membership test is what collapses them - not a
+    # defensive guard.
+    for line in includes:
+        if line not in out:
+            out.append(line)
+    out.append('')
+    out.append(f'export module {cpp_module_name(data["contextModuleIdentity"])};')
     return "\n".join(out)
 
 
@@ -49,15 +84,16 @@ def blockModuleHeader(args, prj, data):
     # non-modular shared header added there attaches to the global module rather
     # than the block module. Framework singletons such as endOfTestState are now
     # C++20 modules (`import a2c.endOfTest;`), added by hand in the `// user
-    # imports here` purview slot below, not included here.
+    # imports here` preamble slot below, not included here.
+    # The baseline is only what a generated line names: systemc.h for the
+    # SC_MODULE/SC_HAS_PROCESS class and its sc_ port types, logging.h for the
+    # generated `logBlock log_;` member. A block body's own Q_ASSERT, std::min or
+    # clog2 is user content and belongs in the `// user #includes here` slot.
     baseline = [
         '#include "systemc.h"',
         '#include "logging.h"',
-        '#include "bitTwiddling.h"',
-        '#include "q_assert.h"',
-        '#include <algorithm>',
     ]
-    deps = intf_gen_utils.sc_class_dependency_includes(args, prj, data)
+    deps = intf_gen_utils.sc_class_dependency_includes(prj, data)
     out = ['module;']
     emitted = set()
     for line in baseline:
@@ -71,55 +107,43 @@ def blockModuleHeader(args, prj, data):
 
 
 def moduleExport(args, prj, data):
+    # A testbench-family unit names its fileMap key and supplies its own preamble.
+    if args.fileMapKey in TB_MODULE_EXPORTS:
+        return TB_MODULE_EXPORTS[args.fileMapKey](args, prj, data)
     # The COMPLETE module preamble for a parameterizable block's interface unit:
-    # `export module <block>.block;` + every import + the using-namespace lines
-    # that CLOSE the preamble. Imports are illegal in the global module fragment
-    # (blockModuleHeader), and every `import` must precede the first non-import
-    # declaration (a using-namespace permanently closes the preamble), so the
-    # whole preamble lives here. The class (classDecl / blockRegs) and the
-    # trailing `// user imports here` slot therefore both sit in module PURVIEW:
-    # a hand-added purview #include there references module types and can feed a
-    # class value member. Emit order: the structural dependency imports, then the
-    # contained-instance Base imports (`import <child>.base;`, so the constructor
-    # body's createInstance / dynamic_pointer_cast sees the complete child Base
-    # type), then the interface-context imports beyond the structural set (a
-    # C++20 import is not transitive, so the block body's unqualified spellings of
-    # types the base pulls in need these re-imported here), and finally every
-    # using-namespace line at the tail. classDecl/blockRegs emit ONLY the class in
-    # module mode; this region is their single source of imports and usings.
-    deps = intf_gen_utils.sc_class_dependency_includes(args, prj, data)
+    # `export module <block>.block;` + every import, and NOTHING else: a
+    # using-namespace would close the preamble here. Imports are illegal in the
+    # global module fragment (blockModuleHeader), and every `import` must precede
+    # the first non-import declaration, so the whole import set lives here while
+    # the class region (classDecl / blockRegs) emits the using-directives at its
+    # own head. That leaves the trailing `// user imports here` slot an open
+    # preamble slot for a hand-authored import; a hand-added #include there closes
+    # the preamble and attaches to this module. Emit order: the structural
+    # dependency imports, then the contained-instance Base imports
+    # (`import <child>.base;`, so the constructor body's createInstance /
+    # dynamic_pointer_cast sees the complete child Base type), then the
+    # interface-context imports beyond the structural set (a C++20 import is not
+    # transitive, so the block body's unqualified spellings of types the base
+    # pulls in need these re-imported here).
+    deps = intf_gen_utils.sc_class_dependency_includes(prj, data)
     out = [f'export module {cpp_block_module_name(data["blockModuleName"])};']
     emitted = set()
-    usings = []
     for kind, line in deps:
         emitted.add(line)
-        if kind != 'import':
+        if kind != 'import' or line.startswith('using namespace '):
             continue
-        if line.startswith('using namespace '):
-            usings.append(line)
-        else:
-            out.append(line)
+        out.append(line)
     for line in intf_gen_utils.sc_instance_includes(data, prj):
         out.append(line)
-    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
     for context in data['includeContext']:
-        if context in data['includeFiles'].get(fileMapKey, {}):
-            for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey):
+        if context in data['includeFiles'].get('include_cppm', {}):
+            for line in intf_gen_utils.cpp_context_include_lines(prj, context):
                 if line in emitted:
                     continue
                 emitted.add(line)
                 if line.startswith('using namespace '):
-                    usings.append(line)
-                else:
-                    out.append(line)
-    # The using-directives CLOSE the module preamble. A reg-handler renders via
-    # blockRegs (which emits no context usings in module mode), so its usings ride
-    # here at the moduleExport tail. A non-reg-handler renders via classDecl, which
-    # emits the usings at its class-region head instead; keeping them out of
-    # moduleExport leaves the sibling `// user imports here` slot a legal preamble
-    # slot for hand-authored body-only imports.
-    if data['blockInfo']['isRegHandler']:
-        out.extend(usings)
+                    continue
+                out.append(line)
     return "\n".join(out)
 
 
@@ -134,7 +158,7 @@ def baseModuleHeader(args, prj, data):
     baseline = [
         '#include "systemc.h"',
     ]
-    deps = intf_gen_utils.sc_base_dependency_includes(args, prj, data)
+    deps = intf_gen_utils.sc_base_dependency_includes(prj, data)
     out = ['module;']
     emitted = set()
     for line in baseline:

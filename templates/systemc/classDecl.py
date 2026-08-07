@@ -31,17 +31,15 @@ def render_default(args, prj, data):
     registerDecode = data['addressDecode']['hasDecoder'] and (not data['enableRegConnections'] or data['blockInfo']['isRegHandler'])
 
     # Class dependency lines. In classic (.h/.cpp) mode they are emitted inline
-    # ahead of the class. In module mode the block-module interface unit's
-    # preamble owns every import and using-namespace: the global module fragment
-    # (moduleScaffold.blockModuleHeader) carries the #includes, and the
-    # moduleExport region carries `export module`, all imports, and the
-    # using-namespace lines that CLOSE the preamble. classDecl therefore emits
-    # ONLY the exported class in module mode; the trailing `// user imports here`
-    # slot is a module-purview zone (a hand-added purview #include there attaches
-    # to the block module and can feed a class member).
+    # ahead of the class. In module mode the block-module interface unit splits
+    # them: the global module fragment (moduleScaffold.blockModuleHeader) carries
+    # the #includes and the moduleExport region carries `export module` plus every
+    # import. classDecl therefore emits only the exported class and the
+    # using-directives at its region head (below), which is what leaves the
+    # intervening `// user imports here` slot an open module preamble.
     if args.mode != 'module':
         emittedDepLines = set()
-        for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
+        for kind, line in intf_gen_utils.sc_class_dependency_includes(prj, data):
             out.append(line)
             emittedDepLines.add(line)
         # A module import does not propagate the imported base module's own
@@ -52,10 +50,9 @@ def render_default(args, prj, data):
         # unqualified, so re-emit the base's interface-context imports (and their
         # using-directives) here for the ones the derived class does not already
         # reference directly. Deduplicated against the lines emitted above.
-        fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
         for context in data['includeContext']:
-            if context in data['includeFiles'].get(fileMapKey, {}):
-                for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, fileMapKey):
+            if context in data['includeFiles'].get('include_cppm', {}):
+                for line in intf_gen_utils.cpp_context_include_lines(prj, context):
                     if line not in emittedDepLines:
                         out.append(line)
                         emittedDepLines.add(line)
@@ -72,29 +69,15 @@ def render_default(args, prj, data):
         out.append(f'//contained instances base module imports')
         for line in intf_gen_utils.sc_instance_includes(data, prj):
             out.append(line)
-    # In module mode moduleExport owns the preamble (export module + imports) and,
-    # for a non-reg-handler block, emits imports ONLY so the sibling
-    # `// user imports here` slot stays a legal preamble slot for hand-authored
-    # body-only imports. The context using-directives that let the block body spell
-    # imported types unqualified are therefore emitted HERE at the class-region head
-    # (after the user-import slot, where the preamble has closed). This mirrors
-    # moduleExport's using set (dependency + context sources); reg-handlers keep
-    # their usings at the moduleExport tail and never reach classDecl.
+    # In module mode moduleExport owns the preamble (export module + imports) and
+    # emits imports ONLY, so the sibling `// user imports here` slot stays a legal
+    # preamble slot for hand-authored body-only imports. The context
+    # using-directives that let the block body spell imported types unqualified
+    # are therefore emitted HERE at the class-region head (after the user-import
+    # slot, where the preamble has closed). blockRegs does the same for a
+    # reg-handler through the same shared helper.
     if args.mode == 'module':
-        seenUsing = set()
-        moduleUsings = []
-        for kind, line in intf_gen_utils.sc_class_dependency_includes(args, prj, data):
-            if line.startswith('using namespace ') and line not in seenUsing:
-                moduleUsings.append(line)
-                seenUsing.add(line)
-        moduleFileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
-        for context in data['includeContext']:
-            if context in data['includeFiles'].get(moduleFileMapKey, {}):
-                for line in intf_gen_utils.cpp_context_include_lines(prj, data, context, moduleFileMapKey):
-                    if line.startswith('using namespace ') and line not in seenUsing:
-                        moduleUsings.append(line)
-                        seenUsing.add(line)
-        out.extend(moduleUsings)
+        out.extend(intf_gen_utils.sc_class_module_usings(prj, data))
     else:
         out.append('')
 

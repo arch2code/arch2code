@@ -6,6 +6,8 @@
 
 // GENERATED_CODE_PARAM --block=apbDecode
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import simple_ip_apbDecode.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names

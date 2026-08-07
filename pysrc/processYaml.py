@@ -82,13 +82,19 @@ def expandDirMacros(myFile):
         return myFile
     return _expand_with_macros(myFile, dirMacros)
 
-def sanitizeModuleToken(name):
+def sanitizeIdentifierToken(name):
     # Core-owned identifier sanitization for a project/include/block token: map
     # the two characters illegal in a C++ module-name / identifier segment to
     # underscore. Owned here in core (not in the template layer) because
     # projectCreate builds the owner-qualified foreign-Config file stub from it;
     # the template layer's cpp_module_name imports this same primitive so the
     # two cannot drift.
+    #
+    # NOT module-specific despite where it is most visible: three domains depend
+    # on it — C++20 module names, `_ns` namespace names, and the `<project>_`
+    # prefix on foreign Config STRUCT names. Any tightening for module-name
+    # legality alone would silently change struct and namespace spellings too, so
+    # keep the rule to what is illegal in a plain identifier segment.
     return name.replace('-', '_').replace('.', '_')
 
 def qualifyModuleIdentity(name, projectName):
@@ -103,10 +109,10 @@ def qualifyModuleIdentity(name, projectName):
     # Sanitize both tokens so the returned identifier is a legal SV/C++
     # module/package/namespace name even when the project name carries a '-' or
     # '.' (e.g. 'my-project' -> 'my_project_ip'); the dedup test then compares
-    # sanitized-vs-sanitized. sanitizeModuleToken is idempotent, so an
+    # sanitized-vs-sanitized. sanitizeIdentifierToken is idempotent, so an
     # already-underscore project name stays byte-identical.
-    name = sanitizeModuleToken(name)
-    projectName = sanitizeModuleToken(projectName)
+    name = sanitizeIdentifierToken(name)
+    projectName = sanitizeIdentifierToken(projectName)
     if name == projectName or name.startswith(projectName + '_'):
         return name
     return f'{projectName}_{name}'
@@ -1178,6 +1184,14 @@ class projectOpen:
         view = self.getContextConfigView(contexts)
         ret['contextVariantConfigs']      = view['variantConfigs']
         ret['contextBlockParamSynthetic'] = view['blockParamSynthetic']
+        # True when a type reachable from this context derives its width from a
+        # log2, which makes the generated width expressions call clog2(). The
+        # SystemC emitters use it to decide whether the artifact needs
+        # bitTwiddling.h. Scoped to the accessible contexts, not just the rendered
+        # one, because an emitted expression may name an included context's type.
+        ret['usesClog2'] = any(value['_context'] in ret['includeContext']
+                               and (value['widthLog2'] != '' or value['widthLog2minus1'] != '')
+                               for value in self.data['types'].values())
         return ret
 
     def _contextRtlDirs(self, includeContext):
@@ -1410,7 +1424,7 @@ class projectOpen:
         # top name it needs.
         variantTops = {v: f'{blockName}_{v}{wrapTail}' for v in ret['declaredVariants']}
         foreignVariantTops = {
-            v: f'{sanitizeModuleToken(project)}_{blockName}_{v}{foreignTail}'
+            v: f'{sanitizeIdentifierToken(project)}_{blockName}_{v}{foreignTail}'
             for v in ret['declaredVariants']}
         ret['svWrapper'] = {
             'bodyModule': bodyModule,
@@ -4905,7 +4919,7 @@ class projectCreate:
                 key = (row['projectName'], childKey)
                 if key not in headers:
                     childBlock = blockByKey[childKey]['block']
-                    stub = f"{sanitizeModuleToken(row['projectName'])}_{childBlock}"
+                    stub = f"{sanitizeIdentifierToken(row['projectName'])}_{childBlock}"
                     layout = self.projectLayout[row['projectName']]
                     filePath = expandNewModulePath(foreignDef, blockByKey[childKey]['dir'],
                                                    childBlock, stub, layout, missingDirOk=True)

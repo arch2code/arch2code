@@ -158,7 +158,8 @@ db : $(A2C_SQLDB_FILE)
 # pipeline: the text conversions + yamlFormat stamp, then (only once the project
 # is stamped/format-2, so the database gate passes) build the DB, sweep the
 # generated orphans the legacy fileMap left behind, scaffold the current fileMap's
-# new-form producers the legacy generator never emitted, and regenerate.
+# new-form producers the legacy generator never emitted, port the testbench family,
+# regenerate, and port the block implementations.
 # The stamp line fails the target on non-zero (yaml-stage manual TODOs remain,
 # project unstamped), halting before db/sweep so the user resolves them and re-runs
 # the same idempotent `make migrate`. The sweep applies its deletes, but a remaining
@@ -170,6 +171,19 @@ db : $(A2C_SQLDB_FILE)
 # gen only fills generated regions of files that already exist, so newmodule
 # (create-only) must scaffold the missing new-form files first, and the orphans must
 # be gone before it so stale markers do not feed the scgen step.
+# The testbench-family port (--port-tb) runs BETWEEN newmodule and gen, because both
+# of its edits have to be in place before gen renders the files: <block>Config.cpp's
+# legacy region carries no --section, which gen rejects outright, and the External's
+# --block is routinely retargeted by hand at the _tb container, which a fresh
+# scaffold seeds as the bare DUT. The scaffold already carries every region marker
+# the External transplant anchors on, so an un-filled target is sufficient. It
+# distinguishes its two failures (migrateYaml.py RC_TODO vs RC_BLOCKED) and this chain
+# acts on that: RC_TODO (=1, a refused External hand-port) is folded into the sweep's
+# rc for the same reason the sweep's does not halt — a flagged hand-port must not leave
+# the tree un-generated — while anything higher HALTS. RC_BLOCKED (=2) means a refused
+# <block>Config.cpp restructure left a bare --template=tbConfig region, which the very
+# next gen aborts on, so carrying on would bury this report under a template traceback
+# and half-regenerate the tree.
 # The block-module port (--port) runs LAST, after gen: it transplants each legacy
 # .cpp/.h block pair's user code into the now-gen-filled .cppm (the transplant
 # target must already carry its generated regions) and deletes the legacy pair. It
@@ -182,7 +196,10 @@ migrate:
 	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
 	$(MAKE) db
 	$(A2C_ROOT)/migrateYaml.py --sweep --write --db $(A2C_SQLDB_FILE); rc=$$?; \
-	$(MAKE) newmodule && $(MAKE) gen && \
+	$(MAKE) newmodule && \
+	{ $(A2C_ROOT)/migrateYaml.py --port-tb --write --db $(A2C_SQLDB_FILE); trc=$$?; \
+	  if [ $$trc -eq 1 ]; then rc=1; elif [ $$trc -ne 0 ]; then exit $$trc; fi; } && \
+	$(MAKE) gen && \
 	$(A2C_ROOT)/migrateYaml.py --port --write --db $(A2C_SQLDB_FILE) && exit $$rc
 
 

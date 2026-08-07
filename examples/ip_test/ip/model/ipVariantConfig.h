@@ -1,12 +1,11 @@
 
-#ifndef IPVARIANTCONFIG_H_CONFIG_H
-#define IPVARIANTCONFIG_H_CONFIG_H
+#ifndef IPVARIANTCONFIG_H_
+#define IPVARIANTCONFIG_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
-
-#include <cstdint>
 
 // GENERATED_CODE_PARAM --project=ip --context=../../yaml/ip.yaml
 // GENERATED_CODE_BEGIN --template=config
+#include <cstdint>
 #include "clog2.h"
 
 struct ipDefaultConfig {
@@ -31,4 +30,4 @@ struct ipVariant0Config {
 
 // GENERATED_CODE_END
 
-#endif //IPVARIANTCONFIG_H_CONFIG_H
+#endif //IPVARIANTCONFIG_H_

@@ -3,34 +3,39 @@
 #define XIFINCLUDESFW_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include <cstdint>
-#include <cstring>
-
 // GENERATED_CODE_PARAM --project=xif --context=xif.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns {
 //constants
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns {
 // types
 template<typename Config> using streamDataT = uint64_t; // [max:32] Parameterized stream payload word
 typedef uint16_t streamBndryDataT; // [16] Non-parameterized boundary payload word (matches DATA_WIDTH=16)
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns {
 // enums
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
+namespace fw_ns {
 // structures
 template<typename Config>
 struct streamSt {
@@ -81,7 +86,7 @@ struct streamBndrySt {
     {}
 
 };
+} // namespace fw_ns
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //XIFINCLUDESFW_H_

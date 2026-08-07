@@ -1,27 +1,19 @@
 // 
 
-#include "systemc.h"
+// GENERATED_CODE_PARAM --block=axi4sDemo
+// GENERATED_CODE_BEGIN --template=tbConfig --section=prerequisites
 #include <string>
-
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
 import a2c.endOfTest;
-
-// GENERATED_CODE_PARAM --block=axi4sDemo
-// GENERATED_CODE_BEGIN --template=tbConfig
+// GENERATED_CODE_END
+// user #includes and imports here
+// A plain translation unit, not a module: either may appear here in any order.
+// GENERATED_CODE_BEGIN --template=tbConfig --section=class
 
 class axi4sDemoConfig : public testBenchConfigBase
 {
 public:
-    struct registerTestBenchConfig
-    {
-        registerTestBenchConfig()
-        {
-            // lamda function to construct the testbench
-            testBenchConfigFactory::registerTestBenchConfig("axi4sDemo", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<axi4sDemoConfig>());}, is_default_testbench_v<axi4sDemoConfig>);
-        }
-    };
-    static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~axi4sDemoConfig() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
 protected:
@@ -47,4 +39,18 @@ public:
     }
 
 };
-axi4sDemoConfig::registerTestBenchConfig axi4sDemoConfig::registerTestBenchConfig_; //register the testBench with the factory
+// GENERATED_CODE_BEGIN --template=tbConfig --section=registration
+// === Testbench config registration (axi4sDemoConfig) ===
+// The config self-registers through an A2C_REGISTRATION_RETAIN static (see
+// instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference. Emitted after the class closes so is_default_testbench_v
+// sees a complete type, including a user-supplied isDefaultTestBench marker.
+void register_axi4sDemoConfig() {
+    testBenchConfigFactory::registerTestBenchConfig("axi4sDemo", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<axi4sDemoConfig>());}, is_default_testbench_v<axi4sDemoConfig>);
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _axi4sDemoConfig_registered = (register_axi4sDemoConfig(), 0);
+} // namespace
+// === End testbench config registration ===
+// GENERATED_CODE_END

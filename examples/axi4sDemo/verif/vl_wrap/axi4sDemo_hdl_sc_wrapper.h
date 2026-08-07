@@ -6,6 +6,8 @@
 
 // GENERATED_CODE_PARAM --block=axi4sDemo
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import axi4sDemo.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names

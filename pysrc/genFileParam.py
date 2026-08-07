@@ -41,8 +41,6 @@ def contextParamTail(owner, contextKey, mode=""):
 # is recorded here.
 _CONTEXT_FILE_MODE = {
     'include_cppm': 'module',
-    'include_hdr': '',
-    'include_src': '',
     'config_hdr': '',
     'package_sv': '',
     'includeFW_hdr': 'fw',

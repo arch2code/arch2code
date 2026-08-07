@@ -31,12 +31,11 @@ byte-identical to a fresh scaffold and no per-fileType mode is spelled out here.
 import os
 from dataclasses import dataclass, field
 
-from pysrc.migrateCommon import _read, _write, _isGenerated, _loc
+from pysrc.migrateCommon import (_read, _write, _isGenerated, _loc,
+                                 PARAM_MARKER, restampParamLine)
 from pysrc.processYaml import expandNewModulePath
 from pysrc.genFileParam import contextParamTail, contextParamMode
 
-
-PARAM_MARKER = "GENERATED_CODE_PARAM"
 
 # Applied-edit kind.
 PROJECT_PARAM_RESTAMP = "PROJECT_PARAM_RESTAMP"  # --context/--contexts -> --project
@@ -104,33 +103,6 @@ def _projectModePaths(prj):
     return paths
 
 
-def _restampParamLine(text, tail):
-    """Rewrite the argument tail of the file's GENERATED_CODE_PARAM line to
-    `tail`. The comment prefix and PARAM keyword are preserved; only the argument
-    tail is replaced, so a re-stamped line is byte-identical to a fresh scaffold.
-
-    Returns (hasParamLine, newText):
-      (True, <text>)  the line was re-stamped to `tail`
-      (True, None)    the line already reads exactly `tail` (idempotent no-op)
-      (False, None)   the file carries NO GENERATED_CODE_PARAM line. The marker
-                      guard (_isGenerated) only looks for GENERATED_CODE_BEGIN,
-                      so a generated artifact can reach here without a PARAM
-                      line; it cannot be re-stamped, and callers report it as
-                      manual work rather than treating it as already correct."""
-    lines = text.splitlines(keepends=True)
-    for i, line in enumerate(lines):
-        pos = line.find(PARAM_MARKER)
-        if pos < 0:
-            continue
-        newline = "\n" if line.endswith("\n") else ""
-        newLine = f"{line[:pos]}{PARAM_MARKER} {tail}{newline}"
-        if newLine == line:
-            return True, None
-        lines[i] = newLine
-        return True, "".join(lines)
-    return False, None
-
-
 def restampProjectParam(prj, write=False):
     """Re-stamp every project-mode artifact this project owns from the context
     form to the `--project` form. Returns a ProjectParamReport."""
@@ -147,7 +119,7 @@ def restampProjectParam(prj, write=False):
                 f"marker; left in place for manual review (not re-stamped)"))
             continue
         text = _read(path)
-        hasParamLine, newText = _restampParamLine(
+        hasParamLine, newText = restampParamLine(
             text, f"--project={projectName}")
         if not hasParamLine:
             report.manual.append(ReportItem(
@@ -209,7 +181,7 @@ def restampContextParam(prj, write=False):
         # An owned file a foreign build root scaffolded carries a divergent
         # --context spelling and no --project; the canonical tail normalizes both.
         tail = contextParamTail(projectName, contextKey, mode)
-        hasParamLine, newText = _restampParamLine(text, tail)
+        hasParamLine, newText = restampParamLine(text, tail)
         if not hasParamLine:
             report.manual.append(ReportItem(
                 TODO_MISSING_PARAM_LINE, os.path.basename(path),

@@ -3,35 +3,40 @@
 #define SIMPLEINCLUDESFW_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include <cstdint>
-#include <cstring>
-
 // GENERATED_CODE_PARAM --project=simple --context=simple.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns {
 //constants
 inline constexpr uint32_t NUM_TAGS = 32;  // number of tags
 inline constexpr uint32_t NUM_TAGS_LOG2 = 5;  // log2 of number of tags
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns {
 // types
 typedef uint8_t tag; // [5] tag
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns {
 // enums
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
+namespace fw_ns {
 // structures
 struct tag_st {
     tag tagId; //tag id
@@ -56,7 +61,7 @@ struct tag_st {
     {}
 
 };
+} // namespace fw_ns
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //SIMPLEINCLUDESFW_H_

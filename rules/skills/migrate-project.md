@@ -24,12 +24,15 @@ unconditionally clears and regenerates the fully-generated segments (`base`,
 cleanup, not a defect — so the generated tree is deterministically re-created each
 pass. Non-source stray files (anything without a `GENERATED_CODE_BEGIN` marker
 that is not a delete-target) are left untouched and are not reported. The target
-is a five-step pipeline. The first two steps halt the target on a non-zero exit, so an
+is a seven-step pipeline. The first two steps halt the target on a non-zero exit, so an
 unresolved yaml-stage item stops the run before the database is built. The sweep
-(step 3) does **not** halt: it applies its deletes, then `newmodule` and `gen`
-always run to rescaffold the purely-generated blocks, and only afterward is the
-sweep's exit code re-raised — so a remaining agent-driven port (`TODO_PORT`)
-leaves the tree scaffolded while `make migrate` still signals non-zero:
+(step 3) does **not** halt, and nor does a refused *External* port in step 5: they apply
+their edits, then `gen` always runs to fill the scaffolded files, and only afterward is
+their exit code re-raised — so a remaining agent-driven port (`TODO_PORT`) leaves the
+tree scaffolded while `make migrate` still signals non-zero. A refused
+`<block>Config.cpp` restructure in step 5 **does** halt (exit 2): it leaves a bare
+`--template=tbConfig` region that the very next `gen` aborts on, so continuing would
+bury the migrator's report under a template traceback and half-regenerate the tree:
 
 1. **`migrateYaml.py --write <project.yaml>`** — the text conversion + stamp.
    Standalone and text-only (it never opens the database); runs the three
@@ -52,8 +55,15 @@ leaves the tree scaffolded while `make migrate` still signals non-zero:
    are caught too. A **mixed segment** that also holds user code (`model`, `rtl`)
    keeps the per-file delete-by-map-expansion for its generated context files
    (`<context>Includes.{h,cpp}`, `<context>_package.sv`) and preserves the user
-   code beside them; the `tb` segment is left untouched. `make newmodule` / `make
-   gen` then recreate the cleared artifacts. This step also carries the
+   code beside them. The `tb` segment is mixed too: the legacy
+   `<block>Testbench.{h,cpp}` pair is only reported (`TODO_PORT`): it holds no user
+   code, but its `GENERATED_CODE_PARAM` line selects the DUT `--variant=` this
+   testbench drives, so step 5 carries that value onto the new `.cppm` and deletes
+   the pair there; `<block>External.{h,cpp}` is
+   only reported (`TODO_PORT` — step 5 moves its user slots), and
+   `<block>Config.cpp` keeps its filename and is never a delete target.
+   `make newmodule` / `make gen` then recreate the cleared artifacts. This step
+   also carries the
    `GENERATED_CODE_PARAM` re-stamp phases (`pysrc/migrateProjectParam.py`), which
    rewrite each surviving generated artifact's PARAM line to the canonical
    `--project` / `--context` form. They are DB-backed and live here, so
@@ -72,7 +82,36 @@ leaves the tree scaffolded while `make migrate` still signals non-zero:
 4. **`make newmodule`** — create-only; scaffolds the new-form files (for example
    the `<context>Includes.cppm` module interfaces). It runs after the sweep so
    the orphans are gone before regeneration.
-5. **`make gen`** — fills the generated regions of the scaffolded files.
+5. **`migrateYaml.py --port-tb --db <db>`** — the testbench-family port. DB-backed
+   and read-only on the database; it edits source. It runs **after `newmodule` and
+   before `gen`** because both of its edits have to be in place before `gen` renders
+   the files: `<block>Config.cpp`'s legacy region carries no `--section`, which `gen`
+   rejects outright (`ValueError: Unknown section ''`), and the External's `--block`
+   is routinely retargeted by hand at the `_tb` container, which a fresh scaffold
+   seeds as the bare DUT. It splits the `tbConfig` region into
+   `prerequisites` / `class` / `registration` and merges the External `.h`/`.cpp`
+   into the scaffolded `<block>External.cppm`, carrying its `GENERATED_CODE_PARAM`
+   across. It also finishes the **testbench top**: that pair has no user code to
+   move, but its `--variant=` DUT selection is a user edit a create-only re-scaffold
+   would replace with the block's first declared variant, so the value is carried
+   onto `<block>Testbench.cppm` and only then is the legacy pair deleted. A refused
+   External slot (`TODO_PORT_SLOT0`, `TODO_PORT_UNPLACED`) does not
+   halt the pipeline — like the sweep, the legacy pair is left on disk untouched and
+   `gen` still runs. A refused Config restructure (any `TODO_TBCONFIG_*`) **does**
+   halt, because the file it leaves behind is the one thing `gen` cannot render at
+   all: resolve the reported item and re-run `make migrate`. On such a run the
+   External and tb-top ports still report every item they find but apply nothing —
+   their targets are files the blocked `gen` will never fill.
+   **Not a standalone command:** between it and step 6 the
+   `<block>Config.cpp` has lost its out-of-class registration definition while the
+   class region still declares the retired in-class static, so the file does not
+   compile until `gen` refills the region. Run it only through `make migrate`, or
+   follow it immediately with `make gen`.
+6. **`make gen`** — fills the generated regions of the scaffolded files.
+7. **`migrateYaml.py --port --db <db>`** — the block-implementation port. It runs
+   **after `gen`**, since its transplant target is the gen-filled `<block>.cppm`.
+   It moves each legacy block `.h`/`.cpp` pair's four user slots into the `.cppm`
+   and deletes the pair, and flags the cases it must not attempt.
 
 The text conversion (step 1) runs these phases over the project's YAML file set:
 
@@ -206,7 +245,18 @@ clean report.
 | `TODO_USER_IMPORT` | includes phase | Hand-written user code `#include`s a migrated context header. | Section 4 below |
 | `TODO_MODULE_IMPORT` | module-header phase | A hand-added `import` line was left in the old header→class gap, which the restructure moved into the GMF zone (before `export module`) where imports are illegal. Never moved by the tool. | Section 4a below |
 | eval `NEEDS_MANUAL` | eval phase | A real-valued eval (e.g. `$DWORD / 2.0`) cannot be expressed in the SV subset. | Replace the `eval:` with a literal `value:` (hand decision). |
-| `TODO_PORT` | orphan sweep | An old-form user `.cpp`/`.h` pair that the current map now produces in a different form — a block that was parameterized so its artifact is a single `.cppm`. Never deleted by the sweep. | Section 6 below (agent-driven port) |
+| `TODO_PORT` | orphan sweep | An old-form user `.cpp`/`.h` pair that the current map now produces in a different form — a block that was parameterized so its artifact is a single `.cppm`, or a testbench `<block>External` / `<block>Testbench` pair. Never deleted by the sweep. | Section 6 below (agent-driven port). A testbench External and a testbench top are both handled automatically by step 5, so they clear on the same run. |
+| `TODO_PORT_SLOT0` | block / testbench port | The legacy pair's top-of-file span holds something the port will not place by guessing: a stray `import`, or a declaration. Placing it is a zone decision (GMF vs preamble vs purview), and the wrong zone attaches it to the wrong module — which can still compile and fail at link. Legacy pair left on disk. | Move the line into the target `.cppm`'s `// user imports here` slot (an `import`, first in the slot) or its class/purview (a declaration) by hand, delete it from the legacy file, then re-run. |
+| `TODO_PORT_UNPLACED` | block / testbench port | The no-silent-loss guard. The extraction could not account for one or more code-bearing legacy lines — usually a hand-edited slot boundary the marker/brace walk cannot see (for example a class closing with `};  // comment` rather than a bare `};`). The report names the first such line. Nothing is written and the legacy pair is left intact. | Restore the boundary to its scaffold form (a bare `};` at column 0) and re-run, or port the file by hand. Never "fix" this by deleting the reported code. |
+| `TODO_PORT_PARAM_SPLIT` | testbench port | The legacy `.h` and `.cpp` of an `<block>External` carry different `GENERATED_CODE_PARAM` argument tails, or those of a `<block>Testbench` name different DUT `--variant=`s, so the port cannot tell which selection the user meant. | Make the two lines agree (they are meant to be identical), then re-run. |
+| `TODO_PORT_NO_PARAM_LINE` | testbench port | One of the legacy pair has no `GENERATED_CODE_PARAM` line at all. The port carries that line across to the `.cppm`, so it has nothing to carry. | Restore the line (copy it from the sibling file), then re-run. |
+| `TODO_PORT_TARGET_DAMAGED` | block / testbench port | The target `.cppm` carries a `GENERATED_CODE_BEGIN` marker but has lost its `GENERATED_CODE_PARAM` line or one of the regions the transplant anchors on. Reported rather than faulting mid-run. | Delete the `.cppm` and re-scaffold it (`make newmodule`, then `make gen` for the block port), then re-run. |
+| `TODO_TBCONFIG_UNPLACED` | testbench port | The `<block>Config.cpp` no-loss guard. A code-bearing line of the original would not appear in the restructured file. Nothing is written. | Report it — the restructure is deterministic, so this means the file's shape is not the one the phase recognizes. Bring it back to the fresh-scaffold shape by hand. |
+| `TODO_TBCONFIG_DIRECTIVE` | testbench port | The `<block>Config.cpp` preamble holds a preprocessor directive other than `#include` (a feature macro, a conditional, an `#undef`). The restructure moves the residual preamble BELOW the new `prerequisites` region, which would change what such a directive applies to without changing any text. | Decide where it belongs relative to the framework includes and place it by hand (below the `// user #includes and imports here` label if it must follow them), then re-run. |
+| `TODO_TBCONFIG_NO_REGION` / `TODO_TBCONFIG_NO_PARAM` / `TODO_TBCONFIG_UNGENERATED` | testbench port | The `<block>Config.cpp` has no `--template=tbConfig` region, no `GENERATED_CODE_PARAM` line above it, or no generated marker at all. | Restore the missing marker line from a fresh scaffold, then re-run. |
+| `TODO_TBCONFIG_NO_REGISTRATION` | testbench port | A `<block>Config.cpp` has no out-of-class `<blk>Config::registerTestBenchConfig <blk>Config::registerTestBenchConfig_;` line. That line is the anchor the new `--section=registration` region replaces, and without the region the testbench is never registered with the factory — a **run-time** failure, not a build error. File left untouched. | Add the `--section=registration` region markers after the class's closing `};`, copying the shape from a fresh scaffold, then re-run. |
+| `TODO_PORT_TAIL_UNPLACED` | testbench port | A legacy `<block>Testbench`'s `GENERATED_CODE_PARAM` line holds an argument beyond the `--block=<dut>` a fresh scaffold writes and the `--variant=<name>` the port carries — a retargeted `--block`, an `--excludeInst`, or a space-spelled `--variant v`. Carrying only the variant would drop it silently, so nothing is stamped and the legacy pair is left on disk. | Put the reported argument(s) on the `GENERATED_CODE_PARAM` line of `<block>Testbench.cppm` by hand, then delete the legacy pair. |
+| `TODO_PORT_STALE_VARIANT` | testbench port | A legacy `<block>Testbench` **or** `<block>External` names a DUT `--variant=` the block no longer declares (migration renamed or removed it). The tb top has that value carried onto its `.cppm` and the External carries its whole tail verbatim, so either way it would land on the target and make `gen` resolve the wrong config or fail. Nothing is stamped and the legacy pair is left on disk. The check mirrors the generator: it applies only when the file's own `--block=` names the block being ported **and** that block owns `params:` — a `_tb`-retargeted External and a block without own params are not validated by `gen` either, so they are not refused here. | Decide which variant the testbench drives. For the tb top, set `--variant=<name>` on the `GENERATED_CODE_PARAM` line of `<block>Testbench.cppm`; for the External, correct it on both legacy files and re-run. The message lists the variants the block does declare. |
 | `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 4 below |
 | `TODO_UNGENERATED_FILE` | orphan sweep, includes phase, or layout migration | A file that carries no `GENERATED_CODE_BEGIN` marker and either matches a per-file delete-target name **or** sits inside a wholesale-cleared fully-generated segment (`base`, `vl_wrap`). Skipped and reported, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
 | `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No file action is needed if the path genuinely no longer exists, but the item keeps the sweep's report non-clean, so `make migrate` still exits non-zero until the stale entry no longer applies. |
@@ -491,6 +541,13 @@ and the user code just calls it, so the emitted `projectName` key stays correct
 across regenerations.
 
 ## 6. Port a parameterized block (`.cpp`/`.h` → `.cppm`)
+
+A testbench `<block>External.{h,cpp}` pair is also reported `TODO_PORT`, but it needs
+nothing from you: pipeline step 5 merges it into `<block>External.cppm` on the same
+run, so the item is gone by the time the run ends. Only the block-implementation
+cases below are hand work, and only when the port declines them
+(`TODO_PORT_PARAM`, `TODO_PORT_HOSTILE_LIB`, `TODO_PORT_SLOT0`,
+`TODO_PORT_UNPLACED`).
 
 The orphan sweep reports `TODO_PORT` when a block was **parameterized** — its
 YAML now declares its own `params:` — so the current file map produces a single
@@ -837,8 +894,25 @@ migration, and resolve any manual item the report listed.
   (user-owned `endmodule: <label>` → qualified `blockModuleName`), DB-backed and
   part of `migrateYaml.py --sweep`.
 - `pysrc/migrateOrphans.py` — the orphan sweep (`migrateYaml.py --sweep`): the
-  embedded legacy file map, its `delete`/`port`/`leave` dispositions, and the
-  `TODO_PORT` / `TODO_USER_INCLUDE` / `TODO_UNGENERATED_FILE` reports.
+  embedded legacy file map, its `delete`/`port`/`edit` dispositions, and the
+  `TODO_PORT` / `TODO_USER_INCLUDE` / `TODO_UNGENERATED_FILE` reports. Its `ext`
+  values are a FROZEN snapshot of the pre-migration on-disk layout, not a copy of
+  the current file map — flipping one to the current extension erases the legacy
+  form the sweep has to find.
+- `pysrc/migrateBlockModulePort.py` — the `.h`/`.cpp` → `.cppm` slot transplant for
+  both user-code families, over one parameterized `PortShape`: `portBlockModules`
+  (block implementations, `migrateYaml.py --port`, post-`gen`) and
+  `portTbExternals` (testbench Externals, `migrateYaml.py --port-tb`, between
+  `newmodule` and `gen`). Both carry the no-silent-loss guard. `portTbTops` rides
+  the same `--port-tb` phase: no slots to move, it carries the tb top's DUT
+  `--variant=` onto the `.cppm` and then deletes the legacy pair. Both testbench
+  porters put the carried `--variant=` through one membership check
+  (`_generatorValidatedVariants`), which mirrors where the generator really resolves
+  it: against the declared variants of the block the file's own `--block=` names, and
+  only when that block owns `params:`.
+- `pysrc/migrateTbConfig.py` — the `<block>Config.cpp` region split
+  (`prerequisites` / `class` / `registration`), also part of
+  `migrateYaml.py --port-tb`.
 - `config/createBuildManifest.py` / `include/make/a2c-common.mk` — the DB-derived
   generated-file manifest (`A2C_SC_GEN_FILES` / `A2C_SV_GEN_FILES`) and the
   `EXTRA_S{C,V}_GEN_FILES` user-extension seam (Section 3).

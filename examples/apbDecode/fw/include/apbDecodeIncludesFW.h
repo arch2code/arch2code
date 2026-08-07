@@ -3,20 +3,19 @@
 #define APBDECODEINCLUDESFW_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include <cstdint>
-#include <cstring>
-
 // GENERATED_CODE_PARAM --project=apbDecode --context=apbDecode.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns {
 //constants
 inline constexpr uint32_t ASIZE = 29;  // The size of A
 inline constexpr uint32_t DWORD = 32;  // size of a double word
@@ -26,8 +25,10 @@ inline constexpr uint32_t MEMORYA_WIDTH = 63;  // Bit width of content for memor
 inline constexpr uint32_t MEMORYB_WORDS = 21;  // Address wordlines for memory B
 inline constexpr uint32_t MEMORYB_WORDS_LOG2 = 5;  // Address wordlines for memory B log2
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns {
 // types
 typedef uint64_t thirtySevenBitT; // [37] Used as a thirty seven bit register structure
 typedef uint32_t aSizeT; // [29] type of width ASIZE
@@ -41,8 +42,10 @@ typedef uint16_t u16T; // [16] sixteen bit integral type
 typedef uint32_t u32T; // [32] thirty two bit integral type
 typedef uint64_t u64T; // [64] sixty four bit integral type
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns {
 // enums
 enum  addr_id_top {          //Generated type for addressing top instances
     ADDR_ID_TOP_UBLOCKA=0,   // uBlockA instance address
@@ -57,8 +60,10 @@ inline const char* addr_id_top_prt( addr_id_top val )
     return("!!!BADENUM!!!");
 }
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
+namespace fw_ns {
 // structures
 struct aRegSt {
     thirtySevenBitT a; //
@@ -327,7 +332,7 @@ struct bMemSt {
     }
 
 };
+} // namespace fw_ns
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //APBDECODEINCLUDESFW_H_

@@ -1,12 +1,11 @@
 
-#ifndef MIXEDVARIANTCONFIG_H_CONFIG_H
-#define MIXEDVARIANTCONFIG_H_CONFIG_H
+#ifndef MIXEDVARIANTCONFIG_H_
+#define MIXEDVARIANTCONFIG_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
-
-#include <cstdint>
 
 // GENERATED_CODE_PARAM --project=mixed --context=mixed.yaml
 // GENERATED_CODE_BEGIN --template=config
+#include <cstdint>
 #include "clog2.h"
 
 struct mixedDefaultConfig {
@@ -31,4 +30,4 @@ struct blockGGvariant0Config {
 
 // GENERATED_CODE_END
 
-#endif //MIXEDVARIANTCONFIG_H_CONFIG_H
+#endif //MIXEDVARIANTCONFIG_H_

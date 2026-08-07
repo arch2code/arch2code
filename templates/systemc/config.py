@@ -105,8 +105,14 @@ def includeConfig(args, prj, data):
     constants_by_name = {p['constant']: p for p in params}
     block_param_synthetic = data['contextBlockParamSynthetic']
     variant_entries = data['contextVariantConfigs']
+    # The Config struct members are `static constexpr uint*_t`, so this region
+    # owns <cstdint> for every context, including one with no parameterizable
+    # constants at all - hence ahead of the paramless early return below, which
+    # would otherwise leave such a header depending on the scaffold's copy.
+    # Matches the foreignConfig module path, which emits it in its own region.
+    out.append('#include <cstdint>')
     if not params and not block_param_synthetic and not variant_entries:
-        return ""
+        return "\n".join(out)
     # Config structs may emit eval-derived members that use clog2; the
     # dedicated clog2 header supplies that constexpr helper unconditionally.
     out.append('#include "clog2.h"')

@@ -1,4 +1,4 @@
-from pysrc.intf_gen_utils import wrap_module_namespace
+from pysrc.intf_gen_utils import wrap_module_namespace, wrap_fw_namespace
 import pysrc.emissionUtils as emissionUtils
 
 # args from generator line
@@ -88,7 +88,9 @@ def includeConstants(args, prj, data):
         out.append(f"inline constexpr {type_str} { value['constant'] } = { value_str };  // {value['desc'].strip()}")
 
     out.append("")
-    return("\n".join(wrap_module_namespace(args, data, out)))
+    out = wrap_module_namespace(args, data, out)
+    out = wrap_fw_namespace(args, out)
+    return("\n".join(out))
 
 
 def constReference_cpp(constKey, prj, useConfig=False):
@@ -144,7 +146,9 @@ def includeTypes(args, prj, data):
             )
 
     out.append("")
-    return("\n".join(wrap_module_namespace(args, data, out)))
+    out = wrap_module_namespace(args, data, out)
+    out = wrap_fw_namespace(args, out)
+    return("\n".join(out))
 
 
 def includeEnum(args, prj, data):
@@ -173,7 +177,9 @@ def includeEnum(args, prj, data):
         out.append("}")
 
     out.append("")
-    return("\n".join(wrap_module_namespace(args, data, out)))
+    out = wrap_module_namespace(args, data, out)
+    out = wrap_fw_namespace(args, out)
+    return("\n".join(out))
 
 
 def includeAddresses(args, prj, data):

@@ -5,14 +5,12 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "rdy_vld_channel.h"
 // GENERATED_CODE_END
 #include "testController.h"
 // user #includes here
+#include "q_assert.h"
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module nested_consumer.block;
 import nested_consumer.base;

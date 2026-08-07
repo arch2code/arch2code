@@ -6,6 +6,8 @@
 
 // GENERATED_CODE_PARAM --block=ip_top
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import ip_test_ip_top.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names

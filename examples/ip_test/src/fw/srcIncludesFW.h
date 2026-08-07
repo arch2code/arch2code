@@ -3,9 +3,6 @@
 #define SRCINCLUDESFW_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include <cstdint>
-#include <cstring>
-
 // GENERATED_CODE_PARAM --project=ip_test --context=../../src/yaml/src.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "ipLeafIncludesFW.h"
@@ -13,27 +10,35 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns {
 //constants
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns {
 // types
 template<typename Config> using srcOut0DataT = uint64_t; // [max:16] src out0 data word, parameterizable
 template<typename Config> struct srcOut1DataT { uint64_t word[ 2 ]; }; // [max:128] src out1 data word, parameterizable
 typedef uint8_t srcMarkerT; // [1] src high-word marker bit
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns {
 // enums
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
+namespace fw_ns {
 // structures
 template<typename Config>
 struct srcOut0St {
@@ -104,7 +109,7 @@ struct srcOut1St {
     {}
 
 };
+} // namespace fw_ns
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //SRCINCLUDESFW_H_

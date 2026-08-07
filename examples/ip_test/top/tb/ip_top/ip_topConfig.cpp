@@ -1,35 +1,29 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include "systemc.h"
-#include <cstring>
+// GENERATED_CODE_PARAM --block=ip_top
+// GENERATED_CODE_BEGIN --template=tbConfig --section=prerequisites
 #include <string>
-
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
+#include "ipVariantConfig.h"
+#include "srcVariantConfig.h"
 import a2c.endOfTest;
+// GENERATED_CODE_END
+// user #includes and imports here
+// A plain translation unit, not a module: either may appear here in any order.
+#include <cstring>
+
 #include "testController.h"
 #include "workerThread.h"
 #include "fwModelMain.h"
-#include "ipVariantConfig.h"
 
 import ip;
 using namespace ip_ns;
-
-// GENERATED_CODE_PARAM --block=ip_top
-// GENERATED_CODE_BEGIN --template=tbConfig
+// GENERATED_CODE_BEGIN --template=tbConfig --section=class
 
 class ip_topConfig : public testBenchConfigBase
 {
 public:
-    struct registerTestBenchConfig
-    {
-        registerTestBenchConfig()
-        {
-            // lamda function to construct the testbench
-            testBenchConfigFactory::registerTestBenchConfig("ip_top", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<ip_topConfig>());}, is_default_testbench_v<ip_topConfig>);
-        }
-    };
-    static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~ip_topConfig() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
 protected:
@@ -97,4 +91,18 @@ public:
     }
 
 };
-ip_topConfig::registerTestBenchConfig ip_topConfig::registerTestBenchConfig_; //register the testBench with the factory
+// GENERATED_CODE_BEGIN --template=tbConfig --section=registration
+// === Testbench config registration (ip_topConfig) ===
+// The config self-registers through an A2C_REGISTRATION_RETAIN static (see
+// instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference. Emitted after the class closes so is_default_testbench_v
+// sees a complete type, including a user-supplied isDefaultTestBench marker.
+void register_ip_topConfig() {
+    testBenchConfigFactory::registerTestBenchConfig("ip_top", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<ip_topConfig>());}, is_default_testbench_v<ip_topConfig>);
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _ip_topConfig_registered = (register_ip_topConfig(), 0);
+} // namespace
+// === End testbench config registration ===
+// GENERATED_CODE_END

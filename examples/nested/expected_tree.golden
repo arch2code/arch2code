@@ -44,7 +44,5 @@ rtl/nested_package.sv
 rtl/rtl.f
 rundir/Makefile
 tb/nested/nestedConfig.cpp
-tb/nested/nestedExternal.cpp
-tb/nested/nestedExternal.h
-tb/nested/nestedTestbench.cpp
-tb/nested/nestedTestbench.h
+tb/nested/nestedExternal.cppm
+tb/nested/nestedTestbench.cppm

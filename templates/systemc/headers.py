@@ -9,10 +9,10 @@ def render(args, prj, data):
     out = list()
     fileMapKey = _file_map_key(args)
     out.extend(_include_context_modules(fileMapKey, prj, data))
-    # Include bitTwiddling.h when any type in the accessible contexts uses clog2
-    contexts = set(data['includeContext'].keys())
-    if fileMapKey != 'include_cppm' and any(t['_context'] in contexts and (t['widthLog2'] != '' or t['widthLog2minus1'] != '')
-           for t in prj.data['types'].values()):
+    # clog2() in a generated width expression needs bitTwiddling.h. A module unit
+    # takes it from its global module fragment (moduleScaffold moduleHeader)
+    # instead, since an #include here would sit in the module purview.
+    if fileMapKey != 'include_cppm' and data['usesClog2']:
         out.append('#include "bitTwiddling.h"')
     # take the list and return a string
     out.append("")
@@ -20,11 +20,10 @@ def render(args, prj, data):
 
 
 def _file_map_key(args):
-    if args.fileMapKey:
-        return args.fileMapKey
-    if args.mode == 'module':
-        return 'include_cppm'
-    return 'include_hdr'
+    # The firmware header names its key (`--fileMapKey=includeFW_hdr`); the
+    # per-context module interface unit's region carries no key, so it is the only
+    # unkeyed caller.
+    return args.fileMapKey if args.fileMapKey else 'include_cppm'
 
 
 def _include_context_modules(fileMapKey, prj, data):
@@ -32,7 +31,9 @@ def _include_context_modules(fileMapKey, prj, data):
     # precede any other declaration in the module purview. With more
     # than one imported context the `using namespace` directives must
     # follow the import block, not be interleaved with it; collect
-    # the two groups separately and concatenate.
+    # the two groups separately and concatenate. `others` is the textual-include
+    # form, used by the firmware header, whose cross-context dependency is a
+    # plain `#include` of the sibling *IncludesFW.h.
     imports = list()
     usings = list()
     others = list()

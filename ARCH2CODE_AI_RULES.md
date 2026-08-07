@@ -2616,31 +2616,25 @@ myBlock::myBlock(...)
 }
 ```
 
-##### SystemC Includes (`model/*Includes.h`)
+##### SystemC Includes (`model/*Includes.cppm`)
+
+A context's types are a single C++20 module interface unit. There is no paired
+`.h`/`.cpp`.
 
 ```
-PARAM: --context=<yaml_file>
+PARAM: --project=<project> --context=<yaml_file> --mode=module
 ```
 
 | Template | Section | Content |
 |----------|---------|---------|
-| `headers` | *(none)* | Include guards and header includes (use `--fileMapKey=include_hdr`) |
-| `structures` | `headerIncludes` | Forward declarations and structure dependencies |
+| `moduleScaffold` | `moduleHeader` | Global module fragment `#include`s plus `export module <context>;` |
+| `headers` | *(none)* | `import` + `using namespace` for each context this one depends on |
 | `includes` | `constants` | `constexpr` constant definitions |
 | `includes` | `types` | Typedef definitions |
 | `includes` | `enums` | Enum definitions |
 | `structures` | *(none)* | Full structure class definitions |
-
-##### SystemC Includes (`model/*Includes.cpp`)
-
-```
-PARAM: --context=<yaml_file>
-```
-
-| Template | Section | Content |
-|----------|---------|---------|
-| `structures` | `cppIncludes` | Implementation includes |
-| `structures` | `cpp` | Structure method implementations |
+| `structures` | `testStructsHeader` | Structure round-trip test class declaration |
+| `structures` | `testStructsCPP` | Structure round-trip test implementation |
 
 ##### SystemC Firmware Includes (`fw/include/*IncludesFW.h/.cpp`)
 
@@ -2743,11 +2737,17 @@ When the `_tb` wrapper holds only the DUT instance and nothing else, `--excludeI
 
 | File | `--block` | `--excludeInst` | Template | Section |
 |------|-----------|------------------|----------|---------|
-| `*Testbench.h` | DUT block | *(none)* | `testbench` | `header` |
-| `*Testbench.cpp` | DUT block | *(none)* | `testbench` | `init` |
-| `*Config.cpp` | DUT block | *(none)* | `tbConfig` | *(none)* |
-| `*External.h` | TB wrapper block | DUT instance | `tbExternal` | `header` |
-| `*External.cpp` | TB wrapper block | DUT instance | `tbExternal` | `init`, `body` |
+| `*Testbench.cppm` | DUT block | *(none)* | `moduleScaffold` | `testBenchModuleHeader` |
+| `*Testbench.cppm` | DUT block | *(none)* | `moduleExport` | *(`--fileMapKey=testBench`)* |
+| `*Testbench.cppm` | DUT block | *(none)* | `testbench` | `header`, `init` |
+| `*Config.cpp` | DUT block | *(none)* | `tbConfig` | `prerequisites`, `class`, `registration` |
+| `*External.cppm` | TB wrapper block | DUT instance | `moduleScaffold` | `tbExternalModuleHeader` |
+| `*External.cppm` | TB wrapper block | DUT instance | `moduleExport` | *(`--fileMapKey=tbExternal`)* |
+| `*External.cppm` | TB wrapper block | DUT instance | `tbExternal` | `header`, `init`, `body` |
+
+The two `.cppm` files are C++20 module interface units and carry `--mode=module`
+on their `GENERATED_CODE_PARAM` line. `*Config.cpp` stays a plain translation
+unit.
 
 ##### SystemVerilog Package (`rtl/*_package.sv`)
 
@@ -2871,14 +2871,12 @@ instances:
   u_apb_decode: { container: debayer_tb, instanceType: apb_decode,   instGroup: top }
 ```
 
-The five testbench files use these PARAM lines:
+The three testbench files use these PARAM lines:
 
 ```cpp
-// debayerTestbench.h   — GENERATED_CODE_PARAM --block=debayer
-// debayerTestbench.cpp — GENERATED_CODE_PARAM --block=debayer
-// debayerConfig.cpp    — GENERATED_CODE_PARAM --block=debayer
-// debayerExternal.h    — GENERATED_CODE_PARAM --block=debayer_tb --excludeInst=u_debayer
-// debayerExternal.cpp  — GENERATED_CODE_PARAM --block=debayer_tb --excludeInst=u_debayer
+// debayerTestbench.cppm — GENERATED_CODE_PARAM --block=debayer --mode=module
+// debayerConfig.cpp     — GENERATED_CODE_PARAM --block=debayer
+// debayerExternal.cppm  — GENERATED_CODE_PARAM --block=debayer_tb --excludeInst=u_debayer --mode=module
 ```
 
 **Result:**
@@ -3255,7 +3253,7 @@ Key templates in `builder/templates/systemc/`:
 | `structures.py` | Structure classes | Structure definitions |
 | `headers.py` | Header file generation | Include guards, imports |
 | `includes.py` | Include file generation | `*Includes.h/cpp` |
-| `testbench.py` | Testbench generation | `*Testbench.h/cpp` |
+| `testbench.py` | Testbench generation | `*Testbench.cppm`, `*External.cppm`, `*Config.cpp` |
 
 ### Understanding Generated Code
 
@@ -3804,7 +3802,9 @@ project_name/
 │   └── vl_wrap/              # Verilator wrappers
 ├── tb/                        # Testbenches
 │   └── <module>/
-│       └── <module>Testbench.h/cpp
+│       ├── <module>Testbench.cppm
+│       ├── <module>External.cppm
+│       └── <module>Config.cpp
 ├── fw/                        # Firmware (optional)
 │   └── includes/
 ├── Makefile

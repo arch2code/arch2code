@@ -3,9 +3,6 @@
 #define IP_TOPINCLUDESFW_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include <cstdint>
-#include <cstring>
-
 // GENERATED_CODE_PARAM --project=ip_test --context=../../top/yaml/ip_top.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "shared_typesIncludesFW.h"
@@ -17,23 +14,29 @@
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns {
 //constants
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns {
 // types
 typedef uint8_t boundaryMarkerT; // [1] Boundary marker bit; matches srcOut*St::marker and ipDataSt::marker
 typedef uint8_t srcOut0BoundaryT; // [8] Non-param 8-bit boundary payload; matches uSrc OUT0_DATA_WIDTH=8 / uIp0 IP_DATA_WIDTH=8
 struct srcOut1BoundaryT { uint64_t word[ 2 ]; }; // [70] Non-param 70-bit boundary payload; matches uSrc OUT1_DATA_WIDTH=70 / uIp1 IP_DATA_WIDTH=70
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns {
 // enums
 enum  addr_id_top {          //Generated type for addressing top instances
     ADDR_ID_TOP_UIP0=0,      // uIp0 instance address
@@ -50,8 +53,10 @@ inline const char* addr_id_top_prt( addr_id_top val )
     return("!!!BADENUM!!!");
 }
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
+namespace fw_ns {
 // structures
 struct srcOut0BoundarySt {
     srcOut0BoundaryT data; //8-bit payload; matches srcOut0St::data@variantSrc0 and ipDataSt::data@variant0
@@ -115,7 +120,7 @@ struct srcOut1BoundarySt {
     {}
 
 };
+} // namespace fw_ns
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //IP_TOPINCLUDESFW_H_

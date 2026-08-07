@@ -18,7 +18,7 @@ def render(args, prj, data):
     # forbids #include after the module declaration, so baseClassDecl suppresses
     # them here.
     if args.mode != 'module':
-        for kind, line in intf_gen_utils.sc_base_dependency_includes(args, prj, data):
+        for kind, line in intf_gen_utils.sc_base_dependency_includes(prj, data):
             out.append(line)
 
     isParameterizable = data['isParameterizable']

@@ -1,28 +1,21 @@
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include "systemc.h"
+// GENERATED_CODE_PARAM --block=dut --variant=dutV0
+// GENERATED_CODE_BEGIN --template=tbConfig --section=prerequisites
 #include <string>
-
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
+#include "xifVariantConfig.h"
 import a2c.endOfTest;
+// GENERATED_CODE_END
+// user #includes and imports here
+// A plain translation unit, not a module: either may appear here in any order.
 #include "testController.h"
-
-// GENERATED_CODE_PARAM --block=dut --variant=dutV0
-// GENERATED_CODE_BEGIN --template=tbConfig
+// GENERATED_CODE_BEGIN --template=tbConfig --section=class
 
 class dutConfig : public testBenchConfigBase
 {
 public:
-    struct registerTestBenchConfig
-    {
-        registerTestBenchConfig()
-        {
-            // lamda function to construct the testbench
-            testBenchConfigFactory::registerTestBenchConfig("dut", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<dutConfig>());}, is_default_testbench_v<dutConfig>);
-        }
-    };
-    static registerTestBenchConfig registerTestBenchConfig_;
     virtual ~dutConfig() override = default; // Explicit Virtual Destructor
     // static constexpr bool isDefaultTestBench = true; // move out of generated section and uncomment to set this tb as default
 protected:
@@ -55,4 +48,18 @@ public:
     }
 
 };
-dutConfig::registerTestBenchConfig dutConfig::registerTestBenchConfig_; //register the testBench with the factory
+// GENERATED_CODE_BEGIN --template=tbConfig --section=registration
+// === Testbench config registration (dutConfig) ===
+// The config self-registers through an A2C_REGISTRATION_RETAIN static (see
+// instanceFactory.h); main() reaches it through direct-.o linking with no
+// force-link reference. Emitted after the class closes so is_default_testbench_v
+// sees a complete type, including a user-supplied isDefaultTestBench marker.
+void register_dutConfig() {
+    testBenchConfigFactory::registerTestBenchConfig("dut", [](std::string) -> std::shared_ptr<testBenchConfigBase> { return static_cast<std::shared_ptr<testBenchConfigBase>> (std::make_shared<dutConfig>());}, is_default_testbench_v<dutConfig>);
+}
+
+namespace {
+[[maybe_unused]] A2C_REGISTRATION_RETAIN int _dutConfig_registered = (register_dutConfig(), 0);
+} // namespace
+// === End testbench config registration ===
+// GENERATED_CODE_END

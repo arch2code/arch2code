@@ -29,6 +29,12 @@ extra would mean the role->root mapping misroutes and is a fail.
 
 Run from anywhere; regenerates each example (clean + db + gen) so both the
 manifest and the on-disk generated files are current.
+
+Because this suite is the one that runs the real generator over every example, it
+also gates the CONTENT of the generated regions whose include baseline is a
+recorded decision: the tb External's `tbExternalModuleHeader` global module
+fragment, the block and context module units' global module fragments, and the
+`<block>Config.cpp` prerequisites region. See REGION_GATE_* below.
 """
 import os
 import re
@@ -113,6 +119,166 @@ def is_known_orphan(repo_root, d):
     return False
 
 
+# The tb External's global-module-fragment region, and the baseline
+# templates/systemc/testbench.py::ext_module_header must emit into it. A header
+# belongs in the region only when a GENERATED line names a symbol from it:
+# systemc.h for sc_module, logging.h for the generated `logBlock log_;` member,
+# instanceFactory.h for `createInstance` in the generated ctor init list. The
+# region also carries DB-directed entries (channel, per-context Config and thunker
+# headers), so it is asserted by membership, not equality.
+#
+# workerThread.h must NOT be there: no generated line names a `worker*` symbol, so
+# a stimulus thread's prerequisite is USER content, owned by the `// user #includes
+# here` slot below the region - which is where the testbench-family migration
+# relocates it, and where two examples carry it today. If the template re-emitted
+# it, every migrated External would include it twice and the migration's relocation
+# would be wrong.
+GEN_BEGIN = '// GENERATED_CODE_BEGIN'
+GEN_END = '// GENERATED_CODE_END'
+
+EXT_GMF_MARKER = f'{GEN_BEGIN} --template=moduleScaffold --section=tbExternalModuleHeader'
+EXT_GMF_REQUIRED = ('#include "systemc.h"', '#include "logging.h"',
+                    '#include "instanceFactory.h"')
+EXT_GMF_FORBIDDEN = ('#include "workerThread.h"',)
+
+# The block module unit's global module fragment
+# (moduleScaffold::blockModuleHeader). Same rule: systemc.h for the SC_MODULE
+# class and its sc_ port types, logging.h for the generated `logBlock log_;`. The
+# region also carries DB-directed dependency headers (channels, Config), so it is
+# asserted by membership.
+#
+# The three forbidden headers must NOT be there: no generated line in a block
+# `.cppm` names a Q_ASSERT macro, a std::<algorithm> call or a bitTwiddling
+# symbol, so a block body that uses one owns the include in its `// user #includes
+# here` slot. Re-emitting them would double every relocated copy and make the
+# baseline unfalsifiable.
+BLOCK_GMF_MARKER = f'{GEN_BEGIN} --template=moduleScaffold --section=blockModuleHeader'
+BLOCK_GMF_REQUIRED = ('#include "systemc.h"', '#include "logging.h"')
+BLOCK_GMF_FORBIDDEN = ('#include "bitTwiddling.h"', '#include "q_assert.h"',
+                       '#include <algorithm>')
+
+# The context types module unit's global module fragment
+# (moduleScaffold::moduleHeader). An #include is legal only there, so it carries
+# every header the whole file needs - but derived, not assumed: systemc.h always
+# (its sc types and the uint*_t even a struct-less context's typedefs need), and
+# the struct-feature set only when the context actually declares structures. A
+# struct-less context is the case that pins the derivation: its `structures`
+# region renders empty, and it must carry systemc.h and nothing the struct
+# regions would have needed.
+#
+# bitTwiddling.h is required WITH structures (codeMapping's fw_pack is inline in
+# module mode) but is NOT forbidden without them: the emitter also gates it on the
+# clog2 fact, which is independent of the structure set and which this test cannot
+# observe, so a struct-less context declaring a log2-derived width legitimately
+# carries it.
+CTX_GMF_MARKER = f'{GEN_BEGIN} --template=moduleScaffold --section=moduleHeader'
+CTX_STRUCTURES_MARKER = f'{GEN_BEGIN} --template=structures'
+CTX_GMF_REQUIRED = ('#include "systemc.h"',)
+CTX_GMF_STRUCT_REQUIRED = ('#include "logging.h"', '#include <algorithm>',
+                           '#include "q_assert.h"', '#include "bitTwiddling.h"')
+CTX_GMF_STRUCTLESS_FORBIDDEN = ('#include "logging.h"', '#include <algorithm>',
+                                '#include "q_assert.h"')
+
+# The `<block>Config.cpp` prerequisites region
+# (testbench.py::tb_config_prerequisites). `<string>` is named directly by the
+# generated registration lambda; the two factory headers and the endOfTest import
+# are named or are the scaffolded bodies' prerequisites. systemc.h must NOT be
+# there: no generated line names a SystemC symbol, and instanceFactory.h supplies
+# it transitively for the scaffolded bodies.
+TBCFG_MARKER = f'{GEN_BEGIN} --template=tbConfig --section=prerequisites'
+TBCFG_REQUIRED = ('#include <string>', '#include "instanceFactory.h"',
+                  '#include "testBenchConfigFactory.h"', 'import a2c.endOfTest;')
+TBCFG_FORBIDDEN = ('#include "systemc.h"',)
+
+
+def gen_region(path, marker):
+    """The stripped lines of the generated region whose begin line IS `marker`, or
+    None if the file carries no such region. Matched whole so a bare region command
+    cannot also match a `--section=` variant of the same template."""
+    region = []
+    inside = False
+    with open(path) as fh:
+        for line in fh:
+            s = line.strip()
+            if inside:
+                if s == GEN_END:
+                    return region
+                region.append(s)
+            elif s == marker:
+                inside = True
+    return region if inside else None
+
+
+def authored_files(repo_root, suffix):
+    """Authored-tree files ending in `suffix`; build/cache mirrors skipped."""
+    for dirpath, dirs, files in os.walk(repo_root):
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d != 'rundir']
+        for name in sorted(files):
+            if name.endswith(suffix):
+                yield os.path.join(dirpath, name)
+
+
+def _assertRegion(problems, rel, label, region, required, forbidden):
+    missing = [h for h in required if h not in region]
+    if missing:
+        problems.append(f'{rel}: {label} region missing ' + ', '.join(missing))
+    present = [h for h in forbidden if h in region]
+    if present:
+        problems.append(f'{rel}: {label} region emits user-slot content ' +
+                        ', '.join(present))
+
+
+def check_region_content(repo_root):
+    """Assert the include baseline of every generated region whose content is a
+    recorded decision. Returns (problems, {gate: regions checked})."""
+    problems = []
+    counts = {'External GMF': 0, 'block GMF': 0, 'context GMF': 0,
+              'tbConfig prerequisites': 0}
+
+    for path in authored_files(repo_root, 'External.cppm'):
+        rel = os.path.relpath(path, repo_root)
+        region = gen_region(path, EXT_GMF_MARKER)
+        if region is None:
+            problems.append(f'{rel}: no {EXT_GMF_MARKER} region')
+            continue
+        counts['External GMF'] += 1
+        _assertRegion(problems, rel, 'External GMF', region,
+                      EXT_GMF_REQUIRED, EXT_GMF_FORBIDDEN)
+
+    for path in authored_files(repo_root, '.cppm'):
+        rel = os.path.relpath(path, repo_root)
+        region = gen_region(path, BLOCK_GMF_MARKER)
+        if region is not None:
+            counts['block GMF'] += 1
+            _assertRegion(problems, rel, 'block GMF', region,
+                          BLOCK_GMF_REQUIRED, BLOCK_GMF_FORBIDDEN)
+        region = gen_region(path, CTX_GMF_MARKER)
+        if region is not None:
+            counts['context GMF'] += 1
+            # A struct-less context renders its `structures` region as one blank
+            # line, so presence of the region is not the test - content is.
+            hasStructures = any(gen_region(path, CTX_STRUCTURES_MARKER) or ())
+            required = CTX_GMF_REQUIRED
+            forbidden = ()
+            if hasStructures:
+                required += CTX_GMF_STRUCT_REQUIRED
+            else:
+                forbidden = CTX_GMF_STRUCTLESS_FORBIDDEN
+            _assertRegion(problems, rel, 'context GMF', region,
+                          required, forbidden)
+
+    for path in authored_files(repo_root, 'Config.cpp'):
+        rel = os.path.relpath(path, repo_root)
+        region = gen_region(path, TBCFG_MARKER)
+        if region is None:
+            continue
+        counts['tbConfig prerequisites'] += 1
+        _assertRegion(problems, rel, 'tbConfig prerequisites', region,
+                      TBCFG_REQUIRED, TBCFG_FORBIDDEN)
+
+    return problems, counts
+
+
 def discover_examples():
     out = []
     for name in sorted(os.listdir(EXAMPLES_DIR)):
@@ -136,10 +302,10 @@ def regen(exdir):
 def check_example(name):
     exdir = os.path.join(EXAMPLES_DIR, name)
     if not regen(exdir):
-        return False, ['generation failed']
+        return False, ['generation failed'], [], [], {}
     mk = os.path.join(exdir, '.gen', 'build.mk')
     if not os.path.isfile(mk):
-        return False, ['.gen/build.mk not emitted']
+        return False, ['.gen/build.mk not emitted'], [], [], {}
     man = parse_manifest(mk)
     repo_root = exdir
 
@@ -169,9 +335,13 @@ def check_example(name):
     if extra_nonempty:
         problems.append('extra non-empty (misrouted): ' +
                         ', '.join(sorted(os.path.relpath(d, repo_root) for d in extra_nonempty)))
+    # Content gate on the freshly generated include-baseline regions.
+    regionProblems, regionCounts = check_region_content(repo_root)
+    problems += regionProblems
+
     orphans = sorted(os.path.relpath(d, repo_root) for d in missing if is_known_orphan(repo_root, d))
     anticipated = sorted(os.path.relpath(d, repo_root) for d in extra)
-    return (not problems), problems, orphans, anticipated
+    return (not problems), problems, orphans, anticipated, regionCounts
 
 
 def check_hierarchical_vl_wrap_path():
@@ -224,10 +394,11 @@ def main():
         futs = {pool.submit(check_example, name): name for name in examples}
         for fut in as_completed(futs):
             results[futs[fut]] = fut.result()
+    regionTotals = dict()
     for name in examples:
-        ok, problems, *rest = results[name]
-        orphans = rest[0] if rest else []
-        anticipated = rest[1] if len(rest) > 1 else []
+        ok, problems, orphans, anticipated, counts = results[name]
+        for gate, n in counts.items():
+            regionTotals[gate] = regionTotals.get(gate, 0) + n
         tag = 'OK   ' if ok else 'FAIL '
         notes = []
         if orphans:
@@ -241,8 +412,18 @@ def main():
                 print(f'           - {p}')
             failures.append(name)
     print()
+    # A fileMap or naming change that stopped producing one of the gated artifacts
+    # would leave that content gate silently asserting nothing, so require every
+    # gate to have found regions.
+    for gate, n in sorted(regionTotals.items()):
+        if not n:
+            print(f'  [FAIL ] {gate} regions: none found across the examples')
+            failures.append(f'{gate} regions')
+        else:
+            print(f'  [OK   ] {gate} regions: {n} checked')
     if failures:
-        print(f'FAIL: manifest dir set diverges from glob for: {", ".join(failures)}')
+        print('FAIL: manifest dir set diverges from glob, or a generated region '
+              f'content gate failed, for: {", ".join(failures)}')
         return 1
     print('PASS: manifest reproduces the functional glob dir set (orphans excepted).')
     return 0

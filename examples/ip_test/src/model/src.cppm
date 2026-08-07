@@ -5,14 +5,13 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 #include "ipLeafVariantConfig.h"
 #include "srcVariantConfig.h"
 // GENERATED_CODE_END
+// user #includes here
+#include "q_assert.h"
 
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ip_test_src.block;

@@ -6,6 +6,8 @@
 
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import mixed.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names

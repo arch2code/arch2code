@@ -1,12 +1,11 @@
 
-#ifndef IPLEAFVARIANTCONFIG_H_CONFIG_H
-#define IPLEAFVARIANTCONFIG_H_CONFIG_H
+#ifndef IPLEAFVARIANTCONFIG_H_
+#define IPLEAFVARIANTCONFIG_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
-
-#include <cstdint>
 
 // GENERATED_CODE_PARAM --project=ip_test --context=../../leaf/yaml/ipLeaf.yaml
 // GENERATED_CODE_BEGIN --template=config
+#include <cstdint>
 #include "clog2.h"
 
 struct ipLeafDefaultConfig {
@@ -21,4 +20,4 @@ struct ipLeafVariantLeaf0Config {
 
 // GENERATED_CODE_END
 
-#endif //IPLEAFVARIANTCONFIG_H_CONFIG_H
+#endif //IPLEAFVARIANTCONFIG_H_

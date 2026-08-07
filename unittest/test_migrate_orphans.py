@@ -5,9 +5,12 @@ The sweep DISPATCHES ON the embedded legacy fileMap's per-entry `migrate:`
 disposition (there is no L\\C set-difference):
   - `delete`  purely-generated legacy artifacts, expanded over the current DB and
               swept (plus the explicit LEGACY_LITERAL_DELETE aggregates);
-  - `port`    user code the migration ports later (agent-driven); only IDENTIFIED
-              and REPORTED here when the current map now produces a different form;
-  - `leave`   user testbench code; never expanded, never touched.
+  - `port`    user code a later porter phase converts; only IDENTIFIED and
+              REPORTED here when the current map now produces a different form;
+  - `edit`    user code a later phase rewrites in place (no file move, so no legacy
+              path to sweep); never expanded, never touched by the sweep.
+There is no disposition meaning "untouched by the migration": an unaffected file is
+omitted from the map entirely.
 
 To exercise it without standing up a full projectCreate database, each test
 stages a small synthetic project on disk and drives sweepOrphans against a
@@ -20,12 +23,14 @@ Coverage (the required assertions):
   (a) every `delete`-disposition entry + the explicit vl_wrap.{cpp,h,sv} aggregate
       is deleted (Includes.{h,cpp}, Base.h, _package.sv, the HDL wrappers,
       Tandem.{h,cpp}, vl_wrap.*);
-  (b) `port`/`leave`-entry files (a block .cpp/.h/.sv and a tb file, WITH generated
-      markers) are NEVER deleted — and are unreachable for deletion by construction;
+  (b) `port`/`edit`-entry files (a block .cpp/.h/.sv, the tb top and External pairs
+      and the tb Config, WITH generated markers) are NEVER deleted — and are
+      unreachable for deletion by construction;
   (c) a delete-target-named file WITHOUT the generated marker is REPORTED, not
       deleted;
-  (d) a `port` block whose current form differs (parameterized -> .cppm) is
-      reported TODO_PORT while a same-form (non-parameterized) block is a no-op;
+  (d) a `port` file whose current form differs (a parameterized block, the tb top
+      and External pairs -> .cppm) is reported TODO_PORT while a same-form
+      (non-parameterized) block is a no-op;
   (e) user `#include` sites of a deleted header are reported.
 """
 
@@ -46,7 +51,7 @@ from pysrc.migrateOrphans import (
     LEGACY_LITERAL_DELETE,
     MIGRATE_DELETE,
     MIGRATE_PORT,
-    MIGRATE_LEAVE,
+    MIGRATE_EDIT,
     OrphansReport,
     ORPHAN_DELETE,
     TODO_UNGENERATED_FILE,
@@ -134,6 +139,9 @@ class _FakePrj:
             "rtlModule":   {"name": "", "ext": {"sv": "sv"},
                             "cond": {"hasRtl": True}, "mode": "block",
                             "basePath": "rtl"},
+            "testBench":   {"name": "Testbench", "ext": {"cppm": "cppm"},
+                            "cond": {"hasTb": True}, "blockDir": True,
+                            "mode": "block", "basePath": "tb"},
         }
         includeFiles = {
             "include_cppm": {
@@ -148,14 +156,16 @@ class _FakePrj:
             },
         }
         # The build manifest as `make db` would emit it: the segment roots
-        # arch2code itself places artifacts in, and nothing else. Every staged
-        # C++ directory is covered, so the unmanifested-source detector is silent
-        # here and only the test that stages an undeclared directory sees it.
+        # arch2code itself places artifacts in, and nothing else. The testbench
+        # entries are blockDir, so the manifest names `tb/<block>` rather than the
+        # `tb` segment root. Every staged C++ directory is covered, so the
+        # unmanifested-source detector is silent here and only the test that stages
+        # an undeclared directory sees it.
         manifest = {
             "scSrcDirs": [os.path.join(root, "base"),
                           os.path.join(root, "registrar"),
                           model,
-                          os.path.join(root, "tb"),
+                          os.path.join(root, "tb", "myblk"),
                           os.path.join(root, "fw", "include")],
             "vlWrapDirs": [os.path.join(root, "verif", "vl_wrap")],
         }
@@ -202,7 +212,7 @@ def _stage(root):
         # delete target WITHOUT marker (reported, never deleted)
         "usrH":      _write(j("model", "usrIncludes.h"), False),
         "usrCpp":    _write(j("model", "usrIncludes.cpp"), False),
-        # current-format siblings (leave)
+        # current-format siblings (not in the legacy map, never swept)
         "topCppm":   _write(j("model", "topIncludes.cppm"), True),
         "usrCppm":   _write(j("model", "usrIncludes.cppm"), True),
         # port old-form user files WITH marker (never deleted)
@@ -211,8 +221,16 @@ def _stage(root):
         "mySv":      _write(j("rtl", "myblk.sv"), True),       # rtl stays .sv
         "paramH":    _write(j("model", "paramblk.h"), True),   # param: -> .cppm (TODO_PORT)
         "paramCpp":  _write(j("model", "paramblk.cpp"), True), # param: -> .cppm (TODO_PORT)
-        # leave: user testbench code (never deleted)
-        "tb":        _write(j("tb", "myblk", "myblkTestbench.h"), True),
+        # port: the tb top holds no user CODE, but its PARAM `--variant=` DUT
+        # selection is a user edit, so the --port-tb porter carries that across and
+        # then deletes the pair; the sweep only reports it (never deletes it)
+        "tbTopH":    _write(j("tb", "myblk", "myblkTestbench.h"), True),
+        "tbTopCpp":  _write(j("tb", "myblk", "myblkTestbench.cpp"), True),
+        # port: the tb External DOES carry user code; reported, never deleted
+        "tbExtH":    _write(j("tb", "myblk", "myblkExternal.h"), True),
+        "tbExtCpp":  _write(j("tb", "myblk", "myblkExternal.cpp"), True),
+        # edit: the tb Config keeps its filename; rewritten in place, never swept
+        "tbConfig":  _write(j("tb", "myblk", "myblkConfig.cpp"), True),
     }
     return paths
 
@@ -245,32 +263,37 @@ def test_delete_dispatch_sweeps_delete_entries_and_literals():
               "current-format .cppm siblings left on disk")
 
 
-def test_port_and_leave_never_deleted():
-    print("test_port_and_leave_never_deleted")
+def test_port_and_edit_never_deleted():
+    print("test_port_and_edit_never_deleted")
     with tempfile.TemporaryDirectory() as root:
         paths = _stage(root)
         prj = _FakePrj(root)
         report = sweepOrphans(prj, write=True)
 
-        # (b) port (block .cpp/.h, rtl .sv) and leave (tb) files survive the sweep.
-        survivors = ["myH", "myCpp", "mySv", "paramH", "paramCpp", "tb"]
+        # (b) port (block .cpp/.h, rtl .sv, tb External pair) and edit (tb Config)
+        # files survive the sweep.
+        survivors = ["myH", "myCpp", "mySv", "paramH", "paramCpp",
+                     "tbTopH", "tbTopCpp", "tbExtH", "tbExtCpp", "tbConfig"]
         check(all(os.path.exists(paths[k]) for k in survivors),
-              "port/leave user files are left on disk")
+              "port/edit user files are left on disk")
         deleted = {i.location for i in report.applied if i.kind == ORPHAN_DELETE}
         check(deleted.isdisjoint({"myblk.h", "myblk.cpp", "myblk.sv",
-                                  "paramblk.h", "paramblk.cpp", "myblkTestbench.h"}),
-              "no port/leave file appears in the delete set")
+                                  "paramblk.h", "paramblk.cpp",
+                                  "myblkTestbench.h", "myblkTestbench.cpp",
+                                  "myblkExternal.h", "myblkExternal.cpp",
+                                  "myblkConfig.cpp"}),
+              "no port/edit file appears in the delete set")
 
         # unreachability by construction: the delete-target set (delete entries +
-        # literals) is disjoint from the port/leave expansion.
+        # literals) is disjoint from the port/edit expansion.
         r = OrphansReport(projectName="t")
         contexts = _reconstructContexts(prj, r)
         deleteTargets = expandFileMap(prj, _dispositionMap(MIGRATE_DELETE), r, contexts)
         deleteTargets |= _literalDeletePaths(prj, r)
-        portLeave = (expandFileMap(prj, _dispositionMap(MIGRATE_PORT), r, contexts)
-                     | expandFileMap(prj, _dispositionMap(MIGRATE_LEAVE), r, contexts))
-        check(portLeave and portLeave.isdisjoint(deleteTargets),
-              "port/leave paths are unreachable for deletion by construction")
+        portEdit = (expandFileMap(prj, _dispositionMap(MIGRATE_PORT), r, contexts)
+                    | expandFileMap(prj, _dispositionMap(MIGRATE_EDIT), r, contexts))
+        check(portEdit and portEdit.isdisjoint(deleteTargets),
+              "port/edit paths are unreachable for deletion by construction")
 
 
 def test_ungenerated_delete_target_reported_not_deleted():
@@ -297,10 +320,13 @@ def test_port_todo_only_for_changed_form():
         report = sweepOrphans(prj, write=True)
 
         ports = sorted(i.location for i in report.manual if i.kind == TODO_PORT)
-        # (d) the parameterized block's .cpp/.h await the .cppm port; the
-        # non-parameterized block (current map still emits .h/.cpp) is a no-op.
-        check(ports == ["paramblk.cpp", "paramblk.h"],
-              "only the parameterized (changed-form) block is reported TODO_PORT")
+        # (d) the parameterized block's .cpp/.h, the tb External pair and the tb top
+        # pair await the porter; the non-parameterized block (current map still emits
+        # .h/.cpp) is a no-op.
+        check(ports == ["myblkExternal.cpp", "myblkExternal.h",
+                        "myblkTestbench.cpp", "myblkTestbench.h",
+                        "paramblk.cpp", "paramblk.h"],
+              "only the changed-form user files are reported TODO_PORT")
         check("myblk.h" not in ports and "myblk.cpp" not in ports
               and "myblk.sv" not in ports,
               "same-form (non-parameterized) block yields no TODO_PORT")
@@ -398,7 +424,7 @@ def test_unmanifested_src_dir_reported_and_clears():
 
 if __name__ == "__main__":
     test_delete_dispatch_sweeps_delete_entries_and_literals()
-    test_port_and_leave_never_deleted()
+    test_port_and_edit_never_deleted()
     test_ungenerated_delete_target_reported_not_deleted()
     test_port_todo_only_for_changed_form()
     test_user_include_site_handoff()

@@ -1,12 +1,11 @@
 
-#ifndef XIFVARIANTCONFIG_H_CONFIG_H
-#define XIFVARIANTCONFIG_H_CONFIG_H
+#ifndef XIFVARIANTCONFIG_H_
+#define XIFVARIANTCONFIG_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
-
-#include <cstdint>
 
 // GENERATED_CODE_PARAM --project=xif --context=xif.yaml
 // GENERATED_CODE_BEGIN --template=config
+#include <cstdint>
 #include "clog2.h"
 
 struct xifDefaultConfig {
@@ -35,4 +34,4 @@ struct sinkSinkV0Config {
 
 // GENERATED_CODE_END
 
-#endif //XIFVARIANTCONFIG_H_CONFIG_H
+#endif //XIFVARIANTCONFIG_H_

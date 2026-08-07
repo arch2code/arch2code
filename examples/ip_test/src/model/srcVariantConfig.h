@@ -1,12 +1,11 @@
 
-#ifndef SRCVARIANTCONFIG_H_CONFIG_H
-#define SRCVARIANTCONFIG_H_CONFIG_H
+#ifndef SRCVARIANTCONFIG_H_
+#define SRCVARIANTCONFIG_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
-
-#include <cstdint>
 
 // GENERATED_CODE_PARAM --project=ip_test --context=../../src/yaml/src.yaml
 // GENERATED_CODE_BEGIN --template=config
+#include <cstdint>
 #include "clog2.h"
 
 struct srcDefaultConfig {
@@ -21,4 +20,4 @@ struct srcVariantSrc0Config {
 
 // GENERATED_CODE_END
 
-#endif //SRCVARIANTCONFIG_H_CONFIG_H
+#endif //SRCVARIANTCONFIG_H_

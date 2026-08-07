@@ -5,9 +5,6 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "axi4_stream_channel.h"
 #include "axi_read_channel.h"
@@ -16,6 +13,7 @@ module;
 #include "instanceFactory.h"
 #include "testController.h"
 // user #includes here
+#include "q_assert.h"
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module axiDemo_producer.block;
 import axiDemo_producer.base;

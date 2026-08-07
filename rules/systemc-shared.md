@@ -1,6 +1,6 @@
 ---
 description: SystemC conventions shared across model/ and tb/ directories
-globs: "model/**/*.cpp, model/**/*.h, tb/**/*.cpp, tb/**/*.h"
+globs: "model/**/*.cpp, model/**/*.h, tb/**/*.cpp, tb/**/*.cppm, tb/**/*.h"
 alwaysApply: false
 ---
 # SystemC Shared Rules

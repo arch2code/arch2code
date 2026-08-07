@@ -29,7 +29,9 @@ def get_intf_type(ifType, block_data):
     Returns:
         Canonical interface type (e.g., 'reg_ro' -> 'status')
     """
-    type_mappings = block_data.get('interface_type_mappings', {})
+    # An alias with no mapping row passes through unchanged: only register
+    # interface types are aliased, every other interfaceType is already canonical.
+    type_mappings = block_data['interface_type_mappings']
     return type_mappings.get(ifType, ifType)
 
 def get_intf_data(data, prj_data):
@@ -134,8 +136,7 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     intf_param = dict()
     hdl_param = dict()
 
-    # Get interface definition from block_data
-    interface_defs = block_data.get('interface_defs', {})
+    interface_defs = block_data['interface_defs']
     assert(intf_type in interface_defs and
            intf_modp in interface_defs[intf_type]['modports'])
 
@@ -232,12 +233,12 @@ def sc_connect_channels(data, indent, block_data, prj=None):
 
 def sc_connect_channel_type(data, indent, block_data, prj=None):
     out = []
-    interface_defs = block_data.get('interface_defs', {})
+    interface_defs = block_data['interface_defs']
     for key, value in data.items():
         channelBase = get_channel_name(value)
         if (len(value['ends']) > 2):
             intf_type = get_intf_type(value['interfaceType'], block_data)
-            multiDst = interface_defs.get(intf_type, {}).get('multiDst', False)
+            multiDst = interface_defs[intf_type]['multiDst']
             if not multiDst:
                 printError(f"connection {key} has more than 2 ends. Only status interfaces (including ro registers) can have multiple dst connections")
         # Suppress direct child binds already marked by getBDCrossInterfaceBinds().
@@ -361,9 +362,9 @@ def cpp_module_name(includeName):
     # C++20 module name spelling for a context's project-owned include identity.
     # The identity is supplied by projectCreate/projectOpen; this helper only
     # sanitizes it into a legal module-name token. The sanitization primitive is
-    # owned by core (processYaml.sanitizeModuleToken) so the template layer and
+    # owned by core (processYaml.sanitizeIdentifierToken) so the template layer and
     # the projectCreate foreign-Config stub cannot drift.
-    return processYaml.sanitizeModuleToken(includeName)
+    return processYaml.sanitizeIdentifierToken(includeName)
 
 def cpp_block_module_name(blockName):
     # C++20 module name for a parameterizable block's own interface unit
@@ -383,6 +384,24 @@ def cpp_base_module_name(blockName):
     # The block identity comes from the block view (`data['blockName']`), not
     # from a filename.
     return f'{cpp_module_name(blockName)}.base'
+
+def cpp_tb_module_name(blockName):
+    # C++20 module name for a block's testbench-top interface unit
+    # (`<block>Testbench.cppm`). Spelled `<block>.testbench` so it stays distinct
+    # from the block impl module (`<block>.block`), the base module
+    # (`<block>.base`) and the External unit (`<block>.external`) it imports. The
+    # block identity comes from the block view (`data['blockModuleName']`), not
+    # from a filename.
+    return f'{cpp_module_name(blockName)}.testbench'
+
+def cpp_tb_external_module_name(blockName):
+    # C++20 module name for a block's testbench External interface unit
+    # (`<block>External.cppm`). Spelled `<block>.external` so it stays distinct
+    # from the testbench top (`<block>.testbench`) that imports it. The block
+    # identity comes from the block view (`data['blockModuleName']`), which for an
+    # External retargeted at a `_tb` container is the excluded DUT instance's
+    # module name resolved by refactor_tbExternal, never a filename.
+    return f'{cpp_module_name(blockName)}.external'
 
 def cpp_registrar_module_name(projectName, parentBlock, childBlock):
     # C++20 module name for a parent-owned registrar trampoline unit. Spelled
@@ -456,6 +475,11 @@ def cpp_config_arg(configSelection):
     name = cpp_config_struct_name(configSelection)
     return f'<{name}>' if configSelection['hasOwnParams'] and name else ''
 
+# Firmware artifacts of every context share one fixed namespace. Unlike the
+# per-context module namespace there is nothing to derive it from, so this is the
+# single source: the fw scaffold and the fw region emitters both spell it from here.
+FW_NAMESPACE = 'fw_ns'
+
 def cpp_namespace_name(includeName):
     return f'{cpp_module_name(includeName)}_ns'
 
@@ -464,16 +488,13 @@ def cpp_test_namespace_name(includeName):
     # stay separate from the functional types in cpp_namespace_name.
     return f'{cpp_module_name(includeName)}_test_ns'
 
-def cpp_context_include_lines(prj, data, context, fileMapKey):
-    # Emit the dependency lines for one context: a C++20 `import` plus its
-    # `using namespace` in cppm mode, or a textual `#include` in header mode.
-    # Shared by the SystemC class-decl templates so the import/include spelling
-    # stays consistent across them.
-    if fileMapKey == 'include_cppm':
-        moduleName = cpp_module_name(prj.contextModuleIdentity[context])
-        return [f'import {moduleName};',
-                f'using namespace {cpp_namespace_name(prj.contextModuleIdentity[context])};']
-    return [f'#include "{data["includeFiles"][fileMapKey][context]["baseName"]}"']
+def cpp_context_include_lines(prj, context):
+    # The dependency lines for one context's types module: a C++20 `import` plus
+    # its `using namespace`. Shared by the SystemC class-decl templates so the
+    # import spelling stays consistent across them.
+    moduleName = cpp_module_name(prj.contextModuleIdentity[context])
+    return [f'import {moduleName};',
+            f'using namespace {cpp_namespace_name(prj.contextModuleIdentity[context])};']
 
 def sc_channel_header_includes(intf_types, block_data):
     # `#include "<chnl>_channel.h"` for each interface type's channel. Shared by
@@ -482,7 +503,19 @@ def sc_channel_header_includes(intf_types, block_data):
     return [f'#include "{get_intf_defs(intfType, block_data)["sc_channel"]["type"]}_channel.h"'
             for intfType in sorted(intf_types)]
 
-def sc_base_dependency_includes(args, prj, data):
+def cpp_config_header_includes(data):
+    # `#include "<context>VariantConfig.h"` for each context whose per-variant
+    # Config structs this block's declarations name. Deliberately a textual header
+    # (a module's global module fragment, never its purview), so every unit that
+    # spells a Config type needs its own copy: names declared in another unit's
+    # global module fragment are reachable but NOT visible to an importer. Shared by
+    # the block class dependency set and by both testbench module units, which each
+    # name the DUT's Config.
+    return [f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"'
+            for context in sorted(data['configIncludeContext'])
+            if context in data['includeFiles'].get('config_hdr', {})]
+
+def sc_base_dependency_includes(prj, data):
     # Dependency lines a block's Base/Inverted/Channels declaration
     # (baseClassDecl) needs, returned as ordered (kind, text) pairs mirroring
     # sc_class_dependency_includes. kind is 'include' for a textual #include or
@@ -502,15 +535,15 @@ def sc_base_dependency_includes(args, prj, data):
         out.append(('include', '#include "blockBase.h"'))
     for line in sc_channel_header_includes(block_intf_set, data):
         out.append(('include', line))
-    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
     for context in data['includeContext']:
-        if context in data['includeFiles'].get(fileMapKey, {}):
-            for line in cpp_context_include_lines(prj, data, context, fileMapKey):
-                kind = 'import' if line.startswith(('import ', 'using namespace ')) else 'include'
-                out.append((kind, line))
+        # INCLUDEFILES carries no include_cppm key at all for a project whose
+        # every context is smartInclude-empty, so the file type is optional here.
+        if context in data['includeFiles'].get('include_cppm', {}):
+            for line in cpp_context_include_lines(prj, context):
+                out.append(('import', line))
     return out
 
-def sc_class_dependency_includes(args, prj, data):
+def sc_class_dependency_includes(prj, data):
     # The dependency lines a block's class declaration needs, returned as
     # ordered (kind, text) pairs. kind is 'include' for a textual #include or
     # 'import' for a C++20 module import / using-namespace line.
@@ -559,9 +592,8 @@ def sc_class_dependency_includes(args, prj, data):
     thunker_protocols = sc_thunker_protocols(data, prj)
     for proto in sorted(thunker_protocols):
         out.append(('include', f'#include "{proto}_port_thunker.h"'))
-    for context in sorted(data.get('configIncludeContext', {})):
-        if context in data['includeFiles'].get('config_hdr', {}):
-            out.append(('include', f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"'))
+    for line in cpp_config_header_includes(data):
+        out.append(('include', line))
     # Owner-qualified foreign-Config modules for child instances bound to an
     # assembler-declared variant. Each is a registrar-domain C++20 module
     # interface unit (`<project>.<child>.config`, one per owning project); the
@@ -572,14 +604,35 @@ def sc_class_dependency_includes(args, prj, data):
         mod = data['foreignConfigModules'][key]
         moduleName = cpp_config_module_name(mod['project'], mod['block'])
         out.append(('import', f'import {moduleName};'))
-    fileMapKey = args.fileMapKey if args.fileMapKey else 'include_cppm'
     for context in data['classIncludeContext']:
-        if context in data['includeFiles'].get(fileMapKey, {}):
-            for line in cpp_context_include_lines(prj, data, context, fileMapKey):
-                kind = 'import' if line.startswith(('import ', 'using namespace ')) else 'include'
-                out.append((kind, line))
+        if context in data['includeFiles'].get('include_cppm', {}):
+            for line in cpp_context_include_lines(prj, context):
+                out.append(('import', line))
     if data['addressDecode']['isApbRouter']:
         out.append(('include', '#include "apbBusDecode.h"'))
+    return out
+
+def sc_class_module_usings(prj, data):
+    # The `using namespace` lines a block's class body needs to spell imported
+    # interface-context types unqualified, ordered and deduplicated. A
+    # using-directive CLOSES the C++20 module preamble, so these are emitted at
+    # the head of the CLASS region (after the `// user imports here` slot) rather
+    # than in moduleExport, which keeps that slot a legal preamble slot for
+    # hand-authored imports. Shared by classDecl and blockRegs so the two class
+    # emitters cannot drift; mirrors moduleExport's own using sources
+    # (dependency set + interface-context set).
+    out = list()
+    seen = set()
+    for kind, line in sc_class_dependency_includes(prj, data):
+        if line.startswith('using namespace ') and line not in seen:
+            out.append(line)
+            seen.add(line)
+    for context in data['includeContext']:
+        if context in data['includeFiles'].get('include_cppm', {}):
+            for line in cpp_context_include_lines(prj, context):
+                if line.startswith('using namespace ') and line not in seen:
+                    out.append(line)
+                    seen.add(line)
     return out
 
 def wrap_module_namespace(args, data, lines):
@@ -587,6 +640,16 @@ def wrap_module_namespace(args, data, lines):
         return lines
     namespaceName = cpp_namespace_name(data['contextModuleIdentity'])
     return [f'export namespace {namespaceName} {{'] + lines + [f'}} // namespace {namespaceName}']
+
+def wrap_fw_namespace(args, lines):
+    # Each fw header region carries its own complete `namespace fw_ns { ... }`
+    # block rather than sharing one opened outside the regions, so a region that
+    # emits nothing leaves no unbalanced brace behind. Adjacent blocks reopen the
+    # same namespace, so later regions still see earlier regions' declarations.
+    # Emission mode is exclusive, so this and wrap_module_namespace never both fire.
+    if args.mode != 'fw':
+        return lines
+    return [f'namespace {FW_NAMESPACE} {{'] + lines + [f'}} // namespace {FW_NAMESPACE}']
 
 def wrap_module_test_namespace(args, data, lines):
     if args.mode != 'module':
@@ -604,8 +667,7 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     intf_modp = port_data['direction']
     intf_param = dict()
 
-    # Get interface definition from block_data
-    interface_defs = block_data.get('interface_defs', {})
+    interface_defs = block_data['interface_defs']
     assert(intf_type in interface_defs and
            intf_modp in interface_defs[intf_type]['modports'])
 
@@ -715,8 +777,7 @@ def sc_gen_block_channels(conn_data, prj, block_data):
     intf_structs = intf_data['structures']
     intf_param = dict()
 
-    # Get interface definition from block_data
-    interface_defs = block_data.get('interface_defs', {})
+    interface_defs = block_data['interface_defs']
     assert(intf_type in interface_defs)
 
     intf_def = interface_defs[intf_type]
@@ -932,11 +993,12 @@ def get_intf_defs(intf_type, block_data):
     """Get interface definition for given interface type
     
     Args:
-        intf_type: Interface type name
+        intf_type: Canonical interface type name (resolve aliases with
+                   get_intf_type first)
         block_data: Block data dict containing interface_defs
-    
+
     Returns:
-        Interface definition dict or None if not found
+        Interface definition dict. Raises KeyError naming the type when the
+        block's view carries no row for it.
     """
-    interface_defs = block_data.get('interface_defs', {})
-    return interface_defs.get(intf_type, None)
+    return block_data['interface_defs'][intf_type]

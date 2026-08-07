@@ -6,6 +6,8 @@
 
 // GENERATED_CODE_PARAM --block=src
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
+#include "systemc.h"
+#include "blockBase.h"
 import ip_test_src.base;
 // GENERATED_CODE_END
 

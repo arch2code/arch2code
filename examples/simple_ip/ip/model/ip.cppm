@@ -5,9 +5,6 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "apb_channel.h"
 #include "push_ack_channel.h"
@@ -16,6 +13,8 @@ module;
 #include "hwMemory.h"
 #include "ipVariantConfig.h"
 // GENERATED_CODE_END
+// user #includes here
+#include "q_assert.h"
 
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ip.block;

@@ -3,39 +3,44 @@
 #define AXIDEMOINCLUDESFW_H_
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-#include <cstdint>
-#include <cstring>
-
 // GENERATED_CODE_PARAM --project=axiDemo --context=axiDemo.yaml --mode=fw
 // GENERATED_CODE_BEGIN --template=headers --fileMapKey=includeFW_hdr
 #include "axiStdIncludesFW.h"
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures --section=headerIncludes
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include "bitTwiddling.h"
 
 // GENERATED_CODE_END
-namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=constants
+namespace fw_ns {
 //constants
 inline constexpr uint32_t AXI_ADDRESS_WIDTH = 32;  // The width of the AXI address busses
 inline constexpr uint32_t AXI_DATA_WIDTH = 32;  // The width of the AXI data busses
 inline constexpr uint32_t AXI_STROBE_WIDTH = 4;  // The width of the AXI strobe signals
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types
+namespace fw_ns {
 // types
 typedef uint32_t axiAddrT; // [32] Address Width
 typedef uint32_t axiDataT; // [32] Width of the data bus.
 typedef uint8_t axiStrobeT; // [4] Width of the strobe bus.
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
+namespace fw_ns {
 // enums
 
+} // namespace fw_ns
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=structures
+namespace fw_ns {
 // structures
 struct axiAddrSt {
     axiAddrT addr; //
@@ -106,7 +111,7 @@ struct axiStrobeSt {
     {}
 
 };
+} // namespace fw_ns
 
 // GENERATED_CODE_END
-} // end of namespace fw_ns
 #endif //AXIDEMOINCLUDESFW_H_

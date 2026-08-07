@@ -5,9 +5,6 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "apb_channel.h"
 #include "memory_channel.h"
@@ -23,12 +20,12 @@ import mixed_blockBRegs.base;
 import mixed;
 import mixed_mixedBlockC;
 import mixed_mixedInclude;
-using namespace mixed_ns;
-using namespace mixed_mixedBlockC_ns;
-using namespace mixed_mixedInclude_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=blockRegs --section=header
+using namespace mixed_ns;
+using namespace mixed_mixedBlockC_ns;
+using namespace mixed_mixedInclude_ns;
 export SC_MODULE(blockBRegs), public blockBase, public blockBRegsBase
 {
 private:

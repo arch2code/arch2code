@@ -5,9 +5,6 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "apb_channel.h"
 #include "status_channel.h"
@@ -20,10 +17,10 @@ module;
 export module mixed_blockGRegs.block;
 import mixed_blockGRegs.base;
 import mixed;
-using namespace mixed_ns;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=blockRegs --section=header
+using namespace mixed_ns;
 export template<typename Config>
 SC_MODULE(blockGRegs), public blockBase, public blockGRegsBase<Config>
 {

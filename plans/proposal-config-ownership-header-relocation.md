@@ -45,7 +45,8 @@
   PRE-EXISTING on branch HEAD via safe working-tree baseline revert.
 - **Naming/dependency cleanup applied and independently verified (2026-07-21,
   output-neutral).** `processYaml` no longer imports `intf_gen_utils` (verified: no
-  matches); the sanitization primitive `sanitizeModuleToken` now lives in
+  matches); the sanitization primitive `sanitizeIdentifierToken` (named
+  `sanitizeModuleToken` at the time of this note) now lives in
   `processYaml` and `intf_gen_utils.cpp_module_name` imports it FROM core (correct
   direction, no cycle). The foreign-Config header basename is fileMap-derived via
   `expandNewModulePath` (same `baseName` path as `config_hdr`); the hardcoded

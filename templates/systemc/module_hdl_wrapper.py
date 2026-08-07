@@ -73,7 +73,7 @@ def render_sc(args, prj, data):
         # region (global scope).
         for context in data['includeContext']:
             if context in data['includeFiles'].get('include_cppm', {}):
-                s.extend(intf_gen_utils.cpp_context_include_lines(prj, data, context, 'include_cppm'))
+                s.extend(intf_gen_utils.cpp_context_include_lines(prj, context))
         for context in sorted(data.get('configIncludeContext', {})):
             if context in data['includeFiles'].get('config_hdr', {}):
                 s.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
@@ -176,9 +176,15 @@ def render_sc(args, prj, data):
         return(s)
 
     def sec_preamble(args, prj, data):
-        # File-scope preamble for the generated Verilated SC wrapper: the block's
-        # own Base import, emitted from this region so `make gen` re-spells it
-        # every run (self-healing after the Base header->C++20-module migration).
+        # File-scope preamble for the generated Verilated SC wrapper. The baseline
+        # the generated class names directly - systemc.h for sc_module/sc_clock/
+        # sc_signal/SC_THREAD and blockBase.h for the blockBase base class and
+        # blockBaseMode ctor argument - plus the block's own Base import, all
+        # emitted from this region so `make gen` re-spells them every run
+        # (self-healing after the Base header->C++20-module migration).
+        # blockBase.h cannot ride in on `import <block>.base;`: it sits in that
+        # module's global module fragment, whose names are reachable but not
+        # visible to an importer.
         # A block with no instance-bound variants keeps a concrete wrapper that
         # names its verilated DUT directly, so it also includes that DUT header
         # (from the svWrapper view). A parameterizable wrapper is a reusable
@@ -220,6 +226,8 @@ def render_sc(args, prj, data):
         case _ : raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are preamble, hdl_sc_wrapper_class, channel_decl, bfm_decl, bfm_ctor_init, dut_connect, bfm_connect, hdl_if_decl")
 
 sec_preamble_template = """\
+#include "systemc.h"
+#include "blockBase.h"
 import {{basemodule}};
 {%- if not variants %}
 

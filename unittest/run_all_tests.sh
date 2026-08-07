@@ -232,6 +232,11 @@ echo "------------------------------------------------------------------------"
 python3 test_migrate_orphans.py || FAILED=1
 
 echo ""
+echo "Test Suite 19q: Testbench-family port (migrateBlockModulePort/migrateTbConfig)"
+echo "------------------------------------------------------------------------"
+python3 test_migrate_tb_port.py || FAILED=1
+
+echo ""
 echo "Test Suite 19p: Project-mode --project param + re-stamp (migrateProjectParam.py)"
 echo "------------------------------------------------------------------------"
 python3 test_project_param.py || FAILED=1

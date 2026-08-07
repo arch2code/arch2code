@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for the project-mode --project GENERATED_CODE_PARAM support.
 
-Two units, both driven at runtime against real on-disk files:
+Four units, all driven at runtime against real on-disk files:
 
   (1) textfileHelper.codeText.parseParam accepts `--project` and exposes it as
       params.project (None when absent, so the older --context form is unchanged).
@@ -10,6 +10,17 @@ Two units, both driven at runtime against real on-disk files:
       retired `--context <basename>` form to `--project <projectName>`, identifies
       the file through the fileMap `mode: project` entry (not a filename guess),
       guards on the generated marker, and is idempotent.
+
+  (3) Both paths that reach an unregistered fileMap file key abort non-zero: the
+      migration path through contextParamMode's exhaustive _CONTEXT_FILE_MODE
+      table, and the `make newmodule` scaffold path through fileGen.render's
+      dispatch (driven through the real renderer, which installs no handler for
+      SystemExit).
+
+  (4) The consuming end of that --mode contract: the structures template rejects an
+      unregistered mode in every section that consumes the token instead of falling
+      through to a KeyError, still honours the absent-mode default, and rejects a
+      codeMapping entry with no case arm in its feature dispatch.
 
 Like test_migrate_orphans, the migration unit stages real files on disk and
 drives restampProjectParam against a lightweight fake `prj` exposing exactly the
@@ -26,15 +37,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pysrc.textfileHelper import codeText
 from pysrc.genFileParam import contextParamTail
+from pysrc.migrateCommon import restampParamLine
 from pysrc.migrateProjectParam import (
     restampProjectParam,
     restampContextParam,
-    _restampParamLine,
     PROJECT_PARAM_RESTAMP,
     CONTEXT_PARAM_RESTAMP,
     TODO_UNGENERATED_FILE,
     TODO_MISSING_PARAM_LINE,
 )
+from pysrc.renderer import renderer
 from pysrc import processYaml
 
 RTL_DOTF_CONTEXT = (
@@ -117,16 +129,16 @@ def test_parseParam_accepts_project():
 
 
 def test_restamp_line_conversion_and_idempotency():
-    """_restampParamLine converts the context form and is a no-op once the line
+    """restampParamLine converts the context form and is a no-op once the line
     already carries --project."""
-    hasParam, converted = _restampParamLine(RTL_DOTF_CONTEXT, "--project=myProj")
+    hasParam, converted = restampParamLine(RTL_DOTF_CONTEXT, "--project=myProj")
     assert hasParam, "the context form does carry a PARAM line"
     assert converted == RTL_DOTF_PROJECT, "context form must convert to --project form"
     # Everything below the PARAM line is untouched.
     assert "+incdir+.\nproj_package.sv\n" in converted
-    assert _restampParamLine(RTL_DOTF_PROJECT, "--project=myProj") == (True, None), \
+    assert restampParamLine(RTL_DOTF_PROJECT, "--project=myProj") == (True, None), \
         "already --project must be a no-op (idempotent)"
-    print("PASS: _restampParamLine converts context form and is idempotent")
+    print("PASS: restampParamLine converts context form and is idempotent")
 
 
 def test_restamp_line_reports_missing_param_line():
@@ -138,9 +150,9 @@ def test_restamp_line_reports_missing_param_line():
         "// GENERATED_CODE_BEGIN --template=rtlDotF\n"
         "// GENERATED_CODE_END\n"
     )
-    assert _restampParamLine(noParam, "--project=myProj") == (False, None), \
+    assert restampParamLine(noParam, "--project=myProj") == (False, None), \
         "a file with no PARAM line must report hasParamLine False"
-    print("PASS: _restampParamLine distinguishes a missing PARAM line from a no-op")
+    print("PASS: restampParamLine distinguishes a missing PARAM line from a no-op")
 
 
 def test_restamp_project_mode_file():
@@ -253,16 +265,16 @@ class _FakeContextPrj:
 
 
 def test_context_restamp_line_conversion_and_idempotency():
-    """The shared _restampParamLine, fed the canonical contextParamTail,
+    """The shared restampParamLine, fed the canonical contextParamTail,
     normalizes --context to the canonical key, adds --project, preserves --mode,
     and is a no-op once the line is canonical."""
     tail = contextParamTail("myProj", "../../leaf/yaml/ipLeaf.yaml", "fw")
-    hasParam, converted = _restampParamLine(CTX_FW_STALE, tail)
+    hasParam, converted = restampParamLine(CTX_FW_STALE, tail)
     assert hasParam
     assert converted == CTX_FW_CANONICAL, "stale context form must normalize + gain --project"
     # The generated region below the PARAM line is untouched.
     assert "--fileMapKey=includeFW_hdr" in converted
-    assert _restampParamLine(CTX_FW_CANONICAL, tail) == (True, None), \
+    assert restampParamLine(CTX_FW_CANONICAL, tail) == (True, None), \
         "already-canonical line must be a no-op (idempotent)"
     print("PASS: context param tail normalizes --context and adds --project idempotently")
 
@@ -319,6 +331,112 @@ def test_unregistered_context_filekey_fails_loud():
     assert False, "an unregistered context file key must not be silently accepted"
 
 
+def test_unregistered_scaffold_filekey_fails_loud():
+    """The `make newmodule` sibling of the check above. A fileMap file key with no
+    fileGen.render case arm reaches the dispatch's default, which must abort
+    non-zero: newModule renders every context artifact AND the create-once user
+    makefiles in one pass, so a zero-status exit would truncate the scaffold while
+    `make` still reported success. Driven through the real renderer (which wraps
+    the call in no try/except) so the whole newmodule dispatch path is executed,
+    not just the arm."""
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    directTemplate = {'templates': {
+        'fileGen': os.path.join(base_dir, 'templates', 'fileGen', 'fileGen.py')}}
+    r = renderer(None, directTemplate=directTemplate)
+    vars = {'args': None, 'prj': {}, 'block': {'target': 'brandNewType_hdr'}}
+
+    try:
+        r.render('fileGen', vars)
+    except SystemExit as e:
+        assert e.code, \
+            f"scaffold dispatch must exit non-zero, got exit status {e.code!r}"
+        print("PASS: an unregistered scaffold file key fails loud (non-zero exit)")
+        return
+    assert False, "an unregistered scaffold file key must not be silently accepted"
+
+
+def _structuresRenderer():
+    """The structures template loaded through the real renderer. loadTemplates imports
+    the file by path and registers nothing in sys.modules, so the returned module is
+    both the instance render() actually executes - patch its tables, not a separate
+    import's - and a throwaway discarded with this renderer."""
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    directTemplate = {'templates': {
+        'structures': os.path.join(base_dir, 'templates', 'systemc', 'structures.py')}}
+    r = renderer(None, directTemplate=directTemplate)
+    return r, r.pythonTemplate['structures']
+
+
+def test_unregistered_structures_mode_fails_loud():
+    """The consuming end of the --mode contract the two checks above protect. An
+    unrecognized mode must abort non-zero at resolveMode rather than reach one of the
+    three mode-keyed table lookups downstream (codeMapping in oneStruct, plus
+    baselineIncludes and codeMapping in systemIncludes), each of which would raise a
+    bare KeyError far from the cause. Every section that consumes the token is
+    covered, not just the declaration ones: on an fw artifact the includes section is
+    the FIRST structures region in the file, so it reaches the guard first."""
+    r, _ = _structuresRenderer()
+    for section in ('header', 'cpp', 'headerIncludes', 'cppIncludes'):
+        args = SimpleNamespace(section=section, mode='notAMode')
+        vars = {'args': args, 'prj': {},
+                'block': {'structures': {'s': {'structure': 's', 'isParameterizable': False}}}}
+
+        try:
+            r.render('structures', vars)
+        except SystemExit as e:
+            assert e.code, \
+                f"section {section} must exit non-zero, got exit status {e.code!r}"
+            continue
+        assert False, f"an unregistered --mode must not be accepted in section {section}"
+    print("PASS: an unregistered structures --mode fails loud in every section")
+
+
+def test_absent_structures_mode_defaults_to_model():
+    """The documented default the guard above must not reject: an absent --mode means
+    the model flavor (config_hdr and package_sv are mapped to '' in
+    _CONTEXT_FILE_MODE). Asserted on resolveMode itself and on a real render: the
+    cppIncludes section emits logging.h only via codeMapping['model']['prtFmt'] ==
+    'split', so its presence proves the model flavor was selected, not merely that
+    nothing aborted."""
+    r, structures = _structuresRenderer()
+    assert structures.resolveMode('') == 'model', "absent mode must resolve to model"
+
+    args = SimpleNamespace(section='cppIncludes', mode='')
+    vars = {'args': args, 'prj': {},
+            'block': {'structures': {'s': {'structure': 's', 'isParameterizable': False}}}}
+    out = r.render('structures', vars)
+    assert '#include "logging.h"' in out, \
+        f"absent mode must render the model flavor's split-feature includes, got {out!r}"
+    print("PASS: an absent structures --mode still defaults to the model flavor")
+
+
+def test_unrendered_codemapping_feature_fails_loud():
+    """oneStruct's feature dispatch is exhaustive over codeMapping. A feature with no
+    case arm has no renderer, so it must abort non-zero: exiting unwinds before the
+    artifact is written, so a zero status would report success on a file that was never
+    updated. codeMapping is a module-level table, not user YAML, so the only way to
+    reach the guard is the developer mistake it catches: a mapping entry added without
+    its arm, injected here on the loaded module (loadTemplates re-execs the template per
+    renderer, so the patched table is discarded with it). The injected mode carries only
+    the unrendered feature so the dispatch reaches it without first rendering a real
+    one, and keys baselineIncludes too so resolveMode accepts it."""
+    r, structures = _structuresRenderer()
+    args = SimpleNamespace(section='cpp', mode='noArmMode')
+    vars = {'args': args, 'prj': {},
+            'block': {'structures': {'s': {'structure': 's', 'isParameterizable': False}}}}
+    structures.codeMapping['noArmMode'] = {'noSuchFeature': 'inline'}
+    structures.baselineIncludes['noArmMode'] = []
+
+    try:
+        r.render('structures', vars)
+    except SystemExit as e:
+        assert e.code, \
+            f"codeMapping feature dispatch must exit non-zero, got exit status {e.code!r}"
+        print("PASS: a codeMapping feature with no case arm fails loud (non-zero exit)")
+        return
+    assert False, "a codeMapping feature with no case arm must not be silently skipped"
+
+
 def test_resolveContextKey_no_basename_fallback():
     """resolveContextKey returns an exact yamlContext key and now ERRORS on a
     non-exact (e.g. basename) name: the basename-matching fallback is removed, so
@@ -360,6 +478,10 @@ def run_all_tests():
     test_context_restamp_line_conversion_and_idempotency()
     test_restamp_context_mode_files_owner_guard()
     test_unregistered_context_filekey_fails_loud()
+    test_unregistered_scaffold_filekey_fails_loud()
+    test_unregistered_structures_mode_fails_loud()
+    test_absent_structures_mode_defaults_to_model()
+    test_unrendered_codemapping_feature_fails_loud()
     test_resolveContextKey_no_basename_fallback()
     test_resolveFileOwner_context_file_via_project()
     print("\nAll project-param tests passed.")

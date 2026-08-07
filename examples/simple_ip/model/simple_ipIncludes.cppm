@@ -6,9 +6,9 @@
 module;
 #include "systemc.h"
 #include "logging.h"
+#include <algorithm>
 #include "bitTwiddling.h"
 #include "q_assert.h"
-#include <algorithm>
 
 export module simple_ip;
 // GENERATED_CODE_END

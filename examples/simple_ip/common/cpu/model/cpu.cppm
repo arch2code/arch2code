@@ -5,9 +5,6 @@
 module;
 #include "systemc.h"
 #include "logging.h"
-#include "bitTwiddling.h"
-#include "q_assert.h"
-#include <algorithm>
 #include "instanceFactory.h"
 #include "apb_channel.h"
 // GENERATED_CODE_END
@@ -15,6 +12,7 @@ module;
 #include "workerThread.h"
 #include "modelComm.h"
 // user #includes here
+#include "q_assert.h"
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module common_cpu.block;
 import common_cpu.base;

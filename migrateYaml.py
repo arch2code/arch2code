@@ -20,8 +20,15 @@ fileMap to concrete paths, and deletes the purely-generated legacy orphans:
 
     migrateYaml.py --sweep [--write] --db <project.db>
 
-The two modes are disjoint: `--sweep` runs only the orphan sweep (no text
-phases, no project.yaml), and the text/default path never opens the database.
+Two further DB-backed modes run the agent-driven source ports:
+
+    migrateYaml.py --port-tb [--write] --db <project.db>   # testbench family
+    migrateYaml.py --port    [--write] --db <project.db>   # block implementations
+
+`--port-tb` runs between `make newmodule` and `make gen`; `--port` runs after
+`make gen`. All of the DB-backed modes are disjoint from the text phases: they
+run only their own phase (no text phases, no project.yaml), and the text/default
+path never opens the database.
 
 Three ordered phases run over the project's YAML file set (the project.yaml
 `projectFiles:` entries plus their `include:` chains):
@@ -75,9 +82,32 @@ from pysrc.migrateModuleEndlabel import (
 )
 from pysrc.migrateBlockModulePort import (
     portBlockModules,
+    portTbExternals,
+    portTbTops,
     renderBlockPortReport,
 )
+from pysrc.migrateTbConfig import (
+    restructureTbConfigs,
+    renderTbConfigReport,
+)
 from pysrc.processYaml import CURRENT_YAML_FORMAT, projectOpen
+
+
+# Exit statuses. `make migrate` runs the phases as a chain, and it needs to tell
+# two kinds of non-zero apart:
+#   RC_TODO     manual work remains but the tree is consistent — the pipeline
+#               carries on (the generated tree must not be left un-generated) and
+#               re-raises the status at the end, so the target still signals
+#               non-zero while the item is open.
+#   RC_BLOCKED  a refused edit left the tree in a state the FOLLOWING step cannot
+#               process (a `<block>Config.cpp` still carrying a bare
+#               `--template=tbConfig` region, which gen rejects outright). Folding
+#               this into RC_TODO would replace the migrator's TODO list with a
+#               template traceback and half-regenerate the tree, so the pipeline
+#               halts on it.
+RC_CLEAN = 0
+RC_TODO = 1
+RC_BLOCKED = 2
 
 
 @dataclass
@@ -490,12 +520,20 @@ def main(argv=None):
                              "the database READ-ONLY; run after `make gen` so the "
                              ".cppm transplant target already carries its generated "
                              "regions.")
+    parser.add_argument("--port-tb", action="store_true", dest="portTb",
+                        help="Run the testbench-family port (Config.cpp region "
+                             "split, External .h/.cpp -> .cppm, tb-top DUT variant "
+                             "carry + legacy pair delete) instead of the "
+                             "text-conversion phases. Requires --db and opens the "
+                             "database READ-ONLY; run AFTER `make newmodule` and "
+                             "BEFORE `make gen` - both edits have to be in place "
+                             "before gen renders the files.")
     parser.add_argument("--db",
                         help="Path to the built project database (required with "
-                             "--sweep).")
+                             "--sweep, --port-tb or --port).")
     parser.add_argument("projectYaml", nargs="?",
                         help="Path to the project's project.yaml (required unless "
-                             "--sweep is given).")
+                             "one of the DB-backed modes above is given).")
     args = parser.parse_args(argv)
 
     if args.sweep:
@@ -526,22 +564,57 @@ def main(argv=None):
         # ports, user include sites), or a re-stamp that hit an ungenerated
         # project- or context-mode path, signals work remains, mirroring how the
         # text phases fail when manual TODOs block the stamp.
-        return 0 if (report.clean and paramReport.clean
-                     and contextReport.clean and endlabelReport.clean) else 1
+        return RC_CLEAN if (report.clean and paramReport.clean
+                            and contextReport.clean
+                            and endlabelReport.clean) else RC_TODO
+
+    if args.portTb:
+        if not args.db:
+            parser.error("--port-tb requires --db")
+        prj = projectOpen(args.db)
+        # Config first: it is the only file in the family gen cannot render at all
+        # until its region carries a --section, so reporting it before the External
+        # port puts the blocking item at the head of the output.
+        configReport = restructureTbConfigs(prj, write=args.write)
+        print(renderTbConfigReport(configReport, args.write))
+        # A refused Config restructure blocks the pipeline below, so the two ports
+        # that follow are reported but NOT applied on such a run: their targets are
+        # files the blocked `gen` will never fill, and both delete a legacy pair.
+        # They still run so one invocation reports every TODO in the family.
+        portWrite = args.write and configReport.clean
+        extReport = portTbExternals(prj, write=portWrite)
+        print(renderBlockPortReport(extReport, portWrite,
+                                    label="testbench External port"))
+        # The tb top carries no user code, only its DUT --variant= selection, so it
+        # is the cheapest member of the family and runs last.
+        topReport = portTbTops(prj, write=portWrite)
+        print(renderBlockPortReport(topReport, portWrite,
+                                    label="testbench top port"))
+        # The two refusals are not equivalent. A refused Config restructure is
+        # BLOCKING: the file keeps its bare `--template=tbConfig` region and the
+        # next `make gen` aborts on it (templates/systemc/testbench.py raises on the
+        # empty section), so the caller must stop here and act on this report. A
+        # refused External port only leaves user code un-ported, which gen tolerates,
+        # so it is the ordinary pending-work status.
+        if not configReport.clean:
+            return RC_BLOCKED
+        return RC_CLEAN if (extReport.clean and topReport.clean) else RC_TODO
 
     if args.port:
         if not args.db:
             parser.error("--port requires --db")
         prj = projectOpen(args.db)
         report = portBlockModules(prj, write=args.write)
-        print(renderBlockPortReport(report, args.write))
+        print(renderBlockPortReport(report, args.write,
+                                    label="block module port"))
         # Non-zero while any block is flagged for a hand port (parameterized,
         # reg-handler, module-hostile library, non-boilerplate slot-0), mirroring
         # how the sweep signals remaining TODO_PORT work.
-        return 0 if report.clean else 1
+        return RC_CLEAN if report.clean else RC_TODO
 
     if not args.projectYaml:
-        parser.error("projectYaml is required unless --sweep or --port is given")
+        parser.error("projectYaml is required unless --sweep, --port-tb or --port "
+                     "is given")
 
     if args.toHierarchical:
         report = migrateLayoutInProject(args.projectYaml, write=args.write)
@@ -549,7 +622,7 @@ def main(argv=None):
         # A no-op (not opted in, or already hierarchical) always succeeds. A
         # candidate blocked on a manual precondition (e.g. not yet yamlFormat: 2)
         # fails so the make target signals work remains.
-        return 0 if (report.isNoOp or report.clean) else 1
+        return RC_CLEAN if (report.isNoOp or report.clean) else RC_TODO
 
     result = migrateProject(args.projectYaml, write=args.write)
     print(renderReport(result, args.write))
@@ -570,8 +643,8 @@ def main(argv=None):
                                 and result.variantReport.clean
                                 and result.subProjectsReport.clean)
         if not ok:
-            return 1
-    return 0
+            return RC_TODO
+    return RC_CLEAN
 
 
 if __name__ == "__main__":

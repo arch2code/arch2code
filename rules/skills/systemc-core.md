@@ -25,6 +25,8 @@ Guide the user in writing core SystemC modules, focusing on module structure, th
 2.  **Implementation Location:**
     *   **User `#includes`:** Add manual `#include`s after the `blockModuleHeader` region's `// GENERATED_CODE_END`, in the global-module-fragment zone (before `export module`).
     *   **Body-only context types:** Types or constants used only by the block body — not on the interface, so not imported by the generated `moduleExport` region — need a hand-written `import <ctx>; using namespace <ctx>_ns;` in the preamble gap between the `moduleExport` region and the `classDecl` region.
+    *   **Ordering inside the preamble gap:** Put every `import` first, then the using-directives, then any `#include`. Any non-import declaration — a `using namespace` as much as a `#include` — closes the preamble, so an `import` placed after one is ill-formed.
+    *   **Which slot a header goes in:** A header that *names* module or `Config` types (`model/b2p_deb_conv.h` in the debayer tree) belongs in the preamble gap, below the imports it depends on, where it attaches to this module. It belongs in the global-module-fragment slot instead when it is the boundary of a class also defined in a plain translation unit (a pimpl `_impl.h`), because that class must attach to the global module to match those definitions at link time.
     *   **Members:** Add manual member variables and function declarations **after** the `classDecl` region's `// GENERATED_CODE_END`, inside the class body.
     *   **Initialization List:** Add manual member initializers (starting with a comma `,`) **between** the `constructor --section=init` `// GENERATED_CODE_END` and the next `// GENERATED_CODE_BEGIN`.
     *   **Constructor Body:** Add manual logic (like `SC_THREAD` registration) **after** the `constructor --section=body` `// GENERATED_CODE_END`.
@@ -44,6 +46,7 @@ Guide the user in writing core SystemC modules, focusing on module structure, th
     import myBlock.base;
     // GENERATED_CODE_END
     // <--- body-only context types: import <ctx>; using namespace <ctx>_ns; --->
+    // <--- then #includes of headers naming module or Config types (imports first) --->
 
     // GENERATED_CODE_BEGIN --template=classDecl
     export template<typename Config>
