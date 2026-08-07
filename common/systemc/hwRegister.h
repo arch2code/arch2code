@@ -98,7 +98,11 @@ public:
     {
         if constexpr (RO)
         {
-            Q_ASSERT_CTX(false, "", "Attempt to write to read-only register");
+            // Match typical APB regs RTL: writes to RO registers are ignored
+            // (ACK with no state change). Do not abort the simulation.
+            (void)address;
+            (void)val;
+            return;
         } else {
             Q_ASSERT_CTX(address < N, "", "Address out of range");
             // Perform a RMW operation
