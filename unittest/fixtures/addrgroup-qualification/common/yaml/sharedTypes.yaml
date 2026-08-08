@@ -1,0 +1,29 @@
+# Shared register-bus definitions owned by the 'commonProj' definitions-only
+# sub-project. Both sibling child projects include this file, so each router and
+# routed leaf resolves the same apbReg interface in its own scope without either
+# child depending on the other.
+
+constants:
+    APB_WIDTH: { value: 32, desc: "Register bus address / data width" }
+    CFG_WIDTH: { value: 16, desc: "Register payload width" }
+
+types:
+    apbAddrT: { width: APB_WIDTH, desc: "APB address" }
+    apbDataT: { width: APB_WIDTH, desc: "APB data" }
+    apbCfgT:  { width: CFG_WIDTH, desc: "Register payload" }
+
+structures:
+    apbAddrSt:
+        address: { varType: apbAddrT, generator: address }
+    apbDataSt:
+        data: { varType: apbDataT, generator: data }
+    apbCfgSt:
+        value: { varType: apbCfgT, generator: register, desc: "Register payload" }
+
+interfaces:
+    apbReg:
+        desc: "APB register bus"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }

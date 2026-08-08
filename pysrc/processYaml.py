@@ -117,6 +117,13 @@ def qualifyModuleIdentity(name, projectName):
         return name
     return f'{projectName}_{name}'
 
+def addressGroupLabel(groupKey):
+    # Diagnostic spelling of an AddressGroups registry key. The registry is keyed
+    # on the tuple (owning projectName, authored group name) so two independently
+    # authored projects may each name a group 'top'; diagnostics spell that key
+    # 'project::group'. Formatting only - the tuple is the lookup key.
+    return f'{groupKey[0]}::{groupKey[1]}'
+
 def expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layout, missingDirOk = False):
     # layout is the owning project's layoutConfig (PROJECTLAYOUT[owner]); the
     # caller selects it by the object's defining-context owner so a child-owned
@@ -1365,8 +1372,7 @@ class projectOpen:
         # collect interface definitions for all interface types used in the block
         self.getBDInterfaceDefs(ret)
         self.getBDConfigInfo(ret)
-        # Surface per-block register-bus data on the view; routers without
-        # authored addressBlock rows get an equivalent view from ADDRESS_CONFIG.
+        # Surface the router block's authored addressBlock row on the view.
         self.getBDAddressBlockView(ret)
         # Verilated SV wrapper design-unit names, single-sourced from the fileMap.
         self.getBDSvWrapperNames(ret)
@@ -2141,9 +2147,36 @@ class projectOpen:
                 exit(warningAndErrorReport())
             isApbRouter = True
             ret['addressDecode']['addressGroupData'] = dict(addressBlock)
-            ret['addressDecode']['addressGroup'] = addressBlock.get('addressGroup')
+            ret['addressDecode']['addressGroup'] = addressBlock['addressGroup']
             ret['addressDecode']['containerBlock'] = self.instanceContainer[qualDecoder]
             ret['addressDecode']['instanceWithRegApb'] = instanceWithRegApb
+            # Instances this router dispatches to, ordered by the address slot
+            # (addressID) each was allocated. A group name is owned by the project
+            # owning the declaring YAML file, so the group this router dispatches
+            # is (owner of the router block's own context, group name); an
+            # instance joins it only when its own context resolves to the same
+            # pair. Two independently authored projects may therefore each
+            # declare a group named 'top' without folding into one decoder.
+            # Restrict to this build's design tree; a referenced child project's
+            # standalone harness instances are parsed into the same database but
+            # do not descend from the active topInstance.
+            groupKey = (self.contextOwningProject[blockRow['_context']],
+                        addressBlock['addressGroup'])
+            routed = [instanceData
+                      for instanceKey, instanceData in self.data['instances'].items()
+                      if instanceKey in self.reachableInstances
+                      and instanceData['addressGroup']
+                      and (self.contextOwningProject[instanceData['_context']],
+                           instanceData['addressGroup']) == groupKey]
+            routed.sort(key=lambda instanceData: instanceData['addressID'])
+            if not routed:
+                printError(f"Router block '{blockRow['block']}' declares address group "
+                           f"'{addressGroupLabel(groupKey)}' but no instance in this "
+                           f"build's design tree is routed to it, so the decoder has no "
+                           f"channels to dispatch. Route at least one instance to the "
+                           f"group, or remove the addressBlock: declaration.")
+                exit(warningAndErrorReport())
+            ret['addressDecode']['routedInstances'] = routed
         ret['addressDecode']['isApbRouter'] = isApbRouter
 
     # memory connections
@@ -3436,6 +3469,11 @@ class projectCreate:
     flatData = dict()
     addressControl = None
     topInstance = None
+    # Counter state, keyed [sectionKey][groupKey]. The 'AddressGroups' section is
+    # keyed on the tuple (owning projectName, authored group name) so two
+    # independently authored projects may each declare a group of the same name;
+    # 'InstanceGroups' comes from the single root project.yaml and stays keyed on
+    # the bare group name.
     counterGroup = OrderedDict() # for counter group current values
     counterGroupControl = OrderedDict() # for counter group control info
     counterData = OrderedDict() # record allocation of values
@@ -3653,6 +3691,8 @@ class projectCreate:
         # derive the per-block module-local parameterized declaration set and
         # persist it into the non-schema blockParameterizedDecls table
         self.deriveParameterizedDeclSets()
+        # reject address-enum identity collisions before the enums are emitted
+        self.validateAddressGroupEnumIdentity()
         # generate address enums and types
         self.generateAddressEnums()
         # check include files are valid
@@ -4487,7 +4527,10 @@ class projectCreate:
                 # not every instance has used any space, so only check the ones that do
                 if instData['instanceTypeKey'] in blockAddressCurrent:
                     # available is based on the number of size of each address space in that group * addressMultiples
-                    availableSpace = self.addressControl['AddressGroups'][instData['addressGroup']]['addressIncrement'] * instData['addressMultiples']
+                    # the instance's group is the one its own project declares
+                    groupKey = (self.contextOwningProject[instData['_context']],
+                                instData['addressGroup'])
+                    availableSpace = self.addressControl['AddressGroups'][groupKey]['addressIncrement'] * instData['addressMultiples']
                     if blockAddressCurrent[instData['instanceTypeKey']] > availableSpace:
                         printError(f"Block {instData['instanceKey']} overflowed its address space. Used: {blockAddressCurrent[instData['instanceTypeKey']]}. Available: {availableSpace}")
                         exit(warningAndErrorReport())
@@ -4512,7 +4555,7 @@ class projectCreate:
             # so composed builds with same-named blocks in different files stay
             # distinct.
             routerContainerGroups = dict()
-            for group, groupRow in addressGroups.items():
+            for groupKey, groupRow in addressGroups.items():
                 routerBlockKey = None
                 for blockKey, blockRow in blockByKey.items():
                     if (blockRow['block'] == groupRow['_declaringBlock']
@@ -4524,26 +4567,31 @@ class projectCreate:
                 for instRow in self.flatData['instances'].values():
                     if instRow['instanceTypeKey'] == routerBlockKey:
                         routerContainerGroups.setdefault(
-                            instRow['containerKey'], list()).append(group)
+                            instRow['containerKey'], list()).append(groupKey)
             for instRow in self.flatData['instances'].values():
                 parentGroup = instRow['addressGroup']
                 # only routed slots (those carrying an addressGroup) have a
                 # parent window; a router at the dispatch-tree root has none.
                 if not parentGroup:
                     continue
-                for childGroup in routerContainerGroups.get(instRow['instanceTypeKey'], list()):
-                    childRow = addressGroups[childGroup]
+                # a routed slot's group is the one its own project declares
+                parentGroupKey = (self.contextOwningProject[instRow['_context']],
+                                  parentGroup)
+                for childGroupKey in routerContainerGroups.get(instRow['instanceTypeKey'], list()):
+                    childRow = addressGroups[childGroupKey]
                     childFootprint = childRow['addressIncrement'] * childRow['maxAddressSpaces']
-                    parentRow = addressGroups[parentGroup]
+                    parentRow = addressGroups[parentGroupKey]
                     parentWindow = parentRow['addressIncrement'] * instRow['addressMultiples']
                     if childFootprint > parentWindow:
                         printError(
                             f"Nested register decoder '{childRow['_declaringBlock']}' "
-                            f"(group '{childGroup}') routes a {hex(childFootprint)}-byte footprint "
+                            f"(group '{addressGroupLabel(childGroupKey)}') routes a "
+                            f"{hex(childFootprint)}-byte footprint "
                             f"(addressIncrement {hex(childRow['addressIncrement'])} x "
                             f"maxAddressSpaces {childRow['maxAddressSpaces']}), which exceeds "
                             f"the {hex(parentWindow)}-byte window that parent decoder "
-                            f"'{parentRow['_declaringBlock']}' (group '{parentGroup}') allocates "
+                            f"'{parentRow['_declaringBlock']}' (group "
+                            f"'{addressGroupLabel(parentGroupKey)}') allocates "
                             f"to slot '{instRow['instanceKey']}' (addressIncrement "
                             f"{hex(parentRow['addressIncrement'])} x addressMultiples "
                             f"{instRow['addressMultiples']}). Reduce the nested decoder's "
@@ -5234,40 +5282,79 @@ class projectCreate:
         if errors:
             exit(warningAndErrorReport())
 
+    def validateAddressGroupEnumIdentity(self):
+        """Reject two address groups whose generated firmware enum identity
+        collides.
+
+        Each group emits `enum <varType>` with `<enumPrefix>`-prefixed members
+        holding its address IDs. Group NAMES are project-qualified, so two
+        independently authored projects may each declare a group 'top'; their
+        emitted enum identity is not qualified, because the generated firmware
+        surface is one flat namespace (fw_ns) shared by every context and
+        firmware headers include each other across project boundaries. Two groups
+        sharing a varType therefore either collide as a C++ redefinition or, in
+        separate translation units, silently bind the same enumerator to a
+        different address ID.
+
+        Build-wide rather than per-include-closure: the silent
+        separate-translation-unit case is not confined to one closure. It also
+        closes the pre-existing hole where two differently named groups share one
+        varType or enumPrefix, which was never checked.
+        """
+        for fieldName, description in (('varType', 'enum type name'),
+                                       ('enumPrefix', 'enum member prefix')):
+            seen = dict()
+            for groupKey, groupRow in self.counterGroupControl.get('AddressGroups', {}).items():
+                value = groupRow[fieldName]
+                if value in seen:
+                    (priorKey, priorRow) = seen[value]
+                    printError(
+                        f"addressBlock: {description} {fieldName}: '{value}' is used by "
+                        f"two address groups: '{addressGroupLabel(priorKey)}' "
+                        f"(block '{priorRow['_declaringBlock']}' in "
+                        f"{priorRow['_declaringFile']}) and "
+                        f"'{addressGroupLabel(groupKey)}' "
+                        f"(block '{groupRow['_declaringBlock']}' in "
+                        f"{groupRow['_declaringFile']}). Every group emits its address "
+                        f"enum into one flat firmware namespace shared by all contexts, "
+                        f"so a shared {fieldName}: redefines the enum or binds the same "
+                        f"enumerator to a different address ID. Give one group a "
+                        f"distinct {fieldName}:.")
+                    exit(warningAndErrorReport())
+                seen[value] = (groupKey, groupRow)
+
     def generateAddressEnums(self):
         self.yamlContext['_global'] = {key: None for key in self.yamlContext}
         # calculate all the enums and types
         typesEnum = dict()
-        for group in self.counterGroupControl.get('AddressGroups', []):
-            # create a dictionary of all the enums and types for this group
-            typesEnum[group] = {'desc': f'Generated type for addressing {group} instances',   'enum': list()}
+        for groupKey in self.counterGroupControl.get('AddressGroups', []):
+            # create a dictionary of all the enums and types for this group.
+            # The description carries the authored group name: the emitted type is
+            # identified by its varType, which stays exactly as authored.
+            typesEnum[groupKey] = {'desc': f'Generated type for addressing {groupKey[1]} instances',   'enum': list()}
         for context in self.data['instances']:
             for instance, instData in self.data['instances'][context].items():
-                if instData.get('addressGroup', None) is not None:
-                    # this block needs an address space
-                    group = instData['addressGroup']
-                    control = self.counterGroupControl['AddressGroups'][group]
-                    typesEnum[group]['enum'].append( { 'enumName': control['enumPrefix'] + instance.upper(), 'desc': instance + ' instance address', 'value': instData['addressID']} )
+                if instData['addressGroup'] is not None:
+                    # this block needs an address space, in the group its own
+                    # project declares
+                    groupKey = (self.contextOwningProject[instData['_context']],
+                                instData['addressGroup'])
+                    control = self.counterGroupControl['AddressGroups'][groupKey]
+                    typesEnum[groupKey]['enum'].append( { 'enumName': control['enumPrefix'] + instance.upper(), 'desc': instance + ' instance address', 'value': instData['addressID']} )
         #convert the dictionary keys from group to the varType from the addressControl
-        for group in typesEnum:
+        for groupKey in typesEnum:
             dataToAdd = {'types': dict()}
-            if len(typesEnum[group]['enum']) > 0:
-                if 'varTypeContext' in self.counterGroupControl['AddressGroups'][group]:
-                    context = self.counterGroupControl['AddressGroups'][group]['varTypeContext']
-                    if context not in self.yamlContext:
-                        printError(f"In address control file, AddressControl group:{group} specified varTypeContext:{context} which is not a valid context")
-                        exit(warningAndErrorReport())
-                else:
-                    (decoder, context) = self.lookupInScope('instances', '_global', self.counterGroupControl['AddressGroups'][group]['decoderInstance'])
-                    if not decoder:
-                        printError(f"instances {self.counterGroupControl['AddressGroups'][group]['decoderInstance']} in file _global is unresolved")
-                        exit(warningAndErrorReport())
-                    if decoder:
-                        decoderContainer = self.flatData['blocks'][decoder['containerKey']]
-                        context = decoderContainer['_context']
-                if context:
-                    dataToAdd['types'][ self.counterGroupControl['AddressGroups'][group]['varType'] ] = typesEnum[group].copy()
-                    self.processSingleFile(context, sections=dataToAdd)
+            if len(typesEnum[groupKey]['enum']) > 0:
+                # varTypeContext scopes varType resolution to the router block's
+                # own YAML file; _post_registerAddressBlock always records it.
+                control = self.counterGroupControl['AddressGroups'][groupKey]
+                context = control['varTypeContext']
+                if context not in self.yamlContext:
+                    printError(f"addressBlock: group {addressGroupLabel(groupKey)} resolved "
+                               f"varTypeContext:{context} which is not a valid context")
+                    exit(warningAndErrorReport())
+                dataToAdd['types'][control['varType']] = typesEnum[groupKey].copy()
+                self.processSingleFile(context, sections=dataToAdd)
 
         # add to the table
 
@@ -5384,11 +5471,12 @@ class projectCreate:
 
     def loadProjectAddressPolicy(self):
         """Normalize project.yaml instanceGroups:/addressObjects: into the
-        counter-state and persisted ADDRESS_CONFIG blob.
+        in-memory counter state.
 
-        project.yaml is the sole source for these sections; they populate
-        the same state the address allocator and firmware-header generator
-        consume.
+        project.yaml is the sole source for these sections; the counter state
+        they populate is what the address allocator and the firmware-header
+        generator consume. self.addressControl is additionally persisted as the
+        ADDRESS_CONFIG blob, which nothing reads back.
         """
         projInstanceGroups = self.proj.get('instanceGroups')
         projAddressObjects = self.proj.get('addressObjects')
@@ -5451,7 +5539,8 @@ class projectCreate:
     def _mergeProjectAddressGroupSection(self, sectionKey, projRows,
                                          allowedFields, addressConfig):
         """Normalize a project.yaml 'group'-shaped section (today only
-        instanceGroups:) into the counter-state and ADDRESS_CONFIG entry."""
+        instanceGroups:) into the counter state and the self.addressControl
+        entry."""
         if not self._validateProjectAddressRows(
                 'instanceGroups', projRows, allowedFields, 'group'):
             return
@@ -5468,7 +5557,7 @@ class projectCreate:
     def _mergeProjectAddressObjectSection(self, sectionKey, projRows,
                                           allowedFields, addressConfig):
         """Normalize project.yaml addressObjects: into the AddressObjects
-        ADDRESS_CONFIG entry and in-memory state."""
+        self.addressControl entry and in-memory state."""
         if not self._validateProjectAddressRows(
                 'addressObjects', projRows, allowedFields, 'object'):
             return
@@ -6833,8 +6922,15 @@ class projectCreate:
         """Register the per-block addressBlock: declaration into the
         AddressGroups counter state consumed by address allocation and
         firmware-header generation. itemkey is the owning block name
-        (passed by processSubTable for dataGroup tables)."""
+        (passed by processSubTable for dataGroup tables).
+
+        The registry is keyed on (declaring project, group name): a group name is
+        owned by the project owning the declaring YAML file, so two independently
+        authored projects may each name their group 'top' and still compose.
+        Ownership is assigned before processYamls, so it is parse-time safe."""
         group = item['addressGroup']
+        projectName = self.contextOwningProject[yamlFile]
+        groupKey = (projectName, group)
         lc = item.get('lc')
         line = lc.line + 1 if lc is not None and hasattr(lc, 'line') else '?'
 
@@ -6849,14 +6945,16 @@ class projectCreate:
         if 'AddressGroups' not in self.addressControl:
             self.addressControl['AddressGroups'] = OrderedDict()
 
-        if group in self.counterGroupControl['AddressGroups']:
-            prior = self.counterGroupControl['AddressGroups'][group]
+        if groupKey in self.counterGroupControl['AddressGroups']:
+            prior = self.counterGroupControl['AddressGroups'][groupKey]
             self.logError(
                 f"In {yamlFile}:{line}, addressGroup '{group}' declared on "
                 f"block '{itemkey}' duplicates a prior addressBlock: "
                 f"declaration on block '{prior['_declaringBlock']}' "
-                f"in {prior['_declaringFile']}. "
-                f"Each addressGroup may have at most one router-block declaration."
+                f"in {prior['_declaringFile']}, both in project "
+                f"'{projectName}'. "
+                f"Each addressGroup may have at most one router-block "
+                f"declaration within a project."
             )
             return item
 
@@ -6873,10 +6971,10 @@ class projectCreate:
         groupRow['_declaringBlock'] = itemkey
         groupRow['_declaringFile'] = yamlFile
 
-        self.counterGroup['AddressGroups'][group] = 0
-        self.counterGroupControl['AddressGroups'][group] = groupRow
-        self.counterData['AddressGroups'][group] = OrderedDict()
-        self.addressControl['AddressGroups'][group] = groupRow
+        self.counterGroup['AddressGroups'][groupKey] = 0
+        self.counterGroupControl['AddressGroups'][groupKey] = groupRow
+        self.counterData['AddressGroups'][groupKey] = OrderedDict()
+        self.addressControl['AddressGroups'][groupKey] = groupRow
 
         return item
 
@@ -7092,11 +7190,29 @@ class projectCreate:
         return ret
 
     def _auto_addressGroup(self, section, itemkey, item, field, yamlFile, processed):
+        # A group reference resolves to the group of that name declared in the
+        # project owning the referring file; a group name is never shared across
+        # project boundaries. The stored value stays the bare authored name.
         ret=item.get(field, None)
         if ret:
-            if ret not in self.counterGroup.get('AddressGroups', {}):
-                self.logError(f"In {yamlFile}:{item.lc.line + 1}, '{itemkey}' referenced a non existant address group {ret}"
-                              ", check addressGroup match your AddressControl file")
+            projectName = self.contextOwningProject[yamlFile]
+            groups = self.counterGroup.get('AddressGroups', {})
+            if (projectName, ret) not in groups:
+                # A declaration registers as its own file is parsed and files are
+                # processed in include-dependency order, so this list covers only
+                # the declarations parsed so far - it is not a build-wide census
+                # and its absence proves nothing.
+                declaredSoFar = sorted({key[0] for key in groups if key[1] == ret})
+                alsoDeclared = (f" Projects declaring a group named '{ret}' parsed "
+                                f"so far in this build: {declaredSoFar}."
+                                if declaredSoFar else "")
+                self.logError(f"In {yamlFile}:{item.lc.line + 1}, '{itemkey}' referenced "
+                              f"address group '{ret}', which project "
+                              f"'{projectName}' does not declare. An addressGroup: "
+                              f"reference resolves only within the project owning the "
+                              f"referring file, so the group needs an addressBlock: "
+                              f"declaration on a router block in that project."
+                              f"{alsoDeclared}")
         return ret
 
     def _auto_addressID(self, section, itemkey, item, field, yamlFile, processed):
@@ -7105,14 +7221,17 @@ class projectCreate:
         ret = None
         if processed[self.counterReverseField[section+'addressGroup']] is not None:
             group = processed[self.counterReverseField[section+'addressGroup']]
-            counter = self.counterGroup['AddressGroups'][group]
-            base = counter * self.addressControl['AddressGroups'][group]['addressIncrement']
+            # the reference resolved within the referring file's own project, so
+            # the counter it advances is that project's group
+            groupKey = (self.contextOwningProject[yamlFile], group)
+            counter = self.counterGroup['AddressGroups'][groupKey]
+            base = counter * self.addressControl['AddressGroups'][groupKey]['addressIncrement']
             ret = {
                 field: counter,
                 'offset': base
             }
-            self.counterGroup['AddressGroups'][group] = counter + processed[self.counterReverseField[section+'addressMultiples']]
-            if self.counterGroup['AddressGroups'][group] > self.addressControl['AddressGroups'][group]['maxAddressSpaces']:
+            self.counterGroup['AddressGroups'][groupKey] = counter + processed[self.counterReverseField[section+'addressMultiples']]
+            if self.counterGroup['AddressGroups'][groupKey] > self.addressControl['AddressGroups'][groupKey]['maxAddressSpaces']:
                 self.logError(f"In {yamlFile}:{item.lc.line + 1}, '{itemkey}' we ran out of address space, check your maxAddressSpaces: in AddressControl file")
         return ret
 

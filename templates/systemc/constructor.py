@@ -529,9 +529,9 @@ def blockRegistrarInitLines(args, prj, data, className, hasOwnParams):
 
 def addressDecoder(args, prj, data):
     out = list()
-    addressGroup = data['addressDecode']['addressGroup']
     addressGroupData = data['addressDecode']['addressGroupData']
     instanceWithRegApb = data['addressDecode']['instanceWithRegApb']
+    routedInstances = data['addressDecode']['routedInstances']
     qualInstance = next(iter(data['instances']))
     for conn, conn_data in data['ports']['connections'].items():
         if conn_data['dstKey'] == qualInstance:
@@ -541,26 +541,13 @@ def addressDecoder(args, prj, data):
             parent_interface_port = conn_data['name']
 
 
-    # New-schema routers carry registerDecoderPort on the
-    # addressBlock; the per-instance dispatch port name follows
-    # `<registerDecoderPort>_<instance>` (e.g. `apbReg_uIp0`). Legacy
-    # AddressGroups rows do not carry this field, so the legacy port
-    # naming convention `apb_<instance>` remains the default.
-    portPrefix = addressGroupData.get('registerDecoderPort') or 'apb'
+    portPrefix = addressGroupData['registerDecoderPort']
     out.append(f'        ,decoder({addressGroupData["maxAddressSpaces"]}, {addressGroupData["addressIncrement"].bit_length()-1}, {parent_interface_port}, {{')
-    addressChannels = dict()
-    for instance, instanceData in prj.data['instances'].items():
-        if instanceData['addressGroup'] == addressGroup:
-            addressChannels[instance] = instanceData
-    # create sorted list of addressChannel instances by addressID
-    sortedInstances = dict(sorted(addressChannels.items(), key=lambda item: item[1]["addressID"]))
-    # take the sorted list and create channel names
-    addressID = 0
-    for instance, instanceData in sortedInstances.items():
-        if instanceData['addressID'] < addressID:
-            for channel in range(addressID, instanceData['addressID']):
-                out.append('            nullptr,')
-        if instance in instanceWithRegApb:
+    # routedInstances arrives filtered to this router's address group and ordered
+    # by address slot, so the channel array is emitted in slot order. A routed
+    # instance the router does not dispatch to holds its slot with a null channel.
+    for instanceData in routedInstances:
+        if instanceData['instanceKey'] in instanceWithRegApb:
             for channel in range(instanceData['addressMultiples']):
                 out.append(f'            &{portPrefix}_{instanceData["instance"]},')
         else:

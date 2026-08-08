@@ -1,0 +1,35 @@
+yamlFormat: 2
+
+# Composed fixture for addressGroup project qualification. The root pulls two
+# independently authored sibling sub-projects (childAProj, childBProj) plus the
+# shared definitions project into ONE database. Both children declare an address
+# group named 'top'. Before qualification the registry was keyed on the bare
+# group name, so this composition could not reach a database at all.
+projectName: rootProj
+
+projectFiles:
+    - ../../common/yaml/commonProject.yaml
+    - ../../childA/yaml/childAProject.yaml
+    - ../../childB/yaml/childBProject.yaml
+    - rootTop.yaml
+
+topInstance: root_tb
+
+dirs:
+    root: ..
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    registers:
+        alignment: 8
+        sortDescending: true
+
+fileGeneration:
+    # Firmware headers are the surface the varType collision gate protects, so
+    # this fixture generates them; the base fileMap leaves includeFW off.
+    fileMap:
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }

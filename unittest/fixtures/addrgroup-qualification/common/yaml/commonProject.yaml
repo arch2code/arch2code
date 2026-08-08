@@ -1,0 +1,14 @@
+# Definitions-only sub-project holding the shared register-bus definitions.
+# Reached through the root's projectFiles: slot and carrying the project
+# sentinel set (projectName + dirs + fileGeneration), so it owns sharedTypes.yaml
+# and both children can include that file without including a project file.
+projectName: commonProj
+
+projectFiles:
+    - sharedTypes.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

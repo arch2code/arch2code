@@ -188,6 +188,39 @@ blocks:
       registerDecoderPort: apbReg  # canonical downstream register-bus port
 ```
 
+### Group naming — two build-wide constraints
+
+Both are hard `make db` errors.
+
+1.  **A group reference resolves only within the project owning the referring
+    file.** An instance's `addressGroup: top` binds to the `addressBlock:`
+    declaring `top` in the same project as the file that instance is declared in.
+    Resolution never falls outward to a parent or sibling project, so two
+    independently authored projects may each declare a group named `top` and
+    still compose. Within one project a group name may be declared by at most one
+    router block.
+
+    **Corollary for reusable IP: an IP must declare every group it references.**
+    An IP naming a group its own project does not declare has hard-coded a name
+    its parent owns, and is no longer independently composable. Fix it by moving
+    the declaration into the IP or the reference into the parent — never by
+    relying on the parent's declaration being visible.
+
+2.  **`varType:` and `enumPrefix:` must be unique across the whole build.** Two
+    address groups may share neither, even in different projects. The reason:
+    group *names* are project-qualified, but the generated firmware enum is not.
+    Every context's firmware is emitted into one flat namespace (`fw_ns`) and
+    firmware headers include each other across project boundaries, so two groups
+    sharing a `varType:` either collide as a C++ redefinition or, in separate
+    translation units, silently bind the same enumerator to a different address
+    ID — a wrong address rather than a build failure. In a reusable IP, qualify
+    both by the declaring project (`varType: addr_id_isp_lut_top`,
+    `enumPrefix: ADDR_ID_ISP_LUT_TOP_`); the bare `addr_id_top` above is only
+    safe in a project nothing else composes.
+
+    A project declaring several groups (§8's `top` and `bridge`) needs distinct
+    names *and* distinct `varType:` / `enumPrefix:` values.
+
 Reusable-IP routed leaf (`registerPorts:`), as in `ip_test`'s `ip` block — the
 IP authors its own register-bus surface so `<block>Base.h` stays self-contained
 across projects that instantiate it:
@@ -323,6 +356,10 @@ output.
 | `Multiple candidate primary routers: …` | Two+ routers are both un-nested. | Nest all but one under the primary (give the subsystem container an `addressGroup`). |
 | `Router block '…' has multiple instances … Multi-instance routers are not supported …` | A router block is instanced more than once. | Use one instance per router block; add distinct router blocks per scope (see `apbDecode` vs `bridgeApbDecode`). |
 | `Router blocks declare addressBlock: but have no instances in the design: …` | Router block declared but never instanced. | Instance the router in the container it serves. |
+| `addressGroup '…' declared on block '…' duplicates a prior addressBlock: declaration on block '…' in …, both in project '…'. Each addressGroup may have at most one router-block declaration within a project.` | Two router blocks *in one project* name the same group. Only the cross-project case is legal — a group name is owned by the project declaring it. | Rename one group (and give it its own `varType:` / `enumPrefix:`), or drop the redundant router. |
+| `'…' referenced address group '…', which project '…' does not declare. An addressGroup: reference resolves only within the project owning the referring file …` | A routed instance names a group its own project never declares. Resolution does not fall outward to a parent or sibling project. | Declare the group on a router block in that project, or move the referring row into the project that owns the name. The diagnostic lists the projects that *were* seen declaring the name — a parse-order observation, not a build-wide census. |
+| `addressBlock: enum type name varType: '…' is used by two address groups: '…::…' (block '…' in …) and '…::…' (block '…' in …).` (same shape for `enum member prefix enumPrefix:`) | Two groups resolve one generated firmware enum identity. Group names are project-qualified; the emitted enum is not, because firmware shares one flat `fw_ns` namespace across every context. | Give one group a distinct `varType:` / `enumPrefix:`, qualified by its declaring project. |
+| `Router block '…' declares address group '…::…' but no instance in this build's design tree is routed to it, so the decoder has no channels to dispatch.` | At generation time: the router's group resolved, but no instance reachable from the active `topInstance` carries that `addressGroup:`. A referenced child project's standalone-harness instances are in the database but are not part of this build's tree. | Route at least one reachable instance to the group, or remove the `addressBlock:` declaration. |
 | `Router block '…' names upstreamPort '…', but no visible interface has that name` / `does not resolve to an addressBus: true interfaceType`. | `addressBlock.upstreamPort` does not name a visible `apb`-shaped (addressBus) interface in scope. | Point `upstreamPort` at the real register-bus interface (e.g. `apbReg`). |
 | Decoder RTL is an empty skeleton (ports only). | `make newmodule` ran before `addressBlock:` was present, so the generic template was seeded. | Add `addressBlock:`, re-run `make newmodule`; it selects `apbDecodeModule`. Never hand-write the demux. |
 | `<block>_regs` instantiated but its source file is missing. | Stale generated files or an out-of-date `.gen` cache. (`_regs` is synthesized for any block with registers **or** `regAccess` memories — register-only blocks DO get one.) | Remove orphaned generated files and `rm -rf .gen`, then `make db && make gen`. |

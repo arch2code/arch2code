@@ -1,0 +1,14 @@
+# childB PROJECT file. Reached through the root's projectFiles: slot and
+# carrying the project sentinel set, so projectName childBProj owns this context
+# and its whole transitive closure (childBTop.yaml), including the address group
+# declared there.
+projectName: childBProj
+
+projectFiles:
+    - childBTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none
