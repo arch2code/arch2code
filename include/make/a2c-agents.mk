@@ -122,7 +122,7 @@ agents-setup agents_setup:
 	@echo ""
 	@echo "Reference documentation:"
 	@echo "  - $(A2C_BASE_REL)/ARCH2CODE_AI_RULES.md"
-	@echo "  - builder/base/SYSTEMC_API_USER_REFERENCE.md"
+	@echo "  - $(A2C_BASE_REL)/SYSTEMC_API_USER_REFERENCE.md"
 
 #------------------------------------------------------------------------
 # cursor-setup: Cursor IDE
