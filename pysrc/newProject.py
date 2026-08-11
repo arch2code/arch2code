@@ -1,278 +1,314 @@
-# file generation
-# this file contains the templates neceesary to generate blank files for a new module
-from pysrc.arch2codeHelper import printError, warningAndErrorReport
+# New project bootstrap.
+#
+# This is the only entry point that runs before a project exists, so it cannot
+# rely on the normal `make db` / `make newmodule` flow: the makefiles that flow
+# needs are themselves scaffolded by newModule. It therefore performs the same
+# two steps directly -- create the database from the YAML it just wrote, then
+# run newModule -- which breaks the bootstrap cycle without duplicating any of
+# the scaffold, layout or merge logic those steps own.
+#
+# New projects are hierarchical: the project file lives at
+# prj/yaml/<name>Project.yaml and the design at yaml/<name>.yaml.
+
 import os
 import re
-from jinja2 import Template
+import subprocess
 
-def clean_directory_name(name):
-    # Remove leading and trailing whitespace.
-    cleaned = name.strip()
-    # Replace one or more whitespace characters in the middle with an underscore.
-    cleaned = re.sub(r'\s+', '_', cleaned)
-    # Remove any characters that are not allowed in directory names.
-    # Here we remove < > : " / \ | ? * (adjust this list as needed)
-    cleaned = re.sub(r'[<>:"/\\|?*]', '', cleaned)
-    return cleaned
+import pysrc.processYaml as processYaml
+from pysrc.arch2codeHelper import printError, warningAndErrorReport
+from pysrc.newModule import newModule
 
-functionalDirectories = {"yaml": "arch/yaml", "model": "model", "rtl": "rtl", "verif": "verif", "tb": "tb", "base": "base"}
+# Project names become block names, SystemC class names, SystemVerilog module
+# names and C++ namespace fragments, so the accepted set is the intersection of
+# what all of them allow.
+projectNamePattern = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
 
-projectTemplate = \
-"""
-# Example project file that defines project level information
+projectFileTemplate = \
+"""yamlFormat: 2
 
-# marks the project as using the current YAML authoring format; the generator
-# gate rejects a project without this sentinel
-yamlFormat: 2
+# Project file for {name}.
+#
+# Only the settings this project overrides are listed. The directory segments,
+# the file map, the templates and the post-parse scripts are all inherited from
+# the arch2code base config (and the pro config when pro is present), so there
+# is no need to restate them here.
 
-projectName: {{data.projectName}}
+projectName: {name}
 
-# project files can be regular input files, regular input files with additional projectFiles sections, or additional ProjectFiles.
-# note in the case of additional project files any top level controls (such as schema:) are ignored
-# relative path names are resolved based on location of project file (this includes sub projects)
+# Input files that make up the design. Paths are relative to this file.
 projectFiles:
-  - testbench/testbench.yaml
+  - ../../yaml/{name}.yaml
 
-# uncomment to use a custom schema file, otherwise the default schema is used
-#dbSchema: config/schema.yaml
+# The top level instance of the design
+topInstance: {name}_tb
 
-topInstance: testbench
+dirs: # only root is supplied; other segments + hierarchicalDirs inherit the base config
+  root: ../..    # project root directory relative to this project file
 
-#templates: # uncomment to use custom templates or to override base templates
-#  testbench: templates/systemc/testbench_custom.py
-
-# this is a list of locations, orthogonal to design hierarchy, that maps out the functional layout of the project
-# $xxx is a macro that is replaced by the directory. Note macro replacement only works as first character 
-# root defines the top level directory for the project, and other directories are defined relative to this.
-# note that $a2c is automatically created by the system and points to the a2c directory
-dirs:
-  root: ../..    # project root directory relative to project file - required
-  base: $root/base             # for block base classes
-  registrar: $root/registrar   # per-assembler block-registration trampolines + consumer-selected configs
-  model: $root/model           # systemC model implementation
-  rtl: $root/rtl               # RTL implementation
-  vl_wrap: $root/verif/vl_wrap # rtl wrapper files
-  tb: $root/tb                 # testbench definition files 
-
-# information about project directory structure to enable simplified maintenance
-# and generation of file for new blocks. Note that directory structure will mirror
-# architecture hierarchy.
 fileGeneration:
-  template: $a2c/templates/fileGen/fileGen.py
-  fileMap:
-    # generation has 2 modes, block and context
-    # block creates a file per design block and cond: depend on the block definition
-    # context creates a file per yaml file and cond: depend on the yaml file (typically this is for includes/packages)
-    # name will be added to the module name to generate a filename plus associated extensions
-    # path to the file is based on dirs section and otherwise follows block/yaml file structure
-    # this means if blocks are defined in a file called cpu/cpu.yaml ie in the cpu directory then the implementation file is in cpu unless overridden in the block definition
-    # if blockDirs is true then the file is placed in a directory the block appended as well
-    # note that basePath should reference a path key in the dirs section
-    # cond: matches fields in the block definition, if all fields are true then the file is generated
-    # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file 
-    # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
-    blockBase   : { name : "Base",            ext: {cppm: "cppm"},         cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class interface unit"}
-    block       : { name : "",                ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                mode: block,   basePath: model,   desc: "Model implementation file"}
-    rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
-    vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
-    vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true, hasRtl: true},   mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
-    # tandem      : { name : "Tandem",          ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true, hasRtl: true},  mode: block,   basePath: base,    desc: "Model tandem module wrapper class header file"}
-    testBench   : { name : "Testbench",       ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench implementation file"}
-    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench config files"}
-    tbExternal  : { name : "External",        ext: {hdr: "h", src: "cpp"}, cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench external files"}
-    include     : { name : "Includes",        ext: {cppm: "cppm"},           cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include module interface"}
-    config      : { name : "VariantConfig",   ext: {hdr: "h"},               cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based default config header"}
-    includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
-    package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     desc: "yaml based package file"}
-  # standard copyright statement to be added to all generated files - change to suite your company
-  fileCopyrightStatement: "{{data.copywrite}}"
-postProcess:
-  - ../../builder/base/examples/common/postParseRegister.py
-  - ../../builder/base/examples/common/postParseChecks.py
+  layout: hierarchical
+  # Standard copyright statement added to all generated files
+  fileCopyrightStatement: "{copyright}"
+{fileMap}
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
 
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+"""
+
+# Firmware is enabled solely by declaring this file map entry; there is no
+# schema flag for it. The entry merges by key over the inherited base file map.
+firmwareFileMapTemplate = \
+"""  # Firmware header generation: one <context>IncludesFW.{{h,cpp}} per yaml
+  # context that has firmware-visible content. Headers appear once the design
+  # declares registers or regAccess memories.
+  fileMap:
+    includeFW   : {{ name : "IncludesFW", ext: {{hdr: "h", src: "cpp"}}, cond: {{smartInclude: true}}, mode: context, basePath: fwInc, desc: "yaml based fw include file"}}
+
+"""
+
+designFileTemplate = \
+"""# Design description for {name}.
+#
+# This file is the single source of truth. The model, the RTL, the testbench and
+# the firmware headers are all generated from it, so add design intent here and
+# regenerate rather than editing generated files.
+#
+# Sections this file may declare, in dependency order:
+#   constants:   architectural parameters, optionally derived with eval:
+#   types:       named bit widths built from constants
+#   variables:   members of structures
+#   structures:  payloads carried over interfaces
+#   interfaces:  typed connections, bound to an interfaceType
+#   blocks:      the design units
+#   instances:   instantiations of blocks into a containment hierarchy
+#   connections: which instance drives which, over which interface
+#
+# See the design-architecture skill for the full schema.
+
+blocks:
+  {name}_tb:
+    desc: "Testbench container for {name} (root container)"
+    hasVl: false
+    hasRtl: false
+    hasMdl: false
+    hasTb: false
+  {name}:
+    desc: "The {name} device under test"
+    hasVl: {hasVl}
+    hasRtl: {hasRtl}
+    hasMdl: true
+    hasTb: true
+
+instances:
+  {name}_tb:
+    container: {name}_tb # self reference
+    instanceType: {name}_tb
+    instGroup: top
+  u_{name}:  {{ container: {name}_tb, instanceType: {name}, instGroup: top }}
+"""
+
+# Generated SOURCE under model/ rtl/ tb/ base/ fw/ verif/ registrar/ is tracked
+# deliberately; only build artifacts and the database are ignored.
+gitignoreTemplate = \
+"""# arch2code build artifacts
+**/obj_dir/
+**/build/
+**/.gen/
+**/*.db
+**/.*.db
+**/*.a
+**/*.o
+**/*.d
+**/*.scgen
+**/*.svgen
+**/regr/
+**/compile_commands.json
+**/.clangd
+__pycache__
 """
 
 
 class newProject:
-    name = ""
-    projDir = ""
-    blocks = list()
-    cwd = os.getcwd()
-    def __init__(self, args):
+
+    def __init__(self, args, reader=input):
+        # reader is injected so the questionnaire can be driven from a scripted
+        # answer sequence in test; interactive use takes the default.
+        self._read = reader
+
         print("Welcome to arch2code new project creation")
-        print("This program will step you through the process of creating a new project with arch2code")
-        print("The program will create directories base on current directory so its recommended to run")
-        print("this in the root of your project / git repository")
-        print("Current directory is: " + self.cwd)
-        print("You are free to modify the project after creation or go your own path as no decision made here is final")
-        print("this program just creates a simple set of yaml and directories to get you started")
-        print("Please answer the following questions:")
-        print("What is the name of the project?")
-        self.name = input()
-        self.projDir = clean_directory_name(self.name)
-        print("A project consists of a set of yaml file describing the hierarchy of the project")
-        print("and source files in SystemC, SystemVerilog to build model, RTL and testbenchs")
-        print("the different target implementations share identical directory structures")
-        print("to take advantage of the newModule function when you add blocks to a design.")
-        print("Note that this is not strictly required as it is ultimately up to you how you organise your project")
-        print("Project directory structure (showing subset of directories)")
-        print("ip1/arch/yaml  <- here it is assuming that you have some ip that is shared between projects (possibly as a git submodule)")
-        print("   /model")
-        print("   /rtl")
-        print("   /verif")
-        print("   /tb")       
-        print("arch/yaml/block1")
-        print("         /block2")
-        print("model/block1")       
-        print("     /block2")
-        print("verif/block1")
-        print("     /block2")       
-        print("rtl/block1")
-        print("   /block2")
-        print("tb/block1")       
-        print("  /block2")
-        print("Specify where arch2code project file is stored")
-        print("this directory contains the basic project information and is the input to the tool")
-        config = "arch/yaml"
-        print(f"(enter for default: {config})")
-        configDir = input()
-        if configDir == "":
-            configDir = config
-            functionalDirectories["yaml"] = configDir
-        print("Provide a top level container block for the project, default is top")
-        topBlock = input()
-        if topBlock == "":
-            topBlock = "top"
-        print("Do you want a small demo hello world project created? or would you like to specify a few blocks (demo = y, specify = n)")
+        print("This creates a project that builds and runs, in the current directory.")
+        print("Nothing decided here is final - every file it writes can be edited later.")
+        print("")
+
+        root = self._projectRoot()
+        name = self._askProjectName()
+        projFile = os.path.join(root, 'prj', 'yaml', f"{name}Project.yaml")
+        designFile = os.path.join(root, 'yaml', f"{name}.yaml")
+        self._refuseToClobber(projFile, designFile)
+
+        print("")
+        print("Firmware support generates a C++ header per yaml context describing the")
+        print("registers and memories firmware can reach, and builds firmware sources")
+        print("into the model binary.")
+        firmware = self._askYesNo("Does this project include firmware?", False)
+        print("")
+        print("RTL support generates SystemVerilog alongside the SystemC model, and")
+        print("enables verilator co-simulation of the design.")
+        rtl = self._askYesNo("Does this project include RTL?", True)
+        print("")
+        print("Copyright statement added to every generated file, for example:")
+        print("  Copyright myCompany 2026")
+        copyright = self._read().strip()
+
+        self._writeProjectFiles(root, name, projFile, designFile,
+                                firmware, rtl, copyright)
+        prj = self._createProject(root, name, projFile, args)
+        self._reportSetup(prj)
+        self._nextSteps(name, firmware, rtl)
+
+    def _projectRoot(self):
+        # The scaffolded makefiles set REPO_ROOT from the git top level, so the
+        # project must be created there or every REPO_ROOT-relative path in them
+        # resolves outside the project.
+        try:
+            top = subprocess.run(['git', 'rev-parse', '--show-toplevel'],
+                                 capture_output=True, text=True, check=True).stdout.strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            printError("Not inside a git repository. Run 'git init' first, then re-run "
+                       "this command from the repository root.")
+            exit(warningAndErrorReport())
+        cwd = os.getcwd()
+        if os.path.realpath(top) != os.path.realpath(cwd):
+            printError(f"Must be run from the repository root ({top}), not {cwd}. "
+                       "The generated makefiles resolve every path from the git top level.")
+            exit(warningAndErrorReport())
+        print(f"Creating project in: {cwd}")
+        return cwd
+
+    def _askProjectName(self):
         while True:
-            demo = input()
-            if demo == "y":
-                break
-            if demo == "n":
-                break
-        if demo == "y":
-            self.createDemoProject(configDir, topBlock)
+            print("What is the name of the project?")
+            name = self._read().strip()
+            if projectNamePattern.match(name):
+                return name
+            printError(f"'{name}' is not a usable project name. It becomes a block, "
+                       "module and class name, so it must start with a letter and "
+                       "contain only letters, digits and underscores.")
+
+    def _askYesNo(self, question, default):
+        options = "Y/n" if default else "y/N"
+        while True:
+            print(f"{question} ({options})")
+            answer = self._read().strip().lower()
+            if answer == "":
+                return default
+            if answer in ("y", "yes"):
+                return True
+            if answer in ("n", "no"):
+                return False
+
+    def _refuseToClobber(self, *paths):
+        # Project creation is not a repair tool. If a project is already here the
+        # user wants make newmodule, not a second project written over the first.
+        for path in paths:
+            if os.path.exists(path):
+                printError(f"{path} already exists - this repository already has a "
+                           "project. Use 'make newmodule' to add to it.")
+                exit(warningAndErrorReport())
+
+    def _writeProjectFiles(self, root, name, projFile, designFile,
+                           firmware, rtl, copyright):
+        fileMap = firmwareFileMapTemplate.format() if firmware else ""
+        self._write(projFile, projectFileTemplate.format(
+            name=name, copyright=copyright, fileMap=fileMap))
+        self._write(designFile, designFileTemplate.format(
+            name=name, hasRtl=str(rtl).lower(), hasVl=str(rtl).lower()))
+
+        gitignore = os.path.join(root, '.gitignore')
+        if os.path.exists(gitignore):
+            print(f"Keeping existing {gitignore}")
         else:
-            self.createUserProject(configDir, topBlock)
-        self.createDirs()
-        self.generateProjFile()
+            self._write(gitignore, gitignoreTemplate)
 
-    def createDirs(self):
-        print("Creating directories")
-        for dirType, dirName in functionalDirectories.items():
-            for block in self.blocks:
-                os.makedirs(f"{dirName}/{block}", exist_ok=True)
+        if firmware:
+            # Generated firmware headers land in fw/; hand-authored firmware
+            # sources go in fw/src, which is the dir the scaffolded rundir
+            # makefile adds to EXTRA_PRJ_SRC_DIRS.
+            os.makedirs(os.path.join(root, 'fw', 'src'), exist_ok=True)
 
-    def generateProjFile(self):
-        print("Enter your default copywrite notice, this can be updated later in the project file")
-        print("for example: Copyright myCompany 2025")
-        copywrite = input()
+    def _write(self, path, contents):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        print(f"Creating {path}")
+        with open(path, "w") as f:
+            f.write(contents)
 
-        tm = Template(projectTemplate, trim_blocks=True, lstrip_blocks=True)
-        data = {"projectName": self.name, "copywrite": copywrite}
-        projectFileContents = tm.render(data=data)
-        print("Creating directories")
-        with open (f"{functionalDirectories['yaml']}/project.yaml", "w") as f:
-            f.write(projectFileContents)
+    def _createProject(self, root, name, projFile, args):
+        # The database name must match a2c-common.mk's
+        # A2C_SQLDB_FILE = $(REPO_ROOT)/$(PROJECTNAME).db, so the first make
+        # after this sees an up to date database rather than rebuilding it.
+        dbFile = os.path.join(root, f"{name}.db")
+        print("")
+        print("Building project database")
+        processYaml.projectCreate(projFile, dbFile)
+        # projectCreate chdirs to the project file directory; return to the
+        # project root so scaffolding and the closing message are predictable.
+        os.chdir(root)
+        print("Scaffolding build files and design files")
+        prj = processYaml.projectOpen(dbFile)
+        newModule(prj, args)
+        self._generate(root)
+        return prj
 
-    def createDemoProject(self, configDir, topBlock):
-        pass
+    def _generate(self, root):
+        # newModule scaffolds files whose generated regions are still empty, and
+        # the systemc build does not depend on the generation stamps (only the
+        # `gen` target and the verilator wrapper do). A project handed over
+        # un-generated therefore fails its first build on unbalanced braces, so
+        # fill the regions here through the makefiles just scaffolded. This also
+        # proves those makefiles work before the user ever runs them.
+        print("")
+        print("Generating code")
+        result = subprocess.run(['make', 'gen'], cwd=root)
+        if result.returncode != 0:
+            printError("Generation failed. The project files were written; "
+                       "run 'make gen' to see the failure in full.")
+            exit(warningAndErrorReport())
 
-    def createUserProject(self, configDir, topBlock):
-        print("Provide a list of container blocks for the project (at least 2), you can add/delete more later manually")
-        print("A container block is a block that contains other blocks and is grouped at the design level")
-        print("an example list might be: top, cpu, memory, peripheral. Or in the example above block1, block2")
-        print("Press enter to finish")
-        while True:
-            block = input()
-            if block == "":
-                break
-            self.blocks.append(block)
+    def _reportSetup(self, prj):
+        # Report the setup from the merged result rather than re-probing for the
+        # pro directory, so this can never disagree with mergeProjectConfig.
+        a2cRoot = prj.config.getConfig('A2CROOT')
+        setup = "pro" if os.path.exists(os.path.join(a2cRoot, 'pro')) else "base"
+        print("")
+        print(f"Detected setup: {setup} (arch2code root {a2cRoot})")
 
-
-topTestBenchTemplate = \
-"""
-# this file contains the top level definitions and connections for project
-include:
-
-
-# constants / parameters are architectural level variables that can be used to control the size of structures,
-# variables, number of instances, etc.
-## constantname: is the constant's name and key for usage by any other dictionary doing a lookup, required
-## for any other key in any other dictionary
-### value: followed by a number to indicate the value for this constant, required if eval is not used
-### desc: followed by a string is a description of this constant, required
-### eval: optional in place of value, this is a math function that can be used to make a constant from other constant
-###       supports +, -, *, and / math.
-### to reference another constant use $CONSTNAME
-#constants:
-
-#types:
-
-# variables used as members of structures, only structures are attached to interfaces
-## variablename: is the variable's name and key for usage by any other dictionary doing a lookup, required
-### width: followed by a number or a constant's key (constantname), required
-### desc: followed by a string is a description of this variable, required
-#variables:
-
-# structures are collections of variables, or other structures, structures are the main communication tool from block to block on any interface
-## structureName: is the structure's name and key for usage by any other dictionary doing a lookup, required
-### - variablename
-### - strcuturename
-### dash (-) followed by a variablename or a structureName, the dash is making a list of variables or structures at least one is required to create a valid structure
-#structures:
-
-# interfaces are needed to make any connection from one instance of a block to another block's instance
-## interfacename: is the interface's name and key for usage by any other dictionary doing a lookup, required
-### interfaceType: followed by a string that links to a valid interface type
-####        i.e. rdy_vld could be defined as a ready valid interface
-####             static could be defined as a single port interface with a structure and no protocol
-####             req_ack could be defined as a request acknowledge interface with a structure in both directions
-### structures: is a list of dictionaries, each dictionary has two keys, each item in the list is one per structure on this interface
-###                 some interfaces can have more than one structure but all interfaces must have at least one
-#### dash (-) followed by a dictionary
-#### structureName: followed by a string is a key reference to the structures dictionary
-#### structureType: followed by a string, the structureType is what the structureName gets bound to during generation
-####                    a System Verilog interface may have more than one structureType defined and that is what each
-####                    structureName gets bound to during generation, similar for System C
-### desc: followed by a string is a description of this interface, required
-#interfaces:
-
-# blocks these are subsystems or blocks that can be instanced one or more times
-## blockname: followed by a name that gives this object (block) a unique key
-### desc: followed by a string is a description of this block, required
-### blockGroup: followed by a string that is a key to the group this block belongs to, required
-blocks:
-  testbench:
-    desc: Top testbench
-    hasVl: false
-    hasRtl: false
-    hasMdl: false
-
-# instances, these are instantiations of objects
-#   implies a top level of some kind that is instancing objects, an instance can instance other objects, optional nesting
-## instancename: is the instance name being instanced, required
-### instanceType: followed by a string which is the key to finding which object is being instanced (objectname), required
-### in the top level testbench the main ip (top) is instanced, along with whatever models are necessary to support the testbench
-instances:
-  u_top:          { container: testbench,  instanceType: top,           instGroup: allInstances }
-  testbench:      { container: testbench,  instanceType: testbench,     instGroup: allInstances } # self referential
-
-# connections are specify interface connections between different instaces of objects
-## - {}, dash followed by a dictionary, connections is a list of dictionaries
-### interfacename: followed by string that is a key to this interface, an interface can be connected 1 or more times
-### src: followed by a name of the source / master instance for this conneciton
-### dst: followed by a name of the destination / slave instance for this conneciton
-### count: followed by a number to indicate the number of ports to connect to, only valid with srcport or dstport and an interfacename that has multiple ports
-###
-### ports are optional, and are implied in most use cases. The exception is where disambiguation is needed, mainly in array use cases
-### srcport: used if there is more than one objectname instance of the source / master, declares the port of source objectname to connect to
-### dstport: used if there is more than one objectname instance of destination / slave, declares the port of destination objectname to connect to
-### color: followed by a string which is a color (provide link to valid colors) this adds a color to diagrams
-###          for this connection, optional (currently does not work in diagram generation code)
-#connections:
-#  - {interface: apbReg,           src: u_CPU,          dst: u_Top                    }   # this is the only apb register interface not generated as it is the root
-
-# No connection map in testbench definition
-#connectionMaps:
-"""
+    def _nextSteps(self, name, firmware, rtl):
+        print("")
+        print(f"Project {name} created.")
+        print("")
+        print("Recommended next step, if you use an AI coding agent:")
+        print("  make agents-setup     # installs AGENTS.md, CLAUDE.md and the skill files")
+        print("                        # only works now that the project exists")
+        print("")
+        print("Build and run:")
+        print("  make -C rundir run    # build and run the model")
+        if rtl:
+            print("  make -C rtl lint      # lint the RTL")
+        print("")
+        print("Then describe your design in yaml/{}.yaml and run 'make newmodule'".format(name))
+        print("to scaffold the implementation files for any blocks you add.")
+        if firmware:
+            print("")
+            print("Firmware is enabled. Firmware headers are generated once the design")
+            print("declares registers or regAccess memories - see the design-register-decode")
+            print("and manage-address-space skills. Put firmware sources in fw/src.")

@@ -3544,6 +3544,11 @@ class projectCreate:
         dirMacros = { "a2c" : self.a2cRoot }
         self.config.setConfig('A2CROOT', self.a2cRoot)
         self.config.setConfig('A2CPROJ', self.a2cProj)
+        # Absolute path of the root project file. The makefile scaffold needs it
+        # to emit A2C_PRJ_YAML, because a2c-common.mk defaults that variable to
+        # the functional-layout location (arch/yaml/project.yaml) and every other
+        # layout must state it explicitly.
+        self.config.setConfig('PRJFILE', self._rootProjFileAbs)
         # Refuse to build an un-migrated project before any address or eval
         # processing runs. This is the sole detector of a pre-migration project.
         self._gateYamlFormat()
