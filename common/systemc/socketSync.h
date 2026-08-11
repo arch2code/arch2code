@@ -6,6 +6,7 @@
 #include "systemc.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 
 class ThreadSafeEvent;
@@ -21,6 +22,10 @@ class ThreadSafeEvent;
 //
 // Ack wait uses delta-cycling so the SystemC event queue cannot go empty (this
 // TB has no watchDog keep-alive). That freezes sc_time until Python acks.
+//
+// MSG_RESET (on pysocket_sync, in place of a SYNC ack) requests an ARESETn
+// pulse: rst_n held low for assert_cycles, released, then settle_cycles, then
+// MSG_RESET_ACK. Optional model soft-reset callback covers non-VL sims.
 
 void socketSyncConfigureFromEnvironment();
 
@@ -63,5 +68,16 @@ void socketSyncWaitClockEdge();
 void socketSyncNoteTimeAdvanced();
 
 const sc_core::sc_event &socketSyncTimeTickEvent();
+
+// --- Mid-sim ARESETn (active-low rst_n) ---
+
+// Desired rst_n level (1 = out of reset). HDL wrappers should drive rst_n from this.
+bool socketSyncRstN();
+
+// Notified whenever socketSyncRstN() changes (initial release + MSG_RESET pulses).
+const sc_core::sc_event &socketSyncRstNEvent();
+
+// Optional soft-reset for SystemC model path (no HDL rst_n). Called after pin release.
+void socketSyncRegisterModelReset(std::function<void()> cb);
 
 #endif // SOCKET_SYNC_H

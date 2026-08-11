@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <strings.h>
@@ -36,6 +37,14 @@ std::vector<std::shared_ptr<ThreadSafeEvent>> g_boundary_events;
 
 bool g_time_gated = false;
 
+// Mid-sim ARESETn control (rst_n active-low sense via positive rst_n level).
+bool g_rst_n = false; // held low until initial release / after MSG_RESET assert
+std::mutex g_reset_mutex;
+bool g_reset_pending = false;
+uint16_t g_reset_assert_cycles = 0;
+uint16_t g_reset_settle_cycles = 0;
+std::function<void()> g_model_reset_cb;
+
 sc_core::sc_event &edge_event()
 {
     static sc_core::sc_event *ev = new sc_core::sc_event("pysocket_clk_edge");
@@ -46,6 +55,21 @@ sc_core::sc_event &time_tick_event()
 {
     static sc_core::sc_event *ev = new sc_core::sc_event("pysocket_time_tick");
     return *ev;
+}
+
+sc_core::sc_event &rst_n_event()
+{
+    static sc_core::sc_event *ev = new sc_core::sc_event("pysocket_rst_n");
+    return *ev;
+}
+
+void set_rst_n(bool level)
+{
+    if (g_rst_n == level) {
+        return;
+    }
+    g_rst_n = level;
+    rst_n_event().notify(sc_core::SC_ZERO_TIME);
 }
 
 bool env_truthy(const char *value)
@@ -97,7 +121,43 @@ sc_core::sc_time effective_quantum()
     return sc_core::sc_time(1, sc_core::SC_NS);
 }
 
-// Wait for Python SYNC ack without advancing sc_time.
+void advance_n_clocks(uint16_t clocks)
+{
+    const sc_core::sc_time period = socketSyncClockHalfPeriod() + socketSyncClockHalfPeriod();
+    for (uint16_t i = 0; i < clocks; ++i) {
+        socketSyncAdvanceTime(period);
+    }
+}
+
+void service_reset_pulse(int fd)
+{
+    uint16_t assert_cycles = 0;
+    uint16_t settle_cycles = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_reset_mutex);
+        assert_cycles = g_reset_assert_cycles;
+        settle_cycles = g_reset_settle_cycles;
+        g_reset_pending = false;
+    }
+    if (assert_cycles == 0) {
+        assert_cycles = 5;
+    }
+    if (settle_cycles == 0) {
+        settle_cycles = 2;
+    }
+
+    set_rst_n(false);
+    advance_n_clocks(assert_cycles);
+    set_rst_n(true);
+    if (g_model_reset_cb) {
+        g_model_reset_cb();
+    }
+    advance_n_clocks(settle_cycles);
+
+    (void)socket_send_msg(fd, MSG_RESET_ACK, nullptr, 0);
+}
+
+// Wait for Python SYNC ack (or MSG_RESET acting as ack) without advancing sc_time.
 //
 // This TB has no watchDog keep-alive. Under gated lockstep, DUT clocks stop
 // issuing timed waits, so a pure wait(ack_event) can leave the SystemC event
@@ -241,6 +301,21 @@ const sc_core::sc_event &socketSyncTimeTickEvent()
     return time_tick_event();
 }
 
+bool socketSyncRstN()
+{
+    return g_rst_n;
+}
+
+const sc_core::sc_event &socketSyncRstNEvent()
+{
+    return rst_n_event();
+}
+
+void socketSyncRegisterModelReset(std::function<void()> cb)
+{
+    g_model_reset_cb = std::move(cb);
+}
+
 void socketSyncStartRxThread()
 {
     socketSyncConfigureFromEnvironment();
@@ -260,9 +335,9 @@ void socketSyncStartRxThread()
     std::thread rx_thread([running, fd]() {
         uint8_t msg_type = 0;
         uint16_t len = 0;
-        socket_sync_st sync{};
+        alignas(8) uint8_t buf[sizeof(socket_reset_st)]{};
         while (running->load(std::memory_order_acquire)) {
-            if (!socket_recv_msg(fd, msg_type, &sync, len, static_cast<uint16_t>(sizeof(socket_sync_st)))) {
+            if (!socket_recv_msg(fd, msg_type, buf, len, static_cast<uint16_t>(sizeof(buf)))) {
                 break;
             }
             if (msg_type == MSG_SHUTDOWN) {
@@ -276,12 +351,32 @@ void socketSyncStartRxThread()
                 continue;
             }
             if (msg_type == MSG_SYNC && len == sizeof(socket_sync_st)) {
+                socket_sync_st sync{};
+                std::memcpy(&sync, buf, sizeof(sync));
                 {
                     std::lock_guard<std::mutex> lock(g_ack_mutex);
                     g_pending_ack_time_ns = sync.sc_time_ns;
                     g_have_ack = true;
                 }
                 g_ack_event->notify();
+                continue;
+            }
+            if (msg_type == MSG_RESET && len == sizeof(socket_reset_st)) {
+                socket_reset_st reset{};
+                std::memcpy(&reset, buf, sizeof(reset));
+                {
+                    std::lock_guard<std::mutex> lock(g_reset_mutex);
+                    g_reset_assert_cycles = reset.assert_cycles;
+                    g_reset_settle_cycles = reset.settle_cycles;
+                    g_reset_pending = true;
+                }
+                {
+                    std::lock_guard<std::mutex> lock(g_ack_mutex);
+                    g_pending_ack_time_ns = reset.sc_time_ns;
+                    g_have_ack = true;
+                }
+                g_ack_event->notify();
+                continue;
             }
         }
         running->store(false, std::memory_order_release);
@@ -316,6 +411,8 @@ void socketSyncQuantumThread()
 
     // From here, only socketSyncAdvanceTime() may release DUT time.
     g_time_gated = true;
+    // Match HDL reset_driver: come out of reset once Python is ready.
+    set_rst_n(true);
 
     while (true) {
         const uint64_t boundary_ns = socketSyncRelativeTimeNs();
@@ -331,7 +428,19 @@ void socketSyncQuantumThread()
 
         wait_for_ack(payload.sc_time_ns);
 
+        bool do_reset = false;
+        {
+            std::lock_guard<std::mutex> lock(g_reset_mutex);
+            do_reset = g_reset_pending;
+        }
+
         end_boundary();
+
+        if (do_reset) {
+            service_reset_pulse(fd);
+            continue;
+        }
+
         // Sole timed waiter under lockstep: advances sc_time and drives clock edges.
         socketSyncAdvanceTime(effective_quantum());
     }

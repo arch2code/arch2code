@@ -17,7 +17,9 @@
 struct socket_apb_obs_st {
     uint64_t sc_time_ns;
     uint8_t is_write;
-    uint8_t pad[3];
+    uint8_t wait_cycles;       // access-phase cycles with PREADY low (0 = no wait states)
+    uint8_t wait_cycles_valid; // 1 if counted at pin BFM; 0 if TLM socket placeholder
+    uint8_t pad;
     uint32_t address;
     uint32_t data;
 };
@@ -64,6 +66,23 @@ struct socket_irq_obs_st {
     uint8_t irq;
     uint8_t pad[7];
 };
+
+// DMA STATUS register sample (pushed on dma_irq_if_obs alongside IRQ observes).
+struct socket_status_obs_st {
+    uint64_t sc_time_ns;
+    uint8_t ready;
+    uint8_t busy;
+    uint8_t done;
+    uint8_t err;
+    uint8_t pad[4];
+};
+
+// CTRL.START sample (pushed on dma_irq_if_obs for self-clear timing checks).
+struct socket_ctrl_obs_st {
+    uint64_t sc_time_ns;
+    uint8_t start;
+    uint8_t pad[7];
+};
 #pragma pack(pop)
 
 static_assert(sizeof(socket_apb_obs_st) == 20, "socket_apb_obs_st wire layout");
@@ -72,6 +91,8 @@ static_assert(sizeof(socket_axi_rd_obs_resp_st) == 28, "socket_axi_rd_obs_resp_s
 static_assert(sizeof(socket_axi_wr_obs_req_st) == 548, "socket_axi_wr_obs_req_st wire layout");
 static_assert(sizeof(socket_axi_wr_obs_resp_st) == 12, "socket_axi_wr_obs_resp_st wire layout");
 static_assert(sizeof(socket_irq_obs_st) == 16, "socket_irq_obs_st wire layout");
+static_assert(sizeof(socket_status_obs_st) == 16, "socket_status_obs_st wire layout");
+static_assert(sizeof(socket_ctrl_obs_st) == 16, "socket_ctrl_obs_st wire layout");
 
 inline uint64_t socket_sc_time_ns()
 {
@@ -100,6 +121,8 @@ inline void socket_observe_apb_req(const std::string &interface_name, bool is_wr
     socket_apb_obs_st obs{};
     obs.sc_time_ns = socket_sc_time_ns();
     obs.is_write = is_write ? 1 : 0;
+    obs.wait_cycles = 0;
+    obs.wait_cycles_valid = 0;
     obs.address = addr;
     obs.data = is_write ? wdata : 0;
 
@@ -115,21 +138,27 @@ inline void socket_observe_apb_req(const std::string &interface_name, bool is_wr
 }
 
 inline void socket_observe_apb_resp(const std::string &interface_name, bool is_write, uint32_t addr,
-                                    uint32_t rdata)
+                                    uint32_t rdata, uint8_t wait_cycles = 0,
+                                    bool wait_cycles_valid = false)
 {
     socket_apb_obs_st obs{};
     obs.sc_time_ns = socket_sc_time_ns();
     obs.is_write = is_write ? 1 : 0;
+    obs.wait_cycles = wait_cycles;
+    obs.wait_cycles_valid = wait_cycles_valid ? 1 : 0;
     obs.address = addr;
     obs.data = rdata;
 
     logging::GetInstance().logDirect(std::format(
-        "APB_OBS {} RESP @ {}ns {} addr={:#x} data={:#x}",
+        "APB_OBS {} RESP @ {}ns {} addr={:#x} data={:#x} wait_cycles={}{}",
         interface_name,
         obs.sc_time_ns,
         is_write ? "WRITE" : "READ",
         addr,
-        rdata), LOG_NORMAL);
+        rdata,
+        wait_cycles,
+        wait_cycles_valid ? "" : " (n/a)"), LOG_NORMAL);
+
     socket_observe_apb_push(interface_name, MSG_APB_OBS_RESP, obs);
 }
 
@@ -250,6 +279,43 @@ inline void socket_observe_irq(const std::string &interface_name, bool irq)
         obs.irq), LOG_NORMAL);
 
     socket_observe_push(interface_name, MSG_IRQ_OBS, &obs, static_cast<uint16_t>(sizeof(obs)));
+}
+
+inline void socket_observe_status(const std::string &interface_name, bool ready, bool busy, bool done,
+                                  bool err)
+{
+    socket_status_obs_st obs{};
+    obs.sc_time_ns = socket_sc_time_ns();
+    obs.ready = ready ? 1 : 0;
+    obs.busy = busy ? 1 : 0;
+    obs.done = done ? 1 : 0;
+    obs.err = err ? 1 : 0;
+
+    logging::GetInstance().logDirect(std::format(
+        "STATUS_OBS {} @ {}ns ready={} busy={} done={} err={}",
+        interface_name,
+        obs.sc_time_ns,
+        obs.ready,
+        obs.busy,
+        obs.done,
+        obs.err), LOG_NORMAL);
+
+    socket_observe_push(interface_name, MSG_STATUS_OBS, &obs, static_cast<uint16_t>(sizeof(obs)));
+}
+
+inline void socket_observe_ctrl(const std::string &interface_name, bool start)
+{
+    socket_ctrl_obs_st obs{};
+    obs.sc_time_ns = socket_sc_time_ns();
+    obs.start = start ? 1 : 0;
+
+    logging::GetInstance().logDirect(std::format(
+        "CTRL_OBS {} @ {}ns start={}",
+        interface_name,
+        obs.sc_time_ns,
+        obs.start), LOG_NORMAL);
+
+    socket_observe_push(interface_name, MSG_CTRL_OBS, &obs, static_cast<uint16_t>(sizeof(obs)));
 }
 
 #endif // SOCKET_OBSERVE_H

@@ -28,12 +28,31 @@ struct socket_apb_req_st {
 };
 struct socket_apb_ack_st {
     uint32_t data;
+    uint8_t pslverr;
+    uint8_t pad[3];
 };
 #pragma pack(pop)
 
 static_assert(sizeof(socket_apb_req_st) == 12, "socket_apb_req_st wire layout");
-static_assert(sizeof(socket_apb_ack_st) == 4, "socket_apb_ack_st wire layout");
+static_assert(sizeof(socket_apb_ack_st) == 8, "socket_apb_ack_st wire layout");
 
+// DMA regs decode paddr[4:0] (axi_dma_top_regs). Unmapped → PSLVERR on the ACK
+// (TLM writes complete before the slave can return status; match RTL decode here).
+inline bool socket_apb_dma_unmapped(uint32_t address)
+{
+    switch (address & 0x1fu) {
+    case 0x00u:
+    case 0x04u:
+    case 0x08u:
+    case 0x0cu:
+    case 0x10u:
+    case 0x14u:
+    case 0x18u:
+        return false;
+    default:
+        return true;
+    }
+}
 // apb_out: Python is APB master; shell forwards to SystemC slaves via port->request().
 template <class R, class D>
 void port_socket(apb_out<R, D> &port, const std::string &interface_name)
@@ -124,6 +143,7 @@ void port_socket(apb_out<R, D> &port, const std::string &interface_name)
 
             socket_apb_ack_st wire_ack{};
             wire_ack.data = data.data;
+            wire_ack.pslverr = socket_apb_dma_unmapped(wire_req.address) ? 1 : 0;
             if (!socket_send_msg(fd, MSG_APB_ACK, &wire_ack, static_cast<uint16_t>(sizeof(socket_apb_ack_st)))) {
                 running->store(false, std::memory_order_release);
                 should_shutdown = true;

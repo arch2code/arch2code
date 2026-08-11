@@ -26,6 +26,10 @@ enum socketMsgTypeT {
     MSG_AXI_WR_OBS_REQ=0x12,
     MSG_AXI_WR_OBS_RESP=0x13,
     MSG_IRQ_OBS=0x14,
+    MSG_STATUS_OBS=0x15,
+    MSG_RESET=0x16,
+    MSG_RESET_ACK=0x17,
+    MSG_CTRL_OBS=0x18,
     MSG_SHUTDOWN=0xFE,
     MSG_ERROR=0xFF
 };
@@ -53,6 +57,10 @@ inline const char* socketMsgTypeT_prt( socketMsgTypeT val )
         case MSG_AXI_WR_OBS_REQ: return( "MSG_AXI_WR_OBS_REQ" );
         case MSG_AXI_WR_OBS_RESP: return( "MSG_AXI_WR_OBS_RESP" );
         case MSG_IRQ_OBS: return( "MSG_IRQ_OBS" );
+        case MSG_STATUS_OBS: return( "MSG_STATUS_OBS" );
+        case MSG_RESET: return( "MSG_RESET" );
+        case MSG_RESET_ACK: return( "MSG_RESET_ACK" );
+        case MSG_CTRL_OBS: return( "MSG_CTRL_OBS" );
         case MSG_SHUTDOWN: return( "MSG_SHUTDOWN" );
         case MSG_ERROR: return( "MSG_ERROR" );
     }
@@ -76,6 +84,16 @@ struct socket_sync_st {
 #pragma pack(pop)
 
 static_assert(sizeof(socket_sync_st) == 8, "socket_sync_st wire layout");
+
+#pragma pack(push, 1)
+struct socket_reset_st {
+    uint64_t sc_time_ns;    // must match pending SYNC quantum (acts as ack)
+    uint16_t assert_cycles; // clocks to hold rst_n low
+    uint16_t settle_cycles; // clocks after release before ACK
+};
+#pragma pack(pop)
+
+static_assert(sizeof(socket_reset_st) == 12, "socket_reset_st wire layout");
 
 static constexpr const char *PYSOCKET_SYNC_IFC = "pysocket_sync";
 

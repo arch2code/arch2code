@@ -336,10 +336,20 @@ private:
     }
 
     void reset_driver() {
-        for (int i = 0; i < 5; ++i) {
-            wait(clk.posedge_event());
+        // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
+        // Do not wait on clk — gated lockstep deadlocks before the first quantum.
+        // Free-run / non-socket: classic assert-then-release (nothing calls set_rst_n).
+        if (socketSyncLockstepEnabled()) {
+            rst_n.write(socketSyncRstN());
+            while (true) {
+                wait(socketSyncRstNEvent());
+                rst_n.write(socketSyncRstN());
+            }
+        } else {
+            rst_n.write(false);
+            wait(5);
+            rst_n.write(true);
         }
-        rst_n = true;
     }
 
 """

@@ -41,10 +41,15 @@ MSG_AXI_RD_OBS_RESP = 0x11
 MSG_AXI_WR_OBS_REQ = 0x12
 MSG_AXI_WR_OBS_RESP = 0x13
 MSG_IRQ_OBS = 0x14
+MSG_STATUS_OBS = 0x15
+MSG_RESET = 0x16
+MSG_RESET_ACK = 0x17
+MSG_CTRL_OBS = 0x18
 MSG_SHUTDOWN = 0xFE
 
 HEADER_STRUCT = struct.Struct("<BBH")
 SYNC_PAYLOAD_STRUCT = struct.Struct("<Q")
+RESET_PAYLOAD_STRUCT = struct.Struct("<QHH")  # sc_time_ns, assert_cycles, settle_cycles
 
 PYSOCKET_SYNC_IFC = "pysocket_sync"
 
@@ -114,6 +119,10 @@ class LockstepRegistry:
         self._bootstrapped = False
         self._draining = False
         self._quantum_loop_started = False
+        self._pending_reset: tuple[int, int] | None = None
+        self._reset_done: object | None = None
+        # Waiters released when the next MSG_SYNC arrives (SC finished AdvanceTime).
+        self._quantum_waiters: list = []
 
     @property
     def bootstrapped(self) -> bool:
@@ -156,18 +165,56 @@ class LockstepRegistry:
         assert self._sync is not None
         while True:
             sc_time_ns = await self._sync.recv_sync_quantum()
+            # SC has finished the previous AdvanceTime and is parked at a boundary.
+            waiters = self._quantum_waiters
+            self._quantum_waiters = []
+            for waiter in waiters:
+                waiter.set()
             self._draining = True
             try:
                 await self.drain_quantum()
             finally:
                 self._draining = False
-            await self._sync.send_sync_ack(sc_time_ns)
+            if self._pending_reset is not None:
+                assert_cycles, settle_cycles = self._pending_reset
+                self._pending_reset = None
+                await self._sync.send_reset(sc_time_ns, assert_cycles, settle_cycles)
+                await self._sync.recv_reset_ack()
+                if self._reset_done is not None:
+                    self._reset_done.set()
+                    self._reset_done = None
+            else:
+                await self._sync.send_sync_ack(sc_time_ns)
+
+    async def pulse_aresetn(
+        self, *, assert_cycles: int = 5, settle_cycles: int = 2
+    ) -> None:
+        """Request a mid-sim ARESETn pulse (lockstep MSG_RESET)."""
+        if self._sync is None or not self._bootstrapped:
+            raise RuntimeError("pulse_aresetn requires bootstrapped lockstep sync")
+        if self._pending_reset is not None:
+            raise RuntimeError("pulse_aresetn already pending")
+        done = _cocotb_event_factory()
+        self._reset_done = done
+        self._pending_reset = (assert_cycles, settle_cycles)
+        # Yield so the quantum loop can observe the pending request.
+        await NullTrigger()
+        await done.wait()
 
     async def complete_quantum(self) -> None:
-        """Yield so the quantum loop can run; kept for yield_sim_time compatibility."""
+        """Block until SystemC finishes one AdvanceTime after this call.
+
+        Unlike a bare NullTrigger, this waits for the next MSG_SYNC, which only
+        arrives after SC has advanced the previous quantum's clocks. Needed so
+        HDL external_reg writes become visible on the APB mirror before reads.
+        """
         if not self._bootstrapped:
             return
+        done = _cocotb_event_factory()
+        self._quantum_waiters.append(done)
+        # Let the quantum loop finish an in-progress drain / pick up the waiter.
         await NullTrigger()
+        await done.wait()
 
     def register_gated(self, transport: SyncSocketTransport) -> None:
         if transport not in self._gated:
@@ -373,6 +420,28 @@ class SyncSocketTransport:
     async def send_sync_ack(self, sc_time_ns: int) -> None:
         payload = SYNC_PAYLOAD_STRUCT.pack(sc_time_ns & 0xFFFFFFFFFFFFFFFF)
         self._send_raw(MSG_SYNC, payload)
+
+    async def send_reset(
+        self, sc_time_ns: int, assert_cycles: int = 5, settle_cycles: int = 2
+    ) -> None:
+        """Ack the current quantum with MSG_RESET (mid-sim ARESETn pulse)."""
+        payload = RESET_PAYLOAD_STRUCT.pack(
+            sc_time_ns & 0xFFFFFFFFFFFFFFFF,
+            assert_cycles & 0xFFFF,
+            settle_cycles & 0xFFFF,
+        )
+        self._send_raw(MSG_RESET, payload)
+
+    async def recv_reset_ack(self) -> None:
+        while True:
+            msg_type, body = await self._recv_raw()
+            if msg_type == MSG_SHUTDOWN:
+                raise ConnectionError("sync socket shutdown during reset")
+            if msg_type == MSG_RESET_ACK and len(body) == 0:
+                return
+            raise ValueError(
+                f"expected MSG_RESET_ACK, got type={msg_type} len={len(body)}"
+            )
 
     async def recv_sync_quantum(self) -> int:
         """Wait for a runtime lockstep MSG_SYNC carrying the quantum boundary time."""
