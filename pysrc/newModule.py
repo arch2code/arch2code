@@ -127,6 +127,8 @@ class newModule:
     # Layout keys that name a project-scope convention directory rather than a
     # fileMap segment (see processYaml._buildLayoutFor).
     _LAYOUT_CONVENTION_KEYS = ('root', 'include', 'rundir', 'prj', 'yaml')
+    # a2c-common.mk: A2C_PRJ_YAML ?= $(REPO_ROOT)/arch/yaml/project.yaml
+    _A2C_PRJ_YAML_DEFAULT = 'arch/yaml/project.yaml'
 
     def _condMatch(self, fileDefinition, condData):
         # The fileMap cond/condAnd predicate is shared with the build-manifest
@@ -382,18 +384,22 @@ class newModule:
 
     def _deriveTopModules(self, prj):
         # Best-effort scaffold defaults for the shared.mk identity variables.
-        # TB_TOP_MODULE is the design's top block (the block instanced at
-        # _topInstance). HDL_TOP_MODULE is that top block's single RTL/verilated
-        # child when unambiguous, else it falls back to the top block. Both are
-        # create-once, user-editable defaults, so a definitions-only project (no
-        # topInstance) simply uses the project name.
+        # TB_TOP_MODULE is the name the run binary selects a testbench by, which
+        # is the block carrying hasTb (the block whose Config file registers with
+        # testBenchConfigFactory) -- not the top container, which is typically a
+        # hasTb: false wrapper. When the design has no single hasTb block the top
+        # block is the only sensible guess. HDL_TOP_MODULE is the top block's
+        # single RTL/verilated child when unambiguous, else it falls back to the
+        # top block. Both are create-once, user-editable defaults, so a
+        # definitions-only project (no topInstance) simply uses the project name.
         projectName = prj.config.getConfig('PROJECTNAME')
         topBlockKey = next((row['instanceTypeKey']
                             for row in prj.data['instances'].values()
                             if row['container'] == '_topInstance'), None)
         if topBlockKey is None:
             return projectName, projectName
-        tbTop = prj.data['blocks'][topBlockKey]['block']
+        tbBlocks = [row['block'] for row in prj.data['blocks'].values() if row['hasTb']]
+        tbTop = tbBlocks[0] if len(tbBlocks) == 1 else prj.data['blocks'][topBlockKey]['block']
         dutBlocks = {row['instanceTypeKey']
                      for row in prj.data['instances'].values()
                      if row['containerKey'] == topBlockKey
@@ -415,6 +421,16 @@ class newModule:
         projectName = prj.config.getConfig('PROJECTNAME')
         layout = prj.projectLayout[projectName]
         tbTop, hdlTop = self._deriveTopModules(prj)
+        # a2c-common.mk defaults A2C_PRJ_YAML to the functional-layout location;
+        # any project whose file sits elsewhere (every hierarchical project) must
+        # state it in shared.mk or the first `make db` looks in the wrong place.
+        prjYaml = os.path.relpath(prj.config.getConfig('PRJFILE'), layout['root'])
+        if prjYaml == self._A2C_PRJ_YAML_DEFAULT:
+            prjYaml = ''
+        # Firmware is enabled solely by the project declaring the includeFW
+        # fileMap entry; there is no schema flag. A firmware project additionally
+        # needs the fw source dir and the BSP, which is not in the default set.
+        hasFirmware = 'includeFW' in fileGenerationConfig['fileMap']
 
         templateProg = processYaml.expandDirMacros(scaffoldConfig['template'])
         scaffoldRenderer = renderer(
@@ -446,6 +462,8 @@ class newModule:
                 'projectName': projectName,
                 'tbTop': tbTop,
                 'hdlTop': hdlTop,
+                'prjYaml': prjYaml,
+                'hasFirmware': hasFirmware,
             }
             vars = {'prj': prj.data, 'block': data, 'args': args}
             newFileContents = scaffoldRenderer.render('scaffold', vars)

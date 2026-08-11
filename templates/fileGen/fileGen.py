@@ -465,6 +465,8 @@ tbConfigTemplate = \
 
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
+// Required by the final() body below, which asserts on end-of-test state.
+import a2c.endOfTest;
 
 // GENERATED_CODE_PARAM --block=__modulename____variantparam__
 // GENERATED_CODE_BEGIN --template=tbConfig
@@ -554,6 +556,18 @@ tbExternal_hdrTemplate = \
 // GENERATED_CODE_PARAM --block=__modulename____variantparam__
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 // GENERATED_CODE_END
+
+    // Your stimulus goes here. The generated eotThread above stops the
+    // simulation when end-of-test latches, and the testbench Config asserts
+    // that it did, so a test that never votes ends by aborting in final().
+    // Uncomment the two lines below and the matching pair in the .cpp to get a
+    // test that terminates cleanly, then drive the DUT inside the thread.
+    //
+    // void stimulusThread(void);
+    //
+    // private:
+    //     endOfTest eot_{true};   // registers this thread as a voter
+
 };
 
 #endif /* __TBCLASSNAME___EXTERNAL_H */
@@ -573,7 +587,24 @@ tbExternal_srcTemplate = \
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=tbExternal --section=body
 // GENERATED_CODE_END
+
+    // Register your stimulus thread here (see the header for the pair).
+    // SC_THREAD(stimulusThread);
 }
+
+// Minimal test that terminates cleanly. Uncomment together with the header
+// declarations, then replace the body with real stimulus. Voting end-of-test is
+// what wakes the generated eotThread and stops the simulation; without a vote
+// the run aborts on the end-of-test assertion in the testbench Config.
+//
+// void __tbclassname__External::stimulusThread(void)
+// {
+//     wait(SC_ZERO_TIME);
+//
+//     // ... drive the DUT here ...
+//
+//     eot_.setEndOfTest(true);
+// }
 """
 
 def tbExternal_src(args, prj, data):

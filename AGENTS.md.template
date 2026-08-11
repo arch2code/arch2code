@@ -33,7 +33,7 @@ Before editing, you **must** load the project skill that matches the task. Do no
 | **Review Model** | `review-model.md` (Model review: conventions, correctness, tandem, quality) |
 
 ## Critical Constraints
-1.  **Command Execution**: NEVER run `python arch2code.py` directly. ALWAYS use `make` targets (`make gen`, `make db`, `make newmodule`, `make clean`, `make run`). RTL can be linted with `make lint`.
+1.  **Command Execution**: NEVER run `python arch2code.py` directly. ALWAYS use `make` targets (`make gen`, `make db`, `make newmodule`, `make clean`, `make run`). RTL can be linted with `make lint`. The ONLY exception is project creation: `arch2code.py --newproject` is run directly, because at project-creation time no makefile exists yet.
 2.  **File Creation**: Before creating any implementation file (`.sv`, `.cpp`, `.h`) or enabling a missing generated artifact with YAML flags such as `hasRtl`, `hasMdl`, `hasVl`, or `hasTb`, load `manage-build.md` and use `make newmodule` first. This applies even when the block already exists. Direct file creation is only allowed for genuinely user-owned files that the arch2code generator does not scaffold.
 3.  **Code Editing**: NEVER edit between `GENERATED_CODE_BEGIN` and `GENERATED_CODE_END` markers. Only edit outside of these regions.
 4.  **File Deletion**: Unless explicitly requested by the user, do not delete implementation files. Files will not be regenerated — the system uses in-place generation.

@@ -245,7 +245,7 @@ addressObjects:
 ```
 
 **AI Agent Guidance:**
-- Always create `project.yaml` as the first file in a new project
+- To start a new project, run `arch2code.py --newproject`, which creates the project file for you; hand-author a `project.yaml` only when adding a sub-project (child project file) to an existing project tree
 - Use `$root` and `$a2c` macros for path portability
 - The `root` directory in `dirs` is required and serves as the base for all other paths
 - `$a2c` is automatically defined and points to the arch2code installation directory

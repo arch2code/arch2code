@@ -6,9 +6,44 @@ A **S**ingle **S**ource of **T**ruth, **SSoT**, is used to describe the architec
 
 To get started using *Arch2Code*, see the [documentation](https://docs.arch2code.org/a2c-docs/latest/index.html).
 
-[//]: # (This is a comment that will not render in the readme)
-[//]: # "This is a comment that will not render in the readme"
-[//]: # 'This is a comment that will not render in the readme'
+# Getting Started
+
+A new project starts from a clean, empty git repository. Arch2Code is added as a git submodule at `builder/`, and `arch2code.py --newproject` creates the project.
+
+```
+git init myChip && cd myChip
+git submodule add https://github.com/arch2code/arch2code.git builder
+pip3 install -r builder/requirements.txt
+./builder/arch2code.py --newproject
+```
+
+## What `--newproject` asks and produces
+
+`--newproject` asks for the project name, whether the project includes firmware, whether the project includes RTL, and the copyright statement. It then writes the project file, the seed design YAML and a `.gitignore`, builds the database, and scaffolds `Makefile`, `include/make/shared.mk`, `rundir/Makefile` and `rtl/Makefile`. No manual file editing and no copying of makefiles from an example is required.
+
+This is the one command that is run directly rather than through `make`, because at project-creation time no makefile exists yet. Every later operation uses `make` targets, such as `make db`, `make gen` and `make newmodule`.
+
+## Recommended next step for AI agent users
+
+`--newproject` does not install any agent configuration. Users working with an AI coding agent are recommended to run:
+
+```
+make agents-setup
+```
+
+This creates `AGENTS.md` from the template, symlinks `CLAUDE.md`, `GEMINI.md` and `ARCH2CODE_AI_RULES.md` at the repository root, and deploys the Arch2Code skill files into the agent skill directories, for example `.claude/skills/`. The target is available only after project creation, because it depends on the scaffolded makefiles.
+
+## Build and run
+
+```
+make -C rundir run
+```
+
+When RTL was selected, the RTL may also be linted:
+
+```
+make -C rtl lint
+```
 
 # Directory Structure & key files in the root of the repository
 
