@@ -1,0 +1,20 @@
+# Sink stage sharing the upstream project's parameter and interface through an
+# include: of its IP-root file.
+include:
+    - ../../gain/yaml/xpGain.yaml
+
+blocks:
+    xpSinkShared:
+        desc: "Sink stage carrying the upstream project's shared PIXEL_WIDTH"
+        params: [PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            videoIn: { interface: videoIf, direction: dst }
+
+parameters:
+    xpSinkShared:
+        v0:
+            PIXEL_WIDTH: 8

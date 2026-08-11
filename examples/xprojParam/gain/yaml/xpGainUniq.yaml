@@ -1,0 +1,41 @@
+# Same source stage, with every declaration name prefixed so it cannot collide
+# with a sibling project's. Held alongside the unprefixed stage so one composition
+# can exercise the identifier collision and another the identical topology
+# without it.
+
+ipParameters:
+    constants:
+        GN_PIXEL_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        gnPixelT: { width: GN_PIXEL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    gnTagT: { width: 4, desc: "Sample sequence tag" }
+
+structures:
+    gnVideoSt:
+        tag:  { varType: gnTagT,   desc: "Sample sequence tag" }
+        data: { varType: gnPixelT, desc: "Pixel payload" }
+
+interfaces:
+    gnVideoIf:
+        desc: "Parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: gnVideoSt, structureType: data_t }
+
+blocks:
+    xpGainUniq:
+        desc: "Chain source stage with prefixed declarations"
+        params: [GN_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            videoOut: { interface: gnVideoIf, direction: src }
+
+parameters:
+    xpGainUniq:
+        v0:
+            GN_PIXEL_WIDTH: 8

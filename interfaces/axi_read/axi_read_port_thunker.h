@@ -16,8 +16,19 @@
 // consumer port carrying (axiReadAddressSt<DownA>, axiReadRespSt<DownD>),
 // when the two pairs are per-field _bitWidth equivalent but differ in
 // nested _packedSt width. Per-field equivalence is validated elsewhere;
-// this class performs the runtime packed-value bridge via copy_packed_bits()
+// this class performs the runtime payload bridge via copyPayload()
 // in both directions and preserves the AXI read handshake at both ends.
+//
+// DirectAddr and DirectData are the generator's verdicts for the two payload
+// pairs this protocol carries (addr_t and data_t, in that order): true when the
+// pair's two declarations emit identical member storage. The copies here are on
+// the envelopes rather than the payloads themselves, which is sound because the
+// only parameter-dependent member of axiReadAddressSt<A> is its A araddr and the
+// only parameter-dependent member of axiReadRespSt<D> is its D rdata; every
+// other member is the same fixed type on both sides, so corresponding payload
+// storage makes the whole envelope correspond. Both default to false, which is
+// always correct and merely slower, so a hand-written instantiation need not
+// supply them.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction (the producer shape
@@ -55,7 +66,8 @@
 // during SystemC elaboration; that bind is performed in the constructor
 // body (which is only reached when the thunker is held as a container
 // member).
-template <class UpA, class UpD, class DownA, class DownD>
+template <class UpA, class UpD, class DownA, class DownD,
+          bool DirectAddr = false, bool DirectData = false>
 class axi_read_port_thunker
 {
 public:
@@ -135,14 +147,9 @@ private:
             // Address phase: upstream receives, downstream sends.
             axiReadAddressSt<UpA>   addrIn;
             axiReadAddressSt<DownA> addrOut;
-            typename axiReadAddressSt<UpA>::_packedSt addrPacked;
-            typename axiReadAddressSt<DownA>::_packedSt addrOutPacked;
             upIn->receiveAddr( addrIn );
-            // Generated payload structs expose pack() via an out
-            // parameter (`void pack(_packedSt& _ret) const`).
-            addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, axiReadAddressSt<DownA>::_bitWidth );
-            addrOut.unpack( addrOutPacked );
+            static_assert( !DirectAddr || sizeof(axiReadAddressSt<DownA>) == sizeof(axiReadAddressSt<UpA>), "axi_read addr_t direct copy requires equal envelope size" );
+            copyPayload<DirectAddr>( addrOut, addrIn );
             // The channel's overridden sendAddr() drops the default
             // optional argument, so the std::nullopt is supplied
             // explicitly to satisfy the two-argument signature.
@@ -151,12 +158,9 @@ private:
             // Data phase: downstream returns, upstream answered.
             axiReadRespSt<DownD> dataIn;
             axiReadRespSt<UpD>   dataOut;
-            typename axiReadRespSt<DownD>::_packedSt dataPacked;
-            typename axiReadRespSt<UpD>::_packedSt   dataOutPacked;
             m_down_channel.receiveData( dataIn );
-            dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, axiReadRespSt<UpD>::_bitWidth );
-            dataOut.unpack( dataOutPacked );
+            static_assert( !DirectData || sizeof(axiReadRespSt<UpD>) == sizeof(axiReadRespSt<DownD>), "axi_read data_t direct copy requires equal envelope size" );
+            copyPayload<DirectData>( dataOut, dataIn );
             upIn->sendData( dataOut );
         }
     }
@@ -175,14 +179,9 @@ private:
             // Address phase: downstream receives, upstream sends.
             axiReadAddressSt<DownA> addrIn;
             axiReadAddressSt<UpA>   addrOut;
-            typename axiReadAddressSt<DownA>::_packedSt addrPacked;
-            typename axiReadAddressSt<UpA>::_packedSt   addrOutPacked;
             m_down_channel.receiveAddr( addrIn );
-            // Generated payload structs expose pack() via an out
-            // parameter (`void pack(_packedSt& _ret) const`).
-            addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, axiReadAddressSt<UpA>::_bitWidth );
-            addrOut.unpack( addrOutPacked );
+            static_assert( !DirectAddr || sizeof(axiReadAddressSt<UpA>) == sizeof(axiReadAddressSt<DownA>), "axi_read addr_t direct copy requires equal envelope size" );
+            copyPayload<DirectAddr>( addrOut, addrIn );
             // The out interface's sendAddr() carries a defaulted optional
             // argument; the std::nullopt is supplied explicitly to mirror
             // the channel-side call in thunkIn().
@@ -191,12 +190,9 @@ private:
             // Data phase: upstream returns, downstream answered.
             axiReadRespSt<UpD>   dataIn;
             axiReadRespSt<DownD> dataOut;
-            typename axiReadRespSt<UpD>::_packedSt   dataPacked;
-            typename axiReadRespSt<DownD>::_packedSt dataOutPacked;
             upOut->receiveData( dataIn );
-            dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, axiReadRespSt<DownD>::_bitWidth );
-            dataOut.unpack( dataOutPacked );
+            static_assert( !DirectData || sizeof(axiReadRespSt<DownD>) == sizeof(axiReadRespSt<UpD>), "axi_read data_t direct copy requires equal envelope size" );
+            copyPayload<DirectData>( dataOut, dataIn );
             m_down_channel.sendData( dataOut );
         }
     }

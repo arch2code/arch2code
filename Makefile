@@ -26,6 +26,7 @@ HIER_VL_DEMO_DIR = examples/hierVlDemo
 
 IP_TEST_DIR = examples/ip_test
 SIMPLE_IP_DIR = examples/simple_ip
+XPROJ_PARAM_DIR = examples/xprojParam
 
 IN_OUT_DIR = examples/inAndOut
 IN_OUT_DOT_DB_FILE = $(IN_OUT_DIR)/.inAndOut.db
@@ -120,6 +121,36 @@ simple-ip:
 	make -C $(SIMPLE_IP_DIR) gen
 	make -C $(SIMPLE_IP_DIR)/rundir -j run
 	make -C $(SIMPLE_IP_DIR)/rundir -j run-vl
+
+.PHONY : xproj-param
+# Parameterized interface across separately named project boundaries. Leaf-first:
+# each stage project generates its own artifacts before the assembler composes them.
+# The cppAxis composition adds the parameterizable-against-parameterizable thunker
+# pairs that the de-parameterized boundary cannot produce.
+xproj-param:
+	make -C $(XPROJ_PARAM_DIR)/gain -j gen
+	make -C $(XPROJ_PARAM_DIR)/filter -j gen
+	make -C $(XPROJ_PARAM_DIR)/sink -j gen
+	make -C $(XPROJ_PARAM_DIR)/uniq -j gen
+	make -C $(XPROJ_PARAM_DIR)/uniq/rundir -j run
+	make -C $(XPROJ_PARAM_DIR)/cppLeaf -j gen
+	make -C $(XPROJ_PARAM_DIR)/cppAxis -j gen
+	make -C $(XPROJ_PARAM_DIR)/cppAxis/rundir -j run
+
+.PHONY : xproj-param-probes
+# The two recorded cross-project compile failures (same-named payload identifiers;
+# straight-through parameterized boundary). Both are EXPECTED to fail to compile;
+# see examples/xprojParam/README.md. Deliberately outside pipeline-test.
+xproj-param-probes:
+	make -C $(XPROJ_PARAM_DIR)/gain -j gen
+	make -C $(XPROJ_PARAM_DIR)/filter -j gen
+	make -C $(XPROJ_PARAM_DIR)/sink -j gen
+	make -C $(XPROJ_PARAM_DIR)/filterShared -j gen
+	make -C $(XPROJ_PARAM_DIR)/sinkShared -j gen
+	make -C $(XPROJ_PARAM_DIR)/deparam -j gen
+	make -C $(XPROJ_PARAM_DIR)/shared -j gen
+	-make -C $(XPROJ_PARAM_DIR)/deparam/rundir -j all
+	-make -C $(XPROJ_PARAM_DIR)/shared/rundir -j all
 
 .PHONY : hello-world
 hello-world:
@@ -221,13 +252,16 @@ clean :
 	make -C $(HIER_VL_DEMO_DIR) clean
 	make -C $(IP_TEST_DIR) clean
 	make -C $(SIMPLE_IP_DIR) clean
+	for d in gain filter sink filterShared sinkShared uniq deparam shared; do \
+		make -C $(XPROJ_PARAM_DIR)/$$d clean; \
+	done
 
 .PHONY : unittest
 unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param
 push-test: clean unittest pipeline-test
 
 # AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).

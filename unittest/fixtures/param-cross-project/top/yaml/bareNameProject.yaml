@@ -1,0 +1,20 @@
+yamlFormat: 2
+
+# Assembler that composes two projects which each define an interface named
+# dataIf. projA declares its interface in the same file as its block; projBSplit
+# declares its interface in a separate file of its own project, so the port row
+# and the interface row carry different qualifications.
+projectName: bareNameTopProj
+
+projectFiles:
+    - ../../projA/yaml/aProject.yaml
+    - ../../projBSplit/yaml/bSplitProject.yaml
+    - bareNameTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

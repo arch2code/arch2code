@@ -40,8 +40,8 @@ public:
     dutExternal(sc_module_name modulename);
 
     // cross-interface thunkers
-    push_ack_port_thunker<streamSt<dutDutV0Config>, streamBndrySt> thunker_out_uSrc;
-    push_ack_port_thunker<streamSt<dutDutV0Config>, streamBndrySt> thunker_streamOut_uSink;
+    push_ack_port_thunker<streamSt<dutDutV0Config>, streamBndrySt, false> thunker_out_uSrc;
+    push_ack_port_thunker<streamSt<dutDutV0Config>, streamBndrySt, false> thunker_streamOut_uSink;
 
     // Thread monitoring the end of test event to stop simulation
     void eotThread(void) {

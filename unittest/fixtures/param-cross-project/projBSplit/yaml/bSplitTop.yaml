@@ -1,0 +1,15 @@
+# projBSplit's block file. Its own interface file comes first in the include
+# list, so scoped lookup of the port's `dataIf` reference resolves to
+# projBSplit's interface and the persisted port row carries that qualified key.
+# projA's IP root is included for the shared WIDTH parameter, and it also brings
+# a second interface named dataIf into scope.
+include:
+    - bSplitIfaces.yaml
+    - ../../projA/yaml/aTop.yaml
+
+blocks:
+    bSplitIp:
+        desc: "sink IP whose interface is declared in a separate file of its own project"
+        params: [WIDTH]
+        ports:
+            in: { interface: dataIf, direction: dst }

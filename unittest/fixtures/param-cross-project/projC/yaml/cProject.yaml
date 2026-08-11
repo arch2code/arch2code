@@ -1,0 +1,12 @@
+# projC PROJECT file. projectName projC owns cTop.yaml and the third same-named
+# WIDTH constant, a third distinct parameter identity.
+projectName: projC
+
+projectFiles:
+    - cTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

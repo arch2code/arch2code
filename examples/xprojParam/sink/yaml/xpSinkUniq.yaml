@@ -1,0 +1,39 @@
+# Same sink stage, with every declaration name prefixed so it cannot collide with
+# a sibling project's.
+
+ipParameters:
+    constants:
+        SK_PIXEL_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        skPixelT: { width: SK_PIXEL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    skTagT: { width: 4, desc: "Sample sequence tag" }
+
+structures:
+    skVideoSt:
+        tag:  { varType: skTagT,   desc: "Sample sequence tag" }
+        data: { varType: skPixelT, desc: "Pixel payload" }
+
+interfaces:
+    skVideoIf:
+        desc: "Parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: skVideoSt, structureType: data_t }
+
+blocks:
+    xpSinkUniq:
+        desc: "Chain sink stage with prefixed declarations"
+        params: [SK_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            videoIn: { interface: skVideoIf, direction: dst }
+
+parameters:
+    xpSinkUniq:
+        v0:
+            SK_PIXEL_WIDTH: 8

@@ -1,0 +1,114 @@
+# Consumer IP for the C++-definition axis. One parameter, one set of
+# parameterizable payload declarations, and one consumer block per payload
+# shape. Each block exposes a single dst port, so the assembler's wrapper binds
+# each shape through its own child instance and the generated thunker members
+# stay distinctly named.
+#
+# The assembler-side wrapper declares its own counterpart of every shape here,
+# so each port pairs two independently authored declarations at one thunked
+# junction. Field bit widths agree position for position on both sides of every
+# pair, so all four junctions are bit-layout compatible; what differs between
+# them is the emitted C++ member storage.
+#
+# The variants are declared by the assembler that instantiates these blocks, not
+# here: a block whose parameterizable surface is reached through a foreign
+# container takes that container's context as its config context, so the binding
+# has to be declared where the config is emitted.
+
+ipParameters:
+    constants:
+        LEAF_PIXEL_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        # maxBitwidth <= 64, so both emit a 64-bit container: parameterizable
+        # storage is a declaration-level fact and does not track the bound width.
+        leafPixelT:       { width: LEAF_PIXEL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+        leafSignedPixelT: { width: LEAF_PIXEL_WIDTH, maxBitwidth: 32, isSigned: true, desc: "Signed parameterizable pixel word" }
+
+types:
+    leafTagT:  { width: 8,  desc: "Sample sequence tag" }
+    leafWordT: { width: 32, desc: "32-bit header word" }
+    leafFlagT: { width: 8,  desc: "8-bit header flag" }
+
+structures:
+    # Member-for-member counterpart of the wrapper's wrapEqSt: one 8-bit literal
+    # and one parameterizable pixel.
+    leafEqSt:
+        tag:  { varType: leafTagT,   desc: "Sample sequence tag" }
+        data: { varType: leafPixelT, desc: "Pixel payload" }
+    # Counterpart of the wrapper's wrapOrderSt with the parameterizable member
+    # in the other position. Both members are 8 bits wide, so each field still
+    # occupies the same packed position as its namesake on the wrapper side while
+    # the member storage sequence is reversed.
+    leafOrderSt:
+        first:  { varType: leafFlagT,  desc: "Literal member at the low packed position" }
+        second: { varType: leafPixelT, desc: "Parameterizable member at the high packed position" }
+    # Signed counterpart of the wrapper's unsigned wrapSignSt at the same width.
+    leafSignSt:
+        data: { varType: leafSignedPixelT, desc: "Signed pixel payload" }
+    # Flat counterpart of the wrapper's nested wrapNestSt: the same four fields
+    # at the same bit positions, with no sub-structure boundary.
+    leafNestSt:
+        word: { varType: leafWordT,  desc: "Header word" }
+        flag: { varType: leafFlagT,  desc: "Header flag" }
+        tail: { varType: leafFlagT,  desc: "Trailing flag" }
+        data: { varType: leafPixelT, desc: "Pixel payload" }
+
+interfaces:
+    leafEqIf:
+        desc: "Parameterizable stream whose members correspond to the wrapper's"
+        interfaceType: push_ack
+        structures:
+            - { structure: leafEqSt, structureType: data_t }
+    leafOrderIf:
+        desc: "Parameterizable stream whose member storage order is the wrapper's reversed"
+        interfaceType: push_ack
+        structures:
+            - { structure: leafOrderSt, structureType: data_t }
+    leafSignIf:
+        desc: "Signed parameterizable stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: leafSignSt, structureType: data_t }
+    leafNestIf:
+        desc: "Flat parameterizable stream matching the wrapper's nested layout"
+        interfaceType: push_ack
+        structures:
+            - { structure: leafNestSt, structureType: data_t }
+
+blocks:
+    xpCppLeafEq:
+        desc: "Consumer whose payload members correspond to the wrapper's"
+        params: [LEAF_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            eqIn: { interface: leafEqIf, direction: dst }
+    xpCppLeafOrder:
+        desc: "Consumer whose payload member storage order is the wrapper's reversed"
+        params: [LEAF_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            orderIn: { interface: leafOrderIf, direction: dst }
+    xpCppLeafSign:
+        desc: "Consumer whose payload is signed where the wrapper's is unsigned"
+        params: [LEAF_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            signIn: { interface: leafSignIf, direction: dst }
+    xpCppLeafNest:
+        desc: "Consumer whose payload is flat where the wrapper's is nested"
+        params: [LEAF_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            nestIn: { interface: leafNestIf, direction: dst }

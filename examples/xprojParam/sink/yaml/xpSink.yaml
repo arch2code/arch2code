@@ -1,0 +1,40 @@
+# Chain sink stage, independently authored. Checks the arriving samples and ends
+# the test, so the composed simulation asserts on real data rather than on
+# structure.
+
+ipParameters:
+    constants:
+        PIXEL_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        pixel_t: { width: PIXEL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    tag_t: { width: 4, desc: "Sample sequence tag" }
+
+structures:
+    videoSt:
+        tag:  { varType: tag_t,   desc: "Sample sequence tag" }
+        data: { varType: pixel_t, desc: "Pixel payload" }
+
+interfaces:
+    videoIf:
+        desc: "Parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: videoSt, structureType: data_t }
+
+blocks:
+    xpSink:
+        desc: "Chain sink stage: checks the accumulated pixel values and ends the test"
+        params: [PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            videoIn: { interface: videoIf, direction: dst }
+
+parameters:
+    xpSink:
+        v0:
+            PIXEL_WIDTH: 8

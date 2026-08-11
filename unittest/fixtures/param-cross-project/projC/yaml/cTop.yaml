@@ -1,0 +1,26 @@
+# projC: the sink IP of the A -> B -> C chain, independently authored. Same
+# declaration names as projA and projB, all owned by projC.
+
+ipParameters:
+    constants:
+        WIDTH: { value: 8, maxValue: 32, desc: "projC payload width" }
+    types:
+        dataT: { width: WIDTH, maxBitwidth: 32, desc: "projC parameterizable payload word" }
+
+structures:
+    dataSt:
+        data: { varType: dataT, desc: "projC payload" }
+
+interfaces:
+    dataIf:
+        desc: "projC parameterized push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dataSt, structureType: data_t }
+
+blocks:
+    cIp:
+        desc: "projC parameterized sink IP"
+        params: [WIDTH]
+        ports:
+            in: { interface: dataIf, direction: dst }

@@ -282,6 +282,103 @@ instances:
 """
 
 
+# --- Positive fixture: inheriting child wired to a variant-bound sibling ----
+# The interface-compatibility check resolves each junction side under that
+# side's own variant bindings. An inheriting instance carries no variant, so it
+# resolves at the constants' DECLARED DEFAULTS rather than at the container's
+# binding, while its variant-bound sibling resolves at the bound value. Here the
+# default is 8 and the container binds 32, so any adjudication of this junction
+# reports a bogus 32-vs-8 payload mismatch on a design that is correct: both
+# ends are 32 bits in emitted code, because the inheriting child is templated on
+# the container's Config. Both wiring directions are covered because the
+# connection-side binding is chosen from the endpoints (dst preferred), so the
+# misresolution lands on the inheriting end in one direction and on the
+# non-inheriting end in the other.
+def _sibling_yaml(srcInstance, srcPort, dstInstance, dstPort,
+                  producerDirection, consumerDirection):
+    return f"""ipParameters:
+  constants:
+    WIDTH: {{value: 8, maxValue: 128, desc: "width param; declared default 8"}}
+  types:
+    dataT: {{width: WIDTH, maxBitwidth: 128, desc: "parameterizable data word"}}
+
+types:
+  markerT: {{width: 1, desc: "marker bit"}}
+
+structures:
+  dataSt:
+    marker: {{varType: markerT, desc: "marker"}}
+    data:   {{varType: dataT,   desc: "payload"}}
+
+interfaces:
+  dataIf:
+    desc: "one shared data interface declaration"
+    interfaceType: push_ack
+    structures:
+      - {{structure: dataSt, structureType: data_t}}
+
+blocks:
+  top:
+    desc: "Top block"
+  containerIp:
+    desc: "Parameterized container block"
+    params: [WIDTH]
+  inheritIp:
+    desc: "Child that inherits the container's Config"
+    params: [WIDTH]
+    ports:
+      p: {{interface: dataIf, direction: {producerDirection}}}
+  boundIp:
+    desc: "Sibling bound to an explicit variant"
+    params: [WIDTH]
+    ports:
+      p: {{interface: dataIf, direction: {consumerDirection}}}
+
+instances:
+  uTop:       {{ container: top, instanceType: top }}
+  uContainer: {{ container: top, instanceType: containerIp, variant: cv0 }}
+  uInherit:   {{ container: containerIp, instanceType: inheritIp, inheritContainerParam: true }}
+  uBound:     {{ container: containerIp, instanceType: boundIp, variant: cv0 }}
+
+parameters:
+  containerIp:
+    cv0:
+      WIDTH: 32
+  boundIp:
+    cv0:
+      WIDTH: 32
+  inheritIp:
+    cv0:
+      WIDTH: 32
+
+connections:
+  - {{interface: dataIf, src: {srcInstance}, srcport: {srcPort}, dst: {dstInstance}, dstport: {dstPort}}}
+"""
+
+
+def _run_inherit_sibling_accepted(label, arch_yaml, name):
+    print(f"inheritContainerParam: {label}")
+    project_path, db_path, extra = _make_project(arch_yaml, name)
+    paths = [project_path, db_path] + extra
+    try:
+        result = _run_create_subprocess(project_path, db_path)
+        combined = result.stdout + result.stderr
+        if 'Traceback (most recent call last)' in combined:
+            print("  FAIL: got Python stack trace")
+            print(combined)
+            return False
+        if result.returncode != 0:
+            print("  FAIL: a correct inheritContainerParam design was rejected; "
+                  "the junction was adjudicated at the child's declared "
+                  "defaults instead of the container's binding")
+            print(combined)
+            return False
+        print("  PASS: accepted")
+        return True
+    finally:
+        _cleanup(paths)
+
+
 def _run_negative(label, arch_yaml, name, needle):
     print(f"inheritContainerParam negative: {label}")
     project_path, db_path, extra = _make_project(arch_yaml, name)
@@ -309,6 +406,14 @@ def _run_negative(label, arch_yaml, name, needle):
 def run_all_tests():
     ok = True
     ok = _run_positive() and ok
+    ok = _run_inherit_sibling_accepted(
+        "inheriting producer into a variant-bound sibling is accepted",
+        _sibling_yaml('uInherit', 'p', 'uBound', 'p', 'src', 'dst'),
+        'inherit_sibling_fwd') and ok
+    ok = _run_inherit_sibling_accepted(
+        "variant-bound producer into an inheriting sibling is accepted",
+        _sibling_yaml('uBound', 'p', 'uInherit', 'p', 'dst', 'src'),
+        'inherit_sibling_rev') and ok
     ok = _run_negative(
         "child params not a subset of the container's",
         NEG_SUBSET_YAML, 'inherit_neg_subset',

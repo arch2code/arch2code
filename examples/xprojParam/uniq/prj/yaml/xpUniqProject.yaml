@@ -1,0 +1,36 @@
+# Assembler project for the de-parameterized boundary composition over the three
+# stage projects' prefixed blocks. This is the composition that builds and runs
+# end to end.
+
+yamlFormat: 2
+projectName: xpUniq
+
+projectFiles:
+    - ../../../gain/prj/yaml/xpGainProject.yaml
+    - ../../../filter/prj/yaml/xpFilterProject.yaml
+    - ../../../sink/prj/yaml/xpSinkProject.yaml
+    - ../../yaml/xpUniqTop.yaml
+
+topInstance: xpUniqTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

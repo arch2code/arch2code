@@ -14,9 +14,18 @@
 // UpD) to a downstream APB consumer port carrying (DownA, DownD), when
 // the two pairs are per-field _bitWidth equivalent but differ in nested
 // _packedSt width. Per-field equivalence is validated elsewhere; this
-// class performs the runtime packed-value bridge via copy_packed_bits()
+// class performs the runtime payload bridge via copyPayload()
 // in both directions and preserves the APB request / completion handshake
 // at both ends.
+//
+// DirectAddr and DirectData are the generator's verdicts for the two payload
+// pairs this protocol carries (addr_t and data_t, in that order): true when the
+// pair's two declarations emit identical member storage, which lets
+// copyPayload() transfer the value whole instead of packing and unpacking it
+// field by field. DirectData gates four call sites, not two, because the read
+// response leg carries data_t back. Both default to false, which is always
+// correct and merely slower, so a hand-written instantiation need not supply
+// them.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction (the producer shape
@@ -63,7 +72,8 @@
 // member). The overloaded constructors are disambiguated by the child
 // end's port type (apb_in vs apb_out), so the container generator emits
 // identical wiring for both directions.
-template <class UpA, class UpD, class DownA, class DownD>
+template <class UpA, class UpD, class DownA, class DownD,
+          bool DirectAddr = false, bool DirectData = false>
 class apb_port_thunker
 {
 public:
@@ -145,24 +155,16 @@ private:
             UpD    dataIn;
             DownA  addrOut;
             DownD  dataOut;
-            typename UpA::_packedSt addrPacked;
-            typename DownA::_packedSt addrOutPacked;
-            typename UpD::_packedSt dataPacked;
-            typename DownD::_packedSt dataOutPacked;
             upIn->reqReceive( isWrite, addrIn, dataIn );
-            // Generated payload structs expose pack() via an out
-            // parameter (`void pack(_packedSt& _ret) const`).
-            addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, DownA::_bitWidth );
-            addrOut.unpack( addrOutPacked );
+            static_assert( !DirectAddr || sizeof(DownA) == sizeof(UpA), "apb addr_t direct copy requires equal payload size" );
+            copyPayload<DirectAddr>( addrOut, addrIn );
             // For reads dataIn is unused; for writes it carries the
             // upstream write payload. Convert it unconditionally — the
             // downstream request() ignores the data on reads, and on
             // writes the converted value is what must reach the
             // downstream completer.
-            dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, DownD::_bitWidth );
-            dataOut.unpack( dataOutPacked );
+            static_assert( !DirectData || sizeof(DownD) == sizeof(UpD), "apb data_t direct copy requires equal payload size" );
+            copyPayload<DirectData>( dataOut, dataIn );
             // request() blocks until the read response arrives, or until
             // the write ack is observed for writes.
             m_down_channel.request( isWrite, addrOut, dataOut );
@@ -172,11 +174,8 @@ private:
                 // already acknowledged by apb_channel::reqReceive() —
                 // calling complete() on a write would trip its assertion.
                 UpD dataUp;
-                typename DownD::_packedSt respPacked;
-                typename UpD::_packedSt   respUpPacked;
-                dataOut.pack( respPacked );
-                copy_packed_bits( respUpPacked, respPacked, UpD::_bitWidth );
-                dataUp.unpack( respUpPacked );
+                static_assert( !DirectData || sizeof(UpD) == sizeof(DownD), "apb data_t direct copy requires equal payload size" );
+                copyPayload<DirectData>( dataUp, dataOut );
                 upIn->complete( dataUp );
             }
         }
@@ -200,21 +199,15 @@ private:
             DownD  dataIn;
             UpA    addrOut;
             UpD    dataOut;
-            typename DownA::_packedSt addrPacked;
-            typename UpA::_packedSt   addrOutPacked;
-            typename DownD::_packedSt dataPacked;
-            typename UpD::_packedSt   dataOutPacked;
             m_down_channel.reqReceive( isWrite, addrIn, dataIn );
-            addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, UpA::_bitWidth );
-            addrOut.unpack( addrOutPacked );
+            static_assert( !DirectAddr || sizeof(UpA) == sizeof(DownA), "apb addr_t direct copy requires equal payload size" );
+            copyPayload<DirectAddr>( addrOut, addrIn );
             // For reads dataIn is unused; for writes it carries the
             // child-side write payload. Convert it unconditionally — the
             // up-side request() ignores the data on reads, and on writes
             // the converted value is what must reach the up-side completer.
-            dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, UpD::_bitWidth );
-            dataOut.unpack( dataOutPacked );
+            static_assert( !DirectData || sizeof(UpD) == sizeof(DownD), "apb data_t direct copy requires equal payload size" );
+            copyPayload<DirectData>( dataOut, dataIn );
             // request() blocks until the read response arrives, or until
             // the write ack is observed for writes.
             upOut->request( isWrite, addrOut, dataOut );
@@ -224,11 +217,8 @@ private:
                 // already acknowledged by apb_channel::reqReceive() —
                 // calling complete() on a write would trip its assertion.
                 DownD respDown;
-                typename UpD::_packedSt   respPacked;
-                typename DownD::_packedSt respDownPacked;
-                dataOut.pack( respPacked );
-                copy_packed_bits( respDownPacked, respPacked, DownD::_bitWidth );
-                respDown.unpack( respDownPacked );
+                static_assert( !DirectData || sizeof(DownD) == sizeof(UpD), "apb data_t direct copy requires equal payload size" );
+                copyPayload<DirectData>( respDown, dataOut );
                 m_down_channel.complete( respDown );
             }
         }

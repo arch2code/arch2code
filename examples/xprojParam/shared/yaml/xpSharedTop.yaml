@@ -1,0 +1,34 @@
+# Assembler for the shared-declaration composition: the parameterized interface
+# is wired straight through three projects. This is legal because both downstream
+# stages reach the upstream project's PIXEL_WIDTH and videoIf through an
+# include:, so every endpoint carries the same parameter identity instead of a
+# merely same-named one. No boundary interface and no thunker.
+include:
+    - ../../gain/yaml/xpGain.yaml
+    - ../../filterShared/yaml/xpFilterShared.yaml
+    - ../../sinkShared/yaml/xpSinkShared.yaml
+
+blocks:
+    xpSharedTop:
+        desc: "Assembler top holding the three stages that share one parameter identity"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpSharedTop_tb:
+        desc: "Testbench container for xpSharedTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+
+instances:
+    xpSharedTop_tb: { container: xpSharedTop_tb, instanceType: xpSharedTop_tb, instGroup: top }
+    u_xpSharedTop:  { container: xpSharedTop_tb, instanceType: xpSharedTop,    instGroup: top }
+    uGain:          { container: xpSharedTop,    instanceType: xpGain,         instGroup: top, variant: v0 }
+    uFilter:        { container: xpSharedTop,    instanceType: xpFilterShared, instGroup: top, variant: v0 }
+    uSink:          { container: xpSharedTop,    instanceType: xpSinkShared,   instGroup: top, variant: v0 }
+
+connections:
+    - { interface: videoIf, src: uGain,   srcport: videoOut, dst: uFilter, dstport: videoIn }
+    - { interface: videoIf, src: uFilter, srcport: videoOut, dst: uSink,   dstport: videoIn }

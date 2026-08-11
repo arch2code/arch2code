@@ -108,6 +108,12 @@ echo "Test Suite 13: Thunker View Derivation"
 echo "------------------------------------------------------------------------"
 python3 test_thunker_view.py || FAILED=1
 
+# Test 13a: C++ definition compatibility at a thunked junction
+echo ""
+echo "Test Suite 13a: Payload Direct Copy Selection"
+echo "------------------------------------------------------------------------"
+python3 test_payload_direct_copy.py || FAILED=1
+
 # Test 14: Declared port resolved interface context
 echo ""
 echo "Test Suite 14: Declared Port Resolved Interface Context"
@@ -377,6 +383,12 @@ echo ""
 echo "Test Suite ${idx}: parameterizable C++ type alias signedness"
 echo "------------------------------------------------------------------------"
 python3 test_param_type_signedness.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: parameterized interface across project boundaries"
+echo "------------------------------------------------------------------------"
+python3 test_param_cross_project_linkage.py || FAILED=1
 
 echo ""
 echo "========================================================================"

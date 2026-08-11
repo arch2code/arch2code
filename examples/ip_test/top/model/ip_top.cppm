@@ -64,16 +64,16 @@ public:
     std::shared_ptr<ipBridgeBase> uBridge;
 
     // cross-interface thunkers
-    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<srcVariantSrc0Config>> thunker_out0_uSrc;
-    push_ack_port_thunker<srcOut0BoundarySt, ipDataSt<ipVariant0Config>> thunker_out0_uIp0;
-    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<srcVariantSrc0Config>> thunker_out1_uSrc;
-    push_ack_port_thunker<srcOut1BoundarySt, ipDataSt<ip_test_ipVariant1Config>> thunker_out1_uIp1;
-    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<srcVariantSrc0Config>> thunker_out2_uSrc;
-    push_ack_port_thunker<srcOut0BoundarySt, data8St> thunker_out2_uBridge;
-    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<srcVariantSrc0Config>> thunker_out3_uSrc;
-    push_ack_port_thunker<srcOut1BoundarySt, data70St> thunker_out3_uBridge;
-    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uIp0_uIp0;
-    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt> thunker_apbReg_uIp1_uIp1;
+    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<srcVariantSrc0Config>, false> thunker_out0_uSrc;
+    push_ack_port_thunker<srcOut0BoundarySt, ipDataSt<ipVariant0Config>, false> thunker_out0_uIp0;
+    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<srcVariantSrc0Config>, true> thunker_out1_uSrc;
+    push_ack_port_thunker<srcOut1BoundarySt, ipDataSt<ip_test_ipVariant1Config>, true> thunker_out1_uIp1;
+    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<srcVariantSrc0Config>, false> thunker_out2_uSrc;
+    push_ack_port_thunker<srcOut0BoundarySt, data8St, true> thunker_out2_uBridge;
+    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<srcVariantSrc0Config>, true> thunker_out3_uSrc;
+    push_ack_port_thunker<srcOut1BoundarySt, data70St, true> thunker_out3_uBridge;
+    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uIp0_uIp0;
+    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uIp1_uIp1;
 
     ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ip_top() override = default;

@@ -1,0 +1,14 @@
+# projBShared PROJECT file. Same middle IP as projB, but it declares NO
+# ipParameters of its own: it reaches projA's WIDTH and projA's dataIf through a
+# plain include: of projA's IP-root file, so its block param resolves to projA's
+# constant key.
+projectName: projBShared
+
+projectFiles:
+    - bSharedTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

@@ -1,0 +1,14 @@
+# projA PROJECT file. Reached through an assembler's projectFiles: slot and
+# carrying the project sentinel set, so projectName projA owns this context and
+# its whole transitive closure (aTop.yaml), including the ipParameters constant
+# WIDTH declared there.
+projectName: projA
+
+projectFiles:
+    - aTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

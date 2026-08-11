@@ -14,9 +14,16 @@
 // (UpR, UpA) to a downstream req_ack consumer port carrying (DownR, DownA),
 // when the two pairs are per-field _bitWidth equivalent but differ in
 // nested _packedSt width. Per-field equivalence is validated elsewhere;
-// this class performs the runtime packed-value bridge via copy_packed_bits()
+// this class performs the runtime payload bridge via copyPayload()
 // in both directions and preserves the req_ack request / acknowledge
 // handshake at both ends.
+//
+// DirectData and DirectRdata are the generator's verdicts for the two payload
+// pairs this protocol carries (data_t and rdata_t, in that order): true when
+// the pair's two declarations emit identical member storage, which lets
+// copyPayload() transfer the value whole instead of packing and unpacking it
+// field by field. Both default to false, which is always correct and merely
+// slower, so a hand-written instantiation need not supply them.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction (the producer shape
@@ -51,7 +58,8 @@
 // member). The overloaded constructors are disambiguated by the child
 // end's port type (req_ack_in vs req_ack_out), so the container generator
 // emits identical wiring for both directions.
-template <class UpR, class UpA, class DownR, class DownA>
+template <class UpR, class UpA, class DownR, class DownA,
+          bool DirectData = false, bool DirectRdata = false>
 class req_ack_port_thunker
 {
 public:
@@ -132,20 +140,12 @@ private:
             DownR reqOut;
             DownA ackIn;
             UpA   ackOut;
-            typename UpR::_packedSt   reqPacked;
-            typename DownR::_packedSt reqOutPacked;
-            typename DownA::_packedSt ackPacked;
-            typename UpA::_packedSt   ackOutPacked;
             upIn->reqReceive( reqIn );
-            // Generated payload structs expose pack() via an out
-            // parameter (`void pack(_packedSt& _ret) const`).
-            reqIn.pack( reqPacked );
-            copy_packed_bits( reqOutPacked, reqPacked, DownR::_bitWidth );
-            reqOut.unpack( reqOutPacked );
+            static_assert( !DirectData || sizeof(DownR) == sizeof(UpR), "req_ack data_t direct copy requires equal payload size" );
+            copyPayload<DirectData>( reqOut, reqIn );
             m_down_channel.req( reqOut, ackIn );
-            ackIn.pack( ackPacked );
-            copy_packed_bits( ackOutPacked, ackPacked, UpA::_bitWidth );
-            ackOut.unpack( ackOutPacked );
+            static_assert( !DirectRdata || sizeof(UpA) == sizeof(DownA), "req_ack rdata_t direct copy requires equal payload size" );
+            copyPayload<DirectRdata>( ackOut, ackIn );
             upIn->ack( ackOut );
         }
     }
@@ -166,18 +166,12 @@ private:
             UpR   reqOut;
             UpA   ackIn;
             DownA ackOut;
-            typename DownR::_packedSt reqPacked;
-            typename UpR::_packedSt   reqOutPacked;
-            typename UpA::_packedSt   ackPacked;
-            typename DownA::_packedSt ackOutPacked;
             m_down_channel.reqReceive( reqIn );
-            reqIn.pack( reqPacked );
-            copy_packed_bits( reqOutPacked, reqPacked, UpR::_bitWidth );
-            reqOut.unpack( reqOutPacked );
+            static_assert( !DirectData || sizeof(UpR) == sizeof(DownR), "req_ack data_t direct copy requires equal payload size" );
+            copyPayload<DirectData>( reqOut, reqIn );
             upOut->req( reqOut, ackIn );
-            ackIn.pack( ackPacked );
-            copy_packed_bits( ackOutPacked, ackPacked, DownA::_bitWidth );
-            ackOut.unpack( ackOutPacked );
+            static_assert( !DirectRdata || sizeof(DownA) == sizeof(UpA), "req_ack rdata_t direct copy requires equal payload size" );
+            copyPayload<DirectRdata>( ackOut, ackIn );
             m_down_channel.ack( ackOut );
         }
     }

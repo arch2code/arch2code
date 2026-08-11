@@ -1,0 +1,44 @@
+# Assembler context for the ambiguous bare interface name. Two projects define an
+# interface named dataIf carrying different payload structures, and the sink
+# block's port row is declared in a file that declares neither of them.
+#
+# The assembler binds both endpoints through its own differently-named boundary
+# interface, so each end is a cross-interface bind and the generated thunker must
+# name the endpoint's OWN payload structure.
+include:
+    - ../../projA/yaml/aTop.yaml
+    - ../../projBSplit/yaml/bSplitTop.yaml
+
+types:
+    boundaryT: { width: 8, desc: "assembler-owned literal boundary word" }
+
+structures:
+    boundarySt:
+        data: { varType: boundaryT, desc: "assembler-owned literal boundary payload" }
+
+interfaces:
+    boundaryIf:
+        desc: "assembler-owned literal-width push/ack boundary stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: boundarySt, structureType: data_t }
+
+blocks:
+    top:
+        desc: "assembler top"
+
+instances:
+    uTop: { container: top, instanceType: top }
+    uA:   { container: top, instanceType: aIp, variant: v0 }
+    uB:   { container: top, instanceType: bSplitIp, variant: v0 }
+
+connections:
+    - { interface: boundaryIf, src: uA, srcport: out, dst: uB, dstport: in }
+
+parameters:
+    aIp:
+        v0:
+            WIDTH: 8
+    bSplitIp:
+        v0:
+            WIDTH: 8

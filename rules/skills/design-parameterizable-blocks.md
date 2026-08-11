@@ -182,13 +182,17 @@ Use this pattern only when the output ports genuinely have different parameter v
 
 ## Cross-Parameter Connections
 
-When a parameterized producer interface connects to a consumer interface with a different interface name, both sides must be structurally compatible:
+Wherever a connection interface meets a block's own declared port interface, both sides must be structurally compatible. This applies whether or not the two interfaces share a name: one interface declaration reached from two endpoints that bind different variants has two different payloads, and that case is checked too.
 
 *   Same interface meta-protocol.
 *   Same structure list and structureType ordering.
-*   Same field names and field ordering.
+*   Same field count, compared positionally.
 *   Exact active field-width agreement under the bound variants.
 *   Matching active packed bit positions.
+
+Field **names are not compared**. Payloads are matched by position, because the generated thunker copies them by bit position, so a name difference cannot change generated behaviour. Names are printed in diagnostics for reference only. A consequence worth knowing: two payloads with the same width profile but different meanings (`{r,g,b}` against `{y,u,v}`) are accepted and adapted, so keeping the channel order right is the author's responsibility.
+
+A differing field *split* at the same total width is **not** compatible: one side declaring a 32-bit field where the other declares two 16-bit fields has a different field count and is rejected.
 
 Keep cross-parameter binds on the consumer's destination side. Producer-side cross-interface binding is not a supported authoring shape.
 

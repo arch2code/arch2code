@@ -1,0 +1,41 @@
+# Chain source stage. Declares its OWN PIXEL_WIDTH parameter, its own
+# parameterizable pixel payload and its own push/ack interface. The sibling
+# stage projects declare the same identifiers, so an assembler that instantiates
+# all three pulls three distinct same-spelled symbols into one scope.
+
+ipParameters:
+    constants:
+        PIXEL_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        pixel_t: { width: PIXEL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    tag_t: { width: 4, desc: "Sample sequence tag" }
+
+structures:
+    videoSt:
+        tag:  { varType: tag_t,   desc: "Sample sequence tag" }
+        data: { varType: pixel_t, desc: "Pixel payload" }
+
+interfaces:
+    videoIf:
+        desc: "Parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: videoSt, structureType: data_t }
+
+blocks:
+    xpGain:
+        desc: "Chain source stage: emits a fixed tagged pixel sequence"
+        params: [PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            videoOut: { interface: videoIf, direction: src }
+
+parameters:
+    xpGain:
+        v0:
+            PIXEL_WIDTH: 8

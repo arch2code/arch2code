@@ -1,0 +1,37 @@
+# Assembler project for the de-parameterized boundary composition. It references
+# the three independently authored stage projects, each of which owns its own
+# same-named parameter and interface, and wires them through its own literal
+# boundary interface.
+
+yamlFormat: 2
+projectName: xpDeparam
+
+projectFiles:
+    - ../../../gain/prj/yaml/xpGainProject.yaml
+    - ../../../filter/prj/yaml/xpFilterProject.yaml
+    - ../../../sink/prj/yaml/xpSinkProject.yaml
+    - ../../yaml/xpDeparamTop.yaml
+
+topInstance: xpDeparamTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

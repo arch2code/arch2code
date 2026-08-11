@@ -1,0 +1,11 @@
+# projCShared: the sink IP sharing projA's single declaration set through an
+# include: edge, so its WIDTH param is projA's parameter identity.
+include:
+    - ../../projA/yaml/aTop.yaml
+
+blocks:
+    cSharedIp:
+        desc: "sink IP carrying projA's shared WIDTH parameter"
+        params: [WIDTH]
+        ports:
+            in: { interface: dataIf, direction: dst }

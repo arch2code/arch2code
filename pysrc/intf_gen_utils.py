@@ -852,19 +852,27 @@ def _payload_config_name(payload):
     return cpp_config_struct_name(configSelection) if configSelection else ''
 
 
+def _payload_type_name(payload, prj):
+    return sc_struct_type_name(payload['structure'],
+                               payload['structureKey'],
+                               prj,
+                               config_override=(_payload_config_name(payload) or None))
+
+
 def _thunker_member_type(flagged, prj):
-    # View creation resolves protocol payload ordering and Config ownership.
-    # Keep this helper limited to SystemC spelling of that already-valid view.
+    # View creation resolves protocol payload ordering, Config ownership and the
+    # per-pair direct-copy verdict. Keep this helper limited to SystemC spelling of
+    # that already-valid view: the payload types in view order, then one trailing
+    # bool per payload pair in the same order. Each bool tells the thunker's copy
+    # sites for that payload that the two declarations emit identical member
+    # storage, so the value may be transferred whole rather than packed and
+    # unpacked field by field. The class template defaults every flag to false, so
+    # a false verdict is spelled explicitly only to keep the slots positional.
     thunker = flagged['thunker']
     channel_type = thunker['channelType']
-    payloads = thunker['payloads']
-    args = [
-        sc_struct_type_name(payload.get('structure', ''),
-                            payload.get('structureKey', ''),
-                            prj,
-                            config_override=(_payload_config_name(payload) or None))
-        for payload in payloads
-    ]
+    args = [_payload_type_name(payload, prj) for payload in thunker['payloads']]
+    args += ['true' if pair['directCopy'] else 'false'
+             for pair in thunker['payloadPairs']]
     return f"{channel_type}_port_thunker<{', '.join(args)}>"
 
 
@@ -878,45 +886,37 @@ def _thunker_member_name(flagged, conn_data, is_connection_map):
     return f"thunker_{get_channel_name(conn_data)}_{inst}"
 
 
+def _flagged_thunker_ends(data, prj):
+    # Every cross-interface end this container adapts, in emission order, as
+    # (flagged end, owning connection row, is_connection_map). Three collections
+    # carry them: peer-to-peer channel connections, connectionMap binds whose
+    # child end is the local end of the map, and testbench External DUT-boundary
+    # binds (connections pruned to an excluded DUT instance, a flat dict rather
+    # than grouped by channelType, whose surviving end is a contained instance
+    # port and so takes the peer-to-peer member naming).
+    if prj is None:
+        return
+    for channelType in data.get("connectDouble", {}):
+        for value in data["connectDouble"][channelType].values():
+            for flagged in _resolve_cross_interface_ends(value, prj):
+                yield flagged, value, False
+    for value in data.get("connectionMaps", {}).values():
+        for flagged in _resolve_cross_interface_ends(value, prj):
+            yield flagged, value, True
+    for value in data.get("prunedConnections", {}).values():
+        for flagged in _resolve_cross_interface_ends(value, prj):
+            yield flagged, value, False
+
+
 def sc_declare_thunkers(data, prj, indent, block_data):
-    # Emit one thunker member declaration per flagged cross-interface end
-    # across both connections (data['connectDouble']) and connectionMaps.
+    # Emit one thunker member declaration per flagged cross-interface end.
     # Returns [] when no flagged ends exist, preserving byte-identical output
     # for projects with no cross-interface binds.
     out = []
-    if prj is None:
-        return out
-    # Peer-to-peer channel connections.
-    for channelType in data.get("connectDouble", {}):
-        for key, value in data["connectDouble"][channelType].items():
-            flagged_ends = _resolve_cross_interface_ends(value, prj)
-            if not flagged_ends:
-                continue
-            for flagged in flagged_ends:
-                member_type = _thunker_member_type(flagged, prj)
-                member_name = _thunker_member_name(flagged, value, is_connection_map=False)
-                out.append(f"{indent}{member_type} {member_name};")
-    # connectionMap binds: the child end is the local end of the map.
-    for key, value in data.get("connectionMaps", {}).items():
-        flagged_ends = _resolve_cross_interface_ends(value, prj)
-        if not flagged_ends:
-            continue
-        for flagged in flagged_ends:
-            member_type = _thunker_member_type(flagged, prj)
-            member_name = _thunker_member_name(flagged, value, is_connection_map=True)
-            out.append(f"{indent}{member_type} {member_name};")
-    # Testbench External DUT-boundary binds: connections pruned to an excluded
-    # DUT instance whose surviving end is a cross-interface bind. Flat dict
-    # (not grouped by channelType like connectDouble); the peer-to-peer member
-    # naming applies since the surviving end is a contained instance port.
-    for value in data.get("prunedConnections", {}).values():
-        flagged_ends = _resolve_cross_interface_ends(value, prj)
-        if not flagged_ends:
-            continue
-        for flagged in flagged_ends:
-            member_type = _thunker_member_type(flagged, prj)
-            member_name = _thunker_member_name(flagged, value, is_connection_map=False)
-            out.append(f"{indent}{member_type} {member_name};")
+    for flagged, value, is_connection_map in _flagged_thunker_ends(data, prj):
+        member_type = _thunker_member_type(flagged, prj)
+        member_name = _thunker_member_name(flagged, value, is_connection_map)
+        out.append(f"{indent}{member_type} {member_name};")
     return out
 
 
@@ -926,24 +926,10 @@ def sc_thunker_protocols(data, prj):
     # use the set to emit the matching `<channel_type>_port_thunker.h`
     # include. Empty set means no thunker include is required.
     protocols = set()
-    if prj is None:
-        return protocols
-    for channelType in data.get("connectDouble", {}):
-        for value in data["connectDouble"][channelType].values():
-            for flagged in _resolve_cross_interface_ends(value, prj):
-                protocol = (flagged.get('thunker') or {}).get('channelType')
-                if protocol:
-                    protocols.add(protocol)
-    for value in data.get("connectionMaps", {}).values():
-        for flagged in _resolve_cross_interface_ends(value, prj):
-            protocol = (flagged.get('thunker') or {}).get('channelType')
-            if protocol:
-                protocols.add(protocol)
-    for value in data.get("prunedConnections", {}).values():
-        for flagged in _resolve_cross_interface_ends(value, prj):
-            protocol = (flagged.get('thunker') or {}).get('channelType')
-            if protocol:
-                protocols.add(protocol)
+    for flagged, _value, _is_connection_map in _flagged_thunker_ends(data, prj):
+        protocol = (flagged.get('thunker') or {}).get('channelType')
+        if protocol:
+            protocols.add(protocol)
     return protocols
 
 def inverse_portdir(port):

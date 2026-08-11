@@ -1,6 +1,7 @@
 #ifndef BITTWIDDLING_H
 #define BITTWIDDLING_H
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
+#include <bit>
 #include <cstdint>
 #include <type_traits>
 #include "clog2.h"
@@ -59,6 +60,47 @@ inline void copy_packed_bits(OutPacked& out, const InPacked& in, uint16_t bits)
         uint64_t* src = const_cast<uint64_t*>(reinterpret_cast<const uint64_t*>(&in));
         pack_bits(&tmp, 0, src, 0, bits);
         out = static_cast<Out>(tmp);
+    }
+}
+
+// copyPayload — move one payload value onto the differently-declared payload of
+// the other side of a cross-interface adapter. `Direct` is the generator's
+// verdict for this call site: true when the two declarations emit identical
+// member storage, so the value may be transferred whole. C++ cannot decide that
+// itself — the two sides are unrelated class types and the language has no
+// reflection with which to compare their member sequences — so the adapter's
+// class template carries one such flag per payload pair.
+//
+// The direct arm is std::bit_cast rather than a byte copy because it is
+// specified for exactly this transfer. It is NOT a check on the verdict: two
+// types of equal size but different member layout satisfy bit_cast's
+// constraints, so a wrong verdict compiles and silently reinterprets one layout
+// as the other. The guarantee that `Direct` is right comes from the generator
+// comparing the two structures' storage signatures, not from the compiler. The
+// sizeof static_assert at each adapter call site is a partial backstop: it turns
+// a mismatch between the generator's flag order and the header's slot order into
+// a compile error whenever the two payloads differ in size, and catches nothing
+// when they are equal-sized but differently laid out.
+//
+// The two arms agree on any value the storage signatures admit; the packed arm
+// packs each field to its bit position, copies the packed form, and unpacks it
+// into the destination's fields. Note that unpacking masks each field to its
+// declared _bitWidth while the direct arm does not, so the arms would diverge on
+// a field holding a value wider than it declares — which the signature match
+// does not by itself exclude.
+template <bool Direct, typename To, typename From>
+inline void copyPayload(To& out, const From& in)
+{
+    if constexpr (std::is_same_v<To, From>) {
+        out = in;
+    } else if constexpr (Direct) {
+        out = std::bit_cast<To>(in);
+    } else {
+        typename From::_packedSt inPacked;
+        typename To::_packedSt outPacked;
+        in.pack( inPacked );
+        copy_packed_bits( outPacked, inPacked, To::_bitWidth );
+        out.unpack( outPacked );
     }
 }
 #endif //BITTWIDDLING_H

@@ -1,0 +1,26 @@
+//
+
+// GENERATED_CODE_PARAM --block=xpCppWrap --parent=xpCppAxisTop
+// GENERATED_CODE_BEGIN --template=blockRegistrar
+module;
+#include "instanceFactory.h"
+#include "blockBase.h"
+#include "xpCppWrapVariantConfig.h"
+
+export module xpCppAxis.xpCppAxisTop.xpCppWrap.registrar;
+import xpCppAxis_xpCppWrap.block;
+
+namespace {
+struct _xpCppWrap_registrar {
+    _xpCppWrap_registrar() {
+        instanceFactory::registerBlock(
+            "xpCppWrap_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCppWrap<xpCppWrapV0Config>>(blockName, variant, bbMode));
+            },
+            "v0", "xpCppAxis");
+    }
+};
+static _xpCppWrap_registrar _xpCppWrap_registrar_instance;
+} // namespace
+// GENERATED_CODE_END

@@ -1,0 +1,15 @@
+# projBShared: the middle IP re-authored to SHARE projA's single declaration set
+# instead of declaring its own. The include: edge puts projA's WIDTH, payload and
+# dataIf in this file's lookup scope, so `params: [WIDTH]` resolves to projA's
+# constant key and the port resolves to projA's interface. All endpoints in this
+# composition therefore share ONE parameter identity.
+include:
+    - ../../projA/yaml/aTop.yaml
+
+blocks:
+    bSharedIp:
+        desc: "middle IP carrying projA's shared WIDTH parameter"
+        params: [WIDTH]
+        ports:
+            in: { interface: dataIf, direction: dst }
+            out: { interface: dataIf, direction: src }

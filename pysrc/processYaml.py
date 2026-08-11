@@ -431,6 +431,20 @@ def generateHierarchy(inputInstances, inputBlocks, withContext = False ):
             blocks[block] = blockKey
     return (hier, hierKey, instances, instanceContainer, blocks)
 
+# Storage buckets ordered by ascending maxSize: the platform container an emitted
+# value of a given resolved bit width occupies. storageBits is the container's own
+# width; an arrayElementSize entry spills the value into an array of that many bits
+# per element. The per-language dataTypeMapping tables the generators pass to
+# getContextData carry the same bucket boundaries and add only the spelling.
+storageBuckets = [
+    {'maxSize': 1,    'storageBits': 8,  'arrayElementSize': 0},
+    {'maxSize': 8,    'storageBits': 8,  'arrayElementSize': 0},
+    {'maxSize': 16,   'storageBits': 16, 'arrayElementSize': 0},
+    {'maxSize': 32,   'storageBits': 32, 'arrayElementSize': 0},
+    {'maxSize': 64,   'storageBits': 64, 'arrayElementSize': 0},
+    {'maxSize': 1024, 'storageBits': 64, 'arrayElementSize': 64},
+]
+
 # project open is the class that loads the database and provides access to the data
 # it is used by the generators to access the data
 # it additionaly provides some helper functions to make the generators easier to write
@@ -1026,6 +1040,94 @@ class projectOpen:
             width = n
         return width
 
+    def storageBucket(self, bitwidth):
+        """Select the platform container a value of this resolved bit width occupies.
+
+        Returns (storageBits, wordCount): the container's own width in bits and how
+        many of them the value needs. Ordered by ascending maxSize so the smallest
+        container that holds the value wins; the final bucket spills into an array
+        of 64-bit words. This is the neutral half of the per-language
+        dataTypeMapping tables the generators hand to getContextData, which differ
+        from it only in how they spell the selected container.
+        """
+        for bucket in storageBuckets:
+            if bitwidth <= bucket['maxSize']:
+                arrayElementSize = bucket['arrayElementSize']
+                if arrayElementSize:
+                    wordCount = bitwidth // arrayElementSize + (bitwidth % arrayElementSize > 0)
+                else:
+                    wordCount = 1
+                return bucket['storageBits'], wordCount
+        printError(f"No storage bucket holds a {bitwidth} bit value.")
+        exit(warningAndErrorReport())
+
+    def typeStorage(self, typeInfo):
+        """Neutral description of the storage an emitted member of this type occupies.
+
+        Returns ('int', storageBits, isSigned, wordCount). Mirrors the four arms of
+        templates/systemc/includes.py::includeTypes: a parameterizable type is a
+        container sized from its DECLARED maxBitwidth (never a variant's resolved
+        width), and a word-array container is always unsigned because only the
+        element type carries a sign; a non-parameterizable type is bucketed from its
+        resolved width and keeps its declared signedness. Type names are not part of
+        storage, so two distinct typedefs of the same container compare equal.
+        """
+        if typeInfo['isParameterizable']:
+            maxBitwidth = typeInfo['maxBitwidth']
+            if maxBitwidth <= 64:
+                return ('int', 64, bool(typeInfo['isSigned']), 1)
+            return ('int', 64, False, maxBitwidth // 64 + (maxBitwidth % 64 > 0))
+        storageBits, wordCount = self.storageBucket(self.resolveTypeWidth(typeInfo))
+        return ('int', storageBits, bool(typeInfo['isSigned']), wordCount)
+
+    def structureStorageSignature(self, structureKey):
+        """Nesting-respecting description of a structure's emitted member storage.
+
+        Two structures whose signatures compare equal have declaration-identical
+        emitted definitions - equal member count at every nesting level, positionally
+        corresponding members over identical storage including signedness, and equal
+        array extents - so a value of one may be copied directly onto the other.
+        Members are taken positionally; names are never compared. Nested structures
+        recurse rather than flatten, because a nested structure's trailing padding
+        survives as part of a member and is elided where the same fields are inlined.
+
+        Returns None when a member's storage is not statically decidable, which makes
+        every comparison against it refuse the pair and fall back to pack/unpack.
+        """
+        members = []
+        for variable, varData in self.data['structures'][structureKey]['vars'].items():
+            arraySizeKey = varData['arraySizeKey']
+            if arraySizeKey:
+                if self.data['constants'][arraySizeKey]['isParameterizable']:
+                    # The emitted extent is a Config:: reference, so it is a
+                    # property of the instantiation rather than the declaration.
+                    return None
+                extent = self.getConst(arraySizeKey, require_int=True,
+                                       context_msg="a structure array extent")
+            else:
+                extent = int(varData['arraySize'])
+            entryType = varData['entryType']
+            if entryType == 'NamedStruct':
+                storage = self.structureStorageSignature(varData['subStructKey'])
+            elif entryType == 'Reserved':
+                # A padding field is emitted as one unsigned container of its
+                # alignment width, never as a word array.
+                storageBits, _ = self.storageBucket(
+                    self.getConst(varData['align'], require_int=True,
+                                  context_msg="a reserved field width"))
+                storage = ('int', storageBits, False, 1)
+            else:
+                typeInfo = self.data['types'][varData['varTypeKey']]
+                if typeInfo['enum']:
+                    # An enumeration's underlying type is implementation-defined,
+                    # so only the same declaration is provably the same storage.
+                    storage = ('enum', varData['varTypeKey'])
+                else:
+                    storage = self.typeStorage(typeInfo)
+            if storage is None:
+                return None
+            members.append((extent, storage))
+        return ('struct', tuple(members))
 
     # based on a block get the sub hier tree
     def getSubHier(self, topBlock):
@@ -2602,10 +2704,29 @@ class projectOpen:
                         'configSelection': configSelection,
                     })
 
+            # One pair per payload slot: the adapter carries each protocol payload
+            # between the parent declaration and the child declaration of the same
+            # structureType. directCopy records whether the two declarations emit
+            # identical member storage, which lets the adapter transfer the payload
+            # whole instead of packing and unpacking it field by field. The two
+            # declarations are always distinct (a thunker exists because they are),
+            # so this is a structural comparison, not a declaration identity test.
+            payloadPairs = []
+            for index, parentPayload in enumerate(payloads[:len(structureTypes)]):
+                childPayload = payloads[len(structureTypes) + index]
+                parentSignature = self.structureStorageSignature(parentPayload['structureKey'])
+                payloadPairs.append({
+                    'parent': parentPayload,
+                    'child': childPayload,
+                    'directCopy': (parentSignature is not None and parentSignature
+                                   == self.structureStorageSignature(childPayload['structureKey'])),
+                })
+
             return {
                 'protocol': interfaceType,
                 'channelType': channelType,
                 'payloads': payloads,
+                'payloadPairs': payloadPairs,
             }
 
         addressBusInterfaceTypes = {
@@ -5806,27 +5927,74 @@ class projectCreate:
     def _structureRowsForInterface(self, interfaceRow):
         return (interfaceRow.get('structures') or {}).values()
 
+    def _junctionSideIdentity(self, label, ifaceRow, ifaceContext, blockKey,
+                              variant):
+        # One junction side's identity for a compatibility diagnostic: the
+        # interface with its declaring file and owning project, plus the block
+        # and variant whose bindings that side's payload was resolved under. A
+        # side with no parameterizable endpoint carries no block and resolves
+        # at the declared constant defaults.
+        text = (f"  {label}: interface '{ifaceRow['interface']}' declared in "
+                f"{ifaceContext} "
+                f"(project {self.contextOwningProject[ifaceContext]})")
+        if blockKey:
+            blockRow = self.flatData['blocks'][blockKey]
+            variantText = f"variant '{variant}'" if variant \
+                else "no variant binding"
+            text += (f"\n    resolved for block '{blockRow['block']}' "
+                     f"(project "
+                     f"{self.contextOwningProject[blockRow['_context']]}) "
+                     f"at {variantText}")
+        else:
+            text += "\n    resolved at the declared constant defaults"
+        return text
+
     def checkInterfacePair(self, parentIface, childIface, childBlockKey,
                            childVariant, locationStr, parentContext,
                            childContext, parentBlockKey='', parentVariant=''):
-        """Validate that two qualified interfaces share the same packed form."""
-        if parentIface['interfaceKey'] == childIface['interfaceKey']:
+        """Validate that two qualified interfaces share the same packed form.
+
+        Both sides are compared in the configuration they are instantiated at,
+        so one interface declaration reached from two differently bound
+        endpoints is compared against itself rather than skipped.
+
+        An interfaceKey is `<interface>/<declaring context>`, so equal keys
+        already guarantee the two sides name the same static declaration and
+        nothing about the declarations needs re-establishing. What remains is
+        the configuration they resolve under: equal keys under equal variant
+        bindings evaluate one declaration twice the same way, so the packed
+        forms are identical by construction and the junction is skipped. Equal
+        keys under differing bindings are one declaration at two
+        configurations, which is exactly what must be compared. Differing keys
+        are two declarations that are not guaranteed to agree even when they
+        share a name, so they are always compared.
+        """
+        parentVariant = parentVariant or ''
+        childVariant = childVariant or ''
+        parentBindings = self.variantValueBindings(parentBlockKey, parentVariant)
+        childBindings = self.variantValueBindings(childBlockKey, childVariant)
+        if (parentIface['interfaceKey'] == childIface['interfaceKey']
+                and parentBindings == childBindings):
             return
 
-        parentName = parentIface['interface']
-        childName = childIface['interface']
+        parentSide = self._junctionSideIdentity(
+            'parent side', parentIface, parentContext, parentBlockKey,
+            parentVariant)
+        childSide = self._junctionSideIdentity(
+            'child side', childIface, childContext, childBlockKey,
+            childVariant)
+        sides = f"\n{parentSide}\n{childSide}"
+
         parentProto = parentIface['interfaceType']
         childProto = childIface['interfaceType']
         if parentProto != childProto:
             printError(
-                f"{locationStr}: cross-interface bind requires the same "
-                f"interface meta-protocol on both ends, but parent "
-                f"interface {parentName} has interfaceType "
-                f"'{parentProto}' (file {parentContext}) while child "
-                f"interface {childName} has interfaceType "
-                f"'{childProto}' (file {childContext}). Use a protocol "
+                f"{locationStr}: the two interfaces at this junction must "
+                f"share the same interface meta-protocol, but the parent "
+                f"interface has interfaceType '{parentProto}' while the child "
+                f"interface has interfaceType '{childProto}'. Use a protocol "
                 f"changer block when binding different register-bus "
-                f"meta-protocols.")
+                f"meta-protocols.{sides}")
             exit(warningAndErrorReport())
 
         parentStructs = self._structureRowsForInterface(parentIface)
@@ -5838,22 +6006,18 @@ class projectCreate:
         for stype in sorted(allTypes):
             if stype not in parentByType:
                 printError(
-                    f"{locationStr}: cross-interface bind requires both "
-                    f"interfaces to carry the same structureTypes, but "
-                    f"parent interface {parentName} (file "
-                    f"{parentContext}) is missing structureType "
-                    f"'{stype}' that child interface {childName} (file "
-                    f"{childContext}) carries.")
+                    f"{locationStr}: the two interfaces at this junction must "
+                    f"carry the same structureTypes, but the parent interface "
+                    f"does not carry structureType '{stype}' that the child "
+                    f"interface carries.{sides}")
                 anyError = True
                 continue
             if stype not in childByType:
                 printError(
-                    f"{locationStr}: cross-interface bind requires both "
-                    f"interfaces to carry the same structureTypes, but "
-                    f"child interface {childName} (file {childContext}) "
-                    f"is missing structureType '{stype}' that parent "
-                    f"interface {parentName} (file {parentContext}) "
-                    f"carries.")
+                    f"{locationStr}: the two interfaces at this junction must "
+                    f"carry the same structureTypes, but the child interface "
+                    f"does not carry structureType '{stype}' that the parent "
+                    f"interface carries.{sides}")
                 anyError = True
                 continue
         if anyError:
@@ -5861,85 +6025,93 @@ class projectCreate:
 
         parentResolver = ValueResolver(
             self,
-            values=self.variantValueBindings(parentBlockKey, parentVariant or ''),
+            values=parentBindings,
             context=parentContext,
         )
         childResolver = ValueResolver(
             self,
-            values=self.variantValueBindings(childBlockKey, childVariant or ''),
+            values=childBindings,
             context=childContext,
         )
+        # Payload fields are compared positionally on (width, offset) only.
+        # Field names - leaf names, flattened nested paths and array element
+        # spellings alike - are printed so a reader can find the field in the
+        # YAML, and are never compared: the emitted adapter copies the payload
+        # by bit position, so a name difference cannot change generated
+        # behaviour.
         for stype in sorted(allTypes):
             parentStructKey = parentByType[stype]['structureKey']
             childStructKey = childByType[stype]['structureKey']
             parentStruct = parentByType[stype]['structure']
             childStruct = childByType[stype]['structure']
+            parentStructContext = self.flatData['structures'][parentStructKey]['_context']
+            childStructContext = self.flatData['structures'][childStructKey]['_context']
             parentFields = parentResolver.structPackedFields(parentStructKey)
             childFields = childResolver.structPackedFields(childStructKey)
             if len(parentFields) != len(childFields):
                 printError(
-                    f"{locationStr}: cross-interface bind requires the "
-                    f"same field count in each paired structure, but "
-                    f"{parentName}/{parentStruct} has "
-                    f"{len(parentFields)} fields (file {parentContext}) "
-                    f"while {childName}/{childStruct} has "
-                    f"{len(childFields)} fields (file {childContext}).")
+                    f"{locationStr}: the paired structures for structureType "
+                    f"'{stype}' must have the same field count, but parent "
+                    f"structure '{parentStruct}' (file {parentStructContext}) "
+                    f"has {len(parentFields)} fields while child structure "
+                    f"'{childStruct}' (file {childStructContext}) has "
+                    f"{len(childFields)} fields. Payload fields are compared "
+                    f"positionally, so a differing field split is not "
+                    f"compatible even at equal total width.{sides}")
                 anyError = True
                 continue
-            for (pname, pwidth, poff), (cname, cwidth, coff) in zip(
-                    parentFields, childFields):
-                if pname != cname:
-                    printError(
-                        f"{locationStr}: cross-interface bind requires "
-                        f"matching field names in declared order, but "
-                        f"field at offset {poff} in "
-                        f"{parentName}/{parentStruct} is named "
-                        f"'{pname}' (file {parentContext}) while the "
-                        f"corresponding field at offset {coff} in "
-                        f"{childName}/{childStruct} is named '{cname}' "
-                        f"(file {childContext}).")
-                    anyError = True
-                    continue
+            for index, ((pname, pwidth, poff), (cname, cwidth, coff)) in \
+                    enumerate(zip(parentFields, childFields)):
                 if pwidth != cwidth:
                     printError(
-                        f"{locationStr}: cross-interface bind requires "
-                        f"per-field _bitWidth to agree, but field "
-                        f"'{pname}' of {parentName}/{parentStruct} has "
-                        f"_bitWidth {pwidth} (file {parentContext}) "
-                        f"while field '{cname}' of "
-                        f"{childName}/{childStruct} has _bitWidth "
-                        f"{cwidth} (file {childContext}). Adjust one "
-                        f"side so per-field _bitWidth agrees, or split "
-                        f"the connection.")
+                        f"{locationStr}: per-field _bitWidth must agree at "
+                        f"every payload position, but field index {index} of "
+                        f"structureType '{stype}' differs: parent field "
+                        f"'{pname}' has _bitWidth {pwidth} at bit offset "
+                        f"{poff} in structure '{parentStruct}' (file "
+                        f"{parentStructContext}) while child field '{cname}' "
+                        f"has _bitWidth {cwidth} at bit offset {coff} in "
+                        f"structure '{childStruct}' (file "
+                        f"{childStructContext}). Fields are compared "
+                        f"positionally; the names are shown for reference "
+                        f"only and are not compared.{sides}")
                     anyError = True
                     continue
                 if poff != coff:
                     printError(
-                        f"{locationStr}: cross-interface bind requires "
-                        f"matching bit offsets in declared order, but "
-                        f"field '{pname}' of {parentName}/{parentStruct} "
-                        f"sits at bit offset {poff} (file "
-                        f"{parentContext}) while field '{cname}' of "
-                        f"{childName}/{childStruct} sits at bit offset "
-                        f"{coff} (file {childContext}).")
+                        f"{locationStr}: payload bit offsets must agree at "
+                        f"every payload position, but field index {index} of "
+                        f"structureType '{stype}' differs: parent field "
+                        f"'{pname}' sits at bit offset {poff} in structure "
+                        f"'{parentStruct}' (file {parentStructContext}) while "
+                        f"child field '{cname}' sits at bit offset {coff} in "
+                        f"structure '{childStruct}' (file "
+                        f"{childStructContext}). Fields are compared "
+                        f"positionally; the names are shown for reference "
+                        f"only and are not compared.{sides}")
                     anyError = True
         if anyError:
             exit(warningAndErrorReport())
 
     def validatePorts(self):
-        # Cross-interface bind barrier: every connection end or connectionMap
-        # whose declared interface differs from the child block's bottom-up
-        # `ports:` declaration is checked for packed-form compatibility under
-        # the bound variant. The check is purely a gate; it writes nothing back
-        # to the DB and persists no state. The projectOpen consumer recomputes
-        # the cheap cross-interface predicate from the same persisted data.
+        # Interface compatibility barrier: every connection end or
+        # connectionMap that carries a bottom-up `ports:`/`registerPorts:`
+        # declaration is checked for packed-form compatibility between the
+        # connection interface and the declared port interface, each resolved
+        # in the configuration its own side is instantiated at. Same-named and
+        # same-keyed junctions are checked too, because one declaration reached
+        # from two differently bound endpoints has two packed forms; only a
+        # junction whose sides resolve identically is skipped. The check is
+        # purely a gate; it writes nothing back to the DB and persists no
+        # state. The projectOpen consumer recomputes the cheap cross-interface
+        # predicate from the same persisted data.
         #
         # Packed-form compatibility requires:
         #   1. Same interface meta-protocol (interfaceType).
         #   2. Same `structures` list paired by structureType.
-        #   3. For each paired structure: same field count, same field
-        #      order and names, exact per-field _bitWidth under the
-        #      bound variant, exact bit offsets.
+        #   3. For each paired structure: same field count, then exact
+        #      per-field _bitWidth and bit offset at each position under the
+        #      bound variant. Field names are never compared.
         #
         # Synthesised binds (carrying _context == '_global') are generated
         # internally and are exempt from user-authored compatibility checks.
@@ -6002,12 +6174,25 @@ class projectCreate:
             return (blockKey, instRow['variant'] or '')
 
         # ------------------------------------------------------------
-        # Iterate connections. Each end may be a cross-interface bind.
+        # Iterate connections. Every end carrying a bottom-up port
+        # declaration is a junction to adjudicate.
         # ------------------------------------------------------------
         for connName, conn in connections_flat.items():
             # Skip synthesised entries.
             connContext = conn['_context']
             if connContext == '_global':
+                continue
+            # An inheritContainerParam endpoint takes its Config from the
+            # container's template parameter, so its instance row carries no
+            # variant and its payload has no single configuration resolvable
+            # here: it would be evaluated at the constants' declared defaults
+            # rather than at the container's binding. That misresolution
+            # reaches BOTH ends, because the connection-side binding is itself
+            # chosen from the endpoints, so the whole connection is left
+            # unadjudicated rather than compared against a configuration the
+            # design never instantiates.
+            if any(instances_flat[endRow['instanceKey']]['inheritContainerParam']
+                   for endRow in conn['ends'].values()):
                 continue
             parentIfaceKey = conn['interfaceKey']
             for _endDir, endRow in conn['ends'].items():
@@ -6026,16 +6211,13 @@ class projectCreate:
                     portEntry = (blockRow.get('registerPorts') or {}).get(portName)
                     isRegisterBus = portEntry is not None
                 if not portEntry:
-                    # No bottom-up declaration; top-down inference
-                    # governs and there is no cross-interface bind
-                    # to check.
+                    # No bottom-up declaration; top-down inference governs, so
+                    # the port's interface IS the connection interface and
+                    # there are not two payloads to compare.
                     continue
                 portIface = portEntry['interface']
                 parentIfaceRow = interfaces_flat[parentIfaceKey]
                 parentIfaceName = parentIfaceRow['interface']
-                if portIface == parentIfaceName:
-                    # Names agree; not a cross-interface bind.
-                    continue
                 childIfaceKey = portEntry['interfaceKey']
                 childContext = interfaces_flat[childIfaceKey]['_context']
                 parentContext = parentIfaceRow['_context']
@@ -6095,8 +6277,6 @@ class projectCreate:
             portIface = portEntry['interface']
             parentIfaceRow = interfaces_flat[parentIfaceKey]
             parentIfaceName = parentIfaceRow['interface']
-            if portIface == parentIfaceName:
-                continue
             childIfaceKey = portEntry['interfaceKey']
             childContext = interfaces_flat[childIfaceKey]['_context']
             parentContext = parentIfaceRow['_context']

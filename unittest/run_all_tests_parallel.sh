@@ -44,6 +44,7 @@ EXAMPLE_READERS=(
     test_eval_sv_emit.py              # reads examples/ip_test (copytree)
     test_addrctl_ip_test_view.py      # reads examples/ip_test
     test_boundary_signals.py          # reads examples/ip_test
+    test_payload_direct_copy.py       # reads examples/ip_test + examples/xprojParam
     test_layout_nested.py             # reads examples/nested (copytree)
     test_migrate_layout.py            # reads examples/simple + examples/hierInclude
 )
@@ -63,9 +64,9 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping suites: the serial runner runs 94 suites.
-if [[ ${#ALL[@]} -ne 94 ]]; then
-    echo "WARNING: expected 94 suites (serial-runner set), found ${#ALL[@]}." >&2
+# Guard against silently dropping suites: the serial runner runs 95 suites.
+if [[ ${#ALL[@]} -ne 95 ]]; then
+    echo "WARNING: expected 95 suites (serial-runner set), found ${#ALL[@]}." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 

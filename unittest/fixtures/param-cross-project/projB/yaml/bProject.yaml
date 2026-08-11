@@ -1,0 +1,13 @@
+# projB PROJECT file. projectName projB owns bTop.yaml and the same-named WIDTH
+# constant declared there, which is a DIFFERENT parameter identity from projA's
+# WIDTH.
+projectName: projB
+
+projectFiles:
+    - bTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

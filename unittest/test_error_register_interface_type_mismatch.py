@@ -65,7 +65,8 @@ instances:
 
 
 REQUIRED_SUBSTRINGS = [
-    "cross-interface bind",
+    "parent side",
+    "child side",
     "same interface meta-protocol",
     "alt_apb",
     "apb",

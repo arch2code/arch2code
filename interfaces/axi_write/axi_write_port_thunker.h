@@ -18,9 +18,24 @@
 // downstream response axiWriteRespSt, when the corresponding payload
 // structures are per-field _bitWidth equivalent but differ in nested
 // _packedSt width. The per-field equivalence is validated elsewhere; this
-// class performs the runtime packed-value bridge for the per-parameter
-// envelope fields via copy_packed_bits() and preserves the AXI write
+// class performs the runtime payload bridge for the per-parameter
+// envelope fields via copyPayload() and preserves the AXI write
 // address / data / response handshake at both ends.
+//
+// DirectAddr, DirectData and DirectStrb are the generator's verdicts for the
+// three payload pairs this protocol carries (addr_t, data_t and strb_t, in that
+// order): true when the pair's two declarations emit identical member storage.
+// The copies here are on the envelopes rather than the payloads themselves,
+// which is sound because the only parameter-dependent members are
+// axiWriteAddressSt<A>'s A awaddr and axiWriteDataSt<D, S>'s D wdata and
+// S wstrb; every other member is the same fixed type on both sides, so
+// corresponding payload storage makes the whole envelope correspond. strb_t has
+// no copy site of its own — it is the second parameter of the data envelope — so
+// the data envelope copy is gated by DirectData && DirectStrb. The response leg
+// carries the non-templated axiWriteRespSt, identical on both sides, so it takes
+// copyPayload's identity arm and needs no verdict. All three default to false,
+// which is always correct and merely slower, so a hand-written instantiation
+// need not supply them.
 //
 // Up always denotes the parent side and Down the owned child channel; this
 // is a topological position, not a data-flow direction (the producer shape
@@ -32,11 +47,11 @@
 // check is the canonical guard against width disagreement for the wrapped
 // envelope.
 //
-// The fourth and fifth payload structs of the axi_write view are the
-// strobe types (UpS / DownS). axi_write_if.yaml lists three struct
-// parameters per side (addr_t, data_t, strb_t), so the template parameter
-// list carries six types — three per side — matching the buildThunkerView
-// enumeration order.
+// axi_write_if.yaml lists three struct parameters (addr_t, data_t, strb_t),
+// so the buildThunkerView payload enumeration is the parent's three followed
+// by the child's three — the strobe types UpS and DownS are its third and
+// sixth entries — and the template parameter list carries those six types in
+// that order, then one verdict bool per payload pair in parameter order.
 //
 // Four construction shapes are supported, spanning a 2x2 family: the child
 // (down) end is either a consumer (axi_write_in<DownA, DownD, DownS>&) or a
@@ -68,7 +83,8 @@
 // body (which is only reached when the thunker is held as a container
 // member).
 template <class UpA, class UpD, class UpS,
-          class DownA, class DownD, class DownS>
+          class DownA, class DownD, class DownS,
+          bool DirectAddr = false, bool DirectData = false, bool DirectStrb = false>
 class axi_write_port_thunker
 {
 public:
@@ -148,14 +164,9 @@ private:
             // Address phase: upstream receives, downstream sends.
             axiWriteAddressSt<UpA>   addrIn;
             axiWriteAddressSt<DownA> addrOut;
-            typename axiWriteAddressSt<UpA>::_packedSt addrPacked;
-            typename axiWriteAddressSt<DownA>::_packedSt addrOutPacked;
             upIn->receiveAddr( addrIn );
-            // Generated payload structs expose pack() via an out
-            // parameter (`void pack(_packedSt& _ret) const`).
-            addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, axiWriteAddressSt<DownA>::_bitWidth );
-            addrOut.unpack( addrOutPacked );
+            static_assert( !DirectAddr || sizeof(axiWriteAddressSt<DownA>) == sizeof(axiWriteAddressSt<UpA>), "axi_write addr_t direct copy requires equal envelope size" );
+            copyPayload<DirectAddr>( addrOut, addrIn );
             // The channel's overridden sendAddr() drops the default
             // optional argument, so the std::nullopt is supplied
             // explicitly to satisfy the two-argument signature.
@@ -164,23 +175,16 @@ private:
             // Data phase: upstream receives, downstream sends.
             axiWriteDataSt<UpD, UpS>     dataIn;
             axiWriteDataSt<DownD, DownS> dataOut;
-            typename axiWriteDataSt<UpD, UpS>::_packedSt dataPacked;
-            typename axiWriteDataSt<DownD, DownS>::_packedSt dataOutPacked;
             upIn->receiveData( dataIn );
-            dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, axiWriteDataSt<DownD, DownS>::_bitWidth );
-            dataOut.unpack( dataOutPacked );
+            static_assert( !(DirectData && DirectStrb) || sizeof(axiWriteDataSt<DownD, DownS>) == sizeof(axiWriteDataSt<UpD, UpS>), "axi_write data_t/strb_t direct copy requires equal envelope size" );
+            copyPayload<DirectData && DirectStrb>( dataOut, dataIn );
             m_down_channel.sendData( dataOut );
 
             // Response phase: downstream returns, upstream answered.
             axiWriteRespSt respIn;
             axiWriteRespSt respOut;
-            typename axiWriteRespSt::_packedSt respPacked;
-            typename axiWriteRespSt::_packedSt respOutPacked;
             m_down_channel.receiveResp( respIn );
-            respIn.pack( respPacked );
-            copy_packed_bits( respOutPacked, respPacked, axiWriteRespSt::_bitWidth );
-            respOut.unpack( respOutPacked );
+            copyPayload<false>( respOut, respIn );
             upIn->sendResp( respOut );
         }
     }
@@ -200,14 +204,9 @@ private:
             // Address phase: downstream receives, upstream sends.
             axiWriteAddressSt<DownA> addrIn;
             axiWriteAddressSt<UpA>   addrOut;
-            typename axiWriteAddressSt<DownA>::_packedSt addrPacked;
-            typename axiWriteAddressSt<UpA>::_packedSt addrOutPacked;
             m_down_channel.receiveAddr( addrIn );
-            // Generated payload structs expose pack() via an out
-            // parameter (`void pack(_packedSt& _ret) const`).
-            addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, axiWriteAddressSt<UpA>::_bitWidth );
-            addrOut.unpack( addrOutPacked );
+            static_assert( !DirectAddr || sizeof(axiWriteAddressSt<UpA>) == sizeof(axiWriteAddressSt<DownA>), "axi_write addr_t direct copy requires equal envelope size" );
+            copyPayload<DirectAddr>( addrOut, addrIn );
             // The out interface's sendAddr() carries a default optional
             // argument; the std::nullopt is supplied explicitly to mirror
             // thunkIn() and the channel's two-argument signature.
@@ -216,23 +215,16 @@ private:
             // Data phase: downstream receives, upstream sends.
             axiWriteDataSt<DownD, DownS> dataIn;
             axiWriteDataSt<UpD, UpS>     dataOut;
-            typename axiWriteDataSt<DownD, DownS>::_packedSt dataPacked;
-            typename axiWriteDataSt<UpD, UpS>::_packedSt dataOutPacked;
             m_down_channel.receiveData( dataIn );
-            dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, axiWriteDataSt<UpD, UpS>::_bitWidth );
-            dataOut.unpack( dataOutPacked );
+            static_assert( !(DirectData && DirectStrb) || sizeof(axiWriteDataSt<UpD, UpS>) == sizeof(axiWriteDataSt<DownD, DownS>), "axi_write data_t/strb_t direct copy requires equal envelope size" );
+            copyPayload<DirectData && DirectStrb>( dataOut, dataIn );
             upOut->sendData( dataOut );
 
             // Response phase: upstream returns, downstream answered.
             axiWriteRespSt respIn;
             axiWriteRespSt respOut;
-            typename axiWriteRespSt::_packedSt respPacked;
-            typename axiWriteRespSt::_packedSt respOutPacked;
             upOut->receiveResp( respIn );
-            respIn.pack( respPacked );
-            copy_packed_bits( respOutPacked, respPacked, axiWriteRespSt::_bitWidth );
-            respOut.unpack( respOutPacked );
+            copyPayload<false>( respOut, respIn );
             m_down_channel.sendResp( respOut );
         }
     }

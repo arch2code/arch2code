@@ -1,0 +1,40 @@
+# Same middle stage, with every declaration name prefixed so it cannot collide
+# with a sibling project's.
+
+ipParameters:
+    constants:
+        FL_PIXEL_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        flPixelT: { width: FL_PIXEL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    flTagT: { width: 4, desc: "Sample sequence tag" }
+
+structures:
+    flVideoSt:
+        tag:  { varType: flTagT,   desc: "Sample sequence tag" }
+        data: { varType: flPixelT, desc: "Pixel payload" }
+
+interfaces:
+    flVideoIf:
+        desc: "Parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: flVideoSt, structureType: data_t }
+
+blocks:
+    xpFilterUniq:
+        desc: "Chain middle stage with prefixed declarations"
+        params: [FL_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            videoIn:  { interface: flVideoIf, direction: dst }
+            videoOut: { interface: flVideoIf, direction: src }
+
+parameters:
+    xpFilterUniq:
+        v0:
+            FL_PIXEL_WIDTH: 8

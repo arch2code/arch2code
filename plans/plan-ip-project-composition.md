@@ -7,7 +7,8 @@
   recorded in the C5 section below; fwIpMain Q-C11/G4, provider-override +
   duplicate-`projectName` negative, `projectName`-keyed SC+verilated
   registration, and distinct-type thunkers all PASS; cross-project eval Q-C12/G5
-  DEFERRED). The earlier "implementation in progress" wording below is
+  was DEFERRED then and is now ACTIVE — see the next bullet and C6). The earlier
+  "implementation in progress" wording below is
   historical. Q-C10 `projectName` factory threading,
   C0a `CONTEXTOWNINGPROJECT`, per-project `PROJECTLAYOUT`, and the DB-driven
   generation ownership gate have landed. **COMPOSED BUILD IS GREEN ON A CLEAN
@@ -33,8 +34,15 @@
   test_provider_override.py green). **Reconciliation 2026-07-24:** explicit
   managed SV selection, composed/standalone VL, clangd/compdb, clean Config
   ownership, and C2/C5 acceptance are closed. Remaining work is C1's
-  contract-document refresh and deferred/latent Q-C8 Role C/C2.5, Q-C12/G5,
-  and the same-name collision fixture.
+  contract-document refresh, deferred/latent Q-C8 Role C/C2.5, the same-name
+  collision fixture, and ACTIVE Q-C12/G5 (C6).
+- **UPDATE 2026-08-10 — Q-C12/G5 promoted DEFERRED → ACTIVE.** A real assembler
+  hit this axis: `/work/ws/isp` project `isp_top` chains `u_gain` (`isp_gain`) →
+  `u_debayer` (`debayer`) → `u_awb` (`isp_awb`) across a parameterized
+  interface. Assessment verdict: the cross-project parameterized interface is
+  **unsupported by design, not merely unimplemented**, and the assessment
+  recorded eight defects (two of them SILENT). Verdict, defects with file:line
+  citations, and the agreed plan of record are in **C6**.
 - **Code reality (reconciled against current source 2026-07-10).** **Q-C10
   is now IMPLEMENTED & validated:** the factory key is
   `Key{blockType, variant, projectName}`, threaded through
@@ -587,7 +595,8 @@ split-fixture parent address map is **byte-identical** to monolithic
   constants reach it via the full-parse DB and manifest `-I`. Commits `6791451`
   (BSP) + `ab75e9c` (common `cpu`). Remaining: prove byte-identical address
   composition (Q-C5/G3) once provider overrides are exercised.
-- **Q-C12 — Cross-project symbolic eval (review G5).** `src` binds
+- **Q-C12 — Cross-project symbolic eval (review G5). ACTIVE (promoted from
+  DEFERRED 2026-08-10).** `src` binds
   `ipLeaf@variantLeaf0 LEAF_DATA_WIDTH = OUT0_DATA_WIDTH` — child param
   bound to a parent param. `ValueResolver` is built over the whole DB
   today (`processYaml.py:3283`); under composition the symbol is defined
@@ -595,6 +604,12 @@ split-fixture parent address map is **byte-identical** to monolithic
   resolution with `src`/`ipLeaf` as separate projects and confirm the
   resolved value matches monolithic. Watch for single-project scoping
   assumptions in the resolver and `includeName` ambiguity (Q-C8).
+  **A real design has now hit this axis** (`/work/ws/isp`, three sub-projects
+  chained across one parameterized interface), so this is no longer a
+  hypothetical C5 gate. The assessed verdict is that a parameterized interface
+  crossing a project boundary is **unsupported by design**: parameter identity is
+  a file-qualified constant key with no project axis. Full verdict, the eight
+  recorded defects, and the plan of record are in **C6**.
 - **Q-C3 — Build composition + discovery.** **Source composition**
   (decided), driven by a **DB-emitted `.mk` manifest**. Two review
   corrections:
@@ -736,7 +751,7 @@ Findings folded into this plan and the registrar plan:
 | **G2** | Generation-ownership gate is new foundational work, not a capture tweak (no per-object owning-project field; gen loop file-driven; globals). | Q-C1/Q-C9 revised. |
 | **G3** | `calcAddresses` is DB-wide with no reachability filter in offset computation. | Q-C5 hardened; C5 must prove byte-identical parent map. |
 | **G4** | FW composition (`fwIpMain` consuming child register bases + FW constants) unaddressed. | New Q-C11; C5 acceptance gate. |
-| **G5** | Cross-project symbolic eval unverified. | New Q-C12; C5 acceptance gate. |
+| **G5** | Cross-project symbolic eval unverified. | New Q-C12; C5 acceptance gate. **ACTIVE 2026-08-10** (was DEFERRED at C5 acceptance): real design hit the axis; verdict + 8 defects + plan of record in C6. |
 | **G6** | `vl_wrap.h` split + hard-coded `CPP_SRC` reference must move with the verilated relocation. | Registrar S6 surface extended. |
 | **M1** | `configTag = projectName` supersedes (not implements) plan-block-registration's Config-name configTag. | Q-C10 reconciliation added. |
 | **M2/M4/M5** | Stale "key unchanged"; default-config still a real artifact; library composition breaks archive self-registration. | Fixed in registrar relationship; Q-C4 migration note; Q-C3 archive caveat. |
@@ -992,8 +1007,9 @@ plus the duplicate-`projectName` negative PASS (committed `37bad48` +
 `test_provider_override.py`); `projectName`-keyed SC + verilated registration
 PASS; thunkers for distinct SC boundary types with packed RTL directly connected
 PASS (`examples/ip_test/model/top/ip_top.h:65-74`). Cross-project eval Q-C12
-(G5) is DEFERRED — `src`/`ipLeaf` remain root-owned nodes (not split into
-separate projects). No gaps.
+(G5) was DEFERRED at this acceptance — `src`/`ipLeaf` remain root-owned nodes
+(not split into separate projects) — and is **now ACTIVE (2026-08-10)**, owned by
+C6. No other gaps.
 
 Make `examples/ip_test` the user-facing composition reference:
 
@@ -1037,9 +1053,11 @@ Acceptance gates (disposition UPDATE 2026-07-22):
 
 - **PASS (with caveat above)** — parent address map **byte-identical** to
   monolithic `ip_test` (G3/Q-C5),
-- **DEFERRED** — cross-project eval `LEAF_DATA_WIDTH = OUT0_DATA_WIDTH` resolves
-  to the monolithic value if/when `src`/`ipLeaf` are split (G5/Q-C12);
-  `src`/`ipLeaf` remain root-owned nodes,
+- **ACTIVE (was DEFERRED; promoted 2026-08-10)** — cross-project eval
+  `LEAF_DATA_WIDTH = OUT0_DATA_WIDTH` resolves to the monolithic value if/when
+  `src`/`ipLeaf` are split (G5/Q-C12); `src`/`ipLeaf` remain root-owned nodes, so
+  this gate is unmet and the wider cross-project parameterized-interface axis is
+  now owned by C6,
 - **PASS** — the parent firmware (`fwIpMain`) builds against child FW headers
   across the boundary (G4/Q-C11),
 - **PASS** — no `force_link`/registration loss; `projectName`-keyed registration
@@ -1052,6 +1070,154 @@ Acceptance gates (disposition UPDATE 2026-07-22):
   remains directly connected (`examples/ip_test/model/top/ip_top.h:65-74`).
 
 This is the acceptance vehicle for the registrar plan's S5/S6 and layout L5.
+
+### C6 — Cross-project parameterized interface (Q-C12/G5) — ACTIVE (assessed 2026-08-10)
+
+**Trigger.** A real assembler hit this axis. In `/work/ws/isp`, project `isp_top`
+instantiates `u_gain` (project `isp_gain`) → `u_debayer` (project `debayer`) →
+`u_awb` (project `isp_awb`), and each of those three sub-projects declares its
+OWN parameterized interface (`video_raw_stream` / `video_rgb_stream`) plus its own
+`ipParameters` constants under the SAME names (`BITS_PER_PIXEL_COLOR`,
+`PIXELS_PER_CLOCK`, …). This promotes Q-C12/G5 from DEFERRED to ACTIVE.
+
+**Verdict: UNSUPPORTED BY DESIGN, not merely unimplemented.**
+
+- Parameter identity is a **file-qualified constant key** (`WIDTH/<declaring yaml
+  file>`, constructed at `pysrc/processYaml.py:6412`), carried into block-param
+  backing as the resolved `constantKey` (`processYaml.py:5169`, `blockParams`) and
+  compared as such by `_validateParameterizedConnectionEndpoints`
+  (`processYaml.py:5236`). There is **no project axis** and no
+  mapping/aliasing construct.
+- Three projects each declaring the same-named parameter therefore produce three
+  permanently distinct parameter identities, and the endpoint validator rejects
+  any parameterized connection between them (`processYaml.py:5236-5281`).
+- Hoisting the parameter into a neutral shared file is **blocked**:
+  `ipParameters:` is forbidden in a shared include
+  (`processYaml.py:7714-7725`), and every exposed `ipParameters` constant must be
+  consumed by a **same-file** block param (`processYaml.py:7784-7802`). This is
+  the settled Choice B rule
+  ([`plan-shared-vs-ip-boundary.md`](./plan-shared-vs-ip-boundary.md):41).
+- The sanctioned pattern is to **de-parameterize the boundary**: the assembler
+  declares literal-width interfaces/structures and a thunker adapts each leg
+  ([`plan-parameterizable-config-template.md`](./plan-parameterizable-config-template.md):545).
+  The real ISP design has already converged on exactly this — ISP-owned
+  literal-sized boundary types, two thunkers per hop, and no `ipParameters` in the
+  assembler file (`/work/ws/isp/yaml/isp_top.yaml:40-60`).
+
+#### Recorded defects
+
+Verified by code reading against the working tree, except G5.6 which is a STATIC
+READING and is NOT compile-verified.
+
+- **G5.1 — SILENT: the cross-project width check is skipped.** `validatePorts`
+  gates entry to `checkInterfacePair` on interface **NAME** equality rather than
+  **key** equality: `processYaml.py:6036` and `processYaml.py:6098`
+  (`if portIface == parentIfaceName: continue  # Names agree; not a
+  cross-interface bind`). Two same-named interfaces owned by different projects
+  are treated as identical, so the packed-form / bit-width / bit-offset
+  reconciliation in `checkInterfacePair` (`processYaml.py:5809`) never runs.
+  `checkInterfacePair` itself compares **keys** correctly
+  (`processYaml.py:5813`) and is genuinely two-sided (a separate `ValueResolver`
+  per side, `processYaml.py:5862-5871`) — it is simply never reached.
+- **G5.2 — SILENT: unscoped bare-name interface fallback.** Two paths resolve an
+  interface by bare name across the whole loaded database, first match wins, when
+  the qualified key misses: `processYaml.py:1873-1876`
+  (`_resolveDeclaredPortInterfaceKey`) and `processYaml.py:2505-2508`
+  (`resolveInterfaceKey` in `getBDConnections`). With nine sub-projects each
+  defining `video_rgb_stream`, binding becomes dependent on dictionary insertion
+  order.
+- **G5.3 — Misleading diagnostic.** The endpoint error at
+  `processYaml.py:5273-5281` reports "does not declare the required
+  parameter(s): missing WIDTH" when the block demonstrably does declare `WIDTH`;
+  the mismatch is one of declaring-file/project identity, which the message does
+  not convey. Field evidence of the resulting confusion:
+  `/work/ws/isp/yaml/isp_top.yaml:43-48`.
+- **G5.4 — Config struct is drawn from a single `configContext`.** A block's
+  Config fields are gathered from constants whose `_context` equals one
+  `config_context` (`processYaml.py:1739-1750`, `processYaml.py:4753-4835`), so a
+  Config cannot be composed from two projects' parameter namespaces.
+- **G5.5 — Unbacked block `params:` passes silently.** The existing
+  `ipParameters` linkage gate (`processYaml.py:7784-7802`) validates only that
+  every `ipParameters` constant backs a same-file block param. The reverse — a
+  block declaring `params:` that NO `ipParameters` in its project backs — passes
+  `make db` and `make gen`, then yields an empty Config struct consumed by a base
+  class that requires its members. Field evidence:
+  `/work/ws/isp/yaml/isp_top_tb.yaml:24,31` declare params with no backing
+  `ipParameters`, producing an empty `isp_top_tbDefaultConfig` at
+  `/work/ws/isp/model/isp_top_tbVariantConfig.h:10`, consumed at
+  `/work/ws/isp/base/raw_video_srcBase.cppm:25-26`.
+- **G5.6 — Generated C++ namespace ambiguity. STATIC READING, NOT
+  COMPILE-VERIFIED.** `/work/ws/isp/model/isp_top.cppm:71-83` emits thirteen
+  `using namespace …_ns;` directives (ten of them per-IP block namespaces), then
+  names thunker payload types unqualified at `isp_top.cppm:147-150`
+  (`video_bayer_t`, `video_rgb_t`) and `isp_top.cppm:160`
+  (`rgb_pixels_per_clock_t`). Ten of those namespaces export `pixel_t`; nine
+  export `video_rgb_t`, `rgb_pixel_t`, `rgb_pixels_per_clock_t`; six export
+  `video_bayer_t`; eight export `MAX_PIXEL_VALUE`. No object files exist under
+  `/work/ws/isp/rundir`, so no compile has confirmed this.
+- **G5.7 — Test-coverage gap.** No test, example, or fixture anywhere crosses a
+  project boundary with a parameterized interface. `examples/ip_test` is the only
+  composed multi-project fixture and its cross-project hop deliberately uses
+  hand-declared literal boundary types
+  (`examples/ip_test/top/yaml/ip_top.yaml:31-64`);
+  `examples/ip_test/bridge/yaml/ipBridge.yaml:44-73` does the same. The unit
+  tests at `unittest/test_param_const_linkage.py:300,330,386` cover only same-file
+  endpoints and a name-mismatch negative — never
+  same-name-different-project.
+- **G5.8 — `inheritContainerParam` hard-rejects a cross-project pair.**
+  `processYaml.py:4720-4728` errors when the container and child blocks resolve to
+  different owning projects, so parameter inheritance cannot bridge projects.
+
+#### Plan of record
+
+1. **Unit-test matrix in `builder/base/unittest`** pinning the three-project
+   parameterized connection plus the two silent gaps (G5.1, G5.2), so the
+   current behavior is recorded before anything moves. **LANDED 2026-08-10** as
+   `unittest/test_param_cross_project_linkage.py` over the new
+   `unittest/fixtures/param-cross-project` three-sub-project fixture (five
+   assembler compositions). Three correct-by-design cells PASS (three-project
+   rejection with the G5.3 diagnostic asserted verbatim; de-parameterized
+   boundary across all three projects; single shared declaration reached by
+   `include:`). Three cells assert the DESIRED behavior of a gap and therefore
+   FAIL, which is the record: G5.1, G5.2, and one new finding (below). No
+   generator code was changed.
+2. **A runnable composed harness that actually compiles**, because G5.5 and G5.6
+   surface only in a real multi-project build, not in a `db`/`gen` pass.
+
+#### Findings from the test matrix (2026-08-10)
+
+- **A parameterized cross-project path DOES exist and is accepted**: when the
+  downstream projects reach the upstream project's `ipParameters` constant and
+  interface through a YAML `include:` rather than declaring their own, all
+  endpoints resolve to one qualified constant key and the straight-through
+  parameterized connection builds. Only the same-name/own-declaration shape is
+  rejected. This narrows the "UNSUPPORTED BY DESIGN" verdict: what is
+  unsupported is *independent* declaration, not crossing the boundary.
+- **G5.2 refined.** The parse-time foreign key resolves the port's interface
+  correctly in the block's own scope and persists it on the ports row
+  (`interfaceKey`). The defect is confined to the `projectOpen` view
+  re-deriving that key by string concatenation and then falling back to a
+  whole-database bare-name scan. Both cited sites mis-resolve the same port,
+  and the wrong bind propagates into the cross-interface thunker payload
+  (it names the wrong project's structure).
+- **NEW (G5.9) — the variant-binding `maxValue` gate is silently skipped on the
+  shared-`include:` path.** `_post_validateVariantBindingSizing`
+  (`processYaml.py:7814`) reaches the backing constant through
+  `blocksparams.paramKey`, which is qualified by the *referring* file, not the
+  resolved declaring file. When a block param is backed by an `ipParameters`
+  constant in an included file, that key is absent from `constants` and the
+  check returns early, so a binding above `maxValue` is accepted. This lands
+  exactly on the one working cross-project parameterized path.
+- **G5.5 reads differently than recorded.** A block param with no resolvable
+  backing constant IS rejected (`_post_validateBlockParamBacking`; covered by
+  `test_param_const_linkage.test_unbacked_block_param`). The field case is the
+  shared-`include:` shape above: the param resolves to *another* file's
+  parameterizable constant, which is accepted by design. Its consequences are
+  G5.4 and G5.9, not a missing backing check.
+- **G5.4 observation, db-level only.** On the shared-`include:` path the
+  downstream block's `defaultConfig` resolves to the UPSTREAM project's config
+  context (`aTopDefaultConfig` for a `projBShared` block) with correct variant
+  values. Whether that compiles is item 2's question, not settled here.
 
 ## Relationship to Other Plans
 

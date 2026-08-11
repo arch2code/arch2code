@@ -1,0 +1,32 @@
+# Upstream stage project. Owns PIXEL_WIDTH, pixel_t, videoSt and videoIf, and
+# generates its own block implementation. No instances and no topInstance: the
+# zero-instance render synthesises the block's port from ports:.
+
+yamlFormat: 2
+projectName: xpGain
+
+projectFiles:
+    - ../../yaml/xpGain.yaml
+    - ../../yaml/xpGainUniq.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""
