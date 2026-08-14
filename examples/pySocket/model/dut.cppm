@@ -9,6 +9,10 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 #include "instanceFactory.h"
+#include "notify_ack_channel.h"
+#include "pop_ack_channel.h"
+#include "push_ack_channel.h"
+#include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 // GENERATED_CODE_END
 // user #includes here
@@ -34,6 +38,9 @@ public:
 
     void dutListener(void);
     void dut2PythonListener(void);
+    void pushPopListener(void);
+    void notifyListener(void);
+    void rdyVldListener(void);
 };
 
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -60,6 +67,9 @@ dut::dut(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     // GENERATED_CODE_END
     SC_THREAD(dutListener);
     SC_THREAD(dut2PythonListener);
+    SC_THREAD(pushPopListener);
+    SC_THREAD(notifyListener);
+    SC_THREAD(rdyVldListener);
 };
 
 void dut::dutListener(void)
@@ -79,20 +89,73 @@ void dut::dutListener(void)
 void dut::dut2PythonListener(void)
 {
     log_.logPrint(std::format("started dut2PythonListener"), LOG_IMPORTANT );
-    // Two rounds to match pySocket.py (systemc2python_test + dut2python_target replies).
+    constexpr uint32_t kDutPushPopCmd = 0x50555348u; // "PUSH"
+    constexpr uint32_t kDutNotifyCmd = 0x4E4F5449u;  // "NOTI"
+    constexpr uint32_t kDutRdyVldCmd = 0x52445956u;  // "RDYV"
     while (true) {
         p2s_message_st test_message;
         p2s_response_st test_response;
-        // wait for a request from the test code
         test2Python_req_ack->reqReceive(test_message);
 
-        // make a request to the python code
+        if (test_message.param1 == kDutPushPopCmd) {
+            dut2Python_push_ack->push(test_message);
+            p2s_response_st pop_data;
+            dut2Python_pop_ack->pop(pop_data);
+            test2Python_req_ack->ack(pop_data);
+            continue;
+        }
+        if (test_message.param1 == kDutNotifyCmd) {
+            dut2Python_notify_ack->notify();
+            test_response.response = 0xA11Cu;
+            test2Python_req_ack->ack(test_response);
+            continue;
+        }
+        if (test_message.param1 == kDutRdyVldCmd) {
+            dut2Python_rdy_vld->write(test_message);
+            test_response.response = test_message.param1 + test_message.param2 + 2;
+            test2Python_req_ack->ack(test_response);
+            continue;
+        }
+
         p2s_response_st dut_response;
         dut2Python_req_ack->req(test_message, dut_response);
 
-        // send the response back to the test code
         test_response.response = dut_response.response;
         test2Python_req_ack->ack(test_response);
+    }
+}
+
+void dut::pushPopListener(void)
+{
+    log_.logPrint(std::format("started pushPopListener"), LOG_IMPORTANT );
+    while (true) {
+        p2s_message_st message;
+        test_push_ack->pushReceive(message);
+        test_push_ack->ack();
+
+        test_pop_ack->popReceive();
+        p2s_response_st response;
+        response.response = message.param1 + message.param2 + 1;
+        test_pop_ack->ack(response);
+    }
+}
+
+void dut::notifyListener(void)
+{
+    log_.logPrint(std::format("started notifyListener"), LOG_IMPORTANT );
+    while (true) {
+        test_notify_ack->waitNotify();
+        test_notify_ack->ack();
+    }
+}
+
+void dut::rdyVldListener(void)
+{
+    log_.logPrint(std::format("started rdyVldListener"), LOG_IMPORTANT );
+    while (true) {
+        p2s_message_st message;
+        test_rdy_vld->read(message);
+        log_.logPrint(std::format("received rdy_vld: {} {}", message.param1, message.param2), LOG_IMPORTANT );
     }
 }
 

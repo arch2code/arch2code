@@ -2,6 +2,10 @@
 #define PYSOCKET_SOCKET_H
 
 #include "instanceFactory.h"
+#include "notify_ack_port_socket.h"
+#include "pop_ack_port_socket.h"
+#include "push_ack_port_socket.h"
+#include "rdy_vld_port_socket.h"
 #include "req_ack_port_socket.h"
 #include "socketFactory.h"
 #include "systemc.h"
@@ -36,8 +40,19 @@ private:
     void test_req_ackSocket(void);
     void test2Python_req_ackSocket(void);
     void dut2Python_req_ackSocket(void);
+    void test_push_ackSocket(void);
+    void test_pop_ackSocket(void);
+    void dut2Python_push_ackSocket(void);
+    void dut2Python_pop_ackSocket(void);
+    void test_notify_ackSocket(void);
+    void dut2Python_notify_ackSocket(void);
+    void test_rdy_vldSocket(void);
+    void dut2Python_rdy_vldSocket(void);
     void python2SystemCTestComplete(void);
     void systemC2PythonTestComplete(void);
+    void pythonPushPopTestComplete(void);
+    void pythonNotifyTestComplete(void);
+    void pythonRdyVldTestComplete(void);
     void simHeartbeat(void);
     /// Stops the kernel when end-of-test voters complete (pySocketExternal is not in the hierarchy).
     void eotStopSim(void);

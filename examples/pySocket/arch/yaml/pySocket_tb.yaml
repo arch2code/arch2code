@@ -76,6 +76,42 @@ interfaces:
     structures:
       - {structure: p2s_message_st, structureType: data_t}
       - {structure: p2s_response_st, structureType: rdata_t}
+  test_push_ack:
+    interfaceType: push_ack
+    desc: "Python-initiated push into the DUT"
+    structures:
+      - {structure: p2s_message_st, structureType: data_t}
+  test_pop_ack:
+    interfaceType: pop_ack
+    desc: "Python-initiated pop of data derived from the last push"
+    structures:
+      - {structure: p2s_response_st, structureType: rdata_t}
+  dut2Python_push_ack:
+    interfaceType: push_ack
+    desc: "DUT-initiated push into Python"
+    structures:
+      - {structure: p2s_message_st, structureType: data_t}
+  dut2Python_pop_ack:
+    interfaceType: pop_ack
+    desc: "DUT-initiated pop of data derived from the DUT push"
+    structures:
+      - {structure: p2s_response_st, structureType: rdata_t}
+  test_notify_ack:
+    interfaceType: notify_ack
+    desc: "Python-initiated notify into the DUT"
+  dut2Python_notify_ack:
+    interfaceType: notify_ack
+    desc: "DUT-initiated notify into Python"
+  test_rdy_vld:
+    interfaceType: rdy_vld
+    desc: "Python-initiated rdy_vld write into the DUT"
+    structures:
+      - {structure: p2s_message_st, structureType: data_t}
+  dut2Python_rdy_vld:
+    interfaceType: rdy_vld
+    desc: "DUT-initiated rdy_vld write into Python"
+    structures:
+      - {structure: p2s_message_st, structureType: data_t}
 
 # connections are specify interface connections between different instaces of objects
 ## - {}, dash followed by a dictionary, connections is a list of dictionaries
@@ -93,4 +129,12 @@ connections:
   - { interface: test_req_ack, src: u_pySocket, dst: u_dut }
   - { interface: test2Python_req_ack, src: u_pySocket, dst: u_dut }
   - { interface: dut2Python_req_ack, src: u_dut, dst: u_pySocket }
+  - { interface: test_push_ack, src: u_pySocket, dst: u_dut }
+  - { interface: test_pop_ack, src: u_pySocket, dst: u_dut }
+  - { interface: dut2Python_push_ack, src: u_dut, dst: u_pySocket }
+  - { interface: dut2Python_pop_ack, src: u_dut, dst: u_pySocket }
+  - { interface: test_notify_ack, src: u_pySocket, dst: u_dut }
+  - { interface: dut2Python_notify_ack, src: u_dut, dst: u_pySocket }
+  - { interface: test_rdy_vld, src: u_pySocket, dst: u_dut }
+  - { interface: dut2Python_rdy_vld, src: u_dut, dst: u_pySocket }
 

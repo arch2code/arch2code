@@ -27,6 +27,10 @@ except ImportError:  # pragma: no cover - optional for asyncio-only clients
 
 MSG_REQ = 0x01
 MSG_ACK = 0x02
+MSG_PUSH = 0x03
+MSG_PUSH_ACK = 0x04
+MSG_VLD = 0x05
+MSG_RDY = 0x06
 MSG_SYNC = 0x07
 MSG_APB_REQ = 0x08
 MSG_APB_ACK = 0x09
@@ -45,6 +49,10 @@ MSG_STATUS_OBS = 0x15
 MSG_RESET = 0x16
 MSG_RESET_ACK = 0x17
 MSG_CTRL_OBS = 0x18
+MSG_POP = 0x19
+MSG_POP_ACK = 0x1A
+MSG_NOTIFY = 0x1B
+MSG_NOTIFY_ACK = 0x1C
 MSG_SHUTDOWN = 0xFE
 
 HEADER_STRUCT = struct.Struct("<BBH")

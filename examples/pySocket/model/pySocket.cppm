@@ -9,6 +9,10 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 #include "instanceFactory.h"
+#include "notify_ack_channel.h"
+#include "pop_ack_channel.h"
+#include "push_ack_channel.h"
+#include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 // GENERATED_CODE_END
 #include <list>

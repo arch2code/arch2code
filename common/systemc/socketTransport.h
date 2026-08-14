@@ -30,6 +30,10 @@ enum socketMsgTypeT {
     MSG_RESET=0x16,
     MSG_RESET_ACK=0x17,
     MSG_CTRL_OBS=0x18,
+    MSG_POP=0x19,
+    MSG_POP_ACK=0x1A,
+    MSG_NOTIFY=0x1B,
+    MSG_NOTIFY_ACK=0x1C,
     MSG_SHUTDOWN=0xFE,
     MSG_ERROR=0xFF
 };
@@ -61,6 +65,10 @@ inline const char* socketMsgTypeT_prt( socketMsgTypeT val )
         case MSG_RESET: return( "MSG_RESET" );
         case MSG_RESET_ACK: return( "MSG_RESET_ACK" );
         case MSG_CTRL_OBS: return( "MSG_CTRL_OBS" );
+        case MSG_POP: return( "MSG_POP" );
+        case MSG_POP_ACK: return( "MSG_POP_ACK" );
+        case MSG_NOTIFY: return( "MSG_NOTIFY" );
+        case MSG_NOTIFY_ACK: return( "MSG_NOTIFY_ACK" );
         case MSG_SHUTDOWN: return( "MSG_SHUTDOWN" );
         case MSG_ERROR: return( "MSG_ERROR" );
     }

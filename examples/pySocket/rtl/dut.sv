@@ -10,6 +10,14 @@ import pySocket_tb_package::*;
     req_ack_if.dst test_req_ack,
     req_ack_if.dst test2Python_req_ack,
     req_ack_if.src dut2Python_req_ack,
+    push_ack_if.dst test_push_ack,
+    pop_ack_if.dst test_pop_ack,
+    push_ack_if.src dut2Python_push_ack,
+    pop_ack_if.src dut2Python_pop_ack,
+    notify_ack_if.dst test_notify_ack,
+    notify_ack_if.src dut2Python_notify_ack,
+    rdy_vld_if.dst test_rdy_vld,
+    rdy_vld_if.src dut2Python_rdy_vld,
     input clk, rst_n
 );
 
