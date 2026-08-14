@@ -2,8 +2,8 @@
 interface_defs:
   req_ack : 
     parameters : 
-      data_t : { datatype : struct, default : 'bit' }
-      rdata_t : { datatype : struct, default : 'bit' }
+      data_t : { datatype : struct }
+      rdata_t : { datatype : struct }
     signals: 
       req : bool
       data : data_t

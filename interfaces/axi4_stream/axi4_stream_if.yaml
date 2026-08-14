@@ -2,10 +2,13 @@
 interface_defs:
   axi4_stream : 
     parameters : 
-      tdata_t : { datatype : struct, default : 'bit' }
-      tid_t : { datatype : struct, default : 'bit' }
-      tdest_t : { datatype : struct, default : 'bit' }
-      tuser_t : { datatype : struct, default : 'bit' }
+      tdata_t : { datatype : struct }
+      tid_t : { datatype : struct }
+      tdest_t : { datatype : struct }
+      # TUSER sideband. Optional: a stream that binds no TUSER is spelled
+      # exactly as it was before the parameter became optional, and its tuser
+      # signal degrades to the one-bit placeholder the interface declares.
+      tuser_t : { datatype : struct, optional : true }
     hdlparams :
       tstrb_t : { isEval : True, datatype : integer, value : 'tdata_t.to_bytes()' }
       tkeep_t : { isEval : True, datatype : integer, value : 'tdata_t.to_bytes()' }

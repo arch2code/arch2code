@@ -367,6 +367,24 @@ echo ""
 echo "Test Suite ${idx}: parameterizable C++ type alias signedness"
 echo "------------------------------------------------------------------------"
 python3 test_param_type_signedness.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: optional interface parameters"
+echo "------------------------------------------------------------------------"
+python3 test_optional_intf_params.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Error Handling (unresolvable interface hdlparam)"
+echo "------------------------------------------------------------------------"
+python3 test_error_intf_hdlparam_unresolved.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: interface definition data contracts"
+echo "------------------------------------------------------------------------"
+python3 test_interface_def_contracts.py || FAILED=1
 
 echo ""
 echo "========================================================================"

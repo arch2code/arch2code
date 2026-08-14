@@ -2,9 +2,14 @@
 interface_defs:
   axi_write : 
     parameters : 
-      addr_t : { datatype : struct, default : 'bit' }
-      data_t : { datatype : struct, default : 'bit' }
-      strb_t : { datatype : struct, default : 'bit' }
+      addr_t : { datatype : struct }
+      data_t : { datatype : struct }
+      strb_t : { datatype : struct }
+      # AXI4 USER sidebands, one per payload channel. Optional: an interface that
+      # binds none is spelled exactly as it was before these existed.
+      awuser_t : { datatype : struct, optional : true }
+      wuser_t : { datatype : struct, optional : true }
+      buser_t : { datatype : struct, optional : true }
     signals: 
       awaddr : addr_t
       awid : 'bit [3:0]'

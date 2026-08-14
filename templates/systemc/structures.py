@@ -1,4 +1,4 @@
-from pysrc.intf_gen_utils import get_const, wrap_module_namespace, wrap_module_test_namespace, cpp_namespace_name
+from pysrc.intf_gen_utils import wrap_module_namespace, wrap_module_test_namespace, cpp_namespace_name
 from templates.systemc.includes import constReference_cpp, typeWidthExpression_cpp
 dataTypeMappings = [
     {'maxSize': 1, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},

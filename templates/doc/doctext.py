@@ -1,6 +1,34 @@
 from pysrc.table_format import TableFormatter
 
-from pysrc.intf_gen_utils import get_const, get_struct_width
+from pysrc.intf_gen_utils import get_struct_width
+
+# A memory whose depth is a variant-bound block parameter has no single depth,
+# and therefore no single size. Its size cell carries NO_SINGLE_SIZE, and every
+# hierarchy total it would have contributed to is suffixed with PARTIAL_TOTAL,
+# so a reader can tell a partial total from a complete one.
+NO_SINGLE_SIZE = '-'
+PARTIAL_TOTAL = '+'
+
+NO_SINGLE_SIZE_NOTE = (f"{NO_SINGLE_SIZE} depth is a variant-bound block parameter, "
+                       f"so this memory has no single size.\n")
+PARTIAL_TOTAL_NOTE = (f"{PARTIAL_TOTAL} total excludes memories whose depth is a "
+                      f"variant-bound block parameter, so it is a lower bound.\n")
+
+
+def memory_geometry(prj, instance_data):
+    """Resolve one memory instance's width, depth and size in KB.
+
+    wordLinesKey names the constant a memory's depth resolves to. It is empty
+    when the author sized the memory with a variant-bound block parameter
+    instead, in which case the depth is the parameter symbol as written and
+    there is no size, reported as None so the memory is never counted as zero.
+    """
+    width = get_struct_width(instance_data['structureKey'], prj.data['structures'])
+    if instance_data['wordLinesKey'] == '':
+        return width, instance_data['wordLines'], None
+    depth = prj.getConst(instance_data['wordLinesKey'], require_int=True,
+                         context_msg=f"memory '{instance_data['memory']}' depth")
+    return width, depth, (width * depth) / 8192
 
 # args from generator line
 # prj object
@@ -24,8 +52,7 @@ def create_meminsts_extractor(prj, data):
     """
     def meminsts_extractor(instance_key, instance_data, columns):
         """Extract data for each column from the memory instance data."""
-        _w = get_struct_width(instance_data['structureKey'], prj.data['structures'])
-        _d = get_const(instance_data.get('wordLinesKey'), prj.data['constants'])
+        _w, _d, _size = memory_geometry(prj, instance_data)
         # Map column names to data extraction
         column_mapping = {
             'Instance': instance_key,
@@ -42,7 +69,7 @@ def create_meminsts_extractor(prj, data):
             'Local': str(instance_data.get('local', '')),
             'Width' : _w,
             'Depth' : _d,
-            'Size(KB)' : f"{(_w * _d) / 8192:.2f}",
+            'Size(KB)' : NO_SINGLE_SIZE if _size is None else f"{_size:.2f}",
             'Context': instance_data.get('_context', '')
         }
 
@@ -106,14 +133,14 @@ def build_hierarchical_usage_data(prj, data, memInsts):
     # First, process all memory instances to get their individual sizes
     for instance_path, instance_data in memInsts.items():
         # Calculate memory size for this instance
-        _w = get_struct_width(instance_data['structureKey'], prj.data['structures'])
-        _d = get_const(instance_data.get('wordLinesKey'), prj.data['constants'])
-        size_kb = (_w * _d) / 8192  # Convert bits to KB
+        _w, _d, size_kb = memory_geometry(prj, instance_data)
 
-        # Add the memory instance itself
+        # Add the memory instance itself. A parameterized memory has no size to
+        # report, and marks itself partial so it renders as such.
         hierarchical_data[instance_path] = {
             'size': size_kb,
-            'is_memory': True
+            'is_memory': True,
+            'partial': size_kb is None
         }
 
         # Build the hierarchy by adding parent paths
@@ -123,10 +150,16 @@ def build_hierarchical_usage_data(prj, data, memInsts):
             if parent_path not in hierarchical_data:
                 hierarchical_data[parent_path] = {
                     'size': 0.0,
-                    'is_memory': False
+                    'is_memory': False,
+                    'partial': False
                 }
-            # Add this instance's size to all its parents
-            hierarchical_data[parent_path]['size'] += size_kb
+            # Add this instance's size to all its parents. A parameterized
+            # memory contributes no number, so it marks every parent total
+            # partial instead of silently adding zero to it.
+            if size_kb is None:
+                hierarchical_data[parent_path]['partial'] = True
+            else:
+                hierarchical_data[parent_path]['size'] += size_kb
 
     return hierarchical_data
 
@@ -139,14 +172,19 @@ def create_usage_extractor():
     """
     def usage_extractor(instance_key, instance_data, columns):
         """Extract data for each column from the hierarchical usage data."""
-        size = instance_data.get('size', 0.0)
-        is_memory = instance_data.get('is_memory', False)
+        size = instance_data['size']
+        if size is None:
+            size_str = NO_SINGLE_SIZE
+        elif instance_data['partial']:
+            size_str = f"{size:.2f}{PARTIAL_TOTAL}"
+        else:
+            size_str = f"{size:.2f}"
 
         # Map column names to data extraction
         column_mapping = {
             'Instance': instance_key,
-            'Cumulated Size (KB)': f"{size:.2f}",
-            'M': '*' if is_memory else ''
+            'Cumulated Size (KB)': size_str,
+            'M': '*' if instance_data['is_memory'] else ''
         }
 
         return [column_mapping.get(col_name, '') for col_name, _ in columns]
@@ -238,13 +276,19 @@ def format_usage_table(prj, data, hierarchical_data, columns=None, border_style=
 def renderer_meminst(args, prj, data):
     memInsts = {}
     findMemInsts(prj, data, memInsts, data['blockName'])
-    return format_meminsts_table(prj, data, memInsts, columns=None, border_style='ascii')
+    out = format_meminsts_table(prj, data, memInsts, columns=None, border_style='ascii')
+    if any(memData['wordLinesKey'] == '' for memData in memInsts.values()):
+        out += NO_SINGLE_SIZE_NOTE
+    return out
 
 def renderer_memusage(args, prj, data):
     memInsts = {}
     findMemInsts(prj, data, memInsts, data['blockName'])
     hierarchical_data = build_hierarchical_usage_data(prj, data, memInsts)
-    return format_usage_table(prj, data, hierarchical_data, columns=None, border_style='ascii')
+    out = format_usage_table(prj, data, hierarchical_data, columns=None, border_style='ascii')
+    if any(entry['partial'] for entry in hierarchical_data.values()):
+        out += NO_SINGLE_SIZE_NOTE + PARTIAL_TOTAL_NOTE
+    return out
 
 # Recurse sub-blocks to find memory instances across hierarchy
 # each level of hierarchy is separated by '.'

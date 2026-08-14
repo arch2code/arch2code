@@ -2,8 +2,12 @@
 interface_defs:
   axi_read : 
     parameters : 
-      addr_t : { datatype : struct, default : 'bit' }
-      data_t : { datatype : struct, default : 'bit' }
+      addr_t : { datatype : struct }
+      data_t : { datatype : struct }
+      # AXI4 USER sidebands, one per payload channel. Optional: an interface that
+      # binds none is spelled exactly as it was before these existed.
+      aruser_t : { datatype : struct, optional : true }
+      ruser_t : { datatype : struct, optional : true }
     signals: 
       araddr : addr_t
       arid : 'bit [3:0]'

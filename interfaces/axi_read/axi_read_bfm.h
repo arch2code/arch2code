@@ -32,12 +32,13 @@ struct axi_read_hdl_if: public sc_interface {
 
 };
 
-template<typename ADDR_T, typename DATA_T, typename VL_ADDR_T, typename VL_DATA_T>
+template<typename ADDR_T, typename DATA_T, typename VL_ADDR_T, typename VL_DATA_T,
+         typename ARU = std::monostate, typename RU = std::monostate>
 class axi_read_src_bfm: public sc_module {
 
 public:
 
-    axi_read_out<ADDR_T, DATA_T> if_p;
+    axi_read_out<ADDR_T, DATA_T, ARU, RU> if_p;
     sc_port<axi_read_hdl_if<VL_ADDR_T, VL_DATA_T>> hdl_if_p;
 
     sc_in<bool> clk;
@@ -51,12 +52,12 @@ public:
     }
 
     virtual void end_of_elaboration() {
-        m_chnl = dynamic_cast<axi_read_channel<ADDR_T, DATA_T> *>(if_p.get_interface());
+        m_chnl = dynamic_cast<axi_read_channel<ADDR_T, DATA_T, ARU, RU> *>(if_p.get_interface());
         if_p->setCycleTransaction(PORTTYPE_OUT);
     }
 
     void bfm_driver_ar_thread() {
-        axiReadAddressSt<ADDR_T> ar_data;
+        axiReadAddressSt<ADDR_T, ARU> ar_data;
         wait(SC_ZERO_TIME);
         while (true) {
             hdl_if_p->arready = m_chnl->m_addr_out->get_rdy();
@@ -75,7 +76,7 @@ public:
     }
 
     void bfm_driver_r_thread() {
-        axiReadRespSt<DATA_T> r_data;
+        axiReadRespSt<DATA_T, RU> r_data;
         wait(SC_ZERO_TIME);
         while (true) {
             hdl_if_p->rvalid = 0;
@@ -97,16 +98,17 @@ public:
 
 private:
 
-    axi_read_channel<ADDR_T, DATA_T> * m_chnl;
+    axi_read_channel<ADDR_T, DATA_T, ARU, RU> * m_chnl;
 
 };
 
-template<typename ADDR_T, typename DATA_T, typename VL_ADDR_T, typename VL_DATA_T>
+template<typename ADDR_T, typename DATA_T, typename VL_ADDR_T, typename VL_DATA_T,
+         typename ARU = std::monostate, typename RU = std::monostate>
 class axi_read_dst_bfm: public sc_module {
 
 public:
 
-    axi_read_in<ADDR_T, DATA_T> if_p;
+    axi_read_in<ADDR_T, DATA_T, ARU, RU> if_p;
     sc_port<axi_read_hdl_if<VL_ADDR_T, VL_DATA_T>> hdl_if_p;
 
     sc_in<bool> clk;
@@ -120,12 +122,12 @@ public:
     }
 
     virtual void end_of_elaboration() {
-        m_chnl = dynamic_cast<axi_read_channel<ADDR_T, DATA_T> *>(if_p.get_interface());
+        m_chnl = dynamic_cast<axi_read_channel<ADDR_T, DATA_T, ARU, RU> *>(if_p.get_interface());
         if_p->setCycleTransaction(PORTTYPE_IN);
     }
 
     void bfm_driver_ar_thread() {
-        axiReadAddressSt<ADDR_T> ar_data;
+        axiReadAddressSt<ADDR_T, ARU> ar_data;
         wait(SC_ZERO_TIME);
         while (true) {
             hdl_if_p->arvalid = 0;
@@ -148,7 +150,7 @@ public:
     }
 
     void bfm_driver_r_thread() {
-        axiReadRespSt<DATA_T> r_data;
+        axiReadRespSt<DATA_T, RU> r_data;
         wait(SC_ZERO_TIME);
         while (true) {
             hdl_if_p->rready = m_chnl->m_data_out->get_rdy();
@@ -167,7 +169,7 @@ public:
 
 private:
 
-    axi_read_channel<ADDR_T, DATA_T> * m_chnl;
+    axi_read_channel<ADDR_T, DATA_T, ARU, RU> * m_chnl;
 
 };
 

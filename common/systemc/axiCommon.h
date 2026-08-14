@@ -2,6 +2,8 @@
 #ifndef AXI_COMMON_H
 #define AXI_COMMON_H
 #include <cstdint>
+#include <optional>
+#include <string>
 
 enum _axiResponseT{ AXIRESP_OKAY=0, AXIRESP_EXOKAY=1, AXIRESP_SLVERR=2, AXIRESP_DECERR=3 };
 inline const char* _axiResponseT_prt( _axiResponseT val )

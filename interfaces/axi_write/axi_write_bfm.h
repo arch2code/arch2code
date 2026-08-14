@@ -37,12 +37,13 @@ struct axi_write_hdl_if: public sc_interface {
 
 };
 
-template<typename ADDR_T, typename DATA_T, typename STRB_T, typename VL_ADDR_T, typename VL_DATA_T, typename VL_STRB_T>
+template<typename ADDR_T, typename DATA_T, typename STRB_T, typename VL_ADDR_T, typename VL_DATA_T, typename VL_STRB_T,
+         typename AWU = std::monostate, typename WU = std::monostate, typename BU = std::monostate>
 class axi_write_src_bfm: public sc_module {
 
 public:
 
-    axi_write_out<ADDR_T, DATA_T, STRB_T> if_p;
+    axi_write_out<ADDR_T, DATA_T, STRB_T, AWU, WU, BU> if_p;
     sc_port<axi_write_hdl_if<VL_ADDR_T, VL_DATA_T, VL_STRB_T>> hdl_if_p;
 
     sc_in<bool> clk;
@@ -57,12 +58,12 @@ public:
     }
 
     virtual void end_of_elaboration() {
-        m_chnl = dynamic_cast<axi_write_channel<ADDR_T, DATA_T, STRB_T> *>(if_p.get_interface());
+        m_chnl = dynamic_cast<axi_write_channel<ADDR_T, DATA_T, STRB_T, AWU, WU, BU> *>(if_p.get_interface());
         if_p->setCycleTransaction(PORTTYPE_OUT);
     }
 
     void bfm_driver_aw_thread() {
-        axiWriteAddressSt<ADDR_T> aw_data;
+        axiWriteAddressSt<ADDR_T, AWU> aw_data;
         wait(SC_ZERO_TIME);
         while (true) {
             hdl_if_p->awready = m_chnl->m_addr_out->get_rdy();
@@ -81,7 +82,7 @@ public:
     }
 
     void bfm_driver_w_thread() {
-        axiWriteDataSt<DATA_T, STRB_T> w_data;
+        axiWriteDataSt<DATA_T, STRB_T, WU> w_data;
         wait(SC_ZERO_TIME);
         while (true) {
             hdl_if_p->wready = m_chnl->m_data_out->get_rdy();
@@ -99,7 +100,7 @@ public:
     }
 
     void bfm_driver_b_thread() {
-        axiWriteRespSt b_data;
+        axiWriteRespSt<BU> b_data;
         wait(SC_ZERO_TIME);
         while (true) {
             hdl_if_p->bvalid = 0;
@@ -117,16 +118,17 @@ public:
 
 private:
 
-    axi_write_channel<ADDR_T, DATA_T, STRB_T> * m_chnl;
+    axi_write_channel<ADDR_T, DATA_T, STRB_T, AWU, WU, BU> * m_chnl;
 
 };
 
-template<typename ADDR_T, typename DATA_T, typename STRB_T, typename VL_ADDR_T, typename VL_DATA_T, typename VL_STRB_T>
+template<typename ADDR_T, typename DATA_T, typename STRB_T, typename VL_ADDR_T, typename VL_DATA_T, typename VL_STRB_T,
+         typename AWU = std::monostate, typename WU = std::monostate, typename BU = std::monostate>
 class axi_write_dst_bfm: public sc_module {
 
 public:
 
-    axi_write_in<ADDR_T, DATA_T, STRB_T> if_p;
+    axi_write_in<ADDR_T, DATA_T, STRB_T, AWU, WU, BU> if_p;
     sc_port<axi_write_hdl_if<VL_ADDR_T, VL_DATA_T, VL_STRB_T>> hdl_if_p;
 
     sc_in<bool> clk;
@@ -141,12 +143,12 @@ public:
     }
 
     virtual void end_of_elaboration() {
-        m_chnl = dynamic_cast<axi_write_channel<ADDR_T, DATA_T, STRB_T> *>(if_p.get_interface());
+        m_chnl = dynamic_cast<axi_write_channel<ADDR_T, DATA_T, STRB_T, AWU, WU, BU> *>(if_p.get_interface());
         if_p->setCycleTransaction(PORTTYPE_IN);
     }
 
     void bfm_driver_aw_thread() {
-        axiWriteAddressSt<ADDR_T> aw_data;
+        axiWriteAddressSt<ADDR_T, AWU> aw_data;
         wait(SC_ZERO_TIME);
         while (true) {
             hdl_if_p->awvalid = 0;
@@ -169,7 +171,7 @@ public:
     }
 
     void bfm_driver_w_thread() {
-        axiWriteDataSt<DATA_T, STRB_T> w_data;
+        axiWriteDataSt<DATA_T, STRB_T, WU> w_data;
         wait(SC_ZERO_TIME);
         while (true) {
             hdl_if_p->wvalid = 0;
@@ -190,7 +192,7 @@ public:
     }
 
     void bfm_driver_b_thread() {
-        axiWriteRespSt b_data;
+        axiWriteRespSt<BU> b_data;
         wait(SC_ZERO_TIME);
         while (true) {
             hdl_if_p->bready = m_chnl->m_resp_out->get_rdy();
@@ -207,7 +209,7 @@ public:
 
 private:
 
-    axi_write_channel<ADDR_T, DATA_T, STRB_T> * m_chnl;
+    axi_write_channel<ADDR_T, DATA_T, STRB_T, AWU, WU, BU> * m_chnl;
 
 };
 
