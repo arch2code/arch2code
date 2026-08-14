@@ -4,7 +4,7 @@
 # Remove when refactoring
 LEGACY_COMPAT_MODE = False
 
-from pysrc.arch2codeHelper import printError
+from pysrc.arch2codeHelper import printError, warningAndErrorReport
 import pysrc.processYaml as processYaml
 
 def get_set_intf_types(ifType, block_data):
@@ -146,26 +146,28 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     out['description'] = intf_data['desc']
 
-    # Parameter
-    params = intf_def.get('parameters') or {}
-    for param in filter(lambda item: params[item]['datatype'] == 'struct', params):
-        struct_data = list(filter(lambda item: item['structureType'] == param, intf_data['structures']))
-        assert(len(struct_data) == 1); # expecting one exact match
-        intf_param[param] = struct_data[0]
+    # Parameter. The view resolves every struct parameter of the definition in
+    # declaration order, so each one is present here without this layer
+    # re-deriving the set from the interface's declared structures.
+    param_bindings = prj.getIntfParamBindings(intf_def, intf_data['structures'])
+    for binding in param_bindings:
+        intf_param[binding['structureType']] = binding
 
     hdl_params = intf_def.get('hdlparams', {}) or {}
     for param in hdl_params:
         assert(hdl_params[param]['datatype'] in ['integer'])
         if hdl_params[param]['isEval']:
             key, data = hdl_params[param]['value'].split('.')
-            if key in intf_param:
-                data_obj = intfEvalDSL(prj_data, intf_param[key]['structureKey'])
-                eval_str = 'data_obj{}'.format('.' + data)
-                hdl_param[param] = eval(eval_str)
-                assert(isinstance(hdl_param[param], int))
+            data_obj = intfEvalDSL(prj_data, intf_param[key]['structureKey'])
+            eval_str = 'data_obj{}'.format('.' + data)
+            hdl_param[param] = eval(eval_str)
+            assert(isinstance(hdl_param[param], int))
 
-    # Interface parameters declaration
-    parameters_decl = ', '.join([".{}({})".format(param, intf_param[param]['structure']) for param in params])
+    # Interface parameters declaration. Parameters are associated by name here,
+    # so an unbound optional parameter is omitted: the interface's SystemVerilog
+    # declaration has no parameter to bind it to.
+    parameters_decl = ', '.join(".{}({})".format(binding['structureType'], binding['structure'])
+                                for binding in param_bindings if not binding['isNull'])
 
     # Interface ports declaration
     intf_ports_decl = ''
@@ -187,8 +189,16 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
         port_type = intf_def['signals'][intf_sig]['signalType']
         port_name = f"{intf_name}_{intf_sig}"
         if port_type in intf_param.keys():
-            width_expr = sv_boundary_struct_width_expression(intf_param[port_type]['structureKey'], prj)
-            port_type = sv_packed_bit_type(width_expr)
+            binding = intf_param[port_type]
+            if binding['isNull']:
+                # An unbound optional payload names no structure, so it has no
+                # width to blast. The interface still declares the signal, as
+                # the one-bit placeholder its parameter defaults to, so the
+                # flattened boundary port is that same single bit.
+                port_type = 'bit'
+            else:
+                width_expr = sv_boundary_struct_width_expression(binding['structureKey'], prj)
+                port_type = sv_packed_bit_type(width_expr)
         elif port_type in hdl_param.keys():
             w = hdl_param[port_type]
             port_type = 'bit' if w == 1 else f"bit [{w-1}:0]"
@@ -269,6 +279,33 @@ def sc_instance_includes(data, prj):
         out.append(f'import {cpp_base_module_name(include)};')
     return out
 
+def sc_payload_params(param_bindings):
+    # The positional payload arguments of a channel, port or bridge, in the
+    # interface_defs declaration order the view hands back, trimmed of its
+    # trailing unbound run. A dropped trailing argument takes the sentinel from
+    # the C++ template's own default, so the trailing run is spelled by leaving
+    # it out. An unbound payload that still precedes a bound one is a gap, not a
+    # tail, and is emitted as the absence sentinel so the bound payload keeps
+    # its slot.
+    payloads = list(param_bindings)
+    while payloads and payloads[-1]['isNull']:
+        payloads.pop()
+    return payloads
+
+def sc_split_payload_params(payload_params):
+    # The same payload arguments, split into the required group and the optional
+    # tail, for the hand-written templates that splice another argument group
+    # between the two: a BFM inserts its whole Verilated bridge group.
+    #
+    # interface_defs declares every optional struct-typed parameter after every
+    # required one, so the required payloads are a prefix and the optional ones
+    # are the remaining suffix. This is a split at that boundary, never a
+    # reorder: declared order is preserved within both groups and across a
+    # declaration that splices nothing between them.
+    boundary = next((i for i, b in enumerate(payload_params) if b['isOptional']),
+                    len(payload_params))
+    return payload_params[:boundary], payload_params[boundary:]
+
 def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_override=None):
     # config_override: when supplied (and the structure is parameterizable),
     # the named Config replaces the literal `Config` template parameter in
@@ -282,7 +319,28 @@ def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_ov
 def sc_structure_field_type(row, field_name, key_field_name, prj, use_config=True, config_override=None):
     return sc_struct_type_name(row[field_name], row.get(key_field_name, ''), prj, use_config, config_override)
 
+# C++ spelling of an absent payload. The protocol templates default their
+# optional parameters to this type and test presence against it
+# (hasOptionalPayload in common/systemc/optionalPayload.h), so C++ admits
+# exactly one name for absence and it
+# is spelled here, in the layer that owns C++ spelling.
+SC_NULL_PAYLOAD_TYPE = 'std::monostate'
+
+def sc_payload_type_name(payload, prj, config_override=None):
+    # Positional template argument for one payload binding. An unbound optional
+    # payload names no structure; when it still holds a slot it is spelled as
+    # the absence sentinel. The trailing unbound run is dropped before here.
+    if payload['isNull']:
+        return SC_NULL_PAYLOAD_TYPE
+    return sc_struct_type_name(payload['structure'], payload['structureKey'], prj,
+                               config_override=config_override)
+
 def sc_hdl_bridge_type(struct_param, prj):
+    # An unbound optional payload names no structure, so it has no width to
+    # bridge. The interface still declares the signal it types, as the one-bit
+    # placeholder its parameter defaults to, so the bridge carries that bit.
+    if struct_param['isNull']:
+        return 'bool'
     struct_key = struct_param['structureKey']
     struct_name = sc_struct_type_name(struct_param['structure'], struct_key, prj)
     if prj.data['structures'][struct_key]['isParameterizable']:
@@ -620,15 +678,18 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     out['description'] = intf_data['desc']
     out['intf_name'] = intf_name
 
-    # Parameter
-    params = intf_def.get('parameters') or {}
-    for param in filter(lambda item: params[item]['datatype'] == 'struct', params):
-        struct_data = list(filter(lambda item: item['structureType'] == param, intf_data['structures']))
-        assert(len(struct_data) == 1); # expecting one exact match
-        intf_param[param] = struct_data[0]
+    # Parameter. The view resolves every struct parameter of the definition in
+    # declaration order, so each one is present here without this layer
+    # re-deriving the set from the interface's declared structures.
+    param_bindings = prj.getIntfParamBindings(intf_def, intf_data['structures'])
+    for binding in param_bindings:
+        intf_param[binding['structureType']] = binding
+    payload_params = sc_payload_params(param_bindings)
+    required_params, optional_params = sc_split_payload_params(payload_params)
 
-    # Interface parameters declaration
-    chnl_params = ', '.join([sc_structure_field_type(intf_param[param], 'structure', 'structureKey', prj) for param in params])
+    # Interface parameters declaration, in declaration order.
+    chnl_params = ', '.join(sc_payload_type_name(binding, prj)
+                            for binding in payload_params)
 
     if intf_def['sc_channel']['param_cast']:
         if LEGACY_COMPAT_MODE:
@@ -653,27 +714,46 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     hdl_intf_type = intf_def['sc_channel']['type'] + '_hdl_if'
     hdl_intf_name = intf_name + '_hdl_if'
 
+    # Verilated bridge types, positional: one per required struct parameter,
+    # then one per hdlparam, then the optional tail. A dropped entry here
+    # silently retypes every later argument, so no loop may skip.
+    #
+    # An optional payload contributes a bridge type only when it types an
+    # interface signal, because only then does the HDL boundary have a port for
+    # it. Such a port exists whether or not the payload is bound, so a
+    # gap-filling unbound payload still occupies its slot as the one-bit
+    # placeholder; the trailing unbound run is already trimmed off
+    # optional_params and is covered by the bridge template's defaults.
     hdl_if_bv_types = []
-    for param in filter(lambda item: params[item]['datatype'] == 'struct', params):
-        hdl_if_bv_types.append(sc_hdl_bridge_type(intf_param[param], prj))
+    for binding in required_params:
+        hdl_if_bv_types.append(sc_hdl_bridge_type(binding, prj))
     hdl_params = intf_def.get('hdlparams', {}) or {}
     for param in hdl_params:
         assert(hdl_params[param]['datatype'] in ['integer'])
         if hdl_params[param]['isEval']:
             key, data = hdl_params[param]['value'].split('.')
-            if key in intf_param:
-                data_obj = intfEvalDSL(prj.data, intf_param[key]['structureKey'])
-                eval_str = 'data_obj{}'.format('.' + data)
-                w = eval(eval_str)
-                assert(isinstance(w, int))
-                sc_bv_type = 'bool' if w == 1 else f"sc_bv<{w}>"
-                hdl_if_bv_types.append(sc_bv_type)
+            data_obj = intfEvalDSL(prj.data, intf_param[key]['structureKey'])
+            eval_str = 'data_obj{}'.format('.' + data)
+            w = eval(eval_str)
+            assert(isinstance(w, int))
+            sc_bv_type = 'bool' if w == 1 else f"sc_bv<{w}>"
+            hdl_if_bv_types.append(sc_bv_type)
+    for binding in optional_params:
+        if binding['typesSignal']:
+            hdl_if_bv_types.append(sc_hdl_bridge_type(binding, prj))
 
     hdl_if_params = ', '.join(hdl_if_bv_types)
 
     out['hdl_if_decl'] = f"{hdl_intf_type}<{hdl_if_params}> {hdl_intf_name};"
 
-    chnl_params = ', '.join([sc_structure_field_type(intf_param[param], 'structure', 'structureKey', prj) for param in params] + hdl_if_bv_types)
+    # BFM arguments: the payload list split at its required/optional boundary,
+    # with the whole Verilated bridge group spliced in between, because that is
+    # the order the hand-written BFM template declares.
+    chnl_params = ', '.join([sc_payload_type_name(binding, prj)
+                             for binding in required_params]
+                            + hdl_if_bv_types
+                            + [sc_payload_type_name(binding, prj)
+                               for binding in optional_params])
 
     chnl_dir = intf_modp
     chnl_type = intf_def['sc_channel']['type'] + '_' + chnl_dir + '_bfm'
@@ -712,8 +792,6 @@ def sc_gen_block_channels(conn_data, prj, block_data):
     intf_type = get_intf_type(conn_data['interfaceType'], block_data)
     intf_data = get_intf_data(conn_data, prj)
     chnl_name = get_channel_name(conn_data)
-    intf_structs = intf_data['structures']
-    intf_param = dict()
 
     # Get interface definition from block_data
     interface_defs = block_data.get('interface_defs', {})
@@ -740,17 +818,12 @@ def sc_gen_block_channels(conn_data, prj, block_data):
     config_override = cpp_config_struct_name(config_override_selection) if config_override_selection else None
     out['config_override'] = config_override
 
-    # Parameter
-    parameters = intf_def.get('parameters', {}) or {}
-    for param in filter(lambda item: parameters[item]['datatype'] == 'struct', parameters):
-        struct_data = list(filter(lambda item: item['structureType'] == param, intf_structs))
-        if len(struct_data) == 0:
-            print(f"Interface {chnl_name} is {intf_type} and expected structure types {param} not found")
-        assert(len(struct_data) == 1) # the structure type on your interface is not the expected type
-        intf_param[param] = struct_data[0]
-
-    # Interface parameters declaration
-    chnl_params = ', '.join([sc_structure_field_type(intf_param[param], 'structure', 'structureKey', prj, config_override=config_override) for param in parameters])
+    # Interface parameters declaration, in declaration order. A gap-filling
+    # absence sentinel still occupies its argument slot.
+    param_bindings = prj.getIntfParamBindings(intf_def, intf_data['structures'])
+    chnl_params = ', '.join(sc_payload_type_name(binding, prj,
+                                                 config_override=config_override)
+                            for binding in sc_payload_params(param_bindings))
 
     if intf_def['sc_channel']['param_cast']:
         if LEGACY_COMPAT_MODE:
@@ -792,16 +865,29 @@ def _payload_config_name(payload):
 
 
 def _thunker_member_type(flagged, prj):
-    # View creation resolves protocol payload ordering and Config ownership.
+    # View creation resolves each side's payload bindings and Config ownership.
     # Keep this helper limited to SystemC spelling of that already-valid view.
+    #
+    # The hand-written thunker template fixes its argument order as up-required,
+    # down-required, up-optional, down-optional, so each side is split at its own
+    # required/optional boundary and the other side is spliced in between, the
+    # same prefix/suffix cut a BFM declaration uses for its Verilated bridge
+    # group. Declared order is preserved within every group and no payload is
+    # reordered.
     thunker = flagged['thunker']
     channel_type = thunker['channelType']
-    payloads = thunker['payloads']
+    up_required, up_optional = sc_split_payload_params(
+        [payload for payload in thunker['payloads'] if payload['side'] == 'parent'])
+    down_required, down_optional = sc_split_payload_params(
+        [payload for payload in thunker['payloads'] if payload['side'] == 'child'])
+    # Every group is full length, so a payload one side leaves unbound still
+    # holds its slot and no payload shifts into another's; drop the trailing
+    # unbound run and let the template's defaults supply the sentinel, exactly as
+    # the channel and BFM declarations do.
+    payloads = sc_payload_params(up_required + down_required + up_optional + down_optional)
     args = [
-        sc_struct_type_name(payload.get('structure', ''),
-                            payload.get('structureKey', ''),
-                            prj,
-                            config_override=(_payload_config_name(payload) or None))
+        sc_payload_type_name(payload, prj,
+                             config_override=(_payload_config_name(payload) or None))
         for payload in payloads
     ]
     return f"{channel_type}_port_thunker<{', '.join(args)}>"
@@ -893,15 +979,17 @@ def lookup_struct(struct_key, struct_dict):
     return struct_dict.get(struct_key, None)
 
 def get_struct_width(struct_key, struct_dict):
+    # Every caller passes a structureKey the project database resolves. A key
+    # that does not resolve is a broken invariant, not a width of zero: zero is
+    # a width projectCreate rejects for a type, and returning it here would
+    # spell an illegal `sc_bv<0>` or `bit [-1:0]` into the generated file.
+    # Stop instead, so the malformed file is never written.
     struct = lookup_struct(struct_key, struct_dict)
-    return struct['width'] if struct else 0
-
-def lookup_const(const_key, const_dict):
-    return const_dict.get(const_key, None)
-
-def get_const(const_key, const_dict):
-    const = lookup_const(const_key, const_dict)
-    return const['value'] if const else 0
+    if struct is None:
+        printError(f"structureKey '{struct_key}' does not name a structure in the "
+                   f"project database, so it supplies no width.")
+        exit(warningAndErrorReport())
+    return struct['width']
 
 def get_sorted_memories(data):
     if 'memoriesParent' in data:

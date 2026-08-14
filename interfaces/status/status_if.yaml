@@ -2,7 +2,7 @@
 interface_defs:
   status : 
     parameters : 
-      data_t : { datatype : struct, default : 'bit' }
+      data_t : { datatype : struct }
     signals: 
       data : data_t
     modports :

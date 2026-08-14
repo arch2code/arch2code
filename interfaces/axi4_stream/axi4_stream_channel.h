@@ -20,6 +20,7 @@
 #include <format>
 #include "simpleQueue.h"
 #include "axiCommon.h"
+#include "optionalPayload.h"
 
 typedef enum { Q_FALSE = 0x00, Q_TRUE = 0xff } axi4StreamByteQual_e;
 
@@ -58,7 +59,7 @@ struct axi4StreamByteQualT
 
 };
 
-template <typename TDATA, typename TID, typename TDEST, typename TUSER>
+template <typename TDATA, typename TID, typename TDEST, typename TUSER = std::monostate>
 struct axi4StreamInfoSt
 {
 
@@ -68,7 +69,7 @@ struct axi4StreamInfoSt
     static constexpr unsigned int tidWidth = TID::_bitWidth;
     static constexpr unsigned int tlastWidth = 1;
     static constexpr unsigned int tdestWidth = TDEST::_bitWidth;
-    static constexpr unsigned int tuserWidth = TUSER::_bitWidth;
+    static constexpr unsigned int tuserWidth = optionalPayloadBitWidth<TUSER>();
 
     static constexpr unsigned int _bitWidth = tdataWidth + tstrbWidth + tkeepWidth + tidWidth + tlastWidth + tdestWidth + tuserWidth;
     static constexpr unsigned int _byteWidth = (_bitWidth + 7)>>3;
@@ -82,14 +83,18 @@ struct axi4StreamInfoSt
     TID   tid;
     bool  tlast;
     TDEST tdest;
-    TUSER tuser;
+    // TUSER sideband, qualified by the stream handshake. Declared last so that
+    // an empty TUSER occupies tail padding and leaves the offsets of every
+    // other member untouched.
+    [[no_unique_address]] TUSER tuser;
 
     axi4StreamInfoSt() {};
 
     std::string prt(bool all=false) const
     {
         std::stringstream ss;
-        ss << std::format("tdata:{} tstrb:{} tkeep:{} tid:{} tlast:{} tdest:{} tuser:{}", tdata.prt(all), tstrb.sc_pack().to_string(), tkeep.sc_pack().to_string(), tid.prt(all), tlast, tdest.prt(all), tuser.prt(all));
+        ss << std::format("tdata:{} tstrb:{} tkeep:{} tid:{} tlast:{} tdest:{}", tdata.prt(all), tstrb.sc_pack().to_string(), tkeep.sc_pack().to_string(), tid.prt(all), tlast, tdest.prt(all));
+        if constexpr (hasOptionalPayload<TUSER>) { ss << std::format(" tuser:{}", tuser.prt(all)); }
         return(ss.str());
     }
 
@@ -104,18 +109,21 @@ struct axi4StreamInfoSt
     }
 
     inline friend ostream& operator << ( ostream& os,  axi4StreamInfoSt<TDATA, TID, TDEST, TUSER> const & v ) {
-        os << v.tdata << " " << v.tid << " " << v.tlast << " " << v.tdest << " " << v.tuser;
+        os << v.tdata << " " << v.tid << " " << v.tlast << " " << v.tdest;
+        if constexpr (hasOptionalPayload<TUSER>) { os << " " << v.tuser; }
         return os;
     }
 
     inline friend bool operator == ( axi4StreamInfoSt<TDATA, TID, TDEST, TUSER> const & a, axi4StreamInfoSt<TDATA, TID, TDEST, TUSER> const & b ) {
+        if constexpr (hasOptionalPayload<TUSER>) {
+            if (!(a.tuser.getStructValue() == b.tuser.getStructValue())) { return false; }
+        }
         return (a.tdata.getStructValue() == b.tdata.getStructValue() &&
                 a.tstrb.sc_pack() == b.tstrb.sc_pack() &&
                 a.tkeep.sc_pack() == b.tkeep.sc_pack() &&
                 a.tid.getStructValue() == b.tid.getStructValue() &&
                 a.tlast == b.tlast &&
-                a.tdest.getStructValue() == b.tdest.getStructValue() &&
-                a.tuser.getStructValue() == b.tuser.getStructValue());
+                a.tdest.getStructValue() == b.tdest.getStructValue());
     }
 
 };
@@ -124,7 +132,7 @@ struct axi4StreamInfoSt
 //          -------> receiveInfo( &T )
 
 
-template <class TDATA, class TID, class TDEST, class TUSER>
+template <class TDATA, class TID, class TDEST, class TUSER = std::monostate>
 class axi4_stream_in_if
 : virtual public sc_interface, virtual public portBase
 {
@@ -145,7 +153,7 @@ private:
 };
 
 
-template <class TDATA, class TID, class TDEST, class TUSER>
+template <class TDATA, class TID, class TDEST, class TUSER = std::monostate>
 class axi4_stream_out_if
 : virtual public sc_interface, virtual public portBase
 {
@@ -169,7 +177,7 @@ public:
     inline static uint64_t transactionNo{0};
 };
 
-template <class TDATA, class TID, class TDEST, class TUSER>
+template <class TDATA, class TID, class TDEST, class TUSER = std::monostate>
 class axi4_stream_channel
 : public axi4_stream_in_if<TDATA, TID, TDEST, TUSER>,
   public axi4_stream_out_if<TDATA, TID, TDEST, TUSER>,
@@ -257,9 +265,9 @@ inline void axi4_stream_channel<TDATA, TID, TDEST, TUSER>::sendInfo(const axi4St
     m_tx_out->write(info_);
 }
 
-template <class TDATA, class TID, class TDEST, class TUSER>
+template <class TDATA, class TID, class TDEST, class TUSER = std::monostate>
 using axi4_stream_out = sc_port<axi4_stream_out_if<TDATA, TID, TDEST, TUSER> >;
-template <class TDATA, class TID, class TDEST, class TUSER>
+template <class TDATA, class TID, class TDEST, class TUSER = std::monostate>
 using axi4_stream_in = sc_port<axi4_stream_in_if<TDATA, TID, TDEST, TUSER> >;
 
 #endif // AXI4_STREAM_CHANNEL_H

@@ -16,8 +16,8 @@ ALT_APB_DEF = """interface_defs:
     alt_apb:
         addressBus: true
         parameters:
-            addr_t: { datatype: struct, default: 'bit' }
-            data_t: { datatype: struct, default: 'bit' }
+            addr_t: { datatype: struct }
+            data_t: { datatype: struct }
         signals:
             paddr: addr_t
             pwdata: data_t

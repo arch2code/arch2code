@@ -5,8 +5,16 @@
 
 #include "systemc.h"
 #include "axi4_stream_channel.h"
+#include "optionalPayload.h"
 
-template<typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TUSER_T, typename VL_TSTRB_T, typename VL_TKEEP_T>
+// The TUSER sideband is optional, so both of its template arguments sit in the
+// argument tail: the payload type TUSER_T and the Verilated bridge type
+// VL_TUSER_T. TUSER is a real interface signal, so the HDL boundary keeps a
+// tuser port whether or not a payload is bound. When none is, VL_TUSER_T
+// defaults to the one-bit placeholder the SystemVerilog interface declares and
+// nothing ever drives or samples it.
+template<typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TSTRB_T, typename VL_TKEEP_T,
+typename VL_TUSER_T = bool>
 struct axi4_stream_hdl_if: public sc_interface {
     sc_signal<bool> tvalid;
     sc_signal<bool> tready;
@@ -19,14 +27,15 @@ struct axi4_stream_hdl_if: public sc_interface {
     sc_signal<VL_TUSER_T> tuser;
 };
 
-template<typename TDATA_T, typename TID_T, typename TDEST_T, typename TUSER_T,
-typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TUSER_T, typename VL_TSTRB_T, typename VL_TKEEP_T>
+template<typename TDATA_T, typename TID_T, typename TDEST_T,
+typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TSTRB_T, typename VL_TKEEP_T,
+typename VL_TUSER_T = bool, typename TUSER_T = std::monostate>
 class axi4_stream_src_bfm: public sc_module {
 
 public:
 
     axi4_stream_out<TDATA_T, TID_T, TDEST_T, TUSER_T> if_p;
-    sc_port<axi4_stream_hdl_if<VL_TDATA_T, VL_TID_T, VL_TDEST_T, VL_TUSER_T, VL_TSTRB_T, VL_TKEEP_T>> hdl_if_p;
+    sc_port<axi4_stream_hdl_if<VL_TDATA_T, VL_TID_T, VL_TDEST_T, VL_TSTRB_T, VL_TKEEP_T, VL_TUSER_T>> hdl_if_p;
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
@@ -57,7 +66,7 @@ public:
             tinfo.tlast = (bool) hdl_if_p->tlast.read();;
             tinfo.tid.sc_unpack(hdl_if_p->tid);
             tinfo.tdest.sc_unpack(hdl_if_p->tdest);
-            tinfo.tuser.sc_unpack(hdl_if_p->tuser);
+            if constexpr (hasOptionalPayload<TUSER_T>) { tinfo.tuser.sc_unpack(hdl_if_p->tuser); }
             if_p->sendInfo(tinfo);
             wait(clk.posedge_event());
         }
@@ -69,14 +78,15 @@ private:
 
 };
 
-template<typename TDATA_T, typename TID_T, typename TDEST_T, typename TUSER_T,
-typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TUSER_T, typename VL_TSTRB_T, typename VL_TKEEP_T>
+template<typename TDATA_T, typename TID_T, typename TDEST_T,
+typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TSTRB_T, typename VL_TKEEP_T,
+typename VL_TUSER_T = bool, typename TUSER_T = std::monostate>
 class axi4_stream_dst_bfm: public sc_module {
 
 public:
 
     axi4_stream_in<TDATA_T, TID_T, TDEST_T, TUSER_T> if_p;
-    sc_port<axi4_stream_hdl_if<VL_TDATA_T, VL_TID_T, VL_TDEST_T, VL_TUSER_T, VL_TSTRB_T, VL_TKEEP_T>> hdl_if_p;
+    sc_port<axi4_stream_hdl_if<VL_TDATA_T, VL_TID_T, VL_TDEST_T, VL_TSTRB_T, VL_TKEEP_T, VL_TUSER_T>> hdl_if_p;
 
     sc_in<bool> clk;
     sc_in<bool> rst_n;
@@ -103,7 +113,7 @@ public:
             hdl_if_p->tlast = 0;
             hdl_if_p->tid = VL_TID_T(0);
             hdl_if_p->tdest = VL_TDEST_T(0);
-            hdl_if_p->tuser = VL_TUSER_T(0);
+            if constexpr (hasOptionalPayload<TUSER_T>) { hdl_if_p->tuser = VL_TUSER_T(0); }
             if_p->receiveInfo(tinfo);
             hdl_if_p->tvalid = 1;
             hdl_if_p->tdata = tinfo.tdata.sc_pack();
@@ -112,7 +122,7 @@ public:
             hdl_if_p->tlast = tinfo.tlast;
             hdl_if_p->tid = tinfo.tid.sc_pack();
             hdl_if_p->tdest = tinfo.tdest.sc_pack();
-            hdl_if_p->tuser = tinfo.tuser.sc_pack();
+            if constexpr (hasOptionalPayload<TUSER_T>) { hdl_if_p->tuser = tinfo.tuser.sc_pack(); }
             do {
                 wait(clk.posedge_event());
             } while (!hdl_if_p->tready);

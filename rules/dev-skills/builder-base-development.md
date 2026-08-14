@@ -44,7 +44,11 @@ If code needs to walk `prj.data` across blocks, instances, ports, connections, v
 ## Where Changes Belong
 
 - Put project-wide truth derived from YAML, schema, address calculation, or post-processing in `projectCreate`.
+- Validate user-authored YAML in `projectCreate`. Validate developer-authored library content - interface definitions, schema, shipped templates - in `unittest/`, not on every generator run.
+- Such tests should discover the library rather than list it, and put the explanation in the failure message.
 - Put language-neutral reshaping for one rendering context in a `projectOpen` view helper.
+- Preserve the declaration order of user-authored objects. Declaration order is a churn-avoidance contract: regenerating after an unrelated edit must not reshuffle unrelated output. A view may classify, annotate, or filter, but it should not reorder to suit a consumer.
+- Reordering to satisfy a particular signature is spelling, not truth, so it belongs in the template or template utility for that language. The same declared parameters are legitimately spelled in different orders by different APIs; `axi_read_channel`, `axi_read_src_bfm`, and `axi_read_port_thunker` each require a different one.
 - If view creation needs interface-specific facts, prefer `interface_defs` and the corresponding interface YAML over hard-coded special cases.
 - If a task appears to require schema changes, pause for any needed user input about the data contract and follow `config/SCHEMA_SPECIFICATION.md`.
 - Keep language-specific syntax, emitted code structure, and output formatting in templates or template utilities.

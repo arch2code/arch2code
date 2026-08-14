@@ -23,6 +23,7 @@ Flag these patterns when they appear in internal Python paths:
 - Silent defaults for missing project data, template mappings, schema fields, register fields, interface definitions, or config keys that should have been created earlier.
 - Type checks that route around known internal shapes instead of fixing the producer.
 - Empty-list, empty-dict, or empty-string substitutes that let generation continue with incomplete required state.
+- A failed lookup returned as a plausible value, such as `return x['width'] if x else 0`. Zero is a valid width, count, or address, so the failure is consumed as data rather than reported. Return the failure.
 
 ## Contract-Driven Review
 
