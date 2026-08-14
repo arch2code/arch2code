@@ -437,7 +437,13 @@ def test_optional_tail_split_by_consumers(proj, consumer):
 
 
 def test_gap_filled_with_sentinel(proj, consumer):
-    """An unbound optional before a bound one is spelled std::monostate."""
+    """An unbound optional before a bound one is spelled std::monostate.
+
+    Each of axi_write's three optional payloads types an interface signal, so
+    each also contributes a Verilated bridge type to the spliced group. A gap
+    holds its slot in both groups: as the absence sentinel among the payloads,
+    and as the one-bit placeholder among the bridge types.
+    """
     print("\n[gap] unbound optional preceding a bound one fills its slot")
     sc = sc_mp(proj, consumer, 'inAwGap')
 
@@ -452,10 +458,28 @@ def test_gap_filled_with_sentinel(proj, consumer):
         'std::monostate, userSt> inAwGap;',
         "awGap SystemC channel fills the same two slots")
     check_equal(
+        sc['hdl_if_decl'],
+        'axi_write_hdl_if<sc_bv<32>, sc_bv<32>, sc_bv<4>, bool, bool, '
+        'sc_bv<8>> inAwGap_hdl_if;',
+        "awGap bridge carries a placeholder bit per gap and buser_t's width")
+    check_equal(
         sc['bfm_decl'],
         'axi_write_dst_bfm<awAddrSt, awDataSt, awStrbSt, sc_bv<32>, sc_bv<32>, '
-        'sc_bv<4>, std::monostate, std::monostate, userSt> inAwGap_bfm;',
+        'sc_bv<4>, bool, bool, sc_bv<8>, std::monostate, std::monostate, '
+        'userSt> inAwGap_bfm;',
         "awGap BFM fills the gaps after the Verilated bridge group")
+
+    # Both AXI4 USER sidebands of a read interface reach the HDL boundary the
+    # same way the stream's TUSER does.
+    plain = sv_mp(proj, consumer, 'inAwNone')
+    check('input bit inAwNone_awuser' in plain['ports'],
+          "an unbound awuser_t blasts to a single-bit placeholder port")
+    check('output bit inAwNone_buser' in plain['ports'],
+          "an unbound buser_t blasts to a single-bit placeholder port on the "
+          "response channel, which travels the other way")
+    user = sv_mp(proj, consumer, 'inAwGap')
+    check('output bit [7:0] inAwGap_buser' in user['ports'],
+          "a bound buser_t blasts to its structure width")
 
 
 def test_trailing_optional_omitted(proj, consumer):
