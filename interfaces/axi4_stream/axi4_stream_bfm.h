@@ -9,10 +9,10 @@
 
 // The TUSER sideband is optional, so both of its template arguments sit in the
 // argument tail: the payload type TUSER_T and the Verilated bridge type
-// VL_TUSER_T. Unlike the AXI4 USER sidebands, TUSER is a real interface signal,
-// so the HDL boundary keeps a tuser port whether or not a payload is bound.
-// When none is, VL_TUSER_T defaults to the one-bit placeholder the
-// SystemVerilog interface declares and nothing ever drives or samples it.
+// VL_TUSER_T. TUSER is a real interface signal, so the HDL boundary keeps a
+// tuser port whether or not a payload is bound. When none is, VL_TUSER_T
+// defaults to the one-bit placeholder the SystemVerilog interface declares and
+// nothing ever drives or samples it.
 template<typename VL_TDATA_T, typename VL_TID_T, typename VL_TDEST_T, typename VL_TSTRB_T, typename VL_TKEEP_T,
 typename VL_TUSER_T = bool>
 struct axi4_stream_hdl_if: public sc_interface {

@@ -5,7 +5,8 @@ interface_defs:
       addr_t : { datatype : struct }
       data_t : { datatype : struct }
       # AXI4 USER sidebands, one per payload channel. Optional: an interface that
-      # binds none is spelled exactly as it was before these existed.
+      # binds none is spelled exactly as it was before these existed, and each
+      # user signal degrades to the one-bit placeholder the interface declares.
       aruser_t : { datatype : struct, optional : true }
       ruser_t : { datatype : struct, optional : true }
     signals: 
@@ -14,21 +15,23 @@ interface_defs:
       arlen : 'bit [7:0]'
       arsize : 'bit [2:0]'
       arburst : 'bit [1:0]'
+      aruser : aruser_t
       arvalid : bool
       arready : bool
       rdata : data_t
       rid : 'bit [3:0]'
       rresp : 'bit [1:0]'
       rlast : bool
+      ruser : ruser_t
       rvalid : bool
       rready : bool
     modports :
       src : 
-        inputs : ['arready', 'rid', 'rdata', 'rresp', 'rlast', 'rvalid']
-        outputs: ['arid', 'araddr', 'arlen', 'arsize', 'arburst', 'arvalid', 'rready']
+        inputs : ['arready', 'rid', 'rdata', 'rresp', 'rlast', 'ruser', 'rvalid']
+        outputs: ['arid', 'araddr', 'arlen', 'arsize', 'arburst', 'aruser', 'arvalid', 'rready']
       dst : 
-        inputs : ['arid', 'araddr', 'arlen', 'arsize', 'arburst', 'arvalid', 'rready']
-        outputs: ['arready', 'rid', 'rdata', 'rresp', 'rlast', 'rvalid']
+        inputs : ['arid', 'araddr', 'arlen', 'arsize', 'arburst', 'aruser', 'arvalid', 'rready']
+        outputs: ['arready', 'rid', 'rdata', 'rresp', 'rlast', 'ruser', 'rvalid']
     sc_channel :
       type : 'axi_read'
       multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']

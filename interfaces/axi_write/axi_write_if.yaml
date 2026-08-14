@@ -6,7 +6,8 @@ interface_defs:
       data_t : { datatype : struct }
       strb_t : { datatype : struct }
       # AXI4 USER sidebands, one per payload channel. Optional: an interface that
-      # binds none is spelled exactly as it was before these existed.
+      # binds none is spelled exactly as it was before these existed, and each
+      # user signal degrades to the one-bit placeholder the interface declares.
       awuser_t : { datatype : struct, optional : true }
       wuser_t : { datatype : struct, optional : true }
       buser_t : { datatype : struct, optional : true }
@@ -16,25 +17,28 @@ interface_defs:
       awlen : 'bit [7:0]'
       awsize : 'bit [2:0]'
       awburst : 'bit [1:0]'
+      awuser : awuser_t
       awvalid : bool
       awready : bool
       wdata : data_t
       wid : 'bit [3:0]'
       wstrb : strb_t
       wlast : bool
+      wuser : wuser_t
       wvalid : bool
       wready : bool
       bresp : 'bit [1:0]'
       bid : 'bit [3:0]'
+      buser : buser_t
       bvalid : bool
       bready : bool
     modports :
       src : 
-        inputs : ['awready', 'wready', 'bresp', 'bid', 'bvalid']
-        outputs: ['awid', 'awaddr', 'awlen', 'awsize', 'awburst', 'awvalid', 'wid', 'wdata', 'wstrb', 'wlast', 'wvalid', 'bready']
+        inputs : ['awready', 'wready', 'bresp', 'bid', 'buser', 'bvalid']
+        outputs: ['awid', 'awaddr', 'awlen', 'awsize', 'awburst', 'awuser', 'awvalid', 'wid', 'wdata', 'wstrb', 'wlast', 'wuser', 'wvalid', 'bready']
       dst : 
-        inputs : ['awid', 'awaddr', 'awlen', 'awsize', 'awburst', 'awvalid', 'wid', 'wdata', 'wstrb', 'wlast', 'wvalid', 'bready']
-        outputs: ['awready', 'wready', 'bresp', 'bid', 'bvalid']
+        inputs : ['awid', 'awaddr', 'awlen', 'awsize', 'awburst', 'awuser', 'awvalid', 'wid', 'wdata', 'wstrb', 'wlast', 'wuser', 'wvalid', 'bready']
+        outputs: ['awready', 'wready', 'bresp', 'bid', 'buser', 'bvalid']
     sc_channel :
       type : 'axi_write'
       multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
