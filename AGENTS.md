@@ -1,5 +1,7 @@
 # Builder Base Generator Rules
 
+
+
 These rules apply when working under `builder/base`, especially generator,
 template, and project database code.
 
