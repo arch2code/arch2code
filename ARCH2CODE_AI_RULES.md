@@ -11,6 +11,7 @@
 
 ## Table of Contents
 
+
 1. [Quick Reference](#quick-reference)
 2. [Core Concepts](#core-concepts)
 3. [YAML File Structure](#yaml-file-structure)
