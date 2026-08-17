@@ -59,6 +59,9 @@ templates:
   blockSpecification: $a2c/templates/doc/blockSpecification.py
   structDiagram: $a2c/templates/doc/structDiagram.py
   doctext: $a2c/templates/doc/doctext.py
+  socket: $a2c/templates/systemc/classDeclSocket.py
+  socketConstructor: $a2c/templates/systemc/constructorSocket.py
+  socketCatalog: $a2c/templates/systemc/socketCatalog.py
 
 dirs: # this is list of locations that can be referenced as base path in fileMap section
   #root: ../..                  # project root directory relative to project file - required to be supplied by
@@ -199,6 +202,8 @@ fileGeneration:
     # rtlDotF-template region lists every package on the top context's include
     # chain. name+ext compose the fixed filename rtl.f at the rtl segment root.
     rtlDotF     : { name : "rtl",              ext: {f: "f"},                                                    mode: project, basePath: rtl,     desc: "Per-project verilator file list (rtl.f)"}
+    socket      : { name : "Socket",          ext: {hdr: "h", src: "cpp"}, cond: {hasMdl: true},                 mode: block,   basePath: base,    desc: "Python-socket shell block (drive/observe threads)"}
+    socketCatalog : { name : "SocketCatalog", ext: {hdr: "h", py: "py"},   cond: {hasMdl: true},                 mode: block,   basePath: base,    desc: "Shared C++/Python socket name catalog"}
   # Create-once user-owned build makefiles (top Makefile, include/make/shared.mk,
   # rundir/Makefile, rtl/Makefile). This is NOT a fileMap section: the files carry
   # no GENERATED_CODE regions, so make gen never touches them and the build

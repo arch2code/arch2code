@@ -1,39 +1,35 @@
 #ifndef PYSOCKET_SOCKET_H
 #define PYSOCKET_SOCKET_H
 
-#include "instanceFactory.h"
+// GENERATED_CODE_PARAM --block=pySocket
+#include "asyncEvent.h"
+#include "socketFactory.h"
+#include "testController.h"
+// GENERATED_CODE_BEGIN --template=socket --section=socket
+#include "logging.h"
 #include "notify_ack_port_socket.h"
 #include "pop_ack_port_socket.h"
 #include "push_ack_port_socket.h"
 #include "rdy_vld_port_socket.h"
 #include "req_ack_port_socket.h"
-#include "socketFactory.h"
-#include "systemc.h"
-#include "testController.h"
-
-// pySocketBase moved to a C++20 module by the base->cppm migration; import it
-// after the textual includes so the module's global-module-fragment STL decls
-// do not collide with these textual STL/systemc includes.
+#include "instanceFactory.h"
 import pySocket.base;
 
 SC_MODULE(pySocketSocket), public blockBase, public pySocketBase
 {
 private:
-    struct registerBlock {
+    struct registerBlock
+    {
         registerBlock()
         {
-            instanceFactory::registerBlock(
-                "pySocket_socket",
-                [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared<pySocketSocket>(blockName, variant, bbMode));
-                },
-                "", "pySocket");
+            // lamda function to construct the block
+            instanceFactory::registerBlock("pySocket_socket", [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> { return static_cast<std::shared_ptr<blockBase>> (std::make_shared<pySocketSocket>(blockName, variant, bbMode));}, "", "pySocket");
         }
     };
     static registerBlock registerBlock_;
-
 public:
-    pySocketSocket(sc_module_name blockName, const char *variant, blockBaseMode bbMode);
+
+    pySocketSocket(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~pySocketSocket() override = default;
 
 private:
@@ -48,6 +44,8 @@ private:
     void dut2Python_notify_ackSocket(void);
     void test_rdy_vldSocket(void);
     void dut2Python_rdy_vldSocket(void);
+
+// GENERATED_CODE_END
     void python2SystemCTestComplete(void);
     void systemC2PythonTestComplete(void);
     void pythonPushPopTestComplete(void);

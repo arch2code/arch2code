@@ -5,8 +5,9 @@ import pysrc.processYaml as processYaml
 
 # Generated-source toolchain split, mirroring the make find globs: the C++ build
 # consumes .cpp/.h/.cppm, the SystemVerilog/verilator build consumes .sv/.svh.
+# .py catalogs are generated through the SystemC gen path but are not compiled.
 # rtl.f (ext 'f') is a file list, not a compiled source, so it is in neither set.
-_CPP_GEN_EXTS = {'cpp', 'h', 'cppm'}
+_CPP_GEN_EXTS = {'cpp', 'h', 'cppm', 'py'}
 _SV_GEN_EXTS = {'sv', 'svh'}
 
 

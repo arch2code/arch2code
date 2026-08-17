@@ -70,6 +70,14 @@ def render(args, prj, data):
             return(tandem_hdr(args, prj, data))
         case 'tandem_src':
             return(tandem_src(args, prj, data))
+        case 'socket_hdr':
+            return(socket_hdr(args, prj, data))
+        case 'socket_src':
+            return(socket_src(args, prj, data))
+        case 'socketCatalog_hdr':
+            return(socketCatalog_hdr(args, prj, data))
+        case 'socketCatalog_py':
+            return(socketCatalog_py(args, prj, data))
         case 'tbConfig_src':
             return(tbConfig(args, prj, data))
         case 'testBench_hdr':
@@ -455,6 +463,67 @@ tandem_srcTemplate = \
 
 def tandem_src(args, prj, data):
     t = TemplateCustom(tandem_srcTemplate)
+    return(t.substitute({'modulename':data["block"]}))
+
+socket_hdrTemplate = \
+"""#ifndef __MODULENAME___SOCKET_H
+#define __MODULENAME___SOCKET_H
+// __copyright__
+
+// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_BEGIN --template=socket --section=socket
+// GENERATED_CODE_END
+};
+
+#endif //__MODULENAME___SOCKET_H
+"""
+
+def socket_hdr(args, prj, data):
+    t = TemplateCustom(socket_hdrTemplate)
+    return(t.substitute({'MODULENAME':data["block"].upper(),
+                         'modulename':data["block"],
+                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+
+socket_srcTemplate = \
+"""// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_BEGIN --template=socketConstructor --section=initSocket
+
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=socketConstructor --section=bodySocket
+// GENERATED_CODE_END
+}
+"""
+
+def socket_src(args, prj, data):
+    t = TemplateCustom(socket_srcTemplate)
+    return(t.substitute({'modulename':data["block"]}))
+
+socketCatalog_hdrTemplate = \
+"""#ifndef __MODULENAME___SOCKETCATALOG_H
+#define __MODULENAME___SOCKETCATALOG_H
+// __copyright__
+
+// GENERATED_CODE_PARAM --block=__modulename__
+// GENERATED_CODE_BEGIN --template=socketCatalog --section=header
+// GENERATED_CODE_END
+
+#endif //__MODULENAME___SOCKETCATALOG_H
+"""
+
+def socketCatalog_hdr(args, prj, data):
+    t = TemplateCustom(socketCatalog_hdrTemplate)
+    return(t.substitute({'MODULENAME':data["block"].upper(),
+                         'modulename':data["block"],
+                         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
+
+socketCatalog_pyTemplate = \
+"""# GENERATED_CODE_PARAM --block=__modulename__
+# GENERATED_CODE_BEGIN --template=socketCatalog --section=python
+# GENERATED_CODE_END
+"""
+
+def socketCatalog_py(args, prj, data):
+    t = TemplateCustom(socketCatalog_pyTemplate)
     return(t.substitute({'modulename':data["block"]}))
 
 tbConfigTemplate = \

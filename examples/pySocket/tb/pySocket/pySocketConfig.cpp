@@ -13,6 +13,7 @@
 #include "socketFactory.h"
 #include "socketTransport.h"
 #include "testBenchConfigFactory.h"
+#include "pySocketSocketCatalog.h"
 import a2c.endOfTest;
 #include "testController.h"
 
@@ -85,19 +86,6 @@ private:
     std::string ports_file_ = "";
     std::string ports_env_file_ = "";
     bool skip_sidecar_ = false;
-    static constexpr const char *k_socket_ifcs[] = {
-        "test_req_ack",
-        "test2Python_req_ack",
-        "dut2Python_req_ack",
-        "test_push_ack",
-        "test_pop_ack",
-        "dut2Python_push_ack",
-        "dut2Python_pop_ack",
-        "test_notify_ack",
-        "dut2Python_notify_ack",
-        "test_rdy_vld",
-        "dut2Python_rdy_vld",
-    };
 
 public:
     bool createTestBench(void) override
@@ -106,11 +94,8 @@ public:
 
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "", "pySocket");
 
-        for (const char *ifc : k_socket_ifcs) {
-            if (socketFactory::registerInterface(ifc) == 0) {
-                socketFactory::shutdownAll();
-                return false;
-            }
+        if (!pySocketSocketCatalog::registerAll()) {
+            return false;
         }
 
         if (setenv("PYSOCKET_PORTS", socketFactory::getPortString().c_str(), 1) != 0) {
@@ -177,7 +162,7 @@ public:
 
         socketFactory::acceptAll();
 
-        for (const char *ifc : k_socket_ifcs) {
+        for (const char *ifc : pySocketSocketCatalog::listen_names) {
             if (socketFactory::getFd(ifc) < 0) {
                 socketFactory::shutdownAll();
                 return false;
@@ -216,12 +201,7 @@ public:
         // m_outstanding_completions inconsistent with threads that already registered.
 
         // Release Python sidecar to send transactions only after enumeration and startup barrier.
-        for (const char *ifc : k_socket_ifcs) {
-            const int fd = socketFactory::getFd(ifc);
-            if (fd < 0 || !socket_send_msg(fd, MSG_SYNC, nullptr, 0)) {
-                return;
-            }
-        }
+        (void)pySocketSocketCatalog::handshakeAll();
     }
 
     void final(void) override

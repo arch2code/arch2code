@@ -1360,6 +1360,89 @@ class projectOpen:
 
         return ret
 
+    # Hand-written `*_port_socket.h` helpers. Catalog rows still list every YAML
+    # port; socket-shell methods/threads are emitted only for pairs that have an
+    # overload so unused hasMdl shells still compile. `observe` is True when the
+    # helper calls socket_observe_push (which appends `_obs` to the factory key).
+    _SOCKET_HELPERS = {
+        ('req_ack', 'src'):    {'kind': 'drive',   'observe': False},
+        ('req_ack', 'dst'):    {'kind': 'drive',   'observe': False},
+        ('push_ack', 'src'):   {'kind': 'drive',   'observe': False},
+        ('push_ack', 'dst'):   {'kind': 'drive',   'observe': False},
+        ('pop_ack', 'src'):    {'kind': 'drive',   'observe': False},
+        ('pop_ack', 'dst'):    {'kind': 'drive',   'observe': False},
+        ('notify_ack', 'src'): {'kind': 'drive',   'observe': False},
+        ('notify_ack', 'dst'): {'kind': 'drive',   'observe': False},
+        ('rdy_vld', 'src'):    {'kind': 'drive',   'observe': False},
+        ('rdy_vld', 'dst'):    {'kind': 'drive',   'observe': False},
+        ('apb', 'src'):        {'kind': 'drive',   'observe': True},
+        ('axi_read', 'dst'):   {'kind': 'drive',   'observe': True},
+        ('axi_write', 'dst'):  {'kind': 'drive',   'observe': True},
+        ('status', 'dst'):     {'kind': 'observe', 'observe': True},
+    }
+    _SOCKET_LOCKSTEP_TYPES = frozenset({'apb', 'axi_read', 'axi_write'})
+
+    def _socketRawInterfaceType(self, port_data):
+        # Connection ports store the qualified interfaceKey on the merged
+        # `connection` dict (and often also at the top level). Declared /
+        # register ports may only have one of those, or a raw interfaceType.
+        conn = port_data.get('connection') or {}
+        interface_key = conn.get('interfaceKey') or port_data.get('interfaceKey') or ''
+        if interface_key:
+            iface = self.data.get('interfaces', {}).get(interface_key)
+            if iface:
+                return iface.get('interfaceType')
+        return port_data.get('interfaceType') or conn.get('interfaceType')
+
+    def _socketCanonicalInterfaceType(self, port_data, block_data):
+        raw = self._socketRawInterfaceType(port_data)
+        if not raw:
+            return None
+        mappings = block_data.get('interface_type_mappings') or {}
+        return mappings.get(raw, raw)
+
+    def getSocketCatalogView(self, qualBlock, block_data=None):
+        # Per-block socket catalog: factory key `{block}.{port}`, drive vs
+        # observe role, and listen names (drive names plus `_obs` where the
+        # helper actually pushes observe traffic). pysocket_sync is not a YAML
+        # port; it is appended only when the block has APB/AXI lockstep helpers.
+        if block_data is None:
+            block_data = self.getBlockData(qualBlock)
+        block_name = block_data['blockName']
+        ports = []
+        for source_type in block_data.get('ports') or {}:
+            for port, port_data in (block_data['ports'][source_type] or {}).items():
+                interface_type = self._socketCanonicalInterfaceType(port_data, block_data)
+                direction = port_data.get('direction') or 'src'
+                helper = self._SOCKET_HELPERS.get((interface_type, direction)) if interface_type else None
+                name = f'{block_name}.{port}'
+                observe_name = f'{name}_obs' if helper and helper['observe'] else None
+                ports.append({
+                    'port': port,
+                    'name': name,
+                    'interfaceType': interface_type,
+                    'direction': direction,
+                    'role': helper['kind'] if helper else None,
+                    'hasPortSocket': helper is not None,
+                    'observeName': observe_name,
+                    'block': block_name,
+                    'sourceType': source_type,
+                })
+        listen_names = [row['name'] for row in ports if row['role'] == 'drive']
+        listen_names.extend(row['observeName'] for row in ports if row['observeName'])
+        uses_lockstep = any(
+            row['hasPortSocket'] and row['interfaceType'] in self._SOCKET_LOCKSTEP_TYPES
+            for row in ports)
+        sync_names = ['pysocket_sync'] if uses_lockstep else []
+        return {
+            'block': block_name,
+            'qualBlock': qualBlock,
+            'ports': ports,
+            'listenNames': listen_names,
+            'syncNames': sync_names,
+            'usesLockstep': uses_lockstep,
+        }
+
     def getBDParameterizedDecls(self, ret):
         # Per-block module-local parameterized declaration set, derived and
         # persisted by projectCreate.deriveParameterizedDeclSets() into the
