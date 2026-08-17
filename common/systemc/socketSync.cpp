@@ -44,6 +44,18 @@ bool g_reset_pending = false;
 uint16_t g_reset_assert_cycles = 0;
 uint16_t g_reset_settle_cycles = 0;
 std::function<void()> g_model_reset_cb;
+std::function<void(uint8_t &, uint8_t &)> g_axi_valid_sample_cb;
+
+// AXI slave back-pressure policy (MSG_BP_CFG).
+std::mutex g_bp_mutex;
+bool g_bp_pending = false;
+socket_bp_cfg_st g_bp_pending_cfg{};
+uint8_t g_bp_channel = 0;
+uint8_t g_bp_mode = SOCKET_BP_MODE_CLEAR;
+uint16_t g_bp_cycles = 0;
+uint16_t g_bp_after_beat = 0;
+uint16_t g_bp_after_burst = 0;
+uint32_t g_bp_rng = 1;
 
 sc_core::sc_event &edge_event()
 {
@@ -70,6 +82,20 @@ void set_rst_n(bool level)
     }
     g_rst_n = level;
     rst_n_event().notify(sc_core::SC_ZERO_TIME);
+    // Also poke lockstep boundary waiters so AXI port sockets that only
+    // waited on boundary_event can observe ARESETn and abandon mid-burst.
+    if (!level) {
+        std::vector<std::shared_ptr<ThreadSafeEvent>> events;
+        {
+            std::lock_guard<std::mutex> lock(g_boundary_events_mutex);
+            events = g_boundary_events;
+        }
+        for (const auto &event : events) {
+            if (event) {
+                event->notify();
+            }
+        }
+    }
 }
 
 bool env_truthy(const char *value)
@@ -147,17 +173,98 @@ void service_reset_pulse(int fd)
     }
 
     set_rst_n(false);
-    advance_n_clocks(assert_cycles);
-    set_rst_n(true);
+    // Abandon in-flight model activity immediately (HDL uses physical rst_n).
     if (g_model_reset_cb) {
         g_model_reset_cb();
     }
+    // One clock so DUT / BFMs see rst_n low before AxVALID sample.
+    advance_n_clocks(1);
+    socket_reset_ack_st ack{};
+    if (g_axi_valid_sample_cb) {
+        g_axi_valid_sample_cb(ack.arvalid, ack.awvalid);
+    }
+    if (assert_cycles > 1) {
+        advance_n_clocks(static_cast<uint16_t>(assert_cycles - 1));
+    }
+    set_rst_n(true);
     advance_n_clocks(settle_cycles);
+    // Re-apply soft reset after settle so late AXI replies during the pulse
+    // cannot leave STATUS.ERR/DONE set on the model path.
+    if (g_model_reset_cb) {
+        g_model_reset_cb();
+    }
 
-    (void)socket_send_msg(fd, MSG_RESET_ACK, nullptr, 0);
+    (void)socket_send_msg(fd, MSG_RESET_ACK, &ack, static_cast<uint16_t>(sizeof(ack)));
 }
 
-// Wait for Python SYNC ack (or MSG_RESET acting as ack) without advancing sc_time.
+void apply_bp_cfg(const socket_bp_cfg_st &cfg)
+{
+    std::lock_guard<std::mutex> lock(g_bp_mutex);
+    if (cfg.mode == SOCKET_BP_MODE_CLEAR || cfg.channel == 0) {
+        g_bp_channel = 0;
+        g_bp_mode = SOCKET_BP_MODE_CLEAR;
+        g_bp_cycles = 0;
+        g_bp_after_beat = 0;
+        g_bp_after_burst = 0;
+        g_bp_rng = 1;
+        return;
+    }
+    g_bp_channel = cfg.channel;
+    g_bp_mode = cfg.mode;
+    g_bp_cycles = cfg.cycles;
+    g_bp_after_beat = cfg.after_beat;
+    g_bp_after_burst = cfg.after_burst;
+    g_bp_rng = cfg.seed != 0 ? cfg.seed : 1u;
+}
+
+void service_bp_cfg(int fd)
+{
+    socket_bp_cfg_st cfg{};
+    {
+        std::lock_guard<std::mutex> lock(g_bp_mutex);
+        cfg = g_bp_pending_cfg;
+        g_bp_pending = false;
+    }
+    apply_bp_cfg(cfg);
+    (void)socket_send_msg(fd, MSG_BP_CFG_ACK, nullptr, 0);
+}
+
+bool bp_burst_beat_match(uint16_t burst, uint16_t beat)
+{
+    if (g_bp_after_burst != SOCKET_BP_EVERY_BURST && burst != g_bp_after_burst) {
+        return false;
+    }
+    // RANDOM ignores after_beat and may stall any beat of a matching burst.
+    if (g_bp_mode == SOCKET_BP_MODE_RANDOM) {
+        return true;
+    }
+    return beat == g_bp_after_beat;
+}
+
+bool bp_should_stall(uint8_t channel_bit, uint16_t burst, uint16_t beat)
+{
+    std::lock_guard<std::mutex> lock(g_bp_mutex);
+    if (g_bp_cycles == 0) {
+        return false;
+    }
+    if (g_bp_mode != SOCKET_BP_MODE_FIXED && g_bp_mode != SOCKET_BP_MODE_RANDOM) {
+        return false;
+    }
+    if ((g_bp_channel & channel_bit) == 0) {
+        return false;
+    }
+    if (!bp_burst_beat_match(burst, beat)) {
+        return false;
+    }
+    if (g_bp_mode == SOCKET_BP_MODE_FIXED) {
+        return true;
+    }
+    // LCG: stall roughly half of the matching beats.
+    g_bp_rng = g_bp_rng * 1103515245u + 12345u;
+    return ((g_bp_rng >> 16) & 1u) != 0;
+}
+
+// Wait for Python SYNC ack (or MSG_RESET / MSG_BP_CFG acting as ack) without advancing sc_time.
 //
 // This TB has no watchDog keep-alive. Under gated lockstep, DUT clocks stop
 // issuing timed waits, so a pure wait(ack_event) can leave the SystemC event
@@ -316,6 +423,46 @@ void socketSyncRegisterModelReset(std::function<void()> cb)
     g_model_reset_cb = std::move(cb);
 }
 
+void socketSyncRegisterAxiValidSample(std::function<void(uint8_t &, uint8_t &)> cb)
+{
+    g_axi_valid_sample_cb = std::move(cb);
+}
+
+void socketSyncStallClocks(uint16_t clocks)
+{
+    if (clocks == 0) {
+        return;
+    }
+    const sc_core::sc_time period =
+        socketSyncClockHalfPeriod() + socketSyncClockHalfPeriod();
+    // Under gated lockstep, drive clock edges so the DUT can progress while
+    // WREADY/RVALID is held (plain wait() would advance sc_time without edges).
+    if (g_time_gated) {
+        socketSyncAdvanceTime(period * clocks);
+        return;
+    }
+    sc_core::wait(period * clocks);
+}
+
+bool socketSyncBpShouldStallWready(uint16_t burst, uint16_t beat)
+{
+    return bp_should_stall(SOCKET_BP_CH_WREADY, burst, beat);
+}
+
+bool socketSyncBpShouldStallRvalid(uint16_t burst, uint16_t beat)
+{
+    return bp_should_stall(SOCKET_BP_CH_RVALID, burst, beat);
+}
+
+uint16_t socketSyncBpHoldCycles()
+{
+    std::lock_guard<std::mutex> lock(g_bp_mutex);
+    if (g_bp_mode != SOCKET_BP_MODE_FIXED && g_bp_mode != SOCKET_BP_MODE_RANDOM) {
+        return 0;
+    }
+    return g_bp_cycles;
+}
+
 void socketSyncStartRxThread()
 {
     socketSyncConfigureFromEnvironment();
@@ -332,10 +479,14 @@ void socketSyncStartRxThread()
     g_ready_event = ThreadSafeEventFactory::newEvent("pysocket_sync_ready");
     auto running = std::make_shared<std::atomic<bool>>(true);
 
+    constexpr size_t k_rx_buf =
+        sizeof(socket_bp_cfg_st) > sizeof(socket_reset_st) ? sizeof(socket_bp_cfg_st)
+                                                           : sizeof(socket_reset_st);
+
     std::thread rx_thread([running, fd]() {
         uint8_t msg_type = 0;
         uint16_t len = 0;
-        alignas(8) uint8_t buf[sizeof(socket_reset_st)]{};
+        alignas(8) uint8_t buf[k_rx_buf]{};
         while (running->load(std::memory_order_acquire)) {
             if (!socket_recv_msg(fd, msg_type, buf, len, static_cast<uint16_t>(sizeof(buf)))) {
                 break;
@@ -373,6 +524,22 @@ void socketSyncStartRxThread()
                 {
                     std::lock_guard<std::mutex> lock(g_ack_mutex);
                     g_pending_ack_time_ns = reset.sc_time_ns;
+                    g_have_ack = true;
+                }
+                g_ack_event->notify();
+                continue;
+            }
+            if (msg_type == MSG_BP_CFG && len == sizeof(socket_bp_cfg_st)) {
+                socket_bp_cfg_st cfg{};
+                std::memcpy(&cfg, buf, sizeof(cfg));
+                {
+                    std::lock_guard<std::mutex> lock(g_bp_mutex);
+                    g_bp_pending_cfg = cfg;
+                    g_bp_pending = true;
+                }
+                {
+                    std::lock_guard<std::mutex> lock(g_ack_mutex);
+                    g_pending_ack_time_ns = cfg.sc_time_ns;
                     g_have_ack = true;
                 }
                 g_ack_event->notify();
@@ -429,9 +596,14 @@ void socketSyncQuantumThread()
         wait_for_ack(payload.sc_time_ns);
 
         bool do_reset = false;
+        bool do_bp = false;
         {
             std::lock_guard<std::mutex> lock(g_reset_mutex);
             do_reset = g_reset_pending;
+        }
+        {
+            std::lock_guard<std::mutex> lock(g_bp_mutex);
+            do_bp = g_bp_pending;
         }
 
         end_boundary();
@@ -439,6 +611,10 @@ void socketSyncQuantumThread()
         if (do_reset) {
             service_reset_pulse(fd);
             continue;
+        }
+        if (do_bp) {
+            service_bp_cfg(fd);
+            // Policy installed; advance this quantum like a normal SYNC ack.
         }
 
         // Sole timed waiter under lockstep: advances sc_time and drives clock edges.

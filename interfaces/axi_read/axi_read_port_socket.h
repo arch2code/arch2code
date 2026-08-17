@@ -103,6 +103,7 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
     socketFactory::registerThread(interface_name, std::move(rx_thread));
 
     bool should_shutdown = false;
+    uint16_t burst_index = 0;
     while (running->load(std::memory_order_acquire)) {
         axiReadAddressSt<A> addr{};
         port->receiveAddr(addr);
@@ -112,8 +113,33 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
             break;
         }
 
+        // Must watch ARESETn: waiting only on the lockstep boundary lets a
+        // pre-reset AR be forwarded after the pulse, which wedges the HDL BFM.
         while (socketSyncLockstepEnabled() && !socketSyncAtBoundary()) {
-            sc_core::wait(boundary_event->default_event());
+            if (!socketSyncRstN()) {
+                break;
+            }
+            sc_core::wait(boundary_event->default_event() | socketSyncRstNEvent());
+        }
+        if (!socketSyncRstN()) {
+            const int num_beats = static_cast<int>(addr.arlen) + 1;
+            for (int i = 0; i < num_beats; ++i) {
+                axiReadRespSt<D> resp{};
+                resp.rid = static_cast<_axiIdT>(addr.arid);
+                resp.rresp = AXIRESP_DECERR;
+                resp.rlast = (i == num_beats - 1);
+                port->sendDataCycle(resp);
+            }
+            {
+                std::lock_guard<std::mutex> lock(resp_mutex);
+                while (!resp_queue.empty()) {
+                    resp_queue.pop();
+                }
+            }
+            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
+                sc_core::wait(socketSyncRstNEvent());
+            }
+            continue;
         }
 
         socket_axi_rd_req_st wire_req{};
@@ -134,8 +160,17 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
 
         socket_axi_rd_resp_st wire_resp{};
         bool have_resp = false;
-        while (running->load(std::memory_order_acquire) && !have_resp) {
-            sc_core::wait(resp_event->default_event());
+        bool abandoned = false;
+        while (running->load(std::memory_order_acquire) && !have_resp && !abandoned) {
+            if (!socketSyncRstN()) {
+                abandoned = true;
+                break;
+            }
+            sc_core::wait(resp_event->default_event() | socketSyncRstNEvent());
+            if (!socketSyncRstN()) {
+                abandoned = true;
+                break;
+            }
             {
                 std::lock_guard<std::mutex> lock(resp_mutex);
                 if (!resp_queue.empty()) {
@@ -144,6 +179,27 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
                     have_resp = true;
                 }
             }
+        }
+        if (abandoned || !socketSyncRstN()) {
+            // Complete the outstanding AR with dummy beats so the HDL BFM unblocks.
+            const int num_beats = static_cast<int>(addr.arlen) + 1;
+            for (int i = 0; i < num_beats; ++i) {
+                axiReadRespSt<D> resp{};
+                resp.rid = static_cast<_axiIdT>(addr.arid);
+                resp.rresp = AXIRESP_DECERR;
+                resp.rlast = (i == num_beats - 1);
+                port->sendDataCycle(resp);
+            }
+            {
+                std::lock_guard<std::mutex> lock(resp_mutex);
+                while (!resp_queue.empty()) {
+                    resp_queue.pop();
+                }
+            }
+            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
+                sc_core::wait(socketSyncRstNEvent());
+            }
+            continue;
         }
         if (!have_resp) {
             should_shutdown = true;
@@ -154,13 +210,38 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
 
         const int num_beats = static_cast<int>(addr.arlen) + 1;
         const size_t beat_bytes = D::_byteWidth;
+        bool beat_abandon = false;
         for (int i = 0; i < num_beats; ++i) {
+            if (!socketSyncRstN()) {
+                beat_abandon = true;
+                for (int j = i; j < num_beats; ++j) {
+                    axiReadRespSt<D> resp{};
+                    resp.rid = static_cast<_axiIdT>(wire_resp.rid);
+                    resp.rresp = AXIRESP_DECERR;
+                    resp.rlast = (j == num_beats - 1);
+                    port->sendDataCycle(resp);
+                }
+                break;
+            }
+            if (socketSyncBpShouldStallRvalid(burst_index, static_cast<uint16_t>(i))) {
+                // Delay before sendDataCycle keeps RVALID low on the HDL BFM.
+                socketSyncStallClocks(socketSyncBpHoldCycles());
+            }
             axiReadRespSt<D> resp{};
             resp.rid = static_cast<_axiIdT>(wire_resp.rid);
             resp.rresp = static_cast<_axiResponseT>(wire_resp.rresp);
             resp.rlast = (i == num_beats - 1);
             std::memcpy(&resp.rdata, &wire_resp.data[i * beat_bytes], beat_bytes);
             port->sendDataCycle(resp);
+        }
+        if (beat_abandon) {
+            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
+                sc_core::wait(socketSyncRstNEvent());
+            }
+            continue;
+        }
+        if (burst_index < 0xFFFF) {
+            ++burst_index;
         }
     }
     if (should_shutdown) {

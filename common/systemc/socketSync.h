@@ -26,6 +26,10 @@ class ThreadSafeEvent;
 // MSG_RESET (on pysocket_sync, in place of a SYNC ack) requests an ARESETn
 // pulse: rst_n held low for assert_cycles, released, then settle_cycles, then
 // MSG_RESET_ACK. Optional model soft-reset callback covers non-VL sims.
+//
+// MSG_BP_CFG (also replaces a SYNC ack) installs an AXI slave back-pressure
+// policy consumed by axi_* port_socket between beat handshakes. ACK is
+// MSG_BP_CFG_ACK; then the quantum advances normally.
 
 void socketSyncConfigureFromEnvironment();
 
@@ -79,5 +83,22 @@ const sc_core::sc_event &socketSyncRstNEvent();
 
 // Optional soft-reset for SystemC model path (no HDL rst_n). Called after pin release.
 void socketSyncRegisterModelReset(std::function<void()> cb);
+
+// Optional sampler for ARVALID/AWVALID after ARESETn assert (HDL pin observe).
+// Invoked during MSG_RESET before MSG_RESET_ACK; results are returned in the ACK.
+void socketSyncRegisterAxiValidSample(std::function<void(uint8_t &arvalid, uint8_t &awvalid)> cb);
+
+// --- AXI slave back-pressure (MSG_BP_CFG) ---
+
+// Wait `clocks` full clock periods (works under gated lockstep via quantum time).
+void socketSyncStallClocks(uint16_t clocks);
+
+// True when a fixed/random WREADY/RVALID hold should run before beat `beat`
+// of burst `burst`.
+bool socketSyncBpShouldStallWready(uint16_t burst, uint16_t beat);
+bool socketSyncBpShouldStallRvalid(uint16_t burst, uint16_t beat);
+
+// Hold duration for the armed fixed/random policy (0 if clear).
+uint16_t socketSyncBpHoldCycles();
 
 #endif // SOCKET_SYNC_H

@@ -101,6 +101,7 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
     socketFactory::registerThread(interface_name, std::move(rx_thread));
 
     bool should_shutdown = false;
+    uint16_t burst_index = 0;
     while (running->load(std::memory_order_acquire)) {
         axiWriteAddressSt<A> addr{};
         port->receiveAddr(addr);
@@ -121,14 +122,49 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
         wire_req.awburst = static_cast<uint8_t>(addr.awburst);
 
         for (int i = 0; i < num_beats; ++i) {
+            if (socketSyncRstN() &&
+                socketSyncBpShouldStallWready(burst_index, static_cast<uint16_t>(i))) {
+                // Ready stays low between receiveDataCycle calls → WREADY=0.
+                socketSyncStallClocks(socketSyncBpHoldCycles());
+            }
+            // On ARESETn the HDL write BFM synthesizes any remaining W beats so
+            // this receiveDataCycle cannot hang with WVALID stuck low.
             axiWriteDataSt<D, S> data{};
             port->receiveDataCycle(data);
             std::memcpy(&wire_req.data[i * beat_bytes], &data.wdata, beat_bytes);
             wire_req.strb[i] = static_cast<uint16_t>(data.wstrb.strobe);
         }
+        if (burst_index < 0xFFFF) {
+            ++burst_index;
+        }
+
+        if (!socketSyncRstN()) {
+            // Local BRESP so the write BFM b_thread unblocks; skip Python.
+            axiWriteRespSt resp{};
+            resp.bid = static_cast<_axiIdT>(addr.awid);
+            resp.bresp = AXIRESP_DECERR;
+            port->sendRespCycle(resp);
+            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
+                sc_core::wait(socketSyncRstNEvent());
+            }
+            continue;
+        }
 
         while (socketSyncLockstepEnabled() && !socketSyncAtBoundary()) {
-            sc_core::wait(boundary_event->default_event());
+            if (!socketSyncRstN()) {
+                break;
+            }
+            sc_core::wait(boundary_event->default_event() | socketSyncRstNEvent());
+        }
+        if (!socketSyncRstN()) {
+            axiWriteRespSt resp{};
+            resp.bid = static_cast<_axiIdT>(addr.awid);
+            resp.bresp = AXIRESP_DECERR;
+            port->sendRespCycle(resp);
+            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
+                sc_core::wait(socketSyncRstNEvent());
+            }
+            continue;
         }
 
         socket_observe_axi_wr_req(interface_name, wire_req.awid, wire_req.awaddr, wire_req.awlen,
@@ -142,8 +178,17 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
 
         socket_axi_wr_resp_st wire_resp{};
         bool have_resp = false;
-        while (running->load(std::memory_order_acquire) && !have_resp) {
-            sc_core::wait(resp_event->default_event());
+        bool abandoned = false;
+        while (running->load(std::memory_order_acquire) && !have_resp && !abandoned) {
+            if (!socketSyncRstN()) {
+                abandoned = true;
+                break;
+            }
+            sc_core::wait(resp_event->default_event() | socketSyncRstNEvent());
+            if (!socketSyncRstN()) {
+                abandoned = true;
+                break;
+            }
             {
                 std::lock_guard<std::mutex> lock(resp_mutex);
                 if (!resp_queue.empty()) {
@@ -152,6 +197,22 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
                     have_resp = true;
                 }
             }
+        }
+        if (abandoned || !socketSyncRstN()) {
+            axiWriteRespSt resp{};
+            resp.bid = static_cast<_axiIdT>(addr.awid);
+            resp.bresp = AXIRESP_DECERR;
+            port->sendRespCycle(resp);
+            {
+                std::lock_guard<std::mutex> lock(resp_mutex);
+                while (!resp_queue.empty()) {
+                    resp_queue.pop();
+                }
+            }
+            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
+                sc_core::wait(socketSyncRstNEvent());
+            }
+            continue;
         }
         if (!have_resp) {
             should_shutdown = true;

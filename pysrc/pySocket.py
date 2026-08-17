@@ -53,13 +53,26 @@ MSG_POP = 0x19
 MSG_POP_ACK = 0x1A
 MSG_NOTIFY = 0x1B
 MSG_NOTIFY_ACK = 0x1C
+MSG_BP_CFG = 0x1D
+MSG_BP_CFG_ACK = 0x1E
 MSG_SHUTDOWN = 0xFE
 
 HEADER_STRUCT = struct.Struct("<BBH")
 SYNC_PAYLOAD_STRUCT = struct.Struct("<Q")
 RESET_PAYLOAD_STRUCT = struct.Struct("<QHH")  # sc_time_ns, assert_cycles, settle_cycles
+# MSG_RESET_ACK: arvalid, awvalid sampled after ARESETn assert
+RESET_ACK_PAYLOAD_STRUCT = struct.Struct("<BB")
+# sc_time_ns, channel, mode, cycles, after_beat, after_burst, seed
+BP_CFG_PAYLOAD_STRUCT = struct.Struct("<QBBHHHI")
 
 PYSOCKET_SYNC_IFC = "pysocket_sync"
+
+SOCKET_BP_CH_WREADY = 0x1
+SOCKET_BP_CH_RVALID = 0x2
+SOCKET_BP_MODE_CLEAR = 0
+SOCKET_BP_MODE_FIXED = 1
+SOCKET_BP_MODE_RANDOM = 2
+SOCKET_BP_EVERY_BURST = 0xFFFF
 
 
 def _env_enabled(name: str, *, default: bool = True) -> bool:
@@ -129,6 +142,9 @@ class LockstepRegistry:
         self._quantum_loop_started = False
         self._pending_reset: tuple[int, int] | None = None
         self._reset_done: object | None = None
+        self._last_reset_axvalid: tuple[int, int] = (0, 0)
+        self._pending_bp_cfg: tuple[int, int, int, int, int, int] | None = None
+        self._bp_cfg_done: object | None = None
         # Waiters released when the next MSG_SYNC arrives (SC finished AdvanceTime).
         self._quantum_waiters: list = []
 
@@ -187,28 +203,83 @@ class LockstepRegistry:
                 assert_cycles, settle_cycles = self._pending_reset
                 self._pending_reset = None
                 await self._sync.send_reset(sc_time_ns, assert_cycles, settle_cycles)
-                await self._sync.recv_reset_ack()
+                self._last_reset_axvalid = await self._sync.recv_reset_ack()
                 if self._reset_done is not None:
                     self._reset_done.set()
                     self._reset_done = None
+            elif self._pending_bp_cfg is not None:
+                channel, mode, cycles, after_beat, after_burst, seed = self._pending_bp_cfg
+                self._pending_bp_cfg = None
+                await self._sync.send_bp_cfg(
+                    sc_time_ns,
+                    channel=channel,
+                    mode=mode,
+                    cycles=cycles,
+                    after_beat=after_beat,
+                    after_burst=after_burst,
+                    seed=seed,
+                )
+                await self._sync.recv_bp_cfg_ack()
+                if self._bp_cfg_done is not None:
+                    self._bp_cfg_done.set()
+                    self._bp_cfg_done = None
             else:
                 await self._sync.send_sync_ack(sc_time_ns)
 
     async def pulse_aresetn(
         self, *, assert_cycles: int = 5, settle_cycles: int = 2
-    ) -> None:
-        """Request a mid-sim ARESETn pulse (lockstep MSG_RESET)."""
+    ) -> tuple[int, int]:
+        """Request a mid-sim ARESETn pulse (lockstep MSG_RESET).
+
+        Returns ``(arvalid, awvalid)`` sampled in SystemC after assert (expect 0,0).
+        """
         if self._sync is None or not self._bootstrapped:
             raise RuntimeError("pulse_aresetn requires bootstrapped lockstep sync")
         if self._pending_reset is not None:
             raise RuntimeError("pulse_aresetn already pending")
+        if self._pending_bp_cfg is not None:
+            raise RuntimeError("pulse_aresetn blocked by pending BP cfg")
         done = _cocotb_event_factory()
         self._reset_done = done
         self._pending_reset = (assert_cycles, settle_cycles)
         # Yield so the quantum loop can observe the pending request.
         await NullTrigger()
         await done.wait()
+        return self._last_reset_axvalid
 
+    async def arm_axi_bp(
+        self,
+        *,
+        channel: int,
+        mode: int = SOCKET_BP_MODE_FIXED,
+        cycles: int = 50,
+        after_beat: int = 0,
+        after_burst: int = 0,
+        seed: int = 0,
+    ) -> None:
+        """Install AXI slave back-pressure policy via lockstep MSG_BP_CFG."""
+        if self._sync is None or not self._bootstrapped:
+            raise RuntimeError("arm_axi_bp requires bootstrapped lockstep sync")
+        if self._pending_bp_cfg is not None:
+            raise RuntimeError("arm_axi_bp already pending")
+        if self._pending_reset is not None:
+            raise RuntimeError("arm_axi_bp blocked by pending reset")
+        done = _cocotb_event_factory()
+        self._bp_cfg_done = done
+        self._pending_bp_cfg = (
+            channel & 0xFF,
+            mode & 0xFF,
+            cycles & 0xFFFF,
+            after_beat & 0xFFFF,
+            after_burst & 0xFFFF,
+            seed & 0xFFFFFFFF,
+        )
+        await NullTrigger()
+        await done.wait()
+
+    async def clear_axi_bp(self) -> None:
+        """Clear AXI slave back-pressure policy."""
+        await self.arm_axi_bp(channel=0, mode=SOCKET_BP_MODE_CLEAR, cycles=0)
     async def complete_quantum(self) -> None:
         """Block until SystemC finishes one AdvanceTime after this call.
 
@@ -440,15 +511,53 @@ class SyncSocketTransport:
         )
         self._send_raw(MSG_RESET, payload)
 
-    async def recv_reset_ack(self) -> None:
+    async def recv_reset_ack(self) -> tuple[int, int]:
         while True:
             msg_type, body = await self._recv_raw()
             if msg_type == MSG_SHUTDOWN:
                 raise ConnectionError("sync socket shutdown during reset")
+            if msg_type == MSG_RESET_ACK and len(body) == RESET_ACK_PAYLOAD_STRUCT.size:
+                arvalid, awvalid = RESET_ACK_PAYLOAD_STRUCT.unpack(body)
+                return int(arvalid), int(awvalid)
+            # Legacy empty ACK (pre-AxVALID sample).
             if msg_type == MSG_RESET_ACK and len(body) == 0:
-                return
+                return 0, 0
             raise ValueError(
                 f"expected MSG_RESET_ACK, got type={msg_type} len={len(body)}"
+            )
+
+    async def send_bp_cfg(
+        self,
+        sc_time_ns: int,
+        *,
+        channel: int,
+        mode: int,
+        cycles: int,
+        after_beat: int,
+        after_burst: int,
+        seed: int = 0,
+    ) -> None:
+        """Ack the current quantum with MSG_BP_CFG (AXI slave stall policy)."""
+        payload = BP_CFG_PAYLOAD_STRUCT.pack(
+            sc_time_ns & 0xFFFFFFFFFFFFFFFF,
+            channel & 0xFF,
+            mode & 0xFF,
+            cycles & 0xFFFF,
+            after_beat & 0xFFFF,
+            after_burst & 0xFFFF,
+            seed & 0xFFFFFFFF,
+        )
+        self._send_raw(MSG_BP_CFG, payload)
+
+    async def recv_bp_cfg_ack(self) -> None:
+        while True:
+            msg_type, body = await self._recv_raw()
+            if msg_type == MSG_SHUTDOWN:
+                raise ConnectionError("sync socket shutdown during BP cfg")
+            if msg_type == MSG_BP_CFG_ACK and len(body) == 0:
+                return
+            raise ValueError(
+                f"expected MSG_BP_CFG_ACK, got type={msg_type} len={len(body)}"
             )
 
     async def recv_sync_quantum(self) -> int:

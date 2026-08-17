@@ -34,6 +34,8 @@ enum socketMsgTypeT {
     MSG_POP_ACK=0x1A,
     MSG_NOTIFY=0x1B,
     MSG_NOTIFY_ACK=0x1C,
+    MSG_BP_CFG=0x1D,
+    MSG_BP_CFG_ACK=0x1E,
     MSG_SHUTDOWN=0xFE,
     MSG_ERROR=0xFF
 };
@@ -69,6 +71,8 @@ inline const char* socketMsgTypeT_prt( socketMsgTypeT val )
         case MSG_POP_ACK: return( "MSG_POP_ACK" );
         case MSG_NOTIFY: return( "MSG_NOTIFY" );
         case MSG_NOTIFY_ACK: return( "MSG_NOTIFY_ACK" );
+        case MSG_BP_CFG: return( "MSG_BP_CFG" );
+        case MSG_BP_CFG_ACK: return( "MSG_BP_CFG_ACK" );
         case MSG_SHUTDOWN: return( "MSG_SHUTDOWN" );
         case MSG_ERROR: return( "MSG_ERROR" );
     }
@@ -102,6 +106,42 @@ struct socket_reset_st {
 #pragma pack(pop)
 
 static_assert(sizeof(socket_reset_st) == 12, "socket_reset_st wire layout");
+
+// MSG_RESET_ACK payload: AxVALID levels sampled after ARESETn assert (both expect 0).
+#pragma pack(push, 1)
+struct socket_reset_ack_st {
+    uint8_t arvalid;
+    uint8_t awvalid;
+};
+#pragma pack(pop)
+
+static_assert(sizeof(socket_reset_ack_st) == 2, "socket_reset_ack_st wire layout");
+
+// AXI slave back-pressure policy (lockstep pysocket_sync, replaces a SYNC ack).
+// channel bits: bit0 = WREADY (write data), bit1 = RVALID (read data).
+// mode: 0 = clear, 1 = fixed hold of `cycles` clocks before beat `after_beat`
+//       of burst `after_burst` (0xFFFF = every burst),
+//       2 = random per-beat hold (seed LCG; ~50% of matching beats).
+#pragma pack(push, 1)
+struct socket_bp_cfg_st {
+    uint64_t sc_time_ns;
+    uint8_t channel;
+    uint8_t mode;
+    uint16_t cycles;
+    uint16_t after_beat;
+    uint16_t after_burst;
+    uint32_t seed;
+};
+#pragma pack(pop)
+
+static_assert(sizeof(socket_bp_cfg_st) == 20, "socket_bp_cfg_st wire layout");
+
+static constexpr uint8_t SOCKET_BP_CH_WREADY = 0x1;
+static constexpr uint8_t SOCKET_BP_CH_RVALID = 0x2;
+static constexpr uint8_t SOCKET_BP_MODE_CLEAR = 0;
+static constexpr uint8_t SOCKET_BP_MODE_FIXED = 1;
+static constexpr uint8_t SOCKET_BP_MODE_RANDOM = 2;
+static constexpr uint16_t SOCKET_BP_EVERY_BURST = 0xFFFF;
 
 static constexpr const char *PYSOCKET_SYNC_IFC = "pysocket_sync";
 

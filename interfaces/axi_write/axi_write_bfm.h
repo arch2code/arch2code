@@ -6,6 +6,8 @@
 #include "systemc.h"
 #include "axi_write_channel.h"
 
+#include <mutex>
+
 template<typename VL_ADDR_T, typename VL_DATA_T, typename VL_STRB_T>
 struct axi_write_hdl_if: public sc_interface {
 
@@ -68,13 +70,27 @@ public:
             hdl_if_p->awready = m_chnl->m_addr_out->get_rdy();
             while (!(hdl_if_p->awvalid && hdl_if_p->awready)) {
                 wait(clk.posedge_event());
+                if (!rst_n.read()) {
+                    hdl_if_p->awready = 0;
+                    while (!rst_n.read()) {
+                        wait(clk.posedge_event());
+                    }
+                    break;
+                }
                 hdl_if_p->awready = m_chnl->m_addr_out->get_rdy();
+            }
+            if (!rst_n.read() || !(hdl_if_p->awvalid && hdl_if_p->awready)) {
+                continue;
             }
             aw_data.awid = (_axiIdT) hdl_if_p->awid.read().to_uint();
             aw_data.awaddr.sc_unpack(hdl_if_p->awaddr);
             aw_data.awlen = (uint8_t) hdl_if_p->awlen.read().to_uint();
             aw_data.awsize = (_axiSizeT) hdl_if_p->awsize.read().to_uint();
             aw_data.awburst = (_axiBurstT) hdl_if_p->awburst.read().to_uint();
+            {
+                std::lock_guard<std::mutex> lock(m_pending_mutex);
+                m_pending_w_beats = static_cast<int>(aw_data.awlen) + 1;
+            }
             if_p->sendAddr(aw_data);
             wait(clk.posedge_event());
         }
@@ -87,12 +103,41 @@ public:
             hdl_if_p->wready = m_chnl->m_data_out->get_rdy();
             while (!(hdl_if_p->wvalid && hdl_if_p->wready)) {
                 wait(clk.posedge_event());
+                if (!rst_n.read()) {
+                    hdl_if_p->wready = 0;
+                    // Unblock axi_write_in port_socket waiting on receiveDataCycle.
+                    int left = 0;
+                    {
+                        std::lock_guard<std::mutex> lock(m_pending_mutex);
+                        left = m_pending_w_beats;
+                        m_pending_w_beats = 0;
+                    }
+                    for (int i = 0; i < left; ++i) {
+                        axiWriteDataSt<DATA_T, STRB_T> dummy{};
+                        dummy.wid = 0;
+                        dummy.wlast = (i == left - 1);
+                        if_p->sendDataCycle(dummy);
+                    }
+                    while (!rst_n.read()) {
+                        wait(clk.posedge_event());
+                    }
+                    break;
+                }
                 hdl_if_p->wready = m_chnl->m_data_out->get_rdy();
+            }
+            if (!rst_n.read() || !(hdl_if_p->wvalid && hdl_if_p->wready)) {
+                continue;
             }
             w_data.wid = (_axiIdT) hdl_if_p->wid.read().to_uint();
             w_data.wdata.sc_unpack(hdl_if_p->wdata);
             w_data.wstrb.sc_unpack(hdl_if_p->wstrb);
             w_data.wlast = (bool) hdl_if_p->wlast.read();
+            {
+                std::lock_guard<std::mutex> lock(m_pending_mutex);
+                if (m_pending_w_beats > 0) {
+                    --m_pending_w_beats;
+                }
+            }
             if_p->sendDataCycle(w_data);
             wait(clk.posedge_event());
         }
@@ -106,11 +151,21 @@ public:
             hdl_if_p->bid = 0;
             hdl_if_p->bresp = 0;
             if_p->receiveRespCycle(b_data);
+            if (!rst_n.read()) {
+                while (!rst_n.read()) {
+                    wait(clk.posedge_event());
+                }
+                continue;
+            }
             hdl_if_p->bvalid = 1;
             hdl_if_p->bid = b_data.bid;
             hdl_if_p->bresp = b_data.bresp;
             do {
                 wait(clk.posedge_event());
+                if (!rst_n.read()) {
+                    hdl_if_p->bvalid = 0;
+                    break;
+                }
             } while (!hdl_if_p->bready);
         }
     }
@@ -118,6 +173,8 @@ public:
 private:
 
     axi_write_channel<ADDR_T, DATA_T, STRB_T> * m_chnl;
+    std::mutex m_pending_mutex;
+    int m_pending_w_beats = 0;
 
 };
 
