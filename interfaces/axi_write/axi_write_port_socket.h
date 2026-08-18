@@ -63,9 +63,10 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
 
     std::mutex resp_mutex;
     std::queue<socket_axi_wr_resp_st> resp_queue;
+    std::atomic<bool> resp_expected{false};
     auto running = std::make_shared<std::atomic<bool>>(true);
 
-    std::thread rx_thread([running, fd, &resp_mutex, &resp_queue, resp_event, interface_name]() {
+    std::thread rx_thread([running, fd, &resp_mutex, &resp_queue, &resp_expected, resp_event, interface_name]() {
         uint8_t msg_type = 0;
         uint16_t len = 0;
         socket_axi_wr_resp_st recv_buf{};
@@ -84,6 +85,9 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
                 continue;
             }
             if (msg_type == MSG_AXI_WR_RESP && len == sizeof(socket_axi_wr_resp_st)) {
+                if (!resp_expected.load(std::memory_order_acquire)) {
+                    continue;
+                }
                 {
                     std::lock_guard<std::mutex> lock(resp_mutex);
                     resp_queue.push(recv_buf);
@@ -99,6 +103,21 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
         resp_event->notify();
     });
     socketFactory::registerThread(interface_name, std::move(rx_thread));
+
+    auto flush_resp_queue = [&]() {
+        std::lock_guard<std::mutex> lock(resp_mutex);
+        while (!resp_queue.empty()) {
+            resp_queue.pop();
+        }
+    };
+    auto drop_orphans_and_wait_reset = [&]() {
+        resp_expected.store(false, std::memory_order_release);
+        flush_resp_queue();
+        while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
+            sc_core::wait(socketSyncRstNEvent());
+        }
+        flush_resp_queue();
+    };
 
     bool should_shutdown = false;
     uint16_t burst_index = 0;
@@ -144,9 +163,7 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
             resp.bid = static_cast<_axiIdT>(addr.awid);
             resp.bresp = AXIRESP_DECERR;
             port->sendRespCycle(resp);
-            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
-                sc_core::wait(socketSyncRstNEvent());
-            }
+            drop_orphans_and_wait_reset();
             continue;
         }
 
@@ -161,16 +178,17 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
             resp.bid = static_cast<_axiIdT>(addr.awid);
             resp.bresp = AXIRESP_DECERR;
             port->sendRespCycle(resp);
-            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
-                sc_core::wait(socketSyncRstNEvent());
-            }
+            drop_orphans_and_wait_reset();
             continue;
         }
 
         socket_observe_axi_wr_req(interface_name, wire_req.awid, wire_req.awaddr, wire_req.awlen,
                                   wire_req.awsize, wire_req.awburst, wire_req.data, wire_req.strb);
 
+        flush_resp_queue();
+        resp_expected.store(true, std::memory_order_release);
         if (!socket_send_msg(fd, MSG_AXI_WR_REQ, &wire_req, static_cast<uint16_t>(sizeof(wire_req)))) {
+            resp_expected.store(false, std::memory_order_release);
             running->store(false, std::memory_order_release);
             should_shutdown = true;
             break;
@@ -198,20 +216,13 @@ void port_socket(axi_write_in<A, D, S> &port, const std::string &interface_name)
                 }
             }
         }
+        resp_expected.store(false, std::memory_order_release);
         if (abandoned || !socketSyncRstN()) {
             axiWriteRespSt resp{};
             resp.bid = static_cast<_axiIdT>(addr.awid);
             resp.bresp = AXIRESP_DECERR;
             port->sendRespCycle(resp);
-            {
-                std::lock_guard<std::mutex> lock(resp_mutex);
-                while (!resp_queue.empty()) {
-                    resp_queue.pop();
-                }
-            }
-            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
-                sc_core::wait(socketSyncRstNEvent());
-            }
+            drop_orphans_and_wait_reset();
             continue;
         }
         if (!have_resp) {

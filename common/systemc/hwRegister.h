@@ -105,13 +105,15 @@ public:
             return;
         } else {
             Q_ASSERT_CTX(address < N, "", "Address out of range");
-            // Perform a RMW operation
-            m_val = (*m_port)->readNonBlocking(); // Non-blocking read of architectural mirror
+            // Assemble APB 32-bit words into m_val; issue one command on the last word.
             m_val_sc = m_val.sc_pack();
             m_val_sc.range(8*address+31, 8*address) = val;
             m_val.sc_unpack(m_val_sc);
-            // Command only: do not clobber the APB read mirror (busy-lock / W1C).
-            (*m_port)->reg_write_cmd(m_val);
+            if (address == (N-4))
+            {
+                // Command only: do not clobber the APB read mirror (busy-lock / W1C).
+                (*m_port)->reg_write_cmd(m_val);
+            }
         }
     }
     void copy(REG_DATA& to)

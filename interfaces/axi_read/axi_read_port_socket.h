@@ -62,9 +62,10 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
 
     std::mutex resp_mutex;
     std::queue<socket_axi_rd_resp_st> resp_queue;
+    std::atomic<bool> resp_expected{false};
     auto running = std::make_shared<std::atomic<bool>>(true);
 
-    std::thread rx_thread([running, fd, &resp_mutex, &resp_queue, resp_event, interface_name]() {
+    std::thread rx_thread([running, fd, &resp_mutex, &resp_queue, &resp_expected, resp_event, interface_name]() {
         uint8_t msg_type = 0;
         uint16_t len = 0;
         std::vector<uint8_t> recv_buf(sizeof(socket_axi_rd_resp_st));
@@ -84,6 +85,10 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
                 continue;
             }
             if (msg_type == MSG_AXI_RD_RESP && len == sizeof(socket_axi_rd_resp_st)) {
+                // A RESP with no outstanding REQ is an orphan from an abandoned AR.
+                if (!resp_expected.load(std::memory_order_acquire)) {
+                    continue;
+                }
                 socket_axi_rd_resp_st wire_resp{};
                 std::memcpy(&wire_resp, recv_buf.data(), sizeof(wire_resp));
                 {
@@ -101,6 +106,21 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
         resp_event->notify();
     });
     socketFactory::registerThread(interface_name, std::move(rx_thread));
+
+    auto flush_resp_queue = [&]() {
+        std::lock_guard<std::mutex> lock(resp_mutex);
+        while (!resp_queue.empty()) {
+            resp_queue.pop();
+        }
+    };
+    auto drop_orphans_and_wait_reset = [&]() {
+        resp_expected.store(false, std::memory_order_release);
+        flush_resp_queue();
+        while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
+            sc_core::wait(socketSyncRstNEvent());
+        }
+        flush_resp_queue();
+    };
 
     bool should_shutdown = false;
     uint16_t burst_index = 0;
@@ -130,15 +150,7 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
                 resp.rlast = (i == num_beats - 1);
                 port->sendDataCycle(resp);
             }
-            {
-                std::lock_guard<std::mutex> lock(resp_mutex);
-                while (!resp_queue.empty()) {
-                    resp_queue.pop();
-                }
-            }
-            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
-                sc_core::wait(socketSyncRstNEvent());
-            }
+            drop_orphans_and_wait_reset();
             continue;
         }
 
@@ -152,7 +164,10 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
         socket_observe_axi_rd_req(interface_name, wire_req.arid, wire_req.araddr, wire_req.arlen,
                                 wire_req.arsize, wire_req.arburst);
 
+        flush_resp_queue();
+        resp_expected.store(true, std::memory_order_release);
         if (!socket_send_msg(fd, MSG_AXI_RD_REQ, &wire_req, static_cast<uint16_t>(sizeof(wire_req)))) {
+            resp_expected.store(false, std::memory_order_release);
             running->store(false, std::memory_order_release);
             should_shutdown = true;
             break;
@@ -180,6 +195,7 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
                 }
             }
         }
+        resp_expected.store(false, std::memory_order_release);
         if (abandoned || !socketSyncRstN()) {
             // Complete the outstanding AR with dummy beats so the HDL BFM unblocks.
             const int num_beats = static_cast<int>(addr.arlen) + 1;
@@ -190,15 +206,7 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
                 resp.rlast = (i == num_beats - 1);
                 port->sendDataCycle(resp);
             }
-            {
-                std::lock_guard<std::mutex> lock(resp_mutex);
-                while (!resp_queue.empty()) {
-                    resp_queue.pop();
-                }
-            }
-            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
-                sc_core::wait(socketSyncRstNEvent());
-            }
+            drop_orphans_and_wait_reset();
             continue;
         }
         if (!have_resp) {
@@ -235,9 +243,7 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
             port->sendDataCycle(resp);
         }
         if (beat_abandon) {
-            while (running->load(std::memory_order_acquire) && !socketSyncRstN()) {
-                sc_core::wait(socketSyncRstNEvent());
-            }
+            drop_orphans_and_wait_reset();
             continue;
         }
         if (burst_index < 0xFFFF) {
