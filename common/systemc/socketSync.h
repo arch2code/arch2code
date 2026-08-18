@@ -35,6 +35,13 @@ void socketSyncConfigureFromEnvironment();
 
 bool socketSyncLockstepEnabled();
 
+// True when pysocket_sync has an accepted TCP connection. Wrapper reset must
+// not follow socketSyncRstN() unless a partner can release it.
+bool socketSyncSocketConnected();
+
+// Lockstep env is on and a sync socket is connected (safe to arm lockstep reset).
+bool socketSyncLockstepActive();
+
 sc_core::sc_time socketSyncQuantum();
 
 uint64_t socketSyncScTimeNs();

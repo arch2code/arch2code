@@ -125,8 +125,9 @@ private:
         // is born low and only later rises.
         // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
         // Do not wait on clk — gated lockstep deadlocks before the first quantum.
+        // Only when pysocket_sync is connected; otherwise no partner releases rst_n.
         // Free-run / non-socket: assert, hold, then release.
-        if (socketSyncLockstepEnabled()) {
+        if (socketSyncLockstepActive()) {
             rst_n.write(socketSyncRstN());
             while (true) {
                 wait(socketSyncRstNEvent());

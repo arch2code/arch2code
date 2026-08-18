@@ -70,7 +70,7 @@ public:
         dut2Python_notify_ack_bfm("dut2Python_notify_ack_bfm"),
         test_rdy_vld_bfm("test_rdy_vld_bfm"),
         dut2Python_rdy_vld_bfm("dut2Python_rdy_vld_bfm"),
-        rst_n(0),
+        rst_n("rst_n", true),
         clk_half_(0.5, SC_NS)
     {
 #if !defined(VERILATOR) && defined(VCS)
@@ -219,10 +219,14 @@ private:
     }
 
     void reset_driver() {
+        // rst_n starts deasserted so the first write(false) is a negedge.
+        // Verilator async reset (@(negedge rst_n)) does not run if the pin
+        // is born low and only later rises.
         // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
         // Do not wait on clk — gated lockstep deadlocks before the first quantum.
-        // Free-run / non-socket: classic assert-then-release (nothing calls set_rst_n).
-        if (socketSyncLockstepEnabled()) {
+        // Only when pysocket_sync is connected; otherwise no partner releases rst_n.
+        // Free-run / non-socket: assert, hold, then release.
+        if (socketSyncLockstepActive()) {
             rst_n.write(socketSyncRstN());
             while (true) {
                 wait(socketSyncRstNEvent());
@@ -230,7 +234,7 @@ private:
             }
         } else {
             rst_n.write(false);
-            wait(5);
+            wait(5, SC_NS);
             rst_n.write(true);
         }
     }

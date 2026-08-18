@@ -316,6 +316,16 @@ bool socketSyncLockstepEnabled()
     return g_lockstep.load(std::memory_order_acquire);
 }
 
+bool socketSyncSocketConnected()
+{
+    return socketFactory::getFd(PYSOCKET_SYNC_IFC) >= 0;
+}
+
+bool socketSyncLockstepActive()
+{
+    return socketSyncLockstepEnabled() && socketSyncSocketConnected();
+}
+
 sc_core::sc_time socketSyncQuantum()
 {
     socketSyncConfigureFromEnvironment();

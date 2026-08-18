@@ -42,7 +42,7 @@ public:
         clk("clk"),
         ipDataIf_bfm("ipDataIf_bfm"),
         regs_bfm("regs_bfm"),
-        rst_n(0),
+        rst_n("rst_n", true),
         clk_half_(0.5, SC_NS)
     {
         dut_hdl = new DUT_T("dut_hdl");
@@ -110,10 +110,24 @@ private:
     }
 
     void reset_driver() {
-        for (int i = 0; i < 5; ++i) {
-            wait(clk.posedge_event());
+        // rst_n starts deasserted so the first write(false) is a negedge.
+        // Verilator async reset (@(negedge rst_n)) does not run if the pin
+        // is born low and only later rises.
+        // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
+        // Do not wait on clk — gated lockstep deadlocks before the first quantum.
+        // Only when pysocket_sync is connected; otherwise no partner releases rst_n.
+        // Free-run / non-socket: assert, hold, then release.
+        if (socketSyncLockstepActive()) {
+            rst_n.write(socketSyncRstN());
+            while (true) {
+                wait(socketSyncRstNEvent());
+                rst_n.write(socketSyncRstN());
+            }
+        } else {
+            rst_n.write(false);
+            wait(5, SC_NS);
+            rst_n.write(true);
         }
-        rst_n = true;
     }
 
 // GENERATED_CODE_END
