@@ -5,9 +5,11 @@ import pysrc.processYaml as processYaml
 
 # Generated-source toolchain split, mirroring the make find globs: the C++ build
 # consumes .cpp/.h/.cppm, the SystemVerilog/verilator build consumes .sv/.svh.
-# .py catalogs are generated through the SystemC gen path but are not compiled.
+# .py catalogs are generated through the SystemC gen path (%.scgen) but are not
+# compiled; they are a separate gen set so A2C_SC_GEN_FILES stays C++-only.
 # rtl.f (ext 'f') is a file list, not a compiled source, so it is in neither set.
-_CPP_GEN_EXTS = {'cpp', 'h', 'cppm', 'py'}
+_CPP_GEN_EXTS = {'cpp', 'h', 'cppm'}
+_PY_GEN_EXTS = {'py'}
 _SV_GEN_EXTS = {'sv', 'svh'}
 
 
@@ -30,6 +32,7 @@ def _writeBuildManifestMk(rootDir, manifest):
         f"A2C_CPP_MODULE_FILES := {asList(manifest['cppModuleFiles'])}",
         f"A2C_SV_FILES := {asList(manifest['svFiles'])}",
         f"A2C_SC_GEN_FILES := {asList(manifest['scGenFiles'])}",
+        f"A2C_PY_GEN_FILES := {asList(manifest['pyGenFiles'])}",
         f"A2C_SV_GEN_FILES := {asList(manifest['svGenFiles'])}",
         f"A2C_RTL_DOT_F := {manifest['rtlDotF']}",
         f"A2C_VL_TOPS := {asList([t['qualifiedTop'] for t in manifest['vlTops']])}",
@@ -75,6 +78,7 @@ def create(prj):
     # generator emits is recorded here so the makefiles consume the DB-derived
     # set instead of rediscovering GENERATED-marked files on disk.
     scGenFiles = set()
+    pyGenFiles = set()
     svGenFiles = set()
 
     blocksParams = {row['blockKey'] for row in prj.flatData['blocksparams'].values()}
@@ -139,6 +143,8 @@ def create(prj):
                 genFile = filePath + '.' + extVal
                 if extVal in _CPP_GEN_EXTS:
                     scGenFiles.add(genFile)
+                elif extVal in _PY_GEN_EXTS:
+                    pyGenFiles.add(genFile)
                 elif extVal in _SV_GEN_EXTS:
                     svGenFiles.add(genFile)
         if 'cppm' in fileDef['ext']:
@@ -241,6 +247,8 @@ def create(prj):
                 if prj.contextOwningProject[context] == rootProject:
                     if extVal in _CPP_GEN_EXTS:
                         scGenFiles.add(entry['fileName'])
+                    elif extVal in _PY_GEN_EXTS:
+                        pyGenFiles.add(entry['fileName'])
                     elif extVal in _SV_GEN_EXTS:
                         svGenFiles.add(entry['fileName'])
                 if ext == 'cppm':
@@ -426,6 +434,7 @@ def create(prj):
         'cppModuleFiles':sorted(moduleFiles),
         'svFiles':       sorted(svModuleFiles),
         'scGenFiles':    sorted(scGenFiles),
+        'pyGenFiles':    sorted(pyGenFiles),
         'svGenFiles':    sorted(svGenFiles),
         'rtlDotF':       rtlDotFPath,
         'vlTops':        sorted(vlTops, key=lambda t: t['qualifiedTop']),

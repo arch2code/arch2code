@@ -16,6 +16,8 @@ interface_defs:
       type : 'status'
       multicycle_types : []
       set_initial_value: true
+    socket:
+      dst: { kind: observe, observe: true }
     multiDst : True
     mappedFrom : ['reg_ro', 'reg_rw']
 

@@ -19,4 +19,7 @@ interface_defs:
     sc_channel :
       type : 'req_ack'
       multicycle_types : []
+    socket:
+      src: { kind: drive }
+      dst: { kind: drive }
 

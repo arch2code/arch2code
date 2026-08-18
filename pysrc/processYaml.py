@@ -1360,28 +1360,6 @@ class projectOpen:
 
         return ret
 
-    # Hand-written `*_port_socket.h` helpers. Catalog rows still list every YAML
-    # port; socket-shell methods/threads are emitted only for pairs that have an
-    # overload so unused hasMdl shells still compile. `observe` is True when the
-    # helper calls socket_observe_push (which appends `_obs` to the factory key).
-    _SOCKET_HELPERS = {
-        ('req_ack', 'src'):    {'kind': 'drive',   'observe': False},
-        ('req_ack', 'dst'):    {'kind': 'drive',   'observe': False},
-        ('push_ack', 'src'):   {'kind': 'drive',   'observe': False},
-        ('push_ack', 'dst'):   {'kind': 'drive',   'observe': False},
-        ('pop_ack', 'src'):    {'kind': 'drive',   'observe': False},
-        ('pop_ack', 'dst'):    {'kind': 'drive',   'observe': False},
-        ('notify_ack', 'src'): {'kind': 'drive',   'observe': False},
-        ('notify_ack', 'dst'): {'kind': 'drive',   'observe': False},
-        ('rdy_vld', 'src'):    {'kind': 'drive',   'observe': False},
-        ('rdy_vld', 'dst'):    {'kind': 'drive',   'observe': False},
-        ('apb', 'src'):        {'kind': 'drive',   'observe': True},
-        ('axi_read', 'dst'):   {'kind': 'drive',   'observe': True},
-        ('axi_write', 'dst'):  {'kind': 'drive',   'observe': True},
-        ('status', 'dst'):     {'kind': 'observe', 'observe': True},
-    }
-    _SOCKET_LOCKSTEP_TYPES = frozenset({'apb', 'axi_read', 'axi_write'})
-
     def _socketRawInterfaceType(self, port_data):
         # Connection ports store the qualified interfaceKey on the merged
         # `connection` dict (and often also at the top level). Declared /
@@ -1405,18 +1383,25 @@ class projectOpen:
         # Per-block socket catalog: factory key `{block}.{port}`, drive vs
         # observe role, and listen names (drive names plus `_obs` where the
         # helper actually pushes observe traffic). pysocket_sync is not a YAML
-        # port; it is appended only when the block has APB/AXI lockstep helpers.
+        # port; it is appended when any helper row has lockstep: true.
         if block_data is None:
             block_data = self.getBlockData(qualBlock)
         block_name = block_data['blockName']
         ports = []
+        uses_lockstep = False
         for source_type in block_data.get('ports') or {}:
             for port, port_data in (block_data['ports'][source_type] or {}).items():
                 interface_type = self._socketCanonicalInterfaceType(port_data, block_data)
                 direction = port_data.get('direction') or 'src'
-                helper = self._SOCKET_HELPERS.get((interface_type, direction)) if interface_type else None
+                helper = None
+                if interface_type:
+                    socket_rows = block_data['interface_defs'][interface_type].get('socket')
+                    if socket_rows:
+                        helper = socket_rows.get(direction)
                 name = f'{block_name}.{port}'
                 observe_name = f'{name}_obs' if helper and helper['observe'] else None
+                if helper and helper['lockstep']:
+                    uses_lockstep = True
                 ports.append({
                     'port': port,
                     'name': name,
@@ -1430,9 +1415,6 @@ class projectOpen:
                 })
         listen_names = [row['name'] for row in ports if row['role'] == 'drive']
         listen_names.extend(row['observeName'] for row in ports if row['observeName'])
-        uses_lockstep = any(
-            row['hasPortSocket'] and row['interfaceType'] in self._SOCKET_LOCKSTEP_TYPES
-            for row in ports)
         sync_names = ['pysocket_sync'] if uses_lockstep else []
         return {
             'block': block_name,
