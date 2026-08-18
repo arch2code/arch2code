@@ -281,7 +281,7 @@ public:
         {{blockname}}Base{{cfg}}(name(), variant),
         clk("clk"),
         {{ sec_bfm_ctor_init | indent(8) }}
-        rst_n(0),
+        rst_n("rst_n", true),
         clk_half_(0.5, SC_NS)
     {
 {%- if not variants %}
@@ -336,9 +336,12 @@ private:
     }
 
     void reset_driver() {
+        // rst_n starts deasserted so the first write(false) is a negedge.
+        // Verilator async reset (@(negedge rst_n)) does not run if the pin
+        // is born low and only later rises.
         // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
         // Do not wait on clk — gated lockstep deadlocks before the first quantum.
-        // Free-run / non-socket: classic assert-then-release (nothing calls set_rst_n).
+        // Free-run / non-socket: assert, hold, then release.
         if (socketSyncLockstepEnabled()) {
             rst_n.write(socketSyncRstN());
             while (true) {
@@ -347,7 +350,7 @@ private:
             }
         } else {
             rst_n.write(false);
-            wait(5);
+            wait(5, SC_NS);
             rst_n.write(true);
         }
     }
