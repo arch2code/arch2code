@@ -211,6 +211,8 @@ def _run_py_test_like():
         assert apb['role'] == 'drive'
         assert apb['name'] == 'py_test.apbReg'
         assert apb['observeName'] == 'py_test.apbReg_obs'
+        assert apb['apbMappedOffsets'] is None
+        assert apb['apbAddrMask'] is None
 
         axi_rd = by_port['dma_axi_read_if']
         assert axi_rd['interfaceType'] == 'axi_read'

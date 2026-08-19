@@ -1379,11 +1379,110 @@ class projectOpen:
         mappings = block_data.get('interface_type_mappings') or {}
         return mappings.get(raw, raw)
 
+    def _blockRegisterWordDecode(self, block_key):
+        # Word offsets and APB address mask from the block's register map.
+        # Matches the SV decoder: one exact-offset case arm per 4-byte bus
+        # word (paddr masked to addressBits). Memory-mapped APB windows are
+        # range-decoded in RTL and are not listed here.
+        offsets = []
+        for reg in self.data['registers'].values():
+            if reg['blockKey'] != block_key:
+                continue
+            if reg['regType'] == 'memory':
+                continue
+            offset = int(reg['offset'])
+            decode_size = int(reg['decodeSize'])
+            for word in range(0, decode_size, 4):
+                offsets.append(offset + word)
+        if not offsets:
+            return None
+        offsets.sort()
+        max_address = self.data['blocks'][block_key]['maxAddress']
+        address_bits = int(max_address).bit_length()
+        if address_bits < 1:
+            address_bits = 1
+        return {
+            'mappedOffsets': offsets,
+            'addrMask': (1 << address_bits) - 1,
+        }
+
+    def _routerSoleRegisterBlockKey(self, router_block_key):
+        # When a router serves exactly one register-owning leaf in its
+        # address group, that leaf's map is the APB target for the router's
+        # upstream port. Multiple leaves keep distinct maps on the per-leaf
+        # dispatch ports; the upstream is then left without a single map.
+        address_block = self.data['blocks'][router_block_key].get('addressBlock')
+        if not address_block:
+            return None
+        group = address_block['addressGroup']
+        instance_with_regapb = self.config.getConfig('INSTANCES_WITH_REGAPB', failOk=True)
+        if instance_with_regapb is None:
+            return None
+        owners = []
+        for inst_key in instance_with_regapb:
+            inst = self.data['instances'][inst_key]
+            if inst['addressGroup'] != group:
+                continue
+            type_key = inst['instanceTypeKey']
+            if type_key not in owners:
+                owners.append(type_key)
+        if len(owners) == 1:
+            return owners[0]
+        return None
+
+    def _registerOwningBlockKey(self, type_key, inst_key):
+        if self._blockRegisterWordDecode(type_key) is not None:
+            return type_key
+        if self.data['blocks'][type_key].get('isRegHandler'):
+            container_key = self.data['instances'][inst_key]['containerKey']
+            if container_key in self.data['blocks']:
+                return container_key
+            return self.data['instances'][container_key]['instanceTypeKey']
+        if self.data['blocks'][type_key].get('addressBlock'):
+            return self._routerSoleRegisterBlockKey(type_key)
+        return type_key
+
+    def _socketApbTargetBlockKey(self, qualBlock, port, port_data, source_type):
+        # Destination block that owns the APB register map for this drive
+        # port: connectionMap instance, or the other end of a connection
+        # (a router collapses to its sole register leaf when there is one).
+        if source_type == 'connectionMaps':
+            inst_key = port_data['connection']['instanceKey']
+            type_key = self.data['instances'][inst_key]['instanceTypeKey']
+            return self._registerOwningBlockKey(type_key, inst_key)
+        if source_type != 'connections':
+            return None
+        for conn_val in self.data['connections'].values():
+            src_key = conn_val['srcKey']
+            dst_key = conn_val['dstKey']
+            src_inst = self.data['instances'][src_key]
+            dst_inst = self.data['instances'][dst_key]
+            src_port = conn_val['srcport'] if conn_val.get('srcport') else conn_val['interface']
+            dst_port = conn_val['dstport'] if conn_val.get('dstport') else conn_val['interface']
+            for end_val in (conn_val.get('ends') or {}).values():
+                if end_val['instanceKey'] == src_key:
+                    src_port = end_val['portName']
+                elif end_val['instanceKey'] == dst_key:
+                    dst_port = end_val['portName']
+            if src_inst['instanceTypeKey'] == qualBlock and src_port == port:
+                return self._registerOwningBlockKey(dst_inst['instanceTypeKey'], dst_key)
+            if dst_inst['instanceTypeKey'] == qualBlock and dst_port == port:
+                return self._registerOwningBlockKey(src_inst['instanceTypeKey'], src_key)
+        return None
+
+    def _socketApbRegisterDecode(self, qualBlock, port, port_data, source_type):
+        target = self._socketApbTargetBlockKey(qualBlock, port, port_data, source_type)
+        if target is None:
+            return None
+        return self._blockRegisterWordDecode(target)
+
     def getSocketCatalogView(self, qualBlock, block_data=None):
         # Per-block socket catalog: factory key `{block}.{port}`, drive vs
         # observe role, and listen names (drive names plus `_obs` where the
         # helper actually pushes observe traffic). pysocket_sync is not a YAML
         # port; it is appended when any helper row has lockstep: true.
+        # APB drive rows also carry the selected target's register-map
+        # word offsets and address mask for PSLVERR on the socket ACK.
         if block_data is None:
             block_data = self.getBlockData(qualBlock)
         block_name = block_data['blockName']
@@ -1402,6 +1501,10 @@ class projectOpen:
                 observe_name = f'{name}_obs' if helper and helper['observe'] else None
                 if helper and helper['lockstep']:
                     uses_lockstep = True
+                apb_decode = None
+                if helper and helper['kind'] == 'drive' and interface_type == 'apb':
+                    apb_decode = self._socketApbRegisterDecode(
+                        qualBlock, port, port_data, source_type)
                 ports.append({
                     'port': port,
                     'name': name,
@@ -1412,6 +1515,8 @@ class projectOpen:
                     'observeName': observe_name,
                     'block': block_name,
                     'sourceType': source_type,
+                    'apbMappedOffsets': None if apb_decode is None else apb_decode['mappedOffsets'],
+                    'apbAddrMask': None if apb_decode is None else apb_decode['addrMask'],
                 })
         listen_names = [row['name'] for row in ports if row['role'] == 'drive']
         listen_names.extend(row['observeName'] for row in ports if row['observeName'])

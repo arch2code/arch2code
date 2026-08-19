@@ -125,6 +125,16 @@ def _run():
         assert leaf_inst_key in instances_with_regapb, \
             f"INSTANCES_WITH_REGAPB expected to include '{leaf_inst_key}'; got {instances_with_regapb}"
 
+        # ---- Socket catalog APB decode from the leaf register map ----
+        catalog = prj.getSocketCatalogView(router_key)
+        dispatch = next(row for row in catalog['ports'] if row['port'] == 'apbReg_uLeaf')
+        assert dispatch['apbMappedOffsets'] == [0], \
+            f"dispatch mapped offsets expected [0], got {dispatch['apbMappedOffsets']!r}"
+        leaf_max = prj.data['blocks'][leaf_key]['maxAddress']
+        expected_mask = (1 << int(leaf_max).bit_length()) - 1
+        assert dispatch['apbAddrMask'] == expected_mask, \
+            f"dispatch addr mask expected {expected_mask:#x}, got {dispatch['apbAddrMask']!r}"
+
         # ---- No-_global invariant ----
         assert_no_global_register_binds(prj)
 

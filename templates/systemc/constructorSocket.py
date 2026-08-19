@@ -33,8 +33,13 @@ def _port_ref(port, hasOwnParams):
     return f'this->{port}' if hasOwnParams else port
 
 
-def _drive_body(port_ref, name):
-    return f'    port_socket({port_ref}, "{name}");\n'
+def _drive_body(port_ref, name, mapped_offsets=None, addr_mask=None):
+    if mapped_offsets is None:
+        return f'    port_socket({port_ref}, "{name}");\n'
+    offs = ', '.join(f'{offset:#x}u' for offset in mapped_offsets)
+    return (
+        f'    port_socket({port_ref}, "{name}", {{{offs}}}, {addr_mask:#x}u);\n'
+    )
 
 
 def _observe_body(port_ref, name):
@@ -86,7 +91,8 @@ def constructorInitSocket(args, prj, data):
         if row['role'] == 'observe':
             out.append(_observe_body(port_ref, row['name']))
         else:
-            out.append(_drive_body(port_ref, row['name']))
+            out.append(_drive_body(port_ref, row['name'],
+                                   row['apbMappedOffsets'], row['apbAddrMask']))
         out.append('}\n\n')
 
     if hasOwnParams:
