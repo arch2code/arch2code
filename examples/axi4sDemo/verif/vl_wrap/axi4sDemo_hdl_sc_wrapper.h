@@ -36,8 +36,8 @@ public:
 
     sc_signal<bool> clk;
 
-    axi4_stream_dst_bfm<data_t1_t, tid_t1_t, tdest_t1_t, tuser_t1_t, sc_bv<256>, sc_bv<4>, sc_bv<4>, sc_bv<16>, sc_bv<32>, sc_bv<32>> axis4_t1_bfm;
-    axi4_stream_src_bfm<data_t2_t, tid_t2_t, tdest_t2_t, tuser_t2_t, sc_bv<64>, sc_bv<4>, sc_bv<4>, sc_bv<4>, sc_bv<8>, sc_bv<8>> axis4_t2_bfm;
+    axi4_stream_dst_bfm<data_t1_t, tid_t1_t, tdest_t1_t, sc_bv<256>, sc_bv<4>, sc_bv<4>, sc_bv<32>, sc_bv<32>, sc_bv<16>, tuser_t1_t> axis4_t1_bfm;
+    axi4_stream_src_bfm<data_t2_t, tid_t2_t, tdest_t2_t, sc_bv<64>, sc_bv<4>, sc_bv<4>, sc_bv<8>, sc_bv<8>, sc_bv<4>, tuser_t2_t> axis4_t2_bfm;
 
     SC_HAS_PROCESS (axi4sDemo_hdl_sc_wrapper);
 
@@ -106,8 +106,8 @@ public:
 
 private:
 
-    axi4_stream_hdl_if<sc_bv<256>, sc_bv<4>, sc_bv<4>, sc_bv<16>, sc_bv<32>, sc_bv<32>> axis4_t1_hdl_if;
-    axi4_stream_hdl_if<sc_bv<64>, sc_bv<4>, sc_bv<4>, sc_bv<4>, sc_bv<8>, sc_bv<8>> axis4_t2_hdl_if;
+    axi4_stream_hdl_if<sc_bv<256>, sc_bv<4>, sc_bv<4>, sc_bv<32>, sc_bv<32>, sc_bv<16>> axis4_t1_hdl_if;
+    axi4_stream_hdl_if<sc_bv<64>, sc_bv<4>, sc_bv<4>, sc_bv<8>, sc_bv<8>, sc_bv<4>> axis4_t2_hdl_if;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

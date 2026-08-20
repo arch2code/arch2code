@@ -2,7 +2,7 @@
 interface_defs:
   rdy_vld : 
     parameters : 
-      data_t : { datatype : struct, default : 'bit' }
+      data_t : { datatype : struct }
     signals: 
       vld : bool
       data : data_t

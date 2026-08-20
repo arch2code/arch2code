@@ -25,6 +25,11 @@ else
 A2C_BASE_DIR := $(A2C_ROOT)
 endif
 A2C_RULES_DIRS := $(A2C_BASE_DIR)/rules $(EXTRA_A2C_RULES_DIRS)
+# Base dir expressed relative to REPO_ROOT, so the rules symlink planted in the
+# project root stays relative and survives a moved or renamed checkout. Falls
+# back to the absolute path when base is not under REPO_ROOT (an example project
+# inside the arch2code repo itself), where a relative link is not expressible.
+A2C_BASE_REL := $(patsubst $(REPO_ROOT)/%,%,$(A2C_BASE_DIR))
 
 #------------------------------------------------------------------------
 # AI Agent Setup Targets
@@ -81,8 +86,8 @@ agents-setup agents_setup:
 	fi
 	@# Create symlink to ARCH2CODE_AI_RULES.md in project root
 	@if [ ! -L "$(REPO_ROOT)/ARCH2CODE_AI_RULES.md" ] && [ ! -e "$(REPO_ROOT)/ARCH2CODE_AI_RULES.md" ]; then \
-		ln -s builder/base/ARCH2CODE_AI_RULES.md $(REPO_ROOT)/ARCH2CODE_AI_RULES.md && \
-		echo "  + Created symlink: ARCH2CODE_AI_RULES.md -> builder/base/ARCH2CODE_AI_RULES.md"; \
+		ln -s $(A2C_BASE_REL)/ARCH2CODE_AI_RULES.md $(REPO_ROOT)/ARCH2CODE_AI_RULES.md && \
+		echo "  + Created symlink: ARCH2CODE_AI_RULES.md -> $(A2C_BASE_REL)/ARCH2CODE_AI_RULES.md"; \
 	else \
 		echo "  = ARCH2CODE_AI_RULES.md already exists in project root"; \
 	fi
@@ -116,8 +121,8 @@ agents-setup agents_setup:
 	@echo "  - Cross-tool     : .agents/skills/"
 	@echo ""
 	@echo "Reference documentation:"
-	@echo "  - builder/base/ARCH2CODE_AI_RULES.md"
-	@echo "  - builder/base/SYSTEMC_API_USER_REFERENCE.md"
+	@echo "  - $(A2C_BASE_REL)/ARCH2CODE_AI_RULES.md"
+	@echo "  - $(A2C_BASE_REL)/SYSTEMC_API_USER_REFERENCE.md"
 
 #------------------------------------------------------------------------
 # cursor-setup: Cursor IDE

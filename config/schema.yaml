@@ -144,7 +144,9 @@ interface_defs:
     _attribs: [optional, multiple]
     param: key
     datatype: required
-    default: optional
+    # when true the parameter need not be bound by a declaring interface;
+    # unbound optional parameters are not required by validate_interface_structures
+    optional: optional(false)
   hdlparams:
     _attribs: [optional, multiple]
     hdlparam: key

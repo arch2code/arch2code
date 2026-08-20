@@ -2,7 +2,7 @@
 interface_defs:
   pop_ack : 
     parameters : 
-      rdata_t : { datatype : struct, default : 'bit' }
+      rdata_t : { datatype : struct }
     signals: 
       pop : bool
       ack : bool

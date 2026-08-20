@@ -132,7 +132,7 @@ void consumer::inAXI0Wr(void)
         axiWriteAddressSt<axiAddrSt> addr;
         axiWriteDataSt<axiDataSt, axiStrobeSt> *data; // array of max number of bursts
         axiWriteDataSt<axiDataSt, axiStrobeSt> dummy;
-        axiWriteRespSt resp;
+        axiWriteRespSt<> resp;
         axiWr0->receiveAddr(addr);
         int num_bursts = addr.awlen + 1;
         axiWr0->receiveData(dummy);
@@ -165,7 +165,7 @@ void consumer::inAXI1Wr(void)
     for(int loop=0; loop < LOOPCOUNT; loop++) {
         axiWriteAddressSt<axiAddrSt> addr;
         axiWriteDataSt<axiDataSt, axiStrobeSt> data;
-        axiWriteRespSt resp;
+        axiWriteRespSt<> resp;
         axiWr1->receiveAddr(addr);
         int num_bursts = addr.awlen + 1;
         for (int i = 0; i < num_bursts; i++)
@@ -199,7 +199,7 @@ void consumer::inAXI2Wr(void)
         axiWriteAddressSt<axiAddrSt> addr;
         axiWriteDataSt<axiDataSt, axiStrobeSt> *data; // array of max number of bursts
         axiWriteDataSt<axiDataSt, axiStrobeSt> dummy;
-        axiWriteRespSt resp;
+        axiWriteRespSt<> resp;
         resp.bresp = AXIRESP_OKAY;
         axiWr2->receiveAddr(addr);
         int num_bursts = addr.awlen + 1;
@@ -233,7 +233,7 @@ void consumer::inAXI3Wr(void)
     for(int loop=0; loop < LOOPCOUNT; loop++) {
         axiWriteAddressSt<axiAddrSt> addr;
         axiWriteDataSt<axiDataSt, axiStrobeSt> data;
-        axiWriteRespSt resp;
+        axiWriteRespSt<> resp;
         resp.bresp = AXIRESP_OKAY;
         axiWr3->receiveAddr(addr);
         int num_bursts = addr.awlen + 1;

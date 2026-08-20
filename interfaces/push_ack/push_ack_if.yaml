@@ -2,7 +2,7 @@
 interface_defs:
   push_ack : 
     parameters : 
-      data_t : { datatype : struct, default : 'bit' }
+      data_t : { datatype : struct }
     signals: 
       push : bool
       data : data_t

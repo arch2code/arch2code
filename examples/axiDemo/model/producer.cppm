@@ -200,7 +200,7 @@ void producer::outRespHandlerAXI0Wr(void)
     controller.wait_test(test_name);
     for(int loop = 0; loop < LOOPCOUNT; loop++)
     {
-        axiWriteRespSt resp;
+        axiWriteRespSt<> resp;
         axiWr0->receiveResp(resp);
         if (resp.bresp != AXIRESP_OKAY ||
             resp.bid != 0x1)
@@ -251,7 +251,7 @@ void producer::outRespHandlerAXI1Wr(void)
     controller.wait_test(test_name);
     for(int loop = 0; loop < LOOPCOUNT; loop++)
     {
-        axiWriteRespSt resp;
+        axiWriteRespSt<> resp;
         axiWr1->receiveResp(resp);
         if (resp.bresp != AXIRESP_OKAY ||
             resp.bid != 0x1)
@@ -305,7 +305,7 @@ void producer::outRespHandlerAXI2Wr(void)
     controller.wait_test(test_name);
     for(int loop = 0; loop < LOOPCOUNT; loop++)
     {
-        axiWriteRespSt resp;
+        axiWriteRespSt<> resp;
         axiWr2->receiveResp(resp);
         if (resp.bresp != AXIRESP_OKAY ||
             resp.bid != 0x1)
@@ -358,7 +358,7 @@ void producer::outRespHandlerAXI3Wr(void)
     controller.wait_test(test_name);
     for(int loop = 0; loop < LOOPCOUNT; loop++)
     {
-        axiWriteRespSt resp;
+        axiWriteRespSt<> resp;
         axiWr3->receiveResp(resp);
         if (resp.bresp != AXIRESP_OKAY ||
             resp.bid != 0x1)
