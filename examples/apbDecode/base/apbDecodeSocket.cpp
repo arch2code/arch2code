@@ -7,11 +7,11 @@ SC_HAS_PROCESS(apbDecodeSocket);
 apbDecodeSocket::registerBlock apbDecodeSocket::registerBlock_; //register the block with the factory
 
 void apbDecodeSocket::apbReg_uBlockASocket(void) {
-    port_socket(apbReg_uBlockA, "apbDecode.apbReg_uBlockA");
+    port_socket(apbReg_uBlockA, "apbDecode.apbReg_uBlockA", {0x200u, 0x204u, 0x208u, 0x20cu, 0x210u, 0x214u, 0x218u, 0x21cu}, 0x3ffu);
 }
 
 void apbDecodeSocket::apbReg_uBlockBSocket(void) {
-    port_socket(apbReg_uBlockB, "apbDecode.apbReg_uBlockB");
+    port_socket(apbReg_uBlockB, "apbDecode.apbReg_uBlockB", {0x200u, 0x208u}, 0x3ffu);
 }
 
 apbDecodeSocket::apbDecodeSocket(sc_module_name blockName, const char * variant, blockBaseMode bbMode)

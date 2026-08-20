@@ -11,11 +11,11 @@ void apbDecodeSocket::apbReg_uBridgeSocket(void) {
 }
 
 void apbDecodeSocket::apbReg_uIp0Socket(void) {
-    port_socket(apbReg_uIp0, "apbDecode.apbReg_uIp0");
+    port_socket(apbReg_uIp0, "apbDecode.apbReg_uIp0", {0x300u, 0x304u, 0x308u, 0x30cu, 0x310u, 0x318u, 0x31cu, 0x320u, 0x324u, 0x328u}, 0x3ffu);
 }
 
 void apbDecodeSocket::apbReg_uIp1Socket(void) {
-    port_socket(apbReg_uIp1, "apbDecode.apbReg_uIp1");
+    port_socket(apbReg_uIp1, "apbDecode.apbReg_uIp1", {0x300u, 0x304u, 0x308u, 0x30cu, 0x310u, 0x318u, 0x31cu, 0x320u, 0x324u, 0x328u}, 0x3ffu);
 }
 
 apbDecodeSocket::apbDecodeSocket(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
