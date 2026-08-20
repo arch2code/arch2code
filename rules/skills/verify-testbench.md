@@ -61,7 +61,7 @@ Guide the user on creating testbenches, configuring verification components, and
 
     **When to use `--excludeInst`:** When the DUT is a complex block with multiple surrounding test blocks (sources, sinks, CPU, decoders) that all live together in the `_tb` container. This is the standard pattern for any DUT that has external interfaces needing drivers/monitors.
 
-    **When you don't need it:** A simple leaf block with no surrounding blocks — where the `_tb` container holds only the DUT instance. In that case the External has no sub-instances to manage and `--excludeInst` is not required. In practice most real testbenches need surrounding blocks, so `--excludeInst` is the common case.
+    **When you don't need it:** When the External is to be the DUT's inverse test surface only, with all stimulus hand-written in its user region. Then `--block` names the **DUT block itself** — not a `_tb` container — and `--excludeInst` is omitted. In that case the External has no sub-instances to manage (the DUT still instantiates its own children, in the DUT's own generated region) and `--excludeInst` is not required. There need not be a `_tb` container at all: `examples/simple_ip/ip` and `examples/ip_test/ip` have none. Where one does exist it can be bypassed deliberately — `pySocket_tb` holds a peer (`u_dut`), yet `examples/pySocket` still uses `--block=pySocket` with hand-written stimulus. In practice most real testbenches need surrounding blocks, so `--excludeInst` is the common case.
 
     **Usage:** `*External.cppm` carries the param line:
 

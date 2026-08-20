@@ -7,6 +7,7 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
+#include "push_ack_port_thunker.h"
 #include "xpGainVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
@@ -40,6 +41,9 @@ public:
     std::shared_ptr<xpFilterSharedBase<xpGainDefaultConfig>> uFilter;
     std::shared_ptr<xpSinkSharedBase<xpGainDefaultConfig>> uSink;
 
+    // cross-interface thunkers
+    push_ack_port_thunker<videoSt<xpGainDefaultConfig>, videoSt<xpGainV0Config>, true> thunker_videoOut_0_uGain;
+
     xpSharedTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpSharedTop() override = default;
 
@@ -70,11 +74,11 @@ xpSharedTop::xpSharedTop(sc_module_name blockName, const char * variant, blockBa
         ,uGain(std::dynamic_pointer_cast<xpGainBase<xpGainV0Config>>(instanceFactory::createInstance(name(), "uGain", "xpGain", "v0", "xpShared")))
         ,uFilter(std::dynamic_pointer_cast<xpFilterSharedBase<xpGainDefaultConfig>>(instanceFactory::createInstance(name(), "uFilter", "xpFilterShared", "v0", "xpShared")))
         ,uSink(std::dynamic_pointer_cast<xpSinkSharedBase<xpGainDefaultConfig>>(instanceFactory::createInstance(name(), "uSink", "xpSinkShared", "v0", "xpShared")))
+        ,thunker_videoOut_0_uGain("thunker_videoOut_0_uGain", videoOut_0, uGain->videoOut, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // instance to instance connections via channel
-    uGain->videoOut(videoOut_0);
     uFilter->videoIn(videoOut_0);
     uFilter->videoOut(videoOut_1);
     uSink->videoIn(videoOut_1);

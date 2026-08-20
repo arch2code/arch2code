@@ -1109,6 +1109,20 @@ OWN parameterized interface (`video_raw_stream` / `video_rgb_stream`) plus its o
 Verified by code reading against the working tree, except G5.6 which is a STATIC
 READING and is NOT compile-verified.
 
+- **G5.1 — CLOSED 2026-08-11.** Both name gates are gone. The `validatePorts`
+  gate went with step 1 of
+  [`plan-interface-compatibility.md`](./plan-interface-compatibility.md), so
+  `checkInterfacePair` now adjudicates a same-named cross-project junction; the
+  matching gate in the **generator** went with step 3, so a junction that clears
+  the check is adapted rather than bound. The adapter-insertion predicate is now
+  resolved identity — the persisted `interfaceKey`, plus the Config each side
+  instantiates the payload at when the payload is parameterizable — at
+  `getBDCrossInterfaceBinds.bindsDirectly`. Pinned by
+  `unittest/test_param_cross_project_linkage.py::test_same_named_cross_project_interfaces_are_adapted`
+  (two projects' same-named `dataIf` against an assembler's third, each end
+  adapted onto its own project's payload) and
+  `::test_one_interface_at_differing_configs_is_adapted` (one declaration reached
+  at three Configs). Original finding follows.
 - **G5.1 — SILENT: the cross-project width check is skipped.** `validatePorts`
   gates entry to `checkInterfacePair` on interface **NAME** equality rather than
   **key** equality: `processYaml.py:6036` and `processYaml.py:6098`
@@ -1119,6 +1133,8 @@ READING and is NOT compile-verified.
   `checkInterfacePair` itself compares **keys** correctly
   (`processYaml.py:5813`) and is genuinely two-sided (a separate `ValueResolver`
   per side, `processYaml.py:5862-5871`) — it is simply never reached.
+- **G5.2 — CLOSED.** Both re-derivations were deleted; the two paths now read the
+  parse-time `interfaceKey` persisted on the ports row. Original finding follows.
 - **G5.2 — SILENT: unscoped bare-name interface fallback.** Two paths resolve an
   interface by bare name across the whole loaded database, first match wins, when
   the qualified key misses: `processYaml.py:1873-1876`
@@ -1126,6 +1142,18 @@ READING and is NOT compile-verified.
   (`resolveInterfaceKey` in `getBDConnections`). With nine sub-projects each
   defining `video_rgb_stream`, binding becomes dependent on dictionary insertion
   order.
+- **G5.3 — CLOSED 2026-08-11** by [`plan-interface-compatibility.md`](./plan-interface-compatibility.md)
+  "Plan of record" step 4, on both of its arms. The rule is now scoped to
+  endpoints that reach the connection's own interface declaration, so the
+  ISP-shaped endpoint — whose port carries its own project's same-named
+  interface — is exempt and the message does not fire at all; and where the rule
+  still fires, it names the declaring file of the parameter it requires and of
+  any same-named parameter the block does declare, so the identity that
+  disagrees is stated rather than hidden. **Closing the diagnostic does not make
+  the ISP authoring shape build:** a parameterizable connection every end of
+  which is adapted has no endpoint left to type its channel, which is a separate
+  and pre-existing defect recorded at that plan's step 4 entry. Original finding
+  follows.
 - **G5.3 — Misleading diagnostic.** The endpoint error at
   `processYaml.py:5273-5281` reports "does not declare the required
   parameter(s): missing WIDTH" when the block demonstrably does declare `WIDTH`;
@@ -1183,6 +1211,13 @@ READING and is NOT compile-verified.
    generator code was changed.
 2. **A runnable composed harness that actually compiles**, because G5.5 and G5.6
    surface only in a real multi-project build, not in a `db`/`gen` pass.
+   **LANDED** as `examples/xprojParam`: `uniq` and `cppAxis` from the start, and
+   `shared` — the straight-through parameterized cross-project path — since
+   2026-08-12, when the last of its two compile failures was closed
+   ([`plan-interface-compatibility.md`](./plan-interface-compatibility.md), Plan
+   of record step 7). All three run inside `pipeline-test`. `deparam` remains a
+   probe: its failure is G5.6, a generated-code qualification defect independent
+   of composition.
 
 #### Findings from the test matrix (2026-08-10)
 
@@ -1200,6 +1235,15 @@ READING and is NOT compile-verified.
   whole-database bare-name scan. Both cited sites mis-resolve the same port,
   and the wrong bind propagates into the cross-interface thunker payload
   (it names the wrong project's structure).
+- **G5.9 — CLOSED 2026-08-13** by step 1 of
+  [`plan-parameter-sharing.md`](./plan-parameter-sharing.md). `blocksparams`
+  gained `paramSource`/`paramSourceKey`, a foreign key onto `constants` resolved
+  through the param row's own include chain, and every consumer that read
+  `paramKey` as a constant key — this sizing check, `variantValueBindings`,
+  `_resolveWordLinesConst` and the SystemVerilog package template — was moved
+  onto it. `unittest/test_param_cross_project_linkage.py::test_gap_shared_include_binding_sizing_enforced`
+  passes and `examples/xprojParam/cstUse` builds and runs at a non-default
+  value. Original finding follows.
 - **NEW (G5.9) — the variant-binding `maxValue` gate is silently skipped on the
   shared-`include:` path.** `_post_validateVariantBindingSizing`
   (`processYaml.py:7814`) reaches the backing constant through
@@ -1214,10 +1258,19 @@ READING and is NOT compile-verified.
   shared-`include:` shape above: the param resolves to *another* file's
   parameterizable constant, which is accepted by design. Its consequences are
   G5.4 and G5.9, not a missing backing check.
-- **G5.4 observation, db-level only.** On the shared-`include:` path the
-  downstream block's `defaultConfig` resolves to the UPSTREAM project's config
-  context (`aTopDefaultConfig` for a `projBShared` block) with correct variant
-  values. Whether that compiles is item 2's question, not settled here.
+- **G5.4 observation — SETTLED 2026-08-12, and it compiles.** On the
+  shared-`include:` path the downstream block's `defaultConfig` resolves to the
+  UPSTREAM project's config context (`aTopDefaultConfig` for a `projBShared`
+  block) with correct variant values. That resolution is now derived directly
+  from the backing constants' declaring file rather than being reached by
+  accident through a connection's interface
+  ([`plan-interface-compatibility.md`](./plan-interface-compatibility.md), Plan
+  of record step 7), so the standalone and composed builds of the same block
+  agree on it. `examples/xprojParam/shared` — the runnable composed harness item
+  2 asked for on this path — **builds, runs and checks its samples**, and is part
+  of `pipeline-test`. **G5.4 itself is NOT closed:** a Config still cannot be
+  composed from two projects' parameter namespaces; what is settled is that the
+  single-context answer on this path is the right one and does compile.
 
 ## Relationship to Other Plans
 

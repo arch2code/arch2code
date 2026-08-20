@@ -114,6 +114,24 @@ echo "Test Suite 13a: Payload Direct Copy Selection"
 echo "------------------------------------------------------------------------"
 python3 test_payload_direct_copy.py || FAILED=1
 
+# Test 13b: datapath members make emitted storage undecidable
+echo ""
+echo "Test Suite 13b: Payload Datapath Storage Undecidability"
+echo "------------------------------------------------------------------------"
+python3 test_payload_datapath_storage.py || FAILED=1
+
+# Test 13c: the six new protocol thunkers forward a payload under the kernel
+echo ""
+echo "Test Suite 13c: Thunker Runtime Bridge"
+echo "------------------------------------------------------------------------"
+python3 test_thunker_runtime.py || FAILED=1
+
+# Test 13d: the power-of-two helpers obey their contracts across the 64-bit domain
+echo ""
+echo "Test Suite 13d: Bit Twiddling Runtime Contract"
+echo "------------------------------------------------------------------------"
+python3 test_bit_twiddling_runtime.py || FAILED=1
+
 # Test 14: Declared port resolved interface context
 echo ""
 echo "Test Suite 14: Declared Port Resolved Interface Context"
@@ -282,7 +300,7 @@ ADDRCTL_TESTS=(
     "registerPort out-of-scope interface"       "test_error_register_port_out_of_scope.py"
     "router has no instance"                    "test_error_router_no_instance.py"
     "multi-instance router"                     "test_error_multi_instance_router.py"
-    "no primary router candidate"               "test_error_no_primary_router.py"
+    "self-containment precedes register decode" "test_error_no_primary_router.py"
     "multiple primary router candidates"        "test_error_multi_primary_router.py"
     "routed leaf in unserved container"         "test_error_leaf_unserved.py"
     "no serving router for reg leaf"            "test_error_leaf_no_serving_router.py"
@@ -389,6 +407,48 @@ echo ""
 echo "Test Suite ${idx}: parameterized interface across project boundaries"
 echo "------------------------------------------------------------------------"
 python3 test_param_cross_project_linkage.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: channel parameterized by the container's own parameter"
+echo "------------------------------------------------------------------------"
+python3 test_container_param_channel_binding.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: child variant sourcing a parameter from its container"
+echo "------------------------------------------------------------------------"
+python3 test_container_param_inheritance.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a block containing itself, at depth one and depth three"
+echo "------------------------------------------------------------------------"
+python3 test_error_containment_cycle.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: transit vs own-surface classification at a connection"
+echo "------------------------------------------------------------------------"
+python3 test_transit_surface_classification.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: both connection ends colliding on one portId"
+echo "------------------------------------------------------------------------"
+python3 test_error_connection_end_collision.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: one parameterized child at a variant and at no variant"
+echo "------------------------------------------------------------------------"
+python3 test_registrar_default_variant.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a failed db build leaves no database for the next build"
+echo "------------------------------------------------------------------------"
+python3 test_db_failure_no_stale_artifact.py || FAILED=1
 
 echo ""
 echo "========================================================================"

@@ -1,0 +1,99 @@
+# The layout gate on a container-sourced width: the rejecting arm.
+#
+# cpLayout with one number changed: the container states 24 while the sibling
+# still states a literal 16. Only the leaf follows the container, so the two
+# ends genuinely disagree and db must reject.
+#
+# The rejection must name 24. That value appears nowhere in the leaf's own
+# declaration and is reachable only through the container, so it is what
+# distinguishes a gate that resolves per site from one that fell back to
+# CP_WIDTH's declared default of 8.
+
+ipParameters:
+    constants:
+        # The default is deliberately NOT the value any site binds, so a
+        # fallback to it is visible as a wrong number rather than passing by
+        # coincidence.
+        CP_WIDTH: { value: 8, maxValue: 32, desc: "Pixel width; default deliberately unequal to every bound value" }
+        CP_BUS_W: { value: 8, maxValue: 32, desc: "The container's own width knob, deliberately named differently from the leaf's" }
+    types:
+        cpPixelT: { width: CP_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    cpTagT:  { width: 8, desc: "Sample tag; lowest packed position" }
+    cpMarkT: { width: 8, desc: "Trailing marker, so a width change also moves an offset" }
+
+structures:
+    cpSt:
+        tag:  { varType: cpTagT,   desc: "Sample tag" }
+        data: { varType: cpPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: cpMarkT,  desc: "Trailing marker" }
+
+interfaces:
+    cpIf:
+        desc: "Parameterized pixel push/ack stream carrying the width under test"
+        interfaceType: push_ack
+        structures:
+            - { structure: cpSt, structureType: data_t }
+
+blocks:
+    xpCpLayoutBadTop:
+        desc: "Probe top; adjudicated at make db and never built"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpCpLayoutBadTop_tb:
+        desc: "Testbench container for xpCpLayoutBadTop"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpCpBadWrap:
+        desc: "The container that states the width its contents are configured at"
+        params: [CP_BUS_W]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpCpBadSrc:
+        desc: "Sibling of the leaf, bound to the width as a LITERAL"
+        params: [CP_WIDTH]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: cpIf, direction: src }
+    xpCpBadLeaf:
+        desc: "The leaf under test: its width is SOURCED FROM ITS CONTAINER, not stated here"
+        params: [CP_WIDTH]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: cpIf, direction: dst }
+
+instances:
+    xpCpLayoutBadTop_tb: { container: xpCpLayoutBadTop_tb, instanceType: xpCpLayoutBadTop_tb, instGroup: top }
+    u_xpCpLayoutBadTop:  { container: xpCpLayoutBadTop_tb, instanceType: xpCpLayoutBadTop,    instGroup: top }
+    uWrap: { container: xpCpLayoutBadTop, instanceType: xpCpBadWrap, instGroup: top, variant: use }
+    uSrc:  { container: xpCpBadWrap,      instanceType: xpCpBadSrc,  instGroup: top, variant: use }
+    uLeaf: { container: xpCpBadWrap,      instanceType: xpCpBadLeaf, instGroup: top, variant: use }
+
+connections:
+    - { interface: cpIf, src: uSrc, srcport: out, dst: uLeaf, dstport: in, name: cpLink }
+
+parameters:
+    xpCpBadWrap:
+        use:
+            CP_BUS_W: 24
+    xpCpBadSrc:
+        # The literal the leaf must be found equal to.
+        use:
+            CP_WIDTH: 16
+    xpCpBadLeaf:
+        # No value: whatever the container is configured at, so 24 here.
+        use:
+            CP_WIDTH: { containerParam: CP_BUS_W }

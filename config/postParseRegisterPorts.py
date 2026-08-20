@@ -27,7 +27,7 @@ None.
 """
 
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.processYaml import camelCase, qualifiedKeyContext
+from pysrc.processYaml import SiteBindingIndex, camelCase, qualifiedKeyContext
 
 
 def regHandlerNaming(prj):
@@ -295,6 +295,8 @@ def postProcess(prj):
         # decode pass runs for this project (the project either has no
         # register bus at all or has not adopted the addressBlock: schema).
         return None
+
+    siteIndex = SiteBindingIndex(prj)
 
     instance_prefix, block_suffix, camel_case = regHandlerNaming(prj)
 
@@ -652,16 +654,25 @@ def postProcess(prj):
                     prj, parentBlock, addressBusTypes,
                     routerInterfaceCache,
                 )
+            # The parent router serves the container of the block this router sits
+            # in, one level up, so correlating the two configurations takes two
+            # resolution hops through that intervening block. Each side resolves
+            # from its own declaration instead, which makes an inherited parameter
+            # on a router fall back to its constant's default.
+            childVariant = instRow['variant'] or ''
+            parentVariant = parentRouter['variant'] or ''
+            parentTypeKey = parentRouter['instanceTypeKey']
             prj.checkInterfacePair(
                 parentIfaceRow, childIfaceRow, instanceTypeKey,
-                instRow['variant'] or '',
+                childVariant,
                 f"Register-bus dispatch from parent router "
                 f"'{parentRouter['instance']}' to nested router "
                 f"'{instRow['instance']}' (upstreamPort "
                 f"'{childAddressBlock['upstreamPort']}')",
                 parentIfaceContext, childIfaceContext,
-                parentRouter['instanceTypeKey'],
-                parentRouter['variant'] or '',
+                parentTypeKey, parentVariant,
+                siteIndex.bindingsAt(parentTypeKey, parentVariant, dict()),
+                siteIndex.bindingsAt(instanceTypeKey, childVariant, dict()),
             )
 
             # Find the container-block sibling instance — the

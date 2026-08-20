@@ -1,6 +1,7 @@
 # Assembler context wiring the parameterized interface straight through three
-# projects. Unlike chainTop.yaml this is legal: every endpoint's WIDTH param
-# resolves to the SAME declaring-file constant key (projA's), so the parameter
+# projects. Every endpoint's port here IS projA's dataIf, so every endpoint is in
+# scope for the endpoint validator, and every endpoint's WIDTH param resolves to
+# the SAME declaring-file constant key (projA's), so the parameter
 # identity the endpoint validator compares is shared rather than merely
 # same-named.
 include:

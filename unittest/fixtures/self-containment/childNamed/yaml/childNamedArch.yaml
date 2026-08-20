@@ -1,0 +1,5 @@
+blocks:
+    cnTop: { desc: "Root block of childNamedProj" }
+
+instances:
+    cnTop: { container: cnTop, instanceType: cnTop }

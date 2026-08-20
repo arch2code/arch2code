@@ -1,0 +1,145 @@
+# The two-context block: one block whose params: names one parameterizable
+# constant declared in an INCLUDED file and one declared in its OWN file, with
+# both bound to non-default values in a declared variant.
+#
+# No such block exists anywhere in either tree. It is built here to measure what
+# calcBlockConfigInfo chooses as the block's single configContext, what the
+# emitted C++ Config then contains, and whether the SystemVerilog module-local
+# declaration set agrees with it.
+#
+# DP_WIDTH (default 8) comes from the leaf IP root reached by include:.
+# TC_GAIN (default 2) is declared here. The variant binds 12 and 5.
+
+include:
+    - ../../dpLeaf/yaml/xpDpLeaf.yaml
+
+ipParameters:
+    constants:
+        TC_GAIN: { value: 2, maxValue: 15, desc: "This file's own parameterizable knob" }
+
+constants:
+    # A DERIVED constant of THIS context, to measure whether a second context's
+    # derived constants survive into the Config the block is emitted with.
+    TC_GAIN_X2: { eval: "$TC_GAIN * 2", desc: "Derived from this context's own knob" }
+
+types:
+    litT:   { width: 16, desc: "Literal, non-parameterizable payload word" }
+    tcTagT: { width: 8, desc: "Sample tag" }
+    tcValT: { width: TC_GAIN, maxBitwidth: 15, desc: "Parameterizable value word sized by this file's knob" }
+
+structures:
+    litSt:
+        v: { varType: litT, desc: "Literal payload" }
+    tcSt:
+        tag: { varType: tcTagT, desc: "Sample tag" }
+        val: { varType: tcValT, desc: "Parameterizable payload sized by TC_GAIN" }
+
+interfaces:
+    litIf:
+        desc: "Literal, non-parameterizable stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: litSt, structureType: data_t }
+    tcIf:
+        desc: "This file's own parameterized stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: tcSt, structureType: data_t }
+
+blocks:
+    xpTwoCtxTop:
+        desc: "Top holding the one chain"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpTwoCtxTop_tb:
+        desc: "Testbench container"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpTwoCtxWrap:
+        desc: "Untemplated container of the chain"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpTwoCtxDut:
+        desc: "THE TWO-CONTEXT BLOCK: one param from the included file, one from this file"
+        params: [DP_WIDTH, TC_GAIN]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: true
+        ports:
+            in:     { interface: dpIf, direction: dst }
+            valOut: { interface: tcIf, direction: src }
+    xpTwoCtxBare:
+        desc: "PARAMS-ONLY two-context block: names both knobs but carries no parameterizable structure on its own surface, so its configContext is decided by the first params: row rather than by a surface scan"
+        params: [TC_GAIN, DP_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: true
+        ports:
+            litIn: { interface: litIf, direction: dst }
+    xpTwoCtxLitSrc:
+        desc: "Literal-width stimulus for the params-only block"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            litOut: { interface: litIf, direction: src }
+    xpTwoCtxSrc:
+        desc: "Stimulus on the included file's interface"
+        params: [DP_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: dpIf, direction: src }
+    xpTwoCtxSnk:
+        desc: "Sink on this file's interface"
+        params: [TC_GAIN]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: tcIf, direction: dst }
+
+instances:
+    xpTwoCtxTop_tb: { container: xpTwoCtxTop_tb, instanceType: xpTwoCtxTop_tb, instGroup: top }
+    u_xpTwoCtxTop:  { container: xpTwoCtxTop_tb, instanceType: xpTwoCtxTop,    instGroup: top }
+    uWrap:          { container: xpTwoCtxTop,    instanceType: xpTwoCtxWrap,   instGroup: top }
+    uSrc:           { container: xpTwoCtxWrap,   instanceType: xpTwoCtxSrc,    instGroup: top, variant: twoctx }
+    uDut:           { container: xpTwoCtxWrap,   instanceType: xpTwoCtxDut,    instGroup: top, variant: twoctx }
+    uSnk:           { container: xpTwoCtxWrap,   instanceType: xpTwoCtxSnk,    instGroup: top, variant: twoctx }
+    uLitSrc:        { container: xpTwoCtxWrap,   instanceType: xpTwoCtxLitSrc, instGroup: top }
+    uBare:          { container: xpTwoCtxWrap,   instanceType: xpTwoCtxBare,   instGroup: top, variant: twoctx }
+
+connections:
+    - { interface: dpIf, src: uSrc, srcport: out, dst: uDut, dstport: in,  name: tcIn }
+    - { interface: tcIf, src: uDut, srcport: valOut, dst: uSnk, dstport: in,  name: tcOut }
+    - { interface: litIf, src: uLitSrc, srcport: litOut, dst: uBare, dstport: litIn, name: litLink }
+
+parameters:
+    # BOTH bound to non-default values: DP_WIDTH's declared default is 8 and
+    # TC_GAIN's is 2.
+    xpTwoCtxDut:
+        twoctx:
+            DP_WIDTH: 12
+            TC_GAIN: 5
+    xpTwoCtxBare:
+        twoctx:
+            DP_WIDTH: 12
+            TC_GAIN: 5
+    xpTwoCtxSrc:
+        twoctx:
+            DP_WIDTH: 12
+    xpTwoCtxSnk:
+        twoctx:
+            TC_GAIN: 5

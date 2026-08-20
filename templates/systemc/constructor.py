@@ -30,10 +30,9 @@ def wordLinesExpr(item, prj, useConfig=False, blockData=None):
             if constData.get('constant') == wordLines and constData.get('isParameterizable', False):
                 return f"Config::{wordLines}"
         if blockData:
-            # Block params with no backing constant are Config fields, not
-            # runtime addParam entries. Read them from `Config::*` like any
-            # other parameterizable constant; the per-variant Config struct
-            # carries the field with the variant's override value.
+            # Block params with no backing constant are Config fields; the
+            # per-variant Config struct carries the field with the variant's
+            # override value.
             for param in blockData.get('blockInfo', {}).get('params', []):
                 if param.get('param') == wordLines:
                     return f"Config::{wordLines}"
@@ -72,7 +71,7 @@ def constructorInit(args, prj, data):
     # the class (the block-module `.cppm`), and a module interface forbids
     # #include after `export module`. The class header self-include and the
     # contained-instance includes are therefore owned by the block-module GMF
-    # (moduleScaffold.blockModuleHeader); classic mode keeps emitting them here.
+    # (moduleScaffold.blockModuleHeader).
     if args.mode != 'module':
         out.append(f'#include "{className}.h"')
         out += intf_gen_utils.sc_instance_includes(data, prj)
@@ -80,17 +79,6 @@ def constructorInit(args, prj, data):
     if not hasOwnParams:
         out.append(f'SC_HAS_PROCESS({ className });\n')
 
-    # Block registration trigger.
-    #
-    # Non-templated blocks: a free helper function plus a self-registering
-    # static at namespace scope replaces the in-class struct registerBlock
-    # / static registerBlock_ pattern. The static is marked
-    # A2C_REGISTRATION_RETAIN so it survives dead-code elimination and
-    # --gc-sections; under the project's direct-.o link model it is reachable
-    # with no force-link reference from any parent or testbench TU.
-    #
-    # Parameterized leaf blocks emit nothing here: their factory registration
-    # is owned by the per-assembler trampoline TU under registrar/.
     out.extend(blockRegistrarInitLines(args, prj, data, className, hasOwnParams))
 
     if data['addressDecode']['isApbRouter']:
@@ -192,9 +180,7 @@ def constructorInit(args, prj, data):
                     chnlInfo, 'structure', 'structureKey', prj,
                     config_override=chnl_table[chnl].get('config_override'))
                 # `typename` is required when the qualified-id depends on
-                # the enclosing class template parameter Config — without
-                # it C++ rejects the dependent type name in the
-                # mem-initializer.
+                # the enclosing class template parameter Config.
                 typenameKw = 'typename ' if '<Config>' in channelStruct else ''
                 channelStruct = bareParameterizedType(channelStruct, hasOwnParams)
                 defaultValue = f", {typenameKw}{channelStruct}::_packedSt({hex(prj.getConst(chnl_table[chnl]['default_value']))})"
@@ -203,10 +189,9 @@ def constructorInit(args, prj, data):
 
             out.append(f'        ,{ channelBase }("{ channelTitle }", "{ src }"{extra}{autoMode}{defaultValue})')
 
-            # Collect one thunker initialiser-list entry per flagged
-            # cross-interface end. These are emitted after subBlockInstances
-            # below to match classDecl.py declaration order while preserving
-            # the original connection/database order within the thunker group.
+            # Thunker entries are emitted after subBlockInstances below to
+            # match classDecl.py declaration order, preserving the original
+            # connection/database order within the thunker group.
             for flagged in intf_gen_utils._resolve_cross_interface_ends(chnlInfo, prj):
                 memberName = intf_gen_utils._thunker_member_name(flagged, chnlInfo, is_connection_map=False)
                 thunker_inits.append(
@@ -222,20 +207,19 @@ def constructorInit(args, prj, data):
         # would resolve to the parent's `<Config>` or the parent's defaultConfig
         # and dynamic_pointer_cast would return nullptr at runtime.
         instCfg = intf_gen_utils.cpp_config_arg(value['instanceConfigSelection'])
-        # Generated createInstance passes the variant string and the child's
-        # factory-lookup projectName. The factory key is
-        # `(blockType, variant, projectName)`; the variant string identifies the
-        # per-variant Config policy unambiguously. `createInstanceProjectName`
-        # (a projectOpen view field) is the assembler for parameterizable and
-        # same-project children, and the owning project for a plain
-        # cross-project child (which self-registers only under its owner). The
-        # parent holds no compile-time symbol reference to the child:
-        # non-templated children self-register via an A2C_REGISTRATION_RETAIN
-        # static in their own TU, reachable through direct-.o linking (see
+        # `createInstanceProjectName` (a projectOpen view field) is the
+        # assembler for parameterizable and same-project children, and the owning
+        # project for a plain cross-project child (which self-registers only under
+        # its owner). The parent holds no compile-time symbol reference to the
+        # child: non-templated children self-register in their own TU (see
         # instanceFactory.h).
         projectName = value['createInstanceProjectName']
+        # A child typed by this container's Config has its concrete class only
+        # here, so the container names that class as an explicit template argument
+        # of createInstance.
+        implArg = intf_gen_utils.cpp_container_typed_instance_arg(value)
         createCall = (
-            f'instanceFactory::createInstance(name(), "{value["instance"]}", '
+            f'instanceFactory::createInstance{implArg}(name(), "{value["instance"]}", '
             f'"{value["instanceType"]}", "{value["variant"]}", "{projectName}")'
         )
         out.append(
@@ -245,11 +229,10 @@ def constructorInit(args, prj, data):
 
     out.extend(thunker_inits)
 
-    # connectionMap thunker initialiser-list entries. A connectionMap binds an
-    # external parent port to a child instance port; when the two interfaces
-    # differ, the thunker bridges them. The thunker is declared after the child
-    # instance pointer in classDecl.py so the `instance->port` reference is
-    # well-formed when this entry runs. An empty flagged list emits nothing.
+    # connectionMap thunker initialiser-list entries, emitted when the parent
+    # port and the child instance port interfaces differ. The thunker is declared
+    # after the child instance pointer in classDecl.py so the `instance->port`
+    # reference is well-formed when this entry runs.
     for key, value in data["connectionMaps"].items():
         flagged_ends = intf_gen_utils._resolve_cross_interface_ends(value, prj)
         if not flagged_ends:
@@ -270,8 +253,7 @@ def constructorInit(args, prj, data):
             defaultValue = hex(prj.getConst(regData["defaultValue"]))
             regType = intf_gen_utils.sc_structure_field_type(regData, 'structure', 'structureKey', prj)
             # `typename` is required when the qualified-id depends on the
-            # enclosing class template parameter Config — without it C++
-            # rejects the dependent type name in the mem-initializer.
+            # enclosing class template parameter Config.
             typenameKw = 'typename ' if '<Config>' in regType else ''
             regType = bareParameterizedType(regType, hasOwnParams)
             out.append(f'        ,{ regData["register"] }({typenameKw}{regType}::_packedSt({defaultValue}))')
@@ -316,9 +298,6 @@ def constructorInit(args, prj, data):
 def constructorBody(args, prj, data):
     out = list()
     isParameterizable = data['isParameterizable']
-    # Only leaf parameterizable blocks remain class templates. The body emits
-    # `this->` qualifiers for dependent base-class member names, which is only
-    # required inside class templates.
     hasOwnParams = data['hasOwnParams']
 
     out.append('{')
@@ -413,14 +392,11 @@ def constructorBody(args, prj, data):
             out.append(f'// hierarchical connections: instance port->parent port (dst->dst, src-src without channels)')
 
         # `this->` qualifier is required only when the surrounding class
-        # is itself a template (so the inherited member is a dependent
-        # name). The template head is kept only on blocks with their own params;
-        # non-leaf parents no longer need the qualifier.
+        # is itself a template (so the inherited member is a dependent name).
         parentPortName = f'this->{value["parentPortName"]}' if hasOwnParams else value["parentPortName"]
         # getBDCrossInterfaceBinds() marks maps whose direct child bind is
-        # replaced by the thunker's downPort(m_chDown) bind. The thunker
-        # initialiser is emitted earlier in the constructor's init list. An
-        # empty flagged list leaves this loop's emission untouched.
+        # replaced by the thunker's downPort(m_chDown) bind, performed by the
+        # thunker initialiser emitted earlier in the constructor's init list.
         if intf_gen_utils._resolve_cross_interface_ends(value, prj):
             continue
         out.append(f'    { value["instance"] }->{ value["instancePortName"]}({ parentPortName });')
@@ -463,25 +439,10 @@ def blockRegistrarInitLines(args, prj, data, className, hasOwnParams):
     """Emit SC block registration lines at namespace scope, immediately
     following the SC_HAS_PROCESS line.
 
-    * **Non-templated SC blocks** register themselves via a free helper
-      plus a self-registering static at namespace scope in this TU. The
-      static carries A2C_REGISTRATION_RETAIN (see instanceFactory.h) so it
-      survives dead-code elimination and the linker's --gc-sections pass;
-      under the direct-.o link model the registration is reachable with no
-      force-link reference. The predicate is "non-templated" so parent
-      containers flagged isParameterizable solely because parameterizable
-      structures transit their surface (e.g., `ip_top`) also self-register
-      this way.
-
-    * **Parameterized leaf blocks (hasOwnParams)** are class templates that
-      live in a `<block>.cppm` module interface unit. Their factory
-      registration is owned by the per-assembler trampoline TU
-      (`registrar/<assembler>/<block>Registrar.cpp`, see
-      `templates/systemc/blockRegistrar.py`), which `import`s the block
-      module and instantiates `<block><Config>` directly. The module export
-      makes the template member bodies visible to that consumer, so no
-      instantiation anchor is needed in the module unit; this function emits
-      nothing for them.
+    Non-templated SC blocks register themselves through a self-registering
+    static in this TU. The predicate is "non-templated" so parent containers
+    flagged isParameterizable solely because parameterizable structures transit
+    their surface (e.g., `ip_top`) also self-register this way.
     """
     out = list()
 
@@ -490,10 +451,8 @@ def blockRegistrarInitLines(args, prj, data, className, hasOwnParams):
     if hasOwnParams:
         return out
 
-    # No `instanceFactory::addParam` calls are emitted. Block constructors read
-    # parameter values from `Config::*` directly; there is no runtime parameter
-    # table. The trailing projectName scopes the registration to this assembler
-    # so the container's projectName-qualified createInstance lookup matches.
+    # The trailing projectName scopes the registration to this assembler so the
+    # container's projectName-qualified createInstance lookup matches.
     projectName = prj.config.getConfig('PROJECTNAME')
     if data['variants']:
         registerCalls = []

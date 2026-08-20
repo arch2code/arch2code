@@ -67,6 +67,21 @@ virtual void writeClocked(const T& data) = 0;
 - Document when blocking vs non-blocking should be used
 - Add usage examples
 
+#### ✅ DOCUMENTED POLICY: raw_channel.h
+**Status:** Policy and caveats documented in user-facing docs; header has usage guardrails
+
+**User-facing guidance (last resort / boundary-only / why problematic):**
+- `ARCH2CODE_AI_RULES.md` (§ raw)
+- `SYSTEMC_API_USER_REFERENCE.md` (§ 4.9)
+- `systemc-interfaces` / `rtl-interfaces` / `design-architecture` skills
+
+**Header:** Carries last-resort warning and points at the docs above.
+
+**Remaining improvements:**
+- Add @param/@return Doxygen tags on `write`/`read`
+- Document `setExternalEvent` / multi-writer locking behavior in the header
+- Consider fixing the known single-`sc_event` lost-value hazard (recorded, not fixed)
+
 #### ⚠️ NEEDS WORK: notify_ack_channel.h
 **Status:** Basic documentation
 
@@ -408,6 +423,7 @@ virtual void writeClocked(const T& data) = 0;
 | rdy_vld_channel.h | Good | Good | Missing | ✅ Good |
 | apb_channel.h | Good | Good | Missing | ✅ Good |
 | status_channel.h | Basic | Basic | Missing | ⚠️ Needs Work |
+| raw_channel.h | Policy docs + header guardrails | Basic | Minimal | ✅ Policy documented |
 | req_ack_channel.h | Adequate | Adequate | Missing | ✅ Adequate |
 | push_ack_channel.h | Basic | Basic | Missing | ⚠️ Needs Work |
 | pop_ack_channel.h | Basic | Basic | Missing | ⚠️ Needs Work |

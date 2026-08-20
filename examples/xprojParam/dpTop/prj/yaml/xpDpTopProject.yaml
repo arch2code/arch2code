@@ -1,0 +1,35 @@
+# The customer assembler project of the three-level depth family. It references
+# the mid-level IP project only; the leaf IP project is reached THROUGH it, which
+# is the reference depth the composition rules require (see this family's README
+# and xprojParam's "Reference depth decides context ownership").
+
+yamlFormat: 2
+projectName: xpDpTop
+
+projectFiles:
+    - ../../../dpMid/prj/yaml/xpDpMidProject.yaml
+    - ../../yaml/xpDpTop.yaml
+
+topInstance: xpDpTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

@@ -62,7 +62,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
 
 4.  **Interface Definition (`interfaces` dictionary):**
     *   **Properties:**
-        *   `interfaceType`: **(Required)** Protocol (e.g., `apb`, `req_ack`).
+        *   `interfaceType`: **(Required)** Protocol (e.g., `apb`, `req_ack`, `rdy_vld`). Prefer handshaked protocols for new interconnect. Use `raw` only as a **last resort** at design boundaries for legacy/external handshake-less pinouts — never for new links between arch2code blocks. See `ARCH2CODE_AI_RULES.md` (§ raw) and the **SystemC Interfaces** skill.
         *   `desc`: **(Required)** Description.
         *   `structures`: **(Required)** List mapping structures to interface data types.
         *   `maxTransferSize`: (Optional) For multi-cycle interfaces. **Default: `0`**

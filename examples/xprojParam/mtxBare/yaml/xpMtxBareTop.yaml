@@ -1,0 +1,99 @@
+# Matrix row C=1, channel Config source = NONE.
+#
+# Byte-for-byte the mtxTpl row except that the container does NOT list
+# MBX_CH_WIDTH in params:, so it is not a class template. The channel payload is
+# still parameterizable, and no end of the connection can type it: all three
+# parties are different declarations, so every end is adapted and
+# channelParentConfig has no unadapted end left to elect from.
+#
+# Nothing can type the channel, so this project is REJECTED at make db: the
+# container is the last possible Config source and it declares none. It is
+# recorded as the third arm of the "where does the channel's Config come from"
+# question, kept because the rejection is the answer.
+#
+# MBX_CH_WIDTH still has to be consumed by a same-file block param
+# (_validateIpParametersLinkage), so an uninstantiated carrier block declares
+# it. The carrier is not part of any cell.
+include:
+    - ../../mtxIp/yaml/xpMtxIp.yaml
+
+ipParameters:
+    constants:
+        MBX_CH_WIDTH: { value: 12, maxValue: 16, desc: "Channel pixel width owned by the assembling container" }
+    types:
+        mbChPixelT: { width: MBX_CH_WIDTH, maxBitwidth: 16, desc: "Parameterizable channel pixel word" }
+
+types:
+    mbChTagT:  { width: 8, desc: "Channel tag; low packed position" }
+    mbChMarkT: { width: 8, desc: "Channel trailing marker" }
+
+structures:
+    # Same packed sequence as every endpoint payload: tag@0 w8, data@8 w12,
+    # mark@20 w8.
+    mbChSt:
+        tag:  { varType: mbChTagT,   desc: "Sample sequence tag" }
+        data: { varType: mbChPixelT, desc: "Pixel payload" }
+        mark: { varType: mbChMarkT,  desc: "Trailing marker" }
+
+interfaces:
+    mbChIf:
+        desc: "Parameterized assembler-owned channel between the two endpoint ports"
+        interfaceType: push_ack
+        structures:
+            - { structure: mbChSt, structureType: data_t }
+
+blocks:
+    xpMtxBareTop:
+        desc: "Assembler top holding the templated-container matrix row"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpMtxBareTop_tb:
+        desc: "Testbench container for xpMtxBareTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpMtxBareCarrier:
+        desc: "Uninstantiated carrier so the channel parameter has a same-file block param"
+        params: [MBX_CH_WIDTH]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpMtxBareWrap:
+        desc: "Untemplated container of the four parameterized-channel cells"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+
+instances:
+    xpMtxBareTop_tb: { container: xpMtxBareTop_tb, instanceType: xpMtxBareTop_tb, instGroup: top }
+    u_xpMtxBareTop:  { container: xpMtxBareTop_tb, instanceType: xpMtxBareTop,    instGroup: top }
+    uWrap:          { container: xpMtxBareTop,    instanceType: xpMtxBareWrap,   instGroup: top }
+
+    # cell C1S0D0: parameterized channel, literal src port, literal dst port
+    uSrcLL: { container: xpMtxBareWrap, instanceType: xpMtxSrcLit, instGroup: top }
+    uDstLL: { container: xpMtxBareWrap, instanceType: xpMtxDstLit, instGroup: top }
+    # cell C1S0D1: parameterized channel, literal src port, parameterized dst port
+    uSrcLP: { container: xpMtxBareWrap, instanceType: xpMtxSrcLit, instGroup: top }
+    uDstLP: { container: xpMtxBareWrap, instanceType: xpMtxDstPar, instGroup: top, variant: v0 }
+    # cell C1S1D0: parameterized channel, parameterized src port, literal dst port
+    uSrcPL: { container: xpMtxBareWrap, instanceType: xpMtxSrcPar, instGroup: top, variant: v0 }
+    uDstPL: { container: xpMtxBareWrap, instanceType: xpMtxDstLit, instGroup: top }
+    # cell C1S1D1: parameterized channel, parameterized src port, parameterized dst port
+    uSrcPP: { container: xpMtxBareWrap, instanceType: xpMtxSrcPar, instGroup: top, variant: v0 }
+    uDstPP: { container: xpMtxBareWrap, instanceType: xpMtxDstPar, instGroup: top, variant: v0 }
+
+connections:
+    - { interface: mbChIf, src: uSrcLL, srcport: out, dst: uDstLL, dstport: in }
+    - { interface: mbChIf, src: uSrcLP, srcport: out, dst: uDstLP, dstport: in }
+    - { interface: mbChIf, src: uSrcPL, srcport: out, dst: uDstPL, dstport: in }
+    - { interface: mbChIf, src: uSrcPP, srcport: out, dst: uDstPP, dstport: in }
+
+parameters:
+    xpMtxBareCarrier:
+        v0:
+            MBX_CH_WIDTH: 12

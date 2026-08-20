@@ -1,0 +1,32 @@
+# Assembler project for matrix row C=1 (parameterized channel, templated container).
+
+yamlFormat: 2
+projectName: xpMtxTpl
+
+projectFiles:
+    - ../../../mtxIp/prj/yaml/xpMtxIpProject.yaml
+    - ../../yaml/xpMtxTplTop.yaml
+
+topInstance: xpMtxTplTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

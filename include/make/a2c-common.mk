@@ -127,6 +127,12 @@ endif
 # Project global file based targets
 #------------------------------------------------------------------------
 
+# A failed recipe leaves no target file behind. arch2code writes the database as
+# it runs, so a partial one would otherwise look newer than its YAML and let
+# later builds skip the db stage and generate against it. Generation targets its
+# .gen stamp, so a user source file is never a target here.
+.DELETE_ON_ERROR:
+
 # YAML_FILES (the manifest include-tree closure) is empty before the first db
 # build and never lists the project file itself, so name project.yaml as an
 # explicit prerequisite: a `migrate` run that stamps the project file (bumping

@@ -173,9 +173,12 @@ instances:
   uTop: { container: top, instanceType: top }
   uIp: { container: top, instanceType: ip }
 """
+    # Finding the backing constant is the paramSource foreign key's job, so an
+    # unbacked param is rejected by the generic FK miss diagnostic rather than by
+    # _post_validateBlockParamBacking, which now only judges the resolved row.
     return _expect_error(
         arch,
-        ["NO_BACKING", "no backing constant"],
+        ["NO_BACKING", "section params", "no constants row named"],
         "block param without ipParameters backing")
 
 
@@ -600,7 +603,7 @@ parameters:
             "SELECT b.block AS block, c.isParameterizable AS isParam "
             "FROM blocksparams bp "
             "JOIN blocks b ON b.blockKey = bp.blockKey "
-            "JOIN constants c ON c.constantKey = bp.paramKey "
+            "JOIN constants c ON c.constantKey = bp.paramSourceKey "
             "WHERE bp.param = 'SHARED_WIDTH'")
         consumers = {r['block']: r['isParam'] for r in g.cur.fetchall()}
         if set(consumers) != {'blockA', 'blockB'}:

@@ -257,6 +257,17 @@ class newModule:
                                 parentDir, childBlock, childKey, parentKey, prj, args,
                                 variant=variant)
                         continue
+                    if fileDefinition.get('requiresRegistrations', False):
+                        # The block-registration trampoline exists to run its
+                        # registrations. A child every one of whose bindings under
+                        # this parent is typed by the parent's own Config has none:
+                        # such a child is a family of C++ types the factory key
+                        # cannot select from, so the parent names the class at its
+                        # createInstance site and no registration is possible.
+                        registrarConfig = prj.getRegistrarConfigView(
+                            childKey, prj.data['blocks'][parentKey]['block'])
+                        if not registrarConfig['hasRegistrations']:
+                            continue
                     self.create_registrar_file(
                         fileGenerationConfig, fileKey, fileDefinition,
                         parentDir, childBlock, childKey, parentKey, prj, args)

@@ -1,0 +1,32 @@
+# Assembler project for matrix row C=0 (literal channel).
+
+yamlFormat: 2
+projectName: xpMtxLit
+
+projectFiles:
+    - ../../../mtxIp/prj/yaml/xpMtxIpProject.yaml
+    - ../../yaml/xpMtxLitTop.yaml
+
+topInstance: xpMtxLitTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

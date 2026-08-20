@@ -1,0 +1,92 @@
+# Assembler for the shared-constant propagation family. It holds two cells over
+# the same three-block chain - stimulus, DUT, checker - differing only in which
+# named constant every variant in the cell binds:
+#
+#   cell A, default:  every binding names the IP's own CS_PIXEL_WIDTH, so all
+#                     three blocks resolve to 12. The supporting blocks are the
+#                     Inc pair, which NAMES the IP's constant in its own params:.
+#   cell B, use case: every binding names CS_USE_WIDTH below, so all three
+#                     blocks resolve to 20. The supporting blocks are the Own
+#                     pair, because an Inc block cannot carry a non-default
+#                     value today (see xpCstSup.yaml and the cstUse probe).
+#
+# The use-case value is stated EXACTLY ONCE, in CS_USE_WIDTH's value:; the three
+# cell-B bindings reference that one constant by name. CS_USE_WIDTH is an
+# ordinary constants: entry, not an ipParameters one: it is used as a VALUE and
+# is never named by any block's params:, so an ipParameters declaration would
+# have no same-file block param to consume it and would fail the orphan rule.
+#
+# Cell B's variant for the DUT - a block this project does not own - is declared
+# here, at the assembler, alongside the supporting blocks' variants. That is the
+# whole point of the shape: one file states the use-case value once and binds
+# every block that has to agree on it.
+#
+# The cells sit in a wrapper rather than directly in the top. The original
+# reason was that the testbench External the top would otherwise get names the
+# DUT's owner-qualified foreign Config without importing the module that exports
+# it (B3). The External is now retargeted at xpCstBindTop_tb with the DUT
+# excluded, so it holds no DUT children and no longer names that Config; the
+# wrapper is retained but no longer proves B3.
+include:
+    - ./xpCstSup.yaml
+
+constants:
+    CS_USE_WIDTH: { value: 20, desc: "This assembler's use-case pixel width; the single place the value is stated" }
+
+blocks:
+    xpCstBindTop:
+        desc: "Assembler top holding the default-bound and use-case-bound chains"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpCstBindTop_tb:
+        desc: "Testbench container for xpCstBindTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpCstBindWrap:
+        desc: "Untemplated container of the two chains"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+
+instances:
+    xpCstBindTop_tb: { container: xpCstBindTop_tb, instanceType: xpCstBindTop_tb, instGroup: top }
+    u_xpCstBindTop:  { container: xpCstBindTop_tb, instanceType: xpCstBindTop,    instGroup: top }
+    uWrap:           { container: xpCstBindTop,    instanceType: xpCstBindWrap,   instGroup: top }
+
+    # cell A: every block on the IP's own default, reached through the constant
+    uSrcA: { container: xpCstBindWrap, instanceType: xpCstSrcInc, instGroup: top, variant: dflt }
+    uDutA: { container: xpCstBindWrap, instanceType: xpCstDut,    instGroup: top, variant: dflt }
+    uChkA: { container: xpCstBindWrap, instanceType: xpCstChkInc, instGroup: top, variant: dflt }
+
+    # cell B: every block on this assembler's use-case value, reached through
+    # the one constant that states it
+    uSrcB: { container: xpCstBindWrap, instanceType: xpCstSrcOwn, instGroup: top, variant: use }
+    uDutB: { container: xpCstBindWrap, instanceType: xpCstDut,    instGroup: top, variant: use }
+    uChkB: { container: xpCstBindWrap, instanceType: xpCstChkOwn, instGroup: top, variant: use }
+
+connections:
+    # Each connection names the IP's OWN interface, so the DUT's ports bind
+    # directly and type the channel at the DUT's Config, while the supporting
+    # blocks - whose declared ports carry their own interfaceKey - are adapted
+    # by a generated thunker at every one of the four supporting-block ends.
+    - { interface: csDutIf, src: uSrcA, srcport: out, dst: uDutA, dstport: in }
+    - { interface: csDutIf, src: uDutA, srcport: out, dst: uChkA, dstport: in }
+    - { interface: csDutIf, src: uSrcB, srcport: out, dst: uDutB, dstport: in }
+    - { interface: csDutIf, src: uDutB, srcport: out, dst: uChkB, dstport: in }
+
+parameters:
+    # CASE B, the use case. Three bindings, one named constant, one value.
+    xpCstSrcOwn:
+        use:
+            CS_OWN_WIDTH: CS_USE_WIDTH
+    xpCstDut:
+        use:
+            CS_PIXEL_WIDTH: CS_USE_WIDTH
+    xpCstChkOwn:
+        use:
+            CS_OWN_WIDTH: CS_USE_WIDTH

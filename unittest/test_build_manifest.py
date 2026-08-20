@@ -141,6 +141,20 @@ EXT_GMF_REQUIRED = ('#include "systemc.h"', '#include "logging.h"',
                     '#include "instanceFactory.h"')
 EXT_GMF_FORBIDDEN = ('#include "workerThread.h"',)
 
+# A block-mode External (`--block=<DUT>` with no `--excludeInst`) is the DUT's
+# inverse test surface and holds NO sub-instances: the DUT instantiates its own
+# children in the DUT's own generated region, so re-emitting them here would
+# construct that whole subtree a second time - once under the Testbench's DUT and
+# once under the External. Only excludeInst mode
+# (`--block=<container> --excludeInst=<dut inst>`) fills the External, and then
+# with the DUT's PEER blocks. So a block-mode External's generated regions must
+# declare no child handle and construct nothing.
+EXT_PARAM_MARKER = '// GENERATED_CODE_PARAM'
+EXT_EXCLUDE_OPT = '--excludeInst='
+EXT_HEADER_MARKER = f'{GEN_BEGIN} --template=tbExternal --section=header'
+EXT_INIT_MARKER = f'{GEN_BEGIN} --template=tbExternal --section=init'
+EXT_BLOCKMODE_FORBIDDEN_SUBSTR = ('std::shared_ptr<', 'createInstance')
+
 # The block module unit's global module fragment
 # (moduleScaffold::blockModuleHeader). Same rule: systemc.h for the SC_MODULE
 # class and its sc_ port types, logging.h for the generated `logBlock log_;`. The
@@ -209,6 +223,16 @@ def gen_region(path, marker):
     return region if inside else None
 
 
+def param_line(path):
+    """The file's GENERATED_CODE_PARAM line, or None if it carries none."""
+    with open(path) as fh:
+        for line in fh:
+            s = line.strip()
+            if s.startswith(EXT_PARAM_MARKER):
+                return s
+    return None
+
+
 def authored_files(repo_root, suffix):
     """Authored-tree files ending in `suffix`; build/cache mirrors skipped."""
     for dirpath, dirs, files in os.walk(repo_root):
@@ -232,8 +256,8 @@ def check_region_content(repo_root):
     """Assert the include baseline of every generated region whose content is a
     recorded decision. Returns (problems, {gate: regions checked})."""
     problems = []
-    counts = {'External GMF': 0, 'block GMF': 0, 'context GMF': 0,
-              'tbConfig prerequisites': 0}
+    counts = {'External GMF': 0, 'block-mode External': 0, 'block GMF': 0,
+              'context GMF': 0, 'tbConfig prerequisites': 0}
 
     for path in authored_files(repo_root, 'External.cppm'):
         rel = os.path.relpath(path, repo_root)
@@ -244,6 +268,19 @@ def check_region_content(repo_root):
         counts['External GMF'] += 1
         _assertRegion(problems, rel, 'External GMF', region,
                       EXT_GMF_REQUIRED, EXT_GMF_FORBIDDEN)
+
+        params = param_line(path)
+        if params is None:
+            problems.append(f'{rel}: no {EXT_PARAM_MARKER} line')
+        elif EXT_EXCLUDE_OPT not in params:
+            counts['block-mode External'] += 1
+            for marker in (EXT_HEADER_MARKER, EXT_INIT_MARKER):
+                for line in gen_region(path, marker) or ():
+                    for bad in EXT_BLOCKMODE_FORBIDDEN_SUBSTR:
+                        if bad in line:
+                            problems.append(
+                                f'{rel}: block-mode External emits DUT-internal '
+                                f'content ({bad}): {line}')
 
     for path in authored_files(repo_root, '.cppm'):
         rel = os.path.relpath(path, repo_root)

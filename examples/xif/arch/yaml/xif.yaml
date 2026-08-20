@@ -22,6 +22,18 @@
 # push_ack_*_if<streamSt<Config>> boundary ports unadapted, failing to compile.
 # With the fix a per-end boundary thunker bridges streamBndrySt <->
 # streamSt<dutV0Config>.
+#
+# SECOND, UNRELATED TRIGGER, added later: the container-Config gate for the
+# testbench External. `xif_tb` declares params:, and `tbPeer` is instantiated
+# twice inside it - once at a stated variant and once at a variant that sources
+# every parameter FROM the container. The second form emits a Config TEMPLATE and
+# a maker template, both applied to the container's own class template parameter.
+# Every other consumer of that spelling renders inside the container's class
+# template; the External does not, so the symbol has to be bound to the
+# container's own resolved Config. The gate is here, rather than in an
+# xprojParam cell, because a testbench container's own Config struct is only
+# emitted when its config context is owned by the same project - which is true of
+# this single-project example and false of every cross-project one.
 
 ipParameters:
     constants:
@@ -53,7 +65,13 @@ interfaces:
 
 blocks:
     xif_tb:
-        desc: "Testbench container (root). Holds uSrc, uDut, uSink."
+        desc: "Testbench container (root). Holds uSrc, uDut, uSink and the two Config-mechanism peers."
+        # The testbench container is parameterized so a peer instance can source
+        # its parameters FROM it. Everything in this project shares one config
+        # context owned by this project, so the container's own per-variant
+        # Config struct lands in this context's Config header - the header the
+        # generated External already includes.
+        params: [DATA_WIDTH, FRAME_HEIGHT, FRAME_WIDTH]
         hasVl: false
         hasRtl: false
         hasMdl: false
@@ -87,13 +105,36 @@ blocks:
         ports:
             in: { interface: streamBndryIf, direction: dst }
 
+    tbPeer:
+        desc: "Peer of the DUT held by the testbench container; drives and checks its own resolved parameters"
+        # Peers of the DUT are emitted into the External pseudo-block, which is
+        # the one consumer of the per-instance Config machinery that is NOT a
+        # class template. uTbPeerB's variant sources every parameter from the
+        # container, so its Config is a TEMPLATE over the container's Config and
+        # it is constructed through a maker template applied to the same: both
+        # spellings name the container's class template parameter, which has no
+        # declaration here and must be bound to the container's own Config.
+        params: [DATA_WIDTH, FRAME_HEIGHT, FRAME_WIDTH]
+        hasVl: false
+        hasRtl: false
+        hasMdl: true
+        hasTb: false
+        ports:
+            out: { interface: dutStreamIf, direction: src }
+            in:  { interface: dutStreamIf, direction: dst }
+
 instances:
     xif_tb: { container: xif_tb, instanceType: xif_tb, instGroup: top }
+    # Each peer drives the other, so every port of both binds at elaboration.
+    uTbPeerA: { container: xif_tb, instanceType: tbPeer, instGroup: top, variant: pv0 }
+    uTbPeerB: { container: xif_tb, instanceType: tbPeer, instGroup: top, variant: pvSourced }
     uSrc:   { container: xif_tb, instanceType: src,  instGroup: top, variant: srcV0 }
     uDut:   { container: xif_tb, instanceType: dut,  instGroup: top, variant: dutV0 }
     uSink:  { container: xif_tb, instanceType: sink, instGroup: top, variant: sinkV0 }
 
 connections:
+    - { interface: dutStreamIf, src: uTbPeerA, srcport: out, dst: uTbPeerB, dstport: in, name: p2q }
+    - { interface: dutStreamIf, src: uTbPeerB, srcport: out, dst: uTbPeerA, dstport: in, name: q2p }
     - { interface: dutStreamIf, src: uSrc, srcport: out,       dst: uDut,  dstport: streamIn, name: s2d }
     - { interface: dutStreamIf, src: uDut, srcport: streamOut, dst: uSink, dstport: in,       name: d2s }
 
@@ -111,3 +152,25 @@ parameters:
             DATA_WIDTH: 16
             FRAME_HEIGHT: 8
             FRAME_WIDTH: 8
+    # The testbench container's own binding. FRAME_HEIGHT is deliberately NOT the
+    # declared default, so a container-sourced parameter that silently fell back
+    # to the block default would carry 8 where the peers assert 12.
+    xif_tb:
+        tbV0:
+            DATA_WIDTH: 16
+            FRAME_HEIGHT: 12
+            FRAME_WIDTH: 12
+    # pv0 states its values; pvSourced takes every one of them from the
+    # testbench container that holds the instance. Both resolve to the same
+    # numbers, and each peer stamps its own FRAME_HEIGHT into the payload and
+    # asserts the one it receives, so a broken container-sourced link fails the
+    # run rather than merely changing a type name.
+    tbPeer:
+        pv0:
+            DATA_WIDTH: 16
+            FRAME_HEIGHT: 12
+            FRAME_WIDTH: 12
+        pvSourced:
+            DATA_WIDTH:   { containerParam: DATA_WIDTH }
+            FRAME_HEIGHT: { containerParam: FRAME_HEIGHT }
+            FRAME_WIDTH:  { containerParam: FRAME_WIDTH }

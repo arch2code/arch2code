@@ -60,15 +60,15 @@ dirs:
 fileGeneration:
   template: $a2c/templates/fileGen/fileGen.py
   fileMap:
-    # generation has 2 modes, block and context
+    # generation has 4 modes: block, context, registrar and project
     # block creates a file per design block and cond: depend on the block definition
     # context creates a file per yaml file and cond: depend on the yaml file (typically this is for includes/packages)
     # name will be added to the module name to generate a filename plus associated extensions
     # path to the file is based on dirs section and otherwise follows block/yaml file structure
     # this means if blocks are defined in a file called cpu/cpu.yaml ie in the cpu directory then the implementation file is in cpu unless overridden in the block definition
-    # if blockDirs is true then the file is placed in a directory the block appended as well
+    # if blockDir is true then the file is placed in a directory the block appended as well
     # note that basePath should reference a path key in the dirs section
-    # cond: matches fields in the block definition, if all fields are true then the file is generated
+    # cond: is OR - any listed field matching generates the file; condAnd: is AND - all must match
     # smartInclude is yaml based instead of block based and is used to generate include files based on the yaml file 
     # if smartInclude is true then files are only created if there is content to include. If smartInclude: false then the file is always created
     blockBase   : { name : "Base",            ext: {cppm: "cppm"},         cond: {hasMdl: true},                mode: block,   basePath: base,    desc: "Module Base class interface unit"}

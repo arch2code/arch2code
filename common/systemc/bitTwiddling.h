@@ -2,12 +2,16 @@
 #define BITTWIDDLING_H
 // copyright the arch2code project contributors, see https://bitbucket.org/arch2code/arch2code/src/main/LICENSE
 #include <bit>
+#include <cassert>
 #include <cstdint>
 #include <type_traits>
 #include "clog2.h"
 // https://www.techiedelight.com/round-next-highest-power-2/
-// Compute power of two greater than or equal to `n`
+// Least power of two >= `n`. Domain is n <= 2^63; 2^64 is not representable, so
+// a larger input asserts rather than wrapping to 0. In a constant expression
+// that assert is a compile error.
 constexpr uint64_t findNextPowerOf2Constexpr(uint64_t n) {
+    assert(n <= (1ULL << 63));
     if (n == 0) return 1;
     n--;
     n |= n >> 1;
@@ -18,22 +22,20 @@ constexpr uint64_t findNextPowerOf2Constexpr(uint64_t n) {
     n |= n >> 32;
     return n + 1;
 }
+// Runtime form of findNextPowerOf2Constexpr above; same contract and domain.
 extern uint64_t findNextPowerOf2(uint64_t n);
+// Index of the single set bit; asserts unless `n` is a power of two.
 extern uint16_t log2ofPowerOf2(uint64_t n);
-// pack_bits — append `bits` bits from src@srcPos to dest@destPos via
-// bitwise OR. Caller must pre-clear the destination. Source words are NOT
-// masked: any bits set above `consume` in a source word OR into the
-// destination at the matching position. For the unpack direction, where
-// source bits above `consume` must be discarded, use unpack_bits.
+// pack_bits — OR `bits` bits from src@srcPos into dest@destPos. Caller must
+// pre-clear the destination. Source words are NOT masked, so any bits set above
+// the width being consumed OR into the destination alongside it.
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t srcPos, uint16_t bits); // by ptr any alignment
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t* src, uint16_t bits); // by ptr aligned to start of src
 extern void pack_bits(uint64_t* dest, uint16_t destPos, uint64_t src, uint16_t bits); // by value
 
-// unpack_bits — extract `bits` bits from src@srcPos to dest@destPos via
-// bitwise OR. Caller must pre-clear the destination. Each iteration's
-// source word is masked to exactly `consume` bits before OR-ing, so bits
-// above `consume` (adjacent fields in a packed form) are dropped. For the
-// pack direction, where bits above `consume` must propagate, use pack_bits.
+// unpack_bits — the reverse; caller must pre-clear the destination. Each source
+// word IS masked to the width being consumed, so adjacent fields in a packed
+// form are dropped rather than propagated into the destination.
 extern void unpack_bits(uint64_t* dest, uint16_t destPos, const uint64_t* src, uint16_t srcPos, uint16_t bits);
 
 template <typename OutPacked, typename InPacked>
@@ -63,31 +65,23 @@ inline void copy_packed_bits(OutPacked& out, const InPacked& in, uint16_t bits)
     }
 }
 
-// copyPayload — move one payload value onto the differently-declared payload of
-// the other side of a cross-interface adapter. `Direct` is the generator's
-// verdict for this call site: true when the two declarations emit identical
-// member storage, so the value may be transferred whole. C++ cannot decide that
-// itself — the two sides are unrelated class types and the language has no
-// reflection with which to compare their member sequences — so the adapter's
-// class template carries one such flag per payload pair.
+// copyPayload — transfer a payload onto the differently-declared payload on the
+// other side of a cross-interface adapter. `Direct` is the generator's verdict
+// that the two declarations emit identical member storage; C++ cannot decide
+// that itself, as the two sides are unrelated class types, so the adapter's
+// class template carries one flag per payload pair. The verdict covers the
+// payload alone, not the protocol envelope around it: sideband members sized
+// from the payload's declared width (axi4_stream's tstrb/tkeep) are not
+// compared.
 //
-// The direct arm is std::bit_cast rather than a byte copy because it is
-// specified for exactly this transfer. It is NOT a check on the verdict: two
-// types of equal size but different member layout satisfy bit_cast's
-// constraints, so a wrong verdict compiles and silently reinterprets one layout
-// as the other. The guarantee that `Direct` is right comes from the generator
-// comparing the two structures' storage signatures, not from the compiler. The
-// sizeof static_assert at each adapter call site is a partial backstop: it turns
-// a mismatch between the generator's flag order and the header's slot order into
-// a compile error whenever the two payloads differ in size, and catches nothing
-// when they are equal-sized but differently laid out.
+// std::bit_cast does not check the verdict — equal-sized types with different
+// member layout satisfy it, so a wrong verdict compiles and silently
+// reinterprets one layout as the other. The sizeof static_assert at each call
+// site only catches a wrong verdict that also changes size.
 //
-// The two arms agree on any value the storage signatures admit; the packed arm
-// packs each field to its bit position, copies the packed form, and unpacks it
-// into the destination's fields. Note that unpacking masks each field to its
-// declared _bitWidth while the direct arm does not, so the arms would diverge on
-// a field holding a value wider than it declares — which the signature match
-// does not by itself exclude.
+// The arms diverge on a field holding a value wider than it declares: the packed
+// arm masks each field to its declared _bitWidth on unpack, while the assign and
+// bit_cast arms transfer the storage as it stands.
 template <bool Direct, typename To, typename From>
 inline void copyPayload(To& out, const From& in)
 {

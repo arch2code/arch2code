@@ -15,6 +15,15 @@ Use this skill when changing Arch2Code internals under `builder/base`, especiall
 4. Do not edit generated regions by hand. Change the data creation, view helper, template, or generator logic, then rerun the normal make target.
 5. Optimize for user cases. Unit tests should not prevent optimizations. Work around via api's or other means.
 
+## Comments
+
+Comments explain what is not obvious from reading the code. A comment that restates the lines below it is noise; delete it.
+
+- More than a few lines of comment is a signal to stop and reconsider. Ask whether it is durable, and whether it tells the reader anything the code does not. The usual answer is a shorter comment, or none.
+- Judge the whole comment block, including when editing or appending to an existing one. Do not assess only the sentence being added.
+- State standing behavior, positively. Not what an edit changed, not what the code avoids doing, not plan- or ticket-specific detail.
+- Lead a docstring with the problem in plain language, not the mechanism and not the caller's vocabulary.
+- use `unslop` skill
 ## Generator Control Flow
 
 Normal project use is split into database creation and generator execution.

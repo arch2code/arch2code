@@ -30,7 +30,7 @@ public:
     {
         // Seed the testController with the self-driving test the src and sink
         // model threads register against. Must run before sc_start().
-        testController::GetInstance().set_test_names({ "test_stream" });
+        testController::GetInstance().set_test_names({ "test_stream", "test_tb_peer" });
 
         // The testbench top self-registers via an A2C_REGISTRATION_RETAIN
         // static in dutTestbench.cpp (see instanceFactory.h),

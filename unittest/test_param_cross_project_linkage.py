@@ -13,13 +13,17 @@ generated build manifest never lands in the committed fixture. Five assembler
 project files select five compositions over the same sub-projects.
 
 Correct-by-design behavior (these cells must pass):
-- Three same-named `WIDTH` constants are three distinct parameter identities
-  (identity is the declaring-file qualified constant key), so wiring the
-  parameterized interface straight through is REJECTED by the
-  parameterized-endpoint validator. The exact diagnostic sentence is asserted, so
-  any change to its wording - including fixing the fact that it reports a
-  "missing" parameter the block demonstrably declares - is a deliberate, visible
-  test change.
+- The parameterized-endpoint rule reaches only an endpoint that carries the
+  connection's OWN interface declaration. An endpoint whose port carries its own
+  project's same-named declaration is a cross-interface bind, and the adapter
+  between the two sides is what reconciles them, so that endpoint declares and
+  sizes its payload from its own project's parameter identity and is exempt.
+  Whether the two payloads agree is then the layout check's question.
+- A same-key endpoint is still required to carry the connection interface's
+  parameter identity, and declaring a same-NAMED parameter in a different file
+  does not satisfy it. Parameter identity is the declaring-file qualified
+  constant key, so the diagnostic names the declaring file on both sides: that
+  identity is the whole disagreement.
 - The sanctioned de-parameterized boundary works across all three projects: the
   assembler owns a literal-width interface, each endpoint keeps its own
   parameterized interface, every leg is a cross-interface bind, and each bind
@@ -28,20 +32,27 @@ Correct-by-design behavior (these cells must pass):
   projects reach the upstream project's `WIDTH` and `dataIf` through a YAML
   `include:` instead of declaring their own, so all endpoints share one qualified
   constant key and the straight-through wiring is accepted.
+- Two same-named interfaces owned by different projects are two declarations, so
+  a junction between them is adapted rather than bound, each end onto its own
+  project's payload. Sharing the bare name is the point: the decision cannot be
+  taken on names.
+- One shared interface declaration reached at three different Configs is likewise
+  adapted, on the producer end of each hop, since the channel takes the consumer
+  end's Config and a payload is a distinct C++ type per Config.
 
-Known-gap cells. Each asserts the DESIRED behavior and currently FAILS; the
-failure is the record of the gap. No generator code is changed to make them pass.
+Known-gap cells. Each asserts the DESIRED behavior; a failure is the record of a
+gap. No generator code is changed to make them pass.
 - Two same-named interfaces owned by different projects with different payload
-  forms are never reconciled, because cross-interface checking is entered only
-  when the interface NAMES differ.
+  widths must be reconciled at db time rather than accepted.
 - A block port whose interface is declared in another file of its own project
-  falls back to a whole-database bare-name interface scan, so first-match-wins
-  binds the wrong project's interface - both in the declared-port resolution and
-  in the cross-interface thunker payload it feeds.
+  must not fall back to a whole-database bare-name interface scan, which
+  first-match-wins binds the wrong project's interface - both in the declared-port
+  resolution and in the cross-interface thunker payload it feeds.
 - On the one working cross-project parameterized path (the shared `include:`), a
   variant binding that exceeds the backing constant's `maxValue` is accepted,
   because the sizing check reaches the backing constant through the block param's
-  own file qualification rather than the resolved declaring file.
+  own file qualification rather than the resolved declaring file. This is the one
+  cell that still fails.
 """
 
 import os
@@ -57,6 +68,7 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 import pysrc.arch2codeGlobals as g
+from pysrc.intf_gen_utils import cpp_config_struct_name
 from pysrc.processYaml import projectOpen
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'param-cross-project')
@@ -68,6 +80,9 @@ A_CONTEXT = '../../projA/yaml/aTop.yaml'
 B_CONTEXT = '../../projB/yaml/bTop.yaml'
 C_CONTEXT = '../../projC/yaml/cTop.yaml'
 B_SPLIT_IFACE_CONTEXT = '../../projBSplit/yaml/bSplitIfaces.yaml'
+# The assembler's own declarations sit beside the project file it is selected by,
+# so they qualify to the bare file name.
+COLLISION_CONTEXT = 'collisionTop.yaml'
 
 
 def _copy_fixture(prefix):
@@ -135,34 +150,105 @@ def _header(name):
 # Correct-by-design behavior.
 # ----------------------------------------------------------------------------
 
-def test_three_project_param_connection_rejected():
-    _header("three same-named WIDTH identities reject the straight-through chain")
-    work = _copy_fixture('param_xproj_chain_')
+def test_adapted_endpoint_exempt_from_parameter_rule():
+    _header("an endpoint on its own project's declaration is adapted, so the "
+            "parameterized-endpoint rule does not reach it")
+    work = _copy_fixture('param_xproj_adapted_')
     try:
-        _db, out, rc = _build_db(work, 'chainProject.yaml')
+        db, out, rc = _build_db(work, 'adaptedProject.yaml')
+        # projA and projC each declare their own WIDTH and their own same-named
+        # dataIf, so uC's port is a different declaration from the connection's
+        # and carries a different parameter identity. uC is adapted onto its own
+        # declaration and never names projA's WIDTH, so requiring it to carry
+        # projA's parameter identity rejects a design that is correct. Before the
+        # rule was scoped to same-key endpoints this composition failed with
+        # "does not declare the required parameter(s): missing WIDTH" against a
+        # block that declares a WIDTH.
+        if rc != 0:
+            print("  FAIL: an adapted endpoint was still required to carry the "
+                  "connection interface's parameter identity")
+            print('  ' + '\n  '.join(out.split('\n')[:25]))
+            return False
+        _prj, ends = _cross_interface_ends(db)
+        # uA's port IS the connection's declaration, so it binds directly and
+        # must NOT appear. This cell pins the exemption only; that the rule still
+        # fires on the endpoints it does reach is pinned by the rejection cell
+        # below, which is what a deletion of the rule would fail.
+        if sorted(ends) != [('uC', 'in')]:
+            print(f"  FAIL: adapted ends {sorted(ends)}, expected uC's end only")
+            return False
+        end = ends[('uC', 'in')]
+        if (end['parentInterfaceKey'], end['childInterfaceKey']) != (
+                f'dataIf/{A_CONTEXT}', f'dataIf/{C_CONTEXT}'):
+            print(f"  FAIL: fixture no longer states the premise this cell tests; "
+                  f"uC binds {end['parentInterfaceKey']} to "
+                  f"{end['childInterfaceKey']} rather than two same-named "
+                  f"declarations")
+            return False
+        payloads = [(payload['side'], payload['structureKey'])
+                    for payload in end['thunker']['payloads']]
+        if payloads != [('parent', f'dataSt/{A_CONTEXT}'),
+                        ('child', f'dataSt/{C_CONTEXT}')]:
+            print(f"  FAIL: uC adapter payloads {payloads}")
+            return False
+        print("  PASS: adapted endpoint exempt, same-key endpoint still bound "
+              "directly")
+        return True
+    finally:
+        _close_db()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_same_key_endpoint_with_foreign_same_named_param_rejected():
+    _header("a same-key endpoint carrying a same-named parameter from another "
+            "file is still rejected, and the diagnostic names both files")
+    work = _copy_fixture('param_xproj_samename_param_')
+    try:
+        # The accepted shared-include chain, with projBShared re-authored to
+        # declare its OWN WIDTH alongside the included one. Its ports still carry
+        # projA's dataIf - projBShared declares no interface - so both of its
+        # endpoints stay in scope for the rule, while `params: [WIDTH]` now
+        # resolves in its own file first and binds its own constant. This is the
+        # case that survives the narrowing and the one the old wording described
+        # worst: the block does declare a WIDTH, just not this WIDTH.
+        _edit_fixture_yaml(
+            work, os.path.join('projBShared', 'yaml', 'bSharedTop.yaml'),
+            "include:\n    - ../../projA/yaml/aTop.yaml\n",
+            "include:\n    - ../../projA/yaml/aTop.yaml\n"
+            "\n"
+            "ipParameters:\n"
+            "    constants:\n"
+            "        WIDTH: { value: 8, maxValue: 32, desc: \"projBShared's own "
+            "same-named width\" }\n")
+        _db, out, rc = _build_db(work, 'sharedProject.yaml')
         if rc == 0:
-            print("  FAIL: expected the three-project parameterized chain to be rejected")
+            print("  FAIL: a same-key endpoint backed by a different file's "
+                  "same-named parameter was accepted")
             return False
         if 'Traceback (most recent call last)' in out:
             print("  FAIL: got a Python stack trace instead of a clean error")
             print('  ' + '\n  '.join(out.split('\n')[:25]))
             return False
-        # The exact current diagnostic. It reports 'missing WIDTH' for a block
-        # that declares WIDTH: the mismatch is one of declaring-file/project
-        # identity, which the message does not convey. Asserted verbatim so any
-        # rewording is a deliberate change to this expectation.
+        # Both halves of the identity must appear: the parameter the interface
+        # needs and the file it comes from, and the same-named one the block
+        # actually declares and the file THAT comes from. A message naming only
+        # the bare name is the recorded field defect.
         expected = (
-            "Parameterized interface 'dataIf' on the connection 'uA' -> 'uB' connects "
-            "endpoint instance 'uB' (block 'bIp'), which does not declare the required "
-            "parameter(s): missing WIDTH. A block reached through a parameterized "
-            "interface must itself carry the backing parameter(s) so the payload is "
-            "sized in its own module scope.")
+            "Parameterized interface 'dataIf' (declared in ../../projA/yaml/aTop.yaml) "
+            "on the connection 'uA' -> 'uB' connects endpoint instance 'uB' "
+            "(block 'bSharedIp'), which does not declare the required parameter(s): "
+            "missing WIDTH (declared in ../../projA/yaml/aTop.yaml). A block reached "
+            "through a parameterized interface must itself carry the backing "
+            "parameter(s) so the payload is sized in its own module scope. The block "
+            "declares same-named parameter(s) from other file(s): WIDTH (declared in "
+            "../../projBShared/yaml/bSharedTop.yaml); a parameter is identified by the "
+            "file that declares it, so those are different parameters.")
         if expected not in out:
             print("  FAIL: endpoint diagnostic text changed")
             print(f"  expected: {expected}")
             print('  ' + '\n  '.join(out.split('\n')[:25]))
             return False
-        print("  PASS: chain rejected with the recorded endpoint diagnostic")
+        print("  PASS: same-key shortfall rejected, both declaring files named")
         return True
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -199,6 +285,67 @@ def test_deparameterized_boundary_across_three_projects():
                 print(f"  FAIL: end {key} took the bind path with no thunker payload")
                 return False
         print("  PASS: four cross-interface thunked ends, each on its own project's interface")
+        return True
+    finally:
+        _close_db()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_same_named_cross_project_interfaces_are_adapted():
+    _header("two same-named interfaces owned by different projects are adapted, "
+            "not bound")
+    work = _copy_fixture('param_xproj_samename_')
+    try:
+        # The collision topology at a width both sides agree on. The assembler
+        # still declares its OWN interface named dataIf carrying its own payload
+        # structure, and both endpoints still carry their own same-named dataIf;
+        # only the packed forms now match, so the composition is accepted and the
+        # question becomes how the two declarations meet in emitted code.
+        _edit_fixture_yaml(
+            work, os.path.join('top', 'yaml', 'collisionTop.yaml'),
+            'wideT: { width: 32, desc: "assembler-owned 32-bit boundary word" }',
+            'wideT: { width: 8, desc: "assembler-owned boundary word, '
+            'layout-compatible with both endpoints" }')
+        db, out, rc = _build_db(work, 'collisionProject.yaml')
+        if rc != 0:
+            print("  FAIL: the layout-compatible same-name composition did not build")
+            print('  ' + '\n  '.join(out.split('\n')[:25]))
+            return False
+        _prj, ends = _cross_interface_ends(db)
+        # Each endpoint's declared interface is a different declaration from the
+        # connection's, so each end must be adapted. Sharing the bare name is
+        # what makes this cell distinct: an adapter decision taken on names alone
+        # cannot see either end.
+        expected = {
+            ('uA', 'out'): A_CONTEXT,
+            ('uC', 'in'):  C_CONTEXT,
+        }
+        got = {key: end['childInterfaceKey'] for key, end in ends.items()}
+        want = {key: f'dataIf/{context}' for key, context in expected.items()}
+        if got != want:
+            print(f"  FAIL: cross-interface binds {got}, expected {want}")
+            return False
+        for key, end in ends.items():
+            if (end['parentInterface'], end['childInterface']) != ('dataIf', 'dataIf'):
+                print(f"  FAIL: fixture no longer states the premise this cell "
+                      f"tests; end {key} binds '{end['parentInterface']}' to "
+                      f"'{end['childInterface']}' rather than one shared name")
+                return False
+            if end['parentInterfaceKey'] != f'dataIf/{COLLISION_CONTEXT}':
+                print(f"  FAIL: end {key} parent interface resolved to "
+                      f"{end['parentInterfaceKey']}, expected the assembler's own")
+                return False
+            # The adapter must carry the assembler's declaration on the up side
+            # and the endpoint's own on the down side; naming one of them twice
+            # would emit a cast between a type and itself and drop the other.
+            payloads = [(payload['side'], payload['structureKey'])
+                        for payload in end['thunker']['payloads']]
+            if payloads != [('parent', f'wideSt/{COLLISION_CONTEXT}'),
+                            ('child', f'dataSt/{expected[key]}')]:
+                print(f"  FAIL: end {key} adapter payloads {payloads}")
+                return False
+        print("  PASS: both same-named cross-project ends adapted on their own "
+              "project's declaration")
         return True
     finally:
         _close_db()
@@ -254,6 +401,62 @@ def test_shared_ipparameter_include_across_projects():
         print("  PASS: three projects, one shared parameter identity, chain accepted")
         return True
     finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_one_interface_at_differing_configs_is_adapted():
+    _header("one shared interface declaration reached at three Configs is "
+            "adapted where the Configs differ")
+    work = _copy_fixture('param_xproj_config_')
+    try:
+        # The accepted straight-through chain of the cell above, read for what it
+        # emits rather than for what it accepts. All four endpoint ports are the
+        # one upstream dataIf declaration, so no interface difference exists at
+        # any of them; but each block owns its params and so carries its own
+        # Config, which makes the payload a different C++ type per endpoint.
+        db, out, rc = _build_db(work, 'sharedProject.yaml')
+        if rc != 0:
+            print("  FAIL: the shared-include composition did not build")
+            print('  ' + '\n  '.join(out.split('\n')[:25]))
+            return False
+        _prj, ends = _cross_interface_ends(db)
+        # The channel takes the dst endpoint's Config, so the dst end of each hop
+        # binds it unadapted and only the src end is adapted. Adapting both would
+        # leave the channel with no end to take its typing from.
+        if sorted(ends) != [('uA', 'out'), ('uB', 'out')]:
+            print(f"  FAIL: adapted ends {sorted(ends)}, expected the two "
+                  f"producer ends only")
+            return False
+        # Each adapter's up side must spell the Config of the endpoint that types
+        # the channel and its down side the adapted endpoint's own, so this pins
+        # the emitted C++ names rather than restating the predicate that chose
+        # them. Every variant here is declared by the assembler, so each name is
+        # owner-qualified with its project.
+        expected = {
+            ('uA', 'out'): ('sharedTopProj_bSharedIpV0Config',
+                            'sharedTopProj_aIpV0Config'),
+            ('uB', 'out'): ('sharedTopProj_cSharedIpV0Config',
+                            'sharedTopProj_bSharedIpV0Config'),
+        }
+        for key, end in ends.items():
+            if end['parentInterfaceKey'] != f'dataIf/{A_CONTEXT}' \
+                    or end['childInterfaceKey'] != f'dataIf/{A_CONTEXT}':
+                print(f"  FAIL: fixture no longer states the premise this cell "
+                      f"tests; end {key} binds {end['parentInterfaceKey']} to "
+                      f"{end['childInterfaceKey']} rather than one declaration")
+                return False
+            configs = [(cpp_config_struct_name(pair['parent']['configSelection']),
+                        cpp_config_struct_name(pair['child']['configSelection']))
+                       for pair in end['thunker']['payloadPairs']]
+            if configs != [expected[key]]:
+                print(f"  FAIL: end {key} adapter Configs {configs}, expected "
+                      f"{[expected[key]]}")
+                return False
+        print("  PASS: one declaration at differing Configs adapted on the "
+              "producer end of each hop")
+        return True
+    finally:
+        _close_db()
         shutil.rmtree(work, ignore_errors=True)
 
 
@@ -389,9 +592,12 @@ def run_all_tests():
     print("TESTING: parameterized interface across project boundaries")
     print("="*70)
     tests = [
-        test_three_project_param_connection_rejected,
+        test_adapted_endpoint_exempt_from_parameter_rule,
+        test_same_key_endpoint_with_foreign_same_named_param_rejected,
         test_deparameterized_boundary_across_three_projects,
+        test_same_named_cross_project_interfaces_are_adapted,
         test_shared_ipparameter_include_across_projects,
+        test_one_interface_at_differing_configs_is_adapted,
         test_gap_cross_project_width_mismatch_detected,
         test_gap_bare_name_interface_binds_owning_project,
         test_gap_shared_include_binding_sizing_enforced,

@@ -41,18 +41,17 @@ std::shared_ptr< blockBase > instanceFactory::createTestBench(const char * testB
 {
     return createInstance("", testBenchStr, testBench, INSTANCE_FACTORY_DEFAULT, "", projectName);
 }
-std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant, const char * projectName)
+std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant, const char * projectName, blockFactoryFunctionType containerSuppliedFactory)
 {
-    return createInstance(hierarchy, blockName, blockTypeUser, INSTANCE_FACTORY_DEFAULT, variant, projectName);
+    return createInstance(hierarchy, blockName, blockTypeUser, INSTANCE_FACTORY_DEFAULT, variant, projectName, std::move(containerSuppliedFactory));
 }
-std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant, const char * projectName)
+std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant, const char * projectName, blockFactoryFunctionType containerSuppliedFactory)
 {
     // figure out what type of block to create for this instance
     std::string hierarchyStr(hierarchy);
     std::string qualifiedName = hierarchyStr.empty() ? std::string(blockName) : hierarchyStr + std::string(".") + std::string(blockName);
     std::string blockType;
     std::string instMode;
-    verbosity_e verbosity = VERBOSITY_UNKNOWN;
     if (inst == INSTANCE_FACTORY_DEFAULT)
     {
         auto instIt = getInstMap().find(qualifiedName);
@@ -70,57 +69,65 @@ std::shared_ptr< blockBase > instanceFactory::createInstance(const char * hierar
         instMode = getInstanceModeString()[inst];
         blockType = std::string(blockTypeUser) + "_" + instMode;
     }
-    // Lookup order (projectName is held FIXED; fallback iterates the variant
-    // dimension only, so an unknown variant never borrows another project's
-    // registration):
-    //   1. exact (blockType, variant, projectName)
-    //   2. variant fallback (blockType, "", projectName)
-    //   3. error
+    // The container-supplied constructor names the child's MODEL class, so it can
+    // only answer a request for the model. An empty instMode is the model default;
+    // any other mode must reach its own registration or be reported, never
+    // silently get a model where a verilated or tandem child was asked for.
+    if (!(instMode.empty() || instMode == "model")) {
+        containerSuppliedFactory = nullptr;
+    }
+    // projectName is held FIXED; the variant dimension is the only one that falls
+    // back, so an unknown variant never borrows another project's registration.
+    // The exact key is consulted FIRST so a registration made under it wins over
+    // the type a container-typed site names. The empty-variant fallback comes
+    // LAST because it names a Config the container-typed site did not ask for.
     std::string projectNameStr(projectName);
-    for (const auto &candidateVariant : std::array<std::string, 2>{std::string(variant), std::string()}) {
+    blockFactoryFunctionType blockFactory;
+    auto lookup = [&](const std::string &candidateVariant) {
         auto it = getMap().find(Key{blockType, candidateVariant, projectNameStr});
         if (it != getMap().end()) {
-            bool tandem = (inst != INSTANCE_FACTORY_DEFAULT);
-            if (tandem) {
-                // only get here for true tandem block
-                getRemapStrings().emplace_back(qualifiedName, hierarchyStr);
-            } else {
-                std::string parent(hierarchyStr);
-                while (parent.size() > 0) {
-                    auto instIt = getInstMap().find(parent);
-                    if (instIt != getInstMap().end()) {
-                        if (instIt->second == "tandem") {
-                            tandem = true; // inherit from a tandem block
-                            break;
-                        }
-                    }
-                    size_t pos = parent.find_last_of(".");
-                    if (pos == std::string::npos)
-                    {
-                        parent = "";
-                    } else {
-                        parent = parent.substr(0, pos);
-                    }
+            blockFactory = it->second;
+        }
+    };
+    lookup(std::string(variant));
+    if (!blockFactory) {
+        blockFactory = std::move(containerSuppliedFactory);
+    }
+    if (!blockFactory) {
+        lookup(std::string());
+    }
+    if (!blockFactory) {
+        Q_ASSERT_CTX_NODUMP(false, "", std::format("Attempted to create an instance {} of an unregistered block type {}", blockName, blockType) );
+        return NULL;
+    }
+    bool tandem = (inst != INSTANCE_FACTORY_DEFAULT);
+    if (tandem) {
+        // only get here for true tandem block
+        getRemapStrings().emplace_back(qualifiedName, hierarchyStr);
+    } else {
+        std::string parent(hierarchyStr);
+        while (parent.size() > 0) {
+            auto instIt = getInstMap().find(parent);
+            if (instIt != getInstMap().end()) {
+                if (instIt->second == "tandem") {
+                    tandem = true; // inherit from a tandem block
+                    break;
                 }
             }
-            auto newIt = getObjectMap().emplace(qualifiedName, nullptr);
-            blockBaseMode bbMode = tandem ? BLOCKBASEMODE_TANDEM : BLOCKBASEMODE_NORMAL;
-            std::shared_ptr< blockBase> newBlock = it->second(blockName, variant, bbMode);
-            newIt.first->second = newBlock;
-            if (verbosity != VERBOSITY_UNKNOWN) {
-                newBlock->setLogging(verbosity);
-            }
-            if (tandem)
+            size_t pos = parent.find_last_of(".");
+            if (pos == std::string::npos)
             {
-
+                parent = "";
             } else {
-                // check if one of parent is a tandem block, as we want all the child blocks to be tandem
+                parent = parent.substr(0, pos);
             }
-            return newBlock;
         }
     }
-    Q_ASSERT_CTX_NODUMP(false, "", std::format("Attempted to create an instance {} of an unregistered block type {}", blockName, blockType) );
-    return NULL;
+    auto newIt = getObjectMap().emplace(qualifiedName, nullptr);
+    blockBaseMode bbMode = tandem ? BLOCKBASEMODE_TANDEM : BLOCKBASEMODE_NORMAL;
+    std::shared_ptr< blockBase> newBlock = blockFactory(blockName, variant, bbMode);
+    newIt.first->second = newBlock;
+    return newBlock;
 }
 void instanceFactory::setInstanceFactoryMode(instanceFactoryMode mode, std::string name)
 {

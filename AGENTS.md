@@ -9,6 +9,29 @@ template, and project database code.
 3. Don't touch unrelated code. If a file or function is not directly part of the current task, do not modify it, even if you think it could be improved.
 4. Flag uncertainty explicitly. If you are not confident about an approach or technical detail, say so before proceeding. Confidence without certainty causes more damage than admitting a gap.
 5. `builder/base` is a git submodule. Do not stage or commit any changes - user will manage.
+6. Write every document through the `unslop` skill. Load it at the start of the session and apply it before handing anything back.
+
+## Skill Routing
+
+Load the development skill that matches the task before you edit. Treat these as
+instructions to follow, not background reading.
+
+| Task | Skill |
+| :--- | :--- |
+| **Editing generator internals** | `builder-base-development` (control flow, database and view ownership, template rendering boundaries) |
+| **Reviewing Python changes** | `review-python-code` (defensive code, fallback paths, compatibility wrappers, agent-added guards) |
+| **Writing or editing any prose** | `unslop` (always applies, see below) |
+| **Declaring a task done** | `principle-prove-it-works` (verify the real artefact, never a self-report) |
+| **Re-pitching an explanation that did not land** | `wait-what` (plain language, arch2code glossary) |
+| **Ending a session with work still open** | `handoff` (emit a prompt the next agent can start from) |
+
+### unslop applies to every agent
+
+Every agent working under `builder/base` loads `unslop`, including subagents you
+spawn. Name it in the subagent prompt, because a subagent inherits these rules
+but reaches the skill only when told to.
+
+The skill states what it governs. Use the vocabulary in `CONTEXT.md`.
 
 ## Generator Control Flow
 
@@ -17,7 +40,9 @@ that parses YAML and immediately renders templates.
 
 Project makefiles wrap this as `make db` followed by generation targets
 such as `make gen`, but the Python dispatch still follows this split.
-Use `make clean` to force db rebuild. Use make with `-j` for performance. 
+Run `make clean` before rebuilding after any change under `builder/base`. The db
+target depends only on YAML, so a Python, schema, or template edit leaves a stale
+db in place and `make gen` reuses it. Use make with `-j` for performance. 
 
 1. `projectCreate` builds the database.
   - Entry point: `arch2code.py` with both `--yaml` and `--db`.
@@ -112,7 +137,10 @@ helper that defines the contract. Branching on optional rows or optional
 relationships is fine; treating contracted fields as optional is not.
 - Do not edit generated regions by hand. Change the data creation, view helper,
 or template, then rerun the normal make target.
-- Do not add plan specific comments. Instead add durable behavior comments
+- Comments explain what is not obvious from reading the code. Keep them durable
+and behavioral, never plan specific. More than a few lines of comment is a
+signal to stop and reconsider whether it says anything the code does not.
+Judge the whole comment block, not just the sentence being added.
 
 Keep the ownership split clear: `projectCreate` owns durable project database
 truth; `projectOpen` owns read-only access and template-facing views; `renderer`

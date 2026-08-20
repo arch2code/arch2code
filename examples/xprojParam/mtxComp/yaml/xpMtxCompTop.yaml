@@ -1,0 +1,32 @@
+# Cross-project reuse of a params-less transit container.
+#
+# xpMtxElectWrap is owned by the xpMtxElect project. It carries
+# isParameterizable=true only because parameterizable structures transit its
+# surface; it declares no params:, so it is NOT a class template, gets no
+# per-assembler trampoline registrar, and self-registers from its own module
+# unit under its OWN project's projectName. An assembler in a different project
+# must therefore target the OWNING project in its createInstance lookup - the
+# fact createInstanceProjectName decides. Getting that wrong compiles cleanly
+# and fails at run time with an unresolved factory key, which is why this row
+# exists as a run target rather than a db assertion.
+include:
+    - ../../mtxElect/yaml/xpMtxElectTop.yaml
+
+blocks:
+    xpMtxCompTop:
+        desc: "Assembler top reusing another project's params-less transit container"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpMtxCompTop_tb:
+        desc: "Testbench container for xpMtxCompTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+
+instances:
+    xpMtxCompTop_tb: { container: xpMtxCompTop_tb, instanceType: xpMtxCompTop_tb, instGroup: top }
+    u_xpMtxCompTop:  { container: xpMtxCompTop_tb, instanceType: xpMtxCompTop,    instGroup: top }
+    uReusedWrap:     { container: xpMtxCompTop,    instanceType: xpMtxElectWrap,  instGroup: top }

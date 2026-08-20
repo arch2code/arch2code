@@ -1,0 +1,34 @@
+# Mid-level IP project (ISP analogue) for the three-level depth family. It
+# references the leaf IP project and owns the container block that instantiates
+# it. No topInstance: it is a reusable IP, assembled by the customer project.
+
+yamlFormat: 2
+projectName: xpDpMid
+
+topInstance: xpDpMidStdTop_tb
+
+projectFiles:
+    - ../../../dpLeaf/prj/yaml/xpDpLeafProject.yaml
+    - ../../yaml/xpDpMidStdTop.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

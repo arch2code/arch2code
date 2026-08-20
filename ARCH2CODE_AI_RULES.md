@@ -627,7 +627,7 @@ Based on `builder/interfaces/` directory:
 | `notify_ack` | Notify-acknowledge | Event notifications |
 | `memory` | Memory interface | SRAM/ROM access |
 | `external_reg` | External register | Register access |
-| `raw` | Raw signals | Custom protocols |
+| `raw` | Handshake-less data bus (**last resort**) | Legacy / external boundary pinouts only |
 
 ### Interface Definition Syntax
 
@@ -756,11 +756,59 @@ interfaces:
       - {structure: fifo_data_t, structureType: rdata_t}
 ```
 
+#### raw (Last Resort — Handshake-Less Boundary)
+
+**`raw` is supported but is an interface of last resort.** Prefer `rdy_vld`,
+`push_ack`/`pop_ack`, or `axi4_stream` for new interconnect. Use `raw` only at
+design **boundaries** when adapting to **legacy / external IP** whose pinout is
+a free-running data bus with **no ready/valid/ack wires** (validity is usually
+encoded in the payload, e.g. CSI-style `fv`/`lv`). Do **not** use `raw` for new
+internal pipeline links between arch2code blocks.
+
+**Signals:**
+- `data`: Data payload only (no handshake pins)
+
+**Protocol:**
+- **RTL:** Free-running `data` sampled on clock. There is no backpressure on the
+  wire; the consumer cannot stall the producer in hardware.
+- **SystemC:** Blocking `write()` / `read()` rendezvous. This is *not* the same
+  as RTL sampling semantics, and timed/tandem runs can diverge if delay is
+  enabled on a `raw` port.
+- **Not `status`:** Same wire shape as `status`, but different SystemC meaning —
+  `status` is publish/sample; `raw` is a one-shot transfer that blocks both
+  sides until the beat is consumed.
+
+**Why it is problematic (even though supported):**
+1. No hardware backpressure — flow control cannot be expressed on the interface.
+2. SystemC rendezvous ≠ RTL free-running sample — model and HDL timing can diverge.
+3. Known channel hazard: `raw_channel` drives both handshake directions off one
+   `sc_event`; under some process orderings a value can be overwritten before it
+   is consumed.
+4. Co-sim depends on BFMs to invent clocked timing the protocol does not express.
+5. Easy to misuse in place of `status` or a real streaming protocol.
+
+**Example (boundary only):**
+```yaml
+interfaces:
+  csi_video_in:
+    interfaceType: raw
+    desc: "Legacy CSI-2 pixel bus at the chip/IP boundary"
+    structures:
+      - {structure: video_csi_t, structureType: data_t}
+```
+
 **AI Agent Guidance:**
 - For streaming data with backpressure, use `rdy_vld`
 - For register access, use `apb` or `lmmi`
 - For command-response patterns, use `req_ack`
 - For FIFO-like interfaces, use `push_ack` (write) and `pop_ack` (read)
+- Prefer `rdy_vld` / `push_ack` / `pop_ack` / `axi4_stream` for new streams
+- Use `raw` only at chip/IP boundaries to match legacy handshake-less pinouts
+- Do not use `raw` between new arch2code blocks; convert to a handshaked
+  protocol at the first internal hop
+- Do not confuse `raw` with `status` (same wires; different SystemC semantics)
+- If proposing `raw`, confirm with the user that a handshaked protocol is
+  impossible for that boundary
 - The `structureType` must match what the interface definition expects
 - Check `builder/interfaces/<type>/<type>_if.yaml` for structureType requirements
 
@@ -2707,22 +2755,22 @@ graph TB
 
 The External gets all instances from `debayer_tb` **except** `u_debayer`. Connections between `u_debayer` and the other instances become the External's ports, which the Testbench binds.
 
-**Without `--excludeInst` (no surrounding blocks):**
+**Without `--excludeInst` (External is the DUT's inverse test surface):**
 
 ```mermaid
 graph TB
-    subgraph YAML2 ["YAML: simple_tb (wrapper block)"]
-        DUT_Y2["u_simple<br/>(DUT instance — only child)"]
+    subgraph YAML2 ["YAML: pySocket (DUT block)"]
+        DUT_Y2["pySocket<br/>(DUT block — named directly by --block)"]
     end
 
     subgraph GEN2 ["Generator produces"]
         direction LR
-        subgraph TB_MOD2 ["Testbench module<br/>--block=simple"]
-            DUT2["u_simple<br/>(DUT)"]
+        subgraph TB_MOD2 ["Testbench module<br/>--block=pySocket"]
+            DUT2["pySocket<br/>(DUT)"]
             EXT_REF2["external<br/>(External obj)"]
             DUT2 --- EXT_REF2
         end
-        subgraph EXT_MOD2 ["External module<br/>--block=simple_tb<br/>(no --excludeInst)"]
+        subgraph EXT_MOD2 ["External module<br/>--block=pySocket<br/>(no --excludeInst)"]
             EMPTY["(no sub-instances)"]
         end
         EXT_REF2 -. "DUT's external<br/>ports exposed" .-> EXT_MOD2
@@ -2731,7 +2779,7 @@ graph TB
     YAML2 --> GEN2
 ```
 
-When the `_tb` wrapper holds only the DUT instance and nothing else, `--excludeInst` is not needed — the External has no sub-instances to manage. This is uncommon; most real testbenches have surrounding blocks.
+Without `--excludeInst`, `--block` names the **DUT block itself**, not a `_tb` container, and the External has no sub-instances to manage — every stimulus is hand-written in its user region. The DUT still instantiates its own children; that happens in the DUT's own generated region, not the External's. There need not be a `_tb` container at all (`examples/simple_ip/ip` and `examples/ip_test/ip` have none), and where one exists it may be bypassed deliberately: `pySocket_tb` does hold a peer (`u_dut`), yet `examples/pySocket` still uses `--block=pySocket` with hand-written stimulus. This is uncommon; most real testbenches have surrounding blocks.
 
 **File-to-PARAM mapping:**
 
@@ -3689,6 +3737,7 @@ registers:
 | `axi_write` | AXI4 | Bidirectional | Memory write | Multiple |
 | `status` | None | Unidirectional | Static signals | `data_t` |
 | `notify_ack` | notify/ack | Unidirectional | Event notification | `data_t` |
+| `raw` | None (SC rendezvous only) | Unidirectional | **Last resort** — legacy/external handshake-less boundary | `data_t` |
 
 #### Interface Files Location
 

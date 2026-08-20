@@ -1,0 +1,39 @@
+# Assembler context for the ADAPTED-endpoint exemption. Two independently
+# authored parameterized IPs (projA, projC) each declare their own WIDTH and
+# their own same-named dataIf, so the two parameter identities are distinct.
+#
+# The connection's `dataIf` reference resolves in the assembler's scope to
+# projA's declaration, which is also uA's port interface, so that end is one
+# declaration reached twice. uC's port carries projC's own dataIf, so that end
+# is a cross-interface bind: an adapter sits between the channel and the port
+# and reconciles the two sides. uC therefore declares and sizes its payload from
+# projC's WIDTH and never names projA's, which is why the
+# parameterized-endpoint rule must not require it to carry projA's parameter
+# identity.
+#
+# Both payloads resolve to 8 bits for the bound variants, so the layout check -
+# the adjudicator for a junction between two declarations - accepts this. The
+# width-mismatch case is covered by collisionTop.yaml.
+include:
+    - ../../projA/yaml/aTop.yaml
+    - ../../projC/yaml/cTop.yaml
+
+blocks:
+    top:
+        desc: "assembler top"
+
+instances:
+    uTop: { container: top, instanceType: top }
+    uA:   { container: top, instanceType: aIp, variant: v0 }
+    uC:   { container: top, instanceType: cIp, variant: v0 }
+
+connections:
+    - { interface: dataIf, src: uA, srcport: out, dst: uC, dstport: in }
+
+parameters:
+    aIp:
+        v0:
+            WIDTH: 8
+    cIp:
+        v0:
+            WIDTH: 8

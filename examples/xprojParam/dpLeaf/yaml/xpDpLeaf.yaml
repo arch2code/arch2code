@@ -1,0 +1,56 @@
+# The leaf IP of the three-level depth family: the debayer analogue. It owns two
+# knobs and knows nothing about any consumer.
+#
+# DP_ALGO is a pure behavioural knob: it appears in no width and in no packed
+# position, so a wrong DP_ALGO changes no layout and is invisible to the
+# interface-compatibility gate. It is the knob the architect's customer use case
+# names ("the appropriate debayer config including algorithm"), and it is chosen
+# here precisely because it isolates variant SELECTION from variant LAYOUT.
+#
+# DP_WIDTH is the layout knob and is held at its declared default everywhere in
+# this family, so nothing in the family is decided by the layout gate.
+
+ipParameters:
+    constants:
+        DP_ALGO:  { value: 1, maxValue: 7,  desc: "Interpolation algorithm select; behavioural only, appears in no width" }
+        DP_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        dpPixelT: { width: DP_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    dpTagT:  { width: 8, desc: "Sample sequence tag; lowest packed position" }
+    dpAlgoT: { width: 8, desc: "Algorithm the leaf instance resolved, stamped into the payload" }
+    dpMarkT: { width: 8, desc: "Trailing marker" }
+
+structures:
+    dpSt:
+        tag:  { varType: dpTagT,   desc: "Sample sequence tag" }
+        algo: { varType: dpAlgoT,  desc: "DP_ALGO the leaf instance resolved" }
+        data: { varType: dpPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: dpMarkT,  desc: "Trailing marker" }
+
+interfaces:
+    dpIf:
+        desc: "The leaf IP's own parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dpSt, structureType: data_t }
+
+blocks:
+    xpDpLeaf:
+        desc: "The parameterizable leaf IP: stamps its own resolved DP_ALGO into the payload and forwards"
+        params: [DP_ALGO, DP_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: true
+        ports:
+            in:  { interface: dpIf, direction: dst }
+            out: { interface: dpIf, direction: src }
+
+parameters:
+    xpDpLeaf:
+        # The IP's own default variant, bound through the named constants.
+        dflt:
+            DP_ALGO: DP_ALGO
+            DP_WIDTH: DP_WIDTH

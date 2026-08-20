@@ -22,6 +22,7 @@
    - [pop_ack_channel](#46-pop_ack_channel---pop-with-acknowledge)
    - [notify_ack_channel](#47-notify_ack_channel---notify-with-acknowledge)
    - [status_channel](#48-status_channel---status-monitoring)
+   - [raw_channel](#49-raw_channel---last-resort-handshake-less-boundary)
 5. [Transaction Tracking](#5-transaction-tracking-user-api)
 6. [Framework Reference](#6-framework-reference-minimal-documentation)
 7. [Advanced Topics](#7-advanced-topics-power-users)
@@ -444,6 +445,7 @@ All channels are created and connected in generated code. Users call methods on 
 | `pop_ack` | Pop with ack | FIFO-like pull interfaces |
 | `notify_ack` | Notify with ack | Event signaling |
 | `status` | Status monitoring | Read-only state sharing |
+| `raw` | Handshake-less data (**last resort**) | Legacy / external boundary pinouts only |
 | `axi_read` | AXI read | Burst read transactions |
 | `axi_write` | AXI write | Burst write transactions |
 | `axi4_stream` | AXI4-Stream | High-speed streaming |
@@ -845,6 +847,55 @@ void myModule::monitorStatus() {
 }
 ```
 
+### 4.9 raw_channel - Last Resort Handshake-Less Boundary
+
+**`raw` is supported but is an interface of last resort.** Prefer `rdy_vld`,
+`push_ack`/`pop_ack`, or `axi4_stream` for new interconnect. Use `raw` only at
+design **boundaries** when adapting to **legacy / external IP** whose pinout is
+a free-running data bus with **no ready/valid/ack wires** (validity usually
+encoded in the payload). Do **not** use `raw` for new internal pipeline links
+between arch2code blocks.
+
+RTL exposes only `data`. SystemC provides a blocking `write()` / `read()`
+rendezvous so threads stay in lockstep in simulation — that rendezvous is **not**
+expressed on the wire, and timed/tandem runs can diverge if delay is enabled.
+
+**Do not confuse with `status`:** same wire shape; `status` is publish/sample
+(non-blocking write), `raw` is a one-shot transfer that blocks both sides until
+the beat is consumed.
+
+**Caveat:** `raw_channel` uses one `sc_event` for both directions. Under some
+process orderings a parked consumer plus an immediate re-`write` can lose a
+value. Prefer a handshaked protocol whenever possible.
+
+#### Source Side
+
+**API:**
+- `myPort->write(data)` - Blocking write; waits until the sink consumes the value
+
+```cpp
+void producer::driveLegacyBoundary(void)
+{
+    video_csi_t beat;
+    // ... fill beat (validity may live in payload fields) ...
+    csi_video_in->write(beat);
+}
+```
+
+#### Sink Side
+
+**API:**
+- `myPort->read(data)` - Blocking read; waits until a value is written
+
+```cpp
+void consumer::sampleLegacyBoundary(void)
+{
+    video_csi_t beat;
+    csi_video_in->read(beat);
+    // Convert to rdy_vld (or similar) at the first internal hop
+}
+```
+
 ### Channel Selection Guide
 
 | Need | Use Channel |
@@ -859,6 +910,7 @@ void myModule::monitorStatus() {
 | Status broadcasting | `status` |
 | Burst read/write | `axi_read`/`axi_write` |
 | High-speed streaming | `axi4_stream` |
+| Legacy/external handshake-less boundary only | `raw` (**last resort**) |
 
 ---
 

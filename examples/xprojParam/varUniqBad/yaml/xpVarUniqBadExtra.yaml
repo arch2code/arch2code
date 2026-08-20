@@ -1,0 +1,12 @@
+# The colliding second declaration. This file is owned by the same project as
+# xpVarUniqBadTop.yaml, so its `use` variant of xpVuBadLeaf carries the same
+# (block, variant, project) identity as the one declared there. The width bound
+# here differs, so whichever declaration is kept decides the leaf's Config.
+
+include:
+    - xpVarUniqBadBase.yaml
+
+parameters:
+    xpVuBadLeaf:
+        use:
+            VU_WIDTH: 24

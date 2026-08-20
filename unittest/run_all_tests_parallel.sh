@@ -10,11 +10,11 @@
 #
 #   READERS of shared examples/ trees (read-only):
 #     The eval/addrctl ip_test parity suites, the boundary-signal suite, the
-#     nested-layout suite, and the layout-migration suite all READ an examples/
-#     tree (projectCreate/arch2code parse the shared YAML and write their DB to
-#     a unique temp path, or copytree the tree into a private tempdir). They are
-#     safe concurrently with each other (concurrent reads) but NOT concurrent
-#     with test_build_manifest.py.
+#     nested-layout suite, the layout-migration suite, and the db-failure suite
+#     all READ an examples/ tree (projectCreate/arch2code parse the shared YAML
+#     and write their DB to a unique temp path, or copytree the tree into a
+#     private tempdir). They are safe concurrently with each other (concurrent
+#     reads) but NOT concurrent with test_build_manifest.py.
 #
 #   ISOLATED (everything else):
 #     Each isolates via TemporaryDirectory / mkdtemp / uniquely named
@@ -44,9 +44,10 @@ EXAMPLE_READERS=(
     test_eval_sv_emit.py              # reads examples/ip_test (copytree)
     test_addrctl_ip_test_view.py      # reads examples/ip_test
     test_boundary_signals.py          # reads examples/ip_test
-    test_payload_direct_copy.py       # reads examples/ip_test + examples/xprojParam
+    test_payload_direct_copy.py       # reads examples/ip_test + simple_ip + xprojParam
     test_layout_nested.py             # reads examples/nested (copytree)
     test_migrate_layout.py            # reads examples/simple + examples/hierInclude
+    test_db_failure_no_stale_artifact.py  # reads examples/simple + xprojParam/cpLayoutBad (copytree)
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.
@@ -64,9 +65,9 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping suites: the serial runner runs 95 suites.
-if [[ ${#ALL[@]} -ne 95 ]]; then
-    echo "WARNING: expected 95 suites (serial-runner set), found ${#ALL[@]}." >&2
+# Guard against silently dropping suites: the serial runner runs 106 suites.
+if [[ ${#ALL[@]} -ne 106 ]]; then
+    echo "WARNING: expected 106 suites (serial-runner set), found ${#ALL[@]}." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 

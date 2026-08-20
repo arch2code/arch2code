@@ -1,0 +1,77 @@
+# Standalone top harness for the mid-level IP, mirroring ip_test's
+# bridge/yaml/bridgeStdTop.yaml. It exists because a project that declares
+# instances must name a topInstance: the reusable IP cannot be a project of its
+# own without one.
+
+include:
+    - xpDpMid.yaml
+
+blocks:
+    xpDpMidStdTop:
+        desc: "Standalone harness DUT: the mid-level IP with its own stimulus and sink"
+        hasMdl: true
+        hasVl: false
+        hasTb: true
+        hasRtl: false
+    xpDpMidStdWrap:
+        desc: "Untemplated container of the harness chain"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpDpMidStdTop_tb:
+        desc: "Testbench container for xpDpMidStdTop"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpDpMidDrv:
+        desc: "Harness stimulus for the mid-level IP boundary"
+        params: [DP_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: dpIf, direction: src }
+    xpDpMidSnk:
+        desc: "Harness sink for the mid-level IP boundary"
+        params: [DP_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: dpIf, direction: dst }
+
+instances:
+    xpDpMidStdTop_tb: { container: xpDpMidStdTop_tb, instanceType: xpDpMidStdTop_tb, instGroup: top }
+    u_xpDpMidStdTop:  { container: xpDpMidStdTop_tb, instanceType: xpDpMidStdTop,    instGroup: top }
+    # The chain sits in a wrapper rather than directly in the harness top. The
+    # reason first recorded here - that the testbench External does not import
+    # the owner-qualified foreign Config modules these instances are typed with -
+    # was wrong: instances of the harness TOP are the DUT's own children, which
+    # the External emits in neither of its two modes. Moving them back up puts
+    # them on the block path, which does emit that import. The wrapper is
+    # therefore removable, but doing so requires re-authoring the harness model,
+    # so it is left as a follow-up rather than done here.
+    uStdWrap:         { container: xpDpMidStdTop,    instanceType: xpDpMidStdWrap,   instGroup: top }
+    uDrv:             { container: xpDpMidStdWrap,   instanceType: xpDpMidDrv,       instGroup: top, variant: std }
+    uMidStd:          { container: xpDpMidStdWrap,   instanceType: xpDpMid,          instGroup: top, variant: std }
+    uSnk:             { container: xpDpMidStdWrap,   instanceType: xpDpMidSnk,       instGroup: top, variant: std }
+
+connections:
+    - { interface: dpIf, src: uDrv,    srcport: out, dst: uMidStd, dstport: midIn,  name: stdIn }
+    - { interface: dpIf, src: uMidStd, srcport: midOut, dst: uSnk,    dstport: in,  name: stdOut }
+
+parameters:
+    xpDpMid:
+        std:
+            DP_WIDTH: DP_WIDTH
+            MID_ALGO: MID_ALGO
+    xpDpMidDrv:
+        std:
+            DP_WIDTH: DP_WIDTH
+    xpDpMidSnk:
+        std:
+            DP_WIDTH: DP_WIDTH

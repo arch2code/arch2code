@@ -38,12 +38,15 @@ def parameterizedDeclLines(parameterizedDecls, prj, blockParams):
     can re-emit them as a comma-separated parameter-port-list localparam when a
     port width must resolve them ahead of the port list.
 
-    `blockParams` is the owning block's param rows (each {'param','paramKey'}).
+    `blockParams` is the owning block's param rows. Each is keyed by its
+    paramSource link - the backing constant's own key - because the symbols being
+    spelled are constant keys; paramKey qualifies the param name with the file
+    declaring the block and matches only when the two coincide.
     A symbol that is one of the block's params stays symbolic (its SV parameter
     name). A symbol already selected as an earlier localparam in this declaration
     set is spelled by that localparam name. Any other symbol is spelled from its
     persisted constant value as an SV literal."""
-    paramNameByKey = {p['paramKey']: p['param'] for p in blockParams}
+    paramNameByKey = {p['paramSourceKey']: p['param'] for p in blockParams}
     localConstNameByKey = {
         decl['declKey']: decl['body']['constant']
         for decl in parameterizedDecls

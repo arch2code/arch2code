@@ -1,0 +1,122 @@
+# The DUT's supporting blocks - stimulus and checker - declared in a DIFFERENT
+# file from the IP root, which it include:s. A testbench file has to include the
+# DUT's definition to instantiate it at all, so reaching the DUT's
+# parameterization through the same include: adds no coupling that was not
+# already there.
+#
+# Two shapes of that reuse are declared here, and the assembler exercises both.
+# Both work at any bound value; which one to author is a question of who owns
+# the knob, not of what the generator supports.
+#
+#   Inc: the block NAMES the IP's CS_PIXEL_WIDTH in its own params: and carries
+#        the IP's own payload on its port. Nothing is redeclared - naming is not
+#        declaring - so the orphan rule stays satisfied by the IP root's own
+#        block param. The backing constant is reached through include:, and the
+#        row records it as blocksparams.paramSourceKey, so a variant binding is
+#        honoured here exactly as it is for a same-file param. The cells below
+#        bind this pair at the IP's default; examples/xprojParam/cstUse is the
+#        same shape at a non-default value.
+#
+#   Own: the block declares its own knob, CS_OWN_WIDTH, and binds THAT per
+#        variant from whichever constant states the value. The knob declaration
+#        is duplicated; the VALUE is not, because every binding names a constant
+#        rather than restating a number. Author this when the block genuinely
+#        owns a knob of its own.
+#
+# The Inc blocks carry the IP's own csDutIf rather than a payload of
+# their own. A structure declared HERE whose width comes from an INCLUDED
+# constant does not compile: the per-context round-trip test structs are
+# instantiated at Configs built from this context's own parameterizable
+# constants, which do not carry the included one. The Own blocks declare their
+# own payload because their knob is local, so that instantiation is complete.
+#
+# Both shapes still get their own Config, hence their own C++ type, hence a
+# generated push/ack thunker at every boundary to the DUT - the Inc pair because
+# one declaration reached at two Configs is a cross-interface bind, the Own pair
+# because the declarations differ as well. Expected and unavoidable, not a
+# defect.
+include:
+    - ../../cstIp/yaml/xpCstIp.yaml
+
+ipParameters:
+    constants:
+        # The Own shape's knob. Its declared value: is a placeholder that reaches
+        # nothing but xpCstSupDefaultConfig, because every variant binds it
+        # explicitly. It cannot be written as `eval: "$CS_PIXEL_WIDTH"`: an
+        # eval-derived constant is emitted into the Config symbolically and its
+        # per-variant override is dropped, so every variant would carry the same
+        # expression.
+        CS_OWN_WIDTH: { value: 12, maxValue: 32, desc: "Supporting-block pixel width; every variant binds it explicitly" }
+    types:
+        csOwnPixelT: { width: CS_OWN_WIDTH, maxBitwidth: 32, desc: "Own-knob parameterizable pixel word" }
+
+structures:
+    # The IP payload's packed sequence, restated over the local knob:
+    # tag@0 w8, cfg@8 w8, data@16 w<CS_OWN_WIDTH>, mark@(16+CS_OWN_WIDTH) w8.
+    csOwnSt:
+        tag:  { varType: csTagT,      desc: "Sample sequence tag" }
+        cfg:  { varType: csCfgT,      desc: "Width the producing block resolved its pixel width to" }
+        data: { varType: csOwnPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: csMarkT,     desc: "Trailing marker" }
+
+interfaces:
+    csOwnIf:
+        desc: "Own-knob supporting blocks' own parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: csOwnSt, structureType: data_t }
+
+blocks:
+    xpCstSrcInc:
+        desc: "Stimulus naming the IP's CS_PIXEL_WIDTH by include scope"
+        params: [CS_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: csDutIf, direction: src }
+    xpCstChkInc:
+        desc: "Checker naming the IP's CS_PIXEL_WIDTH by include scope"
+        params: [CS_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: csDutIf, direction: dst }
+    xpCstSrcOwn:
+        desc: "Stimulus carrying its own knob, bound from a shared constant"
+        params: [CS_OWN_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: csOwnIf, direction: src }
+    xpCstChkOwn:
+        desc: "Checker carrying its own knob, bound from a shared constant"
+        params: [CS_OWN_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: csOwnIf, direction: dst }
+
+parameters:
+    # CASE A, the default case: every binding names the IP's constant itself, so
+    # no value appears here at all. The Inc blocks bind it as their own param;
+    # the Own blocks bind it as the value of theirs.
+    xpCstSrcInc:
+        dflt:
+            CS_PIXEL_WIDTH: CS_PIXEL_WIDTH
+    xpCstChkInc:
+        dflt:
+            CS_PIXEL_WIDTH: CS_PIXEL_WIDTH
+    xpCstSrcOwn:
+        dflt:
+            CS_OWN_WIDTH: CS_PIXEL_WIDTH
+    xpCstChkOwn:
+        dflt:
+            CS_OWN_WIDTH: CS_PIXEL_WIDTH

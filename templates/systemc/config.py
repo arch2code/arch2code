@@ -1,5 +1,6 @@
 import pysrc.emissionUtils as emissionUtils
-from pysrc.intf_gen_utils import cpp_variant_config_name, cpp_config_module_name
+from pysrc.intf_gen_utils import cpp_variant_config_name, cpp_config_module_name, \
+    CONTAINER_CONFIG_PARAM
 
 # args from generator line
 # prj object
@@ -53,21 +54,57 @@ def foreignConfig(args, prj, data):
     for desc in descriptors:
         structName = cpp_variant_config_name(desc['declaringProject'], desc['block'],
                                              desc['emitVariant'], desc['isForeign'])
-        out.append(f"export struct {structName} {{")
-        variantSpelling = _configSymSpelling(prj, set(desc['values'].keys()))
-        for constName, resolved in desc['values'].items():
-            if constName in constants_by_name:
-                constData = constants_by_name[constName]
-                rhs = _configMemberRhs(constData, resolved, variantSpelling)
-            else:
-                constData = block_param_synthetic[constName]
-                constData = dict(constData, value=resolved)
-                rhs = resolved
-            type_str = _config_type(constData)
-            out.append(f"    static constexpr {type_str} {constName} = {rhs};")
+        out.extend(_descriptorStructOpen(desc, structName, export=True))
+        out.extend(_descriptorMemberLines(prj, desc, constants_by_name,
+                                          block_param_synthetic))
         out.append("};")
         out.append("")
     return("\n".join(out))
+
+
+def _descriptorStructOpen(desc, structName, export):
+    """Opening line(s) of one per-variant Config struct.
+
+    A variant every one of whose parameters is bound to a value emits a plain
+    struct. A variant that sources any parameter from its container emits a
+    class TEMPLATE over the container's Config, because the value is not known
+    where the variant is declared: it is whatever the container it is
+    instantiated in was configured at. One template is emitted per declared
+    (block, variant) however many sites instantiate it."""
+    prefix = 'export ' if export else ''
+    if desc['containerSourced']:
+        return [f'{prefix}template<typename {CONTAINER_CONFIG_PARAM}>',
+                f'struct {structName} {{']
+    return [f'{prefix}struct {structName} {{']
+
+
+def _descriptorMemberLines(prj, desc, constants_by_name, block_param_synthetic):
+    """Member lines of one per-variant Config struct.
+
+    A container-sourced parameter reads the named parameter off the container's
+    Config; every other parameter emits its resolved value (or, for an
+    eval-derived constant, its canonical expression over this struct's own
+    members). A synthetic block-param entry - one declared through `params:`
+    with no backing parameterizable constant - is an unsigned 32-bit field whose
+    value source is the variant override."""
+    out = []
+    variantSpelling = _configSymSpelling(prj, set(desc['values'].keys()))
+    for constName, resolved in desc['values'].items():
+        containerParam = desc['containerSourced'].get(constName)
+        isBacked = constName in constants_by_name
+        # A container-sourced row states no value, so the member's type is
+        # decided by the parameter's declaration alone. A synthetic block param
+        # declares no bound either and is an unsigned 32-bit field.
+        constData = constants_by_name[constName] if isBacked else \
+            dict(block_param_synthetic[constName], value=0 if containerParam else resolved)
+        if containerParam:
+            rhs = f'{CONTAINER_CONFIG_PARAM}::{containerParam}'
+        elif isBacked:
+            rhs = _configMemberRhs(constData, resolved, variantSpelling)
+        else:
+            rhs = resolved
+        out.append(f"    static constexpr {_config_type(constData)} {constName} = {rhs};")
+    return out
 
 
 def emitCStyleCanonical(evalCanonical, symSpelling):
@@ -159,20 +196,9 @@ def includeConfig(args, prj, data):
         if structName in seen_struct_names:
             continue
         seen_struct_names.add(structName)
-        out.append(f"struct {structName} {{")
-        variantSpelling = _configSymSpelling(prj, set(desc['values'].keys()))
-        for constName, resolved in desc['values'].items():
-            if constName in constants_by_name:
-                constData = constants_by_name[constName]
-                rhs = _configMemberRhs(constData, resolved, variantSpelling)
-            else:
-                # Synthetic block-param entry. Treated as an unsigned
-                # 32-bit field; the variant override is the value source.
-                constData = block_param_synthetic[constName]
-                constData = dict(constData, value=resolved)
-                rhs = resolved
-            type_str = _config_type(constData)
-            out.append(f"    static constexpr {type_str} {constName} = {rhs};")
+        out.extend(_descriptorStructOpen(desc, structName, export=False))
+        out.extend(_descriptorMemberLines(prj, desc, constants_by_name,
+                                          block_param_synthetic))
         out.append("};")
         out.append("")
     return("\n".join(out))

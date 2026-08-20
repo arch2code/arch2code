@@ -1,0 +1,31 @@
+# Reusable leaf IP project for the three-level depth family. No instances and no
+# topInstance: generated and built by its own make gen, instantiated by the
+# mid-level IP.
+
+yamlFormat: 2
+projectName: xpDpLeaf
+
+projectFiles:
+    - ../../yaml/xpDpLeaf.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

@@ -14,6 +14,20 @@
 #include "synchLock.h"
 
 
+// raw_channel — LAST RESORT handshake-less boundary protocol
+//
+// Prefer rdy_vld / push_ack / pop_ack / axi4_stream for new interconnect.
+// Use raw only at design boundaries for legacy/external IP with a free-running
+// data bus (no ready/valid/ack wires). Do not use between new arch2code blocks.
+// Do not confuse with status_channel (same wire shape; status is publish/sample,
+// raw is a one-shot blocking rendezvous).
+//
+// Why problematic while still supported: no HW backpressure; SystemC
+// rendezvous ≠ RTL free-running sample (timed/tandem can diverge); known
+// single-sc_event hazard can lose a value under some process orderings;
+// co-sim BFMs invent clocked timing the protocol does not express.
+// See ARCH2CODE_AI_RULES.md (§ raw) and SYSTEMC_API_USER_REFERENCE.md (§ 4.9).
+//
 // write(T)
 // |        ---T---> read(T)
 

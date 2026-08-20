@@ -226,13 +226,13 @@ ifndef USE_VCS
 endif
 
 # Rule to compile files in O3_CPP_SRC to add -o3 optimization
-$(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp $(FLAVOR_STAMP)
+$(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
 	mkdir -p $(@D)
 	$(CXX) -O3 $(CXX_FLAGS) -MMD -c $< -o $@
 
 # Rule to compile all other .cpp files
 # The -MMD flags additionaly creates a .d file with the same name as the .o file.
-$(BUILD_DIR)/%.o : %.cpp $(GEN_DB_DEPS) $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
+$(BUILD_DIR)/%.o : %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
 	mkdir -p $(@D)
 	$(CXX) $(CXX_FLAGS) -MMD -c $< -o $@
 
@@ -246,7 +246,7 @@ ifndef USE_GCC
 # Clang: precompile the interface unit to a PCM, then compile the PCM to an
 # object. The module flags are supplied at both stages because an interface may
 # import another generated interface.
-$(BUILD_DIR)/%.pcm : %.cppm $(GEN_DB_DEPS) $(FLAVOR_STAMP)
+$(BUILD_DIR)/%.pcm : %.cppm $(FLAVOR_STAMP)
 	mkdir -p $(@D)
 	$(CXX) $(CXX_FLAGS) -MMD --precompile -x c++-module $< -o $@
 
@@ -272,7 +272,7 @@ else
 # GCC: one step compiles the interface unit to its object and emits the CMI into
 # the module cache (keyed by module name). Full CXX_FLAGS are used because the
 # interface's global module fragment includes headers (e.g. `<block>Base.h`).
-$(BUILD_DIR)/%.module.o : %.cppm $(GEN_DB_DEPS) $(FLAVOR_STAMP)
+$(BUILD_DIR)/%.module.o : %.cppm $(FLAVOR_STAMP)
 	mkdir -p $(@D)
 	$(CXX) $(CXX_FLAGS) -MMD -x c++ -c $< -o $@
 

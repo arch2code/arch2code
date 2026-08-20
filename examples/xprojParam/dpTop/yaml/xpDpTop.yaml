@@ -1,0 +1,196 @@
+# The customer assembler of the three-level depth family. It instantiates the
+# mid-level IP (the ISP analogue) and declares the variant of the LEAF IP (the
+# debayer analogue) that it wants that ISP's debayer configured at. The customer
+# owns neither project.
+#
+# This is the architect's use case stated literally: "a customer wants to use
+# the ISP in a particular configuration, so it instantiates an instance
+# including debayer with the appropriate debayer config including algorithm."
+#
+# The stimulus and checker name the leaf IP's DP_WIDTH through include: scope and
+# hold it at its declared default, so no layout question is in play; the only
+# thing under test is whether DP_ALGO = 5 reaches the leaf instance nested inside
+# the mid-level IP.
+
+include:
+    - ../../dpMid/yaml/xpDpMid.yaml
+
+# DECIDING EXPERIMENT. The customer declares its own MID_ALGO. It is a different
+# constant from xpDpMid's MID_ALGO and carries a WIDER bound, so the same child
+# variant sourced from "my container's MID_ALGO" means two different things
+# depending on which of the two containers it is instantiated in.
+ipParameters:
+    constants:
+        MID_ALGO: { value: 3, maxValue: 7, desc: "The customer wrapper's own algorithm knob, deliberately wider than the leaf accepts" }
+
+blocks:
+    xpDpTop:
+        desc: "Customer top holding the one chain"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpDpTop_tb:
+        desc: "Testbench container for xpDpTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpDpWrap:
+        desc: "Container of the chain; declares the customer knob the mid inherits"
+        # Level 3 of the chain. The wrapper owns the customer-facing algorithm
+        # knob; the mid inherits it, and the leaf inherits it from the mid.
+        params: [MID_ALGO, DP_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpDpSrc:
+        desc: "Customer stimulus, naming the leaf IP's DP_WIDTH by include scope"
+        params: [DP_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out:  { interface: dpIf, direction: src }
+            out2: { interface: dpIf, direction: src }
+            out3: { interface: dpIf, direction: src }
+            out4: { interface: dpIf, direction: src }
+    xpDpTbPeer:
+        desc: "Peer of the DUT, held by the testbench container: drives its own algorithm and checks the one it receives"
+        # Instantiated only inside the testbench container, which is where a
+        # parameterizable block is declared outside any class template.
+        params: [DP_ALGO, DP_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: dpIf, direction: src }
+            in:  { interface: dpIf, direction: dst }
+    xpDpChk:
+        desc: "Customer checker: asserts the algorithm the leaf stamped is the one this customer asked for"
+        params: [DP_ALGO, DP_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: dpIf, direction: dst }
+
+instances:
+    xpDpTop_tb: { container: xpDpTop_tb, instanceType: xpDpTop_tb, instGroup: top }
+    u_xpDpTop:  { container: xpDpTop_tb, instanceType: xpDpTop,    instGroup: top }
+    # PEERS OF THE DUT, held by the testbench container rather than by the DUT.
+    # The External pseudo-block emits these (and only these) instances, so this
+    # is the one place a parameterizable child is declared outside a class
+    # template.
+    #   * uTbPeerA binds an assembler-declared (foreign) variant, so the External
+    #     must import the owner-qualified Config module declaring its struct.
+    #   * uTbPeerB binds a second such variant, a distinct C++ type, so the two
+    #     peers also bind across differing Configs.
+    # Both are instances of one block, and of a block instantiated nowhere else:
+    # a registrar TU is emitted per (parent, child) but named for the child
+    # alone, so a templated child assembled under two parents collides.
+    uTbPeerA:   { container: xpDpTop_tb, instanceType: xpDpTbPeer, instGroup: top, variant: peer }
+    uTbPeerB:   { container: xpDpTop_tb, instanceType: xpDpTbPeer, instGroup: top, variant: peer2 }
+    uWrap:      { container: xpDpTop,    instanceType: xpDpWrap,   instGroup: top, variant: customer }
+    uSrc:       { container: xpDpWrap,   instanceType: xpDpSrc,    instGroup: top, variant: customer }
+    uMid:       { container: xpDpWrap,   instanceType: xpDpMid,    instGroup: top, variant: customer }
+    uChk:       { container: xpDpWrap,   instanceType: xpDpChk,    instGroup: top, variant: customer }
+    # A SECOND instance of the same mid-level IP, at a DIFFERENT customer-declared
+    # variant of that IP. The question this cell answers is whether the leaf
+    # nested inside each one can differ with it.
+    uMid2:      { container: xpDpWrap,   instanceType: xpDpMid,    instGroup: top, variant: customer2 }
+    # The SAME leaf variant, instantiated under a DIFFERENT container. It has its
+    # own checker because what it resolves is a DOCUMENTED FALLBACK, not the
+    # customer's value: a variant declared by an intermediate project is not
+    # selectable by a third project's instance, so this instance falls back to the
+    # leaf's default Config. Left unchecked, the fixture would pass over it in
+    # silence and a change in that resolution would go unnoticed.
+    uLeafX:     { container: xpDpWrap,   instanceType: xpDpLeaf,   instGroup: top, variant: customer }
+    uChkX:      { container: xpDpWrap,   instanceType: xpDpChk,    instGroup: top, variant: leafX }
+    uChk2:      { container: xpDpWrap,   instanceType: xpDpChk,    instGroup: top, variant: customer2 }
+    # A THIRD configuration of the same mid-level IP, added by the customer
+    # alone. Nothing in either vendor project is touched to admit it.
+    uMid3:      { container: xpDpWrap,   instanceType: xpDpMid,    instGroup: top, variant: customer3 }
+    uChk3:      { container: xpDpWrap,   instanceType: xpDpChk,    instGroup: top, variant: customer3 }
+
+connections:
+    # Peer-to-peer wiring inside the testbench container: each peer drives the
+    # other, so every port of both peers binds during elaboration.
+    - { interface: dpIf, src: uTbPeerA, srcport: out, dst: uTbPeerB, dstport: in, name: tbPeerA2B }
+    - { interface: dpIf, src: uTbPeerB, srcport: out, dst: uTbPeerA, dstport: in, name: tbPeerB2A }
+    - { interface: dpIf, src: uSrc, srcport: out, dst: uMid, dstport: midIn }
+    - { interface: dpIf, src: uMid, srcport: midOut, dst: uChk, dstport: in }
+    - { interface: dpIf, src: uSrc, srcport: out2, dst: uLeafX, dstport: in }
+    - { interface: dpIf, src: uLeafX, srcport: out, dst: uChkX, dstport: in }
+    - { interface: dpIf, src: uSrc, srcport: out4, dst: uMid2, dstport: midIn }
+    - { interface: dpIf, src: uMid2, srcport: midOut, dst: uChk2, dstport: in }
+    - { interface: dpIf, src: uSrc, srcport: out3, dst: uMid3, dstport: midIn }
+    - { interface: dpIf, src: uMid3, srcport: midOut, dst: uChk3, dstport: in }
+
+parameters:
+    # The customer configures the MID-level IP it actually instantiates. The
+    # mid's own leaf variant sources DP_ALGO from the mid's MID_ALGO, so the
+    # value stated here is what the nested leaf resolves. The customer states no
+    # variant of the leaf at all: it does not name a block two levels down.
+    # Level 3 -> level 2. The mid does not state the algorithm either: it takes
+    # it from the wrapper that contains it. The chain is therefore
+    # xpDpWrap.MID_ALGO -> xpDpMid.MID_ALGO -> xpDpLeaf.DP_ALGO, two inheritance
+    # hops from the customer's single stated value.
+    xpDpWrap:
+        customer:
+            MID_ALGO: 5
+            DP_WIDTH: DP_WIDTH
+    xpDpMid:
+        customer:
+            DP_WIDTH: DP_WIDTH
+            MID_ALGO: { containerParam: MID_ALGO }
+        # A sibling variant of the same block, bound to a literal rather than
+        # inherited: the two forms coexist per variant.
+        customer2:
+            DP_WIDTH: DP_WIDTH
+            MID_ALGO: 6
+        # A configuration added after the two above, at a third algorithm. It
+        # instantiates the leaf IP's Config template at a Config that did not
+        # exist when either vendor project was generated.
+        customer3:
+            DP_WIDTH: DP_WIDTH
+            MID_ALGO: 7
+    xpDpSrc:
+        customer:
+            DP_WIDTH: DP_WIDTH
+    xpDpChk:
+        # The checker reads the algorithm it should expect from its OWN Config,
+        # so the two chains can expect different algorithms.
+        customer:
+            DP_ALGO: 5
+            DP_WIDTH: DP_WIDTH
+        customer2:
+            DP_ALGO: 6
+            DP_WIDTH: DP_WIDTH
+        customer3:
+            DP_ALGO: 7
+            DP_WIDTH: DP_WIDTH
+        # What the directly instantiated leaf actually resolves: the leaf's own
+        # declared default, because the customer cannot select a variant the
+        # intermediate project declared. Bound through the leaf's constant rather
+        # than a restated literal so it tracks that declaration.
+        leafX:
+            DP_ALGO: DP_ALGO
+            DP_WIDTH: DP_WIDTH
+    # Peer-of-the-DUT variants. Both are declared by this assembler against a
+    # child whose config context another project owns, so both emit an
+    # owner-qualified struct into a registrar-domain Config module that the
+    # testbench External has to import. They are two DISTINCT C++ types carrying
+    # the same values, so the peers also exercise the cross-Config bind between
+    # them, and each asserts the algorithm it receives against its own Config.
+    xpDpTbPeer:
+        peer:
+            DP_ALGO: 6
+            DP_WIDTH: DP_WIDTH
+        peer2:
+            DP_ALGO: 6
+            DP_WIDTH: DP_WIDTH

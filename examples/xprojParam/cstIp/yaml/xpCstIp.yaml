@@ -1,0 +1,62 @@
+# Reusable parameterizable IP for the shared-constant propagation family. It
+# owns exactly one variant knob, CS_PIXEL_WIDTH, and knows nothing about any
+# consumer: no assembler, no use-case value and no supporting block is named
+# here.
+#
+# The knob is declared ONCE, in this IP-root file, and is consumed by this
+# file's own block param - that is the orphan rule (_validateIpParametersLinkage)
+# and it is why an IP cannot publish a parameter purely for downstream files to
+# include:. Every other file in the family reaches CS_PIXEL_WIDTH by include:
+# scope and NAMES it; naming is not declaring.
+#
+# The IP's own default variant binds the knob to the constant itself
+# (CS_PIXEL_WIDTH: CS_PIXEL_WIDTH), so the default value is stated once, in the
+# constant's value:, and the variant carries no second copy of it.
+
+ipParameters:
+    constants:
+        CS_PIXEL_WIDTH: { value: 12, maxValue: 32, desc: "Per-instance pixel width; the IP's own default" }
+    types:
+        csPixelT: { width: CS_PIXEL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    csTagT:   { width: 8, desc: "Sample sequence tag; lowest packed position" }
+    csCfgT:   { width: 8, desc: "Producer's OWN resolved CS_PIXEL_WIDTH, carried in the payload" }
+    csMarkT:  { width: 8, desc: "Trailing marker; sits above the pixel so a wrong-width pixel shifts it" }
+
+structures:
+    # Packed sequence: tag@0 w8, cfg@8 w8, data@16 wCS_PIXEL_WIDTH,
+    # mark@(16+CS_PIXEL_WIDTH) w8. The marker above the pixel is what turns a
+    # width that failed to propagate into a corrupted field rather than a
+    # plausible value.
+    csDutSt:
+        tag:  { varType: csTagT,  desc: "Sample sequence tag" }
+        cfg:  { varType: csCfgT,  desc: "Width the producing block resolved CS_PIXEL_WIDTH to" }
+        data: { varType: csPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: csMarkT, desc: "Trailing marker" }
+
+interfaces:
+    csDutIf:
+        desc: "The IP's own parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: csDutSt, structureType: data_t }
+
+blocks:
+    xpCstDut:
+        desc: "The parameterizable IP under test: checks the width its producer resolved, then forwards"
+        params: [CS_PIXEL_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in:  { interface: csDutIf, direction: dst }
+            out: { interface: csDutIf, direction: src }
+
+parameters:
+    xpCstDut:
+        # The IP's own default variant, bound through the named constant rather
+        # than a repeated literal.
+        dflt:
+            CS_PIXEL_WIDTH: CS_PIXEL_WIDTH

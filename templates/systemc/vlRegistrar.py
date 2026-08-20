@@ -68,9 +68,19 @@ def render(args, prj, data):
     out.append('#include "blockBase.h"')
     out.append(f'#include "{sv["scWrapperInclude"]}"')
 
-    # Verilated DUT header(s): one per variant, or the block's single body header
-    # for a wrapper with no instance-bound variants. First occurrence preserved.
-    dutHeaders = [dutHeader(v) for v in variants] if variants else [sc_concrete_dut(sv, data['declaredVariants'])['dutHeader']]
+    # The EMPTY variant is what a site naming none asks for.
+    verifDefaultRegistration = registrarConfig['verifDefaultRegistration']
+    # The verilated top the empty-variant key binds. A block declaring variants
+    # has one top per declared variant and none at its default parameters, so the
+    # first-declared one stands in, as it does for a wrapper with no
+    # instance-bound variants.
+    concreteDut = sc_concrete_dut(sv, data['declaredVariants'])
+
+    # Verilated DUT header(s): one per instance-bound variant, plus the top the
+    # empty-variant key binds. First occurrence preserved.
+    dutHeaders = [dutHeader(v) for v in variants]
+    if verifDefaultRegistration:
+        dutHeaders.append(concreteDut['dutHeader'])
     seenHdr = set()
     for hdr in dutHeaders:
         if hdr in seenHdr:
@@ -97,21 +107,25 @@ def render(args, prj, data):
     out.append(f'    _{blockName}_vl_registrar() {{')
 
     scWrapper = sv['scWrapperModule']
-    if variants:
-        for variant in variants:
-            if hasOwnParams:
-                desc = variantDescriptors.get(variant)
-                perVariantConfig = intf_gen_utils.cpp_descriptor_config_name(desc, defaultConfig) \
-                    if desc else defaultConfig
-                target = f'{scWrapper}<{dutClass(variant)}, {perVariantConfig}>'
-            else:
-                target = f'{scWrapper}<{dutClass(variant)}>'
-            out.extend(_emit_register_call(
-                blockName=blockName, targetClass=target, variant=variant,
-                projectName=keyProject, indent='        '))
-    else:
+    for variant in variants:
+        if hasOwnParams:
+            desc = variantDescriptors.get(variant)
+            perVariantConfig = intf_gen_utils.cpp_descriptor_config_name(desc, defaultConfig) \
+                if desc else defaultConfig
+            target = f'{scWrapper}<{dutClass(variant)}, {perVariantConfig}>'
+        else:
+            target = f'{scWrapper}<{dutClass(variant)}>'
         out.extend(_emit_register_call(
-            blockName=blockName, targetClass=scWrapper, variant='',
+            blockName=blockName, targetClass=target, variant=variant,
+            projectName=keyProject, indent='        '))
+    if verifDefaultRegistration:
+        # The wrapper class is emitted as a Config template only where
+        # instance-bound variants exist to specialize it; the empty variant then
+        # spells the block's default Config itself.
+        target = f'{scWrapper}<{concreteDut["dutClass"]}, {defaultConfig}>' \
+            if (hasOwnParams and variants) else scWrapper
+        out.extend(_emit_register_call(
+            blockName=blockName, targetClass=target, variant='',
             projectName=keyProject, indent='        '))
 
     out.append('    }')

@@ -13,7 +13,7 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 import pysrc.arch2codeGlobals as g
-from pysrc.processYaml import projectCreate
+from pysrc.processYaml import SiteBindingIndex, projectCreate
 
 
 def _write_temp(content, suffix, prefix):
@@ -104,15 +104,22 @@ projectFiles:
             "SELECT blockKey FROM blocks WHERE block = ?", ('otherBlock',))
         other_block_key = g.cur.fetchone()['blockKey']
         g.cur.execute(
-            "SELECT blockparamKey FROM blocksparams "
+            "SELECT blockparamKey, paramSourceKey FROM blocksparams "
             "WHERE blockKey = ? AND param = ?",
             (target_block_key, 'WIDTH'))
-        target_param_key = g.cur.fetchone()['blockparamKey']
+        target_row = g.cur.fetchone()
+        target_param_key = target_row['blockparamKey']
+        target_source_key = target_row['paramSourceKey']
         g.cur.execute(
-            "SELECT blockparamKey FROM blocksparams "
+            "SELECT blockparamKey, paramSourceKey FROM blocksparams "
             "WHERE blockKey = ? AND param = ?",
             (other_block_key, 'WIDTH'))
-        other_param_key = g.cur.fetchone()['blockparamKey']
+        other_row = g.cur.fetchone()
+        other_param_key = other_row['blockparamKey']
+        other_source_key = other_row['paramSourceKey']
+        if target_source_key == other_source_key:
+            print("FAIL: the two blocks' WIDTH params resolved to one backing constant")
+            return False
 
         g.cur.execute(
             "SELECT param, blockParamKey, value FROM parametersvariantsparams "
@@ -131,14 +138,17 @@ projectFiles:
             print("FAIL: variant row resolved to the other block's WIDTH")
             return False
 
-        bindings = creator.variantValueBindings(target_block_key, 'wide')
-        expected = {'WIDTH': 13, target_param_key: 13}
-        for key, value in expected.items():
-            if bindings[key] != value:
-                print(f"FAIL: binding {key} expected {value}, got {bindings[key]}")
-                return False
-        if other_param_key in bindings:
-            print("FAIL: variant bindings include the other block's WIDTH key")
+        # Bindings are seeded under the backing constant's own key, which is how
+        # a payload width symbol reaches them. Two same-named params backed by
+        # different constants must stay distinguishable.
+        bindings = SiteBindingIndex(creator).bindingsAt(
+            target_block_key, 'wide', dict())
+        if bindings.get(target_source_key) != 13:
+            print(f"FAIL: binding {target_source_key} expected 13, "
+                  f"got {bindings.get(target_source_key)}")
+            return False
+        if other_source_key in bindings:
+            print("FAIL: variant bindings include the other block's WIDTH constant")
             return False
         print("PASS: parameter variant blockParamKey identity")
         return True

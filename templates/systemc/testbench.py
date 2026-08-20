@@ -3,19 +3,16 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_tb_module_name, cpp_tb_external_module_name, cpp_context_include_lines, cpp_config_arg, cpp_config_header_includes, sc_channel_header_includes
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_tb_module_name, cpp_tb_external_module_name, cpp_context_include_lines, cpp_config_arg, cpp_config_header_includes, sc_channel_header_includes, cpp_container_typed_instance_arg, sc_instance_config_imports, BLOCK_CONFIG_PARAM
 
 from jinja2 import Template
 
 
 def _tb_context_lines(prj, data):
     # A module import does not propagate the base module's own context imports /
-    # using-directives the way the old textual `<block>Base.h` did. The testbench
-    # top and its External pseudo-block spell the DUT's interface types (channel /
-    # port struct types) unqualified, so both re-state the block's interface-context
-    # imports and using-directives. The two halves land in different zones of the
-    # module interface unit, so callers select one via _tb_context_imports /
-    # _tb_context_usings.
+    # using-directives. The testbench top and its External pseudo-block spell the
+    # DUT's interface types (channel / port struct types) unqualified, so both
+    # re-state the block's interface-context imports and using-directives.
     lines = []
     for context in data['includeContext']:
         if context in data['includeFiles'].get('include_cppm', {}):
@@ -36,6 +33,15 @@ def _tb_context_usings(prj, data):
     # place for a hand-authored import. Mirrors classDecl in module mode.
     return [line for line in _tb_context_lines(prj, data)
             if line.startswith('using namespace ')]
+
+
+def _ext_holds_peers(data):
+    # excludeInst shape: the External holds the DUT's peer blocks and the wiring
+    # between them. In block mode the target block IS the DUT and instantiates
+    # its own children in its own generated region, so the External emits no
+    # instance members, channels, thunkers or connectionMap locals and all
+    # stimulus is hand-written in its user region.
+    return bool(data['excludedInstances'])
 
 
 # args from generator line
@@ -70,11 +76,10 @@ def render_sc(args, prj, data):
         raise ValueError(f"Unknown template '{args.template}' for testbench renderer")
 
 def _tb_selection(args, prj, data):
-    # Resolve once and reuse across the four testbench/external sections.
-    # Reads block view fields populated by getBDConfigInfo (variantConfigs,
-    # defaultConfig, isParameterizable). The Testbench/External/Config
-    # class-name family is always the plain block name: `--variant` selects
-    # only configName and factoryVariant, not emitted file or class names.
+    # Resolve once and reuse across the four testbench/external sections. The
+    # Testbench/External/Config class-name family is always the plain block name:
+    # `--variant` selects only configName and factoryVariant, not emitted file or
+    # class names.
     blockName = data['blockName']
     variant = getattr(args, 'variant', None)
     sel = resolve_dut_variant_selection(data, variant)
@@ -91,11 +96,23 @@ def _tb_selection(args, prj, data):
     }
 
 
+def _tb_bind_container_config(text, data, sel):
+    # Bind the container's class template parameter to its own resolved Config
+    # across one rendered External region. Per-instance spellings that defer to
+    # the container (inheritContainerParam, a container-sourced variant's Config
+    # template, a nested-Config alias) name that parameter, which is declared in
+    # the container's class template but not in the External - the one consumer
+    # of the per-instance Config machinery that is not itself a class template.
+    # A non-parameterizable container emits no such spelling.
+    if not data['isParameterizable']:
+        return text
+    return text.replace(f'<{BLOCK_CONFIG_PARAM}>', f'<{sel["configName"]}>')
+
+
 def tb_config_prerequisites(args, prj, data):
     # Framework baseline every `<block>Config.cpp` needs to compile. This is a
     # plain translation unit, not a module unit, so #include and import may be
-    # interleaved freely and the whole set lives in one generated region rather
-    # than in the create-once scaffold.
+    # interleaved freely.
     #
     # Two entries are prerequisites of the file's USER-owned bodies, not of anything
     # generated here, so both look unused when read against the generated lines
@@ -132,9 +149,7 @@ def tb_config_class(args, prj, data):
 def tb_config_registration(args, prj, data):
     # Factory registration for the Config class, emitted after the class closes so
     # `is_default_testbench_v` sees the complete type (including a user-supplied
-    # isDefaultTestBench marker). Declaration and definition of the mechanism live
-    # wholly in generated regions, so `make gen` can revise it in an existing
-    # project.
+    # isDefaultTestBench marker).
     t = Template(sec_tb_config_registration_template)
     sel = _tb_selection(args, prj, data)
     return t.render(tbclassname=sel['tbClassName'])
@@ -206,23 +221,26 @@ def ext_module_header(args, prj, data):
     # `instanceFactory.h` for `createInstance` in the generated ctor init list) or
     # the database directs it (the channel headers for the DUT-boundary channel
     # members, the per-context Config header, the thunker headers for the
-    # cross-interface connection maps). `workerThread.h` deliberately is NOT here:
-    # no generated line names a `worker*` symbol, so a stimulus thread's
-    # prerequisite is user content and belongs in the user slot. That trailing
-    # `// user #includes here` slot sits after this region's end, in the same GMF
-    # zone, so a non-modular shared header added there attaches to the global
-    # module rather than to the External module.
+    # cross-interface connection maps). The channel and thunker headers serve the
+    # External's OWN contents, so a block-mode External - which has none, see
+    # _ext_holds_peers - emits neither. The trailing `// user #includes here` slot
+    # sits after this region's end, in the same GMF zone, so a non-modular shared
+    # header added there attaches to the global module rather than to the External
+    # module.
     refactor_tbExternal(args, prj, data)
+    holdsPeers = _ext_holds_peers(data)
     out = [
         'module;',
         '#include "systemc.h"',
         '#include "logging.h"',
         '#include "instanceFactory.h"',
     ]
-    out += _ext_channel_includes(prj, data)
+    if holdsPeers:
+        out += _ext_channel_includes(prj, data)
     out += cpp_config_header_includes(data)
-    for proto in sorted(sc_thunker_protocols(data, prj)):
-        out.append(f'#include "{proto}_port_thunker.h"')
+    if holdsPeers:
+        for proto in sorted(sc_thunker_protocols(data, prj)):
+            out.append(f'#include "{proto}_port_thunker.h"')
     return "\n".join(out)
 
 
@@ -230,21 +248,26 @@ def ext_module_export(args, prj, data):
     # The COMPLETE module preamble for `<block>External.cppm`. Every import must
     # precede the first non-import declaration, and a using-directive closes the
     # preamble, so this region is import-only and the context using-directives ride
-    # at the head of the class region instead (see _tb_context_usings). The module
-    # name and the DUT's Base come from the excluded-DUT identity refactor_tbExternal
-    # resolves, so they stay correct when the file's GENERATED_CODE_PARAM targets the
-    # `_tb` container rather than the DUT. a2c.endOfTest is imported here so the
+    # at the head of the class region instead (see _tb_context_usings).
+    # a2c.endOfTest is imported here so the
     # in-class eotThread() body resolves endOfTestState with no prerequisite leaked
     # to consumers. Every contained instance's Base is imported unconditionally: a
     # forward declaration in a module purview is a DISTINCT entity from the child's
     # exported class, so the shared_ptr member type and the createInstance
     # dynamic_pointer_cast target would carry mismatched RTTI and the cast would
-    # silently return null.
+    # silently return null. Both child-facing import sets belong to the External's
+    # OWN contents and so are excludeInst-mode only.
     refactor_tbExternal(args, prj, data)
     out = [f'export module {cpp_tb_external_module_name(data["blockModuleName"])};']
     out.append('import a2c.endOfTest;')
     out.append(f'import {cpp_base_module_name(data["blockModuleName"])};')
-    out += sc_instance_includes(data, prj)
+    if _ext_holds_peers(data):
+        out += sc_instance_includes(data, prj)
+        # The peers' owner-qualified Config modules, which live in registrar-domain
+        # module interface units rather than in a context Config header, and the
+        # block module of each container-typed peer whose implementation class the
+        # createInstance below names.
+        out += sc_instance_config_imports(data)
     out += _tb_context_imports(prj, data)
     return "\n".join(out)
 
@@ -269,10 +292,8 @@ def tb_module_header(args, prj, data):
 
 def tb_module_export(args, prj, data):
     # The COMPLETE module preamble for `<block>Testbench.cppm`, import-only for the
-    # same reason as ext_module_export. The External is imported rather than
-    # textually included, so the Testbench no longer inherits the External header's
-    # endOfTest prerequisite: the eotThread() body is already resolved inside the
-    # External module.
+    # same reason as ext_module_export. The eotThread() body is resolved inside the
+    # External module, so the Testbench carries no endOfTest prerequisite.
     out = [f'export module {cpp_tb_module_name(data["blockModuleName"])};']
     out.append(f'import {cpp_base_module_name(data["blockModuleName"])};')
     out.append(f'import {cpp_tb_external_module_name(data["blockModuleName"])};')
@@ -284,10 +305,6 @@ def ext_sec_init(args, prj, data):
 
     out = []
     isParameterizable = data['isParameterizable']
-    # The External pseudo-block inherits `<DUT>Inverted{cfg}`, which loses its
-    # template head when the DUT has no own params. The External class name is
-    # the plain `<block>External`; `--variant` selects only the Config and
-    # factory variant referenced inside it.
     sel = _tb_selection(args, prj, data)
     # The Inverted base's template argument is the excluded DUT instance's
     # Config when present; otherwise `data` is the DUT block itself.
@@ -299,63 +316,65 @@ def ext_sec_init(args, prj, data):
     log_(name())\n"""
     out.append(s.format(blockName=sel['blockName'], tbClassName=sel['tbClassName'], cfg=cfg))
 
-    for data_ in data['subBlockInstances'].values():
-        # Child instance casts target the child's per-variant Config, not the
-        # parent's defaultConfig. Empty descriptors fall back to the child's
-        # default Config.
-        instCfg = cpp_config_arg(data_['instanceConfigSelection'])
-        # Generated createInstance passes the variant string and the child's
-        # factory-lookup projectName; the factory key is
-        # `(blockType, variant, projectName)`. `createInstanceProjectName`
-        # (a projectOpen view field) is the assembler for parameterizable and
-        # same-project children, and the owning project for a plain
-        # cross-project child. Non-templated children self-register via an
-        # A2C_REGISTRATION_RETAIN static in their own TU, so the testbench holds
-        # no symbol reference to them.
-        projectName = data_['createInstanceProjectName']
-        createCall = (
-            'instanceFactory::createInstance(name(), "{instName}", '
-            '"{blockName}", "{variant}", "{projectName}")'
-        )
-        s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base{instCfg}>(' + createCall + '))'
-        out.append(s.format(blockName=data_['instanceType'], instName=data_['instance'], instCfg=instCfg, variant=data_['variant'], projectName=projectName))
+    if _ext_holds_peers(data):
+        for data_ in data['subBlockInstances'].values():
+            # Child instance casts target the child's per-variant Config, not the
+            # parent's defaultConfig. Empty descriptors fall back to the child's
+            # default Config.
+            instCfg = cpp_config_arg(data_['instanceConfigSelection'])
+            # `createInstanceProjectName` (a projectOpen view field) is the
+            # assembler for parameterizable and same-project children, and the
+            # owning project for a plain cross-project child. Non-templated children
+            # self-register in their own TU, so the testbench holds no symbol
+            # reference to them.
+            projectName = data_['createInstanceProjectName']
+            # A child typed by the container's Config: no registration can name its
+            # class, so the class is named as an explicit template argument of
+            # createInstance.
+            implArg = cpp_container_typed_instance_arg(data_)
+            createCall = (
+                'instanceFactory::createInstance{implArg}(name(), "{instName}", '
+                '"{blockName}", "{variant}", "{projectName}")'
+            )
+            s = '   ,{instName}(std::dynamic_pointer_cast<{blockName}Base{instCfg}>(' + createCall + '))'
+            out.append(s.format(blockName=data_['instanceType'], instName=data_['instance'], instCfg=instCfg, variant=data_['variant'], projectName=projectName, implArg=implArg))
 
-    for channelType in data['connectDouble']:
-        for connKey,data_ in data['connectDouble'][channelType].items():
-            srcInstances = [v['instance'] for v in data_['ends'].values() if v['direction'] == "src"]
-            if len(srcInstances) != 1:
-                printError(f"Expected exactly one src instance for connection {connKey!r} ({channelType}), found {len(srcInstances)}")
-                exit(warningAndErrorReport())
-            srcInst = srcInstances[0]
-            chnlData = sc_gen_block_channels(data_, prj, data)
-            s = '   ,{chnlName}("{chnlName}", "{instName}")'
-            out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst))
-            # Mirror the DUT's cross-interface thunker emission inside the
-            # external pseudo-block. Without these entries the consumer-side
-            # port whose interface is bridged by a thunker in the DUT would
-            # remain unbound during external elaboration.
-            for flagged in _resolve_cross_interface_ends(data_, prj):
-                memberName = _thunker_member_name(flagged, data_, is_connection_map=False)
-                out.append(
-                    f'   ,{memberName}("{memberName}", {chnlData["chnl_name"]}, '
-                    f'{flagged["instance"]}->{flagged["portName"]}, name())'
-                )
+        for channelType in data['connectDouble']:
+            for connKey,data_ in data['connectDouble'][channelType].items():
+                srcInstances = [v['instance'] for v in data_['ends'].values() if v['direction'] == "src"]
+                if len(srcInstances) != 1:
+                    printError(f"Expected exactly one src instance for connection {connKey!r} ({channelType}), found {len(srcInstances)}")
+                    exit(warningAndErrorReport())
+                srcInst = srcInstances[0]
+                chnlData = sc_gen_block_channels(data_, prj, data)
+                s = '   ,{chnlName}("{chnlName}", "{instName}")'
+                out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst))
+                # Mirror the DUT's cross-interface thunker emission inside the
+                # external pseudo-block. Without these entries the consumer-side
+                # port whose interface is bridged by a thunker in the DUT would
+                # remain unbound during external elaboration.
+                for flagged in _resolve_cross_interface_ends(data_, prj):
+                    memberName = _thunker_member_name(flagged, data_, is_connection_map=False)
+                    out.append(
+                        f'   ,{memberName}("{memberName}", {chnlData["chnl_name"]}, '
+                        f'{flagged["instance"]}->{flagged["portName"]}, name())'
+                    )
 
-    # Emit a local-only channel for each connectionMap port carried by a
-    # contained instance. The external pseudo-block inherits ip_topInverted's
-    # parent port for the same interface, but the inverted direction means it
-    # cannot serve as the binding target for the contained instance's port.
-    # The local channel satisfies SC port binding without disturbing the
-    # testbench harness's parent-port wiring.
-    for key, value in data['connectionMaps'].items():
-        if _resolve_cross_interface_ends(value, prj):
-            continue
-        instName = value['instance']
-        instPort = value['instancePortName']
-        out.append(
-            f'   ,_ext_cm_{instName}_{instPort}('
-            f'"_ext_cm_{instName}_{instPort}", "{instName}")'
-        )
+        # Emit a local-only channel for each connectionMap port carried by a
+        # contained instance. The external pseudo-block inherits ip_topInverted's
+        # parent port for the same interface, but the inverted direction means it
+        # cannot serve as the binding target for the contained instance's port.
+        # The local channel satisfies SC port binding without disturbing the
+        # testbench harness's parent-port wiring.
+        for key, value in data['connectionMaps'].items():
+            if _resolve_cross_interface_ends(value, prj):
+                continue
+            instName = value['instance']
+            instPort = value['instancePortName']
+            out.append(
+                f'   ,_ext_cm_{instName}_{instPort}('
+                f'"_ext_cm_{instName}_{instPort}", "{instName}")'
+            )
 
     # DUT-boundary thunkers: for each connection pruned to the excluded DUT
     # instance whose surviving end is a cross-interface bind, construct the
@@ -377,7 +396,7 @@ def ext_sec_init(args, prj, data):
                 f'{flagged["instance"]}->{flagged["portName"]}, name())'
             )
 
-    return "\n".join(out)
+    return _tb_bind_container_config("\n".join(out), data, sel)
 
 def ext_sec_body(args, prj, data):
 
@@ -409,19 +428,21 @@ def ext_sec_body(args, prj, data):
         if conn_data['interfaceName'] in port_names:
             conn_data['interfaceName'] = conn_data['interfaceName'] + '_'
 
-    # channels outside of any that include the excluded instances
-    connections = sc_connect_channels(data, indent, data)
-
-    # Bind the contained instance's connectionMap port to the local-only
-    # channel declared in ext_sec_header.
+    connections = []
     cm_binds = []
-    for key, value in data['connectionMaps'].items():
-        if _resolve_cross_interface_ends(value, prj):
-            continue
-        instName = value['instance']
-        instPort = value['instancePortName']
-        memberName = f'_ext_cm_{instName}_{instPort}'
-        cm_binds.append(f'{indent}{instName}->{instPort}({memberName});')
+    if _ext_holds_peers(data):
+        # channels outside of any that include the excluded instances
+        connections = sc_connect_channels(data, indent, data)
+
+        # Bind the contained instance's connectionMap port to the local-only
+        # channel declared in ext_sec_header.
+        for key, value in data['connectionMaps'].items():
+            if _resolve_cross_interface_ends(value, prj):
+                continue
+            instName = value['instance']
+            instPort = value['instancePortName']
+            memberName = f'_ext_cm_{instName}_{instPort}'
+            cm_binds.append(f'{indent}{instName}->{instPort}({memberName});')
 
     if connections or prunedConnections or cm_binds:
         out.append(indent +'// instance to instance connections via channel')
@@ -441,91 +462,79 @@ def ext_sec_header(args, prj, data):
     # interface-context using-directives, at the region head, because a
     # using-directive closes the module preamble and would otherwise make the
     # `// user imports here` slot above unusable for a hand-authored import.
-    isParameterizable = data['isParameterizable']
-    # External pseudo-block inherits `<DUT>Inverted{cfg}`. The External class
-    # name stays on the plain TB-family stub; only the selected Config suffix
-    # changes when the file-level GENERATED_CODE_PARAM names a different DUT
-    # variant.
     sel = _tb_selection(args, prj, data)
-    defaultConfig = sel['configName']
     # The Inverted base's template argument is the excluded DUT instance's
     # Config when present; otherwise `data` is the DUT block itself.
     cfg = data['dutInvertedCfg'] if data['dutInvertedCfg'] is not None else sel['cfg']
 
     ext_inst_decl_s = []
-    external_insts = [v for v in data['subBlockInstances'].values() ]
-    for data_ in external_insts:
-        # Per-instance Config for parameterizable children.
-        instCfg = cpp_config_arg(data_['instanceConfigSelection'])
-        ext_inst_decl_s.append(f'std::shared_ptr<{data_["instanceType"]}Base{instCfg}> {data_["instance"]};')
+    ext_chnl_decl_s = []
+    ext_thunker_decl_s = []
+    if _ext_holds_peers(data):
+        for data_ in data['subBlockInstances'].values():
+            # Per-instance Config for parameterizable children.
+            instCfg = cpp_config_arg(data_['instanceConfigSelection'])
+            ext_inst_decl_s.append(f'std::shared_ptr<{data_["instanceType"]}Base{instCfg}> {data_["instance"]};')
 
-    # Channel types derive from the connected child's per-variant Config
-    # inside sc_gen_block_channels' connection-walk. The post-hoc
-    # `replace('<Config>', f'<{defaultConfig}>')` substitution that previously
-    # mapped the parent's template parameter onto the parent's defaultConfig is
-    # therefore obsolete for the typical case. We retain the substitution as a
-    # fallback for channels whose endpoints are not parameterizable child
-    # instances but still reference parameterizable structures; those parents
-    # are non-templated and the literal `<Config>` would otherwise leak through
-    # as an undeclared name.
-    ext_chnl_decl_s = sc_declare_channels(data, prj, ' '*4, data)
-    if isParameterizable:
-        ext_chnl_decl_s = [line.replace('<Config>', f'<{defaultConfig}>') for line in ext_chnl_decl_s]
+        # Channel types derive from the connected child's per-variant Config
+        # inside sc_gen_block_channels' connection-walk. A channel whose endpoints
+        # are not parameterizable child instances but which still references
+        # parameterizable structures is typed by the container's own template
+        # parameter instead; _tb_bind_container_config binds it below, along with
+        # every other site of this region.
+        ext_chnl_decl_s = sc_declare_channels(data, prj, ' '*4, data)
 
-    # Declare local-only channels for connectionMap ports on contained
-    # instances. See ext_sec_init for the matching member-init and
-    # ext_sec_body for the bind to the contained instance.
-    for key, value in data['connectionMaps'].items():
-        if _resolve_cross_interface_ends(value, prj):
-            continue
-        instName = value['instance']
-        instPort = value['instancePortName']
-        intfInfo = prj.data['interfaces'][value['interfaceKey']]
-        synth_conn = dict(value)
-        synth_conn['interfaceType'] = intfInfo['interfaceType']
-        synth_conn['interfaceName'] = intfInfo['interface']
-        synth_conn['maxTransferSize'] = intfInfo['maxTransferSize']
-        # Neutral Config selection of the contained instance whose port this
-        # local-only channel serves; sc_gen_block_channels spells the struct
-        # name. getBDConnectionMaps admits a row only when its instanceKey is a
-        # contained instance, so the instance row is always present here.
-        synth_conn['configOverride'] = (
-            data['subBlockInstances'][value['instanceKey']]['instanceConfigSelection']
-        )
-        chnlData = sc_gen_block_channels(synth_conn, prj, data)
-        chnl_decl = chnlData["channel_decl"]
-        # channel_decl is "<type><params> <name>;"; replace the
-        # auto-derived name with the local-only name.
-        memberName = f'_ext_cm_{instName}_{instPort}'
-        local_decl = chnl_decl.rsplit(' ', 1)[0] + f' {memberName};'
-        ext_chnl_decl_s.append(f'    {local_decl}')
+        # Declare local-only channels for connectionMap ports on contained
+        # instances. See ext_sec_init for the matching member-init and
+        # ext_sec_body for the bind to the contained instance.
+        for key, value in data['connectionMaps'].items():
+            if _resolve_cross_interface_ends(value, prj):
+                continue
+            instName = value['instance']
+            instPort = value['instancePortName']
+            intfInfo = prj.data['interfaces'][value['interfaceKey']]
+            synth_conn = dict(value)
+            synth_conn['interfaceType'] = intfInfo['interfaceType']
+            synth_conn['interfaceName'] = intfInfo['interface']
+            synth_conn['maxTransferSize'] = intfInfo['maxTransferSize']
+            # Neutral Config selection of the contained instance whose port this
+            # local-only channel serves; sc_gen_block_channels spells the struct
+            # name. getBDConnectionMaps admits a row only when its instanceKey is a
+            # contained instance, so the instance row is always present here.
+            synth_conn['configOverride'] = (
+                data['subBlockInstances'][value['instanceKey']]['instanceConfigSelection']
+            )
+            chnlData = sc_gen_block_channels(synth_conn, prj, data)
+            chnl_decl = chnlData["channel_decl"]
+            # channel_decl is "<type><params> <name>;"; replace the
+            # auto-derived name with the local-only name.
+            memberName = f'_ext_cm_{instName}_{instPort}'
+            local_decl = chnl_decl.rsplit(' ', 1)[0] + f' {memberName};'
+            ext_chnl_decl_s.append(f'    {local_decl}')
 
-    # When the DUT contains cross-interface thunker members, the external
-    # pseudo-block must mirror them so its consumer-side ports complete binding
-    # during elaboration. The matching protocol headers are emitted by
-    # ext_module_header in the global module fragment.
-    ext_thunker_decl_s = sc_declare_thunkers(data, prj, ' '*4, data)
+        # When the container adapts cross-interface binds, the external
+        # pseudo-block must mirror those thunkers so its consumer-side ports
+        # complete binding during elaboration.
+        ext_thunker_decl_s = sc_declare_thunkers(data, prj, ' '*4, data)
 
     t = Template(sec_tb_external_header_template)
     s = t.render(
         blockname=data['blockName'],
         context_usings='\n'.join(_tb_context_usings(prj, data)),
         tbclassname=sel['tbClassName'],
-        is_parameterizable=isParameterizable,
         cfg=cfg,
-        default_config=defaultConfig,
         ext_inst_decl='\n'.join(ext_inst_decl_s),
         ext_chnl_decl='\n'.join(ext_chnl_decl_s),
         ext_thunker_decl='\n'.join(ext_thunker_decl_s)
     )
-    return(s)
+    return _tb_bind_container_config(s, data, sel)
 
 """
 Refactor the external block connectivity to be used in the testbench
 and avoid channel name clashes
 """
 def refactor_tbExternal(args, prj, data):
-    if len(data['excludedInstances']) > 0:
+    if _ext_holds_peers(data):
         dutInst = data['excludedInstances'][next(iter(data['excludedInstances']))]
         blockname = dutInst['instanceType']
         # The External pseudo-block inherits `<DUT>Inverted<Config>`. When the

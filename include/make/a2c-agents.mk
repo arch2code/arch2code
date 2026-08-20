@@ -177,6 +177,8 @@ agent-dev-setup agent_dev_setup:
 	@#   OpenCode:     .opencode/skills/{name}/SKILL.md
 	@#   Cross-tool:   .agents/skills/{name}/SKILL.md
 	@#   Cursor IDE:   .cursor/skills/{name}/SKILL.md
+	@# CONTEXT.md ships beside wait-what so the skill reads it without naming a
+	@# submodule path, which the host project chooses.
 	@for dir in .claude .gemini .opencode .agents .cursor; do \
 		mkdir -p "$(REPO_ROOT)/$$dir/skills"; \
 		for root in $(A2C_RULES_DIRS); do \
@@ -191,6 +193,10 @@ agent-dev-setup agent_dev_setup:
 				done; \
 			fi; \
 		done; \
+		if [ -f "$(A2C_BASE_DIR)/CONTEXT.md" ] && [ -d "$(REPO_ROOT)/$$dir/skills/wait-what" ]; then \
+			cp "$(A2C_BASE_DIR)/CONTEXT.md" "$(REPO_ROOT)/$$dir/skills/wait-what/CONTEXT.md" && \
+			echo "  + Installed CONTEXT.md to $$dir/skills/wait-what/"; \
+		fi; \
 	done
 	@echo ""
 	@echo "Arch2Code builder/base development skill setup complete!"

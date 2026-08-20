@@ -260,6 +260,17 @@ blocks:
   params:
     _attribs: [optional, list, flat, post(validateBlockParamBacking)]
     param: key
+    # Resolved link to the backing ipParameters constant. paramKey qualifies the
+    # param name with the file declaring the BLOCK, so it is a block-scoped
+    # identity and not a constant key; paramSourceKey is the constant key,
+    # resolved through this row's own include chain by the foreign key below.
+    # A block param names the constant it uses, so the source name is the param's
+    # own name - **must be after the param field**, which supplies it.
+    paramSource:
+      _type: auto(paramSource)
+      _validate:
+        section: constants
+        field: constant
   ports:
     _attribs: [optional, multiple]
     port: key
@@ -323,7 +334,23 @@ parameters:
       _attribs: [collapsed, multiple, post(validateVariantBindingSizing)]
       _singular: value       # `<param>: <scalar>` -> the scalar is the `value`
       param: anchor
-      value: const
+      # A binding is EITHER a value OR sourced from a named parameter of the
+      # block containing the instance. The two forms are mutually exclusive and
+      # exactly one must be present; the singular shorthand `<param>: <scalar>`
+      # routes to `value`, so the container form is reachable only in the long
+      # form `<param>: {containerParam: P}`. The containing block is never named
+      # by the binding: it is taken from the instance row at each site.
+      #
+      # containerParam is not a foreign key. A container block's `params:` are
+      # not reliably parsed before a child variant's binding rows, so a
+      # parse-time foreign key cannot evaluate this linkage at the right time;
+      # the linkage is validated by the post-parse pass
+      # validate_container_sourced_params in calcBlockConfigInfo. Of the
+      # container linkage, only the row-local well-formedness of the binding -
+      # exactly one of value / container source, and never both - is checked at
+      # parse time, because that needs no cross-section lookup.
+      value: optionalConst
+      containerParam: optional
       blockParam:
         _type: required
         _combo:
