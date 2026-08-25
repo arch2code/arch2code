@@ -89,6 +89,22 @@ CATALOG = {
         "role": 'drive',
         "observeName": None,
     },
+    'test_axi4_stream': {
+        "port": 'test_axi4_stream',
+        "name": 'pySocket.test_axi4_stream',
+        "interfaceType": 'axi4_stream',
+        "direction": 'src',
+        "role": 'drive',
+        "observeName": None,
+    },
+    'dut2Python_axi4_stream': {
+        "port": 'dut2Python_axi4_stream',
+        "name": 'pySocket.dut2Python_axi4_stream',
+        "interfaceType": 'axi4_stream',
+        "direction": 'dst',
+        "role": 'drive',
+        "observeName": None,
+    },
 }
 
 LISTEN_NAMES = (
@@ -103,6 +119,8 @@ LISTEN_NAMES = (
     'pySocket.dut2Python_notify_ack',
     'pySocket.test_rdy_vld',
     'pySocket.dut2Python_rdy_vld',
+    'pySocket.test_axi4_stream',
+    'pySocket.dut2Python_axi4_stream',
 )
 SYNC_NAMES = ()
 

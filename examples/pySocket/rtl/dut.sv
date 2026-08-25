@@ -18,6 +18,8 @@ import pySocket_tb_package::*;
     notify_ack_if.src dut2Python_notify_ack,
     rdy_vld_if.dst test_rdy_vld,
     rdy_vld_if.src dut2Python_rdy_vld,
+    axi4_stream_if.dst test_axi4_stream,
+    axi4_stream_if.src dut2Python_axi4_stream,
     input clk, rst_n
 );
 

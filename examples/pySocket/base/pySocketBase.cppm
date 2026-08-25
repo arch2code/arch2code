@@ -4,6 +4,7 @@
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=baseModuleHeader
 module;
 #include "systemc.h"
+#include "axi4_stream_channel.h"
 #include "notify_ack_channel.h"
 #include "pop_ack_channel.h"
 #include "push_ack_channel.h"
@@ -34,6 +35,8 @@ public:
     notify_ack_out< > test_notify_ack;
     // test_rdy_vld->u_dut: Python-initiated rdy_vld write into the DUT
     rdy_vld_out< p2s_message_st > test_rdy_vld;
+    // test_axi4_stream->u_dut: Python-initiated AXI4-Stream into the DUT
+    axi4_stream_out< p2s_message_st, axis_tid_st, axis_tdest_st > test_axi4_stream;
 
     // dst ports
     // u_dut->dut2Python_req_ack: Req Ack Dut2Python interface
@@ -46,6 +49,8 @@ public:
     notify_ack_in< > dut2Python_notify_ack;
     // u_dut->dut2Python_rdy_vld: DUT-initiated rdy_vld write into Python
     rdy_vld_in< p2s_message_st > dut2Python_rdy_vld;
+    // u_dut->dut2Python_axi4_stream: DUT-initiated AXI4-Stream into Python
+    axi4_stream_in< p2s_message_st, axis_tid_st, axis_tdest_st > dut2Python_axi4_stream;
 
 
     pySocketBase(std::string name, const char * variant) :
@@ -55,11 +60,13 @@ public:
         ,test_pop_ack("test_pop_ack")
         ,test_notify_ack("test_notify_ack")
         ,test_rdy_vld("test_rdy_vld")
+        ,test_axi4_stream("test_axi4_stream")
         ,dut2Python_req_ack("dut2Python_req_ack")
         ,dut2Python_push_ack("dut2Python_push_ack")
         ,dut2Python_pop_ack("dut2Python_pop_ack")
         ,dut2Python_notify_ack("dut2Python_notify_ack")
         ,dut2Python_rdy_vld("dut2Python_rdy_vld")
+        ,dut2Python_axi4_stream("dut2Python_axi4_stream")
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -69,11 +76,13 @@ public:
         test_pop_ack->setTimed(nsec, mode);
         test_notify_ack->setTimed(nsec, mode);
         test_rdy_vld->setTimed(nsec, mode);
+        test_axi4_stream->setTimed(nsec, mode);
         dut2Python_req_ack->setTimed(nsec, mode);
         dut2Python_push_ack->setTimed(nsec, mode);
         dut2Python_pop_ack->setTimed(nsec, mode);
         dut2Python_notify_ack->setTimed(nsec, mode);
         dut2Python_rdy_vld->setTimed(nsec, mode);
+        dut2Python_axi4_stream->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -84,11 +93,13 @@ public:
         test_pop_ack->setLogging(verbosity);
         test_notify_ack->setLogging(verbosity);
         test_rdy_vld->setLogging(verbosity);
+        test_axi4_stream->setLogging(verbosity);
         dut2Python_req_ack->setLogging(verbosity);
         dut2Python_push_ack->setLogging(verbosity);
         dut2Python_pop_ack->setLogging(verbosity);
         dut2Python_notify_ack->setLogging(verbosity);
         dut2Python_rdy_vld->setLogging(verbosity);
+        dut2Python_axi4_stream->setLogging(verbosity);
     };
 };
 export class pySocketInverted : public virtual blockPortBase
@@ -107,6 +118,8 @@ public:
     notify_ack_in< > test_notify_ack;
     // test_rdy_vld->u_dut: Python-initiated rdy_vld write into the DUT
     rdy_vld_in< p2s_message_st > test_rdy_vld;
+    // test_axi4_stream->u_dut: Python-initiated AXI4-Stream into the DUT
+    axi4_stream_in< p2s_message_st, axis_tid_st, axis_tdest_st > test_axi4_stream;
 
     // dst ports
     // u_dut->dut2Python_req_ack: Req Ack Dut2Python interface
@@ -119,6 +132,8 @@ public:
     notify_ack_out< > dut2Python_notify_ack;
     // u_dut->dut2Python_rdy_vld: DUT-initiated rdy_vld write into Python
     rdy_vld_out< p2s_message_st > dut2Python_rdy_vld;
+    // u_dut->dut2Python_axi4_stream: DUT-initiated AXI4-Stream into Python
+    axi4_stream_out< p2s_message_st, axis_tid_st, axis_tdest_st > dut2Python_axi4_stream;
 
 
     pySocketInverted(std::string name) :
@@ -128,11 +143,13 @@ public:
         ,test_pop_ack(("test_pop_ack"+name).c_str())
         ,test_notify_ack(("test_notify_ack"+name).c_str())
         ,test_rdy_vld(("test_rdy_vld"+name).c_str())
+        ,test_axi4_stream(("test_axi4_stream"+name).c_str())
         ,dut2Python_req_ack(("dut2Python_req_ack"+name).c_str())
         ,dut2Python_push_ack(("dut2Python_push_ack"+name).c_str())
         ,dut2Python_pop_ack(("dut2Python_pop_ack"+name).c_str())
         ,dut2Python_notify_ack(("dut2Python_notify_ack"+name).c_str())
         ,dut2Python_rdy_vld(("dut2Python_rdy_vld"+name).c_str())
+        ,dut2Python_axi4_stream(("dut2Python_axi4_stream"+name).c_str())
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -142,11 +159,13 @@ public:
         test_pop_ack->setTimed(nsec, mode);
         test_notify_ack->setTimed(nsec, mode);
         test_rdy_vld->setTimed(nsec, mode);
+        test_axi4_stream->setTimed(nsec, mode);
         dut2Python_req_ack->setTimed(nsec, mode);
         dut2Python_push_ack->setTimed(nsec, mode);
         dut2Python_pop_ack->setTimed(nsec, mode);
         dut2Python_notify_ack->setTimed(nsec, mode);
         dut2Python_rdy_vld->setTimed(nsec, mode);
+        dut2Python_axi4_stream->setTimed(nsec, mode);
         setTimedLocal(nsec, mode);
     };
     void setLogging(verbosity_e verbosity) override
@@ -157,11 +176,13 @@ public:
         test_pop_ack->setLogging(verbosity);
         test_notify_ack->setLogging(verbosity);
         test_rdy_vld->setLogging(verbosity);
+        test_axi4_stream->setLogging(verbosity);
         dut2Python_req_ack->setLogging(verbosity);
         dut2Python_push_ack->setLogging(verbosity);
         dut2Python_pop_ack->setLogging(verbosity);
         dut2Python_notify_ack->setLogging(verbosity);
         dut2Python_rdy_vld->setLogging(verbosity);
+        dut2Python_axi4_stream->setLogging(verbosity);
     };
 };
 export class pySocketChannels
@@ -180,6 +201,8 @@ public:
     notify_ack_channel< > test_notify_ack;
     // Python-initiated rdy_vld write into the DUT
     rdy_vld_channel< p2s_message_st > test_rdy_vld;
+    // Python-initiated AXI4-Stream into the DUT
+    axi4_stream_channel< p2s_message_st, axis_tid_st, axis_tdest_st > test_axi4_stream;
 
     // dst ports
     // Req Ack Dut2Python interface
@@ -192,6 +215,8 @@ public:
     notify_ack_channel< > dut2Python_notify_ack;
     // DUT-initiated rdy_vld write into Python
     rdy_vld_channel< p2s_message_st > dut2Python_rdy_vld;
+    // DUT-initiated AXI4-Stream into Python
+    axi4_stream_channel< p2s_message_st, axis_tid_st, axis_tdest_st > dut2Python_axi4_stream;
 
 
     pySocketChannels(std::string name, std::string srcName) :
@@ -201,11 +226,13 @@ public:
     ,test_pop_ack(("test_pop_ack"+name).c_str(), srcName)
     ,test_notify_ack(("test_notify_ack"+name).c_str(), srcName)
     ,test_rdy_vld(("test_rdy_vld"+name).c_str(), srcName)
+    ,test_axi4_stream(("test_axi4_stream"+name).c_str(), srcName, "api_list_size", 16, "")
     ,dut2Python_req_ack(("dut2Python_req_ack"+name).c_str(), srcName)
     ,dut2Python_push_ack(("dut2Python_push_ack"+name).c_str(), srcName)
     ,dut2Python_pop_ack(("dut2Python_pop_ack"+name).c_str(), srcName)
     ,dut2Python_notify_ack(("dut2Python_notify_ack"+name).c_str(), srcName)
     ,dut2Python_rdy_vld(("dut2Python_rdy_vld"+name).c_str(), srcName)
+    ,dut2Python_axi4_stream(("dut2Python_axi4_stream"+name).c_str(), srcName, "api_list_size", 16, "")
     {};
     void bind( pySocketBase *a, pySocketInverted *b)
     {
@@ -221,6 +248,8 @@ public:
         b->test_notify_ack( test_notify_ack );
         a->test_rdy_vld( test_rdy_vld );
         b->test_rdy_vld( test_rdy_vld );
+        a->test_axi4_stream( test_axi4_stream );
+        b->test_axi4_stream( test_axi4_stream );
         a->dut2Python_req_ack( dut2Python_req_ack );
         b->dut2Python_req_ack( dut2Python_req_ack );
         a->dut2Python_push_ack( dut2Python_push_ack );
@@ -231,6 +260,8 @@ public:
         b->dut2Python_notify_ack( dut2Python_notify_ack );
         a->dut2Python_rdy_vld( dut2Python_rdy_vld );
         b->dut2Python_rdy_vld( dut2Python_rdy_vld );
+        a->dut2Python_axi4_stream( dut2Python_axi4_stream );
+        b->dut2Python_axi4_stream( dut2Python_axi4_stream );
     };
 };
 

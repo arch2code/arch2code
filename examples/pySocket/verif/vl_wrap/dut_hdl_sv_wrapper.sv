@@ -64,6 +64,28 @@ module dut_hdl_sv_wrapper
     output bit [63:0] dut2Python_rdy_vld_data,
     input bit dut2Python_rdy_vld_rdy,
 
+    // axi4_stream_if.dst
+    input bit test_axi4_stream_tvalid,
+    output bit test_axi4_stream_tready,
+    input bit [63:0] test_axi4_stream_tdata,
+    input bit [7:0] test_axi4_stream_tstrb,
+    input bit [7:0] test_axi4_stream_tkeep,
+    input bit test_axi4_stream_tlast,
+    input bit [7:0] test_axi4_stream_tid,
+    input bit [7:0] test_axi4_stream_tdest,
+    input bit test_axi4_stream_tuser,
+
+    // axi4_stream_if.src
+    output bit dut2Python_axi4_stream_tvalid,
+    input bit dut2Python_axi4_stream_tready,
+    output bit [63:0] dut2Python_axi4_stream_tdata,
+    output bit [7:0] dut2Python_axi4_stream_tstrb,
+    output bit [7:0] dut2Python_axi4_stream_tkeep,
+    output bit dut2Python_axi4_stream_tlast,
+    output bit [7:0] dut2Python_axi4_stream_tid,
+    output bit [7:0] dut2Python_axi4_stream_tdest,
+    output bit dut2Python_axi4_stream_tuser,
+
     input clk,
     input rst_n
 );
@@ -145,6 +167,32 @@ module dut_hdl_sv_wrapper
     assign #0 dut2Python_rdy_vld_data = dut2Python_rdy_vld.data;
     assign #0 dut2Python_rdy_vld.rdy = dut2Python_rdy_vld_rdy;
 
+    // axi4_stream_if.dst
+    axi4_stream_if #(.tdata_t(p2s_message_st), .tid_t(axis_tid_st), .tdest_t(axis_tdest_st)) test_axi4_stream();
+
+    assign #0 test_axi4_stream.tvalid = test_axi4_stream_tvalid;
+    assign #0 test_axi4_stream_tready = test_axi4_stream.tready;
+    assign #0 test_axi4_stream.tdata = test_axi4_stream_tdata;
+    assign #0 test_axi4_stream.tstrb = test_axi4_stream_tstrb;
+    assign #0 test_axi4_stream.tkeep = test_axi4_stream_tkeep;
+    assign #0 test_axi4_stream.tlast = test_axi4_stream_tlast;
+    assign #0 test_axi4_stream.tid = test_axi4_stream_tid;
+    assign #0 test_axi4_stream.tdest = test_axi4_stream_tdest;
+    assign #0 test_axi4_stream.tuser = test_axi4_stream_tuser;
+
+    // axi4_stream_if.src
+    axi4_stream_if #(.tdata_t(p2s_message_st), .tid_t(axis_tid_st), .tdest_t(axis_tdest_st)) dut2Python_axi4_stream();
+
+    assign #0 dut2Python_axi4_stream_tvalid = dut2Python_axi4_stream.tvalid;
+    assign #0 dut2Python_axi4_stream.tready = dut2Python_axi4_stream_tready;
+    assign #0 dut2Python_axi4_stream_tdata = dut2Python_axi4_stream.tdata;
+    assign #0 dut2Python_axi4_stream_tstrb = dut2Python_axi4_stream.tstrb;
+    assign #0 dut2Python_axi4_stream_tkeep = dut2Python_axi4_stream.tkeep;
+    assign #0 dut2Python_axi4_stream_tlast = dut2Python_axi4_stream.tlast;
+    assign #0 dut2Python_axi4_stream_tid = dut2Python_axi4_stream.tid;
+    assign #0 dut2Python_axi4_stream_tdest = dut2Python_axi4_stream.tdest;
+    assign #0 dut2Python_axi4_stream_tuser = dut2Python_axi4_stream.tuser;
+
     pySocket_dut dut (
         .test_req_ack(test_req_ack), // req_ack_if.dst
         .test2Python_req_ack(test2Python_req_ack), // req_ack_if.dst
@@ -157,6 +205,8 @@ module dut_hdl_sv_wrapper
         .dut2Python_notify_ack(dut2Python_notify_ack), // notify_ack_if.src
         .test_rdy_vld(test_rdy_vld), // rdy_vld_if.dst
         .dut2Python_rdy_vld(dut2Python_rdy_vld), // rdy_vld_if.src
+        .test_axi4_stream(test_axi4_stream), // axi4_stream_if.dst
+        .dut2Python_axi4_stream(dut2Python_axi4_stream), // axi4_stream_if.src
         .clk(clk),
         .rst_n(rst_n)
     );

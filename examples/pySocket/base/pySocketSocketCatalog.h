@@ -10,7 +10,7 @@
 
 namespace pySocketSocketCatalog {
 
-inline constexpr std::array<const char *, 11> listen_names{{
+inline constexpr std::array<const char *, 13> listen_names{{
     "pySocket.test_req_ack",
     "pySocket.test2Python_req_ack",
     "pySocket.dut2Python_req_ack",
@@ -22,6 +22,8 @@ inline constexpr std::array<const char *, 11> listen_names{{
     "pySocket.dut2Python_notify_ack",
     "pySocket.test_rdy_vld",
     "pySocket.dut2Python_rdy_vld",
+    "pySocket.test_axi4_stream",
+    "pySocket.dut2Python_axi4_stream",
 }};
 inline constexpr std::array<const char *, 0> sync_names{};
 
@@ -36,6 +38,8 @@ inline constexpr const char *name_test_notify_ack = "pySocket.test_notify_ack";
 inline constexpr const char *name_dut2Python_notify_ack = "pySocket.dut2Python_notify_ack";
 inline constexpr const char *name_test_rdy_vld = "pySocket.test_rdy_vld";
 inline constexpr const char *name_dut2Python_rdy_vld = "pySocket.dut2Python_rdy_vld";
+inline constexpr const char *name_test_axi4_stream = "pySocket.test_axi4_stream";
+inline constexpr const char *name_dut2Python_axi4_stream = "pySocket.dut2Python_axi4_stream";
 
 inline bool registerAll()
 {

@@ -7,6 +7,7 @@
 #include "testController.h"
 // GENERATED_CODE_BEGIN --template=socket --section=socket
 #include "logging.h"
+#include "axi4_stream_port_socket.h"
 #include "notify_ack_port_socket.h"
 #include "pop_ack_port_socket.h"
 #include "push_ack_port_socket.h"
@@ -44,6 +45,8 @@ private:
     void dut2Python_notify_ackSocket(void);
     void test_rdy_vldSocket(void);
     void dut2Python_rdy_vldSocket(void);
+    void test_axi4_streamSocket(void);
+    void dut2Python_axi4_streamSocket(void);
 
 // GENERATED_CODE_END
     void python2SystemCTestComplete(void);
@@ -51,6 +54,7 @@ private:
     void pythonPushPopTestComplete(void);
     void pythonNotifyTestComplete(void);
     void pythonRdyVldTestComplete(void);
+    void pythonAxi4StreamTestComplete(void);
     void simHeartbeat(void);
     /// Stops the kernel when end-of-test voters complete (pySocketExternal is not in the hierarchy).
     void eotStopSim(void);

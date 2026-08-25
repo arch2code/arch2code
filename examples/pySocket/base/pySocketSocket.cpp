@@ -53,6 +53,14 @@ void pySocketSocket::dut2Python_rdy_vldSocket(void) {
     port_socket(dut2Python_rdy_vld, "pySocket.dut2Python_rdy_vld");
 }
 
+void pySocketSocket::test_axi4_streamSocket(void) {
+    port_socket(test_axi4_stream, "pySocket.test_axi4_stream");
+}
+
+void pySocketSocket::dut2Python_axi4_streamSocket(void) {
+    port_socket(dut2Python_axi4_stream, "pySocket.dut2Python_axi4_stream");
+}
+
 pySocketSocket::pySocketSocket(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("pySocket", name(), bbMode)
@@ -72,6 +80,8 @@ pySocketSocket::pySocketSocket(sc_module_name blockName, const char * variant, b
     SC_THREAD(dut2Python_notify_ackSocket);
     SC_THREAD(test_rdy_vldSocket);
     SC_THREAD(dut2Python_rdy_vldSocket);
+    SC_THREAD(test_axi4_streamSocket);
+    SC_THREAD(dut2Python_axi4_streamSocket);
 
 // GENERATED_CODE_END
     // ThreadSafeEvent is a primitive channel; it must exist before simulation starts (including
@@ -87,12 +97,15 @@ pySocketSocket::pySocketSocket(sc_module_name blockName, const char * variant, b
     (void)ThreadSafeEventFactory::newEvent("pySocket.dut2Python_notify_ack_notify_ack");
     (void)ThreadSafeEventFactory::newEvent("pySocket.test_rdy_vld_vld");
     (void)ThreadSafeEventFactory::newEvent("pySocket.dut2Python_rdy_vld_rdy");
+    (void)ThreadSafeEventFactory::newEvent("pySocket.test_axi4_stream_axis");
+    (void)ThreadSafeEventFactory::newEvent("pySocket.dut2Python_axi4_stream_axis_rdy");
 
     SC_THREAD(python2SystemCTestComplete);
     SC_THREAD(systemC2PythonTestComplete);
     SC_THREAD(pythonPushPopTestComplete);
     SC_THREAD(pythonNotifyTestComplete);
     SC_THREAD(pythonRdyVldTestComplete);
+    SC_THREAD(pythonAxi4StreamTestComplete);
     SC_THREAD(simHeartbeat);
     SC_THREAD(eotStopSim);
 }
@@ -188,6 +201,22 @@ void pySocketSocket::pythonRdyVldTestComplete(void)
     controller.register_test_name(test_socket);
     controller.wait_test(test_socket, sc_time(1, SC_NS));
     auto ev = socketFactory::getPeerClosedEvent(pySocketSocketCatalog::name_test_rdy_vld);
+    if (ev) {
+        sc_core::wait(ev->default_event());
+    }
+    controller.test_complete(test_socket);
+    eot.setEndOfTest(true);
+}
+
+void pySocketSocket::pythonAxi4StreamTestComplete(void)
+{
+    endOfTest eot;
+    eot.registerVoter();
+    testController &controller = testController::GetInstance();
+    const std::string test_socket = "pythonAxi4StreamTest";
+    controller.register_test_name(test_socket);
+    controller.wait_test(test_socket, sc_time(1, SC_NS));
+    auto ev = socketFactory::getPeerClosedEvent(pySocketSocketCatalog::name_test_axi4_stream);
     if (ev) {
         sc_core::wait(ev->default_event());
     }

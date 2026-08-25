@@ -9,6 +9,7 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 #include "instanceFactory.h"
+#include "axi4_stream_channel.h"
 #include "notify_ack_channel.h"
 #include "pop_ack_channel.h"
 #include "push_ack_channel.h"
@@ -41,6 +42,7 @@ public:
     void pushPopListener(void);
     void notifyListener(void);
     void rdyVldListener(void);
+    void axi4StreamListener(void);
 };
 
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -70,6 +72,7 @@ dut::dut(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
     SC_THREAD(pushPopListener);
     SC_THREAD(notifyListener);
     SC_THREAD(rdyVldListener);
+    SC_THREAD(axi4StreamListener);
 };
 
 void dut::dutListener(void)
@@ -92,6 +95,7 @@ void dut::dut2PythonListener(void)
     constexpr uint32_t kDutPushPopCmd = 0x50555348u; // "PUSH"
     constexpr uint32_t kDutNotifyCmd = 0x4E4F5449u;  // "NOTI"
     constexpr uint32_t kDutRdyVldCmd = 0x52445956u;  // "RDYV"
+    constexpr uint32_t kDutAxisCmd = 0x41584953u;    // "AXIS"
     while (true) {
         p2s_message_st test_message;
         p2s_response_st test_response;
@@ -113,6 +117,21 @@ void dut::dut2PythonListener(void)
         if (test_message.param1 == kDutRdyVldCmd) {
             dut2Python_rdy_vld->write(test_message);
             test_response.response = test_message.param1 + test_message.param2 + 2;
+            test2Python_req_ack->ack(test_response);
+            continue;
+        }
+        if (test_message.param1 == kDutAxisCmd) {
+            axi4StreamInfoSt<p2s_message_st, axis_tid_st, axis_tdest_st> beat;
+            beat.tdata = test_message;
+            beat.tid.id = 0x1;
+            beat.tdest.id = 0x2;
+            beat.tlast = true;
+            for (unsigned i = 0; i < beat.tstrb._byteWidth; ++i) {
+                beat.tstrb[i] = Q_TRUE;
+                beat.tkeep[i] = Q_TRUE;
+            }
+            dut2Python_axi4_stream->sendInfo(beat);
+            test_response.response = test_message.param1 + test_message.param2 + 3;
             test2Python_req_ack->ack(test_response);
             continue;
         }
@@ -156,6 +175,19 @@ void dut::rdyVldListener(void)
         p2s_message_st message;
         test_rdy_vld->read(message);
         log_.logPrint(std::format("received rdy_vld: {} {}", message.param1, message.param2), LOG_IMPORTANT );
+    }
+}
+
+void dut::axi4StreamListener(void)
+{
+    log_.logPrint(std::format("started axi4StreamListener"), LOG_IMPORTANT );
+    while (true) {
+        axi4StreamInfoSt<p2s_message_st, axis_tid_st, axis_tdest_st> beat;
+        test_axi4_stream->receiveInfo(beat);
+        log_.logPrint(
+            std::format("received axi4_stream: {} {} tlast={}",
+                        beat.tdata.param1, beat.tdata.param2, beat.tlast),
+            LOG_IMPORTANT);
     }
 }
 

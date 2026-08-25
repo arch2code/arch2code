@@ -10,7 +10,7 @@
 
 namespace dutSocketCatalog {
 
-inline constexpr std::array<const char *, 11> listen_names{{
+inline constexpr std::array<const char *, 13> listen_names{{
     "dut.test_req_ack",
     "dut.test2Python_req_ack",
     "dut.dut2Python_req_ack",
@@ -22,6 +22,8 @@ inline constexpr std::array<const char *, 11> listen_names{{
     "dut.dut2Python_notify_ack",
     "dut.test_rdy_vld",
     "dut.dut2Python_rdy_vld",
+    "dut.test_axi4_stream",
+    "dut.dut2Python_axi4_stream",
 }};
 inline constexpr std::array<const char *, 0> sync_names{};
 
@@ -36,6 +38,8 @@ inline constexpr const char *name_test_notify_ack = "dut.test_notify_ack";
 inline constexpr const char *name_dut2Python_notify_ack = "dut.dut2Python_notify_ack";
 inline constexpr const char *name_test_rdy_vld = "dut.test_rdy_vld";
 inline constexpr const char *name_dut2Python_rdy_vld = "dut.dut2Python_rdy_vld";
+inline constexpr const char *name_test_axi4_stream = "dut.test_axi4_stream";
+inline constexpr const char *name_dut2Python_axi4_stream = "dut.dut2Python_axi4_stream";
 
 inline bool registerAll()
 {

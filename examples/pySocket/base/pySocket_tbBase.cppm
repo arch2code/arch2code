@@ -4,6 +4,7 @@
 // GENERATED_CODE_BEGIN --template=moduleScaffold --section=baseModuleHeader
 module;
 #include "systemc.h"
+#include "axi4_stream_channel.h"
 #include "notify_ack_channel.h"
 #include "pop_ack_channel.h"
 #include "push_ack_channel.h"

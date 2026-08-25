@@ -5,6 +5,7 @@
 // GENERATED_CODE_PARAM --block=dut
 // GENERATED_CODE_BEGIN --template=socket --section=socket
 #include "logging.h"
+#include "axi4_stream_port_socket.h"
 #include "notify_ack_port_socket.h"
 #include "pop_ack_port_socket.h"
 #include "push_ack_port_socket.h"
@@ -42,6 +43,8 @@ private:
     void dut2Python_notify_ackSocket(void);
     void test_rdy_vldSocket(void);
     void dut2Python_rdy_vldSocket(void);
+    void test_axi4_streamSocket(void);
+    void dut2Python_axi4_streamSocket(void);
 
 // GENERATED_CODE_END
 };

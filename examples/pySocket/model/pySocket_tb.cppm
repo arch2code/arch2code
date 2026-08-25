@@ -9,6 +9,7 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 #include "instanceFactory.h"
+#include "axi4_stream_channel.h"
 #include "notify_ack_channel.h"
 #include "pop_ack_channel.h"
 #include "push_ack_channel.h"
@@ -54,6 +55,10 @@ public:
     rdy_vld_channel< p2s_message_st > test_rdy_vld;
     // DUT-initiated rdy_vld write into Python
     rdy_vld_channel< p2s_message_st > dut2Python_rdy_vld;
+    // Python-initiated AXI4-Stream into the DUT
+    axi4_stream_channel< p2s_message_st, axis_tid_st, axis_tdest_st > test_axi4_stream;
+    // DUT-initiated AXI4-Stream into Python
+    axi4_stream_channel< p2s_message_st, axis_tid_st, axis_tdest_st > dut2Python_axi4_stream;
 
     //instances contained in block
     std::shared_ptr<pySocketBase> u_pySocket;
@@ -95,6 +100,8 @@ pySocket_tb::pySocket_tb(sc_module_name blockName, const char * variant, blockBa
         ,dut2Python_notify_ack("pySocket_dut2Python_notify_ack", "dut")
         ,test_rdy_vld("dut_test_rdy_vld", "pySocket")
         ,dut2Python_rdy_vld("pySocket_dut2Python_rdy_vld", "dut")
+        ,test_axi4_stream("dut_test_axi4_stream", "pySocket", "api_list_size", 16, "")
+        ,dut2Python_axi4_stream("pySocket_dut2Python_axi4_stream", "dut", "api_list_size", 16, "")
         ,u_pySocket(std::dynamic_pointer_cast<pySocketBase>(instanceFactory::createInstance(name(), "u_pySocket", "pySocket", "", "pySocket")))
         ,u_dut(std::dynamic_pointer_cast<dutBase>(instanceFactory::createInstance(name(), "u_dut", "dut", "", "pySocket")))
 // GENERATED_CODE_END
@@ -123,6 +130,10 @@ pySocket_tb::pySocket_tb(sc_module_name blockName, const char * variant, blockBa
     u_dut->test_rdy_vld(test_rdy_vld);
     u_dut->dut2Python_rdy_vld(dut2Python_rdy_vld);
     u_pySocket->dut2Python_rdy_vld(dut2Python_rdy_vld);
+    u_pySocket->test_axi4_stream(test_axi4_stream);
+    u_dut->test_axi4_stream(test_axi4_stream);
+    u_dut->dut2Python_axi4_stream(dut2Python_axi4_stream);
+    u_pySocket->dut2Python_axi4_stream(dut2Python_axi4_stream);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };

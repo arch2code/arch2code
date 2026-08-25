@@ -33,6 +33,8 @@ MSG_POP = 0x19
 MSG_POP_ACK = 0x1A
 MSG_NOTIFY = 0x1B
 MSG_NOTIFY_ACK = 0x1C
+MSG_AXIS_BEAT = 0x1F
+MSG_AXIS_RDY = 0x20
 MSG_SHUTDOWN = 0xFE
 
 HEADER_STRUCT = struct.Struct("<BBH")
@@ -42,8 +44,14 @@ DUT_PUSH_POP_CMD = 0x50555348
 DUT_NOTIFY_CMD = 0x4E4F5449
 DUT_NOTIFY_ACK = 0xA11C
 DUT_RDY_VLD_CMD = 0x52445956
+DUT_AXIS_CMD = 0x41584953
 PUSH_POP_BIAS = 1
 RDY_VLD_BIAS = 2
+AXIS_BIAS = 3
+
+# axi4StreamByteQual_e is an unscoped enum (typically 4 bytes); 64-bit tdata => 8 quals.
+_AXIS_QUAL_COUNT = 8
+_Q_TRUE = 0xFF
 
 
 class p2s_message_st(ctypes.LittleEndianStructure):
@@ -52,6 +60,39 @@ class p2s_message_st(ctypes.LittleEndianStructure):
 
 class p2s_response_st(ctypes.LittleEndianStructure):
     _fields_ = [("response", ctypes.c_uint32)]
+
+
+class axis_tid_st(ctypes.LittleEndianStructure):
+    _fields_ = [("id", ctypes.c_uint8)]
+
+
+class axis_tdest_st(ctypes.LittleEndianStructure):
+    _fields_ = [("id", ctypes.c_uint8)]
+
+
+class axi4_stream_info_st(ctypes.LittleEndianStructure):
+    """Unpacked axi4StreamInfoSt<p2s_message_st, axis_tid_st, axis_tdest_st> (no TUSER)."""
+
+    _fields_ = [
+        ("tdata", p2s_message_st),
+        ("tstrb", ctypes.c_int * _AXIS_QUAL_COUNT),
+        ("tkeep", ctypes.c_int * _AXIS_QUAL_COUNT),
+        ("tid", axis_tid_st),
+        ("tlast", ctypes.c_bool),
+        ("tdest", axis_tdest_st),
+    ]
+
+
+def _make_axis_beat(param1: int, param2: int, *, tid: int = 0, tdest: int = 0, tlast: bool = True) -> axi4_stream_info_st:
+    beat = axi4_stream_info_st()
+    beat.tdata = p2s_message_st(param1, param2)
+    for i in range(_AXIS_QUAL_COUNT):
+        beat.tstrb[i] = _Q_TRUE
+        beat.tkeep[i] = _Q_TRUE
+    beat.tid.id = tid & 0xFF
+    beat.tlast = tlast
+    beat.tdest.id = tdest & 0xFF
+    return beat
 
 
 def struct_bytes(obj: ctypes.Structure) -> bytes:
@@ -214,6 +255,19 @@ async def python_rdy_vld_test(t: SocketTransport) -> None:
     await t.close()
 
 
+async def python_axi4_stream_test(t: SocketTransport) -> None:
+    transactions = [(7, 9), (12, 22)]
+    for param1, param2 in transactions:
+        beat = _make_axis_beat(param1, param2, tid=0xA, tdest=0xB, tlast=True)
+        await t.send_msg(MSG_AXIS_BEAT, struct_bytes(beat))
+        msg_type, body = await t.recv_msg()
+        if msg_type != MSG_AXIS_RDY or len(body) != 0:
+            raise ValueError(f"unexpected AXIS_RDY: type={msg_type} len={len(body)}")
+        print(f"pySocket.py: test_axi4_stream beat ({param1},{param2})", flush=True)
+    await t.send_msg(MSG_SHUTDOWN, b"")
+    await t.close()
+
+
 async def dut_push_pop_via_req_test(tr_req: SocketTransport) -> None:
     param1, param2 = DUT_PUSH_POP_CMD, 0x11
     req = p2s_message_st(param1, param2)
@@ -260,6 +314,23 @@ async def dut_rdy_vld_via_req_test(tr_req: SocketTransport) -> None:
         raise ValueError(f"DUT rdy_vld req mismatch: got {ack.response:#x} want {expected:#x}")
     print(
         f"pySocket.py: test2Python DUT rdy_vld ({param1:#x},{param2:#x}) -> {ack.response:#x}",
+        flush=True,
+    )
+
+
+async def dut_axi4_stream_via_req_test(tr_req: SocketTransport) -> None:
+    param1, param2 = DUT_AXIS_CMD, 0x33
+    req = p2s_message_st(param1, param2)
+    await tr_req.send_msg(MSG_REQ, struct_bytes(req))
+    msg_type, body = await tr_req.recv_msg()
+    if msg_type != MSG_ACK or len(body) != ctypes.sizeof(p2s_response_st):
+        raise ValueError(f"unexpected reply on DUT axi4_stream req: type={msg_type} len={len(body)}")
+    ack = p2s_response_st.from_buffer_copy(body)
+    expected = (param1 + param2 + AXIS_BIAS) & 0xFFFFFFFF
+    if ack.response != expected:
+        raise ValueError(f"DUT axi4_stream req mismatch: got {ack.response:#x} want {expected:#x}")
+    print(
+        f"pySocket.py: test2Python DUT axi4_stream ({param1:#x},{param2:#x}) -> {ack.response:#x}",
         flush=True,
     )
     await tr_req.send_msg(MSG_SHUTDOWN, b"")
@@ -349,6 +420,22 @@ async def dut2python_rdy_vld_target(t: SocketTransport) -> None:
         await t.send_msg(MSG_RDY, b"")
 
 
+async def dut2python_axi4_stream_target(t: SocketTransport) -> None:
+    while True:
+        msg_type, body = await t.recv_msg()
+        if msg_type == MSG_SHUTDOWN:
+            break
+        if msg_type != MSG_AXIS_BEAT or len(body) != ctypes.sizeof(axi4_stream_info_st):
+            raise ValueError(f"dut2Python_axi4_stream: bad message type={msg_type} len={len(body)}")
+        beat = axi4_stream_info_st.from_buffer_copy(body)
+        print(
+            f"pySocket.py: dut2Python_axi4_stream ({beat.tdata.param1:#x},{beat.tdata.param2:#x}) "
+            f"tlast={int(beat.tlast)}",
+            flush=True,
+        )
+        await t.send_msg(MSG_AXIS_RDY, b"")
+
+
 async def _wait_task(task: asyncio.Task) -> None:
     try:
         await asyncio.wait_for(task, timeout=5.0)
@@ -383,6 +470,8 @@ async def main(argv: list[str]) -> None:
     tr_dut_notify = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_notify_ack")])
     tr_rdy_vld = SocketTransport("127.0.0.1", ports[name_for_port("test_rdy_vld")])
     tr_dut_rdy_vld = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_rdy_vld")])
+    tr_axis = SocketTransport("127.0.0.1", ports[name_for_port("test_axi4_stream")])
+    tr_dut_axis = SocketTransport("127.0.0.1", ports[name_for_port("dut2Python_axi4_stream")])
     await asyncio.gather(
         tr_test.connect(),
         tr_test2.connect(),
@@ -395,6 +484,8 @@ async def main(argv: list[str]) -> None:
         tr_dut_notify.connect(),
         tr_rdy_vld.connect(),
         tr_dut_rdy_vld.connect(),
+        tr_axis.connect(),
+        tr_dut_axis.connect(),
     )
     await asyncio.gather(
         tr_test.recv_sync(),
@@ -408,6 +499,8 @@ async def main(argv: list[str]) -> None:
         tr_dut_notify.recv_sync(),
         tr_rdy_vld.recv_sync(),
         tr_dut_rdy_vld.recv_sync(),
+        tr_axis.recv_sync(),
+        tr_dut_axis.recv_sync(),
     )
     print("pySocket.py: connected all interfaces (synced)", flush=True)
 
@@ -417,29 +510,35 @@ async def main(argv: list[str]) -> None:
     dut_pop_task = asyncio.create_task(dut2python_pop_target(tr_dut_pop, last_push))
     dut_notify_task = asyncio.create_task(dut2python_notify_target(tr_dut_notify))
     dut_rdy_vld_task = asyncio.create_task(dut2python_rdy_vld_target(tr_dut_rdy_vld))
+    dut_axis_task = asyncio.create_task(dut2python_axi4_stream_target(tr_dut_axis))
     await python2systemc_test(tr_test)
     await python_push_pop_test(tr_push, tr_pop)
     await python_notify_test(tr_notify)
     await python_rdy_vld_test(tr_rdy_vld)
+    await python_axi4_stream_test(tr_axis)
     await systemc2python_test(tr_test2)
     await dut_push_pop_via_req_test(tr_test2)
     await dut_notify_via_req_test(tr_test2)
     await dut_rdy_vld_via_req_test(tr_test2)
+    await dut_axi4_stream_via_req_test(tr_test2)
     await tr_dut.send_msg(MSG_SHUTDOWN, b"")
     await tr_dut_push.send_msg(MSG_SHUTDOWN, b"")
     await tr_dut_pop.send_msg(MSG_SHUTDOWN, b"")
     await tr_dut_notify.send_msg(MSG_SHUTDOWN, b"")
     await tr_dut_rdy_vld.send_msg(MSG_SHUTDOWN, b"")
+    await tr_dut_axis.send_msg(MSG_SHUTDOWN, b"")
     await _wait_task(dut_task)
     await _wait_task(dut_push_task)
     await _wait_task(dut_pop_task)
     await _wait_task(dut_notify_task)
     await _wait_task(dut_rdy_vld_task)
+    await _wait_task(dut_axis_task)
     await tr_dut.close()
     await tr_dut_push.close()
     await tr_dut_pop.close()
     await tr_dut_notify.close()
     await tr_dut_rdy_vld.close()
+    await tr_dut_axis.close()
     print("pySocket.py: done", flush=True)
 
 

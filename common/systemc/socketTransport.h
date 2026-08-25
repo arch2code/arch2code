@@ -36,6 +36,8 @@ enum socketMsgTypeT {
     MSG_NOTIFY_ACK=0x1C,
     MSG_BP_CFG=0x1D,
     MSG_BP_CFG_ACK=0x1E,
+    MSG_AXIS_BEAT=0x1F,
+    MSG_AXIS_RDY=0x20,
     MSG_SHUTDOWN=0xFE,
     MSG_ERROR=0xFF
 };
@@ -73,6 +75,8 @@ inline const char* socketMsgTypeT_prt( socketMsgTypeT val )
         case MSG_NOTIFY_ACK: return( "MSG_NOTIFY_ACK" );
         case MSG_BP_CFG: return( "MSG_BP_CFG" );
         case MSG_BP_CFG_ACK: return( "MSG_BP_CFG_ACK" );
+        case MSG_AXIS_BEAT: return( "MSG_AXIS_BEAT" );
+        case MSG_AXIS_RDY: return( "MSG_AXIS_RDY" );
         case MSG_SHUTDOWN: return( "MSG_SHUTDOWN" );
         case MSG_ERROR: return( "MSG_ERROR" );
     }

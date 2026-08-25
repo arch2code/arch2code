@@ -21,6 +21,7 @@ import pySocket.base;
 
 import pySocket_tb;
 using namespace pySocket_tb_ns;
+#include "axi4_stream_bfm.h"
 #include "notify_ack_bfm.h"
 #include "pop_ack_bfm.h"
 #include "push_ack_bfm.h"
@@ -51,6 +52,8 @@ public:
     notify_ack_dst_bfm<> dut2Python_notify_ack_bfm;
     rdy_vld_src_bfm<p2s_message_st, sc_bv<64>> test_rdy_vld_bfm;
     rdy_vld_dst_bfm<p2s_message_st, sc_bv<64>> dut2Python_rdy_vld_bfm;
+    axi4_stream_src_bfm<p2s_message_st, axis_tid_st, axis_tdest_st, sc_bv<64>, sc_bv<8>, sc_bv<8>, sc_bv<8>, sc_bv<8>> test_axi4_stream_bfm;
+    axi4_stream_dst_bfm<p2s_message_st, axis_tid_st, axis_tdest_st, sc_bv<64>, sc_bv<8>, sc_bv<8>, sc_bv<8>, sc_bv<8>> dut2Python_axi4_stream_bfm;
 
     SC_HAS_PROCESS (pySocket_hdl_sc_wrapper);
 
@@ -70,6 +73,8 @@ public:
         dut2Python_notify_ack_bfm("dut2Python_notify_ack_bfm"),
         test_rdy_vld_bfm("test_rdy_vld_bfm"),
         dut2Python_rdy_vld_bfm("dut2Python_rdy_vld_bfm"),
+        test_axi4_stream_bfm("test_axi4_stream_bfm"),
+        dut2Python_axi4_stream_bfm("dut2Python_axi4_stream_bfm"),
         rst_n("rst_n", true),
         clk_half_(0.5, SC_NS)
     {
@@ -113,6 +118,24 @@ public:
         dut_hdl->dut2Python_rdy_vld_vld(dut2Python_rdy_vld_hdl_if.vld);
         dut_hdl->dut2Python_rdy_vld_data(dut2Python_rdy_vld_hdl_if.data);
         dut_hdl->dut2Python_rdy_vld_rdy(dut2Python_rdy_vld_hdl_if.rdy);
+        dut_hdl->test_axi4_stream_tvalid(test_axi4_stream_hdl_if.tvalid);
+        dut_hdl->test_axi4_stream_tready(test_axi4_stream_hdl_if.tready);
+        dut_hdl->test_axi4_stream_tdata(test_axi4_stream_hdl_if.tdata);
+        dut_hdl->test_axi4_stream_tstrb(test_axi4_stream_hdl_if.tstrb);
+        dut_hdl->test_axi4_stream_tkeep(test_axi4_stream_hdl_if.tkeep);
+        dut_hdl->test_axi4_stream_tlast(test_axi4_stream_hdl_if.tlast);
+        dut_hdl->test_axi4_stream_tid(test_axi4_stream_hdl_if.tid);
+        dut_hdl->test_axi4_stream_tdest(test_axi4_stream_hdl_if.tdest);
+        dut_hdl->test_axi4_stream_tuser(test_axi4_stream_hdl_if.tuser);
+        dut_hdl->dut2Python_axi4_stream_tvalid(dut2Python_axi4_stream_hdl_if.tvalid);
+        dut_hdl->dut2Python_axi4_stream_tready(dut2Python_axi4_stream_hdl_if.tready);
+        dut_hdl->dut2Python_axi4_stream_tdata(dut2Python_axi4_stream_hdl_if.tdata);
+        dut_hdl->dut2Python_axi4_stream_tstrb(dut2Python_axi4_stream_hdl_if.tstrb);
+        dut_hdl->dut2Python_axi4_stream_tkeep(dut2Python_axi4_stream_hdl_if.tkeep);
+        dut_hdl->dut2Python_axi4_stream_tlast(dut2Python_axi4_stream_hdl_if.tlast);
+        dut_hdl->dut2Python_axi4_stream_tid(dut2Python_axi4_stream_hdl_if.tid);
+        dut_hdl->dut2Python_axi4_stream_tdest(dut2Python_axi4_stream_hdl_if.tdest);
+        dut_hdl->dut2Python_axi4_stream_tuser(dut2Python_axi4_stream_hdl_if.tuser);
         dut_hdl->clk(clk);
         dut_hdl->rst_n(rst_n);
 
@@ -171,6 +194,16 @@ public:
         dut2Python_rdy_vld_bfm.clk(clk);
         dut2Python_rdy_vld_bfm.rst_n(rst_n);
 
+        test_axi4_stream_bfm.if_p(this->test_axi4_stream);
+        test_axi4_stream_bfm.hdl_if_p(test_axi4_stream_hdl_if);
+        test_axi4_stream_bfm.clk(clk);
+        test_axi4_stream_bfm.rst_n(rst_n);
+
+        dut2Python_axi4_stream_bfm.if_p(this->dut2Python_axi4_stream);
+        dut2Python_axi4_stream_bfm.hdl_if_p(dut2Python_axi4_stream_hdl_if);
+        dut2Python_axi4_stream_bfm.clk(clk);
+        dut2Python_axi4_stream_bfm.rst_n(rst_n);
+
         clk.write(true);
         SC_THREAD(clock_gen);
         SC_THREAD(reset_driver);
@@ -200,6 +233,8 @@ private:
     notify_ack_hdl_if<> dut2Python_notify_ack_hdl_if;
     rdy_vld_hdl_if<sc_bv<64>> test_rdy_vld_hdl_if;
     rdy_vld_hdl_if<sc_bv<64>> dut2Python_rdy_vld_hdl_if;
+    axi4_stream_hdl_if<sc_bv<64>, sc_bv<8>, sc_bv<8>, sc_bv<8>, sc_bv<8>> test_axi4_stream_hdl_if;
+    axi4_stream_hdl_if<sc_bv<64>, sc_bv<8>, sc_bv<8>, sc_bv<8>, sc_bv<8>> dut2Python_axi4_stream_hdl_if;
 
     sc_signal<bool> rst_n;
     sc_time clk_half_;

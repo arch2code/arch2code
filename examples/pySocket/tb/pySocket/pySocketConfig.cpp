@@ -179,6 +179,7 @@ public:
             "pythonPushPopTest",
             "pythonNotifyTest",
             "pythonRdyVldTest",
+            "pythonAxi4StreamTest",
             "systemC2PythonTest"
         });
 

@@ -50,6 +50,14 @@ void dutSocket::dut2Python_rdy_vldSocket(void) {
     port_socket(dut2Python_rdy_vld, "dut.dut2Python_rdy_vld");
 }
 
+void dutSocket::test_axi4_streamSocket(void) {
+    port_socket(test_axi4_stream, "dut.test_axi4_stream");
+}
+
+void dutSocket::dut2Python_axi4_streamSocket(void) {
+    port_socket(dut2Python_axi4_stream, "dut.dut2Python_axi4_stream");
+}
+
 dutSocket::dutSocket(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("dut", name(), bbMode)
@@ -69,6 +77,8 @@ dutSocket::dutSocket(sc_module_name blockName, const char * variant, blockBaseMo
     SC_THREAD(dut2Python_notify_ackSocket);
     SC_THREAD(test_rdy_vldSocket);
     SC_THREAD(dut2Python_rdy_vldSocket);
+    SC_THREAD(test_axi4_streamSocket);
+    SC_THREAD(dut2Python_axi4_streamSocket);
 
 // GENERATED_CODE_END
 }
