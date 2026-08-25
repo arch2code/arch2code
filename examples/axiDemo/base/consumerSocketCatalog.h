@@ -10,7 +10,7 @@
 
 namespace consumerSocketCatalog {
 
-inline constexpr std::array<const char *, 16> listen_names{{
+inline constexpr std::array<const char *, 18> listen_names{{
     "consumer.axiRd0",
     "consumer.axiRd1",
     "consumer.axiRd2",
@@ -19,6 +19,8 @@ inline constexpr std::array<const char *, 16> listen_names{{
     "consumer.axiWr1",
     "consumer.axiWr2",
     "consumer.axiWr3",
+    "consumer.axiStr0",
+    "consumer.axiStr1",
     "consumer.axiRd0_obs",
     "consumer.axiRd1_obs",
     "consumer.axiRd2_obs",

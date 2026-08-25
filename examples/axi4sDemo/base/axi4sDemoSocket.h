@@ -5,6 +5,7 @@
 // GENERATED_CODE_PARAM --block=axi4sDemo
 // GENERATED_CODE_BEGIN --template=socket --section=socket
 #include "logging.h"
+#include "axi4_stream_port_socket.h"
 #include "instanceFactory.h"
 import axi4sDemo.base;
 
@@ -26,6 +27,8 @@ public:
     ~axi4sDemoSocket() override = default;
 
 private:
+    void axis4_t1Socket(void);
+    void axis4_t2Socket(void);
 
 // GENERATED_CODE_END
 };

@@ -5,6 +5,7 @@
 // GENERATED_CODE_PARAM --block=consumer
 // GENERATED_CODE_BEGIN --template=socket --section=socket
 #include "logging.h"
+#include "axi4_stream_port_socket.h"
 #include "axi_read_port_socket.h"
 #include "axi_write_port_socket.h"
 #include "instanceFactory.h"
@@ -36,6 +37,8 @@ private:
     void axiWr1Socket(void);
     void axiWr2Socket(void);
     void axiWr3Socket(void);
+    void axiStr0Socket(void);
+    void axiStr1Socket(void);
 
 // GENERATED_CODE_END
 };

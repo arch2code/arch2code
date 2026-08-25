@@ -5,6 +5,8 @@
 // GENERATED_CODE_PARAM --block=producer
 // GENERATED_CODE_BEGIN --template=socket --section=socket
 #include "logging.h"
+#include "axi_read_port_socket.h"
+#include "axi_write_port_socket.h"
 #include "instanceFactory.h"
 import axiSocketSlave_producer.base;
 
@@ -26,6 +28,8 @@ public:
     ~producerSocket() override = default;
 
 private:
+    void axiRd0Socket(void);
+    void axiWr0Socket(void);
 
 // GENERATED_CODE_END
 };

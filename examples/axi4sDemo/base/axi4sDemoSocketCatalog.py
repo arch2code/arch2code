@@ -6,7 +6,7 @@ CATALOG = {
         "name": 'axi4sDemo.axis4_t1',
         "interfaceType": 'axi4_stream',
         "direction": 'dst',
-        "role": None,
+        "role": 'drive',
         "observeName": None,
     },
     'axis4_t2': {
@@ -14,12 +14,15 @@ CATALOG = {
         "name": 'axi4sDemo.axis4_t2',
         "interfaceType": 'axi4_stream',
         "direction": 'src',
-        "role": None,
+        "role": 'drive',
         "observeName": None,
     },
 }
 
-LISTEN_NAMES = ()
+LISTEN_NAMES = (
+    'axi4sDemo.axis4_t1',
+    'axi4sDemo.axis4_t2',
+)
 SYNC_NAMES = ()
 
 def required_names():

@@ -6,12 +6,14 @@ CATALOG = {
         "name": 'axi4s_m_drv.axis4_t1',
         "interfaceType": 'axi4_stream',
         "direction": 'src',
-        "role": None,
+        "role": 'drive',
         "observeName": None,
     },
 }
 
-LISTEN_NAMES = ()
+LISTEN_NAMES = (
+    'axi4s_m_drv.axis4_t1',
+)
 SYNC_NAMES = ()
 
 def required_names():

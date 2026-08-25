@@ -10,11 +10,20 @@
 
 namespace producerSocketCatalog {
 
-inline constexpr std::array<const char *, 0> listen_names{};
-inline constexpr std::array<const char *, 0> sync_names{};
+inline constexpr std::array<const char *, 4> listen_names{{
+    "producer.axiRd0",
+    "producer.axiWr0",
+    "producer.axiRd0_obs",
+    "producer.axiWr0_obs",
+}};
+inline constexpr std::array<const char *, 1> sync_names{{
+    PYSOCKET_SYNC_IFC,
+}};
 
 inline constexpr const char *name_axiRd0 = "producer.axiRd0";
+inline constexpr const char *observe_name_axiRd0 = "producer.axiRd0_obs";
 inline constexpr const char *name_axiWr0 = "producer.axiWr0";
+inline constexpr const char *observe_name_axiWr0 = "producer.axiWr0_obs";
 
 inline bool registerAll()
 {

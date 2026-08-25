@@ -10,7 +10,10 @@
 
 namespace hierVlDemoSocketCatalog {
 
-inline constexpr std::array<const char *, 0> listen_names{};
+inline constexpr std::array<const char *, 2> listen_names{{
+    "hierVlDemo.axis4_t1",
+    "hierVlDemo.axis4_t2",
+}};
 inline constexpr std::array<const char *, 0> sync_names{};
 
 inline constexpr const char *name_axis4_t1 = "hierVlDemo.axis4_t1";

@@ -10,7 +10,9 @@
 
 namespace axi4s_s_drvSocketCatalog {
 
-inline constexpr std::array<const char *, 0> listen_names{};
+inline constexpr std::array<const char *, 1> listen_names{{
+    "axi4s_s_drv.axis4_t2",
+}};
 inline constexpr std::array<const char *, 0> sync_names{};
 
 inline constexpr const char *name_axis4_t2 = "axi4s_s_drv.axis4_t2";

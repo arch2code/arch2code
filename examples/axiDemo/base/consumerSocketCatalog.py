@@ -70,7 +70,7 @@ CATALOG = {
         "name": 'consumer.axiStr0',
         "interfaceType": 'axi4_stream',
         "direction": 'dst',
-        "role": None,
+        "role": 'drive',
         "observeName": None,
     },
     'axiStr1': {
@@ -78,7 +78,7 @@ CATALOG = {
         "name": 'consumer.axiStr1',
         "interfaceType": 'axi4_stream',
         "direction": 'dst',
-        "role": None,
+        "role": 'drive',
         "observeName": None,
     },
 }
@@ -92,6 +92,8 @@ LISTEN_NAMES = (
     'consumer.axiWr1',
     'consumer.axiWr2',
     'consumer.axiWr3',
+    'consumer.axiStr0',
+    'consumer.axiStr1',
     'consumer.axiRd0_obs',
     'consumer.axiRd1_obs',
     'consumer.axiRd2_obs',

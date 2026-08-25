@@ -38,6 +38,14 @@ void consumerSocket::axiWr3Socket(void) {
     port_socket(axiWr3, "consumer.axiWr3");
 }
 
+void consumerSocket::axiStr0Socket(void) {
+    port_socket(axiStr0, "consumer.axiStr0");
+}
+
+void consumerSocket::axiStr1Socket(void) {
+    port_socket(axiStr1, "consumer.axiStr1");
+}
+
 consumerSocket::consumerSocket(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : sc_module(blockName)
         ,blockBase("consumer", name(), bbMode)
@@ -54,6 +62,8 @@ consumerSocket::consumerSocket(sc_module_name blockName, const char * variant, b
     SC_THREAD(axiWr1Socket);
     SC_THREAD(axiWr2Socket);
     SC_THREAD(axiWr3Socket);
+    SC_THREAD(axiStr0Socket);
+    SC_THREAD(axiStr1Socket);
 
 // GENERATED_CODE_END
 }
