@@ -1,0 +1,61 @@
+# note the types in this file should not be changed as they are used in the definition of the axi4 interface implementations
+
+types:
+  _axiIdT:
+    width: 4
+    desc: "Type for axi ID tags. Used for ARID, RID, AWID, BID."
+  _axiLenT:
+    width: 8
+    desc: "Exact number of transfers in a burst."
+  _axiSizeT:
+    width: 3
+    desc: "Bytes in transfer encoded 0=1, 1=2, 2=4, 3=8, 4=16, 5=32, 6=64, 7=128"
+  _axiResponseT:
+    width: 2
+    desc: "Response type for the AXI protocol"
+    enum:
+      - {enumName: AXIRESP_OKAY,    desc: OKAY,   value: 0 }
+      - {enumName: AXIRESP_EXOKAY,  desc: EXOKAY, value: 1 }
+      - {enumName: AXIRESP_SLVERR,  desc: SLVERR, value: 2 }
+      - {enumName: AXIRESP_DECERR,  desc: DECERR, value: 3 }
+  _axiBurstT:
+    width: 2
+    desc: "The burst type and the size information determine how the address for each transfer within the burst is calculated"
+    enum:
+      - {enumName: AXIBURST_FIXED,  desc: FIXED,  value: 0 }
+      - {enumName: AXIBURST_INCR,   desc: INCR,   value: 1 }
+      - {enumName: AXIBURST_WRAP,   desc: WRAP,   value: 2 }
+  _axiRdCacheT:
+    width: 4
+    desc: "Read Cache type for the AXI protocol"
+    enum:
+      - {enumName: AXIRDCACHE_NONBUFF, desc: Device Non-bufferable, value: 0 }
+      - {enumName: AXIRDCACHE_BUFF, desc: Device Bufferable, value: 1 }
+      - {enumName: AXIRDCACHE_NONCACHE_NONBUFF, desc: Normal Non-cacheable Non-bufferable, value: 2 }
+      - {enumName: AXIRDCACHE_NONCACHE_BUFF, desc: Normal Non-cacheable Bufferable, value: 3 }     
+      - {enumName: AXIRDCACHE_WRTHRU_NOALLOC, desc: Write-through No-allocate, value: 10}      
+      - {enumName: AXIRDCACHE_WRBACK_NOALLOC ,desc: Write-back No-allocate, value: 11 }
+      - {enumName: AXIRDCACHE_WRTHRU_RDALLOC, desc: Write-through Read-allocate, value: 14 }
+      - {enumName: AXIRDCACHE_WRBACK_RDALLOC ,desc: Write-back Read-allocate, value: 15 }
+  _axiWrCacheT:
+    width: 4
+    desc: "Read Cache type for the AXI protocol"
+    enum:
+      - {enumName: AXIWRCACHE_NONBUFF, desc: Device Non-bufferable, value: 0 }
+      - {enumName: AXIWRCACHE_BUFF, desc: Device Bufferable, value: 1 }
+      - {enumName: AXIWRCACHE_NONCACHE_NONBUFF, desc: Normal Non-cacheable Non-bufferable, value: 2 }
+      - {enumName: AXIWRCACHE_NONCACHE_BUFF, desc: Normal Non-cacheable Bufferable, value: 3 }     
+      - {enumName: AXIWRCACHE_WRTHRU_NOALLOC, desc: Write-through No-allocate, value: 6}      
+      - {enumName: AXIWRCACHE_WRBACK_NOALLOC ,desc: Write-back No-allocate, value: 7 }
+      - {enumName: AXIWRCACHE_WRTHRU_WRALLOC, desc: Write-through Write-allocate, value: 14 }
+      - {enumName: AXIWRCACHE_WRBACK_WRALLOC ,desc: Write-back Write-allocate, value: 15 }
+  _axiProtT:
+    width: 3
+    desc: "Protection type for the AXI protocol Bit 0 - Privileged, Bit 1 - Secure, Bit 2 - Data Access"
+  _axiQoST:
+    width: 4
+    desc: "QoS type for the AXI protocol"
+  _axiRegionT:
+    width: 4
+    desc: "Region type for the AXI protocol"
+ 

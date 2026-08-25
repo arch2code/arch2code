@@ -43,5 +43,6 @@ interface_defs:
       type : 'axi_write'
       multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
     socket:
+      src: { kind: drive, observe: true, lockstep: true }
       dst: { kind: drive, observe: true, lockstep: true }
 

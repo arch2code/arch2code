@@ -255,4 +255,136 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
     }
 }
 
+// axi_read_out: Python is AXI read master; shell drives SC AR/R toward the model slave.
+template <class A, class D>
+void port_socket(axi_read_out<A, D> &port, const std::string &interface_name)
+{
+    const int fd = socketFactory::getFd(interface_name);
+    if (fd < 0) {
+        return;
+    }
+
+    port->setCycleTransaction(PORTTYPE_OUT);
+
+    auto req_event = ThreadSafeEventFactory::newEvent((interface_name + "_axi_rd_req").c_str());
+    auto boundary_event = ThreadSafeEventFactory::newEvent((interface_name + "_axi_rd_boundary").c_str());
+    if (socketSyncLockstepEnabled()) {
+        socketSyncRegisterBoundaryEvent(boundary_event);
+        socketSyncRegisterBoundaryEvent(req_event);
+    }
+
+    std::mutex req_mutex;
+    std::queue<socket_axi_rd_req_st> req_queue;
+    auto running = std::make_shared<std::atomic<bool>>(true);
+
+    std::thread rx_thread([running, fd, &req_mutex, &req_queue, req_event, interface_name]() {
+        uint8_t msg_type = 0;
+        uint16_t len = 0;
+        socket_axi_rd_req_st recv_buf{};
+        while (running->load(std::memory_order_acquire)) {
+            if (!socket_recv_msg(fd, msg_type, &recv_buf, len, static_cast<uint16_t>(sizeof(recv_buf)))) {
+                running->store(false, std::memory_order_release);
+                socketFactory::notifyPeerClosed(interface_name);
+                break;
+            }
+            if (msg_type == MSG_SHUTDOWN) {
+                running->store(false, std::memory_order_release);
+                socketFactory::notifyPeerClosed(interface_name);
+                break;
+            }
+            if (msg_type == MSG_SYNC) {
+                continue;
+            }
+            if (msg_type == MSG_AXI_RD_REQ && len == sizeof(socket_axi_rd_req_st)) {
+                {
+                    std::lock_guard<std::mutex> lock(req_mutex);
+                    req_queue.push(recv_buf);
+                }
+                if (!socketSyncLockstepEnabled()) {
+                    req_event->notify();
+                } else if (socketSyncAtBoundary()) {
+                    req_event->notify();
+                }
+            }
+        }
+        running->store(false, std::memory_order_release);
+        req_event->notify();
+    });
+    socketFactory::registerThread(interface_name, std::move(rx_thread));
+
+    bool should_shutdown = false;
+    while (running->load(std::memory_order_acquire)) {
+        socket_axi_rd_req_st wire_req{};
+        bool have_req = false;
+        while (running->load(std::memory_order_acquire) && !have_req) {
+            if (!socketSyncRstN()) {
+                sc_core::wait(socketSyncRstNEvent());
+                continue;
+            }
+            while (socketSyncLockstepEnabled() && !socketSyncAtBoundary()) {
+                if (!socketSyncRstN()) {
+                    break;
+                }
+                sc_core::wait(boundary_event->default_event() | socketSyncRstNEvent());
+            }
+            if (!socketSyncRstN()) {
+                continue;
+            }
+            sc_core::wait(req_event->default_event() | socketSyncRstNEvent());
+            if (!socketSyncRstN()) {
+                continue;
+            }
+            {
+                std::lock_guard<std::mutex> lock(req_mutex);
+                if (!req_queue.empty()) {
+                    wire_req = std::move(req_queue.front());
+                    req_queue.pop();
+                    have_req = true;
+                }
+            }
+        }
+        if (!have_req) {
+            should_shutdown = true;
+            break;
+        }
+
+        socket_observe_axi_rd_req(interface_name, wire_req.arid, wire_req.araddr, wire_req.arlen,
+                                  wire_req.arsize, wire_req.arburst);
+
+        axiReadAddressSt<A> addr{};
+        addr.arid = static_cast<_axiIdT>(wire_req.arid);
+        addr.araddr.addr = wire_req.araddr;
+        addr.arlen = wire_req.arlen;
+        addr.arsize = static_cast<_axiSizeT>(wire_req.arsize);
+        addr.arburst = static_cast<_axiBurstT>(wire_req.arburst);
+        port->sendAddr(addr);
+
+        const int num_beats = static_cast<int>(wire_req.arlen) + 1;
+        const size_t beat_bytes = D::_byteWidth;
+        socket_axi_rd_resp_st wire_resp{};
+        wire_resp.rid = wire_req.arid;
+        wire_resp.rresp = 0;
+        for (int i = 0; i < num_beats; ++i) {
+            axiReadRespSt<D> resp{};
+            port->receiveDataCycle(resp);
+            if (i == 0) {
+                wire_resp.rid = static_cast<uint8_t>(resp.rid);
+                wire_resp.rresp = static_cast<uint8_t>(resp.rresp);
+            }
+            std::memcpy(&wire_resp.data[i * beat_bytes], &resp.rdata, beat_bytes);
+        }
+
+        socket_observe_axi_rd_resp(interface_name, wire_resp.rid, wire_resp.rresp, wire_resp.data);
+
+        if (!socket_send_msg(fd, MSG_AXI_RD_RESP, &wire_resp, static_cast<uint16_t>(sizeof(wire_resp)))) {
+            running->store(false, std::memory_order_release);
+            should_shutdown = true;
+            break;
+        }
+    }
+    if (should_shutdown) {
+        socketFactory::shutdownByName(interface_name);
+    }
+}
+
 #endif // AXI_READ_PORT_SOCKET_H
