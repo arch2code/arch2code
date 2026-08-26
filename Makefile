@@ -47,6 +47,10 @@ AXI_DIR = examples/axiDemo
 AXI_DOT_DB_FILE = $(AXI_DIR)/.axiDemo.db
 AXI_DB_FILE = $(AXI_DIR)/axiDemo.db
 
+AXISOCKET_MASTER_DIR = examples/axiSocketMaster
+AXISOCKET_SLAVE_DIR = examples/axiSocketSlave
+XIF_DIR = examples/xif
+
 JIRA_TABLE = $(DOC_PAGES_DIR)/jiraItems.adoc
 
 
@@ -147,6 +151,23 @@ pySocket:
 	make -C $(PYSOCKET_DIR)/rundir run
 	make -C $(PYSOCKET_DIR)/rtl lint -j
 
+.PHONY : axiSocketMaster
+# Python AXI master / SystemC memory slave over TCP sockets (model-only).
+axiSocketMaster:
+	make -C $(AXISOCKET_MASTER_DIR)/rundir -j all
+	make -C $(AXISOCKET_MASTER_DIR)/rundir run
+
+.PHONY : axiSocketSlave
+# SystemC AXI master / Python memory slave over TCP sockets (model-only).
+axiSocketSlave:
+	make -C $(AXISOCKET_SLAVE_DIR)/rundir -j all
+	make -C $(AXISOCKET_SLAVE_DIR)/rundir run
+
+.PHONY : xif
+xif:
+	make -C $(XIF_DIR)/rundir -j all
+	make -C $(XIF_DIR)/rundir run
+
 .PHONY : in-and-out
 # sim dropped: inAndOut stays a header-mode SV-generation / moduleSignalBlast
 # demo, whose SystemC sim cannot regenerate under this branch's cppm-default
@@ -215,6 +236,9 @@ clean :
 	make -C $(NESTED_DIR) clean
 	make -C $(HELLO_DIR) clean
 	make -C $(PYSOCKET_DIR) clean
+	make -C $(AXISOCKET_MASTER_DIR) clean
+	make -C $(AXISOCKET_SLAVE_DIR) clean
+	make -C $(XIF_DIR) clean
 	make -C $(APBDECODE_DIR) clean
 	make -C $(AXI_DIR) clean
 	make -C $(AXI4SDEMO_DIR) clean
@@ -233,6 +257,9 @@ newmodule-all:
 	make -C $(HELLO_DIR) -j newmodule && make -C $(HELLO_DIR) -j gen
 	make -C $(MIXED_DIR) -j newmodule && make -C $(MIXED_DIR) -j gen
 	make -C $(PYSOCKET_DIR) -j newmodule && make -C $(PYSOCKET_DIR) -j gen
+	make -C $(AXISOCKET_MASTER_DIR) -j newmodule && make -C $(AXISOCKET_MASTER_DIR) -j gen
+	make -C $(AXISOCKET_SLAVE_DIR) -j newmodule && make -C $(AXISOCKET_SLAVE_DIR) -j gen
+	make -C $(XIF_DIR) -j newmodule && make -C $(XIF_DIR) -j gen
 	make -C $(APBDECODE_DIR) -j newmodule && make -C $(APBDECODE_DIR) -j gen
 	make -C $(AXI_DIR) -j newmodule && make -C $(AXI_DIR) -j gen
 	make -C $(AXI4SDEMO_DIR) -j newmodule && make -C $(AXI4SDEMO_DIR) -j gen
@@ -248,7 +275,7 @@ unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket axiSocketMaster axiSocketSlave xif in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip
 push-test: clean unittest pipeline-test
 
 # AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).
