@@ -63,6 +63,7 @@ blocks:
     hasRtl: false
     hasMdl: true
     hasTb: true
+    hasSkt: true
 
 instances:
   axiSocketSlave_tb: {container: axiSocketSlave_tb, instanceType: axiSocketSlave_tb, instGroup: top}

@@ -1,14 +1,6 @@
 Makefile
 core/base/coreBase.cppm
-core/base/coreSocket.cpp
-core/base/coreSocket.h
-core/base/coreSocketCatalog.h
-core/base/coreSocketCatalog.py
 core/base/genBase.cppm
-core/base/genSocket.cpp
-core/base/genSocket.h
-core/base/genSocketCatalog.h
-core/base/genSocketCatalog.py
 core/fw/coreIncludesFW.cpp
 core/fw/coreIncludesFW.h
 core/model/core.cppm
@@ -24,10 +16,6 @@ core/tb/core/coreExternal.h
 core/tb/core/coreTestbench.cpp
 core/tb/core/coreTestbench.h
 leaf/base/leafBase.cppm
-leaf/base/leafSocket.cpp
-leaf/base/leafSocket.h
-leaf/base/leafSocketCatalog.h
-leaf/base/leafSocketCatalog.py
 leaf/model/leaf.cppm
 leaf/rtl/leaf.sv
 rtl/Makefile

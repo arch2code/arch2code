@@ -265,6 +265,7 @@ blocks:
   hasTb: optional(false)
   hasMdl: optional(true)
   hasRtl: optional(true)
+  hasSkt: optional(false)
   isRegHandler: optional(false) # this is used to indicate that this block handles registers
   mdlLeafNode: optional(false)
   dir: auto(blockDir)
