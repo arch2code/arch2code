@@ -105,11 +105,16 @@ YAML_FILES = $(A2C_YAML_FILES)
 SC_GEN_FILES =  $(wildcard $(A2C_SC_GEN_FILES)) $(wildcard $(EXTRA_SC_GEN_FILES))
 SC_GEN_DOT_FILES = $(SC_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 
+# Python catalogs share the SystemC gen path (%.scgen) but are not C++ hosts.
+# The PY recipe passes --python so the generator chooses the # delimiter.
+PY_GEN_FILES = $(wildcard $(A2C_PY_GEN_FILES))
+PY_GEN_DOT_FILES = $(PY_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
+
 SV_GEN_FILES =  $(wildcard $(A2C_SV_GEN_FILES)) $(wildcard $(A2C_RTL_DOT_F)) $(wildcard $(EXTRA_SV_GEN_FILES))
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
 ifndef SKIP_GEN
-GEN_DEPS = $(SC_GEN_DOT_FILES) $(SV_GEN_DOT_FILES)
+GEN_DEPS = $(SC_GEN_DOT_FILES) $(SV_GEN_DOT_FILES) $(PY_GEN_DOT_FILES)
 else
 $(warning "Forced skipping generation step (SKIP_GEN=1)")
 endif
@@ -137,8 +142,12 @@ $(A2C_SQLDB_FILE): $(YAML_FILES)
 	$(A2C_ROOT)/arch2code.py -y $(A2C_PRJ_YAML) --db $(A2C_SQLDB_FILE)
 	touch $(A2C_SQLDB_DOTFILE)
 
-$(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
+$(SC_GEN_DOT_FILES): $(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
 	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $<
+	@mkdir -p $(@D) && touch $@
+
+$(PY_GEN_DOT_FILES): $(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemc --file $< --python
 	@mkdir -p $(@D) && touch $@
 
 $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)

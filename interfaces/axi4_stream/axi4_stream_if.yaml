@@ -32,4 +32,7 @@ interface_defs:
     sc_channel :
       type : 'axi4_stream'
       multicycle_types : ['fixed_size', 'api_list_tracker', 'api_list_size']
+    socket:
+      src: { kind: drive }
+      dst: { kind: drive }
 

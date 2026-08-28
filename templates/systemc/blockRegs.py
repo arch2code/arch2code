@@ -97,6 +97,7 @@ def get_hwregs(prj, data):
                 "packedst_typename": 'typename ' if '<Config>' in datatype else '',
                 "size_rounded": roundup_multiple(effective_bytes, 4),
                 "size": inst['bytes'],
+                # "ro" : 'true' if ( inst['regType'] == 'ro' or port_type == 'external_reg_out' ) else 'false', # FIXME: consider changing this to a more general rule with property in interface definition
                 "ro" : 'true' if inst['regType'] == 'ro' else 'false',
                 "offset": const_name,
                 "offset_value": hex(inst['offset']),

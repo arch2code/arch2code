@@ -89,10 +89,7 @@ public:
     {
         Q_ASSERT_CTX(address < N, "", "Address out of range");
         uint32_t val;
-        if constexpr (RO)
-        {
-            m_val = (*m_port)->read();
-        }
+        m_val = (*m_port)->readNonBlocking();
         m_val_sc = m_val.sc_pack();
         val = (uint32_t) m_val_sc.range(8*address+31, 8*address).to_uint64();
         return val;
@@ -101,34 +98,22 @@ public:
     {
         if constexpr (RO)
         {
-            Q_ASSERT_CTX(false, "", "Attempt to write to read-only register");
+            // Match typical APB regs RTL: writes to RO registers are ignored
+            // (ACK with no state change). Do not abort the simulation.
+            (void)address;
+            (void)val;
+            return;
         } else {
             Q_ASSERT_CTX(address < N, "", "Address out of range");
+            // Assemble APB 32-bit words into m_val; issue one command on the last word.
             m_val_sc = m_val.sc_pack();
             m_val_sc.range(8*address+31, 8*address) = val;
             m_val.sc_unpack(m_val_sc);
             if (address == (N-4))
             {
-                (*m_port)->write(m_val);
+                // Command only: do not clobber the APB read mirror (busy-lock / W1C).
+                (*m_port)->reg_write_cmd(m_val);
             }
-        }
-    }
-    REG_DATA read(void)
-    {
-        if constexpr (RO)
-        {
-            m_val = (*m_port)->read();
-        }
-        return m_val;
-    }
-    void write(REG_DATA val)
-    {
-        if constexpr (RO)
-        {
-            Q_ASSERT_CTX(false, "", "Attempt to write to read-only register");
-        } else {
-            m_val = val;
-            (*m_port)->write(m_val);
         }
     }
     void copy(REG_DATA& to)

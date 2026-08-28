@@ -48,6 +48,13 @@ class status_out_if
 public:
     // non-blocking
     virtual void write( const T& val_ ) = 0;
+    virtual void reg_write( const T& val_ ) = 0; // triggers event to reader
+    // CPU write command: update value and notify blocking readers (status has
+    // no separate APB mirror; parallels external_reg::reg_write_cmd notify).
+    virtual void reg_write_cmd( const T& val_ ) = 0;
+    // non-blocking variant
+    virtual void readNonBlocking( T& ) = 0;
+    virtual T readNonBlocking() = 0;
 
 protected:
     // constructor
@@ -108,6 +115,8 @@ public:
     }
     // non-blocking variant
     virtual void write( const T& val_ ) override;
+    virtual void reg_write( const T& val_ ) override;
+    virtual void reg_write_cmd( const T& val_ ) override;
     // other methods
     operator T ()
         { return read(); }
@@ -211,6 +220,22 @@ inline void status_channel<T>::write( const T& val_ )
     m_channel_update_event_ptr->notify(SC_ZERO_TIME);
 }
 
+template <class T>
+inline void status_channel<T>::reg_write( const T& val_ )
+{
+    m_value = val_;
+    interfaceBase::delay(false);
+    //m_reg_write_event.notify(SC_ZERO_TIME);
+}
+
+template <class T>
+inline void status_channel<T>::reg_write_cmd( const T& val_ )
+{
+    m_value_written = true;
+    m_value = val_;
+    interfaceBase::delay(false);
+    m_channel_update_event_ptr->notify(SC_ZERO_TIME);
+}
 
 // non-blocking read
 template <class T>

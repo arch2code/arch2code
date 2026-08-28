@@ -24,6 +24,7 @@ namespace fw_ns {
 // types
 typedef uint32_t param_t; // [32] Parameter type
 typedef uint16_t word16_t; // [16] Parameter type
+typedef uint8_t axis_id_t; // [8] AXI4-Stream TID/TDEST width
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=enums
@@ -130,6 +131,52 @@ struct p2s_response_st {
     explicit p2s_response_st(
         param_t response_) :
         response(response_)
+    {}
+
+};
+struct axis_tid_st {
+    axis_id_t id; //Stream TID
+
+    axis_tid_st() { memset(this, 0, sizeof(axis_tid_st)); }
+
+    static constexpr uint16_t _bitWidth = 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint8_t _packedSt;
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, axis_tid_st::_byteWidth);
+        _ret = id;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        id = (axis_id_t)((_src));
+    }
+    explicit axis_tid_st(
+        axis_id_t id_) :
+        id(id_)
+    {}
+
+};
+struct axis_tdest_st {
+    axis_id_t id; //Stream TDEST
+
+    axis_tdest_st() { memset(this, 0, sizeof(axis_tdest_st)); }
+
+    static constexpr uint16_t _bitWidth = 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint8_t _packedSt;
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, axis_tdest_st::_byteWidth);
+        _ret = id;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        id = (axis_id_t)((_src));
+    }
+    explicit axis_tdest_st(
+        axis_id_t id_) :
+        id(id_)
     {}
 
 };

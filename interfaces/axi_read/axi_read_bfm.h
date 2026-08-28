@@ -7,6 +7,8 @@
 #include "axi_read_channel.h"
 #include "optionalPayload.h"
 
+#include <mutex>
+
 // The ARUSER and RUSER sidebands are optional, so both of each one's template
 // arguments sit in the argument tail: the payload type (ARU, RU) and the
 // Verilated bridge type (VL_ARUSER_T, VL_RUSER_T). Each user signal is a real
@@ -75,7 +77,17 @@ public:
             hdl_if_p->arready = m_chnl->m_addr_out->get_rdy();
             while (!(hdl_if_p->arvalid && hdl_if_p->arready)) {
                 wait(clk.posedge_event());
+                if (!rst_n.read()) {
+                    hdl_if_p->arready = 0;
+                    while (!rst_n.read()) {
+                        wait(clk.posedge_event());
+                    }
+                    break;
+                }
                 hdl_if_p->arready = m_chnl->m_addr_out->get_rdy();
+            }
+            if (!rst_n.read() || !(hdl_if_p->arvalid && hdl_if_p->arready)) {
+                continue;
             }
             ar_data.arid = (_axiIdT) hdl_if_p->arid.read().to_uint();
             ar_data.araddr.sc_unpack(hdl_if_p->araddr);
@@ -83,6 +95,10 @@ public:
             ar_data.arsize = (_axiSizeT) hdl_if_p->arsize.read().to_uint();
             ar_data.arburst = (_axiBurstT) hdl_if_p->arburst.read().to_uint();
             if constexpr (hasOptionalPayload<ARU>) { ar_data.user.sc_unpack(hdl_if_p->aruser); }
+            {
+                std::lock_guard<std::mutex> lock(m_pending_mutex);
+                m_pending_r_beats = static_cast<int>(ar_data.arlen) + 1;
+            }
             if_p->sendAddr(ar_data);
             wait(clk.posedge_event());
         }
@@ -99,6 +115,23 @@ public:
             hdl_if_p->rlast = 0;
             if constexpr (hasOptionalPayload<RU>) { hdl_if_p->ruser = VL_RUSER_T(0); }
             if_p->receiveDataCycle(r_data);
+            {
+                std::lock_guard<std::mutex> lock(m_pending_mutex);
+                if (m_pending_r_beats > 0) {
+                    --m_pending_r_beats;
+                }
+            }
+            // During ARESETn the port_socket drains outstanding AR with dummy
+            // beats. Still drive them onto the wire (DUT ignores while reset)
+            // so channel beat counts stay aligned; drop RVALID if reset.
+            if (!rst_n.read()) {
+                hdl_if_p->rvalid = 0;
+                if (r_data.rlast) {
+                    std::lock_guard<std::mutex> lock(m_pending_mutex);
+                    m_pending_r_beats = 0;
+                }
+                continue;
+            }
             hdl_if_p->rvalid = 1;
             hdl_if_p->rid = r_data.rid;
             hdl_if_p->rdata = r_data.rdata.sc_pack();
@@ -107,6 +140,14 @@ public:
             if constexpr (hasOptionalPayload<RU>) { hdl_if_p->ruser = r_data.user.sc_pack(); }
             do {
                 wait(clk.posedge_event());
+                if (!rst_n.read()) {
+                    hdl_if_p->rvalid = 0;
+                    {
+                        std::lock_guard<std::mutex> lock(m_pending_mutex);
+                        m_pending_r_beats = 0;
+                    }
+                    break;
+                }
             } while (!hdl_if_p->rready);
         }
     }
@@ -114,6 +155,8 @@ public:
 private:
 
     axi_read_channel<ADDR_T, DATA_T, ARU, RU> * m_chnl;
+    std::mutex m_pending_mutex;
+    int m_pending_r_beats = 0;
 
 };
 

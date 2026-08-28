@@ -19,6 +19,7 @@ using namespace mixed_ns;
 #include "rdy_vld_bfm.h"
 #include "status_bfm.h"
 
+#include "socketSync.h"
 template <typename DUT_T, typename Config>
 class blockF_hdl_sc_wrapper: public sc_module, public blockBase, public blockFBase<Config> {
 
@@ -26,7 +27,7 @@ public:
 
     DUT_T *dut_hdl;
 
-    sc_clock clk;
+    sc_signal<bool> clk;
 
     rdy_vld_src_bfm<seeSt, sc_bv<5>> cStuffIf_bfm;
     rdy_vld_dst_bfm<dSt, sc_bv<7>> dStuffIf_bfm;
@@ -43,13 +44,14 @@ public:
         sc_module(modulename),
         blockBase("blockF_hdl_sc_wrapper", name(), bbMode),
         blockFBase<Config>(name(), variant),
-        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
+        clk("clk"),
         cStuffIf_bfm("cStuffIf_bfm"),
         dStuffIf_bfm("dStuffIf_bfm"),
         dSin_bfm("dSin_bfm"),
         dSout_bfm("dSout_bfm"),
         rwD_bfm("rwD_bfm"),
-        rst_n(0)
+        rst_n("rst_n", true),
+        clk_half_(0.5, SC_NS)
     {
         dut_hdl = new DUT_T("dut_hdl");
 
@@ -94,6 +96,8 @@ public:
         rwD_bfm.clk(clk);
         rwD_bfm.rst_n(rst_n);
 
+        clk.write(true);
+        SC_THREAD(clock_gen);
         SC_THREAD(reset_driver);
 
         end_ctor_init();
@@ -117,10 +121,41 @@ private:
     status_hdl_if<sc_bv<7>> rwD_hdl_if;
 
     sc_signal<bool> rst_n;
+    sc_time clk_half_;
+
+    void clock_gen() {
+        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
+        // owns timed waits; we only toggle when an edge is requested.
+        while (true) {
+            if (socketSyncTimeGated()) {
+                socketSyncWaitClockEdge();
+                clk.write(!clk.read());
+            } else {
+                wait(clk_half_);
+                clk.write(!clk.read());
+            }
+        }
+    }
 
     void reset_driver() {
-        wait(5, SC_NS);
-        rst_n = true;
+        // rst_n starts deasserted so the first write(false) is a negedge.
+        // Verilator async reset (@(negedge rst_n)) does not run if the pin
+        // is born low and only later rises.
+        // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
+        // Do not wait on clk — gated lockstep deadlocks before the first quantum.
+        // Only when pysocket_sync is connected; otherwise no partner releases rst_n.
+        // Free-run / non-socket: assert, hold, then release.
+        if (socketSyncLockstepActive()) {
+            rst_n.write(socketSyncRstN());
+            while (true) {
+                wait(socketSyncRstNEvent());
+                rst_n.write(socketSyncRstN());
+            }
+        } else {
+            rst_n.write(false);
+            wait(5, SC_NS);
+            rst_n.write(true);
+        }
     }
 
 // GENERATED_CODE_END

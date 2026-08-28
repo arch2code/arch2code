@@ -26,6 +26,7 @@ export namespace pySocket_tb_ns {
 // types
 typedef uint32_t param_t; // [32] Parameter type
 typedef uint16_t word16_t; // [16] Parameter type
+typedef uint8_t axis_id_t; // [8] AXI4-Stream TID/TDEST width
 
 } // namespace pySocket_tb_ns
 // GENERATED_CODE_END
@@ -250,6 +251,116 @@ struct p2s_response_st {
     explicit p2s_response_st(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+struct axis_tid_st {
+    axis_id_t id; //Stream TID
+
+    axis_tid_st() {}
+
+    static constexpr uint16_t _bitWidth = 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint8_t _packedSt;
+    inline bool operator == (const axis_tid_st & rhs) const {
+        bool ret = true;
+        ret = ret && (id == rhs.id);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const axis_tid_st & v, const std::string & NAME ) {
+        sc_trace(tf,v.id, NAME + ".id");
+    }
+    inline friend ostream& operator << ( ostream& os,  axis_tid_st const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("id:0x{:02x}",
+           (uint64_t) id
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, axis_tid_st::_byteWidth);
+        _ret = id;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        id = (axis_id_t)((_src));
+    }
+    inline sc_bv<axis_tid_st::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<axis_tid_st::_bitWidth> packed_data;
+        packed_data.range(7, 0) = id;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<axis_tid_st::_bitWidth> packed_data)
+    {
+        id = (axis_id_t) packed_data.range(7, 0).to_uint64();
+    }
+    explicit axis_tid_st(sc_bv<axis_tid_st::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit axis_tid_st(
+        axis_id_t id_) :
+        id(id_)
+    {}
+    explicit axis_tid_st(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
+struct axis_tdest_st {
+    axis_id_t id; //Stream TDEST
+
+    axis_tdest_st() {}
+
+    static constexpr uint16_t _bitWidth = 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint8_t _packedSt;
+    inline bool operator == (const axis_tdest_st & rhs) const {
+        bool ret = true;
+        ret = ret && (id == rhs.id);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const axis_tdest_st & v, const std::string & NAME ) {
+        sc_trace(tf,v.id, NAME + ".id");
+    }
+    inline friend ostream& operator << ( ostream& os,  axis_tdest_st const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("id:0x{:02x}",
+           (uint64_t) id
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, axis_tdest_st::_byteWidth);
+        _ret = id;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        id = (axis_id_t)((_src));
+    }
+    inline sc_bv<axis_tdest_st::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<axis_tdest_st::_bitWidth> packed_data;
+        packed_data.range(7, 0) = id;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<axis_tdest_st::_bitWidth> packed_data)
+    {
+        id = (axis_id_t) packed_data.range(7, 0).to_uint64();
+    }
+    explicit axis_tdest_st(sc_bv<axis_tdest_st::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit axis_tdest_st(
+        axis_id_t id_) :
+        id(id_)
+    {}
+    explicit axis_tdest_st(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
 } // namespace pySocket_tb_ns
 
 // GENERATED_CODE_END
@@ -319,6 +430,8 @@ void test_pySocket_tb_structs::test(void) {
     roundTrip<message_header_st>("message_header_st", patterns);
     roundTrip<p2s_message_st>("p2s_message_st", patterns);
     roundTrip<p2s_response_st>("p2s_response_st", patterns);
+    roundTrip<axis_tid_st>("axis_tid_st", patterns);
+    roundTrip<axis_tdest_st>("axis_tdest_st", patterns);
 }
 } // namespace pySocket_tb_test_ns
 

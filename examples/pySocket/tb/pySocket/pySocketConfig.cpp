@@ -13,6 +13,7 @@
 #include "socketFactory.h"
 #include "socketTransport.h"
 #include "testBenchConfigFactory.h"
+#include "pySocketSocketCatalog.h"
 import a2c.endOfTest;
 #include "testController.h"
 
@@ -93,15 +94,7 @@ public:
 
         std::shared_ptr<blockBase> tb = instanceFactory::createInstance("", "pySocket_tb", "pySocket_tb", "", "pySocket");
 
-        if (socketFactory::registerInterface("test_req_ack") == 0) {
-            return false;
-        }
-        if (socketFactory::registerInterface("test2Python_req_ack") == 0) {
-            socketFactory::shutdownAll();
-            return false;
-        }
-        if (socketFactory::registerInterface("dut2Python_req_ack") == 0) {
-            socketFactory::shutdownAll();
+        if (!pySocketSocketCatalog::registerAll()) {
             return false;
         }
 
@@ -169,10 +162,11 @@ public:
 
         socketFactory::acceptAll();
 
-        if (socketFactory::getFd("test_req_ack") < 0 || socketFactory::getFd("test2Python_req_ack") < 0
-            || socketFactory::getFd("dut2Python_req_ack") < 0) {
-            socketFactory::shutdownAll();
-            return false;
+        for (const char *ifc : pySocketSocketCatalog::listen_names) {
+            if (socketFactory::getFd(ifc) < 0) {
+                socketFactory::shutdownAll();
+                return false;
+            }
         }
 
         // Remove the ports file if it exists since we have already connected
@@ -182,6 +176,10 @@ public:
         testController &controller = testController::GetInstance();
         controller.set_test_names({
             "python2SystemCTest",
+            "pythonPushPopTest",
+            "pythonNotifyTest",
+            "pythonRdyVldTest",
+            "pythonAxi4StreamTest",
             "systemC2PythonTest"
         });
 
@@ -204,12 +202,7 @@ public:
         // m_outstanding_completions inconsistent with threads that already registered.
 
         // Release Python sidecar to send transactions only after enumeration and startup barrier.
-        for (const char *ifc : {"test_req_ack", "test2Python_req_ack", "dut2Python_req_ack"}) {
-            const int fd = socketFactory::getFd(ifc);
-            if (fd < 0 || !socket_send_msg(fd, MSG_SYNC, nullptr, 0)) {
-                return;
-            }
-        }
+        (void)pySocketSocketCatalog::handshakeAll();
     }
 
     void final(void) override

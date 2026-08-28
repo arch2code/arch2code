@@ -24,3 +24,5 @@ interface_defs:
     sc_channel :
       type : 'apb'
       multicycle_types : []
+    socket:
+      src: { kind: drive, observe: true, lockstep: true }

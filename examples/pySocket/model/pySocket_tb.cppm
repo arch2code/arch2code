@@ -9,6 +9,11 @@ module;
 #include "q_assert.h"
 #include <algorithm>
 #include "instanceFactory.h"
+#include "axi4_stream_channel.h"
+#include "notify_ack_channel.h"
+#include "pop_ack_channel.h"
+#include "push_ack_channel.h"
+#include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 // GENERATED_CODE_END
 // user #includes here
@@ -34,6 +39,26 @@ public:
     req_ack_channel< p2s_message_st, p2s_response_st > test2Python_req_ack;
     // Req Ack Dut2Python interface
     req_ack_channel< p2s_message_st, p2s_response_st > dut2Python_req_ack;
+    // Python-initiated push into the DUT
+    push_ack_channel< p2s_message_st > test_push_ack;
+    // Python-initiated pop of data derived from the last push
+    pop_ack_channel< p2s_response_st > test_pop_ack;
+    // DUT-initiated push into Python
+    push_ack_channel< p2s_message_st > dut2Python_push_ack;
+    // DUT-initiated pop of data derived from the DUT push
+    pop_ack_channel< p2s_response_st > dut2Python_pop_ack;
+    // Python-initiated notify into the DUT
+    notify_ack_channel< > test_notify_ack;
+    // DUT-initiated notify into Python
+    notify_ack_channel< > dut2Python_notify_ack;
+    // Python-initiated rdy_vld write into the DUT
+    rdy_vld_channel< p2s_message_st > test_rdy_vld;
+    // DUT-initiated rdy_vld write into Python
+    rdy_vld_channel< p2s_message_st > dut2Python_rdy_vld;
+    // Python-initiated AXI4-Stream into the DUT
+    axi4_stream_channel< p2s_message_st, axis_tid_st, axis_tdest_st > test_axi4_stream;
+    // DUT-initiated AXI4-Stream into Python
+    axi4_stream_channel< p2s_message_st, axis_tid_st, axis_tdest_st > dut2Python_axi4_stream;
 
     //instances contained in block
     std::shared_ptr<pySocketBase> u_pySocket;
@@ -67,6 +92,16 @@ pySocket_tb::pySocket_tb(sc_module_name blockName, const char * variant, blockBa
         ,test_req_ack("dut_test_req_ack", "pySocket")
         ,test2Python_req_ack("dut_test2Python_req_ack", "pySocket")
         ,dut2Python_req_ack("pySocket_dut2Python_req_ack", "dut")
+        ,test_push_ack("dut_test_push_ack", "pySocket")
+        ,test_pop_ack("dut_test_pop_ack", "pySocket")
+        ,dut2Python_push_ack("pySocket_dut2Python_push_ack", "dut")
+        ,dut2Python_pop_ack("pySocket_dut2Python_pop_ack", "dut")
+        ,test_notify_ack("dut_test_notify_ack", "pySocket")
+        ,dut2Python_notify_ack("pySocket_dut2Python_notify_ack", "dut")
+        ,test_rdy_vld("dut_test_rdy_vld", "pySocket")
+        ,dut2Python_rdy_vld("pySocket_dut2Python_rdy_vld", "dut")
+        ,test_axi4_stream("dut_test_axi4_stream", "pySocket", "api_list_size", 16, "")
+        ,dut2Python_axi4_stream("pySocket_dut2Python_axi4_stream", "dut", "api_list_size", 16, "")
         ,u_pySocket(std::dynamic_pointer_cast<pySocketBase>(instanceFactory::createInstance(name(), "u_pySocket", "pySocket", "", "pySocket")))
         ,u_dut(std::dynamic_pointer_cast<dutBase>(instanceFactory::createInstance(name(), "u_dut", "dut", "", "pySocket")))
 // GENERATED_CODE_END
@@ -79,6 +114,26 @@ pySocket_tb::pySocket_tb(sc_module_name blockName, const char * variant, blockBa
     u_dut->test2Python_req_ack(test2Python_req_ack);
     u_dut->dut2Python_req_ack(dut2Python_req_ack);
     u_pySocket->dut2Python_req_ack(dut2Python_req_ack);
+    u_pySocket->test_push_ack(test_push_ack);
+    u_dut->test_push_ack(test_push_ack);
+    u_pySocket->test_pop_ack(test_pop_ack);
+    u_dut->test_pop_ack(test_pop_ack);
+    u_dut->dut2Python_push_ack(dut2Python_push_ack);
+    u_pySocket->dut2Python_push_ack(dut2Python_push_ack);
+    u_dut->dut2Python_pop_ack(dut2Python_pop_ack);
+    u_pySocket->dut2Python_pop_ack(dut2Python_pop_ack);
+    u_pySocket->test_notify_ack(test_notify_ack);
+    u_dut->test_notify_ack(test_notify_ack);
+    u_dut->dut2Python_notify_ack(dut2Python_notify_ack);
+    u_pySocket->dut2Python_notify_ack(dut2Python_notify_ack);
+    u_pySocket->test_rdy_vld(test_rdy_vld);
+    u_dut->test_rdy_vld(test_rdy_vld);
+    u_dut->dut2Python_rdy_vld(dut2Python_rdy_vld);
+    u_pySocket->dut2Python_rdy_vld(dut2Python_rdy_vld);
+    u_pySocket->test_axi4_stream(test_axi4_stream);
+    u_dut->test_axi4_stream(test_axi4_stream);
+    u_dut->dut2Python_axi4_stream(dut2Python_axi4_stream);
+    u_pySocket->dut2Python_axi4_stream(dut2Python_axi4_stream);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
 };
