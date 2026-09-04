@@ -19,6 +19,12 @@ struct _ip_top_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_top_hdl_sc_wrapper>(blockName, variant, bbMode));
             },
             "", "ip_test");
+        instanceFactory::registerBlock(
+            "ip_top_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_top_hdl_sc_wrapper>(blockName, variant, bbMode));
+            },
+            "", "ip_test");
     }
 };
 static _ip_top_vl_registrar _ip_top_vl_registrar_instance;

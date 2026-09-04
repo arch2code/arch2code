@@ -46,14 +46,13 @@ def foreignConfig(args, prj, data):
     out.append("")
     out.append(f'export module {moduleName};')
     out.append("")
-    # getForeignConfigData yields only canonical descriptors (duplicateOf is
-    # None) whose struct name is unique, so each struct is emitted exactly once.
-    # The name is spelled here in the template layer from the descriptor's
-    # neutral (project, block, variant) components. Each struct is exported so a
-    # module consumer can name it unqualified, exactly as the header form did.
+    # One descriptor per declared variant, each with a unique struct name. The
+    # name is spelled here in the template layer from the descriptor's neutral
+    # (project, block, variant) components. Each struct is exported so a module
+    # consumer can name it unqualified, exactly as the header form did.
     for desc in descriptors:
         structName = cpp_variant_config_name(desc['declaringProject'], desc['block'],
-                                             desc['emitVariant'], desc['isForeign'])
+                                             desc['variant'], desc['isForeign'])
         out.extend(_descriptorStructOpen(desc, structName, export=True))
         out.extend(_descriptorMemberLines(prj, desc, constants_by_name,
                                           block_param_synthetic))
@@ -175,9 +174,8 @@ def includeConfig(args, prj, data):
         out.append(f"    static constexpr {type_str} {value['constant']} = {rhs};")
     out.append("};")
     out.append("")
-    # Per-variant Config structs. Variant labels and resolved values come
-    # from the context view; intra-block dedup (duplicateOf) folds byte-
-    # identical variants onto a single canonical struct.
+    # Per-variant Config structs, one per declared variant. Variant labels and
+    # resolved values come from the context view.
     # Seed with the legacy context-stem default name: a block whose own
     # default-variant config resolves to `<contextStem>DefaultConfig` (block
     # name == YAML file stem) names the same struct already emitted above, so
@@ -185,14 +183,10 @@ def includeConfig(args, prj, data):
     seen_struct_names = {configName}
     for entry in variant_entries:
         desc = entry['descriptor']
-        if desc['duplicateOf'] is not None:
-            continue
         if not desc['values']:
             continue
-        # Canonical, non-empty descriptor: spell its struct name in the template
-        # layer from the neutral components.
         structName = cpp_variant_config_name(desc['declaringProject'], desc['block'],
-                                             desc['emitVariant'], desc['isForeign'])
+                                             desc['variant'], desc['isForeign'])
         if structName in seen_struct_names:
             continue
         seen_struct_names.add(structName)

@@ -212,7 +212,7 @@ interfaces:
   isParameterizable: auto(intfIsParameterizable)
 
 instances:
-  _attribs: [flat]
+  _attribs: [flat, post(validateInstanceParameterBinding)]
   instance: key
   instanceType:
     _type: required

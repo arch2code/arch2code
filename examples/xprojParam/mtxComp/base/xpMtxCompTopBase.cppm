@@ -17,7 +17,7 @@ public:
     virtual ~xpMtxCompTopBase() = default;
 
 
-    xpMtxCompTopBase(std::string name, const char * variant) 
+    xpMtxCompTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -32,7 +32,7 @@ export class xpMtxCompTopInverted : public virtual blockPortBase
 public:
 
 
-    xpMtxCompTopInverted(std::string name) 
+    xpMtxCompTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -47,7 +47,7 @@ export class xpMtxCompTopChannels
 public:
 
 
-    xpMtxCompTopChannels(std::string name, std::string srcName) 
+    xpMtxCompTopChannels(std::string name, std::string srcName)
     {};
     void bind( xpMtxCompTopBase *a, xpMtxCompTopInverted *b)
     {

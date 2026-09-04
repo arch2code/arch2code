@@ -21,7 +21,7 @@ public:
     virtual ~xpCstBindWrapBase() = default;
 
 
-    xpCstBindWrapBase(std::string name, const char * variant) 
+    xpCstBindWrapBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -36,7 +36,7 @@ export class xpCstBindWrapInverted : public virtual blockPortBase
 public:
 
 
-    xpCstBindWrapInverted(std::string name) 
+    xpCstBindWrapInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -51,7 +51,7 @@ export class xpCstBindWrapChannels
 public:
 
 
-    xpCstBindWrapChannels(std::string name, std::string srcName) 
+    xpCstBindWrapChannels(std::string name, std::string srcName)
     {};
     void bind( xpCstBindWrapBase *a, xpCstBindWrapInverted *b)
     {

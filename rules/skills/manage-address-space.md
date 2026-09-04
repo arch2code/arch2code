@@ -101,18 +101,6 @@ hand-create a top-level decoder.
         params: [IP_MEM_DEPTH, IP_NONCONST_DEPTH]
 
     memories:
-      - memory: ip_mem
-        block: ip
-        structure: ip_data_st
-        addressStruct: ip_mem_addr_st
-        wordLines: IP_MEM_DEPTH   # Address sizing uses maxValue=32
-        regAccess: true
-        desc: "Parameterized memory"
-      - memory: ip_variant_mem
-        block: ip
-        structure: ip_data_st
-        addressStruct: ip_mem_addr_st
-        wordLines: IP_NONCONST_DEPTH  # Uses max variant binding
-        regAccess: true
-        desc: "Pure block-param memory depth"
+      - {memory: ip_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_MEM_DEPTH, regAccess: true, desc: "Parameterized memory"}  # Address sizing uses maxValue=32
+      - {memory: ip_variant_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_NONCONST_DEPTH, regAccess: true, desc: "Pure block-param memory depth"}  # Uses max variant binding
     ```

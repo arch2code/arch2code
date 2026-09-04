@@ -218,9 +218,17 @@ def constructorInit(args, prj, data):
         # here, so the container names that class as an explicit template argument
         # of createInstance.
         implArg = intf_gen_utils.cpp_container_typed_instance_arg(value)
+        # A child typed by this container's Config is a different C++ type under
+        # each of the container's variants, so the key it resolves has to carry
+        # the container's label rather than its own empty one. This container's
+        # own ctor argument is that label at runtime. Only a verilated or tandem
+        # site consults it; the model comes from implArg above.
+        variantArg = 'variant' \
+            if value['instanceConfigSelection']['forwardsContainerVariant'] \
+            else f'"{value["variant"]}"'
         createCall = (
             f'instanceFactory::createInstance{implArg}(name(), "{value["instance"]}", '
-            f'"{value["instanceType"]}", "{value["variant"]}", "{projectName}")'
+            f'"{value["instanceType"]}", {variantArg}, "{projectName}")'
         )
         out.append(
             f'        ,{ value["instance"] }(std::dynamic_pointer_cast'

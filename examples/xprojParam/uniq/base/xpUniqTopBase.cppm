@@ -25,7 +25,7 @@ public:
     virtual ~xpUniqTopBase() = default;
 
 
-    xpUniqTopBase(std::string name, const char * variant) 
+    xpUniqTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -40,7 +40,7 @@ export class xpUniqTopInverted : public virtual blockPortBase
 public:
 
 
-    xpUniqTopInverted(std::string name) 
+    xpUniqTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -55,7 +55,7 @@ export class xpUniqTopChannels
 public:
 
 
-    xpUniqTopChannels(std::string name, std::string srcName) 
+    xpUniqTopChannels(std::string name, std::string srcName)
     {};
     void bind( xpUniqTopBase *a, xpUniqTopInverted *b)
     {

@@ -67,12 +67,15 @@ blocks:
 instances:
   uTop: {{ container: top, instanceType: top }}
   uTarget: {{ container: top, instanceType: targetBlock, variant: wide }}
-  uOther: {{ container: top, instanceType: otherBlock }}
+  uOther: {{ container: top, instanceType: otherBlock, variant: narrow }}
 
 parameters:
   targetBlock:
     wide:
       WIDTH: 13
+  otherBlock:
+    narrow:
+      WIDTH: 7
 """
     arch_path = _write_temp(arch_yaml, '.yaml', 'param_ident_arch_')
     project_yaml = f"""projectName: parameter_variant_identity_test

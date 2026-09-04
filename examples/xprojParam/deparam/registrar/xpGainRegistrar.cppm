@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpGainVariantConfig.h"
 
-export module xpDeparam.xpDeparamTop.xpGain.registrar;
+export module xpDeparam.xpGain.registrar;
 import xpGain.block;
 
 namespace {
@@ -18,7 +18,13 @@ struct _xpGain_registrar {
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpGain<xpGainV0Config>>(blockName, variant, bbMode));
             },
-            "v0", "xpDeparam");
+            "v0", "xpDeparam.xpDeparam_xpDeparamTop.xpGain");
+        instanceFactory::registerBlock(
+            "xpGain_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpGain<xpGainV0Config>>(blockName, variant, bbMode));
+            },
+            "v0", "xpGain");
     }
 };
 static _xpGain_registrar _xpGain_registrar_instance;

@@ -1,0 +1,19 @@
+yamlFormat: 2
+
+# Assembler for the two-declarer composition: three projects, one variant label
+# of one block declared by two of them. projWrap owns the leaf's config context
+# and emits its Config; projIp declares the leaf itself and a competing binding of
+# the same label; this project consumes the leaf and declares neither.
+projectName: twoDeclarersProj
+
+projectFiles:
+    - ../../projWrap/yaml/wrapProject.yaml
+    - twoDeclarersTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

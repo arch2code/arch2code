@@ -93,7 +93,7 @@ mixed::mixed(sc_module_name blockName, const char * variant, blockBaseMode bbMod
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "mixed")))
         ,uBlockC(std::dynamic_pointer_cast<blockCBase>(instanceFactory::createInstance(name(), "uBlockC", "blockC", "", "mixed")))
         ,uBlockB(std::dynamic_pointer_cast<blockBBase>(instanceFactory::createInstance(name(), "uBlockB", "blockB", "", "mixed")))
-        ,uBlockG(std::dynamic_pointer_cast<blockGBase<blockGGvariant0Config>>(instanceFactory::createInstance(name(), "uBlockG", "blockG", "gvariant0", "mixed")))
+        ,uBlockG(std::dynamic_pointer_cast<blockGBase<blockGGvariant0Config>>(instanceFactory::createInstance(name(), "uBlockG", "blockG", "gvariant0", "mixed.mixed.mixed_blockG")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

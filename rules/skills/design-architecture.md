@@ -16,6 +16,24 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
     *   **Root Keys:** `include`, `constants`, `types`, `structures`, `interfaces`, `blocks`, `instances`, `connections`, `connectionMaps`, `registers`, `memories`.
     *   **Philosophy:** The YAML structure is **relational**. Elements are linked by keys (e.g., `container`, `block`, `src`, `dst`).
     *   **Defaults:** Many fields are optional with sensible defaults (e.g., `hasRtl` defaults to `true`).
+    *   **Dense form.** Prefer one line per entry with an inline dict for `instances:`, `registers:`, `connections:`, `connectionMaps:`, and `memories:`. Multi-line maps parse the same. Prefer dense when authoring or editing so the file stays scannable and matches examples under `yaml/`. Field-catalog Syntax blocks in `ARCH2CODE_AI_RULES.md` may stay expanded so every key is easy to scan.
+
+    ```yaml
+    instances:
+      u_dma: {container: top, instanceType: dma_controller, addressGroup: system}
+
+    connections:
+      - {interface: dma_req_if, src: u_dma, dst: u_mem_ctrl}
+
+    connectionMaps:
+      - {interface: dma_req_if, block: top, direction: src, instance: u_dma}
+
+    registers:
+      - {register: config, block: dma_controller, regType: rw, structure: dma_config_t, desc: "Config"}
+
+    memories:
+      - {memory: buffer, block: dma_controller, structure: buffer_data_t, addressStruct: buffer_addr_t, wordLines: 1024, desc: "Internal RAM", regAccess: true}
+    ```
 
 2.  **Block Definition (`blocks` dictionary):**
 
@@ -54,10 +72,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
 
     ```yaml
     instances:
-      u_dma:
-        container: top
-        instanceType: dma_controller
-        addressGroup: system
+      u_dma: {container: top, instanceType: dma_controller, addressGroup: system}
     ```
 
 4.  **Interface Definition (`interfaces` dictionary):**
@@ -118,11 +133,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
 
     ```yaml
     registers:
-      - register: config
-        block: dma_controller
-        regType: rw
-        structure: dma_config_t
-        desc: "Config"
+      - {register: config, block: dma_controller, regType: rw, structure: dma_config_t, desc: "Config"}
     ```
 
 8.  **Memories (`memories` list):**
@@ -139,14 +150,7 @@ Guide the user in defining regular hardware architecture using arch2code YAML. T
 
     ```yaml
     memories:
-      - memory: buffer
-        block: dma_controller
-        structure: buffer_data_t
-        addressStruct: buffer_addr_t
-        wordLines: 1024
-        desc: "Internal RAM"
-        regAccess: true  # FW accessible
-        memoryType: singlePort
+      - {memory: buffer, block: dma_controller, structure: buffer_data_t, addressStruct: buffer_addr_t, wordLines: 1024, desc: "Internal RAM", regAccess: true, memoryType: singlePort}
     ```
 
 ## Validation

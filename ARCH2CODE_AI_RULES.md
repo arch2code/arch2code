@@ -237,10 +237,11 @@ addressObjects:
     alignment: 8
     sortDescending: true
 
-# Optional: Only needed for firmware header generation
+# Optional: opt-in fileMap entries (firmware headers, per-product address defines)
 # fileGeneration:
 #   fileMap:
 #     includeFW: {name: "IncludesFW", ext: {hdr: "h"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "FW includes"}
+#     regAddresses: {name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, desc: "Address defines"}
 #   fileCopyrightStatement: "Copyright Your Company 2025"
 ```
 
@@ -250,7 +251,7 @@ addressObjects:
 - The `root` directory in `dirs` is required and serves as the base for all other paths
 - `$a2c` is automatically defined and points to the arch2code installation directory
 - **File generation defaults are inherited** from `builder/base/config/project.yaml` - no need to define fileMap unless customizing
-- Only add `fileGeneration.fileMap.includeFW` if your project needs firmware header files
+- Add `fileGeneration.fileMap.includeFW` only if your project needs firmware header files, and `fileGeneration.fileMap.regAddresses` only if it needs per-product address defines. Both ship commented out in `builder/base/config/project.yaml`
 - Prefer `project.yaml` `instanceGroups:` and `addressObjects:` for new
   address-policy rows. Legacy `addressControl.yaml` rows are still accepted;
   this path is expected to be deprecated, and if both spellings exist, they
@@ -316,6 +317,8 @@ structures:
 ---
 
 ## Low-Level Architecture Elements
+
+**Dense form.** Prefer one line per entry with an inline dict for `instances:`, `registers:`, `connections:`, `connectionMaps:`, and `memories:` (and `registerConnections:` when used). Multi-line maps parse the same. Prefer dense when authoring or editing so the file stays scannable and matches examples under `yaml/`. Field-catalog Syntax blocks below may stay expanded so every key is easy to scan.
 
 All types, consts, structs should be managed in the yaml, not in the user code
 
@@ -954,48 +957,23 @@ instances:
 ```yaml
 instances:
   # Top-level self-referential instance
-  top:
-    container: top
-    instanceType: top
-    instGroup: top
+  top: {container: top, instanceType: top, instGroup: top}
   
   # Simple functional instances
-  u_processor:
-    container: top
-    instanceType: cpu
-    instGroup: main
+  u_processor: {container: top, instanceType: cpu, instGroup: main}
   
-  u_memory:
-    container: top
-    instanceType: ram_block
-    instGroup: main
+  u_memory: {container: top, instanceType: ram_block, instGroup: main}
   
   # Memory-mapped register block
-  u_control_regs:
-    container: top
-    instanceType: control_registers
-    instGroup: peripherals
-    addressGroup: system_addr_space
-    addressID: 0x0  # Explicit address ID
+  u_control_regs: {container: top, instanceType: control_registers, instGroup: peripherals, addressGroup: system_addr_space, addressID: 0x0}  # Explicit address ID
   
   # Instance with multiple address spaces
-  u_dma:
-    container: top
-    instanceType: dma_controller
-    instGroup: peripherals
-    addressGroup: system_addr_space
-    addressMultiples: 4  # Allocates 4 address spaces
+  u_dma: {container: top, instanceType: dma_controller, instGroup: peripherals, addressGroup: system_addr_space, addressMultiples: 4}  # Allocates 4 address spaces
   
   # Hierarchical instances (instance within instance)
-  u_subsystem_a:
-    container: top
-    instanceType: subsystem_a
-    instGroup: subsystems
+  u_subsystem_a: {container: top, instanceType: subsystem_a, instGroup: subsystems}
   
-  u_module_x:
-    container: subsystem_a  # Parent is subsystem_a
-    instanceType: module_x
-    instGroup: subsystem_a_modules
+  u_module_x: {container: subsystem_a, instanceType: module_x, instGroup: subsystem_a_modules}  # Parent is subsystem_a
 ```
 
 **AI Agent Guidance:**
@@ -1050,26 +1028,15 @@ connections:
 ```yaml
 connections:
   # Simple point-to-point connection
-  - interface: data_stream
-    src: u_producer
-    dst: u_consumer
+  - {interface: data_stream, src: u_producer, dst: u_consumer}
   
   # Multiple connections with same interface type (use name for disambiguation)
-  - interface: apb_bus
-    src: u_cpu
-    dst: u_peripheral_a
-    name: cpu_to_periph_a
+  - {interface: apb_bus, src: u_cpu, dst: u_peripheral_a, name: cpu_to_periph_a}
   
-  - interface: apb_bus
-    src: u_cpu
-    dst: u_peripheral_b
-    name: cpu_to_periph_b
+  - {interface: apb_bus, src: u_cpu, dst: u_peripheral_b, name: cpu_to_periph_b}
   
   # Connection with custom channel name
-  - interface: data_stream
-    src: u_producer
-    dst: u_consumer
-    interfaceName: custom_channel_name
+  - {interface: data_stream, src: u_producer, dst: u_consumer, interfaceName: custom_channel_name}
 ```
 
 #### Naming Precedence Rules (Critical for AI Agents)
@@ -1143,16 +1110,11 @@ instances:
 
 # Connection at top level
 connections:
-  - interface: xxx
-    src: u_bob
-    dst: u_adam  # Connection to adam block
+  - {interface: xxx, src: u_bob, dst: u_adam}  # Connection to adam block
 
 # Map adam's dst interface down to colin instance
 connectionMaps:
-  - interface: xxx
-    block: adam
-    direction: dst      # adam is destination in connection
-    instance: u_colin   # Route to colin inside adam
+  - {interface: xxx, block: adam, direction: dst, instance: u_colin}   # Route to colin inside adam
 ```
 
 **Flow:** `u_bob` → `u_adam` (boundary) → `u_colin` (internal)
@@ -1185,20 +1147,11 @@ instances:
 
 # Connection with different port names at each end
 connections:
-  - interface: xxx
-    src: u_bob
-    srcport: dave   # Bob's port named "dave"
-    dst: u_adam
-    dstport: eric   # Adam's port named "eric"
+  - {interface: xxx, src: u_bob, srcport: dave, dst: u_adam, dstport: eric}   # Adam's port named "eric"
 
 # Map with port matching
 connectionMaps:
-  - interface: xxx
-    block: adam
-    direction: dst
-    port: eric          # MUST match dstport from connection
-    instance: u_colin
-    instancePort: fred  # Colin's internal port named "fred"
+  - {interface: xxx, block: adam, direction: dst, port: eric, instance: u_colin, instancePort: fred}  # Colin's internal port named "fred"
 ```
 
 **Port Names Generated:**
@@ -1362,10 +1315,7 @@ blocks:
       registerDecoderPort: cpu_apb_reg # canonical downstream register-bus port
 
 instances:
-  u_apb_decode:
-    container: top
-    instanceType: apb_decode
-    instGroup: top
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
 ```
 
 #### Complete Example with Generated Router and Auto-Generated Handlers
@@ -1391,10 +1341,7 @@ blocks:
       registerDecoderPort: cpu_apb_reg
 
 instances:
-  u_apb_decode:
-    container: top
-    instanceType: apb_decode
-    instGroup: top
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
 
 # 2. Define your block with registers (a routed leaf)
 blocks:
@@ -1404,46 +1351,22 @@ blocks:
     hasMdl: true
 
 instances:
-  u_dma_controller:
-    container: top              # same container as u_apb_decode (co-location)
-    instanceType: dma_controller
-    instGroup: peripherals
-    addressGroup: system        # names the router's addressBlock.addressGroup
+  u_dma_controller: {container: top, instanceType: dma_controller, instGroup: peripherals, addressGroup: system}        # names the router's addressBlock.addressGroup
 
 # 3. Define registers for the block
 registers:
-  - register: config
-    regType: rw
-    block: dma_controller
-    structure: dma_config_t
-    desc: "DMA configuration register"
+  - {register: config, regType: rw, block: dma_controller, structure: dma_config_t, desc: "DMA configuration register"}
   
-  - register: status
-    regType: ro
-    block: dma_controller
-    structure: dma_status_t
-    desc: "DMA status register"
+  - {register: status, regType: ro, block: dma_controller, structure: dma_status_t, desc: "DMA status register"}
   
-  - register: external_ctrl
-    regType: ext
-    block: dma_controller
-    structure: dma_external_t
-    desc: "External control register"
+  - {register: external_ctrl, regType: ext, block: dma_controller, structure: dma_external_t, desc: "External control register"}
 
-  - register: lookup_table
-    regType: memory
-    block: lut_core
-    structure: lut_entry_t
-    addressStruct: lut_addr_t
-    wordLines: 256
-    desc: "Lookup table memory register"
+  - {register: lookup_table, regType: memory, block: lut_core, structure: lut_entry_t, addressStruct: lut_addr_t, wordLines: 256, desc: "Lookup table memory register"}
 
 # 4. Author ONLY the upstream feed into the primary router. Here the CPU and the
 #    router share container `top`, so just a connection (no connectionMap).
 connections:
-  - interface: cpu_apb_reg
-    src: u_cpu
-    dst: u_apb_decode
+  - {interface: cpu_apb_reg, src: u_cpu, dst: u_apb_decode}
 ```
 
 **Behind the Scenes:**
@@ -1475,28 +1398,18 @@ When a block is instantiated multiple times, register connections specify which 
 
 ```yaml
 registerConnections:
-  - register: <register_name>
-    block: <block_name>
-    instance: <instance_name>
+  - {register: <register_name>, block: <block_name>, instance: <instance_name>}
 ```
 
 **Example:**
 ```yaml
 registers:
-  - register: config
-    regType: rw
-    block: uart
-    structure: uart_config_t
-    desc: "UART configuration"
+  - {register: config, regType: rw, block: uart, structure: uart_config_t, desc: "UART configuration"}
 
 registerConnections:
-  - register: config
-    block: uart
-    instance: u_uart_0
+  - {register: config, block: uart, instance: u_uart_0}
   
-  - register: config
-    block: uart
-    instance: u_uart_1
+  - {register: config, block: uart, instance: u_uart_1}
 ```
 
 ### Memory Definitions
@@ -1542,42 +1455,16 @@ memories:
 ```yaml
 # FW-accessible memory (triggers dma_controller_regs auto-generation)
 memories:
-  - memory: buffer_mem
-    block: dma_controller
-    structure: buffer_data_t
-    addressStruct: buffer_addr_t
-    wordLines: BUFFER_SIZE  # References constant
-    desc: "DMA buffer memory"
-    regAccess: true  # Makes it FW-accessible, triggers dma_controller_regs generation
-    memoryType: dualPort
+  - {memory: buffer_mem, block: dma_controller, structure: buffer_data_t, addressStruct: buffer_addr_t, wordLines: BUFFER_SIZE, desc: "DMA buffer memory", regAccess: true, memoryType: dualPort}  # Makes it FW-accessible, triggers dma_controller_regs generation
 
   # Parameterized FW-accessible memory
-  - memory: ip_mem
-    block: ip
-    structure: ip_data_st
-    addressStruct: ip_mem_addr_st
-    wordLines: IP_MEM_DEPTH  # Uses IP_MEM_DEPTH.maxValue for address sizing
-    desc: "Parameterized IP memory"
-    regAccess: true
+  - {memory: ip_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_MEM_DEPTH, desc: "Parameterized IP memory", regAccess: true}  # Uses IP_MEM_DEPTH.maxValue for address sizing
 
   # Pure block-param wordLines; sizing uses max variant binding
-  - memory: ip_nonconst_mem
-    block: ip
-    structure: ip_data_st
-    addressStruct: ip_mem_addr_st
-    wordLines: IP_NONCONST_DEPTH
-    desc: "Memory depth supplied only by parameters variants"
-    regAccess: true
+  - {memory: ip_nonconst_mem, block: ip, structure: ip_data_st, addressStruct: ip_mem_addr_st, wordLines: IP_NONCONST_DEPTH, desc: "Memory depth supplied only by parameters variants", regAccess: true}
 
   # Local flop-based memory (no FW access)
-  - memory: fifo_storage
-    block: fifo
-    structure: fifo_entry_t
-    addressStruct: fifo_addr_t
-    wordLines: 16
-    desc: "FIFO storage"
-    local: true
-    regAccess: false  # No FW access, internal only
+  - {memory: fifo_storage, block: fifo, structure: fifo_entry_t, addressStruct: fifo_addr_t, wordLines: 16, desc: "FIFO storage", local: true, regAccess: false}  # No FW access, internal only
 ```
 
 **Important:** When `regAccess: true`:
@@ -1800,16 +1687,11 @@ blocks:
       registerDecoderPort: cpu_apb_reg
 
 instances:
-  u_apb_decode:
-    container: top
-    instanceType: apb_decode
-    instGroup: top
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
 
 # AUTHOR the upstream feed (CPU and router share container → connection only)
 connections:
-  - interface: cpu_apb_reg
-    src: u_cpu
-    dst: u_apb_decode
+  - {interface: cpu_apb_reg, src: u_cpu, dst: u_apb_decode}
 
 # YOU DECLARE: routed leaf with registers
 blocks:
@@ -1817,17 +1699,10 @@ blocks:
     desc: "DMA controller"
 
 instances:
-  u_dma_controller:
-    container: top              # co-located with u_apb_decode
-    instanceType: dma_controller
-    addressGroup: system        # names the router's addressBlock.addressGroup
+  u_dma_controller: {container: top, instanceType: dma_controller, addressGroup: system}        # names the router's addressBlock.addressGroup
 
 registers:
-  - register: config
-    regType: rw
-    block: dma_controller
-    structure: config_t
-    desc: "Config"
+  - {register: config, regType: rw, block: dma_controller, structure: config_t, desc: "Config"}
 
 # ARCH2CODE AUTO-CREATES:
 # Block dma_controller_regs (handler) + its instance inside dma_controller,
@@ -1892,7 +1767,9 @@ These defaults are automatically inherited from `builder/base/config/project.yam
 
 #### When to Customize
 
-The **only common customization** is adding firmware include file generation:
+The common customization is uncommenting one of the two fileMap entries that
+ship commented out in `builder/base/config/project.yaml`: firmware include file
+generation, and per-product address defines.
 
 ```yaml
 # In your project.yaml
@@ -1907,13 +1784,23 @@ fileGeneration:
       basePath: fwInc, 
       desc: "Firmware include file"
     }
+    # Add per-product address defines (only if you need them)
+    regAddresses: {
+      name: "regAddresses",
+      ext: {hdr: "h"},
+      mode: project,
+      basePath: model,
+      desc: "Per-project instance and register address defines"
+    }
 ```
 
 **Notes:**
 - The `includeFW` mapping generates header files in the `fwInc` directory (typically `$root/fw/include`)
 - `smartInclude: true` means files are only created if there is register or memory content to export
 - `mode: context` generates one file per YAML file (not per block)
-- This is commented out by default in `builder/base/config/project.yaml` (line 63)
+- `mode: project` generates exactly one file for the whole product, keyed to its top context
+- `regAddresses` uses `name:` verbatim as the basename, with no project stem prepended, so a product normally spells its own (`debayerRegAddresses`, `axi4sRegAddresses`). `basePath:` picks the segment, commonly `model` or `fwInc`
+- Both are commented out by default in `builder/base/config/project.yaml`
 
 #### Custom Copyright Statement
 
@@ -2344,10 +2231,7 @@ blocks:
       registerDecoderPort: reg_bus
 
 instances:
-  u_apb_decode:
-    container: top
-    instanceType: apb_decode
-    instGroup: top
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
 
 # 4. Define your routed leaf with registers
 blocks:
@@ -2357,31 +2241,17 @@ blocks:
     hasMdl: true
 
 instances:
-  u_my_module:
-    container: top        # co-located with u_apb_decode
-    instanceType: my_module
-    instGroup: peripherals
-    addressGroup: system  # names the router's addressBlock.addressGroup
+  u_my_module: {container: top, instanceType: my_module, instGroup: peripherals, addressGroup: system}  # names the router's addressBlock.addressGroup
 
 # 5. Define registers
 registers:
-  - register: config
-    regType: rw
-    block: my_module
-    structure: config_reg_t
-    desc: "Configuration register"
+  - {register: config, regType: rw, block: my_module, structure: config_reg_t, desc: "Configuration register"}
   
-  - register: status
-    regType: ro
-    block: my_module
-    structure: status_reg_t
-    desc: "Status register"
+  - {register: status, regType: ro, block: my_module, structure: status_reg_t, desc: "Status register"}
 
 # 6. Author ONLY the upstream feed into the primary router
 connections:
-  - interface: reg_bus
-    src: u_cpu
-    dst: u_apb_decode
+  - {interface: reg_bus, src: u_cpu, dst: u_apb_decode}
 ```
 
 **What Gets Auto-Generated:**
@@ -2421,9 +2291,7 @@ interfaces:
       - {structure: stream_data_t, structureType: data_t}
 
 connections:
-  - interface: data_stream
-    src: u_producer
-    dst: u_consumer
+  - {interface: data_stream, src: u_producer, dst: u_consumer}
 ```
 
 ### 6. Command-Response Pattern
@@ -2707,10 +2575,15 @@ PARAM: --block=<block>Regs
 | `blockRegs` | `init` | Register handler constructor init list |
 | `blockRegs` | `body` | Register handler constructor body |
 
-##### SystemC Address Constants (`model/regAddresses.h`)
+##### SystemC Address Constants (`regAddresses.h` / `*RegAddresses.h`)
+
+Scaffolded by the opt-in `regAddresses` fileMap entry, `mode: project`, one file
+per product. The basename is that entry's `name:` verbatim and its directory is
+its `basePath:` segment, so the path is per project (`model/regAddresses.h` in
+`examples/apbDecode`, `fw/include/axi4sRegAddresses.h` in `examples/axi4sDemo`).
 
 ```
-PARAM: --block=<top_block>
+PARAM: --project=<projectName>
 ```
 
 | Template | Section | Content |
@@ -3037,9 +2910,7 @@ structures:
 ```yaml
 # ❌ BAD - instances don't exist
 connections:
-  - interface: data_if
-    src: u_nonexistent
-    dst: u_also_missing
+  - {interface: data_if, src: u_nonexistent, dst: u_also_missing}
 
 # ✅ GOOD - instances defined
 instances:
@@ -3047,9 +2918,7 @@ instances:
   u_consumer: {container: top, instanceType: consumer, instGroup: main}
 
 connections:
-  - interface: data_if
-    src: u_producer
-    dst: u_consumer
+  - {interface: data_if, src: u_producer, dst: u_consumer}
 ```
 
 ### 5. Address Space Conflicts
@@ -3168,17 +3037,10 @@ blocks:
 ```yaml
 # ❌ BAD - a routed leaf with no router serving its container
 registers:
-  - register: config
-    regType: rw
-    block: my_module
-    structure: config_t
-    desc: "Configuration register"
+  - {register: config, regType: rw, block: my_module, structure: config_t, desc: "Configuration register"}
 
 instances:
-  u_my_module:
-    container: top
-    instanceType: my_module
-    addressGroup: system
+  u_my_module: {container: top, instanceType: my_module, addressGroup: system}
 
 # ERROR (from postParseRegisterPorts.py):
 #   Leaf instance 'u_my_module' (block 'my_module') is in container 'top'
@@ -3200,16 +3062,11 @@ blocks:
       registerDecoderPort: cpu_apb_reg
 
 instances:
-  u_apb_decode:
-    container: top            # same container as u_my_module
-    instanceType: apb_decode
-    instGroup: top
+  u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}            # same container as u_my_module
 
 # Author ONLY the upstream feed into the primary router
 connections:
-  - interface: cpu_apb_reg
-    src: u_cpu
-    dst: u_apb_decode
+  - {interface: cpu_apb_reg, src: u_cpu, dst: u_apb_decode}
 ```
 
 **Why:** The router is a generated `addressBlock:` block; it must be instanced in
@@ -3457,16 +3314,10 @@ interfaces:
 # Ensure proper hierarchy
 instances:
   # Parent must exist first
-  u_parent:
-    container: top
-    instanceType: parent
-    instGroup: main
+  u_parent: {container: top, instanceType: parent, instGroup: main}
   
   # Child references parent as container
-  u_child:
-    container: parent  # Must match instanceType of u_parent
-    instanceType: child
-    instGroup: sub
+  u_child: {container: parent, instanceType: child, instGroup: sub}  # Must match instanceType of u_parent
 ```
 
 #### Issue 4: "Address group 'X' not defined"
@@ -3489,9 +3340,7 @@ blocks:
 
 instances:
   u_apb_decode: {container: top, instanceType: apb_decode}
-  u_module:
-    container: top
-    addressGroup: system  # Must match a router's addressBlock.addressGroup
+  u_module: {container: top, addressGroup: system}  # Must match a router's addressBlock.addressGroup
 ```
 
 #### Issue 5: "Constant 'X' not defined"
@@ -3572,9 +3421,7 @@ instances:
 
 # 4. Check connection
 connections:
-  - interface: data_if
-    src: u_producer
-    dst: u_consumer
+  - {interface: data_if, src: u_producer, dst: u_consumer}
 ```
 
 #### Issue 7: Generated code doesn't compile
@@ -3654,17 +3501,11 @@ blocks:
 # 2. Co-locate the router with the leaf, tag the leaf's addressGroup
 instances:
   u_apb_decode: {container: top, instanceType: apb_decode, instGroup: top}
-  u_module:
-    container: top
-    instanceType: module
-    instGroup: main
-    addressGroup: system  # names the router's addressBlock.addressGroup
+  u_module: {container: top, instanceType: module, instGroup: main, addressGroup: system}  # names the router's addressBlock.addressGroup
 
 # 3. Author ONLY the upstream feed into the primary router
 connections:
-  - interface: cpu_apb_reg
-    src: u_cpu
-    dst: u_apb_decode
+  - {interface: cpu_apb_reg, src: u_cpu, dst: u_apb_decode}
 ```
 
 **Common Mistakes:**
@@ -3690,11 +3531,7 @@ blocks:
     addressBlock: { addressGroup: system, upstreamPort: cpu_apb_reg, registerDecoderPort: cpu_apb_reg, addressIncrement: 0x01000000, maxAddressSpaces: 16, varType: system_addr_id_t, enumPrefix: SYSTEM_ADDR_ }
 
 registers:
-  - register: config
-    regType: rw
-    block: my_module  # Triggers auto-generation of my_module_regs
-    structure: config_t
-    desc: "Config"
+  - {register: config, regType: rw, block: my_module, structure: config_t, desc: "Config"}  # Triggers auto-generation of my_module_regs
 ```
 
 #### Issue 10: Verilator compilation fails

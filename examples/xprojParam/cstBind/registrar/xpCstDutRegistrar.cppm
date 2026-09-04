@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpCstIpVariantConfig.h"
 
-export module xpCstBind.xpCstBindWrap.xpCstDut.registrar;
+export module xpCstBind.xpCstIp_xpCstDut.registrar;
 import xpCstIp_xpCstDut.block;
 import xpCstBind.xpCstDut.config;
 
@@ -19,13 +19,25 @@ struct _xpCstDut_registrar {
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCstDut<xpCstDutDfltConfig>>(blockName, variant, bbMode));
             },
-            "dflt", "xpCstBind");
+            "dflt", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstIp_xpCstDut");
+        instanceFactory::registerBlock(
+            "xpCstDut_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCstDut<xpCstDutDfltConfig>>(blockName, variant, bbMode));
+            },
+            "dflt", "xpCstIp");
         instanceFactory::registerBlock(
             "xpCstDut_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCstDut<xpCstBind_xpCstDutUseConfig>>(blockName, variant, bbMode));
             },
-            "use", "xpCstBind");
+            "use", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstIp_xpCstDut");
+        instanceFactory::registerBlock(
+            "xpCstDut_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCstDut<xpCstBind_xpCstDutUseConfig>>(blockName, variant, bbMode));
+            },
+            "use", "xpCstIp");
     }
 };
 static _xpCstDut_registrar _xpCstDut_registrar_instance;

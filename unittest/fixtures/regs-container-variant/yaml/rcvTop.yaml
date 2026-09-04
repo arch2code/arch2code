@@ -1,0 +1,101 @@
+# A parameterized register owner held at a variant, not at its default Config.
+# rcvLeaf's registers live in the synthesised rcvLeaf_regs handler, so the
+# handler has to be typed by rcvLeaf's Config. The variant binds gain 12 where
+# the block's constant declares 1.
+
+constants:
+    ADDR_WIDTH: { value: 32, desc: "APB address width" }
+    DATA_WIDTH: { value: 32, desc: "APB data width" }
+    CFG_WIDTH:  { value: 16, desc: "cfg register payload width" }
+
+ipParameters:
+    constants:
+        RCV_CFG_GAIN:
+            value: 1
+            maxValue: 15
+            desc: "Gain the register owner is configured with; behavioural, in no width"
+
+types:
+    apbAddrT: { width: ADDR_WIDTH, desc: "APB address" }
+    apbDataT: { width: DATA_WIDTH, desc: "APB data" }
+    cfgT:     { width: CFG_WIDTH,  desc: "cfg register payload" }
+
+structures:
+    apbAddrSt:
+        address: { varType: apbAddrT, generator: address }
+    apbDataSt:
+        data: { varType: apbDataT, generator: data }
+    rcvCfgSt:
+        value: { varType: cfgT, generator: register, desc: "cfg payload" }
+
+interfaces:
+    apbReg:
+        desc: "APB register bus"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+
+blocks:
+    rcvTop:
+        desc: "DUT top"
+        hasMdl: true
+        hasTb: true
+        hasRtl: false
+        hasVl: false
+    rcvTop_tb:
+        desc: "Testbench container for rcvTop"
+        hasRtl: false
+        hasVl: false
+    rcvCpu:
+        desc: "APB master; writes cfg and reads it back"
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+    rcvApbDecode:
+        desc: "Register-bus router"
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    rcvLeaf:
+        desc: "Parameterized register owner; holds a child so the handler reaches the model too"
+        params: [RCV_CFG_GAIN]
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+    rcvSink:
+        desc: "Child of rcvLeaf; a register owner needs one for its handler to reach the model"
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+
+instances:
+    rcvTop_tb:    { container: rcvTop_tb, instanceType: rcvTop_tb,     instGroup: top }
+    u_rcvTop:     { container: rcvTop_tb, instanceType: rcvTop,        instGroup: top }
+    uCpu:         { container: rcvTop,    instanceType: rcvCpu,        instGroup: top }
+    uApbDecode:   { container: rcvTop,    instanceType: rcvApbDecode,  instGroup: top }
+    # THE CELL: the register owner is held at a variant, not at its default.
+    uRcvLeaf:     { container: rcvTop,    instanceType: rcvLeaf,       instGroup: top, addressGroup: top, variant: tuned }
+    uSink:        { container: rcvLeaf,   instanceType: rcvSink,       instGroup: top }
+
+connections:
+    - { interface: apbReg, src: uCpu, dst: uApbDecode, name: cpu_main }
+
+parameters:
+    rcvLeaf:
+        tuned:
+            RCV_CFG_GAIN: 12
+
+registers:
+    - { register: cfg, regType: rw, block: rcvLeaf, structure: rcvCfgSt, desc: "Written and read back over APB" }
+
+registerConnections:
+    - { register: cfg, block: rcvLeaf, instance: uSink }

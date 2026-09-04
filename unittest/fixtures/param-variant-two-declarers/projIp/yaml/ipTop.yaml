@@ -1,0 +1,38 @@
+# projIp: the reusable leaf IP. It declares its own parameter, its own
+# parameterizable payload and interface, the block, AND a binding of variant v0
+# for that block.
+#
+# Its own binding is not the one the generator emits from. The leaf's
+# parameterizable surface is reached through the downstream wrapper's
+# connectionMap, so the leaf's config context is the WRAPPER's file and the
+# wrapper's project is what emits the Config struct. This file's binding is the
+# same label declared by a second project, and it is the loser of that contest.
+
+ipParameters:
+    constants:
+        LEAF_W: { value: 12, maxValue: 32, desc: "leaf payload width" }
+    types:
+        leafT: { width: LEAF_W, maxBitwidth: 32, desc: "leaf parameterizable payload word" }
+
+structures:
+    leafSt:
+        data: { varType: leafT, desc: "leaf payload" }
+
+interfaces:
+    leafIf:
+        desc: "leaf parameterized push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: leafSt, structureType: data_t }
+
+blocks:
+    leafIp:
+        desc: "reusable parameterized leaf IP"
+        params: [LEAF_W]
+        ports:
+            in: { interface: leafIf, direction: dst }
+
+parameters:
+    leafIp:
+        v0:
+            LEAF_W: 12

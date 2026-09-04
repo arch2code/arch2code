@@ -22,7 +22,7 @@ public:
     static constexpr auto DP_WIDTH = Config::DP_WIDTH;
 
 
-    xpDpWrapBase(std::string name, const char * variant) 
+    xpDpWrapBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -40,7 +40,7 @@ class xpDpWrapInverted : public virtual blockPortBase
 public:
 
 
-    xpDpWrapInverted(std::string name) 
+    xpDpWrapInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -56,7 +56,7 @@ class xpDpWrapChannels
 public:
 
 
-    xpDpWrapChannels(std::string name, std::string srcName) 
+    xpDpWrapChannels(std::string name, std::string srcName)
     {};
     void bind( xpDpWrapBase<Config> *a, xpDpWrapInverted<Config> *b)
     {

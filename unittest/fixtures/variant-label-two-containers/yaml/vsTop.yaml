@@ -1,0 +1,60 @@
+# vsLeaf is reached only through inheritContainerParam, once inside vsContA and
+# once inside vsContB, so both containers supply its Config and both declare the
+# label `shared`. Asking vsLeaf for `shared` names two different Configs.
+#
+# Nothing here is parameterized beyond the `params:` lists themselves: a block
+# declaring params: is parameterizable on its own, and a parameterizable
+# structure would drag in surface rules that have nothing to do with the shape
+# under test. The suite's second phase renames vsContB's label, which is the two
+# containers with disjoint label sets that must stay legal.
+
+ipParameters:
+    constants:
+        VS_ALGO: { value: 1, maxValue: 7, desc: "Algorithm select" }
+
+blocks:
+    vsTop:
+        desc: "DUT top"
+        hasMdl: true
+        hasTb: true
+        hasRtl: false
+        hasVl: false
+    vsTop_tb:
+        desc: "Testbench container for vsTop"
+        hasRtl: false
+        hasVl: false
+    vsContA:
+        desc: "First container supplying the leaf's Config"
+        params: [VS_ALGO]
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+    vsContB:
+        desc: "Second container supplying the leaf's Config"
+        params: [VS_ALGO]
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+    vsLeaf:
+        desc: "Leaf typed by whichever container holds it"
+        params: [VS_ALGO]
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+
+instances:
+    vsTop_tb: { container: vsTop_tb, instanceType: vsTop_tb, instGroup: top }
+    u_vsTop:  { container: vsTop_tb, instanceType: vsTop,    instGroup: top }
+    uContA:   { container: vsTop,    instanceType: vsContA,  instGroup: top, variant: shared }
+    uContB:   { container: vsTop,    instanceType: vsContB,  instGroup: top, variant: shared }
+    uLeafA:   { container: vsContA,  instanceType: vsLeaf,   instGroup: top, inheritContainerParam: true }
+    uLeafB:   { container: vsContB,  instanceType: vsLeaf,   instGroup: top, inheritContainerParam: true }
+
+parameters:
+    vsContA:
+        shared:
+            VS_ALGO: VS_ALGO
+    vsContB:
+        shared:
+            VS_ALGO: VS_ALGO

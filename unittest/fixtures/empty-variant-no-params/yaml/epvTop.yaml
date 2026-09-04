@@ -1,0 +1,31 @@
+# epvLeaf declares no params: and one variant, `solo`, which therefore binds
+# nothing. Nothing else is parameterized: an ipParameters constant no block
+# param consumes is itself a db-time error, and one here would fire first and
+# hide the shape under test. The suite's second phase adds the constant along
+# with the params: list and the binding.
+
+blocks:
+    epvTop:
+        desc: "DUT top"
+        hasMdl: true
+        hasTb: true
+        hasRtl: false
+        hasVl: false
+    epvTop_tb:
+        desc: "Testbench container for epvTop"
+        hasRtl: false
+        hasVl: false
+    epvLeaf:
+        desc: "Leaf declaring a variant it has no parameters to bind"
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+
+instances:
+    epvTop_tb: { container: epvTop_tb, instanceType: epvTop_tb, instGroup: top }
+    u_epvTop:  { container: epvTop_tb, instanceType: epvTop,    instGroup: top }
+    uLeaf:     { container: epvTop,    instanceType: epvLeaf,   instGroup: top, variant: solo }
+
+parameters:
+    epvLeaf:
+        solo: {}

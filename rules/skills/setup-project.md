@@ -99,7 +99,8 @@ Guide the user through initializing a new project, setting up the directory stru
     *   `newProject` scaffolds `project.yaml` and the directory tree only; the build `Makefile` and its `include/make/shared.mk` are copied from an existing example (e.g. `examples/helloWorld`) and renamed for the project.
     *   The per-project `include/make/shared.mk` sets `PROJECTNAME` / `TB_TOP_MODULE` / `HDL_TOP_MODULE` and then includes `a2c-common.mk`; the `rundir/Makefile` includes it and then `a2c-systemc.mk`.
     *   The build is manifest-driven: `make db` derives the source/include dirs and the generated-file set from the layout and emits `.gen/build.mk`; no Makefile edits are needed as blocks are added. Model output lands in `rundir/build/run`, the whole-design Verilator build in `rundir/build/vl`.
-    *   If the project hosts **user-authored files that arch2code injects generated regions into** (address headers, encoder units — files `make newmodule` does not scaffold), wire them onto the `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES` seam in `shared.mk`. See the **Build/Run** skill (`manage-build.md`).
+    *   Declare files that arch2code owns under `fileGeneration.fileMap`. For example, a project-wide instance and register address header uses the `regAddresses` key with `mode: project`; set `name:` to its basename and `basePath:` to its segment. `make newmodule` scaffolds the host and the manifest includes it in generation and compilation.
+    *   If the project owns a file and arch2code only injects generated regions, add it to `EXTRA_SC_GEN_FILES` or `EXTRA_SV_GEN_FILES` in `shared.mk`. See the **Build/Run** skill (`manage-build.md`).
 
 ## Validation
 *   Run `make db` to verify the project configuration loads correctly.

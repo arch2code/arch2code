@@ -1,6 +1,6 @@
-# Per-block trampoline registrar template. The trampoline is the single TU per
-# (block, project) carrying the SystemC parameterized-block registrations, one
-# lambda per (blockType, variant) pair the project's instance tree binds.
+# Per-block trampoline registrar template. The child-named TU aggregates the
+# project's SystemC registrations. Each lambda keeps its parent-child factory
+# domain, so two parents using one child remain distinct.
 #
 # Non-templated blocks reach the factory through the self-registering static
 # emitted in their own module unit and do not need a trampoline —
@@ -12,7 +12,7 @@
 # dimension to select a member with, so the container names the class at its
 # createInstance site instead (instanceFactory::createInstance<Impl>). A child
 # every one of whose bindings is container-typed gets no trampoline TU at all -
-# getRegistrarConfigView()['hasRegistrations'] is what the scaffold gates on.
+# the persisted per-parent requirement is what the scaffold and manifest gate on.
 
 import pysrc.intf_gen_utils as intf_gen_utils
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
@@ -25,10 +25,6 @@ def render_default(args, prj, data):
     out = list()
     blockName = data['blockName']
     qualBlock = data['qualBlock']
-    # A block that declares its own params: is always flagged isParameterizable
-    # and therefore always carries a defaultConfig.
-    defaultConfig = data['defaultConfig']
-
     # Per-variant Config selection resolved against the parent's owning project:
     # the trampoline binds the same Config the parent's own instances bind, so a
     # variant the parent declares as a foreign (assembler-owned) variant of the
@@ -40,18 +36,12 @@ def render_default(args, prj, data):
                    f"mode) to rescaffold the registrar .cppm files.")
         exit(warningAndErrorReport())
     registrarConfig = prj.getRegistrarConfigView(qualBlock, parentBlock)
-    variantDescriptors = registrarConfig['variantDescriptors']
-    # The variant labels that earn a registration: what this build's design tree
-    # binds for the child, plus the labels a container's Config reaches it at,
-    # minus the container-sourced ones.
-    registeredVariants = registrarConfig['registeredVariants']
-
-    # The registrar is a C++20 module interface unit whose module name is
-    # parent-qualified (`<project>.<parent>.<child>.registrar`), so the same
-    # child reused under two parents yields two distinct registrar modules that
-    # coexist in one binary.
-    projectName = prj.config.getConfig('PROJECTNAME')
-    registrarModule = intf_gen_utils.cpp_registrar_module_name(projectName, parentBlock, blockName)
+    # The physical TU is one project-child aggregate, so its C++20 module name
+    # has the same stable identity. Pair-qualified factory keys inside it keep
+    # parent-specific registrations distinct.
+    registrarModule = intf_gen_utils.cpp_child_registrar_module_name(
+        registrarConfig['ownerProject'],
+        registrarConfig['childModuleIdentity'])
 
     # #includes are illegal in module purview, so all textual headers live here
     # in the global module fragment.
@@ -61,7 +51,9 @@ def render_default(args, prj, data):
 
     # Per-context Config-policy headers must be reachable for the
     # parameterized lambda body.
-    for context in sorted(data['configIncludeContext']):
+    configContexts = set(data['configIncludeContext']) \
+        | set(registrarConfig['configHeaderContexts'])
+    for context in sorted(configContexts):
         if context in data['includeFiles'].get('config_hdr', {}):
             out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
 
@@ -73,35 +65,21 @@ def render_default(args, prj, data):
     # `export import`): the registrar exports nothing, it only runs its static.
     out.append(f'import {intf_gen_utils.cpp_block_module_name(data["blockModuleName"])};')
 
-    # Owner-qualified foreign-Config modules for variants the parent declares as
-    # foreign variants of the reused child; the lambda body spells those owner-
-    # qualified Config types.
+    # Owner-qualified foreign-Config modules for the variants registered below;
+    # the lambda bodies spell those owner-qualified Config types.
     for mod in registrarConfig['foreignConfigModules']:
         out.append(f'import {intf_gen_utils.cpp_config_module_name(mod["project"], mod["block"])};')
 
-    def _target(desc):
-        perVariantConfig = intf_gen_utils.cpp_descriptor_config_name(desc, defaultConfig) if desc else defaultConfig
-        return f'{blockName}<{perVariantConfig}>'
-
     registrations = list()
-    for variant in registeredVariants:
+    for registration in registrarConfig['modelRegistrations']:
+        perVariantConfig = intf_gen_utils.cpp_config_expression_name(
+            registration['config'])
         registrations.extend(_emit_register_call(
             suffix='model',
             blockName=blockName,
-            targetClass=_target(variantDescriptors[variant]),
-            variant=variant,
-            projectName=projectName,
-            indent='        ',
-        ))
-    if registrarConfig['defaultRegistration']:
-        # The design binds an instance naming no variant, so the block also
-        # registers under the empty variant against its default Config.
-        registrations.extend(_emit_register_call(
-            suffix='model',
-            blockName=blockName,
-            targetClass=_target(None),
-            variant='',
-            projectName=projectName,
+            targetClass=f'{blockName}<{perVariantConfig}>',
+            variant=registration['variant'],
+            projectName=registration['factoryProject'],
             indent='        ',
         ))
 

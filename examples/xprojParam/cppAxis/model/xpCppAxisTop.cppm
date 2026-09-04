@@ -81,7 +81,7 @@ xpCppAxisTop::xpCppAxisTop(sc_module_name blockName, const char * variant, block
         ,signOut("xpCppWrap_signOut", "cppDriver")
         ,nestOut("xpCppWrap_nestOut", "cppDriver")
         ,uDrive(std::dynamic_pointer_cast<cppDriverBase>(instanceFactory::createInstance(name(), "uDrive", "cppDriver", "", "xpCppAxis")))
-        ,uWrap(std::dynamic_pointer_cast<xpCppWrapBase<xpCppWrapV0Config>>(instanceFactory::createInstance(name(), "uWrap", "xpCppWrap", "v0", "xpCppAxis")))
+        ,uWrap(std::dynamic_pointer_cast<xpCppWrapBase<xpCppWrapV0Config>>(instanceFactory::createInstance(name(), "uWrap", "xpCppWrap", "v0", "xpCppAxis.xpCppAxis_xpCppAxisTop.xpCppAxis_xpCppWrap")))
         ,thunker_eqOut_uWrap("thunker_eqOut_uWrap", eqOut, uWrap->eqIn, name())
         ,thunker_orderOut_uWrap("thunker_orderOut_uWrap", orderOut, uWrap->orderIn, name())
         ,thunker_signOut_uWrap("thunker_signOut_uWrap", signOut, uWrap->signIn, name())

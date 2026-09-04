@@ -69,6 +69,14 @@ class genSystemC:
             context = self.code.params.context
             data = prj.getContextData(context, self.dataTypeMappings)
             self.calcStructure(data, prj)
+        elif self.code.params.project:
+            # Project-mode artifact: owns no context of its own, its content spans
+            # the whole build. The ownership gate above guarantees the file belongs
+            # to this build, so TOPCONTEXT names the context whose include chain
+            # covers it.
+            context = [prj.config.getConfig('TOPCONTEXT')]
+            data = prj.getContextData(context, self.dataTypeMappings)
+            self.calcStructure(data, prj)
         else:
             context = 'No context specified in GENERATED_CODE_PARAM'
         if self.code.params.scope:

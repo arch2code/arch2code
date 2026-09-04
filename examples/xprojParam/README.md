@@ -371,15 +371,51 @@ reference only and are not compared.
   child side:  ... resolved for block 'xpGain' (project xpGain) at variant 'v0'
 ```
 
-Rebinding it in a **downstream** project's file leaves `make db` clean instead,
-because that binding is discarded outright — see the next section.
+Rebinding it in a **downstream** project's file is rejected with the same
+diagnostic. Both sides resolve through their own `v0` binding, so the check
+compares 16 against 8 whichever file moved.
 
-### Variant-binding sizing on the shared-include path — still open
+### Variant-binding sizing on the shared-include path
 
-`PIXEL_WIDTH` declares `maxValue: 32`. Binding 64 in the upstream project's own
-file is rejected at `make db`. The same binding in a downstream project, whose
-backing constant is reached by `include:`, is accepted, leaves no trace in any
-generated artifact, and the instance is typed with the upstream default width.
+`PIXEL_WIDTH` declares `maxValue: 32`, and binding 64 is rejected at `make db`
+from either side. `_post_validateVariantBindingSizing` resolves a block param
+through `paramSourceKey`, so a downstream project that reaches the backing
+constant by `include:` is held to the same bound, and the diagnostic names the
+constant's declaring file rather than the binding's:
+
+```
+In ../../yaml/xpFilterShared.yaml:?: variant 'v0' binds param 'PIXEL_WIDTH' to 64,
+exceeding the backing ipParameters constant 'PIXEL_WIDTH/../../../gain/yaml/xpGain.yaml'
+maxValue 32; raise the constant's maxValue to cover the worst-case binding
+```
+
+A binding within the bound reaches the emitted artifacts. A project that names a
+foreign constant in its own block's `params:` moves that block's config context
+to the vendor's file, which makes the project's own binding of its own block
+foreign to the context owner, so a third-party consumer selects it as a last
+resort. `xpGain` declares `PIXEL_WIDTH: 12` and every `v0` binds 8, so `uFilter`
+and `uSink` are typed at `xpFilterShared_xpFilterSharedV0Config` and
+`xpSinkShared_xpSinkSharedV0Config`; each stage asserts the bound 8 and would
+fail on the vendor default.
+
+### Placing a declaring project's own foreign Config
+
+The two structs above are owner-qualified and land in the declaring project's
+registrar domain, the shape `dpMid/registrar/xpDpMid_xpDpMidVariantConfig.cppm`
+already has:
+`filterShared/registrar/xpFilterShared_xpFilterSharedVariantConfig.cppm` and its
+`sinkShared` peer.
+
+`newModule` and `createBuildManifest` enumerate these from the
+`(declaringProject, block)` pairs `calcForeignConfigHeaders` records rather than
+from assembler instances, so a project that declares a variant and instantiates
+nothing still emits its own Config. That same record names the block whose
+registrar domain hosts the artifact, which is the declaring project's
+lowest-keyed assembler of the child, or the child itself when that project
+assembles nothing. Hence the stamp here reads `--block=xpFilterShared
+--parent=xpFilterShared`, and `getForeignConfigData` still derives the owner from
+the parent. Regeneration belongs to the declaring project; `shared` compiles both
+modules without regenerating either.
 
 ## The three-party parameterization matrix (`mtxIp` + `mtx*`)
 

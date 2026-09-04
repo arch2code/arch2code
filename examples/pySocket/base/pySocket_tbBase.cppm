@@ -19,7 +19,7 @@ public:
     virtual ~pySocket_tbBase() = default;
 
 
-    pySocket_tbBase(std::string name, const char * variant) 
+    pySocket_tbBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -34,7 +34,7 @@ export class pySocket_tbInverted : public virtual blockPortBase
 public:
 
 
-    pySocket_tbInverted(std::string name) 
+    pySocket_tbInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -49,7 +49,7 @@ export class pySocket_tbChannels
 public:
 
 
-    pySocket_tbChannels(std::string name, std::string srcName) 
+    pySocket_tbChannels(std::string name, std::string srcName)
     {};
     void bind( pySocket_tbBase *a, pySocket_tbInverted *b)
     {

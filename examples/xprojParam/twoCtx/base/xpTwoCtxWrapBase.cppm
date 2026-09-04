@@ -21,7 +21,7 @@ public:
     virtual ~xpTwoCtxWrapBase() = default;
 
 
-    xpTwoCtxWrapBase(std::string name, const char * variant) 
+    xpTwoCtxWrapBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -36,7 +36,7 @@ export class xpTwoCtxWrapInverted : public virtual blockPortBase
 public:
 
 
-    xpTwoCtxWrapInverted(std::string name) 
+    xpTwoCtxWrapInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -51,7 +51,7 @@ export class xpTwoCtxWrapChannels
 public:
 
 
-    xpTwoCtxWrapChannels(std::string name, std::string srcName) 
+    xpTwoCtxWrapChannels(std::string name, std::string srcName)
     {};
     void bind( xpTwoCtxWrapBase *a, xpTwoCtxWrapInverted *b)
     {

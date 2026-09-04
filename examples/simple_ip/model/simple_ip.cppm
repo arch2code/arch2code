@@ -77,7 +77,7 @@ simple_ip::simple_ip(sc_module_name blockName, const char * variant, blockBaseMo
         ,apbReg_uIp("ip_apbReg_uIp", "apbDecode")
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "simple_ip")))
         ,uDataGen(std::dynamic_pointer_cast<dataGenBase>(instanceFactory::createInstance(name(), "uDataGen", "dataGen", "", "simple_ip")))
-        ,uIp(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp", "ip", "variant0", "simple_ip")))
+        ,uIp(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp", "ip", "variant0", "simple_ip.simple_ip.ip")))
         ,thunker_out_uIp("thunker_out_uIp", out, uIp->ipDataIf, name())
         ,thunker_apbReg_uIp_uIp("thunker_apbReg_uIp_uIp", apbReg_uIp, uIp->regs, name())
 // GENERATED_CODE_END

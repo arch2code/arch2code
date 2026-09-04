@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "ipVariantConfig.h"
 
-export module ip.ipStdTop.ip.registrar;
+export module ip.ip.registrar;
 import ip.block;
 
 namespace {
@@ -19,6 +19,12 @@ struct _ip_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant0Config>>(blockName, variant, bbMode));
             },
             "variant0", "ip");
+        instanceFactory::registerBlock(
+            "ip_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant0Config>>(blockName, variant, bbMode));
+            },
+            "variant0", "ip.ip_ipStdTop.ip");
     }
 };
 static _ip_registrar _ip_registrar_instance;

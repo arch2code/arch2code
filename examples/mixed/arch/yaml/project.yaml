@@ -34,6 +34,8 @@ fileGeneration:
     # path to the file will be based on command line input and the base path defined in the dirs section
     # note that basePath should reference a path key in the dirs section
 #    includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
+  fileMap:
+    regAddresses: { name : "regAddresses",    ext: {hdr: "h"},                                                  mode: project, basePath: model,   desc: "Per-project instance and register address defines"}
 
 
   # standard copyright statement to be added to all generated files - change to suite your company

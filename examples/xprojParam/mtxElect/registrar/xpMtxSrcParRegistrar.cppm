@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpMtxIpVariantConfig.h"
 
-export module xpMtxElect.xpMtxElectWrap.xpMtxSrcPar.registrar;
+export module xpMtxElect.xpMtxIp_xpMtxSrcPar.registrar;
 import xpMtxIp_xpMtxSrcPar.block;
 
 namespace {
@@ -18,7 +18,13 @@ struct _xpMtxSrcPar_registrar {
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpMtxSrcPar<xpMtxSrcParV0Config>>(blockName, variant, bbMode));
             },
-            "v0", "xpMtxElect");
+            "v0", "xpMtxElect.xpMtxElect_xpMtxElectWrap.xpMtxIp_xpMtxSrcPar");
+        instanceFactory::registerBlock(
+            "xpMtxSrcPar_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpMtxSrcPar<xpMtxSrcParV0Config>>(blockName, variant, bbMode));
+            },
+            "v0", "xpMtxIp");
     }
 };
 static _xpMtxSrcPar_registrar _xpMtxSrcPar_registrar_instance;

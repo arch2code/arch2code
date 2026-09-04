@@ -1,0 +1,34 @@
+# Single-project cell: a parameterized register-owning leaf instantiated at a
+# variant, whose registers live in a synthesised handler block.
+
+yamlFormat: 2
+projectName: rcvTest
+
+projectFiles:
+    - ../../yaml/rcvTop.yaml
+
+topInstance: rcvTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileMap:
+        regAddresses: { name: "rcvRegAddresses", ext: {hdr: "h"}, mode: project, basePath: model, desc: "Per-project instance and register address defines" }
+    fileCopyrightStatement: ""

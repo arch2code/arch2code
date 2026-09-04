@@ -22,6 +22,8 @@ Define elements in dependency order:
 
 ### Essential Syntax
 
+**Dense form.** Prefer one line per entry with an inline dict for `instances:`, `registers:`, `connections:`, `connectionMaps:`, and `memories:`. Multi-line maps parse the same. Prefer dense when authoring or editing so the file stays scannable and matches examples under `yaml/`. Field-catalog Syntax blocks in `ARCH2CODE_AI_RULES.md` may stay expanded so every key is easy to scan.
+
 ```yaml
 # Constants
 constants:
@@ -69,10 +71,7 @@ blocks:
 
 # Instances
 instances:
-  u_my_block:
-    container: top
-    instanceType: my_block
-    instGroup: main
+  u_my_block: {container: top, instanceType: my_block, instGroup: main}
 
 # Connections (same container only)
 connections:
@@ -199,10 +198,7 @@ instances:
 Instances with registers need `addressGroup`:
 ```yaml
 instances:
-  u_my_block:
-    container: top
-    instanceType: my_block
-    addressGroup: system  # Required for register access
+  u_my_block: {container: top, instanceType: my_block, addressGroup: system}  # Required for register access
 ```
 
 ### 6. Missing Worst-Case Bounds for Parameterizable Values

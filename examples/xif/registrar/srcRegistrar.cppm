@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xifVariantConfig.h"
 
-export module xif.xif_tb.src.registrar;
+export module xif.xif_src.registrar;
 import xif_src.block;
 
 namespace {
@@ -19,6 +19,12 @@ struct _src_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcSrcV0Config>>(blockName, variant, bbMode));
             },
             "srcV0", "xif");
+        instanceFactory::registerBlock(
+            "src_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcSrcV0Config>>(blockName, variant, bbMode));
+            },
+            "srcV0", "xif.xif_tb.xif_src");
     }
 };
 static _src_registrar _src_registrar_instance;

@@ -19,13 +19,9 @@ root is a parent of a fileMap segment:
 Any other missing directory (the build compiles files the manifest would drop)
 is a fail.
 
-The manifest may also list dirs the glob does not (a parameterizable block whose
-trampoline/source has not been scaffolded by `make newmodule` yet - the manifest
-derives intent from the fileMap, the glob only sees files already on disk). Every
-manifest dir lives within a glob-scanned subtree, so such an "extra" dir is
-necessarily empty on disk and its `wildcard $(dir)/*` compiles nothing - harmless
-for T2a.2. The gate confirms each extra dir holds no source files; a non-empty
-extra would mean the role->root mapping misroutes and is a fail.
+The manifest may list an empty source directory before a new project runs
+`make newmodule`. These committed examples are established scaffolds, so every
+requested registrar and concrete Verilator top must exist after `make gen`.
 
 Run from anywhere; regenerates each example (clean + db + gen) so both the
 manifest and the on-disk generated files are current.
@@ -115,6 +111,11 @@ def is_known_orphan(repo_root, d):
     # top entry, so the child entry dir is on disk but absent from the manifest.
     # The top project's own verif/vl_wrap IS carried, so exclude only a nested one.
     if len(parts) > 2 and parts[-2:] == ['verif', 'vl_wrap']:
+        return True
+    # A directly composed reusable IP keeps its standalone registrar directory
+    # on disk. The active root emits pair registrars in the assembling parents'
+    # domains, so the child harness's own registrar directory is unreachable.
+    if parts == ['ip', 'registrar']:
         return True
     return False
 
@@ -358,6 +359,20 @@ def check_example(name):
     extra = manifest_dirs - glob_dirs         # manifest anticipates (must be empty on disk)
 
     problems = []
+    registrarSegment = os.sep + 'registrar' + os.sep
+    requiredGenerated = [
+        path for path in man.get('A2C_SC_GEN_FILES', [])
+        if registrarSegment in path]
+    requiredGenerated += [
+        paths[0] for key, paths in man.items()
+        if key.startswith('A2C_VL_SV_') and paths]
+    missingGenerated = [
+        path for path in requiredGenerated if not os.path.isfile(path)]
+    if missingGenerated:
+        problems.append(
+            'generated manifest names missing scaffold files: '
+            + ', '.join(sorted(os.path.relpath(path, repo_root)
+                               for path in missingGenerated)))
     unexplained = [d for d in missing if not is_known_orphan(repo_root, d)]
     if unexplained:
         problems.append('missing (not a known orphan): ' +

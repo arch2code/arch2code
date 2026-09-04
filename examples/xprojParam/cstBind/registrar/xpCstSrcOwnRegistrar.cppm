@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpCstSupVariantConfig.h"
 
-export module xpCstBind.xpCstBindWrap.xpCstSrcOwn.registrar;
+export module xpCstBind.xpCstBind_xpCstSrcOwn.registrar;
 import xpCstBind_xpCstSrcOwn.block;
 
 namespace {
@@ -19,6 +19,12 @@ struct _xpCstSrcOwn_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCstSrcOwn<xpCstSrcOwnUseConfig>>(blockName, variant, bbMode));
             },
             "use", "xpCstBind");
+        instanceFactory::registerBlock(
+            "xpCstSrcOwn_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCstSrcOwn<xpCstSrcOwnUseConfig>>(blockName, variant, bbMode));
+            },
+            "use", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstBind_xpCstSrcOwn");
     }
 };
 static _xpCstSrcOwn_registrar _xpCstSrcOwn_registrar_instance;

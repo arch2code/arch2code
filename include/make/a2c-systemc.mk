@@ -171,6 +171,12 @@ ifdef VL_DUT
 ifndef USE_VCS
 CXX_FLAGS += -DVERILATOR
 LD_FLAGS += -L$(A2C_VL_BUILD_DIR) -l$(PROJECTNAME)vl_s_wrap -latomic
+# The linked-in verilated library is a build output of the vl sub-make, so name it
+# as a prerequisite: a re-verilate that leaves every generated V<top>.h alone
+# would otherwise not relink, and the binary would keep the previous RTL.
+# Wildcard-filtered because the sub-make has not run on a cold tree, where the
+# binary does not exist either and links fresh.
+VL_WRAP_LIB = $(wildcard $(A2C_VL_BUILD_DIR)/lib$(PROJECTNAME)vl_s_wrap.a)
 # https://github.com/verilator/verilator/issues/5672
 CXX_FLAGS += -Wno-sign-compare
 endif
@@ -216,13 +222,15 @@ ifndef USE_GCC
 DEP += $(CPP_MODULE_PCM:%.pcm=%.d)
 endif
 
-# Actual target of the binary - depends on all .o files.
-$(BIN_DIR)/$(BIN) : $(OBJ)
+# Actual target of the binary - depends on all .o files and, under VL_DUT, on the
+# verilated library LD_FLAGS links in. Only the objects are named on the command
+# line; the library reaches the link through -l.
+$(BIN_DIR)/$(BIN) : $(OBJ) $(VL_WRAP_LIB)
 ifndef USE_VCS
     # Create build directories - same structure as sources.
 	mkdir -p $(@D)
     # Just link all the object files.
-	$(CXX) -o $@ $^ $(LD_FLAGS)
+	$(CXX) -o $@ $(OBJ) $(LD_FLAGS)
 endif
 
 # Rule to compile files in O3_CPP_SRC to add -o3 optimization

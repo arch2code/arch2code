@@ -19,7 +19,7 @@ public:
     virtual ~xpMtxTplTopBase() = default;
 
 
-    xpMtxTplTopBase(std::string name, const char * variant) 
+    xpMtxTplTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -34,7 +34,7 @@ export class xpMtxTplTopInverted : public virtual blockPortBase
 public:
 
 
-    xpMtxTplTopInverted(std::string name) 
+    xpMtxTplTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -49,7 +49,7 @@ export class xpMtxTplTopChannels
 public:
 
 
-    xpMtxTplTopChannels(std::string name, std::string srcName) 
+    xpMtxTplTopChannels(std::string name, std::string srcName)
     {};
     void bind( xpMtxTplTopBase *a, xpMtxTplTopInverted *b)
     {

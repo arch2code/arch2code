@@ -2,5 +2,4 @@
 # REPO_ROOT=<example root>`. Pulls the example's config + manifest, then the
 # shared verilation rules. Wrapper sources are node-scoped; outputs land here.
 include $(REPO_ROOT)/include/make/shared.mk
-VL_SRC_DIRS = $(A2C_VL_WRAP_DIRS)
 include $(A2C_ROOT)/include/make/a2c-vl-wrap.mk

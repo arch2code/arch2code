@@ -53,6 +53,8 @@ def render(args, prj, data):
             return(foreignConfig_cppm(args, prj, data))
         case 'vlSvWrapForeign_sv':
             return(vlSvWrapForeign_sv(args, prj, data))
+        case 'vlSvWrapPair_sv':
+            return(vlSvWrapPair_sv(args, prj, data))
         case 'rtlModule_sv':
             if isRegHandler:
                 return(rtlModuleRegs(args, prj, data))
@@ -90,6 +92,8 @@ def render(args, prj, data):
             return(package_sv(args, prj, data))
         case 'rtlDotF_f':
             return(rtlDotF_f(args, prj, data))
+        case 'regAddresses_hdr':
+            return(regAddresses_hdr(args, prj, data))
         # Exhaustive over the `<fileType>_<ext>` keys a fileMap can name. An
         # unregistered key must abort NON-ZERO: newModule scaffolds the remaining
         # artifacts after this call, so a zero status would truncate the scaffold
@@ -295,6 +299,19 @@ def vlSvWrapForeign_sv(args, prj, data):
     out.append(f'`ifndef {guard}\n')
     out.append(f'`define {guard}\n\n')
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]} --variant={data["variant"]}\n')
+    out.append('// GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper\n')
+    out.append('// GENERATED_CODE_END\n\n')
+    out.append(f'`endif // {guard}\n')
+    return("".join(out))
+
+
+def vlSvWrapPair_sv(args, prj, data):
+    guard = f'{data["headerName"].replace(".", "_").upper()}_GUARD_'
+    out = list()
+    out.append(f'`ifndef {guard}\n')
+    out.append(f'`define {guard}\n\n')
+    out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} '
+               f'--parent={data["parent"]} --variant={data["variant"]} --mode=pair\n')
     out.append('// GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper\n')
     out.append('// GENERATED_CODE_END\n\n')
     out.append(f'`endif // {guard}\n')
@@ -722,3 +739,27 @@ def rtlDotF_f(args, prj, data):
     out.append('// GENERATED_CODE_BEGIN --template=rtlDotF\n')
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
+
+# Per-product address defines: instance base addresses and register/memory
+# offsets for the whole build, one file per project. Both regions emit bare
+# #defines, so the header carries no namespace of its own.
+regAddresses_hdrTemplate = \
+"""
+#ifndef __HEADERGUARD___
+#define __HEADERGUARD___
+// __copyright__
+
+// GENERATED_CODE_PARAM --project=__project__
+// GENERATED_CODE_BEGIN --template=includes --section=addresses
+// GENERATED_CODE_END
+// GENERATED_CODE_BEGIN --template=includes --section=regAddresses
+// GENERATED_CODE_END
+
+#endif //__HEADERGUARD___
+"""
+def regAddresses_hdr(args, prj, data):
+    t = TemplateCustom(regAddresses_hdrTemplate)
+    return(t.substitute({
+        'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
+        'project':data["project"],
+        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))

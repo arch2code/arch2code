@@ -10,7 +10,7 @@ projectFiles:
   - xif.yaml
 
 # The DUT block owns the testbench; its External excludes the DUT instance.
-topInstance: xif_tb
+topInstance: xif_top
 
 dirs:
   root: ../..

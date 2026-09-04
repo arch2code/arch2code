@@ -72,10 +72,10 @@ dutExternal::dutExternal(sc_module_name modulename) :
     dutInverted<dutDutV0Config>("Chnl"),
     log_(name())
 
-   ,uTbPeerA(std::dynamic_pointer_cast<tbPeerBase<tbPeerPv0Config>>(instanceFactory::createInstance(name(), "uTbPeerA", "tbPeer", "pv0", "xif")))
-   ,uTbPeerB(std::dynamic_pointer_cast<tbPeerBase<tbPeerPvSourcedConfig<xif_tbTbV0Config>>>(instanceFactory::createInstance<tbPeer<tbPeerPvSourcedConfig<xif_tbTbV0Config>>>(name(), "uTbPeerB", "tbPeer", "pvSourced", "xif")))
-   ,uSrc(std::dynamic_pointer_cast<srcBase<srcSrcV0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "srcV0", "xif")))
-   ,uSink(std::dynamic_pointer_cast<sinkBase<sinkSinkV0Config>>(instanceFactory::createInstance(name(), "uSink", "sink", "sinkV0", "xif")))
+   ,uTbPeerA(std::dynamic_pointer_cast<tbPeerBase<tbPeerPv0Config>>(instanceFactory::createInstance(name(), "uTbPeerA", "tbPeer", "pv0", "xif.xif_tb.xif_tbPeer")))
+   ,uTbPeerB(std::dynamic_pointer_cast<tbPeerBase<tbPeerPvSourcedConfig<xif_tbTbV0Config>>>(instanceFactory::createInstance<tbPeer<tbPeerPvSourcedConfig<xif_tbTbV0Config>>>(name(), "uTbPeerB", "tbPeer", "pvSourced", "xif.xif_tb.xif_tbPeer")))
+   ,uSrc(std::dynamic_pointer_cast<srcBase<srcSrcV0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "srcV0", "xif.xif_tb.xif_src")))
+   ,uSink(std::dynamic_pointer_cast<sinkBase<sinkSinkV0Config>>(instanceFactory::createInstance(name(), "uSink", "sink", "sinkV0", "xif.xif_tb.xif_sink")))
    ,out_0("out_0", "uTbPeerA")
    ,thunker_out_0_uTbPeerA("thunker_out_0_uTbPeerA", out_0, uTbPeerA->out, name())
    ,out_1("out_1", "uTbPeerB")

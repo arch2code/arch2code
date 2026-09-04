@@ -400,6 +400,13 @@ def cpp_registrar_module_name(projectName, parentBlock, childBlock):
     # (project, parent, child) come from persisted data.
     return f'{cpp_module_name(projectName)}.{cpp_module_name(parentBlock)}.{cpp_module_name(childBlock)}.registrar'
 
+
+def cpp_child_registrar_module_name(projectName, childBlock):
+    # Stable C++20 module identity for the one physical registrar aggregate
+    # owned by a (project, child) pair. Parent-specific factory domains remain
+    # inside the translation unit rather than multiplying physical modules.
+    return f'{cpp_module_name(projectName)}.{cpp_module_name(childBlock)}.registrar'
+
 # Template parameter of a Config emitted for a variant that sources parameters
 # from its container: the Config of the block the instance sits in.
 CONTAINER_CONFIG_PARAM = 'ContainerConfig'
@@ -453,16 +460,27 @@ def cpp_variant_config_name(projectName, blockName, variant, isForeign=False):
         return f'{cpp_module_name(projectName)}_{bare}'
     return bare
 
+
+def cpp_config_expression_name(expression):
+    # C++ spelling of a persisted Config expression. A containerParam binding
+    # composes the child's Config template with the concrete parent Config.
+    if expression['kind'] == 'default':
+        return expression['name']
+    descriptor = expression['descriptor']
+    name = cpp_descriptor_config_name(descriptor, '')
+    if expression['kind'] == 'template':
+        return f'{name}<{cpp_config_expression_name(expression["container"])}>'
+    return name
+
 def cpp_descriptor_config_name(desc, defaultConfig):
-    # Emitted C++ struct name for one neutral per-variant descriptor from
-    # _buildVariantConfigDescriptors. A descriptor with no Config fields, or one
-    # whose value signature collapses onto the block's shared context default,
-    # emits AS `defaultConfig`; otherwise it spells the struct of its (possibly
-    # deduplicated) emit variant.
-    if not desc['values'] or desc['useDefault']:
+    # Emitted C++ struct name for one neutral per-variant descriptor, as
+    # persisted by calcVariantConfigDescriptors. A descriptor with no Config
+    # fields emits as `defaultConfig`; otherwise it spells its own variant's
+    # struct.
+    if not desc['values']:
         return defaultConfig
     return cpp_variant_config_name(desc['declaringProject'], desc['block'],
-                                   desc['emitVariant'], desc['isForeign'])
+                                   desc['variant'], desc['isForeign'])
 
 def cpp_config_struct_name(configSelection):
     # Emitted C++ Config struct name for a neutral per-instance selection from
@@ -964,11 +982,11 @@ def get_sorted_memories(data):
     mems = dict(sorted(mems.items(), key=lambda item: item[1]["offset"]))
     return mems
 
-def sc_concrete_dut(sv_wrapper, declared_variants):
-    # Select the non-templated SC wrapper's single DUT top: first-declared
-    # variant's trampoline when the block declares variants, body DUT otherwise.
-    if declared_variants:
-        v = next(iter(declared_variants))
+def sc_concrete_dut(sv_wrapper, standalone_variants):
+    # Select the non-templated SC wrapper's single DUT top: the first standalone
+    # variant's trampoline when the block has any, the body DUT otherwise.
+    if standalone_variants:
+        v = next(iter(standalone_variants))
         return {
             'svModule':  sv_wrapper['variantTops'][v],
             'dutClass':  sv_wrapper['variantDutClasses'][v],

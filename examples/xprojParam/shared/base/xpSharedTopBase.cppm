@@ -19,7 +19,7 @@ public:
     virtual ~xpSharedTopBase() = default;
 
 
-    xpSharedTopBase(std::string name, const char * variant) 
+    xpSharedTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -34,7 +34,7 @@ export class xpSharedTopInverted : public virtual blockPortBase
 public:
 
 
-    xpSharedTopInverted(std::string name) 
+    xpSharedTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -49,7 +49,7 @@ export class xpSharedTopChannels
 public:
 
 
-    xpSharedTopChannels(std::string name, std::string srcName) 
+    xpSharedTopChannels(std::string name, std::string srcName)
     {};
     void bind( xpSharedTopBase *a, xpSharedTopInverted *b)
     {

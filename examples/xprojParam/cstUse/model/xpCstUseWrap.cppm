@@ -77,9 +77,9 @@ xpCstUseWrap::xpCstUseWrap(sc_module_name blockName, const char * variant, block
         ,xpCstUseWrapBase(name(), variant)
         ,out_0("xpCstDut_out_0", "xpCstUseSrc")
         ,out_1("xpCstUseChk_out_1", "xpCstDut")
-        ,uSrc(std::dynamic_pointer_cast<xpCstUseSrcBase<xpCstUse_xpCstUseSrcUseConfig>>(instanceFactory::createInstance(name(), "uSrc", "xpCstUseSrc", "use", "xpCstUse")))
-        ,uDut(std::dynamic_pointer_cast<xpCstDutBase<xpCstUse_xpCstDutUseConfig>>(instanceFactory::createInstance(name(), "uDut", "xpCstDut", "use", "xpCstUse")))
-        ,uChk(std::dynamic_pointer_cast<xpCstUseChkBase<xpCstUse_xpCstUseChkUseConfig>>(instanceFactory::createInstance(name(), "uChk", "xpCstUseChk", "use", "xpCstUse")))
+        ,uSrc(std::dynamic_pointer_cast<xpCstUseSrcBase<xpCstUse_xpCstUseSrcUseConfig>>(instanceFactory::createInstance(name(), "uSrc", "xpCstUseSrc", "use", "xpCstUse.xpCstUse_xpCstUseWrap.xpCstUse_xpCstUseSrc")))
+        ,uDut(std::dynamic_pointer_cast<xpCstDutBase<xpCstUse_xpCstDutUseConfig>>(instanceFactory::createInstance(name(), "uDut", "xpCstDut", "use", "xpCstUse.xpCstUse_xpCstUseWrap.xpCstIp_xpCstDut")))
+        ,uChk(std::dynamic_pointer_cast<xpCstUseChkBase<xpCstUse_xpCstUseChkUseConfig>>(instanceFactory::createInstance(name(), "uChk", "xpCstUseChk", "use", "xpCstUse.xpCstUse_xpCstUseWrap.xpCstUse_xpCstUseChk")))
         ,thunker_out_0_uSrc("thunker_out_0_uSrc", out_0, uSrc->out, name())
         ,thunker_out_1_uDut("thunker_out_1_uDut", out_1, uDut->out, name())
 // GENERATED_CODE_END

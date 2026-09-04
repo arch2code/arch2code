@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpInhContVariantConfig.h"
 
-export module xpInhVar.xpInhWrap.xpInhCont.registrar;
+export module xpInhVar.xpInhVar_xpInhCont.registrar;
 import xpInhVar_xpInhCont.block;
 
 namespace {
@@ -22,9 +22,21 @@ struct _xpInhCont_registrar {
         instanceFactory::registerBlock(
             "xpInhCont_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhContAltConfig>>(blockName, variant, bbMode));
+            },
+            "alt", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont");
+        instanceFactory::registerBlock(
+            "xpInhCont_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhContDefaultConfig>>(blockName, variant, bbMode));
             },
             "default", "xpInhVar");
+        instanceFactory::registerBlock(
+            "xpInhCont_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhContDefaultConfig>>(blockName, variant, bbMode));
+            },
+            "default", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont");
     }
 };
 static _xpInhCont_registrar _xpInhCont_registrar_instance;

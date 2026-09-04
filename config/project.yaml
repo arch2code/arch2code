@@ -119,22 +119,13 @@ fileGeneration:
     # a block declaring its own params: becomes a template<typename Config> class,
     # any other block an untemplated `export SC_MODULE(...)`.
     blockModule : { name : "",                ext: {cppm: "cppm"},         cond: {hasMdl: true}, mode: block, basePath: model, desc: "Block module interface unit (.cppm, all blocks)"}
-    # mode: registrar emits one <child>Registrar per distinct class-template child
-    # an assembler instantiates, under the assembler's directory in the registrar
-    # root. cond/condAnd apply to the instantiated child and key on hasOwnParams,
-    # not isParameterizable: only a child declaring its own params: is a
-    # template<typename Config> whose instantiation the trampoline must pick, so a
-    # container flagged isParameterizable only because parameterizable structures
-    # transit it self-registers and gains no trampoline. requiresRegistrations
-    # drops the pair with nothing to register - a child whose bindings are all
-    # typed by the parent's own Config is named at the parent's createInstance
-    # site, leaving a TU holding only its preamble.
+    # A child-named registrar aggregates the child's model registrations for the
+    # owning assembler project. Each registration keeps its parent-child factory
+    # key. hasOwnParams selects Config-templated children; requiresRegistrations
+    # omits an aggregate with no model registrations.
     blockRegistrar : { name : "Registrar",    ext: {cppm: "cppm"},         cond: {hasOwnParams: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, requiresRegistrations: true, desc: "Per-assembler per-child trampoline registrar TU"}
-    # The verilated counterpart of blockRegistrar: one <child>VlRegistrar.cpp per
-    # distinct verilated (hasVl) child an assembler instantiates, in the assembler's
-    # registrar domain. The whole TU is guarded by #ifdef VERILATOR and owns the
-    # `_verif` factory registrations. Discovered as an ordinary registrar/ source
-    # by A2C_SC_SRC_DIRS.
+    # A child-named Verilated registrar aggregates the child's factory
+    # registrations for the owning assembler project.
     blockVlRegistrar : { name : "VlRegistrar", ext: {src: "cpp"},           cond: {hasVl: true},              mode: registrar, basePath: registrar, desc: "Per-assembler per-child Verilated-wrapper registrar TU"}
     # One owner-qualified per-variant Config module interface unit per (declaring
     # project, reused child) in the assembler's registrar domain, aggregating the
@@ -161,15 +152,22 @@ fileGeneration:
     # owner-qualified top module name (<project>_<child>_<variant>_hdl_sv_wrapper)
     # keeps two projects' variants of the same reused child distinct Verilator tops.
     vlSvWrapForeign : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},         cond: {isParameterizable: true},  condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, variant: true, foreignConfig: true, desc: "Owner-qualified foreign per-variant SV verilated wrapper top"}
-    # Exactly one testbench artifact and class family per block (no variant: true).
-    # `--variant` is solely a generated-code parameter, consumed by templates to
-    # select the DUT Config and factory variant string.
-    testBench   : { name : "Testbench",       ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench top module interface unit"}
-    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench config files"}
-    tbExternal  : { name : "External",        ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    desc: "Testbench external module interface unit"}
+    # Container-sourced Configs require pair-qualified module names. pairVlTop
+    # emits those modules through child-variant-qualified wrapper files.
+    vlSvWrapPair : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},            cond: {hasOwnParams: true}, condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, variant: true, pairVlTop: true, desc: "Pair-qualified concrete SV top aggregated in child-variant scaffold"}
+    # Each testbench file is emitted once per block. For a parameterizable block,
+    # dutVariant seeds GENERATED_CODE_PARAM with its first declared variant. It
+    # also identifies artifacts that require a block-owned DUT Config.
+    testBench   : { name : "Testbench",       ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    dutVariant: true, desc: "Testbench top module interface unit"}
+    tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    dutVariant: true, desc: "Testbench config files"}
+    tbExternal  : { name : "External",        ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    dutVariant: true, desc: "Testbench external module interface unit"}
     include     : { name : "Includes",        ext: {cppm: "cppm"},           cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include module interface"}
     config      : { name : "VariantConfig",   ext: {hdr: "h"},               cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based default config header"}
     #includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
+    # Address defines for the whole product, one file per project, so a project
+    # wanting them declares the entry. name: is the literal basename, so a product
+    # normally spells its own (e.g. debayerRegAddresses).
+    #regAddresses: { name : "regAddresses",    ext: {hdr: "h"},                                                  mode: project, basePath: model,   desc: "Per-project instance and register address defines"}
     package     : { name : "_package",        ext: {sv: "sv"},             cond: {smartInclude: true},          mode: context, basePath: rtl,     desc: "yaml based package file"}
     # mode: project creates exactly one artifact per project at its basePath segment
     # root, keyed to the project's top context. rtl.f is the verilator file list (-F)

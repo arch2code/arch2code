@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpSinkVariantConfig.h"
 
-export module xpDeparam.xpDeparamTop.xpSink.registrar;
+export module xpDeparam.xpSink.registrar;
 import xpSink.block;
 
 namespace {
@@ -18,7 +18,13 @@ struct _xpSink_registrar {
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpSink<xpSinkV0Config>>(blockName, variant, bbMode));
             },
-            "v0", "xpDeparam");
+            "v0", "xpDeparam.xpDeparam_xpDeparamTop.xpSink");
+        instanceFactory::registerBlock(
+            "xpSink_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpSink<xpSinkV0Config>>(blockName, variant, bbMode));
+            },
+            "v0", "xpSink");
     }
 };
 static _xpSink_registrar _xpSink_registrar_instance;

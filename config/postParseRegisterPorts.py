@@ -70,8 +70,7 @@ def synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
 
     parentParams is the list of the leaf block's parameter names; the
     handler inherits them so it emits module parameters and selects the
-    leaf's module-local parameterizable declarations (its register/memory
-    storage is variant-width, sized by these params).
+    leaf's module-local parameterizable declarations.
 
     Returns (reg_block, block_def, instance_name, instance_def, connection_map).
     """
@@ -91,6 +90,10 @@ def synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
     instance_def = {
         'instanceType': reg_block,
         'container': block,
+        # The handler holds the leaf's own registers, so its Config is the
+        # leaf's. validate_inherit_container_params rejects an inheriting
+        # child that declares no params, hence the gate.
+        'inheritContainerParam': bool(parentParams),
     }
     connection_map = {
         'interface': reg_interface,

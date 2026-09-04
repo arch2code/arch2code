@@ -1,0 +1,31 @@
+# ptTop_tb is the top instance, declares params:, and names a variant. The
+# variant is what isolates the shape: with it present, the only rule that can
+# reject this file is the parameterized-top rule.
+
+ipParameters:
+    constants:
+        PT_WIDTH: { value: 8, maxValue: 16, desc: "Payload width bound by the top's variant" }
+
+blocks:
+    ptTop_tb:
+        desc: "Testbench container declared as the top, and parameterized"
+        params: [PT_WIDTH]
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    ptTop:
+        desc: "DUT top"
+        hasMdl: true
+        hasTb: true
+        hasRtl: false
+        hasVl: false
+
+instances:
+    ptTop_tb: { container: ptTop_tb, instanceType: ptTop_tb, instGroup: top, variant: ptV0 }
+    u_ptTop:  { container: ptTop_tb, instanceType: ptTop,    instGroup: top }
+
+parameters:
+    ptTop_tb:
+        ptV0:
+            PT_WIDTH: 8

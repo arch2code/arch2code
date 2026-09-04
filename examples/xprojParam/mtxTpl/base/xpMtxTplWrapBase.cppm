@@ -23,7 +23,7 @@ public:
     static constexpr auto MTX_CH_WIDTH = Config::MTX_CH_WIDTH;
 
 
-    xpMtxTplWrapBase(std::string name, const char * variant) 
+    xpMtxTplWrapBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -41,7 +41,7 @@ class xpMtxTplWrapInverted : public virtual blockPortBase
 public:
 
 
-    xpMtxTplWrapInverted(std::string name) 
+    xpMtxTplWrapInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -57,7 +57,7 @@ class xpMtxTplWrapChannels
 public:
 
 
-    xpMtxTplWrapChannels(std::string name, std::string srcName) 
+    xpMtxTplWrapChannels(std::string name, std::string srcName)
     {};
     void bind( xpMtxTplWrapBase<Config> *a, xpMtxTplWrapInverted<Config> *b)
     {

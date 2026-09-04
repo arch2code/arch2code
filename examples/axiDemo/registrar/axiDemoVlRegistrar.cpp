@@ -17,6 +17,12 @@ struct _axiDemo_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axiDemo_hdl_sc_wrapper>(blockName, variant, bbMode));
             },
             "", "axiDemo");
+        instanceFactory::registerBlock(
+            "axiDemo_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<axiDemo_hdl_sc_wrapper>(blockName, variant, bbMode));
+            },
+            "", "axiDemo");
     }
 };
 static _axiDemo_vl_registrar _axiDemo_vl_registrar_instance;

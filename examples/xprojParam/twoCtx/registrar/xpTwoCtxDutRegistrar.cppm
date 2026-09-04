@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpDpLeafVariantConfig.h"
 
-export module xpTwoCtx.xpTwoCtxWrap.xpTwoCtxDut.registrar;
+export module xpTwoCtx.xpTwoCtx_xpTwoCtxDut.registrar;
 import xpTwoCtx_xpTwoCtxDut.block;
 import xpTwoCtx.xpTwoCtxDut.config;
 
@@ -20,6 +20,12 @@ struct _xpTwoCtxDut_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpTwoCtxDut<xpTwoCtx_xpTwoCtxDutTwoctxConfig>>(blockName, variant, bbMode));
             },
             "twoctx", "xpTwoCtx");
+        instanceFactory::registerBlock(
+            "xpTwoCtxDut_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpTwoCtxDut<xpTwoCtx_xpTwoCtxDutTwoctxConfig>>(blockName, variant, bbMode));
+            },
+            "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxDut");
     }
 };
 static _xpTwoCtxDut_registrar _xpTwoCtxDut_registrar_instance;

@@ -40,19 +40,17 @@ Correct-by-design behavior (these cells must pass):
   adapted, on the producer end of each hop, since the channel takes the consumer
   end's Config and a payload is a distinct C++ type per Config.
 
-Known-gap cells. Each asserts the DESIRED behavior; a failure is the record of a
-gap. No generator code is changed to make them pass.
+Rules only this suite exercises:
 - Two same-named interfaces owned by different projects with different payload
-  widths must be reconciled at db time rather than accepted.
+  widths fail the db build.
 - A block port whose interface is declared in another file of its own project
-  must not fall back to a whole-database bare-name interface scan, which
-  first-match-wins binds the wrong project's interface - both in the declared-port
-  resolution and in the cross-interface thunker payload it feeds.
-- On the one working cross-project parameterized path (the shared `include:`), a
-  variant binding that exceeds the backing constant's `maxValue` is accepted,
-  because the sizing check reaches the backing constant through the block param's
-  own file qualification rather than the resolved declaring file. This is the one
-  cell that still fails.
+  binds that declaration, in the declared-port resolution and in the
+  cross-interface thunker payload it feeds. A whole-database bare-name scan
+  would bind whichever project's interface it hit first.
+- On the shared `include:` path, a variant binding that exceeds the backing
+  constant's `maxValue` is rejected. The sizing check reaches the backing
+  constant through the resolved declaring file, not the block param's own file
+  qualification.
 """
 
 import os
@@ -461,20 +459,19 @@ def test_one_interface_at_differing_configs_is_adapted():
 
 
 # ----------------------------------------------------------------------------
-# Known gaps: each cell asserts the DESIRED behavior.
+# Reconciliation and resolution rules.
 # ----------------------------------------------------------------------------
 
-def test_gap_cross_project_width_mismatch_detected():
-    _header("GAP: cross-project same-named interfaces with different widths "
-            "must be reconciled")
+def test_cross_project_width_mismatch_rejected():
+    _header("cross-project same-named interfaces with different widths are "
+            "rejected")
     work = _copy_fixture('param_xproj_collision_')
     try:
-        # Pin the premise the way the bare-name cell pins its own, so fixture
-        # drift can never be misread as the gap. Read from the fixture text
-        # rather than the database, because the DESIRED outcome of this cell is
-        # a rejected build, which leaves no database to inspect. Anchors: the
-        # assembler declares its own interface under the sub-projects' name, its
-        # payload is 32 bits, and both endpoints bind an 8-bit variant.
+        # Pin the premise from the fixture text rather than the database, because
+        # this cell requires a rejected build and a rejected build leaves no
+        # database to inspect. Anchors: the assembler declares its own interface
+        # under the sub-projects' name, its payload is 32 bits, and both endpoints
+        # bind an 8-bit variant.
         premisePath = os.path.join(work, 'top', 'yaml', 'collisionTop.yaml')
         with open(premisePath) as f:
             premiseText = f.read()
@@ -509,9 +506,9 @@ def test_gap_cross_project_width_mismatch_detected():
         shutil.rmtree(work, ignore_errors=True)
 
 
-def test_gap_bare_name_interface_binds_owning_project():
-    _header("GAP: a port must bind its own project's interface, not the first "
-            "same-named one")
+def test_port_binds_its_own_project_interface():
+    _header("a port binds its own project's interface, not the first same-named "
+            "one")
     work = _copy_fixture('param_xproj_barename_')
     try:
         db, out, rc = _build_db(work, 'bareNameProject.yaml')
@@ -559,9 +556,9 @@ def test_gap_bare_name_interface_binds_owning_project():
         shutil.rmtree(work, ignore_errors=True)
 
 
-def test_gap_shared_include_binding_sizing_enforced():
-    _header("GAP: an oversize variant binding must be rejected when the backing "
-            "constant is reached by include:")
+def test_shared_include_binding_sizing_enforced():
+    _header("an oversize variant binding is rejected when the backing constant "
+            "is reached by include:")
     work = _copy_fixture('param_xproj_sizing_')
     try:
         # WIDTH's maxValue is 32 and worst-case sizing is taken from it, so
@@ -587,6 +584,56 @@ def test_gap_shared_include_binding_sizing_enforced():
         shutil.rmtree(work, ignore_errors=True)
 
 
+def test_registrar_requirements_exclude_unreachable_child_harnesses():
+    _header("registrar requirements contain only the active composition")
+    work = _copy_fixture('param_xproj_registrar_reach_')
+    try:
+        childArch = os.path.join(work, 'projA', 'yaml', 'aTop.yaml')
+        with open(childArch, 'a') as f:
+            f.write("""
+    aHarness:
+        desc: "Referenced-project standalone harness outside the active top"
+
+instances:
+    uHarnessLeaf: { container: aHarness, instanceType: aIp, variant: v0 }
+""")
+        db, out, rc = _build_db(work, 'adaptedProject.yaml')
+        if rc != 0:
+            print("  FAIL: composition did not build")
+            print('  ' + '\n  '.join(out.split('\n')[:25]))
+            return False
+        prj = projectOpen(db)
+        expected = {
+            (row['containerKey'], row['instanceTypeKey'])
+            for instanceKey, row in prj.data['instances'].items()
+            if instanceKey in prj.reachableInstances
+            and row['containerKey'] in prj.data['blocks']
+        }
+        unreachable = {
+            (row['containerKey'], row['instanceTypeKey'])
+            for instanceKey, row in prj.data['instances'].items()
+            if instanceKey not in prj.reachableInstances
+            and row['containerKey'] in prj.data['blocks']
+        }
+        actual = set(prj.registrarPairs)
+        if not unreachable:
+            print("  FAIL: fixture no longer contains a referenced-project "
+                  "standalone harness")
+            return False
+        if actual != expected:
+            print(f"  FAIL: persisted pairs {sorted(actual)}, expected "
+                  f"{sorted(expected)}")
+            return False
+        if actual & unreachable:
+            print(f"  FAIL: unreachable pairs leaked into requirements: "
+                  f"{sorted(actual & unreachable)}")
+            return False
+        print(f"  PASS: excluded {len(unreachable)} unreachable pair(s)")
+        return True
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def run_all_tests():
     print("\n" + "="*70)
     print("TESTING: parameterized interface across project boundaries")
@@ -598,9 +645,10 @@ def run_all_tests():
         test_same_named_cross_project_interfaces_are_adapted,
         test_shared_ipparameter_include_across_projects,
         test_one_interface_at_differing_configs_is_adapted,
-        test_gap_cross_project_width_mismatch_detected,
-        test_gap_bare_name_interface_binds_owning_project,
-        test_gap_shared_include_binding_sizing_enforced,
+        test_cross_project_width_mismatch_rejected,
+        test_port_binds_its_own_project_interface,
+        test_shared_include_binding_sizing_enforced,
+        test_registrar_requirements_exclude_unreachable_child_harnesses,
     ]
     results = []
     for test_func in tests:

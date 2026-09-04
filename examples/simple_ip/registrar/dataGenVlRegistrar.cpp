@@ -17,6 +17,12 @@ struct _dataGen_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dataGen_hdl_sc_wrapper>(blockName, variant, bbMode));
             },
             "", "simple_ip");
+        instanceFactory::registerBlock(
+            "dataGen_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dataGen_hdl_sc_wrapper>(blockName, variant, bbMode));
+            },
+            "", "simple_ip");
     }
 };
 static _dataGen_vl_registrar _dataGen_vl_registrar_instance;

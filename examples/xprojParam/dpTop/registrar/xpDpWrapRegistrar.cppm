@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpDpLeafVariantConfig.h"
 
-export module xpDpTop.xpDpTop.xpDpWrap.registrar;
+export module xpDpTop.xpDpTop_xpDpWrap.registrar;
 import xpDpTop_xpDpWrap.block;
 import xpDpTop.xpDpWrap.config;
 
@@ -20,6 +20,12 @@ struct _xpDpWrap_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpDpWrap<xpDpTop_xpDpWrapCustomerConfig>>(blockName, variant, bbMode));
             },
             "customer", "xpDpTop");
+        instanceFactory::registerBlock(
+            "xpDpWrap_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpDpWrap<xpDpTop_xpDpWrapCustomerConfig>>(blockName, variant, bbMode));
+            },
+            "customer", "xpDpTop.xpDpTop.xpDpTop_xpDpWrap");
     }
 };
 static _xpDpWrap_registrar _xpDpWrap_registrar_instance;

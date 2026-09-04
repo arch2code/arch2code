@@ -19,6 +19,12 @@ struct _src_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src_hdl_sc_wrapper<Vsrc_variantSrc0_hdl_sv_wrapper, srcVariantSrc0Config>>(blockName, variant, bbMode));
             },
             "variantSrc0", "ip_test");
+        instanceFactory::registerBlock(
+            "src_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src_hdl_sc_wrapper<Vsrc_variantSrc0_hdl_sv_wrapper, srcVariantSrc0Config>>(blockName, variant, bbMode));
+            },
+            "variantSrc0", "ip_test.ip_test_ip_top.ip_test_src");
     }
 };
 static _src_vl_registrar _src_vl_registrar_instance;

@@ -48,6 +48,7 @@ EXAMPLE_READERS=(
     test_layout_nested.py             # reads examples/nested (copytree)
     test_migrate_layout.py            # reads examples/simple + examples/hierInclude
     test_db_failure_no_stale_artifact.py  # reads examples/simple + xprojParam/cpLayoutBad (copytree)
+    test_container_param_cross_project_vl.py  # reads examples/xprojParam (copytree)
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.
@@ -65,9 +66,9 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping suites: the serial runner runs 106 suites.
-if [[ ${#ALL[@]} -ne 106 ]]; then
-    echo "WARNING: expected 106 suites (serial-runner set), found ${#ALL[@]}." >&2
+# Guard against silently dropping suites: unittest/ holds 114 test_*.py files.
+if [[ ${#ALL[@]} -ne 114 ]]; then
+    echo "WARNING: expected 114 suites (test_*.py in unittest/), found ${#ALL[@]}." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 

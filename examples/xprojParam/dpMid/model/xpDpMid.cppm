@@ -70,8 +70,8 @@ xpDpMid<Config>::xpDpMid(sc_module_name blockName, const char * variant, blockBa
         ,blockBase("xpDpMid", name(), bbMode)
         ,xpDpMidBase<Config>(name(), variant)
         ,out("xpDpLeaf_out", "xpDpLeaf")
-        ,uLeafA(std::dynamic_pointer_cast<xpDpLeafBase<xpDpMid_xpDpLeafCustomerConfig<Config>>>(instanceFactory::createInstance<xpDpLeaf<xpDpMid_xpDpLeafCustomerConfig<Config>>>(name(), "uLeafA", "xpDpLeaf", "customer", "xpDpMid")))
-        ,uLeafB(std::dynamic_pointer_cast<xpDpLeafBase<xpDpMid_xpDpLeafCustomerConfig<Config>>>(instanceFactory::createInstance<xpDpLeaf<xpDpMid_xpDpLeafCustomerConfig<Config>>>(name(), "uLeafB", "xpDpLeaf", "customer", "xpDpMid")))
+        ,uLeafA(std::dynamic_pointer_cast<xpDpLeafBase<xpDpMid_xpDpLeafCustomerConfig<Config>>>(instanceFactory::createInstance<xpDpLeaf<xpDpMid_xpDpLeafCustomerConfig<Config>>>(name(), "uLeafA", "xpDpLeaf", variant, "xpDpMid.xpDpMid.xpDpLeaf")))
+        ,uLeafB(std::dynamic_pointer_cast<xpDpLeafBase<xpDpMid_xpDpLeafCustomerConfig<Config>>>(instanceFactory::createInstance<xpDpLeaf<xpDpMid_xpDpLeafCustomerConfig<Config>>>(name(), "uLeafB", "xpDpLeaf", variant, "xpDpMid.xpDpMid.xpDpLeaf")))
         ,thunker_uLeafA("thunker_uLeafA", this->midIn, uLeafA->in, name())
         ,thunker_uLeafB("thunker_uLeafB", this->midOut, uLeafB->out, name())
 // GENERATED_CODE_END

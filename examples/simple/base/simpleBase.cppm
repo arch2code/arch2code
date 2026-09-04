@@ -19,7 +19,7 @@ public:
     virtual ~simpleBase() = default;
 
 
-    simpleBase(std::string name, const char * variant) 
+    simpleBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -34,7 +34,7 @@ export class simpleInverted : public virtual blockPortBase
 public:
 
 
-    simpleInverted(std::string name) 
+    simpleInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -49,7 +49,7 @@ export class simpleChannels
 public:
 
 
-    simpleChannels(std::string name, std::string srcName) 
+    simpleChannels(std::string name, std::string srcName)
     {};
     void bind( simpleBase *a, simpleInverted *b)
     {

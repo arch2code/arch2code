@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "mixedVariantConfig.h"
 
-export module mixed.mixed.blockG.registrar;
+export module mixed.mixed_blockG.registrar;
 import mixed_blockG.block;
 
 namespace {
@@ -19,6 +19,12 @@ struct _blockG_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockG<blockGGvariant0Config>>(blockName, variant, bbMode));
             },
             "gvariant0", "mixed");
+        instanceFactory::registerBlock(
+            "blockG_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockG<blockGGvariant0Config>>(blockName, variant, bbMode));
+            },
+            "gvariant0", "mixed.mixed.mixed_blockG");
     }
 };
 static _blockG_registrar _blockG_registrar_instance;

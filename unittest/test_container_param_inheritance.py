@@ -299,6 +299,28 @@ def test_systemverilog_forwards_container_symbol(prj):
     return True
 
 
+def test_container_sourced_pair_needs_no_registrar(prj):
+    """A containerParam variant is constructed directly by its container."""
+    print(f"\n{'='*70}\nTest: containerParam pair needs no model registrar"
+          f"\n{'='*70}")
+    pair = (prj.getQualBlock('cont'), prj.getQualBlock('leaf'))
+    if prj.registrarPairs[pair]['hasModelRegistrations']:
+        print("FAIL: persisted requirements retained a registrar for the "
+              "container-sourced variant")
+        return False
+    view = prj.getRegistrarConfigView(pair[1], pair[0])
+    if view['hasRegistrations'] or view['registeredVariants']:
+        print(f"FAIL: registrar view retained registrations: {view}")
+        return False
+    emitted = {os.path.basename(path)
+               for path in prj.config.getConfig('BUILDMANIFEST')['scGenFiles']}
+    if 'leafRegistrar.cppm' in emitted:
+        print("FAIL: build manifest retained leafRegistrar.cppm")
+        return False
+    print("PASS: persisted requirements, view and manifest all suppress it")
+    return True
+
+
 def _run_cell(cell, *args):
     """Run one cell, reporting an exception as that cell's failure.
 
@@ -330,6 +352,7 @@ def run_all_tests():
         prj = projectOpen(db_path)
         ok = _run_cell(test_equal_domain_accepted_and_value_resolves, prj) and ok
         ok = _run_cell(test_systemverilog_forwards_container_symbol, prj) and ok
+        ok = _run_cell(test_container_sourced_pair_needs_no_registrar, prj) and ok
     finally:
         cleanup(paths)
     return 0 if ok else 1

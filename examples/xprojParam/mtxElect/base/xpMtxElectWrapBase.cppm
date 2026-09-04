@@ -19,7 +19,7 @@ public:
     virtual ~xpMtxElectWrapBase() = default;
 
 
-    xpMtxElectWrapBase(std::string name, const char * variant) 
+    xpMtxElectWrapBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -34,7 +34,7 @@ export class xpMtxElectWrapInverted : public virtual blockPortBase
 public:
 
 
-    xpMtxElectWrapInverted(std::string name) 
+    xpMtxElectWrapInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -49,7 +49,7 @@ export class xpMtxElectWrapChannels
 public:
 
 
-    xpMtxElectWrapChannels(std::string name, std::string srcName) 
+    xpMtxElectWrapChannels(std::string name, std::string srcName)
     {};
     void bind( xpMtxElectWrapBase *a, xpMtxElectWrapInverted *b)
     {

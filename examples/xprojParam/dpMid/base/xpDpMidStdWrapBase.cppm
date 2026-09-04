@@ -19,7 +19,7 @@ public:
     virtual ~xpDpMidStdWrapBase() = default;
 
 
-    xpDpMidStdWrapBase(std::string name, const char * variant) 
+    xpDpMidStdWrapBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -34,7 +34,7 @@ export class xpDpMidStdWrapInverted : public virtual blockPortBase
 public:
 
 
-    xpDpMidStdWrapInverted(std::string name) 
+    xpDpMidStdWrapInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -49,7 +49,7 @@ export class xpDpMidStdWrapChannels
 public:
 
 
-    xpDpMidStdWrapChannels(std::string name, std::string srcName) 
+    xpDpMidStdWrapChannels(std::string name, std::string srcName)
     {};
     void bind( xpDpMidStdWrapBase *a, xpDpMidStdWrapInverted *b)
     {

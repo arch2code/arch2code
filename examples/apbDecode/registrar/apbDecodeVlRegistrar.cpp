@@ -17,6 +17,12 @@ struct _apbDecode_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<apbDecode_hdl_sc_wrapper>(blockName, variant, bbMode));
             },
             "", "apbDecode");
+        instanceFactory::registerBlock(
+            "apbDecode_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<apbDecode_hdl_sc_wrapper>(blockName, variant, bbMode));
+            },
+            "", "apbDecode");
     }
 };
 static _apbDecode_vl_registrar _apbDecode_vl_registrar_instance;

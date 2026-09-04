@@ -79,7 +79,7 @@ ipStdTop::ipStdTop(sc_module_name blockName, const char * variant, blockBaseMode
         ,uIpStdMaster(std::dynamic_pointer_cast<ipStdMasterBase>(instanceFactory::createInstance(name(), "uIpStdMaster", "ipStdMaster", "", "ip")))
         ,uIpStdDriver(std::dynamic_pointer_cast<ipStdDriverBase>(instanceFactory::createInstance(name(), "uIpStdDriver", "ipStdDriver", "", "ip")))
         ,uIpStdDecode(std::dynamic_pointer_cast<ipStdDecodeBase>(instanceFactory::createInstance(name(), "uIpStdDecode", "ipStdDecode", "", "ip")))
-        ,uIp(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp", "ip", "variant0", "ip")))
+        ,uIp(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp", "ip", "variant0", "ip.ip_ipStdTop.ip")))
         ,thunker_out0_uIp("thunker_out0_uIp", out0, uIp->ipDataIf, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body

@@ -221,6 +221,31 @@ echo "------------------------------------------------------------------------"
 python3 test_error_variant_incomplete_params.py || FAILED=1
 
 echo ""
+echo "Test Suite 19m2b: Variant on a block that declares no params is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_variant_on_params_less_block.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2c: Instance of a params-declaring block must select a Config"
+echo "------------------------------------------------------------------------"
+python3 test_error_instance_no_config_selector.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2d: Parameterized top instance is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_parameterized_top.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2e: Testbench on a container-sourced block is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_inherit_container_tb.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2f: One variant label declared by two containers is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_error_variant_label_collision.py || FAILED=1
+
+echo ""
 echo "Test Suite 19m3: Contained-block config inheritance (inheritContainerParam)"
 echo "------------------------------------------------------------------------"
 python3 test_inherit_container_param.py || FAILED=1
@@ -410,6 +435,12 @@ python3 test_param_cross_project_linkage.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: variant declarer precedence across project boundaries"
+echo "------------------------------------------------------------------------"
+python3 test_param_variant_declarer_precedence.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: channel parameterized by the container's own parameter"
 echo "------------------------------------------------------------------------"
 python3 test_container_param_channel_binding.py || FAILED=1
@@ -419,6 +450,12 @@ echo ""
 echo "Test Suite ${idx}: child variant sourcing a parameter from its container"
 echo "------------------------------------------------------------------------"
 python3 test_container_param_inheritance.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: cross-project containerParam Verilated child runtime"
+echo "------------------------------------------------------------------------"
+python3 test_container_param_cross_project_vl.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
@@ -440,15 +477,21 @@ python3 test_error_connection_end_collision.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: one parameterized child at a variant and at no variant"
+echo "Test Suite ${idx}: a register handler follows the Config of the block that owns its registers"
 echo "------------------------------------------------------------------------"
-python3 test_registrar_default_variant.py || FAILED=1
+python3 test_regs_handler_container_config.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
 echo "Test Suite ${idx}: a failed db build leaves no database for the next build"
 echo "------------------------------------------------------------------------"
 python3 test_db_failure_no_stale_artifact.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: a verilated leaf reached only through inheritContainerParam"
+echo "------------------------------------------------------------------------"
+python3 test_inherit_vl_child.py || FAILED=1
 
 echo ""
 echo "========================================================================"

@@ -18,6 +18,12 @@ struct _ipLeaf_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipLeaf_hdl_sc_wrapper<VipLeaf_variantLeaf0_hdl_sv_wrapper, ipLeafVariantLeaf0Config>>(blockName, variant, bbMode));
             },
             "variantLeaf0", "ip_test");
+        instanceFactory::registerBlock(
+            "ipLeaf_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ipLeaf_hdl_sc_wrapper<VipLeaf_variantLeaf0_hdl_sv_wrapper, ipLeafVariantLeaf0Config>>(blockName, variant, bbMode));
+            },
+            "variantLeaf0", "ip_test.ip_test_src.ip_test_ipLeaf");
     }
 };
 static _ipLeaf_vl_registrar _ipLeaf_vl_registrar_instance;

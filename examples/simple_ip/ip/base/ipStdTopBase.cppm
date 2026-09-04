@@ -22,7 +22,7 @@ public:
     virtual ~ipStdTopBase() = default;
 
 
-    ipStdTopBase(std::string name, const char * variant) 
+    ipStdTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -37,7 +37,7 @@ export class ipStdTopInverted : public virtual blockPortBase
 public:
 
 
-    ipStdTopInverted(std::string name) 
+    ipStdTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -52,7 +52,7 @@ export class ipStdTopChannels
 public:
 
 
-    ipStdTopChannels(std::string name, std::string srcName) 
+    ipStdTopChannels(std::string name, std::string srcName)
     {};
     void bind( ipStdTopBase *a, ipStdTopInverted *b)
     {

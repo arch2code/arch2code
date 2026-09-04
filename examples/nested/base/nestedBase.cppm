@@ -19,7 +19,7 @@ public:
     virtual ~nestedBase() = default;
 
 
-    nestedBase(std::string name, const char * variant) 
+    nestedBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -34,7 +34,7 @@ export class nestedInverted : public virtual blockPortBase
 public:
 
 
-    nestedInverted(std::string name) 
+    nestedInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -49,7 +49,7 @@ export class nestedChannels
 public:
 
 
-    nestedChannels(std::string name, std::string srcName) 
+    nestedChannels(std::string name, std::string srcName)
     {};
     void bind( nestedBase *a, nestedInverted *b)
     {

@@ -64,11 +64,19 @@ interfaces:
             - { structure: streamBndrySt, structureType: data_t }
 
 blocks:
+    xif_top:
+        desc: "Root. Holds the one parameterized testbench harness at a stated variant."
+        # Exists only to hold the harness, which declares params: and so cannot
+        # itself be the top.
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false
     xif_tb:
-        desc: "Testbench container (root). Holds uSrc, uDut, uSink and the two Config-mechanism peers."
-        # The testbench container is parameterized so a peer instance can source
+        desc: "Testbench harness. Holds uSrc, uDut, uSink and the two Config-mechanism peers."
+        # The testbench harness is parameterized so a peer instance can source
         # its parameters FROM it. Everything in this project shares one config
-        # context owned by this project, so the container's own per-variant
+        # context owned by this project, so the harness's own per-variant
         # Config struct lands in this context's Config header - the header the
         # generated External already includes.
         params: [DATA_WIDTH, FRAME_HEIGHT, FRAME_WIDTH]
@@ -124,7 +132,8 @@ blocks:
             in:  { interface: dutStreamIf, direction: dst }
 
 instances:
-    xif_tb: { container: xif_tb, instanceType: xif_tb, instGroup: top }
+    xif_top: { container: xif_top, instanceType: xif_top, instGroup: top }
+    xif_tb: { container: xif_top, instanceType: xif_tb, instGroup: top, variant: tbV0 }
     # Each peer drives the other, so every port of both binds at elaboration.
     uTbPeerA: { container: xif_tb, instanceType: tbPeer, instGroup: top, variant: pv0 }
     uTbPeerB: { container: xif_tb, instanceType: tbPeer, instGroup: top, variant: pvSourced }

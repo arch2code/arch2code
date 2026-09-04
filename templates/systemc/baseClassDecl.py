@@ -154,8 +154,8 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
     out.append('')
     # Param constants are static constexpr (see above), so they carry no
     # mem-initialiser; only ports are constructed here.
-    colon = ':' if port_count > 0 else ''
-    out.append( indent + f'{ className }({ ifMapping["parameter"] }) {colon}')
+    colon = ' :' if port_count > 0 else ''
+    out.append( indent + f'{ className }({ ifMapping["parameter"] }){colon}')
     comma = ''
     if ifMapping['ctorStringHasParam']:
         prefix = '('
@@ -269,8 +269,8 @@ def renderChannels(args, prj, data, isParameterizable=False):
 
     out.append('')
 
-    colon = ':' if port_count > 0 else ''
-    out.append( indent + f'{ className }(std::string name, std::string srcName) {colon}')
+    colon = ' :' if port_count > 0 else ''
+    out.append( indent + f'{ className }(std::string name, std::string srcName){colon}')
     comma = ''
     for direction in ['src', 'dst']:
         for port_type in data['ports']:

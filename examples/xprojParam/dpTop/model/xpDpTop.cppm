@@ -53,7 +53,7 @@ xpDpTop::xpDpTop(sc_module_name blockName, const char * variant, blockBaseMode b
        : sc_module(blockName)
         ,blockBase("xpDpTop", name(), bbMode)
         ,xpDpTopBase(name(), variant)
-        ,uWrap(std::dynamic_pointer_cast<xpDpWrapBase<xpDpTop_xpDpWrapCustomerConfig>>(instanceFactory::createInstance(name(), "uWrap", "xpDpWrap", "customer", "xpDpTop")))
+        ,uWrap(std::dynamic_pointer_cast<xpDpWrapBase<xpDpTop_xpDpWrapCustomerConfig>>(instanceFactory::createInstance(name(), "uWrap", "xpDpWrap", "customer", "xpDpTop.xpDpTop.xpDpTop_xpDpWrap")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

@@ -64,8 +64,8 @@ xpInhCont<Config>::xpInhCont(sc_module_name blockName, const char * variant, blo
         ,blockBase("xpInhCont", name(), bbMode)
         ,xpInhContBase<Config>(name(), variant)
         ,out("xpInhLeaf_out", "xpInhLeaf")
-        ,uLeafA(std::dynamic_pointer_cast<xpInhLeafBase<Config>>(instanceFactory::createInstance<xpInhLeaf<Config>>(name(), "uLeafA", "xpInhLeaf", "", "xpInhVar")))
-        ,uLeafB(std::dynamic_pointer_cast<xpInhLeafBase<Config>>(instanceFactory::createInstance<xpInhLeaf<Config>>(name(), "uLeafB", "xpInhLeaf", "", "xpInhVar")))
+        ,uLeafA(std::dynamic_pointer_cast<xpInhLeafBase<Config>>(instanceFactory::createInstance<xpInhLeaf<Config>>(name(), "uLeafA", "xpInhLeaf", variant, "xpInhVar.xpInhVar_xpInhCont.xpInhVar_xpInhLeaf")))
+        ,uLeafB(std::dynamic_pointer_cast<xpInhLeafBase<Config>>(instanceFactory::createInstance<xpInhLeaf<Config>>(name(), "uLeafB", "xpInhLeaf", variant, "xpInhVar.xpInhVar_xpInhCont.xpInhVar_xpInhLeaf")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

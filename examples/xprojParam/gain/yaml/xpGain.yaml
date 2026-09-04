@@ -5,7 +5,7 @@
 
 ipParameters:
     constants:
-        PIXEL_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+        PIXEL_WIDTH: { value: 12, maxValue: 32, desc: "Per-instance pixel width" }
     types:
         pixel_t: { width: PIXEL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
 

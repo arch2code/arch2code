@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpTwoCtxVariantConfig.h"
 
-export module xpTwoCtx.xpTwoCtxWrap.xpTwoCtxBare.registrar;
+export module xpTwoCtx.xpTwoCtx_xpTwoCtxBare.registrar;
 import xpTwoCtx_xpTwoCtxBare.block;
 
 namespace {
@@ -19,6 +19,12 @@ struct _xpTwoCtxBare_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpTwoCtxBare<xpTwoCtxBareTwoctxConfig>>(blockName, variant, bbMode));
             },
             "twoctx", "xpTwoCtx");
+        instanceFactory::registerBlock(
+            "xpTwoCtxBare_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpTwoCtxBare<xpTwoCtxBareTwoctxConfig>>(blockName, variant, bbMode));
+            },
+            "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxBare");
     }
 };
 static _xpTwoCtxBare_registrar _xpTwoCtxBare_registrar_instance;

@@ -67,7 +67,7 @@ src<Config>::src(sc_module_name blockName, const char * variant, blockBaseMode b
        : sc_module(blockName)
         ,blockBase("src", name(), bbMode)
         ,srcBase<Config>(name(), variant)
-        ,uLeaf(std::dynamic_pointer_cast<ipLeafBase<ipLeafVariantLeaf0Config>>(instanceFactory::createInstance(name(), "uLeaf", "ipLeaf", "variantLeaf0", "ip_test")))
+        ,uLeaf(std::dynamic_pointer_cast<ipLeafBase<ipLeafVariantLeaf0Config>>(instanceFactory::createInstance(name(), "uLeaf", "ipLeaf", "variantLeaf0", "ip_test.ip_test_src.ip_test_ipLeaf")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

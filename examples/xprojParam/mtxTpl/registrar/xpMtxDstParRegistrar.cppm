@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpMtxIpVariantConfig.h"
 
-export module xpMtxTpl.xpMtxTplWrap.xpMtxDstPar.registrar;
+export module xpMtxTpl.xpMtxIp_xpMtxDstPar.registrar;
 import xpMtxIp_xpMtxDstPar.block;
 
 namespace {
@@ -18,7 +18,13 @@ struct _xpMtxDstPar_registrar {
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpMtxDstPar<xpMtxDstParV0Config>>(blockName, variant, bbMode));
             },
-            "v0", "xpMtxTpl");
+            "v0", "xpMtxIp");
+        instanceFactory::registerBlock(
+            "xpMtxDstPar_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpMtxDstPar<xpMtxDstParV0Config>>(blockName, variant, bbMode));
+            },
+            "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplWrap.xpMtxIp_xpMtxDstPar");
     }
 };
 static _xpMtxDstPar_registrar _xpMtxDstPar_registrar_instance;

@@ -10,8 +10,8 @@
 #include "blockBase.h"
 import ip_test_ip_top.base;
 
-// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
-// its DUT concretely, so it includes the DUT header directly.
+// A non-templated wrapper names its Verilated RTL top concretely, so it
+// includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "ip_top_hdl_sv_wrapper.h"
 #else

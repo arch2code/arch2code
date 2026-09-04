@@ -801,8 +801,9 @@ Checked and confirmed NOT coupled: `migrateModuleHeader` gates on
 `MODULE_EXPORT_MARKER` test, so a tb `.cppm` (which carries `tbExternalModuleHeader` /
 `testBenchModuleHeader`) is skipped and its `--template=moduleExport --fileMapKey=...`
 substring never matches; `migrateBlockModulePort` keys on `classDecl` regions and on the
-distinct `// block implementation members` string; `newModule._TB_FILE_KEYS` keys on
-fileMap keys, which did not change; `unittest/fixtures/hier-layout` deliberately overrides
+distinct `// block implementation members` string; the testbench-family selector keys on
+fileMap entries, which did not change (it was `newModule._TB_FILE_KEYS` at the time, now
+the `dutVariant` fileMap flag); `unittest/fixtures/hier-layout` deliberately overrides
 the tb fileMap to the legacy shape and its bare `--template=tbConfig` region is never
 rendered (`test_layout_hierarchical.py` runs `--newmodule` only, not `--systemc`).
 

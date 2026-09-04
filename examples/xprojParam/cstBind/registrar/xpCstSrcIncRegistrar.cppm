@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpCstIpVariantConfig.h"
 
-export module xpCstBind.xpCstBindWrap.xpCstSrcInc.registrar;
+export module xpCstBind.xpCstBind_xpCstSrcInc.registrar;
 import xpCstBind_xpCstSrcInc.block;
 import xpCstBind.xpCstSrcInc.config;
 
@@ -20,6 +20,12 @@ struct _xpCstSrcInc_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCstSrcInc<xpCstBind_xpCstSrcIncDfltConfig>>(blockName, variant, bbMode));
             },
             "dflt", "xpCstBind");
+        instanceFactory::registerBlock(
+            "xpCstSrcInc_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCstSrcInc<xpCstBind_xpCstSrcIncDfltConfig>>(blockName, variant, bbMode));
+            },
+            "dflt", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstBind_xpCstSrcInc");
     }
 };
 static _xpCstSrcInc_registrar _xpCstSrcInc_registrar_instance;

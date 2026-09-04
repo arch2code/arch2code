@@ -78,7 +78,7 @@ class newModule:
         for block, blockData in prj.blocks.items():
             data = dict()
             qualBlock = prj.getQualBlock(block)
-            data['variants'] = prj.getQualBlockVariants(qualBlock)
+            data['variants'] = list(prj.getStandaloneVariants(qualBlock))
             data['block'] = block
             data['qualBlock'] = qualBlock
             # Project-qualified module name for the scaffold's user-owned
@@ -92,16 +92,13 @@ class newModule:
                         for variant in data['variants']:
                             self.create_from_template(fileGenerationConfig, fileKey, fileDefinition, variant, True, prj, data, args)
                     else:
-                        # Single-emission testbench artifacts are created exactly
-                        # once per block. When that block has own variants, seed
-                        # the skeleton with the first declared variant for this
-                        # block.
-                        # This keeps `make newmodule` project-wide: multiple TBs can
-                        # be created in one pass without a global variant argument,
-                        # and users can edit the file-level GENERATED_CODE_PARAM if
-                        # they want a different DUT variant for a specific TB.
+                        # Single-emission artifacts are created once per block. A
+                        # dutVariant artifact's variant is seeded from the block's
+                        # own declarations, which keeps `make newmodule`
+                        # project-wide: many testbenches in one pass with no
+                        # global variant argument.
                         selectedVariant = self._selectSingleVariant(
-                            fileKey, data, blockCondData[qualBlock])
+                            fileDefinition, prj, qualBlock, blockCondData[qualBlock])
                         self.create_from_template(
                             fileGenerationConfig, fileKey, fileDefinition,
                             selectedVariant, False, prj, data, args)
@@ -122,8 +119,6 @@ class newModule:
         # absent, and are never rewritten or deleted afterwards.
         self.scaffold_create(fileGenerationConfig, prj, args)
 
-    _TB_FILE_KEYS = ('testBench', 'tbConfig', 'tbExternal')
-
     # Layout keys that name a project-scope convention directory rather than a
     # fileMap segment (see processYaml._buildLayoutFor).
     _LAYOUT_CONVENTION_KEYS = ('root', 'include', 'rundir', 'prj', 'yaml')
@@ -133,21 +128,22 @@ class newModule:
         # derivation; see processYaml.fileMapCondMatch.
         return processYaml.fileMapCondMatch(fileDefinition, condData)
 
-    def _selectSingleVariant(self, fileKey, data, blockCond):
-        # Return the variant string (or None) to bind into the generated-code
-        # parameter of a single-emission artifact. Only the testbench family
-        # binds a DUT variant; other single-emission file types stay variant-
-        # agnostic. Non-parameterizable blocks pass through as None. For
-        # parameterizable TBs, use the first variant in the block's declaration
-        # order as a useful skeleton default rather than making `newmodule`
-        # depend on one global variant selection.
-        if fileKey not in self._TB_FILE_KEYS:
+    def _selectSingleVariant(self, fileDefinition, prj, qualBlock, blockCond):
+        # The variant bound into a single-emission artifact's generated-code
+        # parameter, or None when the artifact names no DUT. A dutVariant artifact
+        # names a variant the DUT block itself declares: the first in declaration
+        # order is the skeleton default, which a user retargets by editing the
+        # file's GENERATED_CODE_PARAM. A block that is parameterizable only
+        # through a contained child at a frozen variant declares no params:, hence
+        # no variant, and its testbench names none.
+        if not fileDefinition.get('dutVariant', False):
             return None
         if not blockCond['isParameterizable']:
             return None
-        if not data['variants']:
+        ownVariants = prj.getQualBlockVariants(qualBlock)
+        if not ownVariants:
             return None
-        return next(iter(data['variants']))
+        return ownVariants[0]
 
     def create_from_template(self, fileGenerationConfig, fileKey, fileDefinition, variant, variantFile, prj, data, args):
         # for each file target we need to build a path and filename to perform file template creation
@@ -196,81 +192,76 @@ class newModule:
                     f.write(newFileContents)
 
     def registrar_create_from_templates(self, fileGenerationConfig, registrarFileConfig, blockCondData, prj, args):
-        # A registrar trampoline TU is owned by the assembling block, not the
-        # leaf: for every distinct parameterizable child an assembler
-        # instantiates, one `<child>Registrar.cpp` is emitted under the
-        # assembler's directory in the `registrar` root (mirroring how `base`
-        # mirrors the yaml directory tree). The trampoline is keyed on the child
-        # block (`--block=<child>`), so the same child reused under two
-        # assemblers yields two independent compilations of the same
-        # registration — the accepted-duplication case (factory emplace is
-        # first-wins).
-        parentChildren = dict()
-        for inst in prj.data['instances'].values():
-            containerKey = inst['containerKey']
-            # The synthetic project-root container is not a block and owns no
-            # registrar; skip any container that is not a defined block.
-            if containerKey not in prj.data['blocks']:
-                continue
-            parentChildren.setdefault(containerKey, set()).add(inst['instanceTypeKey'])
-        # Owner-qualified foreign-Config headers, keyed (owningProject, child) ->
-        # module file stub. Computed once in projectCreate under the same emit gate
-        # the config emitter uses, so the scaffold never creates a header the
-        # emitter would not produce. Dedup below because a project with two
-        # assembler blocks of one child hits the same pair twice.
-        foreignConfigHeaders = prj.config.getConfig('FOREIGNCONFIGHEADERS')
-        emittedForeign = set()
-        projectName = prj.config.getConfig('PROJECTNAME')
-        for parentKey in sorted(parentChildren):
+        # Registrar artifacts belong to a qualified parent-child pair. Their
+        # persisted stems remain distinct when one directory hosts several
+        # parents using the same child.
+        blockFileConfig = {k: v for k, v in registrarFileConfig.items()
+                           if not v.get('foreignConfig', False)
+                           and not v.get('pairVlTop', False)}
+        for parentKey, childKey in sorted(prj.registrarPairs):
             parentDir = prj.data['blocks'][parentKey]['dir']
-            for childKey in sorted(parentChildren[parentKey]):
-                childBlock = prj.data['blocks'][childKey]['block']
-                for fileKey, fileDefinition in registrarFileConfig.items():
-                    if not self._condMatch(fileDefinition, blockCondData[childKey]):
+            childBlock = prj.data['blocks'][childKey]['block']
+            pair = prj.registrarPairs[(parentKey, childKey)]
+            for fileKey, fileDefinition in blockFileConfig.items():
+                if not self._condMatch(fileDefinition, blockCondData[childKey]):
+                    continue
+                if fileDefinition.get('requiresRegistrations', False) \
+                        and not pair['aggregateHasModelRegistrations']:
+                    continue
+                self.create_registrar_file(
+                    fileGenerationConfig, fileKey, fileDefinition,
+                    parentDir, childBlock, childKey, parentKey, prj, args)
+        pairVlConfig = {k: v for k, v in registrarFileConfig.items()
+                        if v.get('pairVlTop', False)}
+        for parentKey, childKey in sorted(prj.registrarPairs):
+            pair = prj.registrarPairs[(parentKey, childKey)]
+            childBlock = prj.data['blocks'][childKey]['block']
+            parentDir = prj.data['blocks'][parentKey]['dir']
+            for fileKey, fileDefinition in pairVlConfig.items():
+                if not self._condMatch(fileDefinition, blockCondData[childKey]):
+                    continue
+                for registration in pair['verifRegistrations']:
+                    if not registration['pairSpecific']:
                         continue
-                    if fileDefinition.get('foreignConfig', False):
-                        # Only the declaring assembler project scaffolds it.
-                        owner = prj.contextOwningProject[prj.data['blocks'][parentKey]['_context']]
-                        # Ownership gate: the foreign artifact is parent-owned;
-                        # skip it when the assembler is owned by a different project
-                        # so a build never scaffolds across the ownership boundary.
-                        if owner != projectName:
-                            print(f"{childBlock} foreign registrar artifact owned by project '{owner}', skipping (scaffold it from that project's rundir)")
-                            continue
-                        entry = foreignConfigHeaders.get((owner, childKey))
-                        if entry is None:
-                            continue
-                        # A variant:true foreign entry (the per-variant SV
-                        # verilated wrapper top) emits one file per foreign
-                        # variant; the non-variant foreign entry (the aggregated
-                        # Config module) emits once. Dedup per (fileKey, owner,
-                        # child, variant) because a project with two assemblers of
-                        # one child reaches the pair more than once.
-                        variants = entry['variants'] if fileDefinition.get('variant', False) else [None]
-                        for variant in variants:
-                            dedupKey = (fileKey, owner, childKey, variant)
-                            if dedupKey in emittedForeign:
-                                continue
-                            emittedForeign.add(dedupKey)
-                            self.create_registrar_file(
-                                fileGenerationConfig, fileKey, fileDefinition,
-                                parentDir, childBlock, childKey, parentKey, prj, args,
-                                variant=variant)
-                        continue
-                    if fileDefinition.get('requiresRegistrations', False):
-                        # The block-registration trampoline exists to run its
-                        # registrations. A child every one of whose bindings under
-                        # this parent is typed by the parent's own Config has none:
-                        # such a child is a family of C++ types the factory key
-                        # cannot select from, so the parent names the class at its
-                        # createInstance site and no registration is possible.
-                        registrarConfig = prj.getRegistrarConfigView(
-                            childKey, prj.data['blocks'][parentKey]['block'])
-                        if not registrarConfig['hasRegistrations']:
-                            continue
                     self.create_registrar_file(
                         fileGenerationConfig, fileKey, fileDefinition,
-                        parentDir, childBlock, childKey, parentKey, prj, args)
+                        parentDir, childBlock, childKey, parentKey, prj, args,
+                        variant=registration['variant'])
+        self.foreign_config_create_from_templates(
+            fileGenerationConfig, registrarFileConfig, blockCondData, prj, args)
+
+    def foreign_config_create_from_templates(self, fileGenerationConfig, registrarFileConfig,
+                                             blockCondData, prj, args):
+        # Each (declaringProject, child) pair owns one foreign Config artifact,
+        # hosted in the registrar domain of the block named in
+        # FOREIGNCONFIGHEADERS. A project that declares a variant of a reused
+        # block owns that variant's Config even when it instantiates nothing.
+        foreignFileConfig = {k: v for k, v in registrarFileConfig.items()
+                             if v.get('foreignConfig', False)}
+        projectName = prj.config.getConfig('PROJECTNAME')
+        for (owner, childKey), entry in sorted(prj.config.getConfig('FOREIGNCONFIGHEADERS').items()):
+            childBlock = prj.data['blocks'][childKey]['block']
+            # Ownership gate: only the declaring project scaffolds its own
+            # foreign Config, so a build never scaffolds across the ownership
+            # boundary (mirrors the generation gates).
+            if owner != projectName:
+                print(f"{childBlock} foreign registrar artifact owned by project '{owner}', skipping (scaffold it from that project's rundir)")
+                continue
+            parentKey = entry['parentKey']
+            parentDir = prj.data['blocks'][parentKey]['dir']
+            for fileKey, fileDefinition in foreignFileConfig.items():
+                if not self._condMatch(fileDefinition, blockCondData[childKey]):
+                    continue
+                # A variant:true foreign entry (the per-variant SV verilated
+                # wrapper top) emits one file per foreign variant; the
+                # non-variant entry (the aggregated Config module) emits once.
+                variants = entry['vlVariants'] \
+                    if fileDefinition.get('variant', False) else [None]
+                for variant in variants:
+                    self.create_registrar_file(
+                        fileGenerationConfig, fileKey, fileDefinition,
+                        parentDir, childBlock, childKey, parentKey, prj, args,
+                        variant=variant)
 
     def create_registrar_file(self, fileGenerationConfig, fileKey, fileDefinition, parentDir, childBlock, childQualBlock, parentKey, prj, args, variant=None):
         # Build the registrar path: the child-named trampoline lands under the
@@ -279,7 +270,7 @@ class newModule:
         data['block'] = childBlock
         data['qualBlock'] = childQualBlock
         data['variant'] = variant
-        data['parent'] = prj.data['blocks'][parentKey]['block']
+        data['parent'] = parentKey
         # The trampoline is parent-owned: it lands under the assembler's
         # directory, so it resolves under the parent (assembler) project layout.
         owner = prj.contextOwningProject[prj.data['blocks'][parentKey]['_context']]
@@ -298,12 +289,19 @@ class newModule:
         # is present when foreignConfig is set.
         if fileDefinition.get('foreignConfig', False):
             fileStub = prj.config.getConfig('FOREIGNCONFIGHEADERS')[(owner, childQualBlock)]['stub']
+        elif fileDefinition.get('pairVlTop', False):
+            registrations = prj.registrarPairs[
+                (parentKey, childQualBlock)]['verifRegistrations']
+            registration = next(
+                entry for entry in registrations if entry['variant'] == variant)
+            fileStub = registration['physicalFileStub']
         else:
-            fileStub = childBlock
+            fileStub = prj.registrarPairs[
+                (parentKey, childQualBlock)]['artifactStem']
         # A variant:true foreign artifact (per-variant SV verilated wrapper top)
         # appends the variant to its owner-qualified stub, mirroring the block
         # mode variant-file stub, so each foreign variant is a distinct file/top.
-        if variant:
+        if variant and not fileDefinition.get('pairVlTop', False):
             fileStub += '_' + variant
         filePath = processYaml.expandNewModulePath(fileDefinition, parentDir, childBlock, fileStub, layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
@@ -383,6 +381,7 @@ class newModule:
                 print(f"{filePathExt} exists so skipping, use --overwrite to overwrite")
             else:
                 print(f"Making {fileName} at {moduleDirAbs} ")
+                data['headerName'] = fileName
                 data['target'] = fileKey + "_" + ext
                 data['targetDetails'] = fileDefinition
                 data['fileGeneration'] = fileGenerationConfig

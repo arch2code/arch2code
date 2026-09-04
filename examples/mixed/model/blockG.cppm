@@ -14,6 +14,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module mixed_blockG.block;
 import mixed_blockG.base;
+import mixed_blockGRegs.block;
 import mixed;
 import mixed_blockGLeaf.base;
 import mixed_blockGRegs.base;
@@ -39,7 +40,7 @@ public:
 
     //instances contained in block
     std::shared_ptr<blockGLeafBase> uBlockGLeaf;
-    std::shared_ptr<blockGRegsBase<mixedDefaultConfig>> uBlockGRegs;
+    std::shared_ptr<blockGRegsBase<Config>> uBlockGRegs;
 
     blockG(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~blockG() override = default;
@@ -57,7 +58,7 @@ blockG<Config>::blockG(sc_module_name blockName, const char * variant, blockBase
         ,blockGBase<Config>(name(), variant)
         ,rwG("blockG_rwG", "blockG", dRegSt::_packedSt(0x0))
         ,uBlockGLeaf(std::dynamic_pointer_cast<blockGLeafBase>(instanceFactory::createInstance(name(), "uBlockGLeaf", "blockGLeaf", "", "mixed")))
-        ,uBlockGRegs(std::dynamic_pointer_cast<blockGRegsBase<mixedDefaultConfig>>(instanceFactory::createInstance(name(), "uBlockGRegs", "blockGRegs", "", "mixed")))
+        ,uBlockGRegs(std::dynamic_pointer_cast<blockGRegsBase<Config>>(instanceFactory::createInstance<blockGRegs<Config>>(name(), "uBlockGRegs", "blockGRegs", variant, "mixed.mixed_blockG.mixed_blockGRegs")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

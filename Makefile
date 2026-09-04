@@ -343,15 +343,20 @@ xif:
 	make -C $(XIF_DIR)/rundir run
 
 .PHONY : xproj-param-probes
-# The one recorded cross-project compile failure: three sub-project namespaces
-# exporting the same payload identifier. EXPECTED to fail to compile; see
-# examples/xprojParam/README.md. Deliberately outside pipeline-test.
+# The recorded compile failures, both EXPECTED to fail to compile and so
+# deliberately outside pipeline-test. deparam is the cross-project one: three
+# sub-project namespaces exporting the same payload identifier; see
+# examples/xprojParam/README.md. twoCtx is the two-context block whose Config
+# drops the losing context's derived constant; see
+# examples/xprojParam/twoCtx/README.md.
 xproj-param-probes:
 	make -C $(XPROJ_PARAM_DIR)/gain -j gen
 	make -C $(XPROJ_PARAM_DIR)/filter -j gen
 	make -C $(XPROJ_PARAM_DIR)/sink -j gen
 	make -C $(XPROJ_PARAM_DIR)/deparam -j gen
 	-make -C $(XPROJ_PARAM_DIR)/deparam/rundir -j all
+	make -C $(XPROJ_PARAM_DIR)/twoCtx -j gen
+	-make -C $(XPROJ_PARAM_DIR)/twoCtx/rundir -j all
 
 .PHONY : hello-world
 hello-world:

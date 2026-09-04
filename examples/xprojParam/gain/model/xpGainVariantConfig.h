@@ -9,7 +9,7 @@
 #include "clog2.h"
 
 struct xpGainDefaultConfig {
-    static constexpr uint32_t PIXEL_WIDTH = 8;
+    static constexpr uint32_t PIXEL_WIDTH = 12;
 };
 
 struct xpGainV0Config {

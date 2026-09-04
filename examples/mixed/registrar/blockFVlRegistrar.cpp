@@ -22,9 +22,21 @@ struct _blockF_vl_registrar {
         instanceFactory::registerBlock(
             "blockF_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockF_hdl_sc_wrapper<VblockF_variant0_hdl_sv_wrapper, blockFVariant0Config>>(blockName, variant, bbMode));
+            },
+            "variant0", "mixed.mixed_blockB.mixed_blockF");
+        instanceFactory::registerBlock(
+            "blockF_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockF_hdl_sc_wrapper<VblockF_variant1_hdl_sv_wrapper, blockFVariant1Config>>(blockName, variant, bbMode));
             },
             "variant1", "mixed");
+        instanceFactory::registerBlock(
+            "blockF_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<blockF_hdl_sc_wrapper<VblockF_variant1_hdl_sv_wrapper, blockFVariant1Config>>(blockName, variant, bbMode));
+            },
+            "variant1", "mixed.mixed_blockB.mixed_blockF");
     }
 };
 static _blockF_vl_registrar _blockF_vl_registrar_instance;

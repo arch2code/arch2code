@@ -22,7 +22,7 @@ public:
     static constexpr auto LEAF_MEM_DEPTH = Config::LEAF_MEM_DEPTH;
 
 
-    ipLeafBase(std::string name, const char * variant) 
+    ipLeafBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -42,7 +42,7 @@ class ipLeafInverted : public virtual blockPortBase
 public:
 
 
-    ipLeafInverted(std::string name) 
+    ipLeafInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -58,7 +58,7 @@ class ipLeafChannels
 public:
 
 
-    ipLeafChannels(std::string name, std::string srcName) 
+    ipLeafChannels(std::string name, std::string srcName)
     {};
     void bind( ipLeafBase<Config> *a, ipLeafInverted<Config> *b)
     {

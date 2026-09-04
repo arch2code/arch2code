@@ -66,8 +66,8 @@ xpDpTopExternal::xpDpTopExternal(sc_module_name modulename) :
     xpDpTopInverted("Chnl"),
     log_(name())
 
-   ,uTbPeerA(std::dynamic_pointer_cast<xpDpTbPeerBase<xpDpTop_xpDpTbPeerPeerConfig>>(instanceFactory::createInstance(name(), "uTbPeerA", "xpDpTbPeer", "peer", "xpDpTop")))
-   ,uTbPeerB(std::dynamic_pointer_cast<xpDpTbPeerBase<xpDpTop_xpDpTbPeerPeer2Config>>(instanceFactory::createInstance(name(), "uTbPeerB", "xpDpTbPeer", "peer2", "xpDpTop")))
+   ,uTbPeerA(std::dynamic_pointer_cast<xpDpTbPeerBase<xpDpTop_xpDpTbPeerPeerConfig>>(instanceFactory::createInstance(name(), "uTbPeerA", "xpDpTbPeer", "peer", "xpDpTop.xpDpTop_tb.xpDpTop_xpDpTbPeer")))
+   ,uTbPeerB(std::dynamic_pointer_cast<xpDpTbPeerBase<xpDpTop_xpDpTbPeerPeer2Config>>(instanceFactory::createInstance(name(), "uTbPeerB", "xpDpTbPeer", "peer2", "xpDpTop.xpDpTop_tb.xpDpTop_xpDpTbPeer")))
    ,out_0("out_0", "uTbPeerA")
    ,thunker_out_0_uTbPeerA("thunker_out_0_uTbPeerA", out_0, uTbPeerA->out, name())
    ,out_1("out_1", "uTbPeerB")

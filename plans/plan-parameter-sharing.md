@@ -2,13 +2,17 @@
 
 ## Current Status
 
-- **Classification (2026-08-13, revised 2026-08-14): SETTLED DESIGN. STEP 1 LANDED AND INDEPENDENTLY REVIEWED; steps 2 through 5 remain; a second design line — D7, parameter-scoped inheritance expressed in the variant — was DECIDED later the same day and is now PARTIALLY BUILT.** The schema field, the declaration-time checks, the site-time validator and the SystemVerilog emission are in the working tree and measured on a fixture; the per-site merged Config synthesis is not; the site-keyed layout gate is now BUILT AND GUARDED (§6, step 7b). Decisions D1 through D5 are the plan of record. D6 was the central open question; the architect's direction of 2026-08-13 — an explicit link from a block param to its parameter source — supersedes the framing of its fix. **D6 is now RESOLVED by the landed link** (§3), independently of Q3, which stays REJECTED (§4.3).
+- **Classification (2026-08-31): SETTLED DESIGN WITH THE STEP 7 THROUGH STEP 11 FOLLOW-UP IMPLEMENTED AND VERIFIED IN THE WORKING TREE.** Step 1 landed and was independently reviewed. D7's parameter-scoped inheritance, its site-keyed layout gate, the registrar-pair work, and the testbench Config-source checks are complete locally. Steps 2 through 5 and the RTL-bearing half of step 6 remain open. Decisions D1 through D5 are the plan of record. D6 is resolved by the explicit link from a block parameter to its parameter source (§3), independently of Q3, which stays rejected (§4.3). Implementation is complete for this follow-up, but commit preparation is not: the final change set is not yet fully staged, committed, or pushed.
 - **Step 1 LANDED 2026-08-13.** `blocksparams` carries `paramSource`/`paramSourceKey`, a foreign key onto `constants` resolved through the param row's own include chain; `param`/`paramKey` are retained unchanged as the block-scoped identity, and are deliberately NOT repointed. All four bad consumers of §5 B1, the two re-derivations of §4.5 and the orphan check now read the source link. Evidence, the mechanism chosen for the name defaulting, and the corrections to this document's own text are at "Plan of record" step 1. `examples/xprojParam/cstUse` — the probe this plan predicted would flip — **builds and runs, and is promoted into `xproj-const`** (the first half of step 6); `xproj-const-probes` is retired.
 - **Step 1 was re-measured independently, 2026-08-13.** Unit suite **101/101**; cold `make pipeline-test -j` **exit 0**; `make xproj-const -j` **exit 0** with three cells at widths **12 / 20 / 20**; **zero** unresolved `paramSourceKey` rows; the product tree cold-regenerates, builds and links. **The emitted-output delta (1693 files, zero changed) and the census were taken on trust, not re-measured** — the earlier "Emitted-output delta: none, measured. Census: unchanged at 18 of 42" claim in this bullet list is corrected to that standing. The review also corrected three of this document's own figures (cold `paramKey` baseline, database census, `builder/pro`); see step 1's landed record.
 - **One defect the review found was ruled on, FIXED, and is now VERIFIED BY BUILD (2026-08-18)** — the third silent early return in `_post_validateVariantBindingSizing`. See "Ruled on after the review" at step 1 for the measurements.
-- **Steps 2 (B4), 3 (B5), 4 (B3) and 5 (B2) have NOT landed.** Step 6's remaining half — the RTL-bearing cell — has not landed either. **Step 7 (D7) is decided and MOSTLY BUILT, 2026-08-14**: step 7a (schema field, declaration-time checks, site-time validator, SystemVerilog emission) and step 7c (the C++ Config, as a Config **templated on the container's Config** — the architect's ruling of 2026-08-14, which superseded the per-site merged struct) are in the working tree and measured on `examples/xprojParam/{dpLeaf,dpMid,dpTop}`, where the model now builds, links and runs. The site-keyed layout gate (step 7b) is now BUILT AND GUARDED, 2026-08-17: junction resolution is site-correlated, and both arms of the behaviour are the `xproj-container-layout` target inside `pipeline-test`.
+- **Steps 2 (B4), 3 (B5), 4 (B3) and 5 (B2) have NOT landed.** Step 6's remaining half, the RTL-bearing cell, has not landed either. **Step 7 (D7) is built and guarded.** Step 7a supplies the schema field, declaration-time checks, site-time validator, and SystemVerilog emission. Step 7b supplies the site-keyed layout gate. Step 7c emits a C++ Config templated on the container's Config, per the architect's 2026-08-14 ruling. The local fixture family and the cross-project Verilated regression both pass.
 - **The built parts of step 7 ARE REGRESSION-GUARDED as of 2026-08-18.** The claim this bullet carried until then — that the `dp` fixture family "is wired into **no `make` target**, so it is not in `pipeline-test`" — was **FALSE from 2026-08-17**, when `xproj-depth` (the `dp` family), `xproj-inherit` (`inhVar`) and `xproj-container-layout` (`cpLayout`/`cpLayoutBad`) all entered `pipeline-test` (`Makefile:463`). Only the unit half was true, and it is now closed: `unittest/test_container_param_inheritance.py` covers the D7.1 rejection and one forwarding acceptance. **VERIFIED BY EXECUTION** (§6, step 7a).
-- **The registrar's empty-variant registration is FIXED on both paths, 2026-08-19.** `getRegistrarConfigView` decides it from whether a reachable keyed instance asks for it rather than from the absence of variant labels, so a container holding one variant-bound and one variant-less instance of the same parameterized child no longer aborts the variant-less site on an unregistered block type. Model and verilated trampolines both, guarded by `unittest/test_registrar_default_variant.py`, which builds and runs the shape and was observed failing against the unfixed generator. **Four items it exposed are OPEN and referred to the architect** (§6, step 7, "Open after the empty-variant fix").
+- **The registrar's empty-variant registration is FIXED on both paths, 2026-08-19.** `getRegistrarConfigView` decides it from whether a reachable keyed instance asks for it rather than from the absence of variant labels. **Its guard, `unittest/test_registrar_default_variant.py`, was RETIRED on 2026-08-20** because step 8 rejects the fixture's variant-less instance of a params-declaring block. The suite does not fail and is not awaiting a ruling; it no longer exists. The four follow-ups it exposed are resolved by the step 8 selector rules and the completed registrar-pair work (§6).
+- **The synthesised register handler inherits its container's Config, 2026-08-20.** `postParseRegisterPorts.py` was the generator's own producer of the variant-less-instance-of-a-params-declaring-block shape, on every project with registers, so the handler's parameter values froze at the declaring constants while its SystemVerilog twin forwarded the container's symbols. The architect ruled that the handler takes the Config of the block whose registers it holds; the instance now sets `inheritContainerParam`. The delta is two model files, one module map, and two trampolines that go away; no SystemVerilog changed. Guarded by `unittest/test_regs_handler_container_config.py`. The rejection of the shape itself is now approved and LANDED as step 8, so the handler fix was also its precondition: it was the only in-tree producer of the shape.
+- **The instance Config-selector rules are LANDED, 2026-08-20.** An instance of a params-declaring block that names neither `variant:` nor `inheritContainerParam:` is rejected at db, and so is a top instance whose block declares `params:`. One `post(...)` row hook on `instances`. The census found exactly one authored site, `examples/xif/arch/yaml/xif.yaml:127`, which drew the top rule; `examples/xif` is restructured so its parameterized testbench harness sits under an unparameterized root, and its emitted output is **byte-identical** across that restructure. The ruling is §2, D9; the implementation record and the gates are §6, step 8. Rule A retired the subject of `unittest/test_registrar_default_variant.py`, whose fixture authored the rejected shape by design; the suite and its fixture were deleted on 2026-08-20 and the unit gate returned to green (§6, step 8, "Collateral fixture updates").
+- **The verilated SystemC wrapper of a block reached only by `inheritContainerParam` is FIXED, 2026-08-20.** It took its shape from the INSTANTIATED variant view, which such a block never populates, so it was emitted as a concrete class pinned to the block's default Config with the `<Config>` argument deleted from its BFM and hdl_if types. Both arms now key on one view fact, `svWrapper['scWrapperConfigTemplated']`, that the wrapper template and its trampoline share. The Config the trampoline binds is unchanged; **which Config a container-typed site should get was referred to the architect and is ANSWERED in step 10, 2026-08-20** — the container forwards its own variant label and the trampoline registers one entry per container variant. Emitted-output delta: **zero across `examples/` and `common/`**, four files in the product tree. Guarded by `unittest/test_inherit_vl_child.py`, which verilates and runs the shape; its emitted checks are what discriminate the fix, and its run is what proves the path works at all. **One arm of this step was reverted the same day**: the concrete path's `<Config>` deletion is the deliberate fix of 2026-08-03, not the defect it was briefed as, and substituting the default Config name is `error: expected '>'` against a non-dependent Base's member alias. No build caught the substitution because arm 1 left the concrete-parameterizable branch unreachable (step 10's record carries the detail).
+- **Step 11 and the registrar follow-up are complete in the working tree, 2026-08-31.** A testbench requires a variant declared by its DUT block. The Config-source validators, declarative `dutVariant` fileMap selection, fresh-project fileMap cleanup, mixed ordinary/inherited sites, stable physical registrar artifacts, and pair-qualified logical registration identities are implemented and verified. Local `containerParam` forwarding and cross-project Verilated `containerParam` selection both pass. Base acceptance is 114/114 unit suites and 31 successful simulations with 62 `No error` reports. Pro acceptance includes the focused tandem helper regression and 7 simulations with 14 `No error` reports. The product clean, generation, and `VL_DUT=1` build gates pass. **Steps 2, 3, 4, 5, and the RTL-bearing half of step 6 remain open. Earlier unrelated loose ends keep their status. The implementation is not yet fully staged, committed, or pushed.**
 - **The normative authoring surface and the rules are [`design-parameter-inheritance.md`](./design-parameter-inheritance.md).** That document owns the authored YAML, the emitted shapes and the rules addressed to an author; this document owns the decision history, the work breakdown and every implementation fact. Neither restates the other.
 - **The fixture family that pins the behaviour** is `examples/xprojParam/cstIp`, `cstBind` and `cstUse`; all three now build and run.
 - **Prerequisite context, cited rather than restated.** The boundary safety this feature relies on is [`plan-interface-compatibility.md`](./plan-interface-compatibility.md), specifically its §5.5/§5.5a root-cause record, §5.9, and Plan of record steps 7 and 8. The composition boundary and the G-item register are [`plan-ip-project-composition.md`](./plan-ip-project-composition.md), specifically G5.4, G5.5 and G5.9. The one-Config-per-variant and thunker-at-the-boundary rules are [`plan-variant-config-unification.md`](./plan-variant-config-unification.md), decisions D4, D5 and Q10/R2. This document does not repeat any of them.
@@ -159,7 +163,7 @@ The work, its measurements, and the split between what is built and what is not,
 
 A variant's Config identity is `(block, variant, declaring project)` — what the emitted per-variant Config struct, the descriptor grouping and the `instanceFactory` key all resolve to. The declaring **file** is not part of it, so two files of one project declaring the same variant yielded one Config, the later declaration silently replacing the earlier's bindings. Rejected at db by `validateVariantDeclarationUniqueness`, naming the block, the variant and **both** declaring files. Gated by `xproj-variant-unique`.
 
-**Cross-project reuse of the same `(block, variant)` stays legal** and is untouched: those are distinct Config identities emitting distinct structs. `ip-test` composes `ip/variant1` under two projects and must keep passing.
+**Cross-project reuse of the same `(block, variant)` stays legal on the Config-struct path** and is untouched there: `calcVariantConfigDescriptors` (`pysrc/processYaml.py:4057-4086`) groups descriptors by declaring project, so those are distinct Config identities emitting distinct structs. `ip-test` composes `ip/variant1` under two projects and must keep passing. (**CORRECTED 2026-09-04:** the sentence carried no path qualifier, so it read as a guarantee that nothing can confuse two projects' bindings of one `(block, variant)`. The three SystemVerilog and RTL emission paths carry no project axis and do confuse them. Measured on a fixture authored strictly to these rules, one clean build emitted a Config of 3 beside a Verilated top and an RTL instantiation of 7. The identity stated here is right and the emitters are wrong, so the fix belongs in them, not in a new restriction on this sentence. See item 9A of [`plan-116-review-feedback.md`](./plan-116-review-feedback.md).)
 
 **The schema route was examined and is closed**, so this validator is not double-implementation:
 
@@ -168,6 +172,22 @@ A variant's Config identity is `(block, variant, declaring project)` — what th
 - A SQL `UNIQUE` on the intermediate `parametersvariants` table would reject **legitimate** cross-project reuse: that table keys on block + variant with **no** `projectName`.
 
 Implemented as a post-parse pass, not a `variants` row hook: a row hook sees only declarations parsed before it, so the same duplicate pair would be caught or missed by file load order — which is precisely what differs between a standalone and a composed build.
+
+### D9. An instance of a params-declaring block must select a Config, and a top may not be parameterized. DECIDED (architect, 2026-08-20)
+
+A block that declares `params:` is typed per instance, and the architect settled the closed list of authoring shapes that name that type:
+
+1. `variant: X`, where `X` binds values or constants.
+2. `variant: X`, where `X`'s rows carry `containerParam: yyy`, sourcing from the container per parameter. Names may differ, cross-project is allowed, and the `maxValue` domain relation is enforced (D7).
+3. `inheritContainerParam: true` with no variant. All-or-nothing, bare-name subset, same owning project only (D7.2).
+
+A fourth shape, an instance naming neither, was accepted and is now **rejected at db (rule A)**. It leaves the block parameterized and the instance untyped, and every downstream consumer then guesses: the C++ side falls back to the context default Config while `_resolveSvInstanceParams` forwards the container's symbol wherever the names happen to match. That divergence is what the register handler had (§6, step 7, "The synthesised register handler now inherits its container's Config"), and the handler was the generator's own producer of the shape.
+
+**A top instance whose block declares `params:` is rejected too (rule B).** A top has no container, so shapes 2 and 3 are unreachable, and a project declares one top, so shape 1 could only ever be a single set of literals. That is a constant with extra machinery. The architect's ruling is explicit that a testbench top should not be parameterized and that no use case for a parameterized top exists.
+
+Both rules are one hook, so rule B subsumes rule A at the top. Both are kept, because they reject different mistakes and rule A must still fire for a contained instance.
+
+**Census taken before implementing, over every non-hidden `.db` under `examples/`, `builder/pro/examples/` and the product tree database (`/work/ws/debayer/debayer.db`).** 104 instances of params-declaring blocks: 91 name a variant, 12 inherit (7 distinct sites, three of them the synthesised register handlers that started inheriting the same day), and **exactly one** was shape 4, `examples/xif/arch/yaml/xif.yaml:127`, whose container resolves to `_topInstance`. The same census found no composed-child root declaration (the self-edge row a child project keeps when a parent composes it) on a params-declaring block, so rule B keyed on `_topInstance` leaves no reachable gap today. **VERIFIED BY EXECUTION.**
 
 ## 3. D6 — The Question As It Stood
 
@@ -761,7 +781,7 @@ uLeafA(std::dynamic_pointer_cast<xpDpLeafBase<xpDpMid_xpDpLeafCustomerConfig<Con
 - **BEFORE (generator as it stood): SIGSEGV.** `xpInhCont<xpInhContAltConfig>::xpInhCont` at `model/xpInhCont.cppm:72` (`uLeafA->in(this->contIn)`) with `this=0xa0`: the registration produced `xpInhLeaf<xpInhContDefaultConfig>` and the cast to `xpInhLeafBase<xpInhContAltConfig>` yielded null. The `default` container constructed first and correctly; only the second variant failed.
 - **AFTER: exit 0.** `uContDef.uLeaf{A,B}` resolve algorithm 1 and `uContAlt.uLeaf{A,B}` resolve 6, each asserted per sample.
 
-**A registrar TU with nothing to register is no longer emitted.** A child every one of whose bindings under a parent is container-typed contributes no registration under any variant nor under the empty variant, so the trampoline would hold only its module preamble. `getRegistrarConfigView()['hasRegistrations']` gates the scaffold (`requiresRegistrations: true` on the `blockRegistrar` fileMap entry). Removed from the corpus: `examples/xprojParam/dpMid/registrar/xpDpLeafRegistrar.cppm`, and in the product tree `registrar/preprocessRegistrar.cppm` and `registrar/interpolateRegistrar.cppm`. Nothing imports a registrar module for its own sake — the only three importers in the corpus imported it to name a maker.
+**A model registrar TU with nothing to register is no longer emitted.** A child every one of whose bindings under a parent is container-typed contributes no model registration, so the trampoline would hold only its module preamble. The persisted pair record gates the scaffold through `requiresRegistrations: true` on `blockRegistrar`. A `hasVl` child still gets the separate pair-qualified VL registrar and concrete wrapper tops. Removed from the corpus: `examples/xprojParam/dpMid/registrar/xpDpLeafRegistrar.cppm`, and in the product tree `registrar/preprocessRegistrar.cppm` and `registrar/interpolateRegistrar.cppm`. Nothing imports a registrar module for its own sake — the only three importers in the corpus imported it to name a maker.
 
 **What was NOT removed, and why.** The mode gate in `instanceFactory::createInstance` (the site-supplied constructor is dropped when `instMode` is neither empty nor `model`) was proposed for removal on the grounds that it existed only because the maker and the key answered different questions. **Measured, and the proposal is wrong.** The site-supplied constructor names the MODEL class in every case; it can answer no other mode. With the gate removed and `--vlInst` naming a container-typed child of a `hasVl: false` block, the keyed lookups for `xpInhLeaf_verif` both miss, the model constructor is taken and the run completes with exit 0 and "No error" — a silent model where a verilated child was asked for. With the gate in place the run stops on `Attempted to create an instance uLeafA of an unregistered block type xpInhLeaf_verif`. The gate stays, with its comment rewritten to state the model-only reason rather than the ordering one. The collision assert, which DID exist only because of the ordering, is removed.
 
@@ -775,29 +795,35 @@ is also instantiated without a variant by ['uLeafPlain']; both resolve the same 
 key, which cannot carry two different Configs. ...
 ```
 
-Measured by adding such an instance to `inhVar`: `make db` exits 2 with that message. Nothing in the corpus or the product tree authors the shape, so the rule rejects nothing that exists. The container-sourced arm needs no equivalent: a container-sourced variant's descriptor is the same on the registrar side and the site side, so the registrar emits no registration under that label at all.
+Measured by adding such an instance to `inhVar`: `make db` exits 2 with that message. Nothing in the corpus or the product tree authors the shape, so the rule rejects nothing that exists. A container-sourced site emits no model registration under its child label. Its VL registration uses the parent label and the concrete nested Config recorded for that pair.
 
 **The empty-variant registration is asked for by a site, not inferred from the absence of labels. FIXED 2026-08-19.** `getRegistrarConfigView` (`pysrc/processYaml.py:1751-1762`) decides the empty-variant registration from whether any reachable keyed instance actually asks for it. Before, a container holding one variant-bound and one variant-less instance of the **same** parameterized child emitted registrations for the bound labels only, and the variant-less site aborted elaboration in `common/systemc/instanceFactory.cpp` on an unregistered block type: the keyed lookup missed, no container-supplied factory answers for a plain child, and the empty-variant fallback repeated the same miss. Fixed on both paths — the model trampoline (`templates/systemc/blockRegistrar.py`) and the verilated one (`templates/systemc/vlRegistrar.py`), the latter through its own view field `verifDefaultRegistration`, because `instanceFactory` nulls the container-supplied factory for every non-model mode and a verilated site therefore has nothing but the registration to find.
 
-- **Gate: `unittest/test_registrar_default_variant.py`.** It scaffolds, generates, builds and **runs** the shape, because the generated sources compile either way and the missing registration is only discovered when the factory is asked; each site's resolved algorithm is asserted by name, and the hasVl pair is re-run per `--vlInst` site. **Observed failing against the unfixed generator on both paths.**
-- **`templates/systemc/constructor.py`'s equivalent branch (`:457-474`) is unreachable and was deliberately left alone.** That self-registration path returns early for a block with own params, so reaching its label-only arm needs a block declaring variants and no `params:` — the shape the third open item below records as never surviving `make gen`.
+- **Retired gate: `unittest/test_registrar_default_variant.py`.** Step 8 rejects the variant-less parameterized-child shape that this suite authored. The suite and fixture were deleted on 2026-08-20. It is not a current failure or an open acceptance item.
+- **`templates/systemc/constructor.py`'s equivalent branch (`:457-474`) is unreachable and was deliberately left alone.** That self-registration path returns early for a block with own params, so reaching its label-only arm needs a block declaring variants and no `params:` — the shape the third item below now rejects at db, so the arm is unreachable by construction rather than by coincidence.
 
-#### Open after the empty-variant fix — referred to the architect, 2026-08-19
+#### Follow-up after the empty-variant fix, resolved 2026-08-20 through 2026-08-23
 
-- **No verilated DUT exists at a parameterized block's default parameters.** `vlSvWrap` is `variant: true` (`config/project.yaml:149`), so `make newmodule` scaffolds one SV top per **declared** variant and none at default parameters. The empty-variant `_verif` registration is consequently bound to the same `sc_concrete_dut` + `defaultConfig` pair that `templates/systemc/module_hdl_wrapper.py` already uses for a variant-less parameterized hasVl block, which leaves the SC side at the block's defaults while the SV side elaborates at the first declared variant's literals. Harmless where the parameter is behavioural; a **width disagreement** where a parameter sizes a structure, because the HDL boundary pin is fixed-width. Closing it needs either a default-parameter SV wrapper top (a `fileMap` change) or a db-time rejection of the shape for hasVl children.
-- **`_resolveSvInstanceParams` raises `KeyError` for a variant-less instance of a params-declaring child when the container declares no same-named parameter** (`pysrc/processYaml.py:2070`). It is called unconditionally from `getBDInstances` (`:2172`), so it stops all generation, not only RTL. A fix must decide the SystemVerilog semantics first: the child's module emits the parameter with no default, so omitting the override produces invalid SV, and emitting the backing constant's value as a literal leaves SV forwarding the container's symbol while C++ binds the child's `defaultConfig`. Also recorded as a prerequisite at [`plan-interface-compatibility.md`](./plan-interface-compatibility.md) §5.7.
-- **A block declaring a variant that binds no parameters, with no `params:` of its own, passes `make db` and `make newmodule` and then fails `make gen`** with an unhandled `AttributeError` in `getBDInstances`, where the variant's `params` subtable is `None`. It belongs in `projectCreate` validation as a diagnosed rejection.
-- **Dead code.** `_reconstruct_nested_structure` and `_attach_subtables_recursive` (`pysrc/processYaml.py:574`, `:592`) are never called and carry raw `print("DEBUG: ...")` statements.
+- ~~**No verilated DUT exists at a parameterized block's default parameters.**~~ **Resolved by step 8.** A params-declaring child must select `variant:` or `inheritContainerParam:`. The invalid variant-less shape no longer reaches wrapper generation.
+- ~~**`_resolveSvInstanceParams` raises `KeyError` for a variant-less instance of a params-declaring child when the container declares no same-named parameter.**~~ **Resolved by step 8.** Database creation rejects the shape before SystemVerilog generation.
+- ~~**A block declaring a variant that binds no parameters, with no `params:` of its own, passes `make db` and `make newmodule` and then fails `make gen`** with an unhandled `AttributeError` in `getBDInstances`, where the variant's `params` subtable is `None`.~~ **RESOLVED 2026-08-20 under the architect's ruling: rejected at db.** Reproduced first, on a minimal cell authoring nothing but the shape: `make db` and `make newmodule` both exited 0, then `make gen` exited 2 on `AttributeError: 'NoneType' object has no attribute 'items'` in `getBDInstances`. Every line number in this bullet is the shipped tree's, after the dead-code deletion recorded in the next bullet moved this function up 108 lines. The traceback lands on the instantiated arm's comprehension over `binding_rows` (`pysrc/processYaml.py:2010`); the `binding_rows = variantEntry['params']` three lines above it at `:2007` is where the `None` subtable comes in. The declared-variant arm at `:2025` reaches the same `None` for a variant no instance selects. A variant exists to bind parameters, so on a block that declares none it binds nothing and can carry no Config. `_post_validateVariantParameterCompleteness` now rejects the row where it is declared (`pysrc/processYaml.py:8424`), naming the variant, the block, the file and line, and the owning project. The check sits ahead of the missing-parameter arm in the same hook, which already resolves the block by scope from the variant row's foreign key, so it needs no new pass and no schema field. **Gate: `unittest/test_error_variant_on_params_less_block.py`**, make-driven: `make db` on the fixture must fail with the diagnostic and no traceback, then the suite gives the block a `params:` list, has the variant bind it, and requires the same `make db` to pass — without that second phase a rule that rejected every variant row would look identical. A third phase pins the boundary against the missing-parameter arm of the same hook: the block declares the `params:` list but the variant binds nothing, and the diagnostic must be the missing-parameter one. **Observed failing against the unfixed generator** (`FAIL: make db accepted a variant on a block with no params:`) and passing after. Nothing authors the shape: a scan of all 232 project YAMLs under `examples/`, `unittest/`, `builder/pro/` and the product tree found 98 declared variant rows and no hit. **VERIFIED BY EXECUTION.**
+- ~~**Dead code.** `_reconstruct_nested_structure` and `_attach_subtables_recursive` (`pysrc/processYaml.py:574`, `:592`) are never called and carry raw `print("DEBUG: ...")` statements.~~ **RESOLVED 2026-08-20: both deleted.** A repository-wide sweep found the only references were the definitions, the call at `:590` inside `_reconstruct_nested_structure`, and the recursion at `:680`; nothing else in `builder/base` or the product tree named either. 108 lines out, and all three remaining `print("DEBUG: ...")` sites in the generator went with them. `_loadSubTablesRecursive` and `loadTable` are untouched, so the sub-table loader itself is unchanged; the descriptive citation at [`plan-block-config-postprocess.md`](./plan-block-config-postprocess.md):246 now names a mechanism that no longer exists and is left for whoever takes that plan's §3 forward. **VERIFIED BY EXECUTION** — `make clean && make pipeline-test` exited 0 and the unit suite reported 107 of 107 passing.
 
-**A registrar TU that outlives its YAML now fails loud.** `blockRegistrar` `printError`s when its registration list is empty, telling the user to delete the file. That state is only reachable for a file the scaffold created before a YAML change made every binding container-typed, and it is the one case the registrar orphan sweep does not cover (`migrateOrphans.py` deliberately excludes registrar-mode entries).
+**The synthesised register handler now inherits its container's Config. LANDED 2026-08-20.** `synthesiseRegHandler` (`config/postParseRegisterPorts.py:65`) builds one `<block>_regs` handler block, instance and leaf-to-handler `connectionMap` per routed leaf. It set `'params': parentParams` on the block row, the routed leaf's own parameter list, but the instance it emitted at `:91` carried only `instanceType` and `container`. That is the shape "variant-less instance of a params-declaring block". The C++ side froze the handler at the context default Config while the SystemVerilog side forwarded the container's parameter symbols, because `_resolveSvInstanceParams` forwards a parent symbol wherever the names match and the handler's names are the parent's by construction. A leaf held at a variant therefore got a handler whose parameter values came from the declaring constants, and the handler is where that leaf's registers live. In the product tree `model/debayer.cppm:60` read `std::shared_ptr<debayer_regsBase<debayerDefaultConfig>>` two lines below the `inheritContainerParam` children `preprocessBase<Config>` and `interpolateBase<Config>`, while `rtl/debayer.sv:120` instantiated `debayer_regs #(.BITS_PER_PIXEL_COLOR(BITS_PER_PIXEL_COLOR), ...)`.
 
-**Known gap, deliberately not closed here.** `config/createBuildManifest.py` does not apply the `requiresRegistrations` gate, so the manifest still records the path of a trampoline the scaffold no longer creates. It is harmless — `a2c-common.mk` and `a2c-systemc.mk` both wrap the generated-file sets in `$(wildcard ...)` — but it breaks the invariant that the scaffold and the manifest enumerate the same set. Closing it properly means persisting the (parent, child) emission set in `projectCreate` on the `calcForeignConfigHeaders` precedent, because the gate reads a `projectOpen` view that `createArtifacts` cannot call (`self.data` is context-nested at that point). Filed rather than forced.
+**ARCHITECT'S RULING, 2026-08-20: the handler holds the leaf's own registers, so its Config is the leaf's.** The synthesised instance now sets `inheritContainerParam`, gated on the leaf declaring parameters at all, because `validate_inherit_container_params` rejects an inheriting child that declares none. One line of generator code, and it is the gate.
 
-**Re-examined 2026-08-17 and still filed, with the cost now measured.** The `calcForeignConfigHeaders` precedent is weaker than it looks: that derivation is self-contained over `flatData` rows and deliberately *re-implements* a simplified emit gate rather than reusing the view. Reproducing `hasRegistrations` is not comparable, because it is the conjunction of `defaultRegistration` and `registeredVariants`, which need `_buildVariantConfigDescriptors`, `_selectVariantDescriptor` (consumer-project selection), the `containerSourced` per-variant test, and the `inheritOnly` test — all `projectOpen` members (the `configFromContainer` nested-variant set this list also named was removed 2026-08-18). Duplicating them into `projectCreate` puts the manifest's copy and the registrar template's copy of the *same* selection semantics in two places, which is the failure mode the invariant exists to prevent.
+- **The inheritance preconditions all hold by construction, and the composed-build one was queried rather than assumed.** `validate_inherit_container_params` (`pysrc/processYaml.py:4993`) requires the child's params to be a bare-name subset of the container's, the two blocks to share an owning project, and the instance to be contained in a block. The subset is equality here, since the handler's `params` IS the leaf's list. Ownership was the risk, because `ipRegs` appears in six databases across the composed `ip_test` and `simple_ip` builds. It cannot diverge, because the handler's block row is fed through `processSingleFile(leafContext, ...)`, so its `_context` is the leaf's own YAML file, and both sides resolve through the same key. Queried on all six of `ip_test`, `ip_test/ip`, `ip_test/bridge`, `ip_test/bridge/ip`, `simple_ip` and `simple_ip/ip`. Every one reports owning project `ip` for handler and container alike, whatever the root build. Rule (f), which rejects a child both reached by an inheriting site and instantiated without a variant, is unreachable too, because there is exactly one handler instance per leaf block and it is the inheriting one. **VERIFIED BY EXECUTION.**
+- **Emitted-output delta, measured from clean on both sides.** Corpus of 1200 generated source files across every example, `common/`, and the product tree; 1199 after. Three files differ, two go away, and one appears only in the after snapshot, the product's `.gen/cpp-modules.mk`, because `make all` writes it and the before snapshot was taken after `make gen` alone. That last one is snapshot timing, not a change. `examples/mixed/model/blockG.cppm` and the product's `model/debayer.cppm` move their handler member and its constructor cast from `<contextDefaultConfig>` to `<Config>`, switch to the container-typed `createInstance<handler<Config>>` overload, and gain an `import` of the handler's block module. `examples/mixed/.gen/cpp-modules.mk` loses the handler trampoline's module entry and adds it to `blockG`'s import list. The two removals are the trampolines themselves, `examples/mixed/registrar/blockGRegsRegistrar.cppm` and the product's `registrar/debayer_regsRegistrar.cppm`. An all-container-typed child earns no registration, `hasRegistrations` goes false, and `requiresRegistrations` on the `blockRegistrar` fileMap entry suppresses the scaffold. **Zero SystemVerilog files changed**, which is the confirmation that the SV side was already right. `ipRegs` is `hasMdl: 0`, so the six `ip`-owning builds emit no model artifact for it and show no delta at all; `blockARegs` and `blockBRegs` declare no params, so the gate leaves them alone. **VERIFIED BY EXECUTION.**
+- **Deleting the two orphans is manual.** Neither file is swept when the declaration that produced it goes away. The pair-specific manifest fix below stops scheduling a trampoline with no registrations, so generation no longer opens that stale file to print the old "nothing to register" diagnostic. Registrar orphan cleanup remains separate work.
+- **Gate: `unittest/test_regs_handler_container_config.py`**, make-driven, on the new `unittest/fixtures/regs-container-variant` cell. `rcvLeaf` declares `RCV_CFG_GAIN`, owns the `cfg` register, and is instantiated once at variant `tuned`, which binds 12 where the constant declares 1. The block reports its own gain beside the gain its handler resolved and asserts they agree, and `rcvCpu` writes `0xABC` to `cfg` over APB through the router and reads it back, so a handler that elaborated but decoded nothing fails rather than passing. The suite also asserts the emitted member is typed by `Config` and that no handler trampoline was emitted, which separates an emitter fault from a run fault. **Observed failing against the unfixed generator** by reverting the edit by hand rather than through a scratch mirror. The mirror technique does not work for this file, because CPython resolves a symlinked script's directory before setting `sys.path[0]`, so `pysrc.processYaml` is imported from the real tree and `a2cRoot`, hence `$a2c/config/postParseRegisterPorts.py`, is the real one. The failing run reported `gain 12 handler gain 1` and exited 2; after the fix, `gain 12 handler gain 12` and exit 0. **VERIFIED BY EXECUTION.**
+- **Found and not fixed. A register whose payload field is a parameterizable type cannot be generated.** `registerFeatures` (`templates/systemc/structures.py:735`) emits `_getValue`/`_setValue`, and its signature takes neither `prj` nor `useConfig`, so it cannot call `cppTypeName` (`:183`) at all. It casts with the bare `vardata['varType']` at `:783` and `:785`, which for a parameterizable field is a template name with no arguments and does not compile, and it masks with the literal `vardata['bitwidth']`, the declaring constant's width rather than the resolved variant's. `sc_pack` (`:790`) and `sc_unpack` (`:897`, via the `cppTypeName` call at `:917`) get both right, so the correct pattern is adjacent in the same file. `common/systemc/hwRegister.h` is clean: it goes through `sc_pack`/`sc_unpack` and never calls these accessors. This was hit while building the `regs-container-variant` fixture and is why its register payload is a fixed-width type. It is also why no in-tree register is variant-width today, so `synthesiseRegHandler`'s docstring loses its claim that the handler's register storage is variant-width. **Zero live sites**: `_getValue` appears only in `examples/apbDecode/model/apbDecodeIncludes.cppm` and `examples/mixed/model/mixedIncludes.cppm`, and neither register is parameterizable. **VERIFIED BY CODE READING**, line numbers re-checked against the working tree 2026-08-20. **The cast arm is a straightforward `cppTypeName` call once the signature carries `prj` and `useConfig`; the mask width is the open question.** A `NamedStruct` field could use `subStruct<Config>::_bitWidth`, but the correct spelling for a **scalar** parameterizable type is not confirmed, so this is filed as a question, not a diagnosis with a known fix. Separate defect, separate step; no code changed here.
 
-There is also a hard **pass-ordering** blocker, verified by reading the call order: `hasRegistrations` depends on `reachableInstances`, which `projectOpen` loads from `REACHABLEINSTANCES` (`pysrc/processYaml.py:513`). That config is persisted at `:4159`, *after* `runCreateArtifacts()` at `:4127` — the pass the build manifest is created in. So the set is not merely inconvenient to compute at manifest time, it does not exist yet; closing this requires moving the reachability derivation earlier in `projectCreate`, which reorders passes that address calculation and artifact creation already depend on.
+**A registrar TU left behind by older YAML remains an orphan-cleanup concern, not an active generation path.** The persisted pair record and manifest gate no longer schedule a model registrar with no registrations. Existing stale files still require the separate registrar-orphan cleanup policy.
 
-Both are tractable, neither is small, and the defect remains harmless because both make sets wrap in `$(wildcard ...)`. The right shape is probably to move registrar-registration selection into a `projectCreate` derivation that `projectOpen` then *reads* — one owner, both consumers — rather than to duplicate it. That is a change to view ownership and belongs in its own step.
+**The `requiresRegistrations` manifest gap and the `hasVl + containerParam` gap are closed, 2026-08-23.** `projectCreate` now persists reachability before artifact creation, the selected Config descriptors, and one complete `REGISTRARPAIRS` record per reachable qualified `(assemblerKey, childKey)` pair. Each record owns the model registrations, concrete Verilated registrations, nested Config expressions, resolved RTL parameter values, factory domain, and collision-free artifact/top identities. `createBuildManifest`, `newModule`, `blockRegistrar`, `vlRegistrar`, and `getRegistrarConfigView` consume that record. None of those five repeats instance or project-precedence selection. (**CORRECTED 2026-09-04:** this read "None repeats instance or project-precedence selection", which scans as a claim about every consumer of the variant data. `projectOpen.getStandaloneVariants()` is not one of the five, and it does repeat the selection at `pysrc/processYaml.py:1629-1632`, then discards the descriptor at `:1635` and reads its values from the project-blind nested rows instead. See item 9A of [`plan-116-review-feedback.md`](./plan-116-review-feedback.md).) A physical registrar keeps one stable child basename per owning project and aggregates that project's parent-child pairs. Factory domains, Verilated top names, and pair-specific wrapper identities remain qualified by the logical parent-child pair, so two parents can bind the same child without colliding or multiplying physical registrar files.
+
+A `containerParam` site forwards its parent's runtime variant label. The pair's VL registrar binds that label to `childVariantConfig<parentVariantConfig>`, and its pair-qualified SV top binds the resolved child literals for that parent variant. Local coverage checks mixed inherited and ordinary sites in both YAML orders, one physical registrar artifact, and the ordinary registration. Cross-project coverage enables RTL on a separately owned leaf, selects two parent Configs with different algorithms and widths, and runs each pair-qualified top. Other guards cover the synthesised all-inherit handler, precedence, and an unreachable referenced-project harness. **VERIFIED BY EXECUTION.**
 
 **Superseded prototype in the working tree. REMOVED 2026-08-18.** The `configFromContainer` instance flag, its schema field, the `A2C_NESTED_CONFIG` trait in `common/systemc/nestedConfig.h`, the nested-entry emission in the config template and the nested-Config plumbing in `_resolveInstanceConfigFields` / `getForeignConfigData` / `getRegistrarConfigView` predated this ruling and implemented the per-site shape it supersedes. The recommendation this bullet carried — remove it as a separate change so the tree states one design — was approved and executed; see "The `configFromContainer` prototype removal" below.
 
@@ -840,7 +866,7 @@ Both are tractable, neither is small, and the defect remains harmless because bo
 
 **Two adjacent gaps this design neither causes nor fixes.**
 
-- **A third project instantiating a foreign block at a variant declared by an intermediate project resolves no descriptor and silently gets defaults.** `_selectVariantDescriptor` matches either the consuming project's own declaration or the child block owner's, so an instance declared in the customer project at a variant declared by the mid-level IP falls back to the block default Config. The container-sourced work keeps *validation* sound in its presence — `validate_container_sourced_params` keys its rows by `(block, variant)` and so checks **every** declaration of the variant label a site names (`:5119-5126`) — but it does not close the descriptor gap.
+- **A third project instantiating a foreign block at a variant declared by an intermediate project resolves no descriptor and silently gets defaults.** ~~`_selectVariantDescriptor` matches either the consuming project's own declaration or the child block owner's~~ **CORRECTED 2026-09-04: the shipped module-level `selectVariantDescriptor` (`pysrc/processYaml.py:292-312`) has THREE arms, tried in this order: a foreign binding the consuming project authored itself, then the config context owner's own bare-name binding, then a foreign binding from the block's declaring project. The block owner's arm is deliberately LAST, because a block's config context can be owned downstream of the block, and that owner emits the struct and authors its own binding.** The gap the bullet names survives the correction, because no arm reaches a declaration authored by a project that is neither the consumer nor the block's owner. An instance declared in the customer project at a variant declared by the mid-level IP therefore falls back to the block default Config. The container-sourced work keeps *validation* sound in its presence — `validate_container_sourced_params` keys its rows by `(block, variant)` and so checks **every** declaration of the variant label a site names (`:5119-5126`) — but it does not close the descriptor gap.
 - **A stale generated orphan**, `examples/xprojParam/dpTop/registrar/xpDpTop_xpDpLeafVariantConfig.cppm`, left from an earlier shape of the fixture: generated files are not swept when the declaration that produced them is removed.
 
 **One further limitation visible in the fixture's emitted output**, and it is B5 rather than anything new: `examples/xprojParam/dpTop/registrar/xpDpTop_xpDpMidVariantConfig.cppm` carries `DP_ALGO` even though `xpDpMid` names only `DP_WIDTH` and `MID_ALGO`, because a Config is composed from the declaring context's parameterizable constants rather than from the block's own `params:` (§5, B5; step 3).
@@ -888,6 +914,402 @@ The prototype above left a fourth container-inheritance mechanism in the tree al
 **Review, 2026-08-18. Two independent reviewers, no MUST-FIX.** Three findings were taken: the vestigial `variantArg`/`projectArg` locals the collapsed branch left in `templates/systemc/constructor.py` (inlined into the `createInstance` call, since with one arm left they were single-use quoting wrappers); `type_key` in `_resolveInstanceConfigFields`, whose second reader was the deleted `nested_child` computation (collapsed into the `getBlockConfigView` call); and the stale `addNestedConfigDescendants` mention in P5's staging note in [`GENERATOR_ARCHITECTURE.md`](../GENERATOR_ARCHITECTURE.md), which cited a function this change deleted. All four gates were re-run after these edits and are unchanged, **including the zero emitted-output delta** — which is what makes the `constructor.py` inlining safe to assert, since it is a template edit.
 
 **Findings declined, with reasons.** `cpp_config_struct_name`'s head comment enumerates three outcomes while the function has four branches — but the two it omits (`inheritContainer`, `containerSourced`) are both live mechanisms, the text is unchanged from before this removal, and the removal made it strictly closer to accurate by deleting one arm. Likewise the `configTypeIdentity` docstring's "the first spells `Config` outright" ordinal, which does not match the condition order in the `if`. Both are pre-existing comment debt on code this change did not author; fixing them here would be improving adjacent non-prototype code. Also declined as out of scope: the `block_row.get('params', []) or []` contracted-field fallback at `getForeignConfigData` (one of seven instances of that pattern, wanting one repo-wide decision rather than a local patch), the dead `instIsParameterizable` local in `constructor.py`, the descriptor contract's undocumented `containerSourced` key, and the permanently-dead `useDefault`/`duplicateOf` descriptor branches. Each is a pre-existing item recorded here rather than fixed.
+
+### Step 8, the instance Config-selector rules (D9). LANDED 2026-08-20
+
+Both rules are one `post(...)` row hook on the `instances` section, which had none before.
+
+| Piece | Site |
+| :-- | :-- |
+| Hook declaration | `config/schema.yaml:215`, `_attribs: [flat, post(validateInstanceParameterBinding)]` |
+| Rule B, the parameterized top | `pysrc/processYaml.py:8458` |
+| Rule A, the instance selecting no Config | `pysrc/processYaml.py:8469` |
+
+**Why a row hook and not a project-wide pass.** `SCHEMA_SPECIFICATION.md`'s own decision procedure puts it here, because the check concerns one row and a target its own foreign key guarantees. `instanceType` is `_type: required` with `_validate` onto `blocks.block` (`config/schema.yaml:217-221`), so the block row and its nested `params:` are parsed before this row is processed, and `self.flatData['blocks'][item['instanceTypeKey']]` reads them directly with no scope walk and no fallback. A row hook also has the row's `lc`, so the diagnostic names the file and line, which for rule A is the whole difficulty, since the mistake is an absence.
+
+`container` is `auto(container)` and resolves to the `_topInstance` sentinel for the root project's own top row, so rule B is one equality test on a field the same hook already has. **VERIFIED BY EXECUTION.** The first run against the unrestructured `examples/xif` reported `In xif.yaml:127: top instance 'xif_tb' is block 'xif_tb' (project 'xif'), which declares params: [DATA_WIDTH, FRAME_HEIGHT, FRAME_WIDTH]`, which is the census's single predicted site and no other.
+
+**`blockRow.get('params', {})` here is not a contracted-field violation.** `params` is `_attribs: [optional, list, flat, ...]` and the parser omits the key entirely when the node is empty; `checkIsParam` tests `'params' in varInfo` at `pysrc/processYaml.py:8488` for the same reason.
+
+#### `examples/xif` restructured, because it held the only authored site
+
+The file documents two subjects and both had to survive: the BUG 7 cross-interface boundary thunker at the testbench/DUT boundary, and the container-Config gate for the testbench External. The second is the constraining one. `tbPeer` at variant `pvSourced` sources every parameter from its container, so its Config is a template over the container's Config built through a maker template, and the External pseudo-block is the one consumer of that machinery that is not itself a class template. The symbol therefore has to be bound to the container's own resolved Config, which needs the container-sourced child to be a direct child of the harness container.
+
+The restructure keeps the harness exactly where it was and adds a root above it: a new unparameterized `xif_top` block, `topInstance: xif_top`, and the `xif_tb` instance row moved to `container: xif_top, variant: tbV0`. `xif_tb` keeps its `params:` and its `tbV0` variant. The harness stays the harness, since `dut` still has `hasTb: true` and its External is still built from the block holding `uDut`, so the External gate keeps its shape.
+
+**A parameterized testbench harness that is not the top works. VERIFIED BY EXECUTION.** This was the arrangement's risk: `ip_test` shows a non-top harness (`ip`'s testbench under `ipStdTop`, `ipBridge` and `ip_top`), but in every such case the harness is the top of its own standalone build and becomes non-top only when a parent composes it. No example had a harness that is non-top by design within one project. `examples/xif` now does, and `make -C examples/xif clean && make gen`, `make -C rundir all` and `make -C rundir run` all exit 0 with "No error".
+
+**The External gate is intact, checked field by field.** `examples/xif/tb/dut/dutExternal.cppm:3` still stamps `--variant=tbV0`, and `:39` and `:76` still spell `tbPeerBase<tbPeerPvSourcedConfig<xif_tbTbV0Config>>`, the container's own resolved Config rather than a template parameter. Both peers still assert the frame height their partner stamped, so the run, not merely the compile, is the check.
+
+**Emitted-output delta for the restructure: zero files.** A full `make clean` then `make gen` on `examples/xif` leaves `git status` reporting only the two YAML files I edited. That is stronger than expected and it has a reason: the External is generated per **block**, and the variant it stamps comes from `xif_tb`'s single declared variant, neither of which the restructure touched. The new root block declares `hasMdl`, `hasRtl`, `hasVl` and `hasTb` all false, so it scaffolds nothing.
+
+#### Gates
+
+Both suites are make-driven: each copies its fixture to a temp tree and runs `make db`, so the rejection has to arrive through the build a user runs, and a rejection delivered as a traceback fails the suite.
+
+- **`unittest/test_error_instance_no_config_selector.py`** on `unittest/fixtures/instance-no-config-selector`. `incLeaf` declares `params: [INC_WIDTH]` and `uLeaf` names no variant and does not inherit. The container `incTop` declares the same parameter, so both accepting forms are one edit away, and the suite takes both: phase two adds `variant: leafV0`, phase three `inheritContainerParam: true`, and each must pass. Without both, a rule that rejected every instance of a parameterized block would look identical.
+- **`unittest/test_error_parameterized_top.py`** on `unittest/fixtures/parameterized-top`. The top instance names `variant: ptV0`, so it is well formed by every other rule and rule A has nothing to fire on. That isolation is the point, because a fixture that merely omitted the variant would pass against either arm. Phase two performs the restructure the diagnostic asks for, adding an unparameterized `ptRoot` above the harness, moving the harness into it and repointing `topInstance:`, then requires `make db` to pass. That is the unit-scale statement of what `examples/xif` now does.
+
+Each suite asserts the specific diagnostic text rather than only a non-zero return, and asserts that the **other** arm of the same hook stayed silent.
+
+**Both gates were observed failing against a disabled arm, then passing restored. VERIFIED BY EXECUTION.**
+
+- Rule B's arm replaced by `if False:`. `test_error_parameterized_top.py` exits 1 with `FAIL: make db accepted a parameterized top instance`, while its phase-two accept arm still passes and `test_error_instance_no_config_selector.py` still exits 0. So the top suite is proving rule B and nothing else.
+- Rule A's arm replaced by `if False:`. `test_error_instance_no_config_selector.py` exits 1 with `FAIL: make db accepted an instance that selects no Config`, while both accept phases still pass and `test_error_parameterized_top.py` still exits 0.
+
+#### Verification, all from clean
+
+- `make clean -j && make pipeline-test -j` at the base root: **exit 0**. Both intentional negative probes printed their `OK: ... rejected` lines. **VERIFIED BY EXECUTION.**
+- `unittest/run_all_tests_parallel.sh`: **109 of 110** at this historical
+  checkpoint. The failed `test_registrar_default_variant.py` fixture authored
+  the shape step 8 rejects. The architect later retired that suite and fixture;
+  the current full result is 114 of 114.
+- Product tree: `make clean -j`, `make gen -j`, `make -C rundir -j all`, `./build/run debayer`, all **exit 0**, run reports "No error". **VERIFIED BY EXECUTION.**
+All four were re-run from clean after the review edits below, with the same results and a byte-identical corpus.
+
+- **Emitted-output delta: zero files differ in content.** 1188-file corpus over `examples/`, `common/` and the product tree, build directories and databases excluded. Compared against the snapshot taken at the register-handler change's closeout: **zero files differ**. The only listed entries are eleven `.gen/cpp-modules.mk` files present in the earlier snapshot and absent now, plus one `.gen/build.mk` the other way, all of which record which make target last ran rather than any generator output. The xif tree, which I expected to move, did not: see the restructure above.
+
+#### Collateral fixture updates and the retired gate
+
+Four unit suites failed on the first run, all because their fixtures authored the shape rule A now rejects. Three were incidental to their subjects and their fixtures were migrated to legal authoring, the same migration `examples/xif` took:
+
+- `test_block_config_parameterization.py`, both inline architectures. `uLeaf` of `wordLineLeaf` gains `variant: wl0`; `uSrc`/`uDst` of `srcBlock`/`dstBlock` gain `variant: bus0`. Each new variant binds the constant's declared value, so no measured width moves.
+- `test_block_own_surface_param_no_params.py`. `uDst` in the negative arm, and both `uSrc`/`uDst` in the positive control, gain `variant: w0`. The negative arm matters: rule A fired during the parse of `uDst` and pre-empted the own-surface validator that runs after parsing, so the suite was reporting the wrong rejection.
+- `test_parameter_variant_block_param_identity.py`. `uOther` gains `variant: narrow` at `WIDTH: 7`. This strengthens the subject: both same-named `WIDTH` parameters are now variant-bound, which is what the block-scoped identity is for.
+
+**RESOLVED 2026-08-20: rule A retired
+`test_registrar_default_variant.py`.** The suite used a parameterized child
+reached at a variant by one site and at no variant by another. Rule A makes that
+authoring illegal. The architect chose deletion because the model-side subject
+is unreachable under the new rule and an inheriting site has separate coverage.
+The suite and `registrar-default-variant` fixture no longer exist.
+
+Traced through `getRegistrarConfigView` (`pysrc/processYaml.py:1626-1654`), **VERIFIED BY CODE READING**:
+
+- `emptyVariantAsked` is `not keyedInstances or any(inst['variant'] == '' for inst in keyedInstances)`. After rule A, a params-declaring block can have no keyed instance at the empty variant, so the second disjunct is dead and only the "no keyed instance at all" case remains. That case sets `inheritOnly` when any site is container-typed, and `defaultRegistration = not inheritOnly and emptyVariantAsked` then goes false. **So the model-side `defaultRegistration` arm is unreachable for a parameterized block.** For an unparameterized block every instance sits at the empty variant, so the normal path is untouched.
+- `verifDefaultRegistration = containerTyped or emptyVariantAsked` **keeps a live consumer**, through `containerTyped`. The verilated half of the suite's subject survives an `inheritContainerParam` site.
+
+Rule A also closes two of the items filed under "Open after the empty-variant fix": the missing default-parameter verilated DUT, whose recorded options were a default-parameter SV wrapper top **or** a db-time rejection of the shape, and `_resolveSvInstanceParams`'s `KeyError` for a variant-less instance of a params-declaring child. Both were reachable only through the shape rule A rejects.
+
+**The repoint-or-delete question is closed.** A scratch probe showed that
+switching the two variant-less sites to `inheritContainerParam: true` passed
+`make db`, but it would have dropped the suite's `defaultConfig` subject. The
+architect selected deletion. Mixed ordinary/inherited behavior and
+`verifDefaultRegistration` now have direct coverage elsewhere.
+
+#### Review, 2026-08-20. Findings taken
+
+- **The diagnostics named the wrong project.** Both read `block 'B' (project 'P')` while resolving `P` from the instance row's own file, so a cross-project instantiation printed the instantiating project against the instantiated block. Now resolved from `blockRow['_context']`, matching the idiom at `pysrc/processYaml.py:1606`, `:1673` and `:2105`. **VERIFIED BY CODE READING** only: both fixtures are single-project, so neither distinguishes the two spellings, and no cross-project cell was added for a message-text fix. The same flaw is in the sibling variant hook at `:8419` and was left alone as pre-existing.
+- **Rule B's message understated the fix.** It said to put the block under an unparameterized root and omitted repointing `topInstance:`, which is half the restructure. It now names all three edits and says why one variant of literals is refused rather than only that it is the only option.
+- **Two author-facing rejections had no author-facing documentation.** Added to `rules/skills/design-parameterizable-blocks.md`, beside the variant-completeness rule and the `inheritContainerParam` preconditions, and to the "What is not allowed" list in [`design-parameter-inheritance.md`](./design-parameter-inheritance.md), which this plan's opening bullet names as the owner of rules addressed to an author. `.claude/skills/` holds an install copy that `make agents-setup` regenerates and git ignores; it was not hand-edited.
+- Comment and prose trims in `examples/xif/arch/yaml/xif.yaml`, both new fixtures, one test docstring, and this document.
+
+**Superseded review disposition.** The review correctly deferred the gate change
+until the architect ruled. The later ruling selected deletion, and the runner no
+longer contains the suite. The current full result is 114 of 114.
+
+#### Consequence noted, not acted on
+
+Rule A makes the last check in `validate_inherit_container_params` unreachable. It rejects an inheriting child that is **also** instantiated without a variant, because both resolve the same factory key; with rule A the second instance is rejected at parse time, before `calcBlockConfigInfo` runs. The check is left in place: it states an invariant worth keeping in the code, and deleting it is not this step's work.
+
+### Step 9, the verilated wrapper of a block reached only by `inheritContainerParam`. LANDED 2026-08-20
+
+**The defect.** `/work/ws/debayer/verif/preprocess_hdl_sc_wrapper.h` and `interpolate_hdl_sc_wrapper.h` were emitted as CONCRETE classes bound to `preprocessBase<debayerDefaultConfig>`, with the `<Config>` argument deleted from every BFM and hdl_if type rather than substituted. Both blocks are reached only through `inheritContainerParam` (`/work/ws/debayer/yaml/debayer.yaml:271-272`), so the container types them with its own `Config` and the wrapper was one C++ type where a family is needed. The product tree never noticed: its verilated path is a VCS flow behind `USE_VCS`, and the registrar wraps the whole trampoline in `#ifdef VERILATOR`.
+
+**Root cause chain, both arms in `templates/systemc/module_hdl_wrapper.py`.**
+
+1. The wrapper's shape was keyed on `data['variants']`, the INSTANTIATED variant view. An instance carrying `inheritContainerParam` binds no variant label, so that view is empty for such a block while `data['declaredVariants']` is populated. `pysrc/processYaml.py:2012-2025` documents exactly this case and says the declared view exists so the SystemVerilog wrapper does not fall through to the non-parameterizable render path; the SystemC wrapper was still reading the instantiated one.
+2. `mp_sig[port][key].replace('<Config>', '')` deleted the template-argument list where its own comment four lines above said it substituted the project-wide default Config.
+
+**The second arm was not a compile break, contrary to the report that opened this step. MEASURED.** With the strip restored by hand, `unittest/fixtures/inherit-vl-child` generates, verilates, builds and RUNS clean, and the checker reads back the right algorithm. The bare name is not the namespace-scope class template: unqualified lookup inside the wrapper's class body finds the member alias the block's Base publishes (`using vliSt = vliSt<Config>;`, emitted at the end of every `<block>Base`), and that Base is bound to the same `defaultConfig` the wrapper inherits. The strip therefore resolved to the block default by accident of name lookup, which is what the comment claimed it did on purpose.
+
+**Substituting the name explicitly is NOT equivalent, and it was reverted on 2026-08-20.** The measurement above was taken on a fixture whose wrapper is Config-templated, where the Base is dependent and the bare name resolves to the namespace-scope class template. On the CONCRETE path the Base is non-dependent, so its public member alias is already a concrete non-template that class-scope lookup finds first, and appending a template-argument list to it is `error: expected '>'`. That was established by a real build failure on 2026-08-03, and deleting the argument list is the fix from that date rather than a defect. The substitution landed here and no build caught it because after arm 1 no block reaches the concrete-parameterizable branch at all: zero emitted wrappers corpus-wide carry a qualified `DefaultConfig` on a `bfm_decl` or `hdl_if_decl`. Green builds prove nothing about a dead branch. The comment now states the base-alias reason instead of the substitution story, because the line reads like a defect and has now been at risk twice.
+
+**The fix.** One fact, `svWrapper['scWrapperConfigTemplated']`, added to the block view at `pysrc/processYaml.py:1446` beside the wrapper names it belongs with, and read by both consumers so they cannot drift apart again: `templates/systemc/module_hdl_wrapper.py` for the class shape and `templates/systemc/vlRegistrar.py:123` for the trampoline that instantiates it. It is true when the block declares its own params AND declares variants. Both files lost their DUT_T-only arm, which required a block with variants and no `params:`. That shape is rejected at db by `_post_validateVariantParameterCompleteness` in the working tree, and the two changes must land together: without the rejection, such a block goes from compiling to not compiling.
+
+**The Config the trampoline binds is UNCHANGED, and which Config it SHOULD bind for a container-typed site is open.** The empty-variant `_verif` registration still names `sc_concrete_dut` paired with the block's `defaultConfig`, exactly as before; the change is that a templated wrapper needs both spelled. That pairing is the item already filed under "Open after the empty-variant fix" above, and this step adds a second, sharper reason to answer it:
+
+- The answer is also constrained by pin width, not only by type identity. A templated wrapper's hdl_if is `sc_bv<payload<Config>::_bitWidth>`, while the Verilated top it is paired with is fixed at the widths its own declared variant elaborated. Any answer must pair a top and a Config that resolve the same widths.
+- A container-typed site asks the factory under the EMPTY variant key, because inheritance carries no variant label (`templates/systemc/constructor.py:223` passes `value["variant"]`, which is `''`). `instanceFactory::createInstance` nulls the container-supplied factory for every non-model mode (`common/systemc/instanceFactory.cpp:76`), so a verilated site has nothing but that one registration to find. One key, one Config.
+- The container casts to `<child>Base<Config>` with ITS OWN Config (`/work/ws/debayer/model/debayer.cppm:128`). A container declaring N variants is N distinct C++ types, so no single registration can serve more than one of them.
+- The one that works is the container variant whose Config struct IS the context default, which happens only when the container's block name matches its config-context file stem and the variant is literally named `default`. `debayer` is in exactly that shape, which is why the product tree works and why a second `debayer` variant would break it.
+- **MEASURED**, on the fixture: `make run-vl-def` (leaf under the `default` container) runs clean; `make run-vl-alt` (the same leaf under `alt`) segfaults on the null `dynamic_pointer_cast`, rc 2.
+
+Answering it needs a decision this step did not take: either the container forwards its own variant label for an inheriting child so the key carries the Config dimension, or the shape is rejected at db for a `hasVl` child under a multi-variant container. Both are design changes, so the question is referred rather than guessed.
+
+#### Gate: `unittest/test_inherit_vl_child.py`, on `unittest/fixtures/inherit-vl-child`
+
+No corpus fixture combined a multi-variant container with a `hasVl` child reached by `inheritContainerParam`; `examples/xprojParam/inhVar` is the same topology with `hasVl: false`, and this cell is derived from it. `vliCont` is instantiated at `default` and `alt`, differing only in `VLI_ALGO`; `vliLeaf` inherits, declares one variant `solo` of its own so a standalone verilated top exists, and its RTL stamps the resolved `VLI_ALGO` into every sample it forwards. The suite scaffolds, generates, VERILATES and runs, swaps the verilated leaf into the `default` container instance, and asserts the checker read back that container's algorithm while the `alt` chain's model leaves read back theirs. The `alt` swap is run as a recorded probe and asserted to FAIL, so answering the Config-selection question forces the suite to be revisited.
+
+- **Observed failing against the unfixed generator**, by reverting both arms by hand and restoring them: five emitted checks fail (`the emitted wrapper does not carry 'template <typename DUT_T, typename Config>'` and four more), and the suite exits 1. **The RUN passes either way**, because the Config the trampoline binds does not change and the fixture's `default` container variant is the coincidence described above. That is the honest reach of the runtime half: it proves the whole verilated path works under a multi-variant container, which nothing covered before, while the emitted checks are what discriminate the wrapper's shape.
+- Registered in `unittest/run_all_tests.sh`; the parallel runner's suite-count guard moves 109 -> 110. The suite isolates into a temp copy under `unittest/`, so it stays in the ISOLATED lane.
+
+#### Verification, all from clean
+
+- `make clean -j && make pipeline-test -j` at the base root: **exit 0**, before and after.
+- **Emitted-output delta across `examples/` (960 files) and `common/` (69 files): ZERO.** No example reaches the new path: none has a `hasVl` block whose instances are all inheriting, and none has a parameterizable `hasVl` block declaring variants that no instance binds. That is the measurement that says the change is behaviour-preserving everywhere it was already exercised, and it is also why the fixture had to be built.
+- Product tree, 151 files: **four differ**, all predicted. `verif/preprocess_hdl_sc_wrapper.h` and `verif/interpolate_hdl_sc_wrapper.h` become `template <typename DUT_T, typename Config>` classes inheriting `<block>Base<Config>`, drop the concrete DUT include from their preamble, and keep `<Config>` on their BFM and hdl_if types; `registrar/preprocessVlRegistrar.cpp` and `registrar/interpolateVlRegistrar.cpp` spell `<Vpreprocess_default_hdl_sv_wrapper, debayerDefaultConfig>` where they named the bare class. The hand-written `setTimedLocal` override and `end_ctor_init` in `verif/preprocess_hdl_sc_wrapper.h` survive intact.
+- Product tree `make clean -j && make gen -j`, `make -j all` in `rundir`, `./build/run debayer`: **all rc 0, "No error"**.
+- `unittest/run_all_tests_parallel.sh`: **110 of 110**, no count warning.
+
+### Step 10, the Config a container-typed verilated site gets. LANDED 2026-08-20
+
+Step 9 left this open and referred it to the architect. It is answered. The
+container says which Config it wants, using the variant label it already holds.
+
+**The defect. MEASURED** on `unittest/fixtures/inherit-vl-child`: the container
+at variant `default` verilated and ran clean, the same leaf under `alt`
+segfaulted on a null `dynamic_pointer_cast`, rc 2. A `hasVl` child reached only
+through `inheritContainerParam` got exactly ONE `_verif` registration, under the
+empty variant key, bound to one concrete Config.
+
+**Root cause, two halves.**
+
+1. `templates/systemc/vlRegistrar.py:40` read `sorted(data['variants'].keys())`,
+   the INSTANTIATED variant view. An inheriting instance binds no variant, so
+   that set is empty, the per-variant loop emitted nothing, and only the
+   `verifDefaultRegistration` arm fired.
+2. `templates/systemc/constructor.py:223` passed `value["variant"]`, `''` for an
+   inheriting instance. Per-variant registrations alone leave keys nothing asks
+   for.
+
+**The mechanism is the model side's, said with a string instead of a type.**
+The model path never uses the registration keyspace for an inherited child: the
+container is a class template already instantiated at a known Config, so it hands
+the factory a constructor naming the child's implementation class
+(`instanceFactory.h:64-71`, used at `/work/ws/debayer/model/debayer.cppm:130`).
+`instanceFactory.cpp:76` discards that constructor for every non-model mode. A
+container TU cannot name a Verilated class, so it says the same thing with a
+string instead of a type: its own variant label. The lookup order at
+`instanceFactory.cpp:85-97` is exact key, then container-supplied constructor,
+then empty-variant fallback, so `(child_verif, "alt", proj)` hits first while
+`(child_model, "alt", proj)` misses and the model path is untouched.
+
+**Where the new fact lives, and why there.** `projectCreate.calcVariantSourceBlocks()`
+persists `VARIANTSOURCEBLOCKS`: per block, the blocks whose declared variants
+supply its Config. Normally the block itself; for a block every instance of which
+inherits, its containers, transitively. It is a `projectCreate` derivation rather
+than a `projectOpen` view because `config/createBuildManifest.py` consumes it and
+runs inside `runCreateArtifacts`, before `projectOpen` exists. Four consumers read
+the one map: the block view's `standaloneVariants` (renamed from
+`declaredVariants`, which no longer described what it held), the `newModule`
+per-variant scaffold, the build manifest's verilated top set, and
+`getRegistrarConfigView`'s `verifRegistrations`.
+
+**The registrations themselves live in the parent-owned trampoline view**, which
+already keyed on the (child, parent) pair and already bound the Config the
+parent's own instances bind. The inheriting case sources its variants from the
+PARENT rather than from the child's containers, so a child reused under two
+containers registers each container's variants in that container's own TU instead
+of both TUs registering the union. The reverse child-to-containers lookup is still
+needed, because the `.sv` tops, the SC wrapper's
+templated-ness, the scaffold and the manifest are all block-scoped with no parent
+in hand.
+
+**The child's own declared variants are the wrong source**, which the fixture now
+pins. `vliLeaf` declares `solo` at algorithm 3; both container variants resolve
+something else. With the source map disabled, the run fails with `the container
+was configured at algorithm 1 but its leaves resolved 3`.
+
+#### The three questions, answered
+
+1. **Two containers instantiating one inheriting child.** No union to compute: the
+   key carries the container's project and variant, and the registrations are
+   emitted per parent. Same-named variants across containers are governed by the
+   existing duplicate-variant-declaration rule; no new check was added. **Decided
+   by the architect**, on the shape of `getRegistrarConfigView`.
+2. **The empty-variant registration keeps its existing role**, decided by the
+   `verifDefaultRegistration` arm (`pysrc/processYaml.py:1679`), which is
+   `containerTyped or emptyVariantAsked` and is unchanged. It is neither removed
+   nor repurposed. A single-variant container therefore emits two registrations
+   naming the identical class under two keys.
+3. **Nested chains compose. MEASURED**, on a throwaway three-level copy of the
+   fixture (`vliCont` -> `vliMid` -> `vliLeaf`, both inheriting). The leaf's
+   registrations two levels down name `vliContDefaultConfig` / `vliContAltConfig`
+   and the grandparent's tops; each level forwards its own `variant`, so the label
+   reaches the leaf. Both variants build and run clean, each chain reading back its
+   own container's algorithm and width. Not folded into the committed fixture,
+   which would then serve two purposes.
+
+#### Found on the way: the connectionMap sizing gate ignores inheritance
+
+`pysrc/processYaml.py`'s connectionMap arm adjudicated an `inheritContainerParam`
+child at its OWN declared values while adjudicating the container at its variant,
+so a container variant that moves a payload width was REJECTED at db with a
+per-field `_bitWidth` disagreement the design does not have. The child's Config IS
+the container's; there is nothing to compare. The plain-connection arm ~200 lines
+above already skips such an end for exactly this reason and says so; the
+connectionMap arm now carries the same skip. **Pre-existing, and invisible until a
+container variant moved a width.** The alternative disposition, adjudicating the
+child AT the container's variant rather than skipping, is a stronger gate and is
+the architect's call.
+
+#### Gate: `unittest/test_inherit_vl_child.py`, extended
+
+The `alt` probe was a recorded failure; it is now a checked run. The fixture's two
+container variants differ in BOTH a behavioural knob (VLI_ALGO 1 vs 6) and a
+payload width (VLI_WIDTH 8 vs 10), so the two Verilated tops have different pin
+widths, which one SystemC wrapper header can only serve as a class template. Each
+chain has its own driver and checker at its own width. The RTL and the model leaf
+both stamp the algorithm and the width they resolved, and `--vlInst` targets
+`uLeafB`, the LAST leaf in the chain, so what the checker reads back is what the
+VERILATED leaf stamped rather than what its downstream model twin overwrote.
+Exactly one instance is verilated per run (`common/systemc/simController.cpp:68-73`),
+so the two variants are two runs.
+
+**Gate evidence, both halves disabled in turn and restored.**
+
+- Constructor forwarding reverted to `""`: all 11 emitted checks still pass, and
+  `run-vl-alt` **segfaults**. Registrations alone do not reach the site.
+- The source map forced to `{block: [block]}`: five emitted checks fail (no top for
+  either container variant, a top for the decoy `solo`, and neither registration),
+  and `run-vl-def` fails at runtime with the decoy value, `algorithm 1 but its
+  leaves resolved 3`.
+
+#### What the width dimension actually protects, MEASURED
+
+Verilator bakes parameters in at elaboration, so a container variant at a
+different width needs its own SV wrapper and its own Verilated model. Verified by
+artifact, not by reading the generator: the fixture's
+`rundir/build/vl/obj_dir/` holds `vliLeaf_default_hdl_sv_wrapper/` and
+`vliLeaf_alt_hdl_sv_wrapper/`, each with its own `V<top>.h`, and their payload
+pins differ, `sc_bv<40>` against `sc_bv<42>`.
+
+The fixture is built so a lost payload bit is visible rather than inferred. The
+driver drives `1 << (VLI_WIDTH - 1)`, which does not fit the narrow variant; both
+leaves ADD `1 << (VLI_WIDTH - 3)` and wrap at their own width, so a narrower
+module wraps sooner instead of forwarding a truncation unremarked; and the
+checker's expectation is computed entirely from its OWN Config, so it never asks
+either leaf what width it thinks it is. The algorithm and width stamps are kept
+alongside, because they fail for a different reason.
+
+**The honest result: the width risk is caught structurally, not by that runtime
+assertion.** With the fix disabled the failure is a null cast or the decoy
+algorithm, never a data fault, because the wrapper is a class template whose
+Config fixes both the base class and the payload width. A wrong Config cannot
+quietly yield a wrong width; it yields a null `dynamic_pointer_cast`. And a right
+Config against the WRONG top does not link: forcing every registration onto the
+first variant's top fails at COMPILE, `no matching function for call to object of
+type 'sc_out<sc_bv<40>>'` at `verif/vliLeaf_hdl_sc_wrapper.h:47`. The data-path
+assertion is worth keeping as the backstop for a bit lost in the BFM or the pin
+binding, but it is not what guards the variant selection.
+
+#### Review, 2026-08-20. Findings taken
+
+- **The mixed-site contract is site-owned. FIXED AND EXECUTED 2026-08-23.**
+  `calcVariantSourceBlocks` now keeps both the child and inherited container
+  sources. `_resolveInstanceConfigFields` forwards the container label at every
+  inherited site, while ordinary sites keep their own labels. Verilated and
+  tandem registration consume the union. `unittest/test_inherit_vl_child.py`
+  now runs the same leaf type at child-owned `solo` and inherited `default` and
+  `alt` Configs. The `builder/pro` tandem cell carries the same three Configs.
+- **One table, two contracts.** `getRegistrarConfigView` indexed
+  `data['parameters']` directly where `getHdlWrapperVariants` treated the row as
+  optional, so a container declaring `params:` but no variants raised `KeyError`.
+  Both now go through `declaredVariantRows`.
+- **The source map counted unreachable instances.** It now intersects with
+  `reachableInstanceKeys()`: one standalone-harness row from a referenced child
+  project would otherwise have put a block back on its own variants, silently,
+  with the original segfault as the failure mode. The hierarchy is rebuilt
+  immediately before, because the one standing at that point predates
+  `postYamlExternalScript` and omits the synthesized register handlers.
+  **MEASURED**: without the rebuild the delta was four files, with it five, the
+  extra being `examples/mixed/model/blockG.cppm`, whose synthesized handler is an
+  inheriting instance and was being silently excluded.
+- Comment trims in four files, and the stale fixture generated regions refreshed
+  by the generator (`vliDrv` still published a removed `out2`, `vliLeaf.sv`'s
+  struct had no `wid`).
+
+**Resolved 2026-08-23.** `validateVariantSourceLabelCollision` rejects one label
+declared by two Config-source blocks before generation. This covers two
+containers and the mixed child/container source set. The error names the child,
+the label, and both source blocks. Disjoint source labels remain legal.
+
+#### Verification, all from clean
+
+- `make clean -j && make pipeline-test -j` at the base root: **exit 0**, before and
+  after.
+- `unittest/run_all_tests_parallel.sh`: **110 of 110**, no count warning. No suite
+  added, so the guard is unchanged.
+- Product tree `make clean -j && make gen -j`, `make -j all` in `rundir`,
+  `./build/run debayer`: **all rc 0, "No error"**. The hand-written `setTimedLocal`
+  override in `verif/preprocess_hdl_sc_wrapper.h` is byte-identical.
+- **Emitted-output delta, 1198 files across `examples/`, `common/` and the product
+  tree: FIVE files.** Two are the forwarded variant label at an inheriting site
+  (`examples/xprojParam/inhVar/model/xpInhCont.cppm`, and
+  `examples/mixed/model/blockG.cppm`, whose synthesised register handler is an
+  inheriting instance). Three are the product tree: `model/debayer.cppm` forwards
+  the label at its three inheriting sites, and the two VlRegistrar TUs each gain a
+  `"default"`-keyed registration.
+- **The product tree's registration count went 1 -> 2 per reused child, not 1 as
+  expected.** `debayer` declares one variant, so `default` now earns a keyed
+  registration alongside the pre-existing empty-key one. Both name the identical
+  class; only the key differs, and the keyed one is what the forwarded label
+  resolves. Question 2 says the empty-key arm keeps its role, so this is addition,
+  not replacement.
+- No verilated SV wrapper changed in the product tree: `preprocess` and
+  `interpolate` each declare a variant named `default` binding the same resolved
+  values as `debayer`'s, so the wrapper variant set is the same set under either
+  source.
+
+### Step 11, testbench variant ownership and Config-source validation. COMPLETE IN WORKING TREE 2026-08-31; COMMIT PREPARATION OPEN
+
+A generated testbench builds one DUT at one named Config. It now requires that
+variant to be declared by the DUT block itself. A container label is not a DUT
+variant merely because the DUT inherits the container's Config.
+
+`projectCreate` runs two validators immediately after
+`calcVariantSourceBlocks()`:
+
+- `validateContainerSourcedTestbench` rejects a testbench on a block whose Config
+  comes only from containers and which declares no variant of its own. Its
+  negative fixture and accepting arm are
+  `unittest/test_error_inherit_container_tb.py`, serial suite **19m2e**. The
+  accepting arm adds a DUT-owned variant.
+- `validateVariantSourceLabelCollision` rejects one label declared by two Config
+  source blocks. Its negative fixture and accepting arm are
+  `unittest/test_error_variant_label_collision.py`, serial suite **19m2f**. The
+  accepting arm gives the two containers disjoint labels.
+
+The three testbench fileMap entries, `testBench`, `tbConfig`, and `tbExternal`,
+now carry `dutVariant: true`. `processYaml` uses that field to identify
+testbench artifacts for validation, and `newModule` uses it when selecting the
+single generated-code variant. The hardcoded `TB_FILE_KEYS` tuple is gone.
+`newModule` seeds the testbench from `getQualBlockVariants`, not the broader HDL
+wrapper variant set, so the selected variant belongs to the DUT block.
+
+`pysrc/newProject.py` no longer writes its stale 13-entry starter `fileMap`.
+The base project owns that map. A new project gets only a commented `includeFW`
+override example, and the old tandem entry is gone. This prevents a fresh
+project from scaffolding legacy `.h` and `.cpp` model files beside `.cppm` and
+then failing `make gen`.
+
+Small fixes in the same work arc make the generated support code self-contained
+and deterministic. `templates/systemc/vlRegistrar.py` sorts Config-context
+iteration, the tandem header includes `<memory>`, and
+`common/systemc/instanceFactory.h` includes `blockBase.h` and `<memory>`
+directly. Nested template Config registrations in
+`builder/pro/templates/systemc/constructorTandem.py` sort Config expressions and
+name their TU-local helpers with deterministic `config0`, `config1`, and later
+ordinals. `builder/pro/unittest/test_constructor_tandem.py` checks the text and
+compiles, links, and runs two rendered translation units.
+
+**Recorded verification, refreshed 2026-08-31.** Base reports 114/114 unit
+suites and 31 successful simulations with 62 `No error` reports.
+`unittest/test_inherit_vl_child.py` passes end to end with exact checks for
+`solo`, `default`, and `alt` wrapper parameters, registrations, and runtime
+values. Local and cross-project `containerParam` Verilated paths pass. The clean
+Pro pipeline includes the focused tandem helper test and reports 7 successful
+simulations with 14 `No error` reports. The product passes `make clean -j`,
+`make gen -j`, and `make -C rundir -j all VL_DUT=1`; its only diagnostic is the
+existing unused `bayer_pattern_lookup` warning.
+
+The implementation is complete in the working tree. Commit preparation is not:
+the final intended change set is not yet fully staged, committed, or pushed.
+Working-tree-versus-HEAD diff checks are clean after EOF normalization. Cached
+checks may retain the old whitespace until the normalized files are staged.
+Steps 2, 3, 4, 5, and the RTL-bearing half of step 6 remain open. This entry
+does not reclassify unrelated loose ends or review findings recorded above.
 
 ### What may proceed in parallel
 
@@ -965,9 +1387,9 @@ Recorded so nothing is lost; each is out of scope here and belongs to its own ow
 - **`make lint` is unusable tree-wide.** Verilator 5.038 rejects `+incdir+` in `common/systemVerilog/a2c.f`. **This is a toolchain incompatibility, not the `REPO_ROOT` issue previously supposed** — recorded here so the earlier attribution is not carried forward. No RTL in this plan can be linted until it is resolved.
 - **Product-tree drift, 2026-08-13.** `tb/debayer/debayerExternal.cppm` is rewritten by `make gen` from uncommitted thunker changes in the working tree. Not caused by anything in this plan; it will show up in any before/after emitted-output hash taken on the product tree.
 - **`calcForeignConfigHeaders` collides on a bare block name.** `pysrc/processYaml.py:5757` keys `headers` on `(projectName, blockKey)` but builds the header basename from the **bare** block name, so two distinct blocks sharing a name, owned by two projects and given variants by one declaring project, produce two entries with one `baseName`. D8's `blockKey` identity deliberately permits that shape, so it is not gated there either. Found during the D8 review; pre-existing, and its own item.
-- **Fixtures in the tree carrying their own READMEs.** Only the second is still wired into no `make` target:
+- **Fixtures in the tree carrying their own READMEs.** Both are wired into a `make` target:
   - `examples/xprojParam/{dpLeaf,dpMid,dpTop}` — the three-level customer topology of §5, B6, and now the reference fixture for D7 (§6, step 7a). **CORRECTED 2026-08-14: it does NOT build and run, and its runtime assertion was not exercised.** The entry previously read "It builds and runs, and **its runtime assertion fails by design** in the restored baseline; the failure is the finding", which described the fixture as it stood when it was the B6 evidence vehicle. **CORRECTED AGAIN 2026-08-14, after step 7c: the model now builds, links and runs**, and the runtime assertion passes at three configurations. Six layers are verified: the database rows, the emitted SystemVerilog, a Verilator elaboration, Verilated runtime parameter values through two levels, a SystemC build and link, and a SystemC run whose checkers assert the algorithm each nested leaf resolved (§6, step 7c). The intermediate state this entry described — `static constexpr uint32_t DP_ALGO = ;`, invalid C++ — is gone. The fixture now carries a third customer configuration, added expressly to measure that the vendor projects do not move when a consumer adds one. **CORRECTED 2026-08-18: it is the `xproj-depth` target and has been in `pipeline-test` since 2026-08-17**, and the unit half is `unittest/test_container_param_inheritance.py`, so this is a gate rather than a recorded run (§6, step 7a).
-  - `examples/xprojParam/twoCtx` — the two-context block of §5, B5. `db` and `gen` are clean and **it does not compile, by design**.
+  - `examples/xprojParam/twoCtx` — the two-context block of §5, B5. `db` and `gen` are clean and **it does not compile because step 3 (B5) has not landed**; step 3 requires it to compile (§6, step 3). It is in `xproj-param-probes`, which tolerates the failure.
 
 ## 9. Done Criteria
 

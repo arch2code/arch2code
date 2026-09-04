@@ -17,7 +17,7 @@ public:
     virtual ~xpDpMidStdTopBase() = default;
 
 
-    xpDpMidStdTopBase(std::string name, const char * variant) 
+    xpDpMidStdTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -32,7 +32,7 @@ export class xpDpMidStdTopInverted : public virtual blockPortBase
 public:
 
 
-    xpDpMidStdTopInverted(std::string name) 
+    xpDpMidStdTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -47,7 +47,7 @@ export class xpDpMidStdTopChannels
 public:
 
 
-    xpDpMidStdTopChannels(std::string name, std::string srcName) 
+    xpDpMidStdTopChannels(std::string name, std::string srcName)
     {};
     void bind( xpDpMidStdTopBase *a, xpDpMidStdTopInverted *b)
     {

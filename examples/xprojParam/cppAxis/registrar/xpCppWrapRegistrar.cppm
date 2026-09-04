@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpCppWrapVariantConfig.h"
 
-export module xpCppAxis.xpCppAxisTop.xpCppWrap.registrar;
+export module xpCppAxis.xpCppAxis_xpCppWrap.registrar;
 import xpCppAxis_xpCppWrap.block;
 
 namespace {
@@ -19,6 +19,12 @@ struct _xpCppWrap_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCppWrap<xpCppWrapV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpCppAxis");
+        instanceFactory::registerBlock(
+            "xpCppWrap_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCppWrap<xpCppWrapV0Config>>(blockName, variant, bbMode));
+            },
+            "v0", "xpCppAxis.xpCppAxis_xpCppAxisTop.xpCppAxis_xpCppWrap");
     }
 };
 static _xpCppWrap_registrar _xpCppWrap_registrar_instance;

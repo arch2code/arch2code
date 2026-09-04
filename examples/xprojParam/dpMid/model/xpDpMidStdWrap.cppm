@@ -75,9 +75,9 @@ xpDpMidStdWrap::xpDpMidStdWrap(sc_module_name blockName, const char * variant, b
         ,xpDpMidStdWrapBase(name(), variant)
         ,out("xpDpMid_out", "xpDpMidDrv")
         ,midOut("xpDpMidSnk_midOut", "xpDpMid")
-        ,uDrv(std::dynamic_pointer_cast<xpDpMidDrvBase<xpDpMid_xpDpMidDrvStdConfig>>(instanceFactory::createInstance(name(), "uDrv", "xpDpMidDrv", "std", "xpDpMid")))
-        ,uMidStd(std::dynamic_pointer_cast<xpDpMidBase<xpDpMid_xpDpMidStdConfig>>(instanceFactory::createInstance(name(), "uMidStd", "xpDpMid", "std", "xpDpMid")))
-        ,uSnk(std::dynamic_pointer_cast<xpDpMidSnkBase<xpDpMid_xpDpMidSnkStdConfig>>(instanceFactory::createInstance(name(), "uSnk", "xpDpMidSnk", "std", "xpDpMid")))
+        ,uDrv(std::dynamic_pointer_cast<xpDpMidDrvBase<xpDpMid_xpDpMidDrvStdConfig>>(instanceFactory::createInstance(name(), "uDrv", "xpDpMidDrv", "std", "xpDpMid.xpDpMid_xpDpMidStdWrap.xpDpMid_xpDpMidDrv")))
+        ,uMidStd(std::dynamic_pointer_cast<xpDpMidBase<xpDpMid_xpDpMidStdConfig>>(instanceFactory::createInstance(name(), "uMidStd", "xpDpMid", "std", "xpDpMid.xpDpMid_xpDpMidStdWrap.xpDpMid")))
+        ,uSnk(std::dynamic_pointer_cast<xpDpMidSnkBase<xpDpMid_xpDpMidSnkStdConfig>>(instanceFactory::createInstance(name(), "uSnk", "xpDpMidSnk", "std", "xpDpMid.xpDpMid_xpDpMidStdWrap.xpDpMid_xpDpMidSnk")))
         ,thunker_out_uDrv("thunker_out_uDrv", out, uDrv->out, name())
         ,thunker_midOut_uMidStd("thunker_midOut_uMidStd", midOut, uMidStd->midOut, name())
 // GENERATED_CODE_END

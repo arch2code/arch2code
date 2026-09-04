@@ -190,7 +190,12 @@ blocks:
 instances:
     uTop: { container: top, instanceType: top }
     uSrc: { container: top, instanceType: srcBlock }
-    uDst: { container: top, instanceType: dstBlock }
+    uDst: { container: top, instanceType: dstBlock, variant: w0 }
+
+parameters:
+    dstBlock:
+        w0:
+            WIDTH: 8
 
 connections:
     - { interface: paramBus, src: uSrc, srcport: out, dst: uDst, dstport: in }
@@ -236,8 +241,16 @@ blocks:
 
 instances:
     uTop: { container: top, instanceType: top }
-    uSrc: { container: top, instanceType: srcBlock }
-    uDst: { container: top, instanceType: dstBlock }
+    uSrc: { container: top, instanceType: srcBlock, variant: w0 }
+    uDst: { container: top, instanceType: dstBlock, variant: w0 }
+
+parameters:
+    srcBlock:
+        w0:
+            WIDTH: 8
+    dstBlock:
+        w0:
+            WIDTH: 8
 
 connections:
     - { interface: paramBus, src: uSrc, srcport: out, dst: uDst, dstport: in }

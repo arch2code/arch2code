@@ -19,7 +19,7 @@ public:
     virtual ~xpInhTopBase() = default;
 
 
-    xpInhTopBase(std::string name, const char * variant) 
+    xpInhTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -34,7 +34,7 @@ export class xpInhTopInverted : public virtual blockPortBase
 public:
 
 
-    xpInhTopInverted(std::string name) 
+    xpInhTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -49,7 +49,7 @@ export class xpInhTopChannels
 public:
 
 
-    xpInhTopChannels(std::string name, std::string srcName) 
+    xpInhTopChannels(std::string name, std::string srcName)
     {};
     void bind( xpInhTopBase *a, xpInhTopInverted *b)
     {

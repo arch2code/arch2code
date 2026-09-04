@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpDpLeafVariantConfig.h"
 
-export module xpDpMid.xpDpMidStdTop.xpDpMid.registrar;
+export module xpDpMid.xpDpMid.registrar;
 import xpDpMid.block;
 import xpDpMid.xpDpMid.config;
 
@@ -20,6 +20,12 @@ struct _xpDpMid_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpDpMid<xpDpMid_xpDpMidStdConfig>>(blockName, variant, bbMode));
             },
             "std", "xpDpMid");
+        instanceFactory::registerBlock(
+            "xpDpMid_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpDpMid<xpDpMid_xpDpMidStdConfig>>(blockName, variant, bbMode));
+            },
+            "std", "xpDpMid.xpDpMid_xpDpMidStdWrap.xpDpMid");
     }
 };
 static _xpDpMid_registrar _xpDpMid_registrar_instance;

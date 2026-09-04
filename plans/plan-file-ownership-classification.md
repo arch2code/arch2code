@@ -441,4 +441,28 @@ chosen — they add machinery for a body that seldom changes.
 - **W4 — OPEN / design only. Clean-start recovery target.** A "delete GENERATED-deletable +
   build-output, preserve the rest, regenerate" operation built on W1 (+ W2 so
   makefiles survive/re-scaffold).
+- **W5 (OPEN, not started). `vlScWrap` is classified two ways, and deletion needs
+  a no-loss guard.** `pysrc/migrateOrphans.py:143` dispositions `vlScWrap` as
+  `MIGRATE_DELETE`, and this plan calls it purely generated at :79 and in the
+  segment table at :239.
+  [`plan-testbench-module-conversion.md`](./plan-testbench-module-conversion.md):2200-2205
+  classifies the same artifact as user-hosted, having measured an `end_ctor_init()`
+  body in all 13 builder wrappers plus a `setTimedLocal` override in each of
+  debayer's three. Nothing reconciles the two, and this is the mechanism that
+  destroyed the `setTimedLocal` overrides during #116.
+  - **Proposed remedy: a content-based no-loss guard at the point of deletion,
+    not a reclassification.** Refuse to delete any file that holds user content, so
+    a wrong static classification stops the sweep loudly instead of losing data
+    quietly. `pysrc/textfileHelper.py` already parses the
+    `GENERATED_CODE_BEGIN`/`END` pairs, so the predicate costs little.
+  - **Two ways a naive version of the check fails**, both already demonstrated by
+    the `testBench` entry comment in `migrateOrphans.py`. User content is not
+    confined to the gap between the final `GENERATED_CODE_END` and the closing
+    brace. It also appears in preamble imports ahead of the first `BEGIN`, between
+    regions, and after the class closes. And not all user state is code. The
+    file-level `GENERATED_CODE_PARAM` line carries user edits such as `--variant=`
+    and `--parent=`, which is why `testBench` is `MIGRATE_PORT` despite hosting no
+    user code.
+  - Raised by the 2026-09-04 review pass; indexed from item 9 of
+    [`plan-116-review-feedback.md`](./plan-116-review-feedback.md).
 </content>

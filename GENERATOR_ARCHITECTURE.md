@@ -861,7 +861,10 @@ actually emitted. Regeneration targets are owned-only; compile sets are
 foreign-inclusive. Makefile consumption wraps the lists in `$(wildcard ...)`
 deliberately: the manifest lists **intent**, and a not-yet-scaffolded file must
 not be a missing prerequisite. `EXTRA_SC_GEN_FILES` / `EXTRA_SV_GEN_FILES` are
-the documented seam for user-hosted files carrying generated regions.
+the documented seam for the user-hosted files carrying generated regions that no
+fileMap entry expresses. The rule is fileMap first, seam only for what falls
+outside it. `examples/mixed` and its encoder units are the seam's only user in
+base or pro.
 
 ### Migration
 

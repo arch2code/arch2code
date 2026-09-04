@@ -7,8 +7,9 @@ module;
 #include "blockBase.h"
 #include "xpGainVariantConfig.h"
 
-export module xpShared.xpSharedTop.xpSinkShared.registrar;
+export module xpShared.xpSinkShared.registrar;
 import xpSinkShared.block;
+import xpSinkShared.xpSinkShared.config;
 
 namespace {
 struct _xpSinkShared_registrar {
@@ -16,9 +17,15 @@ struct _xpSinkShared_registrar {
         instanceFactory::registerBlock(
             "xpSinkShared_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpSinkShared<xpGainDefaultConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpSinkShared<xpSinkShared_xpSinkSharedV0Config>>(blockName, variant, bbMode));
             },
-            "v0", "xpShared");
+            "v0", "xpShared.xpShared_xpSharedTop.xpSinkShared");
+        instanceFactory::registerBlock(
+            "xpSinkShared_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpSinkShared<xpSinkShared_xpSinkSharedV0Config>>(blockName, variant, bbMode));
+            },
+            "v0", "xpSinkShared");
     }
 };
 static _xpSinkShared_registrar _xpSinkShared_registrar_instance;

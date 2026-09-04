@@ -103,6 +103,22 @@ Every variant must bind **all** of the block's declared `params:` — there is n
 
 Instead of selecting a variant, a contained instance may inherit its container's active config with `inheritContainerParam:` — see [Container Config Inheritance](#container-config-inheritance-inheritcontainerparam).
 
+**Every instance of a params-declaring block must select a Config, and `make db` rejects one that does not.** The legal shapes are the whole list: a `variant:` binding values or constants, a `variant:` whose rows use `containerParam:` to source from the container, or `inheritContainerParam: true`. An instance naming none of them leaves the block parameterized and the instance untyped, and the two languages then disagree about which values it carries.
+
+**A top instance's block may not declare `params:`, and `make db` rejects it.** A top has no container, so neither container-sourcing form is available, and a project declares one top, so a variant could only ever bind one set of literals. Put an unparameterized block at the root and the parameterized block one level down.
+
+```yaml
+blocks:
+  myRoot: {desc: "Unparameterized root"}
+  myHarness:
+    desc: "Parameterized, so it cannot be the top"
+    params: [IP_DATA_WIDTH]
+
+instances:
+  myRoot:    {container: myRoot, instanceType: myRoot}
+  uHarness:  {container: myRoot, instanceType: myHarness, variant: variant0}
+```
+
 ## Emitted Config
 
 A block with `ipParameters` always emits configuration types: a `<block>DefaultConfig` plus one `<block><Variant>Config` per variant, with no folding of common values. The block class is templated on that Config (`template<typename Config> ... <block>Base<Config>`), and each instance's variant selects which `<block><Variant>Config` binds the class.
@@ -206,12 +222,7 @@ Registers and memories may reference parameterizable structures or word counts. 
 
 ```yaml
 memories:
-  - memory: data_mem
-    block: ip
-    structure: ip_data_st
-    addressStruct: ip_addr_st
-    wordLines: IP_MEM_DEPTH
-    desc: "Parameterized memory"
+  - {memory: data_mem, block: ip, structure: ip_data_st, addressStruct: ip_addr_st, wordLines: IP_MEM_DEPTH, desc: "Parameterized memory"}
 ```
 
 ## Validation

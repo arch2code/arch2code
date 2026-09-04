@@ -364,6 +364,19 @@ becomes `typedef logic[DP_WIDTH-1:0] dpPixelT;` inside each module.
   against a leaf that accepts `7`, is exactly this error.
 - **An inherited parameter may not be selected on a top-level instance.** An instance with no
   containing block has no container to inherit from.
+- **An instance of a params-declaring block may not select nothing.** The shapes that name a
+  Config are the whole list: a variant binding values, a variant sourcing from the container
+  per parameter, and `inheritContainerParam: true`. An instance naming none of them leaves the
+  block parameterized and the instance untyped, and the two languages then disagree about which
+  values it carries. The message names the instance, the block, the block's owning project, the
+  file and the line, and lists the parameters the block declares.
+- **A top instance's block may not declare `params:` at all.** A top has no container, so
+  neither container-sourcing form is reachable, and a project declares one top, so a variant
+  could only ever bind one set of literals, which a plain constant expresses without the
+  variant machinery. Put an unparameterized block at the root and the parameterized block one
+  level down. `examples/xif` is that shape: `xif_top` is the root and the parameterized
+  testbench harness `xif_tb` sits inside it at a stated variant. The message states the
+  restructure.
 
 Where one variant is reused under several containers, the same rules apply once per site.
 Two containers backed by the same constant, and two backed by different constants with the

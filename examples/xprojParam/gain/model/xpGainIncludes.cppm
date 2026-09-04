@@ -64,7 +64,7 @@ struct videoSt {
     }
     std::string prt(bool all=false) const
     {
-        return (std::format("tag:0x{:01x} data:0x{:02x}",
+        return (std::format("tag:0x{:01x} data:0x{:03x}",
            (uint64_t) tag,
            (uint64_t) data
         ));
@@ -177,7 +177,7 @@ private:
 export namespace xpGain_test_ns {
 using namespace xpGain_ns;
 struct xpGainTestConfigDefault {
-    static constexpr uint32_t PIXEL_WIDTH = 8;
+    static constexpr uint32_t PIXEL_WIDTH = 12;
 };
 struct xpGainTestConfigMid {
     static constexpr uint32_t PIXEL_WIDTH = 16;

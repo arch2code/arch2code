@@ -1,0 +1,38 @@
+# The container incTop declares the leaf's parameter itself, so both accepting
+# forms of the rule reach this fixture with no further edit.
+
+ipParameters:
+    constants:
+        INC_WIDTH: { value: 8, maxValue: 16, desc: "Payload width shared by container and leaf" }
+
+blocks:
+    incTop:
+        desc: "DUT top, and the leaf's container"
+        params: [INC_WIDTH]
+        hasMdl: true
+        hasTb: true
+        hasRtl: false
+        hasVl: false
+    incTop_tb:
+        desc: "Testbench container for incTop"
+        hasRtl: false
+        hasVl: false
+    incLeaf:
+        desc: "Leaf whose instance selects no Config"
+        params: [INC_WIDTH]
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+
+instances:
+    incTop_tb: { container: incTop_tb, instanceType: incTop_tb, instGroup: top }
+    u_incTop:  { container: incTop_tb, instanceType: incTop,    instGroup: top, variant: topV0 }
+    uLeaf:     { container: incTop,    instanceType: incLeaf,   instGroup: top }
+
+parameters:
+    incTop:
+        topV0:
+            INC_WIDTH: 8
+    incLeaf:
+        leafV0:
+            INC_WIDTH: 8

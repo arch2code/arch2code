@@ -297,29 +297,40 @@ is no longer auto-discovered. Left unwired, it silently drops out of **both**
 generation and compilation.
 
 Identify them: a file that carries `GENERATED_CODE_BEGIN` markers yet is **not**
-scaffolded by any fileMap entry (`make newmodule` never creates it). The common
-cases are the address headers emitted through the `includes` template
-(`regAddresses.h`, `axi4sRegAddresses.h`) and the encoder units emitted through
-the encoder templates (`mixedEncoders.h`, `mixedEncoder_package.sv`). Wire each
-one onto the matching seam in the project's `include/make/shared.mk`, above the
-`include … a2c-common.mk` line — SystemC/C++ hosts (`.h`/`.cpp`/`.cppm`) on
-`EXTRA_SC_GEN_FILES`, SystemVerilog hosts (`.sv`/`.svh`) on `EXTRA_SV_GEN_FILES`:
+scaffolded by any fileMap entry (`make newmodule` never creates it).
+
+Classify each host by ownership:
+
+* If arch2code should own the whole file, declare it under
+  `fileGeneration.fileMap`. Preserve its basename and segment so the declaration
+  resolves to the existing path. If the file already exists, `make newmodule`
+  skips it; update its `GENERATED_CODE_PARAM` line to match the fileMap mode
+  before running `make gen`.
+* If the project owns the host and arch2code only updates its generated regions,
+  add it to the matching seam in `include/make/shared.mk`, above the
+  `include … a2c-common.mk` line. Put SystemC/C++ hosts
+  (`.h`/`.cpp`/`.cppm`) on `EXTRA_SC_GEN_FILES` and SystemVerilog hosts
+  (`.sv`/`.svh`) on `EXTRA_SV_GEN_FILES`.
+
+For example, migrate a project-wide address header by adding a `regAddresses`
+fileMap entry with `mode: project`. Set `name:` to the basename without the
+extension and `basePath:` to its segment, then change its parameter line to
+`--project=<projectName>`. Remove any `EXTRA_SC_GEN_FILES` entry for that header
+once the generated manifest lists it.
+
+Encoder units such as `mixedEncoders.h` and `mixedEncoder_package.sv` are
+examples of project-owned hosts when the project has no fileMap entries for
+them:
 
 ```make
-# User-hosted generated-region files: arch2code injects generated sections into
-# these user-authored hosts (address defines via the includes template, encoder
-# units via the encoder templates). Not fileMap-scaffolded, so they ride the
-# EXTRA_ generation seam.
-EXTRA_SC_GEN_FILES = $(REPO_ROOT)/model/regAddresses.h
+# Project-owned hosts whose generated regions arch2code updates.
+EXTRA_SC_GEN_FILES = $(REPO_ROOT)/model/mixedEncoders.h
 EXTRA_SV_GEN_FILES = $(REPO_ROOT)/rtl/mixedEncoder_package.sv
 ```
 
 The seam layers onto the manifest baseline: listed files stamp for regeneration
-and compile alongside the scaffolded set. The stock examples show the pattern —
-`examples/{apbDecode,simple_ip,ip_test}` wire a `regAddresses.h`, `axi4sDemo` and
-`hierVlDemo` wire an `axi4sRegAddresses.h`, and `mixed` wires both an encoder
-header and its `_package.sv`. The `manage-build` skill covers the make targets
-that regenerate and compile the wired files.
+and compile alongside the scaffolded set. The `manage-build` skill covers the
+make targets that regenerate and compile these files.
 
 ### Wire hand-written source directories onto `EXTRA_PRJ_SRC_DIRS`
 

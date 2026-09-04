@@ -1,0 +1,28 @@
+# The consuming assembler: a third project that drives the wrapper and declares
+# no binding of the leaf's v0 itself. That is the point of the composition. With
+# no binding of its own to prefer, the consumer must resolve to the binding of
+# the project that owns the leaf's config context, not to the leaf author's.
+include:
+    - ../../projWrap/yaml/wrapTop.yaml
+
+blocks:
+    top:
+        desc: "assembler top"
+    drv:
+        desc: "stimulus source on the wrapper's boundary interface"
+        params: [WRAP_W]
+        ports:
+            out: { interface: wrapIf, direction: src }
+
+instances:
+    uTop:  { container: top, instanceType: top }
+    uDrv:  { container: top, instanceType: drv,     variant: v0 }
+    uWrap: { container: top, instanceType: wrapBlk, variant: v0 }
+
+connections:
+    - { interface: wrapIf, src: uDrv, srcport: out, dst: uWrap, dstport: in }
+
+parameters:
+    drv:
+        v0:
+            WRAP_W: 8

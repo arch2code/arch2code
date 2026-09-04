@@ -21,7 +21,7 @@ public:
     virtual ~axiDemoBase() = default;
 
 
-    axiDemoBase(std::string name, const char * variant) 
+    axiDemoBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -36,7 +36,7 @@ export class axiDemoInverted : public virtual blockPortBase
 public:
 
 
-    axiDemoInverted(std::string name) 
+    axiDemoInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -51,7 +51,7 @@ export class axiDemoChannels
 public:
 
 
-    axiDemoChannels(std::string name, std::string srcName) 
+    axiDemoChannels(std::string name, std::string srcName)
     {};
     void bind( axiDemoBase *a, axiDemoInverted *b)
     {

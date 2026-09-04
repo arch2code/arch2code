@@ -17,6 +17,12 @@ struct _dut_vl_registrar {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dut_hdl_sc_wrapper>(blockName, variant, bbMode));
             },
             "", "pySocket");
+        instanceFactory::registerBlock(
+            "dut_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dut_hdl_sc_wrapper>(blockName, variant, bbMode));
+            },
+            "", "pySocket");
     }
 };
 static _dut_vl_registrar _dut_vl_registrar_instance;

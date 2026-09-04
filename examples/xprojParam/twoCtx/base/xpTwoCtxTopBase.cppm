@@ -19,7 +19,7 @@ public:
     virtual ~xpTwoCtxTopBase() = default;
 
 
-    xpTwoCtxTopBase(std::string name, const char * variant) 
+    xpTwoCtxTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -34,7 +34,7 @@ export class xpTwoCtxTopInverted : public virtual blockPortBase
 public:
 
 
-    xpTwoCtxTopInverted(std::string name) 
+    xpTwoCtxTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -49,7 +49,7 @@ export class xpTwoCtxTopChannels
 public:
 
 
-    xpTwoCtxTopChannels(std::string name, std::string srcName) 
+    xpTwoCtxTopChannels(std::string name, std::string srcName)
     {};
     void bind( xpTwoCtxTopBase *a, xpTwoCtxTopInverted *b)
     {

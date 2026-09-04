@@ -79,11 +79,11 @@ class systemVerilogGenerator:
             # (no basename-stamp round-trip). getContextData takes a context list
             # and yields the same view the retired --context stamp produced.
             #
-            # Invariant: there is exactly one mode: project artifact (rtl.f),
+            # Invariant: rtl.f is the only SV project-mode artifact, and it is
             # rooted at the build's top context. That single-instance,
             # top-context-rooted contract is what lets this branch derive its
-            # context from TOPCONTEXT alone; a second project-mode artifact, or one
-            # not rooted at the top context, would break that derivation.
+            # context from TOPCONTEXT alone; a second SV project-mode artifact, or
+            # one not rooted at the top context, would break that derivation.
             context = [prj.config.getConfig('TOPCONTEXT')]
             data = prj.getContextData(context, self.dataTypeMappings)
         else:

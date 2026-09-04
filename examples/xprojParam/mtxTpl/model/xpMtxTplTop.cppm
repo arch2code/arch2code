@@ -54,7 +54,7 @@ xpMtxTplTop::xpMtxTplTop(sc_module_name blockName, const char * variant, blockBa
        : sc_module(blockName)
         ,blockBase("xpMtxTplTop", name(), bbMode)
         ,xpMtxTplTopBase(name(), variant)
-        ,uWrap(std::dynamic_pointer_cast<xpMtxTplWrapBase<xpMtxTplWrapV0Config>>(instanceFactory::createInstance(name(), "uWrap", "xpMtxTplWrap", "v0", "xpMtxTpl")))
+        ,uWrap(std::dynamic_pointer_cast<xpMtxTplWrapBase<xpMtxTplWrapV0Config>>(instanceFactory::createInstance(name(), "uWrap", "xpMtxTplWrap", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplTop.xpMtxTpl_xpMtxTplWrap")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

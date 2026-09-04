@@ -2,7 +2,7 @@
 #define axi4s_REG_ADDRESSES_H
 
 namespace fw_ns {
-// GENERATED_CODE_PARAM --block=axi4sDemo
+// GENERATED_CODE_PARAM --project=axi4sDemo
 // GENERATED_CODE_BEGIN --template=includes --section=addresses
 //instance base addresses
 #define BASE_ADDR_AXI4SDEMO_TB         0x0

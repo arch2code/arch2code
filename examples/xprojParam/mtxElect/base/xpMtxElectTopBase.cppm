@@ -17,7 +17,7 @@ public:
     virtual ~xpMtxElectTopBase() = default;
 
 
-    xpMtxElectTopBase(std::string name, const char * variant) 
+    xpMtxElectTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -32,7 +32,7 @@ export class xpMtxElectTopInverted : public virtual blockPortBase
 public:
 
 
-    xpMtxElectTopInverted(std::string name) 
+    xpMtxElectTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -47,7 +47,7 @@ export class xpMtxElectTopChannels
 public:
 
 
-    xpMtxElectTopChannels(std::string name, std::string srcName) 
+    xpMtxElectTopChannels(std::string name, std::string srcName)
     {};
     void bind( xpMtxElectTopBase *a, xpMtxElectTopInverted *b)
     {

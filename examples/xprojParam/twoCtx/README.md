@@ -1,8 +1,10 @@
 # `twoCtx` — the two-context block
 
-**Status: experiment fixture, recorded rather than fixed. It does NOT compile,
-by design, and it is wired into no `make` target.** `make db` and `make gen` are
-clean; the C++ build fails, and that failure is the finding.
+**Status: it does NOT compile, and it is EXPECTED to once work item B5 (step 3)
+of `plans/plan-parameter-sharing.md` lands.** `make db` and `make gen` are clean,
+which is this fixture's contract today; the C++ build fails, and that failure is
+the recorded symptom of B5. It is built by `make xproj-param-probes`, which
+tolerates the failure.
 
 **Carries a known second defect, left in place.** Its testbench External is still
 at the scaffold seed `--block=xpTwoCtxTop`, so it elaborates a SECOND copy of the

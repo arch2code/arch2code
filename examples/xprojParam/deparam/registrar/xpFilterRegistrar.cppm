@@ -7,7 +7,7 @@ module;
 #include "blockBase.h"
 #include "xpFilterVariantConfig.h"
 
-export module xpDeparam.xpDeparamTop.xpFilter.registrar;
+export module xpDeparam.xpFilter.registrar;
 import xpFilter.block;
 
 namespace {
@@ -18,7 +18,13 @@ struct _xpFilter_registrar {
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpFilter<xpFilterV0Config>>(blockName, variant, bbMode));
             },
-            "v0", "xpDeparam");
+            "v0", "xpDeparam.xpDeparam_xpDeparamTop.xpFilter");
+        instanceFactory::registerBlock(
+            "xpFilter_model",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpFilter<xpFilterV0Config>>(blockName, variant, bbMode));
+            },
+            "v0", "xpFilter");
     }
 };
 static _xpFilter_registrar _xpFilter_registrar_instance;

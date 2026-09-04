@@ -61,14 +61,21 @@ public:
     static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant, const char * projectName, blockFactoryFunctionType containerSuppliedFactory = nullptr);
     // Container-typed child construction. `Impl` is the child's implementation
     // class at the Config the container resolves for it, which the container
-    // already spells in the dynamic_pointer_cast wrapping this call.
+    // already spells in the dynamic_pointer_cast wrapping this call. The
+    // mode-carrying form serves a tandem wrapper, itself a class template at a
+    // known Config, asking for its own halves.
     template<typename Impl>
-    static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant, const char * projectName)
+    static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, instanceFactoryMode inst, const char * variant, const char * projectName)
     {
-        return createInstance(hierarchy, blockName, blockTypeUser, variant, projectName,
+        return createInstance(hierarchy, blockName, blockTypeUser, inst, variant, projectName,
             [](const char * name, const char * variantArg, blockBaseMode bbMode) -> std::shared_ptr< blockBase > {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<Impl>(name, variantArg, bbMode));
             });
+    }
+    template<typename Impl>
+    static std::shared_ptr< blockBase > createInstance(const char * hierarchy, const char * blockName, const char * blockTypeUser, const char * variant, const char * projectName)
+    {
+        return createInstance<Impl>(hierarchy, blockName, blockTypeUser, INSTANCE_FACTORY_DEFAULT, variant, projectName);
     }
     static void setInstanceFactoryMode(instanceFactoryMode mode, std::string name);
     static bool isTandemMode(void);

@@ -21,7 +21,7 @@ public:
     virtual ~xpCppAxisTopBase() = default;
 
 
-    xpCppAxisTopBase(std::string name, const char * variant) 
+    xpCppAxisTopBase(std::string name, const char * variant)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -36,7 +36,7 @@ export class xpCppAxisTopInverted : public virtual blockPortBase
 public:
 
 
-    xpCppAxisTopInverted(std::string name) 
+    xpCppAxisTopInverted(std::string name)
     {};
     void setTimed(int nsec, timedDelayMode mode) override
     {
@@ -51,7 +51,7 @@ export class xpCppAxisTopChannels
 public:
 
 
-    xpCppAxisTopChannels(std::string name, std::string srcName) 
+    xpCppAxisTopChannels(std::string name, std::string srcName)
     {};
     void bind( xpCppAxisTopBase *a, xpCppAxisTopInverted *b)
     {

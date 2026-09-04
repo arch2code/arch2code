@@ -43,6 +43,7 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 from pysrc.processYaml import projectOpen
+import templates.systemc.vlRegistrar as vlRegistrar
 
 
 # The endpoint IP: a producer and a consumer in a literal and a parameterized
@@ -296,8 +297,12 @@ def test_no_registrar_for_paramsless_transit_container():
         emitted = {os.path.basename(f)
                    for f in prj.config.getConfig('BUILDMANIFEST')['scGenFiles']}
         ok = True
-        for name, expected in (('wrap', False), ('dstPar', True)):
-            registrar = f'{name}Registrar.cppm'
+        topKey, _ = find_block(prj, 'top')
+        wrapKey, _ = find_block(prj, 'wrap')
+        dstKey, _ = find_block(prj, 'dstPar')
+        for pair, expected in (((topKey, wrapKey), False),
+                               ((wrapKey, dstKey), True)):
+            registrar = f'{prj.data["blocks"][pair[1]]["block"]}Registrar.cppm'
             if (registrar in emitted) != expected:
                 print(f"FAIL: '{registrar}' emitted={registrar in emitted}, "
                       f"expected {expected}. Emitted set: {sorted(emitted)}")
@@ -307,11 +312,74 @@ def test_no_registrar_for_paramsless_transit_container():
             print("FAIL: the transit container lost its isParameterizable flag; "
                   "this cell no longer covers the shape it was written for")
             ok = False
+        for pair, selection in (((topKey, wrapKey), 'empty'),
+                                ((wrapKey, dstKey), 'named')):
+            if not prj.registrarPairs[pair]['hasModelRegistrations']:
+                print(f"FAIL: ordinary {selection}-variant pair {pair} was "
+                      "classified as needing no registration")
+                ok = False
         if ok:
             print("PASS")
         return ok
     finally:
         cleanup([project_path, db_path] + arch_paths)
+
+
+def test_cross_project_vl_key_for_paramsless_transit_block():
+    """A foreign child that only transits parameterized types uses its owner's
+    factory key, matching the generated createInstance lookup."""
+    print("cross-project params-less transit VL registrar uses the child owner key")
+
+    class Config:
+        def getConfig(self, name):
+            if name == 'PROJECTNAME':
+                return 'assembler'
+            raise KeyError(name)
+
+    class Project:
+        config = Config()
+        contextOwningProject = {'ip.yaml': 'child'}
+
+        def getRegistrarConfigView(self, _qualBlock, _parentBlock):
+            return {
+                'verifRegistrations': [{
+                    'variant': '',
+                    'config': None,
+                    'dutClass': 'VtransitLeaf_hdl_sv_wrapper',
+                    'dutHeader': 'VtransitLeaf_hdl_sv_wrapper.h',
+                }],
+                'verifForeignConfigModules': [],
+                'configHeaderContexts': [],
+                'factoryProject': 'unused-for-paramsless-child',
+            }
+
+    data = {
+        'blockName': 'transitLeaf',
+        'qualBlock': 'transitLeaf/ip.yaml',
+        'isParameterizable': True,
+        'hasOwnParams': False,
+        'defaultConfig': '',
+        'parent': 'assemblerTop',
+        'blockInfo': {'_context': 'ip.yaml'},
+        'configIncludeContext': [],
+        'includeFiles': {},
+        'standaloneVariants': [],
+        'svWrapper': {
+            'bodyModule': 'transitLeaf_hdl_sv_wrapper',
+            'dutClass': 'VtransitLeaf_hdl_sv_wrapper',
+            'dutHeader': 'VtransitLeaf_hdl_sv_wrapper.h',
+            'scWrapperInclude': 'transitLeaf_hdl_sc_wrapper.h',
+            'scWrapperModule': 'transitLeaf_hdl_sc_wrapper',
+            'scWrapperConfigTemplated': False,
+        },
+    }
+    rendered = vlRegistrar.render(None, Project(), data)
+    expected = '"", "child");'
+    if expected not in rendered or '"", "assembler");' in rendered:
+        print(f"FAIL: registrar key does not match the child owner:\n{rendered}")
+        return False
+    print("PASS")
+    return True
 
 
 def test_endpoint_config_context_stays_in_its_own_file():
@@ -456,6 +524,7 @@ def test_untypeable_channel_is_rejected():
 def run_all_tests():
     ok = test_literal_endpoint_on_parameterized_channel()
     ok = test_no_registrar_for_paramsless_transit_container() and ok
+    ok = test_cross_project_vl_key_for_paramsless_transit_block() and ok
     ok = test_endpoint_config_context_stays_in_its_own_file() and ok
     ok = test_included_parameters_keep_their_declaring_file() and ok
     ok = test_undeclared_port_fallback_still_takes_the_connection_interface() and ok

@@ -19,13 +19,25 @@ struct _ip_vl_registrar {
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<Vip_variant0_hdl_sv_wrapper, ipVariant0Config>>(blockName, variant, bbMode));
             },
-            "variant0", "ipBridge");
+            "variant0", "ip");
+        instanceFactory::registerBlock(
+            "ip_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<Vip_variant0_hdl_sv_wrapper, ipVariant0Config>>(blockName, variant, bbMode));
+            },
+            "variant0", "ipBridge.ipBridge.ip");
         instanceFactory::registerBlock(
             "ip_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
                 return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<VipBridge_ip_variant1_hdl_sv_wrapper, ipBridge_ipVariant1Config>>(blockName, variant, bbMode));
             },
-            "variant1", "ipBridge");
+            "variant1", "ip");
+        instanceFactory::registerBlock(
+            "ip_verif",
+            [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<VipBridge_ip_variant1_hdl_sv_wrapper, ipBridge_ipVariant1Config>>(blockName, variant, bbMode));
+            },
+            "variant1", "ipBridge.ipBridge.ip");
     }
 };
 static _ip_vl_registrar _ip_vl_registrar_instance;

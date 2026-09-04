@@ -2,7 +2,7 @@
 #define REGADDRESSES_H
 // copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE
 
-// GENERATED_CODE_PARAM --block=simple_ip
+// GENERATED_CODE_PARAM --project=simple_ip
 // GENERATED_CODE_BEGIN --template=includes --section=addresses
 //instance base addresses
 #define BASE_ADDR_SIMPLE_IP_TB         0x0

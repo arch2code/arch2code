@@ -28,31 +28,6 @@ def render_sc(args, prj, data):
     # template-argument list.
     cfg = f'<{defaultConfig}>' if (isParameterizable and data.get('hasOwnParams')) else ''
 
-    # When the block declares its own `params:`, the wrapper class itself is
-    # templated on a second `Config` type parameter. Each per-variant `using`
-    # typedef binds `Config` to the variant's emitted `<block><Variant>Config`
-    # struct, so the wrapper inherits `<block>Base<Config>` and its BFM /
-    # hdl_if declarations carry `<Config>` through to the instantiation site
-    # rather than collapsing onto a project-wide default. Blocks that are
-    # parameterizable only through contained children (no own params) keep
-    # the non-Config-templated wrapper and continue to bind the project-wide
-    # `defaultConfig` so BFM, hdl_if, and base-class types stay self-consistent.
-    qualBlock = data.get('qualBlock', '')
-    hasOwnParams = bool(data.get('hasOwnParams', False))
-    useOwnVariantConfig = bool(isParameterizable and qualBlock and hasOwnParams)
-    variantConfigForName = dict()
-    if useOwnVariantConfig:
-        for desc in data['variantConfigs']:
-            variantConfigForName[desc['variant']] = intf_gen_utils.cpp_descriptor_config_name(desc, defaultConfig)
-    wrapperCfgTemplateArg = 'Config' if useOwnVariantConfig else ''
-    # The wrapper class is genuinely emitted as a class template only when
-    # variants exist to specialize it (otherwise the non-templated branch of
-    # `sec_hdl_sc_wrapper_class_template` is used). The BFM / hdl_if
-    # substitution below has to match: keep `<Config>` literal when the
-    # wrapper is Config-templated, otherwise substitute the project-wide
-    # default so the non-templated class body type-checks.
-    wrapperIsConfigTemplated = useOwnVariantConfig and bool(data.get('variants'))
-
     def sec_channel_decl(args, prj, data):
         s = []
         for port_type in data['ports']:
@@ -148,24 +123,17 @@ def render_sc(args, prj, data):
         return s
 
     def sec_hdl_sc_wrapper_class(args, prj, data):
-        concrete = sc_concrete_dut(data['svWrapper'], data['declaredVariants'])
+        concrete = sc_concrete_dut(data['svWrapper'], data['standaloneVariants'])
         t = Template(sec_hdl_sc_wrapper_class_template)
-        # When the wrapper exposes Config as a second template
-        # parameter, the base-class binding uses that template name
-        # rather than the block default. Verifies at compile time that
-        # each variant typedef provides a Config with the per-variant
-        # override fields.
-        variants = data.get('variants', {})
-        useOwnVariantTemplateArg = useOwnVariantConfig and bool(variants)
-        baseCfg = f'<{wrapperCfgTemplateArg}>' if useOwnVariantTemplateArg else cfg
+        # A templated wrapper binds its base class to its own `Config` template
+        # parameter, so the concrete Config comes from the registrar.
+        isTemplate = data['svWrapper']['scWrapperConfigTemplated']
         s = t.render(
-            blockname=data['blockName'], variants=variants,
-            is_parameterizable=isParameterizable,
+            blockname=data['blockName'],
+            is_template=isTemplate,
             concrete_sv_module=concrete['svModule'],
             concrete_dut_class=concrete['dutClass'],
-            cfg=baseCfg,
-            default_config=defaultConfig,
-            use_own_variant_config=useOwnVariantTemplateArg,
+            cfg='<Config>' if isTemplate else cfg,
             sec_bfm_includes=sec_bfm_includes(args, prj, data),
             sec_bfm_decl=sec_bfm_decl(args, prj, data),
             sec_bfm_ctor_init=sec_bfm_ctor_init(args, prj, data),
@@ -185,31 +153,30 @@ def render_sc(args, prj, data):
         # blockBase.h cannot ride in on `import <block>.base;`: it sits in that
         # module's global module fragment, whose names are reachable but not
         # visible to an importer.
-        # A block with no instance-bound variants keeps a concrete wrapper that
-        # names its verilated DUT directly, so it also includes that DUT header
-        # (from the svWrapper view). A parameterizable wrapper is a reusable
-        # `<DUT_T, Config>` template; its concrete DUT header + `_verif`
-        # registration live in the per-assembler VlRegistrar, not here.
-        concrete = sc_concrete_dut(data['svWrapper'], data['declaredVariants'])
+        # A concrete wrapper names its verilated DUT directly, so it also
+        # includes that DUT header (from the svWrapper view). A templated
+        # wrapper is a reusable `<DUT_T, Config>` header; its concrete DUT
+        # header + `_verif` registration live in the per-assembler VlRegistrar.
+        concrete = sc_concrete_dut(data['svWrapper'], data['standaloneVariants'])
         t = Template(sec_preamble_template)
         basemodule = intf_gen_utils.cpp_base_module_name(data['blockModuleName'])
-        return(t.render(variants=data['variants'], basemodule=basemodule,
+        return(t.render(is_template=data['svWrapper']['scWrapperConfigTemplated'],
+                        basemodule=basemodule,
                         dut_header=concrete['dutHeader'],
                         sv_wrapper_header=f"{concrete['svModule']}.h"))
 
     # ports blaster
     mp_sig = dict()
     if not args.hierarchy:
+        isTemplate = data['svWrapper']['scWrapperConfigTemplated']
         for port_type in data['ports']:
             for port in data['ports'][port_type] if not args.hierarchy else []:
                 mp_sig[port] = intf_gen_utils.sc_gen_modport_signal_blast(data['ports'][port_type][port], prj, data)
-                # Leave `<Config>` literal when the wrapper class itself is
-                # templated on `Config` (its per-variant typedefs supply the
-                # concrete Config). Substitute the project-wide default Config
-                # only on the non-Config-templated path so BFM and hdl_if
-                # decls in a non-templated wrapper body still name a concrete
-                # type.
-                if isParameterizable and not wrapperIsConfigTemplated:
+                # A concrete wrapper inherits a NON-dependent base, whose public
+                # member aliases are already concrete non-templates. The bare
+                # name resolves to those through class scope; appending a
+                # template argument list to one is `error: expected '>'`.
+                if isParameterizable and not isTemplate:
                     for key in ['bfm_decl', 'hdl_if_decl']:
                         mp_sig[port][key] = mp_sig[port][key].replace('<Config>', '')
 
@@ -229,10 +196,10 @@ sec_preamble_template = """\
 #include "systemc.h"
 #include "blockBase.h"
 import {{basemodule}};
-{%- if not variants %}
+{%- if not is_template %}
 
-// Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
-// its DUT concretely, so it includes the DUT header directly.
+// A non-templated wrapper names its Verilated RTL top concretely, so it
+// includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
 #include "{{sv_wrapper_header}}"
 #else
@@ -245,17 +212,13 @@ sec_hdl_sc_wrapper_class_template = """\
 {% if sec_bfm_includes %}
 {{ sec_bfm_includes }}
 {% endif %}
-{%- if variants %}
-{%- if use_own_variant_config %}
+{%- if is_template %}
 template <typename DUT_T, typename Config>
-{%- else %}
-template <typename DUT_T>
-{%- endif %}
 {%- endif %}
 class {{blockname}}_hdl_sc_wrapper: public sc_module, public blockBase, public {{blockname}}Base{{cfg}} {
 
 public:
-{%- if not variants %}
+{%- if not is_template %}
 
 #if !defined(VERILATOR) && defined(VCS)
     {{concrete_sv_module}} *dut_hdl;
@@ -269,17 +232,15 @@ public:
     sc_clock clk;
 
     {{ sec_bfm_decl | indent(4) }}
-{%- if not variants %}
+{%- if not is_template %}
 
     SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper);
 {%- else %}
 
-{% if use_own_variant_config %}    // SC_HAS_PROCESS expects a single macro argument; the Config-templated
+    // SC_HAS_PROCESS expects a single macro argument; the Config-templated
     // self type carries a comma in its argument list and must be aliased.
     using {{blockname}}_hdl_sc_wrapper_self_t = {{blockname}}_hdl_sc_wrapper<DUT_T, Config>;
     SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper_self_t);
-{%- else %}    SC_HAS_PROCESS ({{blockname}}_hdl_sc_wrapper<DUT_T>);
-{%- endif %}
 {%- endif %}
 
     {{blockname}}_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
@@ -290,7 +251,7 @@ public:
         {{ sec_bfm_ctor_init | indent(8) }}
         rst_n(0)
     {
-{%- if not variants %}
+{%- if not is_template %}
 #if !defined(VERILATOR) && defined(VCS)
         dut_hdl = new {{concrete_sv_module}}("dut_hdl");
 #else

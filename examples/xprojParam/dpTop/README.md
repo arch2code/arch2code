@@ -267,7 +267,7 @@ around it.
   to be the same owning project`. The container-sourced form carries no such
   restriction.
 - **A variant declared by an intermediate project is not selectable by a third
-  project's instance.** `_selectVariantDescriptor` matches either the consuming
+  project's instance.** `selectVariantDescriptor` matches either the consuming
   project's own declaration or the child block owner's, so `uLeafX` — declared in
   `xpDpTop`, at a variant declared by `xpDpMid` — resolves no descriptor and
   falls back to the block default Config. The validator therefore checks every
