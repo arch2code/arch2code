@@ -676,6 +676,7 @@ def postProcess(prj):
                 parentTypeKey, parentVariant,
                 siteIndex.bindingsAt(parentTypeKey, parentVariant, dict()),
                 siteIndex.bindingsAt(instanceTypeKey, childVariant, dict()),
+                siteIndex,
             )
 
             # Find the container-block sibling instance — the

@@ -66,9 +66,9 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping suites: unittest/ holds 114 test_*.py files.
-if [[ ${#ALL[@]} -ne 114 ]]; then
-    echo "WARNING: expected 114 suites (test_*.py in unittest/), found ${#ALL[@]}." >&2
+# Guard against silently dropping suites: unittest/ holds 115 test_*.py files.
+if [[ ${#ALL[@]} -ne 115 ]]; then
+    echo "WARNING: expected 115 suites (test_*.py in unittest/), found ${#ALL[@]}." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 

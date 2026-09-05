@@ -1,0 +1,82 @@
+# The first integrator. It instantiates the leaf IP at label v0 and declares its
+# own binding of that label in this same file, at gain 7.
+#
+# It also instantiates the leaf at vMid, a label no other project declares, at
+# gain 5. That label travels into the second integrator's closure, which is where
+# a project-blind emission path would hand it to a build that never bound it.
+#
+# Nothing here is unusual. The instances, the bindings and the blocks that
+# surround them sit in one design file, which is the shape every integrator
+# authors.
+include:
+    - ../../ipLeaf/yaml/xviLeaf.yaml
+
+blocks:
+    xviMidTop_tb:
+        desc: "Testbench container for the first integrator's standalone top"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xviMidTop:
+        desc: "Standalone top of the first integrator"
+        hasMdl: true
+        hasVl: false
+        hasTb: true
+        hasRtl: false
+    xviMid:
+        desc: "First integrator's container: stimulus, one leaf at v0, and a sink"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: true
+    xviDrv:
+        desc: "Stimulus on the leaf's own interface"
+        params: [XVI_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: true
+        ports:
+            out: { interface: xviIf, direction: src }
+    xviSnk:
+        desc: "Sink on the leaf's own interface"
+        params: [XVI_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: true
+        ports:
+            in: { interface: xviIf, direction: dst }
+
+instances:
+    xviMidTop_tb: { container: xviMidTop_tb, instanceType: xviMidTop_tb, instGroup: top }
+    u_xviMidTop:  { container: xviMidTop_tb, instanceType: xviMidTop,    instGroup: top }
+    uMid:         { container: xviMidTop,    instanceType: xviMid,       instGroup: top }
+    uMidDrv:      { container: xviMid,       instanceType: xviDrv,       instGroup: top, variant: v0 }
+    uMidLeaf:     { container: xviMid,       instanceType: xviLeaf,      instGroup: top, variant: v0 }
+    uMidSnk:      { container: xviMid,       instanceType: xviSnk,       instGroup: top, variant: v0 }
+    uMidOwnDrv:   { container: xviMid,       instanceType: xviDrv,       instGroup: top, variant: v0 }
+    uMidOwnLeaf:  { container: xviMid,       instanceType: xviLeaf,      instGroup: top, variant: vMid }
+    uMidOwnSnk:   { container: xviMid,       instanceType: xviSnk,       instGroup: top, variant: v0 }
+
+connections:
+    - { interface: xviIf, src: uMidDrv,     srcport: out, dst: uMidLeaf,    dstport: in, name: midIn }
+    - { interface: xviIf, src: uMidLeaf,    srcport: out, dst: uMidSnk,     dstport: in, name: midOut }
+    - { interface: xviIf, src: uMidOwnDrv,  srcport: out, dst: uMidOwnLeaf, dstport: in, name: midOwnIn }
+    - { interface: xviIf, src: uMidOwnLeaf, srcport: out, dst: uMidOwnSnk,  dstport: in, name: midOwnOut }
+
+parameters:
+    xviDrv:
+        v0:
+            XVI_WIDTH: 8
+    xviSnk:
+        v0:
+            XVI_WIDTH: 8
+    xviLeaf:
+        v0:
+            XVI_WIDTH: 8
+            XVI_GAIN: 7
+        vMid:
+            XVI_WIDTH: 8
+            XVI_GAIN: 5

@@ -500,7 +500,19 @@ def test_cross_project_width_mismatch_rejected():
                   "reconciliation diagnostic")
             print('  ' + '\n  '.join(out.split('\n')[:25]))
             return False
-        print("  PASS: cross-project width mismatch reported")
+        # aIp belongs to projA but its v0 binding of WIDTH is authored by the
+        # assembler, so the side identity must send the reader to the assembler's
+        # file. Naming only the block's own project points at a file that does
+        # not hold the number.
+        attribution = ("    parameter WIDTH = 8 comes from project "
+                       "collisionTopProj (file collisionTop.yaml)")
+        if attribution not in out:
+            print("  FAIL: the rejected width was not attributed to the project "
+                  "that declares it")
+            print(f"  expected: {attribution}")
+            print('  ' + '\n  '.join(out.split('\n')[:25]))
+            return False
+        print("  PASS: cross-project width mismatch reported and attributed")
         return True
     finally:
         shutil.rmtree(work, ignore_errors=True)

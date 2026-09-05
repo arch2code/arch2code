@@ -492,6 +492,12 @@ echo ""
 echo "Test Suite ${idx}: a verilated leaf reached only through inheritContainerParam"
 echo "------------------------------------------------------------------------"
 python3 test_inherit_vl_child.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: two integrators declaring variants of one reusable IP"
+echo "------------------------------------------------------------------------"
+python3 test_variant_two_integrators.py || FAILED=1
 
 echo ""
 echo "========================================================================"

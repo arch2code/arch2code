@@ -74,9 +74,15 @@ connections:
 
 # variant1 of the foreign 'ip' block is declared here at the standalone
 # assembler top (the ip sub-project declares only variant0). Serves the nested
-# uBridgeIp1 instance. Values mirror the composed ip_top declaration. In
-# composition ip_top owns this declaration and bridgeStdTop is not included, so
-# there is no duplicate.
+# uBridgeIp1 instance.
+#
+# In composition this declaration and ip_top's are BOTH present: ip_testProject
+# includes ipBridgeProject, which includes this file. Each declaring project
+# must restate the whole parameter set, so the duplication is required rather
+# than accidental. The values must stay equal to ip_top's. They are the same
+# (block, variant) at two declaring projects, and the emission paths that read
+# the project-blind nested view would otherwise take whichever declaration won
+# the parse race.
 parameters:
     ip:
         variant1:

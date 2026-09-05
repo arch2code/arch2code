@@ -793,6 +793,17 @@ self.data['parameters'][qualBlock]['variants'][variant]['params'][param]
 
 Template emission should continue to use `param` for generated field names; only identity-sensitive logic should use `blockParamKey`.
 
+**The nested access path above drops the declaring project.** A variant is
+identified by `(block, variant, declaring project)`, and two projects composing
+one reusable IP may legitimately bind one label at different values. The nested
+dict has one slot per `(block, variant, param)`, so it holds whichever binding
+was parsed last and silently discards the other. Read a value through it and a
+build can emit one number in its SystemC Config and another in its Verilated SV
+top. Iterate `parametersvariantsparams` instead, or take the value from the
+descriptor `calcVariantConfigDescriptors` persists per declaring project and
+`selectVariantDescriptor` picks for a given consumer. See
+`GENERATOR_ARCHITECTURE.md`, "Project-qualified parameter bindings".
+
 #### Loading Process
 
 1. **Load Subtables First**: Depth-first traversal ensures all children loaded before parents

@@ -514,6 +514,7 @@ class projectOpen:
         self.reachableInstances = self.config.getConfig('REACHABLEINSTANCES')
         self.variantSourceBlocks = self.config.getConfig('VARIANTSOURCEBLOCKS')
         self.variantConfigDescriptors = self.config.getConfig('VARIANTCONFIGDESCRIPTORS')
+        self.blockParamDefaults = self.config.getConfig('BLOCKPARAMDEFAULTS')
         self.registrarPairs = self.config.getConfig('REGISTRARPAIRS')
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
         self.blockModuleName = self.config.getConfig('BLOCKMODULENAME')
@@ -1334,7 +1335,7 @@ class projectOpen:
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
                         'classIncludeContext', 'configIncludeContext', 'foreignConfigModules',
                         'containerTypedChildModules',
-                        'addressDecode', 'variants', 'standaloneVariants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
+                        'addressDecode', 'standaloneVariants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
                         'interface_type_mappings_qualified'}
         ret = dict()
         # create some of the simple returns
@@ -1345,6 +1346,10 @@ class projectOpen:
         ret['temp']['structs'] = dict()
         ret['temp']['consts'] = dict()
         ret['temp']['registerInterfaceTypes'] = dict()
+        # Variant LABELS this block's instances select. A label alone names no
+        # value: one label can be bound at different values by different
+        # declaring projects, so value consumers select a descriptor instead.
+        ret['variants'] = set()
         for k in blockDataSet:
             ret[k] = dict()
         ret['addressDecode']['hasDecoder'] = False
@@ -1615,30 +1620,35 @@ class projectOpen:
                 descriptor['block'], descriptor['variant'])
 
     def getStandaloneVariants(self, qualBlock):
-        # The variants a block resolves its own parameter values at. Where every
-        # instance inherits, the values come from the container's binding,
+        # Per variant this block resolves its own parameter values at, the
+        # resolved value of each of the block's declared parameters. Where every
+        # instance inherits, the variants come from the container's binding,
         # narrowed to this block's own parameters. Container-sourced variants are
-        # excluded. Each entry carries the variant's binding rows enriched with
-        # their resolved literal values.
+        # excluded; their values come from the parent-child pair contract.
+        #
+        # Two projects may bind one variant label at different values, so the
+        # values come from the descriptor this project selects, never from the
+        # project-blind nested binding rows.
+        consumerProject = self.config.getConfig('PROJECTNAME')
+        blockParams = self.data['blocks'][qualBlock]['params']
+        ownParams = [row['param'] for row in blockParams] if blockParams else []
         variants = dict()
         for sourceBlock in self.variantSourceBlocks[qualBlock]:
+            blockProject = self.contextOwningProject[
+                self.data['blocks'][sourceBlock]['_context']]
             for variantEntry in self.declaredVariantRows(sourceBlock).values():
-                if sourceBlock == qualBlock:
-                    blockProject = self.contextOwningProject[
-                        self.data['blocks'][qualBlock]['_context']]
-                    descriptor = selectVariantDescriptor(
-                        self.variantConfigDescriptors[qualBlock],
-                        variantEntry['variant'],
-                        self.config.getConfig('PROJECTNAME'), blockProject)
-                    if descriptor is not None and descriptor['containerSourced']:
-                        continue
-                rows = variantEntry['params']
-                if sourceBlock != qualBlock:
-                    ownParams = {p['param'] for p in self.data['blocks'][qualBlock]['params']}
-                    rows = {k: v for k, v in rows.items() if k in ownParams}
+                descriptor = selectVariantDescriptor(
+                    self.variantConfigDescriptors[sourceBlock],
+                    variantEntry['variant'], consumerProject, blockProject)
+                if descriptor is not None and descriptor['containerSourced']:
+                    continue
+                # No project this consumer can reach declares the label, so the
+                # block takes its default Config here and its parameters must be
+                # the same numbers.
+                values = descriptor['values'] if descriptor is not None \
+                    else self.blockParamDefaults[qualBlock]
                 variants[variantEntry['variant']] = {
-                    k: {**v, 'resolvedValue': self._resolveBindingValueOpen(v)}
-                    for k, v in rows.items()}
+                    param: values[param] for param in ownParams}
         return variants
 
     def _declaredVariantConfigEntries(self, sourceBlocks, consumerProject):
@@ -1911,57 +1921,45 @@ class projectOpen:
             return ''
         return declaredPorts[portName]['interfaceKey']
 
-    def _resolveSvInstanceParams(self, childTypeKey, variant, parentParamNames):
+    def _resolveSvInstanceParams(self, childTypeKey, variant, parentParamNames,
+                                 consumerProject):
         # Build the param-override list for a sub-block instance's SV #(...).
-        # For each child block param, emit either the parent param SYMBOL (when
-        # the parent module declares a same-named param, so the value flows down
-        # from the parent's own instantiation) or the child's bound literal.
-        # Returns an ordered list of {'param', 'spelling'}; empty when the child
-        # block has no params.
+        # The instantiation sits inside the parent module, so a param may be
+        # spelled as a symbol in that scope: the container's parameter, the
+        # parent's own same-named parameter, or the constant the binding names.
+        # Anything else is the bound literal. Two projects may bind one variant
+        # label differently, so every spelling comes from the descriptor the
+        # instantiating project selects. Returns an ordered list of
+        # {'param', 'spelling'}; empty when the child block has no params.
         childBlock = self.data['blocks'][childTypeKey]
         if not childBlock['params']:
             return []
-        # Variant bindings, keyed by the child's param name. A reg-handler
-        # inherits the parent's params with no own variant bindings; in that
-        # case there are no rows and every param must forward the parent symbol.
-        variantValues = dict()
-        containerSourced = dict()
-        variantEntry = self.declaredVariantRows(childTypeKey).get(variant)
-        if variantEntry:
-            for row in variantEntry['params'].values():
-                variantValues[row['param']] = row['value']
-                if row['containerParam']:
-                    containerSourced[row['param']] = row['containerParam']
+        blockProject = self.contextOwningProject[childBlock['_context']]
+        descriptor = selectVariantDescriptor(
+            self.variantConfigDescriptors[childTypeKey], variant,
+            consumerProject, blockProject)
+        # An instance that names no variant, and one naming a label only an
+        # intermediate project declares, both take the child's default Config;
+        # its declared parameter defaults are the matching numbers.
+        containerSourced = descriptor['containerSourced'] if descriptor is not None else {}
+        valueSymbols = descriptor['valueSymbols'] if descriptor is not None else {}
+        values = descriptor['values'] if descriptor is not None \
+            else self.blockParamDefaults[childTypeKey]
         result = []
         for paramRow in childBlock['params']:
             paramName = paramRow['param']
             if paramName in containerSourced:
-                # Container-sourced: forward the CONTAINER's parameter symbol.
-                # The names need not match, so the parent-name test below cannot
-                # find it; the binding row names the parent parameter directly.
+                # The container's parameter, whose name need not match, so the
+                # parent-name test below cannot find it.
                 spelling = containerSourced[paramName]
             elif paramName in parentParamNames:
                 spelling = paramName
+            elif paramName in valueSymbols:
+                spelling = valueSymbols[paramName]
             else:
-                spelling = str(variantValues[paramName])
+                spelling = str(values[paramName])
             result.append({'param': paramName, 'spelling': spelling})
         return result
-
-    def _resolveBindingValueOpen(self, row):
-        # projectOpen-time resolution of a parametersvariants binding row to a
-        # concrete value. 'value' is a literal for a literal binding, or the name
-        # of the referenced constant for a symbol binding (valueKey is then the
-        # qualified const key); symbol bindings resolve through the loaded
-        # self.data['constants'] so a standalone consumer — e.g. a per-variant
-        # HDL wrapper, which is a top module with no parent scope — emits a
-        # numeric literal instead of an out-of-scope parent symbol. (Parse-time
-        # validation uses projectCreate._resolveVariantBindingValue instead.)
-        valueKey = row.get('valueKey', '') or ''
-        if valueKey:
-            constData = self.data['constants'].get(valueKey)
-            if constData is not None:
-                return constData.get('value', row['value'])
-        return row['value']
 
     def getBDInstances(self, qualBlock, ret, trimRegLeafInstance, excludeInstances):
         qualBlockInstances = dict()
@@ -1982,19 +1980,9 @@ class projectOpen:
                 qualBlockInstances[inst_key] = inst_data
                 containerBlocks[inst_data['containerKey']] = 0
                 if inst_data['variant'] != '':
-                    # Under the variant != '' guard, postParseChecks guarantees
-                    # the (block, variant) row exists; index it directly so a
-                    # missing entry surfaces as the projectCreate/postParse defect
-                    # it would be rather than being masked by an empty binding set.
-                    variantEntry = self.data['parameters'][qualBlock]['variants'][
-                        inst_data['variant']]
-                    binding_rows = variantEntry['params']
-                    filtered_variants_data = {
-                        k: {**v, 'resolvedValue': self._resolveBindingValueOpen(v)}
-                        for k, v in binding_rows.items()}
-                    ret['variants'][inst_data['variant']] = filtered_variants_data
-        # Same binding-row shape as ret['variants'] above, but independent of
-        # what an instance selects; see getStandaloneVariants.
+                    ret['variants'].add(inst_data['variant'])
+        # Per-parameter values, independent of what an instance selects; see
+        # getStandaloneVariants.
         ret['standaloneVariants'] = self.getStandaloneVariants(qualBlock)
         # A block with zero instances is a valid render target for an exported /
         # library leaf that its owning project never instantiates (projectCreate
@@ -2035,7 +2023,8 @@ class projectOpen:
             # (instanceType stays the lookup key).
             instInfo['instanceTypeModuleName'] = self.blockModuleName[childTypeKey]
             instInfo['svInstanceParams'] = self._resolveSvInstanceParams(
-                childTypeKey, instInfo['variant'], parentParamNames)
+                childTypeKey, instInfo['variant'], parentParamNames,
+                self.contextOwningProject[instInfo['_context']])
             if childTypeKey not in ret['subBlockTypes']:
                 bundle = self.getBlockConfigView(childTypeKey)
                 ret['subBlockTypes'][childTypeKey] = {
@@ -3613,6 +3602,34 @@ class SiteBindingIndex:
         return {self.paramSource[(blockKey, name)]: value
                 for name, value in values.items()}
 
+    def foreignDeclaredBindings(self, blockKey, variant, bindings):
+        """Params of this site whose value is authored outside the block's own
+        project, as {param: (value, declaring project, declaring file)}.
+
+        Two projects may declare one (block, variant), and their rows share a
+        single list here with the last writer winning. So the file holding the
+        number a junction was checked at need not be one the block's own project
+        mentions.
+        """
+        blockProject = self.project.contextOwningProject[
+            self.blocks[blockKey]['_context']]
+        winners = {row['param']: row
+                   for row in self.paramRows.get((blockKey, variant), ())
+                   if not row['containerParam']}
+        resolver = ValueResolver(self.project)
+        foreign = dict()
+        for param, row in winners.items():
+            if row['projectName'] == blockProject:
+                continue
+            value = resolver.value(row['valueKey'] or row['value'])
+            # A container-sourced row later in the list can have overridden this
+            # one. Matching the value is the closest this can get to naming the
+            # winner: an override to a different number drops the attribution,
+            # and an override to the same number keeps it.
+            if bindings[self.paramSource[(blockKey, param)]] == value:
+                foreign[param] = (value, row['projectName'], row['_context'])
+        return foreign
+
     def bindingsAt(self, blockKey, variant, containerValues):
         """One end's bindings at one container configuration."""
         return self.bindings(
@@ -4084,9 +4101,27 @@ class projectCreate:
                             param: row['containerParam']
                             for param, row in variantRows.items()
                             if row['containerParam']},
+                        # Params bound by naming a constant, mapped to that
+                        # name. A sub-block instantiation sits inside a parent
+                        # module and emits the name, so a parent parameter of
+                        # that name flows its value down; a standalone top has
+                        # no such scope and uses `values` instead.
+                        'valueSymbols': {
+                            param: row['value']
+                            for param, row in variantRows.items()
+                            if row['valueKey']},
                     })
             descriptors[blockKey] = blockDescriptors
         self.config.setConfig('VARIANTCONFIGDESCRIPTORS', descriptors, bin=True)
+        # What each block's params resolve to when no descriptor is selectable:
+        # the declared value of the constant backing each one. A variant declared
+        # by an intermediate project is not selectable by a third project's
+        # instance, and that instance takes the block's default Config, so its
+        # emitted parameters have to be the same numbers.
+        self.config.setConfig('BLOCKPARAMDEFAULTS', {
+            blockKey: {row['param']: constants[row['paramSourceKey']]['value']
+                       for row in paramsByBlock.get(blockKey, [])}
+            for blockKey in blocks}, bin=True)
 
     def calcRegistrarPairs(self):
         """Persist the complete registration and VL-top contract per block pair."""
@@ -4103,13 +4138,7 @@ class projectCreate:
         paramsByBlock = dict()
         for row in self.flatData['blocksparams'].values():
             paramsByBlock.setdefault(row['blockKey'], []).append(row)
-
-        def defaultValues(blockKey):
-            values = dict()
-            for param in paramsByBlock.get(blockKey, []):
-                sourceKey = param['paramSourceKey']
-                values[param['param']] = constants[sourceKey]['value']
-            return values
+        blockParamDefaults = self.config.getConfig('BLOCKPARAMDEFAULTS')
 
         def selectedDescriptor(childKey, variant, parentKey):
             child = blocks[childKey]
@@ -4237,7 +4266,7 @@ class projectCreate:
                         config = literalConfig(child, descriptor) \
                             if child['isParameterizable'] else None
                         values = descriptor['values'] if descriptor is not None \
-                            else defaultValues(childKey)
+                            else blockParamDefaults[childKey]
                         concrete.append({'variant': inst['variant'],
                                          'config': config, 'values': values,
                                          'pairSpecific': False})
@@ -6661,12 +6690,14 @@ class projectCreate:
         return (interfaceRow.get('structures') or {}).values()
 
     def _junctionSideIdentity(self, label, ifaceRow, ifaceContext, blockKey,
-                              variant):
+                              variant, siteIndex, bindings):
         # One junction side's identity for a compatibility diagnostic: the
         # interface with its declaring file and owning project, plus the block
         # and variant whose bindings that side's payload was resolved under. A
         # side with no parameterizable endpoint carries no block and resolves
-        # at the declared constant defaults.
+        # at the declared constant defaults. Any value authored by another
+        # project is named with its own file, because the block's project and
+        # the project that supplied the number need not be the same one.
         text = (f"  {label}: interface '{ifaceRow['interface']}' declared in "
                 f"{ifaceContext} "
                 f"(project {self.contextOwningProject[ifaceContext]})")
@@ -6678,6 +6709,11 @@ class projectCreate:
                      f"(project "
                      f"{self.contextOwningProject[blockRow['_context']]}) "
                      f"at {variantText}")
+            for param, (value, project, context) in sorted(
+                    siteIndex.foreignDeclaredBindings(
+                        blockKey, variant, bindings).items()):
+                text += (f"\n    parameter {param} = {value} comes from "
+                         f"project {project} (file {context})")
         else:
             text += "\n    resolved at the declared constant defaults"
         return text
@@ -6685,7 +6721,7 @@ class projectCreate:
     def checkInterfacePair(self, parentIface, childIface, childBlockKey,
                            childVariant, locationStr, parentContext,
                            childContext, parentBlockKey, parentVariant,
-                           parentBindings, childBindings):
+                           parentBindings, childBindings, siteIndex):
         """Validate that two qualified interfaces share the same packed form.
 
         The caller passes bindings already resolved at the site the junction
@@ -6702,13 +6738,18 @@ class projectCreate:
                 and parentBindings == childBindings):
             return
 
-        parentSide = self._junctionSideIdentity(
-            'parent side', parentIface, parentContext, parentBlockKey,
-            parentVariant)
-        childSide = self._junctionSideIdentity(
-            'child side', childIface, childContext, childBlockKey,
-            childVariant)
-        sides = f"\n{parentSide}\n{childSide}"
+        sidesText = None
+        def sides():
+            nonlocal sidesText
+            if sidesText is None:
+                parentSide = self._junctionSideIdentity(
+                    'parent side', parentIface, parentContext, parentBlockKey,
+                    parentVariant, siteIndex, parentBindings)
+                childSide = self._junctionSideIdentity(
+                    'child side', childIface, childContext, childBlockKey,
+                    childVariant, siteIndex, childBindings)
+                sidesText = f"\n{parentSide}\n{childSide}"
+            return sidesText
 
         parentProto = parentIface['interfaceType']
         childProto = childIface['interfaceType']
@@ -6719,7 +6760,7 @@ class projectCreate:
                 f"interface has interfaceType '{parentProto}' while the child "
                 f"interface has interfaceType '{childProto}'. Use a protocol "
                 f"changer block when binding different register-bus "
-                f"meta-protocols.{sides}")
+                f"meta-protocols.{sides()}")
             exit(warningAndErrorReport())
 
         parentStructs = self._structureRowsForInterface(parentIface)
@@ -6734,7 +6775,7 @@ class projectCreate:
                     f"{locationStr}: the two interfaces at this junction must "
                     f"carry the same structureTypes, but the parent interface "
                     f"does not carry structureType '{stype}' that the child "
-                    f"interface carries.{sides}")
+                    f"interface carries.{sides()}")
                 anyError = True
                 continue
             if stype not in childByType:
@@ -6742,7 +6783,7 @@ class projectCreate:
                     f"{locationStr}: the two interfaces at this junction must "
                     f"carry the same structureTypes, but the child interface "
                     f"does not carry structureType '{stype}' that the parent "
-                    f"interface carries.{sides}")
+                    f"interface carries.{sides()}")
                 anyError = True
                 continue
         if anyError:
@@ -6782,7 +6823,7 @@ class projectCreate:
                     f"'{childStruct}' (file {childStructContext}) has "
                     f"{len(childFields)} fields. Payload fields are compared "
                     f"positionally, so a differing field split is not "
-                    f"compatible even at equal total width.{sides}")
+                    f"compatible even at equal total width.{sides()}")
                 anyError = True
                 continue
             for index, ((pname, pwidth, poff), (cname, cwidth, coff)) in \
@@ -6799,7 +6840,7 @@ class projectCreate:
                         f"structure '{childStruct}' (file "
                         f"{childStructContext}). Fields are compared "
                         f"positionally; the names are shown for reference "
-                        f"only and are not compared.{sides}")
+                        f"only and are not compared.{sides()}")
                     anyError = True
                     continue
                 if poff != coff:
@@ -6813,7 +6854,7 @@ class projectCreate:
                         f"structure '{childStruct}' (file "
                         f"{childStructContext}). Fields are compared "
                         f"positionally; the names are shown for reference "
-                        f"only and are not compared.{sides}")
+                        f"only and are not compared.{sides()}")
                     anyError = True
         if anyError:
             exit(warningAndErrorReport())
@@ -6994,7 +7035,7 @@ class projectCreate:
                             instTypeKey,
                             childVariant, locationStr, parentContext,
                             childContext, parentBlockKey, parentVariant,
-                            parentBindingMap, childBindingMap)
+                            parentBindingMap, childBindingMap, siteIndex)
 
         # ------------------------------------------------------------
         # Iterate connectionMaps. The child port is the local end.
@@ -7045,7 +7086,7 @@ class projectCreate:
                         instTypeKey,
                         childVariant, locationStr, parentContext,
                         childContext, parentBlockKey, parentVariant,
-                        parentBindingMap, childBindingMap)
+                        parentBindingMap, childBindingMap, siteIndex)
 
     def processYamls(self):
         # main outer loop for processing

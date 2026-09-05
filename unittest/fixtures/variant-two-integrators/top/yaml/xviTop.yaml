@@ -1,0 +1,81 @@
+# The second integrator, and the one this fixture builds. Like the first, it
+# includes the leaf IP root, instantiates the leaf at label v0, and declares its
+# own binding of that label in this same file, at gain 3.
+#
+# The two integrators are siblings over one IP: neither includes the other, and
+# they meet only because this project's closure references the first integrator's
+# project. Both bindings are legal and both are needed, because each declaring
+# project must restate the whole parameter set and a consumer cannot borrow
+# another project's declaration. So one build holds two bindings of one
+# (block, variant) at two values, and every artifact this project emits for its
+# own leaf instance must carry 3.
+#
+# This project also instantiates the leaf at vTop, a label only it declares, at
+# gain 9. Its closure therefore holds three labels for one block: one both
+# integrators bound, one only this project bound, and vMid, which only the first
+# integrator bound and this project must emit nothing from.
+include:
+    - ../../ipLeaf/yaml/xviLeaf.yaml
+
+blocks:
+    xviTop_tb:
+        desc: "Testbench container for the second integrator's top"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xviTop:
+        desc: "Second integrator's top: stimulus, its own leaf at v0, and a sink"
+        hasMdl: true
+        hasVl: false
+        hasTb: true
+        hasRtl: true
+    xviTopDrv:
+        desc: "Stimulus on the leaf's own interface"
+        params: [XVI_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: true
+        ports:
+            out: { interface: xviIf, direction: src }
+    xviTopSnk:
+        desc: "Sink on the leaf's own interface"
+        params: [XVI_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: true
+        ports:
+            in: { interface: xviIf, direction: dst }
+
+instances:
+    xviTop_tb:   { container: xviTop_tb, instanceType: xviTop_tb, instGroup: top }
+    u_xviTop:    { container: xviTop_tb, instanceType: xviTop,    instGroup: top }
+    uTopDrv:     { container: xviTop,    instanceType: xviTopDrv, instGroup: top, variant: v0 }
+    uTopLeaf:    { container: xviTop,    instanceType: xviLeaf,   instGroup: top, variant: v0 }
+    uTopSnk:     { container: xviTop,    instanceType: xviTopSnk, instGroup: top, variant: v0 }
+    uTopOwnDrv:  { container: xviTop,    instanceType: xviTopDrv, instGroup: top, variant: v0 }
+    uTopOwnLeaf: { container: xviTop,    instanceType: xviLeaf,   instGroup: top, variant: vTop }
+    uTopOwnSnk:  { container: xviTop,    instanceType: xviTopSnk, instGroup: top, variant: v0 }
+
+connections:
+    - { interface: xviIf, src: uTopDrv,     srcport: out, dst: uTopLeaf,    dstport: in, name: topIn }
+    - { interface: xviIf, src: uTopLeaf,    srcport: out, dst: uTopSnk,     dstport: in, name: topOut }
+    - { interface: xviIf, src: uTopOwnDrv,  srcport: out, dst: uTopOwnLeaf, dstport: in, name: topOwnIn }
+    - { interface: xviIf, src: uTopOwnLeaf, srcport: out, dst: uTopOwnSnk,  dstport: in, name: topOwnOut }
+
+parameters:
+    xviTopDrv:
+        v0:
+            XVI_WIDTH: 8
+    xviTopSnk:
+        v0:
+            XVI_WIDTH: 8
+    xviLeaf:
+        v0:
+            XVI_WIDTH: 8
+            XVI_GAIN: 3
+        vTop:
+            XVI_WIDTH: 8
+            XVI_GAIN: 9

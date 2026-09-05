@@ -241,25 +241,14 @@ def render_trampoline(args, prj, data, mp_sig, foreign=False, registration=None)
     # size). Both precede (and are in scope for) the port list; the derived
     # constants follow the bound root parameters they depend on.
     constDecls, _unusedTypeDecls = parameterized_decls(prj, data)
-    # One binding row per parameter, first occurrence wins. A reused child bound
-    # to the same variant name by more than one declaring context (the foreign
-    # case) surfaces duplicate per-param rows in the view; a single-context
-    # variant is already unique, so this preserves its order and output exactly.
-    if registration is not None:
-        variant_params = [
-            {'param': param, 'resolvedValue': registration['values'][param]}
-            for param in param_names(data)]
-    else:
-        # This variant's own bindings, with their resolved literal values. A
-        # container-sourced variant is absent here; the registration path above
-        # supplies its values.
-        variant_params = []
-        seen_params = set()
-        for _, var_data in data['standaloneVariants'][variant_name].items():
-            if var_data['param'] in seen_params:
-                continue
-            seen_params.add(var_data['param'])
-            variant_params.append(var_data)
+    # Resolved parameter values for this top, keyed by the block's declared
+    # parameter names. A pair-specific concrete top takes them from its
+    # registration; every other top takes them from the variant's own set, which
+    # a container-sourced variant is absent from.
+    values = registration['values'] if registration is not None \
+        else data['standaloneVariants'][variant_name]
+    variant_params = [{'param': param, 'resolvedValue': values[param]}
+                      for param in param_names(data)]
     # The per-variant wrapper is a standalone Verilator top with no parent
     # scope, so bind the resolved concrete value: a symbol binding such as
     # value: OUT0_DATA_WIDTH would otherwise leak an out-of-scope parent symbol.

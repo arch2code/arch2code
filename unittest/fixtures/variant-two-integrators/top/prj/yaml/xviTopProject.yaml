@@ -1,0 +1,42 @@
+# The second integrator's project, and the build this fixture is measured on.
+# Its closure holds both integrators' bindings of the leaf's v0.
+#
+# This project's own design file is listed FIRST, ahead of the first
+# integrator's project. The order decides nothing about whether the defect
+# exists and everything about which project it damages: the last binding read
+# occupies the single project-blind slot, so the first-listed project is the one
+# whose emitted artifacts can pick up the other's value. Listing this project
+# last would leave its own binding on top and the test would pass whether or not
+# the emission path consults the declaring project. The test asserts that
+# premise before it asserts anything else.
+
+yamlFormat: 2
+projectName: xviTop
+
+topInstance: xviTop_tb
+
+projectFiles:
+    - ../../yaml/xviTop.yaml
+    - ../../../mid/prj/yaml/xviMidProject.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

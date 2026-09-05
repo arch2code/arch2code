@@ -1,5 +1,6 @@
-# Probe project for the site-keyed layout gate, accepting arm. Adjudicated at
-# make db only; nothing here is built.
+# Probe project for the site-keyed layout gate, REJECTING arm: `make db` is
+# required to fail here. Single project, so the mismatch it carries is
+# intra-project. Adjudicated at make db only; nothing here is built.
 
 yamlFormat: 2
 projectName: xpCpLayoutBad

@@ -1,0 +1,52 @@
+# The reusable leaf IP. It declares the block, its two knobs and the behaviour
+# XVI_GAIN drives, and it binds no integrator label, so every binding of v0,
+# vTop and vMid comes from an integrator.
+#
+# XVI_GAIN is behavioural: it appears in no width and in no packed position, so
+# two integrators may disagree on it without the layout gate having anything to
+# say. XVI_WIDTH sizes the payload and both integrators hold it at the same
+# value, which keeps the divergence off every width check.
+#
+# dflt is the leaf's own variant at the parameter defaults. A parameterizable
+# hasVl block declaring no variant emits a wrapper top with unbound parameters,
+# which no consumer's Verilated build can elaborate.
+
+ipParameters:
+    constants:
+        XVI_WIDTH: { value: 8, maxValue: 32, desc: "Pixel width; sizes the payload" }
+        XVI_GAIN:  { value: 1, maxValue: 15, desc: "Gain the leaf is configured with; behavioural, in no width" }
+    types:
+        xviPixelT: { width: XVI_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    xviTagT: { width: 8, desc: "Sample sequence tag" }
+
+structures:
+    xviSt:
+        tag:  { varType: xviTagT,   desc: "Sample sequence tag" }
+        data: { varType: xviPixelT, desc: "Parameterizable pixel payload" }
+
+interfaces:
+    xviIf:
+        desc: "The leaf IP's own parameterized pixel push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: xviSt, structureType: data_t }
+
+blocks:
+    xviLeaf:
+        desc: "Reusable parameterized leaf IP"
+        params: [XVI_WIDTH, XVI_GAIN]
+        hasMdl: true
+        hasVl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            in:  { interface: xviIf, direction: dst }
+            out: { interface: xviIf, direction: src }
+
+parameters:
+    xviLeaf:
+        dflt:
+            XVI_WIDTH: 8
+            XVI_GAIN: 1
