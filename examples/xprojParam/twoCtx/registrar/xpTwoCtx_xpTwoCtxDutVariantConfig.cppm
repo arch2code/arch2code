@@ -8,8 +8,12 @@ module;
 
 export module xpTwoCtx.xpTwoCtxDut.config;
 
+export struct xpTwoCtx_xpTwoCtxDutDefaultConfig {
+    static constexpr uint32_t DP_WIDTH = 8;
+    static constexpr uint32_t TC_GAIN = 2;
+};
+
 export struct xpTwoCtx_xpTwoCtxDutTwoctxConfig {
-    static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 12;
     static constexpr uint32_t TC_GAIN = 5;
 };

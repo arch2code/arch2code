@@ -10,19 +10,16 @@ export module xpDpTop.xpDpMid.config;
 
 export template<typename ContainerConfig>
 struct xpDpTop_xpDpMidCustomerConfig {
-    static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
-    static constexpr uint32_t MID_ALGO = ContainerConfig::MID_ALGO;
+    static constexpr uint32_t MID_ALGO = ContainerConfig::CUST_ALGO;
 };
 
 export struct xpDpTop_xpDpMidCustomer2Config {
-    static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
     static constexpr uint32_t MID_ALGO = 6;
 };
 
 export struct xpDpTop_xpDpMidCustomer3Config {
-    static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
     static constexpr uint32_t MID_ALGO = 7;
 };

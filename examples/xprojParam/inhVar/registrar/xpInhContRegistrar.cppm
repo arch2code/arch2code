@@ -5,10 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpInhContVariantConfig.h"
 
 export module xpInhVar.xpInhVar_xpInhCont.registrar;
 import xpInhVar_xpInhCont.block;
+import xpInhVar.xpInhCont.config;
 
 namespace {
 struct _xpInhCont_registrar {
@@ -16,25 +16,25 @@ struct _xpInhCont_registrar {
         instanceFactory::registerBlock(
             "xpInhCont_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhContAltConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhVar_xpInhContAltConfig>>(blockName, variant, bbMode));
             },
             "alt", "xpInhVar");
         instanceFactory::registerBlock(
             "xpInhCont_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhContAltConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhVar_xpInhContAltConfig>>(blockName, variant, bbMode));
             },
             "alt", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont");
         instanceFactory::registerBlock(
             "xpInhCont_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhContDefaultConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhVar_xpInhContDefaultConfig>>(blockName, variant, bbMode));
             },
             "default", "xpInhVar");
         instanceFactory::registerBlock(
             "xpInhCont_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhContDefaultConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpInhCont<xpInhVar_xpInhContDefaultConfig>>(blockName, variant, bbMode));
             },
             "default", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont");
     }

@@ -5,9 +5,6 @@
 module;
 #include "systemc.h"
 #include "instanceFactory.h"
-#include "xpFilterVariantConfig.h"
-#include "xpGainVariantConfig.h"
-#include "xpSinkVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.

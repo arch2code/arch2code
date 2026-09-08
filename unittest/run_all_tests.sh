@@ -246,6 +246,16 @@ echo "------------------------------------------------------------------------"
 python3 test_error_variant_label_collision.py || FAILED=1
 
 echo ""
+echo "Test Suite 19m2g: Block param backed by an eval-derived constant is rejected"
+echo "------------------------------------------------------------------------"
+python3 test_block_param_eval_backing.py || FAILED=1
+
+echo ""
+echo "Test Suite 19m2h: A params: name resolves to exactly one visible declaration"
+echo "------------------------------------------------------------------------"
+python3 test_param_scope_uniqueness.py || FAILED=1
+
+echo ""
 echo "Test Suite 19m3: Contained-block config inheritance (inheritContainerParam)"
 echo "------------------------------------------------------------------------"
 python3 test_inherit_container_param.py || FAILED=1
@@ -435,9 +445,15 @@ python3 test_param_cross_project_linkage.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
-echo "Test Suite ${idx}: variant declarer precedence across project boundaries"
+echo "Test Suite ${idx}: scope resolution of a variant label"
 echo "------------------------------------------------------------------------"
-python3 test_param_variant_declarer_precedence.py || FAILED=1
+python3 test_variant_scope_resolution.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: owner-declared 'default' variant takes over the default Config"
+echo "------------------------------------------------------------------------"
+python3 test_default_variant_identity.py || FAILED=1
 idx=$((idx+1))
 
 echo ""

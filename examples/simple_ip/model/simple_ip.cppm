@@ -10,12 +10,12 @@ module;
 #include "push_ack_channel.h"
 #include "apb_port_thunker.h"
 #include "push_ack_port_thunker.h"
-#include "ipVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module simple_ip.block;
 import simple_ip.base;
+import ip.ip.config;
 import common_shared_types;
 import simple_ip;
 import ip;
@@ -42,10 +42,10 @@ public:
     //instances contained in block
     std::shared_ptr<apbDecodeBase> uAPBDecode;
     std::shared_ptr<dataGenBase> uDataGen;
-    std::shared_ptr<ipBase<ipVariant0Config>> uIp;
+    std::shared_ptr<ipBase<ip_ipVariant0Config>> uIp;
 
     // cross-interface thunkers
-    push_ack_port_thunker<simpleData8St, ipDataSt<ipVariant0Config>, false> thunker_out_uIp;
+    push_ack_port_thunker<simpleData8St, ipDataSt<ip_ipVariant0Config>, false> thunker_out_uIp;
     apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uIp_uIp;
 
     simple_ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
@@ -77,7 +77,7 @@ simple_ip::simple_ip(sc_module_name blockName, const char * variant, blockBaseMo
         ,apbReg_uIp("ip_apbReg_uIp", "apbDecode")
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "simple_ip")))
         ,uDataGen(std::dynamic_pointer_cast<dataGenBase>(instanceFactory::createInstance(name(), "uDataGen", "dataGen", "", "simple_ip")))
-        ,uIp(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp", "ip", "variant0", "simple_ip.simple_ip.ip")))
+        ,uIp(std::dynamic_pointer_cast<ipBase<ip_ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp", "ip", "variant0", "simple_ip.simple_ip.ip")))
         ,thunker_out_uIp("thunker_out_uIp", out, uIp->ipDataIf, name())
         ,thunker_apbReg_uIp_uIp("thunker_apbReg_uIp_uIp", apbReg_uIp, uIp->regs, name())
 // GENERATED_CODE_END

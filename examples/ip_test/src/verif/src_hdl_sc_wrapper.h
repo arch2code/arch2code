@@ -17,8 +17,7 @@ import ip_test_src;
 using namespace ip_test_src_ns;
 import ip_test_ipLeaf;
 using namespace ip_test_ipLeaf_ns;
-#include "ipLeafVariantConfig.h"
-#include "srcVariantConfig.h"
+import ip_test.src.config;
 #include "push_ack_bfm.h"
 
 template <typename DUT_T, typename Config>

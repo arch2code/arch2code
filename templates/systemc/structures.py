@@ -1580,18 +1580,10 @@ def _roundTripHelperLines(indent):
 
 
 def _sampleConfigs(prj, data):
-    """Deterministic Default/Mid/Max sample points for a context's base
-    parameterizable constants. Sample points are variant-independent: every
-    point is derived ONLY from the ipParameter declaration (its `value` and
-    `maxValue`), never from variant-bound Config values. Default = declared
-    value, Max = declared maxValue, Mid = maxValue // 2 (integer floor). Each
-    sample is a (Role, configName, baseValues) triple; identical value-dicts are
-    de-duplicated keeping first occurrence so a degenerate param does not emit
-    redundant Configs. baseValues carries only base (non-eval) parameterizable
-    constants; eval-derived members recompute symbolically inside the Config
-    struct."""
-    baseParams = [v for v in data['constants'].values()
-                  if v['isParameterizable'] and not v['evalCanonical']]
+    """Deterministic Default/Mid/Max sample points for the base parameterizable
+    constants a round-trip test needs (projectOpen._sampleConfigConstants),
+    taken from each constant's own declaration."""
+    baseParams = [v for v in data['sampleConfigConstants'].values() if not v['evalCanonical']]
     if not baseParams:
         return []
     defaultVals = {v['constant']: v['value'] for v in baseParams}

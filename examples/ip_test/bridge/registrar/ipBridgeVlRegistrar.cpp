@@ -7,7 +7,6 @@
 #include "blockBase.h"
 #include "ipBridge_hdl_sc_wrapper.h"
 #include "VipBridge_hdl_sv_wrapper.h"
-#include "ipVariantConfig.h"
 
 namespace {
 struct _ipBridge_vl_registrar {

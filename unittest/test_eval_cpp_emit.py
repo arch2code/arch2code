@@ -1,24 +1,11 @@
 #!/usr/bin/env python3
-"""Eval-derived parameterizable constants emit symbolically into the
-SystemC ``Config`` structs, so each variant recomputes them from that struct's
-own members instead of freezing the default-variant value.
+"""A block's Config struct carries exactly the parameters it declares; an
+eval-derived constant is computed in the Base class instead, symbolic in the
+block's own Config params.
 
-Two functionality-executing checks, no committed database read-back:
-
-1. The template-layer emitter ``emitCStyleCanonical`` translates canonical eval
-   strings to C/C++ RHS text for a stubbed per-symbol spelling. It exercises
-   operator pass-through, precedence-driven parenthesization, ``$clog2`` ->
-   ``clog2``, authored-base literal re-spelling (hex ``0x..`` / binary ``0b..``),
-   and a non-member symbol spelled as a literal.
-2. The real emission path on the ``ip_test`` parity vehicle: ``projectCreate``
-   builds a fresh database (the only place evals are parsed/evaluated and the
-   canonical string is persisted), ``projectOpen`` + ``getContextData`` assemble
-   the context view the cppConfig generator consumes, and ``includeConfig``
-   renders the per-variant Config structs. An eval-derived member's RHS must be
-   symbolic in the struct's own members (``IP_DATA_WIDTH_X2 = IP_DATA_WIDTH *
-   2``), the second-level chain must reference the first-level member, and a
-   variant whose base param differs must NOT freeze the default-variant value.
-"""
+Pins the C++ expression translation, the parenthesization of a derived
+constant substituted into a larger expression, and the real Config and Base
+renders on the ip_test tree."""
 
 import os
 import sys
@@ -33,6 +20,7 @@ if base_dir not in sys.path:
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectCreate, projectOpen
 from pysrc.systemcGen import genSystemC
+from templates.systemc import baseClassDecl
 from templates.systemc import config
 from templates.systemc import includes
 from templates.systemc import structures
@@ -68,6 +56,81 @@ def test_emit_c_style_canonical_translation():
     return ok
 
 
+def test_const_reference_cpp_parenthesizes_compound_derived():
+    print(f"\n{'='*70}\nTest: constReference_cpp parenthesizes a compound "
+          f"derived constant substituted at its call site\n{'='*70}")
+    # A sum: substituted bare into a surrounding multiplication it would rebind
+    # the operator.
+    constants = {
+        'DEBAYER_DIMENSION/d': {
+            'isParameterizable': True, 'evalCanonical': '',
+            'constant': 'DEBAYER_DIMENSION'},
+        'PIXELS_PER_CLOCK/d': {
+            'isParameterizable': True, 'evalCanonical': '',
+            'constant': 'PIXELS_PER_CLOCK'},
+        'PREPROCESS_GRID_WIDTH/d': {
+            'isParameterizable': True,
+            'evalCanonical': '${DEBAYER_DIMENSION/d} + ${PIXELS_PER_CLOCK/d} - 1',
+            'constant': 'PREPROCESS_GRID_WIDTH'},
+    }
+    prj = SimpleNamespace(data={'constants': constants})
+
+    emitted = includes.constReference_cpp('PREPROCESS_GRID_WIDTH/d', prj, useConfig=True)
+    ok = True
+    if emitted.startswith('(') and emitted.endswith(')'):
+        print(f"  PASS: emitted expression is parenthesized: {emitted!r}")
+    else:
+        print(f"  FAIL: emitted expression is not parenthesized: {emitted!r}")
+        ok = False
+
+    # Python's +, -, * precedence matches C++'s, so eval() gives the width C++ would.
+    DEBAYER_DIMENSION, PIXELS_PER_CLOCK = 5, 4
+    substituted = f"8*{emitted}".replace('Config::', '')
+    width = eval(substituted)  # noqa: S307 (fixed test expression, not user input)
+    correctWidth = 8 * (DEBAYER_DIMENSION + PIXELS_PER_CLOCK - 1)
+    if width == correctWidth:
+        print(f"  PASS: 8*{emitted} evaluates to the correct width {width}")
+    else:
+        print(f"  FAIL: 8*{emitted} evaluates to {width}, expected {correctWidth}")
+        ok = False
+    return ok
+
+
+def test_const_reference_cpp_parenthesizes_nested_derived_reference():
+    print(f"\n{'='*70}\nTest: constReference_cpp parenthesizes a derived "
+          f"constant's own referent when that referent is itself derived"
+          f"\n{'='*70}")
+    # Nests the sum above; the inner substitution needs its own parens or the
+    # trailing `- 1` binds to the outer `* 2`.
+    constants = {
+        'DEBAYER_DIMENSION/d': {
+            'isParameterizable': True, 'evalCanonical': '',
+            'constant': 'DEBAYER_DIMENSION'},
+        'PIXELS_PER_CLOCK/d': {
+            'isParameterizable': True, 'evalCanonical': '',
+            'constant': 'PIXELS_PER_CLOCK'},
+        'PREPROCESS_GRID_WIDTH/d': {
+            'isParameterizable': True,
+            'evalCanonical': '${DEBAYER_DIMENSION/d} + ${PIXELS_PER_CLOCK/d} - 1',
+            'constant': 'PREPROCESS_GRID_WIDTH'},
+        'PREPROCESS_GRID_WIDTH_X2/d': {
+            'isParameterizable': True,
+            'evalCanonical': '${PREPROCESS_GRID_WIDTH/d} * 2',
+            'constant': 'PREPROCESS_GRID_WIDTH_X2'},
+    }
+    prj = SimpleNamespace(data={'constants': constants})
+
+    emitted = includes.constReference_cpp('PREPROCESS_GRID_WIDTH_X2/d', prj, useConfig=True)
+    DEBAYER_DIMENSION, PIXELS_PER_CLOCK = 5, 4
+    correctWidth = (DEBAYER_DIMENSION + PIXELS_PER_CLOCK - 1) * 2
+    width = eval(emitted.replace('Config::', ''))  # noqa: S307 (fixed test expression, not user input)
+    if width == correctWidth:
+        print(f"  PASS: {emitted} evaluates to the correct width {width}")
+        return True
+    print(f"  FAIL: {emitted} evaluates to {width}, expected {correctWidth}")
+    return False
+
+
 def _reset_project_create_class_state():
     projectCreate.data = dict()
     projectCreate.flatData = dict()
@@ -84,7 +147,6 @@ def _reset_project_create_class_state():
     projectCreate.qualEnums = {}
     projectCreate.includeName = {}
     projectCreate.includeValid = {}
-    projectCreate.ipParametersConstants = {}
     projectCreate.errorState = False
 
 
@@ -124,84 +186,75 @@ def _config_member(out, structName, constName):
     return None
 
 
-def test_config_struct_symbolic_per_variant():
-    print(f"\n{'='*70}\nTest: eval-derived Config members emit symbolic, "
-          f"per-variant correct\n{'='*70}")
+def test_config_struct_derived_members_move_to_base():
+    print(f"\n{'='*70}\nTest: derived Config members leave the struct and are "
+          f"computed in the Base class\n{'='*70}")
     db_path = _build_fresh_db()
     try:
         prj = projectOpen(db_path)
-        # Derive the canonical context key from the block: resolveContextKey no
-        # longer accepts a bare name, so getContextData needs the exact yamlContext key.
-        ipCtx = prj.data['blocks'][prj.getQualBlock('ip')]['_context']
-        data = prj.getContextData([ipCtx], genSystemC.dataTypeMappings)
-        out = config.includeConfig(None, prj, data)
-        # ip@variant1 is declared by the ip_test assemblers, so its Config is
-        # owner-qualified (ip_test_ipVariant1Config) and relocated out of the ip
-        # context header into the parent's registrar-domain foreign-Config
-        # emission (the --parent=ip_top / getForeignConfigData render path). The
-        # same-project default/variant0 Configs stay bare in the ip context.
+        # A reusable IP that instantiates nothing is its own --parent
+        # (calcConfigModules), so ip's default and variant0 live there.
+        ownData = prj.getBlockData(prj.getQualBlock('ip'))
+        ownData['parent'] = 'ip'
+        out = config.configModule(None, prj, ownData)
+        # ipBridge declares ip@variant1, so its struct is ipBridge_ipVariant1Config in the bridge's domain.
         foreignData = prj.getBlockData(prj.getQualBlock('ip'))
-        foreignData['parent'] = 'ip_top'
-        foreignOut = config.foreignConfig(None, prj, foreignData)
+        foreignData['parent'] = 'ipBridge'
+        foreignOut = config.configModule(None, prj, foreignData)
 
-        # First-level and second-level eval-derived members must be symbolic in
-        # the struct's own members, not frozen to the default value (140 / 280).
-        expectations = [
-            ('ipDefaultConfig', 'IP_DATA_WIDTH_X2', 'IP_DATA_WIDTH * 2'),
-            ('ipDefaultConfig', 'IP_DATA_WIDTH_X4', 'IP_DATA_WIDTH_X2 * 2'),
-            ('ipDefaultConfig', 'IP_MEM_DEPTH_X2', 'IP_MEM_DEPTH * 2'),
-            ('ipDefaultConfig', 'IP_MEM_DEPTH_X4', 'IP_MEM_DEPTH_X2 * 2'),
-            # Variant0 overrides IP_DATA_WIDTH=8: the symbolic RHS is unchanged
-            # (the variant's own IP_DATA_WIDTH=8 member drives the value to 16).
-            ('ipVariant0Config', 'IP_DATA_WIDTH_X2', 'IP_DATA_WIDTH * 2'),
-            ('ipVariant0Config', 'IP_DATA_WIDTH_X4', 'IP_DATA_WIDTH_X2 * 2'),
-        ]
         ok = True
-        for structName, constName, expectedRhs in expectations:
-            rhs = _config_member(out, structName, constName)
-            if rhs != expectedRhs:
-                print(f"  FAIL: {structName}.{constName} RHS {rhs!r}, "
-                      f"expected {expectedRhs!r}")
-                ok = False
-            else:
-                print(f"  PASS: {structName}.{constName} = {rhs}")
-
-        # Variant1 overrides IP_MEM_DEPTH=8: again symbolic, not the frozen 32.
-        # It now lives in the owner-qualified foreign-Config emission as
-        # ip_test_ipVariant1Config.
-        foreignExpectations = [
-            ('ip_test_ipVariant1Config', 'IP_MEM_DEPTH_X2', 'IP_MEM_DEPTH * 2'),
-        ]
-        for structName, constName, expectedRhs in foreignExpectations:
-            rhs = _config_member(foreignOut, structName, constName)
-            if rhs != expectedRhs:
-                print(f"  FAIL: {structName}.{constName} RHS {rhs!r}, "
-                      f"expected {expectedRhs!r}")
-                ok = False
-            else:
-                print(f"  PASS: {structName}.{constName} = {rhs}")
-
-        # Lock the bug this fixes: variant0's derived member must not freeze the
-        # default-variant literal (140 corresponds to default IP_DATA_WIDTH=70).
-        v0_x2 = _config_member(out, 'ipVariant0Config', 'IP_DATA_WIDTH_X2')
-        if v0_x2 is not None and v0_x2.strip().isdigit():
-            print(f"  FAIL: ipVariant0Config.IP_DATA_WIDTH_X2 froze a literal {v0_x2!r}")
+        derived = ('IP_DATA_WIDTH_X2', 'IP_DATA_WIDTH_X4', 'IP_MEM_DEPTH_X2', 'IP_MEM_DEPTH_X4')
+        for structName in ('ip_ipDefaultConfig', 'ip_ipVariant0Config'):
+            for constName in derived:
+                if _config_member(out, structName, constName) is not None:
+                    print(f"  FAIL: {structName} still carries derived member {constName}")
+                    ok = False
+        if _config_member(foreignOut, 'ipBridge_ipVariant1Config', 'IP_DATA_WIDTH') is None:
+            print(f"  FAIL: ipBridge_ipVariant1Config struct is absent from the "
+                  f"rendered output")
             ok = False
+        else:
+            for constName in derived:
+                if _config_member(foreignOut, 'ipBridge_ipVariant1Config', constName) is not None:
+                    print(f"  FAIL: ipBridge_ipVariant1Config still carries derived member {constName}")
+                    ok = False
+        if ok:
+            print(f"  PASS: no Config struct carries a derived member")
 
-        # Dependency ordering inside the struct: a member must be declared before
-        # any later member references it (C++ constexpr requires prior decl).
-        def _index(text, structName, constName):
-            block = text.split(f"struct {structName} ", 1)[1]
-            return block.index(f" {constName} = ")
-        for text, structName in ((out, 'ipDefaultConfig'),
-                                 (out, 'ipVariant0Config'),
-                                 (foreignOut, 'ip_test_ipVariant1Config')):
-            if _index(text, structName, 'IP_DATA_WIDTH') > _index(text, structName, 'IP_DATA_WIDTH_X2'):
-                print(f"  FAIL: {structName} declares IP_DATA_WIDTH after IP_DATA_WIDTH_X2")
+        # ip declares only these three params; its Config carries exactly them.
+        ownParams = ('IP_DATA_WIDTH', 'IP_MEM_DEPTH', 'IP_NONCONST_DEPTH')
+        for constName in ownParams:
+            if _config_member(out, 'ip_ipDefaultConfig', constName) is None:
+                print(f"  FAIL: ip_ipDefaultConfig is missing its own param {constName}")
                 ok = False
-            if _index(text, structName, 'IP_DATA_WIDTH_X2') > _index(text, structName, 'IP_DATA_WIDTH_X4'):
-                print(f"  FAIL: {structName} declares IP_DATA_WIDTH_X2 after IP_DATA_WIDTH_X4")
+        if ok:
+            print(f"  PASS: ip_ipDefaultConfig carries exactly its own declared params")
+
+        # Second-level derived constants chain through the first by bare name, not re-expanded.
+        block_data = prj.getBlockData(prj.getQualBlock('ip'))
+        baseOut = baseClassDecl.render(
+            SimpleNamespace(mode='module', noExternalComments=False), prj, block_data)
+        expectations = [
+            ('IP_DATA_WIDTH_X2', 'Config::IP_DATA_WIDTH * 2'),
+            ('IP_DATA_WIDTH_X4', 'IP_DATA_WIDTH_X2 * 2'),
+            ('IP_MEM_DEPTH_X2', 'Config::IP_MEM_DEPTH * 2'),
+            ('IP_MEM_DEPTH_X4', 'IP_MEM_DEPTH_X2 * 2'),
+        ]
+        for constName, expectedRhs in expectations:
+            marker = f"static constexpr auto {constName} = {expectedRhs};"
+            if marker not in baseOut:
+                print(f"  FAIL: ipBase missing {marker!r}")
                 ok = False
+            else:
+                print(f"  PASS: ipBase.{constName} = {expectedRhs}")
+
+        # C++ constexpr needs a prior declaration, so X2 must precede X4.
+        if baseOut.index('IP_DATA_WIDTH_X2 =') > baseOut.index('IP_DATA_WIDTH_X4 ='):
+            print(f"  FAIL: ipBase declares IP_DATA_WIDTH_X2 after IP_DATA_WIDTH_X4")
+            ok = False
+        if baseOut.index('IP_MEM_DEPTH_X2 =') > baseOut.index('IP_MEM_DEPTH_X4 ='):
+            print(f"  FAIL: ipBase declares IP_MEM_DEPTH_X2 after IP_MEM_DEPTH_X4")
+            ok = False
         return ok
     finally:
         if g.db is not None:
@@ -406,11 +459,13 @@ def test_teststructs_parameterizable_sample_points():
 
 def run_all_tests():
     print("\n" + "="*70)
-    print("TESTING: eval-derived constants emit symbolic into Config")
+    print("TESTING: eval-derived constants leave the Config, computed in the Base class")
     print("="*70)
     tests = [
         test_emit_c_style_canonical_translation,
-        test_config_struct_symbolic_per_variant,
+        test_const_reference_cpp_parenthesizes_compound_derived,
+        test_const_reference_cpp_parenthesizes_nested_derived_reference,
+        test_config_struct_derived_members_move_to_base,
         test_fw_constants_symbolic,
         test_teststructs_parameterizable_sample_points,
     ]

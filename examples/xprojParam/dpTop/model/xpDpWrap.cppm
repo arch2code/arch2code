@@ -8,16 +8,18 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 #include "push_ack_port_thunker.h"
-#include "xpDpLeafVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpDpTop_xpDpWrap.block;
 import xpDpTop_xpDpWrap.base;
+import xpDpTop.xpDpWrap.config;
 import xpDpTop.xpDpChk.config;
+import xpDpTop.xpDpLeaf.config;
 import xpDpTop.xpDpMid.config;
 import xpDpTop.xpDpSrc.config;
+import xpDpLeaf.block;
 import xpDpMid.block;
 import xpDpLeaf;
 import xpDpTop_xpDpSrc.base;
@@ -39,7 +41,7 @@ public:
     SC_HAS_PROCESS(xpDpWrap);
 
     // inherited names usable unqualified (no Config:: / this->)
-    using xpDpWrapBase<Config>::MID_ALGO;
+    using xpDpWrapBase<Config>::CUST_ALGO;
     using xpDpWrapBase<Config>::DP_WIDTH;
 
     // channels
@@ -48,7 +50,7 @@ public:
     // The leaf IP's own parameterized pixel push/ack stream
     push_ack_channel< dpSt<xpDpTop_xpDpChkCustomerConfig> > midOut_0;
     // The leaf IP's own parameterized pixel push/ack stream
-    push_ack_channel< dpSt<xpDpLeafDefaultConfig> > out2;
+    push_ack_channel< dpSt<xpDpTop_xpDpLeafLeafXConfig<Config>> > out2;
     // The leaf IP's own parameterized pixel push/ack stream
     push_ack_channel< dpSt<xpDpTop_xpDpChkLeafXConfig> > out_1;
     // The leaf IP's own parameterized pixel push/ack stream
@@ -65,7 +67,7 @@ public:
     std::shared_ptr<xpDpMidBase<xpDpTop_xpDpMidCustomerConfig<Config>>> uMid;
     std::shared_ptr<xpDpChkBase<xpDpTop_xpDpChkCustomerConfig>> uChk;
     std::shared_ptr<xpDpMidBase<xpDpTop_xpDpMidCustomer2Config>> uMid2;
-    std::shared_ptr<xpDpLeafBase<xpDpLeafDefaultConfig>> uLeafX;
+    std::shared_ptr<xpDpLeafBase<xpDpTop_xpDpLeafLeafXConfig<Config>>> uLeafX;
     std::shared_ptr<xpDpChkBase<xpDpTop_xpDpChkLeafXConfig>> uChkX;
     std::shared_ptr<xpDpChkBase<xpDpTop_xpDpChkCustomer2Config>> uChk2;
     std::shared_ptr<xpDpMidBase<xpDpTop_xpDpMidCustomer3Config>> uMid3;
@@ -74,8 +76,8 @@ public:
     // cross-interface thunkers
     push_ack_port_thunker<dpSt<xpDpTop_xpDpMidCustomerConfig<Config>>, dpSt<xpDpTop_xpDpSrcCustomerConfig>, true> thunker_out_0_uSrc;
     push_ack_port_thunker<dpSt<xpDpTop_xpDpChkCustomerConfig>, dpSt<xpDpTop_xpDpMidCustomerConfig<Config>>, true> thunker_midOut_0_uMid;
-    push_ack_port_thunker<dpSt<xpDpLeafDefaultConfig>, dpSt<xpDpTop_xpDpSrcCustomerConfig>, true> thunker_out2_uSrc;
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpChkLeafXConfig>, dpSt<xpDpLeafDefaultConfig>, true> thunker_out_1_uLeafX;
+    push_ack_port_thunker<dpSt<xpDpTop_xpDpLeafLeafXConfig<Config>>, dpSt<xpDpTop_xpDpSrcCustomerConfig>, true> thunker_out2_uSrc;
+    push_ack_port_thunker<dpSt<xpDpTop_xpDpChkLeafXConfig>, dpSt<xpDpTop_xpDpLeafLeafXConfig<Config>>, true> thunker_out_1_uLeafX;
     push_ack_port_thunker<dpSt<xpDpTop_xpDpMidCustomer2Config>, dpSt<xpDpTop_xpDpSrcCustomerConfig>, true> thunker_out4_uSrc;
     push_ack_port_thunker<dpSt<xpDpTop_xpDpChkCustomer2Config>, dpSt<xpDpTop_xpDpMidCustomer2Config>, true> thunker_midOut_1_uMid2;
     push_ack_port_thunker<dpSt<xpDpTop_xpDpMidCustomer3Config>, dpSt<xpDpTop_xpDpSrcCustomerConfig>, true> thunker_out3_uSrc;
@@ -111,7 +113,7 @@ xpDpWrap<Config>::xpDpWrap(sc_module_name blockName, const char * variant, block
         ,uMid(std::dynamic_pointer_cast<xpDpMidBase<xpDpTop_xpDpMidCustomerConfig<Config>>>(instanceFactory::createInstance<xpDpMid<xpDpTop_xpDpMidCustomerConfig<Config>>>(name(), "uMid", "xpDpMid", variant, "xpDpTop.xpDpTop_xpDpWrap.xpDpMid")))
         ,uChk(std::dynamic_pointer_cast<xpDpChkBase<xpDpTop_xpDpChkCustomerConfig>>(instanceFactory::createInstance(name(), "uChk", "xpDpChk", "customer", "xpDpTop.xpDpTop_xpDpWrap.xpDpTop_xpDpChk")))
         ,uMid2(std::dynamic_pointer_cast<xpDpMidBase<xpDpTop_xpDpMidCustomer2Config>>(instanceFactory::createInstance(name(), "uMid2", "xpDpMid", "customer2", "xpDpTop.xpDpTop_xpDpWrap.xpDpMid")))
-        ,uLeafX(std::dynamic_pointer_cast<xpDpLeafBase<xpDpLeafDefaultConfig>>(instanceFactory::createInstance(name(), "uLeafX", "xpDpLeaf", "customer", "xpDpTop.xpDpTop_xpDpWrap.xpDpLeaf")))
+        ,uLeafX(std::dynamic_pointer_cast<xpDpLeafBase<xpDpTop_xpDpLeafLeafXConfig<Config>>>(instanceFactory::createInstance<xpDpLeaf<xpDpTop_xpDpLeafLeafXConfig<Config>>>(name(), "uLeafX", "xpDpLeaf", variant, "xpDpTop.xpDpTop_xpDpWrap.xpDpLeaf")))
         ,uChkX(std::dynamic_pointer_cast<xpDpChkBase<xpDpTop_xpDpChkLeafXConfig>>(instanceFactory::createInstance(name(), "uChkX", "xpDpChk", "leafX", "xpDpTop.xpDpTop_xpDpWrap.xpDpTop_xpDpChk")))
         ,uChk2(std::dynamic_pointer_cast<xpDpChkBase<xpDpTop_xpDpChkCustomer2Config>>(instanceFactory::createInstance(name(), "uChk2", "xpDpChk", "customer2", "xpDpTop.xpDpTop_xpDpWrap.xpDpTop_xpDpChk")))
         ,uMid3(std::dynamic_pointer_cast<xpDpMidBase<xpDpTop_xpDpMidCustomer3Config>>(instanceFactory::createInstance(name(), "uMid3", "xpDpMid", "customer3", "xpDpTop.xpDpTop_xpDpWrap.xpDpMid")))

@@ -5,7 +5,6 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpGainVariantConfig.h"
 
 export module xpShared.xpSinkShared.registrar;
 import xpSinkShared.block;

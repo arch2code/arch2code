@@ -18,6 +18,7 @@ import xpTwoCtx_package::*;
 
     // Module-local parameterizable type/struct declarations
     localparam TC_GAIN_X2 = TC_GAIN * 2; //Derived from this context's own knob
+    localparam DP_WIDTH_X2 = DP_WIDTH * 2; //Derived from the included file's knob
     typedef logic[DP_WIDTH-1:0] dpPixelT; //Parameterizable pixel word
     typedef logic[TC_GAIN-1:0] tcValT; //Parameterizable value word sized by this file's knob
     typedef struct packed {

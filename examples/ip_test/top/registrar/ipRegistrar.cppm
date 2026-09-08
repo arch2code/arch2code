@@ -5,11 +5,11 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "ipVariantConfig.h"
 
 export module ip_test.ip.registrar;
 import ip.block;
-import ip_test.ip.config;
+import ip.ip.config;
+import ipBridge.ip.config;
 
 namespace {
 struct _ip_registrar {
@@ -17,25 +17,25 @@ struct _ip_registrar {
         instanceFactory::registerBlock(
             "ip_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ip_ipVariant0Config>>(blockName, variant, bbMode));
             },
             "variant0", "ip");
         instanceFactory::registerBlock(
             "ip_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipVariant0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ip_ipVariant0Config>>(blockName, variant, bbMode));
             },
             "variant0", "ip_test.ip_test_ip_top.ip");
         instanceFactory::registerBlock(
             "ip_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ip_test_ipVariant1Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipBridge_ipVariant1Config>>(blockName, variant, bbMode));
             },
             "variant1", "ip");
         instanceFactory::registerBlock(
             "ip_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ip_test_ipVariant1Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip<ipBridge_ipVariant1Config>>(blockName, variant, bbMode));
             },
             "variant1", "ip_test.ip_test_ip_top.ip");
     }

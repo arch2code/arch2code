@@ -7,13 +7,13 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "xpInhContVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpInhVar_xpInhCont.block;
 import xpInhVar_xpInhCont.base;
+import xpInhVar.xpInhCont.config;
 import xpInhVar_xpInhLeaf.block;
 import xpInhVar_xpInhCont;
 import xpInhVar_xpInhLeaf.base;

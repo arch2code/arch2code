@@ -8,8 +8,11 @@ module;
 
 export module xpDpMid.xpDpMidDrv.config;
 
+export struct xpDpMid_xpDpMidDrvDefaultConfig {
+    static constexpr uint32_t DP_WIDTH = 8;
+};
+
 export struct xpDpMid_xpDpMidDrvStdConfig {
-    static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
 };
 

@@ -331,8 +331,7 @@ def resolve_dut_variant_selection(block_data, variant):
     for desc in variant_configs:
         if desc['variant'] != variant:
             continue
-        config_name = cpp_descriptor_config_name(desc, default_config)
-        return {'configName': config_name, 'factoryVariant': variant}
+        return {'configName': desc['structName'], 'factoryVariant': variant}
     if not variant:
         printError(
             f"Testbench generation for parameterizable block {block_name!r} "
@@ -422,14 +421,9 @@ def cpp_container_typed_instance_arg(instance):
     return f'<{instance["instanceType"]}{cpp_config_arg(selection)}>'
 
 def sc_instance_config_imports(data):
-    # `import` lines a container needs for the Configs of the instances it holds:
-    # the owner-qualified foreign-Config module of each child bound to an
-    # assembler-declared variant, then the block module of each child typed by
-    # this container's Config, whose implementation class the container names at
-    # its createInstance site.
     out = []
-    for key in sorted(data['foreignConfigModules']):
-        mod = data['foreignConfigModules'][key]
+    for key in sorted(data['configModules']):
+        mod = data['configModules'][key]
         out.append(f'import {cpp_config_module_name(mod["project"], mod["block"])};')
     for key, moduleName in sorted(data['containerTypedChildModules'].items()):
         out.append(f'import {cpp_block_module_name(moduleName)};')
@@ -444,43 +438,19 @@ def cpp_config_module_name(projectName, childBlock):
     # components (project, child) come from persisted data / projectOpen views.
     return f'{cpp_module_name(projectName)}.{cpp_module_name(childBlock)}.config'
 
-def cpp_variant_config_name(projectName, blockName, variant, isForeign=False):
-    # C++ struct name for a per-variant Config, spelled entirely in the template
-    # layer from the neutral (project, block, variant, isForeign) components a
-    # projectOpen view supplies. The bare tail `<block><Variant>Config` is the
-    # same-project spelling; a foreign (assembler-declared) variant is owner-
-    # qualified as `<project>_<block><Variant>Config` so two projects' same-named
-    # local variant of one reused child are DISTINCT C++ types. On a monolithic
-    # build nothing is foreign, so the bare form is emitted.
-    if variant == '':
-        bare = f'{blockName}Config'
-    else:
-        bare = f'{blockName}{variant[:1].upper()}{variant[1:]}Config'
-    if isForeign:
-        return f'{cpp_module_name(projectName)}_{bare}'
-    return bare
-
-
 def cpp_config_expression_name(expression):
     # C++ spelling of a persisted Config expression. A containerParam binding
     # composes the child's Config template with the concrete parent Config.
     if expression['kind'] == 'default':
         return expression['name']
-    descriptor = expression['descriptor']
-    name = cpp_descriptor_config_name(descriptor, '')
+    name = expression['descriptor']['structName']
     if expression['kind'] == 'template':
         return f'{name}<{cpp_config_expression_name(expression["container"])}>'
     return name
 
-def cpp_descriptor_config_name(desc, defaultConfig):
-    # Emitted C++ struct name for one neutral per-variant descriptor, as
-    # persisted by calcVariantConfigDescriptors. A descriptor with no Config
-    # fields emits as `defaultConfig`; otherwise it spells its own variant's
-    # struct.
-    if not desc['values']:
-        return defaultConfig
-    return cpp_variant_config_name(desc['declaringProject'], desc['block'],
-                                   desc['variant'], desc['isForeign'])
+def cpp_descriptor_config_name(desc):
+    # Called from pro (constructorTandem.py); base consumers read desc['structName'] directly.
+    return desc['structName']
 
 def cpp_config_struct_name(configSelection):
     # Emitted C++ Config struct name for a neutral per-instance selection from
@@ -496,7 +466,7 @@ def cpp_config_struct_name(configSelection):
     desc = configSelection['descriptor']
     if desc is None:
         return configSelection['defaultConfig']
-    name = cpp_descriptor_config_name(desc, configSelection['defaultConfig'])
+    name = desc['structName']
     if desc['containerSourced']:
         # A variant that sources parameters from its container emits a Config
         # TEMPLATE, so the site names it applied to the container's own Config:
@@ -542,17 +512,12 @@ def sc_channel_header_includes(intf_types, block_data):
     return [f'#include "{get_intf_defs(intfType, block_data)["sc_channel"]["type"]}_channel.h"'
             for intfType in sorted(intf_types)]
 
-def cpp_config_header_includes(data):
-    # `#include "<context>VariantConfig.h"` for each context whose per-variant
-    # Config structs this block's declarations name. Deliberately a textual header
-    # (a module's global module fragment, never its purview), so every unit that
-    # spells a Config type needs its own copy: names declared in another unit's
-    # global module fragment are reachable but NOT visible to an importer. Shared by
-    # the block class dependency set and by both testbench module units, which each
-    # name the DUT's Config.
-    return [f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"'
-            for context in sorted(data['configIncludeContext'])
-            if context in data['includeFiles'].get('config_hdr', {})]
+def cpp_own_config_import(data):
+    # Empty for a block parameterizable only through a contained child.
+    module = data['ownConfigModule']
+    if not module:
+        return []
+    return [f'import {cpp_config_module_name(module["project"], module["block"])};']
 
 def sc_base_dependency_includes(prj, data):
     # Dependency lines a block's Base/Inverted/Channels declaration
@@ -567,6 +532,9 @@ def sc_base_dependency_includes(prj, data):
     #     them: 'include' lines go in the global module fragment, 'import' lines
     #     after `export module`.
     out = list()
+    # A block-local derived constant may call clog2.
+    if data['blockUsesClog2']:
+        out.append(('include', '#include "clog2.h"'))
     block_intf_set = get_set_intf_types(data['interfaceTypes'], data)
     # With no interfaces the channel headers (which transitively pull the common
     # factory base) are absent, so include it directly.
@@ -631,10 +599,10 @@ def sc_class_dependency_includes(prj, data):
     thunker_protocols = sc_thunker_protocols(data, prj)
     for proto in sorted(thunker_protocols):
         out.append(('include', f'#include "{proto}_port_thunker.h"'))
-    for line in cpp_config_header_includes(data):
-        out.append(('include', line))
     # As an 'import' pair each is emitted inline in classic mode and, in a
     # block-module GMF caller, after `export module` alongside the context imports.
+    for line in cpp_own_config_import(data):
+        out.append(('import', line))
     for line in sc_instance_config_imports(data):
         out.append(('import', line))
     for context in data['classIncludeContext']:

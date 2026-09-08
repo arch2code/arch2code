@@ -1,57 +1,12 @@
 #!/usr/bin/env python3
-"""Parameterized interface across INDEPENDENTLY PARAMETERIZED PROJECT boundaries.
+"""Parameter/interface linkage across independently parameterized projects:
+the multi-project extension of test_param_const_linkage.py, composing three
+projects that each declare their own same-named WIDTH constant, dataIf
+interface, and block, wired A -> B -> C.
 
-The multi-project extension of `test_param_const_linkage.py`. That suite covers
-parameter/interface linkage within one project, where every declaration shares
-one file scope; this one composes three separately authored projects that each
-declare their OWN same-named `WIDTH` ipParameters constant, their OWN same-named
-parameterized interface `dataIf`, and their OWN parameterized block, plus an
-assembler project that instantiates all three and wires A -> B -> C.
-
-Fixture: `fixtures/param-cross-project`, copied into a temp tree per cell so the
-generated build manifest never lands in the committed fixture. Five assembler
-project files select five compositions over the same sub-projects.
-
-Correct-by-design behavior (these cells must pass):
-- The parameterized-endpoint rule reaches only an endpoint that carries the
-  connection's OWN interface declaration. An endpoint whose port carries its own
-  project's same-named declaration is a cross-interface bind, and the adapter
-  between the two sides is what reconciles them, so that endpoint declares and
-  sizes its payload from its own project's parameter identity and is exempt.
-  Whether the two payloads agree is then the layout check's question.
-- A same-key endpoint is still required to carry the connection interface's
-  parameter identity, and declaring a same-NAMED parameter in a different file
-  does not satisfy it. Parameter identity is the declaring-file qualified
-  constant key, so the diagnostic names the declaring file on both sides: that
-  identity is the whole disagreement.
-- The sanctioned de-parameterized boundary works across all three projects: the
-  assembler owns a literal-width interface, each endpoint keeps its own
-  parameterized interface, every leg is a cross-interface bind, and each bind
-  resolves the endpoint's OWN project's interface.
-- One shared declaration works across all three projects: the two downstream
-  projects reach the upstream project's `WIDTH` and `dataIf` through a YAML
-  `include:` instead of declaring their own, so all endpoints share one qualified
-  constant key and the straight-through wiring is accepted.
-- Two same-named interfaces owned by different projects are two declarations, so
-  a junction between them is adapted rather than bound, each end onto its own
-  project's payload. Sharing the bare name is the point: the decision cannot be
-  taken on names.
-- One shared interface declaration reached at three different Configs is likewise
-  adapted, on the producer end of each hop, since the channel takes the consumer
-  end's Config and a payload is a distinct C++ type per Config.
-
-Rules only this suite exercises:
-- Two same-named interfaces owned by different projects with different payload
-  widths fail the db build.
-- A block port whose interface is declared in another file of its own project
-  binds that declaration, in the declared-port resolution and in the
-  cross-interface thunker payload it feeds. A whole-database bare-name scan
-  would bind whichever project's interface it hit first.
-- On the shared `include:` path, a variant binding that exceeds the backing
-  constant's `maxValue` is rejected. The sizing check reaches the backing
-  constant through the resolved declaring file, not the block param's own file
-  qualification.
-"""
+Pins that parameter identity is the declaring-file qualified constant key,
+never the bare name: a same-named declaration elsewhere does not satisfy an
+endpoint, and two same-named interfaces from different projects are adapted rather than bound."""
 
 import os
 import shutil
@@ -198,17 +153,12 @@ def test_adapted_endpoint_exempt_from_parameter_rule():
 
 
 def test_same_key_endpoint_with_foreign_same_named_param_rejected():
-    _header("a same-key endpoint carrying a same-named parameter from another "
-            "file is still rejected, and the diagnostic names both files")
+    _header("a block's own file redeclaring a name its include chain already "
+            "reaches is rejected by rule 2, naming both declaring files")
     work = _copy_fixture('param_xproj_samename_param_')
     try:
-        # The accepted shared-include chain, with projBShared re-authored to
-        # declare its OWN WIDTH alongside the included one. Its ports still carry
-        # projA's dataIf - projBShared declares no interface - so both of its
-        # endpoints stay in scope for the rule, while `params: [WIDTH]` now
-        # resolves in its own file first and binds its own constant. This is the
-        # case that survives the narrowing and the one the old wording described
-        # worst: the block does declare a WIDTH, just not this WIDTH.
+        # Give projBShared its own WIDTH beside the included one, so bSharedTop.yaml
+        # sees two visible declarations and is rejected before the endpoint check.
         _edit_fixture_yaml(
             work, os.path.join('projBShared', 'yaml', 'bSharedTop.yaml'),
             "include:\n    - ../../projA/yaml/aTop.yaml\n",
@@ -220,33 +170,21 @@ def test_same_key_endpoint_with_foreign_same_named_param_rejected():
             "same-named width\" }\n")
         _db, out, rc = _build_db(work, 'sharedProject.yaml')
         if rc == 0:
-            print("  FAIL: a same-key endpoint backed by a different file's "
-                  "same-named parameter was accepted")
+            print("  FAIL: expected rule 2 to reject the redeclaration, "
+                  "build succeeded")
             return False
         if 'Traceback (most recent call last)' in out:
             print("  FAIL: got a Python stack trace instead of a clean error")
             print('  ' + '\n  '.join(out.split('\n')[:25]))
             return False
-        # Both halves of the identity must appear: the parameter the interface
-        # needs and the file it comes from, and the same-named one the block
-        # actually declares and the file THAT comes from. A message naming only
-        # the bare name is the recorded field defect.
-        expected = (
-            "Parameterized interface 'dataIf' (declared in ../../projA/yaml/aTop.yaml) "
-            "on the connection 'uA' -> 'uB' connects endpoint instance 'uB' "
-            "(block 'bSharedIp'), which does not declare the required parameter(s): "
-            "missing WIDTH (declared in ../../projA/yaml/aTop.yaml). A block reached "
-            "through a parameterized interface must itself carry the backing "
-            "parameter(s) so the payload is sized in its own module scope. The block "
-            "declares same-named parameter(s) from other file(s): WIDTH (declared in "
-            "../../projBShared/yaml/bSharedTop.yaml); a parameter is identified by the "
-            "file that declares it, so those are different parameters.")
-        if expected not in out:
-            print("  FAIL: endpoint diagnostic text changed")
-            print(f"  expected: {expected}")
+        missing = [p for p in ('bSharedIp', 'WIDTH', 'more than one visible declaration',
+                                'bSharedTop.yaml', 'aTop.yaml')
+                   if p not in out]
+        if missing:
+            print(f"  FAIL: expected patterns not found: {missing}")
             print('  ' + '\n  '.join(out.split('\n')[:25]))
             return False
-        print("  PASS: same-key shortfall rejected, both declaring files named")
+        print("  PASS: rule 2 rejected the redeclaration, naming both files")
         return True
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -600,6 +538,8 @@ def test_registrar_requirements_exclude_unreachable_child_harnesses():
     _header("registrar requirements contain only the active composition")
     work = _copy_fixture('param_xproj_registrar_reach_')
     try:
+        # harness0 rather than v0: uHarnessLeaf sits in aTop.yaml, which cannot
+        # see v0's declaration in the downstream adaptedTop.yaml.
         childArch = os.path.join(work, 'projA', 'yaml', 'aTop.yaml')
         with open(childArch, 'a') as f:
             f.write("""
@@ -607,7 +547,12 @@ def test_registrar_requirements_exclude_unreachable_child_harnesses():
         desc: "Referenced-project standalone harness outside the active top"
 
 instances:
-    uHarnessLeaf: { container: aHarness, instanceType: aIp, variant: v0 }
+    uHarnessLeaf: { container: aHarness, instanceType: aIp, variant: harness0 }
+
+parameters:
+    aIp:
+        harness0:
+            WIDTH: 8
 """)
         db, out, rc = _build_db(work, 'adaptedProject.yaml')
         if rc != 0:

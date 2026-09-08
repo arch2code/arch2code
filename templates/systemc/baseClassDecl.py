@@ -3,6 +3,7 @@ import textwrap
 import pysrc.intf_gen_utils as intf_gen_utils
 
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
+from templates.systemc.config import emitCStyleCanonical
 
 # Does not alter the rendering
 intf_gen_utils.LEGACY_COMPAT_MODE = True
@@ -198,22 +199,26 @@ def renderClass(args, prj, data, blockName, ifMapping, isParameterizable=False):
     out.append( indent + '};')
 
     if ifMapping['addConsts']:
-        # Class-local type aliases let derived/user code use the bare type name
-        # (no <Config>). Emitted at the END of the class body, AFTER the port
-        # declarations above: those ports declare NAME<Config>, and a same-named
-        # alias introduced before them would shadow the namespace template and
-        # break the port decls. An alias-declaration's own name is not in scope
-        # within its right-hand side, so `using NAME = NAME<Config>;` resolves
-        # NAME<Config> to the namespace template (brought in via using-namespace).
+        # Emitted at the end of the class body: declared earlier, these aliases
+        # would shadow the namespace template the port decls above need.
+        paramNameByKey = {p['paramSourceKey']: p['param']
+                          for p in data['blockInfo']['params'] or []}
+        localConstNameByKey = {
+            decl['declKey']: decl['body']['constant']
+            for decl in data['parameterizedDecls']
+            if decl['declKind'] == 'constant'
+        }
+        def symSpelling(symKey):
+            if symKey in paramNameByKey:
+                return f'Config::{paramNameByKey[symKey]}'
+            if symKey in localConstNameByKey:
+                return localConstNameByKey[symKey]
+            return str(prj.getConst(symKey))
         for decl in data['parameterizedDecls']:
             name = decl['body'][decl['declKind']]
-            # An eval-derived parameterizable constant lives on Config (like a
-            # block param); expose it as a class-local compile-time constant drawn
-            # from Config so bare-name use resolves, mirroring the block-param
-            # constants above. It is a value, not a type, so it takes no <Config>
-            # alias.
             if decl['declKind'] == 'constant':
-                out.append( indent + f'static constexpr auto {name} = Config::{name};')
+                rhs = emitCStyleCanonical(decl['body']['evalCanonical'], symSpelling)
+                out.append( indent + f'static constexpr auto {name} = {rhs};')
             else:
                 out.append( indent + f'using {name} = {name}<Config>;')
 

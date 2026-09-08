@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "xpCstIpVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -15,6 +14,8 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpCstBind_xpCstChkInc.block;
 import xpCstBind_xpCstChkInc.base;
+import xpCstBind.xpCstChkInc.config;
+import xpCstBind_xpCstSup;
 import xpCstIp;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
@@ -22,6 +23,7 @@ import xpCstIp;
 // headers that name module or Config types.
 import a2c.endOfTest;
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace xpCstBind_xpCstSup_ns;
 using namespace xpCstIp_ns;
 export template<typename Config>
 SC_MODULE(xpCstChkInc), public blockBase, public xpCstChkIncBase<Config>
@@ -38,7 +40,9 @@ public:
 
     // inherited parameterized types usable unqualified (no <Config>)
     using typename xpCstChkIncBase<Config>::csPixelT;
+    using typename xpCstChkIncBase<Config>::csIncPixelT;
     using typename xpCstChkIncBase<Config>::csDutSt;
+    using typename xpCstChkIncBase<Config>::csIncSt;
 
     xpCstChkInc(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpCstChkInc() override = default;
@@ -89,7 +93,7 @@ void xpCstChkInc<Config>::check(void)
         std::format("xpCstChkInc variant '{}' must resolve CS_PIXEL_WIDTH to {} but resolved {}",
             m_variant, expectedWidth(), (uint64_t)CS_PIXEL_WIDTH));
     m_eot.registerVoter();
-    csDutSt sample{};
+    csIncSt sample{};
     for (uint32_t i = 0; i < SAMPLE_COUNT; i++) {
         in->pushReceive(sample);
         in->ack();

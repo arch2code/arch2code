@@ -8,6 +8,10 @@ module;
 
 export module xpCstBind.xpCstChkInc.config;
 
+export struct xpCstBind_xpCstChkIncDefaultConfig {
+    static constexpr uint32_t CS_PIXEL_WIDTH = 12;
+};
+
 export struct xpCstBind_xpCstChkIncDfltConfig {
     static constexpr uint32_t CS_PIXEL_WIDTH = 12;
 };

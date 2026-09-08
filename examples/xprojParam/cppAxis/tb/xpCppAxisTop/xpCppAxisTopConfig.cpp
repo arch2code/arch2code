@@ -5,7 +5,6 @@
 #include <string>
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
-#include "xpCppWrapVariantConfig.h"
 import a2c.endOfTest;
 // GENERATED_CODE_END
 // user #includes and imports here

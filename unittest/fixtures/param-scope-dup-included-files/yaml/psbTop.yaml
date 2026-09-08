@@ -1,0 +1,20 @@
+# Declares no DUP_W itself; includes two files that each declare it.
+include:
+    - psbDeclA.yaml
+    - psbDeclB.yaml
+
+blocks:
+    top:
+        desc: "Root"
+    psbLeaf:
+        desc: "Names DUP_W, reachable through two visible declarations"
+        params: [DUP_W]
+
+instances:
+    uTop:  { container: top, instanceType: top }
+    uLeaf: { container: top, instanceType: psbLeaf, variant: v0 }
+
+parameters:
+    psbLeaf:
+        v0:
+            DUP_W: 2

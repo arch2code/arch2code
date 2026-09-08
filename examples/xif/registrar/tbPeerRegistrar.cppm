@@ -5,10 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xifVariantConfig.h"
 
 export module xif.xif_tbPeer.registrar;
 import xif_tbPeer.block;
+import xif.tbPeer.config;
 
 namespace {
 struct _tbPeer_registrar {
@@ -16,13 +16,13 @@ struct _tbPeer_registrar {
         instanceFactory::registerBlock(
             "tbPeer_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<tbPeer<tbPeerPv0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<tbPeer<xif_tbPeerPv0Config>>(blockName, variant, bbMode));
             },
             "pv0", "xif");
         instanceFactory::registerBlock(
             "tbPeer_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<tbPeer<tbPeerPv0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<tbPeer<xif_tbPeerPv0Config>>(blockName, variant, bbMode));
             },
             "pv0", "xif.xif_tb.xif_tbPeer");
     }

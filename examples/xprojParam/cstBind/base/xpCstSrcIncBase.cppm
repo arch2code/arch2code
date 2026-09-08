@@ -7,7 +7,9 @@ module;
 #include "push_ack_channel.h"
 
 export module xpCstBind_xpCstSrcInc.base;
+import xpCstBind_xpCstSup;
 import xpCstIp;
+using namespace xpCstBind_xpCstSup_ns;
 using namespace xpCstIp_ns;
 // GENERATED_CODE_END
 
@@ -20,8 +22,8 @@ public:
     virtual ~xpCstSrcIncBase() = default;
     static constexpr auto CS_PIXEL_WIDTH = Config::CS_PIXEL_WIDTH;
     // src ports
-    // csDutIf->uDutA: The IP's own parameterized pixel push/ack stream
-    push_ack_out< csDutSt<Config> > out;
+    // csIncIf->uDutA: Include-scope supporting blocks' own parameterized pixel push/ack stream
+    push_ack_out< csIncSt<Config> > out;
 
 
     xpCstSrcIncBase(std::string name, const char * variant) :
@@ -37,15 +39,17 @@ public:
         out->setLogging(verbosity);
     };
     using csPixelT = csPixelT<Config>;
+    using csIncPixelT = csIncPixelT<Config>;
     using csDutSt = csDutSt<Config>;
+    using csIncSt = csIncSt<Config>;
 };
 export template<typename Config>
 class xpCstSrcIncInverted : public virtual blockPortBase
 {
 public:
     // src ports
-    // csDutIf->uDutA: The IP's own parameterized pixel push/ack stream
-    push_ack_in< csDutSt<Config> > out;
+    // csIncIf->uDutA: Include-scope supporting blocks' own parameterized pixel push/ack stream
+    push_ack_in< csIncSt<Config> > out;
 
 
     xpCstSrcIncInverted(std::string name) :
@@ -66,8 +70,8 @@ class xpCstSrcIncChannels
 {
 public:
     // src ports
-    // The IP's own parameterized pixel push/ack stream
-    push_ack_channel< csDutSt<Config> > out;
+    // Include-scope supporting blocks' own parameterized pixel push/ack stream
+    push_ack_channel< csIncSt<Config> > out;
 
 
     xpCstSrcIncChannels(std::string name, std::string srcName) :

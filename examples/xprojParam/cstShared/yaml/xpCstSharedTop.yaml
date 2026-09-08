@@ -1,0 +1,44 @@
+# Stimulus and checker in separate files, both reaching one constant declared in
+# a definitions-only third file. Both resolve the bound 12, not the declared 8,
+# and assert it at run time.
+include:
+    - ./xpCstSharedSrc.yaml
+    - ./xpCstSharedChk.yaml
+
+blocks:
+    xpCstSharedTop:
+        desc: "Assembler top holding the one chain"
+        hasMdl: true
+        hasTb: true
+        hasVl: false
+        hasRtl: false
+    xpCstSharedTop_tb:
+        desc: "Testbench container for xpCstSharedTop"
+        hasMdl: false
+        hasTb: false
+        hasVl: false
+        hasRtl: false
+    xpCstSharedWrap:
+        desc: "Untemplated container of the chain"
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+
+instances:
+    xpCstSharedTop_tb: { container: xpCstSharedTop_tb, instanceType: xpCstSharedTop_tb, instGroup: top }
+    u_xpCstSharedTop:  { container: xpCstSharedTop_tb, instanceType: xpCstSharedTop,    instGroup: top }
+    uWrap:             { container: xpCstSharedTop,    instanceType: xpCstSharedWrap,   instGroup: top }
+    uSrc:              { container: xpCstSharedWrap,   instanceType: xpCstSharedSrc,    instGroup: top, variant: use }
+    uChk:              { container: xpCstSharedWrap,   instanceType: xpCstSharedChk,    instGroup: top, variant: use }
+
+connections:
+    - { interface: cshIf, src: uSrc, srcport: out, dst: uChk, dstport: in }
+
+parameters:
+    xpCstSharedSrc:
+        use:
+            CSH_WIDTH: 12
+    xpCstSharedChk:
+        use:
+            CSH_WIDTH: 12

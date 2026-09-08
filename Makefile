@@ -208,47 +208,66 @@ xproj-matrix-probes:
 
 .PHONY : xproj-const
 # One value, one named constant, every block that has to agree on it. The IP
-# owns the knob and its default; the assembler states its use-case value once
-# and every variant in that cell - the supporting blocks' and the foreign DUT's
-# alike - binds that one constant. Every cell drives four samples through
-# generated thunkers and every block asserts the width it resolved.
-# Shares no sub-project with any other target, so it needs no ordering.
-#
-# cstUse is the third cell: a supporting block NAMING the IP's constant in its
-# own params: while the assembler binds a NON-default value. Every block in the
-# chain resolves the bound width, so the whole chain agrees on one number that
-# is stated once. Shares cstIp with the cells above, so it is sequenced after
-# them rather than run alongside.
+# owns the knob and its default; the assembler states its use-case value once,
+# and every variant in the cell, supporting blocks and foreign DUT alike, binds
+# that constant. Each cell drives four samples through generated thunkers and
+# every block asserts the width it resolved.
+# cstUse: a supporting block names the IP's constant in its own params: while
+# the assembler binds a non-default value. Shares cstIp with cstBind, so it runs after it.
+# cstShared: a definitions-only file with no blocks: declares one parameter and
+# two unrelated including files each name it. Standalone, so it needs no ordering.
 xproj-const:
 	make -C $(XPROJ_PARAM_DIR)/cstIp -j gen
 	make -C $(XPROJ_PARAM_DIR)/cstBind -j gen
 	make -C $(XPROJ_PARAM_DIR)/cstBind/rundir -j run
 	make -C $(XPROJ_PARAM_DIR)/cstUse -j gen
 	make -C $(XPROJ_PARAM_DIR)/cstUse/rundir -j run
+	make -C $(XPROJ_PARAM_DIR)/cstShared -j gen
+	make -C $(XPROJ_PARAM_DIR)/cstShared/rundir -j run
 
 .PHONY : xproj-depth
 # containerParam inheritance through two project levels: the customer states one
-# algorithm on the wrapper it owns; the mid-level IP declares that parameter but
-# states no value for it, sourcing it from its container; and the leaf nested
-# inside the mid resolves it. The mid never declares the leaf's DP_ALGO at all.
-# Three customer chains resolve to three different algorithms; each checker
-# asserts, per sample, that the leaf stamped the algorithm its own Config
-# declares, so a broken link fails the run.
+# algorithm on the wrapper it owns; the mid-level IP declares that parameter,
+# states no value for it, and sources it from its container; the leaf nested in
+# the mid resolves it. Three customer chains resolve to three algorithms and each
+# checker asserts, per sample, the algorithm the leaf's own Config declares.
 # dpMid generates only: its standalone top's driver and sink are empty scaffolds,
 # so its own run cannot reach an end of test. dpTop is the buildable top.
-# Shares no sub-project with any other target, so it needs no ordering.
-#
-# dpTop also carries the foreign-Config gate for the testbench External. Its
-# testbench container holds xpDpTbPeer instances - PEERS of the DUT, the only
-# shape in which the External emits parameterizable instances - at assembler-
-# declared variants, so the External must import the owner-qualified Config
-# module that declares their structs. Without that import this target fails to
-# compile on an undeclared Config struct name.
+# xproj-twoctx also regenerates dpLeaf and is ordered after this target.
+# dpTop's testbench container holds xpDpTbPeer instances at assembler-declared
+# variants, so the External must import the owner-qualified Config module that
+# declares their structs; without it this target fails on an undeclared struct name.
+# dpMid's DP_WIDTH is reached through include: scope, so the emitted RTL must
+# spell it as the module parameter rather than the constant's default literal.
 xproj-depth:
 	make -C $(XPROJ_PARAM_DIR)/dpLeaf -j gen
 	make -C $(XPROJ_PARAM_DIR)/dpMid -j gen
+	@if ! grep -q 'logic\[DP_WIDTH-1:0\] dpPixelT' $(XPROJ_PARAM_DIR)/dpMid/rtl/xpDpMid.sv; then \
+	    echo "ERROR: xpDpMid.sv did not spell the include-reached parameter DP_WIDTH on dpPixelT"; \
+	    exit 1; \
+	fi
 	make -C $(XPROJ_PARAM_DIR)/dpTop -j gen
 	make -C $(XPROJ_PARAM_DIR)/dpTop/rundir -j run
+
+.PHONY : xproj-twoctx
+# The two-context block: params: names one constant from an included file and
+# one from its own file, both bound to non-default values, and each block's
+# Config carries only the parameters it names. A derived localparam over the
+# include-reached parameter must spell the module parameter, not the default literal.
+xproj-twoctx:
+	make -C $(XPROJ_PARAM_DIR)/dpLeaf -j gen
+	make -C $(XPROJ_PARAM_DIR)/twoCtx -j gen
+	@if ! grep -q 'localparam DP_WIDTH_X2 = DP_WIDTH \* 2' $(XPROJ_PARAM_DIR)/twoCtx/rtl/xpTwoCtxDut.sv; then \
+	    echo "ERROR: xpTwoCtxDut.sv did not spell the include-reached parameter DP_WIDTH on localparam DP_WIDTH_X2"; \
+	    exit 1; \
+	fi
+	@if ! grep -q 'localparam DP_WIDTH_X2 = DP_WIDTH \* 2' $(XPROJ_PARAM_DIR)/twoCtx/rtl/xpTwoCtxBare.sv; then \
+	    echo "ERROR: xpTwoCtxBare.sv did not spell the include-reached parameter DP_WIDTH on localparam DP_WIDTH_X2"; \
+	    exit 1; \
+	fi
+	make -C $(XPROJ_PARAM_DIR)/twoCtx/rundir -j run
+
+xproj-twoctx: | xproj-depth
 
 .PHONY : xproj-inherit
 # The other parameter-inheritance mechanism: inheritContainerParam types a
@@ -343,20 +362,15 @@ xif:
 	make -C $(XIF_DIR)/rundir run
 
 .PHONY : xproj-param-probes
-# The recorded compile failures, both EXPECTED to fail to compile and so
-# deliberately outside pipeline-test. deparam is the cross-project one: three
+# Expected to fail to compile, so kept outside pipeline-test: deparam has three
 # sub-project namespaces exporting the same payload identifier; see
-# examples/xprojParam/README.md. twoCtx is the two-context block whose Config
-# drops the losing context's derived constant; see
-# examples/xprojParam/twoCtx/README.md.
+# examples/xprojParam/README.md.
 xproj-param-probes:
 	make -C $(XPROJ_PARAM_DIR)/gain -j gen
 	make -C $(XPROJ_PARAM_DIR)/filter -j gen
 	make -C $(XPROJ_PARAM_DIR)/sink -j gen
 	make -C $(XPROJ_PARAM_DIR)/deparam -j gen
 	-make -C $(XPROJ_PARAM_DIR)/deparam/rundir -j all
-	make -C $(XPROJ_PARAM_DIR)/twoCtx -j gen
-	-make -C $(XPROJ_PARAM_DIR)/twoCtx/rundir -j all
 
 .PHONY : hello-world
 hello-world:
@@ -465,7 +479,7 @@ unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-inherit xproj-container-layout xproj-variant-unique xif
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-variant-unique xif
 push-test: clean unittest pipeline-test
 
 # AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).

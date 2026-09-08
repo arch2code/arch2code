@@ -1,0 +1,8 @@
+# First of two files consuming the shared definitions-only declaration.
+include:
+    - pscDefs.yaml
+
+blocks:
+    pscSrc:
+        desc: "Names the shared parameter"
+        params: [SHARED_C]

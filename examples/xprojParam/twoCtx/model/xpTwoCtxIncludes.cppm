@@ -237,14 +237,17 @@ using namespace xpTwoCtx_ns;
 struct xpTwoCtxTestConfigDefault {
     static constexpr uint32_t TC_GAIN = 2;
     static constexpr uint32_t TC_GAIN_X2 = TC_GAIN * 2;
+    static constexpr uint32_t DP_WIDTH_X2 = 8 * 2;
 };
 struct xpTwoCtxTestConfigMid {
     static constexpr uint32_t TC_GAIN = 7;
     static constexpr uint32_t TC_GAIN_X2 = TC_GAIN * 2;
+    static constexpr uint32_t DP_WIDTH_X2 = 8 * 2;
 };
 struct xpTwoCtxTestConfigMax {
     static constexpr uint32_t TC_GAIN = 15;
     static constexpr uint32_t TC_GAIN_X2 = TC_GAIN * 2;
+    static constexpr uint32_t DP_WIDTH_X2 = 8 * 2;
 };
 std::string test_xpTwoCtx_structs::name(void) { return "test_xpTwoCtx_structs"; }
 void test_xpTwoCtx_structs::test(void) {

@@ -37,10 +37,11 @@ identifier names** across the three projects, matching the field shape where
 several sub-project namespaces export the same payload spelling. The prefixed
 (`Uniq`) sets are the same topology with names that cannot collide.
 
-The upstream project's own block consumes `PIXEL_WIDTH`. That is required, not
-incidental: an exposed `ipParameters` constant must be consumed by a block param
-declared in the **same file**, so an upstream project cannot publish a parameter
-purely for downstream projects to `include:`.
+The upstream project's own block consumes `PIXEL_WIDTH`, because that block is
+what these chains configure; nothing in the generator requires it. Rule 1
+(design-parameter-inheritance.md) lets a declaration go unconsumed by its own
+file, so an upstream project may publish a parameter purely for downstream
+projects to `include:`; see `cstShared` under the shared-constant family.
 
 ## Chain behaviour
 
@@ -294,8 +295,10 @@ them rather than because they are being fixed here.
   closed; the map scan still classifies a mapped child's own surface from the
   map's parent interface rather than from the child's declared port. The
   `cppLeaf` blocks are mapped from `xpCppWrap`'s own parameterizable interfaces,
-  so their Config structs are emitted in `xpCppWrap`'s context. A variant
-  binding declared in `cppLeaf`'s own file is then attributed to a project that owns neither that
+  so their Config structs are homed in the project owning `xpCppWrap`'s
+  context (`xpCppAxis`), in that project's own registrar-domain Config
+  module for each `cppLeaf` block. A variant binding declared in `cppLeaf`'s
+  own file is then attributed to a project that owns neither that
   context nor the instantiating assembler, and no descriptor is selected: the
   child instance falls back to the container's default Config, which does not
   carry the child's parameter and does not compile. The bindings are therefore
@@ -398,24 +401,25 @@ and `uSink` are typed at `xpFilterShared_xpFilterSharedV0Config` and
 `xpSinkShared_xpSinkSharedV0Config`; each stage asserts the bound 8 and would
 fail on the vendor default.
 
-### Placing a declaring project's own foreign Config
+### Placing a declaring project's own Config module
 
-The two structs above are owner-qualified and land in the declaring project's
-registrar domain, the shape `dpMid/registrar/xpDpMid_xpDpMidVariantConfig.cppm`
-already has:
-`filterShared/registrar/xpFilterShared_xpFilterSharedVariantConfig.cppm` and its
-`sinkShared` peer.
+Every emitted Config, native or foreign alike, is owner-qualified and lands in
+its declaring project's own registrar domain, one module per (declaring
+project, block): the shape `dpMid/registrar/xpDpMid_xpDpMidVariantConfig.cppm`
+already has, and `filterShared/registrar/xpFilterShared_xpFilterSharedVariantConfig.cppm`
+and its `sinkShared` peer.
 
 `newModule` and `createBuildManifest` enumerate these from the
-`(declaringProject, block)` pairs `calcForeignConfigHeaders` records rather than
-from assembler instances, so a project that declares a variant and instantiates
-nothing still emits its own Config. That same record names the block whose
-registrar domain hosts the artifact, which is the declaring project's
-lowest-keyed assembler of the child, or the child itself when that project
-assembles nothing. Hence the stamp here reads `--block=xpFilterShared
---parent=xpFilterShared`, and `getForeignConfigData` still derives the owner from
-the parent. Regeneration belongs to the declaring project; `shared` compiles both
-modules without regenerating either.
+`(declaringProject, block)` pairs `calcConfigModules` records rather than from
+assembler instances, so a project that declares a variant and instantiates
+nothing still emits its own Config, and the project owning a block's default
+gets its module the same way even absent any declared variant. That same
+record names the block whose registrar domain hosts the artifact, which is the
+declaring project's lowest-keyed assembler of the child, or the child itself
+when that project assembles nothing. Hence the stamp here reads
+`--block=xpFilterShared --parent=xpFilterShared`, and `getForeignConfigData`
+still derives the owner from the parent. Regeneration belongs to the declaring
+project; `shared` compiles both modules without regenerating either.
 
 ## The three-party parameterization matrix (`mtxIp` + `mtx*`)
 
@@ -618,7 +622,7 @@ make xproj-matrix-probes    # mtxBare's db-time rejection, asserted to fail
 `make xproj-matrix` and `make xproj-reuse` are both part of `pipeline-test`;
 `xproj-matrix-probes` is not, because its cell is expected to fail.
 
-## The shared-constant family (`cstIp` + `cstBind` + `cstUse`)
+## The shared-constant family (`cstIp` + `cstBind` + `cstUse` + `cstShared`)
 
 A fourth, independent family. The families above vary how a *declaration* is
 reached across a boundary; this one varies how a **value** is. One question:
@@ -633,13 +637,16 @@ block that binds it?
 | `cstIp/` | `xpCstIp` | the parameterizable IP: owns `CS_PIXEL_WIDTH`, its default, and the DUT block | generates |
 | `cstBind/` | `xpCstBind` | assembler: the supporting blocks, and two cells binding two different constants | **builds and runs** |
 | `cstUse/` | `xpCstUse` | the supporting blocks NAME the IP's constant, at a non-default value | **builds and runs** |
+| `cstShared/` | `xpCstShared` | a definitions-only file with no blocks of its own declares one parameter; two unrelated blocks name it | **builds and runs** |
 
 `cstIp/yaml/xpCstIp.yaml` knows nothing about any consumer. It declares
 `CS_PIXEL_WIDTH: {value: 12, maxValue: 32}` in `ipParameters`, consumes it in
-its own `xpCstDut` block's `params:` — which the orphan rule requires, and which
-is why an IP cannot publish a parameter purely for downstream files to
-`include:` — and binds its own default variant as `CS_PIXEL_WIDTH:
-CS_PIXEL_WIDTH`, the symbolic form, so the default value is stated once.
+its own `xpCstDut` block's `params:`, and binds its own default variant as
+`CS_PIXEL_WIDTH: CS_PIXEL_WIDTH`, the symbolic form, so the default value is
+stated once. Rule 1 (design-parameter-inheritance.md) does not require this
+same-file consumer: a declaration needs no consumer of its own, so a
+definitions-only file may declare one purely for downstream files to
+`include:`; see `cstShared` below.
 
 `cstBind/yaml/xpCstSup.yaml` `include:`s that IP root and declares the
 supporting blocks. `cstBind/yaml/xpCstBindTop.yaml` declares this assembler's
@@ -668,9 +675,10 @@ The emitted Configs are where the value lands, and cell B's 20 — stated once i
 `CS_USE_WIDTH` — reaches all three:
 
 ```cpp
-// cstBind/model/xpCstSupVariantConfig.h
-struct xpCstSrcOwnUseConfig { static constexpr uint32_t CS_OWN_WIDTH   = 20; };
-struct xpCstChkOwnUseConfig { static constexpr uint32_t CS_OWN_WIDTH   = 20; };
+// cstBind/registrar/xpCstBind_xpCstSrcOwnVariantConfig.cppm
+export struct xpCstBind_xpCstSrcOwnUseConfig { static constexpr uint32_t CS_OWN_WIDTH   = 20; };
+// cstBind/registrar/xpCstBind_xpCstChkOwnVariantConfig.cppm
+export struct xpCstBind_xpCstChkOwnUseConfig { static constexpr uint32_t CS_OWN_WIDTH   = 20; };
 // cstBind/registrar/xpCstBind_xpCstDutVariantConfig.cppm
 export struct xpCstBind_xpCstDutUseConfig
                             { static constexpr uint32_t CS_PIXEL_WIDTH = 20; };
@@ -707,10 +715,11 @@ Both are exercised, and both work: a variant binding's value may be an ordinary
 constant reached through `include:` (`CS_PIXEL_WIDTH`, cell A). The schema types
 the field `value: const` (`config/schema.yaml:~326`), which resolves any
 constant or enum visible in the binding row's own include scope; nothing
-restricts it to parameterizable ones. That matters, because an assembler's
-use-case constant *cannot* be an `ipParameters` one: it is used as a value and
-is named by no block's `params:`, so it would have no same-file block param to
-consume it and would fail the orphan rule.
+restricts it to parameterizable ones. `CS_USE_WIDTH` is a plain constant here
+because it plays the peer-value-sharing role this design assigns a plain
+constant (design-parameter-inheritance.md §1): the assembler states a number
+once and every binding names it, with no block treating it as a parameter of
+its own.
 
 ### Variant completeness
 
@@ -781,9 +790,8 @@ by `include:` the two differ. Every consumer that needs the constant reads the
 source link: the layout gate's binding resolver (`SiteBindingIndex`, feeding
 `checkInterfacePair`), the `maxValue` sizing check
 (`_post_validateVariantBindingSizing`), the parameterized declaration sets
-(`deriveParameterizedDeclSets`), the Config context (`calcBlockConfigInfo`), the
-orphan check (`_validateIpParametersLinkage`), and the SystemVerilog
-module-parameter spelling (`templates/systemVerilog/package.py`).
+(`deriveParameterizedDeclSets`), the Config context (`calcBlockConfigInfo`), and
+the SystemVerilog module-parameter spelling (`templates/systemVerilog/package.py`).
 
 Before that link existed this cell was a probe asserted to FAIL. The binding was
 filed under the block's file, was never found, and the supporting blocks fell
@@ -794,32 +802,50 @@ two sides the author had bound identically, while the emitted C++ Config carried
 silent acceptance of a real divergence, are recorded in
 [`../../plans/plan-parameter-sharing.md`](../../plans/plan-parameter-sharing.md) §5 B1.
 
-**A separate gap on the same path, met while shaping `cstBind`.** A structure
-declared in the *including* file whose width comes from the *included* constant
-does not compile: the per-context round-trip test structs
-(`--template=structures --section=testStructsCPP`) are instantiated at Configs
-built from that context's own parameterizable constants, which do not carry the
-included one.
+A separate gap on the same path, met while shaping `cstBind`, is fixed. A
+structure declared in the *including* file whose width comes from the
+*included* constant failed to compile. The per-context round-trip test structs
+(`--template=structures --section=testStructsCPP`) were instantiated at Configs
+built from that context's own parameterizable constants only, so a field sized
+from the included one had nothing to read.
 
 ```
 model/xpCstSupIncludes.cppm:52:55: fatal error: no member named 'CS_PIXEL_WIDTH'
    in 'xpCstBind_xpCstSup_test_ns::xpCstSupTestConfigDefault'
 ```
 
-That is why `cstBind`'s Inc blocks carry the IP's own `csDutIf` rather than a
-payload of their own. They still get their own Config and their own thunker, so
-nothing about the boundary shape is lost. This gap is independent of the value
-path and is still open.
+`projectOpen._sampleConfigConstants` (`pysrc/processYaml.py`) builds each
+context's sample Config from its own parameterizable constants plus, for every
+structure declared there, the base constants its fields reach through a width
+or array-size reference, wherever declared, so the sample Config carries
+`CS_PIXEL_WIDTH` too. The Inc pair carries a payload structure of its own,
+`csIncSt`, over the included constant directly, field-for-field the same as
+the IP's `csDutSt`, and the round trip builds and passes at every sample
+point.
+
+### `cstShared`: a definitions-only file declares the constant
+
+Rule 1's positive case: `xpCstSharedDefs.yaml` has no `blocks:` at all. It
+declares `CSH_WIDTH: {value: 8, maxValue: 32}` in `ipParameters`, plus the
+parameterizable type, structure and interface built over it, and consumes none
+of it itself. Two unrelated files, `xpCstSharedSrc.yaml` and
+`xpCstSharedChk.yaml`, each `include:` it and name `CSH_WIDTH` in a block's own
+`params:`; the assembler binds both to 12, the constant's non-default value,
+and each block asserts its own resolved `CSH_WIDTH` against that number before
+driving or checking four samples. The checker votes the test done once every
+field of every sample checks out: the run reports `checked 4 samples at pixel
+width 12`.
 
 ### Build and run
 
 ```
-make xproj-const            # all three cells build and run
+make xproj-const            # all four cells build and run
 ```
 
 `make xproj-const` is part of `pipeline-test`. It shares no sub-project with any
 other target, so it needs no ordering against them. `cstUse` shares `cstIp` with
 the cells above it and is therefore sequenced after them within the target.
+`cstShared` is standalone and needs no ordering against any of the other three.
 
 ## The depth family (`dpLeaf` + `dpMid` + `dpTop`)
 
@@ -850,8 +876,8 @@ rejects and what it does not yet do.
 make xproj-depth            # dpLeaf, dpMid, dpTop generate; dpTop runs
 ```
 
-`make xproj-depth` is part of `pipeline-test`. It shares no sub-project with any
-other target, so it needs no ordering against them. `dpMid` generates but does
+`make xproj-depth` is part of `pipeline-test`. `xproj-twoctx` also regenerates
+`dpLeaf`, so it is ordered after this target. `dpMid` generates but does
 not run: its standalone top's driver and sink are empty scaffolds, so its own
 run cannot reach an end of test. `dpTop` is the buildable top.
 
@@ -890,3 +916,29 @@ make xproj-inherit          # inhVar generates and runs
 
 `make xproj-inherit` is part of `pipeline-test`. It shares no sub-project with
 any other target, so it needs no ordering.
+
+## The two-context block (`twoCtx`)
+
+One block, `xpTwoCtxDut`, whose `params:` names one parameterizable constant
+from an included file (`dpLeaf`'s `DP_WIDTH`) and one from its own file
+(`TC_GAIN`), both bound to non-default values by one variant. Before the Config
+field set was narrowed to the parameters a block names, the emitted Config took
+every parameterizable constant of one context, so this block's Config carried
+`DP_ALGO`, which it never names, and lost the other context's derived
+`TC_GAIN_X2`, which its Base class did name. It did not compile.
+
+Now each block's Config carries exactly the parameters it names, and derived
+constants are computed in the Base class. The run checks the values, not the
+generation. `xpTwoCtxDut` and `xpTwoCtxSnk` reach `TC_GAIN` through different
+contexts and must agree on it, and both `xpTwoCtxDut` and `xpTwoCtxBare`, the
+params-only block whose context is chosen by `params:` order, assert the bound
+values at run time.
+See `twoCtx/README.md`.
+
+```
+make xproj-twoctx           # runs xproj-depth first, then twoCtx generates and runs
+```
+
+`make xproj-twoctx` is part of `pipeline-test`. It shares `dpLeaf` with
+`xproj-depth`, so it is an order-only dependent of that target, which also
+means a standalone `make xproj-twoctx` runs the depth family first.

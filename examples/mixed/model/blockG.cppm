@@ -8,12 +8,12 @@ module;
 #include "instanceFactory.h"
 #include "apb_channel.h"
 #include "status_channel.h"
-#include "mixedVariantConfig.h"
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module mixed_blockG.block;
 import mixed_blockG.base;
+import mixed.blockG.config;
 import mixed_blockGRegs.block;
 import mixed;
 import mixed_blockGLeaf.base;

@@ -1,0 +1,15 @@
+# One of two files consuming the shared definitions-only declaration; neither
+# redeclares CSH_WIDTH, both reach it by include: scope.
+include:
+    - ./xpCstSharedDefs.yaml
+
+blocks:
+    xpCstSharedSrc:
+        desc: "Stimulus naming the shared CSH_WIDTH by include scope"
+        params: [CSH_WIDTH]
+        hasMdl: true
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: cshIf, direction: src }

@@ -7,8 +7,6 @@
 #include "blockBase.h"
 #include "ip_top_hdl_sc_wrapper.h"
 #include "Vip_top_hdl_sv_wrapper.h"
-#include "ipVariantConfig.h"
-#include "srcVariantConfig.h"
 
 namespace {
 struct _ip_top_vl_registrar {

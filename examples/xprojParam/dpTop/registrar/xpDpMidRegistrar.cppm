@@ -5,7 +5,6 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpDpLeafVariantConfig.h"
 
 export module xpDpTop.xpDpMid.registrar;
 import xpDpMid.block;

@@ -55,19 +55,9 @@ def render(args, prj, data):
         seenHdr.add(hdr)
         out.append(f'#include "{hdr}"')
 
-    # Same-project Config-policy header(s) for the concrete Config types the
-    # parameterized lambda spells (the block view owns this selection).
-    configContexts = set(data['configIncludeContext']) \
-        | set(registrarConfig['configHeaderContexts'])
-    for context in sorted(configContexts):
-        if context in data['includeFiles'].get('config_hdr', {}):
-            out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
-
-    # Owner-qualified foreign-Config modules for the variants registered below;
-    # imported (not #included) so the lambda body spells the owner-qualified
-    # Config type on the SAME module the container imports, keeping the
-    # container's dynamic_pointer_cast non-null.
-    for mod in registrarConfig['verifForeignConfigModules']:
+    # Imported from the same module the container imports; a second declaration
+    # would give the container's dynamic_pointer_cast mismatched RTTI.
+    for mod in registrarConfig['verifConfigModules']:
         out.append(f'import {intf_gen_utils.cpp_config_module_name(mod["project"], mod["block"])};')
 
     out.append('')

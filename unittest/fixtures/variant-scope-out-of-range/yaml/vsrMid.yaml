@@ -1,0 +1,12 @@
+# uLeaf's own file. Its scope is this file plus vsrLeaf.yaml; vsrTop.yaml
+# declares the label but includes this file rather than the reverse, so that
+# declaration is out of uLeaf's scope.
+include:
+    - vsrLeaf.yaml
+
+blocks:
+    vsrMid:
+        desc: "Contains the leaf instance naming an out-of-scope variant"
+
+instances:
+    uLeaf: { container: vsrMid, instanceType: vsrLeaf, variant: v1 }

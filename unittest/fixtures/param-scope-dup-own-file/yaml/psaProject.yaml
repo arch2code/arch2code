@@ -1,0 +1,15 @@
+# A params: name declared in a block's own file and in a file it includes is
+# rejected; the own-file declaration shadows nothing.
+yamlFormat: 2
+projectName: psaScope
+
+projectFiles:
+    - psaTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

@@ -1,0 +1,31 @@
+# Single-project cell: a leaf block's params: names an eval-derived constant.
+
+yamlFormat: 2
+projectName: bpeTest
+
+projectFiles:
+    - ../../yaml/bpeTop.yaml
+
+topInstance: bpeTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

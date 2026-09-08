@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "xifVariantConfig.h"
 #include "push_ack_port_thunker.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
@@ -16,9 +15,14 @@ module;
 export module xif_dut.external;
 import a2c.endOfTest;
 import xif_dut.base;
+import xif.xif_tb.config;
 import xif_tbPeer.base;
 import xif_src.base;
 import xif_sink.base;
+import xif.dut.config;
+import xif.sink.config;
+import xif.src.config;
+import xif.tbPeer.config;
 import xif_tbPeer.block;
 import xif;
 // GENERATED_CODE_END
@@ -29,31 +33,31 @@ import xif;
 
 using namespace xif_ns;
 
-export class dutExternal: public sc_module, public dutInverted<dutDutV0Config> {
+export class dutExternal: public sc_module, public dutInverted<xif_dutDutV0Config> {
 
     logBlock log_;
 
 public:
 
-    std::shared_ptr<tbPeerBase<tbPeerPv0Config>> uTbPeerA;
-    std::shared_ptr<tbPeerBase<tbPeerPvSourcedConfig<xif_tbTbV0Config>>> uTbPeerB;
-    std::shared_ptr<srcBase<srcSrcV0Config>> uSrc;
-    std::shared_ptr<sinkBase<sinkSinkV0Config>> uSink;
+    std::shared_ptr<tbPeerBase<xif_tbPeerPv0Config>> uTbPeerA;
+    std::shared_ptr<tbPeerBase<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>> uTbPeerB;
+    std::shared_ptr<srcBase<xif_srcSrcV0Config>> uSrc;
+    std::shared_ptr<sinkBase<xif_sinkSinkV0Config>> uSink;
 
     SC_HAS_PROCESS (dutExternal);
 
     dutExternal(sc_module_name modulename);
 
     // Parameterized DUT stream (also the connection interface A)
-    push_ack_channel< streamSt<tbPeerPvSourcedConfig<xif_tbTbV0Config>> > out_0;
+    push_ack_channel< streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>> > out_0;
     // Parameterized DUT stream (also the connection interface A)
-    push_ack_channel< streamSt<tbPeerPv0Config> > out_1;
+    push_ack_channel< streamSt<xif_tbPeerPv0Config> > out_1;
 
     // cross-interface thunkers
-    push_ack_port_thunker<streamSt<tbPeerPvSourcedConfig<xif_tbTbV0Config>>, streamSt<tbPeerPv0Config>, true> thunker_out_0_uTbPeerA;
-    push_ack_port_thunker<streamSt<tbPeerPv0Config>, streamSt<tbPeerPvSourcedConfig<xif_tbTbV0Config>>, true> thunker_out_1_uTbPeerB;
-    push_ack_port_thunker<streamSt<dutDutV0Config>, streamBndrySt, false> thunker_out_uSrc;
-    push_ack_port_thunker<streamSt<dutDutV0Config>, streamBndrySt, false> thunker_streamOut_uSink;
+    push_ack_port_thunker<streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>, streamSt<xif_tbPeerPv0Config>, true> thunker_out_0_uTbPeerA;
+    push_ack_port_thunker<streamSt<xif_tbPeerPv0Config>, streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>, true> thunker_out_1_uTbPeerB;
+    push_ack_port_thunker<streamSt<xif_dutDutV0Config>, streamBndrySt, false> thunker_out_uSrc;
+    push_ack_port_thunker<streamSt<xif_dutDutV0Config>, streamBndrySt, false> thunker_streamOut_uSink;
 
     // Thread monitoring the end of test event to stop simulation
     void eotThread(void) {
@@ -69,13 +73,13 @@ public:
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
 
 dutExternal::dutExternal(sc_module_name modulename) :
-    dutInverted<dutDutV0Config>("Chnl"),
+    dutInverted<xif_dutDutV0Config>("Chnl"),
     log_(name())
 
-   ,uTbPeerA(std::dynamic_pointer_cast<tbPeerBase<tbPeerPv0Config>>(instanceFactory::createInstance(name(), "uTbPeerA", "tbPeer", "pv0", "xif.xif_tb.xif_tbPeer")))
-   ,uTbPeerB(std::dynamic_pointer_cast<tbPeerBase<tbPeerPvSourcedConfig<xif_tbTbV0Config>>>(instanceFactory::createInstance<tbPeer<tbPeerPvSourcedConfig<xif_tbTbV0Config>>>(name(), "uTbPeerB", "tbPeer", "pvSourced", "xif.xif_tb.xif_tbPeer")))
-   ,uSrc(std::dynamic_pointer_cast<srcBase<srcSrcV0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "srcV0", "xif.xif_tb.xif_src")))
-   ,uSink(std::dynamic_pointer_cast<sinkBase<sinkSinkV0Config>>(instanceFactory::createInstance(name(), "uSink", "sink", "sinkV0", "xif.xif_tb.xif_sink")))
+   ,uTbPeerA(std::dynamic_pointer_cast<tbPeerBase<xif_tbPeerPv0Config>>(instanceFactory::createInstance(name(), "uTbPeerA", "tbPeer", "pv0", "xif.xif_tb.xif_tbPeer")))
+   ,uTbPeerB(std::dynamic_pointer_cast<tbPeerBase<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>>(instanceFactory::createInstance<tbPeer<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>>(name(), "uTbPeerB", "tbPeer", "pvSourced", "xif.xif_tb.xif_tbPeer")))
+   ,uSrc(std::dynamic_pointer_cast<srcBase<xif_srcSrcV0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "srcV0", "xif.xif_tb.xif_src")))
+   ,uSink(std::dynamic_pointer_cast<sinkBase<xif_sinkSinkV0Config>>(instanceFactory::createInstance(name(), "uSink", "sink", "sinkV0", "xif.xif_tb.xif_sink")))
    ,out_0("out_0", "uTbPeerA")
    ,thunker_out_0_uTbPeerA("thunker_out_0_uTbPeerA", out_0, uTbPeerA->out, name())
    ,out_1("out_1", "uTbPeerB")

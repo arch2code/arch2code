@@ -8,6 +8,10 @@ module;
 
 export module xpFilterShared.xpFilterShared.config;
 
+export struct xpFilterShared_xpFilterSharedDefaultConfig {
+    static constexpr uint32_t PIXEL_WIDTH = 12;
+};
+
 export struct xpFilterShared_xpFilterSharedV0Config {
     static constexpr uint32_t PIXEL_WIDTH = 8;
 };

@@ -8,6 +8,11 @@ module;
 
 export module xpDpTop.xpDpChk.config;
 
+export struct xpDpTop_xpDpChkDefaultConfig {
+    static constexpr uint32_t DP_ALGO = 1;
+    static constexpr uint32_t DP_WIDTH = 8;
+};
+
 export struct xpDpTop_xpDpChkCustomerConfig {
     static constexpr uint32_t DP_ALGO = 5;
     static constexpr uint32_t DP_WIDTH = 8;
@@ -24,7 +29,7 @@ export struct xpDpTop_xpDpChkCustomer3Config {
 };
 
 export struct xpDpTop_xpDpChkLeafXConfig {
-    static constexpr uint32_t DP_ALGO = 1;
+    static constexpr uint32_t DP_ALGO = 5;
     static constexpr uint32_t DP_WIDTH = 8;
 };
 

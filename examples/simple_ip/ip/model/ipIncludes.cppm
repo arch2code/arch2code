@@ -555,7 +555,7 @@ struct ipDerivedMemAddrSt {
 
     ipDerivedMemAddrSt() {}
 
-    static constexpr uint16_t _bitWidth = clog2(Config::IP_MEM_DEPTH_X4);
+    static constexpr uint16_t _bitWidth = clog2(((Config::IP_MEM_DEPTH * 2) * 2));
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     inline bool operator == (const ipDerivedMemAddrSt<Config> & rhs) const {
@@ -582,26 +582,26 @@ struct ipDerivedMemAddrSt {
     {
         memset(&_ret, 0, ipDerivedMemAddrSt<Config>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, address, clog2(Config::IP_MEM_DEPTH_X4));
-        _pos += clog2(Config::IP_MEM_DEPTH_X4);
+        pack_bits((uint64_t *)&_ret, _pos, address, clog2(((Config::IP_MEM_DEPTH * 2) * 2)));
+        _pos += clog2(((Config::IP_MEM_DEPTH * 2) * 2));
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipDerivedMemAddrT<Config>)((_src) & ((1ULL << (clog2(Config::IP_MEM_DEPTH_X4))) - 1));
+        address = (ipDerivedMemAddrT<Config>)((_src) & ((1ULL << (clog2(((Config::IP_MEM_DEPTH * 2) * 2)))) - 1));
     }
     inline sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> sc_pack(void) const
     {
         sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+clog2(Config::IP_MEM_DEPTH_X4)-1, _pos) = address;
-        _pos += clog2(Config::IP_MEM_DEPTH_X4);
+        packed_data.range(_pos+clog2(((Config::IP_MEM_DEPTH * 2) * 2))-1, _pos) = address;
+        _pos += clog2(((Config::IP_MEM_DEPTH * 2) * 2));
         return packed_data;
     }
     inline void sc_unpack(sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        address = (ipDerivedMemAddrT<Config>) packed_data.range(_pos+clog2(Config::IP_MEM_DEPTH_X4)-1, _pos).to_uint64();
-        _pos += clog2(Config::IP_MEM_DEPTH_X4);
+        address = (ipDerivedMemAddrT<Config>) packed_data.range(_pos+clog2(((Config::IP_MEM_DEPTH * 2) * 2))-1, _pos).to_uint64();
+        _pos += clog2(((Config::IP_MEM_DEPTH * 2) * 2));
     }
     explicit ipDerivedMemAddrSt(sc_bv<ipDerivedMemAddrSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
     explicit ipDerivedMemAddrSt(

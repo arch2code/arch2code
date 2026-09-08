@@ -1,0 +1,21 @@
+# Includes both consumers of the shared declaration; neither redeclares it.
+include:
+    - pscSrc.yaml
+    - pscChk.yaml
+
+blocks:
+    top:
+        desc: "Root"
+
+instances:
+    uTop: { container: top, instanceType: top }
+    uSrc: { container: top, instanceType: pscSrc, variant: v0 }
+    uChk: { container: top, instanceType: pscChk, variant: v0 }
+
+parameters:
+    pscSrc:
+        v0:
+            SHARED_C: 5
+    pscChk:
+        v0:
+            SHARED_C: 5

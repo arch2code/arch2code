@@ -97,6 +97,13 @@ def sanitizeIdentifierToken(name):
     # keep the rule to what is illegal in a plain identifier segment.
     return name.replace('-', '_').replace('.', '_')
 
+def configStructName(declaringProject, blockName, variant):
+    # Owner-qualified so a reused block's own variants and another project's
+    # variants of it are distinct C++ types.
+    bare = f'{blockName}Config' if variant == '' \
+        else f'{blockName}{variant[0].upper()}{variant[1:]}Config'
+    return f'{sanitizeIdentifierToken(declaringProject)}_{bare}'
+
 def qualifyModuleIdentity(name, projectName):
     # Project-qualify a module / package / namespace identifier for cross-project
     # uniqueness, deduping when the name already leads with its owning project so
@@ -288,28 +295,6 @@ def qualifiedKeyContext(name, qualifiedKey, label):
                    f"context suffix.")
         exit(warningAndErrorReport())
     return context
-
-def selectVariantDescriptor(descriptors, variant, consumerProject, blockProject):
-    # Pick the one descriptor a consumer in `consumerProject` binds for
-    # `variant`. Precedence: a foreign binding the consumer authored itself,
-    # then the config context owner's own bare-name binding, then a foreign
-    # binding from `blockProject`. The block's declaring project comes last
-    # because a block's config context can be owned DOWNSTREAM of it, and that
-    # owner emits the struct and authors its own binding. Returns None when no
-    # project the consumer can reach declares the variant.
-    sameProject = None
-    blockOwner = None
-    for descriptor in descriptors:
-        if descriptor['variant'] != variant:
-            continue
-        if descriptor['isForeign']:
-            if descriptor['declaringProject'] == consumerProject:
-                return descriptor
-            if descriptor['declaringProject'] == blockProject:
-                blockOwner = descriptor
-        else:
-            sameProject = descriptor
-    return sameProject if sameProject is not None else blockOwner
 
 def loadModule(filename):
     module = None
@@ -514,8 +499,10 @@ class projectOpen:
         self.reachableInstances = self.config.getConfig('REACHABLEINSTANCES')
         self.variantSourceBlocks = self.config.getConfig('VARIANTSOURCEBLOCKS')
         self.variantConfigDescriptors = self.config.getConfig('VARIANTCONFIGDESCRIPTORS')
-        self.blockParamDefaults = self.config.getConfig('BLOCKPARAMDEFAULTS')
+        self.defaultConfigDescriptors = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
+        self.instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
         self.registrarPairs = self.config.getConfig('REGISTRARPAIRS')
+        self.structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
         self.blockModuleName = self.config.getConfig('BLOCKMODULENAME')
         self.filemap = self.config.getConfig('FILEMAP')
@@ -1206,11 +1193,6 @@ class projectOpen:
         # (via contextOwningProject + projectLayout), so a cross-project package
         # resolves to the child's rtl/ output rather than its yaml source tree.
         ret['contextRtlDir'] = self._contextRtlDirs(ret['includeContext'])
-        # `context`-prefixed because SystemVerilog generation merges the context
-        # view over the block view, which has its own `variantConfigs` field.
-        view = self.getContextConfigView(contexts)
-        ret['contextVariantConfigs']      = view['variantConfigs']
-        ret['contextBlockParamSynthetic'] = view['blockParamSynthetic']
         # True when a type reachable from this context derives its width from a
         # log2, which makes the generated width expressions call clog2(). The
         # SystemC emitters use it to decide whether the artifact needs
@@ -1219,7 +1201,19 @@ class projectOpen:
         ret['usesClog2'] = any(value['_context'] in ret['includeContext']
                                and (value['widthLog2'] != '' or value['widthLog2minus1'] != '')
                                for value in self.data['types'].values())
+        ret['sampleConfigConstants'] = self._sampleConfigConstants(ret['constants'], ret['structures'])
         return ret
+
+    def _sampleConfigConstants(self, ownConstants, structures):
+        """The parameterizable constants a sample Config for this context needs:
+        its own, plus any a structure here reaches through a field width or
+        array size declared in an included file."""
+        constants = self.data['constants']
+        merged = {key: row for key, row in ownConstants.items() if row['isParameterizable']}
+        for structKey in structures:
+            for key in self.structureParamDeps[structKey]:
+                merged.setdefault(key, constants[key])
+        return merged
 
     def _contextRtlDirs(self, includeContext):
         # Resolve each include-chain context to the directory holding its
@@ -1284,48 +1278,6 @@ class projectOpen:
             ret[context] = os.path.relpath(absRtlDir, rtlDotFdir)
         return ret
 
-    def getContextConfigView(self, contexts):
-        # Single-pass context Config view. Walks the blocks whose primary
-        # `_context` matches one of the supplied contexts exactly once and
-        # returns both Config-header inputs:
-        #   variantConfigs:     per-variant descriptors aggregated across
-        #                       parameterizable blocks. Each entry is
-        #                       `{qualBlock, descriptor}` so the template
-        #                       renders the descriptor while keeping block
-        #                       provenance for diagnostics. Every declared
-        #                       variant is canonical and emits its own struct.
-        #   blockParamSynthetic: block params declared via `params:` without a
-        #                       backing parameterizable constant. Each appears
-        #                       as a field on per-variant Config structs but has
-        #                       no default value in `data['constants']`, so this
-        #                       view supplies the Config member type contract.
-        ctx_set = set(contexts) if isinstance(contexts, (list, set, tuple)) else {contexts}
-        constants_by_name = {
-            const_row['constant']
-            for const_row in self.data['constants'].values()
-            if const_row['isParameterizable']
-            and const_row['_context'] in ctx_set
-        }
-        variantConfigs = []
-        synthetic = dict()
-        for qualBlock, blockRow in self.data['blocks'].items():
-            # Group a block's Config emission under its canonical config context
-            # (where its Config struct is emitted), not its declaring context.
-            # Non-parameterizable blocks have an empty configContext and never
-            # match a context set.
-            if blockRow['configContext'] not in ctx_set:
-                continue
-            bundle = self.getBlockConfigView(qualBlock)
-            if bundle['isParameterizable']:
-                for desc in bundle['variantConfigs']:
-                    variantConfigs.append({'qualBlock': qualBlock, 'descriptor': desc})
-            for param_row in blockRow.get('params', []) or []:
-                name = param_row['param']
-                if name in constants_by_name or name in synthetic:
-                    continue
-                synthetic[name] = {'valueType': 'uint', 'maxValue': 0}
-        return {'variantConfigs': variantConfigs, 'blockParamSynthetic': synthetic}
-
     # do some preproccessing to assemble subset of data easily accessed by templates
     # from perspective of qualBlock
     # subBlocks will be referenced if in the set of instances
@@ -1333,7 +1285,7 @@ class projectOpen:
     def getBlockData(self, qualBlock, trimRegLeafInstance=False, excludeInstances=set()):
         blockDataSet = {'connections','memoryConnections', 'registerConnections', 'connectionMaps', 'connectionPorts', 'memoryPorts',
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
-                        'classIncludeContext', 'configIncludeContext', 'foreignConfigModules',
+                        'classIncludeContext', 'configModules',
                         'containerTypedChildModules',
                         'addressDecode', 'standaloneVariants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
                         'interface_type_mappings_qualified'}
@@ -1413,9 +1365,10 @@ class projectOpen:
         # persisted orderIndex (types/sub-structures before the structures that
         # use them) for emitters that declare these module-local.
         qualBlock = ret['qualBlock']
-        g.cur.execute("SELECT declKind, declKey, orderIndex FROM blockParameterizedDecls "
+        g.cur.execute("SELECT declKind, declKey, orderIndex, usesClog2 FROM blockParameterizedDecls "
                       "WHERE blockKey = ? ORDER BY orderIndex", (qualBlock,))
         decls = list()
+        blockUsesClog2 = False
         for row in g.cur.fetchall():
             declKey = row['declKey']
             if row['declKind'] == 'type':
@@ -1424,8 +1377,10 @@ class projectOpen:
                 body = self.data['structures'][declKey]
             else:  # constant: eval-derived parameterizable constant (module-local localparam)
                 body = self.data['constants'][declKey]
+                blockUsesClog2 = blockUsesClog2 or bool(row['usesClog2'])
             decls.append({'declKind': row['declKind'], 'declKey': declKey, 'body': body})
         ret['parameterizedDecls'] = decls
+        ret['blockUsesClog2'] = blockUsesClog2
 
     def getBDSvWrapperNames(self, ret):
         # Verilated wrapper design-unit names, plus the SC wrapper's class shape.
@@ -1494,15 +1449,14 @@ class projectOpen:
         ret['declaredVariantConfigs'] = self.getDeclaredVariantConfigs(
             qualBlock
         ) if bundle['isParameterizable'] else []
+        # Not gated on hasMdl: a params-declaring testbench-top harness with no
+        # model still imports its own Config module.
+        ret['ownConfigModule'] = {
+            'project': self.contextOwningProject[ret['blockInfo']['_context']],
+            'block':   ret['blockInfo']['block'],
+        } if bundle['hasOwnParams'] else None
 
     def getBlockConfigView(self, qualBlock):
-        # Internal view-assembly helper: constant-time per-block bundle of
-        # config-info fields used while building the language-agnostic
-        # block and context views. Templates and template utilities do
-        # NOT call this; they consume the equivalent fields surfaced on
-        # the block / context views (`subBlockTypes`,
-        # `subBlockInstances` entries, context view `variantConfigs` /
-        # `blockParamSynthetic`).
         cached = self._blockConfigBundleCache.get(qualBlock)
         if cached is not None:
             return cached
@@ -1520,6 +1474,28 @@ class projectOpen:
         }
         self._blockConfigBundleCache[qualBlock] = bundle
         return bundle
+
+    def _instanceVariantDescriptor(self, instanceData):
+        # Exactly one match: resolveInstanceVariantDeclarers fixed the declaring project.
+        variant = instanceData['variant']
+        if not variant:
+            return None
+        declaringProject = self.instanceVariantDeclarers[instanceData['instanceKey']]
+        matches = [d for d in self.variantConfigDescriptors[instanceData['instanceTypeKey']]
+                   if d['variant'] == variant and d['declaringProject'] == declaringProject]
+        return matches[0]
+
+    def _declaredDescriptorsByLabel(self, blockKey):
+        grouped = dict()
+        for descriptor in self.variantConfigDescriptors[blockKey]:
+            grouped.setdefault(descriptor['variant'], []).append(descriptor)
+        return grouped
+
+    def _selectDeclaredDescriptor(self, descriptors, consumerProject):
+        # validateVariantLabelBuildOwnership guarantees a label declared by more
+        # than one project includes the build's own declaration.
+        own = [d for d in descriptors if d['declaringProject'] == consumerProject]
+        return own[0] if own else descriptors[0]
 
     def _resolveInstanceConfigFields(self, instanceData, bundle=None):
         # Neutral per-instance Config selection for a child instance: the
@@ -1544,7 +1520,6 @@ class projectOpen:
         is_parameterizable = bundle['isParameterizable']
         has_own_params     = bundle['hasOwnParams']
         default_config     = bundle['defaultConfig']
-        variant_configs    = bundle['variantConfigs']
 
         if instanceData['inheritContainerParam']:
             # Contained-block config inheritance: type this instance with the
@@ -1573,21 +1548,12 @@ class projectOpen:
 
         descriptor = None
         foreign_config_module = None
-        if is_parameterizable:
-            variant = instanceData['variant']
-            consumer_project = self.contextOwningProject[instanceData['_context']]
-            block_project = self.contextOwningProject[
-                self.data['blocks'][instanceData['instanceTypeKey']]['_context']]
-            desc = selectVariantDescriptor(variant_configs, variant,
-                                           consumer_project, block_project)
-            if desc is not None and desc['values']:
-                descriptor = desc
-                if desc['isForeign']:
-                    # Neutral identity of the owner-qualified foreign Config
-                    # module (`<project>.<child>.config`); the template spells the
-                    # module name and emits the import.
-                    foreign_config_module = {'project': desc['declaringProject'],
-                                             'block': desc['block']}
+        # A block parameterizable only through a contained child has no concrete
+        # Config type and needs no import.
+        if is_parameterizable and has_own_params:
+            descriptor = self._instanceVariantDescriptor(instanceData)
+            foreign_config_module = {'project': descriptor['declaringProject'],
+                                     'block': descriptor['block']}
 
         # The child's Config is a function of the CONTAINER's, making the child a
         # family of C++ types the factory key cannot select from; the container
@@ -1615,8 +1581,7 @@ class projectOpen:
         descriptor = configSelection['descriptor']
         if descriptor is None:
             return ('default', configSelection['defaultConfig'])
-        return ('variant',
-                descriptor['declaringProject'] if descriptor['isForeign'] else '',
+        return ('variant', descriptor['declaringProject'],
                 descriptor['block'], descriptor['variant'])
 
     def getStandaloneVariants(self, qualBlock):
@@ -1634,41 +1599,26 @@ class projectOpen:
         ownParams = [row['param'] for row in blockParams] if blockParams else []
         variants = dict()
         for sourceBlock in self.variantSourceBlocks[qualBlock]:
-            blockProject = self.contextOwningProject[
-                self.data['blocks'][sourceBlock]['_context']]
-            for variantEntry in self.declaredVariantRows(sourceBlock).values():
-                descriptor = selectVariantDescriptor(
-                    self.variantConfigDescriptors[sourceBlock],
-                    variantEntry['variant'], consumerProject, blockProject)
-                if descriptor is not None and descriptor['containerSourced']:
+            for variant, descriptors in self._declaredDescriptorsByLabel(sourceBlock).items():
+                descriptor = self._selectDeclaredDescriptor(descriptors, consumerProject)
+                if descriptor['containerSourced']:
                     continue
-                # No project this consumer can reach declares the label, so the
-                # block takes its default Config here and its parameters must be
-                # the same numbers.
-                values = descriptor['values'] if descriptor is not None \
-                    else self.blockParamDefaults[qualBlock]
-                variants[variantEntry['variant']] = {
-                    param: values[param] for param in ownParams}
+                variants[variant] = {
+                    param: descriptor['values'][param] for param in ownParams}
         return variants
 
-    def _declaredVariantConfigEntries(self, sourceBlocks, consumerProject):
-        # Per-variant Config selection for every variant the given source blocks
-        # declare. One entry per declared variant, carrying the descriptor to
-        # spell the Config from (None -> defaultConfig) and the defaultConfig of
-        # the block that declared it. The consumer project decides which project's
-        # binding of a variant wins, so each caller supplies the project whose
-        # factory registrations it is emitting.
+    def _declaredVariantConfigEntries(self, sourceBlocks):
+        # Resolved for the build's own project, so two projects binding one
+        # label each get their own values.
+        consumerProject = self.config.getConfig('PROJECTNAME')
         entries = list()
         for sourceBlock in sourceBlocks:
             bundle = self.getBlockConfigView(sourceBlock)
-            blockProject = self.contextOwningProject[self.data['blocks'][sourceBlock]['_context']]
-            for variantEntry in self.declaredVariantRows(sourceBlock).values():
-                desc = selectVariantDescriptor(
-                    bundle['variantConfigs'], variantEntry['variant'], consumerProject,
-                    blockProject)
+            for variant, descriptors in self._declaredDescriptorsByLabel(sourceBlock).items():
+                descriptor = self._selectDeclaredDescriptor(descriptors, consumerProject)
                 entries.append({
-                    'variant': variantEntry['variant'],
-                    'descriptor': desc if desc is not None and desc['values'] else None,
+                    'variant': variant,
+                    'descriptor': descriptor,
                     'defaultConfig': bundle['defaultConfig']})
         return entries
 
@@ -1681,12 +1631,8 @@ class projectOpen:
         #
         # A container-sourced variant is left out of the block-owned set. Its
         # concrete wrappers come from the persisted parent-child pair contract.
-        entries = self._declaredVariantConfigEntries(
-            self.variantSourceBlocks[qualBlock],
-            self.config.getConfig('PROJECTNAME'))
-        return [entry for entry in entries
-                if entry['descriptor'] is None
-                or not entry['descriptor']['containerSourced']]
+        entries = self._declaredVariantConfigEntries(self.variantSourceBlocks[qualBlock])
+        return [entry for entry in entries if not entry['descriptor']['containerSourced']]
 
     def declaredVariantRows(self, qualBlock):
         # The block's declared variant rows, empty for the usual block that
@@ -1765,80 +1711,47 @@ class projectOpen:
                 'defaultRegistration': any(not entry['variant'] for entry in model),
                 'verifDefaultRegistration': any(not entry['variant'] for entry in verif),
                 'hasRegistrations': bool(model),
-                'configHeaderContexts': self._configExpressionHeaderContexts(
-                    [entry['config'] for entry in model]
-                    + [entry['config'] for entry in verif]),
-                'foreignConfigModules': self._configExpressionForeignModules(
+                'configModules': self._configExpressionModules(
                     entry['config'] for entry in model),
-                'verifForeignConfigModules': self._configExpressionForeignModules(
+                'verifConfigModules': self._configExpressionModules(
                     entry['config'] for entry in verif)}
 
-    def _configExpressionForeignModules(self, expressions):
+    def _configExpressionModules(self, expressions):
         descriptors = list()
         def collect(expression):
-            if expression is None or expression['kind'] == 'default':
+            if expression is None:
+                return
+            if expression['kind'] == 'default':
+                descriptors.append({'declaringProject': expression['project'],
+                                    'block': expression['block']})
                 return
             descriptors.append(expression['descriptor'])
             if expression['kind'] == 'template':
                 collect(expression['container'])
         for expression in expressions:
             collect(expression)
-        return self._foreignConfigModules(descriptors)
+        return self._configModules(descriptors)
 
-    @staticmethod
-    def _configExpressionHeaderContexts(expressions):
-        contexts = set()
-        def collect(expression):
-            if expression is None:
-                return
-            if expression['kind'] == 'default':
-                contexts.add(expression['configContext'])
-                return
-            descriptor = expression['descriptor']
-            if not descriptor['isForeign']:
-                contexts.add(descriptor['configContext'])
-            if expression['kind'] == 'template':
-                collect(expression['container'])
-        for expression in expressions:
-            collect(expression)
-        return sorted(contexts)
-
-    def _foreignConfigModules(self, descriptors):
-        # The owner-qualified foreign registrar-domain Config modules a set of
-        # registrations names, as neutral (project, child) identities in a stable
-        # order; the template spells each module name. One list per registration
-        # list, because the model and verilated trampolines register different
-        # variant sets and each TU must import only what its own registrations
-        # spell.
-        modules = {(desc['declaringProject'], desc['block']) for desc in descriptors
-                   if desc is not None and desc['isForeign']}
+    def _configModules(self, descriptors):
+        modules = {(desc['declaringProject'], desc['block']) for desc in descriptors}
         return [{'project': project, 'block': block} for project, block in sorted(modules)]
 
-    def getForeignConfigData(self, childQualBlock, parentBlock):
-        # Emission inputs for one owner-qualified foreign-Config header: the
-        # foreign per-variant descriptors of a reused child that are declared by
-        # the parent's owning project, plus the child's config-context member
-        # constants and synthetic block params. Placed in the parent's
-        # registrar domain; only the declaring assembler project emits it.
+    def getConfigModuleData(self, childQualBlock, parentBlock):
         parentQual = self.getQualBlock(parentBlock)
         ownerProject = self.contextOwningProject[self.data['blocks'][parentQual]['_context']]
-        block_row = self.data['blocks'][childQualBlock]
-        config_context = block_row['configContext']
-        descriptors = [desc for desc in self.variantConfigDescriptors[childQualBlock]
-                       if desc['isForeign'] and desc['declaringProject'] == ownerProject
-                       and desc['values']]
-        params = [const_data for const_data in self.data['constants'].values()
-                  if const_data['_context'] == config_context
-                  and const_data['isParameterizable']]
-        constant_names = {const_data['constant'] for const_data in params}
-        synthetic = dict()
-        for param_row in block_row.get('params', []) or []:
-            name = param_row['param']
-            if name in constant_names or name in synthetic:
-                continue
-            synthetic[name] = {'valueType': 'uint', 'maxValue': 0}
-        return {'descriptors': descriptors, 'params': params,
-                'blockParamSynthetic': synthetic}
+        childOwner = self.contextOwningProject[self.data['blocks'][childQualBlock]['_context']]
+        variantDescriptors = [
+            desc for desc in self.variantConfigDescriptors[childQualBlock]
+            if desc['declaringProject'] == ownerProject]
+        descriptors = list()
+        if ownerProject == childOwner:
+            default = self.defaultConfigDescriptors[childQualBlock]
+            # An owner-declared 'default' variant is already the default
+            # descriptor; only a synthetic default is added here.
+            if default not in variantDescriptors:
+                descriptors.append(default)
+        descriptors.extend(variantDescriptors)
+        return {'descriptors': descriptors}
 
     def _resolveConnectionConfigOverride(self, connVal):
         # Pre-resolve the per-connection Config override used by SystemC
@@ -1921,30 +1834,21 @@ class projectOpen:
             return ''
         return declaredPorts[portName]['interfaceKey']
 
-    def _resolveSvInstanceParams(self, childTypeKey, variant, parentParamNames,
-                                 consumerProject):
-        # Build the param-override list for a sub-block instance's SV #(...).
-        # The instantiation sits inside the parent module, so a param may be
-        # spelled as a symbol in that scope: the container's parameter, the
-        # parent's own same-named parameter, or the constant the binding names.
-        # Anything else is the bound literal. Two projects may bind one variant
-        # label differently, so every spelling comes from the descriptor the
-        # instantiating project selects. Returns an ordered list of
-        # {'param', 'spelling'}; empty when the child block has no params.
+    def _resolveSvInstanceParams(self, instanceData, parentParamNames):
+        # Param-override list for a sub-block instance's SV #(...).
+        childTypeKey = instanceData['instanceTypeKey']
         childBlock = self.data['blocks'][childTypeKey]
         if not childBlock['params']:
             return []
-        blockProject = self.contextOwningProject[childBlock['_context']]
-        descriptor = selectVariantDescriptor(
-            self.variantConfigDescriptors[childTypeKey], variant,
-            consumerProject, blockProject)
-        # An instance that names no variant, and one naming a label only an
-        # intermediate project declares, both take the child's default Config;
-        # its declared parameter defaults are the matching numbers.
-        containerSourced = descriptor['containerSourced'] if descriptor is not None else {}
-        valueSymbols = descriptor['valueSymbols'] if descriptor is not None else {}
-        values = descriptor['values'] if descriptor is not None \
-            else self.blockParamDefaults[childTypeKey]
+        if instanceData['inheritContainerParam']:
+            # Every child param is a validated subset of the container's, so
+            # each is spelled as that same-named parent parameter.
+            return [{'param': paramRow['param'], 'spelling': paramRow['param']}
+                   for paramRow in childBlock['params']]
+        descriptor = self._instanceVariantDescriptor(instanceData)
+        containerSourced = descriptor['containerSourced']
+        valueSymbols = descriptor['valueSymbols']
+        values = descriptor['values']
         result = []
         for paramRow in childBlock['params']:
             paramName = paramRow['param']
@@ -2023,8 +1927,7 @@ class projectOpen:
             # (instanceType stays the lookup key).
             instInfo['instanceTypeModuleName'] = self.blockModuleName[childTypeKey]
             instInfo['svInstanceParams'] = self._resolveSvInstanceParams(
-                childTypeKey, instInfo['variant'], parentParamNames,
-                self.contextOwningProject[instInfo['_context']])
+                instInfo, parentParamNames)
             if childTypeKey not in ret['subBlockTypes']:
                 bundle = self.getBlockConfigView(childTypeKey)
                 ret['subBlockTypes'][childTypeKey] = {
@@ -2049,7 +1952,7 @@ class projectOpen:
             foreignConfigModule = configFields['foreignConfigModule']
             if foreignConfigModule:
                 key = (foreignConfigModule['project'], foreignConfigModule['block'])
-                ret['foreignConfigModules'][key] = foreignConfigModule
+                ret['configModules'][key] = foreignConfigModule
             # A child typed by this container's Config has no concrete C++ type
             # until this container is instantiated, so the container names its
             # implementation class at the createInstance site rather than reaching
@@ -2090,7 +1993,7 @@ class projectOpen:
             foreignConfigModule = configFields['foreignConfigModule']
             if foreignConfigModule:
                 key = (foreignConfigModule['project'], foreignConfigModule['block'])
-                ret['foreignConfigModules'][key] = foreignConfigModule
+                ret['configModules'][key] = foreignConfigModule
             if configFields['containerTyped']:
                 ret['containerTypedChildModules'][instInfo['instanceTypeKey']] = \
                     self.blockModuleName[instInfo['instanceTypeKey']]
@@ -3181,25 +3084,8 @@ class projectOpen:
             if sourceContext not in ret['classIncludeContext'] and sourceContext not in self.specialContexts:
                 ret['classIncludeContext'][sourceContext] = 0
 
-        # Config headers are a distinct include surface from structure/type
-        # context includes. Class declarations, trampolines, testbenches, and
-        # Verilated wrappers spell concrete Config policy names; collect those
-        # contexts once in the block view so templates do not need to re-query
-        # project-wide data.
-        if ret['blockInfo'].get('params'):
-            # The block's Config struct is emitted in its canonical config
-            # context, which differs from its declaring context when the block
-            # is defined in a file that includes the IP root.
-            config_context = ret['blockInfo']['configContext']
-            if config_context and config_context not in self.specialContexts:
-                ret['configIncludeContext'][config_context] = 0
-        # Child instance shared_ptr declarations name the child's per-variant
-        # Config (e.g., `ipLeafBase<ipLeafVariantLeaf0Config>`). The child's
-        # class header lives in the child block's own context, but its Config
-        # struct is defined in the child's canonical config context. Without
-        # aggregating those contexts here the parent's class-declaration TU
-        # cannot resolve the Config struct name. The aggregation is bounded by
-        # subBlockInstances whose child block is itself parameterizable.
+        # The parent's TU names child Configs (`ipLeafBase<...Config>`), so each
+        # parameterizable child's context stays in scope.
         for inst_data in (ret.get('subBlockInstances') or {}).values():
             type_key = inst_data.get('instanceTypeKey')
             if not type_key:
@@ -3212,21 +3098,6 @@ class projectOpen:
             child_context = child_block['_context']
             if child_context and child_context not in self.specialContexts:
                 ret['includeContext'][child_context] = 0
-            child_config_context = child_block['configContext']
-            if child_config_context and child_config_context not in self.specialContexts:
-                ret['configIncludeContext'][child_config_context] = 0
-        # The External names the excluded DUT's Config as the template argument of
-        # its inherited `<DUT>Inverted` base, so the DUT's config context must be
-        # included even when no contained instance pulls it in. Gated on
-        # hasOwnParams: only a class template's Inverted base takes an argument.
-        for inst_data in ret['excludedInstances'].values():
-            if not inst_data['instanceConfigSelection']['hasOwnParams']:
-                continue
-            # hasOwnParams means the block declares params:, which is exactly what
-            # gives it a configContext, so the context is present here.
-            dut_config_context = self.data['blocks'][inst_data['instanceTypeKey']]['configContext']
-            if dut_config_context not in self.specialContexts:
-                ret['configIncludeContext'][dut_config_context] = 0
 
     def getBDInterfaceDefs(self, ret):
         """Collect interface definitions for all interface types used in the block
@@ -3748,10 +3619,6 @@ class projectCreate:
     contextOwningProject = dict()
     includeValid = dict()
     includeSections = {"types", "structures", "constants"}
-    # ipParameters constants captured per file as they are parsed, so the
-    # block-param linkage can be validated after a file's section loop
-    # completes. Keyed by yamlFile, then by constant name.
-    ipParametersConstants = OrderedDict()
     hier = None
     hierKey = None
     instances = None
@@ -3916,10 +3783,10 @@ class projectCreate:
         self.buildProjectLayout()
         # process all files
         self.processYamls()
-        # all files fully parsed: validate the whole-project ipParameters linkage
-        self._validateIpParametersLinkage()
         # reject a block variant declared by more than one file of a project
         self.validateVariantDeclarationUniqueness()
+        self.validateBlockParamScopeUniqueness()
+        self.resolveInstanceVariantDeclarers()
         # reject a block that contains itself before anything descends the
         # hierarchy: post-parse scripts and port validation both do, and
         # neither terminates on a loop
@@ -3947,14 +3814,14 @@ class projectCreate:
         self.config.setConfig('REACHABLEINSTANCES', self.reachableInstanceKeys(), bin=True)
         self.deriveModuleIdentities()
         self.calcVariantConfigDescriptors()
+        self.validateVariantLabelBuildOwnership()
         self.calcVariantSourceBlocks()
         # reject a testbench on a block whose Config comes from its container
         self.validateContainerSourcedTestbench()
         # reject one variant label declared by two of a block's variant sources
         self.validateVariantSourceLabelCollision()
-        # derive the owner-qualified foreign per-variant Config header set (one
-        # durable fact shared by the build manifest and the newModule scaffold),
-        # off the same rebuilt hierarchy
+        # derive the Config module set the build manifest and newModule scaffold both read
+        self.calcConfigModules()
         self.calcForeignConfigHeaders()
         self.calcRegistrarPairs()
         # reject address-enum identity collisions before the enums are emitted
@@ -4059,24 +3926,29 @@ class projectCreate:
             return constants[valueKey]['value'] if valueKey else row['value']
 
         descriptors = dict()
+        defaultDescriptors = dict()
         for blockKey, block in blocks.items():
-            if not block['isParameterizable'] or blockKey not in rowsByBlock:
+            if not block['isParameterizable'] or blockKey not in paramsByBlock:
                 descriptors[blockKey] = []
                 continue
             configContext = block['configContext']
             ownerProject = self.contextOwningProject[configContext]
-            paramConstants = [row for row in constants.values()
-                              if row['_context'] == configContext
-                              and row['isParameterizable']]
-            constantNames = {row['constant'] for row in paramConstants}
-            syntheticParams = [row['param'] for row in paramsByBlock.get(blockKey, [])
-                               if row['param'] not in constantNames]
+            blockParams = paramsByBlock[blockKey]
+            paramConstants = [constants[row['paramSourceKey']] for row in blockParams]
+            # Keyed by identity so a consumer reaches this block's own constant,
+            # not a same-spelled one another block names in the same context.
+            paramSourceKeys = {row['constant']: row['constantKey'] for row in paramConstants}
+            # The block's own owner, not the config context's (ownerProject);
+            # calcBlockConfigInfo and calcConfigModules key by the same project.
+            blockOwnerProject = self.contextOwningProject[block['_context']]
+
             rowsByProject = dict()
-            for row in rowsByBlock[blockKey]:
+            for row in rowsByBlock.get(blockKey, ()):
                 rowsByProject.setdefault(row['projectName'], []).append(row)
             projectOrder = ([ownerProject] if ownerProject in rowsByProject else []) + \
                 sorted(project for project in rowsByProject if project != ownerProject)
             blockDescriptors = list()
+            ownerDefault = None
             for project in projectOrder:
                 projectRows = rowsByProject[project]
                 variants = sorted({row['variant'] for row in projectRows})
@@ -4087,16 +3959,15 @@ class projectCreate:
                               resolvedValue(variantRows[row['constant']])
                               if row['constant'] in variantRows else row['value']
                               for row in paramConstants}
-                    values.update({param: resolvedValue(variantRows[param])
-                                   if param in variantRows else 0
-                                   for param in syntheticParams})
-                    blockDescriptors.append({
+                    descriptor = {
                         'variant': variant,
                         'declaringProject': project,
                         'block': block['block'],
                         'configContext': configContext,
                         'isForeign': project != ownerProject,
+                        'structName': configStructName(project, block['block'], variant),
                         'values': values,
+                        'paramSourceKeys': paramSourceKeys,
                         'containerSourced': {
                             param: row['containerParam']
                             for param, row in variantRows.items()
@@ -4110,18 +3981,49 @@ class projectCreate:
                             param: row['value']
                             for param, row in variantRows.items()
                             if row['valueKey']},
-                    })
+                    }
+                    blockDescriptors.append(descriptor)
+                    if project == blockOwnerProject and variant == 'default':
+                        ownerDefault = descriptor
             descriptors[blockKey] = blockDescriptors
+            # An owner-declared 'default' variant is the block's default Config
+            # (configStructName gives both the same name); no synthetic entry is
+            # persisted beside it.
+            defaultDescriptors[blockKey] = ownerDefault if ownerDefault is not None else {
+                'variant': '', 'declaringProject': blockOwnerProject, 'block': block['block'],
+                'configContext': configContext,
+                'structName': block['defaultConfig'],
+                'values': {row['constant']: row['value'] for row in paramConstants},
+                'paramSourceKeys': paramSourceKeys,
+                'containerSourced': {}, 'valueSymbols': {},
+            }
+        self.variantConfigDescriptors = descriptors
         self.config.setConfig('VARIANTCONFIGDESCRIPTORS', descriptors, bin=True)
-        # What each block's params resolve to when no descriptor is selectable:
-        # the declared value of the constant backing each one. A variant declared
-        # by an intermediate project is not selectable by a third project's
-        # instance, and that instance takes the block's default Config, so its
-        # emitted parameters have to be the same numbers.
-        self.config.setConfig('BLOCKPARAMDEFAULTS', {
-            blockKey: {row['param']: constants[row['paramSourceKey']]['value']
-                       for row in paramsByBlock.get(blockKey, [])}
-            for blockKey in blocks}, bin=True)
+        self.config.setConfig('DEFAULTCONFIGDESCRIPTORS', defaultDescriptors, bin=True)
+
+    def validateVariantLabelBuildOwnership(self):
+        """A build can carry only one declaration of a variant label, since the
+        per-label Config module and registration are named by label alone.
+        Reject a label two or more foreign projects declare when the build's own
+        project declares none."""
+        buildProject = self.config.getConfig('PROJECTNAME')
+        for blockKey, blockDescriptors in self.variantConfigDescriptors.items():
+            declarersByLabel = dict()
+            for descriptor in blockDescriptors:
+                declarersByLabel.setdefault(
+                    descriptor['variant'], set()).add(descriptor['declaringProject'])
+            for variant, declarers in declarersByLabel.items():
+                if len(declarers) > 1 and buildProject not in declarers:
+                    printError(
+                        f"Variant '{variant}' of block "
+                        f"'{self.flatData['blocks'][blockKey]['block']}' is declared by "
+                        f"projects {', '.join(sorted(declarers))}, and this build's own "
+                        f"project ('{buildProject}') declares none of them. The per-label "
+                        f"Config module and registration are named by label alone, so one "
+                        f"build can carry only one declaration of '{variant}'. Have this "
+                        f"build's project declare '{variant}' itself, or reference only "
+                        f"one of the declaring projects.")
+                    exit(warningAndErrorReport())
 
     def calcRegistrarPairs(self):
         """Persist the complete registration and VL-top contract per block pair."""
@@ -4138,19 +4040,24 @@ class projectCreate:
         paramsByBlock = dict()
         for row in self.flatData['blocksparams'].values():
             paramsByBlock.setdefault(row['blockKey'], []).append(row)
-        blockParamDefaults = self.config.getConfig('BLOCKPARAMDEFAULTS')
+        instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
 
-        def selectedDescriptor(childKey, variant, parentKey):
-            child = blocks[childKey]
-            consumerProject = self.contextOwningProject[blocks[parentKey]['_context']]
-            blockProject = self.contextOwningProject[child['_context']]
-            return selectVariantDescriptor(
-                descriptors[childKey], variant, consumerProject, blockProject)
+        def selectedDescriptor(inst):
+            # Exactly one match: resolveInstanceVariantDeclarers fixed the declaring project.
+            if not inst['variant']:
+                return None
+            declaringProject = instanceVariantDeclarers[inst['instanceKey']]
+            matches = [d for d in descriptors[inst['instanceTypeKey']]
+                       if d['variant'] == inst['variant']
+                       and d['declaringProject'] == declaringProject]
+            return matches[0]
 
         def literalConfig(child, descriptor):
             if descriptor is None:
                 return {'kind': 'default', 'name': child['defaultConfig'],
-                        'configContext': child['configContext']}
+                        'configContext': child['configContext'],
+                        'project': self.contextOwningProject[child['_context']],
+                        'block': child['block']}
             return {'kind': 'descriptor', 'descriptor': descriptor}
 
         def appendUnique(entries, entry, parentName, childName):
@@ -4226,7 +4133,7 @@ class projectCreate:
                         'verifRegistrations': [],
                     })
                     descriptor = None if inst['inheritContainerParam'] else \
-                        selectedDescriptor(childKey, inst['variant'], parentKey)
+                        selectedDescriptor(inst)
                     if descriptor is not None and inst['variant']:
                         prior = pair['variantDescriptors'].get(inst['variant'])
                         if prior is not None and prior != descriptor:
@@ -4265,8 +4172,9 @@ class projectCreate:
                     else:
                         config = literalConfig(child, descriptor) \
                             if child['isParameterizable'] else None
-                        values = descriptor['values'] if descriptor is not None \
-                            else blockParamDefaults[childKey]
+                        # descriptor is None only for a params-less child; an unlabelled
+                        # instance of a params-declaring block is rejected at parse.
+                        values = descriptor['values'] if descriptor is not None else {}
                         concrete.append({'variant': inst['variant'],
                                          'config': config, 'values': values,
                                          'pairSpecific': False})
@@ -5744,22 +5652,16 @@ class projectCreate:
             # parameterizable declarations. It differs from the block's own
             # _context when the block is declared in a file including the IP root.
             if is_parameterizable:
-                if contexts:
-                    config_context = contexts[0]
-                    base = os.path.splitext(os.path.basename(config_context))[0]
-                    default_config = base.replace('-', '_').replace('.', '_') + 'DefaultConfig'
-                else:
-                    config_context = ''
-                    default_config = blockName + 'DefaultConfig'
+                config_context = contexts[0] if contexts else ''
+                # Identity is the block's own owner, not the config context's,
+                # so it does not depend on which params: file sorts first.
+                owner_project = self.contextOwningProject[block_row['_context']]
+                default_config = f'{sanitizeIdentifierToken(owner_project)}_{blockName}DefaultConfig'
             else:
                 config_context = ''
                 default_config = ''
 
-            # Mirror the derived fields onto the in-memory block row: later stages
-            # of this same projectCreate pass read the dict rather than re-querying
-            # SQL. _configHeaderContexts consumes configContext, and the build
-            # manifest evaluates fileMap conds against this row, where
-            # isParameterizable gates the foreignConfig and vlSvWrap artifacts.
+            # Later projectCreate stages read these off the dict, not SQL.
             block_row['configContext'] = config_context
             block_row['isParameterizable'] = is_parameterizable
             block_row['defaultConfig'] = default_config
@@ -5770,29 +5672,13 @@ class projectCreate:
                           (sql_param, default_config, config_context, qualBlock))
 
 
-    def calcForeignConfigHeaders(self):
-        # Authoritative set of owner-qualified foreign per-variant Config headers,
-        # keyed (owningProject, childBlockKey) -> module file stub plus the block
-        # whose registrar domain hosts it. A pair earns a header iff some project
-        # declares a FOREIGN variant of the child (its declaring project differs
-        # from the project owning the child's config context) AND the child has
-        # Config fields to emit. The field test mirrors the projectOpen emit gate:
-        # a variant Config struct's members are the config context's
-        # parameterizable constants plus the child's own block params. Persisting
-        # the pair here gives the build manifest and the newModule scaffold one
-        # source of truth, so neither can record a header the emitter would not
-        # produce.
+    def calcConfigModules(self):
+        # One Config-module home per (declaringProject, childBlockKey): the
+        # block's owner, plus each other project declaring a variant of it.
         blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
-        paramConstantContexts = {row['_context'] for row in self.flatData['constants'].values()
-                                 if row['isParameterizable'] and row['_context']}
-        # The block whose registrar domain hosts the header: the declaring
-        # project's assembler of the child, or the child itself when that project
-        # assembles nothing, which is what lets a reusable IP that instantiates
-        # nothing emit its own foreign Config. Two assemblers in one project tie
-        # on the lowest block key, so adding an earlier-sorting assembler moves
-        # the artifact. Only this build's design tree counts, matching
-        # calcVariantSourceBlocks.
+        # Hosting registrar domain: the declaring project's assembler of the
+        # child, or the child itself when that project assembles nothing.
         reachable = self.config.getConfig('REACHABLEINSTANCES')
         parentKeys = dict()
         for instanceKey, instRow in self.flatData['instances'].items():
@@ -5808,46 +5694,55 @@ class projectCreate:
             current = parentKeys.get(anchorKey)
             if current is None or containerKey < current:
                 parentKeys[anchorKey] = containerKey
-        # The foreign-Config header basename is fileMap-derived (never a
-        # hardcoded suffix): the foreignConfig fileMap entry supplies the name
-        # tail ("VariantConfig") and ext, and expandNewModulePath composes the
-        # basename from the owner-qualified stub exactly as saveIncludeFiles
-        # derives config_hdr for the context config header.
-        foreignDef = self.proj['fileGeneration']['fileMap']['foreignConfig']
-        headers = dict()
+        configDef = self.proj['fileGeneration']['fileMap']['foreignConfig']
+
+        def newEntry(childKey, declaringProject):
+            childBlock = blockByKey[childKey]['block']
+            stub = f"{sanitizeIdentifierToken(declaringProject)}_{childBlock}"
+            layout = self.projectLayout[declaringProject]
+            parentKey = parentKeys.get((declaringProject, childKey), childKey)
+            filePath = expandNewModulePath(configDef, blockByKey[parentKey]['dir'],
+                                           childBlock, stub, layout, missingDirOk=True)
+            baseName = os.path.basename(filePath) + "." + configDef['ext']['cppm']
+            return {'stub': stub, 'baseName': baseName, 'parentKey': parentKey,
+                    'variants': set(), 'containerSourcedVariants': set()}
+
+        modules = dict()
+        for blockKey in blocksWithParams:
+            ownerProject = self.contextOwningProject[blockByKey[blockKey]['_context']]
+            modules[(ownerProject, blockKey)] = newEntry(blockKey, ownerProject)
         for contextRows in self.data['parametersvariantsparams'].values():
             for row in contextRows.values():
                 childKey = row['blockKey']
-                configContext = blockByKey[childKey]['configContext']
-                if not configContext:
-                    continue
-                if row['projectName'] == self.contextOwningProject[configContext]:
-                    continue
-                if childKey not in blocksWithParams and configContext not in paramConstantContexts:
-                    continue
                 key = (row['projectName'], childKey)
-                if key not in headers:
-                    childBlock = blockByKey[childKey]['block']
-                    stub = f"{sanitizeIdentifierToken(row['projectName'])}_{childBlock}"
-                    layout = self.projectLayout[row['projectName']]
-                    parentKey = parentKeys.get(key, childKey)
-                    filePath = expandNewModulePath(foreignDef, blockByKey[parentKey]['dir'],
-                                                   childBlock, stub, layout, missingDirOk=True)
-                    baseName = os.path.basename(filePath) + "." + foreignDef['ext']['cppm']
-                    # The Config module includes every foreign variant. A
-                    # container-sourced variant is a Config template rather than
-                    # a concrete standalone RTL top, so vlVariants excludes it.
-                    headers[key] = {
-                        'stub': stub, 'baseName': baseName,
-                        'parentKey': parentKey, 'variants': set(),
-                        'containerSourcedVariants': set()}
-                headers[key]['variants'].add(row['variant'])
+                if key not in modules:
+                    modules[key] = newEntry(childKey, row['projectName'])
+                modules[key]['variants'].add(row['variant'])
                 if row['containerParam']:
-                    headers[key]['containerSourcedVariants'].add(row['variant'])
-        for entry in headers.values():
+                    modules[key]['containerSourcedVariants'].add(row['variant'])
+        for entry in modules.values():
             entry['variants'] = sorted(entry['variants'])
             entry['vlVariants'] = sorted(
                 set(entry['variants']) - entry.pop('containerSourcedVariants'))
+        self.config.setConfig('CONFIGMODULES', modules, bin=True)
+
+    def calcForeignConfigHeaders(self):
+        # CONFIGMODULES entries declared by a project other than the child's owner;
+        # the Verilated SV wrapper family scaffolds a standalone top for each.
+        blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
+        blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        paramConstantContexts = {row['_context'] for row in self.flatData['constants'].values()
+                                 if row['isParameterizable'] and row['_context']}
+        headers = dict()
+        for (declaringProject, childKey), entry in self.config.getConfig('CONFIGMODULES').items():
+            if not entry['variants']:
+                continue
+            configContext = blockByKey[childKey]['configContext']
+            if not configContext or declaringProject == self.contextOwningProject[configContext]:
+                continue
+            if childKey not in blocksWithParams and configContext not in paramConstantContexts:
+                continue
+            headers[(declaringProject, childKey)] = entry
         self.config.setConfig('FOREIGNCONFIGHEADERS', headers, bin=True)
 
     def deriveParameterizedDeclSets(self):
@@ -5884,8 +5779,11 @@ class projectCreate:
 
         constants = self.flatData['constants']
         evalConstSymbols = dict()
+        evalConstUsesClog2 = dict()
         for (yamlFile, constName), node in self._evalNodes.items():
-            evalConstSymbols[constName + '/' + yamlFile] = evalExpr.symbolKeys(node)
+            constKey = constName + '/' + yamlFile
+            evalConstSymbols[constKey] = evalExpr.symbolKeys(node)
+            evalConstUsesClog2[constKey] = evalExpr.usesClog2(node)
 
         def emptyDeclDeps():
             return {'paramDeps': set(), 'localDeps': set()}
@@ -5995,6 +5893,7 @@ class projectCreate:
                 'declKind': 'constant',
                 'declKey': constKey,
                 'context': row['_context'],
+                'usesClog2': evalConstUsesClog2[constKey],
                 'paramDeps': deps['paramDeps'],
                 'localDeps': deps['localDeps'],
             }
@@ -6008,8 +5907,10 @@ class projectCreate:
                     'paramDeps': deps['paramDeps'],
                     'localDeps': deps['localDeps'],
                 }
+        structureParamDeps = dict()
         for structKey, row in structures.items():
             deps = structInfo(structKey, set())
+            structureParamDeps[structKey] = sorted(deps['paramDeps'])
             if checkAgreement('structure', structKey, row['isParameterizable'], deps):
                 declInfo[('structure', structKey)] = {
                     'declKind': 'structure',
@@ -6018,6 +5919,8 @@ class projectCreate:
                     'paramDeps': deps['paramDeps'],
                     'localDeps': deps['localDeps'],
                 }
+        # Persisted per structure for projectOpen._sampleConfigConstants.
+        self.config.setConfig('STRUCTUREPARAMDEPS', structureParamDeps, bin=True)
 
         # Per-block selection. A declaration can be emitted only when it is
         # visible from the block and its full backing-parameter closure is
@@ -6069,18 +5972,16 @@ class projectCreate:
             for declId in declInfo:
                 selectDecl(declId, set())
             for orderIndex, info in enumerate(selected.values()):
-                rows.append((blockKey, info['declKind'], info['declKey'], orderIndex))
+                usesClog2 = info['usesClog2'] if info['declKind'] == 'constant' else False
+                rows.append((blockKey, info['declKind'], info['declKey'], orderIndex, usesClog2))
 
-        # Explicit non-schema table: create, bulk insert, then index on blockKey
-        # (the block-usage access path). Building the row list in memory and
-        # inserting via a single executemany keeps creation cheap; the index is
-        # added after the bulk load. getBlockData() queries this directly and
-        # joins to types/structures for bodies; it is never loaded into prj.data.
+        # Non-schema table; getBlockData() queries it directly and it never loads
+        # into prj.data.
         g.cur.execute("DROP TABLE IF EXISTS blockParameterizedDecls")
         g.cur.execute("CREATE TABLE blockParameterizedDecls "
-                      "(blockKey TEXT, declKind TEXT, declKey TEXT, orderIndex INTEGER)")
+                      "(blockKey TEXT, declKind TEXT, declKey TEXT, orderIndex INTEGER, usesClog2 INTEGER)")
         g.cur.executemany("INSERT INTO blockParameterizedDecls "
-                          "(blockKey, declKind, declKey, orderIndex) VALUES (?, ?, ?, ?)", rows)
+                          "(blockKey, declKind, declKey, orderIndex, usesClog2) VALUES (?, ?, ?, ?, ?)", rows)
         g.cur.execute("CREATE INDEX idx_blockParameterizedDecls_blockKey "
                       "ON blockParameterizedDecls (blockKey)")
 
@@ -6227,6 +6128,77 @@ class projectCreate:
                         f"or give one of them a distinct name.")
                     exit(warningAndErrorReport())
                 seen[identity] = context
+
+    def validateBlockParamScopeUniqueness(self):
+        """A params: name visible through more than one declaration is rejected;
+        the include chain would otherwise pick the first match silently. Runs
+        after processYamls(), once every included file is parsed."""
+        for context, paramRows in self.data['blocksparams'].items():
+            for row in paramRows.values():
+                declaringFiles = [q for q in self.yamlContext[context]
+                                  if row['param'] in self.data['constants'].get(q, {})]
+                if len(declaringFiles) > 1:
+                    line = row['lc'].line + 1 if row.get('lc') else '?'
+                    self.logError(
+                        f"In {context}:{line}: block '{row['block']}' param "
+                        f"'{row['param']}' has more than one visible declaration; "
+                        f"declared in {', '.join(declaringFiles)}")
+
+    def resolveInstanceVariantDeclarers(self):
+        """Each labelled instance's variant needs exactly one visible declaration
+        in its own file's include scope; zero or several is an error naming the
+        files. Persisted as INSTANCEVARIANTDECLARERS for projectOpen."""
+        def declaresLabel(rows, blockKey, variant):
+            return any(row['blockKey'] == blockKey and row['variant'] == variant
+                       for row in rows.values())
+
+        blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
+        declarers = dict()
+        for instanceKey, inst in self.flatData['instances'].items():
+            if not inst['variant'] or inst['inheritContainerParam']:
+                continue
+            blockKey = inst['instanceTypeKey']
+            context = inst['_context']
+            variant = inst['variant']
+            declaringFiles = [q for q in self.yamlContext[context]
+                              if declaresLabel(self.data['parametersvariants'].get(q, {}),
+                                               blockKey, variant)]
+            blockRow = self.flatData['blocks'][blockKey]
+            projectName = self.contextOwningProject[blockRow['_context']]
+            line = inst['lc'].line + 1 if inst.get('lc') else '?'
+            if len(declaringFiles) == 1:
+                declarers[instanceKey] = self.contextOwningProject[declaringFiles[0]]
+                continue
+            if len(declaringFiles) > 1:
+                self.logError(
+                    f"In {context}:{line}: instance '{inst['instance']}' of block "
+                    f"'{blockRow['block']}' (project '{projectName}') names variant "
+                    f"'{variant}', which has more than one visible declaration: "
+                    f"{', '.join(declaringFiles)}")
+                continue
+            outOfScope = [q for q, rows in self.data['parametersvariants'].items()
+                         if declaresLabel(rows, blockKey, variant)]
+            if outOfScope:
+                self.logError(
+                    f"In {context}:{line}: instance '{inst['instance']}' of block "
+                    f"'{blockRow['block']}' (project '{projectName}') names variant "
+                    f"'{variant}', which no file visible from {context} declares; it "
+                    f"is declared in {', '.join(sorted(outOfScope))}, outside this "
+                    f"instance's scope. Declare it in {context} or in a file it "
+                    f"includes.")
+            elif blockKey not in blocksWithParams:
+                self.logError(
+                    f"In {context}:{line}: instance '{inst['instance']}' of block "
+                    f"'{blockRow['block']}' (project '{projectName}') names variant "
+                    f"'{variant}', but block '{blockRow['block']}' declares no "
+                    f"params:, so no file could ever declare a variant of it.")
+            else:
+                self.logError(
+                    f"In {context}:{line}: instance '{inst['instance']}' of block "
+                    f"'{blockRow['block']}' (project '{projectName}') names variant "
+                    f"'{variant}', which no file declares. Declare it in {context} "
+                    f"or in a file it includes.")
+        self.config.setConfig('INSTANCEVARIANTDECLARERS', declarers, bin=True)
 
     def generateAddressEnums(self):
         self.yamlContext['_global'] = {key: None for key in self.yamlContext}
@@ -8722,17 +8694,6 @@ class projectCreate:
     # dictionaries as regular entries. Per-entry handlers stamp them as parameterizable.
     # Transitive propagation and worst-case sizing are performed by those handlers.
     def _process_ipParameters(self, data, yamlFile):
-        # ipParameters may only appear in an IP-root YAML, not in a pure shared
-        # type/structure/constant include. A shared include is included by another
-        # file and does not itself declare any blocks.
-        isIncludedElsewhere = any(yamlFile in deps for deps in self.yamlDependancies.values())
-        rawSections = self.yamlRaw.get(yamlFile, {}) or {}
-        hasBlocks = 'blocks' in rawSections
-        if isIncludedElsewhere and not hasBlocks:
-            printError(f"ipParameters is not allowed in shared include file {yamlFile}; "
-                       f"shared includes (no 'blocks:' section) cannot declare ipParameters "
-                       f"because parameter bounds are tied to the IP root")
-            exit(warningAndErrorReport())
         # Set a flag so per-section handlers (constants, types) can stamp
         # isParameterizable=True immediately as each entry is processed,
         # preserving finalized referents when later entries reference them.
@@ -8746,57 +8707,28 @@ class projectCreate:
                     # Process through normal section pipeline - same schema, same validation.
                     # Per-entry handlers consult self._ipParametersActive to stamp isParameterizable.
                     self.processSection(section, sectData, yamlFile)
-                    if section == 'constants':
-                        self._captureIpParametersConstants(sectData, yamlFile)
                 else:
                     printError(f"Unknown sub-section '{section}' in ipParameters in {yamlFile}")
                     exit(warningAndErrorReport())
         finally:
             self._ipParametersActive = prev
 
-    def _captureIpParametersConstants(self, sectData, yamlFile):
-        # Record each ipParameters constant into a per-file dict keyed by name so
-        # the file-level orphan check (every exposed param consumed by >=1 block
-        # param) and the per-row variant-binding sizing check can resolve them.
-        # The constants have already been added to self.data['constants'][yamlFile]
-        # by processSection, so the qualified key and maxValue are read back here.
-        fileConsts = self.ipParametersConstants.setdefault(yamlFile, OrderedDict())
-        names = sectData if isinstance(sectData, dict) else \
-            (loopitem[self.schema.data['key']['constants']] for loopitem in sectData)
-        for name in names:
-            entry = self.data['constants'][yamlFile][name]
-            fileConsts[name] = {
-                'name': name,
-                'context': yamlFile,
-                'constantKey': entry['constantKey'],
-                'maxValue': entry['maxValue'],
-            }
-
     def _post_validateBlockParamBacking(self, itemkey, item, yamlFile):
-        # The paramSource FK resolves the backing constant through this row's
-        # include chain; a condition on the resolved row is not expressible as an
-        # FK, so the parameterizable requirement is checked here.
+        # The paramSource FK only resolves the row; the plain, parameterizable
+        # requirement is checked here.
         backingKey = item['paramSourceKey']
-        if not self.flatData['constants'][backingKey]['isParameterizable']:
-            line = item['lc'].line + 1 if item.get('lc') else '?'
+        backingConst = self.flatData['constants'][backingKey]
+        line = item['lc'].line + 1 if item.get('lc') else '?'
+        if not backingConst['isParameterizable']:
             self.logError(f"In {yamlFile}:{line}: block param '{item['param']}' is backed by a "
                           f"non-parameterizable constant '{backingKey}'; a block param must be backed "
                           f"by an ipParameters constant")
+        elif backingConst['evalCanonical']:
+            self.logError(f"In {yamlFile}:{line}: block param '{item['param']}' is backed by "
+                          f"'{backingConst['constant']}' (declared in {backingConst['_context']}), "
+                          f"which is computed with eval:; a block param must be backed by a plain "
+                          f"(non-eval) ipParameters constant")
         return item
-
-    def _validateIpParametersLinkage(self):
-        # Project-wide orphan check, run once after every file is fully parsed:
-        # each exposed ipParameters constant must be consumed by at least one
-        # same-file block param. An empty consumer set is aggregate over the whole
-        # file, so it cannot run while files are still being parsed.
-        for yamlFile, fileConsts in self.ipParametersConstants.items():
-            if not fileConsts:
-                continue
-            consumed = {row['paramSourceKey'] for row in self.data['blocksparams'].get(yamlFile, {}).values()}
-            for name, const in fileConsts.items():
-                if const['constantKey'] not in consumed:
-                    self.logError(f"In {yamlFile}: ipParameters constant '{name}' is not consumed by any "
-                                  f"block param; every exposed ipParameters constant must back >=1 block param")
 
     def _post_validateVariantBindingSizing(self, itemkey, item, yamlFile):
         # Per-binding-row check: the backing ipParameters const's maxValue must be

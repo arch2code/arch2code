@@ -5,10 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xifVariantConfig.h"
 
 export module xif.xif_dut.registrar;
 import xif_dut.block;
+import xif.dut.config;
 
 namespace {
 struct _dut_registrar {
@@ -16,13 +16,13 @@ struct _dut_registrar {
         instanceFactory::registerBlock(
             "dut_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dut<dutDutV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dut<xif_dutDutV0Config>>(blockName, variant, bbMode));
             },
             "dutV0", "xif");
         instanceFactory::registerBlock(
             "dut_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dut<dutDutV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<dut<xif_dutDutV0Config>>(blockName, variant, bbMode));
             },
             "dutV0", "xif.xif_tb.xif_dut");
     }

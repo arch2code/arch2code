@@ -7,13 +7,13 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "xifVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here
 #include "testController.h"
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xif_dut.block;
 import xif_dut.base;
+import xif.dut.config;
 import xif;
 // GENERATED_CODE_END
 // user imports here

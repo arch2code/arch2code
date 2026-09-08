@@ -8,8 +8,11 @@ module;
 
 export module xpDpTop.xpDpSrc.config;
 
+export struct xpDpTop_xpDpSrcDefaultConfig {
+    static constexpr uint32_t DP_WIDTH = 8;
+};
+
 export struct xpDpTop_xpDpSrcCustomerConfig {
-    static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
 };
 

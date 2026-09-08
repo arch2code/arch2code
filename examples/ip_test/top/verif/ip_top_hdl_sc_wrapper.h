@@ -31,8 +31,6 @@ import ip;
 using namespace ip_ns;
 import ipBridge;
 using namespace ipBridge_ns;
-#include "ipVariantConfig.h"
-#include "srcVariantConfig.h"
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
 

@@ -1,0 +1,50 @@
+# dvCont's owner binds a `default` variant at DV_ALGO 6 against the constant's
+# declared value of 1; the declared variant's values must win.
+ipParameters:
+    constants:
+        DV_ALGO:  { value: 1, maxValue: 7,  desc: "Algorithm select; behavioural only, appears in no width" }
+        DV_WIDTH: { value: 8, maxValue: 32, desc: "Per-instance pixel width" }
+    types:
+        dvPixelT: { width: DV_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+structures:
+    dvSt:
+        data: { varType: dvPixelT, desc: "Payload" }
+
+interfaces:
+    dvIf:
+        desc: "Push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: dvSt, structureType: data_t }
+
+blocks:
+    top:
+        desc: "Root"
+    dvDrv:
+        desc: "Stimulus source"
+        params: [DV_WIDTH]
+        ports:
+            out: { interface: dvIf, direction: src }
+    dvCont:
+        desc: "Block whose owner declares a variant literally named 'default'"
+        params: [DV_ALGO, DV_WIDTH]
+        ports:
+            in: { interface: dvIf, direction: dst }
+
+instances:
+    uTop:  { container: top, instanceType: top }
+    uDrv:  { container: top, instanceType: dvDrv,  variant: drv }
+    uCont: { container: top, instanceType: dvCont, variant: default }
+
+connections:
+    - { interface: dvIf, src: uDrv, srcport: out, dst: uCont, dstport: in }
+
+parameters:
+    dvDrv:
+        drv:
+            DV_WIDTH: DV_WIDTH
+    dvCont:
+        default:
+            DV_ALGO: 6
+            DV_WIDTH: DV_WIDTH

@@ -17,7 +17,7 @@ import mixed_mixedBlockC;
 using namespace mixed_mixedBlockC_ns;
 import mixed;
 using namespace mixed_ns;
-#include "mixedVariantConfig.h"
+import mixed.blockF.config;
 #include "rdy_vld_bfm.h"
 #include "status_bfm.h"
 

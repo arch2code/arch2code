@@ -1,71 +1,110 @@
-# `twoCtx` — the two-context block
+# `twoCtx`, the two-context block
 
-**Status: it does NOT compile, and it is EXPECTED to once work item B5 (step 3)
-of `plans/plan-parameter-sharing.md` lands.** `make db` and `make gen` are clean,
-which is this fixture's contract today; the C++ build fails, and that failure is
-the recorded symptom of B5. It is built by `make xproj-param-probes`, which
-tolerates the failure.
-
-**Carries a known second defect, left in place.** Its testbench External is still
-at the scaffold seed `--block=xpTwoCtxTop`, so it elaborates a SECOND copy of the
-DUT's children under `tb.external.*` (see `xpTwoCtxTopExternal.cppm`). The other
-`xprojParam` tops were retargeted at their `_tb` container
-(`--block=<X>_tb --excludeInst=u_<X>`); this one was not, because the retarget
-cannot be verified while the fixture does not build. Retarget it as part of
-whatever change makes this fixture compile.
+**Status: regression fixture.** The chain builds, links, and runs. It is the
+`xproj-twoctx` target and runs as part of `pipeline-test`. The guard is the
+checkers' run-time assertions, not the fact that generation succeeded. A wrong
+`configContext` choice, or a Config missing a field, fails the run.
 
 ## What it is
 
 One block, `xpTwoCtxDut`, whose `params:` names one parameterizable constant
 declared in an INCLUDED file (`DP_WIDTH`, from `dpLeaf/yaml/xpDpLeaf.yaml`) and
-one declared in its OWN file (`TC_GAIN`), with both bound to NON-default values
-in one declared variant (12 and 5 against declared defaults of 8 and 2). No such
-block existed anywhere in either tree.
+one declared in its OWN file (`TC_GAIN`), with both bound to non-default values
+in one declared variant (12 and 5, against declared defaults of 8 and 2).
 
-A second block, `xpTwoCtxBare`, is the same two-context shape with **no
-parameterizable structure on its own surface** — it names both knobs and carries
-a literal-width port. The two blocks reach their `configContext` by different
-code paths and behave differently, which is why both are here.
+A second block, `xpTwoCtxBare`, is the same two-context shape with no
+parameterizable structure on its own surface. It names both knobs but carries
+only a literal-width port. The two blocks reach their `configContext` by
+different rules (a surface scan for `xpTwoCtxDut`, the first entry of `params:`
+for `xpTwoCtxBare`), and the fixture checks that both land on the same bound
+values regardless. Their Config names do not depend on that order: both
+variants are declared by this project, so both spell
+`xpTwoCtx_<block>TwoctxConfig`, differing only in the block.
+
+The full chain: `xpTwoCtxLitSrc` drives literal samples into `xpTwoCtxBare`
+directly. `xpTwoCtxSrc` drives `dpSt` samples (sized by `DP_WIDTH`) into
+`xpTwoCtxDut`, which checks them and forwards a `tcSt` sample offset by
+`TC_GAIN_X2` into `xpTwoCtxSnk`. `xpTwoCtxSnk` reaches `TC_GAIN` through its own file's
+context rather than the included one, so it and `xpTwoCtxDut` agreeing on the
+value is itself part of what the run proves.
 
 ## What is emitted
 
-`xpTwoCtxDut`'s `configContext` is the INCLUDED file. Its Config carries the
-included context's constants plus a synthetic for the other one:
+`xpTwoCtxDut`'s Config carries exactly the two parameters it names, nothing
+from the included file it did not name (`registrar/xpTwoCtx_xpTwoCtxDutVariantConfig.cppm`):
 
 ```cpp
 export struct xpTwoCtx_xpTwoCtxDutTwoctxConfig {
-    static constexpr uint32_t DP_ALGO = 1;    // never named by this block
-    static constexpr uint32_t DP_WIDTH = 12;  // bound value, correct
-    static constexpr uint32_t TC_GAIN = 5;    // bound value, synthetic arm
+    static constexpr uint32_t DP_WIDTH = 12;
+    static constexpr uint32_t TC_GAIN = 5;
 };
 ```
 
-`TC_GAIN_X2`, the second context's DERIVED constant, is absent — and the
-generated base class names it:
+`xpTwoCtxBare`'s Config, reached through the other resolution rule, carries the
+same two fields (`registrar/xpTwoCtx_xpTwoCtxBareVariantConfig.cppm`):
+
+```cpp
+export struct xpTwoCtx_xpTwoCtxBareTwoctxConfig {
+    static constexpr uint32_t TC_GAIN = 5;
+    static constexpr uint32_t DP_WIDTH = 12;
+};
+```
+
+`xpTwoCtxSrc` and `xpTwoCtxSnk` each name only one of the two parameters, and
+each gets a Config carrying only that one:
+
+```cpp
+// registrar/xpTwoCtx_xpTwoCtxSrcVariantConfig.cppm
+export struct xpTwoCtx_xpTwoCtxSrcTwoctxConfig {
+    static constexpr uint32_t DP_WIDTH = 12;
+};
+
+// registrar/xpTwoCtx_xpTwoCtxSnkVariantConfig.cppm
+export struct xpTwoCtx_xpTwoCtxSnkTwoctxConfig {
+    static constexpr uint32_t TC_GAIN = 5;
+};
+```
+
+Every Config here - both blocks' defaults and every declared variant - lives in
+its declaring project's own registrar-domain module (`xpTwoCtx.<block>.config`,
+one per block); the context header (`model/xpTwoCtxVariantConfig.h`) carries
+none of them.
+
+Both `xpTwoCtxDut` and `xpTwoCtxBare` derive `TC_GAIN_X2 = Config::TC_GAIN * 2`
+in their Base class, so each Config only needs to carry `TC_GAIN` itself. Both
+also derive `DP_WIDTH_X2 = Config::DP_WIDTH * 2` over the include-reached
+parameter, and the emitted RTL for both blocks spells it as
+`localparam DP_WIDTH_X2 = DP_WIDTH * 2`, the module parameter rather than the
+included file's default literal of 8. The `xproj-twoctx` Makefile target greps
+both `.sv` files for that exact line, so a regression that makes the emitter
+fall back to the constant's default would fail the build, not just the run.
+
+## What the run asserts
+
+- `xpTwoCtxDut` asserts at run time that `DP_WIDTH == 12` and `TC_GAIN == 5`,
+  then checks each `dpSt` sample's `tag`, `data`, and `mark` fields against
+  what `xpTwoCtxSrc` drove. The payload crosses the thunker by `bit_cast`, so
+  the field checks prove routing, not width; the two literal asserts are what
+  pin the bound values.
+- `xpTwoCtxDut` static-asserts that its own Config has no `DP_ALGO` member (the
+  included file declares it, but this block does not name it).
+- `xpTwoCtxSnk` checks each `tcSt` sample's `tag` and `val` against its OWN
+  Config's `TC_GAIN_X2`, so it and `xpTwoCtxDut` reaching the same value proves
+  the two context paths agree.
+- `xpTwoCtxBare` static-asserts the same absent-`DP_ALGO` fact as `xpTwoCtxDut`,
+  and asserts at run time that `DP_WIDTH == 12`, `TC_GAIN == 5`,
+  `TC_GAIN_X2 == 10`, and `DP_WIDTH_X2 == 24`, so the params-only resolution
+  rule reached both bound values and both derived constants. It also checks
+  each `litSt` sample's `v` field against what `xpTwoCtxLitSrc` drove.
+
+## Build and check
 
 ```
-base/xpTwoCtxDutBase.cppm:49:48: fatal error: no member named 'TC_GAIN_X2'
-   in 'xpTwoCtx_xpTwoCtxDutTwoctxConfig'
-   49 |     static constexpr auto TC_GAIN_X2 = Config::TC_GAIN_X2;
+make xproj-twoctx           # runs xproj-depth first, then twoCtx generates and runs
 ```
 
-The SystemVerilog side carries BOTH contexts correctly — both module parameters
-and both contexts' module-local declarations, `TC_GAIN_X2` included — so the two
-languages disagree about the block's parameter set.
+or, from this directory:
 
-## Order dependence
-
-For `xpTwoCtxBare`, which has no parameterizable own surface, the whole choice
-turns on the order of the `params:` list, silently:
-
-| `params:` | `configContext` | `defaultConfig` |
-| :-- | :-- | :-- |
-| `[DP_WIDTH, TC_GAIN]` | `dpLeaf/yaml/xpDpLeaf.yaml` | `xpDpLeafDefaultConfig` |
-| `[TC_GAIN, DP_WIDTH]` | `twoCtx/yaml/xpTwoCtx.yaml` | `xpTwoCtxDefaultConfig` |
-
-The Config's name, its home header and its field set all move with it. The tree
-currently carries the second row.
-
-For `xpTwoCtxDut`, which does have a parameterizable own surface, neither the
-`params:` order nor the `ports:` order moves the choice: the context comes from
-the surface scan instead.
+```
+make clean && make gen -j && make -C rundir -j run
+```

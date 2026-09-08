@@ -36,7 +36,7 @@ public:
     {
         in->setLogging(verbosity);
     };
-    static constexpr auto TC_GAIN_X2 = Config::TC_GAIN_X2;
+    static constexpr auto TC_GAIN_X2 = Config::TC_GAIN * 2;
     using tcValT = tcValT<Config>;
     using tcSt = tcSt<Config>;
 };

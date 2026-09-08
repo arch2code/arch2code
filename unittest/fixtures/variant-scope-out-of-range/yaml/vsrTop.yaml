@@ -1,0 +1,17 @@
+# Declares v1 downstream of uLeaf's own file: this file includes vsrMid.yaml,
+# not the reverse, so uLeaf never reaches this declaration.
+include:
+    - vsrMid.yaml
+
+blocks:
+    top:
+        desc: "Root"
+
+instances:
+    uTop: { container: top, instanceType: top }
+    uMid: { container: top, instanceType: vsrMid }
+
+parameters:
+    vsrLeaf:
+        v1:
+            VSR_W: 4

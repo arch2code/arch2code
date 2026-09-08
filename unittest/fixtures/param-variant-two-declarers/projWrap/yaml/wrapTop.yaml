@@ -1,12 +1,5 @@
-# projWrap: the integration wrapper that owns the leaf's config context. It
-# declares its own parameter, payload and interface, holds the leaf instance, and
-# routes its own boundary port to the leaf through a connectionMap whose parent
-# interface is its own.
-#
-# That map is what moves the leaf's config context downstream to THIS file: the
-# leaf's parameterizable surface is reached through the map's parent interface,
-# which is declared here. So this project emits the leaf's per-variant Config
-# struct, and its binding of v0 is the one every consumer must resolve to.
+# projWrap: holds uLeaf at v0 and declares leafIp/v0 itself while also including
+# ipTop.yaml, which declares it too; two visible declarations, rejected.
 include:
     - ../../projIp/yaml/ipTop.yaml
 

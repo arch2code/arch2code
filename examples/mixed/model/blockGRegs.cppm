@@ -10,12 +10,12 @@ module;
 #include "status_channel.h"
 #include "addressMap.h"
 #include "hwRegister.h"
-#include "mixedVariantConfig.h"
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module mixed_blockGRegs.block;
 import mixed_blockGRegs.base;
+import mixed.blockGRegs.config;
 import mixed;
 // GENERATED_CODE_END
 // user imports here

@@ -77,13 +77,13 @@ EXPECTED_VERDICTS = {
 # one payload pair, so each declaration carries exactly one trailing verdict flag,
 # and only the eligible junction's is true.
 EXPECTED_MEMBERS = [
-    'push_ack_port_thunker<wrapEqSt<Config>, leafEqSt<xpCppLeafEqV0Config>, true>'
+    'push_ack_port_thunker<wrapEqSt<Config>, leafEqSt<xpCppAxis_xpCppLeafEqV0Config>, true>'
     ' thunker_uLeafEq;',
-    'push_ack_port_thunker<wrapOrderSt<Config>, leafOrderSt<xpCppLeafOrderV0Config>,'
+    'push_ack_port_thunker<wrapOrderSt<Config>, leafOrderSt<xpCppAxis_xpCppLeafOrderV0Config>,'
     ' false> thunker_uLeafOrder;',
-    'push_ack_port_thunker<wrapSignSt<Config>, leafSignSt<xpCppLeafSignV0Config>,'
+    'push_ack_port_thunker<wrapSignSt<Config>, leafSignSt<xpCppAxis_xpCppLeafSignV0Config>,'
     ' false> thunker_uLeafSign;',
-    'push_ack_port_thunker<wrapNestSt<Config>, leafNestSt<xpCppLeafNestV0Config>,'
+    'push_ack_port_thunker<wrapNestSt<Config>, leafNestSt<xpCppAxis_xpCppLeafNestV0Config>,'
     ' false> thunker_uLeafNest;',
 ]
 

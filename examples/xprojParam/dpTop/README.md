@@ -68,43 +68,33 @@ owns; the mid forwards it, and the leaf takes it from the mid:
 parameters:
     xpDpWrap:
         customer:
-            MID_ALGO: 5
+            CUST_ALGO: 5
             DP_WIDTH: DP_WIDTH
     xpDpMid:
         customer:
             DP_WIDTH: DP_WIDTH
-            MID_ALGO: { containerParam: MID_ALGO }
+            MID_ALGO: { containerParam: CUST_ALGO }
         customer2:
             DP_WIDTH: DP_WIDTH
             MID_ALGO: 6
 ```
 
 The chain is two single-level links:
-`xpDpWrap.MID_ALGO` = 5 → `xpDpMid.MID_ALGO` → `xpDpLeaf.DP_ALGO`.
+`xpDpWrap.CUST_ALGO` = 5 → `xpDpMid.MID_ALGO` → `xpDpLeaf.DP_ALGO`. The wrapper's
+knob is named `CUST_ALGO` rather than `MID_ALGO`: a block naming a parameter must
+reach exactly one visible declaration of it, and `xpDpTop.yaml` includes
+`xpDpMid.yaml`, which already declares `MID_ALGO`.
 
 `customer2` shows that a value-bound and a container-sourced variant of the same
 block coexist; each parameter of each variant chooses its own form.
 
-## Reuse of one child variant under two containers
+## The leaf instantiated directly under the wrapper
 
-`uLeafX` instantiates the **same** `xpDpLeaf.customer` variant directly inside
-`xpDpWrap`, alongside `uLeafA`/`uLeafB` inside `xpDpMid`. One declaration, two
-containers, and `MID_ALGO` on the two containers is backed by **two different
-constants** (`xpDpMid`'s, and the customer wrapper's own). This is legal: the
-variant means "my container's `MID_ALGO`" at both sites.
-
-What is checked, per site, is that the container's constant cannot admit a value
-the child's constant would reject. Measured on this fixture:
-
-| Case | Result |
-| :-- | :-- |
-| same backing constant on both containers | accepted, no diagnostic |
-| different constants, identical `maxValue` | accepted, no diagnostic |
-| different constants, container's `maxValue` wider | **rejected**, naming that site and both constants |
-
-The rejection is per site and has no blind spot: a fault confined to the single
-reused instance in the third project is caught and named, with every other site
-clean.
+`uLeafX` instantiates `xpDpLeaf` directly inside `xpDpWrap`, skipping the
+mid-level IP entirely, at a variant (`leafX`) `xpDpTop.yaml` declares for
+itself rather than reusing `xpDpMid.yaml`'s `customer`. `leafX` sources
+`DP_ALGO` from the wrapper's own `CUST_ALGO`, the same knob the nested chain
+resolves through `xpDpMid`, so `uChkX` asserts algorithm 5 too.
 
 ## What works, measured
 
@@ -168,8 +158,8 @@ xpDpLeaf_verif`.
   `make -C dpTop/rundir run` both exit 0. The three chains resolve at algorithms
   **5**, **6** and **7** at leaves nested inside the mid-level IP, and each
   checker asserts the algorithm its own Config declares. The directly
-  instantiated `uLeafX` resolves **1** and is asserted too (see the fallback note
-  under "What does not work yet").
+  instantiated `uLeafX` resolves **5**, its own wrapper-declared variant sourcing
+  the same `CUST_ALGO`, and is asserted too.
 
 - **A customer configuration costs the vendors nothing.** Adding a fourth
   configuration of the mid-level IP, declared and instantiated entirely within
@@ -188,7 +178,7 @@ xpDpLeaf_verif`.
 | Both a value and a container source | declaration (row-local) | `... states both a value (3) and container source ...` |
 | Neither a value nor a container source | declaration (row-local) | `... states neither a value nor a container source ...` |
 | A parameter omitted from a container-sourced variant | declaration (row-local) | `Variant 'customer' of block 'xpDpLeaf' ... is missing required parameter(s): DP_WIDTH` |
-| Container declares no such parameter | **post-parse, per site** | `instance uLeafX ... sources param 'DP_WIDTH' ... from container parameter 'DP_WIDTH', but container block 'xpDpWrap' declares no such parameter; it declares ['MID_ALGO']` |
+| Container declares no such parameter | **post-parse, per site** | `instance uLeafX ... sources param 'DP_WIDTH' ... from container parameter 'DP_WIDTH', but container block 'xpDpWrap' declares no such parameter; it declares ['CUST_ALGO']` |
 | Container constant admits values the child cannot | **post-parse, per site** | `instance uLeafX ... allows values up to 15 while the child parameter's backing constant ... allows only 7; the container can be bound to a value the child cannot accept` |
 | Instance is not contained in a block at all | **post-parse, per site** | `... sources parameter(s) [...] from a container parameter, so the instance must be contained in a block` |
 
@@ -198,22 +188,6 @@ needs the container is checked after parsing, in
 
 ## What does not work yet
 
-- **Include-chain shadowing is silent, and this feature makes it load-bearing.**
-  `xpDpWrap: params: [MID_ALGO]` in `xpDpTop.yaml` binds the customer's own
-  `MID_ALGO`, not the `MID_ALGO` reached through the included `xpDpMid.yaml`,
-  purely by include order and with no diagnostic. That choice now decides which
-  constant a nested IP's parameter is bounded by. A duplicate-in-scope
-  diagnostic on the scoped lookup is the obvious guard.
-- **A child variant declared by an intermediate project is not selectable by a
-  third project's instance** (stated in full under "Constraints" below). At run
-  time `uLeafX` therefore stamps algorithm 1, the leaf's declared default,
-  rather than the wrapper's 5. Only the direct instantiation is affected; the
-  same variant reached through the mid-level IP resolves correctly. **This is now
-  OBSERVED, not merely documented**: `uChkX` (variant `leafX`, `DP_ALGO` bound
-  through the leaf's own constant) consumes `uLeafX`'s output and asserts
-  algorithm 1 per sample, so a change in that resolution fails the target instead
-  of passing in silence. The behaviour is unchanged - only the observation was
-  added.
 - ~~**The layout gate loses a container-sourced LAYOUT parameter.**~~ **FIXED
   2026-08-17, and no longer a limitation of this family.** Bindings used to be
   resolved per declared variant; a container-sourced binding has no value there,
@@ -227,9 +201,6 @@ needs the container is checked after parsing, in
   everywhere, so it puts no layout question in play; the two arms that do are
   `examples/xprojParam/cpLayout` (accept) and `cpLayoutBad` (reject), guarded by
   the `xproj-container-layout` target.
-- `dpTop/registrar/xpDpTop_xpDpLeafVariantConfig.cppm` is a stale orphan left
-  from an earlier shape of this fixture. Generated files are not swept when the
-  declaration that produced them is removed.
 
 ## Constraints the fixture ran into on the way
 
@@ -253,8 +224,8 @@ around it.
   connectSingle/connectDouble type check. Hence `midIn` / `midOut` rather than
   `in` / `out`.
 - **The testbench External omits `foreignConfigModules`** (plan-parameter-sharing
-  B3). For this family the wrapper is load-bearing anyway — it owns the
-  customer's `MID_ALGO` — so it is not a B3 workaround here.
+  B3). For this family the wrapper is load-bearing anyway, since it owns the
+  customer's `CUST_ALGO`, so it is not a B3 workaround here.
 - **The External must be retargeted at the `_tb` container**
   (`--block=xpDpTop_tb --excludeInst=u_xpDpTop`), so it holds the DUT's siblings
   — here none — rather than the DUT's own children. Left at the scaffold seed
@@ -266,13 +237,6 @@ around it.
   'xpDpMid' (project 'xpDpMid') and child block 'xpDpLeaf' (project 'xpDpLeaf')
   to be the same owning project`. The container-sourced form carries no such
   restriction.
-- **A variant declared by an intermediate project is not selectable by a third
-  project's instance.** `selectVariantDescriptor` matches either the consuming
-  project's own declaration or the child block owner's, so `uLeafX` — declared in
-  `xpDpTop`, at a variant declared by `xpDpMid` — resolves no descriptor and
-  falls back to the block default Config. The validator therefore checks every
-  declaration of the variant label rather than only the one a site would bind,
-  so a container-sourced parameter is never silently unchecked.
 
 ## A second thing this example guards: peers of the DUT
 

@@ -8,7 +8,7 @@
 #include "ip_hdl_sc_wrapper.h"
 #include "Vip_variant0_hdl_sv_wrapper.h"
 #include "VipBridge_ip_variant1_hdl_sv_wrapper.h"
-#include "ipVariantConfig.h"
+import ip.ip.config;
 import ipBridge.ip.config;
 
 namespace {
@@ -17,13 +17,13 @@ struct _ip_vl_registrar {
         instanceFactory::registerBlock(
             "ip_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<Vip_variant0_hdl_sv_wrapper, ipVariant0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<Vip_variant0_hdl_sv_wrapper, ip_ipVariant0Config>>(blockName, variant, bbMode));
             },
             "variant0", "ip");
         instanceFactory::registerBlock(
             "ip_verif",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<Vip_variant0_hdl_sv_wrapper, ipVariant0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<ip_hdl_sc_wrapper<Vip_variant0_hdl_sv_wrapper, ip_ipVariant0Config>>(blockName, variant, bbMode));
             },
             "variant0", "ipBridge.ipBridge.ip");
         instanceFactory::registerBlock(

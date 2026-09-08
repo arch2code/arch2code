@@ -5,11 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "ipLeafVariantConfig.h"
-#include "srcVariantConfig.h"
 
 export module ip_test.ip_test_src.registrar;
 import ip_test_src.block;
+import ip_test.src.config;
 
 namespace {
 struct _src_registrar {
@@ -17,13 +16,13 @@ struct _src_registrar {
         instanceFactory::registerBlock(
             "src_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcVariantSrc0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<ip_test_srcVariantSrc0Config>>(blockName, variant, bbMode));
             },
             "variantSrc0", "ip_test");
         instanceFactory::registerBlock(
             "src_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcVariantSrc0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<ip_test_srcVariantSrc0Config>>(blockName, variant, bbMode));
             },
             "variantSrc0", "ip_test.ip_test_ip_top.ip_test_src");
     }

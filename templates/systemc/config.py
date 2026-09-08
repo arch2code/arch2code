@@ -1,40 +1,23 @@
 import pysrc.emissionUtils as emissionUtils
-from pysrc.intf_gen_utils import cpp_variant_config_name, cpp_config_module_name, \
-    CONTAINER_CONFIG_PARAM
+from pysrc.intf_gen_utils import cpp_config_module_name, CONTAINER_CONFIG_PARAM
 
 # args from generator line
 # prj object
 # data set dict
 def render(args, prj, data):
-    # A registrar-domain foreign-Config header carries a --parent on its param
-    # line (block+parent mode); the context-mode default/same-project header does
-    # not. Foreign mode emits only the owner-qualified assembler-declared structs.
+    # A registrar-domain Config module has --parent on its param line; the
+    # context-mode header does not.
     if 'parent' in data:
-        return(foreignConfig(args, prj, data))
+        return(configModule(args, prj, data))
     return(includeConfig(args, prj, data))
 
 
-def foreignConfig(args, prj, data):
-    # Owner-qualified per-variant Config structs for the reused child block
-    # `data['qualBlock']`, declared foreign by the parent `data['parent']`'s
-    # owning project, emitted as a C++20 module interface unit. Member layout
-    # mirrors the child's context config header (base parameterizable members
-    # plus eval-derived members emitted symbolically); only the struct name is
-    # owner-qualified. The whole module (global module fragment #includes,
-    # `export module <project>.<child>.config;`, and the exported structs) is
-    # emitted here into the scaffold's single generated region, so a consumer
-    # container/registrar imports the module rather than including a header.
-    view = prj.getForeignConfigData(data['qualBlock'], data['parent'])
+def configModule(args, prj, data):
+    view = prj.getConfigModuleData(data['qualBlock'], data['parent'])
     descriptors = view['descriptors']
     if not descriptors:
         return ""
-    params = view['params']
-    constants_by_name = {value['constant']: value for value in params}
-    block_param_synthetic = view['blockParamSynthetic']
-    # One config module per (owning project, child); every descriptor here shares
-    # that identity (getForeignConfigData filters to the owner project and one
-    # child). The module name is spelled in the template layer from the neutral
-    # (project, child) components.
+    # All descriptors share one (project, block) identity, so any one names the module.
     moduleName = cpp_config_module_name(descriptors[0]['declaringProject'],
                                         descriptors[0]['block'])
     out = []
@@ -46,16 +29,9 @@ def foreignConfig(args, prj, data):
     out.append("")
     out.append(f'export module {moduleName};')
     out.append("")
-    # One descriptor per declared variant, each with a unique struct name. The
-    # name is spelled here in the template layer from the descriptor's neutral
-    # (project, block, variant) components. Each struct is exported so a module
-    # consumer can name it unqualified, exactly as the header form did.
     for desc in descriptors:
-        structName = cpp_variant_config_name(desc['declaringProject'], desc['block'],
-                                             desc['variant'], desc['isForeign'])
-        out.extend(_descriptorStructOpen(desc, structName, export=True))
-        out.extend(_descriptorMemberLines(prj, desc, constants_by_name,
-                                          block_param_synthetic))
+        out.extend(_descriptorStructOpen(desc, desc['structName'], export=True))
+        out.extend(_descriptorMemberLines(prj, desc))
         out.append("};")
         out.append("")
     return("\n".join(out))
@@ -77,31 +53,18 @@ def _descriptorStructOpen(desc, structName, export):
     return [f'{prefix}struct {structName} {{']
 
 
-def _descriptorMemberLines(prj, desc, constants_by_name, block_param_synthetic):
-    """Member lines of one per-variant Config struct.
-
-    A container-sourced parameter reads the named parameter off the container's
-    Config; every other parameter emits its resolved value (or, for an
-    eval-derived constant, its canonical expression over this struct's own
-    members). A synthetic block-param entry - one declared through `params:`
-    with no backing parameterizable constant - is an unsigned 32-bit field whose
-    value source is the variant override."""
+def _descriptorMemberLines(prj, desc):
+    """Member lines of one Config struct. Backing constants are looked up by
+    paramSourceKeys, so a same-spelled param in another block cannot supply the type."""
     out = []
     variantSpelling = _configSymSpelling(prj, set(desc['values'].keys()))
     for constName, resolved in desc['values'].items():
         containerParam = desc['containerSourced'].get(constName)
-        isBacked = constName in constants_by_name
-        # A container-sourced row states no value, so the member's type is
-        # decided by the parameter's declaration alone. A synthetic block param
-        # declares no bound either and is an unsigned 32-bit field.
-        constData = constants_by_name[constName] if isBacked else \
-            dict(block_param_synthetic[constName], value=0 if containerParam else resolved)
+        constData = prj.data['constants'][desc['paramSourceKeys'][constName]]
         if containerParam:
             rhs = f'{CONTAINER_CONFIG_PARAM}::{containerParam}'
-        elif isBacked:
-            rhs = _configMemberRhs(constData, resolved, variantSpelling)
         else:
-            rhs = resolved
+            rhs = _configMemberRhs(constData, resolved, variantSpelling)
         out.append(f"    static constexpr {_config_type(constData)} {constName} = {rhs};")
     return out
 
@@ -114,13 +77,11 @@ def emitCStyleCanonical(evalCanonical, symSpelling):
 
 
 def configStructLines(prj, data, structName, baseValues):
-    """Emit the lines for one Config struct given base-value overrides.
-
-    baseValues: {base-parameterizable-constant-name: int}. Base parameterizable
-    members emit the supplied override (or their declared value); eval-derived
-    members emit symbolically through their canonical expression so each struct
-    recomputes them from its own base members (see _configMemberRhs)."""
-    params = [value for value in data['constants'].values() if value['isParameterizable']]
+    """Emit lines for one Config struct given base-value overrides. Covers
+    every parameterizable constant this context's structures need for
+    round-trip testing (projectOpen._sampleConfigConstants), not the
+    narrower per-block set the real build emits."""
+    params = list(data['sampleConfigConstants'].values())
     spelling = _configSymSpelling(prj, {value['constant'] for value in params})
     out = [f"struct {structName} {{"]
     for value in params:
@@ -132,70 +93,9 @@ def configStructLines(prj, data, structName, baseValues):
 
 
 def includeConfig(args, prj, data):
-    out = []
-    params = [value for value in data['constants'].values() if value['isParameterizable']]
-    # Synthetic block-param fields (declared via `params:` with no backing
-    # parameterizable constant) and per-variant Config descriptors are
-    # supplied by getContextData(); the template performs no cross-block
-    # walks.
-    constants_by_name = {p['constant']: p for p in params}
-    block_param_synthetic = data['contextBlockParamSynthetic']
-    variant_entries = data['contextVariantConfigs']
-    # The Config struct members are `static constexpr uint*_t`, so this region
-    # owns <cstdint> for every context, including one with no parameterizable
-    # constants at all - hence ahead of the paramless early return below, which
-    # would otherwise leave such a header depending on the scaffold's copy.
-    # Matches the foreignConfig module path, which emits it in its own region.
-    out.append('#include <cstdint>')
-    if not params and not block_param_synthetic and not variant_entries:
-        return "\n".join(out)
-    # Config structs may emit eval-derived members that use clog2; the
-    # dedicated clog2 header supplies that constexpr helper unconditionally.
-    out.append('#include "clog2.h"')
-    out.append("")
-    # Legacy per-context Config struct. Retained for blocks that still ride on
-    # <context>DefaultConfig (those without their own variants but
-    # parameterizable transitively).
-    # Pure block params (block_param_synthetic) are intentionally NOT
-    # emitted here: there is no constant default, so any caller reading
-    # them through the legacy default fallback is a usage bug. Per-variant
-    # Config structs (below) carry the override values.
-    # The struct name must be the same identifier consumer blocks reference
-    # as their Config type, i.e. blocks.defaultConfig. Mirror the exact
-    # context-stem sanitization used by calcBlockConfigInfo() (both '-' and
-    # '.' mapped to '_') so the emitted name never drifts from the persisted
-    # one.
-    configName = f"{data['contextStem'].replace('-', '_').replace('.', '_')}DefaultConfig"
-    out.append(f"struct {configName} {{")
-    defaultSpelling = _configSymSpelling(prj, {value['constant'] for value in params})
-    for value in params:
-        type_str = _config_type(value)
-        rhs = _configMemberRhs(value, value['value'], defaultSpelling)
-        out.append(f"    static constexpr {type_str} {value['constant']} = {rhs};")
-    out.append("};")
-    out.append("")
-    # Per-variant Config structs, one per declared variant. Variant labels and
-    # resolved values come from the context view.
-    # Seed with the legacy context-stem default name: a block whose own
-    # default-variant config resolves to `<contextStem>DefaultConfig` (block
-    # name == YAML file stem) names the same struct already emitted above, so
-    # re-emitting it would be a redefinition.
-    seen_struct_names = {configName}
-    for entry in variant_entries:
-        desc = entry['descriptor']
-        if not desc['values']:
-            continue
-        structName = cpp_variant_config_name(desc['declaringProject'], desc['block'],
-                                             desc['variant'], desc['isForeign'])
-        if structName in seen_struct_names:
-            continue
-        seen_struct_names.add(structName)
-        out.extend(_descriptorStructOpen(desc, structName, export=False))
-        out.extend(_descriptorMemberLines(prj, desc, constants_by_name,
-                                          block_param_synthetic))
-        out.append("};")
-        out.append("")
-    return("\n".join(out))
+    # The context-mode Config header stays scaffolded but carries nothing;
+    # Config structs live in the registrar-domain module (configModule).
+    return ""
 
 
 def _configSymSpelling(prj, memberNames):

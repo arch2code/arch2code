@@ -25,7 +25,6 @@ import mixed;
 using namespace mixed_ns;
 import mixed_mixedBlockC;
 using namespace mixed_mixedBlockC_ns;
-#include "mixedVariantConfig.h"
 #include "apb_bfm.h"
 #include "notify_ack_bfm.h"
 #include "rdy_vld_bfm.h"

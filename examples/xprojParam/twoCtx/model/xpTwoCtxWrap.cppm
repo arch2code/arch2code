@@ -8,15 +8,15 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 #include "push_ack_port_thunker.h"
-#include "xpDpLeafVariantConfig.h"
-#include "xpTwoCtxVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpTwoCtx_xpTwoCtxWrap.block;
 import xpTwoCtx_xpTwoCtxWrap.base;
+import xpTwoCtx.xpTwoCtxBare.config;
 import xpTwoCtx.xpTwoCtxDut.config;
+import xpTwoCtx.xpTwoCtxSnk.config;
 import xpTwoCtx.xpTwoCtxSrc.config;
 import xpDpLeaf;
 import xpTwoCtx;
@@ -41,20 +41,20 @@ public:
     // The leaf IP's own parameterized pixel push/ack stream
     push_ack_channel< dpSt<xpTwoCtx_xpTwoCtxDutTwoctxConfig> > out;
     // This file's own parameterized stream
-    push_ack_channel< tcSt<xpTwoCtxSnkTwoctxConfig> > valOut;
+    push_ack_channel< tcSt<xpTwoCtx_xpTwoCtxSnkTwoctxConfig> > valOut;
     // Literal, non-parameterizable stream
     push_ack_channel< litSt > litOut;
 
     //instances contained in block
     std::shared_ptr<xpTwoCtxSrcBase<xpTwoCtx_xpTwoCtxSrcTwoctxConfig>> uSrc;
     std::shared_ptr<xpTwoCtxDutBase<xpTwoCtx_xpTwoCtxDutTwoctxConfig>> uDut;
-    std::shared_ptr<xpTwoCtxSnkBase<xpTwoCtxSnkTwoctxConfig>> uSnk;
+    std::shared_ptr<xpTwoCtxSnkBase<xpTwoCtx_xpTwoCtxSnkTwoctxConfig>> uSnk;
     std::shared_ptr<xpTwoCtxLitSrcBase> uLitSrc;
-    std::shared_ptr<xpTwoCtxBareBase<xpTwoCtxBareTwoctxConfig>> uBare;
+    std::shared_ptr<xpTwoCtxBareBase<xpTwoCtx_xpTwoCtxBareTwoctxConfig>> uBare;
 
     // cross-interface thunkers
     push_ack_port_thunker<dpSt<xpTwoCtx_xpTwoCtxDutTwoctxConfig>, dpSt<xpTwoCtx_xpTwoCtxSrcTwoctxConfig>, true> thunker_out_uSrc;
-    push_ack_port_thunker<tcSt<xpTwoCtxSnkTwoctxConfig>, tcSt<xpTwoCtx_xpTwoCtxDutTwoctxConfig>, true> thunker_valOut_uDut;
+    push_ack_port_thunker<tcSt<xpTwoCtx_xpTwoCtxSnkTwoctxConfig>, tcSt<xpTwoCtx_xpTwoCtxDutTwoctxConfig>, true> thunker_valOut_uDut;
 
     xpTwoCtxWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpTwoCtxWrap() override = default;
@@ -86,9 +86,9 @@ xpTwoCtxWrap::xpTwoCtxWrap(sc_module_name blockName, const char * variant, block
         ,litOut("xpTwoCtxBare_litOut", "xpTwoCtxLitSrc")
         ,uSrc(std::dynamic_pointer_cast<xpTwoCtxSrcBase<xpTwoCtx_xpTwoCtxSrcTwoctxConfig>>(instanceFactory::createInstance(name(), "uSrc", "xpTwoCtxSrc", "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxSrc")))
         ,uDut(std::dynamic_pointer_cast<xpTwoCtxDutBase<xpTwoCtx_xpTwoCtxDutTwoctxConfig>>(instanceFactory::createInstance(name(), "uDut", "xpTwoCtxDut", "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxDut")))
-        ,uSnk(std::dynamic_pointer_cast<xpTwoCtxSnkBase<xpTwoCtxSnkTwoctxConfig>>(instanceFactory::createInstance(name(), "uSnk", "xpTwoCtxSnk", "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxSnk")))
+        ,uSnk(std::dynamic_pointer_cast<xpTwoCtxSnkBase<xpTwoCtx_xpTwoCtxSnkTwoctxConfig>>(instanceFactory::createInstance(name(), "uSnk", "xpTwoCtxSnk", "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxSnk")))
         ,uLitSrc(std::dynamic_pointer_cast<xpTwoCtxLitSrcBase>(instanceFactory::createInstance(name(), "uLitSrc", "xpTwoCtxLitSrc", "", "xpTwoCtx")))
-        ,uBare(std::dynamic_pointer_cast<xpTwoCtxBareBase<xpTwoCtxBareTwoctxConfig>>(instanceFactory::createInstance(name(), "uBare", "xpTwoCtxBare", "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxBare")))
+        ,uBare(std::dynamic_pointer_cast<xpTwoCtxBareBase<xpTwoCtx_xpTwoCtxBareTwoctxConfig>>(instanceFactory::createInstance(name(), "uBare", "xpTwoCtxBare", "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxBare")))
         ,thunker_out_uSrc("thunker_out_uSrc", out, uSrc->out, name())
         ,thunker_valOut_uDut("thunker_valOut_uDut", valOut, uDut->valOut, name())
 // GENERATED_CODE_END

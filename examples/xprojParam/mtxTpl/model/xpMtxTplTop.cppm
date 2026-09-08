@@ -6,13 +6,13 @@ module;
 #include "systemc.h"
 #include "logging.h"
 #include "instanceFactory.h"
-#include "xpMtxTplTopVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpMtxTpl_xpMtxTplTop.block;
 import xpMtxTpl_xpMtxTplTop.base;
+import xpMtxTpl.xpMtxTplWrap.config;
 import xpMtxTpl_xpMtxTplWrap.base;
 import xpMtxTpl_xpMtxTplTop;
 // GENERATED_CODE_END
@@ -27,7 +27,7 @@ private:
 
 public:
     //instances contained in block
-    std::shared_ptr<xpMtxTplWrapBase<xpMtxTplWrapV0Config>> uWrap;
+    std::shared_ptr<xpMtxTplWrapBase<xpMtxTpl_xpMtxTplWrapV0Config>> uWrap;
 
     xpMtxTplTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpMtxTplTop() override = default;
@@ -54,7 +54,7 @@ xpMtxTplTop::xpMtxTplTop(sc_module_name blockName, const char * variant, blockBa
        : sc_module(blockName)
         ,blockBase("xpMtxTplTop", name(), bbMode)
         ,xpMtxTplTopBase(name(), variant)
-        ,uWrap(std::dynamic_pointer_cast<xpMtxTplWrapBase<xpMtxTplWrapV0Config>>(instanceFactory::createInstance(name(), "uWrap", "xpMtxTplWrap", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplTop.xpMtxTpl_xpMtxTplWrap")))
+        ,uWrap(std::dynamic_pointer_cast<xpMtxTplWrapBase<xpMtxTpl_xpMtxTplWrapV0Config>>(instanceFactory::createInstance(name(), "uWrap", "xpMtxTplWrap", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplTop.xpMtxTpl_xpMtxTplWrap")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

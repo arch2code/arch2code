@@ -8,8 +8,6 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 #include "push_ack_port_thunker.h"
-#include "xpCstIpVariantConfig.h"
-#include "xpCstSupVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -17,8 +15,11 @@ module;
 export module xpCstBind_xpCstBindWrap.block;
 import xpCstBind_xpCstBindWrap.base;
 import xpCstBind.xpCstChkInc.config;
+import xpCstBind.xpCstChkOwn.config;
 import xpCstBind.xpCstDut.config;
 import xpCstBind.xpCstSrcInc.config;
+import xpCstBind.xpCstSrcOwn.config;
+import xpCstIp.xpCstDut.config;
 import xpCstIp;
 import xpCstBind_xpCstSup;
 import xpCstBind_xpCstSrcInc.base;
@@ -40,9 +41,9 @@ private:
 public:
     // channels
     // The IP's own parameterized pixel push/ack stream
-    push_ack_channel< csDutSt<xpCstDutDfltConfig> > out_0;
+    push_ack_channel< csDutSt<xpCstIp_xpCstDutDfltConfig> > out_0;
     // The IP's own parameterized pixel push/ack stream
-    push_ack_channel< csDutSt<xpCstBind_xpCstChkIncDfltConfig> > out_1;
+    push_ack_channel< csDutSt<xpCstIp_xpCstDutDfltConfig> > out_1;
     // The IP's own parameterized pixel push/ack stream
     push_ack_channel< csDutSt<xpCstBind_xpCstDutUseConfig> > out_2;
     // The IP's own parameterized pixel push/ack stream
@@ -50,17 +51,17 @@ public:
 
     //instances contained in block
     std::shared_ptr<xpCstSrcIncBase<xpCstBind_xpCstSrcIncDfltConfig>> uSrcA;
-    std::shared_ptr<xpCstDutBase<xpCstDutDfltConfig>> uDutA;
+    std::shared_ptr<xpCstDutBase<xpCstIp_xpCstDutDfltConfig>> uDutA;
     std::shared_ptr<xpCstChkIncBase<xpCstBind_xpCstChkIncDfltConfig>> uChkA;
-    std::shared_ptr<xpCstSrcOwnBase<xpCstSrcOwnUseConfig>> uSrcB;
+    std::shared_ptr<xpCstSrcOwnBase<xpCstBind_xpCstSrcOwnUseConfig>> uSrcB;
     std::shared_ptr<xpCstDutBase<xpCstBind_xpCstDutUseConfig>> uDutB;
-    std::shared_ptr<xpCstChkOwnBase<xpCstChkOwnUseConfig>> uChkB;
+    std::shared_ptr<xpCstChkOwnBase<xpCstBind_xpCstChkOwnUseConfig>> uChkB;
 
     // cross-interface thunkers
-    push_ack_port_thunker<csDutSt<xpCstDutDfltConfig>, csDutSt<xpCstBind_xpCstSrcIncDfltConfig>, true> thunker_out_0_uSrcA;
-    push_ack_port_thunker<csDutSt<xpCstBind_xpCstChkIncDfltConfig>, csDutSt<xpCstDutDfltConfig>, true> thunker_out_1_uDutA;
-    push_ack_port_thunker<csDutSt<xpCstBind_xpCstDutUseConfig>, csOwnSt<xpCstSrcOwnUseConfig>, true> thunker_out_2_uSrcB;
-    push_ack_port_thunker<csDutSt<xpCstBind_xpCstDutUseConfig>, csOwnSt<xpCstChkOwnUseConfig>, true> thunker_out_3_uChkB;
+    push_ack_port_thunker<csDutSt<xpCstIp_xpCstDutDfltConfig>, csIncSt<xpCstBind_xpCstSrcIncDfltConfig>, true> thunker_out_0_uSrcA;
+    push_ack_port_thunker<csDutSt<xpCstIp_xpCstDutDfltConfig>, csIncSt<xpCstBind_xpCstChkIncDfltConfig>, true> thunker_out_1_uChkA;
+    push_ack_port_thunker<csDutSt<xpCstBind_xpCstDutUseConfig>, csOwnSt<xpCstBind_xpCstSrcOwnUseConfig>, true> thunker_out_2_uSrcB;
+    push_ack_port_thunker<csDutSt<xpCstBind_xpCstDutUseConfig>, csOwnSt<xpCstBind_xpCstChkOwnUseConfig>, true> thunker_out_3_uChkB;
 
     xpCstBindWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpCstBindWrap() override = default;
@@ -92,13 +93,13 @@ xpCstBindWrap::xpCstBindWrap(sc_module_name blockName, const char * variant, blo
         ,out_2("xpCstDut_out_2", "xpCstSrcOwn")
         ,out_3("xpCstChkOwn_out_3", "xpCstDut")
         ,uSrcA(std::dynamic_pointer_cast<xpCstSrcIncBase<xpCstBind_xpCstSrcIncDfltConfig>>(instanceFactory::createInstance(name(), "uSrcA", "xpCstSrcInc", "dflt", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstBind_xpCstSrcInc")))
-        ,uDutA(std::dynamic_pointer_cast<xpCstDutBase<xpCstDutDfltConfig>>(instanceFactory::createInstance(name(), "uDutA", "xpCstDut", "dflt", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstIp_xpCstDut")))
+        ,uDutA(std::dynamic_pointer_cast<xpCstDutBase<xpCstIp_xpCstDutDfltConfig>>(instanceFactory::createInstance(name(), "uDutA", "xpCstDut", "dflt", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstIp_xpCstDut")))
         ,uChkA(std::dynamic_pointer_cast<xpCstChkIncBase<xpCstBind_xpCstChkIncDfltConfig>>(instanceFactory::createInstance(name(), "uChkA", "xpCstChkInc", "dflt", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstBind_xpCstChkInc")))
-        ,uSrcB(std::dynamic_pointer_cast<xpCstSrcOwnBase<xpCstSrcOwnUseConfig>>(instanceFactory::createInstance(name(), "uSrcB", "xpCstSrcOwn", "use", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstBind_xpCstSrcOwn")))
+        ,uSrcB(std::dynamic_pointer_cast<xpCstSrcOwnBase<xpCstBind_xpCstSrcOwnUseConfig>>(instanceFactory::createInstance(name(), "uSrcB", "xpCstSrcOwn", "use", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstBind_xpCstSrcOwn")))
         ,uDutB(std::dynamic_pointer_cast<xpCstDutBase<xpCstBind_xpCstDutUseConfig>>(instanceFactory::createInstance(name(), "uDutB", "xpCstDut", "use", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstIp_xpCstDut")))
-        ,uChkB(std::dynamic_pointer_cast<xpCstChkOwnBase<xpCstChkOwnUseConfig>>(instanceFactory::createInstance(name(), "uChkB", "xpCstChkOwn", "use", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstBind_xpCstChkOwn")))
+        ,uChkB(std::dynamic_pointer_cast<xpCstChkOwnBase<xpCstBind_xpCstChkOwnUseConfig>>(instanceFactory::createInstance(name(), "uChkB", "xpCstChkOwn", "use", "xpCstBind.xpCstBind_xpCstBindWrap.xpCstBind_xpCstChkOwn")))
         ,thunker_out_0_uSrcA("thunker_out_0_uSrcA", out_0, uSrcA->out, name())
-        ,thunker_out_1_uDutA("thunker_out_1_uDutA", out_1, uDutA->out, name())
+        ,thunker_out_1_uChkA("thunker_out_1_uChkA", out_1, uChkA->in, name())
         ,thunker_out_2_uSrcB("thunker_out_2_uSrcB", out_2, uSrcB->out, name())
         ,thunker_out_3_uChkB("thunker_out_3_uChkB", out_3, uChkB->in, name())
 // GENERATED_CODE_END
@@ -106,7 +107,7 @@ xpCstBindWrap::xpCstBindWrap(sc_module_name blockName, const char * variant, blo
 {
     // instance to instance connections via channel
     uDutA->in(out_0);
-    uChkA->in(out_1);
+    uDutA->out(out_1);
     uDutB->in(out_2);
     uDutB->out(out_3);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );

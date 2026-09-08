@@ -31,7 +31,10 @@ public:
 
     // GENERATED_CODE_END
     // block implementation members
-
+private:
+    static constexpr uint32_t SAMPLE_COUNT = 4;
+    static constexpr uint32_t FIRST_V = 0x1000;
+    void drive(void);
 };
 
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -56,5 +59,15 @@ xpTwoCtxLitSrc::xpTwoCtxLitSrc(sc_module_name blockName, const char * variant, b
 {
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
+    SC_THREAD(drive);
 };
+
+void xpTwoCtxLitSrc::drive(void)
+{
+    for (uint32_t i = 0; i < SAMPLE_COUNT; i++) {
+        litSt sample{};
+        sample.v = FIRST_V + i;
+        litOut->push(sample);
+    }
+}
 

@@ -27,6 +27,7 @@ export namespace xpCstBind_xpCstSup_ns {
 export namespace xpCstBind_xpCstSup_ns {
 // types
 template<typename Config> using csOwnPixelT = uint64_t; // [max:32] Own-knob parameterizable pixel word
+template<typename Config> using csIncPixelT = uint64_t; // [max:32] Parameterizable pixel word, width from the included constant
 
 } // namespace xpCstBind_xpCstSup_ns
 // GENERATED_CODE_END
@@ -144,6 +145,111 @@ struct csOwnSt {
     explicit csOwnSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config>
+struct csIncSt {
+    csMarkT mark; //Trailing marker
+    csIncPixelT<Config> data; //Parameterizable pixel payload
+    csCfgT cfg; //Width the producing block resolved its pixel width to
+    csTagT tag; //Sample sequence tag
+
+    csIncSt() {}
+
+    static constexpr uint16_t _bitWidth = 8 + Config::CS_PIXEL_WIDTH + 8 + 8;
+    static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
+    typedef uint64_t _packedSt;
+    inline bool operator == (const csIncSt<Config> & rhs) const {
+        bool ret = true;
+        ret = ret && (tag == rhs.tag);
+        ret = ret && (cfg == rhs.cfg);
+        ret = ret && (data == rhs.data);
+        ret = ret && (mark == rhs.mark);
+        return ( ret );
+        }
+    inline friend void sc_trace(sc_trace_file *tf, const csIncSt<Config> & v, const std::string & NAME ) {
+        sc_trace(tf,v.tag, NAME + ".tag");
+        sc_trace(tf,v.cfg, NAME + ".cfg");
+        sc_trace(tf,v.data, NAME + ".data");
+        sc_trace(tf,v.mark, NAME + ".mark");
+    }
+    inline friend ostream& operator << ( ostream& os,  csIncSt const & v ) {
+        os << v.prt();
+        return os;
+    }
+    std::string prt(bool all=false) const
+    {
+        return (std::format("tag:0x{:02x} cfg:0x{:02x} data:0x{:03x} mark:0x{:02x}",
+           (uint64_t) tag,
+           (uint64_t) cfg,
+           (uint64_t) data,
+           (uint64_t) mark
+        ));
+    }
+    static const char* getValueType(void) { return( "" );}
+    inline uint64_t getStructValue(void) const { return( -1 );}
+    inline void pack(_packedSt &_ret) const
+    {
+        memset(&_ret, 0, csIncSt<Config>::_byteWidth);
+        uint16_t _pos{0};
+        pack_bits((uint64_t *)&_ret, _pos, mark, 8);
+        _pos += 8;
+        pack_bits((uint64_t *)&_ret, _pos, data, Config::CS_PIXEL_WIDTH);
+        _pos += Config::CS_PIXEL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, cfg, 8);
+        _pos += 8;
+        pack_bits((uint64_t *)&_ret, _pos, tag, 8);
+        _pos += 8;
+    }
+    inline void unpack(const _packedSt &_src)
+    {
+        uint16_t _pos{0};
+        mark = (csMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        _pos += 8;
+        data = (csIncPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::CS_PIXEL_WIDTH)) - 1));
+        _pos += Config::CS_PIXEL_WIDTH;
+        cfg = (csCfgT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+        _pos += 8;
+        tag = (csTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
+    }
+    inline sc_bv<csIncSt<Config>::_bitWidth> sc_pack(void) const
+    {
+        sc_bv<csIncSt<Config>::_bitWidth> packed_data;
+        uint16_t _pos{0};
+        packed_data.range(_pos+8-1, _pos) = mark;
+        _pos += 8;
+        packed_data.range(_pos+Config::CS_PIXEL_WIDTH-1, _pos) = data;
+        _pos += Config::CS_PIXEL_WIDTH;
+        packed_data.range(_pos+8-1, _pos) = cfg;
+        _pos += 8;
+        packed_data.range(_pos+8-1, _pos) = tag;
+        _pos += 8;
+        return packed_data;
+    }
+    inline void sc_unpack(sc_bv<csIncSt<Config>::_bitWidth> packed_data)
+    {
+    uint16_t _pos{0};
+        mark = (csMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
+        _pos += 8;
+        data = (csIncPixelT<Config>) packed_data.range(_pos+Config::CS_PIXEL_WIDTH-1, _pos).to_uint64();
+        _pos += Config::CS_PIXEL_WIDTH;
+        cfg = (csCfgT) packed_data.range(_pos+8-1, _pos).to_uint64();
+        _pos += 8;
+        tag = (csTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
+        _pos += 8;
+    }
+    explicit csIncSt(sc_bv<csIncSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit csIncSt(
+        csMarkT mark_,
+        csIncPixelT<Config> data_,
+        csCfgT cfg_,
+        csTagT tag_) :
+        mark(mark_),
+        data(data_),
+        cfg(cfg_),
+        tag(tag_)
+    {}
+    explicit csIncSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+
+};
 } // namespace xpCstBind_xpCstSup_ns
 
 // GENERATED_CODE_END
@@ -207,12 +313,15 @@ export namespace xpCstBind_xpCstSup_test_ns {
 using namespace xpCstBind_xpCstSup_ns;
 struct xpCstSupTestConfigDefault {
     static constexpr uint32_t CS_OWN_WIDTH = 12;
+    static constexpr uint32_t CS_PIXEL_WIDTH = 12;
 };
 struct xpCstSupTestConfigMid {
     static constexpr uint32_t CS_OWN_WIDTH = 16;
+    static constexpr uint32_t CS_PIXEL_WIDTH = 16;
 };
 struct xpCstSupTestConfigMax {
     static constexpr uint32_t CS_OWN_WIDTH = 32;
+    static constexpr uint32_t CS_PIXEL_WIDTH = 32;
 };
 std::string test_xpCstSup_structs::name(void) { return "test_xpCstSup_structs"; }
 void test_xpCstSup_structs::test(void) {
@@ -222,6 +331,9 @@ void test_xpCstSup_structs::test(void) {
     roundTrip<csOwnSt<xpCstSupTestConfigDefault>>("csOwnSt", patterns);
     roundTrip<csOwnSt<xpCstSupTestConfigMid>>("csOwnSt", patterns);
     roundTrip<csOwnSt<xpCstSupTestConfigMax>>("csOwnSt", patterns);
+    roundTrip<csIncSt<xpCstSupTestConfigDefault>>("csIncSt", patterns);
+    roundTrip<csIncSt<xpCstSupTestConfigMid>>("csIncSt", patterns);
+    roundTrip<csIncSt<xpCstSupTestConfigMax>>("csIncSt", patterns);
 }
 } // namespace xpCstBind_xpCstSup_test_ns
 

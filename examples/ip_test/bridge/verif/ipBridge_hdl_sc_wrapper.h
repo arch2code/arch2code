@@ -27,7 +27,6 @@ import common_shared_types;
 using namespace common_shared_types_ns;
 import ip;
 using namespace ip_ns;
-#include "ipVariantConfig.h"
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
 

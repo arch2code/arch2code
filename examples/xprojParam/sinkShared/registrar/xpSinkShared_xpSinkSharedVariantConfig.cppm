@@ -8,6 +8,10 @@ module;
 
 export module xpSinkShared.xpSinkShared.config;
 
+export struct xpSinkShared_xpSinkSharedDefaultConfig {
+    static constexpr uint32_t PIXEL_WIDTH = 12;
+};
+
 export struct xpSinkShared_xpSinkSharedV0Config {
     static constexpr uint32_t PIXEL_WIDTH = 8;
 };

@@ -153,7 +153,6 @@ def _reset_project_create_class_state():
     projectCreate.qualEnums = {}
     projectCreate.includeName = {}
     projectCreate.includeValid = {}
-    projectCreate.ipParametersConstants = {}
     projectCreate.errorState = False
 
 

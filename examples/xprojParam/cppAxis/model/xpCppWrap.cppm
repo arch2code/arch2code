@@ -8,13 +8,17 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 #include "push_ack_port_thunker.h"
-#include "xpCppWrapVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpCppAxis_xpCppWrap.block;
 import xpCppAxis_xpCppWrap.base;
+import xpCppAxis.xpCppWrap.config;
+import xpCppAxis.xpCppLeafEq.config;
+import xpCppAxis.xpCppLeafNest.config;
+import xpCppAxis.xpCppLeafOrder.config;
+import xpCppAxis.xpCppLeafSign.config;
 import xpCppAxis_xpCppWrap;
 import xpCppLeaf;
 import xpCppLeaf_xpCppLeafEq.base;
@@ -44,16 +48,16 @@ public:
     using xpCppWrapBase<Config>::nestIn;
 
     //instances contained in block
-    std::shared_ptr<xpCppLeafEqBase<xpCppLeafEqV0Config>> uLeafEq;
-    std::shared_ptr<xpCppLeafOrderBase<xpCppLeafOrderV0Config>> uLeafOrder;
-    std::shared_ptr<xpCppLeafSignBase<xpCppLeafSignV0Config>> uLeafSign;
-    std::shared_ptr<xpCppLeafNestBase<xpCppLeafNestV0Config>> uLeafNest;
+    std::shared_ptr<xpCppLeafEqBase<xpCppAxis_xpCppLeafEqV0Config>> uLeafEq;
+    std::shared_ptr<xpCppLeafOrderBase<xpCppAxis_xpCppLeafOrderV0Config>> uLeafOrder;
+    std::shared_ptr<xpCppLeafSignBase<xpCppAxis_xpCppLeafSignV0Config>> uLeafSign;
+    std::shared_ptr<xpCppLeafNestBase<xpCppAxis_xpCppLeafNestV0Config>> uLeafNest;
 
     // cross-interface thunkers
-    push_ack_port_thunker<wrapEqSt<Config>, leafEqSt<xpCppLeafEqV0Config>, true> thunker_uLeafEq;
-    push_ack_port_thunker<wrapOrderSt<Config>, leafOrderSt<xpCppLeafOrderV0Config>, false> thunker_uLeafOrder;
-    push_ack_port_thunker<wrapSignSt<Config>, leafSignSt<xpCppLeafSignV0Config>, false> thunker_uLeafSign;
-    push_ack_port_thunker<wrapNestSt<Config>, leafNestSt<xpCppLeafNestV0Config>, false> thunker_uLeafNest;
+    push_ack_port_thunker<wrapEqSt<Config>, leafEqSt<xpCppAxis_xpCppLeafEqV0Config>, true> thunker_uLeafEq;
+    push_ack_port_thunker<wrapOrderSt<Config>, leafOrderSt<xpCppAxis_xpCppLeafOrderV0Config>, false> thunker_uLeafOrder;
+    push_ack_port_thunker<wrapSignSt<Config>, leafSignSt<xpCppAxis_xpCppLeafSignV0Config>, false> thunker_uLeafSign;
+    push_ack_port_thunker<wrapNestSt<Config>, leafNestSt<xpCppAxis_xpCppLeafNestV0Config>, false> thunker_uLeafNest;
 
     // inherited parameterized types usable unqualified (no <Config>)
     using typename xpCppWrapBase<Config>::wrapPixelT;
@@ -76,10 +80,10 @@ xpCppWrap<Config>::xpCppWrap(sc_module_name blockName, const char * variant, blo
        : sc_module(blockName)
         ,blockBase("xpCppWrap", name(), bbMode)
         ,xpCppWrapBase<Config>(name(), variant)
-        ,uLeafEq(std::dynamic_pointer_cast<xpCppLeafEqBase<xpCppLeafEqV0Config>>(instanceFactory::createInstance(name(), "uLeafEq", "xpCppLeafEq", "v0", "xpCppAxis.xpCppAxis_xpCppWrap.xpCppLeaf_xpCppLeafEq")))
-        ,uLeafOrder(std::dynamic_pointer_cast<xpCppLeafOrderBase<xpCppLeafOrderV0Config>>(instanceFactory::createInstance(name(), "uLeafOrder", "xpCppLeafOrder", "v0", "xpCppAxis.xpCppAxis_xpCppWrap.xpCppLeaf_xpCppLeafOrder")))
-        ,uLeafSign(std::dynamic_pointer_cast<xpCppLeafSignBase<xpCppLeafSignV0Config>>(instanceFactory::createInstance(name(), "uLeafSign", "xpCppLeafSign", "v0", "xpCppAxis.xpCppAxis_xpCppWrap.xpCppLeaf_xpCppLeafSign")))
-        ,uLeafNest(std::dynamic_pointer_cast<xpCppLeafNestBase<xpCppLeafNestV0Config>>(instanceFactory::createInstance(name(), "uLeafNest", "xpCppLeafNest", "v0", "xpCppAxis.xpCppAxis_xpCppWrap.xpCppLeaf_xpCppLeafNest")))
+        ,uLeafEq(std::dynamic_pointer_cast<xpCppLeafEqBase<xpCppAxis_xpCppLeafEqV0Config>>(instanceFactory::createInstance(name(), "uLeafEq", "xpCppLeafEq", "v0", "xpCppAxis.xpCppAxis_xpCppWrap.xpCppLeaf_xpCppLeafEq")))
+        ,uLeafOrder(std::dynamic_pointer_cast<xpCppLeafOrderBase<xpCppAxis_xpCppLeafOrderV0Config>>(instanceFactory::createInstance(name(), "uLeafOrder", "xpCppLeafOrder", "v0", "xpCppAxis.xpCppAxis_xpCppWrap.xpCppLeaf_xpCppLeafOrder")))
+        ,uLeafSign(std::dynamic_pointer_cast<xpCppLeafSignBase<xpCppAxis_xpCppLeafSignV0Config>>(instanceFactory::createInstance(name(), "uLeafSign", "xpCppLeafSign", "v0", "xpCppAxis.xpCppAxis_xpCppWrap.xpCppLeaf_xpCppLeafSign")))
+        ,uLeafNest(std::dynamic_pointer_cast<xpCppLeafNestBase<xpCppAxis_xpCppLeafNestV0Config>>(instanceFactory::createInstance(name(), "uLeafNest", "xpCppLeafNest", "v0", "xpCppAxis.xpCppAxis_xpCppWrap.xpCppLeaf_xpCppLeafNest")))
         ,thunker_uLeafEq("thunker_uLeafEq", this->eqIn, uLeafEq->eqIn, name())
         ,thunker_uLeafOrder("thunker_uLeafOrder", this->orderIn, uLeafOrder->orderIn, name())
         ,thunker_uLeafSign("thunker_uLeafSign", this->signIn, uLeafSign->signIn, name())

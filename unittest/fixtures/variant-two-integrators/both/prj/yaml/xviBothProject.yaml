@@ -1,0 +1,35 @@
+# A third project referencing both integrators without declaring xviLeaf's v0.
+# xviTopProject.yaml already composes xviMid, so listing it brings in both
+# bindings of v0. Used only by the create-time rejection cell; no Makefile or
+# generated artifacts.
+
+yamlFormat: 2
+projectName: xviBoth
+
+topInstance: xviTop_tb
+
+projectFiles:
+    - ../../yaml/xviBothOwn.yaml
+    - ../../../top/prj/yaml/xviTopProject.yaml
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

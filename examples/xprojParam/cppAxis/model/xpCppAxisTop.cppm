@@ -8,13 +8,13 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 #include "push_ack_port_thunker.h"
-#include "xpCppWrapVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpCppAxis_xpCppAxisTop.block;
 import xpCppAxis_xpCppAxisTop.base;
+import xpCppAxis.xpCppWrap.config;
 import xpCppAxis_xpCppAxisTop;
 import xpCppAxis_xpCppWrap;
 import xpCppAxis_cppDriver.base;
@@ -43,13 +43,13 @@ public:
 
     //instances contained in block
     std::shared_ptr<cppDriverBase> uDrive;
-    std::shared_ptr<xpCppWrapBase<xpCppWrapV0Config>> uWrap;
+    std::shared_ptr<xpCppWrapBase<xpCppAxis_xpCppWrapV0Config>> uWrap;
 
     // cross-interface thunkers
-    push_ack_port_thunker<bndEqSt, wrapEqSt<xpCppWrapV0Config>, false> thunker_eqOut_uWrap;
-    push_ack_port_thunker<bndOrderSt, wrapOrderSt<xpCppWrapV0Config>, false> thunker_orderOut_uWrap;
-    push_ack_port_thunker<bndSignSt, wrapSignSt<xpCppWrapV0Config>, false> thunker_signOut_uWrap;
-    push_ack_port_thunker<bndNestSt, wrapNestSt<xpCppWrapV0Config>, false> thunker_nestOut_uWrap;
+    push_ack_port_thunker<bndEqSt, wrapEqSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_eqOut_uWrap;
+    push_ack_port_thunker<bndOrderSt, wrapOrderSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_orderOut_uWrap;
+    push_ack_port_thunker<bndSignSt, wrapSignSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_signOut_uWrap;
+    push_ack_port_thunker<bndNestSt, wrapNestSt<xpCppAxis_xpCppWrapV0Config>, false> thunker_nestOut_uWrap;
 
     xpCppAxisTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpCppAxisTop() override = default;
@@ -81,7 +81,7 @@ xpCppAxisTop::xpCppAxisTop(sc_module_name blockName, const char * variant, block
         ,signOut("xpCppWrap_signOut", "cppDriver")
         ,nestOut("xpCppWrap_nestOut", "cppDriver")
         ,uDrive(std::dynamic_pointer_cast<cppDriverBase>(instanceFactory::createInstance(name(), "uDrive", "cppDriver", "", "xpCppAxis")))
-        ,uWrap(std::dynamic_pointer_cast<xpCppWrapBase<xpCppWrapV0Config>>(instanceFactory::createInstance(name(), "uWrap", "xpCppWrap", "v0", "xpCppAxis.xpCppAxis_xpCppAxisTop.xpCppAxis_xpCppWrap")))
+        ,uWrap(std::dynamic_pointer_cast<xpCppWrapBase<xpCppAxis_xpCppWrapV0Config>>(instanceFactory::createInstance(name(), "uWrap", "xpCppWrap", "v0", "xpCppAxis.xpCppAxis_xpCppAxisTop.xpCppAxis_xpCppWrap")))
         ,thunker_eqOut_uWrap("thunker_eqOut_uWrap", eqOut, uWrap->eqIn, name())
         ,thunker_orderOut_uWrap("thunker_orderOut_uWrap", orderOut, uWrap->orderIn, name())
         ,thunker_signOut_uWrap("thunker_signOut_uWrap", signOut, uWrap->signIn, name())

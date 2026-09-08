@@ -5,7 +5,6 @@
 module;
 #include "systemc.h"
 #include "instanceFactory.h"
-#include "xifVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -13,6 +12,7 @@ module;
 export module xif_dut.testbench;
 import xif_dut.base;
 import xif_dut.external;
+import xif.dut.config;
 import xif;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
@@ -22,11 +22,11 @@ import xif;
 
 using namespace xif_ns;
 
-export class dutTestbench: public sc_module, public blockBase, public dutChannels<dutDutV0Config> {
+export class dutTestbench: public sc_module, public blockBase, public dutChannels<xif_dutDutV0Config> {
 
 public:
 
-    std::shared_ptr<dutBase<dutDutV0Config>> dut;
+    std::shared_ptr<dutBase<xif_dutDutV0Config>> dut;
     dutExternal external;
 
     dutTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
@@ -58,8 +58,8 @@ namespace {
 
 dutTestbench::dutTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("dutTestbench", name(), bbMode)
-        ,dutChannels<dutDutV0Config>("Chnl", "tb")
-        ,dut(std::dynamic_pointer_cast<dutBase<dutDutV0Config>>( instanceFactory::createInstance(name(), "dut", "dut", "dutV0", "xif")))
+        ,dutChannels<xif_dutDutV0Config>("Chnl", "tb")
+        ,dut(std::dynamic_pointer_cast<dutBase<xif_dutDutV0Config>>( instanceFactory::createInstance(name(), "dut", "dut", "dutV0", "xif")))
         ,external("external")
 {
     bind(dut.get(), &external);

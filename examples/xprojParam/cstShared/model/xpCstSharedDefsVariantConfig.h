@@ -1,0 +1,11 @@
+
+#ifndef XPCSTSHAREDDEFSVARIANTCONFIG_H_
+#define XPCSTSHAREDDEFSVARIANTCONFIG_H_
+// 
+
+// GENERATED_CODE_PARAM --project=xpCstShared --context=../../yaml/xpCstSharedDefs.yaml
+// GENERATED_CODE_BEGIN --template=config
+
+// GENERATED_CODE_END
+
+#endif //XPCSTSHAREDDEFSVARIANTCONFIG_H_

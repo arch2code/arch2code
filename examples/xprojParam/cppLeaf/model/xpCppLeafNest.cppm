@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "xpCppLeafVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -15,6 +14,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpCppLeaf_xpCppLeafNest.block;
 import xpCppLeaf_xpCppLeafNest.base;
+import xpCppLeaf.xpCppLeafNest.config;
 import xpCppLeaf;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)

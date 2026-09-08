@@ -15,13 +15,11 @@
 include:
     - ../../dpMid/yaml/xpDpMid.yaml
 
-# DECIDING EXPERIMENT. The customer declares its own MID_ALGO. It is a different
-# constant from xpDpMid's MID_ALGO and carries a WIDER bound, so the same child
-# variant sourced from "my container's MID_ALGO" means two different things
-# depending on which of the two containers it is instantiated in.
+# The customer's own algorithm knob, distinct from xpDpMid's MID_ALGO: kept
+# separate since a name visible twice through one include chain is rejected.
 ipParameters:
     constants:
-        MID_ALGO: { value: 3, maxValue: 7, desc: "The customer wrapper's own algorithm knob, deliberately wider than the leaf accepts" }
+        CUST_ALGO: { value: 3, maxValue: 7, desc: "The customer wrapper's own algorithm knob" }
 
 blocks:
     xpDpTop:
@@ -40,7 +38,7 @@ blocks:
         desc: "Container of the chain; declares the customer knob the mid inherits"
         # Level 3 of the chain. The wrapper owns the customer-facing algorithm
         # knob; the mid inherits it, and the leaf inherits it from the mid.
-        params: [MID_ALGO, DP_WIDTH]
+        params: [CUST_ALGO, DP_WIDTH]
         hasMdl: true
         hasVl: false
         hasTb: false
@@ -103,13 +101,8 @@ instances:
     # variant of that IP. The question this cell answers is whether the leaf
     # nested inside each one can differ with it.
     uMid2:      { container: xpDpWrap,   instanceType: xpDpMid,    instGroup: top, variant: customer2 }
-    # The SAME leaf variant, instantiated under a DIFFERENT container. It has its
-    # own checker because what it resolves is a DOCUMENTED FALLBACK, not the
-    # customer's value: a variant declared by an intermediate project is not
-    # selectable by a third project's instance, so this instance falls back to the
-    # leaf's default Config. Left unchecked, the fixture would pass over it in
-    # silence and a change in that resolution would go unnoticed.
-    uLeafX:     { container: xpDpWrap,   instanceType: xpDpLeaf,   instGroup: top, variant: customer }
+    # Directly under the wrapper, at a variant this customer declares itself.
+    uLeafX:     { container: xpDpWrap,   instanceType: xpDpLeaf,   instGroup: top, variant: leafX }
     uChkX:      { container: xpDpWrap,   instanceType: xpDpChk,    instGroup: top, variant: leafX }
     uChk2:      { container: xpDpWrap,   instanceType: xpDpChk,    instGroup: top, variant: customer2 }
     # A THIRD configuration of the same mid-level IP, added by the customer
@@ -132,22 +125,18 @@ connections:
     - { interface: dpIf, src: uMid3, srcport: midOut, dst: uChk3, dstport: in }
 
 parameters:
-    # The customer configures the MID-level IP it actually instantiates. The
-    # mid's own leaf variant sources DP_ALGO from the mid's MID_ALGO, so the
-    # value stated here is what the nested leaf resolves. The customer states no
-    # variant of the leaf at all: it does not name a block two levels down.
-    # Level 3 -> level 2. The mid does not state the algorithm either: it takes
-    # it from the wrapper that contains it. The chain is therefore
-    # xpDpWrap.MID_ALGO -> xpDpMid.MID_ALGO -> xpDpLeaf.DP_ALGO, two inheritance
-    # hops from the customer's single stated value.
+    # The customer configures the mid-level IP it instantiates and names nothing
+    # two levels down. The mid sources MID_ALGO from the wrapper containing it,
+    # so the chain xpDpWrap.CUST_ALGO -> xpDpMid.MID_ALGO -> xpDpLeaf.DP_ALGO
+    # runs from one stated value.
     xpDpWrap:
         customer:
-            MID_ALGO: 5
+            CUST_ALGO: 5
             DP_WIDTH: DP_WIDTH
     xpDpMid:
         customer:
             DP_WIDTH: DP_WIDTH
-            MID_ALGO: { containerParam: MID_ALGO }
+            MID_ALGO: { containerParam: CUST_ALGO }
         # A sibling variant of the same block, bound to a literal rather than
         # inherited: the two forms coexist per variant.
         customer2:
@@ -174,12 +163,15 @@ parameters:
         customer3:
             DP_ALGO: 7
             DP_WIDTH: DP_WIDTH
-        # What the directly instantiated leaf actually resolves: the leaf's own
-        # declared default, because the customer cannot select a variant the
-        # intermediate project declared. Bound through the leaf's constant rather
-        # than a restated literal so it tracks that declaration.
+        # The direct leaf's expected algorithm, the same 5 the nested chain carries.
         leafX:
-            DP_ALGO: DP_ALGO
+            DP_ALGO: 5
+            DP_WIDTH: DP_WIDTH
+    # uLeafX's variant, declared by this assembler. DP_ALGO comes straight from
+    # the wrapper's CUST_ALGO rather than through the nested mid chain.
+    xpDpLeaf:
+        leafX:
+            DP_ALGO: { containerParam: CUST_ALGO }
             DP_WIDTH: DP_WIDTH
     # Peer-of-the-DUT variants. Both are declared by this assembler against a
     # child whose config context another project owns, so both emit an

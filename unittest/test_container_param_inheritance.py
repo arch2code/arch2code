@@ -50,7 +50,6 @@ if base_dir not in sys.path:
 
 from _addrctl_helpers import cleanup, write_temp
 from pysrc.processYaml import projectOpen
-from pysrc.systemcGen import genSystemC
 from pysrc.systemVerilogGenerator import systemVerilogGenerator
 from templates.systemc import config
 from templates.systemVerilog import moduleInterfacesInstances
@@ -194,11 +193,27 @@ def _struct_body(rendered, structName):
     return rendered.split(marker, 1)[1].split('};', 1)[0]
 
 
+def _struct_definitions(rendered):
+    """Strip one Config module render to its bare struct/template bodies, so
+    two renders can be combined into one plain (non-module) translation unit."""
+    _, _, body = rendered.partition('export module')
+    _, _, body = body.partition('\n')
+    return body.replace('export struct', 'struct').replace(
+        'export template', 'template')
+
+
 def _render_config(prj):
-    """Render the real per-variant Config emission for the fixture's context."""
-    ctx = prj.data['blocks'][prj.getQualBlock('leaf')]['_context']
-    data = prj.getContextData([ctx], genSystemC.dataTypeMappings)
-    return config.includeConfig(None, prj, data)
+    """Render the real per-variant Config emission for the fixture's leaf and
+    container blocks, concatenated into one plain translation unit so a
+    single compile can apply the child's template to the container's struct."""
+    args = SimpleNamespace(template='config')
+    leaf_rendered = config.render(
+        args, prj, {'qualBlock': prj.getQualBlock('leaf'), 'parent': 'cont'})
+    cont_rendered = config.render(
+        args, prj, {'qualBlock': prj.getQualBlock('cont'), 'parent': 'top'})
+    return ('#include <cstdint>\n#include "clog2.h"\n\n'
+            + _struct_definitions(leaf_rendered)
+            + _struct_definitions(cont_rendered))
 
 
 def _compile_and_run(rendered, work_dir):
@@ -212,7 +227,7 @@ def _compile_and_run(rendered, work_dir):
     with open(source, 'w') as f:
         f.write(rendered)
         f.write(f"""
-using resolved = leafFromContConfig<contUseConfig>;
+using resolved = contparam_accept_test_leafFromContConfig<contparam_accept_test_contUseConfig>;
 static_assert(resolved::LEAF_ALGO == {BOUND_ALGO},
               "child parameter must resolve to the value its container binds");
 int main() {{ return resolved::LEAF_ALGO == {BOUND_ALGO} ? 0 : 1; }}
@@ -244,8 +259,8 @@ def test_equal_domain_accepted_and_value_resolves(prj):
     # the struct that must carry it: B5 emits the whole context's parameterizable
     # constants into every Config, so an unscoped search would find the right
     # spelling in the wrong struct.
-    childBody = _struct_body(rendered, 'leafFromContConfig')
-    containerBody = _struct_body(rendered, 'contUseConfig')
+    childBody = _struct_body(rendered, 'contparam_accept_test_leafFromContConfig')
+    containerBody = _struct_body(rendered, 'contparam_accept_test_contUseConfig')
     checks = [
         (rendered, 'template<typename ContainerConfig>',
          "child Config is not a template over the container's Config"),

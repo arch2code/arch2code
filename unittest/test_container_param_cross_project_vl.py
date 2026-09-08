@@ -102,7 +102,10 @@ def make_parent_the_assembler(work):
     top = os.path.join(work, 'dpTop')
     mid_model = os.path.join(work, 'dpMid', 'model')
     for name in ('xpDpMidStdWrap.cppm', 'xpDpMidStdTop.cppm',
-                 'xpDpMidSnk.cppm', 'xpDpMidDrv.cppm'):
+                 'xpDpMidSnk.cppm', 'xpDpMidDrv.cppm',
+                 # dpMid's Config module home moves to xpDpTop once the project
+                 # reference is dropped, so newmodule below must rescaffold it.
+                 'xpDpMidVariantConfig.h'):
         os.unlink(os.path.join(mid_model, name))
     project_yaml = os.path.join(top, 'prj', 'yaml', 'xpDpTopProject.yaml')
     with open(project_yaml) as f:
@@ -119,10 +122,18 @@ def make_parent_the_assembler(work):
         text = f.read()
     removals = (
         '            out2: { interface: dpIf, direction: src }\n',
-        '    uLeafX:     { container: xpDpWrap,   instanceType: xpDpLeaf,   instGroup: top, variant: customer }\n',
+        '    uLeafX:     { container: xpDpWrap,   instanceType: xpDpLeaf,   instGroup: top, variant: leafX }\n',
         '    uChkX:      { container: xpDpWrap,   instanceType: xpDpChk,    instGroup: top, variant: leafX }\n',
         '    - { interface: dpIf, src: uSrc, srcport: out2, dst: uLeafX, dstport: in }\n',
         '    - { interface: dpIf, src: uLeafX, srcport: out, dst: uChkX, dstport: in }\n',
+        # uLeafX's own declared variant of xpDpLeaf, unused once the instance
+        # naming it is removed above.
+        '    # uLeafX\'s variant, declared by this assembler. DP_ALGO comes straight from\n'
+        '    # the wrapper\'s CUST_ALGO rather than through the nested mid chain.\n'
+        '    xpDpLeaf:\n'
+        '        leafX:\n'
+        '            DP_ALGO: { containerParam: CUST_ALGO }\n'
+        '            DP_WIDTH: DP_WIDTH\n',
     )
     for line in removals:
         if text.count(line) != 1:

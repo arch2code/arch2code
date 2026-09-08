@@ -5,9 +5,6 @@
 #include <string>
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
-#include "xpFilterUniqVariantConfig.h"
-#include "xpGainUniqVariantConfig.h"
-#include "xpSinkUniqVariantConfig.h"
 import a2c.endOfTest;
 // GENERATED_CODE_END
 // user #includes and imports here

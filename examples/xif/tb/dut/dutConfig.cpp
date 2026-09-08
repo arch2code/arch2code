@@ -5,7 +5,7 @@
 #include <string>
 #include "instanceFactory.h"
 #include "testBenchConfigFactory.h"
-#include "xifVariantConfig.h"
+import xif.dut.config;
 import a2c.endOfTest;
 // GENERATED_CODE_END
 // user #includes and imports here

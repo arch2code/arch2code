@@ -1,5 +1,6 @@
 import pysrc.intf_gen_utils as intf_gen_utils
 from pysrc.arch2codeHelper import printError, printWarning, warningAndErrorReport
+from templates.systemc.includes import constReference_cpp
 
 # Does not alter the rendering
 intf_gen_utils.LEGACY_COMPAT_MODE = True
@@ -23,17 +24,17 @@ def bareParameterizedType(typeStr, hasOwnParams):
 def wordLinesExpr(item, prj, useConfig=False, blockData=None):
     wordLines = item['wordLines']
     wordLinesKey = item.get('wordLinesKey', '')
-    if useConfig and wordLinesKey and prj.data['constants'].get(wordLinesKey, {}).get('isParameterizable', False):
-        return f"Config::{wordLines}"
+    if useConfig and wordLinesKey and prj.data['constants'][wordLinesKey]['isParameterizable']:
+        return constReference_cpp(wordLinesKey, prj, useConfig=True)
     if useConfig:
-        for constData in prj.data.get('constants', {}).values():
-            if constData.get('constant') == wordLines and constData.get('isParameterizable', False):
-                return f"Config::{wordLines}"
+        for constKey, constData in prj.data['constants'].items():
+            if constData['constant'] == wordLines and constData['isParameterizable']:
+                return constReference_cpp(constKey, prj, useConfig=True)
         if blockData:
             # Block params with no backing constant are Config fields; the
             # per-variant Config struct carries the field with the variant's
             # override value.
-            for param in blockData.get('blockInfo', {}).get('params', []):
+            for param in blockData['blockInfo'].get('params', []):
                 if param.get('param') == wordLines:
                     return f"Config::{wordLines}"
     return wordLines

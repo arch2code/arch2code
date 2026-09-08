@@ -5,7 +5,6 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpDpLeafVariantConfig.h"
 
 export module xpTwoCtx.xpTwoCtx_xpTwoCtxSrc.registrar;
 import xpTwoCtx_xpTwoCtxSrc.block;

@@ -5,10 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpGainVariantConfig.h"
 
 export module xpShared.xpGain.registrar;
 import xpGain.block;
+import xpGain.xpGain.config;
 
 namespace {
 struct _xpGain_registrar {
@@ -16,13 +16,13 @@ struct _xpGain_registrar {
         instanceFactory::registerBlock(
             "xpGain_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpGain<xpGainV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpGain<xpGain_xpGainV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpGain");
         instanceFactory::registerBlock(
             "xpGain_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpGain<xpGainV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpGain<xpGain_xpGainV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpShared.xpShared_xpSharedTop.xpGain");
     }

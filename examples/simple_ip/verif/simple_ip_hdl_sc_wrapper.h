@@ -27,7 +27,6 @@ import simple_ip;
 using namespace simple_ip_ns;
 import ip;
 using namespace ip_ns;
-#include "ipVariantConfig.h"
 #include "apb_bfm.h"
 #include "push_ack_bfm.h"
 

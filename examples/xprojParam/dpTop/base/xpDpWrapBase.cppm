@@ -18,7 +18,7 @@ class xpDpWrapBase : public virtual blockPortBase
 {
 public:
     virtual ~xpDpWrapBase() = default;
-    static constexpr auto MID_ALGO = Config::MID_ALGO;
+    static constexpr auto CUST_ALGO = Config::CUST_ALGO;
     static constexpr auto DP_WIDTH = Config::DP_WIDTH;
 
 

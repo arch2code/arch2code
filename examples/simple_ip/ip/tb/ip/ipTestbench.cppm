@@ -5,7 +5,6 @@
 module;
 #include "systemc.h"
 #include "instanceFactory.h"
-#include "ipVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -13,6 +12,7 @@ module;
 export module ip.testbench;
 import ip.base;
 import ip.external;
+import ip.ip.config;
 import ip;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
@@ -22,11 +22,11 @@ import ip;
 
 using namespace ip_ns;
 
-export class ipTestbench: public sc_module, public blockBase, public ipChannels<ipVariant0Config> {
+export class ipTestbench: public sc_module, public blockBase, public ipChannels<ip_ipVariant0Config> {
 
 public:
 
-    std::shared_ptr<ipBase<ipVariant0Config>> ip;
+    std::shared_ptr<ipBase<ip_ipVariant0Config>> ip;
     ipExternal external;
 
     ipTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
@@ -58,8 +58,8 @@ namespace {
 
 ipTestbench::ipTestbench(sc_module_name blockName, const char * variant, blockBaseMode bbMode)
        : blockBase("ipTestbench", name(), bbMode)
-        ,ipChannels<ipVariant0Config>("Chnl", "tb")
-        ,ip(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>( instanceFactory::createInstance(name(), "ip", "ip", "variant0", "ip")))
+        ,ipChannels<ip_ipVariant0Config>("Chnl", "tb")
+        ,ip(std::dynamic_pointer_cast<ipBase<ip_ipVariant0Config>>( instanceFactory::createInstance(name(), "ip", "ip", "variant0", "ip")))
         ,external("external")
 {
     bind(ip.get(), &external);

@@ -3,7 +3,7 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_tb_module_name, cpp_tb_external_module_name, cpp_context_include_lines, cpp_config_arg, cpp_config_header_includes, sc_channel_header_includes, cpp_container_typed_instance_arg, sc_instance_config_imports, BLOCK_CONFIG_PARAM
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_tb_module_name, cpp_tb_external_module_name, cpp_context_include_lines, cpp_config_arg, cpp_own_config_import, sc_channel_header_includes, cpp_container_typed_instance_arg, sc_instance_config_imports, BLOCK_CONFIG_PARAM
 
 from jinja2 import Template
 
@@ -110,30 +110,14 @@ def _tb_bind_container_config(text, data, sel):
 
 
 def tb_config_prerequisites(args, prj, data):
-    # Framework baseline every `<block>Config.cpp` needs to compile. This is a
-    # plain translation unit, not a module unit, so #include and import may be
-    # interleaved freely.
-    #
-    # Two entries are prerequisites of the file's USER-owned bodies, not of anything
-    # generated here, so both look unused when read against the generated lines
-    # alone - do not delete either:
-    #   * `a2c.endOfTest` for the scaffolded final() body's endOfTestState vote;
-    #   * `<context>VariantConfig.h` for a createTestBench() body that spells a DUT
-    #     Config type. Those structs sit in the testbench modules' global module
-    #     fragment, so an importer finds them reachable but not visible, and the
-    #     header deliberately cannot become a module.
-    #
-    # No generated line here names a SystemC symbol, so systemc.h is NOT emitted;
-    # the scaffolded bodies reach it through instanceFactory.h -> blockBase.h, and a
-    # user body that spells sc_ types itself owns the include in the user slot.
-    # `<string>` IS named directly (the registration lambda), so it stays even
-    # though instanceFactory.h also supplies it.
+    # a2c.endOfTest and the DUT's own Config module back the user-owned final()
+    # and createTestBench() bodies, not the generated lines.
     out = [
         '#include <string>',
         '#include "instanceFactory.h"',
         '#include "testBenchConfigFactory.h"',
     ]
-    out.extend(cpp_config_header_includes(data))
+    out.extend(cpp_own_config_import(data))
     out.append('import a2c.endOfTest;')
     return "\n".join(out)
 
@@ -211,22 +195,9 @@ def _ext_channel_includes(prj, data):
 
 
 def ext_module_header(args, prj, data):
-    # Global module fragment ONLY for `<block>External.cppm`. This region ends
-    # BEFORE `export module` - the declaration and every import live in the sibling
-    # `moduleExport --fileMapKey=tbExternal` region. Only #includes are legal here,
-    # so the whole non-modular baseline the GENERATED regions of the External need
-    # sits here exactly once, and nothing else: a header belongs here only when a
-    # generated line names a symbol from it (`systemc.h` for sc_module and the
-    # sc_ types, `logging.h` for the generated `logBlock log_;` member,
-    # `instanceFactory.h` for `createInstance` in the generated ctor init list) or
-    # the database directs it (the channel headers for the DUT-boundary channel
-    # members, the per-context Config header, the thunker headers for the
-    # cross-interface connection maps). The channel and thunker headers serve the
-    # External's OWN contents, so a block-mode External - which has none, see
-    # _ext_holds_peers - emits neither. The trailing `// user #includes here` slot
-    # sits after this region's end, in the same GMF zone, so a non-modular shared
-    # header added there attaches to the global module rather than to the External
-    # module.
+    # Global module fragment for `<block>External.cppm`; the export decl and
+    # every import live in the sibling `moduleExport --fileMapKey=tbExternal`
+    # region.
     refactor_tbExternal(args, prj, data)
     holdsPeers = _ext_holds_peers(data)
     out = [
@@ -237,7 +208,6 @@ def ext_module_header(args, prj, data):
     ]
     if holdsPeers:
         out += _ext_channel_includes(prj, data)
-    out += cpp_config_header_includes(data)
     if holdsPeers:
         for proto in sorted(sc_thunker_protocols(data, prj)):
             out.append(f'#include "{proto}_port_thunker.h"')
@@ -261,42 +231,32 @@ def ext_module_export(args, prj, data):
     out = [f'export module {cpp_tb_external_module_name(data["blockModuleName"])};']
     out.append('import a2c.endOfTest;')
     out.append(f'import {cpp_base_module_name(data["blockModuleName"])};')
+    out += cpp_own_config_import(data)
     if _ext_holds_peers(data):
         out += sc_instance_includes(data, prj)
-        # The peers' owner-qualified Config modules, which live in registrar-domain
-        # module interface units rather than in a context Config header, and the
-        # block module of each container-typed peer whose implementation class the
-        # createInstance below names.
         out += sc_instance_config_imports(data)
     out += _tb_context_imports(prj, data)
     return "\n".join(out)
 
 
 def tb_module_header(args, prj, data):
-    # Global module fragment ONLY for `<block>Testbench.cppm`: the SystemC baseline,
-    # instanceFactory.h (createInstance in the ctor init list) and the per-context
-    # Config header. The DUT Base, the External and the interface contexts all arrive
-    # as imports in the sibling `moduleExport --fileMapKey=testBench` region, but the
-    # Config header cannot: the testbench top spells the DUT's Config by name in its
-    # Channels base, its DUT shared_ptr and its createInstance cast, and a Config
-    # struct declared in the External unit's global module fragment is reachable but
-    # NOT visible to an importer.
+    # Global module fragment for `<block>Testbench.cppm`; imports live in the
+    # sibling `moduleExport --fileMapKey=testBench` region.
     out = [
         'module;',
         '#include "systemc.h"',
         '#include "instanceFactory.h"',
     ]
-    out += cpp_config_header_includes(data)
     return "\n".join(out)
 
 
 def tb_module_export(args, prj, data):
-    # The COMPLETE module preamble for `<block>Testbench.cppm`, import-only for the
-    # same reason as ext_module_export. The eotThread() body is resolved inside the
-    # External module, so the Testbench carries no endOfTest prerequisite.
+    # Import-only preamble, same reason as ext_module_export. No a2c.endOfTest
+    # import here; eotThread lives in the External module.
     out = [f'export module {cpp_tb_module_name(data["blockModuleName"])};']
     out.append(f'import {cpp_base_module_name(data["blockModuleName"])};')
     out.append(f'import {cpp_tb_external_module_name(data["blockModuleName"])};')
+    out += cpp_own_config_import(data)
     out += _tb_context_imports(prj, data)
     return "\n".join(out)
 

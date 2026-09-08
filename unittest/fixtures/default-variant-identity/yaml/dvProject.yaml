@@ -1,0 +1,16 @@
+# A block's owner may declare a variant literally named 'default'; its bound
+# values become the block's default Config instead of a synthetic entry built
+# from each parameter's declared value.
+yamlFormat: 2
+projectName: dvIdentity
+
+projectFiles:
+    - dvTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

@@ -5,10 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpTwoCtxVariantConfig.h"
 
 export module xpTwoCtx.xpTwoCtx_xpTwoCtxSnk.registrar;
 import xpTwoCtx_xpTwoCtxSnk.block;
+import xpTwoCtx.xpTwoCtxSnk.config;
 
 namespace {
 struct _xpTwoCtxSnk_registrar {
@@ -16,13 +16,13 @@ struct _xpTwoCtxSnk_registrar {
         instanceFactory::registerBlock(
             "xpTwoCtxSnk_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpTwoCtxSnk<xpTwoCtxSnkTwoctxConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpTwoCtxSnk<xpTwoCtx_xpTwoCtxSnkTwoctxConfig>>(blockName, variant, bbMode));
             },
             "twoctx", "xpTwoCtx");
         instanceFactory::registerBlock(
             "xpTwoCtxSnk_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpTwoCtxSnk<xpTwoCtxSnkTwoctxConfig>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpTwoCtxSnk<xpTwoCtx_xpTwoCtxSnkTwoctxConfig>>(blockName, variant, bbMode));
             },
             "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxSnk");
     }

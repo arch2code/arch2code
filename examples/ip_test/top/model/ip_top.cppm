@@ -10,14 +10,14 @@ module;
 #include "push_ack_channel.h"
 #include "apb_port_thunker.h"
 #include "push_ack_port_thunker.h"
-#include "ipVariantConfig.h"
-#include "srcVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ip_test_ip_top.block;
 import ip_test_ip_top.base;
-import ip_test.ip.config;
+import ip.ip.config;
+import ipBridge.ip.config;
+import ip_test.src.config;
 import common_shared_types;
 import ip_test_ip_top;
 import ip_test_src;
@@ -58,19 +58,19 @@ public:
 
     //instances contained in block
     std::shared_ptr<apbDecodeBase> uAPBDecode;
-    std::shared_ptr<srcBase<srcVariantSrc0Config>> uSrc;
-    std::shared_ptr<ipBase<ipVariant0Config>> uIp0;
-    std::shared_ptr<ipBase<ip_test_ipVariant1Config>> uIp1;
+    std::shared_ptr<srcBase<ip_test_srcVariantSrc0Config>> uSrc;
+    std::shared_ptr<ipBase<ip_ipVariant0Config>> uIp0;
+    std::shared_ptr<ipBase<ipBridge_ipVariant1Config>> uIp1;
     std::shared_ptr<ipBridgeBase> uBridge;
 
     // cross-interface thunkers
-    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<srcVariantSrc0Config>, false> thunker_out0_uSrc;
-    push_ack_port_thunker<srcOut0BoundarySt, ipDataSt<ipVariant0Config>, false> thunker_out0_uIp0;
-    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<srcVariantSrc0Config>, true> thunker_out1_uSrc;
-    push_ack_port_thunker<srcOut1BoundarySt, ipDataSt<ip_test_ipVariant1Config>, true> thunker_out1_uIp1;
-    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<srcVariantSrc0Config>, false> thunker_out2_uSrc;
+    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<ip_test_srcVariantSrc0Config>, false> thunker_out0_uSrc;
+    push_ack_port_thunker<srcOut0BoundarySt, ipDataSt<ip_ipVariant0Config>, false> thunker_out0_uIp0;
+    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<ip_test_srcVariantSrc0Config>, true> thunker_out1_uSrc;
+    push_ack_port_thunker<srcOut1BoundarySt, ipDataSt<ipBridge_ipVariant1Config>, true> thunker_out1_uIp1;
+    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<ip_test_srcVariantSrc0Config>, false> thunker_out2_uSrc;
     push_ack_port_thunker<srcOut0BoundarySt, data8St, true> thunker_out2_uBridge;
-    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<srcVariantSrc0Config>, true> thunker_out3_uSrc;
+    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<ip_test_srcVariantSrc0Config>, true> thunker_out3_uSrc;
     push_ack_port_thunker<srcOut1BoundarySt, data70St, true> thunker_out3_uBridge;
     apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uIp0_uIp0;
     apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uIp1_uIp1;
@@ -108,9 +108,9 @@ ip_top::ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,apbReg_uIp0("ip_apbReg_uIp0", "apbDecode")
         ,apbReg_uIp1("ip_apbReg_uIp1", "apbDecode")
         ,uAPBDecode(std::dynamic_pointer_cast<apbDecodeBase>(instanceFactory::createInstance(name(), "uAPBDecode", "apbDecode", "", "ip_test")))
-        ,uSrc(std::dynamic_pointer_cast<srcBase<srcVariantSrc0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "variantSrc0", "ip_test.ip_test_ip_top.ip_test_src")))
-        ,uIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0", "ip_test.ip_test_ip_top.ip")))
-        ,uIp1(std::dynamic_pointer_cast<ipBase<ip_test_ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1", "ip_test.ip_test_ip_top.ip")))
+        ,uSrc(std::dynamic_pointer_cast<srcBase<ip_test_srcVariantSrc0Config>>(instanceFactory::createInstance(name(), "uSrc", "src", "variantSrc0", "ip_test.ip_test_ip_top.ip_test_src")))
+        ,uIp0(std::dynamic_pointer_cast<ipBase<ip_ipVariant0Config>>(instanceFactory::createInstance(name(), "uIp0", "ip", "variant0", "ip_test.ip_test_ip_top.ip")))
+        ,uIp1(std::dynamic_pointer_cast<ipBase<ipBridge_ipVariant1Config>>(instanceFactory::createInstance(name(), "uIp1", "ip", "variant1", "ip_test.ip_test_ip_top.ip")))
         ,uBridge(std::dynamic_pointer_cast<ipBridgeBase>(instanceFactory::createInstance(name(), "uBridge", "ipBridge", "", "ipBridge")))
         ,thunker_out0_uSrc("thunker_out0_uSrc", out0, uSrc->out0, name())
         ,thunker_out0_uIp0("thunker_out0_uIp0", out0, uIp0->ipDataIf, name())

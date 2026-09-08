@@ -5,10 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpSinkVariantConfig.h"
 
 export module xpDeparam.xpSink.registrar;
 import xpSink.block;
+import xpSink.xpSink.config;
 
 namespace {
 struct _xpSink_registrar {
@@ -16,13 +16,13 @@ struct _xpSink_registrar {
         instanceFactory::registerBlock(
             "xpSink_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpSink<xpSinkV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpSink<xpSink_xpSinkV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpDeparam.xpDeparam_xpDeparamTop.xpSink");
         instanceFactory::registerBlock(
             "xpSink_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpSink<xpSinkV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpSink<xpSink_xpSinkV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpSink");
     }

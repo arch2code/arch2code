@@ -170,6 +170,9 @@ def create(prj):
                          and not v.get('pairVlTop', False)}
     foreignRegistrarMap = {k: v for k, v in registrarMap.items()
                            if v.get('foreignConfig', False)}
+    # foreignConfig: true marks two artifact families; the variant: flag tells them apart.
+    configModuleRegistrarMap = {k: v for k, v in foreignRegistrarMap.items()
+                               if not v.get('variant', False)}
     pairVlRegistrarMap = {k: v for k, v in registrarMap.items()
                           if v.get('pairVlTop', False)}
     if registrarMap:
@@ -196,23 +199,14 @@ def create(prj):
                 # even though they reference a foreign child.
                 record(fileDef, filePath, objLayout, True)
 
-        # Owner-qualified foreign-Config artifacts, keyed (declaringProject, child)
-        # -> module file stub plus the block whose registrar domain hosts it.
-        # Computed once in projectCreate.calcForeignConfigHeaders under the same
-        # emit gate the config emitter uses, so the manifest never records an
-        # artifact the emitter would not produce. A project that declares a
-        # variant of a reused block owns its Config even when it instantiates
-        # nothing, so the pair set is the enumeration source.
-        for (owner, childKey), entry in sorted(prj.config.getConfig('FOREIGNCONFIGHEADERS').items()):
+        # CONFIGMODULES is computed under the same emit gate the config emitter
+        # uses, so manifest and emitter agree.
+        for (owner, childKey), entry in sorted(prj.config.getConfig('CONFIGMODULES').items()):
             childRow = blockByKey[childKey]
             childCond = condRow(childRow)
             parentRow = blockByKey[entry['parentKey']]
             objLayout = layoutForContext(parentRow['_context'])
-            for fileDef in foreignRegistrarMap.values():
-                # Per-variant foreign tops are recorded by the vlTops pass below;
-                # this loop records the single-file artifacts.
-                if fileDef.get('variant', False):
-                    continue
+            for fileDef in configModuleRegistrarMap.values():
                 if not processYaml.fileMapCondMatch(fileDef, childCond):
                     continue
                 filePath = processYaml.expandNewModulePath(fileDef, parentRow['dir'],

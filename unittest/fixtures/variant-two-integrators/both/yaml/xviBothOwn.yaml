@@ -1,0 +1,3 @@
+# Declares no variant of its own; the rejection cell appends one to fault-inject.
+include:
+    - ../../ipLeaf/yaml/xviLeaf.yaml

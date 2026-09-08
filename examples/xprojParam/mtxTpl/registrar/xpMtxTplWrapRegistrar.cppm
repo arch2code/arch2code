@@ -5,11 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpMtxIpVariantConfig.h"
-#include "xpMtxTplTopVariantConfig.h"
 
 export module xpMtxTpl.xpMtxTpl_xpMtxTplWrap.registrar;
 import xpMtxTpl_xpMtxTplWrap.block;
+import xpMtxTpl.xpMtxTplWrap.config;
 
 namespace {
 struct _xpMtxTplWrap_registrar {
@@ -17,13 +16,13 @@ struct _xpMtxTplWrap_registrar {
         instanceFactory::registerBlock(
             "xpMtxTplWrap_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpMtxTplWrap<xpMtxTplWrapV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpMtxTplWrap<xpMtxTpl_xpMtxTplWrapV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpMtxTpl");
         instanceFactory::registerBlock(
             "xpMtxTplWrap_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpMtxTplWrap<xpMtxTplWrapV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpMtxTplWrap<xpMtxTpl_xpMtxTplWrapV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplTop.xpMtxTpl_xpMtxTplWrap");
     }

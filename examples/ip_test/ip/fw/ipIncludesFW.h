@@ -280,19 +280,19 @@ struct ipDerivedMemAddrSt {
 
     ipDerivedMemAddrSt() { memset(this, 0, sizeof(ipDerivedMemAddrSt)); }
 
-    static constexpr uint16_t _bitWidth = clog2(Config::IP_MEM_DEPTH_X4);
+    static constexpr uint16_t _bitWidth = clog2(((Config::IP_MEM_DEPTH * 2) * 2));
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
         memset(&_ret, 0, ipDerivedMemAddrSt<Config>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, address, clog2(Config::IP_MEM_DEPTH_X4));
-        _pos += clog2(Config::IP_MEM_DEPTH_X4);
+        pack_bits((uint64_t *)&_ret, _pos, address, clog2(((Config::IP_MEM_DEPTH * 2) * 2)));
+        _pos += clog2(((Config::IP_MEM_DEPTH * 2) * 2));
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipDerivedMemAddrT<Config>)((_src) & ((1ULL << (clog2(Config::IP_MEM_DEPTH_X4))) - 1));
+        address = (ipDerivedMemAddrT<Config>)((_src) & ((1ULL << (clog2(((Config::IP_MEM_DEPTH * 2) * 2)))) - 1));
     }
     explicit ipDerivedMemAddrSt(
         ipDerivedMemAddrT<Config> address_) :

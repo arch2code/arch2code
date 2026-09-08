@@ -6,8 +6,112 @@ how the generator works; that belongs to
 [`plan-parameter-sharing.md`](./plan-parameter-sharing.md), which also carries the decision
 history and the outstanding work.
 
-**Everything specified here ships.** §5 lists the three things that are not covered, and is
-worth reading before putting an inherited parameter on a register-bus router width.
+**The rules section is normative.** Where the generator does not yet enforce a rule, the list at
+the end of that section says so and names the plan step. §5 lists the two things that are not
+covered at all, and is worth reading before putting an inherited parameter on a register-bus
+router width.
+
+---
+
+## Rules (confirmed with the architect, 2026-09-07)
+
+The point of parameterization is to let an author choose where each fact comes from without
+stating it twice. There are three facts: a parameter's declaration, a block's use of it, and the
+value an instance sees. Each has a small set of legal sources, and every rule below exists to keep
+each source unambiguous. This section is the normative statement; the rest of this document
+shows the YAML, and [`plan-parameter-sharing.md`](./plan-parameter-sharing.md) holds the history
+and the evidence. The first draft was iterated with the architect rule by rule on 2026-09-07; each rule carries
+the date it was confirmed or ruled, and the list at the end records where the tree has not
+caught up.
+
+Declaration.
+
+1. A parameter is declared once, as an `ipParameters:` constant, and that one declaration is
+   its identity everywhere it is reached. The declaring file may be any file, including a
+   definitions-only file of a shared project that holds no `blocks:`, so that several IPs and
+   several projects name one parameter (an image pipeline's `BITS_PER_PIXEL`). Nothing requires
+   the declaring file, or the declaring project, to name the parameter itself. (Ruled and landed
+   2026-09-07/08, plan step 12a.)
+2. A block names the parameters it uses in `params:`. Each name resolves through the block's
+   include scope to one declaration. Zero visible declarations is an error, and so is more than
+   one. Visible means reachable from the block's own file through its include chain; a
+   same-named declaration in a file the block does not reach is a different parameter, not a
+   collision. The block's own file does not shadow an included declaration: two visible
+   declarations of one name are two definitions, and are rejected however they are placed.
+   (Confirmed 2026-09-07.)
+3. A block's configuration is exactly the parameters it names. Anything derived from them is
+   computed in the implementation, never configured. The derivation may be written once in YAML
+   as an `eval:` constant; it is emitted as a computed value, never as a Config member, and may
+   not itself be named in `params:`. (Confirmed 2026-09-07.)
+
+Value.
+
+4. An instance's values come from its container or from a variant, and a variant binds every
+   parameter of its block, once each, from one of three sources:
+   - a literal;
+   - a constant visible in scope;
+   - a parameter of the containing block, named by `containerParam:`. The names need not match,
+     so this is also how a child parameter is renamed at the boundary. The container parameter's
+     bound may not exceed the child's.
+   Nothing fills in an omitted binding. The whole-container form, `inheritContainerParam: true`
+   on the instance, sources every parameter of the block from the container's parameter of the
+   same name, so the block's parameter set must be a subset of the container's; it names no
+   variant and renames nothing, and it is confined to a container and child owned by one
+   project. Across projects the child takes a declared variant whose bindings are
+   `containerParam:`. `containerParam:` is the flexible form and `inheritContainerParam:` the
+   same-project shorthand for the same-name subset case. (Ruled 2026-09-07.)
+
+   How the factory selects a container-sourced child, in both forms alike: the child's C++
+   type is a function of the container's Config, so the container names the concrete class as
+   the template argument of `instanceFactory::createInstance` and forwards its own runtime
+   variant label in place of a child label. The registry key is (child block, that forwarded
+   label, the pair-qualified domain). An exact match, which is how a Verilated or tandem
+   replacement registered per container variant is found, wins; otherwise the class named at
+   the site is constructed. A child that names no variant therefore has an identity at the
+   factory: its container's.
+5. A variant is owned by the project that declares it. Its identity is (block, variant,
+   declaring project), its name carries the project, and the declaring project emits it without
+   touching another project's artefacts. (Confirmed 2026-09-07; landed as plan step 15 the same day.)
+6. Any project may declare a variant of any block visible to it, whether or not it owns the block.
+   (Confirmed 2026-09-07.)
+
+Selection.
+
+7. An instance of a parameterized block selects its configuration either by naming a variant or
+   by taking its container's whole configuration (`inheritContainerParam:`, rule 4's
+   whole-container form). A named variant resolves through the instance's include scope, the
+   include chain of the file holding the instance row, to one declaration. Zero or more than one
+   visible declaration is an error, and the message names every declaring file. (Confirmed
+   2026-09-07.)
+8. A top instance is not parameterized. (Confirmed 2026-09-07.)
+
+Guarantees.
+
+9. The two ends of a connection are compared at the values their instances actually resolve, and
+   a disagreement is a db-time error naming both sides.
+10. Nothing falls back to a default silently. Where a source cannot be resolved, the build stops
+    and says which rule failed. (Rules 9 and 10 confirmed 2026-09-07.)
+
+Scope decides what is visible. Project decides who owns. The file a statement sits in decides
+neither.
+
+### Where the tree deviates today
+
+Recorded so the iteration argues about facts. Dated 2026-09-07; delete each line as it closes.
+
+- Rules 2 and 7, visibility: both say include chain. Every scoped lookup in the tree, the two
+  scope checks included, sees a file, the files it includes, and the files those include, and no
+  further (`GENERATOR_ARCHITECTURE.md` section 4 records the two-level flattening as deliberate).
+  A declaration three includes away is reported as out of scope. Whether the rule or the tool
+  changes is for the architect; found 2026-09-08 when `ip_test`'s bridge top lost `ip_package.sv`
+  from its `rtl.f` after dropping a direct include.
+- Rules 5 and 6, one label from two projects in one build: identity is (block, variant, project),
+  and the Configs are distinct since step 15, but the per-label HDL wrapper and registration
+  artefacts are named by label alone. A build whose own project does not declare a label that two
+  other projects declare is rejected at db time (`validateVariantLabelBuildOwnership`, 2026-09-08)
+  rather than emitting one of the two silently. Project-qualified wrapper naming would lift it.
+- Rule 9: the layout index collapses cross-project bindings into one slot (item 9B of
+  [`plan-116-review-feedback.md`](./plan-116-review-feedback.md)).
 
 ---
 
@@ -23,8 +127,8 @@ different mechanism, and only the last is the subject of this document.
 - **Several projects share one parameter.** Two projects that must agree on a width name the
   same declaration, again through `include:`. There is one declaration and one identity, so
   the two ends of a connection between them cannot drift apart.
-- **Peer blocks share a parameter.** Two blocks that do not contain one another — a stimulus
-  and a checker either side of an IP, for example — must be configured alike. If they share a
+- **Peer blocks share a parameter.** Two blocks that do not contain one another, such as a
+  stimulus and a checker either side of an IP, must be configured alike. If they share a
   container, each takes the parameter from that container and agreement is structural. If they
   do not, the assembler declares one plain constant carrying the value and every binding names
   that constant, so the number is written once.
@@ -131,12 +235,12 @@ include:
 
 ipParameters:
     constants:
-        MID_ALGO: { value: 3, maxValue: 7, desc: "The customer's own algorithm knob" }
+        CUST_ALGO: { value: 3, maxValue: 7, desc: "The customer's own algorithm knob" }
 
 blocks:
     xpDpWrap:
         desc: "Container of the chain; declares the customer knob the mid-level IP inherits"
-        params: [MID_ALGO, DP_WIDTH]
+        params: [CUST_ALGO, DP_WIDTH]
 
 instances:
     uWrap: { container: xpDpTop,  instanceType: xpDpWrap, instGroup: top, variant: customer }
@@ -146,22 +250,26 @@ instances:
 parameters:
     xpDpWrap:
         customer:
-            MID_ALGO: 5                              # the one value the customer states
+            CUST_ALGO: 5                             # the one value the customer states
             DP_WIDTH: DP_WIDTH
     xpDpMid:
         customer:
             DP_WIDTH: DP_WIDTH
-            MID_ALGO: { containerParam: MID_ALGO }   # inherited from xpDpWrap
+            MID_ALGO: { containerParam: CUST_ALGO }  # inherited from xpDpWrap
         customer2:
             DP_WIDTH: DP_WIDTH
             MID_ALGO: 6                              # fixed instead
 ```
 
-The value travels one level per link:
-`xpDpWrap.MID_ALGO = 5` → `xpDpMid.MID_ALGO` → `xpDpLeaf.DP_ALGO`.
+The value travels one level per link: `xpDpWrap.CUST_ALGO = 5` reaches `xpDpMid.MID_ALGO`,
+which reaches `xpDpLeaf.DP_ALGO`.
 
 Each level declares the parameter it passes on. The customer writes the number once, on the
 one block it owns.
+
+The customer's knob has its own name. The customer file includes `xpDpMid.yaml`, which already
+declares `MID_ALGO`, and rule 2 rejects a second visible declaration of that name. (The fixture
+`examples/xprojParam/dpTop` spells it `CUST_ALGO`.)
 
 ### 2.4 Mixing inherited and fixed parameters
 
@@ -198,8 +306,9 @@ mapping form.
 
 ### 3.1 The C++ Config structs
 
-Each declared variant of a block produces one `Config` whose members are that block's
-parameters. It takes one of two forms, and the variant's own bindings decide which:
+Each declared variant of a block, and the block's default, produces one `Config` whose members
+are that block's parameters. Its name carries the project that declares it (rule 5). It takes one of two forms,
+and the variant's own bindings decide which:
 
 - **Every parameter bound to a value** produces a plain struct of resolved numbers.
 - **Any parameter sourced from the container** produces a struct **template** over the
@@ -210,12 +319,12 @@ The leaf IP's own project emits its default and its `dflt` variant. Both bind ev
 parameter, so both are plain structs:
 
 ```cpp
-struct xpDpLeafDefaultConfig {
+struct xpDpLeaf_xpDpLeafDefaultConfig {
     static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
 };
 
-struct xpDpLeafDfltConfig {
+struct xpDpLeaf_xpDpLeafDfltConfig {
     static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
 };
@@ -240,7 +349,7 @@ that declares it, each in whichever form its own bindings call for. `customer` i
 export template<typename ContainerConfig>
 struct xpDpTop_xpDpMidCustomerConfig {
     static constexpr uint32_t DP_WIDTH = 8;
-    static constexpr uint32_t MID_ALGO = ContainerConfig::MID_ALGO;
+    static constexpr uint32_t MID_ALGO = ContainerConfig::CUST_ALGO;
 };
 
 export struct xpDpTop_xpDpMidCustomer2Config {
@@ -317,23 +426,32 @@ becomes `typedef logic[DP_WIDTH-1:0] dpPixelT;` inside each module.
 
 ---
 
-## 4. Rules
+## 4. Accepted And Rejected Shapes
+
+The rules at the top of this document are normative. This section lists the shapes they accept
+and reject and what each message says. A shape marked *not yet enforced* is rejected by the
+rules and still accepted by the tree; the deviation list under the rules names the plan step.
 
 ### What is allowed
 
-- A parameter is declared once, as an `ipParameters:` constant in the IP root file that owns
-  it. Its `value:` is the default and its `maxValue:` is the largest value the IP accepts.
+- A parameter is declared once, as an `ipParameters:` constant, in the IP root file or in a
+  definitions-only shared file (rule 1). Its `value:` is the default and its `maxValue:` is the
+  largest value the IP accepts.
 - Any block may **name** that parameter in its own `params:` list, provided it can reach the
   declaration through `include:`. Naming is not declaring, and a block in another project may
   name it.
 - A parameter inside a variant may be bound to a value, or sourced from a parameter of the
   block that contains the instance.
+- A block's owner may declare a variant labelled `default`. It is then the block's default
+  Config, spelled `<project>_<block>DefaultConfig`, and no separate default is emitted for that
+  block; its bound values are what the default carries. (Ruled 2026-09-07, from a step 15
+  review finding; the product tree declares every variant this way.)
 - The child's parameter and the container's parameter need not share a name.
   `DP_ALGO: { containerParam: MID_ALGO }` is an ordinary shape, not a workaround.
 - A variant may mix the two forms freely, and a block may declare several variants, some
   inheriting a given parameter and some fixing it.
 - One variant may be instantiated under different containers. It means the same thing at
-  every site — "take my container's `MID_ALGO`" — and each site is checked separately.
+  every site, "take my container's `MID_ALGO`", and each site is checked separately.
 - The container's parameter and the child's may be backed by different constants, in
   different projects. They need not be the same declaration.
 
@@ -360,7 +478,7 @@ becomes `typedef logic[DP_WIDTH-1:0] dpPixelT;` inside each module.
 - **A container parameter may not accept values the child would reject.** If the container's
   parameter is declared with a larger `maxValue` than the child's, it can be bound to a value
   the child cannot accept, and the site is rejected. The message names the instance, both
-  constants and both bounds. Declaring the customer's `MID_ALGO` at `maxValue: 15` in §2.3,
+  constants and both bounds. Declaring the customer's `CUST_ALGO` at `maxValue: 15` in §2.3,
   against a leaf that accepts `7`, is exactly this error.
 - **An inherited parameter may not be selected on a top-level instance.** An instance with no
   containing block has no container to inherit from.
@@ -378,6 +496,16 @@ becomes `typedef logic[DP_WIDTH-1:0] dpPixelT;` inside each module.
   testbench harness `xif_tb` sits inside it at a stated variant. The message states the
   restructure.
 
+- **Two visible declarations of one parameter name** (rule 2), whether the second sits in the
+  block's own file or in another included file. The message names every declaring file.
+- **A variant label with zero or two visible declarations** (rule 7). The message names every
+  declaring file it can see, or the file(s) that declare it out of scope.
+- **An instance of a block without `params:` names a variant.** No file could ever declare a
+  variant of it, so the message says the block declares no params rather than that no file
+  declares the label.
+- **`inheritContainerParam:` across a project boundary** (rule 4). The message names both
+  projects. A cross-project child takes a declared variant whose bindings are `containerParam:`.
+
 Where one variant is reused under several containers, the same rules apply once per site.
 Two containers backed by the same constant, and two backed by different constants with the
 same `maxValue`, are both accepted; only a container whose accepted range exceeds the child's
@@ -389,7 +517,7 @@ is rejected, and only at the site where that happens.
 may bind and says nothing about the value's **type**, so **`valueType` is not compared**: a
 signed container parameter sourced into an unsigned child parameter is accepted, and the
 child's Config member is emitted at the child's own declared type. Extending the relation to
-`valueType` was raised and **declined** — the failure needs a signed container parameter bound
+`valueType` was raised and **declined**. The failure needs a signed container parameter bound
 into an unsigned child, which was judged too narrow to widen the relation for. It is a known
 and accepted gap, so there is no diagnostic to wait for.
 
@@ -400,11 +528,12 @@ responsibility, not the generator's.
 
 ## 5. What Is Supported Today
 
-All four situations in §1 are available and in use. For parameter inheritance — the fourth, and
-the subject of this document — that means:
+All four situations in §1 are available and in use, including the shared declaration of rule 1,
+a definitions-only file declaring a parameter for several IPs (`examples/xprojParam/cstShared`).
+For parameter inheritance, the fourth and the subject of this document, that means:
 
-- The authored YAML of §2 is accepted, and every rule in §4 is enforced with the messages
-  described there.
+- The authored YAML of §2 is accepted, and every shape in §4 not marked *not yet enforced* is
+  rejected with the message described there.
 - The SystemVerilog of §3.2 is complete: parameters are forwarded through each level and the
   design elaborates and runs with the inherited values.
 - The C++ of §3.1 is complete: a customer's value reaches a leaf two project levels down, and
@@ -413,7 +542,7 @@ the subject of this document — that means:
   resolved at the value the site actually binds.
 - All of the above is held by automated targets rather than by recorded runs.
 
-Three things are not covered, and an author has to know all three:
+Two things are not covered, and an author has to know both:
 
 - **A nested register-bus router is not resolved per site.** It is compared against its parent
   router, which sits one level above rather than beside it, so an inherited parameter on a
@@ -421,16 +550,21 @@ Three things are not covered, and an author has to know all three:
   connection is resolved at its site.
 - **`valueType` is not compared** between the container's parameter and the child's; see
   "What is not checked" in §4.
-- **A block's Config may carry parameters declared in the same file that the block does not
-  name.** A limitation of Config composition generally, not of inheritance.
+
+A third item stood here until 2026-09-07: that a block's Config could carry parameters
+declared in the same file that the block does not name. Since 2026-09-05 a block's Config
+carries exactly the parameters its `params:` list names, and derived constants are computed in
+the implementation ([`plan-parameter-sharing.md`](./plan-parameter-sharing.md) §6, step 3).
+A block that names parameters from two files gets one Config name and one home whatever its
+`params:` order: every Config name carries the declaring project, and each (declaring project,
+block) emits one module (rule 5, plan step 15, landed 2026-09-07).
 
 The status, the remaining work and the evidence behind each claim are tracked at
 [`plan-parameter-sharing.md`](./plan-parameter-sharing.md) §6, step 7, which also carries the
 history of what this document used to say.
 
-`inheritContainerParam:` remains the shipping mechanism for a child that takes its container's
-whole configuration, and is the right choice today where it applies: the container and the
-child must belong to the same project, and the child's parameters must be a same-named subset
-of the container's. It is the all-or-nothing, same-name, same-project case of what this
-document specifies. Migrating authored designs off it onto `containerParam:` is a separate,
-undecided step and is not implied by anything here.
+`inheritContainerParam:` stays supported as rule 4's same-project, same-name shorthand, and the
+synthesised register handler keeps using it. The product tree's two authored uses move to
+declared `containerParam:` variants in plan step 13, which restores layout adjudication on the
+two connections the whole-Config form is skipped for today; that migrates one design and
+retires nothing.

@@ -14,7 +14,6 @@ module;
 #include "status_channel.h"
 #include "addressMap.h"
 #include "hwMemory.h"
-#include "mixedVariantConfig.h"
 // GENERATED_CODE_END
 #include <vector>
 #include "testController.h"
@@ -22,6 +21,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module mixed_blockB.block;
 import mixed_blockB.base;
+import mixed.blockF.config;
 import mixed;
 import mixed_mixedBlockC;
 import mixed_mixedInclude;
@@ -69,8 +69,8 @@ public:
 
     //instances contained in block
     std::shared_ptr<blockDBase> uBlockD;
-    std::shared_ptr<blockFBase<blockFVariant0Config>> uBlockF0;
-    std::shared_ptr<blockFBase<blockFVariant1Config>> uBlockF1;
+    std::shared_ptr<blockFBase<mixed_blockFVariant0Config>> uBlockF0;
+    std::shared_ptr<blockFBase<mixed_blockFVariant1Config>> uBlockF1;
     std::shared_ptr<threeCsBase> uThreeCs;
     std::shared_ptr<blockBRegsBase> uBlockBRegs;
 
@@ -130,8 +130,8 @@ blockB::blockB(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,blockBTableExt("blockB_blockBTableExt", "blockB")
         ,blockBTable37Bit("blockB_blockBTable37Bit", "blockB")
         ,uBlockD(std::dynamic_pointer_cast<blockDBase>(instanceFactory::createInstance(name(), "uBlockD", "blockD", "", "mixed")))
-        ,uBlockF0(std::dynamic_pointer_cast<blockFBase<blockFVariant0Config>>(instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0", "mixed.mixed_blockB.mixed_blockF")))
-        ,uBlockF1(std::dynamic_pointer_cast<blockFBase<blockFVariant1Config>>(instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1", "mixed.mixed_blockB.mixed_blockF")))
+        ,uBlockF0(std::dynamic_pointer_cast<blockFBase<mixed_blockFVariant0Config>>(instanceFactory::createInstance(name(), "uBlockF0", "blockF", "variant0", "mixed.mixed_blockB.mixed_blockF")))
+        ,uBlockF1(std::dynamic_pointer_cast<blockFBase<mixed_blockFVariant1Config>>(instanceFactory::createInstance(name(), "uBlockF1", "blockF", "variant1", "mixed.mixed_blockB.mixed_blockF")))
         ,uThreeCs(std::dynamic_pointer_cast<threeCsBase>(instanceFactory::createInstance(name(), "uThreeCs", "threeCs", "", "mixed")))
         ,uBlockBRegs(std::dynamic_pointer_cast<blockBRegsBase>(instanceFactory::createInstance(name(), "uBlockBRegs", "blockBRegs", "", "mixed")))
         ,blockBTable0(name(), "blockBTable0", mems, BSIZE, HWMEMORYTYPE_LOCAL)

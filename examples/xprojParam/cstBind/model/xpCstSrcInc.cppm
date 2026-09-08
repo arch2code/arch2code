@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "xpCstIpVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -15,12 +14,15 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpCstBind_xpCstSrcInc.block;
 import xpCstBind_xpCstSrcInc.base;
+import xpCstBind.xpCstSrcInc.config;
+import xpCstBind_xpCstSup;
 import xpCstIp;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
 // A #include here closes the preamble and attaches to THIS module; use it only for
 // headers that name module or Config types.
 // GENERATED_CODE_BEGIN --template=classDecl
+using namespace xpCstBind_xpCstSup_ns;
 using namespace xpCstIp_ns;
 export template<typename Config>
 SC_MODULE(xpCstSrcInc), public blockBase, public xpCstSrcIncBase<Config>
@@ -37,7 +39,9 @@ public:
 
     // inherited parameterized types usable unqualified (no <Config>)
     using typename xpCstSrcIncBase<Config>::csPixelT;
+    using typename xpCstSrcIncBase<Config>::csIncPixelT;
     using typename xpCstSrcIncBase<Config>::csDutSt;
+    using typename xpCstSrcIncBase<Config>::csIncSt;
 
     xpCstSrcInc(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpCstSrcInc() override = default;
@@ -89,7 +93,7 @@ void xpCstSrcInc<Config>::drive(void)
         std::format("xpCstSrcInc variant '{}' must resolve CS_PIXEL_WIDTH to {} but resolved {}",
             m_variant, expectedWidth(), (uint64_t)CS_PIXEL_WIDTH));
     for (uint32_t i = 0; i < SAMPLE_COUNT; i++) {
-        csDutSt sample{};
+        csIncSt sample{};
         sample.tag  = FIRST_TAG + i;
         sample.cfg  = CS_PIXEL_WIDTH;
         sample.data = FIRST_DATA + i;

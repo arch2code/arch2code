@@ -5,7 +5,6 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpDpLeafVariantConfig.h"
 
 export module xpDpMid.xpDpMid_xpDpMidSnk.registrar;
 import xpDpMid_xpDpMidSnk.block;

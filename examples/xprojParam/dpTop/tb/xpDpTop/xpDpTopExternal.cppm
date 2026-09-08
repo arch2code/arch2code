@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "xpDpLeafVariantConfig.h"
 #include "push_ack_port_thunker.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)

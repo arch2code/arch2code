@@ -49,9 +49,7 @@ def render_sc(args, prj, data):
         for context in data['includeContext']:
             if context in data['includeFiles'].get('include_cppm', {}):
                 s.extend(intf_gen_utils.cpp_context_include_lines(prj, context))
-        for context in sorted(data.get('configIncludeContext', {})):
-            if context in data['includeFiles'].get('config_hdr', {}):
-                s.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
+        s.extend(intf_gen_utils.cpp_own_config_import(data))
         block_intf_set = intf_gen_utils.get_set_intf_types(data['interfaceTypes'], data)
         for intf_type in sorted(block_intf_set):
             intf_def = intf_gen_utils.get_intf_defs(intf_type, data)

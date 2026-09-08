@@ -588,18 +588,12 @@ def test_tbconfig_three_edits_and_scaffold_shape():
 
 
 def test_tbconfig_drop_set_matches_the_template():
-    """The migrator's drop set and the `prerequisites` region's emission are the same
-    list in two places. Gaining an entry in the template without gaining one here
-    leaves a duplicate include behind; losing one drops a user line. Pinned by
-    deriving the template's set from the template itself.
-
-    The region also emits one PROJECT-DEPENDENT line per config context
-    (`<context>VariantConfig.h`), which is deliberately NOT in the drop set: the
-    header is include-guarded, so a legacy hand-added copy surviving in the user slot
-    is a no-op, whereas dropping a user line by a name the migrator would have to
-    derive per block is not. Both halves are pinned below."""
+    """The migrator's drop set must match what the `prerequisites` region emits,
+    or a re-run leaves a duplicate include or drops a user line. The
+    project-dependent import stays out of the drop set, since importing twice
+    is harmless and dropping a guessed user line is not."""
     print("test_tbconfig_drop_set_matches_the_template")
-    noConfig = {"configIncludeContext": {}, "includeFiles": {}}
+    noConfig = {"ownConfigModule": None}
     emitted = tb_config_prerequisites(None, None, noConfig).splitlines()
     includes = tuple(h for h in (_includeTarget(ln.strip()) for ln in emitted)
                      if h is not None)
@@ -612,13 +606,10 @@ def test_tbconfig_drop_set_matches_the_template():
     check(len(emitted) == len(includes) + len(imports),
           "with no config context the region emits nothing but those includes and imports")
 
-    withConfig = {
-        "configIncludeContext": {"top.yaml": 0},
-        "includeFiles": {"config_hdr": {"top.yaml": {"baseName": "topVariantConfig.h"}}},
-    }
-    emittedCfg = '#include "topVariantConfig.h"'
+    withConfig = {"ownConfigModule": {"project": "top", "block": "topBlk"}}
+    emittedCfg = "import top.topBlk.config;"
     check(emittedCfg in tb_config_prerequisites(None, None, withConfig).splitlines(),
-          "a config context adds its VariantConfig header to the region")
+          "a DUT with its own Config module imports it into the region")
     # Asserted through the migrator's PREDICATE, not the tuple: widening
     # _isPrerequisite to a pattern or suffix match would start dropping this user
     # line while a membership test on the tuple still passed.

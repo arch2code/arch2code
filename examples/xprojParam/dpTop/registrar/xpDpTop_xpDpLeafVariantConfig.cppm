@@ -8,13 +8,9 @@ module;
 
 export module xpDpTop.xpDpLeaf.config;
 
-export struct xpDpTop_xpDpLeafCustomerConfig {
-    static constexpr uint32_t DP_ALGO = 5;
-    static constexpr uint32_t DP_WIDTH = 8;
-};
-
-export struct xpDpTop_xpDpLeafCustomer2Config {
-    static constexpr uint32_t DP_ALGO = 6;
+export template<typename ContainerConfig>
+struct xpDpTop_xpDpLeafLeafXConfig {
+    static constexpr uint32_t DP_ALGO = ContainerConfig::CUST_ALGO;
     static constexpr uint32_t DP_WIDTH = 8;
 };
 

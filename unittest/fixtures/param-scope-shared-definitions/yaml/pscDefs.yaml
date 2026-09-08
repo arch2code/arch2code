@@ -1,0 +1,5 @@
+# Definitions-only file (no blocks:), declaring one parameter for two
+# unrelated including files to share.
+ipParameters:
+    constants:
+        SHARED_C: { value: 5, maxValue: 16, desc: "shared by two including files" }

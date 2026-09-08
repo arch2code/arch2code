@@ -2,17 +2,29 @@
 
 ## Current Status
 
-- **Classification (2026-08-31): SETTLED DESIGN WITH THE STEP 7 THROUGH STEP 11 FOLLOW-UP IMPLEMENTED AND VERIFIED IN THE WORKING TREE.** Step 1 landed and was independently reviewed. D7's parameter-scoped inheritance, its site-keyed layout gate, the registrar-pair work, and the testbench Config-source checks are complete locally. Steps 2, 3 and 5, and the RTL-bearing half of step 6, remain open; **step 4 landed on 2026-08-14 and is gated, and the "steps 2 through 5" phrasing this bullet carried until 2026-09-04 was wrong** (§6, step 4). Decisions D1 through D5 are the plan of record. D6 is resolved by the explicit link from a block parameter to its parameter source (§3), independently of Q3, which stays rejected (§4.3). Implementation is complete for this follow-up, but commit preparation is not: the final change set is not yet fully staged, committed, or pushed.
+- **Classification (2026-08-31): SETTLED DESIGN WITH THE STEP 7 THROUGH STEP 11 FOLLOW-UP IMPLEMENTED AND VERIFIED IN THE WORKING TREE.** Step 1 landed and was independently reviewed. D7's parameter-scoped inheritance, its site-keyed layout gate, the registrar-pair work, and the testbench Config-source checks are complete locally. **Step 3 landed 2026-09-05** on an architect ruling that a block's Config carries only the parameters that block declares, with derived constants computed in the implementation as SystemVerilog already does (§6, step 3). **Step 3's fixture half closed 2026-09-06**: `twoCtx` is retargeted, asserts its bound values at run time, and is the `xproj-twoctx` gate in `pipeline-test`. Steps 2 and 5 and the RTL-bearing half of step 6 remain open; **step 4 landed on 2026-08-14 and is gated, and the "steps 2 through 5" phrasing this bullet carried until 2026-09-04 was wrong** (§6, step 4). Decisions D1 through D5 are the plan of record. D6 is resolved by the explicit link from a block parameter to its parameter source (§3), independently of Q3, which stays rejected (§4.3). Implementation is complete for this follow-up, but commit preparation is not: the final change set is not yet fully staged, committed, or pushed.
+- **Plan review 2026-09-07.** The decisions of record and the end goal hold; steps 1, 3 and 7 through 11 deliver §1. Corrected in place: three lines that still listed step 3 as open, the "Q3's rename waits on step 3" dependency (Q3 is rejected), done criterion 2 (rewritten to §4.0), and the design document's claim that a Config may carry unnamed same-file parameters. Added: step 3's emitted-output delta (§6, step 3), the finding that `twoCtx` makes the §7 Config name and home flip live, and the finding that done criterion 6 is unmet for direct instantiation (`uLeafX`). Step 6's RTL half was redirected onto `twoCtx` after the dpMid attempt proved non-discriminating (§6, step 6). The skill rewrite landed (§6, step 7). Steps 12, 13 and 14 were opened on the user's ruling for Case 1 with the duplicate-in-scope diagnostic, the product tree's move off `inheritContainerParam`, and connectionMap adjudication of an inheriting child. Step 6 then closed the same day on `twoCtx`. The user ruled that Config ownership follows the project that declares the variant and that Config names always carry that project (step 15), and judged this plan contaminated with implementation detail: the guiding rules are now a draft section at the top of [`design-parameter-inheritance.md`](./design-parameter-inheritance.md), iterated there, with a dated list of where the tree deviates. Rules 2 and 7 (scope-based resolution, collision is an error) are the open part of that iteration; the user's expectation is that the parser already resolves by scope, and the deviation list records the evidence that it selects by project instead. Later the same day steps 2 and 5 landed (§6), each fault-injected and reviewed, and the rules iteration with the architect confirmed rules 1 through 3 and redrafted rule 4 around the two container-sourced forms (rule 1 now permits a definitions-only shared declaring file; rule 2 rejects shadowing; step 12's lexical proposal is withdrawn). The iteration then confirmed rules 5 through 10 (rule 4 ruled: `inheritContainerParam` stays same-project, cross-project goes through a `containerParam` variant), settled rule 7's scope resolution with its fixture consequences (step 12), and step 15 LANDED with the always-qualified Config names and the owner-declared `default` rule (§6, step 15). Open: steps 12, 13, 14; three follow-ups under step 15.
+- **Step 12 split into 12a and 12b, 2026-09-08. Both LANDED.** Step 12a (rules 1 and 2); step 12b
+  (rule 7, scope resolution of a variant label) moved `ip_test`'s bridge instance's declaration
+  into `ipBridge.yaml` itself, the one shape the blast radius scan found needing a fixture move.
+  See each step's own entry (§6) for the fixtures, the corpus-scan blast radius, the `uLeafX`
+  decision, and the gates.
+  A comment review across the whole change set followed (2026-09-08): 177 comment blocks judged,
+  44 kept, 106 rewritten, 27 deleted; two wrong comments corrected (`cpp_own_config_import`,
+  the `test_eval_cpp_emit` docstring), the label-selection invariant moved onto
+  `_selectDeclaredDescriptor`, an unused `defaultConfig` parameter dropped from
+  `cpp_descriptor_config_name`, and the contracted-field `.get()` fallbacks in
+  `constructor.py::wordLinesExpr` replaced with direct reads. All gates re-run green.
 - **Step 1 LANDED 2026-08-13.** `blocksparams` carries `paramSource`/`paramSourceKey`, a foreign key onto `constants` resolved through the param row's own include chain; `param`/`paramKey` are retained unchanged as the block-scoped identity, and are deliberately NOT repointed. All four bad consumers of §5 B1, the two re-derivations of §4.5 and the orphan check now read the source link. Evidence, the mechanism chosen for the name defaulting, and the corrections to this document's own text are at "Plan of record" step 1. `examples/xprojParam/cstUse` — the probe this plan predicted would flip — **builds and runs, and is promoted into `xproj-const`** (the first half of step 6); `xproj-const-probes` is retired.
 - **Step 1 was re-measured independently, 2026-08-13.** Unit suite **101/101**; cold `make pipeline-test -j` **exit 0**; `make xproj-const -j` **exit 0** with three cells at widths **12 / 20 / 20**; **zero** unresolved `paramSourceKey` rows; the product tree cold-regenerates, builds and links. **The emitted-output delta (1693 files, zero changed) and the census were taken on trust, not re-measured** — the earlier "Emitted-output delta: none, measured. Census: unchanged at 18 of 42" claim in this bullet list is corrected to that standing. The review also corrected three of this document's own figures (cold `paramKey` baseline, database census, `builder/pro`); see step 1's landed record.
 - **One defect the review found was ruled on, FIXED, and is now VERIFIED BY BUILD (2026-08-18)** — the third silent early return in `_post_validateVariantBindingSizing`. See "Ruled on after the review" at step 1 for the measurements.
-- **Steps 2 (B4), 3 (B5) and 5 (B2) have NOT landed. Step 4 (B3) HAS**, on 2026-08-14, with its replacement acceptance gate; §6 read it as open until 2026-09-04 while §5 recorded it fixed, and §6 was the stale half. Step 6's remaining half, the RTL-bearing cell, has not landed either. **Step 7 (D7) is built and guarded.** Step 7a supplies the schema field, declaration-time checks, site-time validator, and SystemVerilog emission. Step 7b supplies the site-keyed layout gate. Step 7c emits a C++ Config templated on the container's Config, per the architect's 2026-08-14 ruling. The local fixture family and the cross-project Verilated regression both pass.
+- ~~**Steps 2 (B4), 3 (B5) and 5 (B2) have NOT landed.**~~ **Steps 2 and 5 LANDED 2026-09-07, step 3 on 2026-09-05 (§6). Step 4 (B3) HAS**, on 2026-08-14, with its replacement acceptance gate; §6 read it as open until 2026-09-04 while §5 recorded it fixed, and §6 was the stale half. Step 6's remaining half, the RTL-bearing cell, has not landed either. **Step 7 (D7) is built and guarded.** Step 7a supplies the schema field, declaration-time checks, site-time validator, and SystemVerilog emission. Step 7b supplies the site-keyed layout gate. Step 7c emits a C++ Config templated on the container's Config, per the architect's 2026-08-14 ruling. The local fixture family and the cross-project Verilated regression both pass.
 - **The built parts of step 7 ARE REGRESSION-GUARDED as of 2026-08-18.** The claim this bullet carried until then — that the `dp` fixture family "is wired into **no `make` target**, so it is not in `pipeline-test`" — was **FALSE from 2026-08-17**, when `xproj-depth` (the `dp` family), `xproj-inherit` (`inhVar`) and `xproj-container-layout` (`cpLayout`/`cpLayoutBad`) all entered `pipeline-test` (`Makefile:463`). Only the unit half was true, and it is now closed: `unittest/test_container_param_inheritance.py` covers the D7.1 rejection and one forwarding acceptance. **VERIFIED BY EXECUTION** (§6, step 7a).
 - **The registrar's empty-variant registration is FIXED on both paths, 2026-08-19.** `getRegistrarConfigView` decides it from whether a reachable keyed instance asks for it rather than from the absence of variant labels. **Its guard, `unittest/test_registrar_default_variant.py`, was RETIRED on 2026-08-20** because step 8 rejects the fixture's variant-less instance of a params-declaring block. The suite does not fail and is not awaiting a ruling; it no longer exists. The four follow-ups it exposed are resolved by the step 8 selector rules and the completed registrar-pair work (§6).
 - **The synthesised register handler inherits its container's Config, 2026-08-20.** `postParseRegisterPorts.py` was the generator's own producer of the variant-less-instance-of-a-params-declaring-block shape, on every project with registers, so the handler's parameter values froze at the declaring constants while its SystemVerilog twin forwarded the container's symbols. The architect ruled that the handler takes the Config of the block whose registers it holds; the instance now sets `inheritContainerParam`. The delta is two model files, one module map, and two trampolines that go away; no SystemVerilog changed. Guarded by `unittest/test_regs_handler_container_config.py`. The rejection of the shape itself is now approved and LANDED as step 8, so the handler fix was also its precondition: it was the only in-tree producer of the shape.
 - **The instance Config-selector rules are LANDED, 2026-08-20.** An instance of a params-declaring block that names neither `variant:` nor `inheritContainerParam:` is rejected at db, and so is a top instance whose block declares `params:`. One `post(...)` row hook on `instances`. The census found exactly one authored site, `examples/xif/arch/yaml/xif.yaml:127`, which drew the top rule; `examples/xif` is restructured so its parameterized testbench harness sits under an unparameterized root, and its emitted output is **byte-identical** across that restructure. The ruling is §2, D9; the implementation record and the gates are §6, step 8. Rule A retired the subject of `unittest/test_registrar_default_variant.py`, whose fixture authored the rejected shape by design; the suite and its fixture were deleted on 2026-08-20 and the unit gate returned to green (§6, step 8, "Collateral fixture updates").
 - **The verilated SystemC wrapper of a block reached only by `inheritContainerParam` is FIXED, 2026-08-20.** It took its shape from the INSTANTIATED variant view, which such a block never populates, so it was emitted as a concrete class pinned to the block's default Config with the `<Config>` argument deleted from its BFM and hdl_if types. Both arms now key on one view fact, `svWrapper['scWrapperConfigTemplated']`, that the wrapper template and its trampoline share. The Config the trampoline binds is unchanged; **which Config a container-typed site should get was referred to the architect and is ANSWERED in step 10, 2026-08-20** — the container forwards its own variant label and the trampoline registers one entry per container variant. Emitted-output delta: **zero across `examples/` and `common/`**, four files in the product tree. Guarded by `unittest/test_inherit_vl_child.py`, which verilates and runs the shape; its emitted checks are what discriminate the fix, and its run is what proves the path works at all. **One arm of this step was reverted the same day**: the concrete path's `<Config>` deletion is the deliberate fix of 2026-08-03, not the defect it was briefed as, and substituting the default Config name is `error: expected '>'` against a non-dependent Base's member alias. No build caught the substitution because arm 1 left the concrete-parameterizable branch unreachable (step 10's record carries the detail).
-- **Step 11 and the registrar follow-up are complete in the working tree, 2026-08-31.** A testbench requires a variant declared by its DUT block. The Config-source validators, declarative `dutVariant` fileMap selection, fresh-project fileMap cleanup, mixed ordinary/inherited sites, stable physical registrar artifacts, and pair-qualified logical registration identities are implemented and verified. Local `containerParam` forwarding and cross-project Verilated `containerParam` selection both pass. Base acceptance is 114/114 unit suites and 31 successful simulations with 62 `No error` reports. Pro acceptance includes the focused tandem helper regression and 7 simulations with 14 `No error` reports. The product clean, generation, and `VL_DUT=1` build gates pass. **Steps 2, 3, 5, and the RTL-bearing half of step 6 remain open; step 4 is closed (§6, step 4). Earlier unrelated loose ends keep their status. The implementation is not yet fully staged, committed, or pushed.**
+- **Step 11 and the registrar follow-up are complete in the working tree, 2026-08-31.** A testbench requires a variant declared by its DUT block. The Config-source validators, declarative `dutVariant` fileMap selection, fresh-project fileMap cleanup, mixed ordinary/inherited sites, stable physical registrar artifacts, and pair-qualified logical registration identities are implemented and verified. Local `containerParam` forwarding and cross-project Verilated `containerParam` selection both pass. Base acceptance is 114/114 unit suites and 31 successful simulations with 62 `No error` reports. Pro acceptance includes the focused tandem helper regression and 7 simulations with 14 `No error` reports. The product clean, generation, and `VL_DUT=1` build gates pass. ~~**Steps 2, 5, and the RTL-bearing half of step 6 remain open; steps 3 and 4 are closed (§6, steps 3 and 4).**~~ **All of steps 2 through 6 are closed as of 2026-09-07 (§6). Earlier unrelated loose ends keep their status. The implementation is not yet fully staged, committed, or pushed.** (This sentence listed step 3 as open until 2026-09-07, two days after it landed.)
 - **The normative authoring surface and the rules are [`design-parameter-inheritance.md`](./design-parameter-inheritance.md).** That document owns the authored YAML, the emitted shapes and the rules addressed to an author; this document owns the decision history, the work breakdown and every implementation fact. Neither restates the other.
 - **The fixture family that pins the behaviour** is `examples/xprojParam/cstIp`, `cstBind` and `cstUse`; all three now build and run.
 - **Prerequisite context, cited rather than restated.** The boundary safety this feature relies on is [`plan-interface-compatibility.md`](./plan-interface-compatibility.md), specifically its §5.5/§5.5a root-cause record, §5.9, and Plan of record steps 7 and 8. The composition boundary and the G-item register are [`plan-ip-project-composition.md`](./plan-ip-project-composition.md), specifically G5.4, G5.5 and G5.9. The one-Config-per-variant and thunker-at-the-boundary rules are [`plan-variant-config-unification.md`](./plan-variant-config-unification.md), decisions D4, D5 and Q10/R2. This document does not repeat any of them.
@@ -29,6 +41,8 @@ A parameterizable IP and the blocks that surround it — a testbench stimulus an
 The requirement is that **no fact is stated twice**. A parameter is declared once. A use-case value is written once. Everything else is a reference to one of those two.
 
 ## 2. Decisions Of Record
+
+The rules these decisions produced are stated, without evidence, in the rules section of [`design-parameter-inheritance.md`](./design-parameter-inheritance.md). That section is normative and is being iterated; this section is the history of how each rule was reached.
 
 ### D1 — Three facts are distinct and must not be conflated
 
@@ -89,7 +103,7 @@ Two consequences:
 
 ### D4 — The assembler owns per-use-case variants, including variants of blocks it does not own
 
-This already works and is deliberately proven. `examples/ip_test/top/yaml/ip_top.yaml:126-135` declares `variant1` of the **foreign** `ip` block at the assembler, with the in-file comment recording that it is a prototype of exactly this. **VERIFIED BY CODE READING** of the fixture; the descriptor machinery that supports it is `_buildVariantConfigDescriptors`' declaring-project grouping at `pysrc/processYaml.py:1900-1945`, and the foreign-variant Config naming it produces.
+This already works and is deliberately proven. `examples/ip_test/top/yaml/ip_top.yaml:126-135` declares `variant1` of the **foreign** `ip` block at the assembler, with the in-file comment recording that it is a prototype of exactly this. **VERIFIED BY CODE READING** of the fixture; the descriptor machinery that supports it is `calcVariantConfigDescriptors`' declaring-project grouping at `pysrc/processYaml.py:4074-4080`, and the foreign-variant Config naming it produces.
 
 Reasoning: the use case is the assembler's fact. Requiring the IP to enumerate its consumers' variants would invert the dependency and would make an IP unusable by a second consumer without editing the IP.
 
@@ -128,7 +142,11 @@ Recorded here as OPEN until 2026-08-14: whether the child's parameter and the na
 
 - **Identity is NOT required.** Requiring it would forbid a container from declaring its own knob at all, which is the shape the motivating case is built on: `xpDpMid.MID_ALGO` and `xpDpLeaf.DP_ALGO` are different constants in different projects.
 - **Compatibility IS required, and the relation is `maxValue`:** the container parameter's `maxValue` MUST NOT exceed the child's. `maxValue` is the child's **acceptance contract** — worst-case sizing is taken from it — so a container whose domain is wider can be bound to a value the child cannot accept.
-- **The three reuse cases, MEASURED** per site on `examples/xprojParam/dpTop` (`examples/xprojParam/dpTop/README.md`, "Reuse of one child variant under two containers"), where one leaf variant is instantiated under two different containers:
+- **The three reuse cases, MEASURED 2026-08-14** per site on `examples/xprojParam/dpTop`. At that
+  time `uLeafX` still reused `xpDpMid.yaml`'s `customer` variant under a second container
+  (`xpDpWrap`). Step 12a's `uLeafX` decision moved that instance onto its own declared variant
+  (`leafX`), so this specific dpTop evidence no longer exists in the tree. The three dispositions
+  below remain true generally, and are also evidenced by `cstBind`'s analogous table:
 
 | Case | Disposition |
 | :-- | :-- |
@@ -326,7 +344,7 @@ With an explicit link the names no longer *have* to match. **If they need not ma
 **That is the strongest argument for the link, and it is not free. Three things must be true, and only the first is true today.**
 
 1. **The db-time resolvers must key on the resolved source, not the name.** They will, by construction, once the link is persisted (§5, B1).
-2. **The Config builder must key on resolved constant identity, not on the name.** It does not today. `_buildVariantConfigDescriptors` gathers Config fields by name from the config context's parameterizable constants (`pysrc/processYaml.py:1875-1886`), and matches variant overrides by `row['param']` against `const_data['constant']` (`:1921-1926`). A block param whose name differs from its source constant falls through to the synthetic-field arm at `:1888-1898` and is emitted as an **additional** plain member, leaving the real constant at its declaration default. **VERIFIED BY CODE READING.** This is B5 (§5). **Renaming is unsafe until B5 is fixed.**
+2. **The Config builder must key on resolved constant identity, not on the name.** It does not today. `calcVariantConfigDescriptors` gathers Config fields by name from the config context's parameterizable constants (`pysrc/processYaml.py:4068-4070`), and matches variant overrides by param name against the constant's name (`:4086-4089`). A block param whose name differs from its source constant falls through to the synthetic-field arm at `:4071-4073` and `:4090-4092` and is emitted as an **additional** plain member, leaving the real constant at its declaration default. **VERIFIED BY CODE READING.** This is B5 (§5). **Renaming is unsafe until B5 is fixed.**
 3. **The C++ Config member name must remain the constant's name; the block's param name is a local alias.** A parameterizable structure's width is emitted as `Config::<constantName>` (`templates/systemc/includes.py:96-101`, `constReference_cpp`), so the Config member the payload type reads is named by the constant and cannot be renamed per consuming block. Meanwhile the base class exposes the block's params as `static constexpr auto <param> = Config::<param>` (`templates/systemc/baseClassDecl.py:95`), which assumes the two names are identical. Under renaming that line must become `static constexpr auto <param> = Config::<sourceConstantName>`. **VERIFIED BY CODE READING.** On the SystemVerilog side the same rename is a straightforward improvement rather than a problem: `parameterizedDeclLines` maps a constant key to the block's SV parameter name (`templates/systemVerilog/package.py:46`), so the module parameter is spelled with the block's own name and the constant symbol resolves to it.
 
 **Recommendation.** Adopt "the names may differ" as the target rule and record **D6 as RESOLVED BY THE LINK, conditional on B5**, with the sequencing that follows: land the link with the same-name rule still enforced (which fixes B1 and changes no authored YAML semantics), land B5, then lift the same-name restriction as a separate, separately-measured step. If the architect declines the rename — for instance to keep one name for one width across a whole composition, which is a legitimate readability position — then the link still fixes B1 in full and **D6 remains open**, decided instead by whichever of Option A or Option B the architect prefers. Nothing in §5 depends on the rename.
@@ -457,7 +475,7 @@ Consequence: **B3b's guard has to live in a SINGLE-PROJECT example**, where the 
 
 ### B4 — An `eval`-derived backing constant discards its per-variant override, silently
 
-An eval-derived parameterizable constant is emitted into the Config **symbolically**, from its canonical expression, regardless of the resolved per-variant value: `_configMemberRhs`, `templates/systemc/config.py:196-204` — `if constData['evalCanonical']: return emitCStyleCanonical(...)`, ignoring `resolved`. The descriptor *does* carry the override (`pysrc/processYaml.py:1921-1926`), so the value exists and is then thrown away at emission. **VERIFIED BY CODE READING.** There is no diagnostic.
+An eval-derived parameterizable constant is emitted into the Config **symbolically**, from its canonical expression, regardless of the resolved per-variant value: `_configMemberRhs`, `templates/systemc/config.py:217-224` — `if constData['evalCanonical']: return emitCStyleCanonical(...)`, ignoring `resolved`. The descriptor *does* carry the override (`pysrc/processYaml.py:4086-4089`), so the value exists and is then thrown away at emission. **VERIFIED BY CODE READING.** There is no diagnostic.
 
 `deriveParameterizedDeclSets` excludes such a constant from the declaration set when it is a backing key (`pysrc/processYaml.py:5395`), which is why this reads as an **unhandled combination rather than a supported one**.
 
@@ -465,7 +483,7 @@ Consequence for this feature: D3's uniform "value through a named constant" rule
 
 ### B5 — The emitted Config carries the whole context's parameterizable constants, not the subset a block names
 
-`_buildVariantConfigDescriptors` builds a Config's field set from **every** parameterizable constant whose `_context` equals the block's `configContext` (`pysrc/processYaml.py:1875-1886`), then assigns each field either the variant override or `const_data['value']` (`:1921-1926`).
+`calcVariantConfigDescriptors` builds a Config's field set from **every** parameterizable constant whose `_context` equals the block's `configContext` (`pysrc/processYaml.py:4068-4070`), then assigns each field either the variant override or the constant's own declared value (`:4086-4089`). **Citation corrected 2026-09-05.** This section and B4 both named the function `_buildVariantConfigDescriptors` at lines 1875-1930. No such identifier exists; it was renamed, and those line numbers now land in unrelated code. Three separate readers lost time to it. The behaviour described was and is real, at the lines given here, and two further sites apply the same context-wide rule: `getForeignConfigData` (`:1830-1839`) and `templates/systemc/config.py:136`.
 
 Two consequences:
 
@@ -606,17 +624,49 @@ Re-measured independently: unit suite **101 of 101**; cold `make clean` + `make 
 
 The remaining review findings (1, 3, 4, 5, 6, 7) were not actioned; each is carried at §7 or §8 with its own standing.
 
-### Step 2 — B4: the eval-derived backing constant. PARALLEL, depends on nothing
+### Step 2 — B4: the eval-derived backing constant. LANDED 2026-09-07
+
+- **As landed.** Option (a), at declaration. `_post_validateBlockParamBacking` (`pysrc/processYaml.py`) gained a second arm: a block param whose backing constant carries a non-empty `evalCanonical` is rejected, naming the file and line, the param, and the constant's name and declaring file. No variant is named, per the paragraph below. Guarded by `unittest/test_block_param_eval_backing.py` on `unittest/fixtures/block-param-eval-backing` (rejecting cell, and an accepting cell where the same constant becomes a plain `ipParameters` constant); registered in both runners. **Fault-injected, VERIFIED BY EXECUTION:** on the un-fixed generator the fixture built at exit 0 and the emitted Config carried `static constexpr uint32_t DERIVED_WIDTH = BASE_WIDTH * 2;` (8) against a bound 20. With the check removed the test FAILs; restored, both cells PASS. Corpus: `ip_test`, `twoCtx` and the product tree build clean, so the plan's zero-rows measurement held. Emitted-output delta: none. Unit suite 116 of 116.
 
 - **Changes.** Either (a) reject the combination at db time with a diagnostic naming the constant, the block param and the variant, or (b) support it by re-resolving the expression under the variant's overrides. **Recommend (a) first**: it converts a silent wrong number into a message at the cost of a few lines, and (b) is the deferred D2 of [`plan-variant-config-unification.md`](./plan-variant-config-unification.md) ("eval re-evaluation ... language-native compile-time eval is deferred"), which is a larger question than this feature.
 - **Proves it.** A fixture cell authoring `eval:` on a backing constant, fault-injected against the un-fixed generator and confirmed to emit the wrong number before the diagnostic is added. Today no such cell exists anywhere.
-- **Blast radius.** Expected zero: no design in either tree authors this shape. **NOT VERIFIED** — this must be measured before the step lands, by querying `constants` for rows with non-empty `evalCanonical` that are also backing keys.
+- **Blast radius. MEASURED 2026-09-05: ZERO. VERIFIED BY EXECUTION**, twice and independently. Left-joining `blocksparams.paramSourceKey` onto `constants` and filtering for a non-empty `evalCanonical` returns no rows in any of the 47 live databases that carry the link column. The two live databases without it, `unittest/fixtures/hier-layout/hier.db` and `isp_shared/isp_shared.db`, hold no parameterizable eval-derived constant at all, so neither can contain a hit. The population that could become a backing key later is 37 constants: the four `IP_DATA_WIDTH/MEM_DEPTH` multiples repeated across the `ip.yaml` family, `twoCtx`'s `TC_GAIN_X2`, and `debayer`'s 16 derived constants. No variant binds any of the 37.
+- **The rejection belongs at DECLARATION, not at binding.** `_post_validateBlockParamBacking` (`pysrc/processYaml.py:8775-8785`) already resolves the backing constant row and rejects a non-parameterizable one with a positioned diagnostic, so the `evalCanonical` condition is a few lines inside an existing hook. That hook fires on the block-param row and has no variant in hand. Requiring the diagnostic to name the variant, as the "Changes" bullet above does, would move the check to `_post_validateVariantBindingSizing` and let an incoherent declaration stand until somebody bound it. A computed constant cannot be a block parameter whether or not a variant binds it.
 
-### Step 3 — B5: the Config field set. DEPENDS ON step 1
+### Step 3 — B5: the Config field set. LANDED 2026-09-05; DEPENDED ON step 1
 
-- **Changes.** Compose a block's Config from the parameters the block names, by resolved constant identity, rather than from every parameterizable constant in the context. Separately decide whether derived constants remain Config members, which is the architect's stated rule and is what `debayer`'s base classes currently depend on.
-- **Proves it.** A fixture in which two blocks share one config context and name different subsets, asserting at run time that each resolves only its own; plus the product tree still building, which is the real gate, because `raw_video_srcBase.cppm:46` consumes a derived constant today. **`examples/xprojParam/twoCtx` is that fixture and is already in the tree** — it must go from not-compiling to compiling, and its `params:`-order dependence and its bare-`uint32_t` degradation must both disappear (§5, B5). Its testbench External is also still at the scaffold seed `--block=xpTwoCtxTop` and so elaborates a second copy of the DUT's children; every other `xprojParam` top has been retargeted at its `_tb` container, and this one must be too once it builds well enough to verify.
-- **Blast radius.** Potentially large and **NOT YET MEASURED**. This is the step most likely to move emitted output in the product tree, and it must be measured before it is attempted, not after.
+**Landed record.** The Config field set now resolves through `blocksparams.paramSourceKey` at all four sites, and derived constants are computed in the implementation instead of carried as Config members. `model/debayerVariantConfig.h` went from five byte-identical 22-member structs to per-block structs of **6, 5, 6, 4 and 5** members. Each `*Base.cppm` now carries its derived constants as computed lines, `MAX_PIXEL_VALUE = (1 << Config::BITS_PER_PIXEL_COLOR) - 1` and the rest, matching `rtl/debayer.sv`'s `localparam` block. `rgb_video_sink` gained `HORIZONTAL_SIZE`, `VERTICAL_SIZE` and `DEBAYER_ALGORITHM` in `yaml/debayer_tb.yaml`, which is where those blocks are declared. `examples/xprojParam/twoCtx` went from not-compiling to compiling.
+
+**Fixture half, LANDED 2026-09-06.** `twoCtx`'s testbench External is retargeted at `--block=xpTwoCtxTop_tb --excludeInst=u_xpTwoCtxTop`, matching the other `xprojParam` tops. Its five blocks gained behaviour: `xpTwoCtxSrc` drives `dpSt` payloads; `xpTwoCtxDut` asserts `DP_WIDTH == 12` and `TC_GAIN == 5` at run time, checks the payloads and forwards `tcSt` at `TC_GAIN_X2 + i` (the payload crosses the thunker by `bit_cast`, so the field checks prove routing, not width, which the review of this fixture caught: the first draft claimed a truncation guard that could not fire); `xpTwoCtxSnk` checks that against its OWN Config's `TC_GAIN_X2`, so the included-file and own-file context paths must agree on `TC_GAIN`; `xpTwoCtxBare` asserts `DP_WIDTH == 12`, `TC_GAIN == 5`, `TC_GAIN_X2 == 10` at run time. `xpTwoCtxDut` and `xpTwoCtxBare` also `static_assert(!requires { Config::DP_ALGO; })`, which pins the field set itself: `DP_ALGO` is declared in the included file and named by neither block. It is the new `xproj-twoctx` target, in `pipeline-test`, ordered after `xproj-depth` because both regenerate `dpLeaf`; it left `xproj-param-probes`, which now holds `deparam` alone. **Fault-injected, VERIFIED BY EXECUTION**: `xpTwoCtxSnk` expecting `TC_GAIN_X2 + i + 1` fails on `val field mismatch`; `xpTwoCtxBare` expecting `TC_GAIN_X2 == 11` fails on its run-time assert; inverting the `DP_ALGO` `static_assert` fails to compile. Each was restored and the run went back to "No error".
+
+**Evidence, re-measured 2026-09-06.** `pipeline-test` exit 0, 64 "No error" (62 before `xproj-twoctx` joined), exactly 2 `make[1]: ***` at `varUniqBad` and `cpLayoutBad`; unit suite exit 0 at 115 suites, 115 passed (the "87 distinct suites" this line carried on 2026-09-05 was a miscount); the product tree regenerates from clean, builds, links, runs `test_debayer_structs` and reports "No error" at exit 0. Both gate logs were greped from the full teed file, and both were re-run after the defect below was fixed, not before.
+
+**A defect this step introduced, found in review and fixed.** `constReference_cpp` (`templates/systemc/includes.py`) inlines a derived constant's expression into surrounding code and did not parenthesise it. `PREPROCESS_GRID_WIDTH` is `DEBAYER_DIMENSION + PIXELS_PER_CLOCK - 1`, so `w*PREPROCESS_GRID_WIDTH` became `w*DEBAYER_DIMENSION + PIXELS_PER_CLOCK - 1`. With `bayer_column_t::_bitWidth` at 40 and 8 columns, `preprocess_grid_t::_bitWidth` emitted 203 where 320 is correct, while `_packedSt` stayed `uint64_t[10]`; packing 320 bits into an `sc_bv<203>` aborted the product tree's struct self-test inside SystemC's `sc_bit_proxies.h`. Two sites carried it, `model/debayerIncludes.cppm:951` and `fw/debayerIncludesFW.h:504`, and one parenthesisation fixes both because both route through that function. The sibling emitter in `templates/systemc/baseClassDecl.py` is correct unwrapped: there each expression is a whole named declaration whose later members reference earlier names, so nothing is substituted into larger arithmetic. SystemVerilog is immune by construction, because a derived constant there is always a standalone `localparam` referenced symbolically.
+
+**The gates did not catch it, and that is the more useful finding.** Both were green while the product tree emitted wrong arithmetic, because no example in the corpus multiplies by a derived constant whose expression is a sum. `unittest/test_eval_cpp_emit.py::test_const_reference_cpp_parenthesizes_compound_derived` now covers it, fault-injected in both directions: with the parentheses removed it fails on both assertions, reporting 43 where 64 is correct; restored, it passes. A `clog2(...)`-wrapped or single-term derived constant would have passed either way and been a test that proves nothing.
+
+**A process note worth keeping.** This defect was reported to the reviewing session as a pre-existing unrelated crash, with a supporting claim that the crashing section was byte-for-byte unchanged. The diff contradicted both. The accompanying numeric check was real but examined `ENTRIES_PER_LINE_LOG2`, which genuinely does not move, rather than `PREPROCESS_GRID_WIDTH`, which does.
+
+**Emitted-output delta, enumerated 2026-09-07.** Taken as the working-tree diff against `builder/base` HEAD `facf2c1` after the 2026-09-06 `pipeline-test` run, so it is step 3 plus its fixture half and nothing else. Every changed file is explained by one of four causes. The classification script counted removed and added `static constexpr` lines per file and the diffs of every file whose count did not decide it were read.
+
+| Cause | Files | Which |
+| :-- | --: | :-- |
+| Config narrowed to the block's own params (members removed, nothing added) | 19 | `ip_test` and `simple_ip` `ipVariantConfig.h` (8 members each, 4 derived per struct), `ipBridge_ipVariantConfig.cppm`, `ip_test_ipVariantConfig.cppm`, `mixedVariantConfig.h` (`bob`), `xifVariantConfig.h`, `xpCppWrapVariantConfig.h`, three `dpMid` and three `dpTop` registrar Config modules, `xpInhContVariantConfig.h`, `xpMtxIpVariantConfig.h`, `xpTwoCtxVariantConfig.h`, two `twoCtx` registrar Config modules |
+| Base class computes derived constants instead of aliasing `Config::` | 5 | `ip_test` and `simple_ip` `ipBase.cppm` (4 each), three `twoCtx` Base files |
+| `constReference_cpp` spells a derived constant as its expression | 6 | `ipIncludes.cppm`, `ipIncludesFW.h` and `ip.cppm` in both `ip_test` and `simple_ip` (`Config::IP_MEM_DEPTH_X4` becomes `((Config::IP_MEM_DEPTH * 2) * 2)`) |
+| The `twoCtx` fixture half | 8 | five `twoCtx` model files, its External, its README, `examples/xprojParam/README.md` |
+
+38 files under `examples/`. One further file, `examples/xprojParam/dpTop/yaml/xpDpTop.yaml`, changes a comment and a `desc:` only: they said the customer's `MID_ALGO` bound was "deliberately wider than the leaf accepts" while the value was already 7, equal to the leaf's. No value moved. It is unrelated to step 3 and is recorded here so the diff is fully accounted for. `Makefile` gains the `xproj-twoctx` target.
+
+Product tree, against `/work/ws/debayer` HEAD `70ec235`: the working tree also carries the uncommitted output of steps 7 through 11 (Tandem files, registrars, VL wrappers, the External), so only the step 3 share is listed. `model/debayerVariantConfig.h` goes from five 22-member structs to 6, 5, 6, 4 and 5, measured by counting `static constexpr` per struct in HEAD and in the working tree. The five `*Base.cppm` files each swap 16 aliases for 16 computed lines, `raw_video_srcBase.cppm` 9, and `rgb_video_sinkBase.cppm` removes 6 and adds 12 because the sink gained three params and their derived constants. `model/debayerIncludes.cppm` and `fw/debayerIncludesFW.h` spell `ENTRIES_PER_LINE_LOG2` and `PREPROCESS_GRID_WIDTH` as parenthesised expressions. `yaml/debayer_tb.yaml` adds the three sink params and their bindings, and `model/rgb_video_sink.cppm` gains the corresponding `using` declarations. `model/debayer.cppm` changes belong to steps 7 and 10, not to this step.
+
+- **RULED ON BY THE ARCHITECT, 2026-09-05.** A block's Config carries exactly the parameters that block declares, and nothing else. Derived constants leave the Config and are computed in the implementation, the way SystemVerilog already computes them. In the architect's words: "debayer has 6 parameters. The config struct should just have those. The derived parameters should not be in the config struct, they should be available in the implementation as consteval's similar to how sv is done. Also block configs should be specific to the block." This closes the "separately decide" clause below and the §7 unknown that asked it.
+- **Changes.** Compose a block's Config from the parameters the block names, by resolved constant identity, rather than from every parameterizable constant in the context. Four sites carry the context-wide rule and all four move together: `calcVariantConfigDescriptors` (`pysrc/processYaml.py:4068-4070`), its name-based `syntheticParams` test (`:4071-4073`), `getForeignConfigData` (`:1830-1839`), and `templates/systemc/config.py:136`. The Base class then computes each derived constant instead of aliasing it: `templates/systemc/baseClassDecl.py:216` emits `= Config::{name}` today and must emit the canonical expression, mirroring `parameterizedDeclLines` in `templates/systemVerilog/package.py:25-90`, whose `symSpelling` (`:56-61`) is the speller to copy. `constReference_cpp` (`templates/systemc/includes.py:96-100`) spells every parameterizable constant as `Config::NAME` including derived ones, and is the single site that puts `Config::ENTRIES_PER_LINE_LOG2` inside the shared context header's struct templates; it must spell a derived constant as its expression.
+- **The declaration set is already correct and already mirrors SV.** `deriveParameterizedDeclSets` (`:5853`) selects, per block, the derived constants whose referent closure lies inside that block's own params; the check is `if not info['paramDeps'] <= params` at `:6053`. It persists `blockParameterizedDecls` at `:3939`, before `calcVariantConfigDescriptors` at `:3949`, so the input this step needs is already in hand and needs no reordering. `baseClassDecl.py` already walks that set in that order. Only the right-hand side changes.
+- **Proves it.** A fixture in which two blocks share one config context and name different subsets, asserting at run time that each resolves only its own; plus the product tree still building, which is the real gate, because `raw_video_srcBase.cppm:46` consumes a derived constant today. **`examples/xprojParam/twoCtx` is that fixture and is already in the tree** — it must go from not-compiling to compiling, and its `params:`-order dependence and its bare-`uint32_t` degradation must both disappear (§5, B5). ~~Its testbench External is also still at the scaffold seed `--block=xpTwoCtxTop` and so elaborates a second copy of the DUT's children; every other `xprojParam` top has been retargeted at its `_tb` container, and this one must be too once it builds well enough to verify.~~ **DONE 2026-09-06**, see the fixture-half record above. Two corrections to that sentence: the seeded External held no instances at all under the current generator, so it never elaborated a second copy, and `inhVar`'s External is also still at its seed, so "every other" was wrong; `inhVar` is left alone here.
+- **Blast radius. MEASURED 2026-09-05. VERIFIED BY EXECUTION.** Across the corpus, 34 databases carry a parameterizable block; 24 of them hold at least one block that loses a field under narrowing, 64 blocks in all, 222 field-losses summed per block, 154 of them derived. In `debayer` all seven parameterizable blocks share one context and one 22-member struct, so `model/debayerVariantConfig.h` emits five byte-identical structs today. Under the ruling the field sets become 6, 5, 6, 4 and 5.
+- **The derived losses cost nothing, and this is the measurement that de-risked the step.** For every one of the 75 generated `*Base.cppm` files in the whole corpus, the union of a block's declared params and its `blockParameterizedDecls` constants covers every `Config::X` name that file spells. Zero uncovered. So the Base classes already assume the per-block closure this step implements; moving the derived constants to computed lines changes their spelling, not their availability.
+- **The product tree's entire exposure is one hand-written file.** `model/rgb_img_writer.h:19-23` reads `Config::HORIZONTAL_SIZE`, `Config::VERTICAL_SIZE` and `Config::DEBAYER_ALGORITHM`, and is instantiated as `rgb_img_writer<Config>` at `model/rgb_video_sink.cppm:81`, while `rgb_video_sink` declares only `BITS_PER_PIXEL_COLOR` and `PIXELS_PER_CLOCK`. It compiles today only because the Config is over-inclusive. **The architect's disposition:** the sink is a peer of `debayer`, not part of its hierarchy, and inherits nothing from it; it should declare whatever its own abstraction needs, reusing the same `ipParameters` the feature exists to support, and should not carry parameters it does not use. So the three go on `rgb_video_sink`'s `params:` list. `model/b2p_deb_conv.h` reads only the four parameters `raw_video_src` already declares and is unaffected.
 - **Gates Q3.** Until this lands, a block param whose name differs from its source constant is emitted as an extra synthetic Config member and the real constant keeps its default (§4.3, point 2).
 - **Gates Case 1.** B5 is a **hard precondition** for a shared declaration consumed only from other files (§2, D2), because a two-context block is exactly what Case 1 produces.
 
@@ -629,16 +679,25 @@ The remaining review findings (1, 3, 4, 5, 6, 7) were not actioned; each is carr
 - **The gate is not vacuous, established read-only.** `tb/xpDpTop/xpDpTopExternal.cppm:36` names `xpDpTop_xpDpTbPeerPeerConfig` and `:20` imports `xpDpTop.xpDpTbPeer.config`. That module interface unit (`registrar/xpDpTop_xpDpTbPeerVariantConfig.cppm:9-11`) is the struct's only definition site, and no other import supplies it: the sole Config header the External includes does not carry it, and `xpDpTop_xpDpTbPeer.base` declares the Base as a class template over `Config` and so never names it. Under C++20 module rules, dropping that import leaves the name undeclared. `dpTop` is the only External in the corpus that imports a `.config` module.
 - **Blast radius.** Additive imports on one generated file kind. Regeneration leaves the tracked External byte-identical.
 
-### Step 5 — B2: a structure declared over an included constant. PARALLEL, depends on nothing
+### Step 5 — B2: a structure declared over an included constant. LANDED 2026-09-07
 
-- **Changes.** The per-context round-trip test structures must be instantiated at a Config that carries the included constants their widths name, or the shape must be refused at db time with a diagnostic instead of a C++ error.
+- **As landed.** The additive view field is `sampleConfigConstants` on `getContextData`, built by `projectOpen._sampleConfigConstants`: the context's own parameterizable constants, then each structure's persisted base-parameter closure (`STRUCTUREPARAMDEPS`, written by `deriveParameterizedDeclSets` from the per-structure `paramDeps` it already computed, sorted). `_sampleConfigs` (`templates/systemc/structures.py`) and `configStructLines` (`templates/systemc/config.py`) read it; `ret['constants']` is unchanged. **Fault-injected, VERIFIED BY EXECUTION:** the `cstBind` Inc pair now carries its own payload `csIncSt` over the included `CS_PIXEL_WIDTH`; on the un-fixed generator its rundir build failed with `fatal error: no member named 'CS_PIXEL_WIDTH' in 'xpCstSupTestConfigDefault'`, and after the fix `xproj-const` runs clean with `CS_PIXEL_WIDTH` in all three sample Configs. A first version walked structures at open time from a per-constant blob and iterated sets; review found the member order non-deterministic for a context reaching two included constants, and the persisted sorted per-structure closure replaced it (three identical runs on a two-constant scratch copy). Emitted-output delta across `examples/xprojParam/*`, `ip_test`, `simple_ip`, `mixed`, `xif` (583 files): one file, `cstBind/model/xpCstSupIncludes.cppm`, plus the `cstBind` files the fixture change itself regenerates. Product tree: zero. Unit suite 116 of 116. The stale "does not compile" prose in `xpCstSup.yaml` and `examples/xprojParam/README.md` is rewritten.
+- **Gates after steps 2 and 5, 2026-09-07, VERIFIED BY EXECUTION.** `make clean && make pipeline-test -j` exit 0, 64 "No error", zero `ERROR:` lines, both asserted rejections (`varUniqBad`, `cpLayoutBad`) printed their OK lines. The combined log shows five `make[1]: *** Deleting file` lines rather than two: three are the leading `make clean`, whose per-example clean builds the db to read the manifest and so trips the three rejection fixtures (`cpLayoutBad`, `mtxBare`, `varUniqBad`) once each; pipeline-test itself contributes exactly two. Product tree: `make clean && make gen -j && cd rundir && make -j && ./build/run debayer --verbosity=medium` exit 0, two "No error", `test_debayer_structs` executed. Unit suite, run after pipeline-test finished: 116 of 116, no count warning.
+
+- **Root cause, traced 2026-09-05.** `_sampleConfigs` (`templates/systemc/structures.py:1593-1594`) builds the sample Config from `data['constants']`, which `getContextData` (`pysrc/processYaml.py:1115-1116`) filters on `value['_context'] in contexts`, the file's own `--context` tokens. The include chain is computed two lines earlier into `ret['includeContext']` and then not used for this filter. So the sample Config can only ever carry constants declared in that one file. A real block's Config does not have this problem, because `configContext` (`:5743-5763`) resolves through the include chain to the file that owns the parameterizable declarations.
+- **Take the first option, not the db-time refusal.** The shape being refused is not broken. It already resolves correctly for a real block's Config, so a db-time rejection would forbid a legal authoring pattern to work around a shortcut in one self-test generator, and would make the same reference legal for a block and illegal for a bare structure.
+- **The new field must be additive.** Sourcing the sample Config only from constants the context's structures reference would silently drop any parameterizable constant in the context that no structure names, which is an unmeasured emitted-output delta. Take the union of the context's own parameterizable constants and the referenced ones wherever declared. Widening `ret['constants']` itself is not an option: `templates/systemc/includes.py:56-58` emits literal declarations from that same dict, so a wider filter would re-declare constants the included file already exports.
+- **Sequencing note.** Step 3 changes `constReference_cpp` (`templates/systemc/includes.py:96-100`) so a derived constant spells as an expression over `Config::<param>`. A test structure whose width names a derived constant therefore needs the sample Config to carry that constant's referent parameters. Do step 5 after step 3 and the union rule above covers both.
 - **Proves it.** Give `cstBind`'s Inc blocks a payload of their own, which the fixture cannot do today, and require the build to succeed.
-- **Blast radius.** Confined to the `testStructsCPP` section. **NOT MEASURED.**
+- **Blast radius. MEASURED 2026-09-05: zero in the product tree.** A query for a struct field whose width-backing constant is declared in a different file than the structure returns 0 rows in both `debayer.db` and `isp_shared.db`, and 0 rows again for `arraySizeKey`. `isp_shared` has no parameterizable types at all. The defect is confined to the `testStructsCPP` section, which is reachable only from `structTest()` (`templates/systemc/structures.py:1615-1667`) and has no other call site, and its only live instance is the deliberately-constructed `xprojParam` fixture.
 
 ### Step 6 — Promote the probe and close the RTL coverage gap. HALF LANDED; DEPENDS ON step 1
 
 - **Changes.** ~~Move `cstUse` from `xproj-const-probes` into `xproj-const`~~ **DONE with step 1**; `xproj-const-probes` is deleted, having no cells left. Still to do: add an **RTL-bearing** cell to the family, because the SystemVerilog consequence of B1 is the most serious and is covered by nothing: all eight affected blocks in both trees are `hasRtl: 0` (measured, §5 B1), and the `cst` family declares `hasRtl: false` throughout.
 - **Proves it.** The new cell's generated package or module-local declaration must spell the **module parameter name**, not the constant's default literal; fault-inject by reverting step 1's change to `templates/systemVerilog/package.py:46` and confirm the cell fails.
+- **Redirected 2026-09-07, after the dpMid attempt below did not discriminate.** A type width is spelled by `typeWidthExpression_sv`, which goes through `emissionUtils.typeWidthExpr` (`pysrc/emissionUtils.py:124-126`) and returns the constant's bare declared name; it never consults `paramNameByKey`. Only two emissions do: an eval-derived `localparam` right-hand side (`emitSvCanonical`, `templates/systemVerilog/package.py:88`) and a structure member's `arraySizeKey` (`:66-67`). So the B1 SystemVerilog consequence is confined to those two, and `dpMid`'s `typedef logic[DP_WIDTH-1:0]` is right by the same-name rule, not by step 1. **Fault-injected and observed**: with `paramNameByKey` keyed on `paramKey`, `xproj-depth` still exits 0 and the typedef is byte-identical. The dpMid grep added to `xproj-depth` is kept as a pin of the type-width path, but it is not the step 6 gate. **The gate is `twoCtx`**: `xpTwoCtxDut` and `xpTwoCtxBare` are `hasRtl: true` and name the include-reached `DP_WIDTH`; a derived constant `DP_WIDTH_X2` over it, declared in `xpTwoCtx.yaml`, lands in both blocks' `localparam` sets, and `xproj-twoctx` greps for `localparam DP_WIDTH_X2 = DP_WIDTH * 2`. The `paramKey` injection must turn that into the literal `8 * 2`.
+- **LANDED 2026-09-07. VERIFIED BY EXECUTION.** `examples/xprojParam/twoCtx/yaml/xpTwoCtx.yaml` declares `DP_WIDTH_X2: { eval: "$DP_WIDTH * 2" }`; with no other YAML change `rtl/xpTwoCtxDut.sv:22` and `rtl/xpTwoCtxBare.sv:21` carry `localparam DP_WIDTH_X2 = DP_WIDTH * 2;`, and `xpTwoCtxBare` asserts `DP_WIDTH_X2 == 24` at run time beside its existing asserts. `xproj-twoctx` greps both files for the symbolic line and fails otherwise. **Fault-injected**: with `paramNameByKey` keyed on `paramKey`, the target exits 2 at `ERROR: xpTwoCtxDut.sv did not spell the include-reached parameter DP_WIDTH on localparam DP_WIDTH_X2` (the emitted line read `8 * 2`, reported by the implementer; the ERROR line is in the retained log); the run-time assert changed to 25 fails on `xpTwoCtxBare DP_WIDTH_X2 did not derive from the bound DP_WIDTH`. Both restored; `git diff templates/systemVerilog/package.py` empty; `make xproj-twoctx -j` exit 0 with four "No error" (two from the depth family it runs first, two from twoCtx). The "No error" expectation of `pipeline-test` stays 64: the gate adds greps, not simulations. The `dpMid` typedef grep in `xproj-depth` stays as a pin of the type-width path. **This closes step 6.** The `cst` family stays `hasRtl: false`.
+- **The premise is partly stale, found 2026-09-07.** "Covered by nothing" was true of the `cst` family and the product tree, but `examples/xprojParam/dpMid/yaml/xpDpMid.yaml:33` declares `params: [DP_WIDTH, MID_ALGO]` with `hasRtl: true`, and `DP_WIDTH` is reached by `include:` from `dpLeaf`. Its emitted `rtl/xpDpMid.sv:20` reads `typedef logic[DP_WIDTH-1:0] dpPixelT;`, the module parameter, which is exactly the artefact this step asks a new cell to produce. Two gaps keep the step open: `xproj-depth` runs `make gen` on `dpMid` and asserts nothing about the spelling, and no target elaborates that RTL (every `dpTop` block is `hasVl: false`, and `make lint` is unusable, §8). **Recommended, not decided:** close the step with a grep gate on `dpMid`'s emitted RTL inside `xproj-depth`, plus the `paramKey` fault injection, rather than authoring a new RTL cell in the `cst` family.
 
 ### Step 7 — D7: parameter-scoped inheritance expressed in the variant. DECIDED 2026-08-13; HALF BUILT 2026-08-14
 
@@ -696,7 +755,7 @@ Every site that names such a Config spells it applied to the container's own `Co
 
 | Piece | Site |
 | :-- | :-- |
-| `containerSourced` on the per-variant descriptor: `{childParam: containerParam}`, empty for a fully bound variant | `_buildVariantConfigDescriptors`, `pysrc/processYaml.py` |
+| `containerSourced` on the per-variant descriptor: `{childParam: containerParam}`, empty for a fully bound variant | `calcVariantConfigDescriptors`, `pysrc/processYaml.py` |
 | Struct-versus-template opening line, and the `ContainerConfig::<param>` member RHS | `_descriptorStructOpen` / `_descriptorMemberLines`, `templates/systemc/config.py`, used by both the context-header and the registrar-domain module paths |
 | `<Config>` applied at every use site (member, channel, thunker, cast target) | `cpp_config_struct_name`, `pysrc/intf_gen_utils.py` |
 | ~~Maker template the container calls~~, and suppression of the registration that can no longer name a concrete type | `templates/systemc/blockRegistrar.py` |
@@ -865,7 +924,7 @@ A `containerParam` site forwards its parent's runtime variant label. The pair's 
 
 **How `inheritContainerParam` is generalised**, recorded because it is the migration target: per parameter rather than all or nothing; explicit naming of the container parameter rather than bare-name matching; no same-project restriction (`inheritContainerParam` hard-rejects a cross-project pair, which is why it cannot express the motivating case, and which is G5.8 of [`plan-ip-project-composition.md`](./plan-ip-project-composition.md)); and it resolves to literals per site, and since step 7b landed (2026-08-17) the layout gate adjudicates the connection.
 
-**Skill guidance is in conflict. Both gating conditions are now met, so the rewrite is UNBLOCKED (2026-08-18) but NOT DONE.** `rules/skills/design-parameterizable-blocks.md` documents `inheritContainerParam` as **the** container-inheritance mechanism (line 104, and "Container Config Inheritance", lines 110-129, which states the same-owning-project precondition as a rule). That is correct for what ships today but incomplete: `containerParam` also ships. The condition was "step 7b lands and step 7a has a regression guard" — 7b landed 2026-08-17 and 7a's guard closed 2026-08-18. "Container Config Inheritance" is the section to rewrite, presenting `inheritContainerParam` as the degenerate case and pointing at [`design-parameter-inheritance.md`](./design-parameter-inheritance.md) for the general form. Deliberately left for its own change.
+**Skill guidance is in conflict. Both gating conditions are now met, so the rewrite is UNBLOCKED (2026-08-18) but NOT DONE.** **DONE 2026-09-07.** The section is retitled "Container-sourced parameters (`containerParam`, `inheritContainerParam`)", leads with the per-parameter form on the `cpLayout` fixture (`examples/xprojParam/cpLayout/yaml/xpCpLayoutTop.yaml:52-96`, names differing), states that names need not match, that cross-project is allowed, and that the container's `maxValue` may not exceed the child's, then presents `inheritContainerParam: true` as the shorthand for every parameter at once with its preconditions reframed as the conditions under which the shorthand applies. It points at [`design-parameter-inheritance.md`](./design-parameter-inheritance.md) §4 for the full rules and for `valueType` not being checked. The line-106 sentence on the three legal shapes is unchanged. Every YAML snippet was checked against its fixture line and every rule against the design document's §4; the install copy under `.claude/skills/` was not hand-edited. `rules/skills/design-parameterizable-blocks.md` documents `inheritContainerParam` as **the** container-inheritance mechanism (line 104, and "Container Config Inheritance", lines 110-129, which states the same-owning-project precondition as a rule). That is correct for what ships today but incomplete: `containerParam` also ships. The condition was "step 7b lands and step 7a has a regression guard" — 7b landed 2026-08-17 and 7a's guard closed 2026-08-18. "Container Config Inheritance" is the section to rewrite, presenting `inheritContainerParam` as the degenerate case and pointing at [`design-parameter-inheritance.md`](./design-parameter-inheritance.md) for the general form. Deliberately left for its own change.
 
 **Two adjacent gaps this design neither causes nor fixes.**
 
@@ -1311,12 +1370,302 @@ The implementation is complete in the working tree. Commit preparation is not:
 the final intended change set is not yet fully staged, committed, or pushed.
 Working-tree-versus-HEAD diff checks are clean after EOF normalization. Cached
 checks may retain the old whitespace until the normalized files are staged.
-Steps 2, 3, 4, 5, and the RTL-bearing half of step 6 remain open. This entry
-does not reclassify unrelated loose ends or review findings recorded above.
+Steps 2 through 6 are all closed as of 2026-09-07 (this line listed steps 3 and 4
+as open until 2026-09-07, and steps 2 and 5 until later that day). This entry does not
+reclassify unrelated loose ends or review findings recorded above.
+
+### Step 12a, rules 1 and 2. LANDED 2026-09-08
+
+The rules iteration of 2026-09-07 settled this step's content; the normative statement is
+rules 1 and 2 in [`design-parameter-inheritance.md`](./design-parameter-inheritance.md).
+Rule 7 is split out as step 12b, below, and untouched by this entry.
+
+- **Rule 2, the duplicate-in-scope diagnostic for parameter names.** `lookupInScope` returned
+  the first match on the include walk with no ambiguity check. `validateBlockParamScopeUniqueness`
+  (`pysrc/processYaml.py`), a project-wide pass after `processYamls()`, walks
+  `self.yamlContext[context]` for every `blocksparams` row, the block's own file first, and
+  collects every qualification whose `constants` table (plain and `ipParameters` rows alike)
+  holds the param's name; more than one is `self.logError`ed naming the block, the param, and
+  every declaring file, in walk order. It runs after parsing because the per-row hook fires
+  while the referring file's `blocks:` section is being parsed and sections are processed in
+  authored order, so an `ipParameters:` section below `blocks:` was invisible to it (review
+  finding, fixed the same day, pinned by the reordered-section unit cell). Placement confirmed by
+  the architect 2026-09-08: included files are always complete when a per-row hook fires, so the
+  only rows it cannot see are the referring file's own, and the one shape that hides there (an
+  own-file duplicate of an included name, authored below `blocks:`) binds the block to the other
+  file's constant without a diagnostic. The project-wide pass stays; a per-row hook was rejected
+  for that silent miss, and a second hook on the constant row was judged more machinery than the
+  pass.
+  `examples/xprojParam/dpTop/yaml/xpDpTop.yaml` declared its
+  own `MID_ALGO` while including `xpDpMid.yaml`, which declares another; the customer knob is
+  renamed `CUST_ALGO` (design document §2.3) and the fixture's README loses the "include-chain
+  shadowing is silent" and "not selectable" paragraphs.
+- **Rule 1, the shared declaration (Case 1).** `_validateIpParametersLinkage`, the project-wide
+  orphan check requiring a same-file consumer, is deleted along with its call, its
+  `self.ipParametersConstants` cache, and `_captureIpParametersConstants`. A second gate found on
+  the way, `_process_ipParameters`'s `isIncludedElsewhere and not hasBlocks` check (which rejected
+  `ipParameters` in any file included elsewhere with no `blocks:` of its own, unconditionally,
+  regardless of consumption), is also deleted: it was the design deviation's actual current
+  blocker, not `_validateIpParametersLinkage` alone. A definitions-only file may declare
+  `ipParameters` and needs no consumer, anywhere, ever. No replacement orphan check is added.
+- **The `uLeafX` decision.** `dpTop`'s `uLeafX` named variant `customer`, which `xpDpMid.yaml`
+  declares for `xpDpLeaf`, sourcing `DP_ALGO` from a container parameter named `MID_ALGO`. Renaming
+  the wrapper's own knob to `CUST_ALGO` (rule 2) leaves `xpDpWrap` with no `MID_ALGO` to source
+  that variant from, which the old, unchanged rule 7 resolution (`selectVariantDescriptor`,
+  project-based, not scope-based) never reached anyway. It resolved no descriptor for `uLeafX`
+  and fell back to the leaf's default Config. Rather than leave that stale fallback in place, `uLeafX` takes
+  a customer-declared variant instead: `variant: leafX`, declared in `xpDpTop.yaml` itself
+  (`parameters: xpDpLeaf: leafX: { DP_ALGO: { containerParam: CUST_ALGO }, DP_WIDTH: DP_WIDTH }`),
+  which `selectVariantDescriptor` finds directly as the consumer's own project. `uChkX` moves from
+  asserting the leaf's declared default (1) to asserting 5, the same value the nested chain
+  carries. This is a fixture decision, not a rule-1/2 implementation requirement; rule 7 (step 12b)
+  is what would let `uLeafX` keep naming `customer` and still resolve correctly.
+- **Fixtures.** `unittest/test_param_scope_uniqueness.py`, three cells against
+  `unittest/fixtures/param-scope-dup-own-file`, `param-scope-dup-included-files` and
+  `param-scope-shared-definitions`: (a) a name declared in the referring file and an included file,
+  rejected naming both, premise asserted, fault-injected legal on a temp copy; (b) a name declared
+  in two included files, rejected naming both, premise asserted, fault-injected legal; (c) one
+  declaration in a definitions-only included file, consumed by two other including files, builds.
+  `examples/xprojParam/cstShared`, modelled on `cstBind`: `xpCstSharedDefs.yaml` (no `blocks:`)
+  declares `CSH_WIDTH` plus a parameterizable type/structure/interface over it; `xpCstSharedSrc.yaml`
+  and `xpCstSharedChk.yaml` each `include:` it and name it; the top binds both to 12 (not the
+  declared default 8), wires src to chk, and each model asserts its own resolved `CSH_WIDTH == 12`
+  before driving or checking, the checker voting the test done. Added to the `xproj-const` target.
+  Fault-injected: binding 8 in one variant is rejected at `make db` (an interface-layout width
+  disagreement between the two ends, rule 9's own check, not a new one), restored and re-verified
+  passing. `dpTop`'s fault injection: `uChkX`'s `leafX.DP_ALGO` set to 1 fails the run (the checker's
+  assertion never votes, the run times out), restored and re-verified passing.
+- **Blast radius, measured.** The corpus scan for every `blocksparams` row whose include chain
+  reaches two same-named parameterizable constants found exactly one hit, `dpTop`'s `MID_ALGO`
+  (renamed). The unit-suite gate found a second, NOT in the corpus scan because it is
+  synthesised at runtime rather than authored: `test_param_cross_project_linkage.py`'s
+  `test_same_key_endpoint_with_foreign_same_named_param_rejected` constructs a same-file
+  redeclaration of an included name on a temp copy to probe a downstream (unrelated) diagnostic;
+  rule 2 now intercepts that construction first, so the test asserts rule 2's rejection instead
+  and its docstring records the two diagnostics as distinct checks.
+  `test_container_param_cross_project_vl.py` needed its `uLeafX` yaml text anchor and its
+  now-unused `xpDpLeaf: leafX:` declaration updated for the same renames, unrelated to rule 2's
+  own reach. Both were fixed; no rule was loosened.
+- **Also updated.** `rules/skills/design-parameterizable-blocks.md` (the same-file wording, two
+  places); `examples/xprojParam/README.md` (the retired orphan-rule paragraph and the shared-
+  constant family's table, section and cross-references); `plans/design-parameter-inheritance.md`
+  (closed deviation lines, `*not yet enforced*` markers, the `dpTop` note, §5's "waits on plan
+  step 12").
+- **Gates, VERIFIED BY EXECUTION 2026-09-08.** Unit suite 118/118 (117 plus
+  `test_param_scope_uniqueness.py`). `make clean && make pipeline-test -j`: exit 0, 66 "No error"
+  (was 64, plus 2 from `cstShared`), zero `ERROR:`, both `varUniqBad`/`cpLayoutBad` OK lines, 5
+  total `Deleting file` lines across the clean+pipeline logs (3 from clean). Product: `make clean
+  && make gen -j && cd rundir && make -j && ./build/run debayer --verbosity=medium`: exit 0, two
+  "No error"; `make -j all VL_DUT=1`: exit 0, no compile errors (this target builds, it does not
+  run). `git status --short | wc -l` unchanged at 63; thirteen new paths appeared
+  (`model/debayer_regs.cppm`, `model/interpolate.cppm`, `model/preprocess.cppm`,
+  `model/raw_video_src.cppm`, six `registrar/debayer_*VariantConfig.cppm`,
+  `tb/debayer/debayerConfig.cpp`, `tb/debayer/debayerTestbench.cppm`,
+  `verif/debayer_hdl_sc_wrapper.h`), all step 15's per-block Config-module split reaching files
+  this session's `make clean && make gen` was the first to regenerate since step 15 landed, not a
+  step 12a effect. Pro: `make -C builder/pro pipeline-test -j` exit 0, 14 "No error";
+  `test_constructor_tandem.py` PASS.
+- **Sequencing.** Independent of steps 13 through 15.
+- **Follow-up (d), a stale generated registrar shadows a container-typed site.** `make gen` does
+  not remove a registrar file left behind by a renamed instance, and when its exact key still
+  matches a container-typed site, it shadows the templated construction and the generated site
+  dereferences a null `dynamic_pointer_cast`. Seen in `dpTop` when `uLeafX` moved to `leafX`; the
+  stale file was deleted by hand. Candidate guards: a gen-time report of files under `registrar/`
+  absent from `.gen/build.mk`, and a run-time assert on the cast at the generated site.
+- **Follow-up (e), an untested endpoint diagnostic.** The endpoint diagnostic "The block declares
+  same-named parameter(s) from other file(s)" (`pysrc/processYaml.py` ~6178) has no test reaching
+  it under rule 2 and is a candidate for removal.
+
+### Step 12b, rule 7, scope resolution of a variant label. LANDED 2026-09-08
+
+The normative statement is rule 7 in [`design-parameter-inheritance.md`](./design-parameter-inheritance.md).
+
+- **Rule 7, scope resolution of a variant label.** `selectVariantDescriptor` selected by project
+  (consumer's own, config-context owner, block owner) and never rejected two visible
+  declarations. It is deleted, replaced by `resolveInstanceVariantDeclarers`
+  (`pysrc/processYaml.py`), a project-wide pass after `processYamls()`, modelled on
+  `validateBlockParamScopeUniqueness`: for every instance naming a variant (not
+  `inheritContainerParam`), it walks `self.yamlContext[context]` (the instance's own file, then
+  its include chain) and collects every file whose `parametersvariants` rows declare that
+  (block, variant). Exactly one is required; zero is rejected naming the out-of-scope declarer(s)
+  if any exist, otherwise saying no file declares it; more than one names every declaring file.
+  The result, `INSTANCEVARIANTDECLARERS` (`{instanceKey: declaringProject}`), is persisted and read
+  by a new `projectOpen` helper, `_instanceVariantDescriptor`, which is the one place an instance's
+  descriptor is now resolved: the entry of `self.variantConfigDescriptors[blockKey]` whose
+  `variant` and `declaringProject` match the recorded declarer. Every call site that used to pass
+  `(variant, consumerProject, blockProject)` to `selectVariantDescriptor` now passes the instance
+  data instead (`_resolveInstanceConfigFields`, `_resolveSvInstanceParams`,
+  `calcRegistrarPairs.selectedDescriptor`). `getStandaloneVariants` and
+  `_declaredVariantConfigEntries` are a different shape: they enumerate every DECLARED label
+  across a block's variant sources, whether or not any instance selects it, so they resolve
+  through `_declaredDescriptorsByLabel` (groups `self.variantConfigDescriptors[blockKey]` by
+  label, one entry per declaring project) and `_selectDeclaredDescriptor` (the enumerating
+  build's own project's entry when present, otherwise the group's remaining entry).
+  `validateVariantLabelBuildOwnership`, run in `projectCreate` right after
+  `calcVariantConfigDescriptors`, rejects a label two or more foreign projects declare when this
+  build declares none of them, naming the block, the label and every declaring project, so the
+  fallback arm always has exactly one entry left to take. An earlier version of this enumeration
+  read the label-collapsed `declaredVariantRows()` view instead, which silently drops one
+  project's declaration when the build project declares neither of two foreign ones; a later
+  review replaced it with the descriptor-grouped form above and added the create-time rejection.
+  `BLOCKPARAMDEFAULTS` is removed: its two remaining readers
+  (`calcRegistrarPairs`, `_resolveSvInstanceParams`) took `values: {}` for a params-less child and
+  the default Config's own values for a params-declaring one with no descriptor
+  (`inheritContainerParam`, whose params all forward the container's same-named symbol instead of
+  reading `values`); both now read `DEFAULTCONFIGDESCRIPTORS[blockKey]['values']`, guarded the same
+  way `calcVariantConfigDescriptors` guards populating it (`blockKey in paramsByBlock`). `isForeign`
+  stays on the descriptor: `calcRegistrarPairs` still reads it to name a Verilated wrapper's
+  foreign-vs-native fileStub. D8's build-wide same-project uniqueness check stays untouched.
+- **Proves it.** `unittest/test_variant_scope_resolution.py`: (a) a label visible in the instance's
+  own file and an included file, rejected naming both (`fixtures/param-variant-two-declarers`,
+  unmodified); (b) a label declared only downstream of the instance's own file, rejected naming
+  the out-of-scope declarer (new fixture `fixtures/variant-scope-out-of-range`, modelled on the
+  pre-migration `ip_test` bridge shape); (c) the same fixture with the declaration moved into the
+  instance's own file, builds, and the persisted `INSTANCEVARIANTDECLARERS` entry names that
+  file's project. Each rejection cell asserts its premise and is fault-injected into a legal shape
+  on a temp copy, confirming the build then succeeds.
+- **`ip_test` migration.** `examples/ip_test/bridge/yaml/ipBridge.yaml` instantiates `uBridgeIp1`
+  of `ip` at `variant1`, authored inside `ipBridge.yaml` itself; its own scope (itself plus its own
+  direct includes, `shared_types.yaml` and `ipVariants.yaml`) declared only `variant0`. `variant1`
+  was declared downstream, identically, in `bridge/yaml/bridgeStdTop.yaml` and
+  `top/yaml/ip_top.yaml`, both of which include `ipBridge.yaml` rather than the reverse, so the
+  instance saw zero visible declarations. The declaration moves into `ipBridge.yaml` itself (the
+  file that instantiates the reused block declares the variant it instantiates); the two
+  downstream copies are deleted. `ip_top.yaml`'s own `uIp1` (also naming `variant1`) then resolves
+  the bridge's declaration through its direct include of `ipBridge.yaml`, one hop, within scope.
+  `bridgeStdTop.yaml`'s now-unused direct include of `ipVariants.yaml` (kept only for the deleted
+  binding's block-type resolution) is removed with it. The emitted Config for `variant1` is now
+  `ipBridge_ipVariant1Config` (`bridge/registrar/ipBridge_ipVariantConfig.cppm`,
+  `export module ipBridge.ip.config;`), and `ip_top.cppm`/`top/registrar/ipRegistrar.cppm` import
+  and spell it instead of the old `ip_test_ipVariant1Config`. `make gen` does not remove a
+  registrar file a renamed/relocated declaration leaves behind (the same generator gap step 12a's
+  record notes for `xpDpLeafRegistrar.cppm`): `top/registrar/ip_test_ipVariantConfig.cppm`, the
+  ip_test project's now-empty Config module for a variant it no longer declares, was left in place
+  by `make gen` and deleted by hand after confirming nothing imports it. The three "PROTOTYPE (P1)"
+  comments (`ip/yaml/ipVariants.yaml`, `top/yaml/ip_top.yaml`, and the related duplication
+  rationale in `bridge/yaml/bridgeStdTop.yaml`) are rewritten to state the standing shape instead
+  of the retired experiment. No hand-written file outside a generated region spells the old Config
+  name (checked by grep).
+- **Blast radius, measured 2026-09-08 over every example, pro example, unit fixture and the
+  product YAML.** `examples/ip_test`'s bridge instance is the one authored shape needing a fixture
+  move (above). `unittest/fixtures/param-variant-two-declarers` sees two declarations, as recorded;
+  it becomes a rejection fixture (below). `examples/xprojParam/varUniqBad` is already rejected by
+  D8. `unittest/fixtures/variant-two-integrators` is sibling-scoped (`xviTop` and `xviMid` never
+  include each other; each build's own instance sees exactly its own project's declaration) and
+  unaffected in resolution; it pins the declared-variant iteration `getStandaloneVariants`/
+  `getDeclaredVariantConfigs` perform, which needed its own fix (below). The product tree's three
+  variant selections (`u_raw_src`, `u_debayer`, `u_rgb_sink` in `debayer_tb.yaml`) each resolve
+  within scope with exactly one visible declaration; unaffected. A fourth hit, not in the
+  authored-corpus scan because it is constructed at runtime: `test_param_cross_project_linkage.py`'s
+  `test_registrar_requirements_exclude_unreachable_child_harnesses` appends an instance naming
+  `variant: v0` directly into a child project's own file, where `v0` is declared only in the
+  downstream assembler that includes it; rule 7 now rejects that construction, so the appended
+  instance instead declares and names its own `harness0` label, in its own file, matching the
+  point the test makes (registrar requirements exclude an unreachable instance) without depending
+  on a label declared out of its scope. Nothing else in the corpus sees zero or two declarations.
+- **`getStandaloneVariants`/`getDeclaredVariantConfigs`, the two-integrators finding.** These
+  enumerate every label a block's variant sources declare, independent of any instance, to offer a
+  standalone Verilated wrapper by name (`--variant=`) whether or not this build's tree instantiates
+  it. The declared-row view collapses two projects' bindings of one label onto whichever was parsed
+  last (`design-parameter-inheritance.md`'s "Project-qualified parameter bindings" note), so reading
+  a value off it directly, rather than through a resolved descriptor, would have `xviTop`'s
+  standalone wrapper for label `v0` carry `xviMid`'s value or vice versa depending on parse order.
+  `_declaredDescriptorsByLabel`/`_selectDeclaredDescriptor` avoid this: they enumerate straight
+  from `self.variantConfigDescriptors[blockKey]`, grouped by label, and prefer the enumerating
+  build's own project's descriptor when one exists. `calcRegistrarPairs`, driven by instances
+  rather than declared labels, is what keeps `xviMid`'s `vMid` out of `xviTop`'s artefacts in the
+  first place; this pair of helpers only decides which project's descriptor a shared label
+  resolves to once enumerated. Verified against
+  `unittest/test_variant_two_integrators.py`: `xviTop`'s own build emits `v0` at its own gain (3)
+  and `vTop` at 9, never `xviMid`'s `vMid`; `xviMid`'s emits `v0` at its own gain (7) and `vMid` at
+  5, never `xviTop`'s `vTop`.
+- **Gates, VERIFIED BY EXECUTION 2026-09-08.** Unit suite 118/118 (one retired,
+  `test_variant_scope_resolution.py` replacing `test_param_variant_declarer_precedence.py`, so the
+  count is unchanged from the 12a baseline). The one corpus fixture the blast-radius bullet above
+  found needing a fix is fixed. `make clean && make pipeline-test -j`: exit 0, 66 "No error" (unchanged from the 12a baseline),
+  zero `ERROR:`, both `varUniqBad`/`cpLayoutBad` OK lines, 5 total `Deleting file` lines across the
+  clean+pipeline logs (3 from clean). Product: `make clean && make gen -j && cd rundir && make -j
+  && ./build/run debayer --verbosity=medium`: exit 0, two "No error", `test_debayer_structs`
+  executed; `make -j all VL_DUT=1`: exit 0, no compile errors; `git status --short | wc -l`
+  unchanged at 63 (no paths beyond the 12a baseline's own thirteen). Pro: `make -C builder/pro
+  pipeline-test -j` exit 0, 14 "No error"; `test_constructor_tandem.py` PASS.
+- **Review fix-up, 2026-09-08.** `getStandaloneVariants`/`_declaredVariantConfigEntries` read
+  `declaredVariantRows()`, the label-collapsed nested view, as their fallback when the enumerating
+  build's own project declared nothing: a label two foreign projects both declare then resolved to
+  whichever one the collapse happened to keep, silently dropping the other. Fixed by enumerating
+  `self.variantConfigDescriptors[blockKey]` directly, grouped by label
+  (`_declaredDescriptorsByLabel`/`_selectDeclaredDescriptor`, replacing `_declaredVariantDescriptor`),
+  and rejecting the ambiguous case at create time instead of silently picking one:
+  `validateVariantLabelBuildOwnership`, run right after `calcVariantConfigDescriptors`, errors
+  naming the block, the label and every declaring project when two or more foreign projects
+  declare a label this build declares none of. Proved on a new cell in
+  `unittest/test_variant_two_integrators.py` (a third project, `both/`, composing both integrators
+  through `xviTopProject.yaml`'s own closure and declaring no `v0` of its own; rejected naming both
+  `xviTop` and `xviMid`, and builds once `xviBothOwn.yaml` declares `v0` itself).
+  `resolveInstanceVariantDeclarers`'s zero-declarer message named no file for an instance whose
+  block declares no `params:` at all; it now says so instead of "no file declares". Three dead
+  fallback arms removed (`calcRegistrarPairs`'s non-container `values` ternary,
+  `_resolveSvInstanceParams`'s `inheritContainerParam` branch, `constructorTandem.py`'s
+  `if desc else` guard), each unreachable given the validation already in place. The bridge
+  migration in step 12b's own entry above dropped `bridgeStdTop.yaml`'s direct include of
+  `ipVariants.yaml` as now-unused, but `ip.yaml` (which declares the `ip_package` RTL package)
+  sits three include hops from
+  `bridgeStdTop.yaml` once that direct include is gone, one past the two-level visibility every
+  scoped lookup gets, which silently dropped `ip_package.sv` from `rtl.f`; the include is restored,
+  with a comment stating why. A new cell in `unittest/test_variant_scope_resolution.py` exercises
+  the out-of-scope message's until-now-untested multi-declarer branch (a second file added to a
+  temp copy of `variant-scope-out-of-range`, declaring the same out-of-scope label; rejected naming
+  both). "Rule 7" comments and doc mentions of the include chain now describe the two-level
+  visibility directly (file, its includes, their includes) instead of citing the rule number or
+  "include chain", matching `GENERATOR_ARCHITECTURE.md` §4. `unittest/test_eval_cpp_emit.py`'s
+  derived-member cell pointed at `ip_test_ipVariant1Config`, a struct step 12b's own migration
+  retired, so its second assertion loop passed on an absent struct; it now renders the bridge
+  project's `ipBridge_ipVariant1Config` and fails if that struct is absent (confirmed by reverting
+  the name on a copy). All four gates re-run clean: unit suite 118/118 (two cells added to existing
+  files, `test_variant_two_integrators.py` and `test_variant_scope_resolution.py`; no new file, so
+  the suite count is unchanged); `make clean && make pipeline-test -j` exit 0, 66 "No error",
+  zero `ERROR:`, both OK lines; product `make clean &&
+  make gen -j && cd rundir && make -j && ./build/run debayer --verbosity=medium && make -j all
+  VL_DUT=1` exit 0, two "No error", `git status --short | wc -l` unchanged at 63; pro `make -C
+  builder/pro pipeline-test -j` exit 0, 14 "No error", `test_constructor_tandem.py` PASS.
+- **Sequencing.** Independent of steps 13 through 15.
+
+### Step 13, the product tree moves off `inheritContainerParam`. DECIDED 2026-09-07 (user); NOT STARTED
+
+`/work/ws/debayer/yaml/debayer.yaml:271-272` holds `u_preprocess` and `u_interpolate` on `inheritContainerParam`. Each becomes a declared variant every one of whose parameters is `containerParam:` sourced from `debayer`'s same-named parameter. `inheritContainerParam` itself stays supported; this migrates one design, it does not retire the mechanism, and the synthesised register handler keeps using it (step 7, "The synthesised register handler now inherits its container's Config").
+
+- **What it buys.** Layout adjudication on the two connections the `inheritContainerParam` skip excludes today (§2 D7, "Migrating the product tree onto the new rule would restore layout adjudication on two connections"; step 7b, "`inheritContainerParam` migration is unblocked by 7b"). Name the two connections in the landed record.
+- **What changes in the emitted product.** The children's Config becomes `debayer_<child><Variant>Config<Config>` (a template over the container's Config, step 7c) instead of the container's bare `Config`; the VL registrar binds the forwarded container label to that nested Config (step 10, "A `containerParam` site forwards its parent's runtime variant label"). User code in `model/preprocess.cppm` and `model/interpolate.cppm` reads `Config::<param>` and should not move, because the member names are the same.
+- **Proves it.** The product gate: `make clean && make gen -j && cd rundir && make -j && ./build/run debayer --verbosity=medium` with two "No error" lines and `test_debayer_structs` executed, then `make -C rundir -j all VL_DUT=1`. The emitted-output delta enumerated. The hand-written `setTimedLocal` override in `verif/preprocess_hdl_sc_wrapper.h` byte-identical.
+
+### Step 14, the connectionMap arm adjudicates an inheriting child instead of skipping it. DECIDED 2026-09-07 (user); NOT STARTED
+
+Step 10 found the connectionMap sizing arm rejecting an `inheritContainerParam` child at its own declared values and fixed it by adding the same skip the plain-connection arm already had ("Found on the way: the connectionMap sizing gate ignores inheritance"). The skip means a junction between an inheriting child and a sibling bound at a literal is not checked at all: container at 16, inheriting child therefore at 16, sibling at a literal 8, and `make db` passes. Adjudicating the inheriting end at the container's variant, which is what the site-keyed index of step 7b already does for a `containerParam` end, catches it.
+
+- **Changes.** Both arms in `validatePorts`: replace the `inheritContainerParam` skip with resolution of the inheriting end at its container's configuration through `SiteBindingIndex`, which already correlates a container's configuration with its children (step 7b, "Where the correlation lives").
+- **Proves it.** A unit fixture in the shape of `cpLayout` but with the leaf on `inheritContainerParam`: the accepting arm (sibling literal equals the container's value) passes `make db`; the rejecting arm (sibling literal differs) fails naming the container-resolved width, greped the way `xproj-container-layout` greps `_bitWidth 24`. Observed passing before the change on the rejecting arm, which is the defect.
+- **Sequencing.** After step 13 the product tree no longer exercises this path, so the fixture is the only coverage; it must exist before step 13 lands or the product tree loses its one live exercise of the skip.
+
+### Step 15, Config names always carry the declaring project. LANDED 2026-09-07
+
+- **As landed.** Every Config struct, the block default included, is `<declaringProject>_<block><Variant>Config` / `<ownerProject>_<block>DefaultConfig`, and each (declaring project, block) emits its structs in one module, `<project>_<block>VariantConfig.cppm` (`export module <project>.<block>.config;`), which the block's Base, registrars, testbench External and Verilated wrapper import. The per-context header `<context>VariantConfig.h` renders an empty generated region and is still scaffolded (see follow-up below). One speller: `calcVariantConfigDescriptors` persists `structName` on every descriptor and every consumer reads it; `cpp_variant_config_name` is deleted and `cpp_descriptor_config_name` survives only as a pass-through for `builder/pro`'s `constructorTandem.py`. `calcConfigModules` (`CONFIGMODULES`) is the one home map; `calcForeignConfigHeaders` (`FOREIGNCONFIGHEADERS`, the SV wrapper family) is a filter over it. The `foreignConfig` fileMap entry is gated `cond: {hasMdl, hasTb}` and `condAnd: {hasOwnParams}`; the fileMap key and marker keep their old name (migrate implication), the Python and view identifiers are renamed (`configModules`, `verifConfigModules`, `getConfigModuleData`, `configModule()`).
+- **Rule found on the way, ruled by the architect 2026-09-07.** An owner-declared variant labelled `default` spells the same name as the block's synthetic default; the first landing deduped by name and silently kept the synthetic values (fault-injected on a copy of `inhVar`: bound `INH_ALGO: 6`, emitted `INH_ALGO = 1`). Now an owner-declared `default` IS the block's default Config and no synthetic one is emitted for that block. Guarded by `unittest/test_default_variant_identity.py` on `unittest/fixtures/default-variant-identity` (fails without the fix). The product tree declares every variant as `default` at the constants' own values, so its output is unchanged.
+- **Hand-written casualties, edited outside generated regions.** `/work/ws/debayer/tb/debayer/debayerConfig.cpp` (qualified two names, two imports), `examples/ip_test/ip/tb/ip/ipExternal.cppm`, `examples/simple_ip/ip/tb/ip/ipExternal.cppm`, three YAML comments, `twoCtx`'s `desc:` and README, `examples/xprojParam/README.md`, the skill `rules/skills/design-parameterizable-blocks.md`. `/work/ws/debayer/proto/model/test/*` left alone: standalone experiments with no project database. Nine unit suites updated for the spelling; `test_config_template.py` now renders through `configModule()`.
+- **Outside `builder/base`, awaiting the user's acceptance.** `builder/pro/templates/systemc/classDeclTandem.py` read a base view field this step removed; it now imports the block's own Config module or the pair's `verifConfigModules`, following `constructorTandem.py`. `builder/pro/unittest/test_constructor_tandem.py` gained the `structName` field on its hand-built descriptor stubs.
+- **Gates, VERIFIED BY EXECUTION 2026-09-07 after the review repairs.** `make clean && make pipeline-test -j` exit 0, 64 "No error", zero `ERROR:`, both OK lines. Unit suite 117 of 117. Product: `make clean && make gen -j && cd rundir && make -j && ./build/run debayer --verbosity=medium && make -j all VL_DUT=1` exit 0, two "No error", `test_debayer_structs` executed, `verif/preprocess_hdl_sc_wrapper.h` byte-identical, product status count unchanged. Pro: `make -C builder/pro pipeline-test -j` exit 0, 14 "No error", `test_constructor_tandem.py` passing. All four re-run once more after the last edit (a direct read of the contracted `ownConfigModule` view field replacing a `.get`): unit 117 of 117, pipeline-test exit 0 at 64, product exit 0, pro exit 0 at 14. Two earlier product and pro gate failures were tree collisions with a gate chain the repair agent left running detached, not defects; both passed alone.
+- **Emitted-output delta.** NOT MEASURED as a before/after hash: the implementer worked iteratively from no clean snapshot. Verified by content inspection (`twoCtx`, `ip`, the product tree) and by the gates. The review repairs' own delta was measured at zero.
+- **Follow-ups this step opened.** (a) Retire the empty `<context>VariantConfig.h`: fileMap `config` entry, `_configHeaderContexts`, `saveIncludeFiles`'s `config_hdr`, `templates/fileGen/fileGen.py` scaffold, `genFileParam.py`, `config.py`'s empty renderer, plus a per-file orphan-sweep entry for `make migrate`; `unittest/test_container_param_cross_project_vl.py` already deletes the stale header by hand and `dpMid` gained a new empty one. (b) The implementer's `make newmodule` sweep scaffolded `model/`, `rtl/`, `rundir/` and three Config modules into `examples/xprojParam/cpLayout`, a db-only fixture; nine untracked files with no user content, deletion referred to the user. (c) The `foreignConfig` fileMap key now names native Config modules too; renaming it is a migrate item.
+
+Rule 5 of the rules section in [`design-parameter-inheritance.md`](./design-parameter-inheritance.md): a variant is owned by the project that declares it, and its name carries the project. Today the name carries the project only when the declaring project does not own the block's config context, so one identity has two spellings and the spelling of a two-context block follows its `params:` order (§7).
+
+- **Changes.** Every emitted Config struct, including the default, is `<project>_<block><Variant>Config`, and each (declaring project, block) pair emits its Configs in one artefact, so the context header stops carrying variant structs. One naming function decides the spelling and every consumer reads it; the exact site is for the implementer to find, not for this entry to guess.
+- **Blast radius, measured 2026-09-07.** 98 distinct Config struct names across `examples/`, `builder/pro/examples` and the product tree; all change. Hand-written code naming a concrete Config, found by scanning every line outside a generated region: `/work/ws/debayer/tb/debayer/debayerConfig.cpp` (4 lines), `examples/ip_test/ip/tb/ip/ipExternal.cppm` and `examples/simple_ip/ip/tb/ip/ipExternal.cppm` (2 lines each), and four files under `/work/ws/debayer/proto/model/test/`. Three YAML comments mention names (`yaml/debayer_tb.yaml`, `examples/ip_test/bridge/yaml/ipBridge.yaml`, `examples/xprojParam/cstBind/yaml/xpCstSup.yaml`). Everything else reaches a Config through the `Config` template parameter.
+- **Proves it.** `pipeline-test` exit 0 at 64 "No error"; the unit suite green; the product gate including `VL_DUT=1`; the emitted-output delta enumerated, expected to be every file that spells a Config name and nothing else. The §7 flip closes with it: `twoCtx`'s two blocks get names that differ only in the block, whatever their `params:` order, and the fixture's `desc:` stating the order dependence is rewritten.
+- **Sequencing.** After the rules iteration settles rule 5's wording. Independent of steps 12 through 14.
 
 ### What may proceed in parallel
 
-Steps 2 and 5 depend on nothing in this plan and may be taken in any order; step 4, which was the third member of that set, has landed. Steps 3 and 6 wait on step 1. Q3's rename waits on step 3. Step 7 depends on step 1 only (its measurements were taken against the post-step-1 generator) and **not** on Case 1 (§2, D2); Case 1 in turn waits on step 3. Nothing here depends on [`plan-interface-compatibility.md`](./plan-interface-compatibility.md), whose steps 1 through 8 have already landed; step 1 of this plan **removes** that plan's sole remaining failing unit cell.
+Steps 2 and 5 depend on nothing in this plan and may be taken in any order; step 4, which was the third member of that set, has landed. Steps 3 and 6 waited on step 1, and step 3 has landed. ~~Q3's rename waits on step 3.~~ Q3 is rejected (§4.3), so nothing waits on it. Step 7 depends on step 1 only (its measurements were taken against the post-step-1 generator) and **not** on Case 1 (§2, D2). Case 1 waited on step 3 and is now unblocked, but it is recommended, not decided, and also needs the include-chain ambiguity diagnostic of step 1's review finding 1; no step owns either. Nothing here depends on [`plan-interface-compatibility.md`](./plan-interface-compatibility.md), whose steps 1 through 8 have already landed; step 1 of this plan **removes** that plan's sole remaining failing unit cell.
 
 ## 7. What Is Not Known, Separated From What Is Measured
 
@@ -1366,9 +1715,10 @@ Steps 2 and 5 depend on nothing in this plan and may be taken in any order; step
 
 **Not known at all:**
 
-- The blast radius of step 3 (B5) on the product tree. It is the step most likely to move emitted output and it has not been measured.
-- Whether any design in either tree authors an eval-derived backing constant (step 2's premise).
-- Whether the architect wants derived constants out of the Config now or later, and what `debayer`'s base classes become if they leave.
+- ~~The blast radius of step 3 (B5) on the product tree.~~ **MEASURED 2026-09-05** (§6, step 3). Five identical 22-member structs become per-block sets of 6, 5, 6, 4 and 5; all 75 generated Base files in the corpus are already covered by the per-block closure; the only hand-written casualty is `model/rgb_img_writer.h`.
+- ~~Whether any design in either tree authors an eval-derived backing constant (step 2's premise).~~ **MEASURED 2026-09-05: none does**, in any of the 49 live databases (§6, step 2).
+- ~~Whether the architect wants derived constants out of the Config now or later, and what `debayer`'s base classes become if they leave.~~ **RULED 2026-09-05: out now.** The Config carries declared parameters only; derived constants become computed declarations in the implementation, mirroring the SV module-local `localparam` block. The Base classes keep the same names in the same order, with a computed right-hand side instead of a `Config::` alias (§6, step 3).
+- **NEW, and not resolved by that ruling: the Config's NAME and HOME HEADER still flip on `params:` list order** for a params-only block, with no diagnostic (§5, B5, consequence 2). Narrowing the field set removes the other two consequences but not this one, because the name still comes from `configContext`. It needs its own disposition. **Live in the tree since 2026-09-06, and no step owns it.** `examples/xprojParam/twoCtx` now holds the shape: `xpTwoCtxDut` (`params: [DP_WIDTH, TC_GAIN]`) gets `xpTwoCtx_xpTwoCtxDutTwoctxConfig`, homed in a registrar Config module under the `dpLeaf`-owned context, while `xpTwoCtxBare` (`params: [TC_GAIN, DP_WIDTH]`) gets `xpTwoCtxBareTwoctxConfig` in the project's own `xpTwoCtxVariantConfig.h`. Same two parameters, same file, different name and home, decided by list order. Step 1's review finding 5 rested on "no block in either tree declares params backed by more than one context"; `twoCtx` made that false, so first-param selection in `calcBlockConfigInfo` is no longer unambiguous by accident. The fixture's own `desc:` states the dependence, so the fixture passes by pinning it rather than by rejecting it.
 - Whether shape (ii)'s mapping form has a schema-framework wrinkle beyond the one traced here. The `list` branch was read (`pysrc/processYaml.py:8430-8466`) and the `_singular` precedent was read (`config/schema.yaml:322-326`), but the mapping form was **not** exercised for `blocks.params` specifically.
 - The interaction between Q3's rename and tandem / Verilated registration. Not investigated.
 - ~~**Whether D7's child parameter and the named container parameter must share a backing constant, or need only be compatible.** OPEN (§2, D7).~~ **RESOLVED 2026-08-14 as COMPATIBILITY, not identity, on the `maxValue` relation** — decided by the implementation and the fixture, and measured on three reuse cases (§2, D7.1).
@@ -1393,19 +1743,19 @@ Recorded so nothing is lost; each is out of scope here and belongs to its own ow
 - **Three emission paths select variant parameter values project-blind.** `getStandaloneVariants` (`pysrc/processYaml.py:1629-1635`), `getBDInstances` (`:1989`) and `_resolveSvInstanceParams` (`:1914-1932`) read `data['parameters'][qualBlock]['variants']`, which carries no project axis and resolves last-writer-wins, rather than selecting through the descriptor. Where two projects declare one `(block, variant)` at differing values, the emitted `localparam` and the RTL instantiation parameters can carry the losing project's value while the SystemC Config carries the right one. Measured on a fixture authored strictly to the rules in this plan. One clean build, exit 0, no diagnostic. This is the defect the D8 correction (§2) and the step 7 correction (§6) both point at. It is owned as item 9A of [`plan-116-review-feedback.md`](./plan-116-review-feedback.md), alongside item 9B, which holds the same collapse in `SiteBindingIndex`. ~~The two must be sequenced together: 9B's project-blindness is what turns a width-coupled divergence into the loud `per-field _bitWidth must agree` failure that step 7b's `xproj-container-layout` gate depends on.~~ **That reason is FALSE and is withdrawn, 2026-09-04. VERIFIED BY EXECUTION.** `examples/xprojParam/cpLayoutBad` is a single project with one `projectFiles:` entry and no `include:` anywhere, so a project axis on `SiteBindingIndex` cannot move that gate; the mismatch it adjudicates is intra-project. The two items also share no data path: `SiteBindingIndex` is db-time only, feeds `checkInterfacePair`, and is referenced nowhere under `templates/`. 9B was then MEASURED on 2026-09-04 and is a defect in its own right: the collapse rejects a composition in which both projects are internally correct, unsatisfiably at any value, while letting an actual cross-project width divergence through at exit 0. It guards nothing, so nothing has to replace it. 9A still goes first because it is the item that emits wrong hardware.
 - **Fixtures in the tree carrying their own READMEs.** Both are wired into a `make` target:
   - `examples/xprojParam/{dpLeaf,dpMid,dpTop}` — the three-level customer topology of §5, B6, and now the reference fixture for D7 (§6, step 7a). **CORRECTED 2026-08-14: it does NOT build and run, and its runtime assertion was not exercised.** The entry previously read "It builds and runs, and **its runtime assertion fails by design** in the restored baseline; the failure is the finding", which described the fixture as it stood when it was the B6 evidence vehicle. **CORRECTED AGAIN 2026-08-14, after step 7c: the model now builds, links and runs**, and the runtime assertion passes at three configurations. Six layers are verified: the database rows, the emitted SystemVerilog, a Verilator elaboration, Verilated runtime parameter values through two levels, a SystemC build and link, and a SystemC run whose checkers assert the algorithm each nested leaf resolved (§6, step 7c). The intermediate state this entry described — `static constexpr uint32_t DP_ALGO = ;`, invalid C++ — is gone. The fixture now carries a third customer configuration, added expressly to measure that the vendor projects do not move when a consumer adds one. **CORRECTED 2026-08-18: it is the `xproj-depth` target and has been in `pipeline-test` since 2026-08-17**, and the unit half is `unittest/test_container_param_inheritance.py`, so this is a gate rather than a recorded run (§6, step 7a).
-  - `examples/xprojParam/twoCtx` — the two-context block of §5, B5. `db` and `gen` are clean and **it does not compile because step 3 (B5) has not landed**; step 3 requires it to compile (§6, step 3). It is in `xproj-param-probes`, which tolerates the failure.
+  - `examples/xprojParam/twoCtx` — the two-context block of §5, B5. ~~`db` and `gen` are clean and **it does not compile because step 3 (B5) has not landed**.~~ **CORRECTED 2026-09-05: it compiles**, as step 3 required. `xpTwoCtxDut` now takes `{DP_WIDTH, TC_GAIN}` on its Config and computes `TC_GAIN_X2` locally. It still aborts at run time with "Premature end of test detected", which is the separate scaffold-seed defect its own README documents: the testbench External is still at `--block=xpTwoCtxTop` and elaborates a second copy of the DUT's children, where every other `xprojParam` top has been retargeted at its `_tb` container. ~~Retargeting it is the remaining half of step 3's "proves it" and is **not done**. It is in `xproj-param-probes`, which tolerates the failure, and the README's opening status line is now stale.~~ **DONE 2026-09-06**: retargeted, behaviour added, run-time and compile-time asserts fault-injected, promoted to `xproj-twoctx` in `pipeline-test`, README rewritten (§6, step 3, fixture half).
 
 ## 9. Done Criteria
 
 The feature is complete when all of the following hold simultaneously:
 
 - An IP declares a parameter **once**, in its own root file, and satisfies D2 with its own block param.
-- A consumer states **where its knob comes from**, and no consumer restates the declaration or the default.
+- ~~A consumer states **where its knob comes from**, and no consumer restates the declaration or the default.~~ **Reworded 2026-09-07 to match §4.0**, which decided the link is explicit in the row, not the YAML: a consumer names the knob once in `params:`, the row records the resolved source (`paramSourceKey`), and no consumer restates the declaration or the default. **MET, step 1.**
 - A use-case value appears **exactly once** in the authored YAML and reaches every block that must agree on it, at any value, not only at the declaration default.
 - ~~`examples/xprojParam/cstUse` builds, runs and lives in `xproj-const`, not in `xproj-const-probes`.~~ **MET, step 1.**
 - ~~`unittest/test_param_cross_project_linkage.py` is 9 of 9, and the unit suite is clean.~~ **MET, step 1** (9/9; 101 of 101 suites).
-- A consumer two or more project levels above a block can state that block's configuration **once**, and either the value reaches the emitted artefact or the pairing is rejected by a **db-time diagnostic naming both sides** — never silently orphaned (D7; §5, B6).
+- A consumer two or more project levels above a block can state that block's configuration **once**, and either the value reaches the emitted artefact or the pairing is rejected by a **db-time diagnostic naming both sides** — never silently orphaned (D7; §5, B6). **MET for the container-sourced path, step 7** (`xproj-depth`, three configurations resolved two levels down). **NOT MET for direct instantiation:** a third project instantiating a block at a variant declared by an intermediate project resolves no descriptor and silently takes the block default Config (`uLeafX`, step 7c; "Two adjacent gaps", step 7; item 9C's adjacent finding in [`plan-116-review-feedback.md`](./plan-116-review-feedback.md)). That is a silent orphan with no diagnostic, and no step owns it.
 - ~~The container-sourced fixture family is behind a `make` target with at least one unit cell, so step 7a is a **gate** rather than a recorded run.~~ **MET**: `xproj-depth` / `xproj-inherit` / `xproj-container-layout` in `pipeline-test` (2026-08-17), `unittest/test_container_param_inheritance.py` (2026-08-18) (§6, step 7a).
 - `make pipeline-test -j` exits 0, and `/work/ws/debayer` builds and links.
-- The emitted-output delta of every landed step is enumerated, and every entry in it is explained.
+- The emitted-output delta of every landed step is enumerated, and every entry in it is explained. (Step 3's was missing until 2026-09-07 and is now at §6, step 3.)
 - ~~D6 is recorded as resolved~~ **MET, step 1**: resolved by the link, with Q3 declined. Both authoring options are legal and both work at any value.

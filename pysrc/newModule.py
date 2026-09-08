@@ -227,43 +227,45 @@ class newModule:
                         fileGenerationConfig, fileKey, fileDefinition,
                         parentDir, childBlock, childKey, parentKey, prj, args,
                         variant=registration['variant'])
-        self.foreign_config_create_from_templates(
+        self.config_create_from_templates(
             fileGenerationConfig, registrarFileConfig, blockCondData, prj, args)
 
-    def foreign_config_create_from_templates(self, fileGenerationConfig, registrarFileConfig,
-                                             blockCondData, prj, args):
-        # Each (declaringProject, child) pair owns one foreign Config artifact,
-        # hosted in the registrar domain of the block named in
-        # FOREIGNCONFIGHEADERS. A project that declares a variant of a reused
-        # block owns that variant's Config even when it instantiates nothing.
+    def config_create_from_templates(self, fileGenerationConfig, registrarFileConfig,
+                                     blockCondData, prj, args):
+        # foreignConfig: true marks two artifact families; the variant: flag tells them apart.
         foreignFileConfig = {k: v for k, v in registrarFileConfig.items()
                              if v.get('foreignConfig', False)}
+        configModuleFileConfig = {k: v for k, v in foreignFileConfig.items()
+                                  if not v.get('variant', False)}
+        vlWrapFileConfig = {k: v for k, v in foreignFileConfig.items()
+                           if v.get('variant', False)}
         projectName = prj.config.getConfig('PROJECTNAME')
-        for (owner, childKey), entry in sorted(prj.config.getConfig('FOREIGNCONFIGHEADERS').items()):
-            childBlock = prj.data['blocks'][childKey]['block']
-            # Ownership gate: only the declaring project scaffolds its own
-            # foreign Config, so a build never scaffolds across the ownership
-            # boundary (mirrors the generation gates).
-            if owner != projectName:
-                print(f"{childBlock} foreign registrar artifact owned by project '{owner}', skipping (scaffold it from that project's rundir)")
-                continue
-            parentKey = entry['parentKey']
-            parentDir = prj.data['blocks'][parentKey]['dir']
-            for fileKey, fileDefinition in foreignFileConfig.items():
-                if not self._condMatch(fileDefinition, blockCondData[childKey]):
-                    continue
-                # A variant:true foreign entry (the per-variant SV verilated
-                # wrapper top) emits one file per foreign variant; the
-                # non-variant entry (the aggregated Config module) emits once.
-                variants = entry['vlVariants'] \
-                    if fileDefinition.get('variant', False) else [None]
-                for variant in variants:
-                    self.create_registrar_file(
-                        fileGenerationConfig, fileKey, fileDefinition,
-                        parentDir, childBlock, childKey, parentKey, prj, args,
-                        variant=variant)
 
-    def create_registrar_file(self, fileGenerationConfig, fileKey, fileDefinition, parentDir, childBlock, childQualBlock, parentKey, prj, args, variant=None):
+        def scaffoldPairs(fileConfig, headers, artifactLabel):
+            for (owner, childKey), entry in sorted(headers.items()):
+                childBlock = prj.data['blocks'][childKey]['block']
+                if owner != projectName:
+                    print(f"{childBlock} {artifactLabel} owned by project '{owner}', skipping (scaffold it from that project's rundir)")
+                    continue
+                parentKey = entry['parentKey']
+                parentDir = prj.data['blocks'][parentKey]['dir']
+                for fileKey, fileDefinition in fileConfig.items():
+                    if not self._condMatch(fileDefinition, blockCondData[childKey]):
+                        continue
+                    variants = entry['vlVariants'] \
+                        if fileDefinition.get('variant', False) else [None]
+                    for variant in variants:
+                        self.create_registrar_file(
+                            fileGenerationConfig, fileKey, fileDefinition,
+                            parentDir, childBlock, childKey, parentKey, prj, args,
+                            variant=variant, configEntry=entry)
+
+        scaffoldPairs(configModuleFileConfig, prj.config.getConfig('CONFIGMODULES'),
+                     'Config module')
+        scaffoldPairs(vlWrapFileConfig, prj.config.getConfig('FOREIGNCONFIGHEADERS'),
+                     'foreign registrar artifact')
+
+    def create_registrar_file(self, fileGenerationConfig, fileKey, fileDefinition, parentDir, childBlock, childQualBlock, parentKey, prj, args, variant=None, configEntry=None):
         # Build the registrar path: the child-named trampoline lands under the
         # parent's directory within the registrar root.
         data = dict()
@@ -282,13 +284,8 @@ class newModule:
             print(f"{childBlock} registrar owned by project '{owner}', skipping (scaffold it from that project's rundir)")
             return
         layout = prj.projectLayout[owner]
-        # The owner-qualified foreign-Config header stub is the persisted identity
-        # from calcForeignConfigHeaders (declaring project prefixed onto the child
-        # so its basename cannot collide with the child-owned context config header
-        # on the shared registrar include path); the gate above guarantees the pair
-        # is present when foreignConfig is set.
         if fileDefinition.get('foreignConfig', False):
-            fileStub = prj.config.getConfig('FOREIGNCONFIGHEADERS')[(owner, childQualBlock)]['stub']
+            fileStub = configEntry['stub']
         elif fileDefinition.get('pairVlTop', False):
             registrations = prj.registrarPairs[
                 (parentKey, childQualBlock)]['verifRegistrations']

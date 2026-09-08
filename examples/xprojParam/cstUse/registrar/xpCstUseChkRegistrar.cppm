@@ -5,7 +5,6 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpCstIpVariantConfig.h"
 
 export module xpCstUse.xpCstUse_xpCstUseChk.registrar;
 import xpCstUse_xpCstUseChk.block;

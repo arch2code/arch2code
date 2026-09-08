@@ -5,10 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpGainUniqVariantConfig.h"
 
 export module xpUniq.xpGain_xpGainUniq.registrar;
 import xpGain_xpGainUniq.block;
+import xpGain.xpGainUniq.config;
 
 namespace {
 struct _xpGainUniq_registrar {
@@ -16,13 +16,13 @@ struct _xpGainUniq_registrar {
         instanceFactory::registerBlock(
             "xpGainUniq_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpGainUniq<xpGainUniqV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpGainUniq<xpGain_xpGainUniqV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpGain");
         instanceFactory::registerBlock(
             "xpGainUniq_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpGainUniq<xpGainUniqV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpGainUniq<xpGain_xpGainUniqV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpUniq.xpUniq_xpUniqTop.xpGain_xpGainUniq");
     }

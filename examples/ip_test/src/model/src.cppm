@@ -7,8 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "ipLeafVariantConfig.h"
-#include "srcVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here
 #include "q_assert.h"
@@ -16,6 +14,8 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ip_test_src.block;
 import ip_test_src.base;
+import ip_test.src.config;
+import ip_test.ipLeaf.config;
 import ip_test_ipLeaf.base;
 import ip_test_src;
 import ip_test_ipLeaf;
@@ -41,7 +41,7 @@ public:
     using srcBase<Config>::out3;
 
     //instances contained in block
-    std::shared_ptr<ipLeafBase<ipLeafVariantLeaf0Config>> uLeaf;
+    std::shared_ptr<ipLeafBase<ip_test_ipLeafVariantLeaf0Config>> uLeaf;
 
     // inherited parameterized types usable unqualified (no <Config>)
     using typename srcBase<Config>::srcOut0DataT;
@@ -67,7 +67,7 @@ src<Config>::src(sc_module_name blockName, const char * variant, blockBaseMode b
        : sc_module(blockName)
         ,blockBase("src", name(), bbMode)
         ,srcBase<Config>(name(), variant)
-        ,uLeaf(std::dynamic_pointer_cast<ipLeafBase<ipLeafVariantLeaf0Config>>(instanceFactory::createInstance(name(), "uLeaf", "ipLeaf", "variantLeaf0", "ip_test.ip_test_src.ip_test_ipLeaf")))
+        ,uLeaf(std::dynamic_pointer_cast<ipLeafBase<ip_test_ipLeafVariantLeaf0Config>>(instanceFactory::createInstance(name(), "uLeaf", "ipLeaf", "variantLeaf0", "ip_test.ip_test_src.ip_test_ipLeaf")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

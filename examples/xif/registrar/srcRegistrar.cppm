@@ -5,10 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xifVariantConfig.h"
 
 export module xif.xif_src.registrar;
 import xif_src.block;
+import xif.src.config;
 
 namespace {
 struct _src_registrar {
@@ -16,13 +16,13 @@ struct _src_registrar {
         instanceFactory::registerBlock(
             "src_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcSrcV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<xif_srcSrcV0Config>>(blockName, variant, bbMode));
             },
             "srcV0", "xif");
         instanceFactory::registerBlock(
             "src_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<srcSrcV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<src<xif_srcSrcV0Config>>(blockName, variant, bbMode));
             },
             "srcV0", "xif.xif_tb.xif_src");
     }

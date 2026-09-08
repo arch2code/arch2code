@@ -10,10 +10,8 @@
 # map into bridgeApbDecode is synthesized intrinsically by the IP.
 include:
     - ipBridge.yaml
-    # ip variant definitions, needed directly here because this file's
-    # parameters: section declares ip variant1 (block-type resolution requires
-    # the defining file on this include chain). Real-tree path matches
-    # ipBridge.yaml so the two dedupe to one context.
+    # Included directly (not only via ipBridge.yaml) to keep ip.yaml within
+    # the two-hop include visibility rtl.f is built from.
     - ../../ip/yaml/ipVariants.yaml
     # cpu is the generic APB master owned by the 'common' sub-project. Reached via
     # the same real-tree convention the bridge uses for shared_types (see
@@ -71,21 +69,3 @@ connections:
     # APB master -> ipBridge boundary (the single authored upstream feed). The
     # IP's own nested bridgeApbDecode router decodes from this boundary.
     - { interface: apbReg,   src: uCpu, srcport: cpu_main, dst: uBridge }
-
-# variant1 of the foreign 'ip' block is declared here at the standalone
-# assembler top (the ip sub-project declares only variant0). Serves the nested
-# uBridgeIp1 instance.
-#
-# In composition this declaration and ip_top's are BOTH present: ip_testProject
-# includes ipBridgeProject, which includes this file. Each declaring project
-# must restate the whole parameter set, so the duplication is required rather
-# than accidental. The values must stay equal to ip_top's. They are the same
-# (block, variant) at two declaring projects, and the emission paths that read
-# the project-blind nested view would otherwise take whichever declaration won
-# the parse race.
-parameters:
-    ip:
-        variant1:
-            IP_DATA_WIDTH: 70
-            IP_MEM_DEPTH: 8
-            IP_NONCONST_DEPTH: 12

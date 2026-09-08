@@ -353,11 +353,13 @@ Decide in this order, stop at the first that fits:
    processing (children already populated), **in the row's own file scope**. It
    must resolve references via `lookupInScope` and must not iterate other context
    buckets.
-4. Inherently aggregate, with no row to hook → a project-wide pass in
-   `projectCreate` after `processYamls()`. The canonical example is
-   `_validateIpParametersLinkage`. Such a pass must still resolve each reference
-   in its own scope; treating all buckets as one namespace produces false
-   positives across mutually invisible scopes.
+4. Inherently aggregate, with no row to hook, or dependent on rows whose parse
+   order cannot be guaranteed → a project-wide pass in `projectCreate` after
+   `processYamls()`. The canonical example is `validateBlockParamScopeUniqueness`:
+   a block's own file may author `blocks:` above its own `ipParameters:`, so a
+   per-row hook on the block cannot see that section yet. Such a pass must
+   still resolve each reference in its own scope; treating all buckets as one
+   namespace produces false positives across mutually invisible scopes.
 
 ### What `include:` does — and the three slots
 
@@ -557,11 +559,11 @@ Two properties follow, and both matter:
 - **Naming is not declaring.** Any block that can reach the declaration through
   `include:` may name it, including a block in another project.
 
-The aggregate rule is enforced separately: `_validateIpParametersLinkage`
-requires every exposed `ipParameters` constant to be consumed by a block param in
-the **same file** as the declaration. An upstream project therefore cannot
-publish a parameter purely for downstream projects to `include:`; it must consume
-its own knob.
+The aggregate rule is enforced separately: `validateBlockParamScopeUniqueness`
+rejects a param name reachable through more than one visible ipParameters
+declaration in a block's include chain, wherever the declarations sit. An
+upstream project may publish a parameter purely for downstream projects to
+`include:`, with no consumer of its own.
 
 ### Variants and bindings
 

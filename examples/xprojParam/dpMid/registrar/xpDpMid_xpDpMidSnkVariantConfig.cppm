@@ -8,8 +8,11 @@ module;
 
 export module xpDpMid.xpDpMidSnk.config;
 
+export struct xpDpMid_xpDpMidSnkDefaultConfig {
+    static constexpr uint32_t DP_WIDTH = 8;
+};
+
 export struct xpDpMid_xpDpMidSnkStdConfig {
-    static constexpr uint32_t DP_ALGO = 1;
     static constexpr uint32_t DP_WIDTH = 8;
 };
 

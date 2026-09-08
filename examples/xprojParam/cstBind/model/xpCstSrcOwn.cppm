@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "xpCstSupVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -15,6 +14,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpCstBind_xpCstSrcOwn.block;
 import xpCstBind_xpCstSrcOwn.base;
+import xpCstBind.xpCstSrcOwn.config;
 import xpCstBind_xpCstSup;
 import xpCstIp;
 // GENERATED_CODE_END

@@ -123,13 +123,3 @@ parameters:
         variantSrc0:
             OUT0_DATA_WIDTH: 8
             OUT1_DATA_WIDTH: 70
-    # PROTOTYPE (P1): variant1 of the FOREIGN 'ip' block (owned by the ip
-    # sub-project) is DECLARED here, at the higher-level assembler, not in the
-    # ip sub-project. Resolved values mirror the removed ip/ipVariants.yaml
-    # binding (IP_DATA_WIDTH=70, IP_MEM_DEPTH=8, IP_NONCONST_DEPTH=12). Serves
-    # both ip_top.uIp1 and bridge.uBridgeIp1 (single project-wide declaration).
-    ip:
-        variant1:
-            IP_DATA_WIDTH: 70
-            IP_MEM_DEPTH: 8
-            IP_NONCONST_DEPTH: 12

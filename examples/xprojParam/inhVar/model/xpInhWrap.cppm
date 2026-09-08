@@ -8,13 +8,15 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 #include "push_ack_port_thunker.h"
-#include "xpInhContVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpInhVar_xpInhWrap.block;
 import xpInhVar_xpInhWrap.base;
+import xpInhVar.xpInhChk.config;
+import xpInhVar.xpInhCont.config;
+import xpInhVar.xpInhDrv.config;
 import xpInhVar_xpInhCont;
 import xpInhVar_xpInhDrv.base;
 import xpInhVar_xpInhCont.base;
@@ -32,26 +34,26 @@ private:
 public:
     // channels
     // Parameterized pixel push/ack stream
-    push_ack_channel< inhSt<xpInhContDefaultConfig> > out;
+    push_ack_channel< inhSt<xpInhVar_xpInhContDefaultConfig> > out;
     // Parameterized pixel push/ack stream
-    push_ack_channel< inhSt<xpInhChkChkDefConfig> > contOut_0;
+    push_ack_channel< inhSt<xpInhVar_xpInhChkChkDefConfig> > contOut_0;
     // Parameterized pixel push/ack stream
-    push_ack_channel< inhSt<xpInhContAltConfig> > out2;
+    push_ack_channel< inhSt<xpInhVar_xpInhContAltConfig> > out2;
     // Parameterized pixel push/ack stream
-    push_ack_channel< inhSt<xpInhChkChkAltConfig> > contOut_1;
+    push_ack_channel< inhSt<xpInhVar_xpInhChkChkAltConfig> > contOut_1;
 
     //instances contained in block
-    std::shared_ptr<xpInhDrvBase<xpInhDrvDrvConfig>> uDrv;
-    std::shared_ptr<xpInhContBase<xpInhContDefaultConfig>> uContDef;
-    std::shared_ptr<xpInhContBase<xpInhContAltConfig>> uContAlt;
-    std::shared_ptr<xpInhChkBase<xpInhChkChkDefConfig>> uChkDef;
-    std::shared_ptr<xpInhChkBase<xpInhChkChkAltConfig>> uChkAlt;
+    std::shared_ptr<xpInhDrvBase<xpInhVar_xpInhDrvDrvConfig>> uDrv;
+    std::shared_ptr<xpInhContBase<xpInhVar_xpInhContDefaultConfig>> uContDef;
+    std::shared_ptr<xpInhContBase<xpInhVar_xpInhContAltConfig>> uContAlt;
+    std::shared_ptr<xpInhChkBase<xpInhVar_xpInhChkChkDefConfig>> uChkDef;
+    std::shared_ptr<xpInhChkBase<xpInhVar_xpInhChkChkAltConfig>> uChkAlt;
 
     // cross-interface thunkers
-    push_ack_port_thunker<inhSt<xpInhContDefaultConfig>, inhSt<xpInhDrvDrvConfig>, true> thunker_out_uDrv;
-    push_ack_port_thunker<inhSt<xpInhChkChkDefConfig>, inhSt<xpInhContDefaultConfig>, true> thunker_contOut_0_uContDef;
-    push_ack_port_thunker<inhSt<xpInhContAltConfig>, inhSt<xpInhDrvDrvConfig>, true> thunker_out2_uDrv;
-    push_ack_port_thunker<inhSt<xpInhChkChkAltConfig>, inhSt<xpInhContAltConfig>, true> thunker_contOut_1_uContAlt;
+    push_ack_port_thunker<inhSt<xpInhVar_xpInhContDefaultConfig>, inhSt<xpInhVar_xpInhDrvDrvConfig>, true> thunker_out_uDrv;
+    push_ack_port_thunker<inhSt<xpInhVar_xpInhChkChkDefConfig>, inhSt<xpInhVar_xpInhContDefaultConfig>, true> thunker_contOut_0_uContDef;
+    push_ack_port_thunker<inhSt<xpInhVar_xpInhContAltConfig>, inhSt<xpInhVar_xpInhDrvDrvConfig>, true> thunker_out2_uDrv;
+    push_ack_port_thunker<inhSt<xpInhVar_xpInhChkChkAltConfig>, inhSt<xpInhVar_xpInhContAltConfig>, true> thunker_contOut_1_uContAlt;
 
     xpInhWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpInhWrap() override = default;
@@ -82,11 +84,11 @@ xpInhWrap::xpInhWrap(sc_module_name blockName, const char * variant, blockBaseMo
         ,contOut_0("xpInhChk_contOut_0", "xpInhCont")
         ,out2("xpInhCont_out2", "xpInhDrv")
         ,contOut_1("xpInhChk_contOut_1", "xpInhCont")
-        ,uDrv(std::dynamic_pointer_cast<xpInhDrvBase<xpInhDrvDrvConfig>>(instanceFactory::createInstance(name(), "uDrv", "xpInhDrv", "drv", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhDrv")))
-        ,uContDef(std::dynamic_pointer_cast<xpInhContBase<xpInhContDefaultConfig>>(instanceFactory::createInstance(name(), "uContDef", "xpInhCont", "default", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont")))
-        ,uContAlt(std::dynamic_pointer_cast<xpInhContBase<xpInhContAltConfig>>(instanceFactory::createInstance(name(), "uContAlt", "xpInhCont", "alt", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont")))
-        ,uChkDef(std::dynamic_pointer_cast<xpInhChkBase<xpInhChkChkDefConfig>>(instanceFactory::createInstance(name(), "uChkDef", "xpInhChk", "chkDef", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhChk")))
-        ,uChkAlt(std::dynamic_pointer_cast<xpInhChkBase<xpInhChkChkAltConfig>>(instanceFactory::createInstance(name(), "uChkAlt", "xpInhChk", "chkAlt", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhChk")))
+        ,uDrv(std::dynamic_pointer_cast<xpInhDrvBase<xpInhVar_xpInhDrvDrvConfig>>(instanceFactory::createInstance(name(), "uDrv", "xpInhDrv", "drv", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhDrv")))
+        ,uContDef(std::dynamic_pointer_cast<xpInhContBase<xpInhVar_xpInhContDefaultConfig>>(instanceFactory::createInstance(name(), "uContDef", "xpInhCont", "default", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont")))
+        ,uContAlt(std::dynamic_pointer_cast<xpInhContBase<xpInhVar_xpInhContAltConfig>>(instanceFactory::createInstance(name(), "uContAlt", "xpInhCont", "alt", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont")))
+        ,uChkDef(std::dynamic_pointer_cast<xpInhChkBase<xpInhVar_xpInhChkChkDefConfig>>(instanceFactory::createInstance(name(), "uChkDef", "xpInhChk", "chkDef", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhChk")))
+        ,uChkAlt(std::dynamic_pointer_cast<xpInhChkBase<xpInhVar_xpInhChkChkAltConfig>>(instanceFactory::createInstance(name(), "uChkAlt", "xpInhChk", "chkAlt", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhChk")))
         ,thunker_out_uDrv("thunker_out_uDrv", out, uDrv->out, name())
         ,thunker_contOut_0_uContDef("thunker_contOut_0_uContDef", contOut_0, uContDef->contOut, name())
         ,thunker_out2_uDrv("thunker_out2_uDrv", out2, uDrv->out2, name())

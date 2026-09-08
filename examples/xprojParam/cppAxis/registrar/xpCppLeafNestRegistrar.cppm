@@ -5,10 +5,10 @@
 module;
 #include "instanceFactory.h"
 #include "blockBase.h"
-#include "xpCppWrapVariantConfig.h"
 
 export module xpCppAxis.xpCppLeaf_xpCppLeafNest.registrar;
 import xpCppLeaf_xpCppLeafNest.block;
+import xpCppAxis.xpCppLeafNest.config;
 
 namespace {
 struct _xpCppLeafNest_registrar {
@@ -16,13 +16,13 @@ struct _xpCppLeafNest_registrar {
         instanceFactory::registerBlock(
             "xpCppLeafNest_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCppLeafNest<xpCppLeafNestV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCppLeafNest<xpCppAxis_xpCppLeafNestV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpCppAxis.xpCppAxis_xpCppWrap.xpCppLeaf_xpCppLeafNest");
         instanceFactory::registerBlock(
             "xpCppLeafNest_model",
             [](const char * blockName, const char * variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCppLeafNest<xpCppLeafNestV0Config>>(blockName, variant, bbMode));
+                return static_cast<std::shared_ptr<blockBase>>(std::make_shared<xpCppLeafNest<xpCppAxis_xpCppLeafNestV0Config>>(blockName, variant, bbMode));
             },
             "v0", "xpCppLeaf");
     }

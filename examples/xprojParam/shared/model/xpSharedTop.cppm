@@ -8,7 +8,6 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 #include "push_ack_port_thunker.h"
-#include "xpGainVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -16,6 +15,7 @@ module;
 export module xpShared_xpSharedTop.block;
 import xpShared_xpSharedTop.base;
 import xpFilterShared.xpFilterShared.config;
+import xpGain.xpGain.config;
 import xpSinkShared.xpSinkShared.config;
 import xpGain;
 import xpGain.base;
@@ -39,12 +39,12 @@ public:
     push_ack_channel< videoSt<xpSinkShared_xpSinkSharedV0Config> > videoOut_1;
 
     //instances contained in block
-    std::shared_ptr<xpGainBase<xpGainV0Config>> uGain;
+    std::shared_ptr<xpGainBase<xpGain_xpGainV0Config>> uGain;
     std::shared_ptr<xpFilterSharedBase<xpFilterShared_xpFilterSharedV0Config>> uFilter;
     std::shared_ptr<xpSinkSharedBase<xpSinkShared_xpSinkSharedV0Config>> uSink;
 
     // cross-interface thunkers
-    push_ack_port_thunker<videoSt<xpFilterShared_xpFilterSharedV0Config>, videoSt<xpGainV0Config>, true> thunker_videoOut_0_uGain;
+    push_ack_port_thunker<videoSt<xpFilterShared_xpFilterSharedV0Config>, videoSt<xpGain_xpGainV0Config>, true> thunker_videoOut_0_uGain;
     push_ack_port_thunker<videoSt<xpSinkShared_xpSinkSharedV0Config>, videoSt<xpFilterShared_xpFilterSharedV0Config>, true> thunker_videoOut_1_uFilter;
 
     xpSharedTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
@@ -74,7 +74,7 @@ xpSharedTop::xpSharedTop(sc_module_name blockName, const char * variant, blockBa
         ,xpSharedTopBase(name(), variant)
         ,videoOut_0("xpFilterShared_videoOut_0", "xpGain")
         ,videoOut_1("xpSinkShared_videoOut_1", "xpFilterShared")
-        ,uGain(std::dynamic_pointer_cast<xpGainBase<xpGainV0Config>>(instanceFactory::createInstance(name(), "uGain", "xpGain", "v0", "xpShared.xpShared_xpSharedTop.xpGain")))
+        ,uGain(std::dynamic_pointer_cast<xpGainBase<xpGain_xpGainV0Config>>(instanceFactory::createInstance(name(), "uGain", "xpGain", "v0", "xpShared.xpShared_xpSharedTop.xpGain")))
         ,uFilter(std::dynamic_pointer_cast<xpFilterSharedBase<xpFilterShared_xpFilterSharedV0Config>>(instanceFactory::createInstance(name(), "uFilter", "xpFilterShared", "v0", "xpShared.xpShared_xpSharedTop.xpFilterShared")))
         ,uSink(std::dynamic_pointer_cast<xpSinkSharedBase<xpSinkShared_xpSinkSharedV0Config>>(instanceFactory::createInstance(name(), "uSink", "xpSinkShared", "v0", "xpShared.xpShared_xpSharedTop.xpSinkShared")))
         ,thunker_videoOut_0_uGain("thunker_videoOut_0_uGain", videoOut_0, uGain->videoOut, name())

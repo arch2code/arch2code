@@ -141,10 +141,9 @@ def assembler_yaml(ip_basename, consumer, container_params=True, channel='own',
     wrap_variant = ", variant: v0" if container_params else ""
     wrap_binding = ("    wrap:\n        v0:\n            CH_WIDTH: 12\n"
                     if container_params else "")
-    # The assembler's own channel constant must be consumed by a block param
-    # declared in the same file (_validateIpParametersLinkage). The container
-    # does that when it is a class template; otherwise an uninstantiated carrier
-    # block supplies the link.
+    # When the container isn't a class template, this uninstantiated carrier
+    # block still names CH_WIDTH in params:, giving the constant a block-param
+    # consumer.
     channelDecls = """
 ipParameters:
     constants:
@@ -348,7 +347,7 @@ def test_cross_project_vl_key_for_paramsless_transit_block():
                     'dutClass': 'VtransitLeaf_hdl_sv_wrapper',
                     'dutHeader': 'VtransitLeaf_hdl_sv_wrapper.h',
                 }],
-                'verifForeignConfigModules': [],
+                'verifConfigModules': [],
                 'configHeaderContexts': [],
                 'factoryProject': 'unused-for-paramsless-child',
             }

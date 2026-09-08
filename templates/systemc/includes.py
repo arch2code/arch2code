@@ -94,10 +94,20 @@ def includeConstants(args, prj, data):
 
 
 def constReference_cpp(constKey, prj, useConfig=False):
-    constName = prj.data['constants'][constKey]['constant']
-    if useConfig and prj.data['constants'][constKey]['isParameterizable']:
-        return f"Config::{constName}"
-    return constName
+    """Spell a constant reference for the shared context header. A
+    Config-member constant spells as `Config::NAME`; a derived (eval)
+    constant is not a member, so it spells as its canonical expression."""
+    row = prj.data['constants'][constKey]
+    if not useConfig or not row['isParameterizable']:
+        return row['constant']
+    if row['evalCanonical']:
+        # Parenthesised because the caller substitutes this into a larger
+        # expression.
+        return '(' + emissionUtils.emitExpr(
+            row['evalCanonical'],
+            lambda symKey: constReference_cpp(symKey, prj, useConfig=True),
+            emissionUtils.C) + ')'
+    return f"Config::{row['constant']}"
 
 
 def typeWidthExpression_cpp(value, prj, useConfig=False):

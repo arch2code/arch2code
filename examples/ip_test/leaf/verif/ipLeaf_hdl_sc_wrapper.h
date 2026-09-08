@@ -15,7 +15,7 @@ import ip_test_ipLeaf.base;
 
 import ip_test_ipLeaf;
 using namespace ip_test_ipLeaf_ns;
-#include "ipLeafVariantConfig.h"
+import ip_test.ipLeaf.config;
 
 template <typename DUT_T, typename Config>
 class ipLeaf_hdl_sc_wrapper: public sc_module, public blockBase, public ipLeafBase<Config> {

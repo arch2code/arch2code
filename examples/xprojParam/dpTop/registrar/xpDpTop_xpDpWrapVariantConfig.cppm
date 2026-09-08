@@ -8,10 +8,14 @@ module;
 
 export module xpDpTop.xpDpWrap.config;
 
-export struct xpDpTop_xpDpWrapCustomerConfig {
-    static constexpr uint32_t DP_ALGO = 1;
+export struct xpDpTop_xpDpWrapDefaultConfig {
+    static constexpr uint32_t CUST_ALGO = 3;
     static constexpr uint32_t DP_WIDTH = 8;
-    static constexpr uint32_t MID_ALGO = 5;
+};
+
+export struct xpDpTop_xpDpWrapCustomerConfig {
+    static constexpr uint32_t CUST_ALGO = 5;
+    static constexpr uint32_t DP_WIDTH = 8;
 };
 
 // GENERATED_CODE_END

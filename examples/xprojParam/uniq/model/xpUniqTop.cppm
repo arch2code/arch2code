@@ -8,15 +8,15 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 #include "push_ack_port_thunker.h"
-#include "xpFilterUniqVariantConfig.h"
-#include "xpGainUniqVariantConfig.h"
-#include "xpSinkUniqVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpUniq_xpUniqTop.block;
 import xpUniq_xpUniqTop.base;
+import xpFilter.xpFilterUniq.config;
+import xpGain.xpGainUniq.config;
+import xpSink.xpSinkUniq.config;
 import xpUniq_xpUniqTop;
 import xpGain_xpGainUniq;
 import xpFilter_xpFilterUniq;
@@ -45,15 +45,15 @@ public:
     push_ack_channel< boundarySt > videoOut_1;
 
     //instances contained in block
-    std::shared_ptr<xpGainUniqBase<xpGainUniqV0Config>> uGain;
-    std::shared_ptr<xpFilterUniqBase<xpFilterUniqV0Config>> uFilter;
-    std::shared_ptr<xpSinkUniqBase<xpSinkUniqV0Config>> uSink;
+    std::shared_ptr<xpGainUniqBase<xpGain_xpGainUniqV0Config>> uGain;
+    std::shared_ptr<xpFilterUniqBase<xpFilter_xpFilterUniqV0Config>> uFilter;
+    std::shared_ptr<xpSinkUniqBase<xpSink_xpSinkUniqV0Config>> uSink;
 
     // cross-interface thunkers
-    push_ack_port_thunker<boundarySt, gnVideoSt<xpGainUniqV0Config>, false> thunker_videoOut_0_uGain;
-    push_ack_port_thunker<boundarySt, flVideoSt<xpFilterUniqV0Config>, false> thunker_videoOut_0_uFilter;
-    push_ack_port_thunker<boundarySt, flVideoSt<xpFilterUniqV0Config>, false> thunker_videoOut_1_uFilter;
-    push_ack_port_thunker<boundarySt, skVideoSt<xpSinkUniqV0Config>, false> thunker_videoOut_1_uSink;
+    push_ack_port_thunker<boundarySt, gnVideoSt<xpGain_xpGainUniqV0Config>, false> thunker_videoOut_0_uGain;
+    push_ack_port_thunker<boundarySt, flVideoSt<xpFilter_xpFilterUniqV0Config>, false> thunker_videoOut_0_uFilter;
+    push_ack_port_thunker<boundarySt, flVideoSt<xpFilter_xpFilterUniqV0Config>, false> thunker_videoOut_1_uFilter;
+    push_ack_port_thunker<boundarySt, skVideoSt<xpSink_xpSinkUniqV0Config>, false> thunker_videoOut_1_uSink;
 
     xpUniqTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpUniqTop() override = default;
@@ -82,9 +82,9 @@ xpUniqTop::xpUniqTop(sc_module_name blockName, const char * variant, blockBaseMo
         ,xpUniqTopBase(name(), variant)
         ,videoOut_0("xpFilterUniq_videoOut_0", "xpGainUniq")
         ,videoOut_1("xpSinkUniq_videoOut_1", "xpFilterUniq")
-        ,uGain(std::dynamic_pointer_cast<xpGainUniqBase<xpGainUniqV0Config>>(instanceFactory::createInstance(name(), "uGain", "xpGainUniq", "v0", "xpUniq.xpUniq_xpUniqTop.xpGain_xpGainUniq")))
-        ,uFilter(std::dynamic_pointer_cast<xpFilterUniqBase<xpFilterUniqV0Config>>(instanceFactory::createInstance(name(), "uFilter", "xpFilterUniq", "v0", "xpUniq.xpUniq_xpUniqTop.xpFilter_xpFilterUniq")))
-        ,uSink(std::dynamic_pointer_cast<xpSinkUniqBase<xpSinkUniqV0Config>>(instanceFactory::createInstance(name(), "uSink", "xpSinkUniq", "v0", "xpUniq.xpUniq_xpUniqTop.xpSink_xpSinkUniq")))
+        ,uGain(std::dynamic_pointer_cast<xpGainUniqBase<xpGain_xpGainUniqV0Config>>(instanceFactory::createInstance(name(), "uGain", "xpGainUniq", "v0", "xpUniq.xpUniq_xpUniqTop.xpGain_xpGainUniq")))
+        ,uFilter(std::dynamic_pointer_cast<xpFilterUniqBase<xpFilter_xpFilterUniqV0Config>>(instanceFactory::createInstance(name(), "uFilter", "xpFilterUniq", "v0", "xpUniq.xpUniq_xpUniqTop.xpFilter_xpFilterUniq")))
+        ,uSink(std::dynamic_pointer_cast<xpSinkUniqBase<xpSink_xpSinkUniqV0Config>>(instanceFactory::createInstance(name(), "uSink", "xpSinkUniq", "v0", "xpUniq.xpUniq_xpUniqTop.xpSink_xpSinkUniq")))
         ,thunker_videoOut_0_uGain("thunker_videoOut_0_uGain", videoOut_0, uGain->videoOut, name())
         ,thunker_videoOut_0_uFilter("thunker_videoOut_0_uFilter", videoOut_0, uFilter->videoIn, name())
         ,thunker_videoOut_1_uFilter("thunker_videoOut_1_uFilter", videoOut_1, uFilter->videoOut, name())

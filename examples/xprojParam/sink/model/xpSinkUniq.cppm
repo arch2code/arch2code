@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "xpSinkUniqVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -15,6 +14,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpSink_xpSinkUniq.block;
 import xpSink_xpSinkUniq.base;
+import xpSink.xpSinkUniq.config;
 import xpSink_xpSinkUniq;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)

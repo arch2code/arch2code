@@ -8,14 +8,15 @@ module;
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
 #include "push_ack_port_thunker.h"
-#include "xpMtxIpVariantConfig.h"
-#include "xpMtxTplTopVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module xpMtxTpl_xpMtxTplWrap.block;
 import xpMtxTpl_xpMtxTplWrap.base;
+import xpMtxTpl.xpMtxTplWrap.config;
+import xpMtxIp.xpMtxDstPar.config;
+import xpMtxIp.xpMtxSrcPar.config;
 import xpMtxTpl_xpMtxTplTop;
 import xpMtxIp;
 import xpMtxIp_xpMtxSrcLit.base;
@@ -54,21 +55,21 @@ public:
     std::shared_ptr<xpMtxSrcLitBase> uSrcLL;
     std::shared_ptr<xpMtxDstLitBase> uDstLL;
     std::shared_ptr<xpMtxSrcLitBase> uSrcLP;
-    std::shared_ptr<xpMtxDstParBase<xpMtxDstParV0Config>> uDstLP;
-    std::shared_ptr<xpMtxSrcParBase<xpMtxSrcParV0Config>> uSrcPL;
+    std::shared_ptr<xpMtxDstParBase<xpMtxIp_xpMtxDstParV0Config>> uDstLP;
+    std::shared_ptr<xpMtxSrcParBase<xpMtxIp_xpMtxSrcParV0Config>> uSrcPL;
     std::shared_ptr<xpMtxDstLitBase> uDstPL;
-    std::shared_ptr<xpMtxSrcParBase<xpMtxSrcParV0Config>> uSrcPP;
-    std::shared_ptr<xpMtxDstParBase<xpMtxDstParV0Config>> uDstPP;
+    std::shared_ptr<xpMtxSrcParBase<xpMtxIp_xpMtxSrcParV0Config>> uSrcPP;
+    std::shared_ptr<xpMtxDstParBase<xpMtxIp_xpMtxDstParV0Config>> uDstPP;
 
     // cross-interface thunkers
     push_ack_port_thunker<mtChSt<Config>, miSrcLitSt, false> thunker_out_0_uSrcLL;
     push_ack_port_thunker<mtChSt<Config>, miDstLitSt, false> thunker_out_0_uDstLL;
     push_ack_port_thunker<mtChSt<Config>, miSrcLitSt, false> thunker_out_1_uSrcLP;
-    push_ack_port_thunker<mtChSt<Config>, miDstParSt<xpMtxDstParV0Config>, true> thunker_out_1_uDstLP;
-    push_ack_port_thunker<mtChSt<Config>, miSrcParSt<xpMtxSrcParV0Config>, true> thunker_out_2_uSrcPL;
+    push_ack_port_thunker<mtChSt<Config>, miDstParSt<xpMtxIp_xpMtxDstParV0Config>, true> thunker_out_1_uDstLP;
+    push_ack_port_thunker<mtChSt<Config>, miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, true> thunker_out_2_uSrcPL;
     push_ack_port_thunker<mtChSt<Config>, miDstLitSt, false> thunker_out_2_uDstPL;
-    push_ack_port_thunker<mtChSt<Config>, miSrcParSt<xpMtxSrcParV0Config>, true> thunker_out_3_uSrcPP;
-    push_ack_port_thunker<mtChSt<Config>, miDstParSt<xpMtxDstParV0Config>, true> thunker_out_3_uDstPP;
+    push_ack_port_thunker<mtChSt<Config>, miSrcParSt<xpMtxIp_xpMtxSrcParV0Config>, true> thunker_out_3_uSrcPP;
+    push_ack_port_thunker<mtChSt<Config>, miDstParSt<xpMtxIp_xpMtxDstParV0Config>, true> thunker_out_3_uDstPP;
 
     // inherited parameterized types usable unqualified (no <Config>)
     using typename xpMtxTplWrapBase<Config>::mtChPixelT;
@@ -95,11 +96,11 @@ xpMtxTplWrap<Config>::xpMtxTplWrap(sc_module_name blockName, const char * varian
         ,uSrcLL(std::dynamic_pointer_cast<xpMtxSrcLitBase>(instanceFactory::createInstance(name(), "uSrcLL", "xpMtxSrcLit", "", "xpMtxIp")))
         ,uDstLL(std::dynamic_pointer_cast<xpMtxDstLitBase>(instanceFactory::createInstance(name(), "uDstLL", "xpMtxDstLit", "", "xpMtxIp")))
         ,uSrcLP(std::dynamic_pointer_cast<xpMtxSrcLitBase>(instanceFactory::createInstance(name(), "uSrcLP", "xpMtxSrcLit", "", "xpMtxIp")))
-        ,uDstLP(std::dynamic_pointer_cast<xpMtxDstParBase<xpMtxDstParV0Config>>(instanceFactory::createInstance(name(), "uDstLP", "xpMtxDstPar", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplWrap.xpMtxIp_xpMtxDstPar")))
-        ,uSrcPL(std::dynamic_pointer_cast<xpMtxSrcParBase<xpMtxSrcParV0Config>>(instanceFactory::createInstance(name(), "uSrcPL", "xpMtxSrcPar", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplWrap.xpMtxIp_xpMtxSrcPar")))
+        ,uDstLP(std::dynamic_pointer_cast<xpMtxDstParBase<xpMtxIp_xpMtxDstParV0Config>>(instanceFactory::createInstance(name(), "uDstLP", "xpMtxDstPar", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplWrap.xpMtxIp_xpMtxDstPar")))
+        ,uSrcPL(std::dynamic_pointer_cast<xpMtxSrcParBase<xpMtxIp_xpMtxSrcParV0Config>>(instanceFactory::createInstance(name(), "uSrcPL", "xpMtxSrcPar", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplWrap.xpMtxIp_xpMtxSrcPar")))
         ,uDstPL(std::dynamic_pointer_cast<xpMtxDstLitBase>(instanceFactory::createInstance(name(), "uDstPL", "xpMtxDstLit", "", "xpMtxIp")))
-        ,uSrcPP(std::dynamic_pointer_cast<xpMtxSrcParBase<xpMtxSrcParV0Config>>(instanceFactory::createInstance(name(), "uSrcPP", "xpMtxSrcPar", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplWrap.xpMtxIp_xpMtxSrcPar")))
-        ,uDstPP(std::dynamic_pointer_cast<xpMtxDstParBase<xpMtxDstParV0Config>>(instanceFactory::createInstance(name(), "uDstPP", "xpMtxDstPar", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplWrap.xpMtxIp_xpMtxDstPar")))
+        ,uSrcPP(std::dynamic_pointer_cast<xpMtxSrcParBase<xpMtxIp_xpMtxSrcParV0Config>>(instanceFactory::createInstance(name(), "uSrcPP", "xpMtxSrcPar", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplWrap.xpMtxIp_xpMtxSrcPar")))
+        ,uDstPP(std::dynamic_pointer_cast<xpMtxDstParBase<xpMtxIp_xpMtxDstParV0Config>>(instanceFactory::createInstance(name(), "uDstPP", "xpMtxDstPar", "v0", "xpMtxTpl.xpMtxTpl_xpMtxTplWrap.xpMtxIp_xpMtxDstPar")))
         ,thunker_out_0_uSrcLL("thunker_out_0_uSrcLL", out_0, uSrcLL->out, name())
         ,thunker_out_0_uDstLL("thunker_out_0_uDstLL", out_0, uDstLL->in, name())
         ,thunker_out_1_uSrcLP("thunker_out_1_uSrcLP", out_1, uSrcLP->out, name())

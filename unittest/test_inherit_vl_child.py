@@ -279,9 +279,9 @@ def check_emitted(project):
     else:
         print("  PASS: ordinary VL registration keeps its project-owned factory key")
     configs = {
-        'default': 'vliLeafSourcedConfig<vliContDefaultConfig>',
-        'alt': 'vliLeafSourcedConfig<vliContAltConfig>',
-        'solo': 'vliLeafSoloConfig',
+        'default': 'vlInh_vliLeafSourcedConfig<vlInh_vliContDefaultConfig>',
+        'alt': 'vlInh_vliLeafSourcedConfig<vlInh_vliContAltConfig>',
+        'solo': 'vlInh_vliLeafSoloConfig',
     }
     for registration in inheritedView['verifRegistrations']:
         variant = registration['variant']

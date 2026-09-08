@@ -127,15 +127,11 @@ fileGeneration:
     # A child-named Verilated registrar aggregates the child's factory
     # registrations for the owning assembler project.
     blockVlRegistrar : { name : "VlRegistrar", ext: {src: "cpp"},           cond: {hasVl: true},              mode: registrar, basePath: registrar, desc: "Per-assembler per-child Verilated-wrapper registrar TU"}
-    # One owner-qualified per-variant Config module interface unit per (declaring
-    # project, reused child) in the assembler's registrar domain, aggregating the
-    # assembler-declared (foreign) variants of that child. Emitted only when the
-    # assembler's owning project declares a foreign variant; same-project/default
-    # variants stay in the child's context config header. foreignConfig: true
-    # owner-qualifies the basename; the cppm ext routes the unit into
-    # A2C_CPP_MODULE_FILES, so consumers import `<project>.<child>.config` rather
-    # than textually including a header.
-    foreignConfig : { name : "VariantConfig", ext: {cppm: "cppm"},         cond: {isParameterizable: true},  condAnd: {hasMdl: true}, mode: registrar, basePath: registrar, foreignConfig: true, desc: "Owner-qualified foreign per-variant Config module interface unit"}
+    # One owner-qualified Config module per (declaring project, block): the
+    # project's own default plus every variant it declares. cond hasMdl OR hasTb,
+    # since a testbench-only harness still needs a concrete Config; condAnd
+    # hasOwnParams, so a block parameterizable only through a child earns none.
+    foreignConfig : { name : "VariantConfig", ext: {cppm: "cppm"},         cond: {hasMdl: true, hasTb: true}, condAnd: {hasOwnParams: true}, mode: registrar, basePath: registrar, foreignConfig: true, desc: "Owner-qualified per-variant Config module interface unit"}
     rtlModule   : { name : "",                ext: {sv: "sv"},             cond: {hasRtl: true},                mode: block,   basePath: rtl,     desc: "RTL implementation file"}
     vlSvWrap    : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, variant: true, desc: "SystemVerilog HDL module wrapper for verilator"}
     # Canonical parameterized SV wrapper body: one include-only .svh per

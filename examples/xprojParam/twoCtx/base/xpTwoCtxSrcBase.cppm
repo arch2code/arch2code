@@ -36,6 +36,7 @@ public:
     {
         out->setLogging(verbosity);
     };
+    static constexpr auto DP_WIDTH_X2 = Config::DP_WIDTH * 2;
     using dpPixelT = dpPixelT<Config>;
     using dpSt = dpSt<Config>;
 };

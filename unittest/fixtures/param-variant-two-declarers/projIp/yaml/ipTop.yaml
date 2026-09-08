@@ -1,12 +1,4 @@
-# projIp: the reusable leaf IP. It declares its own parameter, its own
-# parameterizable payload and interface, the block, AND a binding of variant v0
-# for that block.
-#
-# Its own binding is not the one the generator emits from. The leaf's
-# parameterizable surface is reached through the downstream wrapper's
-# connectionMap, so the leaf's config context is the WRAPPER's file and the
-# wrapper's project is what emits the Config struct. This file's binding is the
-# same label declared by a second project, and it is the loser of that contest.
+# projIp: the reusable leaf IP, declaring its own parameter and a v0 binding.
 
 ipParameters:
     constants:

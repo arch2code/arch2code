@@ -1,0 +1,4 @@
+# Definitions-only file (no blocks:) declaring the SHARED_W psaTop.yaml also declares.
+ipParameters:
+    constants:
+        SHARED_W: { value: 2, maxValue: 16, desc: "declared in the included file" }

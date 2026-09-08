@@ -10,12 +10,12 @@ module;
 #include "push_ack_channel.h"
 #include "apb_port_thunker.h"
 #include "push_ack_port_thunker.h"
-#include "ipVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ipBridge.block;
 import ipBridge.base;
+import ip.ip.config;
 import ipBridge.ip.config;
 import ipBridge;
 import common_shared_types;
@@ -41,13 +41,13 @@ public:
 
     //instances contained in block
     std::shared_ptr<bridgeApbDecodeBase> uBridgeAPBDecode;
-    std::shared_ptr<ipBase<ipVariant0Config>> uBridgeIp0;
+    std::shared_ptr<ipBase<ip_ipVariant0Config>> uBridgeIp0;
     std::shared_ptr<ipBase<ipBridge_ipVariant1Config>> uBridgeIp1;
 
     // cross-interface thunkers
     apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uBridgeIp0_uBridgeIp0;
     apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uBridgeIp1_uBridgeIp1;
-    push_ack_port_thunker<data8St, ipDataSt<ipVariant0Config>, false> thunker_uBridgeIp0;
+    push_ack_port_thunker<data8St, ipDataSt<ip_ipVariant0Config>, false> thunker_uBridgeIp0;
     push_ack_port_thunker<data70St, ipDataSt<ipBridge_ipVariant1Config>, true> thunker_uBridgeIp1;
 
     ipBridge(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
@@ -78,7 +78,7 @@ ipBridge::ipBridge(sc_module_name blockName, const char * variant, blockBaseMode
         ,apbReg_uBridgeIp0("ip_apbReg_uBridgeIp0", "bridgeApbDecode")
         ,apbReg_uBridgeIp1("ip_apbReg_uBridgeIp1", "bridgeApbDecode")
         ,uBridgeAPBDecode(std::dynamic_pointer_cast<bridgeApbDecodeBase>(instanceFactory::createInstance(name(), "uBridgeAPBDecode", "bridgeApbDecode", "", "ipBridge")))
-        ,uBridgeIp0(std::dynamic_pointer_cast<ipBase<ipVariant0Config>>(instanceFactory::createInstance(name(), "uBridgeIp0", "ip", "variant0", "ipBridge.ipBridge.ip")))
+        ,uBridgeIp0(std::dynamic_pointer_cast<ipBase<ip_ipVariant0Config>>(instanceFactory::createInstance(name(), "uBridgeIp0", "ip", "variant0", "ipBridge.ipBridge.ip")))
         ,uBridgeIp1(std::dynamic_pointer_cast<ipBase<ipBridge_ipVariant1Config>>(instanceFactory::createInstance(name(), "uBridgeIp1", "ip", "variant1", "ipBridge.ipBridge.ip")))
         ,thunker_apbReg_uBridgeIp0_uBridgeIp0("thunker_apbReg_uBridgeIp0_uBridgeIp0", apbReg_uBridgeIp0, uBridgeIp0->regs, name())
         ,thunker_apbReg_uBridgeIp1_uBridgeIp1("thunker_apbReg_uBridgeIp1_uBridgeIp1", apbReg_uBridgeIp1, uBridgeIp1->regs, name())

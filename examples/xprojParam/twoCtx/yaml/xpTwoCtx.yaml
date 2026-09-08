@@ -21,6 +21,7 @@ constants:
     # A DERIVED constant of THIS context, to measure whether a second context's
     # derived constants survive into the Config the block is emitted with.
     TC_GAIN_X2: { eval: "$TC_GAIN * 2", desc: "Derived from this context's own knob" }
+    DP_WIDTH_X2: { eval: "$DP_WIDTH * 2", desc: "Derived from the included file's knob" }
 
 types:
     litT:   { width: 16, desc: "Literal, non-parameterizable payload word" }
@@ -76,7 +77,7 @@ blocks:
             in:     { interface: dpIf, direction: dst }
             valOut: { interface: tcIf, direction: src }
     xpTwoCtxBare:
-        desc: "PARAMS-ONLY two-context block: names both knobs but carries no parameterizable structure on its own surface, so its configContext is decided by the first params: row rather than by a surface scan"
+        desc: "PARAMS-ONLY two-context block: names both knobs but carries no parameterizable structure on its own surface, so its configContext is decided by the first params: row rather than by a surface scan. Its Config name is unaffected by that order: xpTwoCtxDut and xpTwoCtxBare both declare the twoctx variant in this project, so both spell xpTwoCtx_<block>TwoctxConfig, whichever knob sorts first"
         params: [TC_GAIN, DP_WIDTH]
         hasMdl: true
         hasVl: false

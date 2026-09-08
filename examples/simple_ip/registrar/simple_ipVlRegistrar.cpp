@@ -7,7 +7,6 @@
 #include "blockBase.h"
 #include "simple_ip_hdl_sc_wrapper.h"
 #include "Vsimple_ip_hdl_sv_wrapper.h"
-#include "ipVariantConfig.h"
 
 namespace {
 struct _simple_ip_vl_registrar {

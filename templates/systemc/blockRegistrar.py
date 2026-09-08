@@ -48,15 +48,6 @@ def render_default(args, prj, data):
     out.append('module;')
     out.append('#include "instanceFactory.h"')
     out.append('#include "blockBase.h"')
-
-    # Per-context Config-policy headers must be reachable for the
-    # parameterized lambda body.
-    configContexts = set(data['configIncludeContext']) \
-        | set(registrarConfig['configHeaderContexts'])
-    for context in sorted(configContexts):
-        if context in data['includeFiles'].get('config_hdr', {}):
-            out.append(f'#include "{data["includeFiles"]["config_hdr"][context]["baseName"]}"')
-
     out.append('')
     out.append(f'export module {registrarModule};')
 
@@ -65,9 +56,7 @@ def render_default(args, prj, data):
     # `export import`): the registrar exports nothing, it only runs its static.
     out.append(f'import {intf_gen_utils.cpp_block_module_name(data["blockModuleName"])};')
 
-    # Owner-qualified foreign-Config modules for the variants registered below;
-    # the lambda bodies spell those owner-qualified Config types.
-    for mod in registrarConfig['foreignConfigModules']:
+    for mod in registrarConfig['configModules']:
         out.append(f'import {intf_gen_utils.cpp_config_module_name(mod["project"], mod["block"])};')
 
     registrations = list()

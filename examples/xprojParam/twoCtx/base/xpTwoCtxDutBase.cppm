@@ -46,7 +46,8 @@ public:
         valOut->setLogging(verbosity);
         in->setLogging(verbosity);
     };
-    static constexpr auto TC_GAIN_X2 = Config::TC_GAIN_X2;
+    static constexpr auto TC_GAIN_X2 = Config::TC_GAIN * 2;
+    static constexpr auto DP_WIDTH_X2 = Config::DP_WIDTH * 2;
     using dpPixelT = dpPixelT<Config>;
     using tcValT = tcValT<Config>;
     using dpSt = dpSt<Config>;

@@ -8,6 +8,11 @@ module;
 
 export module xpDpTop.xpDpTbPeer.config;
 
+export struct xpDpTop_xpDpTbPeerDefaultConfig {
+    static constexpr uint32_t DP_ALGO = 1;
+    static constexpr uint32_t DP_WIDTH = 8;
+};
+
 export struct xpDpTop_xpDpTbPeerPeerConfig {
     static constexpr uint32_t DP_ALGO = 6;
     static constexpr uint32_t DP_WIDTH = 8;

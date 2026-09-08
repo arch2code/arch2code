@@ -11,7 +11,6 @@ module;
 #include "addressMap.h"
 #include "hwRegister.h"
 #include "hwMemory.h"
-#include "ipVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here
 #include "q_assert.h"
@@ -19,6 +18,7 @@ module;
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module ip.block;
 import ip.base;
+import ip.ip.config;
 import ip;
 // GENERATED_CODE_END
 // user imports here
@@ -102,7 +102,7 @@ ip<Config>::ip(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,ipMem(name(), "ipMem", mems, Config::IP_MEM_DEPTH)
         ,ipFixedMem(name(), "ipFixedMem", mems, Config::IP_MEM_DEPTH)
         ,ipNonConstMem(name(), "ipNonConstMem", mems, Config::IP_NONCONST_DEPTH)
-        ,ipDerivedDepthMem(name(), "ipDerivedDepthMem", mems, Config::IP_MEM_DEPTH_X4)
+        ,ipDerivedDepthMem(name(), "ipDerivedDepthMem", mems, ((Config::IP_MEM_DEPTH * 2) * 2))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

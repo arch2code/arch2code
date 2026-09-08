@@ -1,45 +1,10 @@
 #!/usr/bin/env python3
-"""Which value the emitted artifacts carry when two integrators each declare
-variants of one reusable IP.
-
-A variant is identified by (block, variant, declaring project). Two integrators
-over one IP therefore hold two distinct bindings of one label, and each must
-restate the whole parameter set because a consumer cannot borrow another
-project's declaration. That is design intent, not an authoring mistake.
-
-The in-memory nested view `data['parameters'][block]['variants'][variant]
-['params']` is keyed by bare parameter name and carries no project axis, so it
-holds one of the two bindings and the last one parsed decides which. An
-emission path reading it emits the other integrator's value with no diagnostic,
-which puts the SystemC Config and the Verilated SV top of one build at two
-different numbers. Every value-consuming path must select a descriptor instead.
-
-The other shape is two projects each declaring a label of their own over one IP,
-so the closure holds several labels for one block with a single declarer each.
-Nothing collapses, but the label a project never declared still reaches its
-build, and a path that enumerated the project-blind view would emit an artifact
-from it.
-
-Fixture: `fixtures/variant-two-integrators`, three projects.
-- xviLeaf declares the leaf and no variant.
-- xviMid includes the leaf root and instantiates it twice: at the shared label
-  v0 binding XVI_GAIN 7, and at vMid, which only xviMid declares, binding 5.
-- xviTop does the same at v0 binding 3 and at its own vTop binding 9, and its
-  closure references xviMid.
-XVI_GAIN sizes nothing, so the divergence reaches no layout check. XVI_WIDTH is
-held at 8 everywhere, so the payload is identical either way.
-
-The fixture is authored so xviTop's own binding of v0 is the one the collapse
-drops, and so xviMid's vMid reaches xviTop's build at a value xviTop never
-bound. The two premise cells assert both, because otherwise every later
-assertion passes whether or not the emission path consults the declaring
-project.
-
-XVI_GAIN also drives behaviour: the leaf scales each sample by it, in the model
-and in the RTL alike. The last cell builds and runs both integrators' designs
-and reads the payload back out at the sinks, so an emitted number that no
-artifact consumes fails there even when every text assertion above passes.
-"""
+"""Variant identity is (block, variant, declaring project). Two integrators of
+one reusable IP each restate their own binding of a shared label, and a path
+reading the project-blind nested view can silently take the wrong integrator's
+value. Fixture `fixtures/variant-two-integrators`: xviMid and xviTop each bind
+v0 differently and declare an extra label of their own; the final test builds
+and runs both designs and checks the payload at the sinks."""
 
 import os
 import re
@@ -53,6 +18,7 @@ import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'variant-two-integrators')
+ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 LEAF_KEY = 'xviLeaf/../../../ipLeaf/yaml/xviLeaf.yaml'
 # What each integrator binds XVI_GAIN to on the shared label v0, and on the
 # label only it declares, in its own design file.
@@ -158,6 +124,16 @@ def observations(output, sinks):
     return problems
 
 
+def build_db(project, db):
+    """Build only the database for one project file; no generate or build."""
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    result = subprocess.run(
+        [sys.executable, ARCH2CODE, '--yaml', project, '--db', db],
+        capture_output=True, text=True, timeout=180, cwd=base_dir, env=env)
+    return result.stdout + result.stderr, result.returncode
+
+
 def header(name):
     print(f"\n{'='*70}\nTest: {name}\n{'='*70}")
 
@@ -238,6 +214,60 @@ def test_a_label_only_the_other_integrator_declared_reaches_this_build():
             return False
         print(f"  PASS: xviTop's closure offers {sorted(offered)}; vMid is "
               f"xviMid's {MID_OWN_GAIN} and xviTop declares no binding of it")
+        return True
+    finally:
+        close_db()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_third_project_referencing_both_is_rejected():
+    """A third project assembling both integrators declares no v0 of its own,
+    so v0 has two foreign declarers and none from this build; the build is
+    rejected naming both. Declaring v0 in the third project's own file resolves it."""
+    header("a build referencing two foreign declarers of one label, with "
+           "none of its own, is rejected")
+    work = copy_fixture('xvi_both_')
+    try:
+        own = os.path.join(work, 'both', 'yaml', 'xviBothOwn.yaml')
+        text = read(work, 'both', 'yaml', 'xviBothOwn.yaml')
+        if 'parameters' in text:
+            print("  FAIL: premise not met - xviBothOwn.yaml must declare no "
+                  "variant of its own")
+            return False
+        print("  PASS: premise holds, xviBothOwn.yaml declares nothing of "
+              "xviLeaf's variants; xviTop and xviMid remain the only "
+              "declarers of v0")
+
+        db = os.path.join(work, 'both', 'xviBoth.db')
+        project = os.path.join(work, 'both', 'prj', 'yaml', 'xviBothProject.yaml')
+        out, rc = build_db(project, db)
+        if rc == 0:
+            print("  FAIL: expected rejection, build succeeded")
+            return False
+        if 'Traceback (most recent call last)' in out:
+            print("  FAIL: got a Python stack trace instead of a clean error")
+            print('  ' + '\n  '.join(out.split('\n')[:20]))
+            return False
+        missing = [p for p in ('xviLeaf', "'v0'", 'xviMid', 'xviTop')
+                  if p not in out]
+        if missing:
+            print(f"  FAIL: expected patterns not found: {missing}")
+            print('  ' + '\n  '.join(out.split('\n')[:20]))
+            return False
+        print("  PASS: rejected, naming both xviTop and xviMid as v0's "
+              "declarers")
+
+        # Fault-inject: have the third project declare v0 itself.
+        with open(own, 'a') as f:
+            f.write("\nparameters:\n    xviLeaf:\n        v0:\n"
+                    "            XVI_WIDTH: 8\n            XVI_GAIN: 2\n")
+        out, rc = build_db(project, db)
+        if rc != 0:
+            print("  FAIL: fault-injected copy (xviBoth declares v0 itself) "
+                  "should have built")
+            print('  ' + '\n  '.join(out.split('\n')[:20]))
+            return False
+        print("  PASS: fault-injected copy (xviBoth declares its own v0) builds")
         return True
     finally:
         close_db()
@@ -442,6 +472,7 @@ def run_all_tests():
     tests = [
         test_collapse_drops_the_building_project,
         test_a_label_only_the_other_integrator_declared_reaches_this_build,
+        test_third_project_referencing_both_is_rejected,
         test_emitted_artifacts_carry_the_declaring_project_value,
         test_other_integrator_keeps_its_own_binding,
         test_each_build_emits_only_the_label_it_declared,

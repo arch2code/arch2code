@@ -10,7 +10,7 @@ These properties govern every validator and post-hook. Violate them and your che
 
 - **Validation is scope-based, not global.** By default, a reference is resolved by walking the include chain of the *referring row's own context file* (`lookupInScope`, `validateForeignKey` in `processYaml.py`), with `_a2csystem` as an implicit fallback. Omit `scope` to select this behavior; `scope: yamlFile` is not a supported alias. Two rows in files that do not include each other are mutually invisible to scoped lookup. The explicit `scope: global` validator and the internal `_global` sentinel deliberately walk every loaded context. Global validation is architecturally undesirable because it discards include-chain isolation; adding or retaining `scope: global` requires explicit architect signoff.
 - **A successful foreign key proves that its target row was already parsed; it does not schedule parsing.** Files are processed in include-dependency order, then sections and rows in authored YAML order. `_validate: section:` resolves inline and reports an error when the target is not yet visible. A later `_post` hook may rely on the successfully resolved target row being complete, but it must not assume that every row in the target section has been parsed. For example, the `parameters.block` foreign key guarantees that the resolved block row and its nested params are available when a variant-row hook runs, provided the block definition was authored in an earlier-processed file, section, or row.
-- **Use a project-wide pass only when a row hook cannot express the invariant or cannot be given a reliable dependency.** The canonical case is an aggregate empty-set or orphan check where there is no row to hook (`_validateIpParametersLinkage`: every exposed ipParameters constant must be consumed by at least one block param). Run such passes from `projectCreate` after `processYamls()`. Whenever a pass resolves references, resolve them in each row's own scope via `lookupInScope`; do not treat all context buckets as one namespace. A check concerning one row and a target guaranteed by that row's successful FK normally belongs in `_validate` or `_post` (see `_post_validateVariantParameterCompleteness`).
+- **Use a project-wide pass only when a row hook cannot express the invariant or cannot be given a reliable dependency.** The canonical case is a check whose input rows can sit anywhere in the referring file's own section order, so a per-row hook firing mid-parse of that file cannot rely on every input having been parsed yet (`validateBlockParamScopeUniqueness`: a block param's name must resolve to exactly one visible ipParameters constant across the block's own file and every file it includes; a `blocks:` section authored above the file's own `ipParameters:` section leaves that section unparsed when a per-row hook on the block would fire). Run such passes from `projectCreate` after `processYamls()`. Whenever a pass resolves references, resolve them in each row's own scope via `lookupInScope`; do not treat all context buckets as one namespace. A check concerning one row and a target guaranteed by that row's successful FK normally belongs in `_validate` or `_post` (see `_post_validateVariantParameterCompleteness`).
 
 ## Core Concepts
 
@@ -443,7 +443,7 @@ Decide in this order; stop at the first that fits. See "Governing Invariants" fo
   - Examples: `_post_validateBlockParamBacking`, `_post_validateVariantBindingSizing`, and `_post_validateVariantParameterCompleteness` — the last is the canonical case of a per-row `_post` that resolves a foreign reference in the row's own scope: it resolves each variant row's block via `lookupInScope('blocks', yamlFile, block)`, then compares the block's declared params against the row's bound params, with no global bucket iteration.
 - **Inherently aggregate, with no single row to hook, or dependent on rows whose parse order cannot be guaranteed** → a project-wide pass in `projectCreate`, after `processYamls()`.
   - Prefer an FK plus a row hook when the source row directly names a target. Use the project-wide pass when the failing condition produces no row to attach to, or when all relevant rows must exist before the check can be evaluated.
-  - The real example is `_validateIpParametersLinkage`: for each file with exposed ipParameters constants, it checks that each constant appears in the file's consumed `blocksparams` set, flagging any unconsumed constant. There is no consuming row for an orphan constant, so it cannot be a per-row `_post`.
+  - The real example is `validateBlockParamScopeUniqueness`: for every `blocksparams` row it walks the block's own include chain and counts every file declaring the param's name as an ipParameters constant. A `blocks:` section authored above the referring file's own `ipParameters:` section leaves that section unparsed at the point a per-row hook on the block would fire, so the count can only be taken once every file in the project has parsed.
   - When such a pass does resolve references, resolve each in its own scope via `lookupInScope`. Do NOT iterate every context bucket and treat co-existence of same-named rows as a conflict — that ignores include-chain visibility and produces false positives across mutually-invisible scopes. A completeness check like "a variant binds all its block's params" resolves by scope and therefore belongs in a per-row `_post` (`_post_validateVariantParameterCompleteness`), not here.
 
 ## Common Patterns
@@ -800,9 +800,11 @@ dict has one slot per `(block, variant, param)`, so it holds whichever binding
 was parsed last and silently discards the other. Read a value through it and a
 build can emit one number in its SystemC Config and another in its Verilated SV
 top. Iterate `parametersvariantsparams` instead, or take the value from the
-descriptor `calcVariantConfigDescriptors` persists per declaring project and
-`selectVariantDescriptor` picks for a given consumer. See
-`GENERATOR_ARCHITECTURE.md`, "Project-qualified parameter bindings".
+descriptor `calcVariantConfigDescriptors` persists per declaring project. An
+instance's variant resolves through the include scope of its own file;
+`INSTANCEVARIANTDECLARERS` records the declaring project that resolution
+picked, per instance. See `GENERATOR_ARCHITECTURE.md`, "Project-qualified
+parameter bindings".
 
 #### Loading Process
 

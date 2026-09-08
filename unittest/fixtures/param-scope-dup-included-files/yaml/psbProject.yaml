@@ -1,0 +1,15 @@
+# A params: name visible from two included files, neither the referring file,
+# is rejected naming both.
+yamlFormat: 2
+projectName: psbScope
+
+projectFiles:
+    - psbTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

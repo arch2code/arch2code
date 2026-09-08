@@ -1,7 +1,4 @@
-# The consuming assembler: a third project that drives the wrapper and declares
-# no binding of the leaf's v0 itself. That is the point of the composition. With
-# no binding of its own to prefer, the consumer must resolve to the binding of
-# the project that owns the leaf's config context, not to the leaf author's.
+# The consuming assembler. Declares no v0 of its own; the collision is entirely inside wrapTop.yaml.
 include:
     - ../../projWrap/yaml/wrapTop.yaml
 

@@ -1,44 +1,10 @@
 #!/usr/bin/env python3
-"""Block-parameter / ipParameters-constant linkage validation and the
-per-block parameterized declaration set.
-
-Negative cases (each must fail projectCreate with a clear, traceback-free
-message):
-- An ipParameters constant consumed by no block param (orphan).
-- A block param with no same-name ipParameters constant backing it.
-- A block param backed by a non-parameterizable constant (a plain
-  ``constants:`` entry colliding with the param name). This is the single
-  validation behind both "backing const not marked isParameterizable" and
-  "plain constant name collision with a block param" - the param resolves to a
-  same-name constant that is not parameterizable.
-- A variant binding that exceeds its backing constant's maxValue (worst-case
-  sizing would under-allocate).
-- A connection endpoint block reached through a parameterized interface that
-  cannot size the interface payload's backing param. Three cells:
-  * dst endpoint that declares no params: at all - a parameterizable structure
-    on its own surface with no template params, rejected by the own-surface
-    check (which fires before the per-interface endpoint diagnostic);
-  * dst endpoint that does declare params: but the wrong one (not the payload's
-    backing param) - it clears the own-surface check and reaches the endpoint
-    diagnostic, which reports the missing required parameter;
-  * src endpoint that declares no params: - the own-surface check applies to the
-    src end too, not only the consumer.
-
-Positive cases (must succeed):
-- A parameterized interface whose two connected endpoints both carry the
-  backing param (the payload is sized in each module's own scope).
-- A non-parameterized interface between non-parameterized endpoints (the
-  validator must not fire on a plain interface).
-- Two parameterized blocks bound to different variants bridged by a
-  non-parameterized boundary channel (the C3.5 cross-variant path: a
-  non-parameterizable channel is skipped, the per-leg adaptation being a
-  runtime concern).
-
-Positive case (must succeed, asserted in-process against the database):
-- One exposed param consumed by two blocks, and a parameterizable type and
-  structure (used only by hand-written code, not by any port/memory/register)
-  selected module-local for both consuming blocks, types before structures.
-"""
+"""Block-param / ipParameters-constant linkage: a param resolves to exactly one
+parameterizable backing constant, respects its maxValue, and is satisfiable at
+both ends of a parameterized connection. A declared parameter needs no
+consumer, and a non-parameterized interface or cross-variant boundary channel
+must not trip the validator. Also pins module-local vs context-shared
+declaration selection when two blocks share one exposed param."""
 
 import os
 import sqlite3
@@ -143,7 +109,7 @@ def _expect_success(arch_content, test_name):
         _cleanup([project_path, arch_path, db_path])
 
 
-def test_orphan_ipparameters_constant():
+def test_unconsumed_ipparameters_constant_allowed():
     arch = """ipParameters:
   constants:
     UNUSED_W: { value: 8, maxValue: 16, desc: "consumed by no block param" }
@@ -156,10 +122,7 @@ instances:
   uTop: { container: top, instanceType: top }
   uIp: { container: top, instanceType: ip }
 """
-    return _expect_error(
-        arch,
-        ["UNUSED_W", "not consumed by any", "ipParameters constant"],
-        "orphan ipParameters constant")
+    return _expect_success(arch, "unconsumed ipParameters constant is allowed")
 
 
 def test_unbacked_block_param():
@@ -650,7 +613,7 @@ def run_all_tests():
     print("TESTING: block-param / ipParameters-constant linkage + decl set")
     print("="*70)
     tests = [
-        test_orphan_ipparameters_constant,
+        test_unconsumed_ipparameters_constant_allowed,
         test_unbacked_block_param,
         test_non_parameterizable_backing,
         test_variant_binding_exceeds_maxvalue,

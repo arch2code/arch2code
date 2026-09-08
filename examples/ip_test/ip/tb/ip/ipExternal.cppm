@@ -6,7 +6,6 @@ module;
 #include "systemc.h"
 #include "logging.h"
 #include "instanceFactory.h"
-#include "ipVariantConfig.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -14,6 +13,7 @@ module;
 export module ip.external;
 import a2c.endOfTest;
 import ip.base;
+import ip.ip.config;
 import ip;
 // GENERATED_CODE_END
 // user imports here (module preamble - imports FIRST, then purview #includes)
@@ -23,7 +23,7 @@ import ip;
 
 using namespace ip_ns;
 
-export class ipExternal: public sc_module, public ipInverted<ipVariant0Config> {
+export class ipExternal: public sc_module, public ipInverted<ip_ipVariant0Config> {
 
     logBlock log_;
 
@@ -55,7 +55,7 @@ private:
 // GENERATED_CODE_BEGIN --template=tbExternal --section=init
 
 ipExternal::ipExternal(sc_module_name modulename) :
-    ipInverted<ipVariant0Config>("Chnl"),
+    ipInverted<ip_ipVariant0Config>("Chnl"),
     log_(name())
 
 // GENERATED_CODE_END
@@ -71,10 +71,10 @@ void ipExternal::stimulusThread(void)
 {
     wait(SC_ZERO_TIME);
 
-    ipDataT<ipVariant0Config> payload{};
+    ipDataT<ip_ipVariant0Config> payload{};
     payload.word[0] = 0xDEADBEEFCAFEBABEULL;
     payload.word[1] = 0x2A;
-    ipDataSt<ipVariant0Config> data(payload, static_cast<enableT>(1));
+    ipDataSt<ip_ipVariant0Config> data(payload, static_cast<enableT>(1));
 
     log_.logPrint(std::format("{} stimulusThread pushing data 0x{:x}{:016x} marker {}",
                               name(), data.data.word[1], data.data.word[0],
