@@ -86,10 +86,10 @@ module ip_ipRegs
         for (gi = 0; gi < 3; gi++) begin : g_ipCfg
             if (IPCFG_W > 32*gi) begin : present
                 if (IPCFG_W >= 32*(gi+1)) begin : full
-                    `DFFREN(ipCfg_reg[32*gi +: 32], ipReg.pwdata[31:0], ipCfg_update[gi], ipCfg_rst[gi])
+                    `DFFREN_CLK(clk, ipCfg_reg[32*gi +: 32], ipReg.pwdata[31:0], ipCfg_update[gi], ipCfg_rst[gi])
                     assign ipCfg_rword[gi] = ipCfg_reg[32*gi +: 32];
                 end else begin : partial
-                    `DFFREN(ipCfg_reg[32*gi +: (IPCFG_W-32*gi)], ipReg.pwdata[IPCFG_W-32*gi-1:0], ipCfg_update[gi], ipCfg_rst[gi][(IPCFG_W-32*gi-1):0])
+                    `DFFREN_CLK(clk, ipCfg_reg[32*gi +: (IPCFG_W-32*gi)], ipReg.pwdata[IPCFG_W-32*gi-1:0], ipCfg_update[gi], ipCfg_rst[gi][(IPCFG_W-32*gi-1):0])
                     assign ipCfg_rword[gi] = 32'(ipCfg_reg[32*gi +: (IPCFG_W-32*gi)]);
                 end
             end else begin : absent
@@ -125,18 +125,18 @@ module ip_ipRegs
     ipMemAddrSt ipMem_addr;
     logic nxt_ipMem_rd_enable, ipMem_rd_enable, ipMem_rd_capture;
     logic ipMem_wr_enable;
-    `DFF(ipMem_addr, ipMemAddrSt'(apb_addr[31:4]))
-    `DFF(ipMem_wr_enable, ipMem_update[IPMEM_TOP])
-    `DFF(ipMem_rd_enable, nxt_ipMem_rd_enable)
-    `DFF(ipMem_rd_capture, ipMem_rd_enable)
+    `DFF_CLK(clk, ipMem_addr, ipMemAddrSt'(apb_addr[31:4]))
+    `DFF_CLK(clk, ipMem_wr_enable, ipMem_update[IPMEM_TOP])
+    `DFF_CLK(clk, ipMem_rd_enable, nxt_ipMem_rd_enable)
+    `DFF_CLK(clk, ipMem_rd_capture, ipMem_rd_enable)
     generate
         for (gi = 0; gi < 3; gi++) begin : g_ipMem
             if (IPMEM_W > 32*gi) begin : present
                 if (IPMEM_W >= 32*(gi+1)) begin : full
-                    `DFFEN(ipMem_reg[32*gi +: 32], ipReg.pwdata[31:0], ipMem_update[gi])
+                    `DFFEN_CLK(clk, ipMem_reg[32*gi +: 32], ipReg.pwdata[31:0], ipMem_update[gi])
                     assign ipMem_rword[gi] = ipMem.read_data[32*gi +: 32];
                 end else begin : partial
-                    `DFFEN(ipMem_reg[32*gi +: (IPMEM_W-32*gi)], ipReg.pwdata[IPMEM_W-32*gi-1:0], ipMem_update[gi])
+                    `DFFEN_CLK(clk, ipMem_reg[32*gi +: (IPMEM_W-32*gi)], ipReg.pwdata[IPMEM_W-32*gi-1:0], ipMem_update[gi])
                     assign ipMem_rword[gi] = 32'(ipMem.read_data[32*gi +: (IPMEM_W-32*gi)]);
                 end
             end else begin : absent
@@ -157,12 +157,12 @@ module ip_ipRegs
     logic nxt_ipFixedMem_rd_enable, ipFixedMem_rd_enable, ipFixedMem_rd_capture;
     logic ipFixedMem_wr_enable;
 
-    `DFF(ipFixedMem_addr, ipFixedAddrSt'(apb_addr[31:2]))
-    `DFF(ipFixedMem_wr_enable, ipFixedMem_update_0)
-    `DFF(ipFixedMem_rd_enable, nxt_ipFixedMem_rd_enable)
-    `DFF(ipFixedMem_rd_capture, ipFixedMem_rd_enable)
+    `DFF_CLK(clk, ipFixedMem_addr, ipFixedAddrSt'(apb_addr[31:2]))
+    `DFF_CLK(clk, ipFixedMem_wr_enable, ipFixedMem_update_0)
+    `DFF_CLK(clk, ipFixedMem_rd_enable, nxt_ipFixedMem_rd_enable)
+    `DFF_CLK(clk, ipFixedMem_rd_capture, ipFixedMem_rd_enable)
 
-    `DFFEN(ipFixedMem_data[7:0], nxt_ipFixedMem_data[7:0], ipFixedMem_update_0)
+    `DFFEN_CLK(clk, ipFixedMem_data[7:0], nxt_ipFixedMem_data[7:0], ipFixedMem_update_0)
 
     assign ipFixedMem.enable      = ipFixedMem_rd_enable | ipFixedMem_wr_enable;
     assign ipFixedMem.wr_en       = ipFixedMem_wr_enable;
@@ -177,12 +177,12 @@ module ip_ipRegs
     logic nxt_ipNonConstMem_rd_enable, ipNonConstMem_rd_enable, ipNonConstMem_rd_capture;
     logic ipNonConstMem_wr_enable;
 
-    `DFF(ipNonConstMem_addr, ipFixedAddrSt'(apb_addr[31:2]))
-    `DFF(ipNonConstMem_wr_enable, ipNonConstMem_update_0)
-    `DFF(ipNonConstMem_rd_enable, nxt_ipNonConstMem_rd_enable)
-    `DFF(ipNonConstMem_rd_capture, ipNonConstMem_rd_enable)
+    `DFF_CLK(clk, ipNonConstMem_addr, ipFixedAddrSt'(apb_addr[31:2]))
+    `DFF_CLK(clk, ipNonConstMem_wr_enable, ipNonConstMem_update_0)
+    `DFF_CLK(clk, ipNonConstMem_rd_enable, nxt_ipNonConstMem_rd_enable)
+    `DFF_CLK(clk, ipNonConstMem_rd_capture, ipNonConstMem_rd_enable)
 
-    `DFFEN(ipNonConstMem_data[7:0], nxt_ipNonConstMem_data[7:0], ipNonConstMem_update_0)
+    `DFFEN_CLK(clk, ipNonConstMem_data[7:0], nxt_ipNonConstMem_data[7:0], ipNonConstMem_update_0)
 
     assign ipNonConstMem.enable      = ipNonConstMem_rd_enable | ipNonConstMem_wr_enable;
     assign ipNonConstMem.wr_en       = ipNonConstMem_wr_enable;
@@ -343,9 +343,9 @@ module ip_ipRegs
     // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
-            `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(rd_ready,   nxt_rd_ready,   '0)
-            `DFFR(rd_data,    nxt_rd_data,    '0)
+            `DFFR_CLK(clk, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_CLK(clk, rd_ready,   nxt_rd_ready,   '0)
+            `DFFR_CLK(clk, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;

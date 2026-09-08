@@ -279,6 +279,7 @@ endgenerate
 *   Always name generate blocks with `gen_<description>` labels.
 *   Use `genvar` for generate loop variables.
 *   Use `int` for `always_comb` / procedural loop variables.
+*   A library sub-module's port is named `clk`, but the signal bound to it is the enclosing module's clock port, which is only spelled `clk` when the block sits in the project's default clock domain. In any other domain bind that domain's declared clock name (`.clk (clkSlow)`).
 
 ## 15. FSM-Sequenced Memory Reads (Paired FSMs)
 

@@ -8,7 +8,7 @@ The schema system defines how YAML files are parsed, validated, and transformed 
 
 These properties govern every validator and post-hook. Violate them and your check will be wrong in composed/multi-file projects even when it passes on a single file. Read this section before deciding where any new validation belongs.
 
-- **Validation is scope-based, not global.** By default, a reference is resolved by walking the include chain of the *referring row's own context file* (`lookupInScope`, `validateForeignKey` in `processYaml.py`), with `_a2csystem` as an implicit fallback. Omit `scope` to select this behavior; `scope: yamlFile` is not a supported alias. Two rows in files that do not include each other are mutually invisible to scoped lookup. The explicit `scope: global` validator and the internal `_global` sentinel deliberately walk every loaded context. Global validation is architecturally undesirable because it discards include-chain isolation; adding or retaining `scope: global` requires explicit architect signoff.
+- **Validation is scope-based, not global.** By default, a reference is resolved by walking the include chain of the *referring row's own context file* (`lookupInScope`, `validateForeignKey` in `processYaml.py`), with `_a2csystem` as an implicit fallback. Omit `scope` to select this behavior; `scope: yamlFile` is not a supported alias. Two rows in files that do not include each other are mutually invisible to scoped lookup. The explicit `scope: global` validator and the internal `_global` sentinel deliberately walk every loaded context. Global validation is architecturally undesirable because it discards include-chain isolation; adding or retaining `scope: global` requires explicit architect signoff. `scope: project` is the third and narrower option: a direct hit in the referring row's owning project's bucket, used only for `projectScope` sections (see the `projectScope` table attribute and `_validate`).
 - **A successful foreign key proves that its target row was already parsed; it does not schedule parsing.** Files are processed in include-dependency order, then sections and rows in authored YAML order. `_validate: section:` resolves inline and reports an error when the target is not yet visible. A later `_post` hook may rely on the successfully resolved target row being complete, but it must not assume that every row in the target section has been parsed. For example, the `parameters.block` foreign key guarantees that the resolved block row and its nested params are available when a variant-row hook runs, provided the block definition was authored in an earlier-processed file, section, or row.
 - **Use a project-wide pass only when a row hook cannot express the invariant or cannot be given a reliable dependency.** The canonical case is an aggregate empty-set or orphan check where there is no row to hook (`_validateIpParametersLinkage`: every exposed ipParameters constant must be consumed by at least one block param). Run such passes from `projectCreate` after `processYamls()`. Whenever a pass resolves references, resolve them in each row's own scope via `lookupInScope`; do not treat all context buckets as one namespace. A check concerning one row and a target guaranteed by that row's successful FK normally belongs in `_validate` or `_post` (see `_post_validateVariantParameterCompleteness`).
 
@@ -281,6 +281,21 @@ Attributes modify how tables and fields are processed. Specified in `_attribs` a
 - **Foreign-key consequence**: A plain (non-combo) `_validate: section:` foreign key may target ONLY a flat section, and its `field:` must name that section's storage key. This is enforced at schema-validation time (`schema.py::_validate_foreign_key_lookups`). See "Foreign-Key Invariants" under `_validate`.
 - **Orthogonality**: `flat` describes an index/dedup policy; it is independent of `collapsed`/`multiple`/`dataGroup`, which describe nesting shape. A section may be both `flat` and `multiple`, or `flat` and `collapsed`.
 
+#### `projectScope`
+- **Meaning**: The section is authored in the **project file**, not in design YAML, and its rows are stored in a bucket keyed by the declaring `projectName` (`data[section][projectName][name]`) rather than by a YAML file context. Sets `Node.is_project_scope` in `schema.py`.
+- **Parsing**: A pre-pass in `projectCreate` (`processProjectScopeSections`) parses these sections from every project file in the build — the root project file and each child project file reached through `projectFiles:` — before the main YAML loop runs. The pre-pass is required because the root project file is never handed to the ordinary parser at all, and because `projectFiles:` entries create no include-dependency edge, so no design file is ordered after its project file. The RAW project file content is used, bypassing the base/pro/user merge: a declaration shipped in `$a2c/config/project.yaml` must not silently appear in every project.
+- **Parse order within a project file is schema declaration order**, not the order the author wrote the sections in. Foreign keys are validated at parse time, so a project-scoped section referencing another (`resets.clock` → `clocks`) must be parsed after it; the authored key order must not decide whether a valid project file is accepted. Declare a project-scoped section in `config/schema.yaml` *after* any project-scoped section it references — **enforced** at schema-validation time (Foreign-Key Invariants rule 9), because otherwise reordering two sections in this file silently breaks every valid project file in every project.
+- **Also a top-level section only**: `projectScope` on a nested node is rejected. The pre-pass selects the sections to parse by top-level section name, so the attribute is inert on a sub-node — it would neither be parsed from the project file nor bring its own foreign keys under the bucket-context rule below. Enforced in `schema.py::_validate_project_scope_sections`.
+- **One bucket per `projectName`**: no two project files in one build may declare the same `projectName`, whether or not either of them authors a project-scoped section, and a `projectName` may not equal a YAML context key. Both would put two projects' declarations in one `data[section][projectName]` bucket, so each project's references would resolve against the other's declarations, and `projectFileByName` would name the wrong file in the diagnostics. Both are rejected for every project file the build reaches: a project owns a bucket whether it declares a project-scoped section or receives an injected one (see **Built-in declarations** below).
+- **Not a context**: the bucket is registered in no context registry — not `yamlContext`, `includeValid`, `includeName`, the persisted `YAMLCONTEXT` blob, or `CONTEXTNODEDIR` — so no generated context header is emitted for a project file and no context-iterating consumer sees a key that is not a design YAML file. The single exception is the identity entry `contextOwningProject[projectName] = projectName`.
+- **Reading the rows**: the `projectName` bucket is the *parse-time* shape (`projectCreate.data[section][projectName][name]`, plus the `flat` index under `flatData[section]['<name>/<projectName>']`). After `projectOpen` the normal loading contract applies — `data[section]` is keyed by qualified storage key — and a row's declaring project is its `_context` field. A `projectOpen` view selects a project's rows by `_context`; it must not try to resolve a project name through the context helpers, which do not know it.
+- **Config**: project-scoped section names join the `notConfig` set, so they are not also persisted into the DB-backed config, and they join `ignoreSections`, so a child project file walked as ordinary YAML does not parse them a second time into that file's context.
+- **Reference**: only via `_validate: scope: project` (see `_validate`). A project-scoped section must **always** be `flat` — not only when it is a foreign-key target — because a composed build tells two projects' rows apart by the qualified storage key (`<name>/<projectName>`) that only the flat index maintains. Enforced in `schema.py::_validate_project_scope_sections`.
+- **A field OF a project-scoped section may not use the include chain.** Such a row is parsed with the declaring `projectName` as its context, which is a bucket key and not a `yamlContext` key, so an include-chain walk has nothing to walk. A `section:` validator on such a field must declare `scope: project` (or `scope: global`, with the signoff that always requires). This covers the section's own fields, the fields of every sub-table, and the fields of its `_dataSchema` and that node's own subtree — all are parsed with the bucket as context. Enforced in `schema.py::_validate_foreign_key_lookups`.
+- **One-way door**: a section name used in the project file cannot also be a design-YAML section. This is **enforced**, not structural: `ignoreSections` is consulted before the unknown-section check, so a project-scoped section authored in a design YAML would otherwise be dropped with no diagnostic at all. `processSingleFile` rejects it, exempting the child project file contexts that legitimately carry it. The reverse direction — a design section authored in a project file — is **not** enforced, because project files legitimately carry many non-schema keys.
+- **Built-in declarations**: a section named in `projectCreate.IMPLICIT_PROJECT_DECLARATIONS` is parsed from a built-in body for any project whose project file does not author it, through the same pre-pass and the same validation. Injection is per section and all-or-nothing: a project authoring the section owns it completely and receives no built-in row, which is what keeps a per-project rule such as exactly-one-default trivially true. An injected section is a reason to create the project's bucket, so under the shipped schema every project owns one. Injected rows carry no source line, so a diagnostic naming one reports the project file alone.
+- **Example**: `clocks:` / `resets:` in `config/schema.yaml`.
+
 #### `optional`
 - **Meaning**: Entire table/field may be omitted
 - **Validation**: No error if missing
@@ -400,6 +415,25 @@ Omit `scope` for the referring row's include-chain scope. Global lookup discards
 include-chain isolation and is therefore undesired. Adding or retaining
 `scope: global` requires explicit architect signoff.
 
+`scope: project` resolves against the referring row's **owning project** instead
+of its include chain. It is the only way to reach a `projectScope` section, and
+it may target nothing else — both directions are enforced at schema-validation
+time. Resolution is a direct hit in the owning project's bucket
+(`data[section][contextOwningProject[referringContext]][name]`), not a walk:
+there is no include-chain search and no `_a2csystem` fallback, so a reference
+resolves in its own project or not at all. That is what lets two composed
+projects declare the same name as two separate, unambiguous rows, which
+`scope: global` cannot do (`_lookupInGlobal` reports duplicates as an error).
+
+Because resolution is owner-relative, `scope: project` cannot be placed on a
+field of a section that the shipped **system files** author: those rows are parsed
+into the `_a2csystem` special context, which belongs to no project and therefore
+has no bucket to hit. Such a reference is reported as an error at parse time.
+
+The set of valid `scope` values is therefore: omitted (include chain),
+`project`, and `global`. Any other value is a schema error, on every validator —
+including a `values:` validator, where `scope` has no meaning at all.
+
 #### Foreign-Key Invariants (enforced in `schema.py::_validate_foreign_key_lookups`)
 
 These are checked at schema-validation time; a violation is a schema bug that fails fast. They also define exactly what `processYaml.py::validateForeignKey` may assume at parse time:
@@ -408,6 +442,11 @@ These are checked at schema-validation time; a violation is a schema bug that fa
 2. Its `field:` must name an existing field in that section.
 3. **Plain (non-combo) FK**: the target section must be `flat`, and `field:` must name the target's storage key. Resolution is a scoped `lookupInScope` walking the referring row's include chain (plus the `_a2csystem` fallback).
 4. **Combo FK**: the target field must also be a combo, and the source and target combo sources must be identical. Resolution walks target rows in scope order and matches the component fields.
+5. `scope:`, when present, must be `project` or `global`. Checked on **every** validator, not only `section:` ones. An unrecognized value would otherwise reach `lookupInScope` as a context name and fail there on a missing key, far from the schema line that caused it.
+6. `scope: project` and a `projectScope` target imply each other, in both directions. A project-scoped section lives in a `projectName`-keyed bucket rather than a file context, so an include-chain or global lookup could never find it.
+7. A `section:` validator on a field **of** a `projectScope` section must declare a `scope:`. Its row is parsed with the declaring `projectName` as context, so the include-chain default would index `yamlContext` with a key that does not exist. The rule applies to the section's own fields and to every node in its subtree, which for this purpose means its sub-tables **and** its `_dataSchema` node with that node's own subtree: `_dataSchema` is the parse-time shape of the same rows and is deliberately absent from `Node.sub_nodes`, so it has to be followed explicitly (`Schema._project_scope_node_paths`).
+8. **A combo FK may not declare `scope: project`.** Project resolution is a direct dict hit on the target's storage key; it never walks target rows comparing combo component fields, so a combo FK declaring it would silently skip component matching.
+9. **A `scope: project` target must be declared earlier in this file than the `projectScope` section that references it.** The project-file pre-pass parses project-scoped sections in schema declaration order and resolves foreign keys as it parses, so a target declared later is not yet in its bucket and an entirely valid project file is rejected. Without this rule, swapping two sections in `config/schema.yaml` breaks every project file in every project with nothing pointing at the cause. A section referencing itself is allowed: its rows resolve in authored order within the section.
 
 ### `_post`
 - **Purpose**: Name a post-processing function invoked after a row of this section is fully processed.
@@ -966,6 +1005,7 @@ Extracts the storage key from a processed YAML row.
 - Use `_validate` with `values` for enums
 - Use `_validate` with `section` for referential integrity
 - Omit `scope` for the referring row's include-chain scope (the default); `scope: yamlFile` is not a special value, and `scope: global` requires architect signoff
+- Use `scope: project` only to reference a `projectScope` section, and always when referencing one
 - Express optional references by marking the field `optional`/`optionalConst` (or via the special-value bypass); `validateForeignKey`/`lookupInScope` return `(None, None)` on a miss and the caller decides whether that is an error
 
 ### 6. Avoiding Common Pitfalls

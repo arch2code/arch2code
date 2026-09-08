@@ -5,6 +5,14 @@ import textwrap
 
 from jinja2 import Template
 
+# sc_time unit spelling per timeUnit the clocks: schema admits. A unit added to
+# the schema without a spelling here fails loudly at generation.
+SC_TIME_UNIT = {'ps': 'SC_PS', 'ns': 'SC_NS', 'us': 'SC_US'}
+
+def resetDriverName(resetRow):
+    # One driver thread per reset, so the method name carries the reset it drives.
+    return f"reset_driver_{resetRow['reset']}"
+
 # args from generator line
 # prj object
 # data set dict
@@ -106,18 +114,68 @@ def render_sc(args, prj, data):
         s = (',\n'.join(s) + ',') if s else ''
         return s
 
+    def sec_clock_decl(args, prj, data):
+        # A gated sc_signal, not an sc_clock: under socket lockstep every clock
+        # must stop while the Python partner holds the quantum, and an sc_clock
+        # cannot be paused.
+        return '\n'.join(f"sc_signal<bool> {row['clock']};" for row in data['clocks'])
+
+    def sec_clock_ctor_init(args, prj, data):
+        return ',\n'.join(f'{row["clock"]}("{row["clock"]}")' for row in data['clocks']) + ','
+
+    def sec_clock_half_decl(args, prj, data):
+        return '\n'.join(f"sc_time {row['clock']}_half_;" for row in data['clocks'])
+
+    def sec_clock_half_ctor_init(args, prj, data):
+        # Each clock runs at its own declared period; the half period is what the
+        # generator toggles on.
+        return ',\n'.join(f'{row["clock"]}_half_(sc_time({row["period"]}, '
+                          f'{SC_TIME_UNIT[row["timeUnit"]]}) / 2)' for row in data['clocks'])
+
+    def sec_clock_start(args, prj, data):
+        return '\n'.join(f"{row['clock']}.write(true);" for row in data['clocks'])
+
+    def sec_clock_threads(args, prj, data):
+        return '\n'.join(f"SC_THREAD(clock_gen_{row['clock']});" for row in data['clocks'])
+
+    def sec_clock_gens(args, prj, data):
+        return '\n'.join(f"void clock_gen_{row['clock']}() {{ clock_gen({row['clock']}, {row['clock']}_half_); }}"
+                         for row in data['clocks'])
+
+    def sec_reset_decl(args, prj, data):
+        return '\n'.join(f"sc_signal<bool> {row['reset']};" for row in data['resets'])
+
+    def sec_reset_ctor_init(args, prj, data):
+        # Born released: the driver's first write(false) is then a real negedge,
+        # which Verilator's async-reset processes need to see.
+        return ',\n'.join(f'{row["reset"]}("{row["reset"]}", true)' for row in data['resets'])
+
+    def sec_reset_threads(args, prj, data):
+        return '\n'.join(f"SC_THREAD({resetDriverName(row)});" for row in data['resets'])
+
+    def sec_reset_drivers(args, prj, data):
+        # One thunk per reset, counting edges of THAT reset's own clock: two
+        # resets in domains of different periods must not be released together.
+        return '\n'.join(f'void {resetDriverName(row)}() {{ reset_driver({row["reset"]}, '
+                         f'{row["clock"]}, {row["releaseCycles"]}); }}' for row in data['resets'])
+
     def sec_dut_connect(args, prj, data):
         s = []
         for port_type in data['ports']:
             for port in data['ports'][port_type]:
                 s.append('\n'.join(mp_sig[port]['dut_ports_decl']))
-        s.append(f'dut_hdl->clk(clk);')
-        s.append(f'dut_hdl->rst_n(rst_n);')
+        for name in intf_gen_utils.clock_reset_port_names(data):
+            s.append(f'dut_hdl->{name}({name});')
         s = '\n'.join(s)
         return s
 
     def sec_bfm_connect(args, prj, data):
         s = []
+        # A BFM drives one interface, so both its clock and its reset are that
+        # interface's own domain: the block view resolves each port's connection
+        # clock into this block's derived clock set as `domainClock` and the
+        # block's reset of that domain as `domainReset`, and every clock and reset
+        # of those sets is a member declared here, so the binds compile.
         # Inherited ports (e.g. `ipDataIf`, `out0`) live on the
         # `<block>Base{cfg}` base class. When the wrapper is Config-templated
         # (cfg names a template parameter) those names are dependent and
@@ -128,13 +186,14 @@ def render_sc(args, prj, data):
                 if mp_sig[port]['is_skip']:
                     continue
                 s_ = []
-                intf_name = data['ports'][port_type][port]['name']
+                port_data = data['ports'][port_type][port]
+                intf_name = port_data['name']
                 bfm_name = intf_name + '_bfm'
                 hdl_intf_name = intf_name + '_hdl_if'
                 s_.append(f'{bfm_name}.if_p(this->{intf_name});')
                 s_.append(f'{bfm_name}.hdl_if_p({hdl_intf_name});')
-                s_.append(f'{bfm_name}.clk(clk);')
-                s_.append(f'{bfm_name}.rst_n(rst_n);')
+                s_.append(f'{bfm_name}.clk({port_data["domainClock"]});')
+                s_.append(f'{bfm_name}.rst_n({port_data["domainReset"]});')
                 s.append('\n'.join(s_))
         s = '\n\n'.join(s)
         return s
@@ -171,7 +230,18 @@ def render_sc(args, prj, data):
             sec_bfm_ctor_init=sec_bfm_ctor_init(args, prj, data),
             sec_dut_connect=sec_dut_connect(args, prj, data),
             sec_bfm_connect=sec_bfm_connect(args, prj, data),
-            sec_hdl_if_decl=sec_hdl_if_decl(args, prj, data)
+            sec_hdl_if_decl=sec_hdl_if_decl(args, prj, data),
+            sec_clock_decl=sec_clock_decl(args, prj, data),
+            sec_clock_ctor_init=sec_clock_ctor_init(args, prj, data),
+            sec_clock_half_decl=sec_clock_half_decl(args, prj, data),
+            sec_clock_half_ctor_init=sec_clock_half_ctor_init(args, prj, data),
+            sec_clock_start=sec_clock_start(args, prj, data),
+            sec_clock_threads=sec_clock_threads(args, prj, data),
+            sec_clock_gens=sec_clock_gens(args, prj, data),
+            sec_reset_decl=sec_reset_decl(args, prj, data),
+            sec_reset_ctor_init=sec_reset_ctor_init(args, prj, data),
+            sec_reset_threads=sec_reset_threads(args, prj, data),
+            sec_reset_drivers=sec_reset_drivers(args, prj, data)
         )
         return(s)
 
@@ -259,7 +329,7 @@ public:
 
     DUT_T *dut_hdl;
 {% endif %}
-    sc_signal<bool> clk;
+    {{ sec_clock_decl | indent(4) }}
 
     {{ sec_bfm_decl | indent(4) }}
 {%- if not variants %}
@@ -279,10 +349,10 @@ public:
         sc_module(modulename),
         blockBase("{{blockname}}_hdl_sc_wrapper", name(), bbMode),
         {{blockname}}Base{{cfg}}(name(), variant),
-        clk("clk"),
+        {{ sec_clock_ctor_init | indent(8) }}
         {{ sec_bfm_ctor_init | indent(8) }}
-        rst_n("rst_n", true),
-        clk_half_(0.5, SC_NS)
+        {{ sec_reset_ctor_init | indent(8) }},
+        {{ sec_clock_half_ctor_init | indent(8) }}
     {
 {%- if not variants %}
 #if !defined(VERILATOR) && defined(VCS)
@@ -298,9 +368,9 @@ public:
 
         {{ sec_bfm_connect | indent(8) }}
 
-        clk.write(true);
-        SC_THREAD(clock_gen);
-        SC_THREAD(reset_driver);
+        {{ sec_clock_start | indent(8) }}
+        {{ sec_clock_threads | indent(8) }}
+        {{ sec_reset_threads | indent(8) }}
 
         end_ctor_init();
 
@@ -318,42 +388,52 @@ private:
 
     {{ sec_hdl_if_decl | indent(4) }}
 
-    sc_signal<bool> rst_n;
-    sc_time clk_half_;
+    {{ sec_reset_decl | indent(4) }}
+    {{ sec_clock_half_decl | indent(4) }}
 
-    void clock_gen() {
-        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
-        // owns timed waits; we only toggle when an edge is requested.
+    // Free-run: toggle every half period. Gated lockstep: the quantum thread
+    // broadcasts one edge request per socketSyncClockHalfPeriod() of advanced
+    // time, and a clock toggles once its own half period has accumulated, so a
+    // slower clock keeps its period at quantum resolution and no clock can
+    // free-run during wait(ack).
+    void clock_gen(sc_signal<bool> &sig, const sc_time &half) {
+        sc_time gated = SC_ZERO_TIME;
         while (true) {
             if (socketSyncTimeGated()) {
                 socketSyncWaitClockEdge();
-                clk.write(!clk.read());
+                gated += socketSyncClockHalfPeriod();
+                if (gated >= half) {
+                    gated -= half;
+                    sig.write(!sig.read());
+                }
             } else {
-                wait(clk_half_);
-                clk.write(!clk.read());
+                wait(half);
+                sig.write(!sig.read());
             }
         }
     }
 
-    void reset_driver() {
-        // rst_n starts deasserted so the first write(false) is a negedge.
-        // Verilator async reset (@(negedge rst_n)) does not run if the pin
-        // is born low and only later rises.
-        // Lockstep: follow socketSyncRstN (boot release + mid-sim MSG_RESET).
-        // Do not wait on clk — gated lockstep deadlocks before the first quantum.
-        // Only when pysocket_sync is connected; otherwise no partner releases rst_n.
-        // Free-run / non-socket: assert, hold, then release.
+    // Lockstep with a connected partner: follow socketSyncRstN (boot release
+    // and mid-sim MSG_RESET) and never wait on a clock, since gated time does
+    // not advance before the first quantum. Otherwise assert, hold for the
+    // declared releaseCycles edges of the reset's own clock, then release.
+    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &clk, int cycles) {
         if (socketSyncLockstepActive()) {
-            rst_n.write(socketSyncRstN());
+            rst.write(socketSyncRstN());
             while (true) {
                 wait(socketSyncRstNEvent());
-                rst_n.write(socketSyncRstN());
+                rst.write(socketSyncRstN());
             }
         } else {
-            rst_n.write(false);
-            wait(5, SC_NS);
-            rst_n.write(true);
+            rst.write(false);
+            for (int cycle = 0; cycle < cycles; cycle++) {
+                wait(clk.posedge_event());
+            }
+            rst.write(true);
         }
     }
+
+    {{ sec_clock_gens | indent(4) }}
+    {{ sec_reset_drivers | indent(4) }}
 
 """

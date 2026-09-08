@@ -18,6 +18,8 @@ public:
     static void disableWatchdog(void); 
 };
 
-
+// Watchdog process body, spawned once per run by sc_main so a design that
+// registers an enabler is protected without declaring a block.
+void watchDogHandler(void);
 
 #endif //WATCHDOG_H

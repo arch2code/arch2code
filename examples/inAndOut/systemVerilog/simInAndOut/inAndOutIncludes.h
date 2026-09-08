@@ -13,10 +13,10 @@
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=constants
 //constants
-const uint32_t ASIZE = 1;  // The size of A
-const uint32_t ASIZE2 = 2;  // The size of A+1
-const uint64_t BIGE33 = 0X1FFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
-const uint64_t BIGE53 = 0X3FFFFFFFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
+inline constexpr uint32_t ASIZE = 1;  // The size of A
+inline constexpr uint32_t ASIZE2 = 2;  // The size of A+1
+inline constexpr uint64_t BIGE33 = 0X1FFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
+inline constexpr uint64_t BIGE53 = 0X3FFFFFFFFFFFFFUL;  // Test constant for numbers slightly bigger than 32 bits
 
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=includes --section=types 

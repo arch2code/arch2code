@@ -24,6 +24,8 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import inAndOut;
+using namespace inAndOut_ns;
 #include "pop_ack_bfm.h"
 #include "rdy_vld_bfm.h"
 #include "req_ack_bfm.h"
@@ -32,20 +34,6 @@
 class inAndOut_hdl_sc_wrapper: public sc_module, public blockBase, public inAndOutBase {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "inAndOut_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < inAndOut_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
-        }
-    };
-
-    static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
     inAndOut_hdl_sv_wrapper *dut_hdl;
@@ -75,8 +63,8 @@ public:
         bIn_bfm("bIn_bfm"),
         dOut_bfm("dOut_bfm"),
         dIn_bfm("dIn_bfm"),
-        rst_n(0),
-        clk_half_(0.5, SC_NS)
+        rst_n("rst_n", true),
+        clk_half_(sc_time(1, SC_NS) / 2)
     {
 #if !defined(VERILATOR) && defined(VCS)
         dut_hdl = new inAndOut_hdl_sv_wrapper("dut_hdl");
@@ -138,8 +126,8 @@ public:
         dIn_bfm.rst_n(rst_n);
 
         clk.write(true);
-        SC_THREAD(clock_gen);
-        SC_THREAD(reset_driver);
+        SC_THREAD(clock_gen_clk);
+        SC_THREAD(reset_driver_rst_n);
 
         end_ctor_init();
 
@@ -165,26 +153,50 @@ private:
     sc_signal<bool> rst_n;
     sc_time clk_half_;
 
-    void clock_gen() {
-        // 1 ns period, 50% duty. Under lockstep gated mode the quantum thread
-        // owns timed waits; we only toggle when an edge is requested.
+    // Free-run: toggle every half period. Gated lockstep: the quantum thread
+    // broadcasts one edge request per socketSyncClockHalfPeriod() of advanced
+    // time, and a clock toggles once its own half period has accumulated, so a
+    // slower clock keeps its period at quantum resolution and no clock can
+    // free-run during wait(ack).
+    void clock_gen(sc_signal<bool> &sig, const sc_time &half) {
+        sc_time gated = SC_ZERO_TIME;
         while (true) {
             if (socketSyncTimeGated()) {
                 socketSyncWaitClockEdge();
-                clk.write(!clk.read());
+                gated += socketSyncClockHalfPeriod();
+                if (gated >= half) {
+                    gated -= half;
+                    sig.write(!sig.read());
+                }
             } else {
-                wait(clk_half_);
-                clk.write(!clk.read());
+                wait(half);
+                sig.write(!sig.read());
             }
         }
     }
 
-    void reset_driver() {
-        for (int i = 0; i < 5; ++i) {
-            wait(clk.posedge_event());
+    // Lockstep with a connected partner: follow socketSyncRstN (boot release
+    // and mid-sim MSG_RESET) and never wait on a clock, since gated time does
+    // not advance before the first quantum. Otherwise assert, hold for the
+    // declared releaseCycles edges of the reset's own clock, then release.
+    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &clk, int cycles) {
+        if (socketSyncLockstepActive()) {
+            rst.write(socketSyncRstN());
+            while (true) {
+                wait(socketSyncRstNEvent());
+                rst.write(socketSyncRstN());
+            }
+        } else {
+            rst.write(false);
+            for (int cycle = 0; cycle < cycles; cycle++) {
+                wait(clk.posedge_event());
+            }
+            rst.write(true);
         }
-        rst_n = true;
     }
+
+    void clock_gen_clk() { clock_gen(clk, clk_half_); }
+    void reset_driver_rst_n() { reset_driver(rst_n, clk, 3); }
 
 // GENERATED_CODE_END
 

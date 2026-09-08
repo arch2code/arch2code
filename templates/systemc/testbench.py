@@ -270,7 +270,6 @@ def ext_sec_body(args, prj, data):
 
 def ext_sec_header(args, prj, data):
 
-    ext_fwd_decl_s = []
     external_blocks = sorted(data['subBlocks'].values())
     isParameterizable = data['isParameterizable']
     # External pseudo-block inherits `<DUT>Inverted{cfg}`. The External class
@@ -283,22 +282,16 @@ def ext_sec_header(args, prj, data):
     # The Inverted base's template argument is the excluded DUT instance's
     # Config when present; otherwise `data` is the DUT block itself.
     cfg = data['dutInvertedCfg'] if data['dutInvertedCfg'] is not None else sel['cfg']
-    # A non-parameterizable child's Base is a plain class: a global-module
-    # forward declaration merges with the module's exported class, so
-    # forward-declaring keeps the header light. A parameterizable child's Base
-    # is a class template; a global-module forward declaration would be a
-    # DISTINCT entity from the module's exported template, so the member type
-    # and the createInstance dynamic_pointer_cast target would carry mismatched
-    # RTTI and the cast would return null. Import the child's Base module
-    # instead so the member type is the real module type (mirrors the DUT's own
-    # <DUT>Testbench importing <DUT>.base).
+    # Each child's Base type is owned by a named module (`export module
+    # <child>.base;`), so importing is the only way to name it: a global-module
+    # forward declaration is a DISTINCT entity under C++20 module ownership -
+    # ill-formed once the module is reachable in the same TU, and for a class
+    # template it gives the createInstance dynamic_pointer_cast a mismatched-RTTI
+    # target so the cast returns null.
     ext_child_base_imports_s = []
-    for blockKey, blockName in sorted(data['subBlocks'].items(), key=lambda item: item[1]):
-        childHasOwnParams = data['subBlockTypes'][blockKey]['hasOwnParams']
-        if childHasOwnParams:
-            ext_child_base_imports_s.append(f'import {cpp_base_module_name(data["subBlockTypes"][blockKey]["blockModuleName"])};')
-        else:
-            ext_fwd_decl_s.append(f'class {blockName}Base;')
+    # sorted for stable emitted import order across regeneration
+    for blockKey, _ in sorted(data['subBlocks'].items(), key=lambda item: item[1]):
+        ext_child_base_imports_s.append(f'import {cpp_base_module_name(data["subBlockTypes"][blockKey]["blockModuleName"])};')
 
     ext_inst_decl_s = []
     external_insts = [v for v in data['subBlockInstances'].values() ]
@@ -396,7 +389,6 @@ def ext_sec_header(args, prj, data):
         channel_includes='\n'.join(channel_include_lines),
         thunker_includes='\n'.join(thunker_include_lines),
         child_base_imports='\n'.join(ext_child_base_imports_s),
-        ext_fwd_decl='\n'.join(ext_fwd_decl_s),
         ext_inst_decl='\n'.join(ext_inst_decl_s),
         ext_chnl_decl='\n'.join(ext_chnl_decl_s),
         ext_thunker_decl='\n'.join(ext_thunker_decl_s)
@@ -504,12 +496,6 @@ import {{basemodule}};
 {%- endif %}
 {%- if thunker_includes %}
 {{thunker_includes}}
-{%- endif %}
-
-{%- if ext_fwd_decl %}
-
-//contained instances forward class declaration
-{{ext_fwd_decl}}
 {%- endif %}
 
 class {{tbclassname}}External: public sc_module, public {{blockname}}Inverted{{cfg}} {

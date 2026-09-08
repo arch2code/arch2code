@@ -103,6 +103,7 @@ class Node:
         self.is_single_entry_list = False  # List converted to dict
         self.is_data_group = False  # Subtable shares parent's key
         self.is_flat = False  # Maintain a top-level qualified-key index during parsing
+        self.is_project_scope = False  # Authored in the project file, stored in a projectName-keyed bucket
         
         # Special behaviors
         self.is_singular = False  # Single value converted to dict
@@ -517,7 +518,10 @@ class Node:
 
             if 'flat' in attrib_list:
                 self.is_flat = True
-                
+
+            if 'projectScope' in attrib_list:
+                self.is_project_scope = True
+
             if 'collapsed' in attrib_list:
                 self.is_collapsed = True
                 
@@ -665,15 +669,93 @@ class Schema:
         # Verify the types section has the required fields and post function for widthLog2 support
         self._validateTypesSchema(schema_file)
         self._validate_context_key_sources(schema_file)
+        self._validate_project_scope_sections(schema_file)
         self._validate_foreign_key_lookups(schema_file)
+
+    def _project_scope_node_paths(self) -> dict:
+        """Every node inside a projectScope section's subtree, mapped to the
+        top-level section that declares the scope.
+
+        A nested node is parsed with the declaring projectName as its context
+        just like its parent, so the section's resolution constraints apply to
+        its whole subtree. data_schema is walked explicitly because it is
+        deliberately excluded from sub_nodes, and the shipped schema puts the
+        bulk of a custom-handler section's validators there.
+
+        The mapped section name orders a project-scoped reference against its
+        target in schema declaration order."""
+        owners = {}
+
+        def walk(node: 'Node', section: str):
+            owners[node.full_path] = section
+            for sub_node in node.sub_nodes.values():
+                walk(sub_node, section)
+            if node.data_schema:
+                walk(node.data_schema, section)
+
+        for section, node in self.sections.items():
+            if node.is_project_scope:
+                walk(node, section)
+        return owners
+
+    def _validate_project_scope_sections(self, schema_file: str):
+        """A projectScope section must be a top-level section, and must be flat."""
+        for node in self.nodes.values():
+            if node.is_project_scope and node.context != "":
+                printError(
+                    f"Bad schema detected in {schema_file}. "
+                    f"Node {node.full_path} declares _attribs: [projectScope] but is nested "
+                    f"inside '{node.context}'. projectScope is a property of a whole top-level "
+                    f"section: the project-file pre-pass selects sections by name, so the "
+                    f"attribute has no effect here. Declare it on the top-level section."
+                )
+                exit(warningAndErrorReport())
+            if node.is_project_scope and not node.is_flat:
+                printError(
+                    f"Bad schema detected in {schema_file}. "
+                    f"Section {node.full_path} declares _attribs: [projectScope] without "
+                    f"'flat'. Project scope composes rows across projects by their qualified "
+                    f"storage key, which only a flat section maintains."
+                )
+                exit(warningAndErrorReport())
 
     def _validate_foreign_key_lookups(self, schema_file: str):
         """Validate schema contracts required by parse-time FK lookup."""
+        project_scope_paths = self._project_scope_node_paths()
+        # top-level declaration order, which is the order the pre-pass parses in
+        section_order = {name: index for index, name in enumerate(self.sections)}
         for source_node in self.nodes.values():
             for source_field_name, source_field in source_node.fields.items():
                 validator = source_field.validator
-                if not validator or validator.rule_type != 'section':
+                if not validator:
                     continue
+
+                # Checked on EVERY validator, before the rule_type gate
+                # (SCHEMA_SPECIFICATION.md rule 5 is unconditional): an unknown
+                # scope would otherwise reach lookupInScope as a context name and
+                # fail far from the schema line that caused it.
+                if validator.scope not in (None, 'global', 'project'):
+                    printError(
+                        f"Bad schema detected in {schema_file}. "
+                        f"Section {source_node.full_path}, field '{source_field_name}' declares "
+                        f"unknown scope '{validator.scope}'. Valid scopes are 'project', 'global', "
+                        f"or omitted for the referring row's include chain."
+                    )
+                    exit(warningAndErrorReport())
+
+                if validator.rule_type != 'section':
+                    continue
+
+                if source_node.full_path in project_scope_paths and validator.scope is None:
+                    printError(
+                        f"Bad schema detected in {schema_file}. "
+                        f"Section {source_node.full_path}, field '{source_field_name}' is a field of "
+                        f"a projectScope section and validates against '{validator.section}' with no "
+                        f"scope. A project-scoped row is parsed with its projectName as context, so "
+                        f"there is no include chain to walk; declare scope: project (or scope: global "
+                        f"with architect signoff)."
+                    )
+                    exit(warningAndErrorReport())
 
                 target_node = self.get_node(validator.section)
                 if target_node is None:
@@ -693,7 +775,52 @@ class Schema:
                     )
                     exit(warningAndErrorReport())
 
+                # Pairing enforced in both directions: a projectName-keyed bucket
+                # is reachable by neither an include-chain nor a global lookup.
+                if validator.scope == 'project' and not target_node.is_project_scope:
+                    printError(
+                        f"Bad schema detected in {schema_file}. "
+                        f"Section {source_node.full_path}, field '{source_field_name}' declares "
+                        f"scope: project against '{validator.section}', which is not declared "
+                        f"_attribs: [projectScope]."
+                    )
+                    exit(warningAndErrorReport())
+                if target_node.is_project_scope and validator.scope != 'project':
+                    printError(
+                        f"Bad schema detected in {schema_file}. "
+                        f"Section {source_node.full_path}, field '{source_field_name}' validates "
+                        f"against projectScope section '{validator.section}' but does not declare "
+                        f"scope: project."
+                    )
+                    exit(warningAndErrorReport())
+
+                # A user's project file depends on the order of two sections in
+                # this file, and this check is what enforces it. Equal indices are
+                # a section referencing itself, which resolves in authored row
+                # order, so the comparison is strict.
+                if validator.scope == 'project' and source_node.full_path in project_scope_paths:
+                    owning_section = project_scope_paths[source_node.full_path]
+                    if section_order[validator.section] > section_order[owning_section]:
+                        printError(
+                            f"Bad schema detected in {schema_file}. "
+                            f"Section {source_node.full_path}, field '{source_field_name}' declares "
+                            f"scope: project against '{validator.section}', which is declared AFTER "
+                            f"'{owning_section}' in this file. The project-file pre-pass parses "
+                            f"project-scoped sections in declaration order and validates foreign "
+                            f"keys as it parses, so '{validator.section}' would not yet be "
+                            f"populated. Move '{validator.section}' above '{owning_section}'."
+                        )
+                        exit(warningAndErrorReport())
+
                 if source_field.is_combo:
+                    if validator.scope == 'project':
+                        printError(
+                            f"Bad schema detected in {schema_file}. "
+                            f"Section {source_node.full_path}, combo FK field '{source_field_name}' "
+                            f"declares scope: project. Project scope resolves by a direct hit on the "
+                            f"target's storage key and cannot match combo component fields."
+                        )
+                        exit(warningAndErrorReport())
                     for combo_source in source_field.combo_sources:
                         if not source_node.has_field(combo_source):
                             printError(
@@ -932,10 +1059,12 @@ class Schema:
                     # Handle validator
                     if my_validate is not None:
                         validator = ValidationRule('section' if 'section' in my_validate else 'values')
+                        # Captured for every rule type, not just section ones, so an
+                        # unrecognized scope is caught wherever it is authored.
+                        validator.scope = my_validate.get('scope')
                         if 'section' in my_validate:
                             validator.section = my_validate['section']
                             validator.field = my_validate.get('field')
-                            validator.scope = my_validate.get('scope')
                             # Mark field as foreign key (references another table)
                             field.is_foreign_key = True
                             # Add fieldKey for lookup validators (but not for combo keys)
@@ -1205,7 +1334,8 @@ class Schema:
             'comboKey': {},
             'comboField': {},
             'singular': {},
-            'flat': {}
+            'flat': {},
+            'projectScope': {}
         }
         
         # Convert nodes back to dict structure
@@ -1238,6 +1368,9 @@ class Schema:
 
             # Store flat-index policy
             data['flat'][full_path] = node.is_flat
+
+            # Store project-scope policy
+            data['projectScope'][full_path] = node.is_project_scope
             
             # Store indexes
             data['indexes'][full_path] = node.indexes

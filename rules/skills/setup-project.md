@@ -85,7 +85,22 @@ Guide the user through initializing a new project, setting up the directory stru
       registers:
         alignment: 8
         sortDescending: true
+
+    # Optional: project-scoped clocks and resets (omit both for the built-in
+    # clk / rst_n). Exactly one entry per section carries default: true.
+    clocks:
+      clk:     { desc: "main clock",  default: true, period: 1, timeUnit: ns }
+      clkSlow: { desc: "slow clock",  period: 3, timeUnit: ns }
+    resets:
+      rst_n:     { desc: "main reset", default: true, clock: clk }
+      rstSlow_n: { desc: "slow reset", clock: clkSlow, releaseCycles: 4 }
     ```
+
+    *   **`clocks:` / `resets:`** are project-scoped: declared here, referenced by name from any design file of this project, and invisible to other projects in a composed build. Design YAML must not declare them.
+        *   `clocks.<name>`: `desc` (required), `default` (exactly one `true` per project), `period` (positive integer, default `1`), `timeUnit` (`ps`, `ns`, `us`; default `ns`). `period`/`timeUnit` drive only the co-simulation wrapper's generated clock; they carry no synthesis meaning.
+        *   `resets.<name>`: `desc` (required), `default` (exactly one `true`), `clock` (the domain the reset is released in; default: the project default clock), `releaseCycles` (positive integer, default `3`; edges of the reset's own clock before release).
+        *   The declared key is the emitted port name verbatim (`rst_n`, not `rst` plus a suffix). A clock name and a reset name may not collide. Every reset is active-low; there is no polarity field.
+    *   For how blocks and connections pick up these domains, see **Clocks and Resets** in `design-architecture.md`.
 
 3.  **Address Policy and Register Decode:**
     *   Place reusable address-policy sections in `project.yaml`:

@@ -16,23 +16,23 @@ apbAddrSt apb_addr;
 assign apb_addr = apbAddrSt'(cpu_main.paddr) & apbAddrSt'(32'hfff_ffff);
 //signals for interface cpu_main
 apbAddrSt paddr_q;
-`DFF (paddr_q, cpu_main.paddr)
+`DFF_CLK(clk, paddr_q, cpu_main.paddr)
 apbDataSt pwdata_q;
-`DFF (pwdata_q, cpu_main.pwdata)
+`DFF_CLK(clk, pwdata_q, cpu_main.pwdata)
 logic penable_q;
-`DFF (penable_q, cpu_main.penable)
+`DFF_CLK(clk, penable_q, cpu_main.penable)
 logic pwrite_q;
-`DFF (pwrite_q, cpu_main.pwrite)
+`DFF_CLK(clk, pwrite_q, cpu_main.pwrite)
 
 logic pready;
 logic set_trans_active;
 logic trans_active;
-`SCFF(trans_active, set_trans_active, pready)
+`SCFF_CLK(clk, trans_active, set_trans_active, pready)
 
 //signals for interface apbReg_uBlockG
 logic apbReg_uBlockG_psel;
 logic apbReg_uBlockG_next_psel;
-`SCFF(apbReg_uBlockG_psel, apbReg_uBlockG_next_psel, apbReg_uBlockG.pready)
+`SCFF_CLK(clk, apbReg_uBlockG_psel, apbReg_uBlockG_next_psel, apbReg_uBlockG.pready)
 
 assign apbReg_uBlockG.paddr   = paddr_q;
 assign apbReg_uBlockG.penable = penable_q & apbReg_uBlockG_psel;
@@ -43,7 +43,7 @@ assign apbReg_uBlockG.pwdata  = pwdata_q;
 //signals for interface apbReg_uBlockB
 logic apbReg_uBlockB_psel;
 logic apbReg_uBlockB_next_psel;
-`SCFF(apbReg_uBlockB_psel, apbReg_uBlockB_next_psel, apbReg_uBlockB.pready)
+`SCFF_CLK(clk, apbReg_uBlockB_psel, apbReg_uBlockB_next_psel, apbReg_uBlockB.pready)
 
 assign apbReg_uBlockB.paddr   = paddr_q;
 assign apbReg_uBlockB.penable = penable_q & apbReg_uBlockB_psel;
@@ -54,7 +54,7 @@ assign apbReg_uBlockB.pwdata  = pwdata_q;
 //signals for interface apbReg_uBlockA
 logic apbReg_uBlockA_psel;
 logic apbReg_uBlockA_next_psel;
-`SCFF(apbReg_uBlockA_psel, apbReg_uBlockA_next_psel, apbReg_uBlockA.pready)
+`SCFF_CLK(clk, apbReg_uBlockA_psel, apbReg_uBlockA_next_psel, apbReg_uBlockA.pready)
 
 assign apbReg_uBlockA.paddr   = paddr_q;
 assign apbReg_uBlockA.penable = penable_q & apbReg_uBlockA_psel;
@@ -101,9 +101,9 @@ always_comb begin
     end
 end
 
-`DFF(pready, cpu_main_next_pready)
-`DFF(prdata, cpu_main_next_prdata)
-`DFF(pslverr, cpu_main_next_pslverr)
+`DFF_CLK(clk, pready, cpu_main_next_pready)
+`DFF_CLK(clk, prdata, cpu_main_next_prdata)
+`DFF_CLK(clk, pslverr, cpu_main_next_pslverr)
 assign cpu_main.pready  = pready;
 assign cpu_main.prdata  = prdata;
 assign cpu_main.pslverr = pslverr;

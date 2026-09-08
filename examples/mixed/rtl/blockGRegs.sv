@@ -24,7 +24,7 @@ module mixed_blockGRegs
     dRegSt rwG_reg;
     logic rwG_reg_update_0;
     assign rwG.data = rwG_reg;
-    `DFFREN(rwG_reg[6:0], apbReg.pwdata[6:0], rwG_reg_update_0, 7'h00000000)
+    `DFFREN_CLK(clk, rwG_reg[6:0], apbReg.pwdata[6:0], rwG_reg_update_0, 7'h00000000)
 
     logic wr_select;
     logic rd_select;
@@ -70,9 +70,9 @@ module mixed_blockGRegs
     // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
-            `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(rd_ready,   nxt_rd_ready,   '0)
-            `DFFR(rd_data,    nxt_rd_data,    '0)
+            `DFFR_CLK(clk, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_CLK(clk, rd_ready,   nxt_rd_ready,   '0)
+            `DFFR_CLK(clk, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;

@@ -26,7 +26,7 @@ module apbDecode_blockBRegs
     un0BRegSt rwUn0B_reg;
     logic rwUn0B_reg_update_0;
     assign rwUn0B.data = rwUn0B_reg;
-    `DFFREN(rwUn0B_reg[23:0], apbReg.pwdata[23:0], rwUn0B_reg_update_0, 24'h00000000)
+    `DFFREN_CLK(clk, rwUn0B_reg[23:0], apbReg.pwdata[23:0], rwUn0B_reg_update_0, 24'h00000000)
 
     aSizeRegSt roB_reg;
     assign roB_reg = roB.data;
@@ -41,14 +41,14 @@ module apbDecode_blockBRegs
     logic nxt_blockBTable_rd_enable, blockBTable_rd_enable, blockBTable_rd_capture;
     logic blockBTable_wr_enable;
 
-    `DFF(blockBTable_addr, bMemAddrSt'(apb_addr[31:4]))
-    `DFF(blockBTable_wr_enable, blockBTable_update_2)
-    `DFF(blockBTable_rd_enable, nxt_blockBTable_rd_enable)
-    `DFF(blockBTable_rd_capture, blockBTable_rd_enable)
+    `DFF_CLK(clk, blockBTable_addr, bMemAddrSt'(apb_addr[31:4]))
+    `DFF_CLK(clk, blockBTable_wr_enable, blockBTable_update_2)
+    `DFF_CLK(clk, blockBTable_rd_enable, nxt_blockBTable_rd_enable)
+    `DFF_CLK(clk, blockBTable_rd_capture, blockBTable_rd_enable)
 
-    `DFFEN(blockBTable_data[31:0], nxt_blockBTable_data[31:0], blockBTable_update_0)
-    `DFFEN(blockBTable_data[63:32], nxt_blockBTable_data[63:32], blockBTable_update_1)
-    `DFFEN(blockBTable_data[95:64], nxt_blockBTable_data[95:64], blockBTable_update_2)
+    `DFFEN_CLK(clk, blockBTable_data[31:0], nxt_blockBTable_data[31:0], blockBTable_update_0)
+    `DFFEN_CLK(clk, blockBTable_data[63:32], nxt_blockBTable_data[63:32], blockBTable_update_1)
+    `DFFEN_CLK(clk, blockBTable_data[95:64], nxt_blockBTable_data[95:64], blockBTable_update_2)
 
     assign blockBTable.enable      = blockBTable_rd_enable | blockBTable_wr_enable;
     assign blockBTable.wr_en       = blockBTable_wr_enable;
@@ -148,9 +148,9 @@ module apbDecode_blockBRegs
     // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
-            `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(rd_ready,   nxt_rd_ready,   '0)
-            `DFFR(rd_data,    nxt_rd_data,    '0)
+            `DFFR_CLK(clk, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_CLK(clk, rd_ready,   nxt_rd_ready,   '0)
+            `DFFR_CLK(clk, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;

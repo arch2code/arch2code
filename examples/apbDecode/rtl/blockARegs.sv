@@ -37,8 +37,8 @@ module apbDecode_blockARegs
     logic rwUn0A_reg_update_0;
     logic rwUn0A_reg_update_1;
     assign rwUn0A.data = rwUn0A_reg;
-    `DFFREN(rwUn0A_reg[31:0], apbReg.pwdata[31:0], rwUn0A_reg_update_0, 32'h34abcdef)
-    `DFFREN(rwUn0A_reg[47:32], apbReg.pwdata[15:0], rwUn0A_reg_update_1, 16'h00000012)
+    `DFFREN_CLK(clk, rwUn0A_reg[31:0], apbReg.pwdata[31:0], rwUn0A_reg_update_0, 32'h34abcdef)
+    `DFFREN_CLK(clk, rwUn0A_reg[47:32], apbReg.pwdata[15:0], rwUn0A_reg_update_1, 16'h00000012)
 
     un0ARegSt roUn0A_reg;
     assign roUn0A_reg = roUn0A.data;
@@ -55,13 +55,13 @@ module apbDecode_blockARegs
     logic nxt_blockATable0_rd_enable, blockATable0_rd_enable, blockATable0_rd_capture;
     logic blockATable0_wr_enable;
 
-    `DFF(blockATable0_addr, aMemAddrSt'(apb_addr[31:3]))
-    `DFF(blockATable0_wr_enable, blockATable0_update_1)
-    `DFF(blockATable0_rd_enable, nxt_blockATable0_rd_enable)
-    `DFF(blockATable0_rd_capture, blockATable0_rd_enable)
+    `DFF_CLK(clk, blockATable0_addr, aMemAddrSt'(apb_addr[31:3]))
+    `DFF_CLK(clk, blockATable0_wr_enable, blockATable0_update_1)
+    `DFF_CLK(clk, blockATable0_rd_enable, nxt_blockATable0_rd_enable)
+    `DFF_CLK(clk, blockATable0_rd_capture, blockATable0_rd_enable)
 
-    `DFFEN(blockATable0_data[31:0], nxt_blockATable0_data[31:0], blockATable0_update_0)
-    `DFFEN(blockATable0_data[62:32], nxt_blockATable0_data[62:32], blockATable0_update_1)
+    `DFFEN_CLK(clk, blockATable0_data[31:0], nxt_blockATable0_data[31:0], blockATable0_update_0)
+    `DFFEN_CLK(clk, blockATable0_data[62:32], nxt_blockATable0_data[62:32], blockATable0_update_1)
 
     assign blockATable0.enable      = blockATable0_rd_enable | blockATable0_wr_enable;
     assign blockATable0.wr_en       = blockATable0_wr_enable;
@@ -77,13 +77,13 @@ module apbDecode_blockARegs
     logic nxt_blockATable1_rd_enable, blockATable1_rd_enable, blockATable1_rd_capture;
     logic blockATable1_wr_enable;
 
-    `DFF(blockATable1_addr, aMemAddrSt'(apb_addr[31:3]))
-    `DFF(blockATable1_wr_enable, blockATable1_update_1)
-    `DFF(blockATable1_rd_enable, nxt_blockATable1_rd_enable)
-    `DFF(blockATable1_rd_capture, blockATable1_rd_enable)
+    `DFF_CLK(clk, blockATable1_addr, aMemAddrSt'(apb_addr[31:3]))
+    `DFF_CLK(clk, blockATable1_wr_enable, blockATable1_update_1)
+    `DFF_CLK(clk, blockATable1_rd_enable, nxt_blockATable1_rd_enable)
+    `DFF_CLK(clk, blockATable1_rd_capture, blockATable1_rd_enable)
 
-    `DFFEN(blockATable1_data[31:0], nxt_blockATable1_data[31:0], blockATable1_update_0)
-    `DFFEN(blockATable1_data[62:32], nxt_blockATable1_data[62:32], blockATable1_update_1)
+    `DFFEN_CLK(clk, blockATable1_data[31:0], nxt_blockATable1_data[31:0], blockATable1_update_0)
+    `DFFEN_CLK(clk, blockATable1_data[62:32], nxt_blockATable1_data[62:32], blockATable1_update_1)
 
     assign blockATable1.enable      = blockATable1_rd_enable | blockATable1_wr_enable;
     assign blockATable1.wr_en       = blockATable1_wr_enable;
@@ -247,9 +247,9 @@ module apbDecode_blockARegs
     // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
-            `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(rd_ready,   nxt_rd_ready,   '0)
-            `DFFR(rd_data,    nxt_rd_data,    '0)
+            `DFFR_CLK(clk, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_CLK(clk, rd_ready,   nxt_rd_ready,   '0)
+            `DFFR_CLK(clk, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;

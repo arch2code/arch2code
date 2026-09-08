@@ -15,23 +15,23 @@ apbAddrSt apb_addr;
 assign apb_addr = apbAddrSt'(apbReg.paddr) & apbAddrSt'(32'hfff_ffff);
 //signals for interface apbReg
 apbAddrSt paddr_q;
-`DFF (paddr_q, apbReg.paddr)
+`DFF_CLK(clk, paddr_q, apbReg.paddr)
 apbDataSt pwdata_q;
-`DFF (pwdata_q, apbReg.pwdata)
+`DFF_CLK(clk, pwdata_q, apbReg.pwdata)
 logic penable_q;
-`DFF (penable_q, apbReg.penable)
+`DFF_CLK(clk, penable_q, apbReg.penable)
 logic pwrite_q;
-`DFF (pwrite_q, apbReg.pwrite)
+`DFF_CLK(clk, pwrite_q, apbReg.pwrite)
 
 logic pready;
 logic set_trans_active;
 logic trans_active;
-`SCFF(trans_active, set_trans_active, pready)
+`SCFF_CLK(clk, trans_active, set_trans_active, pready)
 
 //signals for interface apbReg_uBlockB
 logic apbReg_uBlockB_psel;
 logic apbReg_uBlockB_next_psel;
-`SCFF(apbReg_uBlockB_psel, apbReg_uBlockB_next_psel, apbReg_uBlockB.pready)
+`SCFF_CLK(clk, apbReg_uBlockB_psel, apbReg_uBlockB_next_psel, apbReg_uBlockB.pready)
 
 assign apbReg_uBlockB.paddr   = paddr_q;
 assign apbReg_uBlockB.penable = penable_q & apbReg_uBlockB_psel;
@@ -42,7 +42,7 @@ assign apbReg_uBlockB.pwdata  = pwdata_q;
 //signals for interface apbReg_uBlockA
 logic apbReg_uBlockA_psel;
 logic apbReg_uBlockA_next_psel;
-`SCFF(apbReg_uBlockA_psel, apbReg_uBlockA_next_psel, apbReg_uBlockA.pready)
+`SCFF_CLK(clk, apbReg_uBlockA_psel, apbReg_uBlockA_next_psel, apbReg_uBlockA.pready)
 
 assign apbReg_uBlockA.paddr   = paddr_q;
 assign apbReg_uBlockA.penable = penable_q & apbReg_uBlockA_psel;
@@ -82,9 +82,9 @@ always_comb begin
     end
 end
 
-`DFF(pready, apbReg_next_pready)
-`DFF(prdata, apbReg_next_prdata)
-`DFF(pslverr, apbReg_next_pslverr)
+`DFF_CLK(clk, pready, apbReg_next_pready)
+`DFF_CLK(clk, prdata, apbReg_next_prdata)
+`DFF_CLK(clk, pslverr, apbReg_next_pslverr)
 assign apbReg.pready  = pready;
 assign apbReg.prdata  = prdata;
 assign apbReg.pslverr = pslverr;

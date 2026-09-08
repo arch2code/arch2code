@@ -2,10 +2,10 @@
 
 // GENERATED_CODE_PARAM --block=leaf
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: leaf
-module leaf
+//module as defined by block: hier_leaf
+module hier_leaf
 // Generated Import package statement(s)
-import core_package::*;
+import hier_core_package::*;
 (
     push_ack_if.dst dIn,
     push_ack_if.src dOut,

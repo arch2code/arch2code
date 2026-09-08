@@ -14,6 +14,7 @@
 #include "testBenchConfigFactory.h"
 #include "synchLock.h"
 #include "simController.h"
+#include "watchDog.h"
 import a2c.endOfTest;
 
 #ifdef VERILATOR
@@ -266,6 +267,10 @@ int sc_main(int argc, char* argv[])
         wait(simController::startupDelay);
         endOfTestState::GetInstance().setStartupComplete();
     });
+
+    // Stall detection, available to EVERY project without declaring a block.
+    // Inert until the design registers an enabler and votes it on.
+    sc_spawn([]() { watchDogHandler(); });
 
     std::stringstream exitMsg;
     //std::cout << instanceFactory::dumpInstances();

@@ -8,7 +8,8 @@
 // GENERATED_CODE_PARAM --block=hier_tb --excludeInst=u_core
 // GENERATED_CODE_BEGIN --template=tbExternal --section=header
 
-#include "coreBase.h"
+#include "instanceFactory.h"
+import hier_core.base;
 
 class coreExternal: public sc_module, public coreInverted {
 

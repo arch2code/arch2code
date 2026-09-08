@@ -55,5 +55,14 @@ void q_assert_body(bool dump, const char * file, int line, std::string ctx, std:
     if (inThreadProcess()) {
         wait(SC_ZERO_TIME);
     }
+    // Post-simulation there is no scheduler left to stop and no process to
+    // unwind, so an abort here is the only outcome the caller can see: main()
+    // never reaches exitSummary() and the shell gets a signal instead of the
+    // exit code errorCode::fail just recorded. Returning hands control back to
+    // the caller, which is what makes a failing run report itself. Asserts from
+    // elaboration still abort, because nothing downstream would report them.
+    if (sc_get_status() & (SC_STOPPED | SC_END_OF_SIMULATION)) {
+        return;
+    }
     sc_assert(false); // should not get here
 }

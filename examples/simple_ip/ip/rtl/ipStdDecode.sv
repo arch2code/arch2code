@@ -16,23 +16,23 @@ ipRegAddrSt apb_addr;
 assign apb_addr = ipRegAddrSt'(ipReg.paddr) & ipRegAddrSt'(32'hfff_ffff);
 //signals for interface ipReg
 ipRegAddrSt paddr_q;
-`DFF (paddr_q, ipReg.paddr)
+`DFF_CLK(clk, paddr_q, ipReg.paddr)
 ipRegDataSt pwdata_q;
-`DFF (pwdata_q, ipReg.pwdata)
+`DFF_CLK(clk, pwdata_q, ipReg.pwdata)
 logic penable_q;
-`DFF (penable_q, ipReg.penable)
+`DFF_CLK(clk, penable_q, ipReg.penable)
 logic pwrite_q;
-`DFF (pwrite_q, ipReg.pwrite)
+`DFF_CLK(clk, pwrite_q, ipReg.pwrite)
 
 logic pready;
 logic set_trans_active;
 logic trans_active;
-`SCFF(trans_active, set_trans_active, pready)
+`SCFF_CLK(clk, trans_active, set_trans_active, pready)
 
 //signals for interface ipReg_uIp
 logic ipReg_uIp_psel;
 logic ipReg_uIp_next_psel;
-`SCFF(ipReg_uIp_psel, ipReg_uIp_next_psel, ipReg_uIp.pready)
+`SCFF_CLK(clk, ipReg_uIp_psel, ipReg_uIp_next_psel, ipReg_uIp.pready)
 
 assign ipReg_uIp.paddr   = paddr_q;
 assign ipReg_uIp.penable = penable_q & ipReg_uIp_psel;
@@ -65,9 +65,9 @@ always_comb begin
     end
 end
 
-`DFF(pready, ipReg_next_pready)
-`DFF(prdata, ipReg_next_prdata)
-`DFF(pslverr, ipReg_next_pslverr)
+`DFF_CLK(clk, pready, ipReg_next_pready)
+`DFF_CLK(clk, prdata, ipReg_next_prdata)
+`DFF_CLK(clk, pslverr, ipReg_next_pslverr)
 assign ipReg.pready  = pready;
 assign ipReg.prdata  = prdata;
 assign ipReg.pslverr = pslverr;

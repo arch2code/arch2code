@@ -19,6 +19,7 @@ Two functionality-executing checks, no committed database read-back:
    literal), and the package must not carry the constant.
 """
 
+import copy
 import os
 import shutil
 import sys
@@ -32,6 +33,14 @@ if base_dir not in sys.path:
 import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectCreate, projectOpen, qualifiedKeyContext
 from templates.systemVerilog import package
+
+# projectCreate keeps its parse state in CLASS attributes, so two in-process
+# builds in one interpreter share it. Snapshotted at import time, before any
+# build has mutated one.
+PRISTINE_CLASS_STATE = {
+    name: copy.deepcopy(value) for name, value in vars(projectCreate).items()
+    if not name.startswith('_') and not callable(value)
+}
 
 IP_TEST_PROJECT = os.path.join(
     base_dir, 'examples', 'ip_test', 'prj', 'yaml', 'ip_testProject.yaml')
@@ -138,23 +147,27 @@ def _build_fresh_db_from_project(project_yaml):
 
 
 def _reset_project_create_class_state():
-    projectCreate.data = dict()
-    projectCreate.flatData = dict()
-    projectCreate.counterGroup = {}
-    projectCreate.counterGroupControl = {}
-    projectCreate.counterData = {}
-    projectCreate.addressObjects = {}
-    projectCreate.yamlAllFiles = {}
-    projectCreate.yamlUnread = []
-    projectCreate.yamlRaw = {}
-    projectCreate.yamlDependancies = {}
-    projectCreate.yamlContext = {}
-    projectCreate.enums = {}
-    projectCreate.qualEnums = {}
-    projectCreate.includeName = {}
-    projectCreate.includeValid = {}
-    projectCreate.ipParametersConstants = {}
-    projectCreate.errorState = False
+    """Return projectCreate's class-level state to its import-time values."""
+    if not any(isinstance(value, (dict, list, set))
+               for value in PRISTINE_CLASS_STATE.values()):
+        raise AssertionError(
+            "no mutable class attributes were discovered on projectCreate, so "
+            "the import-time snapshot is empty and this reset does nothing; each "
+            "in-process build would inherit the previous build's parse state")
+    # Re-derived from the class, not from the snapshot's own keys, so an omission
+    # is visible. The excluded underscore attributes are read-only templates.
+    missed = sorted(name for name, value in vars(projectCreate).items()
+                    if not name.startswith('_')
+                    and isinstance(value, (dict, list, set))
+                    and name not in PRISTINE_CLASS_STATE)
+    if missed:
+        raise AssertionError(
+            f"projectCreate carries mutable class attributes {missed} that the "
+            f"import-time snapshot does not hold, so this reset leaves them "
+            f"holding the previous build's parse state. The snapshot must "
+            f"discover the attributes from the class rather than select them.")
+    for name, pristine in PRISTINE_CLASS_STATE.items():
+        setattr(projectCreate, name, copy.deepcopy(pristine))
 
 
 def test_localparam_emitted_symbolic_per_module():
