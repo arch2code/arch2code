@@ -1393,7 +1393,7 @@ class projectOpen:
         # declaring project's declaration order with the default first - so the
         # instance-tree union is never re-walked here. The list entries are the
         # declaration rows themselves, so a consumer reads period / timeUnit /
-        # active / the reset's clock without a second lookup.
+        # the reset's clock without a second lookup.
         g.cur.execute("SELECT kind, itemKey FROM blockClocksResets "
                       "WHERE blockKey = ? ORDER BY kind, orderIndex", (ret['qualBlock'],))
         ret['clocks'] = list()
@@ -3613,7 +3613,7 @@ class projectCreate:
         'clocks': {'clk': {'desc': 'implicit default clock',
                            'default': True, 'period': 1, 'timeUnit': 'ns'}},
         'resets': {'rst_n': {'desc': 'implicit default reset',
-                             'default': True, 'active': 'low'}},
+                             'default': True}},
     }
 
     def __init__(self, projFile, dbFile):

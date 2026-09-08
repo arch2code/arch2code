@@ -5,7 +5,9 @@
 # those must resolve to distinct qualified keys per project, with no duplicate-key
 # error and no shadowing. That is why the fixture is composed, not monolithic.
 #
-# Nothing is emitted from clocks:/resets: today: they are declarations only.
+# The second clock and reset are carried by twoClkSlowTick alone (see
+# yaml/twoClk.yaml), so the twoClk container declares both domains and its
+# co-simulation wrapper constructs both sc_clocks and both reset drivers.
 
 yamlFormat: 2
 projectName: twoClk
@@ -40,11 +42,9 @@ resets:
     rst_n:
         desc: "twoClk main reset, clk domain"
         default: true
-        active: low
         clock: clk
     rstSlow_n:
         desc: "twoClk slow-domain reset, clkSlow domain"
-        active: low
         clock: clkSlow
 
 instanceGroups:

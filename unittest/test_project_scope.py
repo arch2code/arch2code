@@ -196,7 +196,7 @@ ROOT_CLOCKS = ("clocks:\n"
                "  clk: { desc: \"assembler clock\", default: true, period: 1, timeUnit: ns }\n"
                "\n"
                "resets:\n"
-               "  rst_n: { desc: \"assembler reset\", default: true, active: low, clock: clk }\n")
+               "  rst_n: { desc: \"assembler reset\", default: true, clock: clk }\n")
 
 CHILD_CLOCKS = ("clocks:\n"
                 "  clk: { desc: \"child IP clock\", default: true, period: 4, timeUnit: ns }\n")
@@ -204,7 +204,7 @@ CHILD_CLOCKS = ("clocks:\n"
 # The same two declarations with resets: authored ABOVE clocks:.
 REVERSED_ROOT_CLOCKS = (
     "resets:\n"
-    "  rst_n: { desc: \"assembler reset\", default: true, active: low, clock: clk }\n"
+    "  rst_n: { desc: \"assembler reset\", default: true, clock: clk }\n"
     "\n"
     "clocks:\n"
     "  clk: { desc: \"assembler clock\", default: true, period: 1, timeUnit: ns }\n")
@@ -975,10 +975,10 @@ def run_implicit_default_build():
                 f"resets rows are {sorted(resets)}, expected exactly "
                 f"['rst_n/assembler']")
         row = resets['rst_n/assembler']
-        if not (row['default'] and row['active'] == 'low'):
+        if not row['default']:
             raise AssertionError(
-                f"the injected reset is default={row['default']} "
-                f"active={row['active']}, expected the built-in default/low")
+                f"the injected reset is default={row['default']}, expected the "
+                f"built-in default")
         # The injected row states no clock:, so the stored value can only come
         # from the unstated-means-default resolution.
         if (row['clock'], row['clockKey']) != ('clk', 'clk/assembler'):
@@ -1360,6 +1360,7 @@ def run_diagnostic_cases():
         "a scope: project reference from a special context is rejected",
         ["_a2csystem", "belongs to no project"],
         root_clocks=ROOT_CLOCKS, system_scope_field=True))
+
     return all(results)
 
 

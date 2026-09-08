@@ -49,8 +49,8 @@ clocks:
     clkSlow: { desc: "a slower, non-commensurate clock", period: 3, timeUnit: ns }
 
 resets:
-    rst_n:     { desc: "the default reset", default: true, active: low, clock: clk }
-    rstSlow_n: { desc: "the slow-domain reset", active: low, clock: clkSlow }
+    rst_n:     { desc: "the default reset", default: true, clock: clk }
+    rstSlow_n: { desc: "the slow-domain reset", clock: clkSlow }
 """
 
 PROJECT_TAIL = """
@@ -173,9 +173,9 @@ clocks:
     clkSlow: { desc: "a slower, non-commensurate clock", period: 3, timeUnit: ns }
 
 resets:
-    rst_n:      { desc: "the default reset", default: true, active: low, clock: clk }
-    rstSlowA_n: { desc: "the slow domain's first declared reset", active: low, clock: clkSlow }
-    rstSlowB_n: { desc: "a second reset in the same domain", active: low, clock: clkSlow }
+    rst_n:      { desc: "the default reset", default: true, clock: clk }
+    rstSlowA_n: { desc: "the slow domain's first declared reset", clock: clkSlow }
+    rstSlowB_n: { desc: "a second reset in the same domain", clock: clkSlow }
 """
 
 # Three clocks, and two resets in each of two domains. This is what it takes for
@@ -191,11 +191,11 @@ clocks:
     clkPico: { desc: "a third clock, in a unit other than ns", period: 500, timeUnit: ps }
 
 resets:
-    rst_n:      { desc: "the default reset", default: true, active: low, clock: clk }
-    rstAlt_n:   { desc: "a second reset in the default clock's domain", active: low, clock: clk }
-    rstSlow_n:  { desc: "the slow-domain reset", active: low, clock: clkSlow }
-    rstPicoA_n: { desc: "the pico domain's first declared reset", active: low, clock: clkPico }
-    rstPicoB_n: { desc: "a second reset in the pico domain", active: low, clock: clkPico }
+    rst_n:      { desc: "the default reset", default: true, clock: clk }
+    rstAlt_n:   { desc: "a second reset in the default clock's domain", clock: clk }
+    rstSlow_n:  { desc: "the slow-domain reset", clock: clkSlow }
+    rstPicoA_n: { desc: "the pico domain's first declared reset", clock: clkPico }
+    rstPicoB_n: { desc: "a second reset in the pico domain", clock: clkPico }
 """
 
 # The assembler's default reset declared on a clock that is NOT its default. Legal
@@ -209,8 +209,8 @@ clocks:
     clkSlow: { desc: "a slower, non-commensurate clock", period: 3, timeUnit: ns }
 
 resets:
-    rstSlow_n: { desc: "the default reset, declared on the non-default clock", default: true, active: low, clock: clkSlow }
-    rst_n:     { desc: "the default clock's own reset", active: low, clock: clk }
+    rstSlow_n: { desc: "the default reset, declared on the non-default clock", default: true, clock: clkSlow }
+    rst_n:     { desc: "the default clock's own reset", clock: clk }
 """
 
 # A child project whose clock and reset are named nothing the assembler declares,
@@ -221,7 +221,7 @@ clocks:
     ipClk: { desc: "child clock, named nothing the assembler declares", default: true, period: 4, timeUnit: ns }
 
 resets:
-    ipRst_n: { desc: "child reset, named nothing the assembler declares", default: true, active: low, clock: ipClk }
+    ipRst_n: { desc: "child reset, named nothing the assembler declares", default: true, clock: ipClk }
 """
 
 # A child project whose CLOCK is named nothing the assembler declares - so it falls
@@ -235,7 +235,7 @@ clocks:
     ipClk: { desc: "child clock, named nothing the assembler declares", default: true, period: 4, timeUnit: ns }
 
 resets:
-    rstSlow_n: { desc: "child reset, a name the ASSEMBLER declares too - on its other clock", default: true, active: low, clock: ipClk }
+    rstSlow_n: { desc: "child reset, a name the ASSEMBLER declares too - on its other clock", default: true, clock: ipClk }
 """
 
 # A child project declaring TWO domains, both spelled as the assembler spells its
@@ -249,8 +249,8 @@ clocks:
     clkSlow: { desc: "child slow clock, the assembler's name at another period", period: 9, timeUnit: ns }
 
 resets:
-    rst_n:     { desc: "child default reset, clk domain", default: true, active: low, clock: clk }
-    rstSlow_n: { desc: "child slow-domain reset", active: low, clock: clkSlow }
+    rst_n:     { desc: "child default reset, clk domain", default: true, clock: clk }
+    rstSlow_n: { desc: "child slow-domain reset", clock: clkSlow }
 """
 
 # Two clocks and one reset, which leaves the slow domain with no reset at all.
@@ -260,7 +260,7 @@ clocks:
     clkSlow: { desc: "a slower, non-commensurate clock", period: 3, timeUnit: ns }
 
 resets:
-    rst_n: { desc: "the only reset, in the default domain", default: true, active: low, clock: clk }
+    rst_n: { desc: "the only reset, in the default domain", default: true, clock: clk }
 """
 
 
@@ -330,7 +330,7 @@ def _make_fixture(consumerDomains='', connectionClock='', childPeriod=None,
                 "\nclocks:\n"
                 f"    clk: {{ desc: \"child clock\", default: true, period: {childPeriod}, timeUnit: ns }}\n"
                 "\nresets:\n"
-                "    rst_n: { desc: \"child reset\", default: true, active: low, clock: clk }\n")
+                "    rst_n: { desc: \"child reset\", default: true, clock: clk }\n")
         with open(os.path.join(fixture, 'ip', 'prj', 'yaml', 'childProject.yaml'), 'w') as f:
             f.write("yamlFormat: 2\n"
                     "projectName: childIp\n"
@@ -942,11 +942,10 @@ def run_view_build():
                     f"the view lists resets {names}, expected "
                     f"['rst_n', 'rstAlt_n', 'rstSlow_n']: the persisted canonical "
                     f"order, which is the project's and not the authored list's")
-            if (view['resets'][2]['active'], view['resets'][2]['clock']) != ('low', 'clkSlow'):
+            if view['resets'][2]['clock'] != 'clkSlow':
                 raise AssertionError(
-                    f"the view's rstSlow_n entry carries active="
-                    f"{view['resets'][2]['active']!r} clock="
-                    f"{view['resets'][2]['clock']!r}, expected ('low', 'clkSlow'): "
+                    f"the view's rstSlow_n entry carries clock="
+                    f"{view['resets'][2]['clock']!r}, expected 'clkSlow': "
                     f"the entries are the declaration rows, so a consumer reads a "
                     f"reset's own domain without a second lookup")
             return True
@@ -1055,7 +1054,7 @@ def run_view_build():
                       lambda: _bind_invariant(db_path)),
             _run_case("getBlockData lists the block's clocks in canonical order",
                       clocks_in_canonical_order),
-            _run_case("getBlockData lists the block's resets with active and clock",
+            _run_case("getBlockData lists the block's resets with their clock",
                       resets_carry_their_domain),
             _run_case("getBlockData gives each port its own connection's domain",
                       ports_carry_their_own_connection_domain),
@@ -1661,8 +1660,8 @@ clocks:
     clkSlow: { desc: "a slower clock", period: 3, timeUnit: ns }
 
 resets:
-    clkSlow:   { desc: "a reset named after a clock", active: low }
-    rstSlow_n: { desc: "the slow-domain reset", default: true, active: low }
+    clkSlow:   { desc: "a reset named after a clock" }
+    rstSlow_n: { desc: "the slow-domain reset", default: true }
 """
 
 

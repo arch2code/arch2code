@@ -96,9 +96,9 @@ clocks:
     clkPico: { desc: "a clock declared in a unit other than ns", period: 500, timeUnit: ps }
 
 resets:
-    rst_n:     { desc: "the default reset", default: true, active: low, clock: clk }
-    rstSlow_n: { desc: "the slow-domain reset", active: low, clock: clkSlow, releaseCycles: 5 }
-    rstPico_n: { desc: "the pico-domain reset", active: low, clock: clkPico }
+    rst_n:     { desc: "the default reset", default: true, clock: clk }
+    rstSlow_n: { desc: "the slow-domain reset", clock: clkSlow, releaseCycles: 5 }
+    rstPico_n: { desc: "the pico-domain reset", clock: clkPico }
 
 dirs:
     root: ../..
@@ -132,7 +132,7 @@ clocks:
     ipClk: { desc: "the child project's default clock, named nothing the assembler declares", default: true, period: 7, timeUnit: ns }
 
 resets:
-    ipRst_n: { desc: "the child project's default reset", default: true, active: low, clock: ipClk }
+    ipRst_n: { desc: "the child project's default reset", default: true, clock: ipClk }
 
 dirs:
     root: ../..
@@ -295,8 +295,8 @@ clocks:
     clkSlow: { desc: "the register-bus clock", period: 3, timeUnit: ns }
 
 resets:
-    rstMain_n: { desc: "the default reset, deliberately not spelled rst_n", default: true, active: low, clock: clk }
-    rstBus_n:  { desc: "the register-bus reset, the only one in the bus domain", active: low, clock: clkSlow }
+    rstMain_n: { desc: "the default reset, deliberately not spelled rst_n", default: true, clock: clk }
+    rstBus_n:  { desc: "the register-bus reset, the only one in the bus domain", clock: clkSlow }
 
 dirs:
     root: ../..
@@ -919,7 +919,7 @@ def check_reset_signal_per_reset(emitted):
         _expect(text, decl, 'each resolved reset is its own signal',
                 'fastProd SC wrapper')
     for init in ('rst_n(0)', 'rstSlow_n(0)', 'rstPico_n(0)'):
-        _expect(text, init, 'an active-low reset starts asserted',
+        _expect(text, init, 'a reset starts asserted at 0',
                 'fastProd SC wrapper')
     return True
 

@@ -92,12 +92,43 @@
     the block's**, and that is a conclusion, not a deferral — see §5.3.
     Churn is ZERO: no shipped design has a block in more than one domain, so the
     per-connection clock equals the primary clock everywhere in tree (§5.3).
-  - **Still to do in Phase 1:** the §5 rows that genuinely bind another object's
-    set — the child-instance and memory-instance bindings, each of which needs a
-    `projectOpen` view helper §4.2 defers — §6.3's default-domain alias, §6.4's
-    reset-style selector, §6.5's `active: high`, and §7's new single-domain rule
-    for a router block. §10 item 9's `postParseRegisterPorts` clock propagation
-    is landed.
+  - **Landed next: the remaining §5 binding rows, and the reset rule that makes
+    them coherent.** The child-instance bind is persisted by
+    `deriveBlockClocksResets` into `instanceClockResetBinds`, read by
+    `projectOpen.getBDInstanceClockResetBinds`, and emitted by
+    `templates/systemVerilog/moduleInterfacesInstances.py` from the instance
+    row's `clockResetBinds`; the memory-instance bind is persisted into
+    `memoryClocks` and read by `getBDMemoryClock`. A non-default-domain child
+    therefore elaborates. The §7 single-domain rule for a router block is landed
+    in `_validateSingleDomainObjects` (§6.7). The reset derivation changed shape
+    to make the binds total: **a block's reset set follows its clock set** — an
+    authored `resets:` list is checked against the derived clocks in both
+    directions, and a block authoring none takes one reset per clock it carries
+    (§3). That closes the "second gap" §5 recorded, and it makes the BFM reset
+    the block's reset in the port's own domain (`domainReset`, §5.3), which
+    supersedes §5.3's earlier conclusion that the reset stays the block's first.
+  - **Landed next: the `resets.active` field is DELETED, and the fixture
+    carries a block wholly in `clkSlow`.** Reset polarity is consumed by no
+    emitter — the flop macros, the co-simulation wrapper and the BFMs all assume
+    active-low — so the field was planned-but-unused flexibility and is removed
+    from the schema, the injected default row, every fixture and every
+    example, by user decision (§6.5). Every reset is active-low; a project
+    wanting a different polarity inverts it in its own RTL. `examples/twoClk`
+    gained `twoClkSlowTick`,
+    a portless block with `clocks: [clkSlow]` and `resets: [rstSlow_n]`, so the
+    container `twoClk` now declares `input clk, clkSlow, rst_n, rstSlow_n`,
+    binds `.clkSlow (clkSlow)` / `.rstSlow_n (rstSlow_n)` on that child and
+    `.clk (clk)` / `.rst_n (rst_n)` on the other two, and its Verilated SystemC
+    wrapper constructs two `sc_clock`s and two reset drivers. Its hand-written
+    RTL uses `` `DFF_INST_CLK(clkSlow, ...) `` because no alias exists yet. `make
+    two-clk` runs five simulations — the model, the verilated top, and each of
+    the three leaves verilated alone — all at `No error`. See §9 and §13.6.
+  - **Still to do in Phase 1:** §6.3's default-domain alias, §6.4's reset-style
+    selector, and the CDC primitive library of §6.3. Until the alias lands, D6 holds only
+    for a project whose default clock and reset are named `clk`/`rst_n`;
+    hand-written RTL in any other domain must use the `_CLK` macro family
+    explicitly, which is what `examples/twoClk`'s slow-domain block does. §10
+    item 9's `postParseRegisterPorts` clock propagation is landed.
   - **Verification bar raised.** "Working" now means a verilated co-simulation
     build and run, not `make gen` succeeding. See §13 for the measured baseline
     and the acceptance criteria. The `examples/twoClk` fixture now meets them:
@@ -352,11 +383,9 @@ resets:
   rst_n:
     desc: "main design reset"
     default: true
-    active: low
     clock: clk
   rstAlt_n:
     desc: "alternate reset"
-    active: low
     clock: clkSlow
 ```
 
@@ -368,12 +397,6 @@ resets:
   reset: key
   desc: required
   default: optional(false)
-  active:
-    _type: optional(low)
-    _validate:
-      values:
-        - low
-        - high
   clock:
     _type: optional()
     _validate:
@@ -386,9 +409,9 @@ resets:
 Notes:
 
 - The declared key is the **emitted port name, verbatim**. There is no `_n`
-  suffix synthesis and no name mangling. `active:` is metadata consumed by the
-  flop macros and by the wrapper's release sequence. A project wanting the
-  conventional spelling declares `rst_n`.
+  suffix synthesis and no name mangling. A project wanting the conventional
+  spelling declares `rst_n`. **Every reset is active-low**; there is no polarity
+  field (§6.5).
 - `clock:` associates the reset with a domain. An unstated `clock:` means the
   declaring project's own default clock, resolved at parse time by
   `projectCreate._post_resolveReset` so the
@@ -430,11 +453,10 @@ Notes:
   string-default behaviour is unchanged elsewhere in the schema
   (`count: optional(1)`, `maxValue: optional(0)`, …), as is the `optional(false)`
   boolean family §7 records; only these two fields are validated.
-- **`active:` is still not consumed for polarity.** The emitted signal is
-  initialised `0` and released to `true`, which is correct for `active: low`
-  only. `active: high` remains rejected-in-principle by §6.5 and unimplemented in
-  practice: nothing validates it, so authoring it produces a reset asserted the
-  wrong way round. Unchanged by this step, and §6.5 still owns it.
+- **Polarity is fixed, not declared.** The emitted signal is initialised `0`
+  and released to `true`, and every flop macro and BFM assumes the same. An
+  `active:` field once existed in the schema with `low`/`high` values and no
+  consumer; it is removed rather than validated (§6.5).
 
 ### 2.3 `connections:` — new optional `clock:` field
 
@@ -557,8 +579,8 @@ project declares no `clocks:` section, the pre-pass parses a built-in section fo
 that project instead of an authored one:
 
 - clock **`clk`**, `default: true`, `period: 1`, `timeUnit: ns`
-- reset **`rst_n`**, `default: true`, `active: low`, and **no** `clock:` — see the
-  resolution recorded at the end of this section
+- reset **`rst_n`**, `default: true`, and **no** `clock:` — see the resolution
+  recorded at the end of this section
 
 The injected rows are indistinguishable from authored rows downstream: same
 table, same `projectName`-keyed bucket, same `scope: project` resolution, same
@@ -657,10 +679,29 @@ clocks(B) = { clock(c) for every connection c touching a port of B }
           U { explicit block clocks: entries }
           U { union of clocks(child) for every instance contained in B }
 
-resets(B) = { explicit block resets: entries }   if any were declared
-          = { default reset }                     otherwise
+resets(B) = { explicit block resets: entries }                        if any were declared
+          = { the project's first reset declared on c, for each c in clocks(B) }  otherwise
           U { union of resets(child) for every instance contained in B }
 ```
+
+**The reset set follows the clock set.** An earlier revision of the formula
+gave a block authoring no `resets:` the project default reset alone. That left a
+leaf reached only by a `clkSlow` connection holding a reset released on `clk`,
+a clock it does not declare, so the wrapper waited on an identifier it never
+constructed and the C++ did not compile (the "second gap" §5 once recorded).
+The rule now is that the two sets cover each other exactly: every reset a block
+holds is declared on a clock the block carries, and every clock the block
+carries holds a reset. A block authoring no `resets:` takes, per carried clock,
+the first reset the project declares on that clock in canonical order. An
+authored list is the block's complete own set and is checked both ways — a
+listed reset whose clock the block does not carry is an error, and a carried
+clock with no listed reset is an error, since the tool never invents a release
+the author did not ask for. The containment union is checked once more over the
+finished sets, because a child's clock and a child's reset each cross a project
+boundary by independent name lookups and can land in different domains; the
+same crossing is rejected per instance, more precisely, by
+`_persistInstanceClockResetBinds`. All three diagnostics live in
+`deriveBlockClocksResets`.
 
 Where "connection" covers `connections:`, `connectionMaps:`,
 `memoryConnections:`, and `registerConnections:`, so that register-bus and memory
@@ -813,7 +854,7 @@ Following the ownership split in `builder/base/CLAUDE.md`:
   **The entries are the declaration rows verbatim**, not a reshaped projection: a
   clock entry carries `clock`, `clockKey`, `desc`, `default`, `period`,
   `timeUnit`; a reset entry carries `reset`, `resetKey`, `desc`, `default`,
-  `active`, `clock`, `clockKey`. An earlier revision of this section named the
+  `clock`, `clockKey`, `releaseCycles`. An earlier revision of this section named the
   flag `isDefault`. That rename is not made: it would give one stored fact two
   spellings, and it would imply a boolean coercion §7 explicitly declines to
   perform, since `default:` is `optional(false)` and unvalidated. Handing out the
@@ -824,12 +865,22 @@ Following the ownership split in `builder/base/CLAUDE.md`:
   `qualBlock`, which is what the persisted list stores. The bucket-keyed form is
   parse-time only ([`plan-project-scope.md`](./plan-project-scope.md) §6.3).
 
-- STILL NOT DONE: the per-child ordered lists on `getBDInstances` and the
-  resolved `clock` on `getBDMemoryConnections`. The §5 rows that landed all read
-  the sets of the block being rendered, which `getBDClocksResets` already
-  supplies; each of these two instead reads the set of a DIFFERENT object, and
-  each is a short view helper over the persisted derivation when its emitter
-  lands.
+- LANDED: the two views that read ANOTHER object's set, each over a table the
+  derivation persists rather than a re-walk. `getBDInstanceClockResetBinds`
+  returns, per instance, the `(port, signal)` pairs the container emits, in the
+  CHILD's canonical order, from `instanceClockResetBinds`; the pair exists
+  because the child's port is spelled in the child's project and the driving
+  signal in the container's, and the derivation's respelling is the only place
+  both spellings are in hand. `getBDMemoryClock` returns the clock a memory
+  primitive is instantiated on, from `memoryClocks`, always a member of the
+  owning block's set. `getBDInstances` attaches the former as `clockResetBinds`
+  on every instance row; the memory rows carry the latter as `domainClock`.
+
+- LANDED: the per-port reset, as `getBDPortDomainReset` writing `domainReset`
+  next to `domainClock`. It is the block's own reset declared on the port's
+  clock, matched by clock name inside the block's reset set, and it is total
+  because the reset set follows the clock set (§3); where a project declares
+  several resets on one clock the first in canonical order wins.
 
 - LANDED: the per-**port** resolved clock, as `getBDPortDomain` writing a
   `domainClock` name onto every row of `ret['ports']`. `getBDClocksResets` now
@@ -883,25 +934,27 @@ and is not.
 | `templates/systemVerilog/module_hdl_wrapper.py:118` | `.clk(clk),\n.rst_n(rst_n)` on the DUT | One binding per resolved clock and reset, in the port-list order. | LANDED |
 | `templates/systemVerilog/module_hdl_wrapper.py:242` | `['.clk(clk)', '.rst_n(rst_n)']` | Built from the resolved lists (variant trampoline). | LANDED |
 | `templates/systemc/module_hdl_wrapper.py:117, 120` | one `sc_clock clk` at `sc_time(1, SC_NS)` | One `sc_clock` member per resolved clock, each at its own `period`/`timeUnit`. Duty, start delay, and first edge stay at the current constants. | LANDED |
-| `templates/systemc/module_hdl_wrapper.py:130, 133, 136, 139` | one `sc_signal<bool> rst_n`, initialised `0`, released at 5 ns | One `sc_signal<bool>` per resolved reset, and one `SC_THREAD` per reset releasing it after `releaseCycles` `posedge_event()`s of its own clock. The absolute 5 ns was period-coupled and already wrong for any non-1 ns period: at `period: 10` posedges fall at 3, 13, 23 ns, so a 5 ns release deasserted after a single edge; at `period: 20`, before any meaningful reset. It also landed in the same nanosecond as an edge; counting edges puts the release one delta after one. | LANDED, except that `active:` is still not consumed for polarity (§2.2) |
+| `templates/systemc/module_hdl_wrapper.py:130, 133, 136, 139` | one `sc_signal<bool> rst_n`, initialised `0`, released at 5 ns | One `sc_signal<bool>` per resolved reset, and one `SC_THREAD` per reset releasing it after `releaseCycles` `posedge_event()`s of its own clock. The absolute 5 ns was period-coupled and already wrong for any non-1 ns period: at `period: 10` posedges fall at 3, 13, 23 ns, so a 5 ns release deasserted after a single edge; at `period: 20`, before any meaningful reset. It also landed in the same nanosecond as an edge; counting edges puts the release one delta after one. | LANDED |
 | `templates/systemc/module_hdl_wrapper.py:159` | `dut_hdl->clk(clk); dut_hdl->rst_n(rst_n);` | One bind per resolved clock and reset. | LANDED |
-| `templates/systemVerilog/moduleInterfacesInstances.py:114` | `.clk (clk), .rst_n (rst_n)` on every child instance | Emit `.<clock> (<clock>)` for each clock in the **child's** resolved list, then the same for resets. The parent's set is a superset of every child's by the container-union rule (§3), so the identifiers always exist. | NOT DONE — needs per-child lists on `getBDInstances` |
-| `templates/systemVerilog/moduleInterfacesInstances.py:134` | `.clk (clk)` on every memory instance | Emit the memory's resolved clock. | NOT DONE — needs the resolved clock on `getBDMemoryConnections` |
+| `templates/systemVerilog/moduleInterfacesInstances.py:114` | `.clk (clk), .rst_n (rst_n)` on every child instance | Emit `.<childPort> (<parentSignal>)` for each pair in the instance row's `clockResetBinds`, in the child's port-list order. The two names differ whenever the child's project and the container's spell the domain differently, or the container falls back to its default. | LANDED — via `getBDInstanceClockResetBinds` (§4.2) |
+| `templates/systemVerilog/moduleInterfacesInstances.py:134` | `.clk (clk)` on every memory instance | Bind the primitive's `clk` port to the memory's own resolved domain, `domainClock`. | LANDED — via `getBDMemoryClock` (§4.2) |
 | `templates/systemVerilog/moduleRegs.py:776-777` | `input clk, rst_n` on `<block>_regs` | Emit the handler block's own resolved clocks and resets, one `input` per line, through `intf_gen_utils.sv_clock_reset_input_lines`. | LANDED — the handler is its own block, so no new view was needed (§6.6) |
-| `templates/systemVerilog/moduleRegs.py:803-804` | `... & rst_n` in the select terms | Use the resolved reset name, inverted when `active: high`. | LANDED for the name; the inversion half is still §6.5 |
+| `templates/systemVerilog/moduleRegs.py:803-804` | `... & rst_n` in the select terms | Use the resolved reset name. | LANDED — there is no polarity to invert (§6.5) |
 | `templates/systemVerilog/moduleRegs.py` (every flop call) | `` `DFFR ``/`` `DFFREN ``/`` `DFF ``/`` `DFFEN `` capturing a literal `clk` | The `_CLK` variant naming the handler's own clock, at all five flop-emitting sites. | LANDED (§6.6) |
-| `templates/systemc/module_hdl_wrapper.py:172` (BFM bind) | every BFM bound to the single `clk`/`rst_n` | Each BFM bound to the clock of **its own connection**. This is the concrete reason D1 puts the clock on the connection. | LANDED for the clock, via the `domainClock` field of §4.2. The RESET stays the block's first, which §5.3 argues is the end state and not an interim. The **pair is still not a domain**, and now for a stated reason rather than an accidental one. |
+| `templates/systemc/module_hdl_wrapper.py:172` (BFM bind) | every BFM bound to the single `clk`/`rst_n` | Each BFM bound to the clock of **its own connection**. This is the concrete reason D1 puts the clock on the connection. | LANDED for both. The clock is the `domainClock` field of §4.2; the reset is `domainReset`, the block's own reset declared on that clock, so the pair IS one domain. This supersedes the earlier ruling that the reset stays the block's first; see §5.3. |
 | `templates/systemVerilog/apbDecodeModule.py` (every flop call) | `` `DFF ``/`` `SCFF `` capturing a literal `clk` in the generated router | The `_CLK` variant naming the router's own clock, at all three flop-emitting sites. | LANDED — the router is its own block, so no new view was needed, exactly as for `<block>_regs`. See §6.7 |
 | `templates/systemVerilog/moduleInterfacesInstances.py` (generated region) | nothing | Default-domain alias lines per §6.3, in blocks whose default clock or reset is not named `clk`/`rst_n`. | NOT DONE — §6 |
 
-**The gap the landed half leaves, stated plainly.** A block whose port list no
-longer names `clk`/`rst_n` is instantiated by a parent that still binds
-`.clk (clk), .rst_n (rst_n)` — so the RTL does not elaborate. No in-tree project
-reaches it: it needs an authored connection `clock:` or block `clocks:`/`resets:`
-naming a non-default domain, which no example does. Before this step such a
-declaration was inert and produced RTL clocked by the wrong domain silently; it now
-fails at elaboration instead, which is the better of the two failures but is not
-the end state. Closing it is the remaining NOT DONE rows above.
+**The gap the port-declaration step left, now closed.** Between the §5 port
+declarations and the binding rows, a block whose port list no longer named
+`clk`/`rst_n` was instantiated by a parent that still bound
+`.clk (clk), .rst_n (rst_n)`, so the RTL did not elaborate. No in-tree project
+reached it at the time. With the child-instance and memory-instance rows landed
+the container binds each child port to the container's signal for the same
+domain, and `examples/twoClk` now carries a block wholly in `clkSlow` so the
+shape is elaborated and verilated in flow (§9). What remains is the alias row:
+hand-written RTL in a non-default domain must spell its clock through the `_CLK`
+macro family until §6.3 lands.
 
 **Measured, not inferred.** A throwaway fixture with a `clkSlow` register bus was
 linted whole-design against both the pre-`_regs` generator and the current one.
@@ -915,15 +968,14 @@ Whole-design elaboration of a non-default-domain project therefore still needs t
 child-instance binding row, and no in-flow lint of a non-default-domain
 `<block>_regs` is possible until it lands.
 
-**A second gap, in the derivation rather than the emission.** A reset's clock is
-not required to be in the block's clock set. A leaf reached only by a `clkSlow`
-connection derives clocks `[clkSlow]` and, with no `resets:` authored, the
-project default reset — whose clock is `clk`. The wrapper then counts edges of a
-`clk` that is not one of its members, and the generated C++ does not compile. The
-design is wrong (a synchronous reset must be released on a clock the block has),
-so the fix is a §7 rule rejecting it, not an emitter fallback. Not added here: it
-is a new diagnostic whose wording and severity are a user decision, and the
-failure today is loud.
+**A second gap, in the derivation rather than the emission — CLOSED.** A
+reset's clock was not required to be in the block's clock set: a leaf reached
+only by a `clkSlow` connection derived clocks `[clkSlow]` and, with no `resets:`
+authored, the project default reset on `clk`, so the wrapper counted edges of a
+clock it never constructed and the C++ did not compile. Closed by the rule that
+the reset set follows the clock set (§3): a block authoring no `resets:` takes one
+reset per carried clock, and an authored list is validated against the carried
+clocks in both directions.
 
 ### 5.1 Accepted churn — measured
 
@@ -1075,32 +1127,24 @@ Makefile, which the parent's `gen` does not recurse into.
   Nothing schema-identifying is recorded today, which is why the staleness was
   silent.
 
-### 5.3 The per-connection BFM binding, and why the reset does not follow it
+### 5.3 The per-connection BFM binding, and the reset that follows it
 
-The BFM's CLOCK is now the clock of the connection the BFM drives. The view
-supplies it as `domainClock` on every port row (§4.2); the template reads that
-field and nothing else, so no clock rule lives in a template.
+The BFM's CLOCK is the clock of the connection the BFM drives. The view supplies
+it as `domainClock` on every port row (§4.2); the template reads that field and
+nothing else, so no clock rule lives in a template.
 
-**The reset is NOT made per-connection, and that is a conclusion.** Three facts
-decide it:
-
-- A connection carries no reset. D2 puts the reset on the BLOCK, explicitly or by
-  project default, and D1's argument for putting the clock on the wire has no
-  counterpart for the reset.
-- A reset does declare an associated `clock:`, so "the reset of this port's
-  domain" is a phrase one can write. It is not a function. A block's reset set may
-  hold **no** reset in a given port's domain — the ordinary case, a single-reset
-  block reached from two domains, which is exactly the `cons` fixture — or more
-  than one, and neither has a defensible tie-break.
-- Emitting the block's first reset always names a member of the wrapper, so it
-  compiles; a derived per-connection reset would not always exist.
-
-The consequence is recorded rather than hidden: a BFM can be bound a clock and a
-reset from different domains. That is the same crossing the plan already declines
-to report (D3), and the wrapper is testbench scaffolding whose reset is released
-once and never reasserted, so the pairing has no dynamic consequence in the only
-mode that exists today. If per-domain reset release ever matters, the missing
-input is a rule for the zero-reset and multi-reset cases, not a view field.
+**The reset is the block's own reset in that port's domain**, supplied as
+`domainReset` by `getBDPortDomainReset`. An earlier revision of this section
+concluded the opposite — that the BFM reset stays the block's first — on two
+grounds that no longer hold: that a block's reset set may hold no reset in a
+given port's domain, and that it may hold more than one with no tie-break. The
+first is removed by the rule that the reset set follows the clock set (§3): every
+clock a block carries holds a reset, so "the block's reset on this port's clock"
+is total. The second is settled by canonical order, the same order every emitted
+reset list already reads in, so the choice is deterministic. D2 is unchanged —
+the reset still belongs to the block, not the connection; what changed is that
+the block now always owns a reset in each of its domains, so a port's clock and
+reset are one domain in the wrapper as they are in the RTL.
 
 **Churn is zero, and the premise that it would not be was wrong.** Every block in
 every shipped example resolves to exactly one clock and one reset, and no port's
@@ -1163,14 +1207,14 @@ Three pieces, each independently valuable:
 
   ```systemverilog
   wire clk   = coreClk;
-  wire rst_n = coreRst_n;      // inverted for a reset declared active: high
+  wire rst_n = coreRst_n;
   ```
 
   `templates/systemVerilog/moduleInterfacesInstances.py` already owns a generated
   region in every block module, including hand-written leaf blocks, so this has a
   natural home. This is what makes all 248 existing call sites and all
-  out-of-tree RTL correct regardless of clock naming, and it normalises reset
-  polarity in exactly one place so nothing downstream reasons about `active:`.
+  out-of-tree RTL correct regardless of clock naming. With polarity fixed at
+  active-low (§6.5) the alias is a pure rename on both lines.
 - **An explicit-argument macro family**, with the existing macros redefined as
   wrappers so no call site changes. **LANDED, clock only — see §6.6 for the
   spelling actually taken and why the reset half is not in it.** The generator
@@ -1189,24 +1233,32 @@ level of `flops.sv`: `A2C_RESET_NONE` (today's FPGA behaviour),
 put `` `ifdef `` inside a `` `define `` body; branch at top level as the file
 already does at `:6`/`:50`.
 
-The asynchronous branch cannot take a normalised expression in its sensitivity
-list, since synthesis rejects expressions in edge sensitivity. That is the second
-reason for the alias: normalise polarity once in generated RTL so the macro's
-sensitivity list is always `negedge rst_n` on a real net.
+The asynchronous branch cannot take an expression in its sensitivity list, since
+synthesis rejects expressions in edge sensitivity. The alias gives it a real net
+named `rst_n` to put `negedge` on regardless of the declared reset name; with
+polarity fixed at active-low there is nothing else to normalise.
 
 The FPGA and ASIC branches are orthogonal axes, not alternatives — reset style,
 and whether to emit `initial` for bitstream power-up — and they compose legally
 in one `always_ff`. **Co-simulation should compile with a real reset style
 enabled**, so that tandem exercises the reset path at all. Today it does not.
 
-### 6.5 `active: high` must not ship without the alias
+### 6.5 Reset polarity — the `active:` field is removed
 
-On the FPGA branch an active-high reset is silently dead; on the ASIC branch
-`` `define RST ~rstN `` would invert it, holding the design permanently in reset.
-Two BFMs also hardcode `while(!rst_n)` (`interfaces/apb/apb_bfm.h:91`,
-`interfaces/memory/memory_bfm.h:82`) and would hang. Accepting the attribute and
-documenting that it does nothing is worse than rejecting it, so `active: high` is
-rejected unless the §6.3 alias lands in the same change.
+Nothing consumes reset polarity. On the FPGA branch there is no reset term at
+all; on the ASIC branch `` `define RST ~rstN `` fixes the sense; the
+co-simulation wrapper initialises every reset to `0` and releases it to `1`; and
+two BFMs hardcode `while(!rst_n)` (`interfaces/apb/apb_bfm.h:91`,
+`interfaces/memory/memory_bfm.h:82`). An `active: low | high` field shipped in
+the schema regardless, so `active: high` was accepted and produced a reset
+asserted the wrong way round with no diagnostic. A parse-time rejection was
+landed and then **superseded by the user's decision to delete the field**: the
+hardware flow supports one polarity, so declaring it is flexibility with no
+consumer, which the `builder/base/CLAUDE.md` rule against planned-but-unused
+options forbids. Every reset is active-low. A design needing an active-high
+reset at a boundary inverts it in its own RTL, outside the generator's
+knowledge. If a second polarity ever gains a consumer, the field returns in the
+same change as that consumer.
 
 The `rstN` → `rst_n` defect at `flops.sv:10` is **still open.** An earlier
 revision of this line said it "is fixed as part of this work"; it was not, and it
@@ -1273,9 +1325,10 @@ construction (§10.9 Option A), which is what makes the first entry of each set
 unambiguous; the index choice is unobservable and deliberately not mutation-tested,
 since there is never a second entry to pick.
 
-The reset the handler emits is always its project's **default** reset, because a
-synthesised block declares no `resets:` and the derivation's `otherwise` branch
-supplies the default (§3). Its polarity is still unhandled — §6.5 owns that.
+The reset the handler emits is its project's first reset declared on the bus
+clock, because a synthesised block declares no `resets:` and the derivation's
+`otherwise` branch supplies one reset per carried clock (§3); for a default-domain
+bus that is the default reset. Its polarity is still unhandled — §6.5 owns that.
 
 ### 6.7 The `apbDecode` router, and the invariant `clocks[0]` rests on
 
@@ -1519,36 +1572,28 @@ Every rule below is landed except where marked.
   they do cover — `examples/mixed` is the one example with authored rows
   (7 `registerConnections`, 2 `memoryConnections`).
 - **A block carrying `addressBlock:` whose derived clock set holds more than one
-  clock must be an error. NOT DONE — this is the one rule §6.7's investigation
-  opens.** The generated router is a single-domain module and its emitter reads
-  the first entry of that set, so a second entry silently decides the domain of
-  every flop in the dispatch path. The reachable authoring is an additive block
-  `clocks:` entry on the router block (§2.4); §6.7 measures two spellings of it
-  that build exit 0 and clock the router off its own bus.
-
-  **Where it belongs: folded into `_validateSingleDomainObjects`**
-  (`pysrc/processYaml.py:5526`), which already owns "one module in one domain must
-  have connections that agree" for memories and register buses, and which
-  `projectCreate` calls immediately after `deriveBlockClocksResets`
-  (`pysrc/processYaml.py:5391`, called at `:3712`) — so the derived set is in hand
-  at exactly that point. The only plumbing needed is for the derivation to hand
-  its `blockClocks` map to the check instead of only persisting it, or for the
-  check to read the `blockClocksResets` table it just wrote.
-
-  Two scoping notes. The rule is **load-bearing for routers and vacuous for
-  handlers**: `isRegHandler` blocks cannot reach two clocks at all (§6.7), so
-  including them buys a cheap assert rather than a diagnostic — worth doing only
-  if the message distinguishes the two cases. And the message must not simply say
-  "put both in one domain", because the fix is to **remove** the `clocks:` entry,
-  not to move the bus: the router's domain is not the author's to choose, it is
-  the feed's.
-
-  Deliberately **not** implemented in the step that found it: it is a new
-  user-facing diagnostic whose wording and severity are the user's call, and the
-  emission change stands on its own without it.
+  clock is an error. LANDED** in `_validateSingleDomainObjects`, which receives
+  the derivation's `blockClocks` map directly and reports
+  `Register-decode router block '<name>' resolves to more than one clock`,
+  directing the author to remove the block's `clocks:` entry rather than to move
+  the bus — the router's domain is the feed's, not the author's to choose. The
+  rule is on the CARDINALITY of the set, so a router declaring a clock port
+  nothing clocks is rejected even when the emitted clock happens to be right.
+  Handlers are not included: `isRegHandler` blocks cannot reach two clocks
+  (§6.7). Covered end to end in `unittest/test_clock_reset_emission.py` and
+  directly on synthetic rows in `unittest/test_clock_domains.py`. See §6.7.
+- **A reset must lie in a domain its block carries. LANDED** as the three
+  diagnostics of §3: an authored `resets:` entry on a clock the block does not
+  carry, a carried clock with no authored reset, and a reset imported through the
+  containment union whose clock the container resolved differently. A project
+  that declares no reset on a clock one of its blocks carries is rejected too,
+  since the derived per-clock reset would not exist.
+- **Reset polarity is not a field.** `resets.active` is removed from the schema
+  (§6.5), so there is nothing to validate; a project file authoring it gets the
+  generic unknown-field diagnostic.
 - **Cross-project name reuse is legal and must not be validated against.** Two
-  composed projects declaring a clock of the same name, with different `period`,
-  `timeUnit`, or `active`, are two distinct declarations in two distinct
+  composed projects declaring a clock of the same name, with different `period`
+  or `timeUnit`, are two distinct declarations in two distinct
   buckets, and each resolves within its own project. An earlier draft of this
   plan called the divergence an error, on the superseded assumption that the
   names denoted one shared global net. Under project scope that is wrong, and
@@ -1678,9 +1723,17 @@ exactly as they do today.
 - **Shared example.** The multi-clock example under `examples/` is created in
   Phase 0 (see [`plan-project-scope.md`](./plan-project-scope.md) §8) and is
   extended, not replaced, here. It carries two clocks, two resets, a block in
-  each domain, and one block holding ports in both domains, so that the
-  multi-domain port list and the domain-explicit flop macros are both exercised.
-  It is a **composed** fixture — a child IP project plus an assembling project —
+  each domain, and one container declaring both domains, so that the
+  multi-domain port list, the per-child bind, and the domain-explicit flop
+  macros are all exercised. **Landed as `twoClkSlowTick`**: a portless block with
+  `clocks: [clkSlow]` / `resets: [rstSlow_n]` and a free-running counter written
+  with `` `DFF_INST_CLK(clkSlow, ...) ``. It deliberately touches no connection,
+  so the fixture holds no RTL clock crossing — a crossing needs the CDC
+  primitives §6.3 has not shipped, and a fixture that silently dropped words
+  across an unsynchronised push/ack would demonstrate the wrong thing. The
+  container `twoClk` therefore carries `[clk, clkSlow]` and `[rst_n,
+  rstSlow_n]`, and `make two-clk` verilates it whole and each of its three
+  leaves alone. It is a **composed** fixture — a child IP project plus an assembling project —
   because Phase 0's acceptance gate requires that, and so that per-project
   resolution is demonstrated: the IP and the assembler each declare a clock named
   `clk` with a different `period`, and each side's flops must resolve to its own.
@@ -1701,11 +1754,10 @@ exactly as they do today.
   **The fixture needed no extension for derivation.** It already carries a
   connection across the composition boundary between two projects whose same-named
   `clk` differ in `period`, which is the one shape where the two ends resolve to
-  different rows (§3). Extending it with a block that genuinely lives in `clkSlow`
-  is still deferred, and now for a sharper reason than "the declaration is inert":
-  it is no longer inert, and a `clkSlow` block in `twoClk` would make the
-  container's still-literal `.clk (clk)` binding fail to elaborate (§5). It lands
-  with the child-instance binding row and the §6.3 alias.
+  different rows (§3). The `clkSlow` block was deferred while the container's
+  bind was still a literal `.clk (clk)`, because it would have failed to
+  elaborate (§5); it landed with the child-instance binding row, ahead of the
+  §6.3 alias, by spelling its own clock through the `_CLK` macro family.
 - **Emission unit tests** in `unittest/test_clock_reset_emission.py`, 23 cases,
   wired into `run_all_tests.sh` as its own suite. It builds one fixture whose
   three generated leaves cover the shapes no example has — a leaf wholly in a
@@ -1866,8 +1918,8 @@ exactly as they do today.
    `resets:` section — not a global project setting and not a hard-coded constant.
    A reset in a 3 ns domain and one in a 1 ns domain have no reason to share a
    release count: the count is a property of the reset's own release path, and the
-   two resets are independent declarations that already carry their own `active:`
-   and their own associated clock. A project-wide setting would force the slowest
+   two resets are independent declarations that already carry their own
+   associated clock. A project-wide setting would force the slowest
    domain's requirement onto every domain, and a constant forecloses the choice
    entirely.
 
@@ -2100,8 +2152,8 @@ rather than being a semantic risk:
   §5.3 argues is correct rather than residual.
 - The same template used to hard-code `rst_n` released at `wait(5, SC_NS)`, two
   periods after the 3 ns clock start. FIXED: `releaseCycles` edges of the reset's
-  own clock, per reset (§10 item 3). The residual is polarity — `active: high` is
-  still not consumed (§2.2).
+  own clock, per reset (§10 item 3). Polarity is fixed at active-low and is no
+  longer declared (§6.5).
 - The residual verification gap is unchanged from §6: with the model untimed, a
   cross-domain race inside the RTL has no counterpart in the model to disagree
   with, so tandem cannot *confirm* dual-clock behaviour even though it cannot
@@ -2302,6 +2354,16 @@ NAME set is identical before and after, because the router cases were added to t
 existing `test_clock_reset_emission.py` rather than as a new suite. The tree is a
 fixed point: a second full clean sweep after all the build gates leaves every
 generated file byte-identical.
+
+**Re-established after the `active:` field removal and the `twoClkSlowTick`
+fixture step.** `make two-clk` exits 0 with five simulations at `No error` — the model,
+the verilated top, and each of the three leaves verilated alone, the new
+`run-vl-slowTick` included — and a second `make two-clk` leaves every tracked
+and generated file under `examples/twoClk` byte-identical. `make -C
+examples/twoClk/rtl lint` is clean at zero warnings with `twoClkSlowTick.sv` in
+the file set, which is the first in-flow lint of a hand-written module in a
+non-default domain. The unit suite is green at 98 suites, zero `FAIL`, with no
+suite added or removed; every fixture that authored `active: low` now omits it.
 
 **Two things this step's gates surfaced that are worth recording as they are.**
 

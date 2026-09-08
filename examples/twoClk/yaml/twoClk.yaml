@@ -1,7 +1,9 @@
 # twoClk - top design: one reused twoClkIpSrc producer (owned by the vendored
 # 'twoClkIp' child project) feeds one assembler-owned sink over twoClkDataIf, so
 # the fixture holds a block on each side of the composition boundary and a
-# connection across it.
+# connection across it. A third block lives wholly in the assembler's slow
+# domain and touches no connection, so the container carries two clocks and two
+# resets and binds each child to its own.
 #
 # clocks: and resets: are projectScope sections, so both projects' declarations
 # live in their project files, not here.
@@ -32,12 +34,21 @@ blocks:
         hasRtl: true
         ports:
             in: { interface: twoClkDataIf, direction: dst }
+    twoClkSlowTick:
+        desc: "Free-running tick counter in the clkSlow domain; no ports, so its domain comes from the block's own clocks:/resets: lists"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        clocks: [clkSlow]
+        resets: [rstSlow_n]
 
 instances:
-    twoClk_tb:  { container: twoClk_tb, instanceType: twoClk_tb,   instGroup: top } # self reference
-    u_twoClk:   { container: twoClk_tb, instanceType: twoClk,      instGroup: top }
-    uIpSrc:     { container: twoClk,    instanceType: twoClkIpSrc, instGroup: top }
-    uSink:      { container: twoClk,    instanceType: twoClkSink,  instGroup: top }
+    twoClk_tb:  { container: twoClk_tb, instanceType: twoClk_tb,     instGroup: top } # self reference
+    u_twoClk:   { container: twoClk_tb, instanceType: twoClk,        instGroup: top }
+    uIpSrc:     { container: twoClk,    instanceType: twoClkIpSrc,   instGroup: top }
+    uSink:      { container: twoClk,    instanceType: twoClkSink,    instGroup: top }
+    uSlowTick:  { container: twoClk,    instanceType: twoClkSlowTick, instGroup: top }
 
 connections:
     # Crosses the composition boundary: src block owned by twoClkIp, dst block

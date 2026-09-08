@@ -9,11 +9,15 @@ module twoClk_hdl_sv_wrapper
     import twoClkIp_package::*;
 (
     input clk,
-    input rst_n
+    input clkSlow,
+    input rst_n,
+    input rstSlow_n
 );
     twoClk dut (
         .clk(clk),
-        .rst_n(rst_n)
+        .clkSlow(clkSlow),
+        .rst_n(rst_n),
+        .rstSlow_n(rstSlow_n)
     );
 
     `ifdef VCS

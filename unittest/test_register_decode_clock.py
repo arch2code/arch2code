@@ -57,14 +57,14 @@ clocks:
 # need three resets, while the child declares only its own default domain.
 ASSEMBLER_RESETS = """
 resets:
-    rst_n:    { desc: "the default reset", default: true, active: low, clock: clk }
-    apbRst_n: { desc: "the register-bus reset", active: low, clock: apbClk }
-    objRst_n: { desc: "the reset of the logic reaching a register or memory", active: low, clock: objClk }
+    rst_n:    { desc: "the default reset", default: true, clock: clk }
+    apbRst_n: { desc: "the register-bus reset", clock: apbClk }
+    objRst_n: { desc: "the reset of the logic reaching a register or memory", clock: objClk }
 """
 
 CHILD_RESETS = """
 resets:
-    rst_n: { desc: "the child's only reset", default: true, active: low, clock: clk }
+    rst_n: { desc: "the child's only reset", default: true, clock: clk }
 """
 
 PROJECT_TAIL = """

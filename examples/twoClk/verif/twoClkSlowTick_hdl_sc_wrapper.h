@@ -1,69 +1,59 @@
-#ifndef TWOCLK_HDL_SC_WRAPPER_H_
-#define TWOCLK_HDL_SC_WRAPPER_H_
+#ifndef TWOCLKSLOWTICK_HDL_SC_WRAPPER_H_
+#define TWOCLKSLOWTICK_HDL_SC_WRAPPER_H_
 
 #include "systemc.h"
 #include "instanceFactory.h"
 
-// GENERATED_CODE_PARAM --block=twoClk
+// GENERATED_CODE_PARAM --block=twoClkSlowTick
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
-import twoClk.base;
+import twoClk_twoClkSlowTick.base;
 
 // Verilated RTL top (SystemC): a wrapper with no instance-bound variants names
 // its DUT concretely, so it includes the DUT header directly.
 #if !defined(VERILATOR) && defined(VCS)
-#include "twoClk_hdl_sv_wrapper.h"
+#include "twoClkSlowTick_hdl_sv_wrapper.h"
 #else
-#include "VtwoClk_hdl_sv_wrapper.h"
+#include "VtwoClkSlowTick_hdl_sv_wrapper.h"
 #endif
 // GENERATED_CODE_END
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
-import twoClkIp;
-using namespace twoClkIp_ns;
-#include "push_ack_bfm.h"
-
-class twoClk_hdl_sc_wrapper: public sc_module, public blockBase, public twoClkBase {
+class twoClkSlowTick_hdl_sc_wrapper: public sc_module, public blockBase, public twoClkSlowTickBase {
 
 public:
 
 #if !defined(VERILATOR) && defined(VCS)
-    twoClk_hdl_sv_wrapper *dut_hdl;
+    twoClkSlowTick_hdl_sv_wrapper *dut_hdl;
 #else
-    VtwoClk_hdl_sv_wrapper *dut_hdl;
+    VtwoClkSlowTick_hdl_sv_wrapper *dut_hdl;
 #endif
 
-    sc_clock clk;
     sc_clock clkSlow;
 
     
 
-    SC_HAS_PROCESS (twoClk_hdl_sc_wrapper);
+    SC_HAS_PROCESS (twoClkSlowTick_hdl_sc_wrapper);
 
-    twoClk_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
+    twoClkSlowTick_hdl_sc_wrapper(sc_module_name modulename, const char *variant, blockBaseMode bbMode) :
         sc_module(modulename),
-        blockBase("twoClk_hdl_sc_wrapper", name(), bbMode),
-        twoClkBase(name(), variant),
-        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
+        blockBase("twoClkSlowTick_hdl_sc_wrapper", name(), bbMode),
+        twoClkSlowTickBase(name(), variant),
         clkSlow("clkSlow", sc_time(3, SC_NS), 0.5, sc_time(3, SC_NS), true),
         
-        rst_n(0),
         rstSlow_n(0)
     {
 #if !defined(VERILATOR) && defined(VCS)
-        dut_hdl = new twoClk_hdl_sv_wrapper("dut_hdl");
+        dut_hdl = new twoClkSlowTick_hdl_sv_wrapper("dut_hdl");
 #else
-        dut_hdl = new VtwoClk_hdl_sv_wrapper("dut_hdl");
+        dut_hdl = new VtwoClkSlowTick_hdl_sv_wrapper("dut_hdl");
 #endif
 
-        dut_hdl->clk(clk);
         dut_hdl->clkSlow(clkSlow);
-        dut_hdl->rst_n(rst_n);
         dut_hdl->rstSlow_n(rstSlow_n);
 
         
 
-        SC_THREAD(reset_driver_rst_n);
         SC_THREAD(reset_driver_rstSlow_n);
 
         end_ctor_init();
@@ -82,15 +72,7 @@ private:
 
     
 
-    sc_signal<bool> rst_n;
     sc_signal<bool> rstSlow_n;
-
-    void reset_driver_rst_n() {
-        for (int cycle = 0; cycle < 3; cycle++) {
-            wait(clk.posedge_event());
-        }
-        rst_n = true;
-    }
 
     void reset_driver_rstSlow_n() {
         for (int cycle = 0; cycle < 3; cycle++) {
@@ -108,4 +90,4 @@ private:
 
 };
 
-#endif // TWOCLK_HDL_SC_WRAPPER_H_
+#endif // TWOCLKSLOWTICK_HDL_SC_WRAPPER_H_

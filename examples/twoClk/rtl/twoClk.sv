@@ -7,7 +7,7 @@ module twoClk
 // Generated Import package statement(s)
 import twoClkIp_package::*;
 (
-    input clk, rst_n
+    input clk, clkSlow, rst_n, rstSlow_n
 );
 
     // Interface Instances, needed for between instanced modules inside this module
@@ -24,6 +24,11 @@ twoClk_twoClkSink uSink (
     .in (out),
     .clk (clk),
     .rst_n (rst_n)
+);
+
+twoClk_twoClkSlowTick uSlowTick (
+    .clkSlow (clkSlow),
+    .rstSlow_n (rstSlow_n)
 );
 
 // GENERATED_CODE_END

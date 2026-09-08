@@ -18,6 +18,7 @@ import twoClk.base;
 import twoClkIp;
 import twoClkIp_twoClkIpSrc.base;
 import twoClk_twoClkSink.base;
+import twoClk_twoClkSlowTick.base;
 // GENERATED_CODE_END
 // user imports here
 // GENERATED_CODE_BEGIN --template=classDecl
@@ -34,6 +35,7 @@ public:
     //instances contained in block
     std::shared_ptr<twoClkIpSrcBase> uIpSrc;
     std::shared_ptr<twoClkSinkBase> uSink;
+    std::shared_ptr<twoClkSlowTickBase> uSlowTick;
 
     twoClk(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~twoClk() override = default;
@@ -63,6 +65,7 @@ twoClk::twoClk(sc_module_name blockName, const char * variant, blockBaseMode bbM
         ,out("twoClkSink_out", "twoClkIpSrc")
         ,uIpSrc(std::dynamic_pointer_cast<twoClkIpSrcBase>(instanceFactory::createInstance(name(), "uIpSrc", "twoClkIpSrc", "", "twoClkIp")))
         ,uSink(std::dynamic_pointer_cast<twoClkSinkBase>(instanceFactory::createInstance(name(), "uSink", "twoClkSink", "", "twoClk")))
+        ,uSlowTick(std::dynamic_pointer_cast<twoClkSlowTickBase>(instanceFactory::createInstance(name(), "uSlowTick", "twoClkSlowTick", "", "twoClk")))
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {

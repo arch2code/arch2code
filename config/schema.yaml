@@ -734,12 +734,6 @@ resets:
   reset: key
   desc: required
   default: optional(false)
-  active:
-    _type: optional(low)
-    _validate:
-      values:
-        - low
-        - high
   clock:                  # domain this reset belongs to, the default clock if unstated
     _type: optional()
     _validate:

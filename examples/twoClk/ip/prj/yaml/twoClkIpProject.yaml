@@ -33,11 +33,9 @@ resets:
     rst_n:
         desc: "twoClkIp main reset, clk domain"
         default: true
-        active: low
         clock: clk
     ipRstFast_n:
         desc: "twoClkIp fast-domain reset"
-        active: low
         clock: ipClkFast
 
 instanceGroups:

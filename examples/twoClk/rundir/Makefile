@@ -12,7 +12,7 @@ EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 include $(A2C_ROOT)/include/make/a2c-systemc.mk
 include $(A2C_ROOT)/include/make/a2c-agents.mk
 
-.PHONY : run run-vl run-vl-top run-vl-ipSrc run-vl-sink
+.PHONY : run run-vl run-vl-top run-vl-ipSrc run-vl-sink run-vl-slowTick
 
 run: $(BIN_DIR)/$(BIN)
 ifndef VL_DUT
@@ -32,6 +32,7 @@ run-vl:
 	$(MAKE) run-vl-top VL_DUT=1
 	$(MAKE) run-vl-ipSrc VL_DUT=1
 	$(MAKE) run-vl-sink VL_DUT=1
+	$(MAKE) run-vl-slowTick VL_DUT=1
 
 run-vl-top: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(HDL_TOP_MODULE)
@@ -41,3 +42,6 @@ run-vl-ipSrc: $(BIN_DIR)/$(BIN)
 
 run-vl-sink: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uSink
+
+run-vl-slowTick: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uSlowTick
