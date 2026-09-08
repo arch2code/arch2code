@@ -12,7 +12,7 @@ EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 include $(A2C_ROOT)/include/make/a2c-systemc.mk
 include $(A2C_ROOT)/include/make/a2c-agents.mk
 
-.PHONY : run run-vl run-vl-top run-vl-ipSrc run-vl-sink run-vl-slowTick
+.PHONY : run run-vl run-vl-top run-vl-ipSrc run-vl-sink run-vl-slowTick run-vl-slowSink
 
 run: $(BIN_DIR)/$(BIN)
 ifndef VL_DUT
@@ -25,7 +25,8 @@ endif
 # The leaf runs are the ones that carry the twoClkDataIf handshake across the
 # SC/RTL boundary - uIpSrc verilated proves RTL -> model, uSink verilated proves
 # model -> RTL - because the surviving block model has to see the whole burst
-# before it casts its end-of-test vote.
+# before it casts its end-of-test vote. uSlowTick/uSlowSink repeat the same
+# proof for the clkSlow pair.
 run-vl:
 	$(MAKE) clean
 	$(MAKE) all VL_DUT=1
@@ -33,6 +34,7 @@ run-vl:
 	$(MAKE) run-vl-ipSrc VL_DUT=1
 	$(MAKE) run-vl-sink VL_DUT=1
 	$(MAKE) run-vl-slowTick VL_DUT=1
+	$(MAKE) run-vl-slowSink VL_DUT=1
 
 run-vl-top: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(HDL_TOP_MODULE)
@@ -45,3 +47,6 @@ run-vl-sink: $(BIN_DIR)/$(BIN)
 
 run-vl-slowTick: $(BIN_DIR)/$(BIN)
 	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uSlowTick
+
+run-vl-slowSink: $(BIN_DIR)/$(BIN)
+	$(BIN_DIR)/$(BIN) $(TB_TOP_MODULE) --vlInst $(TB_TOP_MODULE).uSlowSink

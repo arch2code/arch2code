@@ -135,8 +135,8 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
 
     Every macro above has a `_CLK` variant taking the clock signal as its FIRST argument: `` `DFF_CLK(clkSig, q, d) ``, `` `DFFREN_CLK(clkSig, q, d, en, rval) ``, `` `SCFF_CLK(clkSig, q, s, c) ``, `` `DFF_INST_CLK(clkSig, type, name) ``, and so on. The `_CLK` form holds the only flop body; each bare macro is a one-line alias onto it passing the literal `clk`, so the two can never describe different hardware.
 
-    *   Use the bare macro in a module whose clock port is named `clk`. That is the normal case and nothing changes.
-    *   Use the `_CLK` form in a module whose clock port has another name -- a block placed wholly in a non-default clock domain declares that domain's clock as its port and has no `clk` at all, so a bare macro there references an undeclared signal. Generated modules (`<block>_regs`, `apbDecode`) always emit the `_CLK` form for this reason.
+    *   Use the bare macro for a flop on the block's first clock. That is the normal case in every block: when a block's ports carry no clock named `clk` (or no reset named `rst_n`), the generated region of its module declares `wire clk = <first clock>;` (and `wire rst_n = <first reset>;`), so the bare macros expand to a real net whatever the domain is called.
+    *   Use the `_CLK` form only to place a flop on a clock other than the block's first one, in a block that carries more than one clock. Generated modules (`<block>_regs`, `apbDecode`) always emit the `_CLK` form because they name their own resolved clock.
     *   The reset is deliberately not an argument; on the ASIC branch it comes from the per-compilation `` `RST ``.
 
     **FPGA vs ASIC Behavior:**

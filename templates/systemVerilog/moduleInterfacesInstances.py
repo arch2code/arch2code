@@ -40,6 +40,12 @@ def render(args, prj, data):
             out.append(f"{indent}{entry['line']}")
         out.append("")
 
+    alias_lines = intf_gen_utils.sv_default_domain_aliases(data)
+    if alias_lines:
+        out.append(f"{indent}// Default-domain aliases: the bare flop macros expand to clk / rst_n")
+        out.extend(f"{indent}{line}" for line in alias_lines)
+        out.append("")
+
     #// Interface Instances, needed for between instanced modules inside this module
     out.append(f"{indent}// Interface Instances, needed for between instanced modules inside this module")
     for channelType in data["connectDouble"]:

@@ -1,13 +1,14 @@
 # twoClk - COMPOSED example: it vendors the reusable 'twoClkIp' child project
-# (examples/twoClk/ip) and assembles it with one block of its own. Both projects
+# (examples/twoClk/ip) and assembles it with three blocks of its own. Both projects
 # declare project-scoped clocks:/resets:, and both declare a clock named 'clk'
 # and a reset named 'rst_n' with DIFFERENT attributes: in one composed database
 # those must resolve to distinct qualified keys per project, with no duplicate-key
 # error and no shadowing. That is why the fixture is composed, not monolithic.
 #
-# The second clock and reset are carried by twoClkSlowTick alone (see
-# yaml/twoClk.yaml), so the twoClk container declares both domains and its
-# co-simulation wrapper constructs both sc_clocks and both reset drivers.
+# The second clock and reset are carried end to end by the clkSlow-connected
+# twoClkSlowTick -> twoClkSlowSink pair (see yaml/twoClk.yaml), so the twoClk
+# container declares both domains and its co-simulation wrapper constructs both
+# sc_clocks and both reset drivers.
 
 yamlFormat: 2
 projectName: twoClk

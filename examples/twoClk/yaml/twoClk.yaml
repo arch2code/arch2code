@@ -1,9 +1,9 @@
 # twoClk - top design: one reused twoClkIpSrc producer (owned by the vendored
 # 'twoClkIp' child project) feeds one assembler-owned sink over twoClkDataIf, so
 # the fixture holds a block on each side of the composition boundary and a
-# connection across it. A third block lives wholly in the assembler's slow
-# domain and touches no connection, so the container carries two clocks and two
-# resets and binds each child to its own.
+# connection across it. A second pair (twoClkSlowTick -> twoClkSlowSink) sits
+# wholly in clkSlow over the same twoClkDataIf; its connection's clock: puts
+# the BFM on clkSlow, so the slow domain is checked in flow, not just elaborated.
 #
 # clocks: and resets: are projectScope sections, so both projects' declarations
 # live in their project files, not here.
@@ -13,6 +13,11 @@ include:
     # chain; ownership stays with twoClkIp (CONTEXTOWNINGPROJECT).
     - ../ip/yaml/twoClkIp.yaml
 
+constants:
+    TWO_CLK_TICK_DIV: { value: 4, desc: "clkSlow cycles between consecutive tick words" }
+    TWO_CLK_TICK_WORDS: { value: 4, desc: "Tick words the slow sink checks before voting end-of-test" }
+    TWO_CLK_SLOW_PERIOD_NS: { value: 3, desc: "clkSlow period in ns; must equal clocks.clkSlow.period in prj/yaml/project.yaml" }
+
 blocks:
     twoClk_tb:
         desc: "Testbench container for twoClk (root container)"
@@ -21,7 +26,7 @@ blocks:
         hasTb: false
         hasRtl: false
     twoClk:
-        desc: "DUT: the reused twoClkIpSrc producer plus the assembler's sink"
+        desc: "DUT: the reused twoClkIpSrc producer, the assembler's sink, and the clkSlow tick/sink pair"
         hasVl: true
         hasMdl: true
         hasTb: true
@@ -35,13 +40,23 @@ blocks:
         ports:
             in: { interface: twoClkDataIf, direction: dst }
     twoClkSlowTick:
-        desc: "Free-running tick counter in the clkSlow domain; no ports, so its domain comes from the block's own clocks:/resets: lists"
+        desc: "clkSlow tick counter streaming its count out; its explicit clocks:/resets: lists cover the block-own-list derivation path, the sink covers the connection path"
         hasVl: true
         hasMdl: true
         hasTb: false
         hasRtl: true
         clocks: [clkSlow]
         resets: [rstSlow_n]
+        ports:
+            out: { interface: twoClkDataIf, direction: src }
+    twoClkSlowSink:
+        desc: "Slow-domain consumer: checks tick values and their clkSlow cadence"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            in: { interface: twoClkDataIf, direction: dst }
 
 instances:
     twoClk_tb:  { container: twoClk_tb, instanceType: twoClk_tb,     instGroup: top } # self reference
@@ -49,8 +64,12 @@ instances:
     uIpSrc:     { container: twoClk,    instanceType: twoClkIpSrc,   instGroup: top }
     uSink:      { container: twoClk,    instanceType: twoClkSink,    instGroup: top }
     uSlowTick:  { container: twoClk,    instanceType: twoClkSlowTick, instGroup: top }
+    uSlowSink:  { container: twoClk,    instanceType: twoClkSlowSink, instGroup: top }
 
 connections:
     # Crosses the composition boundary: src block owned by twoClkIp, dst block
     # owned by twoClk.
     - { interface: twoClkDataIf, src: uIpSrc, srcport: out, dst: uSink, dstport: in }
+    # The fixture's only non-default-clock connection: both uSlowTick and
+    # uSlowSink sit in clkSlow, so clock: pins the BFM there with no crossing.
+    - { interface: twoClkDataIf, src: uSlowTick, srcport: out, dst: uSlowSink, dstport: in, clock: clkSlow }

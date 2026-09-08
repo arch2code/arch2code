@@ -5,12 +5,26 @@
 // GENERATED_CODE_BEGIN --template=module_hdl_sv_wrapper
 
 module twoClkSlowTick_hdl_sv_wrapper
-
+    // Generated Import package statement(s)
+    import twoClkIp_package::*;
 (
+    // push_ack_if.src
+    output bit out_push,
+    output bit [7:0] out_data,
+    input bit out_ack,
+
     input clkSlow,
     input rstSlow_n
 );
+    // push_ack_if.src
+    push_ack_if #(.data_t(twoClkDataSt)) out();
+
+    assign #0 out_push = out.push;
+    assign #0 out_data = out.data;
+    assign #0 out.ack = out_ack;
+
     twoClk_twoClkSlowTick dut (
+        .out(out), // push_ack_if.src
         .clkSlow(clkSlow),
         .rstSlow_n(rstSlow_n)
     );

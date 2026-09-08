@@ -4,9 +4,10 @@
   §5 emission plus the cycle-based reset release. **The §6 clock-parameterized
   flop macros and the `<block>_regs` emission rows of §5 are now landed too, and
   so is the `apbDecode` router's — every flop any generator emits now names its
-  own module's clock. The per-connection BFM binding of §5 is landed too.** The
-  remaining §5 binding sites — child instance, memory instance — and §6.3's
-  default-domain alias are not written.
+  own module's clock. The per-connection BFM binding of §5 is landed too, and so
+  are the child-instance and memory-instance binding rows and §6.3's
+  default-domain alias.** Every §5 row is landed; what remains of Phase 1 is
+  §6.4's reset-style selector and the CDC primitive library.
   - **Decisions:** none block phase 1. Decision 0 (tandem) is settled by §10.1;
     7 (boundary binding) is deferred to phase 3; 1 (flop macro spelling),
     3 (reset release count), 4 (port spelling), 5 (no crossing report) and
@@ -119,16 +120,49 @@
     container `twoClk` now declares `input clk, clkSlow, rst_n, rstSlow_n`,
     binds `.clkSlow (clkSlow)` / `.rstSlow_n (rstSlow_n)` on that child and
     `.clk (clk)` / `.rst_n (rst_n)` on the other two, and its Verilated SystemC
-    wrapper constructs two `sc_clock`s and two reset drivers. Its hand-written
-    RTL uses `` `DFF_INST_CLK(clkSlow, ...) `` because no alias exists yet. `make
+    wrapper constructs two `sc_clock`s and two reset drivers. `make
     two-clk` runs five simulations — the model, the verilated top, and each of
     the three leaves verilated alone — all at `No error`. See §9 and §13.6.
-  - **Still to do in Phase 1:** §6.3's default-domain alias, §6.4's reset-style
-    selector, and the CDC primitive library of §6.3. Until the alias lands, D6 holds only
-    for a project whose default clock and reset are named `clk`/`rst_n`;
-    hand-written RTL in any other domain must use the `_CLK` macro family
-    explicitly, which is what `examples/twoClk`'s slow-domain block does. §10
-    item 9's `postParseRegisterPorts` clock propagation is landed.
+  - **Landed next: §6.3's default-domain alias.** The generated region of every
+    block module now carries `wire clk = <first clock>;` when no clock the block
+    carries is named `clk`, and `wire rst_n = <first reset>;` when no reset it
+    carries is named `rst_n`, so the bare flop macros expand to a real net in
+    every block. The rule is membership, not position: a block whose second
+    clock is named `clk` gets no alias, because the alias would redeclare a
+    port. Nothing is emitted when neither line is needed, so every existing
+    single-domain block is byte-identical. Rendered by
+    `intf_gen_utils.sv_default_domain_aliases` from the §4.2 `clocks`/`resets`
+    view fields; the `twoClkSlowTick` fixture RTL is back on the bare
+    `` `DFF_INST `` macro, which is the in-flow proof of D6. Pinned by six
+    emission cases, including a leaf carrying `[mainClk, clk]`, and four
+    mutations (unconditional alias, literal RHS, first-entry rule, dropped reset
+    alias) each killed.
+  - **Landed next: the slow domain is checked in flow, not just elaborated.**
+    `twoClkSlowTick` now streams its tick count over a `twoClkDataIf` port every
+    `TWO_CLK_TICK_DIV` slow cycles from a free-running cycle counter, and a new
+    `twoClkSlowSink` consumes it over the fixture's one non-default-clock
+    connection (`clock: clkSlow`). The sink declares no `clocks:`/`resets:`
+    list, so its domain comes from the connection alone, which is the D1 path
+    in a live co-simulation: its BFM is bound to `clkSlow`/`rstSlow_n` and its
+    wrapper constructs the 3 ns `sc_clock`. The sink's model asserts each tick
+    value equals its index and each arrival spacing equals exactly
+    `TWO_CLK_TICK_DIV × TWO_CLK_SLOW_PERIOD_NS`. In the verilated-tick run a
+    block clocked by `clk` instead of `clkSlow` would arrive every 4 ns and
+    fail that assert; the model-only run has no clock, so there the check pins
+    only the model's own cadence against the constants. Both ends sit in
+    `clkSlow`; there is still no crossing. `make two-clk` now
+    runs six simulations, the new `run-vl-slowSink` included. Two mutations
+    (RTL cycle counter wrapping one cycle early; model waiting the divisor in
+    ns without the period) each failed on the cadence assertion and were
+    restored. `TWO_CLK_SLOW_PERIOD_NS` mirrors `clocks.clkSlow.period` in
+    `project.yaml` because no view exposes a clock period to SystemC; the
+    cadence check is what catches drift between the two. See §9 and §13.6.
+  - **Still to do in Phase 1:** §6.4's reset-style selector and the CDC primitive
+    library of §6.3. D6 now holds for hand-written RTL in any domain: the bare
+    macro family targets the block's first clock and reset through the alias,
+    and the `_CLK` family is needed only to place a flop on a non-first clock of
+    a multi-clock block. §10 item 9's `postParseRegisterPorts` clock propagation
+    is landed.
   - **Verification bar raised.** "Working" now means a verilated co-simulation
     build and run, not `make gen` succeeding. See §13 for the measured baseline
     and the acceptance criteria. The `examples/twoClk` fixture now meets them:
@@ -943,7 +977,7 @@ and is not.
 | `templates/systemVerilog/moduleRegs.py` (every flop call) | `` `DFFR ``/`` `DFFREN ``/`` `DFF ``/`` `DFFEN `` capturing a literal `clk` | The `_CLK` variant naming the handler's own clock, at all five flop-emitting sites. | LANDED (§6.6) |
 | `templates/systemc/module_hdl_wrapper.py:172` (BFM bind) | every BFM bound to the single `clk`/`rst_n` | Each BFM bound to the clock of **its own connection**. This is the concrete reason D1 puts the clock on the connection. | LANDED for both. The clock is the `domainClock` field of §4.2; the reset is `domainReset`, the block's own reset declared on that clock, so the pair IS one domain. This supersedes the earlier ruling that the reset stays the block's first; see §5.3. |
 | `templates/systemVerilog/apbDecodeModule.py` (every flop call) | `` `DFF ``/`` `SCFF `` capturing a literal `clk` in the generated router | The `_CLK` variant naming the router's own clock, at all three flop-emitting sites. | LANDED — the router is its own block, so no new view was needed, exactly as for `<block>_regs`. See §6.7 |
-| `templates/systemVerilog/moduleInterfacesInstances.py` (generated region) | nothing | Default-domain alias lines per §6.3, in blocks whose default clock or reset is not named `clk`/`rst_n`. | NOT DONE — §6 |
+| `templates/systemVerilog/moduleInterfacesInstances.py` (generated region) | nothing | Default-domain alias lines per §6.3, in blocks whose default clock or reset is not named `clk`/`rst_n`. | LANDED — `intf_gen_utils.sv_default_domain_aliases`, emitted after the parameterizable declarations; the test is membership of the name in the block's clock/reset set, not the position of the default (§6.3) |
 
 **The gap the port-declaration step left, now closed.** Between the §5 port
 declarations and the binding rows, a block whose port list no longer named
@@ -952,9 +986,9 @@ declarations and the binding rows, a block whose port list no longer named
 reached it at the time. With the child-instance and memory-instance rows landed
 the container binds each child port to the container's signal for the same
 domain, and `examples/twoClk` now carries a block wholly in `clkSlow` so the
-shape is elaborated and verilated in flow (§9). What remains is the alias row:
-hand-written RTL in a non-default domain must spell its clock through the `_CLK`
-macro family until §6.3 lands.
+shape is elaborated and verilated in flow (§9). The alias row is landed too, so
+hand-written RTL in a non-default domain writes the bare macro family and the
+generated region supplies the `clk`/`rst_n` nets it expands to.
 
 **Measured, not inferred.** A throwaway fixture with a `clkSlow` register bus was
 linted whole-design against both the pre-`_regs` generator and the current one.
@@ -1214,7 +1248,14 @@ Three pieces, each independently valuable:
   region in every block module, including hand-written leaf blocks, so this has a
   natural home. This is what makes all 248 existing call sites and all
   out-of-tree RTL correct regardless of clock naming. With polarity fixed at
-  active-low (§6.5) the alias is a pure rename on both lines.
+  active-low (§6.5) the alias is a pure rename on both lines. **LANDED.** Each
+  line is emitted independently: the clock alias when no clock in the block's
+  set is named `clk`, the reset alias when no reset in its set is named
+  `rst_n`. Membership, not position, is the test — a block carrying `[mainClk,
+  clk]` has a `clk` port, and an alias would redeclare it. When emitted, the
+  alias names the block's first clock or reset, which is the default domain in
+  canonical order. A block that needs neither line gets no output at all, so
+  the change is byte-neutral for every existing single-domain block.
 - **An explicit-argument macro family**, with the existing macros redefined as
   wrappers so no call site changes. **LANDED, clock only — see §6.6 for the
   spelling actually taken and why the reset half is not in it.** The generator
@@ -1660,10 +1701,10 @@ clock-parameterized macros and the `<block>_regs` rows are landed on top of that
 settling open decision 1. The `apbDecode` router's flops are landed on top of that
 (§6.7), so no generator emits a bare flop macro any more. The per-connection BFM
 clock binding is landed on top of that (§5.3), which is the first §5 row to
-consume a per-**port** view field, again with zero churn. Phase 1 continues at
-the two remaining §5 binding rows that need a further `projectOpen` view (§4.2 —
-the child instance and the memory instance), §6.3's default-domain alias, and
-§7's single-domain rule for a router block.
+consume a per-**port** view field, again with zero churn. The child-instance and
+memory-instance binding rows, §7's single-domain rule for a router block, and
+§6.3's default-domain alias are landed on top of that, so every §5 row is now
+in. Phase 1 continues at §6.4 and the CDC primitive library.
 
 Phase 0's **eight confirmed defects** ([`plan-project-scope.md`](./plan-project-scope.md)
 §12) are closed after three remediation rounds; §13 of that plan records the
@@ -1725,15 +1766,18 @@ exactly as they do today.
   extended, not replaced, here. It carries two clocks, two resets, a block in
   each domain, and one container declaring both domains, so that the
   multi-domain port list, the per-child bind, and the domain-explicit flop
-  macros are all exercised. **Landed as `twoClkSlowTick`**: a portless block with
-  `clocks: [clkSlow]` / `resets: [rstSlow_n]` and a free-running counter written
-  with `` `DFF_INST_CLK(clkSlow, ...) ``. It deliberately touches no connection,
-  so the fixture holds no RTL clock crossing — a crossing needs the CDC
-  primitives §6.3 has not shipped, and a fixture that silently dropped words
-  across an unsynchronised push/ack would demonstrate the wrong thing. The
-  container `twoClk` therefore carries `[clk, clkSlow]` and `[rst_n,
-  rstSlow_n]`, and `make two-clk` verilates it whole and each of its three
-  leaves alone. It is a **composed** fixture — a child IP project plus an assembling project —
+  macros are all exercised. **Landed as the `twoClkSlowTick` → `twoClkSlowSink`
+  pair**: the tick block carries `clocks: [clkSlow]` / `resets: [rstSlow_n]`
+  and pushes a free-running tick count, written with the bare `` `DFF_INST ``
+  macro that resolves through the generated §6.3 alias `wire clk = clkSlow;`;
+  the sink carries no clock list and takes `clkSlow` from the connection's
+  `clock:` alone, then checks the tick values and their exact cadence against
+  the slow period. Both ends sit in `clkSlow`, so the fixture holds no RTL
+  clock crossing — a crossing needs the CDC primitives §6.3 has not shipped,
+  and a fixture that silently dropped words across an unsynchronised push/ack
+  would demonstrate the wrong thing. The container `twoClk` therefore carries
+  `[clk, clkSlow]` and `[rst_n, rstSlow_n]`, and `make two-clk` verilates it
+  whole and each of its four leaves alone. It is a **composed** fixture — a child IP project plus an assembling project —
   because Phase 0's acceptance gate requires that, and so that per-project
   resolution is demonstrated: the IP and the assembler each declare a clock named
   `clk` with a different `period`, and each side's flops must resolve to its own.
@@ -1756,9 +1800,10 @@ exactly as they do today.
   `clk` differ in `period`, which is the one shape where the two ends resolve to
   different rows (§3). The `clkSlow` block was deferred while the container's
   bind was still a literal `.clk (clk)`, because it would have failed to
-  elaborate (§5); it landed with the child-instance binding row, ahead of the
-  §6.3 alias, by spelling its own clock through the `_CLK` macro family.
-- **Emission unit tests** in `unittest/test_clock_reset_emission.py`, 23 cases,
+  elaborate (§5); it landed with the child-instance binding row, first spelling
+  its own clock through the `_CLK` macro family, and moved to the bare macro
+  once the §6.3 alias landed.
+- **Emission unit tests** in `unittest/test_clock_reset_emission.py`, 43 cases,
   wired into `run_all_tests.sh` as its own suite. It builds one fixture whose
   three generated leaves cover the shapes no example has — a leaf wholly in a
   non-default domain, a leaf in three domains (including one declared in `ps`)
@@ -2364,6 +2409,28 @@ examples/twoClk/rtl lint` is clean at zero warnings with `twoClkSlowTick.sv` in
 the file set, which is the first in-flow lint of a hand-written module in a
 non-default domain. The unit suite is green at 98 suites, zero `FAIL`, with no
 suite added or removed; every fixture that authored `active: low` now omits it.
+
+**Re-established after the §6.3 default-domain alias.** `make two-clk` exits 0
+with five simulations at `No error`, with `twoClkSlowTick.sv` now written on the
+bare `` `DFF_INST `` macro and its generated region carrying `wire clk =
+clkSlow;` / `wire rst_n = rstSlow_n;`. `make -C examples/twoClk/rtl lint` is
+clean at zero warnings. The unit suite is green at 98 suites, zero `FAIL`, with
+the emission suite grown from 37 to 43 cases and no suite added or removed. A
+full clean regeneration leaves every generated file outside `twoClk` byte-identical,
+which is the measured form of the alias's byte-neutrality claim: no in-tree block
+other than `twoClkSlowTick` lacks a `clk` or `rst_n`.
+
+**Re-established after the slow-domain consumer.** `make two-clk` exits 0 with
+six simulations at `No error` — the model, the verilated top, and each of the
+four leaves verilated alone, `run-vl-slowSink` new — and a second `make two-clk`
+leaves every tracked and generated file byte-identical. In both the model-only
+run and the verilated-tick run the slow sink logs ticks 0 to 3 arriving 12 ns
+apart, which is `TWO_CLK_TICK_DIV × TWO_CLK_SLOW_PERIOD_NS`; the verilated-tick
+run is the first in-flow observation of a BFM bound to a non-default clock.
+`make -C examples/twoClk/rtl lint` is clean at zero warnings with ten modules
+in the file set. The unit suite is green at 98 suites, zero `FAIL`, with no
+suite added or removed, and its regeneration of `examples/twoClk` matches `make
+gen`'s output byte for byte.
 
 **Two things this step's gates surfaced that are worth recording as they are.**
 

@@ -390,6 +390,70 @@ REGS_LEAF = 'rtl/leafA.sv'
 REGS_ROUTER = 'rtl/apbDecode.sv'
 
 
+# --------------------------------------------------- clk-member fixture --
+#
+# Standalone and connection-free, so no cross-project name resolution can add
+# `clk` to a block's set behind the fixture's back. The default clock is not
+# named `clk`; the leaf authors `clk` as its SECOND clock (see
+# check_alias_clk_member_not_first_skips_alias).
+CLK_MEMBER_PROJECT = """yamlFormat: 2
+projectName: clkMember
+topInstance: leaf
+
+projectFiles:
+    - ../../yaml/top.yaml
+
+clocks:
+    mainClk: { desc: "default clock, not named clk", default: true, period: 1, timeUnit: ns }
+    clk: { desc: "non-default clock literally named clk", period: 2, timeUnit: ns }
+    periphClk: { desc: "periphLeaf's domain; a distinct alias RHS", period: 3, timeUnit: ns }
+
+resets:
+    rst_n:      { desc: "the default reset, clk domain", default: true, clock: mainClk }
+    clkRst_n:   { desc: "the reset for the non-default clk domain", clock: clk }
+    periphRst_n: { desc: "the reset for the periphClk domain", clock: periphClk }
+
+dirs:
+    root: ../..
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:  { alignment: memsize, sizeRoundUpPowerOf2: true, sortDescending: true }
+    registers: { alignment: 8, sortDescending: true }
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+"""
+
+CLK_MEMBER_DESIGN = """blocks:
+    leaf:
+        desc: "leaf carrying the default clock plus a second clock literally named clk, not first in canonical order"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: true
+        clocks: [mainClk, clk]
+    periphLeaf:
+        desc: "leaf wholly in the periphClk domain, so its alias pins a clock value DIFFERENT from leaf's own domain"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: true
+        clocks: [periphClk]
+
+instances:
+    leaf: { container: leaf, instanceType: leaf, instGroup: top }
+"""
+
+CLK_MEMBER_LEAF = 'rtl/leaf.sv'
+CLK_MEMBER_PERIPH_LEAF = 'rtl/periphLeaf.sv'
+
+
 def _arch2code(*args, cwd):
     env = os.environ.copy()
     env['NO_COLOR'] = '1'
@@ -511,6 +575,39 @@ def _generate_regs(feed_clock):
 
     emitted = dict()
     for rel in ('rtl/top_package.sv', REGS_LEAF, REGS_HANDLER, REGS_ROUTER):
+        gen = _arch2code('--db', db, '-r', '--systemVerilog',
+                         '--file', os.path.join(fixture, rel), cwd=fixture)
+        if gen.returncode != 0:
+            raise AssertionError(f"generating {rel} failed:\n{gen.stdout}\n{gen.stderr}")
+        with open(os.path.join(fixture, rel)) as f:
+            emitted[rel] = f.read()
+    return fixture, emitted
+
+
+def _generate_clk_member():
+    """Build the clk-member fixture and render its two leaves.
+
+    Returns (fixture_dir, {relative path: emitted text}).
+    """
+    fixture = tempfile.mkdtemp(prefix='clkmember_')
+    os.makedirs(os.path.join(fixture, 'prj', 'yaml'))
+    os.makedirs(os.path.join(fixture, 'yaml'))
+    with open(os.path.join(fixture, 'prj', 'yaml', 'project.yaml'), 'w') as f:
+        f.write(CLK_MEMBER_PROJECT)
+    with open(os.path.join(fixture, 'yaml', 'top.yaml'), 'w') as f:
+        f.write(CLK_MEMBER_DESIGN)
+
+    db = os.path.join(fixture, 'clkmember.db')
+    built = _arch2code('--yaml', os.path.join(fixture, 'prj', 'yaml', 'project.yaml'),
+                       '--db', db, cwd=fixture)
+    if built.returncode != 0:
+        raise AssertionError(f"database build failed:\n{built.stdout}\n{built.stderr}")
+    made = _arch2code('--db', db, '-r', '--newmodule', cwd=fixture)
+    if made.returncode != 0:
+        raise AssertionError(f"newmodule failed:\n{made.stdout}\n{made.stderr}")
+
+    emitted = dict()
+    for rel in (CLK_MEMBER_LEAF, CLK_MEMBER_PERIPH_LEAF):
         gen = _arch2code('--db', db, '-r', '--systemVerilog',
                          '--file', os.path.join(fixture, rel), cwd=fixture)
         if gen.returncode != 0:
@@ -699,6 +796,105 @@ def check_two_clock_port_list(emitted):
     if line != 'input clk, clkSlow, rst_n, rstSlow_n':
         raise AssertionError(f"cons port list is {line!r}, expected "
                              f"'input clk, clkSlow, rst_n, rstSlow_n'")
+    return True
+
+
+# -------------------------------------------------- default-domain alias --
+
+def _generated_region(text, where):
+    """The text of the moduleInterfacesInstances generated region alone.
+
+    The alias is asserted to sit INSIDE this region, not merely anywhere in the
+    file, so a hand-edit of the user region could never satisfy the case."""
+    begin = text.find('GENERATED_CODE_BEGIN --template=moduleInterfacesInstances')
+    end = text.find('GENERATED_CODE_END', begin)
+    if begin == -1 or end == -1:
+        raise AssertionError(f"{where} has no moduleInterfacesInstances generated region")
+    return text[begin:end]
+
+
+def check_alias_non_default_domain(emitted):
+    """A leaf wholly in the slow domain aliases both clk and rst_n, inside the
+    generated region, onto its own resolved clock and reset.
+
+    slowProd's port list names neither clk nor rst_n, so this is the shape that
+    proves the alias exists at all: without it, slowProd's hand-written RTL
+    could not use the bare flop macro family."""
+    text = emitted['rtl/slowProd.sv']
+    region = _generated_region(text, 'slowProd module')
+    for line in ('wire clk = clkSlow;', 'wire rst_n = rstSlow_n;'):
+        _expect(region, line, "the alias names slowProd's own clock/reset",
+                'slowProd generated region')
+    return True
+
+
+def check_alias_absent_default_domain(emitted):
+    """A block already carrying clk and rst_n as members gets no alias at all.
+
+    fastProd's set is [clk, clkSlow, clkPico] / [rst_n, rstSlow_n, rstPico_n],
+    so both names are already real ports; an alias here would redeclare them."""
+    text = emitted['rtl/fastProd.sv']
+    _refute(text, 'wire clk =', 'fastProd already declares a port named clk',
+            'fastProd module')
+    _refute(text, 'wire rst_n =', 'fastProd already declares a port named rst_n',
+            'fastProd module')
+    return True
+
+
+def check_alias_absent_multi_domain_clk_first(emitted):
+    """A multi-domain block whose FIRST clock is clk emits no clk alias.
+
+    cons's set is [clk, clkSlow] / [rst_n, rstSlow_n]; clk and rst_n are both
+    already members, so neither alias line belongs here."""
+    text = emitted['rtl/cons.sv']
+    _refute(text, 'wire clk =', 'cons already declares a port named clk',
+            'cons module')
+    _refute(text, 'wire rst_n =', 'cons already declares a port named rst_n',
+            'cons module')
+    return True
+
+
+def check_alias_reset_independent_of_clock(emitted):
+    """The two alias decisions are independent: leafA's default reset is
+    rstMain_n, not rst_n, while its clock IS named clk.
+
+    So leafA aliases rst_n onto rstMain_n and emits no clk alias at all - proof
+    that a project renaming only its reset does not also trigger a clock alias,
+    and vice versa."""
+    text = emitted[REGS_LEAF]
+    region = _generated_region(text, 'leafA module')
+    _expect(region, 'wire rst_n = rstMain_n;',
+            "leafA's default reset is rstMain_n, not rst_n", 'leafA generated region')
+    _refute(text, 'wire clk =', 'leafA already declares a port named clk',
+            'leafA module')
+    return True
+
+
+def check_alias_clk_member_not_first_skips_alias(emitted):
+    """A clock literally named `clk` skips the alias wherever it sits in the set.
+
+    clkMember's leaf carries mainClk (the project's default, canonically first)
+    then clk (authored second), so a rule keyed on POSITION rather than
+    MEMBERSHIP would wrongly alias over the block's own clk port."""
+    text = emitted[CLK_MEMBER_LEAF]
+    _refute(text, 'wire clk =',
+            "the leaf already declares a port named clk, even though it is "
+            "not the block's first clock", 'clkMember leaf module')
+    return True
+
+
+def check_alias_value_is_not_a_shared_literal(emitted):
+    """The alias RHS is the block's OWN clock/reset, not a fixed spelling that
+    happens to satisfy every fixture.
+
+    periphLeaf's only clock is periphClk, a name no other fixture's alias uses,
+    so this is what pins the RHS to a per-block lookup rather than a literal
+    that coincidentally matches slowProd's clkSlow everywhere else."""
+    text = emitted[CLK_MEMBER_PERIPH_LEAF]
+    region = _generated_region(text, 'periphLeaf module')
+    for line in ('wire clk = periphClk;', 'wire rst_n = periphRst_n;'):
+        _expect(region, line, "the alias names periphLeaf's own clock/reset",
+                'periphLeaf generated region')
     return True
 
 
@@ -1581,6 +1777,12 @@ def main():
              check_bfm_binds_names_the_wrapper_declares),
             ("a BFM is clocked by its own connection's domain",
              check_bfm_binds_its_own_connection_domain),
+            ('a leaf wholly in a non-default domain aliases clk and rst_n',
+             check_alias_non_default_domain),
+            ('a leaf already carrying clk and rst_n gets no alias',
+             check_alias_absent_default_domain),
+            ('a multi-domain leaf whose first clock is clk gets no alias',
+             check_alias_absent_multi_domain_clk_first),
         ]
         ok += [_run_case(label, lambda fn=fn: fn(emitted)) for label, fn in cases]
     finally:
@@ -1603,6 +1805,8 @@ def main():
              check_router_non_default_domain),
             ('the router and its handler are clocked by one bus domain',
              check_router_and_handler_share_the_bus_domain),
+            ('a renamed default reset aliases rst_n independently of the clock',
+             check_alias_reset_independent_of_clock),
         ]
         ok += [_run_case(label, lambda fn=fn: fn(emitted)) for label, fn in cases]
     finally:
@@ -1618,6 +1822,15 @@ def main():
             ('a default-domain memory primitive binds the default clock',
              check_memory_instance_default_domain),
         )]
+    finally:
+        shutil.rmtree(fixture)
+
+    fixture, emitted = _generate_clk_member()
+    try:
+        ok += [_run_case('a clock named clk that is not first still skips the alias',
+                         lambda: check_alias_clk_member_not_first_skips_alias(emitted)),
+              _run_case('the alias RHS is the block\'s own clock/reset, not a shared literal',
+                         lambda: check_alias_value_is_not_a_shared_literal(emitted))]
     finally:
         shutil.rmtree(fixture)
 

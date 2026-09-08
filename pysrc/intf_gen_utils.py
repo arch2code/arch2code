@@ -246,6 +246,22 @@ def sv_clock_reset_input_lines(block_data):
 def sv_clock_reset_binds(block_data):
     return [f".{name}({name})" for name in clock_reset_port_names(block_data)]
 
+# The bare flop macros (`DFF`, `DFF_INST`, ...) expand to the literal
+# identifier `clk`, and hand-written RTL names `rst_n` directly. A block whose
+# own clock or reset port carries some other name still needs those two
+# identifiers to resolve, so the generated region aliases them onto the block's
+# own default-domain clock/reset (clocks[0]/resets[0], canonical order puts the
+# default first). The rule is "no member is named clk/rst_n", not "the first
+# entry isn't clk/rst_n": a project may declare a non-default clock literally
+# named `clk`, and the alias must not shadow that port.
+def sv_default_domain_aliases(block_data):
+    out = []
+    if not any(row['clock'] == 'clk' for row in block_data['clocks']):
+        out.append(f"wire clk = {block_data['clocks'][0]['clock']};")
+    if not any(row['reset'] == 'rst_n' for row in block_data['resets']):
+        out.append(f"wire rst_n = {block_data['resets'][0]['reset']};")
+    return out
+
 def sv_gen_ports(data, prj, indent, block_data):
     out = []
     for sourceType in data['ports']:

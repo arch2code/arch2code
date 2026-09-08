@@ -11,22 +11,30 @@ import twoClkIp_package::*;
 );
 
     // Interface Instances, needed for between instanced modules inside this module
-    push_ack_if #(.data_t(twoClkDataSt)) out();
+    push_ack_if #(.data_t(twoClkDataSt)) out_0();
+    push_ack_if #(.data_t(twoClkDataSt)) out_1();
 
 // Instances
 twoClkIp_twoClkIpSrc uIpSrc (
-    .out (out),
+    .out (out_0),
     .clk (clk),
     .rst_n (rst_n)
 );
 
 twoClk_twoClkSink uSink (
-    .in (out),
+    .in (out_0),
     .clk (clk),
     .rst_n (rst_n)
 );
 
 twoClk_twoClkSlowTick uSlowTick (
+    .out (out_1),
+    .clkSlow (clkSlow),
+    .rstSlow_n (rstSlow_n)
+);
+
+twoClk_twoClkSlowSink uSlowSink (
+    .in (out_1),
     .clkSlow (clkSlow),
     .rstSlow_n (rstSlow_n)
 );
