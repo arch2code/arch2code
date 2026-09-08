@@ -27,6 +27,8 @@ HIER_VL_DEMO_DIR = examples/hierVlDemo
 IP_TEST_DIR = examples/ip_test
 SIMPLE_IP_DIR = examples/simple_ip
 
+TWO_CLK_DIR = examples/twoClk
+
 IN_OUT_DIR = examples/inAndOut
 IN_OUT_DOT_DB_FILE = $(IN_OUT_DIR)/.inAndOut.db
 IN_OUT_DB_FILE = $(IN_OUT_DIR)/inAndOut.db
@@ -120,6 +122,14 @@ simple-ip:
 	make -C $(SIMPLE_IP_DIR) gen
 	make -C $(SIMPLE_IP_DIR)/rundir -j run
 	make -C $(SIMPLE_IP_DIR)/rundir -j run-vl
+
+.PHONY : two-clk
+# Two projects, so two gen invocations: the vendored twoClkIp child has its own.
+two-clk:
+	make -C $(TWO_CLK_DIR) gen
+	make -C $(TWO_CLK_DIR)/ip gen
+	make -C $(TWO_CLK_DIR)/rundir -j run
+	make -C $(TWO_CLK_DIR)/rundir -j run-vl
 
 .PHONY : hello-world
 hello-world:
@@ -221,13 +231,15 @@ clean :
 	make -C $(HIER_VL_DEMO_DIR) clean
 	make -C $(IP_TEST_DIR) clean
 	make -C $(SIMPLE_IP_DIR) clean
+	make -C $(TWO_CLK_DIR) clean
+	make -C $(TWO_CLK_DIR)/ip clean
 
 .PHONY : unittest
 unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip two-clk
 push-test: clean unittest pipeline-test
 
 # AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).

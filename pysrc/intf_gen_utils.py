@@ -219,6 +219,33 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     return out
 
+def clock_reset_port_names(block_data):
+    # The block's clock and reset port names, clocks then resets, each set in the
+    # persisted canonical domain order (the declaring project's declaration order
+    # with the default first). Clocks and resets share one module port namespace,
+    # so one order serves every emission site: a module port list, its
+    # instantiation, and the verilated wrapper that reconstructs it must agree
+    # name for name and position for position.
+    return ([row['clock'] for row in block_data['clocks']]
+            + [row['reset'] for row in block_data['resets']])
+
+# Two spellings of the same list. The ORDER is global, which is why both are
+# built on clock_reset_port_names rather than each assembling its own. The
+# spelling belongs to the GENERATOR, not to the kind of module it emits: the
+# block module port list joins clocks and resets onto one `input`, the verilated
+# SV wrapper declares one per line, and <block>_regs is a third generator that
+# also declares one per line in an RTL module
+# (templates/systemVerilog/moduleRegs.py), so it shares the wrapper's spelling
+# rather than the block module's.
+def sv_clock_reset_input(block_data):
+    return f"input {', '.join(clock_reset_port_names(block_data))}"
+
+def sv_clock_reset_input_lines(block_data):
+    return ',\n'.join(f"input {name}" for name in clock_reset_port_names(block_data))
+
+def sv_clock_reset_binds(block_data):
+    return [f".{name}({name})" for name in clock_reset_port_names(block_data)]
+
 def sv_gen_ports(data, prj, indent, block_data):
     out = []
     for sourceType in data['ports']:
@@ -227,7 +254,7 @@ def sv_gen_ports(data, prj, indent, block_data):
             intf_data = get_intf_data(connectionData, prj)
             intf_type = get_intf_type(intf_data['interfaceType'], block_data)
             out.append(f"{indent}{intf_type}_if.{port_data['direction']} {port_data['name']},")
-    out.append(f"{indent}input clk, rst_n")
+    out.append(f"{indent}{sv_clock_reset_input(block_data)}")
     out.append(");\n")
     return out
 

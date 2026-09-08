@@ -31,13 +31,13 @@ blocks:
     hasTb: true
   producer:
     desc: "Producer block - drives tags to the consumer"
-    hasVl: false
+    hasVl: true
     hasRtl: true
     hasMdl: true
     hasTb: false
   consumer:
     desc: "Consumer block - receives tags from the producer"
-    hasVl: false
+    hasVl: true
     hasRtl: true
     hasMdl: true
     hasTb: false

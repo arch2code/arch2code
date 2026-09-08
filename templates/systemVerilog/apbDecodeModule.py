@@ -39,6 +39,15 @@ def render(args, prj, data):
     # Ports
     out.extend(intf_gen_utils.sv_gen_ports(data, prj, indent, data))
 
+    # The router is a register-bus endpoint and its own block in the database, so
+    # the clock set reaching here is its own, derived and ordered by
+    # getBDClocksResets - the same set sv_gen_ports above declared, and the same
+    # bus domain the <block>_regs handler of this tree reads. A router's
+    # connectivity is the bus feed alone, so the first entry of the canonical
+    # order is that domain and clocks every flop below. The port list still
+    # declares the whole set, which an additive block clocks: entry can widen.
+    decode_clk = data['clocks'][0]['clock']
+
     qualInstance = next(iter(data['instances']))
     addr_decode_data = data['addressDecode']
     address_group_data = addr_decode_data['addressGroupData']
@@ -75,7 +84,8 @@ def render(args, prj, data):
 
     out.append(t.render(
         parent = {
-            "interfacePort" : parent_interface_port, "addrSt" : reg_intf_addr_st, "dataSt" : reg_intf_data_st
+            "interfacePort" : parent_interface_port, "addrSt" : reg_intf_addr_st, "dataSt" : reg_intf_data_st,
+            "clk" : decode_clk
         }
     ))
     out.append('')
@@ -84,7 +94,8 @@ def render(args, prj, data):
         t = Template(child_sig_decl_j2_template)
         out.append(t.render(
             child = {
-                "interfacePort" : inst_decode_info[item]['name']
+                "interfacePort" : inst_decode_info[item]['name'],
+                "clk" : decode_clk
             }
         ))
         out.append('')
@@ -136,9 +147,9 @@ def render(args, prj, data):
     out.append("end\n")
 
     # Retun the parent APB signals
-    out.append(f"`DFF(pready, {parent_interface_port}_next_pready)")
-    out.append(f"`DFF(prdata, {parent_interface_port}_next_prdata)")
-    out.append(f"`DFF(pslverr, {parent_interface_port}_next_pslverr)")
+    out.append(f"`DFF_CLK({decode_clk}, pready, {parent_interface_port}_next_pready)")
+    out.append(f"`DFF_CLK({decode_clk}, prdata, {parent_interface_port}_next_prdata)")
+    out.append(f"`DFF_CLK({decode_clk}, pslverr, {parent_interface_port}_next_pslverr)")
     out.append(f"assign {parent_interface_port}.pready  = pready;")
     out.append(f"assign {parent_interface_port}.prdata  = prdata;")
     out.append(f"assign {parent_interface_port}.pslverr = pslverr;")
@@ -155,25 +166,25 @@ def render(args, prj, data):
 parent_sig_decl_j2_template = """\
 //signals for interface {{ parent.interfacePort }}
 {{ parent.addrSt }} paddr_q;
-`DFF (paddr_q, {{ parent.interfacePort }}.paddr)
+`DFF_CLK({{ parent.clk }}, paddr_q, {{ parent.interfacePort }}.paddr)
 {{ parent.dataSt }} pwdata_q;
-`DFF (pwdata_q, {{ parent.interfacePort }}.pwdata)
+`DFF_CLK({{ parent.clk }}, pwdata_q, {{ parent.interfacePort }}.pwdata)
 logic penable_q;
-`DFF (penable_q, {{ parent.interfacePort }}.penable)
+`DFF_CLK({{ parent.clk }}, penable_q, {{ parent.interfacePort }}.penable)
 logic pwrite_q;
-`DFF (pwrite_q, {{ parent.interfacePort }}.pwrite)
+`DFF_CLK({{ parent.clk }}, pwrite_q, {{ parent.interfacePort }}.pwrite)
 
 logic pready;
 logic set_trans_active;
 logic trans_active;
-`SCFF(trans_active, set_trans_active, pready)
+`SCFF_CLK({{ parent.clk }}, trans_active, set_trans_active, pready)
 """
 
 child_sig_decl_j2_template = """\
 //signals for interface {{ child.interfacePort }}
 logic {{ child.interfacePort }}_psel;
 logic {{ child.interfacePort }}_next_psel;
-`SCFF({{ child.interfacePort }}_psel, {{ child.interfacePort }}_next_psel, {{ child.interfacePort }}.pready)
+`SCFF_CLK({{ child.clk }}, {{ child.interfacePort }}_psel, {{ child.interfacePort }}_next_psel, {{ child.interfacePort }}.pready)
 
 assign {{ child.interfacePort }}.paddr   = paddr_q;
 assign {{ child.interfacePort }}.penable = penable_q & {{ child.interfacePort }}_psel;

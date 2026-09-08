@@ -1,0 +1,80 @@
+# twoClk - COMPOSED example: it vendors the reusable 'twoClkIp' child project
+# (examples/twoClk/ip) and assembles it with one block of its own. Both projects
+# declare project-scoped clocks:/resets:, and both declare a clock named 'clk'
+# and a reset named 'rst_n' with DIFFERENT attributes: in one composed database
+# those must resolve to distinct qualified keys per project, with no duplicate-key
+# error and no shadowing. That is why the fixture is composed, not monolithic.
+#
+# Nothing is emitted from clocks:/resets: today: they are declarations only.
+
+yamlFormat: 2
+projectName: twoClk
+
+# The child project file opens the child project (its own projectName bucket and
+# layout); twoClk.yaml is the top design. The child's DESIGN yaml is additionally
+# reached through twoClk.yaml's include:, because projectFiles: alone creates no
+# include edge and name resolution walks the referencing context's chain.
+projectFiles:
+    - ../../ip/prj/yaml/twoClkIpProject.yaml
+    - ../../yaml/twoClk.yaml
+
+topInstance: twoClk_tb
+
+# Non-commensurate periods (1 ns and 3 ns), so no slow edge ever coincides with a
+# fast edge. 'clk' and 'rst_n' deliberately collide by NAME with the child
+# project's declarations and differ in attributes.
+clocks:
+    clk:
+        desc: "twoClk main clock - same NAME as twoClkIp's clk, different period"
+        default: true
+        period: 1
+        timeUnit: ns
+    clkSlow:
+        desc: "twoClk slow peripheral clock, non-commensurate with clk"
+        period: 3
+        timeUnit: ns
+
+# resets.clock is the one real 'scope: project' foreign key: each reset's domain
+# resolves inside twoClk's bucket only, never in twoClkIp's.
+resets:
+    rst_n:
+        desc: "twoClk main reset, clk domain"
+        default: true
+        active: low
+        clock: clk
+    rstSlow_n:
+        desc: "twoClk slow-domain reset, clkSlow domain"
+        active: low
+        clock: clkSlow
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs: # only root must be supplied; the other segments and hierarchicalDirs inherit
+      # the base config defaults (dict_shallow merge)
+    root: ../.. # project root directory (examples/twoClk), relative to this project file
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    # No includeFW entry: the fixture ships no firmware, so no fw/ tree exists.
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+    regBlockNaming: {
+            instancePrefix: "u",
+            blockSuffix: "Regs",
+            camelCase: true,
+        }

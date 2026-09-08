@@ -382,9 +382,51 @@ python3 test_error_intf_hdlparam_unresolved.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: project-scoped declarations (scope: project)"
+echo "------------------------------------------------------------------------"
+python3 test_project_scope.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: per-block clock and reset derivation"
+echo "------------------------------------------------------------------------"
+python3 test_clock_domains.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: generated register-decode clock domain"
+echo "------------------------------------------------------------------------"
+python3 test_register_decode_clock.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: clock and reset port emission"
+echo "------------------------------------------------------------------------"
+python3 test_clock_reset_emission.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "Test Suite ${idx}: interface definition data contracts"
 echo "------------------------------------------------------------------------"
 python3 test_interface_def_contracts.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: testbench pass criteria (completion gate + scaffold)"
+echo "------------------------------------------------------------------------"
+python3 test_tb_completion_gate.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: watchdog termination of a run with no terminator"
+echo "------------------------------------------------------------------------"
+python3 test_watchdog_no_terminator.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: Q_ASSERT exit path per context"
+echo "------------------------------------------------------------------------"
+python3 test_assert_exit_path.py || FAILED=1
 
 echo ""
 echo "========================================================================"

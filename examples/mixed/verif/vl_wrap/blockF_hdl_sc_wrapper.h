@@ -94,7 +94,7 @@ public:
         rwD_bfm.clk(clk);
         rwD_bfm.rst_n(rst_n);
 
-        SC_THREAD(reset_driver);
+        SC_THREAD(reset_driver_rst_n);
 
         end_ctor_init();
 
@@ -118,8 +118,10 @@ private:
 
     sc_signal<bool> rst_n;
 
-    void reset_driver() {
-        wait(5, SC_NS);
+    void reset_driver_rst_n() {
+        for (int cycle = 0; cycle < 3; cycle++) {
+            wait(clk.posedge_event());
+        }
         rst_n = true;
     }
 

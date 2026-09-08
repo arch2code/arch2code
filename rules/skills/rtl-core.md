@@ -17,7 +17,7 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
     *   **Safe Zones:** **NEVER** modify code between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers.
     *   **Implementation:** Place all manual logic (FSMs, internal signals, sub-module instances) after the generated sections.
     *   Module ends with `endmodule: <module_name>` (named end).
-    *   `clk` and `rst_n` are always the last two ports. Active-low reset: `rst_n`.
+    *   The block's clocks and resets are always the last ports, clocks first. A block in the project's default domain gets `clk` and `rst_n` (active-low reset); a block in another domain gets that domain's declared clock and reset names instead, and a block reached from several domains gets one port per clock and per reset.
 
     ```systemverilog
     // GENERATED_CODE_PARAM --block=<block_name>
@@ -130,6 +130,14 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
     | `` `SCFF(q, s, c) `` | Set-clear flop, set priority (raw) | flop only (no signal decl) |
 
     The `_INST` macros declare both the signal and its `n_<name>` next-state signal automatically. The raw macros require you to declare signals yourself -- use `nxt_<name>` as the convention for manually declared next-state signals.
+
+    **The `_CLK` Family (clock not named `clk`):**
+
+    Every macro above has a `_CLK` variant taking the clock signal as its FIRST argument: `` `DFF_CLK(clkSig, q, d) ``, `` `DFFREN_CLK(clkSig, q, d, en, rval) ``, `` `SCFF_CLK(clkSig, q, s, c) ``, `` `DFF_INST_CLK(clkSig, type, name) ``, and so on. The `_CLK` form holds the only flop body; each bare macro is a one-line alias onto it passing the literal `clk`, so the two can never describe different hardware.
+
+    *   Use the bare macro in a module whose clock port is named `clk`. That is the normal case and nothing changes.
+    *   Use the `_CLK` form in a module whose clock port has another name -- a block placed wholly in a non-default clock domain declares that domain's clock as its port and has no `clk` at all, so a bare macro there references an undeclared signal. Generated modules (`<block>_regs`, `apbDecode`) always emit the `_CLK` form for this reason.
+    *   The reset is deliberately not an argument; on the ASIC branch it comes from the per-compilation `` `RST ``.
 
     **FPGA vs ASIC Behavior:**
     *   **FPGA** (default): Uses `initial` for reset values, `always_ff` without reset.

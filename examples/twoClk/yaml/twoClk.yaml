@@ -1,0 +1,45 @@
+# twoClk - top design: one reused twoClkIpSrc producer (owned by the vendored
+# 'twoClkIp' child project) feeds one assembler-owned sink over twoClkDataIf, so
+# the fixture holds a block on each side of the composition boundary and a
+# connection across it.
+#
+# clocks: and resets: are projectScope sections, so both projects' declarations
+# live in their project files, not here.
+
+include:
+    # The include edge puts the child's definitions on this context's resolution
+    # chain; ownership stays with twoClkIp (CONTEXTOWNINGPROJECT).
+    - ../ip/yaml/twoClkIp.yaml
+
+blocks:
+    twoClk_tb:
+        desc: "Testbench container for twoClk (root container)"
+        hasVl: false
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+    twoClk:
+        desc: "DUT: the reused twoClkIpSrc producer plus the assembler's sink"
+        hasVl: true
+        hasMdl: true
+        hasTb: true
+        hasRtl: true
+    twoClkSink:
+        desc: "Assembler-owned consumer of the reused IP's twoClkDataIf stream"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            in: { interface: twoClkDataIf, direction: dst }
+
+instances:
+    twoClk_tb:  { container: twoClk_tb, instanceType: twoClk_tb,   instGroup: top } # self reference
+    u_twoClk:   { container: twoClk_tb, instanceType: twoClk,      instGroup: top }
+    uIpSrc:     { container: twoClk,    instanceType: twoClkIpSrc, instGroup: top }
+    uSink:      { container: twoClk,    instanceType: twoClkSink,  instGroup: top }
+
+connections:
+    # Crosses the composition boundary: src block owned by twoClkIp, dst block
+    # owned by twoClk.
+    - { interface: twoClkDataIf, src: uIpSrc, srcport: out, dst: uSink, dstport: in }

@@ -1,0 +1,72 @@
+# Standalone project file for the reusable 'twoClkIp' IP: the child half of the
+# composed twoClk fixture. It proves that project-scoped clocks:/resets: are
+# parsed from a CHILD project file and land in the child's own projectName
+# bucket, distinct from the assembling project's even where the names collide.
+
+yamlFormat: 2
+projectName: twoClkIp
+
+projectFiles:
+    - ../../yaml/twoClkIp.yaml
+
+# Definitions + one ported block, no instances, so no topInstance is declared
+# (the zero-instance render synthesises twoClkIpSrc's port from ports:). The
+# assembling project owns every instance in the composed design.
+
+# 'clk' is deliberately the SAME name as the assembling project's clock with a
+# different period: the two must resolve to distinct qualified keys in one
+# database. Non-commensurate (3 ns vs the assembler's 1 ns).
+clocks:
+    clk:
+        desc: "twoClkIp main clock - same NAME as the assembler's clk, different period"
+        default: true
+        period: 3
+        timeUnit: ns
+    ipClkFast:
+        desc: "twoClkIp fast sampling clock"
+        period: 1
+        timeUnit: ns
+
+# resets.clock is the one real 'scope: project' foreign key: each reset resolves
+# its domain within twoClkIp's bucket only.
+resets:
+    rst_n:
+        desc: "twoClkIp main reset, clk domain"
+        default: true
+        active: low
+        clock: clk
+    ipRstFast_n:
+        desc: "twoClkIp fast-domain reset"
+        active: low
+        clock: ipClkFast
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs: # only root is supplied; other segments + hierarchicalDirs inherit the base config
+    root: ../.. # twoClkIp project root (examples/twoClk/ip), relative to this project file
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    # No includeFW entry: the fixture ships no firmware, so no fw/ tree exists.
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+    regBlockNaming: {
+            instancePrefix: "u",
+            blockSuffix: "Regs",
+            camelCase: true,
+        }

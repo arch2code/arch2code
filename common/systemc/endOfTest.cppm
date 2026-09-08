@@ -24,6 +24,10 @@ public:
     endOfTestState(const endOfTestState&) = delete;
     bool isEndOfTest(void) {return done;};
     void forceEndOfTest(void) {done = true;}; // bypass counting
+    // Zero means nothing in the run is able to vote it to an end. Registration
+    // is lazy for firmware and host-thread voters, so a zero read is only
+    // meaningful once the run has had wall-clock time to register them.
+    int registeredVoters(void) {return voters;};
 
     // General framework startup gate. End-of-test must not latch before the
     // framework has finished starting up: at sim time 0, before every voter has
@@ -72,8 +76,9 @@ private:
     // closed, so a test that finishes before the gate opens never presents that
     // condition and would never latch. voteCast is what stops the gate opening
     // from latching a project that has never voted at all, for which voters == 0
-    // makes endOfTestCounter >= voters trivially true; such a project terminates
-    // by scTimeLimit or event starvation instead. Not latching before
+    // makes endOfTestCounter >= voters trivially true; such a project ends only
+    // under an explicit scTimeLimit - the framework watchdog's periodic wake
+    // keeps events queued, so event starvation cannot end it. Not latching before
     // startupComplete is therefore the only barrier against the transient
     // all-idle threshold seen while lazily-registered voters (firmware and
     // runtime host threads) are still registering, which is exactly what

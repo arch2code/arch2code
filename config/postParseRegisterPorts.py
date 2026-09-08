@@ -287,6 +287,50 @@ def _resolveRouterRegisterBusInterface(prj, routerBlock, addressBusTypes,
     return cache[cacheKey]
 
 
+def _registerBusFeedClock(prj, primaryRouter, addressBusTypes, reachable):
+    """The clock name of the authored register-bus feed that reaches the primary
+    router, or None when the design authors no feed.
+
+    A generated decode tree is a register-bus endpoint: a router and a
+    <block>_regs handler belong to the domain of the bus that drives them, not to
+    the domain of the block whose registers they serve. A slow peripheral behind a
+    fast register bus is the normal arrangement, and the domain crossing then sits
+    on the reg_rw / reg_ro wires into the block's own logic rather than on the bus.
+
+    The feed is authored either at the router instance itself - a connection to it,
+    or a connectionMap bridging its container's boundary inward - or, when that
+    boundary map is the one this pass synthesises, at the instance of the router's
+    container block: the standalone reusable-IP build, whose master connection
+    feeds the container. Every row visible here is authored, because this pass
+    emits its own rows only after the feed has been resolved.
+    """
+    interfaces = prj.flatData['interfaces']
+
+    def isBus(row):
+        return interfaces[row['interfaceKey']]['interfaceType'] in addressBusTypes
+
+    def busRows(instanceKeys):
+        for row in prj.flatData['connections'].values():
+            if row['dstKey'] in instanceKeys and isBus(row):
+                yield row
+        for row in prj.flatData['connectionMaps'].values():
+            if row['instanceKey'] in instanceKeys and isBus(row):
+                yield row
+
+    feed = next(busRows({primaryRouter['instanceKey']}), None)
+    if feed is None:
+        containerInstanceKeys = {
+            instRow['instanceKey']
+            for instRow in prj.flatData['instances'].values()
+            if instRow['instanceKey'] in reachable
+            and instRow['instanceTypeKey'] == primaryRouter['containerKey']
+        }
+        feed = next(busRows(containerInstanceKeys), None)
+    if feed is None:
+        return None
+    return feed['clock']
+
+
 def postProcess(prj):
     blockInfo = prj.flatData['blocks']
     routers = _collectRouterBlocks(blockInfo)
@@ -758,11 +802,23 @@ def postProcess(prj):
         _section(routerInstRow['_context'], 'connectionMaps').append(connection_map)
 
     # ---- Emit per owner context ----
+    # Every synthesised bind inherits the register bus's own clock domain, spelled
+    # in the clocks the receiving row's project declares: the rows land in the yaml
+    # files of several projects, and a name a project does not declare is not a
+    # legal reference from it. A design authoring no feed states no domain, so its
+    # rows keep the unstated-clock rule and resolve to their own project default.
+    feedClock = _registerBusFeedClock(prj, primary_router, addressBusTypes, reachable)
     for ownerContext, sections in perContext.items():
         ordered = dict()
         for sectionName in ('blocks', 'instances', 'connections', 'connectionMaps'):
             if sectionName in sections:
                 ordered[sectionName] = sections[sectionName]
+        if feedClock is not None:
+            clock = prj.resolveProjectScopedName(
+                'clocks', prj.contextOwningProject[ownerContext], feedClock)['clock']
+            for sectionName in ('connections', 'connectionMaps'):
+                for row in ordered.get(sectionName, list()):
+                    row['clock'] = clock
         if ordered:
             prj.processSingleFile(ownerContext, sections=ordered)
 

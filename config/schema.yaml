@@ -262,6 +262,26 @@ blocks:
   params:
     _attribs: [optional, list, flat, post(validateBlockParamBacking)]
     param: key
+  # Domains the block needs beyond what its connections imply. clocks: is
+  # ADDITIVE to the connection-implied set; resets: is the block's own complete
+  # reset set, replacing the per-clock derivation it would otherwise get, and
+  # every entry must lie in a domain the block carries.
+  clocks:
+    _attribs: [optional, list, flat]
+    clock:
+      _type: key
+      _validate:
+        section: clocks
+        field: clock
+        scope: project
+  resets:
+    _attribs: [optional, list, flat]
+    reset:
+      _type: key
+      _validate:
+        section: resets
+        field: reset
+        scope: project
   ports:
     _attribs: [optional, multiple]
     port: key
@@ -381,6 +401,14 @@ connections: # custom handler
           - deallocReq # outbound interface only dealloc
           - allocAck   # inbound interface only alloc
           - deallocAck # inbound interface only dealloc
+    # Clock domain of this wire. Unstated means the declaring project's default
+    # clock, filled in by resolveConnectionClock so no consumer repeats the rule.
+    clock:
+      _type: optional()
+      _validate:
+        section: clocks
+        field: clock
+        scope: project
     connection:  # at the end to ensure calculated fieldfs populated
       _key:
         interface: required
@@ -420,6 +448,12 @@ connections: # custom handler
   channel: optional #filled programatically based on src portName
   maxTransferSize: optional(0) # for multiCycle operation, overrides the interface maxTransferSize definition
   tracker: optional
+  clock:                  # storage side of the _dataSchema field above
+    _type: optional()
+    _validate:
+      section: clocks
+      field: clock
+      scope: project
   isParameterizable: auto(interfaceRefIsParameterizable)
   ends:
     _attribs: multiple
@@ -437,7 +471,7 @@ connections: # custom handler
     #connCount: optional
 
 connectionMaps:
-  _attribs: [flat]
+  _attribs: [flat, post(resolveConnectionClock)]
   interface:
     _type: required
     _validate:
@@ -467,6 +501,12 @@ connectionMaps:
     _type: optional
   instancePortName: auto(instancePortName)
   isParameterizable: auto(interfaceRefIsParameterizable)
+  clock:                  # domain of the mapped wire; unstated means the project default
+    _type: optional()
+    _validate:
+      section: clocks
+      field: clock
+      scope: project
   portId : # at end for ordering
     _key:
       block: required  # metadata will use qualified version (blockKey)
@@ -565,7 +605,7 @@ specialStructures:
       field: structure
 
 memoryConnections:
-  _attribs: [flat]
+  _attribs: [flat, post(resolveConnectionClock)]
   memory: required
   block:
     _type: required
@@ -595,6 +635,12 @@ memoryConnections:
       section: instances
       field: instance
   isParameterizable: auto(memoryConnectionIsParameterizable)
+  clock:                  # domain of the memory port; unstated means the project default
+    _type: optional()
+    _validate:
+      section: clocks
+      field: clock
+      scope: project
   memoryBlockInstance:
     _key:
       memory: required
@@ -603,7 +649,7 @@ memoryConnections:
 
 
 registerConnections:
-  _attribs: [flat]
+  _attribs: [flat, post(resolveConnectionClock)]
   register: required
   block:
     _type: required
@@ -624,6 +670,12 @@ registerConnections:
       section: instances
       field: instance
   isParameterizable: auto(registerConnectionIsParameterizable)
+  clock:                  # domain of the register-bus port; unstated means the project default
+    _type: optional()
+    _validate:
+      section: clocks
+      field: clock
+      scope: project
   registerBlockInstance:
     _key:
       register: required
@@ -659,3 +711,44 @@ encoders:
     numBits: const
     itemOrder: optional(0) # filled out by custom handler, result of sorting by size
     encodingValue: optional(0) # filled out by custom handler, value detected by encoder
+
+# projectScope: authored in the project file, not design YAML, and stored in a
+# bucket keyed by the declaring projectName. Design YAML references these with
+# _validate scope: project, which resolves in the referring row's own project.
+clocks:
+  _attribs: [flat, projectScope, post(resolveClockPeriod)]
+  clock: key
+  desc: required
+  default: optional(false)
+  period: optional(1)     # simulation attribute only, no synthesis meaning
+  timeUnit:
+    _type: optional(ns)
+    _validate:
+      values:
+        - ps
+        - ns
+        - us
+
+resets:
+  _attribs: [flat, projectScope, post(resolveReset)]
+  reset: key
+  desc: required
+  default: optional(false)
+  active:
+    _type: optional(low)
+    _validate:
+      values:
+        - low
+        - high
+  clock:                  # domain this reset belongs to, the default clock if unstated
+    _type: optional()
+    _validate:
+      section: clocks
+      field: clock
+      scope: project
+  # Cycles of this reset's own clock the co-simulation wrapper holds it asserted.
+  # Per reset, not per project: a reset in a 3 ns domain and one in a 1 ns domain
+  # share no release requirement. Three is the shortest count that satisfies a
+  # synchronous reset (two) and also puts the third edge of a 1 ns clock started
+  # at 3 ns at 5 ns, the instant the release had while it was an absolute time.
+  releaseCycles: optional(3)

@@ -17,23 +17,23 @@ apbAddrSt apb_addr;
 assign apb_addr = apbAddrSt'(apbReg.paddr) & apbAddrSt'(32'hff_ffff);
 //signals for interface apbReg
 apbAddrSt paddr_q;
-`DFF (paddr_q, apbReg.paddr)
+`DFF_CLK(clk, paddr_q, apbReg.paddr)
 apbDataSt pwdata_q;
-`DFF (pwdata_q, apbReg.pwdata)
+`DFF_CLK(clk, pwdata_q, apbReg.pwdata)
 logic penable_q;
-`DFF (penable_q, apbReg.penable)
+`DFF_CLK(clk, penable_q, apbReg.penable)
 logic pwrite_q;
-`DFF (pwrite_q, apbReg.pwrite)
+`DFF_CLK(clk, pwrite_q, apbReg.pwrite)
 
 logic pready;
 logic set_trans_active;
 logic trans_active;
-`SCFF(trans_active, set_trans_active, pready)
+`SCFF_CLK(clk, trans_active, set_trans_active, pready)
 
 //signals for interface apbReg_uBridgeIp1
 logic apbReg_uBridgeIp1_psel;
 logic apbReg_uBridgeIp1_next_psel;
-`SCFF(apbReg_uBridgeIp1_psel, apbReg_uBridgeIp1_next_psel, apbReg_uBridgeIp1.pready)
+`SCFF_CLK(clk, apbReg_uBridgeIp1_psel, apbReg_uBridgeIp1_next_psel, apbReg_uBridgeIp1.pready)
 
 assign apbReg_uBridgeIp1.paddr   = paddr_q;
 assign apbReg_uBridgeIp1.penable = penable_q & apbReg_uBridgeIp1_psel;
@@ -44,7 +44,7 @@ assign apbReg_uBridgeIp1.pwdata  = pwdata_q;
 //signals for interface apbReg_uBridgeIp0
 logic apbReg_uBridgeIp0_psel;
 logic apbReg_uBridgeIp0_next_psel;
-`SCFF(apbReg_uBridgeIp0_psel, apbReg_uBridgeIp0_next_psel, apbReg_uBridgeIp0.pready)
+`SCFF_CLK(clk, apbReg_uBridgeIp0_psel, apbReg_uBridgeIp0_next_psel, apbReg_uBridgeIp0.pready)
 
 assign apbReg_uBridgeIp0.paddr   = paddr_q;
 assign apbReg_uBridgeIp0.penable = penable_q & apbReg_uBridgeIp0_psel;
@@ -84,9 +84,9 @@ always_comb begin
     end
 end
 
-`DFF(pready, apbReg_next_pready)
-`DFF(prdata, apbReg_next_prdata)
-`DFF(pslverr, apbReg_next_pslverr)
+`DFF_CLK(clk, pready, apbReg_next_pready)
+`DFF_CLK(clk, prdata, apbReg_next_prdata)
+`DFF_CLK(clk, pslverr, apbReg_next_pslverr)
 assign apbReg.pready  = pready;
 assign apbReg.prdata  = prdata;
 assign apbReg.pslverr = pslverr;

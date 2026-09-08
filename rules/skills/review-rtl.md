@@ -38,7 +38,7 @@ Before reviewing, understand how tandem mode affects what to look for:
 ### 1. Arch2code Convention Checks
 
 *   **Generated Code Zones:** Verify no manual edits exist between `// GENERATED_CODE_BEGIN` and `// GENERATED_CODE_END` markers.
-*   **DFF Macros:** All sequential logic uses `DFF_INST`, `DFFR_INST`, `DFFNR_INST`, `DFFEN_INST`, or the raw variants (`DFF`, `DFFR`, `DFFNR`, `DFFEN`, `DFFREN`, `SCFF`). No raw `always_ff` blocks.
+*   **DFF Macros:** All sequential logic uses `DFF_INST`, `DFFR_INST`, `DFFNR_INST`, `DFFEN_INST`, or the raw variants (`DFF`, `DFFR`, `DFFNR`, `DFFEN`, `DFFREN`, `SCFF`), or the `_CLK` form of any of these (`DFF_CLK`, `DFF_INST_CLK`, ...) taking the clock as its first argument. No raw `always_ff` blocks. The `_CLK` form is correct, not a violation: it is required in a module whose clock port is not named `clk`, and it is what the generated `<block>_regs` and `apbDecode` modules emit. What to check is that its clock argument names a clock port the module actually declares.
 *   **FSM Macros:** All state machines use `fsmDefs.svh` macros (`fsmCase`, `fsmState`, `nxtState`, `fsmEndCase`). The enum type is named `statesT`. Multiple FSMs use `if (1) begin: <label>` scoping.
 *   **Naming Conventions:** Verify against `rtl-core.md` table:
     *   Modules: `snake_case`. Instances: `u_<name>`.
@@ -63,7 +63,7 @@ Before reviewing, understand how tandem mode affects what to look for:
 
 ### 3. Functional Safety (FUSA) Checks
 
-*   **Reset Coverage:** Every flop has a defined reset value via `DFF_INST` (resets to `'0`), `DFFR_INST` (explicit value), or `DFFEN_INST`. Use of `DFFNR_INST` (no reset) must be justified (e.g., datapath-only, non-safety-critical).
+*   **Reset Coverage:** Every flop has a defined reset value via `DFF_INST` (resets to `'0`), `DFFR_INST` (explicit value), or `DFFEN_INST`, or the `_CLK` form of one of those. Use of `DFFNR_INST` / `DFFNR_INST_CLK` (no reset) must be justified (e.g., datapath-only, non-safety-critical).
 *   **FSM Default Clauses:** Every FSM has a `default:` case with `` `qAssertFatal(0, "...") ``. This is required even though tandem mode catches functional mismatches -- a silent illegal state causes hangs that are hard to diagnose.
 *   **No Unreachable States:** FSM state encoding has no unused states, or unused states transition to a known-good state.
 *   **Structural Assertions Only:** Assertions (for example, `` `qAssertFatal` ``, `` `qAssertError` ``, or `` `qAssertWarning` ``) should guard structural invariants that tandem mode cannot directly observe:

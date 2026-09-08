@@ -36,12 +36,12 @@ module mixed_blockARegs
     logic nxt_blockATableLocal_rd_enable, blockATableLocal_rd_enable, blockATableLocal_rd_capture;
     logic blockATableLocal_wr_enable;
 
-    `DFF(blockATableLocal_addr, bSizeSt'(apb_addr[31:2]))
-    `DFF(blockATableLocal_wr_enable, blockATableLocal_update_0)
-    `DFF(blockATableLocal_rd_enable, nxt_blockATableLocal_rd_enable)
-    `DFF(blockATableLocal_rd_capture, blockATableLocal_rd_enable)
+    `DFF_CLK(clk, blockATableLocal_addr, bSizeSt'(apb_addr[31:2]))
+    `DFF_CLK(clk, blockATableLocal_wr_enable, blockATableLocal_update_0)
+    `DFF_CLK(clk, blockATableLocal_rd_enable, nxt_blockATableLocal_rd_enable)
+    `DFF_CLK(clk, blockATableLocal_rd_capture, blockATableLocal_rd_enable)
 
-    `DFFEN(blockATableLocal_data[6:0], nxt_blockATableLocal_data[6:0], blockATableLocal_update_0)
+    `DFFEN_CLK(clk, blockATableLocal_data[6:0], nxt_blockATableLocal_data[6:0], blockATableLocal_update_0)
 
     assign blockATableLocal.enable      = blockATableLocal_rd_enable | blockATableLocal_wr_enable;
     assign blockATableLocal.wr_en       = blockATableLocal_wr_enable;
@@ -57,13 +57,13 @@ module mixed_blockARegs
     logic nxt_blockATable37Bit_rd_enable, blockATable37Bit_rd_enable, blockATable37Bit_rd_capture;
     logic blockATable37Bit_wr_enable;
 
-    `DFF(blockATable37Bit_addr, bSizeSt'(apb_addr[31:3]))
-    `DFF(blockATable37Bit_wr_enable, blockATable37Bit_update_1)
-    `DFF(blockATable37Bit_rd_enable, nxt_blockATable37Bit_rd_enable)
-    `DFF(blockATable37Bit_rd_capture, blockATable37Bit_rd_enable)
+    `DFF_CLK(clk, blockATable37Bit_addr, bSizeSt'(apb_addr[31:3]))
+    `DFF_CLK(clk, blockATable37Bit_wr_enable, blockATable37Bit_update_1)
+    `DFF_CLK(clk, blockATable37Bit_rd_enable, nxt_blockATable37Bit_rd_enable)
+    `DFF_CLK(clk, blockATable37Bit_rd_capture, blockATable37Bit_rd_enable)
 
-    `DFFEN(blockATable37Bit_data[31:0], nxt_blockATable37Bit_data[31:0], blockATable37Bit_update_0)
-    `DFFEN(blockATable37Bit_data[36:32], nxt_blockATable37Bit_data[36:32], blockATable37Bit_update_1)
+    `DFFEN_CLK(clk, blockATable37Bit_data[31:0], nxt_blockATable37Bit_data[31:0], blockATable37Bit_update_0)
+    `DFFEN_CLK(clk, blockATable37Bit_data[36:32], nxt_blockATable37Bit_data[36:32], blockATable37Bit_update_1)
 
     assign blockATable37Bit.enable      = blockATable37Bit_rd_enable | blockATable37Bit_wr_enable;
     assign blockATable37Bit.wr_en       = blockATable37Bit_wr_enable;
@@ -168,9 +168,9 @@ module mixed_blockARegs
     // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
-            `DFFR(wr_ready,   nxt_wr_ready,   '0)
-            `DFFR(rd_ready,   nxt_rd_ready,   '0)
-            `DFFR(rd_data,    nxt_rd_data,    '0)
+            `DFFR_CLK(clk, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_CLK(clk, rd_ready,   nxt_rd_ready,   '0)
+            `DFFR_CLK(clk, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;

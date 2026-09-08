@@ -17,8 +17,7 @@ class ValueResolver:
         if source is None:
             return label
         lc = source.get('lc') if isinstance(source, dict) else None
-        line = lc.line + 1 if lc is not None else '?'
-        return f"{label} at {self.context}:{line}"
+        return f"{label} at {self.project.diagnosticLocation(self.context, lc)}"
 
     def _lookupQualified(self, section, key, label):
         try:
@@ -63,7 +62,7 @@ class ValueResolver:
                 }
         return self._fail(
             f"{label}: constant or enum '{name}' is not declared in "
-            f"'{context}' or any file it includes.")
+            f"'{self.project.diagnosticLocation(context)}' or any file it includes.")
 
     def _visibleNamedKey(self, name, context, label):
         constants = self.project.data['constants']
@@ -75,7 +74,7 @@ class ValueResolver:
                 return f"{name}/{myContext}"
         return self._fail(
             f"{label}: constant or enum '{name}' is not declared in "
-            f"'{context}' or any file it includes.")
+            f"'{self.project.diagnosticLocation(context)}' or any file it includes.")
 
     def _contextSearchOrder(self, context):
         yamlContext = self.project.yamlContext
@@ -207,7 +206,7 @@ class ValueResolver:
                 return None
             return self._fail(
                 f"Constant or enum '{ref}' is not declared in "
-                f"'{context}' or any file it includes.")
+                f"'{self.project.diagnosticLocation(context)}' or any file it includes.")
         if not fatal:
             return None
         return self._fail(

@@ -10,11 +10,9 @@
 
 #include "instanceFactory.h"
 import ip_test_ip_top.base;
+import common_cpu.base;
 import common_shared_types;
 using namespace common_shared_types_ns;
-
-//contained instances forward class declaration
-class cpuBase;
 
 class ip_topExternal: public sc_module, public ip_topInverted {
 

@@ -60,8 +60,13 @@ obj_dir/vl_dummy/Vvl_dummy: $(VL_GEN_SV_FILES) $(GEN_DEPS)
 # (--top), the recorded physical .sv, and the recorded include search path (so a
 # trampoline finds the `include`d canonical `_hdl_sv_wrapper.svh` body wherever
 # it lives, including a reused child's own vl_wrap dir).
+# The prerequisites name every SV input the recipe reads. The design RTL
+# (A2C_SV_FILES) lives outside VL_SRC_DIRS, so the wrapper-dir scan never sees it
+# and an edited .sv would otherwise relink a stale V<top>__ALL.o - a silent pass
+# against the previous RTL. The per-top record is declared for the same reason,
+# even though today's layouts also place it in a scanned dir.
 define vl_top_rule
-obj_dir/$(1)/V$(1)__ALL.o: $(VL_GEN_SV_FILES)
+obj_dir/$(1)/V$(1)__ALL.o: $(VL_GEN_SV_FILES) $(A2C_SV_FILES) $(A2C_VL_SV_$(1))
 	mkdir -p obj_dir/$(1)
 	verilator $(VERILATOR_OPTS) --Mdir obj_dir/$(1) -CFLAGS $(VERILATOR_CFLAG_OPTS) -F $(A2C_ROOT)/common/systemVerilog/a2c.f -F $(A2C_RTL_DOT_F) $(A2C_SV_FILES) $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS)) $(A2C_VL_SV_$(1)) -top $(1)
 endef

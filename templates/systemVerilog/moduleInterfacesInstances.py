@@ -111,7 +111,11 @@ def render(args, prj, data):
                 for end, endValue in connValue['ends'].items():
                     if (value['instance'] == endValue['instance']):
                         out.append(f"{indent}.{endValue['portName']} ({intf_gen_utils.get_channel_name(connValue)}),")
-        out.append(f"{indent}.clk (clk),\n{indent}.rst_n (rst_n)\n);\n")
+        # clockResetBinds (from the projectOpen view) pairs each of the child's own
+        # clock/reset port names with the parent signal driving it, already in the
+        # child's port-list order.
+        out.append(",\n".join(f"{indent}.{bind['port']} ({bind['signal']})"
+                              for bind in value['clockResetBinds']) + "\n);\n")
 
     #// Memory Instances if they exist
     if data['memories']:
@@ -131,5 +135,7 @@ def render(args, prj, data):
             out.append(f"{indent}.mem_port{port} ({port_data}),")
         if isLocal:
             out.append(f"{indent}.mem ({localMemInst}),")
-        out.append(f"{indent}.clk (clk)\n);\n")
+        # The shipped memory primitives declare their clock port as `clk`; the
+        # signal bound to it is the memory's own resolved domain.
+        out.append(f"{indent}.clk ({mem_data['domainClock']})\n);\n")
     return "\n".join(out)

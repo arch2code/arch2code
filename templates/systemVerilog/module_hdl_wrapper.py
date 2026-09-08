@@ -81,7 +81,7 @@ def port_decl_block(prj, data, mp_sig):
             s += ',\n'.join(mp_sig[port]['ports'])
             s += ',\n'
             s += '\n'
-    s += 'input clk,\ninput rst_n\n'
+    s += intf_gen_utils.sv_clock_reset_input_lines(data) + '\n'
     return s
 
 def intf_reconstruction(prj, data, mp_sig):
@@ -115,7 +115,7 @@ def dut_instantiation(prj, data, blk_name, blk_param):
             intf_type = intf_gen_utils.get_intf_type(intf_data['interfaceType'], data) + '_if'
             intf_dir = port_data['direction']
             s_1 += f".{intf_name}({intf_name}), // {intf_type}.{intf_dir}\n"
-    s_1 += '.clk(clk),\n.rst_n(rst_n)\n'
+    s_1 += ',\n'.join(intf_gen_utils.sv_clock_reset_binds(data)) + '\n'
     s_1 = textwrap.indent(s_1, ' '*4)
     s += s_1 + ');'
 
@@ -239,7 +239,7 @@ def render_trampoline(args, prj, data, mp_sig, foreign=False):
         for port in data['ports'][port_type]:
             names += mp_sig[port]['names']
     conns = [f".{name}({name})" for name in names]
-    conns += ['.clk(clk)', '.rst_n(rst_n)']
+    conns += intf_gen_utils.sv_clock_reset_binds(data)
     inst += textwrap.indent(',\n'.join(conns), ' '*4) + '\n'
     inst += ');\n'
     out += textwrap.indent(inst, ' '*4)

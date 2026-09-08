@@ -24,6 +24,8 @@
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+import inAndOut;
+using namespace inAndOut_ns;
 #include "pop_ack_bfm.h"
 #include "rdy_vld_bfm.h"
 #include "req_ack_bfm.h"
@@ -31,20 +33,6 @@
 class inAndOut_hdl_sc_wrapper: public sc_module, public blockBase, public inAndOutBase {
 
 public:
-
-    struct registerBlock
-    {
-        registerBlock()
-        {
-            // lamda function to construct the block
-            instanceFactory::registerBlock(
-                "inAndOut_verif", [](const char *blockName, const char *variant, blockBaseMode bbMode) -> std::shared_ptr<blockBase> {
-                    return static_cast<std::shared_ptr<blockBase>>(std::make_shared < inAndOut_hdl_sc_wrapper > (blockName, variant, bbMode));
-                });
-        }
-    };
-
-    static registerBlock registerBlock_;
 
 #if !defined(VERILATOR) && defined(VCS)
     inAndOut_hdl_sv_wrapper *dut_hdl;
@@ -135,7 +123,7 @@ public:
         dIn_bfm.clk(clk);
         dIn_bfm.rst_n(rst_n);
 
-        SC_THREAD(reset_driver);
+        SC_THREAD(reset_driver_rst_n);
 
         end_ctor_init();
 
@@ -160,8 +148,10 @@ private:
 
     sc_signal<bool> rst_n;
 
-    void reset_driver() {
-        wait(5, SC_NS);
+    void reset_driver_rst_n() {
+        for (int cycle = 0; cycle < 3; cycle++) {
+            wait(clk.posedge_event());
+        }
         rst_n = true;
     }
 

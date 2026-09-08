@@ -5,6 +5,14 @@ import textwrap
 
 from jinja2 import Template
 
+# sc_time unit spelling per timeUnit the clocks: schema admits. A unit added to
+# the schema without a spelling here fails loudly at generation.
+SC_TIME_UNIT = {'ps': 'SC_PS', 'ns': 'SC_NS', 'us': 'SC_US'}
+
+def resetDriverName(resetRow):
+    # One driver thread per reset, so the method name carries the reset it drives.
+    return f"reset_driver_{resetRow['reset']}"
+
 # args from generator line
 # prj object
 # data set dict
@@ -106,18 +114,60 @@ def render_sc(args, prj, data):
         s = (',\n'.join(s) + ',') if s else ''
         return s
 
+    def sec_clock_decl(args, prj, data):
+        return '\n'.join(f"sc_clock {row['clock']};" for row in data['clocks'])
+
+    def sec_clock_ctor_init(args, prj, data):
+        # Each clock runs at its own declared period. Duty cycle, start delay and
+        # first edge are not declarable, so they stay at the values every wrapper
+        # has always used; phase alignment across wrappers rests on those three
+        # plus the period being derived from one shared row per clock.
+        s = [f'{row["clock"]}("{row["clock"]}", '
+             f'sc_time({row["period"]}, {SC_TIME_UNIT[row["timeUnit"]]}), '
+             f'0.5, sc_time(3, SC_NS), true)' for row in data['clocks']]
+        return ',\n'.join(s) + ','
+
+    def sec_reset_decl(args, prj, data):
+        return '\n'.join(f"sc_signal<bool> {row['reset']};" for row in data['resets'])
+
+    def sec_reset_ctor_init(args, prj, data):
+        return ',\n'.join(f"{row['reset']}(0)" for row in data['resets'])
+
+    def sec_reset_threads(args, prj, data):
+        return '\n'.join(f"SC_THREAD({resetDriverName(row)});" for row in data['resets'])
+
+    def sec_reset_drivers(args, prj, data):
+        # One driver per reset, counting edges of THAT reset's own clock: a
+        # release measured in absolute time is only meaningful while the period
+        # is 1 ns, and two resets in domains of different periods must not be
+        # released together.
+        s = []
+        for row in data['resets']:
+            s.append(f'void {resetDriverName(row)}() {{\n'
+                     f'    for (int cycle = 0; cycle < {row["releaseCycles"]}; cycle++) {{\n'
+                     f'        wait({row["clock"]}.posedge_event());\n'
+                     f'    }}\n'
+                     f'    {row["reset"]} = true;\n'
+                     f'}}')
+        return '\n\n'.join(s)
+
     def sec_dut_connect(args, prj, data):
         s = []
         for port_type in data['ports']:
             for port in data['ports'][port_type]:
                 s.append('\n'.join(mp_sig[port]['dut_ports_decl']))
-        s.append(f'dut_hdl->clk(clk);')
-        s.append(f'dut_hdl->rst_n(rst_n);')
+        for name in intf_gen_utils.clock_reset_port_names(data):
+            s.append(f'dut_hdl->{name}({name});')
         s = '\n'.join(s)
         return s
 
     def sec_bfm_connect(args, prj, data):
         s = []
+        # A BFM drives one interface, so both its clock and its reset are that
+        # interface's own domain: the block view resolves each port's connection
+        # clock into this block's derived clock set as `domainClock` and the
+        # block's reset of that domain as `domainReset`, and every clock and reset
+        # of those sets is a member declared here, so the binds compile.
         # Inherited ports (e.g. `ipDataIf`, `out0`) live on the
         # `<block>Base{cfg}` base class. When the wrapper is Config-templated
         # (cfg names a template parameter) those names are dependent and
@@ -128,13 +178,14 @@ def render_sc(args, prj, data):
                 if mp_sig[port]['is_skip']:
                     continue
                 s_ = []
-                intf_name = data['ports'][port_type][port]['name']
+                port_data = data['ports'][port_type][port]
+                intf_name = port_data['name']
                 bfm_name = intf_name + '_bfm'
                 hdl_intf_name = intf_name + '_hdl_if'
                 s_.append(f'{bfm_name}.if_p(this->{intf_name});')
                 s_.append(f'{bfm_name}.hdl_if_p({hdl_intf_name});')
-                s_.append(f'{bfm_name}.clk(clk);')
-                s_.append(f'{bfm_name}.rst_n(rst_n);')
+                s_.append(f'{bfm_name}.clk({port_data["domainClock"]});')
+                s_.append(f'{bfm_name}.rst_n({port_data["domainReset"]});')
                 s.append('\n'.join(s_))
         s = '\n\n'.join(s)
         return s
@@ -171,7 +222,13 @@ def render_sc(args, prj, data):
             sec_bfm_ctor_init=sec_bfm_ctor_init(args, prj, data),
             sec_dut_connect=sec_dut_connect(args, prj, data),
             sec_bfm_connect=sec_bfm_connect(args, prj, data),
-            sec_hdl_if_decl=sec_hdl_if_decl(args, prj, data)
+            sec_hdl_if_decl=sec_hdl_if_decl(args, prj, data),
+            sec_clock_decl=sec_clock_decl(args, prj, data),
+            sec_clock_ctor_init=sec_clock_ctor_init(args, prj, data),
+            sec_reset_decl=sec_reset_decl(args, prj, data),
+            sec_reset_ctor_init=sec_reset_ctor_init(args, prj, data),
+            sec_reset_threads=sec_reset_threads(args, prj, data),
+            sec_reset_drivers=sec_reset_drivers(args, prj, data)
         )
         return(s)
 
@@ -258,7 +315,7 @@ public:
 
     DUT_T *dut_hdl;
 {% endif %}
-    sc_clock clk;
+    {{ sec_clock_decl | indent(4) }}
 
     {{ sec_bfm_decl | indent(4) }}
 {%- if not variants %}
@@ -278,9 +335,9 @@ public:
         sc_module(modulename),
         blockBase("{{blockname}}_hdl_sc_wrapper", name(), bbMode),
         {{blockname}}Base{{cfg}}(name(), variant),
-        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
+        {{ sec_clock_ctor_init | indent(8) }}
         {{ sec_bfm_ctor_init | indent(8) }}
-        rst_n(0)
+        {{ sec_reset_ctor_init | indent(8) }}
     {
 {%- if not variants %}
 #if !defined(VERILATOR) && defined(VCS)
@@ -296,7 +353,7 @@ public:
 
         {{ sec_bfm_connect | indent(8) }}
 
-        SC_THREAD(reset_driver);
+        {{ sec_reset_threads | indent(8) }}
 
         end_ctor_init();
 
@@ -314,11 +371,8 @@ private:
 
     {{ sec_hdl_if_decl | indent(4) }}
 
-    sc_signal<bool> rst_n;
+    {{ sec_reset_decl | indent(4) }}
 
-    void reset_driver() {
-        wait(5, SC_NS);
-        rst_n = true;
-    }
+    {{ sec_reset_drivers | indent(4) }}
 
 """

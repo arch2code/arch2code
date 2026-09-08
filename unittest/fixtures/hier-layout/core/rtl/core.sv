@@ -2,10 +2,10 @@
 
 // GENERATED_CODE_PARAM --block=core
 // GENERATED_CODE_BEGIN --template=moduleInterfacesInstances
-//module as defined by block: core
-module core
+//module as defined by block: hier_core
+module hier_core
 // Generated Import package statement(s)
-import core_package::*;
+import hier_core_package::*;
 (
     input clk, rst_n
 );
@@ -16,21 +16,21 @@ import core_package::*;
     push_ack_if #(.data_t(dat_st)) dOut_2();
 
 // Instances
-gen u_gen (
+hier_gen u_gen (
     .dOut (dOut_0),
     .dIn (dOut_2),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-leaf u_leaf0 (
+hier_leaf u_leaf0 (
     .dIn (dOut_0),
     .dOut (dOut_1),
     .clk (clk),
     .rst_n (rst_n)
 );
 
-leaf u_leaf1 (
+hier_leaf u_leaf1 (
     .dIn (dOut_1),
     .dOut (dOut_2),
     .clk (clk),

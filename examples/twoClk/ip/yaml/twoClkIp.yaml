@@ -1,0 +1,34 @@
+# twoClkIp - reusable producer IP owned by the 'twoClkIp' child project.
+# Deliberately minimal: one type, one structure, one interface, one block with a
+# single src port and no instances. clocks:/resets: are projectScope sections and
+# are rejected in design YAML; see prj/yaml/twoClkIpProject.yaml.
+
+constants:
+    # The fixture's stimulus contract, shared by producer and sink across the
+    # composition boundary and both languages.
+    TWO_CLK_BURST_WORDS: { value: 4,    desc: "Words in the twoClkIpSrc -> sink burst" }
+    TWO_CLK_BURST_BASE:  { value: 0xA1, desc: "Payload of the first word of the burst; word i is BASE + i" }
+
+types:
+    twoClkDataT: { width: 8, desc: "8-bit payload word" }
+
+structures:
+    twoClkDataSt:
+        data: { varType: twoClkDataT, desc: "payload word" }
+
+interfaces:
+    twoClkDataIf:
+        desc: "twoClkIpSrc -> assembler sink data stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: twoClkDataSt, structureType: data_t }
+
+blocks:
+    twoClkIpSrc:
+        desc: "Reusable producer IP: drives twoClkDataIf out of the twoClkIp project"
+        hasVl: true
+        hasMdl: true
+        hasTb: false
+        hasRtl: true
+        ports:
+            out: { interface: twoClkDataIf, direction: src }
