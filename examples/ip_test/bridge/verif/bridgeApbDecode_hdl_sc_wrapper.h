@@ -23,6 +23,7 @@ import common_shared_types;
 using namespace common_shared_types_ns;
 #include "apb_bfm.h"
 
+#include "socketSync.h"
 class bridgeApbDecode_hdl_sc_wrapper: public sc_module, public blockBase, public bridgeApbDecodeBase {
 
 public:
@@ -33,7 +34,7 @@ public:
     VbridgeApbDecode_hdl_sv_wrapper *dut_hdl;
 #endif
 
-    sc_clock clk;
+    sc_signal<bool> clk;
 
     apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp0_bfm;
     apb_src_bfm<apbAddrSt, apbDataSt, sc_bv<32>, sc_bv<32>> apbReg_uBridgeIp1_bfm;
@@ -45,11 +46,12 @@ public:
         sc_module(modulename),
         blockBase("bridgeApbDecode_hdl_sc_wrapper", name(), bbMode),
         bridgeApbDecodeBase(name(), variant),
-        clk("clk", sc_time(1, SC_NS), 0.5, sc_time(3, SC_NS), true),
+        clk("clk"),
         apbReg_uBridgeIp0_bfm("apbReg_uBridgeIp0_bfm"),
         apbReg_uBridgeIp1_bfm("apbReg_uBridgeIp1_bfm"),
         apbReg_bfm("apbReg_bfm"),
-        rst_n(0)
+        rst_n("rst_n", true),
+        clk_half_(sc_time(1, SC_NS) / 2)
     {
 #if !defined(VERILATOR) && defined(VCS)
         dut_hdl = new bridgeApbDecode_hdl_sv_wrapper("dut_hdl");
@@ -99,6 +101,8 @@ public:
         apbReg_bfm.clk(clk);
         apbReg_bfm.rst_n(rst_n);
 
+        clk.write(true);
+        SC_THREAD(clock_gen_clk);
         SC_THREAD(reset_driver_rst_n);
 
         end_ctor_init();
@@ -120,13 +124,52 @@ private:
     apb_hdl_if<sc_bv<32>, sc_bv<32>> apbReg_hdl_if;
 
     sc_signal<bool> rst_n;
+    sc_time clk_half_;
 
-    void reset_driver_rst_n() {
-        for (int cycle = 0; cycle < 3; cycle++) {
-            wait(clk.posedge_event());
+    // Free-run: toggle every half period. Gated lockstep: the quantum thread
+    // broadcasts one edge request per socketSyncClockHalfPeriod() of advanced
+    // time, and a clock toggles once its own half period has accumulated, so a
+    // slower clock keeps its period at quantum resolution and no clock can
+    // free-run during wait(ack).
+    void clock_gen(sc_signal<bool> &sig, const sc_time &half) {
+        sc_time gated = SC_ZERO_TIME;
+        while (true) {
+            if (socketSyncTimeGated()) {
+                socketSyncWaitClockEdge();
+                gated += socketSyncClockHalfPeriod();
+                if (gated >= half) {
+                    gated -= half;
+                    sig.write(!sig.read());
+                }
+            } else {
+                wait(half);
+                sig.write(!sig.read());
+            }
         }
-        rst_n = true;
     }
+
+    // Lockstep with a connected partner: follow socketSyncRstN (boot release
+    // and mid-sim MSG_RESET) and never wait on a clock, since gated time does
+    // not advance before the first quantum. Otherwise assert, hold for the
+    // declared releaseCycles edges of the reset's own clock, then release.
+    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &clk, int cycles) {
+        if (socketSyncLockstepActive()) {
+            rst.write(socketSyncRstN());
+            while (true) {
+                wait(socketSyncRstNEvent());
+                rst.write(socketSyncRstN());
+            }
+        } else {
+            rst.write(false);
+            for (int cycle = 0; cycle < cycles; cycle++) {
+                wait(clk.posedge_event());
+            }
+            rst.write(true);
+        }
+    }
+
+    void clock_gen_clk() { clock_gen(clk, clk_half_); }
+    void reset_driver_rst_n() { reset_driver(rst_n, clk, 3); }
 
 // GENERATED_CODE_END
 

@@ -6,6 +6,7 @@ blocks:
     hasRtl: true
     hasMdl: true
     hasTb: true
+    hasSkt: true
   dut:
     desc: DUT
     hasVl: true

@@ -176,6 +176,19 @@ interface_defs:
     multicycle_types:
       _attribs: [optional, singleEntryList, multiple]
       multicycle_type: listkey
+  # Hand-written *_port_socket.h / port_observe overloads, keyed by modport
+  # direction. Omitted direction = no socket-shell thread for that end.
+  socket:
+    _attribs: [optional, multiple]
+    direction: key
+    kind:
+      _type: required
+      _validate:
+        values:
+          - drive
+          - observe
+    observe: optional(false)
+    lockstep: optional(false)
   multiDst: optional(False)  # allow multiple destinations to connect to a single source
   mappedFrom:
     _attribs: [optional, singleEntryList, multiple]
@@ -252,6 +265,7 @@ blocks:
   hasTb: optional(false)
   hasMdl: optional(true)
   hasRtl: optional(true)
+  hasSkt: optional(false)
   isRegHandler: optional(false) # this is used to indicate that this block handles registers
   mdlLeafNode: optional(false)
   dir: auto(blockDir)

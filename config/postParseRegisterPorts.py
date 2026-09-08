@@ -85,6 +85,7 @@ def synthesiseRegHandler(prj, block_key, block, reg_interface, blockInfo,
         'hasRtl': True,
         'hasMdl': has_mdl,
         'hasTb': False,
+        'hasSkt': False,
         'dir': blockInfo.get(block_key, {}).get('dir', ''),
         'params': parentParams,
     }

@@ -157,6 +157,24 @@
     restored. `TWO_CLK_SLOW_PERIOD_NS` mirrors `clocks.clkSlow.period` in
     `project.yaml` because no view exposes a clock period to SystemC; the
     cadence check is what catches drift between the two. See §9 and §13.6.
+  - **Landed next: reconciled with `origin/main`'s socket lockstep (issue
+    124).** Upstream replaced the wrapper's single `sc_clock` with a gated
+    `sc_signal<bool>` toggled by a thread, so the clock stops while the Python
+    partner holds the quantum, and drives `rst_n` from the lockstep reset. The
+    merged template keeps one signal per declared clock with its own
+    `<clock>_half_` period, one shared `clock_gen` body that, under gated time,
+    accumulates the quantum thread's half-period edge requests and toggles when
+    its own half period has elapsed (so the 1 ns default behaves exactly as
+    upstream and a slower clock keeps its period at quantum resolution), and
+    one shared `reset_driver` body that follows `socketSyncRstN` when a partner
+    is connected and otherwise counts `releaseCycles` posedges of the reset's
+    own clock. Resets are born released so the driver's first assertion is a
+    real negedge, which upstream needs for Verilator's async-reset processes.
+    The behaviour-preservation argument of §10 item 3 no longer holds as
+    stated: upstream's clock starts high at time zero rather than at the 3 ns
+    `sc_clock` start delay, so a 1 ns clock's third posedge is now at 3 ns
+    where upstream's absolute release was 5 ns. Upstream accepted that shift
+    for its own examples; the gates below measure it for ours.
   - **Still to do in Phase 1:** §6.4's reset-style selector and the CDC primitive
     library of §6.3. D6 now holds for hand-written RTL in any domain: the bare
     macro family targets the block's first clock and reset through the alias,
@@ -967,7 +985,7 @@ and is not.
 | `templates/systemVerilog/module_hdl_wrapper.py:84` | `input clk,\ninput rst_n` | The same list, one `input` per line — the wrapper generator's own existing style. | LANDED |
 | `templates/systemVerilog/module_hdl_wrapper.py:118` | `.clk(clk),\n.rst_n(rst_n)` on the DUT | One binding per resolved clock and reset, in the port-list order. | LANDED |
 | `templates/systemVerilog/module_hdl_wrapper.py:242` | `['.clk(clk)', '.rst_n(rst_n)']` | Built from the resolved lists (variant trampoline). | LANDED |
-| `templates/systemc/module_hdl_wrapper.py:117, 120` | one `sc_clock clk` at `sc_time(1, SC_NS)` | One `sc_clock` member per resolved clock, each at its own `period`/`timeUnit`. Duty, start delay, and first edge stay at the current constants. | LANDED |
+| `templates/systemc/module_hdl_wrapper.py:117, 120` | one `sc_clock clk` at `sc_time(1, SC_NS)` | One `sc_clock` member per resolved clock, each at its own `period`/`timeUnit`. Duty, start delay, and first edge stay at the current constants. | LANDED, then reshaped by the `origin/main` merge: one gated `sc_signal<bool>` per clock with its own half period, so socket lockstep can stop every clock (see the header) |
 | `templates/systemc/module_hdl_wrapper.py:130, 133, 136, 139` | one `sc_signal<bool> rst_n`, initialised `0`, released at 5 ns | One `sc_signal<bool>` per resolved reset, and one `SC_THREAD` per reset releasing it after `releaseCycles` `posedge_event()`s of its own clock. The absolute 5 ns was period-coupled and already wrong for any non-1 ns period: at `period: 10` posedges fall at 3, 13, 23 ns, so a 5 ns release deasserted after a single edge; at `period: 20`, before any meaningful reset. It also landed in the same nanosecond as an edge; counting edges puts the release one delta after one. | LANDED |
 | `templates/systemc/module_hdl_wrapper.py:159` | `dut_hdl->clk(clk); dut_hdl->rst_n(rst_n);` | One bind per resolved clock and reset. | LANDED |
 | `templates/systemVerilog/moduleInterfacesInstances.py:114` | `.clk (clk), .rst_n (rst_n)` on every child instance | Emit `.<childPort> (<parentSignal>)` for each pair in the instance row's `clockResetBinds`, in the child's port-list order. The two names differ whenever the child's project and the container's spell the domain differently, or the container falls back to its default. | LANDED — via `getBDInstanceClockResetBinds` (§4.2) |
@@ -1983,7 +2001,9 @@ exactly as they do today.
    `wait(5, SC_NS)` used. Measured on `examples/twoClk`, where the two blocks'
    `clk` differ by project: `twoClkSink` (period 1 ns) releases at 5.0 ns and
    `twoClkIpSrc` (period 3 ns) at 9.0 ns, each on the third posedge, read from the
-   verilated VCD. A project needing a longer synchronised release chain raises the
+   verilated VCD. *After the `origin/main` merge the clock starts high at time
+   zero instead of at the `sc_clock` start delay, so those instants are 3.0 ns
+   and 9.0 ns; the count itself is unchanged.* A project needing a longer synchronised release chain raises the
    count on the one reset that needs it, which is why the field is per reset.
 4. *(Settled and LANDED.)* **What is settled is the ORDER: clocks then resets,
    each in canonical order, sharing one module port namespace. The spelling is

@@ -22,8 +22,9 @@ twoClkExternal::twoClkExternal(sc_module_name modulename) :
 }
 
 // Bound the run, then vote. The window has to outlast the slowest
-// configuration, which is a verilated DUT: its wrapper clock is 1 ns, it holds
-// reset until 5 ns, and it needs one handshake per burst word after that. It
+// configuration, which is a verilated DUT: its wrapper holds each reset for
+// three edges of that reset's clock, and the slow pair then needs four ticks
+// twelve slow-clock nanoseconds apart. It
 // also outlasts the 100 ns framework startup gate, so the vote is never the
 // thing being waited on in a model-only run.
 void twoClkExternal::stimulusThread(void)

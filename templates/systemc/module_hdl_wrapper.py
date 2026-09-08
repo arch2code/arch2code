@@ -115,41 +115,49 @@ def render_sc(args, prj, data):
         return s
 
     def sec_clock_decl(args, prj, data):
-        return '\n'.join(f"sc_clock {row['clock']};" for row in data['clocks'])
+        # A gated sc_signal, not an sc_clock: under socket lockstep every clock
+        # must stop while the Python partner holds the quantum, and an sc_clock
+        # cannot be paused.
+        return '\n'.join(f"sc_signal<bool> {row['clock']};" for row in data['clocks'])
 
     def sec_clock_ctor_init(args, prj, data):
-        # Each clock runs at its own declared period. Duty cycle, start delay and
-        # first edge are not declarable, so they stay at the values every wrapper
-        # has always used; phase alignment across wrappers rests on those three
-        # plus the period being derived from one shared row per clock.
-        s = [f'{row["clock"]}("{row["clock"]}", '
-             f'sc_time({row["period"]}, {SC_TIME_UNIT[row["timeUnit"]]}), '
-             f'0.5, sc_time(3, SC_NS), true)' for row in data['clocks']]
-        return ',\n'.join(s) + ','
+        return ',\n'.join(f'{row["clock"]}("{row["clock"]}")' for row in data['clocks']) + ','
+
+    def sec_clock_half_decl(args, prj, data):
+        return '\n'.join(f"sc_time {row['clock']}_half_;" for row in data['clocks'])
+
+    def sec_clock_half_ctor_init(args, prj, data):
+        # Each clock runs at its own declared period; the half period is what the
+        # generator toggles on.
+        return ',\n'.join(f'{row["clock"]}_half_(sc_time({row["period"]}, '
+                          f'{SC_TIME_UNIT[row["timeUnit"]]}) / 2)' for row in data['clocks'])
+
+    def sec_clock_start(args, prj, data):
+        return '\n'.join(f"{row['clock']}.write(true);" for row in data['clocks'])
+
+    def sec_clock_threads(args, prj, data):
+        return '\n'.join(f"SC_THREAD(clock_gen_{row['clock']});" for row in data['clocks'])
+
+    def sec_clock_gens(args, prj, data):
+        return '\n'.join(f"void clock_gen_{row['clock']}() {{ clock_gen({row['clock']}, {row['clock']}_half_); }}"
+                         for row in data['clocks'])
 
     def sec_reset_decl(args, prj, data):
         return '\n'.join(f"sc_signal<bool> {row['reset']};" for row in data['resets'])
 
     def sec_reset_ctor_init(args, prj, data):
-        return ',\n'.join(f"{row['reset']}(0)" for row in data['resets'])
+        # Born released: the driver's first write(false) is then a real negedge,
+        # which Verilator's async-reset processes need to see.
+        return ',\n'.join(f'{row["reset"]}("{row["reset"]}", true)' for row in data['resets'])
 
     def sec_reset_threads(args, prj, data):
         return '\n'.join(f"SC_THREAD({resetDriverName(row)});" for row in data['resets'])
 
     def sec_reset_drivers(args, prj, data):
-        # One driver per reset, counting edges of THAT reset's own clock: a
-        # release measured in absolute time is only meaningful while the period
-        # is 1 ns, and two resets in domains of different periods must not be
-        # released together.
-        s = []
-        for row in data['resets']:
-            s.append(f'void {resetDriverName(row)}() {{\n'
-                     f'    for (int cycle = 0; cycle < {row["releaseCycles"]}; cycle++) {{\n'
-                     f'        wait({row["clock"]}.posedge_event());\n'
-                     f'    }}\n'
-                     f'    {row["reset"]} = true;\n'
-                     f'}}')
-        return '\n\n'.join(s)
+        # One thunk per reset, counting edges of THAT reset's own clock: two
+        # resets in domains of different periods must not be released together.
+        return '\n'.join(f'void {resetDriverName(row)}() {{ reset_driver({row["reset"]}, '
+                         f'{row["clock"]}, {row["releaseCycles"]}); }}' for row in data['resets'])
 
     def sec_dut_connect(args, prj, data):
         s = []
@@ -225,6 +233,11 @@ def render_sc(args, prj, data):
             sec_hdl_if_decl=sec_hdl_if_decl(args, prj, data),
             sec_clock_decl=sec_clock_decl(args, prj, data),
             sec_clock_ctor_init=sec_clock_ctor_init(args, prj, data),
+            sec_clock_half_decl=sec_clock_half_decl(args, prj, data),
+            sec_clock_half_ctor_init=sec_clock_half_ctor_init(args, prj, data),
+            sec_clock_start=sec_clock_start(args, prj, data),
+            sec_clock_threads=sec_clock_threads(args, prj, data),
+            sec_clock_gens=sec_clock_gens(args, prj, data),
             sec_reset_decl=sec_reset_decl(args, prj, data),
             sec_reset_ctor_init=sec_reset_ctor_init(args, prj, data),
             sec_reset_threads=sec_reset_threads(args, prj, data),
@@ -294,6 +307,7 @@ sec_hdl_sc_wrapper_class_template = """\
 {% if sec_bfm_includes %}
 {{ sec_bfm_includes }}
 {% endif %}
+#include "socketSync.h"
 {%- if variants %}
 {%- if use_own_variant_config %}
 template <typename DUT_T, typename Config>
@@ -337,7 +351,8 @@ public:
         {{blockname}}Base{{cfg}}(name(), variant),
         {{ sec_clock_ctor_init | indent(8) }}
         {{ sec_bfm_ctor_init | indent(8) }}
-        {{ sec_reset_ctor_init | indent(8) }}
+        {{ sec_reset_ctor_init | indent(8) }},
+        {{ sec_clock_half_ctor_init | indent(8) }}
     {
 {%- if not variants %}
 #if !defined(VERILATOR) && defined(VCS)
@@ -353,6 +368,8 @@ public:
 
         {{ sec_bfm_connect | indent(8) }}
 
+        {{ sec_clock_start | indent(8) }}
+        {{ sec_clock_threads | indent(8) }}
         {{ sec_reset_threads | indent(8) }}
 
         end_ctor_init();
@@ -372,7 +389,51 @@ private:
     {{ sec_hdl_if_decl | indent(4) }}
 
     {{ sec_reset_decl | indent(4) }}
+    {{ sec_clock_half_decl | indent(4) }}
 
+    // Free-run: toggle every half period. Gated lockstep: the quantum thread
+    // broadcasts one edge request per socketSyncClockHalfPeriod() of advanced
+    // time, and a clock toggles once its own half period has accumulated, so a
+    // slower clock keeps its period at quantum resolution and no clock can
+    // free-run during wait(ack).
+    void clock_gen(sc_signal<bool> &sig, const sc_time &half) {
+        sc_time gated = SC_ZERO_TIME;
+        while (true) {
+            if (socketSyncTimeGated()) {
+                socketSyncWaitClockEdge();
+                gated += socketSyncClockHalfPeriod();
+                if (gated >= half) {
+                    gated -= half;
+                    sig.write(!sig.read());
+                }
+            } else {
+                wait(half);
+                sig.write(!sig.read());
+            }
+        }
+    }
+
+    // Lockstep with a connected partner: follow socketSyncRstN (boot release
+    // and mid-sim MSG_RESET) and never wait on a clock, since gated time does
+    // not advance before the first quantum. Otherwise assert, hold for the
+    // declared releaseCycles edges of the reset's own clock, then release.
+    void reset_driver(sc_signal<bool> &rst, sc_signal<bool> &clk, int cycles) {
+        if (socketSyncLockstepActive()) {
+            rst.write(socketSyncRstN());
+            while (true) {
+                wait(socketSyncRstNEvent());
+                rst.write(socketSyncRstN());
+            }
+        } else {
+            rst.write(false);
+            for (int cycle = 0; cycle < cycles; cycle++) {
+                wait(clk.posedge_event());
+            }
+            rst.write(true);
+        }
+    }
+
+    {{ sec_clock_gens | indent(4) }}
     {{ sec_reset_drivers | indent(4) }}
 
 """

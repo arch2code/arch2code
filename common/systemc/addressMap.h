@@ -101,6 +101,16 @@ public:
         Q_ASSERT_CTX(false, "", std::format("Invalid address 0x{:x}", address));
         return nullptr;
     }
+    bool contains(uint64_t address) const {
+        for (auto &it : m_addressMap)
+        {
+            if (address >= it.m_address && address < it.m_address + it.m_size)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 private:
     std::vector<addressElement> m_addressMap;
     uint64_t m_lastWriteAddress=0;
@@ -118,6 +128,18 @@ void registerHandler(addressMap &regs, apb_in< ADDR, DATA > &apbIn, uint64_t add
     {
         apbIn->reqReceive(isWrite, addr, data);
         uint64_t address = addr._getAddress() & (addressMask);
+        // Unmapped: ACK, PRDATA=0, write ignored. PSLVERR is returned on the
+        // pySocket APB ACK from the target register-map contract passed to
+        // port_socket (mapped word offsets + address mask).
+        if (!regs.contains(address))
+        {
+            if (!isWrite)
+            {
+                data._setData(0);
+                apbIn->complete(data);
+            }
+            continue;
+        }
         if (isWrite)
         {
             regs.cpu_write(address, data._getData());

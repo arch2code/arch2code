@@ -281,6 +281,7 @@ ADDRCTL_TESTS=(
     "registerPorts independent of ports"        "test_register_ports_independent_of_ports.py"
     "migrated ip_test view"                     "test_addrctl_ip_test_view.py"
     "zero-instance exported leaf ports"         "test_zero_instance_ported_block.py"
+    "socket catalog view"                       "test_socket_catalog_view.py"
 )
 
 idx=20

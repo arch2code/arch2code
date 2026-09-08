@@ -23,8 +23,7 @@ projectFiles:
 
 topInstance: twoClk_tb
 
-# Non-commensurate periods (1 ns and 3 ns), so no slow edge ever coincides with a
-# fast edge. 'clk' and 'rst_n' deliberately collide by NAME with the child
+# Two different periods (1 ns and 3 ns). 'clk' and 'rst_n' deliberately collide by NAME with the child
 # project's declarations and differ in attributes.
 clocks:
     clk:

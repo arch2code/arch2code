@@ -1078,45 +1078,60 @@ def check_variant_trampoline(emitted):
 # --------------------------------------------------------- sc_clock / rst --
 
 def check_sc_clock_per_declared_period(emitted):
-    """One sc_clock per resolved clock, each at its OWN declared period and unit.
+    """One gated clock signal per resolved clock, each with its OWN half period
+    from its declared period and unit.
 
-    A single hardcoded sc_time is only meaningful while every clock runs at 1 ns,
-    which is the defect the declared period exists to fix."""
+    A single hardcoded half period is only meaningful while every clock runs at
+    1 ns, which is the defect the declared period exists to fix. The clock is an
+    sc_signal, not an sc_clock, because socket lockstep must be able to stop it."""
     text = emitted['verif/fastProd_hdl_sc_wrapper.h']
-    for decl in ('sc_clock clk;', 'sc_clock clkSlow;', 'sc_clock clkPico;'):
-        _expect(text, decl, 'each resolved clock is its own sc_clock member',
+    for decl in ('sc_signal<bool> clk;', 'sc_signal<bool> clkSlow;',
+                 'sc_signal<bool> clkPico;'):
+        _expect(text, decl, 'each resolved clock is its own gated signal',
                 'fastProd SC wrapper')
-    for ctor in ('clk("clk", sc_time(1, SC_NS)',
-                 'clkSlow("clkSlow", sc_time(3, SC_NS)',
-                 'clkPico("clkPico", sc_time(500, SC_PS)'):
-        _expect(text, ctor, 'the period and the unit both come from the declaration',
+    for half in ('clk_half_(sc_time(1, SC_NS) / 2)',
+                 'clkSlow_half_(sc_time(3, SC_NS) / 2)',
+                 'clkPico_half_(sc_time(500, SC_PS) / 2)'):
+        _expect(text, half, 'the period and the unit both come from the declaration',
                 'fastProd SC wrapper')
+    _refute(text, 'sc_clock', 'a free-running sc_clock cannot be gated',
+            'fastProd SC wrapper')
     return True
 
 
-def check_sc_clock_duty_and_start_unchanged(emitted):
-    """Duty cycle, start delay and first edge are not declarable, so every
-    sc_clock keeps the constants the wrapper has always used. The reset release
-    count is measured from that start delay, so changing it silently would move
-    every release."""
+def check_one_clock_thread_per_clock(emitted):
+    """Each clock has its own generator thread over the one shared gated toggler,
+    so every clock stops together under lockstep and each keeps its own period."""
     text = emitted['verif/fastProd_hdl_sc_wrapper.h']
-    if text.count('0.5, sc_time(3, SC_NS), true)') != 3:
+    threads = re.findall(r'SC_THREAD\((clock_gen_\w+)\);', text)
+    if sorted(threads) != sorted(['clock_gen_clk', 'clock_gen_clkSlow',
+                                  'clock_gen_clkPico']):
         raise AssertionError(
-            "fastProd SC wrapper does not give all three clocks duty 0.5, start "
-            "3 ns, posedge first")
+            f"fastProd SC wrapper registers clock threads {threads}, expected one "
+            f"per clock with a distinct name")
+    for thunk in ('void clock_gen_clk() { clock_gen(clk, clk_half_); }',
+                  'void clock_gen_clkSlow() { clock_gen(clkSlow, clkSlow_half_); }',
+                  'void clock_gen_clkPico() { clock_gen(clkPico, clkPico_half_); }'):
+        _expect(text, thunk, 'each thread toggles its own signal at its own half period',
+                'fastProd SC wrapper')
+    if text.count('socketSyncWaitClockEdge()') != 1:
+        raise AssertionError(
+            "fastProd SC wrapper must gate every clock through the one shared "
+            "clock_gen body")
     return True
 
 
 def check_reset_signal_per_reset(emitted):
-    """One sc_signal<bool> per resolved reset, initialised asserted."""
+    """One sc_signal<bool> per resolved reset, born released."""
     text = emitted['verif/fastProd_hdl_sc_wrapper.h']
     for decl in ('sc_signal<bool> rst_n;', 'sc_signal<bool> rstSlow_n;',
                  'sc_signal<bool> rstPico_n;'):
         _expect(text, decl, 'each resolved reset is its own signal',
                 'fastProd SC wrapper')
-    for init in ('rst_n(0)', 'rstSlow_n(0)', 'rstPico_n(0)'):
-        _expect(text, init, 'a reset starts asserted at 0',
-                'fastProd SC wrapper')
+    for init in ('rst_n("rst_n", true)', 'rstSlow_n("rstSlow_n", true)',
+                 'rstPico_n("rstPico_n", true)'):
+        _expect(text, init, "a reset is born released so the driver's first "
+                "assertion is a real negedge", 'fastProd SC wrapper')
     return True
 
 
@@ -1130,16 +1145,19 @@ def check_release_counts_own_clock(emitted):
     text = emitted['verif/fastProd_hdl_sc_wrapper.h']
     for name, cycles, clock in (('rst_n', 3, 'clk'), ('rstSlow_n', 5, 'clkSlow')):
         driver = re.search(
-            rf'void reset_driver_{name}\(\) \{{\s*'
-            rf'for \(int cycle = 0; cycle < (\d+); cycle\+\+\) \{{\s*'
-            rf'wait\((\w+)\.posedge_event\(\)\);', text)
+            rf'void reset_driver_{name}\(\) \{{ reset_driver\({name}, (\w+), (\d+)\); \}}',
+            text)
         if not driver:
             raise AssertionError(
                 f"fastProd SC wrapper has no cycle-counting driver for {name}")
-        if (int(driver.group(1)), driver.group(2)) != (cycles, clock):
+        if (driver.group(1), int(driver.group(2))) != (clock, cycles):
             raise AssertionError(
-                f"{name} is released after {driver.group(1)} edges of "
-                f"{driver.group(2)}, expected {cycles} edges of {clock}")
+                f"{name} is released after {driver.group(2)} edges of "
+                f"{driver.group(1)}, expected {cycles} edges of {clock}")
+    if text.count('wait(clk.posedge_event());') != 1:
+        raise AssertionError(
+            "fastProd SC wrapper must count release edges in the one shared "
+            "reset_driver body")
     return True
 
 
@@ -1759,11 +1777,11 @@ def main():
              check_wrapper_dut_bindings),
             ('a variant trampoline declares and forwards the same list',
              check_variant_trampoline),
-            ('one sc_clock per clock, at its own period and unit',
+            ('one gated clock signal per clock, at its own period and unit',
              check_sc_clock_per_declared_period),
-            ('duty, start delay and first edge stay at the wrapper constants',
-             check_sc_clock_duty_and_start_unchanged),
-            ('one sc_signal per reset, initialised asserted',
+            ('one clock thread per clock over the shared gated toggler',
+             check_one_clock_thread_per_clock),
+            ('one sc_signal per reset, born released',
              check_reset_signal_per_reset),
             ('each reset is released after its own count of its own clock',
              check_release_counts_own_clock),

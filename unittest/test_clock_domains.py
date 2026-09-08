@@ -452,7 +452,7 @@ def _domain_invariant(db_path):
     The rule the whole derivation exists for, asserted over whatever blocks the
     fixture happens to hold rather than by naming cases: the generated
     co-simulation wrapper emits a release thread per reset that waits on THAT
-    reset's clock, and declares an sc_clock per clock of the block's set and
+    reset's clock, and declares a clock signal per clock of the block's set and
     nothing else, so a reset from a domain the block does not carry is a wait on an
     identifier the wrapper never declares."""
     conn = sqlite3.connect(db_path)
