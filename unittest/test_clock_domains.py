@@ -291,7 +291,8 @@ instances:
 def _make_fixture(consumerDomains='', connectionClock='', childPeriod=None,
                   projectDomains=PROJECT_DOMAINS, design=None,
                   childConnectionClock='', extraBlocks='', extraSections='',
-                  childDomains=None, containerDomains='', childBlockDomains=''):
+                  childDomains=None, containerDomains='', childBlockDomains='',
+                  extraInstances='', extraConnections=''):
     """Write a design fixture into a fresh temp dir outside the repo tree.
 
     `consumerDomains` is appended to the cons block and `containerDomains` to the
@@ -306,9 +307,10 @@ def _make_fixture(consumerDomains='', connectionClock='', childPeriod=None,
     boundary respelling of a reset is a fall back to the assembler's default
     rather than a match on the child's own name - and `childBlockDomains` is
     appended to the child's ipProd block, so the composed leaf can carry more than
-    one domain of its own. `extraBlocks`
-    is appended to the blocks: section and `extraSections` to the design yaml,
-    for shapes DESIGN's fixed block set and section set do not hold.
+    one domain of its own. `extraBlocks`, `extraInstances` and `extraConnections`
+    are appended to the blocks:, instances: and connections: sections, and
+    `extraSections` to the design yaml, for shapes DESIGN's fixed block set and
+    section set do not hold.
     `design` replaces the design yaml outright, for the containment shapes
     DESIGN's fixed instance tree cannot express.
 
@@ -319,7 +321,7 @@ def _make_fixture(consumerDomains='', connectionClock='', childPeriod=None,
     os.makedirs(os.path.join(fixture, 'yaml'))
 
     projectFiles = ['    - ../../yaml/top.yaml\n']
-    include = extraInstances = extraConnections = ''
+    include = ''
     if childPeriod is not None:
         os.makedirs(os.path.join(fixture, 'ip', 'prj', 'yaml'))
         os.makedirs(os.path.join(fixture, 'ip', 'yaml'))
@@ -347,9 +349,9 @@ def _make_fixture(consumerDomains='', connectionClock='', childPeriod=None,
         # projectFiles: creates no include edge, and name resolution walks the
         # referencing context's chain.
         include = 'include:\n    - ../ip/yaml/childIp.yaml\n'
-        extraInstances = ('    uIpProd: { container: dut, instanceType: ipProd, '
+        extraInstances += ('    uIpProd: { container: dut, instanceType: ipProd, '
                           'instGroup: top }\n')
-        extraConnections = ('    - { interface: ipDataIf, src: uIpProd, srcport: out, '
+        extraConnections += ('    - { interface: ipDataIf, src: uIpProd, srcport: out, '
                             f'dst: uCons, dstport: ipIn{childConnectionClock} }}\n')
 
     if design is None:
@@ -906,7 +908,19 @@ def run_view_build():
                     "        clocks: [clkSlow, clkPico]\n"
                     "        resets: [rstPicoB_n, rstSlow_n]\n"
                     "        ports:\n"
-                    "            libIn: { interface: dataIf, direction: dst }\n",
+                    "            libIn: { interface: dataIf, direction: dst }\n"
+                    # A connectionMap's parent port must be defined by a boundary
+                    # connection on the block, so the map into uCons is fed from
+                    # a testbench-level source.
+                    "    tbSrc:\n"
+                    "        desc: \"testbench-level source\"\n"
+                    "        hasVl: false\n"
+                    "        hasMdl: false\n"
+                    "        hasTb: false\n"
+                    "        hasRtl: false\n",
+        extraInstances="    uTbSrc: { container: top_tb, instanceType: tbSrc, instGroup: top }\n",
+        extraConnections="    - { interface: dataIf, src: uTbSrc, srcport: out,"
+                         " dst: u_dut, dstport: mapIn, clock: clkSlow }\n",
         extraSections="\nconnectionMaps:\n"
                       "    - { interface: dataIf, block: dut, port: mapIn,"
                       " direction: dst, instance: uCons, instancePort: mapIn,"

@@ -19,7 +19,8 @@ def create_test_files(arch_content, project_extra=""):
         f.write(arch_content)
 
     arch_basename = os.path.basename(arch_path)
-    project_content = f"""projectName: validate_ports_test
+    project_content = f"""yamlFormat: 2
+projectName: validate_ports_test
 topInstance: u_top
 
 dirs:
@@ -190,7 +191,7 @@ connectionMaps:
 
 def test_nested_example_passes():
     """Valid nested example with aligned connectionMaps should pass make db."""
-    nested_dir = os.path.join(base_dir, 'examples', 'nested', 'arch')
+    nested_dir = os.path.join(base_dir, 'examples', 'nested', 'prj', 'yaml')
     project_path = os.path.join(nested_dir, 'nestedProject.yaml')
     db_path = tempfile.mktemp(suffix='.db', dir=test_dir)
     try:
