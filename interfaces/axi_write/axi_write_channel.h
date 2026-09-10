@@ -43,7 +43,7 @@ struct axiWriteDataSt
     // every other member untouched.
     [[no_unique_address]] U user;
 
-    static constexpr unsigned int idWidth = 4; // number of bits in wid
+    static constexpr unsigned int idWidth = axiIdWidth; // number of bits in wid
     static constexpr unsigned int dataWidth = D::_bitWidth; // number of bits in data
     static constexpr unsigned int strbWidth = S::_bitWidth; // number of bits in wstrb
     static constexpr unsigned int lastWidth = 1; // number of bits in wlast
@@ -165,7 +165,7 @@ struct axiWriteDataSt
 template <typename A, typename U = std::monostate>
 struct axiWriteAddressSt
 {
-    _axiIdT     awid;    // Write address ID. This signal is the identification tag for the write address group of signals (4bits)
+    _axiIdT     awid;    // Write address ID. This signal is the identification tag for the write address group of signals (AXI_ID_WIDTH bits, default 4)
     A           awaddr;  // Write address. The write address gives the address of the first transfer in a write burst transaction
     uint8_t     awlen;   // Burst length. This signal indicates the exact number of transfers in a burst.
     _axiSizeT   awsize;  // Burst size. This signal indicates the size of each transfer in the burst.
@@ -175,7 +175,7 @@ struct axiWriteAddressSt
     // offsets of every other member untouched.
     [[no_unique_address]] U user;
 
-    static constexpr unsigned int idWidth = 4; // number of bits in awid
+    static constexpr unsigned int idWidth = axiIdWidth; // number of bits in awid
     static constexpr unsigned int addrWidth = A::_bitWidth; // number of bits in awaddr
     static constexpr unsigned int lenWidth = 8; // number of bits in awlen
     static constexpr unsigned int sizeWidth = 3; // number of bits in awsize
@@ -292,14 +292,14 @@ struct axiWriteAddressSt
 template <typename U = std::monostate>
 struct axiWriteRespSt
 {
-    _axiIdT     bid;    // Write address ID. This signal is the identification tag for the write address group of signals (4bits)
+    _axiIdT     bid;    // Write address ID. This signal is the identification tag for the write address group of signals (AXI_ID_WIDTH bits, default 4)
     _axiResponseT bresp; // Write response. This signal indicates the status of the write transaction
     // BUSER sideband, qualified by the write response channel handshake.
     // Declared last so that an empty U occupies tail padding and leaves the
     // offsets of every other member untouched.
     [[no_unique_address]] U user;
 
-    static constexpr unsigned int idWidth = 4; // number of bits in bid
+    static constexpr unsigned int idWidth = axiIdWidth; // number of bits in bid
     static constexpr unsigned int respWidth = 2; // number of bits in bresp
     static constexpr unsigned int userWidth = optionalPayloadBitWidth<U>(); // number of bits in user
 
@@ -380,8 +380,14 @@ struct axiWriteRespSt
 
 // The default instantiation must stay bit and size identical to the
 // pre-USER, non-template axiWriteRespSt.
-static_assert(axiWriteRespSt<>::_bitWidth == 6, "axiWriteRespSt<> packed width changed");
+static_assert(axiWriteRespSt<>::userWidth == 0, "empty BUSER must contribute no packed bits");
+static_assert(axiWriteRespSt<>::_bitWidth == axiIdWidth + axiWriteRespSt<>::respWidth,
+              "axiWriteRespSt<> packed width changed");
+// Storage size is only pinned at the default ID width; a wider ID legitimately
+// widens _axiIdT and with it the struct.
+#if AXI_ID_WIDTH == 4
 static_assert(sizeof(axiWriteRespSt<>) == 8, "axiWriteRespSt<> storage size changed");
+#endif
 
 template <class A, class D, class S, class AWU = std::monostate, class WU = std::monostate, class BU = std::monostate>
 class axi_write_in_if

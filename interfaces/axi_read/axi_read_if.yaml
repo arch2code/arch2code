@@ -11,7 +11,7 @@ interface_defs:
       ruser_t : { datatype : struct, optional : true }
     signals: 
       araddr : addr_t
-      arid : 'bit [3:0]'
+      arid : 'bit [`AXI_ID_WIDTH-1:0]'
       arlen : 'bit [7:0]'
       arsize : 'bit [2:0]'
       arburst : 'bit [1:0]'
@@ -19,7 +19,7 @@ interface_defs:
       arvalid : bool
       arready : bool
       rdata : data_t
-      rid : 'bit [3:0]'
+      rid : 'bit [`AXI_ID_WIDTH-1:0]'
       rresp : 'bit [1:0]'
       rlast : bool
       ruser : ruser_t

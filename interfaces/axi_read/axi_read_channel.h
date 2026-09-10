@@ -39,7 +39,7 @@ struct axiReadRespSt
     // every other member untouched.
     [[no_unique_address]] U user;
 
-    static constexpr unsigned int idWidth = 4; // number of bits in rid
+    static constexpr unsigned int idWidth = axiIdWidth; // number of bits in rid
     static constexpr unsigned int respWidth = 2; // number of bits in rresp
     static constexpr unsigned int dataWidth = D::_bitWidth; // number of bits in data
     static constexpr unsigned int lastWidth = 1; // number of bits in rlast
@@ -151,7 +151,7 @@ struct axiReadRespSt
 template <typename A, typename U = std::monostate>
 struct axiReadAddressSt
 {
-    _axiIdT     arid;    // Master Read address ID. This signal is the identification tag for the read address group of signals (4bits)
+    _axiIdT     arid;    // Master Read address ID. This signal is the identification tag for the read address group of signals (AXI_ID_WIDTH bits, default 4)
     A           araddr;  // Master Read address. The read address gives the address of the first transfer in a read burst transaction
     uint8_t     arlen;   // Master Burst length. This signal indicates the exact number of transfers in a burst.
     _axiSizeT   arsize;  // Master Burst size. This signal indicates the size of each transfer in the burst.
@@ -161,7 +161,7 @@ struct axiReadAddressSt
     // offsets of every other member untouched.
     [[no_unique_address]] U user;
 
-    static constexpr unsigned int idWidth = 4; // number of bits in arid
+    static constexpr unsigned int idWidth = axiIdWidth; // number of bits in arid
     static constexpr unsigned int addrWidth = A::_bitWidth; // number of bits in araddr
     static constexpr unsigned int lenWidth = 8; // number of bits in arlen
     static constexpr unsigned int sizeWidth = 3; // number of bits in arsize

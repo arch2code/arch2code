@@ -20,7 +20,7 @@ template<typename VL_ADDR_T, typename VL_DATA_T,
 typename VL_ARUSER_T = bool, typename VL_RUSER_T = bool>
 struct axi_read_hdl_if: public sc_interface {
 
-    static constexpr unsigned int idWidth    = 4;
+    static constexpr unsigned int idWidth    = axiIdWidth;
     static constexpr unsigned int lenWidth   = 8;
     static constexpr unsigned int sizeWidth  = 3;
     static constexpr unsigned int burstWidth = 2;

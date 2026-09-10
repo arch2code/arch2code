@@ -2,6 +2,7 @@
 // The USER sideband parameters are optional. Each defaults to a plain one-bit
 // `logic` placeholder, so an interface that binds no USER type carries a single
 // undriven bit per channel that nothing in the design ever references.
+`include "a2c_defines.svh"
 interface axi_write_if #(
         parameter type addr_t = logic[1:0],
         parameter type data_t = logic[1:0],
@@ -12,7 +13,7 @@ interface axi_write_if #(
     );
 
     // Address Channel
-    logic [3:0]     awid;
+    logic [`AXI_ID_WIDTH-1:0] awid;
     addr_t          awaddr;
     logic [7:0]     awlen;
     logic [2:0]     awsize;
@@ -22,7 +23,7 @@ interface axi_write_if #(
     logic           awready;
 
     // Data Channel
-    logic [3:0]     wid;
+    logic [`AXI_ID_WIDTH-1:0] wid;
     data_t          wdata;
     strb_t          wstrb;
     logic           wlast;
@@ -31,7 +32,7 @@ interface axi_write_if #(
     logic           wready;
 
     // Response Channel
-    logic [3:0]     bid;
+    logic [`AXI_ID_WIDTH-1:0] bid;
     logic [1:0]     bresp;
     buser_t         buser;
     logic           bvalid;

@@ -42,6 +42,9 @@ struct socket_axi_wr_resp_st {
 
 static_assert(sizeof(socket_axi_wr_req_st) == 4620, "socket_axi_wr_req_st wire layout");
 static_assert(sizeof(socket_axi_wr_resp_st) == 4, "socket_axi_wr_resp_st wire layout");
+// The wire structs above carry the AXI id as uint8_t; widen them (and their
+// Python ctypes mirrors) before using a wider AXI_ID_WIDTH.
+static_assert(AXI_ID_WIDTH <= 8, "the socket wire format carries AXI ids as uint8_t; widen the wire structs and their Python ctypes mirrors before using a wider AXI_ID_WIDTH");
 
 // axi_write_in: Python is AXI write slave; shell forwards DMA write bursts to Python memory.
 template <class A, class D, class S>

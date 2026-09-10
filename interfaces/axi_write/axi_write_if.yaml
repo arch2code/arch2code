@@ -13,7 +13,7 @@ interface_defs:
       buser_t : { datatype : struct, optional : true }
     signals: 
       awaddr : addr_t
-      awid : 'bit [3:0]'
+      awid : 'bit [`AXI_ID_WIDTH-1:0]'
       awlen : 'bit [7:0]'
       awsize : 'bit [2:0]'
       awburst : 'bit [1:0]'
@@ -21,14 +21,14 @@ interface_defs:
       awvalid : bool
       awready : bool
       wdata : data_t
-      wid : 'bit [3:0]'
+      wid : 'bit [`AXI_ID_WIDTH-1:0]'
       wstrb : strb_t
       wlast : bool
       wuser : wuser_t
       wvalid : bool
       wready : bool
       bresp : 'bit [1:0]'
-      bid : 'bit [3:0]'
+      bid : 'bit [`AXI_ID_WIDTH-1:0]'
       buser : buser_t
       bvalid : bool
       bready : bool

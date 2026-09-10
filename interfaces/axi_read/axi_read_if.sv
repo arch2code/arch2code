@@ -2,6 +2,7 @@
 // The USER sideband parameters are optional. Each defaults to a plain one-bit
 // `logic` placeholder, so an interface that binds no USER type carries a single
 // undriven bit per channel that nothing in the design ever references.
+`include "a2c_defines.svh"
 interface axi_read_if #(
         parameter type addr_t = logic [31:0],
         parameter type data_t = logic [31:0],
@@ -10,7 +11,7 @@ interface axi_read_if #(
     );
 
     // Address Channel
-    logic [3:0]     arid;
+    logic [`AXI_ID_WIDTH-1:0] arid;
     addr_t          araddr;
     logic [7:0]     arlen;
     logic [2:0]     arsize;
@@ -20,7 +21,7 @@ interface axi_read_if #(
     logic           arready;
 
     // Data Channel
-    logic [3:0]     rid;
+    logic [`AXI_ID_WIDTH-1:0] rid;
     data_t          rdata;
     logic [1:0]     rresp;
     logic           rlast;
