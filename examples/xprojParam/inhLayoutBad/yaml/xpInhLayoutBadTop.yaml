@@ -1,0 +1,119 @@
+# The layout gate on an inheritContainerParam child: the rejecting arm.
+#
+# inhLayout with one number changed: the container states 24 while the inner
+# sibling still states a literal 16. The top-level driver of the container's
+# boundary port is moved to 24 along with the container, so that junction
+# still never fails; only the inner leaf, which inherits the container's
+# whole Config, genuinely disagrees with its sibling.
+#
+# The rejection must name 24. That value appears nowhere in the leaf's own
+# declaration and is reachable only through the container.
+
+ipParameters:
+    constants:
+        # The default is deliberately NOT the value any site binds, so a
+        # fallback to it is visible as a wrong number rather than passing by
+        # coincidence.
+        IL_WIDTH: { value: 8, maxValue: 32, desc: "Pixel width; default deliberately unequal to every bound value" }
+    types:
+        ilPixelT: { width: IL_WIDTH, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+types:
+    ilTagT:  { width: 8, desc: "Sample tag; lowest packed position" }
+    ilMarkT: { width: 8, desc: "Trailing marker, so a width change also moves an offset" }
+
+structures:
+    ilSt:
+        tag:  { varType: ilTagT,   desc: "Sample tag" }
+        data: { varType: ilPixelT, desc: "Parameterizable pixel payload" }
+        mark: { varType: ilMarkT,  desc: "Trailing marker" }
+
+interfaces:
+    ilIf:
+        desc: "Parameterized pixel push/ack stream carrying the width under test"
+        interfaceType: push_ack
+        structures:
+            - { structure: ilSt, structureType: data_t }
+
+blocks:
+    xpInhLayoutBadTop:
+        desc: "Probe top; adjudicated at make db and never built"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpInhLayoutBadTop_tb:
+        desc: "Testbench container for xpInhLayoutBadTop"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpInhBadWrap:
+        desc: "The container whose whole Config its inheriting leaves take"
+        params: [IL_WIDTH]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            contIn: { interface: ilIf, direction: dst }
+    xpInhBadSrc:
+        desc: "Literal-bound driver, reused at two sites"
+        params: [IL_WIDTH]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: ilIf, direction: src }
+    xpInhBadLeaf:
+        desc: "The leaf under test: its Config IS its container's, not stated here"
+        # Every param is a by-name subset of xpInhBadWrap's, which
+        # inheritContainerParam requires.
+        params: [IL_WIDTH]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            in: { interface: ilIf, direction: dst }
+
+instances:
+    xpInhLayoutBadTop_tb: { container: xpInhLayoutBadTop_tb, instanceType: xpInhLayoutBadTop_tb, instGroup: top }
+    u_xpInhLayoutBadTop:  { container: xpInhLayoutBadTop_tb, instanceType: xpInhLayoutBadTop,    instGroup: top }
+    uWrap:   { container: xpInhLayoutBadTop, instanceType: xpInhBadWrap, instGroup: top, variant: use }
+    uTopSrc: { container: xpInhLayoutBadTop, instanceType: xpInhBadSrc,  instGroup: top, variant: top }
+    uSrc:    { container: xpInhBadWrap,      instanceType: xpInhBadSrc,  instGroup: top, variant: inner }
+    # THE CELL. uLeafA is reached through a plain connection (the connection
+    # arm); uLeafB is reached through the container's own connectionMap
+    # boundary port (the connectionMap arm). Both inherit xpInhBadWrap's
+    # Config.
+    uLeafA: { container: xpInhBadWrap, instanceType: xpInhBadLeaf, instGroup: top, inheritContainerParam: true }
+    uLeafB: { container: xpInhBadWrap, instanceType: xpInhBadLeaf, instGroup: top, inheritContainerParam: true }
+
+connections:
+    # Top-level: drives the container's boundary port at the container's own
+    # width (24), so this junction never fails.
+    - { interface: ilIf, src: uTopSrc, srcport: out, dst: uWrap, dstport: contIn, name: topLink }
+    # Inside the container: the connection arm under test. uSrc stays at the
+    # literal 16 while the container (and so uLeafA) moves to 24.
+    - { interface: ilIf, src: uSrc, srcport: out, dst: uLeafA, dstport: in, name: innerLink }
+
+connectionMaps:
+    # The connectionMap arm under test: the container's boundary port forwards
+    # to the second inheriting leaf. Both sides resolve from the same
+    # container configuration, so this junction never fails either; the
+    # rejection below is entirely the inner connection arm's.
+    - { interface: ilIf, block: xpInhBadWrap, port: contIn, direction: dst, instance: uLeafB, instancePort: in }
+
+parameters:
+    xpInhBadWrap:
+        use:
+            IL_WIDTH: 24
+    xpInhBadSrc:
+        # The literal the top-level connection must be found equal to.
+        top:
+            IL_WIDTH: 24
+        # The literal that genuinely disagrees with the container's 24.
+        inner:
+            IL_WIDTH: 16

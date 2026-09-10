@@ -59,7 +59,10 @@ Value.
    variant and renames nothing, and it is confined to a container and child owned by one
    project. Across projects the child takes a declared variant whose bindings are
    `containerParam:`. `containerParam:` is the flexible form and `inheritContainerParam:` the
-   same-project shorthand for the same-name subset case. (Ruled 2026-09-07.)
+   same-project shorthand for the same-name subset case. (Ruled 2026-09-07.) Each shared name must
+   also be the same `ipParameters` constant on both sides. A same-named child declaration with a
+   smaller `maxValue` would otherwise pass the subset check and be sized below what the container
+   can bind. Use `containerParam:` where the two must stay distinct declarations. (Ruled 2026-09-09.)
 
    How the factory selects a container-sourced child, in both forms alike: the child's C++
    type is a function of the container's Config, so the container names the concrete class as
@@ -112,6 +115,13 @@ Recorded so the iteration argues about facts. Dated 2026-09-07; delete each line
   rather than emitting one of the two silently. Project-qualified wrapper naming would lift it.
 - Rule 9: the layout index collapses cross-project bindings into one slot (item 9B of
   [`plan-116-review-feedback.md`](./plan-116-review-feedback.md)).
+
+### Direction, not a rule
+
+Direction (user, 2026-09-09): SV is the guiding principle. A child binds on its defined ports and
+ignores container Config members it does not use. In SC that means payload struct types keyed on
+the parameter values they use, with the `<Config>` spelling kept as an alias, so two Configs with
+equal values give one type and same-interface thunkers retire. Not yet a plan step.
 
 ---
 
@@ -564,7 +574,6 @@ The status, the remaining work and the evidence behind each claim are tracked at
 history of what this document used to say.
 
 `inheritContainerParam:` stays supported as rule 4's same-project, same-name shorthand, and the
-synthesised register handler keeps using it. The product tree's two authored uses move to
-declared `containerParam:` variants in plan step 13, which restores layout adjudication on the
-two connections the whole-Config form is skipped for today; that migrates one design and
-retires nothing.
+synthesised register handler keeps using it. The product tree's `u_preprocess`/`u_interpolate` use
+`inheritContainerParam:`; the `containerParam:` form remains for a child that differs from its
+container by name or project.

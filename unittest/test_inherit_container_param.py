@@ -18,11 +18,19 @@ Negatives (each must fail db-create with a clear diagnostic):
   (a) child params are NOT a by-name subset of the container's;
   (b) `variant:` and `inheritContainerParam:` are set on one instance;
   (c) the container block is not parameterized (declares no params);
-  (d) the child block declares no params.
+  (d) the child block declares no params;
+  (f) a child parameter shares the container's name but is backed by a
+      different `ipParameters` declaration.
 
 A fifth negative covers the top-instance guard: `inheritContainerParam: true` on
 the root top instance (whose container is `_topInstance`, not a block) must fail
 db-create with a clean diagnostic, not a traceback.
+
+`inheritContainerParam` forwards each parameter by name, so a by-name subset is
+not enough: a child declaration of a shared name with a smaller `maxValue` would
+be sized below what the container can bind. Negative (f) declares WIDTH twice, in
+two files that do not include each other, so each block resolves its own WIDTH
+and only the shared-declaration check rejects the design.
 
 Validation (e) — container and child must be the same owning project — is
 implemented in calcBlockConfigInfo::validate_inherit_container_params but is not
@@ -63,7 +71,7 @@ def _cleanup(paths):
                 pass
 
 
-def _make_project(arch_yaml, name):
+def _make_project(arch_yaml, name, extra_files=()):
     arch_path = _write_temp(arch_yaml, '.yaml', f'{name}_arch_')
     project_yaml = f"""projectName: {name}
 yamlFormat: 2
@@ -77,7 +85,7 @@ projectFiles:
 """
     project_path = _write_temp(project_yaml, '_project.yaml', f'{name}_project_')
     db_path = tempfile.mktemp(suffix='.db', dir=test_dir)
-    return project_path, db_path, [arch_path]
+    return project_path, db_path, [arch_path] + list(extra_files)
 
 
 def _run_create_subprocess(project_path, db_path):
@@ -270,6 +278,51 @@ parameters:
 """
 
 
+# --- Negative (f): child parameter is a different declaration -------------
+# Two WIDTH constants in two files that do not include each other; the top
+# file includes both and wires the inheritContainerParam instance across them.
+NEG_DIFFDECL_CONTAINER_YAML = """ipParameters:
+  constants:
+    WIDTH: {value: 8, maxValue: 32, desc: "container's own WIDTH declaration"}
+
+blocks:
+  containerIp:
+    desc: "Parameterized container block"
+    params: [WIDTH]
+"""
+
+NEG_DIFFDECL_CHILD_YAML = """ipParameters:
+  constants:
+    WIDTH: {value: 8, maxValue: 16, desc: "child's own WIDTH declaration, a different constant"}
+
+blocks:
+  childIp:
+    desc: "Parameterized child block; WIDTH is its own declaration"
+    params: [WIDTH]
+"""
+
+
+def _diffdecl_arch_yaml(container_basename, child_basename):
+    return f"""include:
+  - {container_basename}
+  - {child_basename}
+
+blocks:
+  top:
+    desc: "Top block"
+
+instances:
+  uTop:       {{ container: top, instanceType: top }}
+  uContainer: {{ container: top, instanceType: containerIp, variant: cv0 }}
+  uChild:     {{ container: containerIp, instanceType: childIp, inheritContainerParam: true }}
+
+parameters:
+  containerIp:
+    cv0:
+      WIDTH: 8
+"""
+
+
 # --- Negative (top instance): inheritContainerParam on the root top instance -
 # The topInstance's container is `_topInstance` (not a block), so the guard must
 # reject it cleanly rather than raising a KeyError on the block lookup.
@@ -379,9 +432,9 @@ def _run_inherit_sibling_accepted(label, arch_yaml, name):
         _cleanup(paths)
 
 
-def _run_negative(label, arch_yaml, name, needle):
+def _run_negative(label, arch_yaml, name, needle, extra_files=()):
     print(f"inheritContainerParam negative: {label}")
-    project_path, db_path, extra = _make_project(arch_yaml, name)
+    project_path, db_path, extra = _make_project(arch_yaml, name, extra_files)
     paths = [project_path, db_path] + extra
     try:
         result = _run_create_subprocess(project_path, db_path)
@@ -434,6 +487,16 @@ def run_all_tests():
         "inheritContainerParam on the top instance (no container block)",
         NEG_TOPINSTANCE_YAML, 'inherit_neg_topinstance',
         "requires the instance to be contained in a block") and ok
+    diffdecl_container_path = _write_temp(
+        NEG_DIFFDECL_CONTAINER_YAML, '.yaml', 'inherit_neg_diffdecl_container_')
+    diffdecl_child_path = _write_temp(
+        NEG_DIFFDECL_CHILD_YAML, '.yaml', 'inherit_neg_diffdecl_child_')
+    ok = _run_negative(
+        "child's WIDTH is a different declaration than the container's WIDTH",
+        _diffdecl_arch_yaml(os.path.basename(diffdecl_container_path),
+                            os.path.basename(diffdecl_child_path)),
+        'inherit_neg_diffdecl', "backs it with a different constant",
+        extra_files=[diffdecl_container_path, diffdecl_child_path]) and ok
     return 0 if ok else 1
 
 

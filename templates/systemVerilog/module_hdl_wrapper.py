@@ -69,14 +69,20 @@ def render_sv(args, prj, data):
                 prj, data, args.parent, args.variant))
     if args.parent and args.variant and args.variant in data['standaloneVariants']:
         return render_trampoline(args, prj, data, mp_sig, foreign=True)
+    pairRegs = pair_registrations(prj, data, args.parent, args.variant)
     if args.variant and args.variant in data['standaloneVariants']:
         ordinary = render_trampoline(args, prj, data, mp_sig)
         concrete = ''.join(
             render_trampoline(args, prj, data, mp_sig,
                               registration=registration)
-            for registration in pair_registrations(
-                prj, data, None, args.variant))
+            for registration in pairRegs)
         return ordinary + concrete
+    # A container-sourced variant has no standalone top, so its wrapper is the pair-specific concrete tops alone.
+    if pairRegs:
+        return ''.join(
+            render_trampoline(args, prj, data, mp_sig,
+                              registration=registration)
+            for registration in pairRegs)
     return render_non_parameterizable(args, prj, data, mp_sig, blk_name)
 
 def param_names(data):

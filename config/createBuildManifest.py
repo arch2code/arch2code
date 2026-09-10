@@ -358,6 +358,11 @@ def create(prj):
             # variant anything selects; its tops are built at its container's.
             variants = sorted({v for source in prj.variantSourceBlocks[blockRow['blockKey']]
                                for v in blockVariants.get(source, set())})
+            if condData['hasOwnParams'] and not variants:
+                # Every declared variant is container-sourced, so this block has
+                # no standalone top; the pair loop below records its verilated
+                # top against the same physical file.
+                continue
             variantStubs = [(v, f'{block}_{v}') for v in variants] \
                 if (fileDef.get('variant', False) and variants) else [('', block)]
             for variant, stub in variantStubs:

@@ -917,6 +917,43 @@ make xproj-inherit          # inhVar generates and runs
 `make xproj-inherit` is part of `pipeline-test`. It shares no sub-project with
 any other target, so it needs no ordering.
 
+## The inherited-child layout gate (`inhLayout` / `inhLayoutBad`)
+
+`inhVar` above proves the type-safety half of `inheritContainerParam`: the
+right C++ type reaches the right site. It says nothing about layout, because
+no junction in it that touches an inheriting leaf can disagree.
+`inhLayout`/`inhLayoutBad` are a db-only pair, in the shape of
+`cpLayout`/`cpLayoutBad`, that cover it.
+
+One container, `xpInhWrap`, states a width; two leaves inside it, `uLeafA` and
+`uLeafB`, take that width by `inheritContainerParam` rather than a stated
+variant. `uLeafA` is reached through a plain connection to a sibling,
+`uSrc`, bound to a literal; `uLeafB` is reached through the container's own
+`connectionMaps` boundary port, driven from a top-level instance of the same
+sibling block. That covers both arms `validatePorts` adjudicates: the
+plain-connection arm and the connectionMap arm.
+
+- `inhLayout`: container 16, inner sibling literal 16, top-level driver 16.
+  Equal in truth, so `make db` must ACCEPT.
+- `inhLayoutBad`: container 24, top-level driver 24, inner sibling literal
+  16. The container and its top-level driver agree, so that junction never
+  fails; only `uLeafA` against its literal-bound sibling genuinely disagrees,
+  and `make db` must REJECT naming 24. That value is reachable only through
+  the container, so the rejection proves the gate resolved the inheriting end
+  there and not at the leaf's declaration.
+
+`IL_WIDTH`'s declared default is deliberately 8 while every site binds 16 or
+24, so a resolver that fell back to the declaration would show up as a wrong
+number rather than passing by coincidence.
+
+```
+make xproj-inherit-layout   # inhLayout accepts, inhLayoutBad rejects at db naming 24
+```
+
+`make xproj-inherit-layout` is part of `pipeline-test`. Adjudicated at `make db`
+and never built. Shares no sub-project with any other target, so it needs no
+ordering.
+
 ## The two-context block (`twoCtx`)
 
 One block, `xpTwoCtxDut`, whose `params:` names one parameterizable constant

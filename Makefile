@@ -311,6 +311,42 @@ xproj-container-layout:
 	    exit 1; \
 	fi
 
+.PHONY : xproj-inherit-layout
+# The layout gate on an inheritContainerParam child, both arms. Both are
+# needed: the accepting arm alone would also pass if the gate stopped checking
+# entirely.
+#
+# inhLayout    - container 16, inner sibling literal 16, top-level driver 16.
+#                Equal in truth, so db must ACCEPT.
+# inhLayoutBad - container 24, top-level driver 24, inner sibling literal 16.
+#                The container and its top-level driver agree, so that
+#                junction never fails; only the inheriting leaf against its
+#                sibling genuinely disagrees, and db must REJECT naming 24.
+#                That value is reachable only through the container, so it
+#                proves the gate resolved the inheriting end at its
+#                container's configuration, not at the constant's declared
+#                default of 8.
+# Adjudicated at db and never built. Shares no sub-project, so needs no ordering.
+xproj-inherit-layout:
+	make -C $(XPROJ_PARAM_DIR)/inhLayout clean
+	make -C $(XPROJ_PARAM_DIR)/inhLayout -j db
+	# The aborted db build leaves a partial file behind, which would satisfy
+	# the db target and make the assertion below vacuous; clean it away first.
+	make -C $(XPROJ_PARAM_DIR)/inhLayoutBad clean
+	@if make -C $(XPROJ_PARAM_DIR)/inhLayoutBad -j db > $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log 2>&1; then \
+	    echo "ERROR: inhLayoutBad db build succeeded; an inheriting end is no longer adjudicated at its container's configuration"; \
+	    rm -f $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
+	    exit 1; \
+	elif grep -q '_bitWidth 24' $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; then \
+	    echo "OK: inhLayoutBad rejected at db at the container-resolved width"; \
+	    rm -f $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
+	else \
+	    echo "ERROR: inhLayoutBad was rejected, but not at the container-resolved width 24"; \
+	    cat $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
+	    rm -f $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
+	    exit 1; \
+	fi
+
 .PHONY : xproj-variant-unique
 # One block's variant declared in two files of ONE project: both declarations
 # key on the same (block, variant, project), so one Config survives and the
@@ -479,7 +515,7 @@ unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-variant-unique xif
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-variant-unique xif
 push-test: clean unittest pipeline-test
 
 # AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).

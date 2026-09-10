@@ -27,7 +27,7 @@ None.
 """
 
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.processYaml import SiteBindingIndex, camelCase, qualifiedKeyContext
+from pysrc.processYaml import SiteBindingIndex, camelCase, instanceSite, qualifiedKeyContext
 
 
 def regHandlerNaming(prj):
@@ -662,20 +662,18 @@ def postProcess(prj):
             # resolution hops through that intervening block. Each side resolves
             # from its own declaration instead, which makes an inherited parameter
             # on a router fall back to its constant's default.
-            childVariant = instRow['variant'] or ''
-            parentVariant = parentRouter['variant'] or ''
-            parentTypeKey = parentRouter['instanceTypeKey']
+            childSite = instanceSite(instRow)
+            parentSite = instanceSite(parentRouter)
             prj.checkInterfacePair(
-                parentIfaceRow, childIfaceRow, instanceTypeKey,
-                childVariant,
+                parentIfaceRow, childIfaceRow, childSite,
                 f"Register-bus dispatch from parent router "
                 f"'{parentRouter['instance']}' to nested router "
                 f"'{instRow['instance']}' (upstreamPort "
                 f"'{childAddressBlock['upstreamPort']}')",
                 parentIfaceContext, childIfaceContext,
-                parentTypeKey, parentVariant,
-                siteIndex.bindingsAt(parentTypeKey, parentVariant, dict()),
-                siteIndex.bindingsAt(instanceTypeKey, childVariant, dict()),
+                parentSite,
+                siteIndex.bindingsAt(parentSite, dict()),
+                siteIndex.bindingsAt(childSite, dict()),
                 siteIndex,
             )
 

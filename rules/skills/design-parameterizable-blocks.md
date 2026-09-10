@@ -17,7 +17,7 @@ and thunker behavior, use `STRUCTURES_AND_DATA_TYPES_REFERENCE.md`.
 2.  List the block parameters in the block's `params:` field.
 3.  Bind concrete values in the top-level `parameters:` dictionary by block and variant.
 4.  Use `maxValue` / `maxBitwidth` to describe the largest supported generated shape.
-5.  Use explicit `ports:` on parameterizable blocks so the block owns its port shape.
+5.  Declare explicit `ports:` on a reusable-IP boundary block so the block owns its port shape. A self-contained block infers its ports top-down from its container and declares none.
 6.  Do not write generated metadata such as `isParameterizable`, structure `maxBitwidth`, or register `maxBytes`.
 
 ## `ipParameters`
@@ -176,6 +176,7 @@ Use the shorthand only where its conditions hold, all checked at `make db`:
 *   `inheritContainerParam:` is mutually exclusive with `variant:` on one instance.
 *   The container block must declare `params:`, and so must the child.
 *   The instance must be contained in a block, not the root top instance.
+*   Each child parameter must be the container's own `ipParameters` constant. A same-named parameter backed by a different declaration is rejected; use `containerParam:` for that case.
 
 Outside those conditions, use `containerParam:` per parameter instead. The compatibility check between a container's parameter and a child's covers only `maxValue`; the generator never compares `valueType`, so a signed container parameter sourced into an unsigned child parameter is accepted.
 
