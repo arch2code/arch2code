@@ -1,13 +1,11 @@
 # The layout gate on an inheritContainerParam child: the rejecting arm.
 #
-# inhLayout with one number changed: the container states 24 while the inner
-# sibling still states a literal 16. The top-level driver of the container's
-# boundary port is moved to 24 along with the container, so that junction
-# still never fails; only the inner leaf, which inherits the container's
-# whole Config, genuinely disagrees with its sibling.
-#
-# The rejection must name 24. That value appears nowhere in the leaf's own
-# declaration and is reachable only through the container.
+# xpInhBadWrap is instantiated at two variants, alt (16) and use (24). The
+# inner leaf takes its Config from whichever site contains it, so the inner
+# junction (uSrc, a literal 16, against uLeafA) is adjudicated once per
+# container site: alt agrees, use disagrees. Site sorts alt before use, so a
+# diagnostic naming the first enumerated site instead of the failing one
+# would say alt; the rejection must name use.
 
 ipParameters:
     constants:
@@ -58,7 +56,7 @@ blocks:
         ports:
             contIn: { interface: ilIf, direction: dst }
     xpInhBadSrc:
-        desc: "Literal-bound driver, reused at two sites"
+        desc: "Literal-bound driver, reused at several sites"
         params: [IL_WIDTH]
         hasMdl: false
         hasVl: false
@@ -81,39 +79,47 @@ blocks:
 instances:
     xpInhLayoutBadTop_tb: { container: xpInhLayoutBadTop_tb, instanceType: xpInhLayoutBadTop_tb, instGroup: top }
     u_xpInhLayoutBadTop:  { container: xpInhLayoutBadTop_tb, instanceType: xpInhLayoutBadTop,    instGroup: top }
-    uWrap:   { container: xpInhLayoutBadTop, instanceType: xpInhBadWrap, instGroup: top, variant: use }
-    uTopSrc: { container: xpInhLayoutBadTop, instanceType: xpInhBadSrc,  instGroup: top, variant: top }
+    uWrapUse:   { container: xpInhLayoutBadTop, instanceType: xpInhBadWrap, instGroup: top, variant: use }
+    uWrapAlt:   { container: xpInhLayoutBadTop, instanceType: xpInhBadWrap, instGroup: top, variant: alt }
+    uTopSrcUse: { container: xpInhLayoutBadTop, instanceType: xpInhBadSrc,  instGroup: top, variant: top }
+    uTopSrcAlt: { container: xpInhLayoutBadTop, instanceType: xpInhBadSrc,  instGroup: top, variant: inner }
     uSrc:    { container: xpInhBadWrap,      instanceType: xpInhBadSrc,  instGroup: top, variant: inner }
     # THE CELL. uLeafA is reached through a plain connection (the connection
     # arm); uLeafB is reached through the container's own connectionMap
     # boundary port (the connectionMap arm). Both inherit xpInhBadWrap's
-    # Config.
+    # Config, at whichever of its two sites contains them.
     uLeafA: { container: xpInhBadWrap, instanceType: xpInhBadLeaf, instGroup: top, inheritContainerParam: true }
     uLeafB: { container: xpInhBadWrap, instanceType: xpInhBadLeaf, instGroup: top, inheritContainerParam: true }
 
 connections:
-    # Top-level: drives the container's boundary port at the container's own
-    # width (24), so this junction never fails.
-    - { interface: ilIf, src: uTopSrc, srcport: out, dst: uWrap, dstport: contIn, name: topLink }
+    # Top-level: each container site is driven at its own width, so neither
+    # of these junctions fails.
+    - { interface: ilIf, src: uTopSrcUse, srcport: out, dst: uWrapUse, dstport: contIn, name: topLinkUse }
+    - { interface: ilIf, src: uTopSrcAlt, srcport: out, dst: uWrapAlt, dstport: contIn, name: topLinkAlt }
     # Inside the container: the connection arm under test. uSrc stays at the
-    # literal 16 while the container (and so uLeafA) moves to 24.
+    # literal 16 at both sites, so it agrees with the alt site (16) and
+    # disagrees with the use site (24).
     - { interface: ilIf, src: uSrc, srcport: out, dst: uLeafA, dstport: in, name: innerLink }
 
 connectionMaps:
     # The connectionMap arm under test: the container's boundary port forwards
-    # to the second inheriting leaf. Both sides resolve from the same
-    # container configuration, so this junction never fails either; the
-    # rejection below is entirely the inner connection arm's.
+    # to the second inheriting leaf, at both container sites. Both sides
+    # resolve from the same site's configuration, so this junction never
+    # fails; the rejection is entirely the inner connection arm's, at the
+    # use site.
     - { interface: ilIf, block: xpInhBadWrap, port: contIn, direction: dst, instance: uLeafB, instancePort: in }
 
 parameters:
     xpInhBadWrap:
         use:
             IL_WIDTH: 24
+        alt:
+            IL_WIDTH: 16
     xpInhBadSrc:
-        # The literal the top-level connection must be found equal to.
+        # The literal the top-level use-site connection must be found equal to.
         top:
             IL_WIDTH: 24
-        # The literal that genuinely disagrees with the container's 24.
+        # The literal that agrees with the alt site and disagrees with the
+        # use site.
         inner:
             IL_WIDTH: 16

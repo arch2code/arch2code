@@ -289,7 +289,9 @@ xproj-inherit:
 # cpLayoutBad - container 24, sibling literal 16. Genuinely unequal, so db must
 #               REJECT naming 24. That value is reachable only through the
 #               container, so it proves the gate resolved per site rather than
-#               falling back to the constant's declared default of 8.
+#               falling back to the constant's declared default of 8. The gate
+#               also asserts the diagnostic names the container site
+#               xpCpBadWrap at variant use.
 # Adjudicated at db and never built. Shares no sub-project, so needs no ordering.
 xproj-container-layout:
 	make -C $(XPROJ_PARAM_DIR)/cpLayout clean
@@ -301,14 +303,19 @@ xproj-container-layout:
 	    echo "ERROR: cpLayoutBad db build succeeded; the layout gate no longer adjudicates a container-sourced width"; \
 	    rm -f $(XPROJ_PARAM_DIR)/cpLayoutBad/db.log; \
 	    exit 1; \
-	elif grep -q '_bitWidth 24' $(XPROJ_PARAM_DIR)/cpLayoutBad/db.log; then \
-	    echo "OK: cpLayoutBad rejected at db at the container-resolved width"; \
-	    rm -f $(XPROJ_PARAM_DIR)/cpLayoutBad/db.log; \
-	else \
+	elif ! grep -q '_bitWidth 24' $(XPROJ_PARAM_DIR)/cpLayoutBad/db.log; then \
 	    echo "ERROR: cpLayoutBad was rejected, but not at the container-resolved width 24"; \
 	    cat $(XPROJ_PARAM_DIR)/cpLayoutBad/db.log; \
 	    rm -f $(XPROJ_PARAM_DIR)/cpLayoutBad/db.log; \
 	    exit 1; \
+	elif ! grep -qF "with CP_WIDTH from container block 'xpCpBadWrap' (project xpCpLayoutBad) at variant 'use'" $(XPROJ_PARAM_DIR)/cpLayoutBad/db.log; then \
+	    echo "ERROR: cpLayoutBad was rejected, but the diagnostic does not name the governing container site"; \
+	    cat $(XPROJ_PARAM_DIR)/cpLayoutBad/db.log; \
+	    rm -f $(XPROJ_PARAM_DIR)/cpLayoutBad/db.log; \
+	    exit 1; \
+	else \
+	    echo "OK: cpLayoutBad rejected at db at the container-resolved width, naming the container site"; \
+	    rm -f $(XPROJ_PARAM_DIR)/cpLayoutBad/db.log; \
 	fi
 
 .PHONY : xproj-inherit-layout
@@ -318,14 +325,10 @@ xproj-container-layout:
 #
 # inhLayout    - container 16, inner sibling literal 16, top-level driver 16.
 #                Equal in truth, so db must ACCEPT.
-# inhLayoutBad - container 24, top-level driver 24, inner sibling literal 16.
-#                The container and its top-level driver agree, so that
-#                junction never fails; only the inheriting leaf against its
-#                sibling genuinely disagrees, and db must REJECT naming 24.
-#                That value is reachable only through the container, so it
-#                proves the gate resolved the inheriting end at its
-#                container's configuration, not at the constant's declared
-#                default of 8.
+# inhLayoutBad - xpInhBadWrap is instantiated at two sites, alt (16) and use
+#                (24); the inner sibling stays a literal 16 at both. The alt
+#                site agrees and the use site disagrees, so db must REJECT
+#                naming the use site, not the first site enumerated (alt).
 # Adjudicated at db and never built. Shares no sub-project, so needs no ordering.
 xproj-inherit-layout:
 	make -C $(XPROJ_PARAM_DIR)/inhLayout clean
@@ -337,14 +340,24 @@ xproj-inherit-layout:
 	    echo "ERROR: inhLayoutBad db build succeeded; an inheriting end is no longer adjudicated at its container's configuration"; \
 	    rm -f $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
 	    exit 1; \
-	elif grep -q '_bitWidth 24' $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; then \
-	    echo "OK: inhLayoutBad rejected at db at the container-resolved width"; \
-	    rm -f $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
-	else \
+	elif ! grep -q '_bitWidth 24' $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; then \
 	    echo "ERROR: inhLayoutBad was rejected, but not at the container-resolved width 24"; \
 	    cat $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
 	    rm -f $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
 	    exit 1; \
+	elif ! grep -qF "at its container's configuration: block 'xpInhBadWrap' (project xpInhLayoutBad) at variant 'use'" $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; then \
+	    echo "ERROR: inhLayoutBad was rejected, but the diagnostic does not name the failing container site 'use'"; \
+	    cat $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
+	    rm -f $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
+	    exit 1; \
+	elif grep -qF "at variant 'alt'" $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; then \
+	    echo "ERROR: inhLayoutBad was rejected, but the diagnostic names the accepting container site 'alt'"; \
+	    cat $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
+	    rm -f $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
+	    exit 1; \
+	else \
+	    echo "OK: inhLayoutBad rejected at db at the container-resolved width, naming the container site"; \
+	    rm -f $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
 	fi
 
 .PHONY : xproj-variant-unique

@@ -935,12 +935,11 @@ plain-connection arm and the connectionMap arm.
 
 - `inhLayout`: container 16, inner sibling literal 16, top-level driver 16.
   Equal in truth, so `make db` must ACCEPT.
-- `inhLayoutBad`: container 24, top-level driver 24, inner sibling literal
-  16. The container and its top-level driver agree, so that junction never
-  fails; only `uLeafA` against its literal-bound sibling genuinely disagrees,
-  and `make db` must REJECT naming 24. That value is reachable only through
-  the container, so the rejection proves the gate resolved the inheriting end
-  there and not at the leaf's declaration.
+- `inhLayoutBad`: `xpInhBadWrap` is instantiated at two sites, `alt` (16) and
+  `use` (24), while `uLeafA`'s literal-bound sibling stays at 16. The `alt`
+  site agrees and the `use` site disagrees, so `make db` must REJECT, naming
+  the container site `xpInhBadWrap` at variant `use` rather than `alt`, the
+  site enumerated first.
 
 `IL_WIDTH`'s declared default is deliberately 8 while every site binds 16 or
 24, so a resolver that fell back to the declaration would show up as a wrong

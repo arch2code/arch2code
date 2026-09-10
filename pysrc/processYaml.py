@@ -1477,14 +1477,14 @@ class projectOpen:
         return bundle
 
     def _instanceVariantDescriptor(self, instanceData):
-        # Exactly one match: resolveInstanceVariantDeclarers fixed the declaring project.
+        # One descriptor per (project, label); resolveInstanceVariantDeclarers chose the project.
         variant = instanceData['variant']
         if not variant:
             return None
         declaringProject = self.instanceVariantDeclarers[instanceData['instanceKey']]
-        matches = [d for d in self.variantConfigDescriptors[instanceData['instanceTypeKey']]
-                   if d['variant'] == variant and d['declaringProject'] == declaringProject]
-        return matches[0]
+        (descriptor,) = [d for d in self.variantConfigDescriptors[instanceData['instanceTypeKey']]
+                         if d['variant'] == variant and d['declaringProject'] == declaringProject]
+        return descriptor
 
     def _declaredDescriptorsByLabel(self, blockKey):
         grouped = dict()
@@ -1493,10 +1493,11 @@ class projectOpen:
         return grouped
 
     def _selectDeclaredDescriptor(self, descriptors, consumerProject):
-        # validateVariantLabelBuildOwnership guarantees a label declared by more
-        # than one project includes the build's own declaration.
+        # validateVariantLabelBuildOwnership leaves a label the build does not
+        # declare with exactly one declarer.
         own = [d for d in descriptors if d['declaringProject'] == consumerProject]
-        return own[0] if own else descriptors[0]
+        (descriptor,) = own or descriptors
+        return descriptor
 
     def _resolveInstanceConfigFields(self, instanceData, bundle=None):
         # Neutral per-instance Config selection for a child instance: the
@@ -3461,9 +3462,14 @@ class SiteBindingIndex:
         """True if this site's values are only known where it is used: it
         inherits its container's whole configuration, or a parameter of its
         own declared variant does."""
-        return site.inheritsContainer or any(
-            row['containerParam']
-            for row in self.paramRows.get((site.blockKey, site.variant), ()))
+        return site.inheritsContainer or bool(self.containerSourcedParams(site))
+
+    def containerSourcedParams(self, site):
+        """This site's own parameter names whose value comes from a container."""
+        return sorted(
+            row['param']
+            for row in self.paramRows.get((site.blockKey, site.variant), ())
+            if row['containerParam'])
 
     def paramValues(self, site, containerValues):
         """This block's {paramName: value}, given what the container resolves to.
@@ -3552,21 +3558,25 @@ class SiteBindingIndex:
         return maps
 
     def junctionBindings(self, parentSite, childSite, containerBlockKey):
-        """The (parentBindings, childBindings) pairs one junction is checked at.
+        """The (parentBindings, childBindings, containerSite) triples one junction is checked at.
 
         One container configuration must govern both ends; enumerating the two
         sides independently would pair one end's configuration with the other's.
+        containerSite is the container Site that configuration came from, or
+        None when neither end takes a value from a container.
         """
         if parentSite.blockKey and parentSite.blockKey == containerBlockKey:
             for parentValues in self.valueMaps(parentSite):
                 yield (self.bindings(parentSite.blockKey, parentValues),
-                       self.bindingsAt(childSite, parentValues))
+                       self.bindingsAt(childSite, parentValues),
+                       parentSite)
             return
         if (containerBlockKey not in self.blocks
                 or not (self.inheritsParams(parentSite)
                         or self.inheritsParams(childSite))):
             yield (self.bindingsAt(parentSite, dict()),
-                   self.bindingsAt(childSite, dict()))
+                   self.bindingsAt(childSite, dict()),
+                   None)
             return
         seen = []
         for containerSite in sorted(self.sitesOf(containerBlockKey)):
@@ -3575,7 +3585,8 @@ class SiteBindingIndex:
                     continue
                 seen.append(containerValues)
                 yield (self.bindingsAt(parentSite, containerValues),
-                       self.bindingsAt(childSite, containerValues))
+                       self.bindingsAt(childSite, containerValues),
+                       containerSite)
 
 
 # this class is used to create the database based on the schema
@@ -4054,14 +4065,14 @@ class projectCreate:
         instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
 
         def selectedDescriptor(inst):
-            # Exactly one match: resolveInstanceVariantDeclarers fixed the declaring project.
+            # One descriptor per (project, label); resolveInstanceVariantDeclarers chose the project.
             if not inst['variant']:
                 return None
             declaringProject = instanceVariantDeclarers[inst['instanceKey']]
-            matches = [d for d in descriptors[inst['instanceTypeKey']]
-                       if d['variant'] == inst['variant']
-                       and d['declaringProject'] == declaringProject]
-            return matches[0]
+            (descriptor,) = [d for d in descriptors[inst['instanceTypeKey']]
+                             if d['variant'] == inst['variant']
+                             and d['declaringProject'] == declaringProject]
+            return descriptor
 
         def literalConfig(child, descriptor):
             if descriptor is None:
@@ -6683,25 +6694,40 @@ class projectCreate:
         return (interfaceRow.get('structures') or {}).values()
 
     def _junctionSideIdentity(self, label, ifaceRow, ifaceContext, site,
-                              siteIndex, bindings):
-        # One junction side's identity for a compatibility diagnostic: the
-        # interface with its declaring file and owning project, plus the block
-        # and variant whose bindings that side's payload was resolved under. A
-        # side with no parameterizable endpoint carries no block and resolves
-        # at the declared constant defaults. Any value authored by another
-        # project is named with its own file, because the block's project and
-        # the project that supplied the number need not be the same one.
+                              siteIndex, bindings, containerSite):
+        # One side of a junction for a compatibility diagnostic: the interface with
+        # its file and project, then the block and variant the payload was resolved
+        # under. A side whose values come from a container also names that
+        # container's block and variant; a value another project authored names
+        # its own file.
+        def siteVariantText(s):
+            if s.inheritsContainer:
+                return "its container's configuration"
+            if s.variant:
+                return f"variant '{s.variant}'"
+            return "no variant binding"
+
         text = (f"  {label}: interface '{ifaceRow['interface']}' declared in "
                 f"{ifaceContext} "
                 f"(project {self.contextOwningProject[ifaceContext]})")
         if site.blockKey:
             blockRow = self.flatData['blocks'][site.blockKey]
-            if site.inheritsContainer:
-                variantText = "its container's configuration"
-            elif site.variant:
-                variantText = f"variant '{site.variant}'"
+            if siteIndex.inheritsParams(site) and site != containerSite:
+                containerBlockRow = self.flatData['blocks'][containerSite.blockKey]
+                containerBlock = containerBlockRow['block']
+                containerProject = self.contextOwningProject[
+                    containerBlockRow['_context']]
+                containerText = (f"block '{containerBlock}' "
+                                 f"(project {containerProject}) at "
+                                 f"{siteVariantText(containerSite)}")
+                if site.inheritsContainer:
+                    variantText = f"its container's configuration: {containerText}"
+                else:
+                    sourced = ', '.join(siteIndex.containerSourcedParams(site))
+                    variantText = (f"variant '{site.variant}', with {sourced} "
+                                   f"from container {containerText}")
             else:
-                variantText = "no variant binding"
+                variantText = siteVariantText(site)
             text += (f"\n    resolved for block '{blockRow['block']}' "
                      f"(project "
                      f"{self.contextOwningProject[blockRow['_context']]}) "
@@ -6717,7 +6743,8 @@ class projectCreate:
     def checkInterfacePair(self, parentIface, childIface, childSite,
                            locationStr, parentContext,
                            childContext, parentSite,
-                           parentBindings, childBindings, siteIndex):
+                           parentBindings, childBindings, siteIndex,
+                           containerSite):
         """Validate that two qualified interfaces share the same packed form.
 
         The caller passes bindings already resolved at the site the junction
@@ -6740,10 +6767,10 @@ class projectCreate:
             if sidesText is None:
                 parentSide = self._junctionSideIdentity(
                     'parent side', parentIface, parentContext, parentSite,
-                    siteIndex, parentBindings)
+                    siteIndex, parentBindings, containerSite)
                 childSide = self._junctionSideIdentity(
                     'child side', childIface, childContext, childSite,
-                    siteIndex, childBindings)
+                    siteIndex, childBindings, containerSite)
                 sidesText = f"\n{parentSide}\n{childSide}"
             return sidesText
 
@@ -7009,7 +7036,7 @@ class projectCreate:
                         f"{instRow['instance']}.{portName} declared as "
                         f"{portIface} (file {blockRow['_context']})")
                 for parentSite in parentBindings:
-                    for parentBindingMap, childBindingMap in \
+                    for parentBindingMap, childBindingMap, containerSite in \
                             siteIndex.junctionBindings(
                                 parentSite, childSite,
                                 instRow['containerKey']):
@@ -7017,7 +7044,8 @@ class projectCreate:
                             parentIfaceRow, interfaces_flat[childIfaceKey],
                             childSite, locationStr, parentContext,
                             childContext, parentSite,
-                            parentBindingMap, childBindingMap, siteIndex)
+                            parentBindingMap, childBindingMap, siteIndex,
+                            containerSite)
 
         # ------------------------------------------------------------
         # Iterate connectionMaps. The child port is the local end.
@@ -7054,14 +7082,15 @@ class projectCreate:
             # typed by the container's class template parameter and never by the
             # child instance the map routes to; there are no ends to elect from.
             for parentSite in _containerBindings(cm['blockKey']):
-                for parentBindingMap, childBindingMap in \
+                for parentBindingMap, childBindingMap, containerSite in \
                         siteIndex.junctionBindings(
                             parentSite, childSite, cm['blockKey']):
                     self.checkInterfacePair(
                         parentIfaceRow, interfaces_flat[childIfaceKey],
                         childSite, locationStr, parentContext,
                         childContext, parentSite,
-                        parentBindingMap, childBindingMap, siteIndex)
+                        parentBindingMap, childBindingMap, siteIndex,
+                        containerSite)
 
     def processYamls(self):
         # main outer loop for processing
