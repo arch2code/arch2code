@@ -65,6 +65,16 @@ def render_sc(args, prj, data):
 
     def sec_bfm_includes(args, prj, data):
         s = []
+        # vl_trace() below calls dut_hdl->trace(), which needs the complete
+        # VerilatedVcdC type. blockBase.h only forward-declares it: that header
+        # sits in the global module fragment of every generated <block>Base
+        # module unit, never in a named module's purview, and pulling in
+        # verilated_vcd_sc.h there would drag verilated.h and <atomic>/<thread>
+        # into those units, which clang 17/18 fails to merge across the module
+        # boundary with a2c.endOfTest.
+        s.append('#ifdef VERILATOR')
+        s.append('#include "verilated_vcd_c.h"')
+        s.append('#endif')
         # A module import does not propagate the base module's own context
         # imports / using-directives the way the old textual `<block>Base.h`
         # did. The Verilated SC wrapper class spells the DUT's interface struct
