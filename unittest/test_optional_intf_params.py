@@ -44,7 +44,11 @@ import pysrc.intf_gen_utils as intf_gen_utils
 
 # One fixture drives every check. `awNone` binds no optional payload,
 # `awGap` binds only the last of axi_write's three (awuser_t, wuser_t,
-# buser_t), so the first two are gaps. `streamPlain` / `streamUser` leave
+# buser_t), so the first two are gaps. `awHead` binds only the first
+# (awuser_t), leaving wuser_t and buser_t as a trailing unbound run for the
+# payload list, but not for the BFM's bridge group, which still needs a bridge
+# type per optional ahead of awuser_t's own payload slot. `streamPlain` /
+# `streamUser` leave
 # axi4_stream's tuser_t unbound / bound; tuser_t types the `tuser` signal, so
 # the unbound case is the one that used to reach the boundary width helper with
 # an empty structureKey. The last connection binds parent `awGap` to child
@@ -122,6 +126,14 @@ interfaces:
       - {structure: awDataSt, structureType: data_t}
       - {structure: awStrbSt, structureType: strb_t}
       - {structure: userSt, structureType: buser_t}
+  awHead:
+    interfaceType: axi_write
+    desc: "axi_write binding only the first optional payload"
+    structures:
+      - {structure: awAddrSt, structureType: addr_t}
+      - {structure: awDataSt, structureType: data_t}
+      - {structure: awStrbSt, structureType: strb_t}
+      - {structure: userSt, structureType: awuser_t}
   streamPlain:
     interfaceType: axi4_stream
     desc: "axi4_stream leaving tuser unbound"
@@ -158,6 +170,7 @@ blocks:
     desc: "Consumer block"
     ports:
       inAwGap: {interface: awGap, direction: dst}
+      inAwHead: {interface: awHead, direction: dst}
       inAwNone: {interface: awNone, direction: dst}
       inStreamPlain: {interface: streamPlain, direction: dst}
       inStreamUser: {interface: streamUser, direction: dst}
@@ -172,6 +185,7 @@ instances:
 
 connections:
   - {interface: awGap, src: uProducer, srcport: outAwGap, dst: uConsumer, dstport: inAwGap}
+  - {interface: awHead, src: uProducer, srcport: outAwHead, dst: uConsumer, dstport: inAwHead}
   - {interface: awNone, src: uProducer, srcport: outAwNone, dst: uConsumer, dstport: inAwNone}
   - {interface: streamPlain, src: uProducer, srcport: outStreamPlain, dst: uConsumer, dstport: inStreamPlain}
   - {interface: streamUser, src: uProducer, srcport: outStreamUser, dst: uConsumer, dstport: inStreamUser}
@@ -514,6 +528,35 @@ def test_trailing_optional_omitted(proj, consumer):
                 "streamPlain bridge omits the trailing tuser_t bridge type")
 
 
+def test_head_bound_keeps_bfm_bridge_group_whole(proj, consumer):
+    """Binding only the FIRST optional payload still fills the whole bridge group.
+
+    awHead binds awuser_t and leaves wuser_t/buser_t unbound, so the trimmed
+    payload tail is just awuser_t: the SystemC port/channel are spelled exactly
+    as awNone's trailing-trim rule would spell them, one payload longer. The
+    BFM is different: trimming the bridge group the same way would leave it one
+    argument short, which would shift awuser_t's own VL_ bridge slot onto
+    wuser_t's, so the BFM must carry a bridge type for every optional, bound or
+    not, ahead of the payload.
+    """
+    print("\n[head] binding only the first optional keeps the bridge group whole")
+    sc = sc_mp(proj, consumer, 'inAwHead')
+
+    check_equal(sc['port_decl'],
+                'axi_write_in<awAddrSt, awDataSt, awStrbSt, userSt> inAwHead;',
+                "awHead SystemC port keeps the trailing trim, one payload longer")
+    check_equal(sc['channel_decl'],
+                'axi_write_channel<awAddrSt, awDataSt, awStrbSt, userSt> '
+                'inAwHead;',
+                "awHead SystemC channel keeps the same trailing trim")
+    check_equal(sc['bfm_decl'],
+                'axi_write_dst_bfm<awAddrSt, awDataSt, awStrbSt, sc_bv<32>, '
+                'sc_bv<32>, sc_bv<4>, sc_bv<8>, bool, bool, userSt> '
+                'inAwHead_bfm;',
+                "awHead BFM carries the complete bridge group before the "
+                "payload, placeholders and all")
+
+
 def test_unbound_optional_signal_blast(proj, consumer):
     """A signal typed by an unbound optional never reaches the width helper.
 
@@ -663,6 +706,7 @@ def main():
         test_optional_tail_split_by_consumers(proj, consumer)
         test_gap_filled_with_sentinel(proj, consumer)
         test_trailing_optional_omitted(proj, consumer)
+        test_head_bound_keeps_bfm_bridge_group_whole(proj, consumer)
         test_unbound_optional_signal_blast(proj, consumer)
         test_optional_tail_after_hdlparam_group(proj, consumer)
         test_thunker_split_and_gap(proj, top)

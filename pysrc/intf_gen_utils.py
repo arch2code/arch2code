@@ -724,9 +724,9 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     # gap-filling unbound payload still occupies its slot as the one-bit
     # placeholder; the trailing unbound run is already trimmed off
     # optional_params and is covered by the bridge template's defaults.
-    hdl_if_bv_types = []
+    bridge_prefix = []
     for binding in required_params:
-        hdl_if_bv_types.append(sc_hdl_bridge_type(binding, prj))
+        bridge_prefix.append(sc_hdl_bridge_type(binding, prj))
     hdl_params = intf_def.get('hdlparams', {}) or {}
     for param in hdl_params:
         assert(hdl_params[param]['datatype'] in ['integer'])
@@ -737,21 +737,41 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
             w = eval(eval_str)
             assert(isinstance(w, int))
             sc_bv_type = 'bool' if w == 1 else f"sc_bv<{w}>"
-            hdl_if_bv_types.append(sc_bv_type)
-    for binding in optional_params:
-        if binding['typesSignal']:
-            hdl_if_bv_types.append(sc_hdl_bridge_type(binding, prj))
+            bridge_prefix.append(sc_bv_type)
+
+    hdl_if_bv_types = bridge_prefix + [sc_hdl_bridge_type(binding, prj)
+                                       for binding in optional_params
+                                       if binding['typesSignal']]
 
     hdl_if_params = ', '.join(hdl_if_bv_types)
 
     out['hdl_if_decl'] = f"{hdl_intf_type}<{hdl_if_params}> {hdl_intf_name};"
+
+    # The bridge group is the hdl_if template's last argument group, so a
+    # trailing unbound payload can be left to its default there, and
+    # hdl_if_bv_types above uses the trimmed optional_params. The BFM splices
+    # the bridge group BEFORE the payload group, so that trick only works when
+    # nothing follows the bridge group: with no optional payload at all
+    # (optional_params empty) the BFM's bridge group is also its last argument
+    # group, and the trimmed hdl_if_bv_types is exactly right. But once any
+    # optional payload follows, a trailing unbound bridge that got trimmed
+    # would shift every following payload one slot left and silently retype
+    # it, so the full untrimmed optional run (sc_hdl_bridge_type yields the
+    # one-bit placeholder when unbound) is needed instead.
+    if optional_params:
+        _, optional_untrimmed = sc_split_payload_params(param_bindings)
+        bfm_bridge_types = bridge_prefix + [sc_hdl_bridge_type(binding, prj)
+                                            for binding in optional_untrimmed
+                                            if binding['typesSignal']]
+    else:
+        bfm_bridge_types = hdl_if_bv_types
 
     # BFM arguments: the payload list split at its required/optional boundary,
     # with the whole Verilated bridge group spliced in between, because that is
     # the order the hand-written BFM template declares.
     chnl_params = ', '.join([sc_payload_type_name(binding, prj)
                              for binding in required_params]
-                            + hdl_if_bv_types
+                            + bfm_bridge_types
                             + [sc_payload_type_name(binding, prj)
                                for binding in optional_params])
 
