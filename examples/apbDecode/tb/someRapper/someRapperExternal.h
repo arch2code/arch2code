@@ -10,11 +10,9 @@
 
 #include "instanceFactory.h"
 import apbDecode_someRapper.base;
+import apbDecode_cpu.base;
 import apbDecode;
 using namespace apbDecode_ns;
-
-//contained instances forward class declaration
-class cpuBase;
 
 class someRapperExternal: public sc_module, public someRapperInverted {
 

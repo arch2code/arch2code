@@ -11,6 +11,9 @@ import ip_test_ipLeaf.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#ifdef VERILATOR
+#include "verilated_vcd_c.h"
+#endif
 import ip_test_ipLeaf;
 using namespace ip_test_ipLeaf_ns;
 #include "ipLeafVariantConfig.h"

@@ -10,12 +10,10 @@
 
 #include "instanceFactory.h"
 import axi4sDemo.base;
+import axi4sDemo_axi4s_m_drv.base;
+import axi4sDemo_axi4s_s_drv.base;
 import axi4sDemo_tb;
 using namespace axi4sDemo_tb_ns;
-
-//contained instances forward class declaration
-class axi4s_m_drvBase;
-class axi4s_s_drvBase;
 
 class axi4sDemoExternal: public sc_module, public axi4sDemoInverted {
 
