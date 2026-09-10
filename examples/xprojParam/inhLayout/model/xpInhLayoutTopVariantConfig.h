@@ -1,0 +1,11 @@
+
+#ifndef XPINHLAYOUTTOPVARIANTCONFIG_H_
+#define XPINHLAYOUTTOPVARIANTCONFIG_H_
+// 
+
+// GENERATED_CODE_PARAM --project=xpInhLayout --context=../../yaml/xpInhLayoutTop.yaml
+// GENERATED_CODE_BEGIN --template=config
+
+// GENERATED_CODE_END
+
+#endif //XPINHLAYOUTTOPVARIANTCONFIG_H_

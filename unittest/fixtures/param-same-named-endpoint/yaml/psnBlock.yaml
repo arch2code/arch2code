@@ -1,0 +1,10 @@
+# The endpoint block: includes B only, never A, so params: [X] resolves to
+# B's declaration. Declares no ports:, so its dataIf port is inferred from the
+# connection.
+include:
+    - psnDeclB.yaml
+
+blocks:
+    consumer:
+        desc: "endpoint whose X resolves to B, a file the connection's interface never reaches"
+        params: [X]

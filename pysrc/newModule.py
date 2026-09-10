@@ -1,6 +1,7 @@
 # file generation
 # this file contains the templates neceesary to generate blank files for a new module
 import pysrc.processYaml as processYaml
+import pysrc.migrateCommon as migrateCommon
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 import os
 import importlib
@@ -41,9 +42,7 @@ class newModule:
         # are still created, so do not return early.
         blockCondData = dict()
         for qualBlock in prj.data.get('blocks', {}):
-            row = dict(prj.data['blocks'][qualBlock])
-            row['hasOwnParams'] = int(bool(prj.getBlockConfigView(qualBlock)['hasOwnParams']))
-            blockCondData[qualBlock] = row
+            blockCondData[qualBlock] = prj.getBlockCondRow(qualBlock)
         someBlock = next(iter(blockCondData), None) # any block row, or None when definitions-only
         for fileKey, fileDefinition in fileGenerationConfig['fileMap'].items():
             mode = fileDefinition.get('mode', 'block') 
@@ -91,6 +90,10 @@ class newModule:
                     if hasVariant and data['variants']:
                         for variant in data['variants']:
                             self.create_from_template(fileGenerationConfig, fileKey, fileDefinition, variant, True, prj, data, args)
+                    elif hasVariant and blockCondData[qualBlock]['hasOwnParams']:
+                        # Every variant is container-sourced: the registrar pass
+                        # scaffolds the pair-qualified tops into this file instead.
+                        continue
                     else:
                         # Single-emission artifacts are created once per block. A
                         # dutVariant artifact's variant is seeded from the block's
@@ -106,6 +109,7 @@ class newModule:
         registrarFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'registrar'}
         if registrarFileGenerationConfig:
             self.registrar_create_from_templates(fileGenerationConfig, registrarFileGenerationConfig, blockCondData, prj, args)
+            self.cleanup_stale_registrar_files(blockCondData, prj)
 
         projectFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'project'}
         if projectFileGenerationConfig:
@@ -229,6 +233,16 @@ class newModule:
                         variant=registration['variant'])
         self.config_create_from_templates(
             fileGenerationConfig, registrarFileConfig, blockCondData, prj, args)
+
+    def cleanup_stale_registrar_files(self, blockCondData, prj):
+        # newmodule owns registrar scaffolding, so it also deletes generated files
+        # in owned registrar directories that the current contract no longer names.
+        registrarFiles, registrarDirs = processYaml.getRegistrarFiles(
+            prj, blockCondData, prj.filemap)
+        generatedInDirs, _ = migrateCommon.classifyGeneratedDir(registrarDirs)
+        for staleFile in sorted(set(generatedInDirs) - registrarFiles):
+            print(f"Removing stale registrar file {staleFile}")
+            os.remove(staleFile)
 
     def config_create_from_templates(self, fileGenerationConfig, registrarFileConfig,
                                      blockCondData, prj, args):

@@ -2,6 +2,8 @@ import os
 
 import pysrc.arch2codeGlobals as g
 import pysrc.processYaml as processYaml
+import pysrc.migrateCommon as migrateCommon
+from pysrc.arch2codeHelper import printWarning
 
 # Generated-source toolchain split, mirroring the make find globs: the C++ build
 # consumes .cpp/.h/.cppm, the SystemVerilog/verilator build consumes .sv/.svh.
@@ -213,6 +215,19 @@ def create(prj):
                                                            childRow['block'], entry['stub'],
                                                            objLayout, missingDirOk=True)
                 record(fileDef, filePath, objLayout, owner == rootProject)
+
+        # A generated file in an owned registrar directory that the contract does
+        # not name is stale. Warn here; newmodule performs the deletion.
+        registrarFiles, registrarDirs = processYaml.getRegistrarFiles(
+            prj, {blockKey: condRow(row) for blockKey, row in blockByKey.items()},
+            fileMap)
+        generatedInDirs, _ = migrateCommon.classifyGeneratedDir(registrarDirs)
+        staleRegistrarFiles = sorted(set(generatedInDirs) - registrarFiles)
+        for staleFile in staleRegistrarFiles:
+            printWarning(f"stale registrar file {staleFile} is not part of "
+                        f"this project's current registrar contract")
+        if staleRegistrarFiles:
+            printWarning("run 'make newmodule' to remove stale registrar files")
 
     # context mode: reuse the paths saveIncludeFiles already resolved through
     # the path seam, with validity/smartInclude already applied.

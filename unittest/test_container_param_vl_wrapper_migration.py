@@ -10,6 +10,10 @@ exactly one module, the pair-qualified concrete top, and that the build
 manifest records no bare `<block>_hdl_sv_wrapper` top for it. Db and
 generation only; the product's own `make -j all VL_DUT=1` and run are the
 end-to-end proof for this shape.
+
+A second pass authors the same variant container-sourced from the start, with
+no literal-valued step in between, and checks that `make newmodule` never
+scaffolds the bare wrapper at all.
 """
 
 import os
@@ -120,6 +124,58 @@ def require_make(target, project, e, extra=()):
 
 WRAPPER_SV = 'vliLeaf_default_hdl_sv_wrapper.sv'
 BARE_TOP = 'vliLeaf_hdl_sv_wrapper'
+BARE_WRAPPER_SV = f'{BARE_TOP}.sv'
+
+
+def _check_pair_qualified_wrapper(project):
+    """A container-sourced leaf must resolve to exactly one pair-qualified
+    verilated top and no bare `<block>_hdl_sv_wrapper` top, in both the
+    manifest and the wrapper file. Returns (pairTop, ok).
+    """
+    ok = True
+    buildMk = os.path.join(project, '.gen', 'build.mk')
+    with open(buildMk) as f:
+        manifest = f.read()
+    topsLine = next(line for line in manifest.splitlines()
+                    if line.startswith('A2C_VL_TOPS'))
+    tops = topsLine.split(':=', 1)[1].split()
+
+    if BARE_TOP in tops:
+        print(f"FAIL: manifest still records the phantom bare top "
+              f"'{BARE_TOP}' ({topsLine})")
+        ok = False
+
+    pairTops = [t for t in tops if t.endswith('_default_hdl_sv_wrapper')
+               and 'vliLeaf' in t]
+    if len(pairTops) != 1:
+        print(f"FAIL: expected exactly one pair-qualified leaf top, "
+              f"found {pairTops} in {topsLine}")
+        return None, False
+    pairTop = pairTops[0]
+
+    svVar = f'A2C_VL_SV_{pairTop}'
+    svLine = next((line for line in manifest.splitlines()
+                  if line.startswith(svVar)), None)
+    if svLine is None:
+        print(f"FAIL: manifest has no {svVar} entry")
+        ok = False
+    elif not svLine.split(':=', 1)[1].strip().endswith(WRAPPER_SV):
+        print(f"FAIL: {svVar} does not point at {WRAPPER_SV}: {svLine}")
+        ok = False
+
+    wrapperPath = os.path.join(project, 'verif', WRAPPER_SV)
+    with open(wrapperPath) as f:
+        text = f.read()
+    modules = [line for line in text.splitlines()
+              if line.startswith('module ')]
+    if modules != [f'module {pairTop}']:
+        print(f"FAIL: {WRAPPER_SV} defines {modules}, expected exactly "
+              f"['module {pairTop}']")
+        ok = False
+    if f'endmodule : {pairTop}' not in text:
+        print(f"FAIL: {WRAPPER_SV} has no matching endmodule for {pairTop}")
+        ok = False
+    return pairTop, ok
 
 
 def _run():
@@ -152,48 +208,7 @@ def _run():
         require_make('db', project, e)
         require_make('gen', project, e)
 
-        buildMk = os.path.join(project, '.gen', 'build.mk')
-        with open(buildMk) as f:
-            manifest = f.read()
-        topsLine = next(line for line in manifest.splitlines()
-                        if line.startswith('A2C_VL_TOPS'))
-        tops = topsLine.split(':=', 1)[1].split()
-
-        ok = True
-        if BARE_TOP in tops:
-            print(f"FAIL: manifest still records the phantom bare top "
-                  f"'{BARE_TOP}' ({topsLine})")
-            ok = False
-
-        pairTops = [t for t in tops if t.endswith('_default_hdl_sv_wrapper')
-                   and 'vliLeaf' in t]
-        if len(pairTops) != 1:
-            print(f"FAIL: expected exactly one pair-qualified leaf top, "
-                  f"found {pairTops} in {topsLine}")
-            return False
-        pairTop = pairTops[0]
-
-        svVar = f'A2C_VL_SV_{pairTop}'
-        svLine = next((line for line in manifest.splitlines()
-                      if line.startswith(svVar)), None)
-        if svLine is None:
-            print(f"FAIL: manifest has no {svVar} entry")
-            ok = False
-        elif not svLine.split(':=', 1)[1].strip().endswith(WRAPPER_SV):
-            print(f"FAIL: {svVar} does not point at {WRAPPER_SV}: {svLine}")
-            ok = False
-
-        with open(wrapperPath) as f:
-            phase2 = f.read()
-        modules = [line for line in phase2.splitlines()
-                  if line.startswith('module ')]
-        if modules != [f'module {pairTop}']:
-            print(f"FAIL: {WRAPPER_SV} defines {modules}, expected exactly "
-                  f"['module {pairTop}']")
-            ok = False
-        if f'endmodule : {pairTop}' not in phase2:
-            print(f"FAIL: {WRAPPER_SV} has no matching endmodule for {pairTop}")
-            ok = False
+        pairTop, ok = _check_pair_qualified_wrapper(project)
 
         if ok:
             print(f"PASS: the migrated leaf variant regenerates as the sole "
@@ -204,8 +219,42 @@ def _run():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _run_container_sourced():
+    """A design authored container-sourced from the start, with no literal-
+    valued step in between. `make newmodule` must not scaffold the bare
+    wrapper; the pair pass alone provides the physical file.
+    """
+    e = env()
+    tmp = tempfile.mkdtemp(prefix='container_sourced_from_start_', dir=test_dir)
+    try:
+        project = os.path.join(tmp, 'vli')
+        copy_fixture(project)
+        write_tail(project, CONTAINERPARAM_DEFAULT)
+        require_make('clean', project, e)
+        require_make('db', project, e)
+        require_make('newmodule', project, e)
+        require_make('gen', project, e)
+
+        barePath = os.path.join(project, 'verif', BARE_WRAPPER_SV)
+        if os.path.exists(barePath):
+            print(f"FAIL: newmodule scaffolded the phantom bare wrapper "
+                  f"'{barePath}'")
+            return False
+
+        pairTop, ok = _check_pair_qualified_wrapper(project)
+
+        if ok:
+            print(f"PASS: a design container-sourced from the start scaffolds "
+                  f"no bare wrapper; the pair pass alone provides '{pairTop}'")
+        return ok
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def run_all_tests():
-    return 0 if _run() else 1
+    migrated = _run()
+    fromStart = _run_container_sourced()
+    return 0 if migrated and fromStart else 1
 
 
 if __name__ == '__main__':

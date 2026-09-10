@@ -1,0 +1,13 @@
+yamlFormat: 2
+projectName: paramSameNamed
+
+projectFiles:
+    - psnTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

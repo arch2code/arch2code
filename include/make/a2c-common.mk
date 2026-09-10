@@ -160,44 +160,16 @@ $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
 db : $(A2C_SQLDB_FILE)
 
 
-# One-command migration to the current authoring format. Orchestrates the whole
-# pipeline: the text conversions + yamlFormat stamp, then (only once the project
-# is stamped/format-2, so the database gate passes) build the DB, sweep the
-# generated orphans the legacy fileMap left behind, scaffold the current fileMap's
-# new-form producers the legacy generator never emitted, port the testbench family,
-# regenerate, and port the block implementations.
-# The stamp line fails the target on non-zero (yaml-stage manual TODOs remain,
-# project unstamped), halting before db/sweep so the user resolves them and re-runs
-# the same idempotent `make migrate`. The sweep applies its deletes, but a remaining
-# agent-driven port (TODO_PORT) makes it exit non-zero; rather than halt there —
-# which would leave the purely-generated blocks deleted but not recreated —
-# newmodule + gen ALWAYS run after the sweep to rescaffold them, then the sweep's
-# exit code is re-raised so `make migrate` still signals non-zero while ports remain.
-# A newmodule/gen failure still halts. newmodule runs AFTER the sweep and BEFORE gen:
-# gen only fills generated regions of files that already exist, so newmodule
-# (create-only) must scaffold the missing new-form files first, and the orphans must
-# be gone before it so stale markers do not feed the scgen step.
-# The testbench-family port (--port-tb) runs BETWEEN newmodule and gen, because both
-# of its edits have to be in place before gen renders the files: <block>Config.cpp's
-# legacy region carries no --section, which gen rejects outright, and the External's
-# --block is routinely retargeted by hand at the _tb container, which a fresh
-# scaffold seeds as the bare DUT. The scaffold already carries every region marker
-# the External transplant anchors on, so an un-filled target is sufficient. It
-# distinguishes its two failures (migrateYaml.py RC_TODO vs RC_BLOCKED) and this chain
-# acts on that: RC_TODO (=1, a refused External hand-port) is folded into the sweep's
-# rc for the same reason the sweep's does not halt — a flagged hand-port must not leave
-# the tree un-generated — while anything higher HALTS. RC_BLOCKED (=2) means a refused
-# <block>Config.cpp restructure left a bare --template=tbConfig region, which the very
-# next gen aborts on, so carrying on would bury this report under a template traceback
-# and half-regenerate the tree.
-# The block-module port (--port) runs LAST, after gen: it transplants each legacy
-# .cpp/.h block pair's user code into the now-gen-filled .cppm (the transplant
-# target must already carry its generated regions) and deletes the legacy pair. It
-# is idempotent (a block already ported is a no-op) and runs inside the && chain so
-# a block it flags for a hand port (parameterized, reg-handler, hostile library,
-# non-boilerplate slot-0) surfaces as a non-zero exit; otherwise the sweep's rc is
-# re-raised, so a first run that ports cleanly still signals non-zero for the
-# pending-then-done TODO_PORT and the idempotent re-run goes clean.
+# Migrate a project to the current authoring format. The stamp step fails
+# while yaml-stage TODOs remain, so nothing below runs on an unstamped project.
+# Ordering: the sweep runs before newmodule so stale markers cannot feed the
+# scaffold; newmodule runs before gen because gen only fills generated regions
+# of files that already exist; --port-tb runs before gen so its region edits
+# are in place when gen renders; --port runs after gen because it transplants
+# user code into gen-filled .cppm files.
+# The sweep exit code is re-raised last, so pending hand ports still fail the
+# target after the tree is fully regenerated. A --port-tb exit of 1 is a
+# flagged hand port and folds into that code; higher codes halt.
 migrate:
 	$(A2C_ROOT)/migrateYaml.py --write $(A2C_PRJ_YAML)
 	$(MAKE) db
@@ -212,22 +184,20 @@ migrate:
 # Opt-in functional -> hierarchical layout migration. Separate from `migrate`:
 # it relocates files (the unconditional phases edit content in place) and
 # presupposes the project is already yamlFormat: 2, so it runs only after
-# `migrate`. See plan-decomp-functional-layout.md "Phase 4 - L4".
+# `migrate`.
 migrate-hierarchical:
 	$(A2C_ROOT)/migrateYaml.py --to-hierarchical --write $(A2C_PRJ_YAML)
 
 
 gen: $(GEN_DEPS)
 
+# Creates missing fileMap files, never rewrites an existing one, and deletes
+# registrar files the current contract no longer names.
 newmodule: $(A2C_SQLDB_FILE)
 	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --newmodule
 	touch $(A2C_SQLDB_FILE)
-	@# Best-effort clangd compile-DB refresh after adding sources. newmodule
-	@# scaffolds EMPTY module-interface units (<block>Base.cppm, <ctx>Includes.cppm)
-	@# whose `export module` line is emitted only when `make gen` fills them, so the
-	@# rundir compdb parse here runs the C++ module scan over not-yet-generated
-	@# .cppm and fails by design. It must never abort newmodule (nor the `migrate`
-	@# pipeline, which runs newmodule before gen), so keep it non-fatal.
+	@# The compdb parse scans .cppm scaffolds gen has not filled yet and fails;
+	@# keep it non-fatal so newmodule and migrate proceed.
 	@$(MAKE) -C $(PROJECT_RUNDIR) compdb >/dev/null 2>&1 || true
 
 clean::
@@ -240,7 +210,7 @@ help::
 	@echo "Available targets:"
 	@echo "  db       	- Generate or update the project database"
 	@echo "  gen      	- Generate SystemC and SystemVerilog files from the project database"
-	@echo "  newmodule	- Create a new module in the project database"
+	@echo "  newmodule	- Scaffold missing module files, drop stale registrar files"
 	@echo "  migrate  	- Migrate to the current authoring format (yaml convert + stamp, db, orphan sweep, gen)"
 	@echo "  clean    	- Clean generated files and project database"
 	@echo "  help     	- Show this help message"

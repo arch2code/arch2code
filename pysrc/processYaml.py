@@ -192,6 +192,69 @@ def fileMapCondMatch(fileDefinition, condData):
                 break
     return makeFile
 
+def getRegistrarFiles(prj, blockCondData, filemap):
+    """Registrar files left behind by an instance rename or removal are not
+    removed by gen or migrateOrphans. This is the set a project currently
+    expects under its own registrar directories; a generated file there that
+    is not in the set is stale. Returns (files, dirs) as absolute paths."""
+    registrarPairs = prj.config.getConfig('REGISTRARPAIRS')
+    configModules = prj.config.getConfig('CONFIGMODULES')
+    projectName = prj.config.getConfig('PROJECTNAME')
+    registrarSegmentMap = {k: v for k, v in filemap.items()
+                           if v.get('mode', 'block') == 'registrar'
+                           and v['basePath'] == 'registrar'}
+    dirs = set()
+    files = set()
+    blockPairMap = {k: v for k, v in registrarSegmentMap.items()
+                    if not v.get('foreignConfig', False)}
+    configModuleMap = {k: v for k, v in registrarSegmentMap.items()
+                       if v.get('foreignConfig', False)
+                       and not v.get('variant', False)}
+    layout = prj.projectLayout[projectName]
+    # All registrar-segment fileDefs share basePath 'registrar', so one of them
+    # expands each owned block's registrar directory; only its dirname is used.
+    registrarDef = next(iter(registrarSegmentMap.values()))
+
+    for blockRow in blockCondData.values():
+        if prj.contextOwningProject[blockRow['_context']] != projectName:
+            continue
+        filePath = expandNewModulePath(registrarDef, blockRow['dir'],
+                                       blockRow['block'], '', layout,
+                                       missingDirOk=True)
+        dirs.add(os.path.dirname(filePath))
+
+    for (assemblerKey, childKey), pair in registrarPairs.items():
+        assemblerRow = blockCondData[assemblerKey]
+        if prj.contextOwningProject[assemblerRow['_context']] != projectName:
+            continue
+        childRow = blockCondData[childKey]
+        for fileDef in blockPairMap.values():
+            if not fileMapCondMatch(fileDef, childRow):
+                continue
+            if fileDef.get('requiresRegistrations', False) \
+                    and not pair['aggregateHasModelRegistrations']:
+                continue
+            filePath = expandNewModulePath(fileDef, assemblerRow['dir'],
+                                           childRow['block'], pair['artifactStem'],
+                                           layout, missingDirOk=True)
+            for ext in fileDef['ext'].values():
+                files.add(filePath + '.' + ext)
+
+    for (owner, childKey), entry in configModules.items():
+        if owner != projectName:
+            continue
+        childRow = blockCondData[childKey]
+        parentRow = blockCondData[entry['parentKey']]
+        for fileDef in configModuleMap.values():
+            if not fileMapCondMatch(fileDef, childRow):
+                continue
+            filePath = expandNewModulePath(fileDef, parentRow['dir'],
+                                           childRow['block'], entry['stub'],
+                                           layout, missingDirOk=True)
+            for ext in fileDef['ext'].values():
+                files.add(filePath + '.' + ext)
+    return files, dirs
+
     # if yaml file exists load it, otherwise return empty dict
 def loadIfExists(myFile):
     if not os.path.exists(myFile):
@@ -507,6 +570,9 @@ class projectOpen:
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
         self.blockModuleName = self.config.getConfig('BLOCKMODULENAME')
         self.filemap = self.config.getConfig('FILEMAP')
+        (self.configModuleFileDef,) = [fileDef for fileDef in self.filemap.values()
+                                       if fileDef.get('foreignConfig', False)
+                                       and not fileDef.get('variant', False)]
         global dirMacros
         dirMacros = self.config.getConfig('DIRS')
         global layoutConfig
@@ -1450,12 +1516,13 @@ class projectOpen:
         ret['declaredVariantConfigs'] = self.getDeclaredVariantConfigs(
             qualBlock
         ) if bundle['isParameterizable'] else []
-        # Not gated on hasMdl: a params-declaring testbench-top harness with no
-        # model still imports its own Config module.
+        # The own-Config import exists exactly when the fileMap scaffolds the
+        # owner-qualified Config module for this block.
+        condData = self.getBlockCondRow(qualBlock)
         ret['ownConfigModule'] = {
             'project': self.contextOwningProject[ret['blockInfo']['_context']],
             'block':   ret['blockInfo']['block'],
-        } if bundle['hasOwnParams'] else None
+        } if fileMapCondMatch(self.configModuleFileDef, condData) else None
 
     def getBlockConfigView(self, qualBlock):
         cached = self._blockConfigBundleCache.get(qualBlock)
@@ -1475,6 +1542,12 @@ class projectOpen:
         }
         self._blockConfigBundleCache[qualBlock] = bundle
         return bundle
+
+    def getBlockCondRow(self, qualBlock):
+        # fileMap cond/condAnd row: the block row plus its own params: relationship.
+        row = dict(self.data['blocks'][qualBlock])
+        row['hasOwnParams'] = int(self.getBlockConfigView(qualBlock)['hasOwnParams'])
+        return row
 
     def _instanceVariantDescriptor(self, instanceData):
         # One descriptor per (project, label); resolveInstanceVariantDeclarers chose the project.

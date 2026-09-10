@@ -1,0 +1,24 @@
+# Connects A's producer to consumer over A's parameterized dataIf; consumer's X is B's.
+include:
+    - psnDeclA.yaml
+    - psnBlock.yaml
+
+blocks:
+    top:
+        desc: "assembler top"
+
+instances:
+    uTop:  { container: top, instanceType: top }
+    uProd: { container: top, instanceType: producer, variant: v0 }
+    uCons: { container: top, instanceType: consumer, variant: v0 }
+
+connections:
+    - { interface: dataIf, src: uProd, srcport: out, dst: uCons, dstport: in }
+
+parameters:
+    producer:
+        v0:
+            X: 8
+    consumer:
+        v0:
+            X: 8

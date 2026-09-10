@@ -7,6 +7,7 @@ must not trip the validator. Also pins module-local vs context-shared
 declaration selection when two blocks share one exposed param."""
 
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -608,6 +609,84 @@ parameters:
         _cleanup([project_path, arch_path, db_path])
 
 
+SAME_NAMED_ENDPOINT_FIXTURE = os.path.join(test_dir, 'fixtures', 'param-same-named-endpoint')
+
+
+def _copy_same_named_endpoint_fixture():
+    work = tempfile.mkdtemp(prefix='param_same_named_', dir=test_dir)
+    shutil.copytree(SAME_NAMED_ENDPOINT_FIXTURE, work, dirs_exist_ok=True)
+    return work
+
+
+def _build_same_named_endpoint_db(work):
+    db = os.path.join(work, 'param-same-named-endpoint.db')
+    project = os.path.join(work, 'yaml', 'psnProject.yaml')
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    result = subprocess.run(
+        [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+         '--yaml', project, '--db', db],
+        capture_output=True, text=True, timeout=180, cwd=base_dir, env=env)
+    return result.stdout + result.stderr, result.returncode
+
+
+def test_param_interface_endpoint_same_named_foreign_param():
+    # consumer reaches only B, so its params: [X] is B's X, while the dataIf
+    # payload is sized by A's X. The shortfall is rejected and, because the two
+    # share a bare name, the note names both declaring files.
+    print(f"\n{'='*70}\nTest: parameterized interface endpoint backed by a "
+          f"same-named foreign param\n{'='*70}")
+    work = _copy_same_named_endpoint_fixture()
+    try:
+        out, rc = _build_same_named_endpoint_db(work)
+        if rc == 0:
+            print("  FAIL: expected the endpoint validator to reject the "
+                  "shortfall, build succeeded")
+            return False
+        if 'Traceback (most recent call last)' in out:
+            print("  FAIL: got a Python stack trace instead of a clean error")
+            print('  ' + '\n  '.join(out.split('\n')[:25]))
+            return False
+        expected_patterns = [
+            'does not declare the required parameter',
+            'missing x (declared in psndecla.yaml)',
+            'the block declares same-named parameter(s) from other file(s): '
+            'x (declared in psndeclb.yaml)',
+            'those are different parameters',
+        ]
+        missing = [p for p in expected_patterns if p not in out.lower()]
+        if missing:
+            print(f"  FAIL: expected patterns not found: {missing}")
+            print('  ' + '\n  '.join(out.split('\n')[:25]))
+            return False
+        print("  PASS: rejected with the missing-param note naming both "
+              "A and B")
+
+        # Fault injection: point the block file at A instead of B, so
+        # consumer's X resolves to the SAME declaration the interface needs;
+        # the shortfall disappears and the build must succeed.
+        block_path = os.path.join(work, 'yaml', 'psnBlock.yaml')
+        with open(block_path) as f:
+            text = f.read()
+        anchor = "include:\n    - psnDeclB.yaml\n"
+        if anchor not in text:
+            raise AssertionError(
+                f"fault-injection anchor not found in psnBlock.yaml: {anchor!r}")
+        with open(block_path, 'w') as f:
+            f.write(text.replace(anchor, "include:\n    - psnDeclA.yaml\n", 1))
+        out2, rc2 = _build_same_named_endpoint_db(work)
+        if rc2 != 0:
+            print("  FAIL: after pointing the block at A instead of B, "
+                  "declared should equal needed and the build should succeed")
+            print('  ' + '\n  '.join(out2.split('\n')[:25]))
+            return False
+        print("  PASS: fault injection - block including A instead of B "
+              "builds clean")
+        return True
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def run_all_tests():
     print("\n" + "="*70)
     print("TESTING: block-param / ipParameters-constant linkage + decl set")
@@ -624,6 +703,7 @@ def run_all_tests():
         test_nonparam_interface_endpoints_ok,
         test_crossvariant_nonparam_boundary_channel,
         test_shared_param_two_blocks_and_decl_set,
+        test_param_interface_endpoint_same_named_foreign_param,
     ]
     results = []
     for test_func in tests:
