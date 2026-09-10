@@ -170,7 +170,9 @@ CXX_FLAGS += $(CPP_INCLUDES)
 ifdef VL_DUT
 ifndef USE_VCS
 CXX_FLAGS += -DVERILATOR
-LD_FLAGS += -L$(A2C_VL_BUILD_DIR) -l$(PROJECTNAME)vl_s_wrap -latomic
+# -pthread is a link-line dependency of the Verilated runtime (verilated_threads),
+# and the link recipe uses LD_FLAGS only, never CXX_FLAGS, so it must be here.
+LD_FLAGS += -L$(A2C_VL_BUILD_DIR) -l$(PROJECTNAME)vl_s_wrap -latomic -pthread
 # https://github.com/verilator/verilator/issues/5672
 CXX_FLAGS += -Wno-sign-compare
 endif
