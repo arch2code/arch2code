@@ -368,7 +368,7 @@ struct aRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( a & ((1ULL<<7 )-1) << 0);
+        (( a & ((1ULL<<7)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
@@ -435,7 +435,7 @@ struct dRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( d & ((1ULL<<7 )-1) << 0);
+        (( d & ((1ULL<<7)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
@@ -733,7 +733,7 @@ struct bSizeRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( index & ((1ULL<<BSIZE_LOG2 )-1) << 0);
+        (( index & ((1ULL<<BSIZE_LOG2)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
@@ -2492,7 +2492,7 @@ struct test37BitRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( value37 & ((1ULL<<37 )-1) << 0);
+        (( value37 & ((1ULL<<37)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)

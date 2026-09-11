@@ -209,9 +209,11 @@ blocks:
     top:
         desc: "Top container"
         hasMdl: true
+        hasRtl: false
     wrap:
         desc: "Assembling container of the one cell"
 {params}        hasMdl: true
+        hasRtl: false
 {tb_src}{carrier}
 instances:
     uTop:  {{ container: top,  instanceType: top }}

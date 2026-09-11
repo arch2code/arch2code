@@ -88,10 +88,12 @@ class newModule:
             for fileKey, fileDefinition in blockFileGenerationConfig.items():
                 if self._condMatch(fileDefinition, blockCondData[qualBlock]):
                     hasVariant = fileDefinition.get('variant', False)
+                    stems = artifactPaths.blockModeStems(
+                        fileDefinition, blockCondData[qualBlock], data['variants'])
                     if hasVariant and data['variants']:
                         for variant in data['variants']:
                             self.create_from_template(fileGenerationConfig, fileKey, fileDefinition, variant, True, prj, data, args)
-                    elif hasVariant and blockCondData[qualBlock]['hasOwnParams']:
+                    elif not stems:
                         # Every variant is container-sourced: the registrar pass
                         # scaffolds the pair-qualified tops into this file instead.
                         continue
@@ -110,7 +112,8 @@ class newModule:
         registrarFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'registrar'}
         if registrarFileGenerationConfig:
             self.registrar_create_from_templates(fileGenerationConfig, registrarFileGenerationConfig, blockCondData, prj, args)
-            self.cleanup_stale_registrar_files(blockCondData, prj)
+        self.cleanup_stale_segment_files(blockCondData, prj, 'registrar')
+        self.cleanup_stale_segment_files(blockCondData, prj, 'vl_wrap')
 
         projectFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'project'}
         if projectFileGenerationConfig:
@@ -233,14 +236,15 @@ class newModule:
         self.config_create_from_templates(
             fileGenerationConfig, registrarFileConfig, blockCondData, prj, args)
 
-    def cleanup_stale_registrar_files(self, blockCondData, prj):
-        # newmodule owns registrar scaffolding, so it also deletes generated files
-        # in owned registrar directories that the current contract no longer names.
-        registrarFiles, registrarDirs = artifactPaths.getRegistrarFiles(
-            prj, blockCondData, prj.filemap)
-        generatedInDirs, _ = migrateCommon.classifyGeneratedDir(registrarDirs)
-        for staleFile in sorted(set(generatedInDirs) - registrarFiles):
-            print(f"Removing stale registrar file {staleFile}")
+    def cleanup_stale_segment_files(self, blockCondData, prj, basePath):
+        # newmodule owns segment scaffolding, so it also deletes the generated
+        # files in owned segment directories the current contract no longer
+        # names.
+        expectedFiles, segmentDirs = artifactPaths.getStaleSegmentFiles(
+            prj, blockCondData, prj.filemap, basePath)
+        generatedInDirs, _ = migrateCommon.classifyGeneratedDir(segmentDirs)
+        for staleFile in sorted(set(generatedInDirs) - expectedFiles):
+            print(f"Removing stale {basePath} file {staleFile}")
             os.remove(staleFile)
 
     def config_create_from_templates(self, fileGenerationConfig, registrarFileConfig,

@@ -38,8 +38,24 @@
   New example `examples/xprojParam/rtInh` (`xproj-nested-router` in `pipeline-test`) proves it
   model and Verilated with firmware through both routers. Scope finding recorded as a limitation in
   `design-parameter-inheritance.md` §5: a register-bus structure sized by a parameter has no master
-  that can drive it (no dispatch or boundary thunker). Seven follow-ups await rulings (§6, step 17,
-  last bullet). Ready to stage.
+  that can drive it (no dispatch or boundary thunker). Committed 2026-09-10 as b926dbf.
+- **Step 17 follow-ups LANDED 2026-09-11, UNCOMMITTED, gates VERIFIED BY EXECUTION on the final
+  tree.** All seven ruled and applied (§6, step 17, "Follow-ups ruled" and after): three `make db`
+  rejections (parameterizable register bus, params-less `hasRtl` container over a parameterizable
+  channel, `registerPorts:` key differing from the nested router's `upstreamPort`), the
+  `vlSvWrapBody`/`vlSvWrapForeign` conditions on `hasOwnParams`, one `_getValue` term per field,
+  the vl_wrap stale-file sweep, and the `--variant=` guard on a params-less testbench. Unit
+  suite 129 of 129; base pipeline exit 0, 70 "No error", 0 `ERROR:`, 3 `OK:`, 0 stale registrar,
+  plus two expected "stale vl_wrap file" warnings for the tracked ip_test orphan; pro pipeline 14
+  "No error", 0 warnings; product `make clean && make gen -j` diff-stat builder and isp_shared
+  only, model and `VL_DUT=1` runs two "No error" each. Regenerated tracked outputs travelling with
+  the templates: `examples/apbDecode/model/apbDecodeIncludes.cppm`,
+  `examples/mixed/model/mixedIncludes.cppm`, `examples/xprojParam/rtInh/model/xpRtInhIncludes.cppm`.
+  User rulings 2026-09-11: the three orphans deleted
+  (`examples/ip_test/top/verif/ip_test_ip_variant1_hdl_sv_wrapper.sv`,
+  `unittest/fixtures/variant-two-integrators/top/rtl/xviTop.sv`, `.../mid/rtl/xviMid.sv`), and
+  `make agents-setup` run in the product, so every deployed skill matches its source. Awaiting
+  staging.
 - **artifactPaths extraction, LANDED 2026-09-10.** `expandNewModulePath`, `fileMapCondMatch` and
   `getRegistrarFiles` moved verbatim from `pysrc/processYaml.py` into the new `pysrc/artifactPaths.py`;
   ten callers repointed, no re-export. Behaviour-preserving; reviewed categorically, review applied.
@@ -2109,6 +2125,93 @@ router. Rejection at db was the cheaper alternative and was not taken.
   at db), gap I (no register-boundary thunker; parameterizable bus structs undrivable), the
   `vlSvWrapBody` fileMap condition, the dead mis-emitted `_getValue`, the orphan sweep for stale
   verif wrappers, and the stale `--variant=` on a plain block's testbench accepted by gen.
+- **Follow-ups ruled 2026-09-11 (user).** Gap F: reject at db. Gap H: the `registerPorts:` key
+  must equal the served router's `upstreamPort`, reject at db. Gap I: a Config-typed register bus
+  is not practical; a register or memory may be parameterized because address allocation scopes
+  it at its maximum, the bus structure itself may not; reject at db. Items 4 through 7: fix.
+- **Gaps F, H, I and the `vlSvWrapBody` condition LANDED 2026-09-11.** Three `make db` rejections,
+  recorded as rules in `design-parameter-inheritance.md` §4 and in the skills
+  `design-parameterizable-blocks` and `design-register-decode` (source `rules/skills/`, deployed
+  copies refreshed by hand; five other deployed skills in the product's `.claude/skills/` are
+  stale against their sources and want `make agents-setup`).
+  - Gap I, `postParseRegisterPorts.py::_validateAddressBusFixedWidth`: every interface of an
+    `addressBus: true` type with `isParameterizable` is rejected, categorically. No example or
+    product database carried one. Three unit suites exercised the now-illegal shape and are
+    repurposed in place as negative tests: `test_addrctl_parameterized_router_upstream.py`,
+    `test_addrctl_parent_router_variant_interface.py`, `test_addrctl_parameterized_reg_iface.py`.
+    `test_nested_router_inherit.py` keeps its three cells with a fixed-width nested bus: the
+    router still inherits or container-sources `PARAM_UPSTREAM_WIDTH`, and cell (b) now mismatches
+    two fixed widths (16 against 32) and still fires the junction diagnostic with the container
+    site named. Step 17's "a parameterized upstream bus parameterizes the parent router and every
+    leaf" is superseded: the bus is fixed, the parameter lives in the payload.
+  - Gap F, `calcBlockConfigInfo` section 2: a `hasRtl: true` block with no `params:` assembling a
+    channel over a parameterizable interface is rejected. The first draft keyed on `hasVl`, on the
+    claim that the plain RTL body used a package-level struct; disproved by regenerating
+    `fixtures/variant-two-integrators` and linting `mid/rtl/xviMid.sv` with Verilator, which
+    fails on `xviSt` (`package.py` skips every parameterizable structure, `parameterizedDecls` is
+    empty without `params:`). That RTL had never been compiled by any test. Eleven test fixtures
+    and inline YAMLs carried the dead shape and are flipped to `hasRtl: false`;
+    `variant-two-integrators` reads each integrator's binding from the model instance declaration
+    (`xviLeafBase<xviTop_xviLeafV0Config>> uTopLeaf;`) instead of the container RTL line, and
+    leaves `top/rtl/xviTop.sv` and `mid/rtl/xviMid.sv` orphaned on disk for the user to delete.
+    `test_transit_container_vl_wrapper.py` is repurposed as the negative test on its unchanged
+    fixture. The `not hasOwnParams` dispatch in `module_hdl_wrapper.py` (step 17 gap E) is removed
+    as unreachable: with own-surface parameterizable structures already requiring `params:`, no
+    `hasVl` block can be parameterizable without them. **Standing of this rejection (2026-09-11,
+    user: keep).** By rule 4 the shape is legal: the child's literal variant determines the
+    channel's payload and the container states nothing. The rejection covers an emitter gap, the
+    SystemVerilog module has no resolved-literal local typedef for a parameterizable payload, and
+    is keyed on `hasRtl` because the C++ emitter resolves the type from the typing end's Config.
+    Lifting it means emitting that typedef and dropping the `hasRtl` branch; the fixtures flipped
+    to `hasRtl: false` can then return. Message shortened to one sentence of fact and one of fix.
+  - Gap H, nested-router boundary synthesis: the container's `registerPorts:` key is compared with
+    the nested router's `upstreamPort`; new fixture `nested-router-registerports-mismatch` and
+    `test_nested_router_registerports_mismatch.py` (mismatch rejected, corrected key passes).
+  - Item 4: `vlSvWrapBody` `cond: {hasOwnParams: true}`; verif file sets unchanged in rtInh,
+    ip_test, mixed, apbDecode. New `test_addressbus_not_parameterizable.py` and fixture
+    `addressbus-parameterizable`. Suite count 124 to 126.
+- **Items 5 and 7 LANDED 2026-09-11.** `structures.py::registerFeatures` emits one `_getValue`
+  term per field, `(( name & mask ) << shift)`; the per-field body had sat outside the loop and
+  the mask bound to the shift, so `apbDecode`'s `un0ARegSt::_getValue` returned only a shifted
+  mask of `fc`. The unused array locals in both accessors are gone. `apbDecodeIncludes.cppm`,
+  `mixedIncludes.cppm` and `xpRtInhIncludes.cppm` regenerate and travel with the template;
+  apbDecode and rtInh model runs print "No error". `test_register_accessor_emission.py` calls the
+  helper on a three-field struct. Found, not changed: `fw_pack_oneVar`'s `if useConfig:` line
+  inside `if fitsDirect:` has the same unparenthesised shape but is unreachable (`fitsDirect`
+  requires `not useConfig`). `intf_gen_utils.py::resolve_dut_variant_selection` rejects a
+  `--variant=` on a block with no `params:`; `test_tb_variant_plain_block.py` injects
+  `--variant=bogus` into helloWorld's testbench and asserts gen fails, then passes after the
+  line is restored. Survey: every tracked `--variant=` testbench line names a params-declaring
+  block. Suite count 126 to 128.
+- **Item 6 LANDED 2026-09-11.** `artifactPaths.getRegistrarFiles` is generalised to
+  `getStaleSegmentFiles(prj, blockCondData, filemap, basePath)`, one expected-set owner for the
+  registrar and vl_wrap segments: block-mode entries expand per block with the standalone variant
+  labels newModule scaffolds from, registrar-mode entries split into the plain pair trampoline,
+  the owner-qualified Config module, the owner-qualified foreign per-variant top
+  (`FOREIGNCONFIGHEADERS`) and the pair-qualified concrete top (`verifRegistrations` with
+  `pairSpecific`). `createBuildManifest` warns "stale vl_wrap file ..." at db, `newModule`
+  deletes after scaffolding (`cleanup_stale_segment_files`, once per segment); the registrar
+  wording is unchanged. `test_stale_vl_wrap_cleanup.py` renames a variant label and a hasVl
+  block on the `inherit-vl-child` fixture and asserts delete/warn/silent plus a hand-authored
+  `vl_dummy.sv` surviving. Suite count 128 to 129. Seven examples sweep clean with one finding:
+  `examples/ip_test/top/verif/ip_test_ip_variant1_hdl_sv_wrapper.sv` is a tracked orphan from
+  d7d73cb2, named in no manifest, `rtl.f` or config entry since the `ipBridge` split (the live
+  top is `ipBridge_ip_variant1_hdl_sv_wrapper.sv`); `pipeline-test` now warns about it and the
+  user decides on deletion (`make newmodule` in ip_test would remove it).
+- **Review pass 2026-09-11 (categorical, reviewer), applied.** Two defects: gap I's check ran
+  after `postProcess` returned early for a router-less project, so a parameterizable bus between
+  a master and a hand-wired register block passed (proved in scratch); it now runs before the
+  early return and `test_addressbus_not_parameterizable.py` has the router-less cell.
+  `test_tb_variant_plain_block.py` copies `examples/helloWorld` and was missing from the runner's
+  `EXAMPLE_READERS` lane. Two single-owner violations: the sweep's standalone-variant selection
+  re-implemented `projectOpen.getStandaloneVariants`, now one function
+  `pysrc/variantSelection.py::standaloneVariantDescriptors(config, qualBlock)` both delegate to;
+  the block-mode stems rule was written in `newModule` and the sweep, now
+  `artifactPaths.blockModeStems`. Also: contracted `structures` read directly in both new and
+  neighbouring code; a dead precedence guard dropped from the accessor test; the two-integrators
+  captures take `(\w+)` so a wrong Config is named; `resolve_dut_variant_selection` exits with
+  `warningAndErrorReport()` on every miss instead of rendering on empty state; `vlSvWrapForeign`
+  keys on `hasOwnParams` like its two siblings; comments trimmed to standing behaviour.
 ### What may proceed in parallel
 
 Steps 2 and 5 depend on nothing in this plan and may be taken in any order; step 4, which was the third member of that set, has landed. Steps 3 and 6 waited on step 1, and step 3 has landed. ~~Q3's rename waits on step 3.~~ Q3 is rejected (§4.3), so nothing waits on it. Step 7 depends on step 1 only (its measurements were taken against the post-step-1 generator) and **not** on Case 1 (§2, D2). Case 1 waited on step 3 and is now unblocked, but it is recommended, not decided, and also needs the include-chain ambiguity diagnostic of step 1's review finding 1; no step owns either. Nothing here depends on [`plan-interface-compatibility.md`](./plan-interface-compatibility.md), whose steps 1 through 8 have already landed; step 1 of this plan **removes** that plan's sole remaining failing unit cell.

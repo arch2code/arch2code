@@ -742,19 +742,12 @@ def registerFeatures(vars, indent, prj, useConfig):
     out.append(f"{indent}uint64_t ret =")
     for var, vardata in vars['vars'].items():
         varName = vardata['variable']
-    if vardata['isArray']:
-        myArray= f"[{vardata['arraySize']}]"
-        myArrayLoopIndex= '[i]'
-    else:
-        myArray= ''
-        myArrayLoopIndex= ''
-
         widthExpr = cppVarBitwidth(vardata, prj, useConfig)
         if vardata['entryType'] == 'NamedStruct':
             out.append(f"{indent}( {varName}._getValue() ) << { vardata['bitshift'] }")
         else:
             if vardata['bitwidth'] < 64:
-                out.append(f"{indent}( {varName} & ((1ULL<<{ widthExpr } )-1) << { vardata['bitshift'] })")
+                out.append(f"{indent}(( {varName} & ((1ULL<<{ widthExpr })-1) ) << { vardata['bitshift'] })")
             else:
                 out.append(f"{indent}( {varName} << { vardata['bitshift'] } )")
         out.append(f" +")
@@ -768,12 +761,6 @@ def registerFeatures(vars, indent, prj, useConfig):
     indent = ' '*8
     for var, vardata in vars['vars'].items():
         varName = vardata['variable']
-        if vardata['isArray']:
-            myArray= f"[{vardata['arraySize']}]"
-            myArrayLoopIndex= '[i]'
-        else:
-            myArray= ''
-            myArrayLoopIndex= ''
         widthExpr = cppVarBitwidth(vardata, prj, useConfig)
         typeName = cppTypeName(vardata, prj, useConfig)
         if vardata['entryType'] == 'NamedStruct':

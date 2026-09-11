@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
-"""A hasVl block with no own params: still gets a buildable wrapper body.
+"""A hasRtl container with no own params: cannot transit a parameterized
+channel between contained children.
 
-`top` is isParameterizable only because it transits a parameter-typed channel
-between two contained, parameterized children (leafA, leafB) frozen at
-variant `v0`. Its own SystemVerilog module has no #(parameter...) port list,
-so the canonical wrapper body (the --section=body .svh) must take the same
-non-parameterizable shape an ordinary block's body does, not the templated
-shape that assumes a param_names() list to spell against.
-
-Db and generation only: this is a template-dispatch regression guard, not an
-end-to-end build.
+`top` is hasVl/hasRtl and declares no params: of its own; it hosts two
+parameterized children (leafA, leafB) joined by a parameter-typed channel,
+each frozen at variant v0. Its generated SystemVerilog module would have to
+instantiate that channel as `<if> #(.data_t(<paramStruct>))` with no typedef
+in scope, so `make db` must reject this shape.
 """
 
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -23,7 +19,15 @@ from _addrctl_helpers import base_dir, test_dir
 
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'transit-vl-wrapper')
-WRAPPER_SVH = 'top_hdl_sv_wrapper.svh'
+
+EXPECTED_PATTERNS = [
+    'top',
+    'hasRtl',
+    'xferIf',
+    'uLeafA',
+    'uLeafB',
+    'params:',
+]
 
 
 def copy_fixture(project):
@@ -60,23 +64,29 @@ def run_all_tests():
         copy_fixture(project)
 
         require_make('clean', project, e)
-        require_make('db', project, e)
-        require_make('newmodule', project, e)
-        require_make('gen', project, e)
+        result = make('db', project, e)
 
-        wrapperPath = os.path.join(project, 'verif', WRAPPER_SVH)
-        if not os.path.exists(wrapperPath):
-            print(f"FAIL: {WRAPPER_SVH} was not scaffolded; the transit "
-                  f"container lost its isParameterizable flag")
+        full_output = result.stdout + '\n' + result.stderr
+        if result.returncode == 0:
+            print("FAIL: make db succeeded; a hasRtl container with no "
+                  "params: must reject a parameterized channel between its "
+                  "contained children")
             return False
-        with open(wrapperPath) as f:
-            body = f.read()
-        if re.search(r'^\s*#\(\s*$', body, re.MULTILINE):
-            print(f"FAIL: {WRAPPER_SVH} carries a #(parameter...) list, but "
-                  f"'top' declares no params: of its own:\n{body}")
+
+        if 'Traceback (most recent call last):' in full_output:
+            print("FAIL: got a Python stack trace instead of a clean error")
+            print(full_output)
             return False
-        print(f"PASS: make gen completes and {WRAPPER_SVH} carries no "
-              f"#(parameter...) list")
+
+        missing = [p for p in EXPECTED_PATTERNS if p.lower() not in full_output.lower()]
+        if missing:
+            print(f"FAIL: missing expected patterns: {missing}")
+            print(full_output)
+            return False
+
+        print("PASS: make db rejects the hasRtl transit container with no "
+              "params:, naming the block, channel, interface, both ends, "
+              "and file")
         return True
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

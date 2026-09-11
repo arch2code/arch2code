@@ -218,9 +218,9 @@ def create(prj):
 
         # A generated file in an owned registrar directory that the contract does
         # not name is stale. Warn here; newmodule performs the deletion.
-        registrarFiles, registrarDirs = artifactPaths.getRegistrarFiles(
+        registrarFiles, registrarDirs = artifactPaths.getStaleSegmentFiles(
             prj, {blockKey: condRow(row) for blockKey, row in blockByKey.items()},
-            fileMap)
+            fileMap, 'registrar')
         generatedInDirs, _ = migrateCommon.classifyGeneratedDir(registrarDirs)
         staleRegistrarFiles = sorted(set(generatedInDirs) - registrarFiles)
         for staleFile in staleRegistrarFiles:
@@ -228,6 +228,20 @@ def create(prj):
                         f"this project's current registrar contract")
         if staleRegistrarFiles:
             printWarning("run 'make newmodule' to remove stale registrar files")
+
+    # A generated file in an owned vl_wrap directory that the contract does not
+    # name is stale (left behind by a block/variant rename). Warn here;
+    # newmodule performs the deletion.
+    vlWrapFiles, vlWrapDirs = artifactPaths.getStaleSegmentFiles(
+        prj, {blockKey: condRow(row) for blockKey, row in blockByKey.items()},
+        fileMap, 'vl_wrap')
+    generatedInDirs, _ = migrateCommon.classifyGeneratedDir(vlWrapDirs)
+    staleVlWrapFiles = sorted(set(generatedInDirs) - vlWrapFiles)
+    for staleFile in staleVlWrapFiles:
+        printWarning(f"stale vl_wrap file {staleFile} is not part of "
+                    f"this project's current verification-wrapper contract")
+    if staleVlWrapFiles:
+        printWarning("run 'make newmodule' to remove stale verification-wrapper files")
 
     # context mode: reuse the paths saveIncludeFiles already resolved through
     # the path seam, with validity/smartInclude already applied.

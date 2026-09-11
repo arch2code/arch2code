@@ -117,7 +117,7 @@ def test_unconsumed_ipparameters_constant_allowed():
 
 blocks:
   ip: { desc: "ip" }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -131,7 +131,7 @@ def test_unbacked_block_param():
   ip:
     desc: "ip"
     params: [NO_BACKING]
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -158,7 +158,7 @@ blocks:
   ip:
     desc: "ip"
     params: [WIDTH]
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -179,7 +179,7 @@ blocks:
   ip:
     desc: "ip"
     params: [W]
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -243,7 +243,7 @@ def test_param_interface_endpoint_missing_param():
     desc: "endpoint on a parameterized interface without the backing param"
     ports:
       in: { interface: dataIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -272,7 +272,7 @@ def test_param_interface_both_endpoints_parameterized():
     params: [WIDTH]
     ports:
       in: { interface: dataIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -329,7 +329,7 @@ blocks:
     params: [OTHER_W]
     ports:
       in: { interface: dataIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -385,7 +385,7 @@ blocks:
     params: [WIDTH]
     ports:
       in: { interface: dataIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -434,7 +434,7 @@ blocks:
     desc: "plain consumer"
     ports:
       in: { interface: ctrlIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }
@@ -484,7 +484,7 @@ blocks:
     params: [WIDTH]
     ports:
       in: { interface: boundaryIf, direction: dst }
-  top: { desc: "top" }
+  top: { desc: "top", hasRtl: false }
 
 instances:
   uTop: { container: top, instanceType: top }

@@ -104,7 +104,7 @@ struct cfgSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( value & ((1ULL<<Config::RT_WIDTH )-1) << 0);
+        (( value & ((1ULL<<Config::RT_WIDTH)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)

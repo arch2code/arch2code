@@ -27,6 +27,11 @@ TOP_OWN_GAIN, MID_OWN_GAIN = 9, 5
 # The leaf IP's own dflt binding, which no integrator instantiates. It exists so
 # the leaf's standalone Verilated wrapper top has its parameters bound.
 LEAF_GAIN = 1
+# Config each integrator emits for its leaf at each label. Neither container
+# has RTL, so the model's instance declaration is where a site names the
+# Config it is built against.
+TOP_V0_CONFIG, TOP_VTOP_CONFIG = 'xviTop_xviLeafV0Config', 'xviTop_xviLeafVTopConfig'
+MID_V0_CONFIG, MID_VMID_CONFIG = 'xviMid_xviLeafV0Config', 'xviMid_xviLeafVMidConfig'
 BUILD_JOBS = '8'
 # Tags the stimulus blocks drive, and the mask the leaf wraps its product with.
 SAMPLE_TAGS = (1, 2, 3, 4)
@@ -285,10 +290,11 @@ def test_emitted_artifacts_carry_the_declaring_project_value():
             print(f"  FAIL: {failure}")
             return False
         problems = mismatches(work, [
-            # The sub-block instantiation's #(...) override list.
-            (('top', 'rtl', 'xviTop.sv'),
-             r'xviLeaf #\(\.XVI_WIDTH\(8\), \.XVI_GAIN\((\d+)\)\) uTopLeaf \(',
-             TOP_GAIN),
+            # The model's own instance declaration: which Config uTopLeaf is
+            # built against.
+            (('top', 'model', 'xviTop.cppm'),
+             r'xviLeafBase<(\w+)>> uTopLeaf;',
+             TOP_V0_CONFIG),
             # The per-variant Verilator top's localparam bindings.
             (('top', 'verif', 'xviTop_xviLeaf_v0_hdl_sv_wrapper.sv'),
              r'localparam XVI_GAIN = (\d+)', TOP_GAIN),
@@ -302,7 +308,7 @@ def test_emitted_artifacts_carry_the_declaring_project_value():
         for problem in problems:
             print(f"  FAIL: {problem}")
         if not problems:
-            print("  PASS: RTL instantiation, Verilator top and Config all "
+            print("  PASS: model instance, Verilator top and Config all "
                   f"carry xviTop's XVI_GAIN {TOP_GAIN}")
         return not problems
     finally:
@@ -311,7 +317,8 @@ def test_emitted_artifacts_carry_the_declaring_project_value():
 
 def test_other_integrator_keeps_its_own_binding():
     """xviMid's own build is unmoved across the same artifact set: the same
-    label at its own value in the RTL, the Verilator top and the Config."""
+    label at its own value in the model instance, the Verilator top and the
+    Config."""
     header("the other integrator's build keeps its own binding")
     work = copy_fixture('xvi_other_')
     try:
@@ -320,9 +327,9 @@ def test_other_integrator_keeps_its_own_binding():
             print(f"  FAIL: {failure}")
             return False
         problems = mismatches(work, [
-            (('mid', 'rtl', 'xviMid.sv'),
-             r'xviLeaf #\(\.XVI_WIDTH\(8\), \.XVI_GAIN\((\d+)\)\) uMidLeaf \(',
-             MID_GAIN),
+            (('mid', 'model', 'xviMid.cppm'),
+             r'xviLeafBase<(\w+)>> uMidLeaf;',
+             MID_V0_CONFIG),
             (('mid', 'verif', 'xviMid_xviLeaf_v0_hdl_sv_wrapper.sv'),
              r'localparam XVI_GAIN = (\d+)', MID_GAIN),
             (('mid', 'registrar', 'xviMid_xviLeafVariantConfig.cppm'),
@@ -332,7 +339,7 @@ def test_other_integrator_keeps_its_own_binding():
         for problem in problems:
             print(f"  FAIL: {problem}")
         if not problems:
-            print("  PASS: xviMid's RTL instantiation, Verilator top and "
+            print("  PASS: xviMid's model instance, Verilator top and "
                   f"Config all carry its own XVI_GAIN {MID_GAIN}")
         return not problems
     finally:
@@ -341,8 +348,8 @@ def test_other_integrator_keeps_its_own_binding():
 
 def test_each_build_emits_only_the_label_it_declared():
     """Distinctly-named labels stay apart. Each integrator emits its own label
-    at its own value across RTL, Verilator top and Config, and emits nothing
-    for the label only the other integrator declared."""
+    at its own value across the model instance, Verilator top and Config, and
+    emits nothing for the label only the other integrator declared."""
     header("each build emits only the label its own project declared")
     work = copy_fixture('xvi_own_label_')
     try:
@@ -351,17 +358,17 @@ def test_each_build_emits_only_the_label_it_declared():
             print(f"  FAIL: {failure}")
             return False
         problems = mismatches(work, [
-            (('top', 'rtl', 'xviTop.sv'),
-             r'xviLeaf #\(\.XVI_WIDTH\(8\), \.XVI_GAIN\((\d+)\)\) '
-             r'uTopOwnLeaf \(', TOP_OWN_GAIN),
+            (('top', 'model', 'xviTop.cppm'),
+             r'xviLeafBase<(\w+)>> uTopOwnLeaf;',
+             TOP_VTOP_CONFIG),
             (('top', 'verif', 'xviTop_xviLeaf_vTop_hdl_sv_wrapper.sv'),
              r'localparam XVI_GAIN = (\d+)', TOP_OWN_GAIN),
             (('top', 'registrar', 'xviTop_xviLeafVariantConfig.cppm'),
              r'struct xviTop_xviLeafVTopConfig \{[^}]*XVI_GAIN = (\d+);',
              TOP_OWN_GAIN),
-            (('mid', 'rtl', 'xviMid.sv'),
-             r'xviLeaf #\(\.XVI_WIDTH\(8\), \.XVI_GAIN\((\d+)\)\) '
-             r'uMidOwnLeaf \(', MID_OWN_GAIN),
+            (('mid', 'model', 'xviMid.cppm'),
+             r'xviLeafBase<(\w+)>> uMidOwnLeaf;',
+             MID_VMID_CONFIG),
             (('mid', 'verif', 'xviMid_xviLeaf_vMid_hdl_sv_wrapper.sv'),
              r'localparam XVI_GAIN = (\d+)', MID_OWN_GAIN),
             (('mid', 'registrar', 'xviMid_xviLeafVariantConfig.cppm'),
@@ -375,17 +382,13 @@ def test_each_build_emits_only_the_label_it_declared():
             if os.path.exists(os.path.join(work, *parts)):
                 problems.append(f"{os.path.join(*parts)}: emitted for a label "
                                 f"the building project never declared")
-        # The other integrator's value must not appear anywhere in the SystemC
-        # Config or the RTL, under any struct or instance name.
+        # The other integrator's value must not appear in the SystemC Config
+        # under any struct name.
         for parts, stray, owner in (
                 (('top', 'registrar', 'xviTop_xviLeafVariantConfig.cppm'),
                  f'XVI_GAIN = {MID_OWN_GAIN};', 'xviMid'),
-                (('top', 'rtl', 'xviTop.sv'),
-                 f'.XVI_GAIN({MID_OWN_GAIN})', 'xviMid'),
                 (('mid', 'registrar', 'xviMid_xviLeafVariantConfig.cppm'),
-                 f'XVI_GAIN = {TOP_OWN_GAIN};', 'xviTop'),
-                (('mid', 'rtl', 'xviMid.sv'),
-                 f'.XVI_GAIN({TOP_OWN_GAIN})', 'xviTop')):
+                 f'XVI_GAIN = {TOP_OWN_GAIN};', 'xviTop')):
             if stray in read(work, *parts):
                 problems.append(f"{os.path.join(*parts)}: carries {stray!r}, "
                                 f"a value only {owner} bound")

@@ -1,20 +1,13 @@
 #!/usr/bin/env python3
-"""IP leaf whose registerPorts: interface references a parameterizable type.
+"""A register-bus interface may not carry a parameterizable structure, even
+when it is a reusable-IP leaf's own `registerPorts:` interface.
 
-The leaf declares `ipParameters:` with a parameter that drives a
-register-bus data type, and the leaf's `registerPorts:` interface binds
-a structure that references that parameterized type. Two variants of
-the leaf coexist under a single router. Asserts that the post-parse
-pass synthesises one handler block for the parameterizable leaf, emits
-two distinct router-to-leaf binds (one per instance), and that the leaf
-block is flagged `isParameterizable`.
-
-Both variants resolve the register width to the same value so that the
-emitted bind interface remains consistent with the router's upstream
-`apbReg`. The intent here is structural coverage of the parameterized-
-type code path on the register-bus interface; per-variant width
-*mismatch* diagnostics are covered separately by the packed-form
-mismatch fixture.
+The leaf declares `ipParameters:` with a parameter that drives the
+register-bus data type, and the leaf's `registerPorts:` interface binds a
+structure that references that parameterized type. Registers and memories
+may be parameterizable; the bus itself may not, so `make db` must reject
+this shape naming the interface, its interfaceType, the parameterizable
+structure, and the file.
 
 Topology::
 
@@ -24,14 +17,10 @@ Topology::
     +-- uLeaf1 (paramLeaf, variant=paramVar1, PARAM_REG_DATA_WIDTH=32)
 
     paramLeaf block:
-        params:        [PARAM_REG_DATA_WIDTH]    -> isParameterizable
+        params:        [PARAM_REG_DATA_WIDTH]
         registerPorts: regs -> paramReg interface
                                 +-- addr_t = apbAddrSt
                                 +-- data_t = paramRegDataSt (parameterized)
-
-    Both leaf instances share the same handler block (paramLeaf_regs)
-    and handler instance (u_paramLeaf_regs); two distinct router-to-
-    leaf binds are emitted (uAPBDecode -> uLeaf0, uAPBDecode -> uLeaf1).
 """
 
 import sys
@@ -39,11 +28,6 @@ import sys
 from _addrctl_helpers import (
     build_database,
     cleanup,
-    find_block,
-    find_connections,
-    find_instance,
-    iter_rows,
-    projectOpen,
     render_router,
 )
 
@@ -136,58 +120,31 @@ registers:
 )
 
 
+REQUIRED_SUBSTRINGS = [
+    "paramReg",
+    "apb",
+    "address-bus",
+    "paramRegDataSt",
+    "fixed-width",
+]
+
+
 def _run():
-    print("parameterizable register-bus interface on a leaf")
-    db_path, project_path, arch_paths = build_database(ARCH_YAML)
+    print("leaf's parameterizable registerPorts: interface is rejected")
+    db_path, project_path, arch_paths, result = build_database(
+        ARCH_YAML, expect_success=False)
     paths = [project_path, db_path] + arch_paths
     try:
-        prj = projectOpen(db_path)
-
-        # Leaf block is flagged parameterizable because it declares
-        # ipParameters and binds them via `params:`.
-        _leaf_key, leaf_row = find_block(prj, 'paramLeaf')
-        assert bool(leaf_row.get('isParameterizable')), (
-            "paramLeaf must be flagged isParameterizable; "
-            f"got {leaf_row.get('isParameterizable')!r}"
-        )
-
-        # Handler block / instance: one per block type, not per leaf
-        # instance — even though two variants exist.
-        find_block(prj, 'paramLeaf_regs')
-        find_instance(prj, 'u_paramLeaf_regs')
-        handler_blocks = [
-            row for _key, row in iter_rows(prj, 'blocks')
-            if row.get('block') == 'paramLeaf_regs'
-        ]
-        assert len(handler_blocks) == 1, (
-            f"expected exactly one paramLeaf_regs handler block, "
-            f"got {len(handler_blocks)}"
-        )
-
-        # Two distinct router-to-leaf binds, one per instance.
-        bind_v0 = find_connections(prj, src='uAPBDecode', dst='uLeaf0')
-        bind_v1 = find_connections(prj, src='uAPBDecode', dst='uLeaf1')
-        assert len(bind_v0) == 1, \
-            f"expected 1 uAPBDecode->uLeaf0 bind, got {len(bind_v0)}"
-        assert len(bind_v1) == 1, \
-            f"expected 1 uAPBDecode->uLeaf1 bind, got {len(bind_v1)}"
-        assert bind_v0[0] is not bind_v1[0], \
-            "per-instance binds must be distinct rows"
-
-        # Both variants appear in INSTANCES_WITH_REGAPB.
-        instances_with_regapb = prj.config.getConfig(
-            'INSTANCES_WITH_REGAPB', failOk=True)
-        for simple in ('uLeaf0', 'uLeaf1'):
-            key, _ = find_instance(prj, simple)
-            assert key in instances_with_regapb, \
-                f"INSTANCES_WITH_REGAPB missing '{key}'"
-
-        # The register-bus invariant: no synthesised register-
-        # bus bind carries `_context: '_global'`. This is asserted in
-        # every test_addrctl_*.py fixture for repository-wide coverage.
-        # See _addrctl_helpers.assert_no_global_register_binds.
-        from _addrctl_helpers import assert_no_global_register_binds
-        assert_no_global_register_binds(prj)
+        combined = result.stdout + result.stderr
+        if 'Traceback (most recent call last)' in combined:
+            print("FAIL: got a Python stack trace instead of a clean error")
+            print(combined)
+            return False
+        missing = [p for p in REQUIRED_SUBSTRINGS if p.lower() not in combined.lower()]
+        if missing:
+            print(f"FAIL: diagnostic missing substrings: {missing}")
+            print(combined)
+            return False
         print("PASS")
         return True
     finally:

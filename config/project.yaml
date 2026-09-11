@@ -138,7 +138,7 @@ fileGeneration:
     # parameterizable block, `include`d by each variant trampoline. Restricted to
     # parameterizable VL blocks so a plain block emits only its single .sv top,
     # with no .svh and no name collision.
-    vlSvWrapBody: { name : "_hdl_sv_wrapper", ext: {svh: "svh"},           cond: {isParameterizable: true}, condAnd: {hasVl: true}, mode: block, basePath: vl_wrap, variant: false, desc: "Canonical parameterized SV wrapper body (include-only)"}
+    vlSvWrapBody: { name : "_hdl_sv_wrapper", ext: {svh: "svh"},           cond: {hasOwnParams: true}, condAnd: {hasVl: true}, mode: block, basePath: vl_wrap, variant: false, desc: "Canonical parameterized SV wrapper body (include-only)"}
     vlScWrap    : { name : "_hdl_sc_wrapper", ext: {hdr: "h"},             cond: {hasVl: true},                 mode: block,   basePath: vl_wrap, desc: "SystemC Verilated HDL module derived class header file"}
     # PARENT-OWNED per-variant SV verilated wrapper top, one per (declaring project,
     # reused child, foreign variant), in the assembler's vl_wrap domain. Only the
@@ -147,7 +147,7 @@ fileGeneration:
     # the child's canonical .svh body and binds the variant's resolved literals. The
     # owner-qualified top module name (<project>_<child>_<variant>_hdl_sv_wrapper)
     # keeps two projects' variants of the same reused child distinct Verilator tops.
-    vlSvWrapForeign : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},         cond: {isParameterizable: true},  condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, variant: true, foreignConfig: true, desc: "Owner-qualified foreign per-variant SV verilated wrapper top"}
+    vlSvWrapForeign : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},         cond: {hasOwnParams: true},  condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, variant: true, foreignConfig: true, desc: "Owner-qualified foreign per-variant SV verilated wrapper top"}
     # Container-sourced Configs require pair-qualified module names. pairVlTop
     # emits those modules through child-variant-qualified wrapper files.
     vlSvWrapPair : { name : "_hdl_sv_wrapper", ext: {sv: "sv"},            cond: {hasOwnParams: true}, condAnd: {hasVl: true}, mode: registrar, basePath: vl_wrap, variant: true, pairVlTop: true, desc: "Pair-qualified concrete SV top aggregated in child-variant scaffold"}

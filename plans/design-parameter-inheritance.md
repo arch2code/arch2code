@@ -515,6 +515,26 @@ rules and still accepted by the tree; the deviation list under the rules names t
   declares the label.
 - **`inheritContainerParam:` across a project boundary** (rule 4). The message names both
   projects. A cross-project child takes a declared variant whose bindings are `containerParam:`.
+- **A register-bus interface carrying a parameterizable structure** (ruled 2026-09-11). An
+  interface whose type is `addressBus: true` is fixed-width on every side of every router. A
+  register or memory behind the bus may be sized by a parameter, because address allocation
+  scopes it at its maximum; the bus structure itself may not, because no master, dispatch or
+  boundary can be typed to drive it. The message names the interface, its type, the
+  parameterizable structures and the file, and says to move the parameter onto the payload.
+- **A `hasRtl: true` container with no `params:` assembling a channel over a parameterizable
+  interface** (ruled 2026-09-11). The SystemVerilog package emits no typedef for a
+  parameterizable structure and a block without `params:` declares none locally, so the
+  container's module would instantiate the channel with a type that exists nowhere. A
+  model-only container keeps the transit shape. This is an emitter gap held as a rejection, not
+  a rule of the design: rule 4 makes the shape legal, and a resolved-literal local typedef in the
+  container module would lift it. The message names the container, the channel,
+  the interface, both ends and the file, and offers three fixes: declare `params:` on the
+  container and inherit or bind the children, make the structure fixed-width, or set
+  `hasRtl: false`.
+- **A `registerPorts:` key that differs from the nested router's `upstreamPort`** (ruled
+  2026-09-11). The synthesised boundary map wires the container's declared port straight
+  through to the router's upstream port by name, so the two names are one port. The message
+  names the container, its key, the router and its upstream port.
 
 Where one variant is reused under several containers, the same rules apply once per site.
 Two containers backed by the same constant, and two backed by different constants with the
@@ -552,16 +572,16 @@ For parameter inheritance, the fourth and the subject of this document, that mea
   resolved at the value the site actually binds.
 - All of the above is held by automated targets rather than by recorded runs.
 
-Two things are not covered, and an author has to know both:
+A router serves one bus type, named by its `addressBlock.upstreamPort`, on both of its sides.
+A router block may declare `params:` and inherit or take `containerParam:` values like any
+block, and the junction between a parent router and a nested router is adjudicated at the
+configuration that governs both, the same as every other connection. The bus itself is
+fixed-width by rule (§4): since 2026-09-11 a parameterizable structure on an address-bus
+interface is rejected at `make db`, so the parameter goes in the register payload, as
+`examples/xprojParam/rtInh` does with its leaf's `cfg` register.
 
-- **A register-bus interface carries no parameterizable structure.** A router serves one bus type,
-  named by its `addressBlock.upstreamPort`, on both of its sides. A router block may declare
-  `params:` and inherit or take `containerParam:` values like any block, and the junction between a
-  parent router and a nested router is adjudicated at the configuration that governs both, the
-  same as every other connection. No bridge exists between two register-bus types. Neither a
-  router dispatch nor a `registerPorts:` boundary emits a thunker, and the root testbench cannot
-  share a Config with the design, so no master can drive a bus struct sized by a parameter. Keep
-  register-bus structures fixed-width; put the parameter in the register payload instead.
+One thing is not covered, and an author has to know it:
+
 - **`valueType` is not compared** between the container's parameter and the child's; see
   "What is not checked" in §4.
 

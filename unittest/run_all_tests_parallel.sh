@@ -49,6 +49,7 @@ EXAMPLE_READERS=(
     test_migrate_layout.py            # reads examples/simple + examples/hierInclude
     test_db_failure_no_stale_artifact.py  # reads examples/simple + xprojParam/cpLayoutBad (copytree)
     test_container_param_cross_project_vl.py  # reads examples/xprojParam (copytree)
+    test_tb_variant_plain_block.py     # reads examples/helloWorld (copytree)
 )
 
 # Sole in-place WRITER of all examples/ trees. Runs exclusive of the readers.
@@ -66,8 +67,8 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-if [[ ${#ALL[@]} -ne 124 ]]; then
-    echo "WARNING: expected 124 suites (test_*.py in unittest/), found ${#ALL[@]}." >&2
+if [[ ${#ALL[@]} -ne 129 ]]; then
+    echo "WARNING: expected 129 suites (test_*.py in unittest/), found ${#ALL[@]}." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 

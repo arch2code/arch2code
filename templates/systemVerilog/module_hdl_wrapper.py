@@ -53,10 +53,6 @@ def render_sv(args, prj, data):
     # Non-parameterizable blocks have no variants and emit a single
     # self-contained wrapper body.
     if args.section == 'body':
-        # A block that is isParameterizable only through a parameterized child
-        # has no parameter port list of its own; its body is the ordinary one.
-        if not data['hasOwnParams']:
-            return render_non_parameterizable(args, prj, data, mp_sig, blk_name)
         return render_body(args, prj, data, mp_sig, blk_name)
     if args.section != '':
         raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are body or empty")

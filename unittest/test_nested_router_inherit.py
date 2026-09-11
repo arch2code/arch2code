@@ -8,9 +8,11 @@ Topology (shared across all three cells)::
     +-- uAPBDecode ............ primary router (upstream=apbReg)
     +-- uMid (mid)
         +-- uParamRouter (paramMidRouter) ... nested router
-        |     params:           [PARAM_UPSTREAM_WIDTH]
-        |     upstreamPort:     paramApb       (parameterizable data;
-        |                                       paramUpstreamDataSt)
+        |     params:           [PARAM_UPSTREAM_WIDTH]  (behavioural; the
+        |                                                register bus itself
+        |                                                stays fixed-width)
+        |     upstreamPort:     paramApb       (fixed-width data;
+        |                                       nestedUpstreamDataSt)
         |     registerDecoder:  apbReg
         +-- uMidLeaf (midLeaf, addressGroup=mid)
 
@@ -20,10 +22,11 @@ instance (`uMid`), not through an empty configuration, so a router that
 inherits or takes a `containerParam:` binding is a supported shape:
 
   (a) `uParamRouter` sets `inheritContainerParam: true` and takes `uMid`'s
-      `PARAM_UPSTREAM_WIDTH`, matching `uAPBDecode`'s. Build succeeds.
-  (b) Same shape, but `uMid` is configured narrower than `uAPBDecode`. Build
-      fails, naming the parent-to-nested-router dispatch and the container
-      site (`uMid`) whose configuration governed the mismatch.
+      `PARAM_UPSTREAM_WIDTH`. `paramApb`'s data structure is fixed-width, so
+      this behavioural parameter carries no bus width; build succeeds.
+  (b) Same shape, but the nested router's upstream interface is fixed at a
+      different data width than the primary router's (16 against 32). Build
+      fails, naming the parent-to-nested-router dispatch.
   (c) `uParamRouter` declares a variant whose `PARAM_UPSTREAM_WIDTH` binding
       is `{ containerParam: PARAM_UPSTREAM_WIDTH }`, taking `uMid`'s value
       the same way as (a). Build succeeds.
@@ -44,29 +47,28 @@ from _addrctl_helpers import (
 )
 
 
-# Inlined preamble: APB primary-side interface plus the nested router's
-# parameterizable upstream interface and the parameterizable data type.
-PARAM_PREAMBLE = """constants:
+# APB primary-side interface and the nested router's fixed-width upstream
+# interface. PARAM_UPSTREAM_WIDTH gives the routers and container a params:
+# entry to inherit; it sizes nothing.
+def _param_preamble(nested_width=32):
+    return """constants:
     ADDR_WIDTH: { value: 32, desc: "Register bus address width" }
     DATA_WIDTH: { value: 32, desc: "Register bus data width" }
     REG_WIDTH:  { value: 16, desc: "Register payload width" }
+    NESTED_DATA_WIDTH: { value: %d, desc: "Nested router's fixed upstream data width" }
 
 types:
     apbAddrT: { width: ADDR_WIDTH, desc: "APB address" }
     apbDataT: { width: DATA_WIDTH, desc: "APB data" }
     cfgT:     { width: REG_WIDTH,  desc: "Register payload" }
+    nestedUpstreamDataT: { width: NESTED_DATA_WIDTH, desc: "Nested router's fixed upstream data word" }
 
 ipParameters:
     constants:
         PARAM_UPSTREAM_WIDTH:
             value: 32
             maxValue: 32
-            desc: "Parameterizable data width on the nested router's upstreamPort"
-    types:
-        paramUpstreamDataT:
-            width: PARAM_UPSTREAM_WIDTH
-            maxBitwidth: 32
-            desc: "Parameterizable router-bus data word"
+            desc: "Behavioural parameter the nested router inherits or takes from its container; appears in no width"
 
 structures:
     apbAddrSt:
@@ -75,8 +77,8 @@ structures:
         data: { varType: apbDataT, generator: data }
     cfgRegSt:
         value: { varType: cfgT, generator: register, desc: "Register payload" }
-    paramUpstreamDataSt:
-        data: { varType: paramUpstreamDataT, generator: data }
+    nestedUpstreamDataSt:
+        data: { varType: nestedUpstreamDataT, generator: data }
 
 interfaces:
     apbReg:
@@ -86,12 +88,12 @@ interfaces:
             - { structure: apbAddrSt, structureType: addr_t }
             - { structure: apbDataSt, structureType: data_t }
     paramApb:
-        desc: "Nested router's upstreamPort interface with parameterizable data"
+        desc: "Nested router's fixed-width upstreamPort interface"
         interfaceType: apb
         structures:
             - { structure: apbAddrSt, structureType: addr_t }
-            - { structure: paramUpstreamDataSt, structureType: data_t }
-"""
+            - { structure: nestedUpstreamDataSt, structureType: data_t }
+""" % nested_width
 
 
 BLOCKS_YAML = """
@@ -131,9 +133,9 @@ blocks:
 
 
 def _arch_yaml(router_instance_line, router_parameters, apb_width,
-               mid_width, leaf_width):
+               mid_width, leaf_width, nested_width=32):
     return (
-        PARAM_PREAMBLE
+        _param_preamble(nested_width)
         + BLOCKS_YAML
         + render_leaf('midLeaf',
                       extra_block_lines='        params: [PARAM_UPSTREAM_WIDTH]\n')
@@ -222,11 +224,12 @@ def _run_inherit_matching():
 
 
 def _run_inherit_mismatching():
-    print("nested router inherits its container's parameters, mismatching")
+    print("nested router's fixed upstream interface differs from the "
+          "primary router's")
     arch_yaml = _arch_yaml(
         'uParamRouter:  { container: mid, instanceType: paramMidRouter, '
         'inheritContainerParam: true }',
-        '', 32, 16, 16)
+        '', 32, 32, 32, nested_width=16)
     _db_path, project_path, arch_paths, result = build_database(
         arch_yaml, expect_success=False)
     paths = [project_path, _db_path] + arch_paths

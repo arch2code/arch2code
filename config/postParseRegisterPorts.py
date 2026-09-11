@@ -251,6 +251,30 @@ def _addressBusInterfaceTypes(prj):
     return types
 
 
+def _validateAddressBusFixedWidth(prj, addressBusTypes):
+    """Registers and memories may be parameterizable; the register bus
+    itself may not."""
+    structures = prj.flatData['structures']
+    for ifaceRow in prj.flatData['interfaces'].values():
+        if ifaceRow['interfaceType'] not in addressBusTypes:
+            continue
+        if not ifaceRow['isParameterizable']:
+            continue
+        paramStructNames = sorted({
+            structures[structRow['structureKey']]['structure']
+            for structRow in ifaceRow['structures'].values()
+            if structures[structRow['structureKey']]['isParameterizable']
+        })
+        _exit_with_error(
+            f"Interface '{ifaceRow['interface']}' (file {ifaceRow['_context']}) "
+            f"has interfaceType '{ifaceRow['interfaceType']}', an address-bus "
+            f"interface, but carries parameterizable structure(s) "
+            f"{', '.join(paramStructNames)}. A register bus must stay "
+            f"fixed-width; keep the parameter on the register or memory "
+            f"payload behind it instead of on the bus structure."
+        )
+
+
 def _resolveRouterRegisterBusInterface(prj, routerBlock, addressBusTypes,
                                        cache):
     """Find the addressBus: true interface named by addressBlock.upstreamPort.
@@ -292,6 +316,8 @@ def _resolveRouterRegisterBusInterface(prj, routerBlock, addressBusTypes,
 
 def postProcess(prj):
     blockInfo = prj.flatData['blocks']
+    addressBusTypes = _addressBusInterfaceTypes(prj)
+    _validateAddressBusFixedWidth(prj, addressBusTypes)
     routers = _collectRouterBlocks(blockInfo)
     if not routers:
         # No addressBlock: routers are declared, so no register-bus
@@ -423,7 +449,6 @@ def postProcess(prj):
 
     listOfInstances = list()
 
-    addressBusTypes = _addressBusInterfaceTypes(prj)
     routerInterfaceCache = dict()
 
     # ---- Step 4: synthesise register handlers per routed leaf ----
@@ -761,6 +786,24 @@ def postProcess(prj):
                 prj, routerBlock, addressBusTypes, routerInterfaceCache,
             )
         childUpstreamPort = routerBlock['addressBlock']['upstreamPort']
+        # The container's own registerPorts: port is what an outer router
+        # dispatches to, and this boundary map wires that same port straight
+        # through to the nested router's upstream port, so the two names
+        # must agree.
+        registerPorts = containerBlockRow.get('registerPorts')
+        if registerPorts:
+            containerPortName = next(iter(registerPorts.keys()))
+            if containerPortName != childUpstreamPort:
+                _exit_with_error(
+                    f"Container block '{containerBlockRow['block']}' (file "
+                    f"{containerBlockRow['_context']}) declares "
+                    f"registerPorts: key '{containerPortName}', but the "
+                    f"nested router '{routerBlock['block']}' (file "
+                    f"{routerBlock['_context']}) it hosts names "
+                    f"upstreamPort '{childUpstreamPort}'. The "
+                    f"registerPorts: key must match the served router's "
+                    f"upstreamPort."
+                )
         connection_map = {
             'interface': childInterface,
             'block': containerBlockRow['block'],

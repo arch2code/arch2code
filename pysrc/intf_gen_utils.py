@@ -4,7 +4,7 @@
 # Remove when refactoring
 LEGACY_COMPAT_MODE = False
 
-from pysrc.arch2codeHelper import printError
+from pysrc.arch2codeHelper import printError, warningAndErrorReport
 import pysrc.processYaml as processYaml
 
 def get_set_intf_types(ifType, block_data):
@@ -309,16 +309,25 @@ def resolve_dut_variant_selection(block_data, variant):
     #
     # When the DUT block has own `params:`, a missing variant selects the
     # anonymous/default variant when that descriptor exists. When it has no own
-    # params (containers like `ip_top`), a missing variant is tolerated and the
-    # block's defaultConfig returned.
+    # params (containers like `ip_top`), `--variant=` is not meaningful and
+    # must not be present on the testbench's GENERATED_CODE_PARAM line.
     is_parameterizable = bool(block_data['isParameterizable'])
     default_config = block_data['defaultConfig'] if is_parameterizable else ''
     variant_configs = block_data['variantConfigs']
     has_own_params = bool(block_data['hasOwnParams'])
     if not has_own_params:
+        if variant:
+            block_name = block_data['blockInfo']['block']
+            printError(
+                f"Testbench generation for block {block_name!r} requested "
+                f"variant {variant!r}, but the block declares no params: its "
+                f"testbench GENERATED_CODE_PARAM line must not carry "
+                f"--variant=."
+            )
+            exit(warningAndErrorReport())
         return {
             'configName':     default_config,
-            'factoryVariant': variant or '',
+            'factoryVariant': '',
         }
     available = [d['variant'] for d in variant_configs]
     # The variant list reported below belongs to the block this VIEW was built
@@ -339,12 +348,12 @@ def resolve_dut_variant_selection(block_data, variant):
             f"because it has no anonymous/default variant. "
             f"Available variants: {available!r}."
         )
-        return {'configName': '', 'factoryVariant': ''}
+        exit(warningAndErrorReport())
     printError(
         f"Testbench generation for block {block_name!r} requested unknown "
         f"variant {variant!r}. Available variants: {available!r}."
     )
-    return {'configName': '', 'factoryVariant': ''}
+    exit(warningAndErrorReport())
 
 def _resolve_cross_interface_ends(conn_data, prj):
     # Cross-interface semantics are part of the block-data view assembled

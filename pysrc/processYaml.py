@@ -2,6 +2,7 @@ from typing import Dict, OrderedDict
 from collections import namedtuple
 import pysrc.arch2codeGlobals as g
 import pysrc.artifactPaths as artifactPaths
+import pysrc.variantSelection as variantSelection
 from pysrc.yamlInclude import YAML
 from pysrc.arch2codeHelper import printError, printWarning, printTracebackStack, warningAndErrorReport, printIfDebug, roundup_pow2min4, clog2, convert_value
 from pysrc.schema import Schema
@@ -1547,18 +1548,13 @@ class projectOpen:
         # Two projects may bind one variant label at different values, so the
         # values come from the descriptor this project selects, never from the
         # project-blind nested binding rows.
-        consumerProject = self.config.getConfig('PROJECTNAME')
         blockParams = self.data['blocks'][qualBlock]['params']
         ownParams = [row['param'] for row in blockParams] if blockParams else []
-        variants = dict()
-        for sourceBlock in self.variantSourceBlocks[qualBlock]:
-            for variant, descriptors in self._declaredDescriptorsByLabel(sourceBlock).items():
-                descriptor = self._selectDeclaredDescriptor(descriptors, consumerProject)
-                if descriptor['containerSourced']:
-                    continue
-                variants[variant] = {
-                    param: descriptor['values'][param] for param in ownParams}
-        return variants
+        descriptorsByVariant = variantSelection.standaloneVariantDescriptors(self.config, qualBlock)
+        return {
+            variant: {param: descriptor['values'][param] for param in ownParams}
+            for variant, descriptor in descriptorsByVariant.items()
+        }
 
     def _declaredVariantConfigEntries(self, sourceBlocks):
         # Resolved for the build's own project, so two projects binding one
@@ -5560,7 +5556,7 @@ class projectCreate:
                 intf = interfaces[interface_key]
                 if not intf['isParameterizable']:
                     return
-                for struct_row in intf.get('structures', {}).values():
+                for struct_row in intf['structures'].values():
                     add_struct(struct_row['structureKey'], own_surface)
 
             # 1. Connections touching a port-owner instance of this block. The
@@ -5585,10 +5581,24 @@ class projectCreate:
                            for end_row in conn['ends'].values()):
                     continue
                 add_interface(conn['interfaceKey'], own_surface=False)
-                # With every end adapted, the channel can only carry this
-                # container's own template parameter, which needs `params:`.
                 if qualBlock in params_by_block:
                     continue
+                if block_row['hasRtl']:
+                    # The SystemVerilog package declares no parameterizable
+                    # payload type; only a params: block declares one locally.
+                    printError(
+                        f"Block '{blockName}' (file {conn['_context']}) has "
+                        f"hasRtl: true and no params:, but assembles channel "
+                        f"'{conn['channel']}' on parameterizable interface "
+                        f"'{interfaces[conn['interfaceKey']]['interface']}' "
+                        f"between {conn['src']} and {conn['dst']}. Its "
+                        f"SystemVerilog module cannot declare the payload type. "
+                        f"Declare params: on '{blockName}', make the interface "
+                        f"fixed-width, or set hasRtl: false."
+                    )
+                    exit(warningAndErrorReport())
+                # With every end adapted, the channel can only carry this
+                # container's own template parameter, which needs `params:`.
                 if any(end_types_channel(conn, end_row)
                        for end_row in conn['ends'].values()):
                     continue

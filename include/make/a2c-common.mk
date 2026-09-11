@@ -210,7 +210,7 @@ help::
 	@echo "Available targets:"
 	@echo "  db       	- Generate or update the project database"
 	@echo "  gen      	- Generate SystemC and SystemVerilog files from the project database"
-	@echo "  newmodule	- Scaffold missing module files, drop stale registrar files"
+	@echo "  newmodule	- Scaffold missing module files, drop stale registrar and verification-wrapper files"
 	@echo "  migrate  	- Migrate to the current authoring format (yaml convert + stamp, db, orphan sweep, gen)"
 	@echo "  clean    	- Clean generated files and project database"
 	@echo "  help     	- Show this help message"

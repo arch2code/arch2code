@@ -174,7 +174,7 @@ interfaces:
             - { structure: paramBusSt, structureType: data_t }
 
 blocks:
-    top: { desc: "Top container", hasMdl: true }
+    top: { desc: "Top container", hasMdl: true, hasRtl: false }
     srcBlock:
         desc: "Source block with a parameterizable port but NO params:"
         hasMdl: true
@@ -225,7 +225,7 @@ interfaces:
             - { structure: paramBusSt, structureType: data_t }
 
 blocks:
-    top: { desc: "Top container, no params: of its own", hasMdl: true }
+    top: { desc: "Top container, no params: of its own", hasMdl: true, hasRtl: false }
     srcBlock:
         desc: "Source block (owns the parameterizable port, declares params:)"
         hasMdl: true

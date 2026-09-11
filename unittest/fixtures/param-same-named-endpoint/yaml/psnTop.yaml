@@ -6,6 +6,7 @@ include:
 blocks:
     top:
         desc: "assembler top"
+        hasRtl: false
 
 instances:
     uTop:  { container: top, instanceType: top }

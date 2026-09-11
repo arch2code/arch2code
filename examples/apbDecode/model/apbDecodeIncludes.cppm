@@ -108,7 +108,7 @@ struct aRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( a & ((1ULL<<37 )-1) << 0);
+        (( a & ((1ULL<<37)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
@@ -183,7 +183,9 @@ struct un0BRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( fb & ((1ULL<<16 )-1) << 8);
+        (( fa & ((1ULL<<8)-1) ) << 0)
+ +
+        (( fb & ((1ULL<<16)-1) ) << 8);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
@@ -270,7 +272,11 @@ struct un0ARegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( fc & ((1ULL<<8 )-1) << 40);
+        (( fa & ((1ULL<<8)-1) ) << 0)
+ +
+        (( fb & ((1ULL<<32)-1) ) << 8)
+ +
+        (( fc & ((1ULL<<8)-1) ) << 40);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
@@ -347,7 +353,7 @@ struct aSizeRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( index & ((1ULL<<ASIZE )-1) << 0);
+        (( index & ((1ULL<<ASIZE)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)

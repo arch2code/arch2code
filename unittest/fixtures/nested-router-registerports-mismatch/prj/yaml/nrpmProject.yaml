@@ -1,0 +1,32 @@
+# Single-project cell: a nested-router-hosting container whose registerPorts:
+# key does not match the nested router's upstreamPort.
+
+yamlFormat: 2
+projectName: nrpmTest
+
+projectFiles:
+    - ../../yaml/nrpm.yaml
+
+topInstance: top_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

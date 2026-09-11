@@ -169,6 +169,8 @@ instances:
 
 Two sibling instances that bind a `Config`-templated channel between them need the same concrete `Config` type. Each on its own variant would carry a distinct `<project>_<block><Variant>Config`, and no single type would satisfy both ends. `inheritContainerParam: true` types both siblings on the container's `Config` instead.
 
+A register-bus router block (one with `addressBlock:`) may declare `params:` and inherit like any other block; the generator checks its junction with the parent router at the configuration the container binds. The register bus itself stays fixed-width: `make db` rejects an `addressBus` interface that carries a parameterizable structure, so size a register's payload by a parameter, never the bus structure. `make db` also rejects a `hasRtl: true` container that declares no `params:` yet wires two children over a parameterizable interface, because its SystemVerilog module would name a struct type no package declares; give the container `params:` and inherit or bind the children, make the structure fixed-width, or drop `hasRtl`.
+
 Use the shorthand only where its conditions hold, all checked at `make db`:
 
 *   The child's `params:` must be a by-name subset of the container's.

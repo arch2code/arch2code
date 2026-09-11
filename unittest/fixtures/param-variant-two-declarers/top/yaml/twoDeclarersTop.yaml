@@ -5,6 +5,7 @@ include:
 blocks:
     top:
         desc: "assembler top"
+        hasRtl: false
     drv:
         desc: "stimulus source on the wrapper's boundary interface"
         params: [WRAP_W]

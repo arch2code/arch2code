@@ -21,6 +21,7 @@ interfaces:
 blocks:
     top:
         desc: "Root"
+        hasRtl: false
     dvDrv:
         desc: "Stimulus source"
         params: [DV_WIDTH]

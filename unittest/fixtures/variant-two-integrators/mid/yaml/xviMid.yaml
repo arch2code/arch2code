@@ -29,7 +29,7 @@ blocks:
         hasMdl: true
         hasVl: false
         hasTb: false
-        hasRtl: true
+        hasRtl: false
     xviDrv:
         desc: "Stimulus on the leaf's own interface"
         params: [XVI_WIDTH]

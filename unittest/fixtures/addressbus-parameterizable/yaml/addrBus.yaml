@@ -1,0 +1,82 @@
+# A register-bus interface (apb: addressBus: true) whose data structure
+# references an ipParameters constant. Registers and memories may be
+# parameterizable; the bus itself must stay fixed-width.
+
+ipParameters:
+    constants:
+        BUS_DATA_WIDTH: { value: 32, maxValue: 64, desc: "Illegal: register-bus data width as a parameter" }
+
+constants:
+    ADDR_WIDTH: { value: 32, desc: "Register bus address width" }
+    CFG_WIDTH:  { value: 16, desc: "cfg register payload width" }
+
+types:
+    apbAddrT: { width: ADDR_WIDTH,     desc: "APB address" }
+    apbDataT: { width: BUS_DATA_WIDTH, maxBitwidth: 64, desc: "Parameterizable APB data (illegal on a bus)" }
+    cfgT:     { width: CFG_WIDTH,      desc: "cfg register payload" }
+
+structures:
+    apbAddrSt:
+        address: { varType: apbAddrT, generator: address }
+    apbDataSt:
+        data: { varType: apbDataT, generator: data }
+    cfgRegSt:
+        value: { varType: cfgT, generator: register, desc: "cfg payload" }
+
+interfaces:
+    apbReg:
+        desc: "APB register bus with a parameterizable data structure"
+        interfaceType: apb
+        structures:
+            - { structure: apbAddrSt, structureType: addr_t }
+            - { structure: apbDataSt, structureType: data_t }
+
+blocks:
+    top_tb:
+        desc: "Root testbench container"
+        hasMdl: false
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    top:
+        desc: "DUT top"
+        hasMdl: true
+        hasTb: false
+        hasRtl: false
+        hasVl: false
+    cpu:
+        desc: "APB master"
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+    apbDecode:
+        desc: "Register-bus router"
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_top
+            enumPrefix: ADDR_ID_TOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    leaf:
+        desc: "Routed leaf served by apbDecode"
+        hasMdl: true
+        hasRtl: false
+        hasVl: false
+
+instances:
+    top_tb:     { container: top_tb, instanceType: top_tb,   instGroup: top }
+    u_top:      { container: top_tb, instanceType: top,      instGroup: top }
+    uCpu:       { container: top,    instanceType: cpu,       instGroup: top }
+    uApbDecode: { container: top,    instanceType: apbDecode, instGroup: top }
+    uLeaf:      { container: top,    instanceType: leaf,      instGroup: top, addressGroup: top }
+
+connections:
+    - { interface: apbReg, src: uCpu, dst: uApbDecode, name: cpu_main }
+
+registers:
+    - { register: cfg, regType: rw, block: leaf, structure: cfgRegSt, desc: "Test register" }

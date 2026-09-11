@@ -41,6 +41,7 @@ blocks:
     top:
         desc: "Top container"
         hasMdl: true
+        hasRtl: false
     paramOwner:
         desc: "Consumes PARAM_WORD_LINES only to validate ipParameters linkage"
         hasMdl: true
@@ -98,6 +99,7 @@ blocks:
     top:
         desc: "Top container"
         hasMdl: true
+        hasRtl: false
     paramOwner:
         desc: "Consumes PARAM_BUS_WIDTH only to validate ipParameters linkage"
         hasMdl: true
