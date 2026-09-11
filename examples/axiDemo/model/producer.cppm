@@ -38,6 +38,8 @@ public:
 
     void outAXI0Rd(void);
     void outAXI1Rd(void);
+    void outAXI2RdArb(void);
+    void outAXI3RdArb(void);
     void outAXI0Wr(void);
     void outAXI1Wr(void);
     void outAXI2Wr(void);
@@ -72,6 +74,8 @@ producer::producer(sc_module_name blockName, const char * variant, blockBaseMode
     // GENERATED_CODE_END
     SC_THREAD(outAXI0Rd);
     SC_THREAD(outAXI1Rd);
+    SC_THREAD(outAXI2RdArb);
+    SC_THREAD(outAXI3RdArb);
     SC_THREAD(outAXI0Wr);
     SC_THREAD(outRespHandlerAXI0Wr);
     SC_THREAD(outAXI1Wr);
@@ -83,6 +87,8 @@ producer::producer(sc_module_name blockName, const char * variant, blockBaseMode
 };
 
 #define LOOPCOUNT 10000
+// number of requests each arbitration manager sends; must match consumer.cppm
+#define ARB_AXI_TEST_COUNT 20
 // send and recieve multicycle transactions
 void producer::outAXI0Rd(void)
 {
@@ -160,6 +166,63 @@ void producer::outAXI1Rd(void)
     log_.logPrint(std::format("Test {} Elapsed time: {:f}", test_name, elapsed_seconds.count()), LOG_ALWAYS);
     controller.test_complete(test_name);
 }
+// Two independent axi_read managers feeding one subordinate consumer thread
+// that arbitrates between them via a shared sc_event (see
+// consumer::inAXIArb). Both threads register against the same test name, so
+// they wake in the same delta when the test starts and their first sendAddr
+// calls race, exercising the axi_fabric arbitration shape in miniature: one
+// consumer thread servicing two axi_read dst ports via one event, with
+// responses routed back to the correct initiating port.
+void producer::outAXI2RdArb(void)
+{
+    std::string test_name = "test_axird_arb";
+    testController &controller = testController::GetInstance();
+    controller.register_test_name(test_name);
+    controller.wait_test(test_name);
+    for (int i = 0; i < ARB_AXI_TEST_COUNT; i++) {
+        axiReadAddressSt<axiAddrSt> addr;
+        addr.araddr.addr = i;
+        addr.arsize = 0x2;
+        addr.arlen = 0;
+        addr.arburst = AXIBURST_INCR;
+        addr.arid = 0x2;
+        axiReadRespSt<axiDataSt> data;
+        axiRd2->push_burst(1);
+        axiRd2->sendAddr(addr);
+        axiRd2->receiveData(data);
+        axiReadRespSt<axiDataSt> *buff = reinterpret_cast<axiReadRespSt<axiDataSt> *>(axiRd2->getReadPtr());
+        if (buff[0].rresp != AXIRESP_OKAY || buff[0].rid != addr.arid || buff[0].rdata.data != (axiDataT)(0x2000 + i)) {
+            Q_ASSERT(false, "axiRd2 arbitration response mismatch - possible misroute");
+        }
+    }
+    controller.test_complete(test_name);
+}
+
+void producer::outAXI3RdArb(void)
+{
+    std::string test_name = "test_axird_arb";
+    testController &controller = testController::GetInstance();
+    controller.register_test_name(test_name);
+    controller.wait_test(test_name);
+    for (int i = 0; i < ARB_AXI_TEST_COUNT; i++) {
+        axiReadAddressSt<axiAddrSt> addr;
+        addr.araddr.addr = i;
+        addr.arsize = 0x2;
+        addr.arlen = 0;
+        addr.arburst = AXIBURST_INCR;
+        addr.arid = 0x3;
+        axiReadRespSt<axiDataSt> data;
+        axiRd3->push_burst(1);
+        axiRd3->sendAddr(addr);
+        axiRd3->receiveData(data);
+        axiReadRespSt<axiDataSt> *buff = reinterpret_cast<axiReadRespSt<axiDataSt> *>(axiRd3->getReadPtr());
+        if (buff[0].rresp != AXIRESP_OKAY || buff[0].rid != addr.arid || buff[0].rdata.data != (axiDataT)(0x3000 + i)) {
+            Q_ASSERT(false, "axiRd3 arbitration response mismatch - possible misroute");
+        }
+    }
+    controller.test_complete(test_name);
+}
+
 // send and recieve multicycle transactions
 void producer::outAXI0Wr(void)
 {

@@ -287,6 +287,11 @@ public:
     virtual void sendData( const axiReadRespSt<D, RU>&, int burst_count ) = 0;
     virtual void sendDataCycle( const axiReadRespSt<D, RU>& ) = 0;
     virtual uint8_t * getWritePtr(void) = 0;
+    // arbitration: reflects the address sub-channel, since the arbitration
+    // decision on the dst side is made at the address phase
+    virtual bool isActive() = 0;
+    virtual bool isNotActive() = 0;
+    virtual void setExternalEvent( sc_event *event ) = 0;
 
 protected:
     // constructor
@@ -411,6 +416,9 @@ public:
     virtual void sendData( const axiReadRespSt<D, RU>&, int burst_count ) override;
     virtual void sendDataCycle( const axiReadRespSt<D, RU>& ) override;
     virtual uint8_t * getWritePtr(void) override;
+    virtual bool isActive() override { return m_addr_in->isActive(); }
+    virtual bool isNotActive() override { return m_addr_in->isNotActive(); }
+    virtual void setExternalEvent( sc_event *event ) override { m_addr_in->setExternalEvent(event); }
 
     // other methods
     void trace( sc_trace_file* tf ) const override;

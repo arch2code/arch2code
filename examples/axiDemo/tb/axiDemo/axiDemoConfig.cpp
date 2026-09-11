@@ -45,7 +45,8 @@ public:
             "test_axiwr0",
             "test_axiwr1",
             "test_axiwr2",
-            "test_axiwr3"
+            "test_axiwr3",
+            "test_axird_arb"
         });
 
         //create hierarchy

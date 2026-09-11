@@ -98,3 +98,7 @@ connections:
   - {interface: test_req_ack,  src: uProducer, dst: uConsumer }
   - {interface: test_push_ack, src: uProducer, dst: uConsumer }
   - {interface: test_pop_ack,  src: uProducer, dst: uConsumer }
+  # arbitration behavioral fixture: two independent rdy_vld producers feeding
+  # one consumer thread that services both via a single shared sc_event
+  - {interface: test_rdy_vld,  src: uProducer, dst: uConsumer, name: test_rdy_vld_arb0 }
+  - {interface: test_rdy_vld,  src: uProducer, dst: uConsumer, name: test_rdy_vld_arb1 }

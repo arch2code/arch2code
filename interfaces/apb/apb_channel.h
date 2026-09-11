@@ -28,6 +28,9 @@ public:
     // blocking read/write
     virtual void reqReceive(bool &isWrite, R&, D& ) = 0;
     virtual void complete(const D&) = 0; // completion only on read
+    virtual bool isActive() = 0;
+    virtual bool isNotActive() = 0;
+    virtual void setExternalEvent( sc_event *event ) = 0;
 
 protected:
     // constructor
@@ -105,6 +108,13 @@ public:
     // completer interface
     virtual void reqReceive(bool &isWrite, R&, D& ) override;
     virtual void complete(const D&) override ;
+    virtual bool isActive() override { return(m_req_pending); }
+    virtual bool isNotActive() override { return(!m_req_pending); }
+    virtual void setExternalEvent( sc_event *event ) override
+    {
+        m_external_event_ptr = event;
+        m_external_arb = true;
+    }
 
     void trace( sc_trace_file* tf ) const override;
 
@@ -153,6 +163,8 @@ protected:
     bool m_resp_pending = false;
     bool m_value_written = false; // does m_value contain data not this is seperated from the ready/valid for optimization of the task switches
     bool m_multi_writer = false;  //detect multiple writers
+    bool m_external_arb = false;
+    sc_event* m_external_event_ptr = nullptr;
 
 private:
     // disabled
@@ -288,6 +300,9 @@ inline void apb_channel<R, D>::request(bool isWrite, const R& request, D& data )
         m_data = data;
         m_req_data = request;
         m_channel_req_event.notify(SC_ZERO_TIME);
+        if (m_external_arb) {
+            m_external_event_ptr->notify(SC_ZERO_TIME);
+        }
         m_multi_writer = false;
         return;
     }
@@ -298,6 +313,9 @@ inline void apb_channel<R, D>::request(bool isWrite, const R& request, D& data )
     m_resp_pending = false;
     m_req_data = request;
     m_channel_req_event.notify(SC_ZERO_TIME);
+    if (m_external_arb) {
+        m_external_event_ptr->notify(SC_ZERO_TIME);
+    }
 
     while (!m_resp_pending)
     {
@@ -335,6 +353,9 @@ inline void apb_channel<R, D>::requestNonBlocking(bool isWrite, const R& request
         m_data = data;
         m_req_data = request;
         m_channel_req_event.notify(SC_ZERO_TIME);
+        if (m_external_arb) {
+            m_external_event_ptr->notify(SC_ZERO_TIME);
+        }
         return;
     }
 
@@ -344,6 +365,9 @@ inline void apb_channel<R, D>::requestNonBlocking(bool isWrite, const R& request
     m_resp_pending = false;
     m_req_data = request;
     m_channel_req_event.notify(SC_ZERO_TIME);
+    if (m_external_arb) {
+        m_external_event_ptr->notify(SC_ZERO_TIME);
+    }
 }
 
 
