@@ -111,9 +111,9 @@ struct aRegSt {
         ( a & ((1ULL<<37 )-1) << 0);
         return( ret );
     }
-    void _setValue(uint64_t value)
+    void _setValue(uint64_t packedValue)
     {
-        a = ( thirtySevenBitT ) (( value >> 0 ) & (( (uint64_t)1 << 37 ) - 1)) ;
+        a = ( thirtySevenBitT ) (( packedValue >> 0 ) & (( (uint64_t)1 << 37 ) - 1)) ;
         }
     inline sc_bv<aRegSt::_bitWidth> sc_pack(void) const
     {
@@ -186,10 +186,10 @@ struct un0BRegSt {
         ( fb & ((1ULL<<16 )-1) << 8);
         return( ret );
     }
-    void _setValue(uint64_t value)
+    void _setValue(uint64_t packedValue)
     {
-        fa = ( u8T ) (( value >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
-        fb = ( u16T ) (( value >> 8 ) & (( (uint64_t)1 << 16 ) - 1)) ;
+        fa = ( u8T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fb = ( u16T ) (( packedValue >> 8 ) & (( (uint64_t)1 << 16 ) - 1)) ;
         }
     inline sc_bv<un0BRegSt::_bitWidth> sc_pack(void) const
     {
@@ -273,11 +273,11 @@ struct un0ARegSt {
         ( fc & ((1ULL<<8 )-1) << 40);
         return( ret );
     }
-    void _setValue(uint64_t value)
+    void _setValue(uint64_t packedValue)
     {
-        fa = ( u8T ) (( value >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
-        fb = ( u32T ) (( value >> 8 ) & (( (uint64_t)1 << 32 ) - 1)) ;
-        fc = ( u8T ) (( value >> 40 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fa = ( u8T ) (( packedValue >> 0 ) & (( (uint64_t)1 << 8 ) - 1)) ;
+        fb = ( u32T ) (( packedValue >> 8 ) & (( (uint64_t)1 << 32 ) - 1)) ;
+        fc = ( u8T ) (( packedValue >> 40 ) & (( (uint64_t)1 << 8 ) - 1)) ;
         }
     inline sc_bv<un0ARegSt::_bitWidth> sc_pack(void) const
     {
@@ -347,12 +347,12 @@ struct aSizeRegSt {
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        ( index & ((1ULL<<29 )-1) << 0);
+        ( index & ((1ULL<<ASIZE )-1) << 0);
         return( ret );
     }
-    void _setValue(uint64_t value)
+    void _setValue(uint64_t packedValue)
     {
-        index = ( aSizeT ) (( value >> 0 ) & (( (uint64_t)1 << 29 ) - 1)) ;
+        index = ( aSizeT ) (( packedValue >> 0 ) & (( (uint64_t)1 << ASIZE ) - 1)) ;
         }
     inline sc_bv<aSizeRegSt::_bitWidth> sc_pack(void) const
     {

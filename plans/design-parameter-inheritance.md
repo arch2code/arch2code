@@ -554,10 +554,14 @@ For parameter inheritance, the fourth and the subject of this document, that mea
 
 Two things are not covered, and an author has to know both:
 
-- **A nested register-bus router is not resolved per site.** It is compared against its parent
-  router, which sits one level above rather than beside it, so an inherited parameter on a
-  register-bus router width falls back to its constant's declared default there. Every other
-  connection is resolved at its site.
+- **A register-bus interface carries no parameterizable structure.** A router serves one bus type,
+  named by its `addressBlock.upstreamPort`, on both of its sides. A router block may declare
+  `params:` and inherit or take `containerParam:` values like any block, and the junction between a
+  parent router and a nested router is adjudicated at the configuration that governs both, the
+  same as every other connection. No bridge exists between two register-bus types. Neither a
+  router dispatch nor a `registerPorts:` boundary emits a thunker, and the root testbench cannot
+  share a Config with the design, so no master can drive a bus struct sized by a parameter. Keep
+  register-bus structures fixed-width; put the parameter in the register payload instead.
 - **`valueType` is not compared** between the container's parameter and the child's; see
   "What is not checked" in §4.
 

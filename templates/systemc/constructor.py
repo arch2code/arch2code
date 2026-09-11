@@ -92,7 +92,11 @@ def constructorInit(args, prj, data):
     if registerDecode:
         busPort = data["addressDecode"]["registerBusPort"]
         busInterfaceRef = f'this->{busPort}' if hasOwnParams else busPort
-        busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
+        busStructs = ', '.join(
+            bareParameterizedType(
+                intf_gen_utils.sc_structure_field_type(entry, 'structure', 'structureKey', prj),
+                hasOwnParams)
+            for entry in data["addressDecode"]["registerBusStructs"].values())
         if hasOwnParams:
             out.append(templateDecl)
         out.append(f'void { qualClassName }::regHandler(void) {{ //handle register decode')

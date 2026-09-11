@@ -1,0 +1,100 @@
+# A parameterized nested register-bus router inheriting its container's
+# Config over the fixed common APB bus. RT_WIDTH (default 8, bound to 32 on
+# xpRtWrap) sizes uLeaf's register payload, not the bus. Firmware writes and
+# reads that register back through both routers, proving the width reached
+# the leaf through the wrapper and the inheriting nested router.
+# The children keep hasVl so their standalone Verilated wrappers are generated and linted.
+
+include:
+    - ../common/yaml/shared_types.yaml
+    - ../common/cpu/yaml/cpu.yaml
+
+ipParameters:
+    constants:
+        RT_WIDTH: { value: 8, maxValue: 32, desc: "xpRtLeaf register payload width" }
+    types:
+        cfgDataT: { width: RT_WIDTH, maxBitwidth: 32, desc: "xpRtLeaf configuration payload" }
+
+structures:
+    cfgSt:
+        value: { varType: cfgDataT, generator: register, desc: "xpRtLeaf configuration value" }
+
+blocks:
+    xpRtInhTop_tb:
+        desc: "Testbench harness container (root, no artifacts)"
+        hasVl: false
+        hasRtl: false
+        hasMdl: false
+        hasTb: false
+    xpRtInhTop:
+        desc: "DUT: holds the primary router and the parameterized wrapper"
+        hasVl: true
+        hasRtl: true
+        hasMdl: true
+        hasTb: true
+    xpRtPrimeDecode:
+        desc: "Primary APB register decoder"
+        hasVl: true
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+        addressBlock:
+            addressGroup: top
+            addressIncrement: 0x01000000
+            maxAddressSpaces: 16
+            varType: addr_id_xpRtInhTop
+            enumPrefix: ADDR_ID_XPRTINHTOP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    xpRtWrap:
+        desc: "Parameterized wrapper hosting a nested register-bus router"
+        params: [RT_WIDTH]
+        hasVl: true
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+    xpRtNestDecode:
+        desc: "Nested router inheriting RT_WIDTH from xpRtWrap"
+        params: [RT_WIDTH]
+        hasVl: true
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+        addressBlock:
+            addressGroup: wrap
+            addressIncrement: 0x00100000
+            maxAddressSpaces: 16
+            varType: addr_id_xpRtWrap
+            enumPrefix: ADDR_ID_XPRTWRAP_
+            upstreamPort: apbReg
+            registerDecoderPort: apbReg
+    xpRtLeaf:
+        desc: "Leaf register-owning block; one rw cfg register over a parameterizable payload"
+        params: [RT_WIDTH]
+        hasVl: true
+        hasRtl: true
+        hasMdl: true
+        hasTb: false
+
+instances:
+    xpRtInhTop_tb: { container: xpRtInhTop_tb, instanceType: xpRtInhTop_tb, instGroup: top }
+    u_xpRtInhTop:  { container: xpRtInhTop_tb, instanceType: xpRtInhTop,    instGroup: top }
+    uCPU:          { container: xpRtInhTop_tb, instanceType: cpu,          instGroup: top }
+    uPrimeDecode:  { container: xpRtInhTop,    instanceType: xpRtPrimeDecode, instGroup: top }
+    uWrap:         { container: xpRtInhTop,    instanceType: xpRtWrap,     instGroup: top, addressGroup: top, variant: use }
+    uNestDecode:   { container: xpRtWrap,      instanceType: xpRtNestDecode, instGroup: top, inheritContainerParam: true }
+    uLeaf:         { container: xpRtWrap,      instanceType: xpRtLeaf,     instGroup: top, addressGroup: wrap, inheritContainerParam: true }
+
+connections:
+    - { interface: apbReg, src: uCPU, srcport: cpu_main, dst: u_xpRtInhTop, name: cpu_main }
+
+connectionMaps:
+    - { interface: apbReg, block: xpRtInhTop, direction: dst, instance: uPrimeDecode, name: cpu_main }
+
+parameters:
+    xpRtWrap:
+        use:
+            RT_WIDTH: 32
+
+registers:
+    - { register: cfg, regType: rw, block: xpRtLeaf, structure: cfgSt, desc: "xpRtLeaf configuration register" }

@@ -1,0 +1,32 @@
+# Single-project cell: a hasVl top with no own params: transits a
+# parameter-typed channel between two parameterized hasVl children.
+
+yamlFormat: 2
+projectName: transitVl
+
+projectFiles:
+    - ../../yaml/transitVl.yaml
+
+topInstance: top_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs:
+    root: ../..
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    fileCopyrightStatement: ""

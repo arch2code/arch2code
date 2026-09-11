@@ -139,6 +139,15 @@ simple-ip:
 	make -C $(SIMPLE_IP_DIR)/rundir -j run
 	make -C $(SIMPLE_IP_DIR)/rundir -j run-vl
 
+# Nested register-bus router inheriting its container's parameter; firmware
+# round-trips a parameter-sized leaf register through both routers, model and
+# Verilated.
+.PHONY : xproj-nested-router
+xproj-nested-router:
+	make -C $(XPROJ_PARAM_DIR)/rtInh -j gen
+	make -C $(XPROJ_PARAM_DIR)/rtInh/rundir -j run
+	make -C $(XPROJ_PARAM_DIR)/rtInh/rundir -j run-vl
+
 .PHONY : xproj-param
 # Parameterized interface across separately named project boundaries. Leaf-first:
 # each stage project generates its own artifacts before the assembler composes them.
@@ -533,7 +542,7 @@ unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-variant-unique xif
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-nested-router xproj-variant-unique xif
 push-test: clean unittest pipeline-test
 
 # AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).

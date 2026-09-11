@@ -38,10 +38,13 @@ def get_include_deps(prj, data):
 def get_reghandler_properties(prj, data):
     reghandler = dict()
     rhd = data['addressDecode']
+    hasOwnParams = data['hasOwnParams']
+    # Out-of-line member body: the bare name is the class-local alias (see
+    # bareParameterizedType).
     reghandler = {
         "port_name": rhd['registerBusPort'],
-        "addr_type" : rhd['registerBusStructs']['addr_t'],
-        "data_type" : rhd['registerBusStructs']['data_t'],
+        "addr_type" : bareParameterizedType(intf_gen_utils.sc_structure_field_type(rhd['registerBusStructs']['addr_t'], 'structure', 'structureKey', prj), hasOwnParams),
+        "data_type" : bareParameterizedType(intf_gen_utils.sc_structure_field_type(rhd['registerBusStructs']['data_t'], 'structure', 'structureKey', prj), hasOwnParams),
         "addressmask" : f"(1<<({rhd['addressBits']}))-1"
     }
     return reghandler

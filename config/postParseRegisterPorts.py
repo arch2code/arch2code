@@ -657,27 +657,6 @@ def postProcess(prj):
                     prj, parentBlock, addressBusTypes,
                     routerInterfaceCache,
                 )
-            # The parent router serves the container of the block this router sits
-            # in, one level up, so correlating the two configurations takes two
-            # resolution hops through that intervening block. Each side resolves
-            # from its own declaration instead, which makes an inherited parameter
-            # on a router fall back to its constant's default.
-            childSite = instanceSite(instRow)
-            parentSite = instanceSite(parentRouter)
-            prj.checkInterfacePair(
-                parentIfaceRow, childIfaceRow, childSite,
-                f"Register-bus dispatch from parent router "
-                f"'{parentRouter['instance']}' to nested router "
-                f"'{instRow['instance']}' (upstreamPort "
-                f"'{childAddressBlock['upstreamPort']}')",
-                parentIfaceContext, childIfaceContext,
-                parentSite,
-                siteIndex.bindingsAt(parentSite, dict()),
-                siteIndex.bindingsAt(childSite, dict()),
-                siteIndex,
-                None,
-            )
-
             # Find the container-block sibling instance — the
             # instance whose block type is the nested router's
             # container block, and that sits in the parent
@@ -704,6 +683,27 @@ def postProcess(prj):
                     f"Expected an instance of block "
                     f"'{containerBlockKey}' contained by "
                     f"'{parentRouter['containerKey']}'."
+                )
+
+            childSite = instanceSite(instRow)
+            parentSite = instanceSite(parentRouter)
+            siblingSite = instanceSite(containerSiblingInst)
+            for (parentBindingMap, childBindingMap, parentContainerSite,
+                 childContainerSite) in siteIndex.nestedRouterBindings(
+                        parentSite, siblingSite, childSite):
+                prj.checkInterfacePair(
+                    parentIfaceRow, childIfaceRow, childSite,
+                    f"Register-bus dispatch from parent router "
+                    f"'{parentRouter['instance']}' to nested router "
+                    f"'{instRow['instance']}' (upstreamPort "
+                    f"'{childAddressBlock['upstreamPort']}')",
+                    parentIfaceContext, childIfaceContext,
+                    parentSite,
+                    parentBindingMap,
+                    childBindingMap,
+                    siteIndex,
+                    parentContainerSite,
+                    childContainerSite,
                 )
 
             siblingInstance = containerSiblingInst['instance']

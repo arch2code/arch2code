@@ -96,7 +96,9 @@ def render_default(args, prj, data):
         out.append('    void regHandler(void);')
         out.append('    addressMap _a2cRegs;')
     if data['addressDecode']['isApbRouter']:
-        busStructs = ', '.join(data["addressDecode"]["registerBusStructs"].values())
+        busStructs = ', '.join(
+            intf_gen_utils.sc_structure_field_type(entry, 'structure', 'structureKey', prj)
+            for entry in data["addressDecode"]["registerBusStructs"].values())
         out.append('    void routerDecode(void);')
         out.append(f'    abpBusDecode< {busStructs} > decoder;')
     out.append('')

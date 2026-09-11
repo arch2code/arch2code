@@ -30,8 +30,8 @@ def render(args, prj, data):
         printError("In your address Config file registerBusPort is not defined")
         exit(warningAndErrorReport())
 
-    regs_addr_t = data['addressDecode']['registerBusStructs'].get('addr_t', None)
-    regs_data_t = data['addressDecode']['registerBusStructs'].get('data_t', None)
+    regs_addr_t = data['addressDecode']['registerBusStructs']['addr_t']['structure']
+    regs_data_t = data['addressDecode']['registerBusStructs']['data_t']['structure']
 
     # Pre-conditioning of the register data
     for reg_key, reg_data in data['registers'].items():

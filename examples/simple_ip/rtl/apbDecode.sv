@@ -45,9 +45,7 @@ always_comb begin
     set_trans_active = 1'b0;
     if (cpu_main.psel & ~trans_active) begin
         set_trans_active = 1'b1;
-        if (apb_addr >= apbAddrSt'(32'h0)) begin
-            apbReg_uIp_next_psel = '1;
-        end
+        apbReg_uIp_next_psel = '1;
     end
 end
 

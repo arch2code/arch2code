@@ -2944,7 +2944,9 @@ class projectOpen:
                 exit(warningAndErrorReport())
             for regIf in interfaceInfo:
                 for item in regIf['structures']:
-                    ret['addressDecode']['registerBusStructs'].update( { item['structureType'] : item['structure'] } )
+                    ret['addressDecode']['registerBusStructs'].update(
+                        { item['structureType'] :
+                          {'structure': item['structure'], 'structureKey': item['structureKey']} } )
 
     def getBDIncludes(self, ret):
         sourceContexts = self.extractContext(ret['temp']['structs'], ret['temp']['consts'])
@@ -3509,25 +3511,27 @@ class SiteBindingIndex:
         return maps
 
     def junctionBindings(self, parentSite, childSite, containerBlockKey):
-        """The (parentBindings, childBindings, containerSite) triples one junction is checked at.
+        """The (parentBindings, childBindings, parentContainerSite,
+        childContainerSite) tuples one junction is checked at.
 
         One container configuration must govern both ends; enumerating the two
         sides independently would pair one end's configuration with the other's.
-        containerSite is the container Site that configuration came from, or
-        None when neither end takes a value from a container.
+        Both container sites are the same Site here, since a junction always
+        has one container governing both ends; it is None when neither end
+        takes a value from a container.
         """
         if parentSite.blockKey and parentSite.blockKey == containerBlockKey:
             for parentValues in self.valueMaps(parentSite):
                 yield (self.bindings(parentSite.blockKey, parentValues),
                        self.bindingsAt(childSite, parentValues),
-                       parentSite)
+                       parentSite, parentSite)
             return
         if (containerBlockKey not in self.blocks
                 or not (self.inheritsParams(parentSite)
                         or self.inheritsParams(childSite))):
             yield (self.bindingsAt(parentSite, dict()),
                    self.bindingsAt(childSite, dict()),
-                   None)
+                   None, None)
             return
         seen = []
         for containerSite in sorted(self.sitesOf(containerBlockKey)):
@@ -3537,7 +3541,34 @@ class SiteBindingIndex:
                 seen.append(containerValues)
                 yield (self.bindingsAt(parentSite, containerValues),
                        self.bindingsAt(childSite, containerValues),
-                       containerSite)
+                       containerSite, containerSite)
+
+    def nestedRouterBindings(self, parentSite, siblingSite, childSite):
+        """The (parentBindings, childBindings, containerSite, siblingSite)
+        tuples a parent-router-to-nested-router junction is checked at.
+
+        The parent router is attributed to the shared container; the nested
+        router to the sibling, its own container. Both are None when none of
+        the three sites takes a value from a container.
+        """
+        if not (self.inheritsParams(parentSite)
+                or self.inheritsParams(siblingSite)
+                or self.inheritsParams(childSite)):
+            yield (self.bindingsAt(parentSite, dict()),
+                   self.bindingsAt(childSite, dict()),
+                   None, None)
+            return
+        seen = []
+        for containerSite in sorted(self.containerSites[siblingSite]):
+            for containerValues in self.valueMaps(containerSite):
+                if containerValues in seen:
+                    continue
+                seen.append(containerValues)
+                siblingValues = self.paramValues(siblingSite, containerValues)
+                yield (self.bindingsAt(parentSite, containerValues),
+                       self.bindings(childSite.blockKey,
+                                     self.paramValues(childSite, siblingValues)),
+                       containerSite, siblingSite)
 
 
 # this class is used to create the database based on the schema
@@ -6695,12 +6726,14 @@ class projectCreate:
                            locationStr, parentContext,
                            childContext, parentSite,
                            parentBindings, childBindings, siteIndex,
-                           containerSite):
+                           parentContainerSite, childContainerSite):
         """Validate that two qualified interfaces share the same packed form.
 
         The caller passes bindings already resolved at the site the junction
         sits in, so a container-sourced parameter is compared at the value its
-        instance resolves, not at its backing constant's default.
+        instance resolves, not at its backing constant's default. Each side
+        carries its own container site, since the parent and the child are not
+        always attributed to the same container.
 
         An interfaceKey is `<interface>/<declaring context>`, so equal keys mean
         one static declaration: under equal bindings it evaluates identically
@@ -6718,10 +6751,10 @@ class projectCreate:
             if sidesText is None:
                 parentSide = self._junctionSideIdentity(
                     'parent side', parentIface, parentContext, parentSite,
-                    siteIndex, parentBindings, containerSite)
+                    siteIndex, parentBindings, parentContainerSite)
                 childSide = self._junctionSideIdentity(
                     'child side', childIface, childContext, childSite,
-                    siteIndex, childBindings, containerSite)
+                    siteIndex, childBindings, childContainerSite)
                 sidesText = f"\n{parentSide}\n{childSide}"
             return sidesText
 
@@ -6987,8 +7020,8 @@ class projectCreate:
                         f"{instRow['instance']}.{portName} declared as "
                         f"{portIface} (file {blockRow['_context']})")
                 for parentSite in parentBindings:
-                    for parentBindingMap, childBindingMap, containerSite in \
-                            siteIndex.junctionBindings(
+                    for (parentBindingMap, childBindingMap, parentContainerSite,
+                         childContainerSite) in siteIndex.junctionBindings(
                                 parentSite, childSite,
                                 instRow['containerKey']):
                         self.checkInterfacePair(
@@ -6996,7 +7029,7 @@ class projectCreate:
                             childSite, locationStr, parentContext,
                             childContext, parentSite,
                             parentBindingMap, childBindingMap, siteIndex,
-                            containerSite)
+                            parentContainerSite, childContainerSite)
 
         # ------------------------------------------------------------
         # Iterate connectionMaps. The child port is the local end.
@@ -7033,15 +7066,15 @@ class projectCreate:
             # typed by the container's class template parameter and never by the
             # child instance the map routes to; there are no ends to elect from.
             for parentSite in _containerBindings(cm['blockKey']):
-                for parentBindingMap, childBindingMap, containerSite in \
-                        siteIndex.junctionBindings(
+                for (parentBindingMap, childBindingMap, parentContainerSite,
+                     childContainerSite) in siteIndex.junctionBindings(
                             parentSite, childSite, cm['blockKey']):
                     self.checkInterfacePair(
                         parentIfaceRow, interfaces_flat[childIfaceKey],
                         childSite, locationStr, parentContext,
                         childContext, parentSite,
                         parentBindingMap, childBindingMap, siteIndex,
-                        containerSite)
+                        parentContainerSite, childContainerSite)
 
     def processYamls(self):
         # main outer loop for processing

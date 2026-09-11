@@ -1,0 +1,50 @@
+# xpRtInh: a parameterized wrapper (xpRtWrap) hosts a nested register-bus router
+# (xpRtNestDecode) that inherits the wrapper's RT_WIDTH.
+
+yamlFormat: 2
+projectName: xpRtInh
+
+# The vendored 'common' sub-project supplies the cpu master and shared_types
+# (apbReg bus); xpRtInh.yaml is the top design.
+projectFiles:
+    - ../../common/prj/yaml/commonProject.yaml
+    - ../../yaml/xpRtInh.yaml
+
+topInstance: xpRtInhTop_tb
+
+instanceGroups:
+    top:
+        varType: inst_top
+        enumPrefix: INST_TOP_
+    blocks:
+        varType: blockID
+        enumPrefix: BLOCK_TOP_
+
+addressObjects:
+    memories:
+        alignment: memsize
+        sizeRoundUpPowerOf2: true
+        sortDescending: true
+    registers:
+        alignment: 8
+        sortDescending: true
+
+dirs: # only root must be supplied; base/model/rtl/vl_wrap/tb/fwInc inherit the base
+      # config defaults (dict_shallow merge). Hierarchical artifact placement comes
+      # from fileGeneration.hierarchicalDirs, also inherited from the base config.
+    root: ../.. # project root directory (examples/xprojParam/rtInh), relative to this project file
+
+fileGeneration:
+    layout: hierarchical
+    template: $a2c/templates/fileGen/fileGen.py
+    # includeFW generates one *IncludesFW.{h,cpp} per yaml context (smartInclude),
+    # producing the firmware constant/type/struct headers consumed by the fw/ TUs.
+    fileMap:
+        includeFW: { name: "IncludesFW", ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true}, mode: context, basePath: fwInc, desc: "yaml based fw include file" }
+        regAddresses: { name: "regAddresses", ext: {hdr: "h"}, mode: project, basePath: model, desc: "Per-project instance and register address defines" }
+    fileCopyrightStatement: "copyright the arch2code project contributors, see https://github.com/arch2code/arch2code/blob/main/LICENSE"
+    regBlockNaming: {
+            instancePrefix: "u",
+            blockSuffix: "Regs",
+            camelCase: true,
+        }

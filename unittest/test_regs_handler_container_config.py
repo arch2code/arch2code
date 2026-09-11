@@ -36,11 +36,7 @@ trampoline is emitted, because an all-container-typed child earns no registratio
 `hasRegistrations` goes false, and the `requiresRegistrations` fileMap gate
 suppresses the file.
 
-The register payload here is a fixed-width type on purpose. A register whose
-payload field is a parameterizable type cannot be generated today. The structure
-emitter spells the field's `_setValue` cast without its Config argument and masks
-with the width the declaring constant carries, so such a register neither compiles
-nor tracks its Config. That is a separate defect from the one this suite guards.
+The payload here is fixed-width by choice.
 """
 
 import os

@@ -449,7 +449,7 @@ def oneStruct(args, prj, data, struct, value):
                 out.extend(fw_unpack(handle, args, value, indent, prj, isParam))
             case 'registerFeatures': # register features
                 if not isCpp and value['register']:
-                    out.extend(registerFeatures(value, indent))
+                    out.extend(registerFeatures(value, indent, prj, isParam))
             case 'sc_pack':
                 out.extend(sc_pack(handle, args, value, indent, prj))
             case 'sc_unpack':
@@ -732,7 +732,7 @@ def getSet(vars, indent, prj=None, useConfig=False):
             out.append(f"{indent}inline {varType} _getData(void) {{ return( { var }); }}")
             out.append(f"{indent}inline void _setData({varType} value) {{ { var } = value; }}")
     return out
-def registerFeatures(vars, indent):
+def registerFeatures(vars, indent, prj, useConfig):
     out = list()
     out.append(f"{indent}// register functions")
     out.append(f"{indent}inline int _size(void) {{return( (_bitWidth + 7) >> 4 ); }}")
@@ -749,11 +749,12 @@ def registerFeatures(vars, indent):
         myArray= ''
         myArrayLoopIndex= ''
 
+        widthExpr = cppVarBitwidth(vardata, prj, useConfig)
         if vardata['entryType'] == 'NamedStruct':
             out.append(f"{indent}( {varName}._getValue() ) << { vardata['bitshift'] }")
         else:
             if vardata['bitwidth'] < 64:
-                out.append(f"{indent}( {varName} & ((1ULL<<{ vardata['bitwidth'] } )-1) << { vardata['bitshift'] })")
+                out.append(f"{indent}( {varName} & ((1ULL<<{ widthExpr } )-1) << { vardata['bitshift'] })")
             else:
                 out.append(f"{indent}( {varName} << { vardata['bitshift'] } )")
         out.append(f" +")
@@ -762,7 +763,7 @@ def registerFeatures(vars, indent):
     out.append(f"{indent}return( ret );")
     indent = ' '*4
     out.append(f"{indent}}}")
-    out.append(f"{indent}void _setValue(uint64_t value)")
+    out.append(f"{indent}void _setValue(uint64_t packedValue)")
     out.append(f"{indent}{{")
     indent = ' '*8
     for var, vardata in vars['vars'].items():
@@ -773,16 +774,18 @@ def registerFeatures(vars, indent):
         else:
             myArray= ''
             myArrayLoopIndex= ''
+        widthExpr = cppVarBitwidth(vardata, prj, useConfig)
+        typeName = cppTypeName(vardata, prj, useConfig)
         if vardata['entryType'] == 'NamedStruct':
             if vardata['bitwidth'] >= 64:
-                out.append(f"{indent}{ varName }._setValue( (( value >> { vardata['bitshift'] } ) )) ;")
+                out.append(f"{indent}{ varName }._setValue( (( packedValue >> { vardata['bitshift'] } ) )) ;")
             else:
-                out.append(f"{indent}{ varName }._setValue( (( value >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { vardata['bitwidth'] } ) - 1)) ) ;")
+                out.append(f"{indent}{ varName }._setValue( (( packedValue >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { widthExpr } ) - 1)) ) ;")
         else:
             if vardata['bitwidth'] >= 64:
-                out.append(f"{indent}{ varName } = ( { vardata['varType'] } ) (( value >> { vardata['bitshift'] } ) ) ;")
+                out.append(f"{indent}{ varName } = ( { typeName } ) (( packedValue >> { vardata['bitshift'] } ) ) ;")
             else:
-                out.append(f"{indent}{ varName } = ( { vardata['varType'] } ) (( value >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { vardata['bitwidth'] } ) - 1)) ;")
+                out.append(f"{indent}{ varName } = ( { typeName } ) (( packedValue >> { vardata['bitshift'] } ) & (( (uint64_t)1 << { widthExpr } ) - 1)) ;")
     out.append(f"{indent}}}")
     return out
 

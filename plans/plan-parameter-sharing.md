@@ -28,10 +28,22 @@
 - **Stale registrar detection and cleanup, LANDED 2026-09-10.** The manifest step warns about generated files in owned registrar directories the contract does not name; `make newmodule` deletes them (user ruling). The check found two true orphans (`ip_ipRegsVariantConfig.cppm` in the simple_ip and ip_test `ip` sub-projects, removed by their own `make newmodule`) and one pre-existing scaffold-definition gap: the `foreignConfig` fileMap entry required hasMdl or hasTb while the emitter imported a params block's Config module on hasOwnParams alone (xif_tb). Ruled "we cannot need a file but not scaffold it": the fileMap entry now keys on hasOwnParams only and the emitter decides through the same entry (§6, step 12a follow-up (d)). Full gates green, zero stale warnings anywhere. Committed in 9f5bfce together with inhLayout's nine new scaffold files (user's call: commit).
 - **newModule bare-wrapper scaffold and the same-named endpoint note, LANDED 2026-09-10.** `make newmodule` no longer scaffolds a bare HDL wrapper for a params-declaring block whose every variant is container-sourced (§6, step 13 follow-up). The endpoint diagnostic's same-named note is kept under rule 2 and now has a fixture and a cell (§6, step 12a follow-up (e)). Facts for 12a (d), 15 (a) and the nested-router `KeyError` are recorded at their entries; each awaits a ruling. Gates: unit 121/121; base pipeline exit 0, 66 `No error`, 0 `ERROR:`, 3 `OK:`; pro 14 `No error`; product `make clean && make gen -j` diff-stat only the builder and isp_shared rows, rundir model run and `VL_DUT=1` run (`--vlInst=tb.debayer`) two `No error` each. Ready to stage.
 - **Descriptor selectors assert one match, LANDED 2026-09-10.** The three selectors raise on zero or several matches instead of taking the first; new unit suite, runner count 121. Full gate set at baseline on the final tree. Ready to stage (§6, step 14, last bullet).
+- **Step 17 LANDED 2026-09-10 (user ruling: support, the ISP will need it).** A nested register-bus
+  router that declares `params:` and inherits or is container-sourced is a supported shape: the
+  router-to-router check resolves both sides through the sibling that contains the nested router
+  (per-side container sites in every junction diagnostic), the SystemVerilog router template emits
+  the parameter header and local typedefs, a single-child router selects without a constant compare,
+  the HDL wrapper takes the ordinary body for a params-less parameterizable container, register-bus
+  structs are spelled Config-aware in the SystemC templates, and register accessors are Config-aware.
+  New example `examples/xprojParam/rtInh` (`xproj-nested-router` in `pipeline-test`) proves it
+  model and Verilated with firmware through both routers. Scope finding recorded as a limitation in
+  `design-parameter-inheritance.md` §5: a register-bus structure sized by a parameter has no master
+  that can drive it (no dispatch or boundary thunker). Seven follow-ups await rulings (§6, step 17,
+  last bullet). Ready to stage.
 - **artifactPaths extraction, LANDED 2026-09-10.** `expandNewModulePath`, `fileMapCondMatch` and
   `getRegistrarFiles` moved verbatim from `pysrc/processYaml.py` into the new `pysrc/artifactPaths.py`;
   ten callers repointed, no re-export. Behaviour-preserving; reviewed categorically, review applied.
-  Gates at baseline on the final tree (§6, step 12a follow-up (d), last bullet). Ready to stage.
+  Gates at baseline on the final tree (§6, step 12a follow-up (d), last bullet). Committed in a139e68.
 - **Step 1 LANDED 2026-08-13.** `blocksparams` carries `paramSource`/`paramSourceKey`, a foreign key onto `constants` resolved through the param row's own include chain; `param`/`paramKey` are retained unchanged as the block-scoped identity, and are deliberately NOT repointed. All four bad consumers of §5 B1, the two re-derivations of §4.5 and the orphan check now read the source link. Evidence, the mechanism chosen for the name defaulting, and the corrections to this document's own text are at "Plan of record" step 1. `examples/xprojParam/cstUse` — the probe this plan predicted would flip — **builds and runs, and is promoted into `xproj-const`** (the first half of step 6); `xproj-const-probes` is retired.
 - **Step 1 was re-measured independently, 2026-08-13.** Unit suite **101/101**; cold `make pipeline-test -j` **exit 0**; `make xproj-const -j` **exit 0** with three cells at widths **12 / 20 / 20**; **zero** unresolved `paramSourceKey` rows; the product tree cold-regenerates, builds and links. **The emitted-output delta (1693 files, zero changed) and the census were taken on trust, not re-measured** — the earlier "Emitted-output delta: none, measured. Census: unchanged at 18 of 42" claim in this bullet list is corrected to that standing. The review also corrected three of this document's own figures (cold `paramKey` baseline, database census, `builder/pro`); see step 1's landed record.
 - **One defect the review found was ruled on, FIXED, and is now VERIFIED BY BUILD (2026-08-18)** — the third silent early return in `_post_validateVariantBindingSizing`. See "Ruled on after the review" at step 1 for the measurements.
@@ -1860,6 +1872,243 @@ Rule 5 of the rules section in [`design-parameter-inheritance.md`](./design-para
   3. `make -C builder/pro pipeline-test -j`: exit 0, 14 "No error" (`inhTandem`, an `inheritContainerParam` fixture, still builds and links).
   4. `make clean && make -j db` in `/work/ws/debayer`: exit 0.
 
+### Step 17, a parameterized nested router inherits or is container-sourced. DECIDED 2026-09-10 (user); LANDED 2026-09-10
+
+The user ruled the shape SUPPORTED, expecting the ISP to need it: `isp_top` is a block with
+`registerPorts:` holding its own router, so a SoC router dispatching into it is exactly the
+router-to-router junction, and a parameterized `isp_top` would carry that parameterization onto its
+router. Rejection at db was the cheaper alternative and was not taken.
+
+- **What already works (VERIFIED BY CODE READING 2026-09-10).** A router block declaring `params:` is
+  accepted at db when its instance binds a `variant:`; `unittest/test_addrctl_parameterized_router.py`
+  and `test_addrctl_parameterized_router_upstream.py` pin it, the second with a parameter-typed data
+  struct on the router's `upstreamPort`. On the SystemC side the router class and its `routerDecode`
+  body are templated on the block's Config when `hasOwnParams` (`templates/systemc/constructor.py`
+  ~85-90, `baseClassDecl.py` ~78-80), and the container instantiates it like any child.
+- **Gap A, the db check.** `config/postParseRegisterPorts.py` ~675 resolves both router sides with
+  `bindingsAt(site, dict())`. An inheriting or `containerParam:`-sourced nested router raises
+  `KeyError` in `paramValues`. The other two junction arms enumerate `junctionBindings` triples; this
+  arm needs a three-site version because the parent router P and the sibling S (block B) share
+  container C while the nested router R sits inside S: C's configuration gives P's and S's values,
+  S's values give R's. `SiteBindingIndex.nestedRouterBindings(parentSite, siblingSite, childSite)`
+  yields `(parentBindings, childBindings, containerSite)` and the check runs once per triple, after
+  the existing container-sibling lookup that already finds S. Fixture: `unittest/test_nested_router_inherit.py`
+  (inherit matching, inherit mismatching rejected naming the dispatch and the container site,
+  `containerParam:` form matching).
+- **Gap B, the SystemVerilog router header.** `templates/systemVerilog/apbDecodeModule.py` ~32-37
+  emits `module <name>` then the port list with no `#(parameter ...)` section, while
+  `moduleInterfacesInstances.py` ~22-25 emits one for an ordinary block and ~94-97 emits the
+  instance-side `#(.P(spelling))` from `svInstanceParams` for every parameterized child, routers
+  included. A parameterized router therefore verilates with a parameter override onto a module that
+  declares none. The router template also never emits the module-local parameterized declarations
+  (`parameterizedDeclLines`) that `moduleInterfacesInstances.py` ~39 and `moduleRegs.py` ~141 emit,
+  so a parameter-typed register-bus struct has no local typedef in the router body. Fix: the router
+  header and local declarations follow the ordinary block template, through the same view fields.
+- **Gap C, coverage.** No buildable example has a parameterized router. Plan: a db-only pair under
+  `examples/xprojParam/` on the `inhLayout`/`inhLayoutBad` pattern for gap A, and one buildable
+  example with model, RTL and Verilated run whose nested router inherits its container's width onto a
+  parameter-typed upstream data struct, driven by a cpu running fw through both routers, for gap B.
+  Seed to be chosen from the existing nested-router examples (`ip_test/bridge`, `mixed`).
+- **Gap D, prose.** `design-parameter-inheritance.md` §5 "not covered" caveat on nested routers goes;
+  the parameterizable-blocks skill gains one sentence that a router block may declare `params:` and
+  inherit like any block.
+- **Sequencing.** Gap A first (generator edit), then the fixtures, then gap B, one generator-editing
+  agent at a time on the primary tree. Landed facts and gates are recorded here as each part lands.
+- **Gap A LANDED 2026-09-10.** `SiteBindingIndex.nestedRouterBindings(parentSite, siblingSite,
+  childSite)` enumerates the shared container's configurations through `containerSites[siblingSite]`
+  and `valueMaps`, resolves the parent router and the sibling at each, and the nested router at the
+  sibling's result; the default-resolved single tuple is yielded only when none of the three sites
+  takes a value from a container. The check in `postParseRegisterPorts.py` now follows the existing
+  container-sibling lookup and runs once per tuple. Found on the way: one shared `containerSite`
+  cannot attribute both sides of this junction (the parent router's container is C, the nested
+  router's is the sibling), and the first landing named block `top` as the router's container in the
+  rejection text. Every junction generator now yields `(parentBindings, childBindings,
+  parentContainerSite, childContainerSite)` and `checkInterfacePair` takes the two sites;
+  `junctionBindings` yields the same site twice, so the `inhLayoutBad` and `cpLayoutBad` texts are
+  unchanged. Measured pre-fix failure: `KeyError: 'PARAM_UPSTREAM_WIDTH'` at `paramValues` from
+  `bindingsAt(childSite, dict())`. Fixture `unittest/test_nested_router_inherit.py`: (a) inherit
+  matching accepts, (b) inherit with the container narrower rejects naming the dispatch
+  `uAPBDecode` to `uParamRouter` and the child side "at its container's configuration: block 'mid'
+  ... at variant 'midV0'", (c) `containerParam:` form accepts. Reviewed by the supervisor, revision
+  applied. Gates, VERIFIED BY EXECUTION 2026-09-10: unit suite 123 of 123 (runner count raised);
+  `make xproj-inherit-layout -j` and `make xproj-container-layout -j` print their `OK:` lines; the
+  full base and pro pipelines and the product gates run once when the whole step lands.
+
+- **Fixture measured 2026-09-10 (VERIFIED BY EXECUTION on `examples/xprojParam/rtInh`, new,
+  untracked).** Shape: common cpu -> `xpRtInhTop` (DUT) -> primary router `xpRtPrimeDecode` ->
+  `xpRtWrap` (`params: [RT_WIDTH]`, `registerPorts: rtReg: rtApbReg`) -> nested router
+  `xpRtNestDecode` (`inheritContainerParam`, upstream `rtApbReg` whose data struct is `RT_WIDTH`
+  wide, default 8, bound 32) -> `xpRtLeaf` (one rw `cfg`). Findings, in build order:
+  1. `make db` demands `params:` on the primary router: the dispatch connection to `uWrap` is typed
+     on the nested router's upstream interface, so the primary router's own port carries a
+     parameterized struct and the own-surface rule applies. Consistent with the rules; the unit
+     fixture's `apbDecode` declares params for the same reason.
+  2. `make db` demands `params:` on the leaf: `_resolveRouterRegisterBusInterface` types a router's
+     register bus from `upstreamPort` alone, and the router template drives both sides from one
+     struct set, so a `registerDecoderPort` naming a second interface is not honoured. Rule to
+     document: one register-bus type per router; a parameterized upstream bus parameterizes every
+     leaf the router serves.
+  3. `make gen` crashes in `templates/systemVerilog/module_hdl_wrapper.py::param_names` for
+     `xpRtInhTop`, flagged `isParameterizable` through an internal parameter-typed channel while
+     declaring no `params:` (`params` is None). Gap E, real defect, fixed with gap B.
+  4. The model does not compile: `xpRtInhTop.cppm` binds a channel typed `rtDataSt<xpRtWrapUseConfig>`
+     to the primary router's port typed `rtDataSt<xpRtPrimeDecodeTopConfig>`; equal values, distinct
+     C++ types, no thunker. This is step 13's open inferred-port thunker gap reached through a
+     synthesised register-bus connection. Not fixed here: the fixture takes the skill's own answer
+     (siblings binding a Config-typed channel inherit the container's Config), so `xpRtInhTop`
+     declares `RT_WIDTH` bound at `u_xpRtInhTop` and every block on the register path inherits it,
+     which is also how the ISP would author it.
+  5. `rtl/xpRtNestDecode.sv` has no `#(parameter RT_WIDTH)` header and no local `rtDataSt` typedef
+     while `rtl/xpRtWrap.sv` instantiates it with `#(.RT_WIDTH(RT_WIDTH))`: gap B confirmed
+     statically; Verilator was not reached because of 3 and 4.
+  The SystemC nested router is `export template<typename Config> SC_MODULE(xpRtNestDecode)`, as
+  expected. `xpRtLeaf` needed no hand code outside its generated regions.
+- **Gaps B and E LANDED 2026-09-10.** `templates/systemVerilog/apbDecodeModule.py` emits the
+  `#(parameter ...)` list after the package imports when the block declares `params:` and the
+  module-local parameterized declarations after the port list when `parameterizedDecls` is
+  non-empty, both by the code shape `moduleInterfacesInstances.py` already uses; the emitted
+  `rtl/xpRtNestDecode.sv` and `rtl/xpRtPrimeDecode.sv` now carry `parameter RT_WIDTH` and the
+  `rtDataT`/`rtDataSt` typedefs and lint standalone. `module_hdl_wrapper.py::render_sv` routes a
+  block without own params (`hasOwnParams` false) to the non-parameterizable body even when the
+  fileMap scaffolded the `.svh` on `isParameterizable`: the block's module has no parameter port
+  list, so the templated body has nothing to spell. Contract: `isParameterizable` says a block's
+  emitted code depends on a parameter somewhere inside it; `hasOwnParams` says its own module and
+  Config carry a parameter list. New guard `unittest/test_transit_container_vl_wrapper.py` with
+  fixture `unittest/fixtures/transit-vl-wrapper` (hasVl `top` with no params over two frozen-variant
+  parameterized leaves), reverted-and-rerun to prove it catches the crash; runner count 124.
+  Emitted-output delta on apbDecode, mixed, simple_ip and ip_test: none (`git diff --stat examples/`
+  empty after clean regeneration).
+- **Found on the way, OPEN (gap F).** A transit container with no own params, `hasRtl`, over a
+  parameter-typed internal channel emits `<if> #(.data_t(<paramStruct>))` interface instances in
+  its own SystemVerilog module with no `<paramStruct>` typedef in scope (`parameterizedDecls` is
+  empty for a block without params), so `xpRtInhTop.sv` at its first shape failed lint with
+  "Signal definition not found: 'rtDataSt'". The right emission is a typedef sized off the resolved
+  literal, since the container has no parameter to size against. The `transit-vl-wrapper` fixture
+  is db-and-gen only and does not lint, so nothing pins this today. Needs a ruling: support the
+  shape (resolved-literal local typedefs) or reject a params-less `hasRtl` container over a
+  parameter-typed channel at db.
+- **Found on the way, LANDED 2026-09-10.** A router with exactly one child emitted
+  `if (apb_addr >= apbAddrSt'(32'h0))`, a constant compare Verilator lint rejects (UNSIGNED as
+  error). The selection block now sets the single child's `_next_psel` without a compare; two or
+  more children emit byte-identical text. Three tracked generated routers carried the defect and
+  regenerate with the three-line simplification: `examples/simple_ip/rtl/apbDecode.sv`,
+  `examples/simple_ip/ip/rtl/ipStdDecode.sv`, `examples/ip_test/ip/rtl/ipStdDecode.sv`; none of
+  those examples runs `make lint` in `pipeline-test`, which is why it went unseen. apbDecode and
+  mixed (multi-child) lint clean and are unchanged.
+- **Fixture revised 2026-09-10, second measurement.** `xpRtInhTop` declares `RT_WIDTH` bound at
+  `u_xpRtInhTop` (`variant: use`, 32) and `uPrimeDecode`, `uWrap`, `uNestDecode`, `uLeaf` all
+  inherit it; `xpRtWrap` needs no `registerPorts:` (top-down block, db never asked). `make db` and
+  `make gen` pass; the testbench Config and Testbench files carry `--variant=use` since the DUT has
+  no anonymous default. The RTL hierarchy lints clean through the Verilated wrapper top, which is
+  the proof of gaps B and E on the real example. Model build stops at gap G: `classDecl.py` spells
+  the router's decoder member `abpBusDecode< apbAddrSt, rtDataSt >` from
+  `registerBusStructs`, a `{structureType: bareName}` view map, so a Config-templated bus struct is
+  a class template at that point (the `using typename` alias is emitted later).
+- **Gap G LANDED 2026-09-10.** `getBDAddressBus` now fills `registerBusStructs` as
+  `{structureType: {structure, structureKey}}`; `classDecl.py` spells the decoder member through
+  `sc_structure_field_type` (`rtDataSt<Config>` for a parameterizable struct, bare otherwise), and
+  `constructor.py` and `blockRegs.py` spell the out-of-line `registerHandler<>` call through the same
+  helper then `bareParameterizedType`, because inside a member body of a templated block the bare
+  name is the class-local alias and `rtDataSt<Config>` there is `error: expected '>'` (measured on
+  `xpRtLeaf.cppm`). The SystemVerilog readers (`apbDecodeModule.py`, `moduleRegs.py`) take
+  `['structure']`. Emitted-output delta on apbDecode, mixed, simple_ip, ip_test: none beyond the
+  three single-child routers; `make apbDecode -j` and `make mixed -j` two "No error" each.
+- **Third measurement and fixture decision, 2026-09-10.** With G in, the model build stops at
+  `xpRtPrimeDecode`: its decoder is `abpBusDecode<apbAddrSt, apbDataSt>` (upstream `apbReg`) while
+  its dispatch port toward `uWrap` is `apb_out<apbAddrSt, rtDataSt<Config>>`, typed on the nested
+  router's upstream interface by `postParseRegisterPorts`. Two bus types inside one router need an
+  adapter at the router dispatch, which is step 13's open thunker item, not this step. The fixture
+  takes the ISP shape instead: one register-bus interface (`rtApbReg`) on every router port inside
+  the DUT, `xpRtInhTop` declaring `registerPorts:` like `isp_top`, and the common cpu's fixed
+  `apbReg` meeting `rtApbReg` only at the DUT boundary, where the testbench-boundary thunker exists.
+  Rule this pins for authors: a router serves one register-bus type; inside a block, every router
+  and register leaf on one path uses that one interface.
+- **Found on the way, OPEN (gap H, db diagnostic).** A container's `registerPorts:` key must equal
+  the served router's `addressBlock.upstreamPort`: `postParseRegisterPorts.py` ~754-774 synthesises
+  the boundary connectionMap with `port` and `instancePort` both set to the router's upstreamPort
+  name, and the base class declares the boundary port from `registerPorts:`. With
+  `registerPorts: cpuReg: {interface: rtApbReg}` and upstream `rtApbReg`, `make db` and `make gen`
+  both passed and the emitted `xpRtInhTop.cppm` bound `this->rtApbReg`, a member the base never
+  declares (measured 2026-09-10 on rtInh's third shape). `ipBridge.yaml` and `isp_top.yaml` state
+  the pairing in comments; nothing enforces it. Needs a ruling: reject the mismatch at db, or let
+  the `registerPorts:` key name the boundary port and have the synthesised map use it.
+- **Fourth measurement and scope finding, 2026-09-10 (gap I, OPEN).** With `registerPorts:
+  rtApbReg` (key equal to the router's upstreamPort) and the cpu connection landing on it
+  (`dstport: rtApbReg`, interface `apbReg`), db and gen pass and the boundary classes are
+  consistent, but the testbench External binds `uCPU->cpu_main(rtApbReg)`, an
+  `apb_out<apbAddrSt, apbDataSt>` onto an `apb_out<apbAddrSt, rtDataSt<Config>>`, with no thunker
+  anywhere in the generated tree. The boundary thunker exists for `ports:` (`xif`, `cppAxis`), not
+  for `registerPorts:`. Consequence, stated as a limitation: a Config-typed register-bus struct
+  cannot be driven today. The master and the DUT would have to share one Config, the root
+  testbench cannot be parameterized, and neither a register-boundary thunker nor a router-dispatch
+  thunker exists; `isp_top` sidesteps this by keeping its boundary types literal-sized. Needs a
+  ruling if a parameterized register bus is ever wanted: register-boundary thunker at the
+  testbench, or reject a parameterizable struct on an `addressBus` interface at db.
+  **Fixture narrowed (fifth shape):** fixed `apbReg` bus end to end; `xpRtWrap` bound at
+  `RT_WIDTH` 32; `xpRtNestDecode` and `xpRtLeaf` inherit; the leaf's `cfg` register payload is
+  `RT_WIDTH` wide, so the firmware round trip at 32 bits proves the width reached the leaf through
+  the wrapper and the inheriting router. Gaps A, B, E, G and the single-child fix are all on that
+  path; only gap G's decoder-member spelling has no in-tree consumer with a Config-typed bus struct
+  (it is exercised by the leaf's register handler instead).
+- **Fifth measurement, 2026-09-10 (gap J, FIX IN FLIGHT).** On the narrowed shape db, newmodule and
+  gen pass (the stale registrar warn/delete path ran for real: three files warned at db, removed by
+  `make newmodule`; four stale verif wrappers from earlier shapes are not covered by that sweep and
+  were deleted by hand, a gap the orphan sweep should own). The model build fails in the generated
+  `cfgSt<Config>` register accessors: `templates/systemc/structures.py::registerFeatures` emits
+  `_getValue`/`_setValue` with the field's declared width as a literal (8, the default) and the type
+  by bare name, so a parameterizable payload is `( cfgDataT )` (alias template, no argument) masked
+  to 8 bits at a bound width of 32; `pack`/`unpack` in the same file are Config-aware. `_setValue`'s
+  parameter also shadows a member named `value`. Also found: a stale `--variant=use` on a plain
+  block's testbench GENERATED_CODE_PARAM line is accepted by gen and emits
+  `createInstance(..., "use", ...)` for a block with no such variant; removed in the fixture, not
+  guarded.
+- **Gap D LANDED 2026-09-10.** `design-parameter-inheritance.md` §5's "nested router is not
+  resolved per site" caveat is replaced by the verified rule and the limitation gap I measured: a
+  router serves one bus type on both sides, may declare `params:` and inherit like any block, is
+  adjudicated at the governing configuration, and a register-bus structure sized by a parameter has
+  no master that can drive it (no dispatch or boundary thunker, no Config at the root). The
+  parameterizable-blocks skill gains one paragraph under container Config inheritance saying the
+  same for authors: size the register payload by the parameter, never the bus structure.
+- **Review pass 2026-09-10 (categorical, reviewer).** No logic defects. Applied: `registerFeatures`
+  takes `prj, useConfig` as required parameters (no `if prj else` arms); `moduleRegs.py` reads
+  `registerBusStructs['addr_t']['structure']` directly; the transit-wrapper test asserts on the
+  absence of a `#(` header line rather than the substring; comment blocks trimmed across the
+  templates, the fixture and the Makefile; the stale `test_regs_handler_container_config.py`
+  docstring paragraph that said a parameterizable register payload cannot be generated is gone;
+  the one-off `xproj-nested-router-clean` target removed (the example sits in the clean glob).
+  Deferred to the user:
+  (i) `vlSvWrapBody`'s fileMap `cond: {isParameterizable: true}` scaffolds the `.svh` body for a
+  transit container that also gets the bare `.sv`; both now render the ordinary body, a dead
+  duplicate the manifest never compiles. Producer-side fix is `cond: {hasOwnParams: true}`,
+  matching `vlSvWrapPair`; that is a fileMap contract change, so the template dispatch stays until
+  ruled.
+  (ii) `_getValue` in `registerFeatures` is mis-emitted for multi-field register structures
+  (pre-existing: the `isArray` block sits outside the `for`, so only the last field survives, and
+  its mask binds by precedence to the shifted mask, returning 0; `apbDecode`'s `un0ARegSt` shows
+  it). Neither `_getValue` nor `_setValue` has a consumer under `common/systemc/`, `templates/`,
+  `pysrc/` or `pro/`. Ruling: fix the loop or stop emitting the pair.
+  (iii) The four stale `verif/*_hdl_sv_wrapper.*` files earlier fixture shapes left behind were
+  not swept by `make newmodule` (registrar files were) and had to be deleted by hand; the orphan
+  sweep should own verif wrappers a shape change orphans.
+- **Step 17 LANDED 2026-09-10; gates VERIFIED BY EXECUTION on the final tree.** Unit suite 124 of
+  124 (two new suites, runner count raised); base pipeline exit 0, 70 "No error" (66 plus the four
+  from `xproj-nested-router`: model run and Verilated run, two each), 0 `ERROR:`, 3 `OK:`, 0 stale
+  registrar warnings; pro pipeline exit 0, 14 "No error", 0 warnings; product `make clean && make
+  gen -j` diff-stat only the `builder` and `isp_shared` rows (the product's testbench router is
+  model-only and its register structures carry no register-generator field, so neither template
+  change reaches it), model run and `VL_DUT=1` run two "No error" each. Tracked generated files
+  that regenerate under this change and must be committed with it: `examples/simple_ip/rtl/apbDecode.sv`,
+  `examples/simple_ip/ip/rtl/ipStdDecode.sv`, `examples/ip_test/ip/rtl/ipStdDecode.sv` (single-child
+  selection) and `examples/apbDecode/model/apbDecodeIncludes.cppm`, `examples/mixed/model/mixedIncludes.cppm`
+  (`_setValue(uint64_t packedValue)`, and a constant-named field width now spelled symbolically,
+  `ASIZE`/`BSIZE_LOG2`, as the struct's `_bitWidth` already was). New untracked: `examples/xprojParam/rtInh/`
+  (hand-authored YAML, project file, Makefiles, fw/src, tb user regions, vendored `common`),
+  `unittest/test_nested_router_inherit.py`, `unittest/test_transit_container_vl_wrapper.py`,
+  `unittest/fixtures/transit-vl-wrapper/`. Open from this step, each needing a ruling: gap F
+  (transit container SV over a parameter-typed channel), gap H (registerPorts key mismatch accepted
+  at db), gap I (no register-boundary thunker; parameterizable bus structs undrivable), the
+  `vlSvWrapBody` fileMap condition, the dead mis-emitted `_getValue`, the orphan sweep for stale
+  verif wrappers, and the stale `--variant=` on a plain block's testbench accepted by gen.
 ### What may proceed in parallel
 
 Steps 2 and 5 depend on nothing in this plan and may be taken in any order; step 4, which was the third member of that set, has landed. Steps 3 and 6 waited on step 1, and step 3 has landed. ~~Q3's rename waits on step 3.~~ Q3 is rejected (§4.3), so nothing waits on it. Step 7 depends on step 1 only (its measurements were taken against the post-step-1 generator) and **not** on Case 1 (§2, D2). Case 1 waited on step 3 and is now unblocked, but it is recommended, not decided, and also needs the include-chain ambiguity diagnostic of step 1's review finding 1; no step owns either. Nothing here depends on [`plan-interface-compatibility.md`](./plan-interface-compatibility.md), whose steps 1 through 8 have already landed; step 1 of this plan **removes** that plan's sole remaining failing unit cell.
