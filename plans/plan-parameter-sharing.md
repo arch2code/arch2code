@@ -25,9 +25,13 @@
   newly adjudicates.
 - **Step 13 LANDED 2026-09-08, then REVERTED 2026-09-09 (user).** `u_preprocess`/`u_interpolate` moved off `inheritContainerParam` onto declared `containerParam:`-sourced variants and back again, on the user's ruling that self-contained blocks do not declare `ports:` for internal plumbing; `yaml/debayer.yaml` is back at its pre-step-13 content, and the three generator fixes found on the way and their fixtures stand. See §6, step 13. **Pre-commit review applied and the full gate set re-run on the final tree, 2026-09-09:** two `SiteBindingIndex` fallbacks removed (§6, step 14, "Pre-commit review"); unit suite 120 of 120; base pipeline exit 0 with 66 "No error", 0 `ERROR:`, 3 `OK:`; pro pipeline exit 0 with 14 "No error"; product regenerates byte-identical to HEAD; model run and Verilated run two "No error" each. Ready to stage. Open: the inferred-port thunker gap step 13 found and did not fix (§6, step 13, "Defect found on the way, OPEN"); step 15 follow-ups (a) and (c); step 12a follow-ups (d) and (e).
 - **Step 14 follow-up LANDED 2026-09-09.** The junction diagnostic names the container block and variant that supplied an inheriting or `containerParam:` side's values; `inhLayoutBad` is a multi-variant container and both layout gates assert the naming. Full gate set at baseline on the final tree. Ready to stage. Newly open: an inheriting nested router raises `KeyError` in `config/postParseRegisterPorts.py` (§6, step 14, "Found on the way").
-- **Stale registrar detection and cleanup, LANDED 2026-09-10.** The manifest step warns about generated files in owned registrar directories the contract does not name; `make newmodule` deletes them (user ruling). The check found two true orphans (`ip_ipRegsVariantConfig.cppm` in the simple_ip and ip_test `ip` sub-projects, removed by their own `make newmodule`) and one pre-existing scaffold-definition gap: the `foreignConfig` fileMap entry required hasMdl or hasTb while the emitter imported a params block's Config module on hasOwnParams alone (xif_tb). Ruled "we cannot need a file but not scaffold it": the fileMap entry now keys on hasOwnParams only and the emitter decides through the same entry (§6, step 12a follow-up (d)). Full gates green, zero stale warnings anywhere. Ready to stage; inhLayout's nine new scaffold files await the user's commit-or-delete call.
+- **Stale registrar detection and cleanup, LANDED 2026-09-10.** The manifest step warns about generated files in owned registrar directories the contract does not name; `make newmodule` deletes them (user ruling). The check found two true orphans (`ip_ipRegsVariantConfig.cppm` in the simple_ip and ip_test `ip` sub-projects, removed by their own `make newmodule`) and one pre-existing scaffold-definition gap: the `foreignConfig` fileMap entry required hasMdl or hasTb while the emitter imported a params block's Config module on hasOwnParams alone (xif_tb). Ruled "we cannot need a file but not scaffold it": the fileMap entry now keys on hasOwnParams only and the emitter decides through the same entry (§6, step 12a follow-up (d)). Full gates green, zero stale warnings anywhere. Committed in 9f5bfce together with inhLayout's nine new scaffold files (user's call: commit).
 - **newModule bare-wrapper scaffold and the same-named endpoint note, LANDED 2026-09-10.** `make newmodule` no longer scaffolds a bare HDL wrapper for a params-declaring block whose every variant is container-sourced (§6, step 13 follow-up). The endpoint diagnostic's same-named note is kept under rule 2 and now has a fixture and a cell (§6, step 12a follow-up (e)). Facts for 12a (d), 15 (a) and the nested-router `KeyError` are recorded at their entries; each awaits a ruling. Gates: unit 121/121; base pipeline exit 0, 66 `No error`, 0 `ERROR:`, 3 `OK:`; pro 14 `No error`; product `make clean && make gen -j` diff-stat only the builder and isp_shared rows, rundir model run and `VL_DUT=1` run (`--vlInst=tb.debayer`) two `No error` each. Ready to stage.
 - **Descriptor selectors assert one match, LANDED 2026-09-10.** The three selectors raise on zero or several matches instead of taking the first; new unit suite, runner count 121. Full gate set at baseline on the final tree. Ready to stage (§6, step 14, last bullet).
+- **artifactPaths extraction, LANDED 2026-09-10.** `expandNewModulePath`, `fileMapCondMatch` and
+  `getRegistrarFiles` moved verbatim from `pysrc/processYaml.py` into the new `pysrc/artifactPaths.py`;
+  ten callers repointed, no re-export. Behaviour-preserving; reviewed categorically, review applied.
+  Gates at baseline on the final tree (§6, step 12a follow-up (d), last bullet). Ready to stage.
 - **Step 1 LANDED 2026-08-13.** `blocksparams` carries `paramSource`/`paramSourceKey`, a foreign key onto `constants` resolved through the param row's own include chain; `param`/`paramKey` are retained unchanged as the block-scoped identity, and are deliberately NOT repointed. All four bad consumers of §5 B1, the two re-derivations of §4.5 and the orphan check now read the source link. Evidence, the mechanism chosen for the name defaulting, and the corrections to this document's own text are at "Plan of record" step 1. `examples/xprojParam/cstUse` — the probe this plan predicted would flip — **builds and runs, and is promoted into `xproj-const`** (the first half of step 6); `xproj-const-probes` is retired.
 - **Step 1 was re-measured independently, 2026-08-13.** Unit suite **101/101**; cold `make pipeline-test -j` **exit 0**; `make xproj-const -j` **exit 0** with three cells at widths **12 / 20 / 20**; **zero** unresolved `paramSourceKey` rows; the product tree cold-regenerates, builds and links. **The emitted-output delta (1693 files, zero changed) and the census were taken on trust, not re-measured** — the earlier "Emitted-output delta: none, measured. Census: unchanged at 18 of 42" claim in this bullet list is corrected to that standing. The review also corrected three of this document's own figures (cold `paramKey` baseline, database census, `builder/pro`); see step 1's landed record.
 - **One defect the review found was ruled on, FIXED, and is now VERIFIED BY BUILD (2026-08-18)** — the third silent early return in `_post_validateVariantBindingSizing`. See "Ruled on after the review" at step 1 for the measurements.
@@ -1493,7 +1497,7 @@ Rule 7 is split out as step 12b, below, and untouched by this entry.
   2026-09-10:** `make newmodule` may delete stale registrar files (they carry no user content), and
   the manifest step warns about a registrar file it does not list, recommending that cleanup. No
   run-time assert was asked for. **LANDED 2026-09-10 (with the scaffold-definition fix below).**
-  `processYaml.getRegistrarFiles(prj, blockCondData, filemap)` is the one owner of the expected
+  `artifactPaths.getRegistrarFiles(prj, blockCondData, filemap)` is the one owner of the expected
   registrar file set and the owned registrar directories; `createBuildManifest.py` reads it after its
   record loops and emits one `printWarning` per generated file (marker-classified through
   `migrateCommon.classifyGeneratedDir`) the set does not name, plus a closing line recommending
@@ -1551,8 +1555,24 @@ Rule 7 is split out as step 12b, below, and untouched by this entry.
   **Follow-ups opened here, OPEN:** (i) the manifest still derives its compile set itself; sharing
   needs the view to return per-artifact rows (`fileDef`, path, layout, owner). (ii) The create-side
   cond-row copies (`createBuildManifest.condRow`, `migrateOrphans.py` ~322) should read one helper
-  like `getBlockCondRow`. (iii) `processYaml.py` ~5802 still hardcodes `fileMap['foreignConfig']`
+  like `getBlockCondRow`. (iii) `processYaml.py` ~5685 still hardcodes `fileMap['foreignConfig']`
   by key name.
+- **artifactPaths extraction, LANDED 2026-09-10.** The three path-resolution functions the stale
+  registrar work made shared (`expandNewModulePath`, `fileMapCondMatch`, `getRegistrarFiles`, 122
+  lines) moved out of `pysrc/processYaml.py` into `pysrc/artifactPaths.py`, whose only imports are
+  `os` and the two error helpers from `arch2codeHelper`, so no import cycle. Bodies are byte-identical
+  to the deleted region (diffed against `HEAD:pysrc/processYaml.py` lines 135-256). `processYaml`
+  imports the module qualified and does not re-export the names; the ten callers
+  (`config/createBuildManifest.py`, `pysrc/newModule.py`, the five `migrate*.py` users,
+  `unittest/test_nested_ownership.py`, and the six sites inside `processYaml` itself) import from
+  `pysrc.artifactPaths`. `createBuildManifest.py` no longer imports `processYaml` at all. Review
+  applied: shorter module docstring, the redundant `_condMatch` comment deleted, continuation lines
+  realigned. `plan-split-processyaml.md` proposes a broader `projectShared` module; this is the
+  narrower cohesive slice and does not preclude that split. Gates, VERIFIED BY EXECUTION
+  2026-09-10: unit suite 122 of 122; base pipeline exit 0, 66 "No error", 0 `ERROR:`, 3 `OK:`, 0
+  stale registrar warnings; pro pipeline exit 0, 14 "No error", 0 warnings; product
+  `make clean && make gen -j` diff-stat only the `builder` and `isp_shared` rows, model run and
+  `VL_DUT=1` run (`--vlInst=tb.debayer`) two "No error" each, 0 stale registrar warnings.
 - **Follow-up (e), TESTED 2026-09-10.** The endpoint diagnostic "The block declares
   same-named parameter(s) from other file(s)" (`pysrc/processYaml.py` ~6081-6089) had no test
   reaching it. Rule 2 makes the shape legal (a same-named declaration in a file the block does not

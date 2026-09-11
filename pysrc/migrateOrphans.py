@@ -61,7 +61,7 @@ from dataclasses import dataclass, field
 from pysrc.migrateCommon import (_isGenerated, classifyGeneratedDir,
                                  extraVarRefs, SKIP_DIRS)
 from pysrc.migrateIncludes import _userIncludeSites
-from pysrc.processYaml import expandNewModulePath, fileMapCondMatch
+from pysrc.artifactPaths import expandNewModulePath, fileMapCondMatch
 
 
 # ---------------------------------------------------------------------------

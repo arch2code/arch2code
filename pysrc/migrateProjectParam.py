@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 
 from pysrc.migrateCommon import (_read, _write, _isGenerated, _loc,
                                  PARAM_MARKER, restampParamLine)
-from pysrc.processYaml import expandNewModulePath
+from pysrc.artifactPaths import expandNewModulePath
 from pysrc.genFileParam import contextParamTail, contextParamMode
 
 

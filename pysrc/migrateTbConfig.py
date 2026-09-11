@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from pysrc.migrateCommon import (_read, _write, _isGenerated, _loc, _regions,
                                  _find, _includeTarget, _importTarget,
                                  _noCodeMask, _stripBlankEnds, PARAM_MARKER)
-from pysrc.processYaml import expandNewModulePath, fileMapCondMatch
+from pysrc.artifactPaths import expandNewModulePath, fileMapCondMatch
 
 
 GEN_BEGIN = "// GENERATED_CODE_BEGIN"

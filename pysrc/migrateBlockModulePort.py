@@ -82,7 +82,7 @@ from pysrc.migrateCommon import (_read, _write, _isGenerated, _loc, _regions,
                                  paramTail, paramVariant, replaceParamVariant,
                                  restampParamLine)
 from pysrc.migrateOrphans import LEGACY_FILEMAP
-from pysrc.processYaml import expandNewModulePath, fileMapCondMatch
+from pysrc.artifactPaths import expandNewModulePath, fileMapCondMatch
 
 
 # Applied-edit kinds.

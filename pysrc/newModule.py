@@ -1,6 +1,7 @@
 # file generation
 # this file contains the templates neceesary to generate blank files for a new module
 import pysrc.processYaml as processYaml
+import pysrc.artifactPaths as artifactPaths
 import pysrc.migrateCommon as migrateCommon
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
 import os
@@ -128,9 +129,7 @@ class newModule:
     _LAYOUT_CONVENTION_KEYS = ('root', 'include', 'rundir', 'prj', 'yaml')
 
     def _condMatch(self, fileDefinition, condData):
-        # The fileMap cond/condAnd predicate is shared with the build-manifest
-        # derivation; see processYaml.fileMapCondMatch.
-        return processYaml.fileMapCondMatch(fileDefinition, condData)
+        return artifactPaths.fileMapCondMatch(fileDefinition, condData)
 
     def _selectSingleVariant(self, fileDefinition, prj, qualBlock, blockCond):
         # The variant bound into a single-emission artifact's generated-code
@@ -175,7 +174,7 @@ class newModule:
             print(f"{module} owned by project '{owner}', skipping (scaffold it from that project's rundir)")
             return
         layout = prj.projectLayout[owner]
-        filePath = processYaml.expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layout, missingDirOk=True)
+        filePath = artifactPaths.expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
         for ext in fileDefinition['ext']:
             filePathExt = filePath + "." + fileDefinition['ext'][ext]
@@ -237,7 +236,7 @@ class newModule:
     def cleanup_stale_registrar_files(self, blockCondData, prj):
         # newmodule owns registrar scaffolding, so it also deletes generated files
         # in owned registrar directories that the current contract no longer names.
-        registrarFiles, registrarDirs = processYaml.getRegistrarFiles(
+        registrarFiles, registrarDirs = artifactPaths.getRegistrarFiles(
             prj, blockCondData, prj.filemap)
         generatedInDirs, _ = migrateCommon.classifyGeneratedDir(registrarDirs)
         for staleFile in sorted(set(generatedInDirs) - registrarFiles):
@@ -314,7 +313,7 @@ class newModule:
         # mode variant-file stub, so each foreign variant is a distinct file/top.
         if variant and not fileDefinition.get('pairVlTop', False):
             fileStub += '_' + variant
-        filePath = processYaml.expandNewModulePath(fileDefinition, parentDir, childBlock, fileStub, layout, missingDirOk=True)
+        filePath = artifactPaths.expandNewModulePath(fileDefinition, parentDir, childBlock, fileStub, layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
         for ext in fileDefinition['ext']:
             filePathExt = filePath + "." + fileDefinition['ext'][ext]
@@ -381,7 +380,7 @@ class newModule:
         # absolute).
         data = dict()
         data['project'] = projectName
-        filePath = processYaml.expandNewModulePath(fileDefinition, nodeDir, '', '', layout, missingDirOk=True)
+        filePath = artifactPaths.expandNewModulePath(fileDefinition, nodeDir, '', '', layout, missingDirOk=True)
         moduleDirAbs = os.path.dirname(filePath)
         for ext in fileDefinition['ext']:
             filePathExt = filePath + "." + fileDefinition['ext'][ext]

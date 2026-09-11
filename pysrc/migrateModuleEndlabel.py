@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass, field
 
 from pysrc.migrateCommon import _read, _write, _isGenerated, _loc, userRegionLines
-from pysrc.processYaml import expandNewModulePath, fileMapCondMatch
+from pysrc.artifactPaths import expandNewModulePath, fileMapCondMatch
 
 
 # Applied-edit kind.

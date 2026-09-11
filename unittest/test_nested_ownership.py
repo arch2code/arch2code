@@ -42,7 +42,8 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 import pysrc.arch2codeGlobals as g
-from pysrc.processYaml import projectOpen, expandNewModulePath, qualifyModuleIdentity
+from pysrc.processYaml import projectOpen, qualifyModuleIdentity
+from pysrc.artifactPaths import expandNewModulePath
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'nested-ownership')
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
