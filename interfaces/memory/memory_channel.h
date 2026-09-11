@@ -318,7 +318,7 @@ inline void memory_channel<A, D>::request(bool isWrite, const A& address, D& dat
         m_addr = address;
         m_channel_req_event.notify();
         if (m_external_arb) {
-            m_external_event_ptr->notify();
+            m_external_event_ptr->notify(SC_ZERO_TIME);
         }
         m_multi_writer = false;
         return;
@@ -331,7 +331,7 @@ inline void memory_channel<A, D>::request(bool isWrite, const A& address, D& dat
     m_addr = address;
     m_channel_req_event.notify();
     if (m_external_arb) {
-        m_external_event_ptr->notify();
+        m_external_event_ptr->notify(SC_ZERO_TIME);
     }
 
     while (!m_resp_pending) {
@@ -368,7 +368,7 @@ inline void memory_channel<A, D>::requestNonBlocking(bool isWrite, const A& addr
         m_addr = address;
         m_channel_req_event.notify();
         if (m_external_arb) {
-            m_external_event_ptr->notify();
+            m_external_event_ptr->notify(SC_ZERO_TIME);
         }
         return;
     }
@@ -380,7 +380,7 @@ inline void memory_channel<A, D>::requestNonBlocking(bool isWrite, const A& addr
     m_addr = address;
     m_channel_req_event.notify();
     if (m_external_arb) {
-        m_external_event_ptr->notify();
+        m_external_event_ptr->notify(SC_ZERO_TIME);
     }
 }
 
