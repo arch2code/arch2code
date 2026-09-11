@@ -17,12 +17,15 @@
 The multi-interface arbitration pattern — one thread servicing several input
 ports via a shared `sc_event`, an `isActive()` scan, and a blocking receive only
 after activity is confirmed — is documented in `systemc-synchronization.md` §1
-and `systemc-patterns.md` §3 as if it applied to any port. It applies to seven
-channel families and is absent from the other seven:
+and `systemc-patterns.md` §3 as if it applied to any port. It applies to four
+channel families and is absent from the rest:
 
-| Has the trio | Missing it |
-| :--- | :--- |
-| `external_reg`, `notify_ack`, `pop_ack`, `push_ack`, `raw`, `req_ack`, `status` | `apb`, `axi4_stream`, `axi_read`, `axi_write`, `memory`, `rdy_vld` (base); `lmmi` (pro) |
+| Has the trio | Missing it | Partial (`setExternalEvent` only, no `isActive`/`isNotActive`) |
+| :--- | :--- | :--- |
+| `notify_ack`, `pop_ack`, `push_ack`, `req_ack` | `apb`, `axi4_stream`, `axi_read`, `axi_write`, `memory`, `rdy_vld` (base); `lmmi` (pro) | `external_reg`, `raw`, `status` |
+
+The partial families are out of scope for this change: adopting the full
+trio there is a separate issue if a consumer appears.
 
 The gap bites hardest on AXI: the receive API is blocking-only (`receiveAddr`,
 `receiveData`, `receiveDataCycle` — no peek, no non-blocking variant), and both
