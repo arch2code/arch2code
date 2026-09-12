@@ -28,6 +28,9 @@ public:
     // blocking read/write
     virtual void reqReceive(bool &isWrite, A&, D& ) = 0;
     virtual void complete(const D&) = 0; // completion only on read
+    virtual bool isActive() = 0;
+    virtual bool isNotActive() = 0;
+    virtual void setExternalEvent( sc_event *event ) = 0;
 
 protected:
     // constructor
@@ -131,6 +134,13 @@ public:
     // completer interface
     virtual void reqReceive(bool &isWrite, A&, D& ) override;
     virtual void complete(const D&) override ;
+    virtual bool isActive() override { return(m_req_pending); }
+    virtual bool isNotActive() override { return(!m_req_pending); }
+    virtual void setExternalEvent( sc_event *event ) override
+    {
+        m_external_event_ptr = event;
+        m_external_arb = true;
+    }
 
     void trace( sc_trace_file* tf ) const override;
 
@@ -179,6 +189,8 @@ protected:
     bool m_resp_pending = false;
     bool m_value_written = false; // does m_value contain data not this is seperated from the ready/valid for optimization of the task switches
     bool m_multi_writer = false;  //detect multiple writers
+    bool m_external_arb = false;
+    sc_event* m_external_event_ptr = nullptr;
 
 private:
     // disabled
@@ -305,6 +317,9 @@ inline void memory_channel<A, D>::request(bool isWrite, const A& address, D& dat
         m_data = data;
         m_addr = address;
         m_channel_req_event.notify();
+        if (m_external_arb) {
+            m_external_event_ptr->notify(SC_ZERO_TIME);
+        }
         m_multi_writer = false;
         return;
     }
@@ -315,6 +330,9 @@ inline void memory_channel<A, D>::request(bool isWrite, const A& address, D& dat
     m_resp_pending = false;
     m_addr = address;
     m_channel_req_event.notify();
+    if (m_external_arb) {
+        m_external_event_ptr->notify(SC_ZERO_TIME);
+    }
 
     while (!m_resp_pending) {
         sc_core::wait(m_channel_comp_event);
@@ -349,6 +367,9 @@ inline void memory_channel<A, D>::requestNonBlocking(bool isWrite, const A& addr
         m_data = data;
         m_addr = address;
         m_channel_req_event.notify();
+        if (m_external_arb) {
+            m_external_event_ptr->notify(SC_ZERO_TIME);
+        }
         return;
     }
 
@@ -358,6 +379,9 @@ inline void memory_channel<A, D>::requestNonBlocking(bool isWrite, const A& addr
     m_resp_pending = false;
     m_addr = address;
     m_channel_req_event.notify();
+    if (m_external_arb) {
+        m_external_event_ptr->notify(SC_ZERO_TIME);
+    }
 }
 
 

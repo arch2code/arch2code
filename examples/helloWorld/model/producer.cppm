@@ -18,6 +18,8 @@ module;
 #include "testController.h"
 #include "tagTrackers.h"
 // user #includes here
+// number of values each arbitration producer sends; must match consumer.cppm
+#define ARB_TEST_COUNT 20
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module helloWorld_producer.block;
 import helloWorld_producer.base;
@@ -42,6 +44,8 @@ public:
     void producerOutPushAck(void);
     void producerOutReqAck(void);
     void producerOutPopAck(void);
+    void producerOutRdyVldArb0(void);
+    void producerOutRdyVldArb1(void);
 };
 
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -70,6 +74,8 @@ producer::producer(sc_module_name blockName, const char * variant, blockBaseMode
     SC_THREAD(producerOutPopAck);
     SC_THREAD(producerOutReqAck);
     SC_THREAD(producerOutPushAck);
+    SC_THREAD(producerOutRdyVldArb0);
+    SC_THREAD(producerOutRdyVldArb1);
 };
 
 void producer::producerOutRdyVld(void)
@@ -148,6 +154,40 @@ void producer::producerOutPushAck(void)
     data.b = 0;
     test_push_ack->push(data);
     log_.logPrint("VA5");
+    controller.test_complete(test_name);
+}
+
+// Two independent rdy_vld producers feeding one consumer thread that
+// arbitrates between them via a shared sc_event (see consumer::consumerInRdyVldArb).
+// Both threads register against the same test name, so they wake in the same
+// delta when the test starts and their first writes race, exercising the
+// simultaneous-send / no-lost-wakeup case documented in systemc-synchronization.md.
+// ARB_TEST_COUNT must match the value used in consumer.cppm.
+void producer::producerOutRdyVldArb0(void)
+{
+    std::string test_name = "test_rdy_vld_arb";
+    testController &controller = testController::GetInstance();
+    controller.register_test_name(test_name);
+    controller.wait_test(test_name);
+    data_st data;
+    for (int i = 0; i < ARB_TEST_COUNT; i++) {
+        data.b = 1000 + i;
+        test_rdy_vld_arb0->write(data);
+    }
+    controller.test_complete(test_name);
+}
+
+void producer::producerOutRdyVldArb1(void)
+{
+    std::string test_name = "test_rdy_vld_arb";
+    testController &controller = testController::GetInstance();
+    controller.register_test_name(test_name);
+    controller.wait_test(test_name);
+    data_st data;
+    for (int i = 0; i < ARB_TEST_COUNT; i++) {
+        data.b = 2000 + i;
+        test_rdy_vld_arb1->write(data);
+    }
     controller.test_complete(test_name);
 }
 
