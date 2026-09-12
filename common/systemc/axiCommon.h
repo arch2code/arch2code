@@ -29,36 +29,18 @@ inline const char* _axiBurstT_prt( _axiBurstT val )
     return("!!!BADENUM!!!");
 }
 typedef uint8_t _axiSizeT; // [3] Bytes in transfer encoded 0=1, 1=2, 2=4, 3=8, 4=16, 5=32, 6=64, 7=128
-
-// AXI transaction ID width. Override with -DAXI_ID_WIDTH=<n>; the storage type,
-// the transaction-tracking span and every channel's idWidth follow it.
-// Default 4 reproduces the previous hard-coded behaviour exactly.
-#ifndef AXI_ID_WIDTH
-#define AXI_ID_WIDTH 4
-#endif
-static constexpr unsigned int axiIdWidth = AXI_ID_WIDTH;
-#define AXI_TRANSACTION_ID_MAX (1u << AXI_ID_WIDTH)
-#if AXI_ID_WIDTH <= 8
-typedef uint8_t _axiIdT; // AXI Id
-#elif AXI_ID_WIDTH <= 16
-typedef uint16_t _axiIdT;
-#else
-typedef uint32_t _axiIdT;
-#endif
-// Below 2 bits, Verilator's `--pins-bv 2` presents the id ports as `bool`
-// while the BFM still declares them `sc_bv<idWidth>`, so elaboration fails;
-// above 31 bits, AXI_TRANSACTION_ID_MAX's `1u << AXI_ID_WIDTH` overflows.
-// Each AXI channel also allocates several vectors of AXI_TRANSACTION_ID_MAX
-// entries, so its footprint grows as 2^AXI_ID_WIDTH.
-static_assert(AXI_ID_WIDTH >= 2 && AXI_ID_WIDTH <= 31, "AXI_ID_WIDTH must be 2..31");
+typedef uint8_t _axiIdT; // AXI id storage for the 4-bit default
 typedef uint8_t _axiLenT;
 
 struct _axi_transaction_st {
     _axi_transaction_st()
         : id(0), len(0), size(0), transactionNo(0), transactionStr(std::nullopt) {}
-    _axi_transaction_st(_axiIdT id_, uint8_t len_, _axiSizeT size_, int no, std::optional<std::string> str = std::nullopt)
+    // id holds the transaction id as a plain integer, wide enough for any
+    // bound id_t, since it is only ever used as a vector index and an
+    // equality check against another id.
+    _axi_transaction_st(uint32_t id_, uint8_t len_, _axiSizeT size_, int no, std::optional<std::string> str = std::nullopt)
         : id(id_), len(len_), size(size_), transactionNo(no), transactionStr(std::move(str)) {}
-    _axiIdT id;
+    uint32_t id;
     uint8_t len;
     _axiSizeT size;
     uint64_t transactionNo;

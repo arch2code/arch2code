@@ -55,8 +55,8 @@ public:
     notify_ack_src_bfm<> dut2Python_notify_ack_bfm;
     rdy_vld_dst_bfm<p2s_message_st, sc_bv<64>> test_rdy_vld_bfm;
     rdy_vld_src_bfm<p2s_message_st, sc_bv<64>> dut2Python_rdy_vld_bfm;
-    axi4_stream_dst_bfm<p2s_message_st, axis_tid_st, axis_tdest_st, sc_bv<64>, sc_bv<8>, sc_bv<8>, sc_bv<8>, sc_bv<8>> test_axi4_stream_bfm;
-    axi4_stream_src_bfm<p2s_message_st, axis_tid_st, axis_tdest_st, sc_bv<64>, sc_bv<8>, sc_bv<8>, sc_bv<8>, sc_bv<8>> dut2Python_axi4_stream_bfm;
+    axi4_stream_dst_bfm<p2s_message_st, axis_tid_st, axis_tdest_st, sc_bv<64>, sc_bv<8>, sc_bv<8>, sc_bv<8>, sc_bv<8>, bool> test_axi4_stream_bfm;
+    axi4_stream_src_bfm<p2s_message_st, axis_tid_st, axis_tdest_st, sc_bv<64>, sc_bv<8>, sc_bv<8>, sc_bv<8>, sc_bv<8>, bool> dut2Python_axi4_stream_bfm;
 
     SC_HAS_PROCESS (dut_hdl_sc_wrapper);
 

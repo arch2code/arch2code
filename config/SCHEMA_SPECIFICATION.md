@@ -206,6 +206,26 @@ modports:
 - **Behavior**: Like `const` but may be omitted
 - **Includes**: Can specify default in parentheses: `optionalConst(0)`
 
+#### `typeStruct`
+- **Purpose**: Field names either a `types` row or a `structures` row. SystemVerilog and SystemC treat a typedef and a struct interchangeably wherever a type is needed, so this one field type covers both without a second YAML key per site.
+- **Spellings**:
+  - `typeStruct` (bare): accepts either a `types` row or a `structures` row.
+  - `typeStruct(type)`: accepts only a `types` row.
+  - `typeStruct(struct)`: accepts only a `structures` row.
+  - `typeStruct(field, <sibling>)`: accepts whichever kind(s) the named `<sibling>` field's own value picks at resolution time. `<sibling>` must be declared in the *same section*, *before* this field (schema declaration order is the field-processing order); a forward reference or a nonexistent sibling is a schema validation error naming both fields. The sibling's value must itself be `type`, `struct`, or `typeStruct`, resolved through the same mode vocabulary as the constant spellings.
+  - Any other parenthesised argument is a schema validation error naming the field and the accepted spellings (`struct`, `type`, `field, <sibling>`).
+  - The mode vocabulary (`type` / `struct` / `typeStruct` -> accepted kinds) is declared exactly once, in `schema.py::Schema.typeStructKindsForMode`. The constant-spelling parser and `processSimple`'s `typeStruct(field, <sibling>)` resolution both call it; neither keeps its own copy of the mapping.
+- **Behavior**:
+  - The field is required.
+  - Resolves `lookupInScope` against whichever of `types`/`structures` the resolved kinds allow (`lookupInScope('types', yamlFile, name)` and/or `lookupInScope('structures', yamlFile, name)`), in the row's own file scope (its include chain, plus the `_a2csystem` fallback).
+  - Exactly one allowed hit: stores `{field}` (the name as written), `{field}Key` (`name/qualification`), and `{field}Kind` (`'types'` or `'structures'`).
+  - A hit in a section the resolved kinds do not allow: error naming the file, line, section, key, field, the accepted kind, and the name, e.g. "field X accepts only a type; 'name' is a structure (in \<context\>)".
+  - No hit anywhere: error naming the file, line, section, key, field, and the name, saying it is neither a type nor a structure visible from that file.
+  - More than one allowed hit (only reachable when the resolved kinds allow both, i.e. bare `typeStruct` or a sibling whose value is `typeStruct`): error naming the file, line, section, key, and field, saying the name is ambiguous between a type and a structure and one must be renamed. (Such a pair already collides as two same-named `typedef`s in one generated SV package, so nothing legitimate is lost by rejecting it here instead.)
+- **Consuming it**: `projectOpen.datatypeRef(kind, key)` is the one sanctioned way to dereference `{field}Kind`/`{field}Key`. It returns the resolved row plus `name`, `context`, `isParameterizable`, and `width` (the resolved bit width - a structures row's own `width` column for `kind: 'structures'`, `resolveTypeWidth(row)` for `kind: 'types'`, since a types row's `width` column holds the raw authored token, not a resolved integer). Do not read `self.data['types']`/`self.data['structures']` directly for a typeStruct field.
+- **Not a foreign key**: unlike `_validate: section:`, a typeStruct field is not `is_foreign_key` and does not participate in combo-key sourcing or the Foreign-Key Invariants below; both targets are fixed and already required to be flat with a known storage key.
+- **Worked example**: `interfaces.structures.structure` is declared `typeStruct(field, parameterDatatype)`. `parameterDatatype` is an `auto(interfaceParameterDatatype)` sibling declared just before it, which looks up the interface's own definition (via the `interfaceType: outer` field declared before that) and returns the datatype (`struct`, `type`, or `typeStruct`) that `structureType` names as a parameter. `structure:` then resolves against exactly the kind(s) that datatype allows, and a mismatch (for example a `type` bound to a `struct`-only parameter) is reported by the typeStruct primitive itself, not by a separate post hook.
+
 #### `eval`
 - **Purpose**: Computed value from expression or direct field
 - **Source**: Either named field if present, or 'eval' field with expression

@@ -63,9 +63,12 @@ done
 # Every suite the serial runner runs, for aggregation.
 ALL=("${ISOLATED[@]}" "${EXAMPLE_READERS[@]}" "$EXAMPLE_WRITER")
 
-# Guard against silently dropping suites: the serial runner runs 91 suites.
-if [[ ${#ALL[@]} -ne 91 ]]; then
-    echo "WARNING: expected 91 suites (serial-runner set), found ${#ALL[@]}." >&2
+# Guard against silently dropping or double-counting suites: ALL must contain
+# every test_*.py exactly once. Derived from the glob rather than a literal
+# count, so adding or removing a suite never requires editing this number.
+TOTAL_TEST_FILES=(test_*.py)
+if [[ ${#ALL[@]} -ne ${#TOTAL_TEST_FILES[@]} ]]; then
+    echo "WARNING: expected ${#TOTAL_TEST_FILES[@]} suites (all test_*.py), found ${#ALL[@]} in the bucketed set." >&2
     echo "         New/removed test_*.py detected; review bucket classification." >&2
 fi
 

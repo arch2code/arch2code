@@ -42,13 +42,13 @@ struct socket_axi_rd_resp_st {
 static_assert(sizeof(socket_axi_rd_req_st) == 12, "socket_axi_rd_req_st wire layout");
 static_assert(sizeof(socket_axi_rd_resp_st) == 4100, "socket_axi_rd_resp_st wire layout");
 // The wire structs above carry the AXI id as uint8_t; widen them (and their
-// Python ctypes mirrors) before using a wider AXI_ID_WIDTH.
-static_assert(AXI_ID_WIDTH <= 8, "the socket wire format carries AXI ids as uint8_t; widen the wire structs and their Python ctypes mirrors before using a wider AXI_ID_WIDTH");
+// Python ctypes mirrors) before binding an id_t wider than 8 bits.
 
 // axi_read_in: Python is AXI read slave; shell forwards DMA read bursts to Python memory.
-template <class A, class D>
-void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
+template <class A, class D, class ID = _axiIdT, unsigned IDW = 4>
+void port_socket(axi_read_in<A, D, std::monostate, std::monostate, ID, IDW> &port, const std::string &interface_name)
 {
+    static_assert(IDW <= 8, "the socket wire format carries AXI ids as uint8_t; widen the wire structs and their Python ctypes mirrors before binding an id_t wider than 8 bits");
     const int fd = socketFactory::getFd(interface_name);
     if (fd < 0) {
         return;
@@ -128,7 +128,7 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
     bool should_shutdown = false;
     uint16_t burst_index = 0;
     while (running->load(std::memory_order_acquire)) {
-        axiReadAddressSt<A> addr{};
+        axiReadAddressSt<A, std::monostate, ID, IDW> addr{};
         port->receiveAddr(addr);
 
         if (!running->load(std::memory_order_acquire)) {
@@ -147,8 +147,8 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
         if (!socketSyncRstN()) {
             const int num_beats = static_cast<int>(addr.arlen) + 1;
             for (int i = 0; i < num_beats; ++i) {
-                axiReadRespSt<D> resp{};
-                resp.rid = static_cast<_axiIdT>(addr.arid);
+                axiReadRespSt<D, std::monostate, ID, IDW> resp{};
+                resp.rid = addr.arid;
                 resp.rresp = AXIRESP_DECERR;
                 resp.rlast = (i == num_beats - 1);
                 port->sendDataCycle(resp);
@@ -203,8 +203,8 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
             // Complete the outstanding AR with dummy beats so the HDL BFM unblocks.
             const int num_beats = static_cast<int>(addr.arlen) + 1;
             for (int i = 0; i < num_beats; ++i) {
-                axiReadRespSt<D> resp{};
-                resp.rid = static_cast<_axiIdT>(addr.arid);
+                axiReadRespSt<D, std::monostate, ID, IDW> resp{};
+                resp.rid = addr.arid;
                 resp.rresp = AXIRESP_DECERR;
                 resp.rlast = (i == num_beats - 1);
                 port->sendDataCycle(resp);
@@ -226,8 +226,8 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
             if (!socketSyncRstN()) {
                 beat_abandon = true;
                 for (int j = i; j < num_beats; ++j) {
-                    axiReadRespSt<D> resp{};
-                    resp.rid = static_cast<_axiIdT>(wire_resp.rid);
+                    axiReadRespSt<D, std::monostate, ID, IDW> resp{};
+                    resp.rid = static_cast<ID>(wire_resp.rid);
                     resp.rresp = AXIRESP_DECERR;
                     resp.rlast = (j == num_beats - 1);
                     port->sendDataCycle(resp);
@@ -238,8 +238,8 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
                 // Delay before sendDataCycle keeps RVALID low on the HDL BFM.
                 socketSyncStallClocks(socketSyncBpHoldCycles());
             }
-            axiReadRespSt<D> resp{};
-            resp.rid = static_cast<_axiIdT>(wire_resp.rid);
+            axiReadRespSt<D, std::monostate, ID, IDW> resp{};
+            resp.rid = static_cast<ID>(wire_resp.rid);
             resp.rresp = static_cast<_axiResponseT>(wire_resp.rresp);
             resp.rlast = (i == num_beats - 1);
             std::memcpy(&resp.rdata, &wire_resp.data[i * beat_bytes], beat_bytes);
@@ -259,9 +259,10 @@ void port_socket(axi_read_in<A, D> &port, const std::string &interface_name)
 }
 
 // axi_read_out: Python is AXI read master; shell drives SC AR/R toward the model slave.
-template <class A, class D>
-void port_socket(axi_read_out<A, D> &port, const std::string &interface_name)
+template <class A, class D, class ID = _axiIdT, unsigned IDW = 4>
+void port_socket(axi_read_out<A, D, std::monostate, std::monostate, ID, IDW> &port, const std::string &interface_name)
 {
+    static_assert(IDW <= 8, "the socket wire format carries AXI ids as uint8_t; widen the wire structs and their Python ctypes mirrors before binding an id_t wider than 8 bits");
     const int fd = socketFactory::getFd(interface_name);
     if (fd < 0) {
         return;
@@ -354,8 +355,8 @@ void port_socket(axi_read_out<A, D> &port, const std::string &interface_name)
         socket_observe_axi_rd_req(interface_name, wire_req.arid, wire_req.araddr, wire_req.arlen,
                                   wire_req.arsize, wire_req.arburst);
 
-        axiReadAddressSt<A> addr{};
-        addr.arid = static_cast<_axiIdT>(wire_req.arid);
+        axiReadAddressSt<A, std::monostate, ID, IDW> addr{};
+        addr.arid = static_cast<ID>(wire_req.arid);
         addr.araddr.addr = wire_req.araddr;
         addr.arlen = wire_req.arlen;
         addr.arsize = static_cast<_axiSizeT>(wire_req.arsize);
@@ -368,7 +369,7 @@ void port_socket(axi_read_out<A, D> &port, const std::string &interface_name)
         wire_resp.rid = wire_req.arid;
         wire_resp.rresp = 0;
         for (int i = 0; i < num_beats; ++i) {
-            axiReadRespSt<D> resp{};
+            axiReadRespSt<D, std::monostate, ID, IDW> resp{};
             port->receiveDataCycle(resp);
             if (i == 0) {
                 wire_resp.rid = static_cast<uint8_t>(resp.rid);

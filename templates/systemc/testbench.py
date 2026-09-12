@@ -285,8 +285,8 @@ def ext_sec_header(args, prj, data):
     # Every child's Base is attached to its own named module. Per [basic.link],
     # a declaration in the global module and a declaration attached to a named
     # module declare DISTINCT entities -- a global-module forward declaration
-    # does NOT merge with the module's exported class. Clang 18 diagnoses this
-    # directly ("declaration of '<X>Base' in the global module follows
+    # does NOT merge with the module's exported class. clang 17 and 18 reject
+    # this directly ("declaration of '<X>Base' in the global module follows
     # declaration in module <x>.base"); for a parameterizable child it also
     # yields mismatched RTTI so the createInstance dynamic_pointer_cast returns
     # null. Import the child's Base module in both cases so the member type is

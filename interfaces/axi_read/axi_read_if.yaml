@@ -9,9 +9,13 @@ interface_defs:
       # user signal degrades to the one-bit placeholder the interface declares.
       aruser_t : { datatype : struct, optional : true }
       ruser_t : { datatype : struct, optional : true }
-    signals: 
+      # AXI4 transaction ID, shared by the address and data channels. Optional:
+      # an interface that binds none carries the companion templates'
+      # default, _axiIdT storage at the 4-bit width this parameter declares.
+      id_t : { datatype : type, optional : true, defaultWidth : 4 }
+    signals:
       araddr : addr_t
-      arid : 'bit [`AXI_ID_WIDTH-1:0]'
+      arid : id_t
       arlen : 'bit [7:0]'
       arsize : 'bit [2:0]'
       arburst : 'bit [1:0]'
@@ -19,7 +23,7 @@ interface_defs:
       arvalid : bool
       arready : bool
       rdata : data_t
-      rid : 'bit [`AXI_ID_WIDTH-1:0]'
+      rid : id_t
       rresp : 'bit [1:0]'
       rlast : bool
       ruser : ruser_t

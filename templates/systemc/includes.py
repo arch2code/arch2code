@@ -91,22 +91,15 @@ def includeConstants(args, prj, data):
     return("\n".join(wrap_module_namespace(args, data, out)))
 
 
-def constReference_cpp(constKey, prj, useConfig=False):
-    constName = prj.data['constants'][constKey]['constant']
-    if useConfig and prj.data['constants'][constKey]['isParameterizable']:
-        return f"Config::{constName}"
-    return constName
-
-
 def typeWidthExpression_cpp(value, prj, useConfig=False):
     """Build a C++ constexpr-compatible bit-width expression for a type.
     Delegates the language-neutral width decision tree to
     emissionUtils.typeWidthExpr, binding C++ constant spelling
-    (constReference_cpp, Config::-aware) and the C++ literal-width fallback
-    (prj.resolveTypeWidth)."""
+    (emissionUtils.constReference_cpp, Config::-aware) and the C++
+    literal-width fallback (prj.resolveTypeWidth)."""
     return emissionUtils.typeWidthExpr(
         value, emissionUtils.C,
-        constSpelling=lambda key: constReference_cpp(key, prj, useConfig),
+        constSpelling=lambda key: emissionUtils.constReference_cpp(key, prj, useConfig),
         literalWidth=lambda v: str(prj.resolveTypeWidth(v)))
 
 

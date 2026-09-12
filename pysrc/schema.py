@@ -45,7 +45,17 @@ class Field:
         self.combo_sources_qualified: List[str] = []  # Qualified versions (computed during validation)
         # Foreign key metadata - set when field has validator referencing another table
         self.is_foreign_key: bool = False
-        
+        # For a typeStruct field, exactly one of the next two is set in
+        # Schema.validate:
+        # - type_struct_kinds: the sections it may resolve against, e.g.
+        #   ('structures',), ('types',) or ('types', 'structures') for the
+        #   bare (either) spelling, or the struct/type constant spellings.
+        # - type_struct_sibling: for typeStruct(field, <sibling>), the name
+        #   of the earlier-declared field whose value picks the mode
+        #   ('type' | 'struct' | 'typeStruct') at resolution time.
+        self.type_struct_kinds: Optional[tuple] = None
+        self.type_struct_sibling: Optional[str] = None
+
     def __repr__(self):
         return f"Field({self.name}, {self.field_type})"
     
@@ -576,6 +586,25 @@ class Schema:
     }
     # match optional*() and get the bracket contents
     optional_find = re.compile(r"optional.*\(([^\)]*)\)")
+    # match typeStruct(...) and get the bracket contents
+    type_struct_find = re.compile(r"typeStruct\(([^\)]*)\)")
+    # match the typeStruct(field, <sibling>) form's bracket contents
+    type_struct_field_find = re.compile(r"^field\s*,\s*(\w+)$")
+
+    def typeStructKindsForMode(self, word):
+        """Map a typeStruct mode word to the sections it allows:
+        'type' -> ('types',), 'struct' -> ('structures',), 'typeStruct' ->
+        ('types', 'structures'). Returns None for an unrecognized word.
+
+        This is the sole place the mode vocabulary is declared. The
+        typeStruct(struct)/typeStruct(type)/bare typeStruct schema parser
+        and processYaml.py's typeStruct(field, <sibling>) resolution both
+        call this instead of each keeping their own copy of the mapping."""
+        return {
+            'type': ('types',),
+            'struct': ('structures',),
+            'typeStruct': ('types', 'structures'),
+        }.get(word)
     
     def __init__(self, schema_yaml=None, schema_file='', skip_config=False):
         self.sections: Dict[str, Node] = {}  # section_name -> Node (top-level only)
@@ -653,7 +682,7 @@ class Schema:
         """Parse and validate schema YAML, building Node/Field hierarchy"""
         valid_field_types = {
             'key', 'required', 'eval', 'const', 'optional', 'optionalConst', 'auto', 'post', 'dataGroup',
-            'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param', 
+            'list', 'outerkey', 'outer', 'multiple', '_ignore', 'collapsed', 'combo', 'param', 'typeStruct',
             'singleEntryList', 'listkey', 'subkey', 'context', 'contextKey', 'ignore', 'outerkeyKey', 'anchor'
         }
         reserved_keys = {'_validate', '_type', '_key', '_combo', '_attribs', '_singular', '_mapto'}
@@ -1013,7 +1042,44 @@ class Schema:
                     # Add fieldKey for const/param fields
                     field_key = Field(field_name + 'Key', "ignore", line_number)
                     node.add_field(field_key)
-                    
+
+                if my_type[:10] == 'typeStruct' and len(my_type) > 10:
+                    # typeStruct(struct) / typeStruct(type) fix the accepted
+                    # kinds; typeStruct(field, <sibling>) selects them at
+                    # resolution time from an earlier-declared sibling
+                    # field's value. Parsed the same way
+                    # optional(...)/optionalConst(...) parse their bracket
+                    # argument.
+                    brace_contents = self.type_struct_find.search(my_type)
+                    arg = brace_contents.group(1).strip() if brace_contents else None
+                    field_form = self.type_struct_field_find.match(arg) if arg else None
+                    if field_form:
+                        sibling = field_form.group(1)
+                        if sibling not in node.fields:
+                            printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} typeStruct(field, {sibling}) requires sibling field '{sibling}' to be declared earlier in the same section; it is not.")
+                            exit(warningAndErrorReport())
+                        field.type_struct_sibling = sibling
+                    else:
+                        kinds = self.typeStructKindsForMode(arg)
+                        if kinds is None:
+                            printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} typeStruct argument must be 'struct', 'type', or 'field, <sibling>', got '{my_type}'")
+                            exit(warningAndErrorReport())
+                        field.type_struct_kinds = kinds
+                    my_type = 'typeStruct'
+                    field.field_type = my_type
+                elif my_type == 'typeStruct':
+                    field.type_struct_kinds = self.typeStructKindsForMode('typeStruct')
+
+                if my_type == 'typeStruct':
+                    # A typeStruct field names either a types row or a
+                    # structures row (resolved in processSimple). It carries
+                    # a qualified fieldKey like const/param, plus a fieldKind
+                    # naming which of the two sections matched.
+                    field_key = Field(field_name + 'Key', "ignore", line_number)
+                    node.add_field(field_key)
+                    field_kind = Field(field_name + 'Kind', "ignore", line_number)
+                    node.add_field(field_kind)
+
                 if my_type[:8] == 'optional' and len(my_type) > 8:
                     brace_contents = self.optional_find.search(my_type)
                     if brace_contents:
@@ -1194,6 +1260,7 @@ class Schema:
             'fnStr': {},
             'post': {},
             'optionalDefault': {},
+            'typeStructKinds': {},
             'mapto': {},
             'validator': {},
             'counterReverseField': self.counter_reverse_field,
@@ -1274,7 +1341,15 @@ class Schema:
                 # Store default value
                 if field.default_value is not None:
                     data['optionalDefault'][field_path] = field.default_value
-                    
+
+                # Store what a typeStruct field resolves against: either the
+                # constant kinds tuple, or the sibling field name whose
+                # value picks the mode at resolution time.
+                if field.type_struct_kinds is not None:
+                    data['typeStructKinds'][field_path] = field.type_struct_kinds
+                elif field.type_struct_sibling is not None:
+                    data['typeStructKinds'][field_path] = field.type_struct_sibling
+
                 # Store validator
                 if field.validator:
                     if field.validator.rule_type == 'section':

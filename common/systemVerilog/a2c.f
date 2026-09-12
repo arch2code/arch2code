@@ -27,6 +27,5 @@
 -y ../../interfaces/raw
 +incdir+.
 -y .
-a2c_defines.svh
 flops.sv
 asserts.svh
