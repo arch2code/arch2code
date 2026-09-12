@@ -134,7 +134,9 @@ MIGRATE_EDIT = "edit"
 # Its scaffold-owned out-of-region content DID change (fw_ns and the standard
 # includes moved into regions), so a tree still holding the legacy shape needs its
 # includeFW pair deleted and re-scaffolded, which is not a fileMap-diff operation;
-# `config` (VariantConfig) has no legacy form at all, it did not exist in the old map.
+# `config` (VariantConfig) never existed in the old map either, but its own later
+# retirement left a surviving empty header behind, which RETIRED_CONTEXT_SIBLINGS
+# below sweeps by its still-current `include` sibling.
 LEGACY_FILEMAP = {
     "blockBase":  {"name": "Base",            "ext": {"hdr": "h"},              "cond": {"hasMdl": True, "hasTb": True},                 "mode": "block",   "basePath": "base",    "migrate": MIGRATE_DELETE},
     "block":      {"name": "",                "ext": {"hdr": "h", "src": "cpp"}, "cond": {"hasMdl": True},                                "mode": "block",   "basePath": "model",   "migrate": MIGRATE_PORT},
@@ -178,6 +180,13 @@ LEGACY_LITERAL_DELETE = [
     ("vl_wrap", "vl_wrap.h"),
     ("vl_wrap", "vl_wrap.sv"),
 ]
+
+# Retired context-mode fileMap entries, keyed by the still-current entry whose
+# artifact they were scaffolded beside. `config` (VariantConfig.h) carried no
+# content but the include guard and markers, and sat beside the current entry's
+# `<context>Includes.cppm` in both layouts, so that artifact's directory is
+# where a surviving copy is found.
+RETIRED_CONTEXT_SIBLINGS = {"include": [("VariantConfig", "h")]}
 
 
 # Applied-edit kinds.
@@ -423,6 +432,32 @@ def _literalDeletePaths(prj, report):
     return paths
 
 
+def _retiredSiblingPaths(prj):
+    """Absolute candidate paths of a retired context-mode artifact named in
+    RETIRED_CONTEXT_SIBLINGS, one entry per still-current sibling context file
+    this project owns. Mirrors `_reconstructContexts`'s expandedType/includeFiles
+    walk and `migrateProjectParam._contextModeFiles`'s ownership guard, so the
+    same directory and ownership rules that place the surviving current artifact
+    locate the retired one beside it, in either layout."""
+    projectName = prj.config.getConfig("PROJECTNAME")
+    includeFiles = prj.config.getConfig("INCLUDEFILES")
+    paths = set()
+    for currentFileType, siblings in RETIRED_CONTEXT_SIBLINGS.items():
+        for ext in prj.filemap[currentFileType]["ext"].values():
+            expandedType = f"{currentFileType}_{ext}"
+            if expandedType not in includeFiles:
+                continue
+            for context, entry in includeFiles[expandedType].items():
+                if prj.contextOwningProject[context] != projectName:
+                    continue
+                placementDir = os.path.dirname(entry["fileName"])
+                includeName = prj.includeName[context]
+                for name, retiredExt in siblings:
+                    paths.add(os.path.join(placementDir,
+                                           f"{includeName}{name}.{retiredExt}"))
+    return paths
+
+
 # ---------------------------------------------------------------------------
 # Fully-generated segment clear
 # ---------------------------------------------------------------------------
@@ -478,7 +513,8 @@ def sweepOrphans(prj, write=False):
     deleted). The remaining per-file delete targets are the `delete`-disposition
     entries in MIXED segments (`model`'s `include`, `rtl`'s `package`) expanded
     over the current DB, unioned with the explicit LEGACY_LITERAL_DELETE
-    aggregates. `port`/`edit` entries are never expanded, so they are unreachable
+    aggregates and any RETIRED_CONTEXT_SIBLINGS path found beside its still-
+    current sibling. `port`/`edit` entries are never expanded, so they are unreachable
     for deletion by construction. Every delete is marker-guarded and a plain
     filesystem delete (never `git`); a target lacking the marker is REPORTED.
 
@@ -509,8 +545,10 @@ def sweepOrphans(prj, write=False):
     perFileDeleteMap = {ft: fd for ft, fd in _dispositionMap(MIGRATE_DELETE).items()
                         if fd["basePath"] not in fullyGenerated}
     literalDeletes = _literalDeletePaths(prj, report)
+    retired = _retiredSiblingPaths(prj)
     deleteTargets = expandFileMap(prj, perFileDeleteMap, report, contexts)
     deleteTargets |= literalDeletes
+    deleteTargets |= retired
     # A literal aggregate (vl_wrap.*) lives in the vl_wrap fully-generated segment,
     # which is cleared by directory below; drop any per-file target inside a
     # fully-generated directory so it is not also deleted per-file (double delete).
@@ -564,8 +602,9 @@ def sweepOrphans(prj, write=False):
     # include/base, or the sibling header for other classes). The removed set is the
     # fileMap DIFF — the legacy (old) map expansion MINUS the current (new) map
     # expansion — i.e. exactly the artifacts that no longer exist under their old
-    # identity, plus the retired literal aggregates. Names come from the fileMap
-    # contract, never from string-manipulating one artifact's name into another.
+    # identity, plus the retired literal and RETIRED_CONTEXT_SIBLINGS aggregates.
+    # Names come from the fileMap contract, never from string-manipulating one
+    # artifact's name into another.
     # Keyed off the CURRENT map + tree, NOT the files deleted THIS run: a re-run of
     # an already-swept tree deletes nothing, but a stale user include of a removed
     # artifact is still stale and must be reported on every run until it is fixed.
@@ -579,7 +618,7 @@ def sweepOrphans(prj, write=False):
     legacyDeleteForm = expandFileMap(prj, _dispositionMap(MIGRATE_DELETE),
                                      report, contexts)
     removedNames = {os.path.basename(p)
-                    for p in (legacyDeleteForm - currentForm) | literalDeletes}
+                    for p in (legacyDeleteForm - currentForm) | literalDeletes | retired}
     rootDir = prj.projectLayout[report.projectName]["root"]
     projectData = {"dirs": {"root": "."}}
     for path, line in _userIncludeSites(rootDir, projectData, removedNames):

@@ -5,11 +5,7 @@ from pysrc.intf_gen_utils import cpp_config_module_name, CONTAINER_CONFIG_PARAM
 # prj object
 # data set dict
 def render(args, prj, data):
-    # A registrar-domain Config module has --parent on its param line; the
-    # context-mode header does not.
-    if 'parent' in data:
-        return(configModule(args, prj, data))
-    return(includeConfig(args, prj, data))
+    return(configModule(args, prj, data))
 
 
 def configModule(args, prj, data):
@@ -90,12 +86,6 @@ def configStructLines(prj, data, structName, baseValues):
         out.append(f"    static constexpr {type_str} {value['constant']} = {rhs};")
     out.append("};")
     return out
-
-
-def includeConfig(args, prj, data):
-    # The context-mode Config header stays scaffolded but carries nothing;
-    # Config structs live in the registrar-domain module (configModule).
-    return ""
 
 
 def _configSymSpelling(prj, memberNames):

@@ -111,8 +111,8 @@ def _newmodule_no_token(work):
     Ownership for BLOCK scaffolds is resolved from the DB by the generator gate,
     not from a token, so a block scaffold carries `--block` (never `--project`).
     The project-mode rtl.f carries `--project` directly. Context-mode scaffolds
-    (Includes.cppm/VariantConfig.h/_package.sv/IncludesFW.*, identified by their
-    `--context` token) carry BOTH `--context` (canonical yamlContext key) and
+    (Includes.cppm/_package.sv/IncludesFW.*, identified by their `--context`
+    token) carry BOTH `--context` (canonical yamlContext key) and
     `--project` (the context's owning project) — the S3-context dual stamp, so an
     owned file resolves ownership through `--project` and renders through
     `--context`. Build the fixture db, run `--newmodule` in the same temp tree,

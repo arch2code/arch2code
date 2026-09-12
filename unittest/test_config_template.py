@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Config struct emission through `configModule`, one module per declaring
 project and block, driven through a minimal stand-in for the `prj` view it
-calls back into. The context-mode `includeConfig` path must emit nothing."""
+calls back into."""
 
 import importlib.util
 import os
@@ -91,25 +91,10 @@ def test_config_includes_clog2_unconditionally():
     return True
 
 
-def test_context_header_emits_nothing():
-    """The context-mode path (no `parent` in data) emits nothing; Configs live
-    in the registrar-domain module."""
-    config = load_config_template()
-    args = SimpleNamespace(template='config')
-    data = {'context': 'wide.yaml'}
-    rendered = config.render(args, None, data)
-    if rendered != '':
-        print(f'FAIL: context-mode Config header rendered {rendered!r}, expected empty')
-        return False
-    print('PASS: context-mode Config header renders empty')
-    return True
-
-
 def run_all_tests():
     tests = [
         test_config_uses_maxvalue_for_type_width,
         test_config_includes_clog2_unconditionally,
-        test_context_header_emits_nothing,
     ]
     ok = True
     for test in tests:

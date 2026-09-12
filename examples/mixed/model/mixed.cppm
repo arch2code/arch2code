@@ -11,7 +11,6 @@ module;
 #include "rdy_vld_channel.h"
 #include "req_ack_channel.h"
 // GENERATED_CODE_END
-#include "mixedVariantConfig.h"
 // user #includes here
 // GENERATED_CODE_BEGIN --template=moduleExport
 export module mixed.block;

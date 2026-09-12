@@ -393,8 +393,8 @@ def test_unregistered_structures_mode_fails_loud():
 
 def test_absent_structures_mode_defaults_to_model():
     """The documented default the guard above must not reject: an absent --mode means
-    the model flavor (config_hdr and package_sv are mapped to '' in
-    _CONTEXT_FILE_MODE). Asserted on resolveMode itself and on a real render: the
+    the model flavor (package_sv is mapped to '' in _CONTEXT_FILE_MODE).
+    Asserted on resolveMode itself and on a real render: the
     cppIncludes section emits logging.h only via codeMapping['model']['prtFmt'] ==
     'split', so its presence proves the model flavor was selected, not merely that
     nothing aborted."""

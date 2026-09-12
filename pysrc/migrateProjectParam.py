@@ -143,8 +143,8 @@ def restampProjectParam(prj, write=False):
 
 def _contextModeFiles(prj):
     """Yield (fileType, contextKey, mode, path) for every context-mode generated file
-    (module Includes, VariantConfig, _package, firmware IncludesFW) this project
-    OWNS. INCLUDEFILES is keyed identically to contextOwningProject, so only this
+    (module Includes, _package, firmware IncludesFW) this project OWNS.
+    INCLUDEFILES is keyed identically to contextOwningProject, so only this
     project's own contexts are re-stamped; foreign child copies are left to their
     owning project's migration (mirrors restampProjectParam's owner guard).
 

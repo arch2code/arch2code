@@ -82,8 +82,6 @@ def render(args, prj, data):
             return(tbExternal_cppm(args, prj, data))
         case 'include_cppm':
             return(include_cppm(args, prj, data))
-        case 'config_hdr':
-            return(config_hdr(args, prj, data))
         case 'includeFW_src':
             return(includeFW_src(args, prj, data))
         case 'includeFW_hdr':
@@ -633,30 +631,9 @@ include_cppmTemplate = \
 // GENERATED_CODE_END
 """
 
-config_hdrTemplate = \
-"""
-#ifndef __HEADERGUARD___
-#define __HEADERGUARD___
-// __copyright__
-
-// GENERATED_CODE_PARAM __paramtail__
-// GENERATED_CODE_BEGIN --template=config
-// GENERATED_CODE_END
-
-#endif //__HEADERGUARD___
-"""
-
 def include_cppm(args, prj, data):
     t = TemplateCustom(include_cppmTemplate)
     return(t.substitute({
-        'paramtail':contextParamTail(data["project"], data["context"],
-                                    contextParamMode(data["target"])),
-        'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
-
-def config_hdr(args, prj, data):
-    t = TemplateCustom(config_hdrTemplate)
-    return(t.substitute({
-        'HEADERGUARD':data["headerName"].replace('.', '_').upper(),
         'paramtail':contextParamTail(data["project"], data["context"],
                                     contextParamMode(data["target"])),
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))

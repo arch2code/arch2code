@@ -547,11 +547,10 @@ def main(argv=None):
         # project-mode file needs the merged fileMap and layout placement.
         paramReport = restampProjectParam(prj, write=args.write)
         print(renderProjectParamReport(paramReport, args.write))
-        # Re-stamp context-mode artifacts (module Includes, VariantConfig,
-        # _package, firmware IncludesFW) to carry both --context (canonical
-        # yamlContext key) and --project (owning project). Same DB-backed phase:
-        # the owned-file set and canonical keys come from INCLUDEFILES +
-        # contextOwningProject.
+        # Re-stamp context-mode artifacts (module Includes, _package, firmware
+        # IncludesFW) to carry both --context (canonical yamlContext key) and
+        # --project (owning project). Same DB-backed phase: the owned-file set
+        # and canonical keys come from INCLUDEFILES + contextOwningProject.
         contextReport = restampContextParam(prj, write=args.write)
         print(renderProjectParamReport(contextReport, args.write, label="context-mode"))
         # Re-stamp the user-owned `endmodule: <label>` of each RTL block module to

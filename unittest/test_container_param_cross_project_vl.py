@@ -102,10 +102,7 @@ def make_parent_the_assembler(work):
     top = os.path.join(work, 'dpTop')
     mid_model = os.path.join(work, 'dpMid', 'model')
     for name in ('xpDpMidStdWrap.cppm', 'xpDpMidStdTop.cppm',
-                 'xpDpMidSnk.cppm', 'xpDpMidDrv.cppm',
-                 # dpMid's Config module home moves to xpDpTop once the project
-                 # reference is dropped, so newmodule below must rescaffold it.
-                 'xpDpMidVariantConfig.h'):
+                 'xpDpMidSnk.cppm', 'xpDpMidDrv.cppm'):
         os.unlink(os.path.join(mid_model, name))
     project_yaml = os.path.join(top, 'prj', 'yaml', 'xpDpTopProject.yaml')
     with open(project_yaml) as f:

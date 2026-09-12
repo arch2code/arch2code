@@ -108,9 +108,7 @@ Guide the user on creating testbenches, configuring verification components, and
 
     **`<block>Config.cpp` has no zone rules.** It is a plain translation unit, not a module unit, so its single `// user #includes and imports here` slot accepts `#include` and `import` interleaved in any order.
 
-    A `Config.cpp` commonly spells a DUT `Config` type — as any `dynamic_cast<<child><Cfg>> *>(tb_ptr->external.<member>.get())` must — and `import <block>.testbench;` does not supply it: the Config structs live in the *global module fragment* of the testbench modules, so an importer finds them reachable but **not visible**. The `tbConfig --section=prerequisites` region therefore emits `#include "<context>VariantConfig.h"` for you, one per config context the DUT block's view names (its own, plus each parameterizable child's). Do not delete it because the generated lines around it do not name a Config type — the code that needs it is yours.
-
-    That covers the usual case, including a `tb_ptr->external.<member>` sibling whose Config is declared in the same context as the DUT's, because the header is per *context* rather than per block. A Config declared in some *other* context is not in that set and is still your include, in the same slot. Symptom either way: `fatal error: missing '#include "<context>VariantConfig.h"'; '<child>DefaultConfig' must be declared before it is used`.
+    A `Config.cpp` commonly spells a DUT `Config` type, as any `dynamic_cast<<child><Cfg> *>(tb_ptr->external.<member>.get())` must. The `tbConfig --section=prerequisites` region imports the DUT block's own Config module for you (`import <project>.<block>.config;`). A Config of any other block, a parameterizable child included, is your import in the same slot, spelled the same way with that block's declaring project and name.
 
 5.  **Simulation Control:**
     *   **Start/Stop:** Use `sc_start()` and `sc_stop()`.

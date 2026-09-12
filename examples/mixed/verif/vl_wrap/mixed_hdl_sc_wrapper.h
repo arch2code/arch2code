@@ -1,9 +1,6 @@
 #ifndef MIXED_HDL_SC_WRAPPER_H_
 #define MIXED_HDL_SC_WRAPPER_H_
 
-#include "systemc.h"
-#include "instanceFactory.h"
-
 // GENERATED_CODE_PARAM --block=mixed
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=preamble
 #include "systemc.h"

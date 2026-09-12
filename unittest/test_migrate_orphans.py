@@ -35,20 +35,28 @@ Coverage (the required assertions):
 """
 
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 from collections import OrderedDict
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+test_dir = os.path.dirname(os.path.abspath(__file__))
+base_dir = os.path.dirname(test_dir)
+sys.path.insert(0, base_dir)
 
+import pysrc.arch2codeGlobals as g
+from pysrc.processYaml import projectOpen
 from pysrc.migrateOrphans import (
     sweepOrphans,
     expandFileMap,
     _dispositionMap,
     _literalDeletePaths,
     _reconstructContexts,
+    _retiredSiblingPaths,
     LEGACY_FILEMAP,
     LEGACY_LITERAL_DELETE,
+    RETIRED_CONTEXT_SIBLINGS,
     MIGRATE_DELETE,
     MIGRATE_PORT,
     MIGRATE_EDIT,
@@ -59,6 +67,9 @@ from pysrc.migrateOrphans import (
     TODO_UNMANIFESTED_SRC_DIR,
     TODO_USER_INCLUDE,
 )
+
+HIER_FIXTURE = os.path.join(test_dir, 'fixtures', 'hier-layout')
+ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
 GEN_MARKER = "// GENERATED_CODE_BEGIN\n"
 
@@ -422,6 +433,108 @@ def test_unmanifested_src_dir_reported_and_clears():
               "a directory wired onto EXTRA_PRJ_SRC_DIRS stops being reported")
 
 
+def test_retired_sibling_path_resolves_beside_current_artifact():
+    print("test_retired_sibling_path_resolves_beside_current_artifact")
+    with tempfile.TemporaryDirectory() as root:
+        prj = _FakePrj(root)
+        paths = _retiredSiblingPaths(prj)
+        model = os.path.join(root, "model")
+        expected = {os.path.join(model, f"{stem}{name}.{ext}")
+                    for stem in ("top", "usr")
+                    for siblings in RETIRED_CONTEXT_SIBLINGS.values()
+                    for name, ext in siblings}
+        check(paths == expected,
+              "retired sibling paths resolve beside each owned Includes.cppm")
+
+
+def test_retired_context_sibling_functional():
+    """The retired `config` fileMap entry (VariantConfig.h) can still be
+    sitting beside its current `include` sibling in a tree that has not run
+    the sweep since the retirement. Dry run reports it as a delete target and
+    any hand `#include` of it; write=True removes it and keeps reporting the
+    include site."""
+    print("test_retired_context_sibling_functional")
+    with tempfile.TemporaryDirectory() as root:
+        model = os.path.join(root, "model")
+        header = _write(os.path.join(model, "topVariantConfig.h"), True)
+        _write(os.path.join(model, "topIncludes.cppm"), True)
+        consumer = os.path.join(model, "consumer.cpp")
+        with open(consumer, "w") as fh:
+            fh.write('#include "topVariantConfig.h"\nint main(){return 0;}\n')
+        prj = _FakePrj(root)
+
+        report = sweepOrphans(prj, write=False)
+        check(os.path.exists(header), "dry run leaves the retired sibling on disk")
+        deletedNames = {i.location for i in report.applied if i.kind == ORPHAN_DELETE}
+        check("topVariantConfig.h" in deletedNames,
+              "dry run reports the retired sibling as a delete target")
+        includeTodos = {i.location for i in report.manual if i.kind == TODO_USER_INCLUDE}
+        check(any("consumer.cpp" in loc for loc in includeTodos),
+              "dry run reports the hand #include of the retired header")
+
+        report = sweepOrphans(prj, write=True)
+        check(not os.path.exists(header), "write=True deletes the retired sibling")
+        includeTodos = {i.location for i in report.manual if i.kind == TODO_USER_INCLUDE}
+        check(any("consumer.cpp" in loc for loc in includeTodos),
+              "the include site is still reported once the header is gone")
+
+
+def test_retired_context_sibling_hierarchical():
+    """Same retirement, on the real hierarchical fixture: the retired
+    sibling's placement is inherited from the current artifact's directory, so
+    it is found and swept under a node-relative segment too."""
+    print("test_retired_context_sibling_hierarchical")
+    tmp = tempfile.mkdtemp(prefix="migrate_orphans_hier_", dir=test_dir)
+    try:
+        for node in ("prj", "core", "leaf"):
+            shutil.copytree(os.path.join(HIER_FIXTURE, node), os.path.join(tmp, node))
+        proj = os.path.join(tmp, "prj", "yaml", "hierProject.yaml")
+        db = os.path.join(tmp, "hier.db")
+        env = os.environ.copy()
+        env["NO_COLOR"] = "1"
+        built = subprocess.run(
+            [sys.executable, ARCH2CODE, "--yaml", proj, "--db", db],
+            capture_output=True, text=True, timeout=120, cwd=tmp, env=env)
+        assert built.returncode == 0, f"db build failed:\n{built.stdout}\n{built.stderr}"
+
+        header = _write(os.path.join(tmp, "core", "model", "coreVariantConfig.h"), True)
+        consumer = os.path.join(tmp, "core", "model", "consumer.cpp")
+        with open(consumer, "w") as fh:
+            fh.write('#include "coreVariantConfig.h"\nint main(){return 0;}\n')
+
+        prj = projectOpen(db)
+        try:
+            report = sweepOrphans(prj, write=True)
+        finally:
+            if g.db is not None:
+                g.db.close()
+                g.db = None
+        check(not os.path.exists(header),
+              "hierarchical: write=True deletes the retired sibling")
+        includeTodos = {i.location for i in report.manual if i.kind == TODO_USER_INCLUDE}
+        check(any("consumer.cpp" in loc for loc in includeTodos),
+              "hierarchical: the include site is reported")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_retired_context_sibling_without_marker_reported():
+    """A retired sibling lacking the generated marker is a hand-authored
+    look-alike; report it, never delete it."""
+    print("test_retired_context_sibling_without_marker_reported")
+    with tempfile.TemporaryDirectory() as root:
+        model = os.path.join(root, "model")
+        header = _write(os.path.join(model, "topVariantConfig.h"), False)
+        _write(os.path.join(model, "topIncludes.cppm"), True)
+        prj = _FakePrj(root)
+
+        report = sweepOrphans(prj, write=True)
+        check(os.path.exists(header), "unmarked retired sibling is left in place")
+        skipped = {i.location for i in report.manual if i.kind == TODO_UNGENERATED_FILE}
+        check("topVariantConfig.h" in skipped,
+              "unmarked retired sibling is reported TODO_UNGENERATED_FILE")
+
+
 if __name__ == "__main__":
     test_delete_dispatch_sweeps_delete_entries_and_literals()
     test_port_and_edit_never_deleted()
@@ -431,5 +544,9 @@ if __name__ == "__main__":
     test_dry_run_changes_nothing()
     test_literal_delete_resolves_against_layout()
     test_unmanifested_src_dir_reported_and_clears()
+    test_retired_sibling_path_resolves_beside_current_artifact()
+    test_retired_context_sibling_functional()
+    test_retired_context_sibling_hierarchical()
+    test_retired_context_sibling_without_marker_reported()
     print(f"\nResult: {'PASS' if FAIL == 0 else 'FAIL'} ({PASS} checks, {FAIL} failures)")
     sys.exit(1 if FAIL else 0)

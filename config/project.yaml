@@ -158,7 +158,6 @@ fileGeneration:
     tbConfig    : { name : "Config",          ext: {src: "cpp"},           cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    dutVariant: true, desc: "Testbench config files"}
     tbExternal  : { name : "External",        ext: {cppm: "cppm"},         cond: {hasTb: true}, blockDir: true, mode: block,   basePath: tb,    dutVariant: true, desc: "Testbench external module interface unit"}
     include     : { name : "Includes",        ext: {cppm: "cppm"},           cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based include module interface"}
-    config      : { name : "VariantConfig",   ext: {hdr: "h"},               cond: {smartInclude: true},          mode: context, basePath: model,   desc: "yaml based default config header"}
     #includeFW   : { name : "IncludesFW",      ext: {hdr: "h", src: "cpp"}, cond: {smartInclude: true},          mode: context, basePath: fwInc,   desc: "yaml based fw include file"}
     # Address defines for the whole product, one file per project, so a project
     # wanting them declares the entry. name: is the literal basename, so a product

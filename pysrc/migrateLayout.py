@@ -108,7 +108,7 @@ MOVE_SOURCE = "SOURCE"                 # user-editable generated source (carries
 # vl_wrap). Listing them makes those segments classify fully-generated so the
 # migration clears them by directory (below).
 FULLY_GENERATED_FILEMAP_KEYS = frozenset({
-    "blockBase", "blockRegistrar", "include", "config", "package",
+    "blockBase", "blockRegistrar", "include", "package",
     "vlSvWrap", "vlSvWrapBody", "vlScWrap",
     "tandem", "blockVlRegistrar", "foreignConfig", "vlSvWrapForeign",
 })
@@ -539,7 +539,7 @@ def _fullyGeneratedSegments(fileMap):
 def _matchesFullyGenerated(base, genEntries):
     """True when `base` matches a recognized fully-generated fileMap entry's
     `name` suffix + extension. Every recognized fully-generated entry carries a
-    non-empty `name` (Base, Registrar, Includes, VariantConfig, _package,
+    non-empty `name` (Base, Registrar, Includes, _package,
     _hdl_sv_wrapper, _hdl_sc_wrapper), so no entry matches every file."""
     for entry in genEntries:
         name = entry["name"]

@@ -2525,11 +2525,8 @@ class projectOpen:
                     or registerBusChildBind(instanceData['instanceTypeKey'], portName))
 
         def channelParentConfig(connVal, parentInterfaceKey):
-            # The up-side Config every end of this connection is adapted against.
-            # An end whose block declares its own interface is adapted regardless,
-            # so it is excluded from the election; the rest elect the Config, and
-            # any of them differing from it is adapted too. Excluding only the
-            # interface-difference set keeps the election non-circular.
+            # The Config the channel is emitted at. An end that declares its own
+            # interface is adapted regardless, so only the other ends elect it.
             adapted = set()
             for endKey, endData in (connVal.get('ends') or {}).items():
                 childInterfaceKey = declaredChildInterfaceKey(
@@ -6279,18 +6276,11 @@ class projectCreate:
                         files[fileType] = fileInfo
 
         includeFiles = dict()
-        config_contexts = self._configHeaderContexts()
         for fileType, fileData in files.items():
             smartInclude = fileData['cond']['smartInclude']
             for include, includeData in self.includeValid.items():
                 includeName = self.includeName[include]
                 valid = includeData['valid']
-                if fileType == 'config':
-                    # Config headers are a narrower surface than ordinary
-                    # context includes. A YAML file with only fixed
-                    # structures/types still needs Includes.{h,cppm}, but it
-                    # should not grow an empty *Config.h.
-                    valid = include in config_contexts
                 if not(smartInclude and not valid):
                     # Resolve under the layout of the project that owns this
                     # context (its defining file). include is the context's
@@ -6316,29 +6306,6 @@ class projectCreate:
                         includeFiles.setdefault(expandedType, {})[include] = entry
 
         self.config.setConfig('INCLUDEFILES', includeFiles)
-
-    def _configHeaderContexts(self):
-        contexts = set()
-        # Every context that declares a parameterizable constant emits a
-        # <context>DefaultConfig struct.
-        for const_row in self.flatData['constants'].values():
-            if const_row['isParameterizable'] and const_row['_context']:
-                contexts.add(const_row['_context'])
-
-        # Blocks with own params still emit (or share) per-variant Config
-        # structs when the project binds an instance of the block. The header
-        # is keyed on the block's canonical config context, where its Config
-        # struct is emitted, not its declaring context. configContext is
-        # mirrored onto the block rows by calcBlockConfigInfo earlier in this
-        # pass.
-        instanced = {row['instanceTypeKey'] for row in self.flatData['instances'].values()}
-        blocks_with_params = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
-        block_by_key = {row['blockKey']: row for row in self.flatData['blocks'].values()}
-        for block_key in instanced & blocks_with_params:
-            config_context = block_by_key[block_key]['configContext']
-            if config_context:
-                contexts.add(config_context)
-        return contexts
 
     _PROJECT_ADDRESS_GROUP_FIELDS = {'varType': None, 'enumPrefix': None}
     _PROJECT_ADDRESS_OBJECT_FIELDS = {'alignment': None,
