@@ -44,10 +44,14 @@ import pysrc.intf_gen_utils as intf_gen_utils
 
 # One fixture drives every check. `awNone` binds no optional payload,
 # `awGap` binds only the last of axi_write's three (awuser_t, wuser_t,
-# buser_t), so the first two are gaps. `streamPlain` / `streamUser` leave
-# axi4_stream's tuser_t unbound / bound; tuser_t types the `tuser` signal, so
-# the unbound case is the one that used to reach the boundary width helper with
-# an empty structureKey. The last connection binds parent `awGap` to child
+# buser_t), so the first two are gaps. `awHead` binds only the first
+# (awuser_t), leaving wuser_t and buser_t as a trailing unbound run for the
+# payload list, but not for the BFM's bridge group, which still needs a bridge
+# type per optional ahead of awuser_t's own payload slot. `streamPlain` /
+# `streamUser` leave axi4_stream's tuser_t unbound / bound; tuser_t types the
+# `tuser` signal, so the unbound case is the one that used to reach the
+# boundary width helper with an empty structureKey. The last connection binds
+# parent `awGap` to child
 # `awNone`, which is a cross-interface bind whose only difference is an optional
 # payload bound on one end and unbound on the other.
 #
@@ -55,6 +59,10 @@ import pysrc.intf_gen_utils as intf_gen_utils
 # the required parameters p_a and p_b first, the optional p_opt last. Its
 # optional payload types a signal, so it also contributes a Verilated bridge
 # type, which is what makes the BFM's spliced argument group visible.
+#
+# `width4_opt` is a second locally declared interface whose optional parameter
+# p_w4 declares `defaultWidth: 4`, so `w4Unbound` exercises the width an
+# unbound optional falls back to when that default is not 1.
 ARCH_YAML = """interface_defs:
   tail_opt:
     parameters:
@@ -77,6 +85,63 @@ ARCH_YAML = """interface_defs:
     sc_channel:
       type: 'tail_opt'
       multicycle_types: []
+  width4_opt:
+    parameters:
+      p_a: {datatype: struct}
+      p_w4: {datatype: struct, optional: true, defaultWidth: 4}
+    signals:
+      valid: bool
+      ready: bool
+      sig_a: p_a
+      sig_w4: p_w4
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_a', 'sig_w4']
+      dst:
+        inputs: ['valid', 'sig_a', 'sig_w4']
+        outputs: ['ready']
+    sc_channel:
+      type: 'width4_opt'
+      multicycle_types: []
+  type_opt:
+    parameters:
+      p_a: {datatype: struct}
+      p_ty: {datatype: type, optional: true, defaultWidth: 4}
+    signals:
+      valid: bool
+      ready: bool
+      sig_a: p_a
+      sig_ty: p_ty
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_a', 'sig_ty']
+      dst:
+        inputs: ['valid', 'sig_a', 'sig_ty']
+        outputs: ['ready']
+    sc_channel:
+      type: 'type_opt'
+      multicycle_types: []
+  typeStruct_opt:
+    parameters:
+      p_a: {datatype: struct}
+      p_ts: {datatype: typeStruct}
+    signals:
+      valid: bool
+      ready: bool
+      sig_a: p_a
+      sig_ts: p_ts
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_a', 'sig_ts']
+      dst:
+        inputs: ['valid', 'sig_a', 'sig_ts']
+        outputs: ['ready']
+    sc_channel:
+      type: 'typeStruct_opt'
+      multicycle_types: []
 
 constants:
   ADDR_WIDTH: {value: 32, desc: "Address width"}
@@ -91,6 +156,7 @@ types:
   strbT: {width: STRB_WIDTH, desc: "Strobe"}
   userT: {width: USER_WIDTH, desc: "User sideband"}
   idT: {width: ID_WIDTH, desc: "Stream id"}
+  idType9: {width: 9, desc: "A 9-bit datatype: type payload"}
 
 variables:
   addr: {type: addrT, desc: "Address"}
@@ -122,6 +188,14 @@ interfaces:
       - {structure: awDataSt, structureType: data_t}
       - {structure: awStrbSt, structureType: strb_t}
       - {structure: userSt, structureType: buser_t}
+  awHead:
+    interfaceType: axi_write
+    desc: "axi_write binding only the first optional payload"
+    structures:
+      - {structure: awAddrSt, structureType: addr_t}
+      - {structure: awDataSt, structureType: data_t}
+      - {structure: awStrbSt, structureType: strb_t}
+      - {structure: userSt, structureType: awuser_t}
   streamPlain:
     interfaceType: axi4_stream
     desc: "axi4_stream leaving tuser unbound"
@@ -150,6 +224,34 @@ interfaces:
     structures:
       - {structure: awAddrSt, structureType: p_a}
       - {structure: awDataSt, structureType: p_b}
+  w4Unbound:
+    interfaceType: width4_opt
+    desc: "width4_opt leaving its defaultWidth: 4 optional unbound"
+    structures:
+      - {structure: awAddrSt, structureType: p_a}
+  typeStructBoundToStruct:
+    interfaceType: typeStruct_opt
+    desc: "typeStruct_opt binding its typeStruct payload to a structure"
+    structures:
+      - {structure: awAddrSt, structureType: p_a}
+      - {structure: userSt, structureType: p_ts}
+  typeStructBoundToType:
+    interfaceType: typeStruct_opt
+    desc: "typeStruct_opt binding its typeStruct payload to a type"
+    structures:
+      - {structure: awAddrSt, structureType: p_a}
+      - {structure: idType9, structureType: p_ts}
+  typeBound:
+    interfaceType: type_opt
+    desc: "type_opt binding its datatype: type payload to a 9-bit type"
+    structures:
+      - {structure: awAddrSt, structureType: p_a}
+      - {structure: idType9, structureType: p_ty}
+  typeUnbound:
+    interfaceType: type_opt
+    desc: "type_opt leaving its datatype: type payload unbound"
+    structures:
+      - {structure: awAddrSt, structureType: p_a}
 
 blocks:
   top: {desc: "Top block"}
@@ -158,12 +260,18 @@ blocks:
     desc: "Consumer block"
     ports:
       inAwGap: {interface: awGap, direction: dst}
+      inAwHead: {interface: awHead, direction: dst}
       inAwNone: {interface: awNone, direction: dst}
       inStreamPlain: {interface: streamPlain, direction: dst}
       inStreamUser: {interface: streamUser, direction: dst}
       inAwCross: {interface: awNone, direction: dst}
       inTailBound: {interface: tailBound, direction: dst}
       inTailUnbound: {interface: tailUnbound, direction: dst}
+      inW4Unbound: {interface: w4Unbound, direction: dst}
+      inTypeBound: {interface: typeBound, direction: dst}
+      inTypeUnbound: {interface: typeUnbound, direction: dst}
+      inTypeStructBoundToStruct: {interface: typeStructBoundToStruct, direction: dst}
+      inTypeStructBoundToType: {interface: typeStructBoundToType, direction: dst}
 
 instances:
   uTop: {container: top, instanceType: top}
@@ -172,12 +280,18 @@ instances:
 
 connections:
   - {interface: awGap, src: uProducer, srcport: outAwGap, dst: uConsumer, dstport: inAwGap}
+  - {interface: awHead, src: uProducer, srcport: outAwHead, dst: uConsumer, dstport: inAwHead}
   - {interface: awNone, src: uProducer, srcport: outAwNone, dst: uConsumer, dstport: inAwNone}
   - {interface: streamPlain, src: uProducer, srcport: outStreamPlain, dst: uConsumer, dstport: inStreamPlain}
   - {interface: streamUser, src: uProducer, srcport: outStreamUser, dst: uConsumer, dstport: inStreamUser}
   - {interface: awGap, src: uProducer, srcport: outAwCross, dst: uConsumer, dstport: inAwCross}
   - {interface: tailBound, src: uProducer, srcport: outTailBound, dst: uConsumer, dstport: inTailBound}
   - {interface: tailUnbound, src: uProducer, srcport: outTailUnbound, dst: uConsumer, dstport: inTailUnbound}
+  - {interface: w4Unbound, src: uProducer, srcport: outW4Unbound, dst: uConsumer, dstport: inW4Unbound}
+  - {interface: typeBound, src: uProducer, srcport: outTypeBound, dst: uConsumer, dstport: inTypeBound}
+  - {interface: typeUnbound, src: uProducer, srcport: outTypeUnbound, dst: uConsumer, dstport: inTypeUnbound}
+  - {interface: typeStructBoundToStruct, src: uProducer, srcport: outTypeStructBoundToStruct, dst: uConsumer, dstport: inTypeStructBoundToStruct}
+  - {interface: typeStructBoundToType, src: uProducer, srcport: outTypeStructBoundToType, dst: uConsumer, dstport: inTypeStructBoundToType}
 """
 
 
@@ -322,7 +436,8 @@ def test_binding_list_shape(proj):
          ('strb_t', 'awStrbSt', False, False),
          ('awuser_t', '', True, True),
          ('wuser_t', '', True, True),
-         ('buser_t', 'userSt', True, False)],
+         ('buser_t', 'userSt', True, False),
+         ('id_t', '', True, True)],
         "awGap bindings keep the two unbound optionals ahead of the bound one")
 
     check_equal(
@@ -332,7 +447,8 @@ def test_binding_list_shape(proj):
          ('strb_t', 'awStrbSt', False, False),
          ('awuser_t', '', True, True),
          ('wuser_t', '', True, True),
-         ('buser_t', '', True, True)],
+         ('buser_t', '', True, True),
+         ('id_t', '', True, True)],
         "awNone bindings still carry all three unbound optionals")
 
     check_equal(
@@ -410,7 +526,7 @@ def test_optional_tail_split_by_consumers(proj, consumer):
                 "the BFM payload arguments are the channel's, in the same order")
 
     # The unbound optional is a trailing unbound run of one, so it is dropped
-    # rather than sentinel-filled, in the payloads and in the bridge group.
+    # rather than sentinel-filled in the port and channel argument lists.
     unbound = sc_mp(proj, consumer, 'inTailUnbound')
     check_equal(unbound['port_decl'],
                 'tail_opt_in<awAddrSt, awDataSt> inTailUnbound;',
@@ -419,9 +535,10 @@ def test_optional_tail_split_by_consumers(proj, consumer):
                 'tail_opt_channel<awAddrSt, awDataSt> inTailUnbound;',
                 "an unbound optional tail is dropped from the channel too")
     check_equal(unbound['bfm_decl'],
-                'tail_opt_dst_bfm<awAddrSt, awDataSt, sc_bv<32>, sc_bv<32>> '
-                'inTailUnbound_bfm;',
-                "unbound p_opt contributes neither payload nor bridge type")
+                'tail_opt_dst_bfm<awAddrSt, awDataSt, sc_bv<32>, sc_bv<32>, '
+                'bool> inTailUnbound_bfm;',
+                "an unbound optional tail still occupies its bridge slot in "
+                "the BFM")
     check(intf_gen_utils.SC_NULL_PAYLOAD_TYPE not in unbound['port_decl'],
           "a trailing unbound optional needs no absence sentinel")
 
@@ -465,8 +582,8 @@ def test_gap_filled_with_sentinel(proj, consumer):
     check_equal(
         sc['bfm_decl'],
         'axi_write_dst_bfm<awAddrSt, awDataSt, awStrbSt, sc_bv<32>, sc_bv<32>, '
-        'sc_bv<4>, bool, bool, sc_bv<8>, std::monostate, std::monostate, '
-        'userSt> inAwGap_bfm;',
+        'sc_bv<4>, bool, bool, sc_bv<8>, sc_bv<4>, std::monostate, '
+        'std::monostate, userSt> inAwGap_bfm;',
         "awGap BFM fills the gaps after the Verilated bridge group")
 
     # Both AXI4 USER sidebands of a read interface reach the HDL boundary the
@@ -485,8 +602,10 @@ def test_gap_filled_with_sentinel(proj, consumer):
 def test_trailing_optional_omitted(proj, consumer):
     """A trailing run of unbound optionals is dropped, not sentinel-filled.
 
-    These are the exact argument lists the generator produced before axi_write
-    gained its three optional user payloads.
+    The port and channel argument lists are the exact ones the generator
+    produced before axi_write gained its three optional user payloads; the
+    BFM's bridge group still carries a placeholder per unbound optional,
+    because that group precedes the payload group in its declaration.
     """
     print("\n[trailing] unbound trailing optionals are omitted entirely")
     sc = sc_mp(proj, consumer, 'inAwNone')
@@ -499,8 +618,10 @@ def test_trailing_optional_omitted(proj, consumer):
                 "awNone SystemC channel is spelled as it was pre-feature")
     check_equal(sc['bfm_decl'],
                 'axi_write_dst_bfm<awAddrSt, awDataSt, awStrbSt, sc_bv<32>, '
-                'sc_bv<32>, sc_bv<4>> inAwNone_bfm;',
-                "awNone BFM is spelled as it was pre-feature")
+                'sc_bv<32>, sc_bv<4>, bool, bool, bool, sc_bv<4>> '
+                'inAwNone_bfm;',
+                "awNone BFM carries a placeholder for each unbound sideband "
+                "bridge")
     check(intf_gen_utils.SC_NULL_PAYLOAD_TYPE not in sc['port_decl'],
           "no absence sentinel appears when every unbound optional is trailing")
 
@@ -512,6 +633,35 @@ def test_trailing_optional_omitted(proj, consumer):
                 'axi4_stream_hdl_if<sc_bv<32>, sc_bv<4>, sc_bv<4>, sc_bv<4>, '
                 'sc_bv<4>> inStreamPlain_hdl_if;',
                 "streamPlain bridge omits the trailing tuser_t bridge type")
+
+
+def test_head_bound_keeps_bfm_bridge_group_whole(proj, consumer):
+    """Binding only the FIRST optional payload still fills the whole bridge group.
+
+    awHead binds awuser_t and leaves wuser_t/buser_t unbound, so the trimmed
+    payload tail is just awuser_t: the SystemC port/channel are spelled exactly
+    as awNone's trailing-trim rule would spell them, one payload longer. The
+    BFM is different: trimming the bridge group the same way would leave it one
+    argument short, which would shift awuser_t's own VL_ bridge slot onto
+    wuser_t's, so the BFM must carry a bridge type for every optional, bound or
+    not, ahead of the payload.
+    """
+    print("\n[head] binding only the first optional keeps the bridge group whole")
+    sc = sc_mp(proj, consumer, 'inAwHead')
+
+    check_equal(sc['port_decl'],
+                'axi_write_in<awAddrSt, awDataSt, awStrbSt, userSt> inAwHead;',
+                "awHead SystemC port keeps the trailing trim, one payload longer")
+    check_equal(sc['channel_decl'],
+                'axi_write_channel<awAddrSt, awDataSt, awStrbSt, userSt> '
+                'inAwHead;',
+                "awHead SystemC channel keeps the same trailing trim")
+    check_equal(sc['bfm_decl'],
+                'axi_write_dst_bfm<awAddrSt, awDataSt, awStrbSt, sc_bv<32>, '
+                'sc_bv<32>, sc_bv<4>, sc_bv<8>, bool, bool, sc_bv<4>, '
+                'userSt> inAwHead_bfm;',
+                "awHead BFM carries the complete bridge group before the "
+                "payload, placeholders and all")
 
 
 def test_unbound_optional_signal_blast(proj, consumer):
@@ -592,9 +742,11 @@ def test_thunker_split_and_gap(proj, top):
         [('parent', 'addr_t', False, False), ('parent', 'data_t', False, False),
          ('parent', 'strb_t', False, False), ('parent', 'awuser_t', True, True),
          ('parent', 'wuser_t', True, True), ('parent', 'buser_t', True, False),
+         ('parent', 'id_t', True, True),
          ('child', 'addr_t', False, False), ('child', 'data_t', False, False),
          ('child', 'strb_t', False, False), ('child', 'awuser_t', True, True),
-         ('child', 'wuser_t', True, True), ('child', 'buser_t', True, True)],
+         ('child', 'wuser_t', True, True), ('child', 'buser_t', True, True),
+         ('child', 'id_t', True, True)],
         "thunker view carries each side's full binding list in declared order")
 
     decls = intf_gen_utils.sc_declare_thunkers(top, proj, '', top)
@@ -618,6 +770,488 @@ def test_thunker_split_and_gap(proj, top):
     check_equal(args[6:], ['std::monostate', 'std::monostate', 'userSt'],
                 "the up-side optional group follows both required groups, with "
                 "its gaps sentinel-filled")
+
+
+def test_default_width_four_optional(proj, consumer):
+    """An unbound optional's defaultWidth types the signals it defaults to.
+
+    width4_opt declares p_w4 with defaultWidth: 4; w4Unbound leaves it unbound.
+    The bridge and boundary port take that four-bit width instead of the
+    width-1 fallback the other fixtures exercise, while the payload lists it
+    would otherwise appear in still drop the trailing unbound run exactly as
+    the width-1 case does.
+    """
+    print("\n[defaultWidth] an unbound optional with defaultWidth: 4 types its "
+          "signals four bits wide")
+    sc = sc_mp(proj, consumer, 'inW4Unbound')
+
+    check_equal(sc['port_decl'],
+                'width4_opt_in<awAddrSt> inW4Unbound;',
+                "the trailing unbound optional is still dropped from the port")
+    check_equal(sc['channel_decl'],
+                'width4_opt_channel<awAddrSt> inW4Unbound;',
+                "and from the channel")
+    check_equal(sc['bfm_decl'],
+                'width4_opt_dst_bfm<awAddrSt, sc_bv<32>, sc_bv<4>> '
+                'inW4Unbound_bfm;',
+                "the BFM bridge group carries defaultWidth's sc_bv<4>, not the "
+                "width-1 placeholder")
+
+    sv = sv_mp(proj, consumer, 'inW4Unbound')
+    check('input bit [3:0] inW4Unbound_sig_w4' in sv['ports'],
+          "the boundary port is defaultWidth wide")
+    check('.p_w4(' not in sv['intf_decl'],
+          "the unbound optional gets no named association")
+
+
+def test_type_datatype_optional_payload(proj, consumer):
+    """A `datatype: type` payload spells its width as a second template argument.
+
+    type_opt's p_ty is a datatype: type parameter, optional, defaultWidth: 4,
+    bound to the 9-bit type idType9. Bound, it is spelled as a (name, width)
+    pair rather than the single name a struct payload spells; unbound, it is
+    the interface's only optional parameter and therefore trailing, so it is
+    dropped from the port/channel exactly as a struct payload would be, while
+    the BFM's bridge group still carries its defaultWidth: 4.
+    """
+    print("\n[type] a datatype: type payload spells (name, width)")
+    bound = sc_mp(proj, consumer, 'inTypeBound')
+    check_equal(bound['port_decl'],
+                'type_opt_in<awAddrSt, idType9, 9> inTypeBound;',
+                "a bound type payload is spelled as its name and width")
+    check_equal(bound['channel_decl'],
+                'type_opt_channel<awAddrSt, idType9, 9> inTypeBound;',
+                "the channel spells the same two arguments")
+    check_equal(bound['hdl_if_decl'],
+                'type_opt_hdl_if<sc_bv<32>, sc_bv<9>> inTypeBound_hdl_if;',
+                "the bridge carries the type's own width")
+
+    unbound = sc_mp(proj, consumer, 'inTypeUnbound')
+    check_equal(unbound['port_decl'],
+                'type_opt_in<awAddrSt> inTypeUnbound;',
+                "an unbound trailing type payload is dropped, not sentinel-filled")
+    check_equal(unbound['channel_decl'],
+                'type_opt_channel<awAddrSt> inTypeUnbound;',
+                "and from the channel")
+    check_equal(unbound['bfm_decl'],
+                'type_opt_dst_bfm<awAddrSt, sc_bv<32>, sc_bv<4>> inTypeUnbound_bfm;',
+                "the BFM bridge group still carries the parameter's defaultWidth: 4")
+
+    sv_bound = sv_mp(proj, consumer, 'inTypeBound')
+    check_equal(sv_bound['intf_decl'],
+                'type_opt_if #(.p_a(awAddrSt), .p_ty(idType9)) inTypeBound();',
+                "the bound type payload is associated by name, like a struct payload")
+    check('input bit [8:0] inTypeBound_sig_ty' in sv_bound['ports'],
+          "the boundary port is the bound type's own 9-bit width")
+
+    sv_unbound = sv_mp(proj, consumer, 'inTypeUnbound')
+    check('.p_ty(' not in sv_unbound['intf_decl'],
+          "an unbound type payload gets no named association")
+    check('input bit [3:0] inTypeUnbound_sig_ty' in sv_unbound['ports'],
+          "an unbound type payload's boundary port falls back to defaultWidth: 4")
+
+
+def test_typestruct_datatype_arity_follows_datatype_not_kind(proj, consumer):
+    """A `datatype: typeStruct` payload always spells two arguments.
+
+    typeStruct_opt's p_ts declares `datatype: typeStruct`, so it accepts a
+    binding to either a structures row or a types row. Bound to a structure
+    (typeStructBoundToStruct), it is named and widthed exactly as a struct
+    payload would be, just paired with that structure's own width as a second
+    argument; bound to a type (typeStructBoundToType), it spells like any
+    other type payload. Arity is two either way, driven by the parameter's
+    declared datatype, not by which kind it happens to be bound to.
+    """
+    print("\n[typeStruct] a datatype: typeStruct payload always spells two "
+          "arguments, whichever kind it is bound to")
+    toStruct = sc_mp(proj, consumer, 'inTypeStructBoundToStruct')
+    check_equal(toStruct['port_decl'],
+                'typeStruct_opt_in<awAddrSt, userSt, 8> inTypeStructBoundToStruct;',
+                "bound to a structure, the payload is spelled as the "
+                "structure's name and its own width")
+    check_equal(toStruct['channel_decl'],
+                'typeStruct_opt_channel<awAddrSt, userSt, 8> inTypeStructBoundToStruct;',
+                "the channel spells the same two arguments")
+
+    toType = sc_mp(proj, consumer, 'inTypeStructBoundToType')
+    check_equal(toType['port_decl'],
+                'typeStruct_opt_in<awAddrSt, idType9, 9> inTypeStructBoundToType;',
+                "bound to a type, the payload is spelled as the type's name "
+                "and its own width")
+    check_equal(toType['channel_decl'],
+                'typeStruct_opt_channel<awAddrSt, idType9, 9> inTypeStructBoundToType;',
+                "the channel spells the same two arguments")
+
+    check_equal(sv_mp(proj, consumer, 'inTypeStructBoundToStruct')['intf_decl'],
+                'typeStruct_opt_if #(.p_a(awAddrSt), .p_ts(userSt)) '
+                'inTypeStructBoundToStruct();',
+                "SystemVerilog associates a typeStruct payload by name like "
+                "any other payload")
+
+
+def test_typestruct_datatype_rejects_mismatched_kind():
+    """A `datatype: struct`/`datatype: type` parameter still rejects the
+    other kind; only `typeStruct` accepts either.
+
+    `interfaces.structures.structure` is declared `typeStruct(field,
+    parameterDatatype)`, so binding a type to a struct-only parameter is
+    rejected by the typeStruct primitive itself (resolveTypeStruct), not by a
+    post hook: the build fails with the primitive's own "accepts only a
+    structure" message.
+    """
+    print("\n[negative] a type bound to a datatype: struct parameter is rejected")
+    with tempfile.TemporaryDirectory(prefix='optional_params_negative_') as tmpdir:
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write("""interface_defs:
+  bad_struct_datatype:
+    parameters:
+      p_a: {datatype: struct}
+    signals:
+      valid: bool
+      ready: bool
+      sig_a: p_a
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_a']
+      dst:
+        inputs: ['valid', 'sig_a']
+        outputs: ['ready']
+    sc_channel:
+      type: 'bad_struct_datatype'
+      multicycle_types: []
+
+types:
+  badIdType9: {width: 9, desc: "9-bit probe type"}
+
+interfaces:
+  badBind:
+    interfaceType: bad_struct_datatype
+    desc: "binds a type to a struct-only parameter"
+    structures:
+      - {structure: badIdType9, structureType: p_a}
+
+blocks:
+  top: {desc: "Top block"}
+
+instances:
+  uTop: {container: top, instanceType: top}
+""")
+        projectPath = os.path.join(projDir, 'badBindProject.yaml')
+        with open(projectPath, 'w') as f:
+            f.write("""projectName: badBind
+yamlFormat: 2
+topInstance: uTop
+
+dirs:
+  root: ..
+
+projectFiles:
+  - arch.yaml
+""")
+        dbPath = os.path.join(tmpdir, 'badBind.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', dbPath],
+            capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+        if result.returncode == 0:
+            check(False, "a type bound to a struct-only parameter must fail the build")
+            return
+        message = result.stdout
+        print(f"  {message.strip()}")
+        check("arch.yaml" in message, "the message names the file to edit")
+        check("field structure" in message, "the message names the typeStruct field")
+        check("accepts only a structure" in message,
+              "the message states what datatype: struct accepts")
+        check("'badIdType9' is a type" in message,
+              "the message names the value and the kind it was actually bound to")
+
+
+PARAM_TYPE_ARCH_YAML = """interface_defs:
+  ts_proto:
+    parameters:
+      p_ts: {{datatype: typeStruct}}
+      p_ty: {{datatype: type, optional: true, defaultWidth: 4}}
+    signals:
+      valid: bool
+      ready: bool
+      sig_ts: p_ts
+      sig_ty: p_ty
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_ts', 'sig_ty']
+      dst:
+        inputs: ['valid', 'sig_ts', 'sig_ty']
+        outputs: ['ready']
+    sc_channel:
+      type: 'ts_proto'
+      multicycle_types: []
+
+constants:
+  PW: {{value: 6, isParameterizable: true, maxValue: 12, desc: "backing width"}}
+
+types:
+  lT: {{widthLog2: 40, desc: "log2 type"}}
+  pT: {{width: PW, isParameterizable: true, desc: "parameterizable type"}}
+
+interfaces:
+  ifA:
+    interfaceType: ts_proto
+    desc: "type parameter carried point-to-point"
+    structures:
+      - {{structure: lT, structureType: p_ts}}
+      - {{structure: pT, structureType: p_ty}}
+
+blocks:
+  top: {{desc: "Top block"}}
+  producer: {{desc: "Producer block", params: [{producer_params}]}}
+  consumer:
+    desc: "Consumer block"
+    params: [{consumer_params}]
+    ports:
+      inA: {{interface: ifA, direction: dst}}
+
+instances:
+  uTop: {{container: top, instanceType: top}}
+  uProducer: {{container: top, instanceType: producer}}
+  uConsumer: {{container: top, instanceType: consumer}}
+
+connections:
+  - {{interface: ifA, src: uProducer, srcport: outA, dst: uConsumer, dstport: inA}}
+"""
+
+
+def _build_param_type_project(tmpdir, producer_params, consumer_params):
+    projDir = os.path.join(tmpdir, 'proj')
+    os.makedirs(projDir)
+    with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+        f.write(PARAM_TYPE_ARCH_YAML.format(
+            producer_params=producer_params, consumer_params=consumer_params))
+    projectPath = os.path.join(projDir, 'paramTypeProject.yaml')
+    with open(projectPath, 'w') as f:
+        f.write("""projectName: paramType
+yamlFormat: 2
+topInstance: uTop
+
+dirs:
+  root: ..
+
+projectFiles:
+  - arch.yaml
+""")
+    dbPath = os.path.join(tmpdir, 'paramType.db')
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    result = subprocess.run(
+        [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+         '--yaml', projectPath, '--db', dbPath],
+        capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+    return result, projectPath, dbPath
+
+
+def test_param_type_payload_builds_and_generates():
+    """A parameterizable `type` payload (structureType p_ty bound via
+    `datatype: type` to a `types` row marked `isParameterizable`) no longer
+    crashes `projectCreate`, and the resulting port renders through the SV
+    and SC modport blasts with the backing parameter threaded through.
+
+    Regression for fix 1: `calcBlockConfigInfo`'s `add_interface` indexed
+    every interface payload key into a `structures`-only dict, raising
+    `KeyError` on a `'types'`-kind payload (a plain type bound to a
+    `datatype: type`/`typeStruct` parameter, not wrapped in a structure)."""
+    print("\n[positive] a parameterizable type payload builds and generates")
+    with tempfile.TemporaryDirectory(prefix='optional_params_param_type_') as tmpdir:
+        result, _projectPath, dbPath = _build_param_type_project(
+            tmpdir, producer_params='PW', consumer_params='PW')
+        if result.returncode != 0:
+            check(False, "parameterizable type payload build must succeed:\n"
+                          f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+            return
+        check(True, "parameterizable type payload build succeeds")
+
+        proj = projectOpen(dbPath)
+        block_data = proj.getBlockData(proj.getQualBlock('consumer'))
+        sv = sv_mp(proj, block_data, 'inA')
+        check('.p_ty(pT)' in sv['intf_decl'],
+              "the SV modport declaration threads the parameterizable type through")
+        sc = sc_mp(proj, block_data, 'inA')
+        check('Config::PW' in sc['hdl_if_decl'],
+              "the SC modport declaration threads the backing parameter through")
+
+
+def test_param_type_payload_missing_backing_param():
+    """The same parameterizable type payload, but the consumer endpoint
+    declares an unrelated param instead of the payload's actual backing
+    parameter: must fail with the same "does not declare the required
+    parameter(s)" error a struct payload gets, not build silently.
+
+    Regression for fix 2: `_validateParameterizedConnectionEndpoints` keyed
+    its `declInfo` lookup on `('structure', structureKey)`, so a
+    `'types'`-kind payload was never found, `needed` stayed empty, and the
+    endpoint backing-parameter check was silently skipped."""
+    print("\n[negative] a type payload endpoint missing its backing parameter is rejected")
+    with tempfile.TemporaryDirectory(prefix='optional_params_param_type_missing_') as tmpdir:
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        arch = PARAM_TYPE_ARCH_YAML.format(
+            producer_params='PW', consumer_params='PW')
+        # Add an unrelated backing constant/param on the consumer only, in
+        # place of PW, so the consumer is parameterized but cannot size the
+        # type payload.
+        arch = arch.replace(
+            'constants:\n  PW: {value: 6, isParameterizable: true, maxValue: 12, desc: "backing width"}\n',
+            'constants:\n  PW: {value: 6, isParameterizable: true, maxValue: 12, desc: "backing width"}\n'
+            '  OTHER_W: {value: 6, isParameterizable: true, maxValue: 12, desc: "unrelated backing param"}\n')
+        arch = arch.replace(
+            'consumer:\n    desc: "Consumer block"\n    params: [PW]\n',
+            'consumer:\n    desc: "Consumer block"\n    params: [OTHER_W]\n')
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write(arch)
+        projectPath = os.path.join(projDir, 'paramTypeMissingProject.yaml')
+        with open(projectPath, 'w') as f:
+            f.write("""projectName: paramTypeMissing
+yamlFormat: 2
+topInstance: uTop
+
+dirs:
+  root: ..
+
+projectFiles:
+  - arch.yaml
+""")
+        dbPath = os.path.join(tmpdir, 'paramTypeMissing.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', dbPath],
+            capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+        if result.returncode == 0:
+            check(False, "a type payload endpoint missing its backing "
+                          "parameter must fail the build")
+            return
+        message = result.stdout
+        print(f"  {message.strip()}")
+        check("ifA" in message, "the message names the interface")
+        check("uConsumer" in message, "the message names the endpoint instance")
+        check("does not declare the required parameter" in message,
+              "the message states the same reason a struct payload gets")
+        check("missing PW" in message,
+              "the message names the missing backing parameter")
+
+
+def test_cross_interface_bind_kind_mismatch():
+    """A cross-interface bind where the same structureType is bound to a
+    `types` row on one interface and a `structures` row on the other must
+    report the kind mismatch by name, before any resolver call.
+
+    Regression for fix 3: `checkInterfacePair` read `structureKind` from the
+    parent side only and applied it to both, so this case reached
+    `structPackedFields`/`typeWidth` with the wrong assumption and reported
+    an internal error instead of a user-facing one."""
+    print("\n[negative] cross-interface bind with mismatched structureKind is rejected")
+    with tempfile.TemporaryDirectory(prefix='optional_params_kind_mismatch_') as tmpdir:
+        projDir = os.path.join(tmpdir, 'proj')
+        os.makedirs(projDir)
+        with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+            f.write("""interface_defs:
+  ts_proto:
+    parameters:
+      p_a: {datatype: struct}
+      p_ts: {datatype: typeStruct}
+    signals:
+      valid: bool
+      ready: bool
+      sig_a: p_a
+      sig_ts: p_ts
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_a', 'sig_ts']
+      dst:
+        inputs: ['valid', 'sig_a', 'sig_ts']
+        outputs: ['ready']
+    sc_channel:
+      type: 'ts_proto'
+      multicycle_types: []
+
+types:
+  idType9: {width: 9, desc: "9-bit type"}
+
+variables:
+  addr: {type: idType9, desc: "Address"}
+
+structures:
+  awAddrSt: {addr: {}}
+  idSt: {addr: {}}
+
+interfaces:
+  ifA:
+    interfaceType: ts_proto
+    desc: "type side"
+    structures:
+      - {structure: awAddrSt, structureType: p_a}
+      - {structure: idType9, structureType: p_ts}
+  ifB:
+    interfaceType: ts_proto
+    desc: "struct side"
+    structures:
+      - {structure: awAddrSt, structureType: p_a}
+      - {structure: idSt, structureType: p_ts}
+
+blocks:
+  top: {desc: "Top block"}
+  producer: {desc: "Producer block"}
+  consumer:
+    desc: "Consumer block"
+    ports:
+      inA: {interface: ifA, direction: dst}
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uProducer: {container: top, instanceType: producer}
+  uConsumer: {container: top, instanceType: consumer}
+
+connections:
+  - {interface: ifB, src: uProducer, srcport: outB, dst: uConsumer, dstport: inA}
+""")
+        projectPath = os.path.join(projDir, 'kindMismatchProject.yaml')
+        with open(projectPath, 'w') as f:
+            f.write("""projectName: kindMismatch
+yamlFormat: 2
+topInstance: uTop
+
+dirs:
+  root: ..
+
+projectFiles:
+  - arch.yaml
+""")
+        dbPath = os.path.join(tmpdir, 'kindMismatch.db')
+        env = os.environ.copy()
+        env['NO_COLOR'] = '1'
+        result = subprocess.run(
+            [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+             '--yaml', projectPath, '--db', dbPath],
+            capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+        if result.returncode == 0:
+            check(False, "a cross-interface bind with mismatched "
+                          "structureKind must fail the build")
+            return
+        message = result.stdout
+        print(f"  {message.strip()}")
+        check("ifA" in message, "the message names one interface")
+        check("ifB" in message, "the message names the other interface")
+        check("p_ts" in message, "the message names the parameter")
+        check("'structures' entry" in message and "'types' entry" in message,
+              "the message names the two kinds")
+        check("Internal error" not in message,
+              "the message is user-facing, not the internal-error fallback")
 
 
 def test_sv_omits_unbound_by_name(proj, consumer):
@@ -663,12 +1297,21 @@ def main():
         test_optional_tail_split_by_consumers(proj, consumer)
         test_gap_filled_with_sentinel(proj, consumer)
         test_trailing_optional_omitted(proj, consumer)
+        test_head_bound_keeps_bfm_bridge_group_whole(proj, consumer)
         test_unbound_optional_signal_blast(proj, consumer)
         test_optional_tail_after_hdlparam_group(proj, consumer)
         test_thunker_split_and_gap(proj, top)
+        test_default_width_four_optional(proj, consumer)
+        test_type_datatype_optional_payload(proj, consumer)
+        test_typestruct_datatype_arity_follows_datatype_not_kind(proj, consumer)
         test_sv_omits_unbound_by_name(proj, consumer)
     finally:
         cleanup((db_path, project_path, arch_path))
+
+    test_typestruct_datatype_rejects_mismatched_kind()
+    test_param_type_payload_builds_and_generates()
+    test_param_type_payload_missing_backing_param()
+    test_cross_interface_bind_kind_mismatch()
 
     print("\n" + "=" * 72)
     if FAILURES:

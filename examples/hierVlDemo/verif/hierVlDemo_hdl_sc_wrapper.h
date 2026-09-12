@@ -19,6 +19,9 @@ import hierVlDemo.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#ifdef VERILATOR
+#include "verilated_vcd_c.h"
+#endif
 import hierVlDemo_tb;
 using namespace hierVlDemo_tb_ns;
 #include "axi4_stream_bfm.h"

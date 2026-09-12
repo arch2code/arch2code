@@ -11,9 +11,14 @@ interface_defs:
       awuser_t : { datatype : struct, optional : true }
       wuser_t : { datatype : struct, optional : true }
       buser_t : { datatype : struct, optional : true }
-    signals: 
+      # AXI4 transaction ID, shared by the address, data and response channels.
+      # Optional: an interface that binds none carries the companion
+      # templates' default, _axiIdT storage at the 4-bit width this
+      # parameter declares.
+      id_t : { datatype : type, optional : true, defaultWidth : 4 }
+    signals:
       awaddr : addr_t
-      awid : 'bit [3:0]'
+      awid : id_t
       awlen : 'bit [7:0]'
       awsize : 'bit [2:0]'
       awburst : 'bit [1:0]'
@@ -21,14 +26,14 @@ interface_defs:
       awvalid : bool
       awready : bool
       wdata : data_t
-      wid : 'bit [3:0]'
+      wid : id_t
       wstrb : strb_t
       wlast : bool
       wuser : wuser_t
       wvalid : bool
       wready : bool
       bresp : 'bit [1:0]'
-      bid : 'bit [3:0]'
+      bid : id_t
       buser : buser_t
       bvalid : bool
       bready : bool

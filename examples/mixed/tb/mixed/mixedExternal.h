@@ -10,11 +10,9 @@
 
 #include "instanceFactory.h"
 import mixed.base;
+import mixed_cpu.base;
 import mixed;
 using namespace mixed_ns;
-
-//contained instances forward class declaration
-class cpuBase;
 
 class mixedExternal: public sc_module, public mixedInverted {
 

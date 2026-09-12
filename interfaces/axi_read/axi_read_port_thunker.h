@@ -7,6 +7,7 @@
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <optional>
 #include <string>
+#include <type_traits>
 
 // axi_read_port_thunker
 //
@@ -55,16 +56,23 @@
 // during SystemC elaboration; that bind is performed in the constructor
 // body (which is only reached when the thunker is held as a container
 // member).
+// UpID/UpIDW and DownID/DownIDW are not convertible across widths, so both
+// ends of a bind must carry the same id_t: a transaction ID has to round-trip
+// unchanged. Template argument order matches the generator
+// (pysrc/intf_gen_utils.py _thunker_member_type): up-required, down-required,
+// up-optional (in interface_defs order: ARU, RU, ID/IDW), down-optional
+// (ARU, RU, ID/IDW).
 template <class UpA, class UpD, class DownA, class DownD,
-          class UpARU = std::monostate, class UpRU = std::monostate,
-          class DownARU = std::monostate, class DownRU = std::monostate>
+          class UpARU = std::monostate, class UpRU = std::monostate, class UpID = _axiIdT, unsigned UpIDW = 4,
+          class DownARU = std::monostate, class DownRU = std::monostate, class DownID = _axiIdT, unsigned DownIDW = 4>
 class axi_read_port_thunker
 {
+    static_assert(std::is_same_v<UpID, DownID> && UpIDW == DownIDW, "a cross-interface bind must carry the same id_t on both ends");
 public:
     // connectionMap shape: parent port reference.
     axi_read_port_thunker( const char* name_,
-                           axi_read_in<UpA, UpD, UpARU, UpRU>&     upPort,
-                           axi_read_in<DownA, DownD, DownARU, DownRU>& downPort,
+                           axi_read_in<UpA, UpD, UpARU, UpRU, UpID, UpIDW>&     upPort,
+                           axi_read_in<DownA, DownD, DownARU, DownRU, DownID, DownIDW>& downPort,
                            std::string block_ )
       : m_up_port( &upPort ),
         m_up_in_iface( nullptr ),
@@ -78,8 +86,8 @@ public:
 
     // connections shape: parent-side channel bound by its interface base.
     axi_read_port_thunker( const char* name_,
-                           axi_read_in_if<UpA, UpD, UpARU, UpRU>&  upInIface,
-                           axi_read_in<DownA, DownD, DownARU, DownRU>& downPort,
+                           axi_read_in_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>&  upInIface,
+                           axi_read_in<DownA, DownD, DownARU, DownRU, DownID, DownIDW>& downPort,
                            std::string block_ )
       : m_up_port( nullptr ),
         m_up_in_iface( &upInIface ),
@@ -95,8 +103,8 @@ public:
     // that drives the owned channel; the bridged payload is driven onto
     // the parent-side channel's axi_read_out_if<UpA, UpD>.
     axi_read_port_thunker( const char* name_,
-                           axi_read_out_if<UpA, UpD, UpARU, UpRU>&  upOutIface,
-                           axi_read_out<DownA, DownD, DownARU, DownRU>& downPort,
+                           axi_read_out_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>&  upOutIface,
+                           axi_read_out<DownA, DownD, DownARU, DownRU, DownID, DownIDW>& downPort,
                            std::string block_ )
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
@@ -113,8 +121,8 @@ public:
     // interface binds during elaboration. Mirrors the connectionMap shape's
     // lazy port handling for the producer direction.
     axi_read_port_thunker( const char* name_,
-                           axi_read_out<UpA, UpD, UpARU, UpRU>&     upPort,
-                           axi_read_out<DownA, DownD, DownARU, DownRU>& downPort,
+                           axi_read_out<UpA, UpD, UpARU, UpRU, UpID, UpIDW>&     upPort,
+                           axi_read_out<DownA, DownD, DownARU, DownRU, DownID, DownIDW>& downPort,
                            std::string block_ )
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
@@ -131,19 +139,19 @@ private:
     {
         // Resolve the up-side interface once. For the port shape, sc_port
         // binding is complete by the time the spawned thread first runs.
-        axi_read_in_if<UpA, UpD, UpARU, UpRU>* upIn =
+        axi_read_in_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>* upIn =
             m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
         while (true) {
             // Address phase: upstream receives, downstream sends.
-            axiReadAddressSt<UpA, UpARU>   addrIn;
-            axiReadAddressSt<DownA, DownARU> addrOut;
-            typename axiReadAddressSt<UpA, UpARU>::_packedSt addrPacked;
-            typename axiReadAddressSt<DownA, DownARU>::_packedSt addrOutPacked;
+            axiReadAddressSt<UpA, UpARU, UpID, UpIDW>   addrIn;
+            axiReadAddressSt<DownA, DownARU, DownID, DownIDW> addrOut;
+            typename axiReadAddressSt<UpA, UpARU, UpID, UpIDW>::_packedSt addrPacked;
+            typename axiReadAddressSt<DownA, DownARU, DownID, DownIDW>::_packedSt addrOutPacked;
             upIn->receiveAddr( addrIn );
             // Generated payload structs expose pack() via an out
             // parameter (`void pack(_packedSt& _ret) const`).
             addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, axiReadAddressSt<DownA, DownARU>::_bitWidth );
+            copy_packed_bits( addrOutPacked, addrPacked, axiReadAddressSt<DownA, DownARU, DownID, DownIDW>::_bitWidth );
             addrOut.unpack( addrOutPacked );
             // The channel's overridden sendAddr() drops the default
             // optional argument, so the std::nullopt is supplied
@@ -151,13 +159,13 @@ private:
             m_down_channel.sendAddr( addrOut, std::nullopt );
 
             // Data phase: downstream returns, upstream answered.
-            axiReadRespSt<DownD, DownRU> dataIn;
-            axiReadRespSt<UpD, UpRU>   dataOut;
-            typename axiReadRespSt<DownD, DownRU>::_packedSt dataPacked;
-            typename axiReadRespSt<UpD, UpRU>::_packedSt   dataOutPacked;
+            axiReadRespSt<DownD, DownRU, DownID, DownIDW> dataIn;
+            axiReadRespSt<UpD, UpRU, UpID, UpIDW>   dataOut;
+            typename axiReadRespSt<DownD, DownRU, DownID, DownIDW>::_packedSt dataPacked;
+            typename axiReadRespSt<UpD, UpRU, UpID, UpIDW>::_packedSt   dataOutPacked;
             m_down_channel.receiveData( dataIn );
             dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, axiReadRespSt<UpD, UpRU>::_bitWidth );
+            copy_packed_bits( dataOutPacked, dataPacked, axiReadRespSt<UpD, UpRU, UpID, UpIDW>::_bitWidth );
             dataOut.unpack( dataOutPacked );
             upIn->sendData( dataOut );
         }
@@ -171,19 +179,19 @@ private:
         // mirroring thunkIn() with every Up/Down role swapped. Resolve the
         // up-side interface once, from the eager channel iface or (port
         // shape) the lazily-bound parent out port.
-        axi_read_out_if<UpA, UpD, UpARU, UpRU>* upOut =
+        axi_read_out_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>* upOut =
             m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
         while (true) {
             // Address phase: downstream receives, upstream sends.
-            axiReadAddressSt<DownA, DownARU> addrIn;
-            axiReadAddressSt<UpA, UpARU>   addrOut;
-            typename axiReadAddressSt<DownA, DownARU>::_packedSt addrPacked;
-            typename axiReadAddressSt<UpA, UpARU>::_packedSt   addrOutPacked;
+            axiReadAddressSt<DownA, DownARU, DownID, DownIDW> addrIn;
+            axiReadAddressSt<UpA, UpARU, UpID, UpIDW>   addrOut;
+            typename axiReadAddressSt<DownA, DownARU, DownID, DownIDW>::_packedSt addrPacked;
+            typename axiReadAddressSt<UpA, UpARU, UpID, UpIDW>::_packedSt   addrOutPacked;
             m_down_channel.receiveAddr( addrIn );
             // Generated payload structs expose pack() via an out
             // parameter (`void pack(_packedSt& _ret) const`).
             addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, axiReadAddressSt<UpA, UpARU>::_bitWidth );
+            copy_packed_bits( addrOutPacked, addrPacked, axiReadAddressSt<UpA, UpARU, UpID, UpIDW>::_bitWidth );
             addrOut.unpack( addrOutPacked );
             // The out interface's sendAddr() carries a defaulted optional
             // argument; the std::nullopt is supplied explicitly to mirror
@@ -191,23 +199,23 @@ private:
             upOut->sendAddr( addrOut, std::nullopt );
 
             // Data phase: upstream returns, downstream answered.
-            axiReadRespSt<UpD, UpRU>   dataIn;
-            axiReadRespSt<DownD, DownRU> dataOut;
-            typename axiReadRespSt<UpD, UpRU>::_packedSt   dataPacked;
-            typename axiReadRespSt<DownD, DownRU>::_packedSt dataOutPacked;
+            axiReadRespSt<UpD, UpRU, UpID, UpIDW>   dataIn;
+            axiReadRespSt<DownD, DownRU, DownID, DownIDW> dataOut;
+            typename axiReadRespSt<UpD, UpRU, UpID, UpIDW>::_packedSt   dataPacked;
+            typename axiReadRespSt<DownD, DownRU, DownID, DownIDW>::_packedSt dataOutPacked;
             upOut->receiveData( dataIn );
             dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, axiReadRespSt<DownD, DownRU>::_bitWidth );
+            copy_packed_bits( dataOutPacked, dataPacked, axiReadRespSt<DownD, DownRU, DownID, DownIDW>::_bitWidth );
             dataOut.unpack( dataOutPacked );
             m_down_channel.sendData( dataOut );
         }
     }
 
-    axi_read_in<UpA, UpD, UpARU, UpRU>*    m_up_port;
-    axi_read_in_if<UpA, UpD, UpARU, UpRU>* m_up_in_iface;
-    axi_read_out_if<UpA, UpD, UpARU, UpRU>* m_up_out_iface;
-    axi_read_out<UpA, UpD, UpARU, UpRU>* m_up_out_port;
-    axi_read_channel<DownA, DownD, DownARU, DownRU> m_down_channel;
+    axi_read_in<UpA, UpD, UpARU, UpRU, UpID, UpIDW>*    m_up_port;
+    axi_read_in_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>* m_up_in_iface;
+    axi_read_out_if<UpA, UpD, UpARU, UpRU, UpID, UpIDW>* m_up_out_iface;
+    axi_read_out<UpA, UpD, UpARU, UpRU, UpID, UpIDW>* m_up_out_port;
+    axi_read_channel<DownA, DownD, DownARU, DownRU, DownID, DownIDW> m_down_channel;
 };
 
 #endif // AXI_READ_PORT_THUNKER_H

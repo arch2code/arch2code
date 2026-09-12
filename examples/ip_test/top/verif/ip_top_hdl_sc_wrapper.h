@@ -19,6 +19,9 @@ import ip_test_ip_top.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#ifdef VERILATOR
+#include "verilated_vcd_c.h"
+#endif
 import common_shared_types;
 using namespace common_shared_types_ns;
 import ip_test_ip_top;

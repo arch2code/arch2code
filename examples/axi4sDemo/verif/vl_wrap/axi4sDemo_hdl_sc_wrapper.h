@@ -19,6 +19,9 @@ import axi4sDemo.base;
 
 // GENERATED_CODE_BEGIN --template=module_hdl_sc_wrapper --section=hdl_sc_wrapper_class
 
+#ifdef VERILATOR
+#include "verilated_vcd_c.h"
+#endif
 import axi4sDemo_tb;
 using namespace axi4sDemo_tb_ns;
 #include "axi4_stream_bfm.h"

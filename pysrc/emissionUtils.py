@@ -125,3 +125,16 @@ def typeWidthExpr(value, lang, constSpelling, literalWidth):
     if widthKey:
         return constSpelling(widthKey)
     return literalWidth(value)
+
+
+def constReference_cpp(constKey, prj, useConfig=False):
+    """C++ spelling of a constant reference: its bare name, or
+    `Config::<name>` when useConfig and the constant is itself
+    parameterizable. Shared C++ constant spelling for typeWidthExpr's
+    constSpelling leaf, used both for a structure field's own width
+    (templates/systemc/includes.py, templates/systemc/structures.py) and for
+    an interface payload's type-datatype width (pysrc/intf_gen_utils.py)."""
+    constName = prj.data['constants'][constKey]['constant']
+    if useConfig and prj.data['constants'][constKey]['isParameterizable']:
+        return f"Config::{constName}"
+    return constName

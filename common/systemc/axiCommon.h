@@ -29,16 +29,18 @@ inline const char* _axiBurstT_prt( _axiBurstT val )
     return("!!!BADENUM!!!");
 }
 typedef uint8_t _axiSizeT; // [3] Bytes in transfer encoded 0=1, 1=2, 2=4, 3=8, 4=16, 5=32, 6=64, 7=128
-#define AXI_TRANSACTION_ID_MAX 16
-typedef uint8_t _axiIdT; // [4] AXI Id
+typedef uint8_t _axiIdT; // AXI id storage for the 4-bit default
 typedef uint8_t _axiLenT;
 
 struct _axi_transaction_st {
     _axi_transaction_st()
         : id(0), len(0), size(0), transactionNo(0), transactionStr(std::nullopt) {}
-    _axi_transaction_st(_axiIdT id_, uint8_t len_, _axiSizeT size_, int no, std::optional<std::string> str = std::nullopt)
+    // id holds the transaction id as a plain integer, wide enough for any
+    // bound id_t, since it is only ever used as a vector index and an
+    // equality check against another id.
+    _axi_transaction_st(uint32_t id_, uint8_t len_, _axiSizeT size_, int no, std::optional<std::string> str = std::nullopt)
         : id(id_), len(len_), size(size_), transactionNo(no), transactionStr(std::move(str)) {}
-    _axiIdT id;
+    uint32_t id;
     uint8_t len;
     _axiSizeT size;
     uint64_t transactionNo;

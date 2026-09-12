@@ -7,6 +7,7 @@
 #include "sysc/kernel/sc_dynamic_processes.h"
 #include <optional>
 #include <string>
+#include <type_traits>
 
 // axi_write_port_thunker
 //
@@ -67,17 +68,24 @@
 // during SystemC elaboration; that bind is performed in the constructor
 // body (which is only reached when the thunker is held as a container
 // member).
+// UpID/UpIDW and DownID/DownIDW are not convertible across widths, so both
+// ends of a bind must carry the same id_t: a transaction ID has to round-trip
+// unchanged. Template argument order matches the generator
+// (pysrc/intf_gen_utils.py _thunker_member_type): up-required, down-required,
+// up-optional (in interface_defs order: AWU, WU, BU, ID/IDW), down-optional
+// (AWU, WU, BU, ID/IDW).
 template <class UpA, class UpD, class UpS,
           class DownA, class DownD, class DownS,
-          class UpAWU = std::monostate, class UpWU = std::monostate, class UpBU = std::monostate,
-          class DownAWU = std::monostate, class DownWU = std::monostate, class DownBU = std::monostate>
+          class UpAWU = std::monostate, class UpWU = std::monostate, class UpBU = std::monostate, class UpID = _axiIdT, unsigned UpIDW = 4,
+          class DownAWU = std::monostate, class DownWU = std::monostate, class DownBU = std::monostate, class DownID = _axiIdT, unsigned DownIDW = 4>
 class axi_write_port_thunker
 {
+    static_assert(std::is_same_v<UpID, DownID> && UpIDW == DownIDW, "a cross-interface bind must carry the same id_t on both ends");
 public:
     // connectionMap shape: parent port reference.
     axi_write_port_thunker( const char* name_,
-                            axi_write_in<UpA, UpD, UpS, UpAWU, UpWU, UpBU>&     upPort,
-                            axi_write_in<DownA, DownD, DownS, DownAWU, DownWU, DownBU>& downPort,
+                            axi_write_in<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&     upPort,
+                            axi_write_in<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
       : m_up_port( &upPort ),
         m_up_in_iface( nullptr ),
@@ -91,8 +99,8 @@ public:
 
     // connections shape: parent-side channel bound by its interface base.
     axi_write_port_thunker( const char* name_,
-                            axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU>&    upInIface,
-                            axi_write_in<DownA, DownD, DownS, DownAWU, DownWU, DownBU>& downPort,
+                            axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&    upInIface,
+                            axi_write_in<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
       : m_up_port( nullptr ),
         m_up_in_iface( &upInIface ),
@@ -108,8 +116,8 @@ public:
     // that drives the owned channel; the bridged payload is driven onto
     // the parent-side channel's axi_write_out_if<UpA, UpD, UpS>.
     axi_write_port_thunker( const char* name_,
-                            axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU>&   upOutIface,
-                            axi_write_out<DownA, DownD, DownS, DownAWU, DownWU, DownBU>& downPort,
+                            axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&   upOutIface,
+                            axi_write_out<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
@@ -121,13 +129,14 @@ public:
         sc_core::sc_spawn( [this]() { this->thunkOut(); } );
     }
 
-    // producer (out) port shape: the up side is an unbound parent OUT port
-    // (axi_write_out<UpA, UpD, UpS>&), resolved lazily in thunkOut() once its
-    // interface binds during elaboration. Mirrors the connectionMap shape's
-    // lazy port handling for the producer direction.
+    // producer (out) port shape: the up side is an unbound parent port
+    // axi_write_out<UpA, UpD, UpS>& (e.g. a testbench External's inherited
+    // <DUT>Inverted boundary port), resolved lazily in thunkOut(). Used when
+    // a parameterized producer instance feeds a non-parameterized boundary at
+    // an excluded-instance (tb/DUT) boundary.
     axi_write_port_thunker( const char* name_,
-                            axi_write_out<UpA, UpD, UpS, UpAWU, UpWU, UpBU>&     upPort,
-                            axi_write_out<DownA, DownD, DownS, DownAWU, DownWU, DownBU>& downPort,
+                            axi_write_out<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>&     upPort,
+                            axi_write_out<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW>& downPort,
                             std::string block_ )
       : m_up_port( nullptr ),
         m_up_in_iface( nullptr ),
@@ -144,19 +153,19 @@ private:
     {
         // Resolve the up-side interface once. For the port shape, sc_port
         // binding is complete by the time the spawned thread first runs.
-        axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU>* upIn =
+        axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* upIn =
             m_up_in_iface ? m_up_in_iface : m_up_port->operator->();
         while (true) {
             // Address phase: upstream receives, downstream sends.
-            axiWriteAddressSt<UpA, UpAWU>   addrIn;
-            axiWriteAddressSt<DownA, DownAWU> addrOut;
-            typename axiWriteAddressSt<UpA, UpAWU>::_packedSt addrPacked;
-            typename axiWriteAddressSt<DownA, DownAWU>::_packedSt addrOutPacked;
+            axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>   addrIn;
+            axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW> addrOut;
+            typename axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>::_packedSt addrPacked;
+            typename axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW>::_packedSt addrOutPacked;
             upIn->receiveAddr( addrIn );
             // Generated payload structs expose pack() via an out
             // parameter (`void pack(_packedSt& _ret) const`).
             addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, axiWriteAddressSt<DownA, DownAWU>::_bitWidth );
+            copy_packed_bits( addrOutPacked, addrPacked, axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW>::_bitWidth );
             addrOut.unpack( addrOutPacked );
             // The channel's overridden sendAddr() drops the default
             // optional argument, so the std::nullopt is supplied
@@ -164,24 +173,24 @@ private:
             m_down_channel.sendAddr( addrOut, std::nullopt );
 
             // Data phase: upstream receives, downstream sends.
-            axiWriteDataSt<UpD, UpS, UpWU>     dataIn;
-            axiWriteDataSt<DownD, DownS, DownWU> dataOut;
-            typename axiWriteDataSt<UpD, UpS, UpWU>::_packedSt dataPacked;
-            typename axiWriteDataSt<DownD, DownS, DownWU>::_packedSt dataOutPacked;
+            axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>     dataIn;
+            axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW> dataOut;
+            typename axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>::_packedSt dataPacked;
+            typename axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW>::_packedSt dataOutPacked;
             upIn->receiveData( dataIn );
             dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, axiWriteDataSt<DownD, DownS, DownWU>::_bitWidth );
+            copy_packed_bits( dataOutPacked, dataPacked, axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW>::_bitWidth );
             dataOut.unpack( dataOutPacked );
             m_down_channel.sendData( dataOut );
 
             // Response phase: downstream returns, upstream answered.
-            axiWriteRespSt<DownBU> respIn;
-            axiWriteRespSt<UpBU>   respOut;
-            typename axiWriteRespSt<DownBU>::_packedSt respPacked;
-            typename axiWriteRespSt<UpBU>::_packedSt   respOutPacked;
+            axiWriteRespSt<DownBU, DownID, DownIDW> respIn;
+            axiWriteRespSt<UpBU, UpID, UpIDW>   respOut;
+            typename axiWriteRespSt<DownBU, DownID, DownIDW>::_packedSt respPacked;
+            typename axiWriteRespSt<UpBU, UpID, UpIDW>::_packedSt   respOutPacked;
             m_down_channel.receiveResp( respIn );
             respIn.pack( respPacked );
-            copy_packed_bits( respOutPacked, respPacked, axiWriteRespSt<UpBU>::_bitWidth );
+            copy_packed_bits( respOutPacked, respPacked, axiWriteRespSt<UpBU, UpID, UpIDW>::_bitWidth );
             respOut.unpack( respOutPacked );
             upIn->sendResp( respOut );
         }
@@ -196,19 +205,19 @@ private:
         // (m_down_channel) replaced by m_up_out_iface, and every Up<->Down
         // type swapped. Resolve the up-side interface once, from the eager
         // channel iface or (port shape) the lazily-bound parent out port.
-        axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU>* upOut =
+        axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* upOut =
             m_up_out_iface ? m_up_out_iface : m_up_out_port->operator->();
         while (true) {
             // Address phase: downstream receives, upstream sends.
-            axiWriteAddressSt<DownA, DownAWU> addrIn;
-            axiWriteAddressSt<UpA, UpAWU>   addrOut;
-            typename axiWriteAddressSt<DownA, DownAWU>::_packedSt addrPacked;
-            typename axiWriteAddressSt<UpA, UpAWU>::_packedSt addrOutPacked;
+            axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW> addrIn;
+            axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>   addrOut;
+            typename axiWriteAddressSt<DownA, DownAWU, DownID, DownIDW>::_packedSt addrPacked;
+            typename axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>::_packedSt addrOutPacked;
             m_down_channel.receiveAddr( addrIn );
             // Generated payload structs expose pack() via an out
             // parameter (`void pack(_packedSt& _ret) const`).
             addrIn.pack( addrPacked );
-            copy_packed_bits( addrOutPacked, addrPacked, axiWriteAddressSt<UpA, UpAWU>::_bitWidth );
+            copy_packed_bits( addrOutPacked, addrPacked, axiWriteAddressSt<UpA, UpAWU, UpID, UpIDW>::_bitWidth );
             addrOut.unpack( addrOutPacked );
             // The out interface's sendAddr() carries a default optional
             // argument; the std::nullopt is supplied explicitly to mirror
@@ -216,34 +225,34 @@ private:
             upOut->sendAddr( addrOut, std::nullopt );
 
             // Data phase: downstream receives, upstream sends.
-            axiWriteDataSt<DownD, DownS, DownWU> dataIn;
-            axiWriteDataSt<UpD, UpS, UpWU>     dataOut;
-            typename axiWriteDataSt<DownD, DownS, DownWU>::_packedSt dataPacked;
-            typename axiWriteDataSt<UpD, UpS, UpWU>::_packedSt dataOutPacked;
+            axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW> dataIn;
+            axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>     dataOut;
+            typename axiWriteDataSt<DownD, DownS, DownWU, DownID, DownIDW>::_packedSt dataPacked;
+            typename axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>::_packedSt dataOutPacked;
             m_down_channel.receiveData( dataIn );
             dataIn.pack( dataPacked );
-            copy_packed_bits( dataOutPacked, dataPacked, axiWriteDataSt<UpD, UpS, UpWU>::_bitWidth );
+            copy_packed_bits( dataOutPacked, dataPacked, axiWriteDataSt<UpD, UpS, UpWU, UpID, UpIDW>::_bitWidth );
             dataOut.unpack( dataOutPacked );
             upOut->sendData( dataOut );
 
             // Response phase: upstream returns, downstream answered.
-            axiWriteRespSt<UpBU>   respIn;
-            axiWriteRespSt<DownBU> respOut;
-            typename axiWriteRespSt<UpBU>::_packedSt   respPacked;
-            typename axiWriteRespSt<DownBU>::_packedSt respOutPacked;
+            axiWriteRespSt<UpBU, UpID, UpIDW>   respIn;
+            axiWriteRespSt<DownBU, DownID, DownIDW> respOut;
+            typename axiWriteRespSt<UpBU, UpID, UpIDW>::_packedSt   respPacked;
+            typename axiWriteRespSt<DownBU, DownID, DownIDW>::_packedSt respOutPacked;
             upOut->receiveResp( respIn );
             respIn.pack( respPacked );
-            copy_packed_bits( respOutPacked, respPacked, axiWriteRespSt<DownBU>::_bitWidth );
+            copy_packed_bits( respOutPacked, respPacked, axiWriteRespSt<DownBU, DownID, DownIDW>::_bitWidth );
             respOut.unpack( respOutPacked );
             m_down_channel.sendResp( respOut );
         }
     }
 
-    axi_write_in<UpA, UpD, UpS, UpAWU, UpWU, UpBU>*    m_up_port;
-    axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU>* m_up_in_iface;
-    axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU>* m_up_out_iface;
-    axi_write_out<UpA, UpD, UpS, UpAWU, UpWU, UpBU>* m_up_out_port;
-    axi_write_channel<DownA, DownD, DownS, DownAWU, DownWU, DownBU> m_down_channel;
+    axi_write_in<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>*    m_up_port;
+    axi_write_in_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* m_up_in_iface;
+    axi_write_out_if<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* m_up_out_iface;
+    axi_write_out<UpA, UpD, UpS, UpAWU, UpWU, UpBU, UpID, UpIDW>* m_up_out_port;
+    axi_write_channel<DownA, DownD, DownS, DownAWU, DownWU, DownBU, DownID, DownIDW> m_down_channel;
 };
 
 #endif // AXI_WRITE_PORT_THUNKER_H
