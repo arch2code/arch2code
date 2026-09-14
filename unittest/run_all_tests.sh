@@ -386,6 +386,12 @@ echo ""
 echo "Test Suite ${idx}: interface definition data contracts"
 echo "------------------------------------------------------------------------"
 python3 test_interface_def_contracts.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
+echo "Test Suite ${idx}: arbitration trio compile-contract coverage"
+echo "------------------------------------------------------------------------"
+python3 test_arbitration_trio_coverage.py || FAILED=1
 
 echo ""
 echo "========================================================================"

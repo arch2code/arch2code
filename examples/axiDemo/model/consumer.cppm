@@ -37,6 +37,7 @@ public:
 
     void inAXI0Rd(void);
     void inAXI1Rd(void);
+    void inAXIArb(void);
     void inAXI0Wr(void);
     void inAXI1Wr(void);
     void inAXI2Wr(void);
@@ -67,6 +68,7 @@ consumer::consumer(sc_module_name blockName, const char * variant, blockBaseMode
     // GENERATED_CODE_END
     SC_THREAD(inAXI0Rd);
     SC_THREAD(inAXI1Rd);
+    SC_THREAD(inAXIArb);
     SC_THREAD(inAXI0Wr);
     SC_THREAD(inAXI1Wr);
     SC_THREAD(inAXI2Wr);
@@ -118,6 +120,58 @@ void consumer::inAXI1Rd(void)
             axiRd1->sendDataCycle(resp);
         }
     }
+    controller.test_complete(test_name);
+}
+
+// Single consumer thread arbitrating between two axi_read dst ports with the
+// documented pattern: bind both ports' address sub-channel to one shared
+// sc_event, scan isActive() under a wait loop, and service whichever port(s)
+// woke the thread. Each response is sent back on the same port its address
+// arrived on, so a misroute (wrong port serviced, or wrong response value)
+// shows up as a data mismatch on the producer side.
+// ARB_AXI_TEST_COUNT must match the value used in producer.cppm.
+#define ARB_AXI_TEST_COUNT 20
+void consumer::inAXIArb(void)
+{
+    std::string test_name = "test_axird_arb";
+    testController &controller = testController::GetInstance();
+    controller.register_test_name(test_name);
+    controller.wait_test(test_name);
+
+    sc_event arbEvent;
+    axiRd2->setExternalEvent(&arbEvent);
+    axiRd3->setExternalEvent(&arbEvent);
+
+    int serviced2 = 0;
+    int serviced3 = 0;
+    while (serviced2 < ARB_AXI_TEST_COUNT || serviced3 < ARB_AXI_TEST_COUNT) {
+        while (axiRd2->isNotActive() && axiRd3->isNotActive()) {
+            wait(arbEvent);
+        }
+        if (axiRd2->isActive()) {
+            axiReadAddressSt<axiAddrSt> addr;
+            axiRd2->receiveAddr(addr);
+            axiReadRespSt<axiDataSt> *resp = reinterpret_cast<axiReadRespSt<axiDataSt> *>(axiRd2->getWritePtr());
+            resp[0].rresp = AXIRESP_OKAY;
+            resp[0].rid = addr.arid;
+            resp[0].rlast = true;
+            resp[0].rdata.data = 0x2000 + serviced2;
+            axiRd2->sendData(*resp, 1);
+            serviced2++;
+        }
+        if (axiRd3->isActive()) {
+            axiReadAddressSt<axiAddrSt> addr;
+            axiRd3->receiveAddr(addr);
+            axiReadRespSt<axiDataSt> *resp = reinterpret_cast<axiReadRespSt<axiDataSt> *>(axiRd3->getWritePtr());
+            resp[0].rresp = AXIRESP_OKAY;
+            resp[0].rid = addr.arid;
+            resp[0].rlast = true;
+            resp[0].rdata.data = 0x3000 + serviced3;
+            axiRd3->sendData(*resp, 1);
+            serviced3++;
+        }
+    }
+    log_.logPrint(std::format("test_axird_arb: serviced {} on axiRd2, {} on axiRd3", serviced2, serviced3), LOG_ALWAYS);
     controller.test_complete(test_name);
 }
 

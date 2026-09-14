@@ -43,6 +43,10 @@ public:
     push_ack_channel< data_st > test_push_ack;
     // Ready Ack Test interface
     pop_ack_channel< data_st > test_pop_ack;
+    // Ready Valid Test interface
+    rdy_vld_channel< data_st > test_rdy_vld_arb0;
+    // Ready Valid Test interface
+    rdy_vld_channel< data_st > test_rdy_vld_arb1;
 
     //instances contained in block
     std::shared_ptr<producerBase> uProducer;
@@ -79,6 +83,8 @@ helloWorld::helloWorld(sc_module_name blockName, const char * variant, blockBase
         ,test_req_ack("consumer_test_req_ack", "producer")
         ,test_push_ack("consumer_test_push_ack", "producer")
         ,test_pop_ack("consumer_test_pop_ack", "producer")
+        ,test_rdy_vld_arb0("consumer_test_rdy_vld_arb0", "producer")
+        ,test_rdy_vld_arb1("consumer_test_rdy_vld_arb1", "producer")
         ,uProducer(std::dynamic_pointer_cast<producerBase>(instanceFactory::createInstance(name(), "uProducer", "producer", "", "helloWorld")))
         ,uConsumer(std::dynamic_pointer_cast<consumerBase>(instanceFactory::createInstance(name(), "uConsumer", "consumer", "", "helloWorld")))
 // GENERATED_CODE_END
@@ -93,6 +99,10 @@ helloWorld::helloWorld(sc_module_name blockName, const char * variant, blockBase
     uConsumer->test_push_ack(test_push_ack);
     uProducer->test_pop_ack(test_pop_ack);
     uConsumer->test_pop_ack(test_pop_ack);
+    uProducer->test_rdy_vld_arb0(test_rdy_vld_arb0);
+    uConsumer->test_rdy_vld_arb0(test_rdy_vld_arb0);
+    uProducer->test_rdy_vld_arb1(test_rdy_vld_arb1);
+    uConsumer->test_rdy_vld_arb1(test_rdy_vld_arb1);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END
     SC_THREAD(doneTest);
