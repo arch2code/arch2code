@@ -18,7 +18,6 @@ import pysrc.arch2codeGlobals as g
 from pysrc.processYaml import projectOpen
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'variant-two-integrators')
-ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 LEAF_KEY = 'xviLeaf/../../../ipLeaf/yaml/xviLeaf.yaml'
 # What each integrator binds XVI_GAIN to on the shared label v0, and on the
 # label only it declares, in its own design file.
@@ -129,16 +128,6 @@ def observations(output, sinks):
     return problems
 
 
-def build_db(project, db):
-    """Build only the database for one project file; no generate or build."""
-    env = os.environ.copy()
-    env['NO_COLOR'] = '1'
-    result = subprocess.run(
-        [sys.executable, ARCH2CODE, '--yaml', project, '--db', db],
-        capture_output=True, text=True, timeout=180, cwd=base_dir, env=env)
-    return result.stdout + result.stderr, result.returncode
-
-
 def header(name):
     print(f"\n{'='*70}\nTest: {name}\n{'='*70}")
 
@@ -207,6 +196,16 @@ def test_a_label_only_the_other_integrator_declared_reaches_this_build():
                   f"so the build no longer sees one label per integrator "
                   f"alongside the shared one")
             return False
+        foreign = prj.getForeignVariants(LEAF_KEY)
+        expectedForeign = {'v0': {'XVI_WIDTH': 8, 'XVI_GAIN': TOP_GAIN},
+                           'vTop': {'XVI_WIDTH': 8, 'XVI_GAIN': TOP_OWN_GAIN}}
+        if foreign != expectedForeign:
+            print(f"  FAIL: getForeignVariants(LEAF_KEY) is {foreign} rather "
+                  f"than {expectedForeign}, xviTop's own declared labels for "
+                  f"a block it does not own")
+            return False
+        print(f"  PASS: getForeignVariants(LEAF_KEY) holds only xviTop's own "
+              f"labels {sorted(expectedForeign)}")
         nested = prj.data['parameters'][LEAF_KEY]['variants']
         offered = {label: (entry['params']['XVI_GAIN']['projectName'],
                            entry['params']['XVI_GAIN']['value'])
@@ -225,15 +224,13 @@ def test_a_label_only_the_other_integrator_declared_reaches_this_build():
         shutil.rmtree(work, ignore_errors=True)
 
 
-def test_third_project_referencing_both_is_rejected():
-    """A third project assembling both integrators declares no v0 of its own,
-    so v0 has two foreign declarers and none from this build; the build is
-    rejected naming both. Declaring v0 in the third project's own file resolves it."""
-    header("a build referencing two foreign declarers of one label, with "
-           "none of its own, is rejected")
+def test_third_project_referencing_both_builds():
+    """A third project composing both integrators, declaring no v0 itself,
+    builds and runs; each leaf instance keeps its own integrator's
+    declaration."""
+    header("a build referencing two foreign declarers of one label builds")
     work = copy_fixture('xvi_both_')
     try:
-        own = os.path.join(work, 'both', 'yaml', 'xviBothOwn.yaml')
         text = read(work, 'both', 'yaml', 'xviBothOwn.yaml')
         if 'parameters' in text:
             print("  FAIL: premise not met - xviBothOwn.yaml must declare no "
@@ -243,36 +240,81 @@ def test_third_project_referencing_both_is_rejected():
               "xviLeaf's variants; xviTop and xviMid remain the only "
               "declarers of v0")
 
-        db = os.path.join(work, 'both', 'xviBoth.db')
-        project = os.path.join(work, 'both', 'prj', 'yaml', 'xviBothProject.yaml')
-        out, rc = build_db(project, db)
-        if rc == 0:
-            print("  FAIL: expected rejection, build succeeded")
-            return False
-        if 'Traceback (most recent call last)' in out:
-            print("  FAIL: got a Python stack trace instead of a clean error")
-            print('  ' + '\n  '.join(out.split('\n')[:20]))
-            return False
-        missing = [p for p in ('xviLeaf', "'v0'", 'xviMid', 'xviTop')
-                  if p not in out]
-        if missing:
-            print(f"  FAIL: expected patterns not found: {missing}")
-            print('  ' + '\n  '.join(out.split('\n')[:20]))
-            return False
-        print("  PASS: rejected, naming both xviTop and xviMid as v0's "
-              "declarers")
+        for target in ('db', 'newmodule'):
+            result = make(work, target, subdir='both')
+            if result.returncode != 0:
+                print(f"  FAIL: make {target} for both failed "
+                      f"(rc={result.returncode})\n{result.stdout}\n{result.stderr}")
+                return False
 
-        # Fault-inject: have the third project declare v0 itself.
-        with open(own, 'a') as f:
-            f.write("\nparameters:\n    xviLeaf:\n        v0:\n"
-                    "            XVI_WIDTH: 8\n            XVI_GAIN: 2\n")
-        out, rc = build_db(project, db)
-        if rc != 0:
-            print("  FAIL: fault-injected copy (xviBoth declares v0 itself) "
-                  "should have built")
-            print('  ' + '\n  '.join(out.split('\n')[:20]))
+        db = os.path.join(work, 'both', 'xviBoth.db')
+        prj = projectOpen(db)
+        # The v0 leaf instance under each integrator's block.
+        leafByOwner = dict()
+        for instanceKey, instanceData in prj.data['instances'].items():
+            if instanceData['instanceTypeKey'] != LEAF_KEY or instanceData['variant'] != 'v0':
+                continue
+            containerBlock = prj.data['blocks'][instanceData['containerKey']]['block']
+            if containerBlock in ('xviTop', 'xviMid'):
+                leafByOwner[containerBlock] = instanceKey
+
+        if set(leafByOwner) != {'xviTop', 'xviMid'}:
+            print(f"  FAIL: expected a v0 leaf instance under each of xviTop "
+                  f"and xviMid, found under {sorted(leafByOwner)}")
             return False
-        print("  PASS: fault-injected copy (xviBoth declares its own v0) builds")
+
+        declarers = {owner: prj.instanceVariantDeclarers[instanceKey]
+                    for owner, instanceKey in leafByOwner.items()}
+        if declarers != {'xviTop': 'xviTop', 'xviMid': 'xviMid'}:
+            print(f"  FAIL: expected each leaf instance declared by its own "
+                  f"project, got {declarers}")
+            return False
+
+        standalone = prj.getStandaloneVariants(LEAF_KEY)
+        if set(standalone) != {'dflt'}:
+            print(f"  FAIL: expected the leaf's bare standalone-variant map "
+                  f"to hold only its own 'dflt' label, got {sorted(standalone)}")
+            return False
+
+        headers = prj.config.getConfig('FOREIGNCONFIGHEADERS')
+        problems = list()
+        for declarer in ('xviTop', 'xviMid'):
+            if (declarer, LEAF_KEY) not in headers:
+                problems.append(f"no FOREIGNCONFIGHEADERS entry for "
+                                f"({declarer!r}, LEAF_KEY)")
+                continue
+            entry = headers[(declarer, LEAF_KEY)]
+            if 'v0' not in entry['vlVariants']:
+                problems.append(f"({declarer!r}, LEAF_KEY) vlVariants "
+                                f"{entry['vlVariants']} does not carry 'v0'")
+
+        # `both` itself owns no registrar artifact; every one it lists in its
+        # own gen set belongs to xviTop or xviMid, so this run proves the
+        # registrar owner gate rather than a cascade through a sibling project.
+        result = make(work, 'gen', subdir='both')
+        if result.returncode != 0:
+            problems.append(f"make gen for both failed (rc={result.returncode})\n"
+                            f"{result.stdout}\n{result.stderr}")
+        else:
+            result = make(work, 'run', os.path.join('both', 'rundir'))
+            output = result.stdout + result.stderr
+            if result.returncode != 0:
+                problems.append(f"both model run failed "
+                                f"(rc={result.returncode})\n{output}")
+            else:
+                problems.extend(f"both model: {problem}"
+                                for problem in observations(output, TOP_SINKS))
+
+        for problem in problems:
+            print(f"  FAIL: {problem}")
+        if problems:
+            return False
+
+        print("  PASS: each integrator's leaf instance resolves to its own "
+              "declaration, the leaf's own standalone-variant map holds only "
+              "'dflt', each integrator gets its own foreign-Config header "
+              "carrying v0, and the third project's own build sinks samples "
+              "at xviTop's gain")
         return True
     finally:
         close_db()
@@ -475,7 +517,7 @@ def run_all_tests():
     tests = [
         test_collapse_drops_the_building_project,
         test_a_label_only_the_other_integrator_declared_reaches_this_build,
-        test_third_project_referencing_both_is_rejected,
+        test_third_project_referencing_both_builds,
         test_emitted_artifacts_carry_the_declaring_project_value,
         test_other_integrator_keeps_its_own_binding,
         test_each_build_emits_only_the_label_it_declared,

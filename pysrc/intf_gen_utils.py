@@ -457,10 +457,6 @@ def cpp_config_expression_name(expression):
         return f'{name}<{cpp_config_expression_name(expression["container"])}>'
     return name
 
-def cpp_descriptor_config_name(desc):
-    # Called from pro (constructorTandem.py); base consumers read desc['structName'] directly.
-    return desc['structName']
-
 def cpp_config_struct_name(configSelection):
     # Emitted C++ Config struct name for a neutral per-instance selection from
     # _resolveInstanceConfigFields: '' when the block is not parameterizable, the

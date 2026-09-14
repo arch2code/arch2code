@@ -56,18 +56,16 @@ def render_sv(args, prj, data):
         return render_body(args, prj, data, mp_sig, blk_name)
     if args.section != '':
         raise ValueError(f"Unknown section '{args.section}' for template '{args.template}'. Valid values are body or empty")
-    # A parent-owned foreign wrapper carries --parent on its param line: the top
-    # is owner-qualified and instantiates the child's canonical .svh body. A bare
-    # same-project variant trampoline has no --parent.
-    # Dispatch on the wrapper variant set, which is what one standalone .sv top
-    # is scaffolded per.
+    # --parent marks the owner-qualified top for a label this build declares of
+    # another project's block; a bare file renders one of the owner's own
+    # labels.
     if args.mode == 'pair':
         return ''.join(
             render_trampoline(args, prj, data, mp_sig,
                               registration=registration)
             for registration in pair_registrations(
                 prj, data, args.parent, args.variant))
-    if args.parent and args.variant and args.variant in data['standaloneVariants']:
+    if args.parent:
         return render_trampoline(args, prj, data, mp_sig, foreign=True)
     pairRegs = pair_registrations(prj, data, args.parent, args.variant)
     if args.variant and args.variant in data['standaloneVariants']:
@@ -216,12 +214,9 @@ def render_trampoline(args, prj, data, mp_sig, foreign=False, registration=None)
     # parameter values as localparams, reuses the Stage-1 symbolic port widths,
     # and wires every flattened port through to the canonical body by name.
     #
-    # `foreign`: a PARENT-OWNED owner-qualified top for a variant the assembler
-    # declares foreign to a reused child (the file carries --parent). The top
-    # name is owner-qualified by the emitting (declaring) project so it stays a
-    # distinct Verilator design unit across projects; a same-project variant
-    # keeps the bare child-emitted top name. The body module (the `include`d
-    # .svh) is the child's canonical wrapper either way.
+    # `foreign`: the top is qualified by the declaring project so it stays a
+    # distinct Verilator design unit; the body is the child's canonical .svh
+    # either way.
     variant_name = args.variant
     if registration is not None:
         module_name = registration['topModule']
@@ -247,12 +242,13 @@ def render_trampoline(args, prj, data, mp_sig, foreign=False, registration=None)
     # size). Both precede (and are in scope for) the port list; the derived
     # constants follow the bound root parameters they depend on.
     constDecls, _unusedTypeDecls = parameterized_decls(prj, data)
-    # Resolved parameter values for this top, keyed by the block's declared
-    # parameter names. A pair-specific concrete top takes them from its
-    # registration; every other top takes them from the variant's own set, which
-    # a container-sourced variant is absent from.
-    values = registration['values'] if registration is not None \
-        else data['standaloneVariants'][variant_name]
+    # Resolved values for this top, keyed by the block's declared parameter names.
+    if registration is not None:
+        values = registration['values']
+    elif foreign:
+        values = data['foreignVariants'][variant_name]
+    else:
+        values = data['standaloneVariants'][variant_name]
     variant_params = [{'param': param, 'resolvedValue': values[param]}
                       for param in param_names(data)]
     # The per-variant wrapper is a standalone Verilator top with no parent

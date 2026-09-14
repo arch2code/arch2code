@@ -80,9 +80,13 @@ connections:
 # Variant parameter bindings
 parameters:
   my_block:
-    - {variant: variant0, param: IP_DATA_WIDTH, value: 8}
-    - {variant: variant1, param: IP_DATA_WIDTH, value: 12}
+    variant0:
+      IP_DATA_WIDTH: 8
+    variant1:
+      IP_DATA_WIDTH: 12
 ```
+
+A `parameters:` section may sit in any file whose scope reaches the block; it need not be the block's own file.
 
 If a block is RTL-enabled (`hasRtl: true`), every block instantiated inside it
 must also be RTL-enabled. Model-only blocks (`hasRtl: false`) may only appear

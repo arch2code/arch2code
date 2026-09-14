@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
-"""The descriptor selectors in pysrc/processYaml.py unpack a single element,
+"""The descriptor selector in pysrc/processYaml.py unpacks a single element,
 so a producer emitting zero or several matches fails at the selector.
-
-projectOpen._selectDeclaredDescriptor: validateVariantLabelBuildOwnership
-rejects a label several projects declare unless the build's own project is
-one of them, so the build's own descriptor wins when present and otherwise
-the label has exactly one declarer. Both callers pass PROJECTNAME.
 
 projectOpen._instanceVariantDescriptor: resolveInstanceVariantDeclarers
 persists one declaring project per labelled instance and
@@ -23,42 +18,6 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pysrc import processYaml
-
-
-def test_selectDeclaredDescriptor_consumer_among_declarers():
-    """Two declarers, one the consumer: the consumer's own descriptor wins."""
-    descriptors = [
-        {'variant': 'v0', 'declaringProject': 'myProj', 'block': 'blk'},
-        {'variant': 'v0', 'declaringProject': 'foreign', 'block': 'blk'},
-    ]
-    selected = processYaml.projectOpen._selectDeclaredDescriptor(None, descriptors, 'myProj')
-    assert selected['declaringProject'] == 'myProj', \
-        f"expected the consumer's own descriptor, got {selected!r}"
-    print("PASS: _selectDeclaredDescriptor picks the consumer's own descriptor")
-
-
-def test_selectDeclaredDescriptor_single_foreign_declarer():
-    """One foreign declarer, consumer absent: that descriptor is returned."""
-    descriptors = [{'variant': 'v0', 'declaringProject': 'foreign', 'block': 'blk'}]
-    selected = processYaml.projectOpen._selectDeclaredDescriptor(None, descriptors, 'myProj')
-    assert selected['declaringProject'] == 'foreign', \
-        f"expected the sole foreign descriptor, got {selected!r}"
-    print("PASS: _selectDeclaredDescriptor returns the sole foreign descriptor")
-
-
-def test_selectDeclaredDescriptor_two_foreign_declarers_raises():
-    """Two foreign declarers, consumer absent: validateVariantLabelBuildOwnership
-    should have rejected this build already, so the selector raises ValueError."""
-    descriptors = [
-        {'variant': 'v0', 'declaringProject': 'foreignA', 'block': 'blk'},
-        {'variant': 'v0', 'declaringProject': 'foreignB', 'block': 'blk'},
-    ]
-    try:
-        processYaml.projectOpen._selectDeclaredDescriptor(None, descriptors, 'myProj')
-    except ValueError:
-        print("PASS: _selectDeclaredDescriptor raises on two foreign declarers")
-        return
-    assert False, "two foreign declarers with no consumer descriptor must raise ValueError"
 
 
 def test_instanceVariantDescriptor_single_match():
@@ -118,9 +77,6 @@ def test_instanceVariantDescriptor_no_variant_returns_none():
 
 
 def run_all_tests():
-    test_selectDeclaredDescriptor_consumer_among_declarers()
-    test_selectDeclaredDescriptor_single_foreign_declarer()
-    test_selectDeclaredDescriptor_two_foreign_declarers_raises()
     test_instanceVariantDescriptor_single_match()
     test_instanceVariantDescriptor_no_match_raises()
     test_instanceVariantDescriptor_two_matches_raises()

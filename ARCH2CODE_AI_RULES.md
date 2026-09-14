@@ -593,15 +593,17 @@ blocks:
 
 parameters:
   ip:
-    - {variant: variant0, param: IP_DATA_WIDTH, value: 8}
-    - {variant: variant0, param: IP_MEM_DEPTH, value: 16}
-    - {variant: variant0, param: IP_NONCONST_DEPTH, value: 24}
-    - {variant: variant1, param: IP_DATA_WIDTH, value: 12}
-    - {variant: variant1, param: IP_MEM_DEPTH, value: 8}
-    - {variant: variant1, param: IP_NONCONST_DEPTH, value: 12}
+    variant0:
+      IP_DATA_WIDTH: 8
+      IP_MEM_DEPTH: 16
+      IP_NONCONST_DEPTH: 24
+    variant1:
+      IP_DATA_WIDTH: 12
+      IP_MEM_DEPTH: 8
+      IP_NONCONST_DEPTH: 12
 ```
 
-`IP_NONCONST_DEPTH` above is a pure block parameter. If it is used as memory `wordLines`, arch2code sizes address space from the maximum bound value across variants.
+`IP_NONCONST_DEPTH` above is a pure block parameter. If it is used as memory `wordLines`, arch2code sizes address space from the maximum bound value across variants. A `parameters:` section may sit in any file whose scope reaches the block; it need not be the block's own file.
 
 ---
 

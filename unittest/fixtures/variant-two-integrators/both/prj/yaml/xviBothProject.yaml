@@ -1,7 +1,4 @@
-# A third project referencing both integrators without declaring xviLeaf's v0.
-# xviTopProject.yaml already composes xviMid, so listing it brings in both
-# bindings of v0. Used only by the create-time rejection cell; no Makefile or
-# generated artifacts.
+# A third project composing both integrators and declaring no xviLeaf variant of its own.
 
 yamlFormat: 2
 projectName: xviBoth

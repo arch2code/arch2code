@@ -94,23 +94,13 @@ MOVE_PROJECT_FILE = "PROJECT_FILE"     # the project.yaml itself
 MOVE_ORPHAN = "ORPHAN"                 # a project-scope integration file (no block YAML)
 MOVE_SOURCE = "SOURCE"                 # user-editable generated source (carries user regions): preserved, not deleted
 
-# fileMap keys whose generated files are FULLY generated (no user regions worth
-# preserving): the migration deletes them and lets `make gen`/`make newmodule`
-# recreate them at the hierarchical location. This is a migrate-side maintenance
-# classification, deliberately keyed on the base-config fileMap key names
-# (config/project.yaml). A project's own or custom fileMap key NOT listed here is
-# treated as user-editable and its files MOVE (content preserved) rather than
-# delete — the safe default for content the migrator does not recognize.
-# tandem, blockVlRegistrar, foreignConfig and vlSvWrapForeign are the
-# verilated/foreign siblings of already-listed generated keys (blockBase,
-# blockRegistrar, config, vlSvWrap): each is a single whole-file generated block
-# with no user regions, emitted into an all-generated segment (base, registrar,
-# vl_wrap). Listing them makes those segments classify fully-generated so the
-# migration clears them by directory (below).
+# fileMap keys whose files are whole-file generated: the migration deletes
+# them and make gen recreates them. A key absent here is treated as
+# user-editable and moved intact.
 FULLY_GENERATED_FILEMAP_KEYS = frozenset({
     "blockBase", "blockRegistrar", "include", "package",
     "vlSvWrap", "vlSvWrapBody", "vlScWrap",
-    "tandem", "blockVlRegistrar", "foreignConfig", "vlSvWrapForeign",
+    "tandem", "blockVlRegistrar", "configModule", "vlSvWrapForeign",
 })
 
 # Relative include references rewritten inside moved source user regions:

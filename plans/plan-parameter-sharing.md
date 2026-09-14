@@ -77,6 +77,18 @@
   `infPort`/`infPortBad`, gate `xproj-inferred-port` in `pipeline-test` (baseline now 4 `OK:`).
   Value-keyed payload types lift the rejection. Full gate set green on the final tree; the step 15
   (a) migrate proof also ran (§6, step 13, "Inferred-port Config gate"). Uncommitted, ready to stage.
+- **Autonomous session 2026-09-13, six rulings executed in sequence.** rtl.f compile-closure
+  fix LANDED (§6 step 12b "rtl.f package-list derivation defect"); the two rules documents'
+  retired flat `parameters:` form fixed (plan-116 9G LANDED); one-line proposals recorded for
+  plan-116 9C, 9D and 9E; the value-keyed payload type design step is written in
+  `design-parameter-inheritance.md` for review. Plan-116 9B LANDED (site index keyed by declaring
+  project; defect proved by a new failing test on fixture `param-variant-two-declarers-legal`)
+  and plan-116 9F LANDED (dead ambiguity branch in the block-name map), gated together. The
+  owner-axis label fix LANDED (§6 step 12b, "Label-keyed view fallbacks"), full gate set green,
+  with one architect follow-up recorded there on which owner `isForeign` keys on. The
+  `configModule`/`ownerQualified` rename LANDED (§6 step 15 follow-up (c)), byte-identical, with
+  three found-on-the-way items recorded there (the `vl_wrap` segment no longer classifies
+  fully-generated for `make migrate`). The artifact-row view LANDED (step 12a (d) (i)) and its review pass is applied; one accepted deviation from byte-identical and the two gen-ownership fixes are recorded there.
 - **Step 12a (d) follow-ups (ii) and (iii) LANDED 2026-09-11.** The create-side cond-row copies
   and the hardcoded `foreignConfig` fileMap key lookup collapse into `artifactPaths.blockCondRow`
   and `artifactPaths.configModuleFileDef`. Behaviour-preserving; build manifests byte-identical on
@@ -1626,7 +1638,112 @@ Rule 7 is split out as step 12b, below, and untouched by this entry.
   unit 129/129; base pipeline exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale; pro 14 "No
   error", 0 warnings; product `make clean && make gen -j` diff-stat builder, isp_shared and the
   deleted header only, model run and `VL_DUT=1` run (`--vlInst=tb.debayer`) two "No error" each.
-  (i) stays OPEN. Uncommitted, ready to stage.
+  (i) RULED 2026-09-13 (user): do it, behaviour-preserving; one per-artifact row view (fileDef, path,
+  layout, owner) consumed by the manifest, newmodule, the orphan sweep and the stale-segment sweep,
+  proved by byte-identical manifests and scaffold sets. **LANDED 2026-09-14.**
+  `artifactPaths.artifactRows(prj, blockCondData, instances, fileMap)` returns one row per artifact
+  the fileMap names over the whole parsed design: `fileType`, `fileDef`, `mode`, `stem`, `files`
+  (`{ext: path}`), `owner`, `layout`, `blockKey`, `anchorKey`, `variant`, `topModule`, `context`,
+  `includeEntries`. `projectOpen.artifactRows()` wraps it for the generators; the manifest (run in
+  `projectCreate`) calls it with its flat tables; `migrateOrphans.expandFileMap` calls it with the
+  legacy or current map after `_blockModeFileMap` drops block entries whose segment is missing
+  from any owner's layout. `getStaleSegmentFiles(prj, rows, blockCondData, fileMap, basePath)`
+  filters the rows instead of rebuilding them; the manifest's vlTops pass filters block and
+  registrar rows through `isVlSvTop`. newModule's three write loops are one `_writeRowFiles`.
+  One deviation from "byte-identical", accepted: a parameterizable block's bare
+  `<block>_hdl_sv_wrapper.sv` left `A2C_SV_GEN_FILES` in five manifests (ip_test, ip_test/ip,
+  mixed, simple_ip/ip, rtInh; eight stubs). The old block walk recorded the bare stem for every
+  block; the view records the per-variant stems that are emitted. None of the eight files exists
+  and `a2c-common.mk` filters the set through `$(wildcard)`, so the build set is unchanged. Other
+  behaviour deltas, all cosmetic: newModule's "owned by project" skip prints once per matching row
+  rather than once per block, blocks iterate by key, and files scaffold in row order (block,
+  registrar, project, context). The fake `prj` in `test_migrate_orphans.py` gained `instances`,
+  `getBlockCondRow`, and the config keys the view reads. Proof: stale-segment sets identical on
+  all 46 example databases; all 49 `.gen/build.mk` identical except the five above; unit 129/129;
+  base pipeline exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale; pro 14 "No error", 0
+  warnings; product gen diff-stat builder, isp_shared and the deleted header only, model run and
+  `VL_DUT=1` run two "No error" each. Uncommitted, ready to stage.
+  **Review pass 2026-09-14 (categorical, three reviewers; user: "fix"), applied.** Code: the
+  view takes explicit tables (no duck-typing), `blockModeStems` inlined, context rows read the
+  new `stem` field `saveIncludeFiles` persists in `INCLUDEFILES` (an existing database needs
+  `make clean` before `make gen`), `getStaleSegmentFiles` and the registrar stale warning run
+  unconditionally as at HEAD, `expandFileMap` expands block entries per owner layout (HEAD's
+  per-block check, not an all-owners guard), `getForeignVariants` reads the persisted
+  `FOREIGNCONFIGHEADERS[(PROJECTNAME, block)]['vlVariants']`, `compileContexts` and
+  `contextRtlDir` compute once in `projectOpen.__init__`, the `--parent` wrapper branch drops its
+  membership guard and reads `foreignVariants` by subscript, dead fields deleted
+  (`declaredVariantConfigs`, `foreignVariantDutClasses`/`Headers`, `getDeclaredVariantConfigs`,
+  `_declaredVariantConfigEntries`, `projectOpen.artifactRows`, `intf_gen_utils.
+  cpp_descriptor_config_name`). The pro tandem template was the one surviving reader of
+  `declaredVariantConfigs`; it now groups labels through a new block-view field
+  `standaloneVariantConfigs` (`{variant: structName}`). Tests: `test_migrate_orphans` stub carries
+  truthful `VARIANTCONFIGDESCRIPTORS`/`VARIANTSOURCEBLOCKS`, `test_variant_scope_resolution`
+  selects by instance name and asserts LEAF_W 12/8, the two-integrators third-project cell
+  builds and runs `both` itself. Comments: about thirty blocks shortened to standing behaviour.
+  Two ownership defects found on the way, FIXED: the manifest recorded every plain registrar
+  trampoline and every verilated `.sv` top as a root-owned gen target, while newModule scaffolds
+  only rows the current project owns; a project composing another project's assembler (fixture
+  `both`, topInstance owned by xviTop) then rendered xviTop's trampolines and wrapper tops from
+  its own database and failed (`The block specified ... does not exist in the design`). Both now
+  key on `row['owner'] == rootProject`; the compile, module and verilate sets stay
+  foreign-inclusive. Manifest delta: ip_test drops bridge's three trampolines and four bridge/ip
+  wrapper tops from `A2C_SC_GEN_FILES`/`A2C_SV_GEN_FILES`, ip_test/bridge and simple_ip drop
+  ip's `ip_variant0` top, mtxComp drops mtxElect's two trampolines; each is generated by its own
+  project's `make gen`, which the pipeline runs. Notes for the architect: the plan-116 9F readers
+  at `processYaml.py` `generateHierarchy` (~3231) and `displayInstance.py` (~62) do not route
+  through `getQualBlock`; `module_hdl_wrapper.py`'s bare-file `pair_registrations` path may be
+  dead or duplicate the `pair` mode (one generated pair should be checked); `_instanceVariantDescriptor`
+  is read by a test as a private helper. Proof: stale-segment sets identical on all 46
+  databases; 45 of 49 manifests identical, the four above differ only by the listed gen-set
+  removals; unit 129/129; base pipeline exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale,
+  examples tree clean apart from the two known edits; pro 14 "No error", 0 warnings.
+- **rtl.f package list derived from the top file's scope, not the design's, RULED 2026-09-13 (user):
+  fix.** Emitted modules import their own context's scope; rtl.f and the manifest dependency list
+  walk only the top context's scope, so a reachable module can import a package the list omits
+  (the step 12b bridge incident; its restored include was a workaround). Fix is a persisted
+  create-side closure over reachable RTL contexts' scopes; the workaround include goes (§6, step
+  12b, "rtl.f package-list derivation defect"). LANDED 2026-09-13.
+- **Label-keyed view fallbacks, RULED 2026-09-13 (user): owner axis, drop the validator.** Foreign
+  declarations already carry the declaring project in Config names, the registrar's Verilated top
+  (`<project>_<block>_<label>_hdl_sv_wrapper`) and `FOREIGNCONFIGHEADERS`; only
+  `variantSelection.standaloneVariantDescriptors` and `_selectDeclaredDescriptor` still collapse by
+  label with an "own, else the single remaining" fallback, and `validateVariantLabelBuildOwnership`
+  exists to keep that unpack at one. Fix: both maps hold the block owner's declarations under the
+  bare name and nothing else; non-owner declarations are served by the qualified artefacts; the
+  validator and both fallbacks go. Proof: `variant-two-integrators`' third project builds and
+  verilates with two qualified tops; every other example's verif set and rtl.f byte-identical.
+  Open check before landing: whether any consumer binds the bare top for a non-owner label today.
+  **LANDED 2026-09-13.** `standaloneVariantDescriptors` keeps `not isForeign and not
+  containerSourced` descriptors across the block's variant sources, with no `PROJECTNAME` and no
+  grouping; `_selectDeclaredDescriptor`, `_declaredDescriptorsByLabel` and
+  `validateVariantLabelBuildOwnership` are deleted; `_declaredVariantConfigEntries` emits the
+  owner's declarations only. New `projectOpen.getForeignVariants(qualBlock)` and view field
+  `foreignVariants` (the labels the build project declares of a block another project owns,
+  narrowed to the block's params by the shared `_narrowVariantValues`) key the svWrapper's
+  `foreignVariantTops` maps and the `module_hdl_wrapper.py` foreign dispatch and values. The
+  open check came back clean: `newModule`, `artifactPaths`, the SC wrapper's `sc_concrete_dut`
+  and the pro tandem registrar all read the standalone map for the owner's set only, and a
+  foreign declaration always renders through its declaring project's registrar pair.
+  `test_variant_two_integrators`' third-project cell flipped from rejection to a build that
+  asserts per-integrator declarers, an owner-only standalone map (`dflt`) and one
+  `FOREIGNCONFIGHEADERS` entry per integrator; the premise cell pins `getForeignVariants` on
+  `xviTop.db`; the three `_selectDeclaredDescriptor` cells are gone; the inert `leafIp: v0`
+  binding the validator forced on fixture `param-variant-two-declarers-legal` is removed.
+  Reviewed categorically (twelve text and contract findings applied). Gates, VERIFIED BY
+  EXECUTION 2026-09-13: unit suite 129 of 129; base pipeline after `make clean` exit 0, 70 "No
+  error", 0 `ERROR:`, 4 `OK:`, no stale removals, example trees byte-identical; pro pipeline 14
+  "No error", examples byte-identical; product `make clean && make gen -j` diff rows unchanged
+  (`builder`, `isp_shared`, deleted `model/debayerVariantConfig.h`), model run and `VL_DUT=1`
+  run two "No error" each.
+  **Follow-up for the architect, found in review.** `isForeign` is computed against the owner of
+  the `ipParameters` context (`calcVariantConfigDescriptors`, `ownerProject =
+  contextOwningProject[configContext]`), and `calcForeignConfigHeaders` uses the same axis, while
+  rules 5 and 6 name the block's owner. The two differ only when a block's `ipParameters` sit in
+  a definitions-only project another project's block reaches (allowed since rule 1 changed on
+  2026-09-08). In that shape the block owner's own declaration counts as foreign: its bare top
+  and standalone map are empty, its labels render as `<owner>_<block>_<label>` tops, and the pro
+  tandem registrar falls back to the default Config. No example or fixture has the shape. Decide
+  which owner the axis should key on before such a project appears.
 - **artifactPaths extraction, LANDED 2026-09-10.** The three path-resolution functions the stale
   registrar work made shared (`expandNewModulePath`, `fileMapCondMatch`, `getRegistrarFiles`, 122
   lines) moved out of `pysrc/processYaml.py` into `pysrc/artifactPaths.py`, whose only imports are
@@ -1808,6 +1925,36 @@ The normative statement is rule 7 in [`design-parameter-inheritance.md`](./desig
   VL_DUT=1` exit 0, two "No error", `git status --short | wc -l` unchanged at 63; pro `make -C
   builder/pro pipeline-test -j` exit 0, 14 "No error", `test_constructor_tandem.py` PASS.
 - **Sequencing.** Independent of steps 13 through 15.
+- **rtl.f package-list derivation defect, DIAGNOSED and RULED 2026-09-13 (user): fix, remove the
+  workaround include.** The 2026-09-08 include restore above treated a generator bug as an authoring
+  rule. Every emitted SV module and package imports the packages of its own context's two-level
+  scope (`systemVerilogGeneratorHelper.importPackages` over the rendered context's
+  `includeContext`), so `ipBridge_package.sv`/`ipBridge.sv` import `ip_package` because
+  `ipBridge.yaml` reaches `ip.yaml` through `ipVariants.yaml`, inside the rule. The file list is
+  derived from a different relation: `rtl.f` is project-mode, rendered at the top context, and
+  `templates/systemVerilog/rtldotf.py` lists a package and an incdir for each context in the TOP
+  context's own scope only; `createBuildManifest` `svDepFiles` walks `prj.yamlContext[topContext]`
+  the same way, while `svModuleFiles` is scoped by reachable blocks (its comment calls rtl.f
+  "reachability-scoped", which it is not). The two relations coincided only while
+  `bridgeStdTop.yaml` happened to include `ipVariants.yaml` directly; removing that include shrank
+  the top's scope, and a reachable module kept importing a package no longer compiled. `make db`
+  passed because each context's references resolve within its own scope and nothing checks the
+  emitted file list against the union of packages the emitted modules import. VERIFIED BY CODE
+  READING 2026-09-13. Fix: a create-side closure, persisted, seeded by the top context and the
+  contexts of reachable RTL blocks, adding each member's two-level scope until closed (a package
+  imports its own scope's packages); `rtldotf.py` packages and incdirs and the manifest's
+  `svDepFiles` read that one set; the `svModuleFiles` comment corrected. Proof: `bridgeStdTop.yaml`
+  drops the direct `ipVariants.yaml` include and the bridge fixture verilates clean; rtl.f
+  byte-identical on every other example. The two-level visibility rule itself stands.
+  **LANDED 2026-09-13.** `projectCreate.calcCompileContexts()` persists `COMPILECONTEXTS` (language-neutral names since 2026-09-14, user ruling; were `calcSvCompileContexts`/`SVCOMPILECONTEXTS`)
+  (top scope first, then every reachable block's context, closed under include scope);
+  `getContextData` exposes it as `compileContexts` and derives `contextRtlDir` from it;
+  `rtldotf.py` and the manifest's `svDepFiles` read that one set. Reviewer pass applied (no
+  redundant seeds, single-consumer `contextRtlDir`). Proof: unit 129/129; base pipeline after
+  `make clean` exit 0, 70 clean runs, 0 ERROR, 4 OK, 0 stale (the header-mode examples
+  `inAndOut`/`hierInclude` keep a db the pipeline does not rebuild, so the gate needs the clean
+  first); all 33 example `rtl.f` byte-identical to their pre-change snapshots, the bridge included
+  once the top scope is seeded first; pro pipeline and product gates run with the 9B landing.
 
 ### Step 13, the product tree moves off `inheritContainerParam`. DECIDED 2026-09-07 (user); LANDED 2026-09-08; REVERTED 2026-09-09 (user)
 
@@ -1840,6 +1987,9 @@ A step planned as YAML-only needed three generator fixes on the way, each found 
   a variant are containers whose own ports are never connected (`xpDpWrap`, `xpCpWrap`,
   `xpRtWrap`) and one fixture leaf reached only over a register connection. Fixtures
   `examples/xprojParam/infPort` and `infPortBad`, gate `xproj-inferred-port`.
+  The fix of record now has a design write-up: "Design step: value-keyed payload types" in
+  [`design-parameter-inheritance.md`](./design-parameter-inheritance.md), written 2026-09-13 and
+  awaiting the user's review. No code has changed for it; the db stopgap stands until it lands.
 - **Inferred-port Config gate LANDED 2026-09-11, uncommitted.** `validatePorts` checks an undeclared
   port at the two points that used to skip it: the connection arm and the connectionMap arm. The
   check fires only for a `params:`-declaring end whose connection or connectionMap row carries
@@ -1952,7 +2102,7 @@ Step 10 found the connectionMap sizing arm rejecting an `inheritContainerParam` 
 - **Outside `builder/base`, awaiting the user's acceptance.** `builder/pro/templates/systemc/classDeclTandem.py` read a base view field this step removed; it now imports the block's own Config module or the pair's `verifConfigModules`, following `constructorTandem.py`. `builder/pro/unittest/test_constructor_tandem.py` gained the `structName` field on its hand-built descriptor stubs.
 - **Gates, VERIFIED BY EXECUTION 2026-09-07 after the review repairs.** `make clean && make pipeline-test -j` exit 0, 64 "No error", zero `ERROR:`, both OK lines. Unit suite 117 of 117. Product: `make clean && make gen -j && cd rundir && make -j && ./build/run debayer --verbosity=medium && make -j all VL_DUT=1` exit 0, two "No error", `test_debayer_structs` executed, `verif/preprocess_hdl_sc_wrapper.h` byte-identical, product status count unchanged. Pro: `make -C builder/pro pipeline-test -j` exit 0, 14 "No error", `test_constructor_tandem.py` passing. All four re-run once more after the last edit (a direct read of the contracted `ownConfigModule` view field replacing a `.get`): unit 117 of 117, pipeline-test exit 0 at 64, product exit 0, pro exit 0 at 14. Two earlier product and pro gate failures were tree collisions with a gate chain the repair agent left running detached, not defects; both passed alone.
 - **Emitted-output delta.** NOT MEASURED as a before/after hash: the implementer worked iteratively from no clean snapshot. Verified by content inspection (`twoCtx`, `ip`, the product tree) and by the gates. The review repairs' own delta was measured at zero.
-- **Follow-ups this step opened.** (a) Retire the empty `<context>VariantConfig.h`: fileMap `config` entry, `_configHeaderContexts`, `saveIncludeFiles`'s `config_hdr`, `templates/fileGen/fileGen.py` scaffold, `genFileParam.py`, `config.py`'s empty renderer, plus a per-file orphan-sweep entry for `make migrate`; `unittest/test_container_param_cross_project_vl.py` already deletes the stale header by hand and `dpMid` gained a new empty one. (b) The implementer's `make newmodule` sweep scaffolded `model/`, `rtl/`, `rundir/` and three Config modules into `examples/xprojParam/cpLayout`, a db-only fixture; nine untracked files with no user content, deletion referred to the user. Resolved: the user committed the files; they are tracked. (c) The `foreignConfig` fileMap key now names native Config modules too; renaming it is a migrate item. Inventory for (a), 2026-09-10 (VERIFIED BY CODE READING): touchpoints are the `config` entry in `config/project.yaml` ~161, `genFileParam.py` `_CONTEXT_FILE_MODE['config_hdr']`, `fileGen.py` `config_hdr`, `processYaml.py` `saveIncludeFiles`/`_configHeaderContexts`, `migrateLayout.py` `FULLY_GENERATED_FILEMAP_KEYS`, and `templates/systemc/config.py::includeConfig` returning `""`. `migrateOrphans.py` `LEGACY_FILEMAP` omits `config` because it never existed at `main`, so a retirement needs a delete-only sweep of its own for trees that carry the header. Zero tracked `*VariantConfig.h` in `examples/`, `pro/examples/` or the product; only unit fixtures include it. Awaiting the architect's go-ahead, since the sweep deletes generated files in user trees.
+- **Follow-ups this step opened.** (a) Retire the empty `<context>VariantConfig.h`: fileMap `config` entry, `_configHeaderContexts`, `saveIncludeFiles`'s `config_hdr`, `templates/fileGen/fileGen.py` scaffold, `genFileParam.py`, `config.py`'s empty renderer, plus a per-file orphan-sweep entry for `make migrate`; `unittest/test_container_param_cross_project_vl.py` already deletes the stale header by hand and `dpMid` gained a new empty one. (b) The implementer's `make newmodule` sweep scaffolded `model/`, `rtl/`, `rundir/` and three Config modules into `examples/xprojParam/cpLayout`, a db-only fixture; nine untracked files with no user content, deletion referred to the user. Resolved: the user committed the files; they are tracked. (c) The `foreignConfig` fileMap key now names native Config modules too; renaming it is a migrate item. **RULED 2026-09-13 (user): rename key and flag.** Key `foreignConfig` becomes `configModule`; the `foreignConfig: true` flag on both registrar entries becomes `ownerQualified: true`; view fields `foreignConfigModule`/`foreignConfigModules` become `configModule`/`configModules`. Census 2026-09-13: no user project, the product or `builder/pro` references the key or flag, and PARAM lines do not carry the key, so the rename is generator-internal (config/project.yaml, `migrateLayout.FULLY_GENERATED_FILEMAP_KEYS`, newModule, artifactPaths, manifest, views, templates, GENERATOR_ARCHITECTURE.md) with byte-identical output. **LANDED 2026-09-13.** Key `configModule`, flag `ownerQualified` on both registrar entries, per-instance view field `configModule` (with its builder local `config_module`), dispatch `configModule_cppm`; `migrateLayout.FULLY_GENERATED_FILEMAP_KEYS` renamed in step so `make migrate` classifies the same segments. The persisted `FOREIGNCONFIGHEADERS` table and `calcForeignConfigHeaders` keep their names: they are the SV-wrapper-family filter over `CONFIGMODULES`, a different contract. Census after the edit: no reader of the old names outside `plans/`. Reviewed categorically; three text findings applied. Gates, VERIFIED BY EXECUTION 2026-09-13: unit suite 129 of 129; base pipeline after `make clean` 70 "No error", 0 `ERROR:`, 4 `OK:`, no stale removals, example trees byte-identical apart from the `dpTop/README.md` word; pro pipeline 14 "No error", examples byte-identical; product `make clean && make gen -j` diff rows unchanged, model run and `VL_DUT=1` run two "No error" each. Found on the way, not fixed under this ruling: `FULLY_GENERATED_FILEMAP_KEYS` (pysrc/migrateLayout.py ~110) omits `vlSvWrapPair`, so `_fullyGeneratedSegments` classifies `vl_wrap` as mixed and `make migrate` no longer clears it at directory level as its docstring (~531) says; the list's comment (~106) still names the retired `config` key; `examples/xprojParam/README.md:420` cites `getForeignConfigData`, which no longer exists. Inventory for (a), 2026-09-10 (VERIFIED BY CODE READING): touchpoints are the `config` entry in `config/project.yaml` ~161, `genFileParam.py` `_CONTEXT_FILE_MODE['config_hdr']`, `fileGen.py` `config_hdr`, `processYaml.py` `saveIncludeFiles`/`_configHeaderContexts`, `migrateLayout.py` `FULLY_GENERATED_FILEMAP_KEYS`, and `templates/systemc/config.py::includeConfig` returning `""`. `migrateOrphans.py` `LEGACY_FILEMAP` omits `config` because it never existed at `main`, so a retirement needs a delete-only sweep of its own for trees that carry the header. Zero tracked `*VariantConfig.h` in `examples/`, `pro/examples/` or the product; only unit fixtures include it. Awaiting the architect's go-ahead, since the sweep deletes generated files in user trees.
 - **Follow-up (a) LANDED 2026-09-11.** Retired the `config` fileMap entry, `_CONTEXT_FILE_MODE['config_hdr']`, the `fileGen.py` scaffold, `config.py::includeConfig`, `_configHeaderContexts`, and the `config`/`VariantConfig` mentions in `FULLY_GENERATED_FILEMAP_KEYS`. The sweep gained `RETIRED_CONTEXT_SIBLINGS`: a retired artifact's delete target, anchored on its still-current `include` sibling's directory so it resolves in either layout, owner-guarded, reporting a hand `#include` as `TODO_USER_INCLUDE`. The 2026-09-10 inventory's "zero tracked `*VariantConfig.h`" claim was wrong: the true, now-deleted count is 27 under `examples/`, 2 under `unittest/fixtures/`, 1 in `builder/pro`, 1 in the product. Two `make migrate` proofs, VERIFIED BY EXECUTION: `examples/mixed` (functional) reports `deleted legacy orphan mixedVariantConfig.h`; `examples/simple_ip/ip` (hierarchical) reports `deleted legacy orphan ipVariantConfig.h`, exit 0 clean. The one hand `#include` (`mixed.cppm`) is removed and `verify-testbench.md` no longer claims the region emits the header. Gates: unit suite 129 of 129; product `make clean && make gen -j` exit 0, `git status --short` shows only `D model/debayerVariantConfig.h`; product model and `VL_DUT=1` runs two "No error" each.
 - **Found on the way, RULED 2026-09-11 (user): the Config module follows `hasOwnParams`, the superset rule.** The `make migrate` proof on `examples/simple_ip/ip` re-scaffolded `registrar/ip_ipRegsVariantConfig.cppm`, one of the two files the 2026-09-10 cleanup had deleted as orphans. Both facts were right in their moment: the deletion ran under the old `foreignConfig` condition (hasMdl or hasTb), and the same commit then widened it to `hasOwnParams` alone for `xif_tb`, whose Config a child's External spells although the block has no artifact of its own. The synthesised register handler `ipRegs` (hasMdl 0, hasTb 0, hasVl 0, hasRtl 1) declares the three inherited parameters, so the contract names its module, and nothing imports it because it has no C++ artifact and sources no child. Two rules were on the table: keep the superset, or scaffold only when the block has a C++ artifact or a child sources its Config, a derived condition needing a new block-row field mirrored in the manifest and the sweep. The user chose the superset for its simplicity and low cost (one unused module per RTL-only parameterized block that sources no child). Consequence applied: `ip_ipRegsVariantConfig.cppm` stands in `examples/simple_ip/ip` and, after `make newmodule` and `make gen` there, in `examples/ip_test/ip`, both untracked for the user to commit; `make ip-test -j` re-run with the file present (result recorded in Current Status).
 

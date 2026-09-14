@@ -105,23 +105,81 @@ Recorded so the iteration argues about facts. Dated 2026-09-07; delete each line
 - Rules 2 and 7, visibility: both say include chain. Every scoped lookup in the tree, the two
   scope checks included, sees a file, the files it includes, and the files those include, and no
   further (`GENERATOR_ARCHITECTURE.md` section 4 records the two-level flattening as deliberate).
-  A declaration three includes away is reported as out of scope. Whether the rule or the tool
-  changes is for the architect; found 2026-09-08 when `ip_test`'s bridge top lost `ip_package.sv`
-  from its `rtl.f` after dropping a direct include.
+  A declaration three includes away is reported as out of scope. RULED 2026-09-13: the rule stands;
+  the 2026-09-08 `rtl.f` loss in `ip_test`'s bridge top was a tool defect (the file list walked the
+  top file's scope instead of the closure over reachable RTL contexts' scopes) and is fixed as such.
+  LANDED 2026-09-13 (`COMPILECONTEXTS`, renamed from `SVCOMPILECONTEXTS` 2026-09-14); the bridge top's workaround include is gone.
 - Rules 5 and 6, one label from two projects in one build: identity is (block, variant, project),
   and the Configs are distinct since step 15, but the per-label HDL wrapper and registration
   artefacts are named by label alone. A build whose own project does not declare a label that two
   other projects declare is rejected at db time (`validateVariantLabelBuildOwnership`, 2026-09-08)
-  rather than emitting one of the two silently. Project-qualified wrapper naming would lift it.
+  rather than emitting one of the two silently. RULED 2026-09-13 (user): owner axis. The bare
+  `<block>_<label>` artefacts and the standalone-variant map hold the owner's declarations only;
+  every non-owner declaration is served by the qualified top and Config that already exist, the two
+  label-keyed view fallbacks and the db rejection go. LANDED 2026-09-13 (plan-parameter-sharing §6
+  step 12b, "Label-keyed view fallbacks"); the deviation is closed. One question stays open there
+  for the architect: the descriptors' `isForeign` keys on the owner of the `ipParameters` context,
+  which equals the block's owner except when a definitions-only project holds the parameters.
 - Rule 9: the layout index collapses cross-project bindings into one slot (item 9B of
-  [`plan-116-review-feedback.md`](./plan-116-review-feedback.md)).
+  [`plan-116-review-feedback.md`](./plan-116-review-feedback.md)). RULED 2026-09-13 (user): fix now; rows keyed by
+  (block, declaring project, variant), the site carrying its declarer from the persisted
+  instance-declarer map. LANDED 2026-09-13 (plan-116 9B); the deviation is closed.
 
 ### Direction, not a rule
 
 Direction (user, 2026-09-09): SV is the guiding principle. A child binds on its defined ports and
 ignores container Config members it does not use. In SC that means payload struct types keyed on
 the parameter values they use, with the `<Config>` spelling kept as an alias, so two Configs with
-equal values give one type and same-interface thunkers retire. Not yet a plan step.
+equal values give one type and same-interface thunkers retire. RULED 2026-09-13 (user): opened as a
+design step first; the emitted-shape design is written here for review before any generator change,
+after the step 15 (c) rename and the step 12a (d) (i) artifact-row view land.
+
+### Design step: value-keyed payload types (written 2026-09-13, for review)
+
+**The problem.** A parameterizable structure is emitted once as `template<typename Config>
+struct dpSt`, and its width expressions read `Config::DP_WIDTH`. Two Configs that resolve to the
+same numbers are two C++ types, so a channel typed at one cannot bind a port typed at the other.
+Where the child declares `ports:` the generator inserts a same-interface thunker; where the port
+is inferred it inserts nothing and the model fails to compile, which the 2026-09-11 db stopgap
+now rejects. SystemVerilog has neither problem: a port accepts any same-layout struct, and the
+junction check (rule 9) already rejects unequal values.
+
+**The proposal.** Key each payload type on the parameter values it uses, and keep the `<Config>`
+spelling as an alias.
+
+- The structure is emitted as a template over the values of the root parameters in its closure,
+  which `STRUCTUREPARAMDEPS` already records per structure: `template<uint32_t DP_WIDTH> struct
+  dpSt_v`. Width expressions read the template value parameter instead of `Config::DP_WIDTH`.
+  A nested parameterizable type or sub-structure is spelled the same way, at the same values.
+- The existing name becomes an alias template in the same context module:
+  `template<typename Config> using dpSt = dpSt_v<Config::DP_WIDTH>;`. Alias templates are
+  transparent, so `dpSt<A>` and `dpSt<B>` are one type whenever `A::DP_WIDTH == B::DP_WIDTH`.
+  Every current consumer compiles unchanged: block Base classes and their `using dpSt =
+  dpSt<Config>;` lines, channels, testbenches, thunkers, the HDL wrapper boundary.
+- `bindsDirectly` compares the resolved values of the payload's parameters at the two sites
+  instead of `configTypeIdentity`; the site index resolves those values already. Same interface
+  and equal values bind directly, whatever Config each end carries. Same interface and unequal
+  values are already a db error. Different interfaces keep today's cross-interface thunker.
+- The 2026-09-11 inferred-port stopgap goes: its case is exactly "same interface, equal values".
+
+**What does not change.** Config struct names and contents, the registrar and factory keys,
+every SystemVerilog artefact, `_bitWidth` and `_byteWidth`, and the worst-case storage sizing.
+The change is confined to the SystemC structure and type emitters and to the bind classification
+in the block-data view.
+
+**Open points for the architect.**
+
+1. Spelling of the value-keyed name (`dpSt_v` above is a placeholder) and of the value parameter
+   type, which should follow the constant's `valueType`.
+2. A structure whose closure has no root parameter dependency but is marked parameterizable
+   (`checkAgreement` in `deriveParameterizedDeclSets` reports the disagreement today) stays a
+   plain struct.
+3. `structureStorageSignature` and the thunker's `directCopy` flag simplify: two sides with equal
+   values are one type and never reach the thunker.
+4. Proof: the shape from step 13 (an inferred-port child on a distinct Config with equal values,
+   `xpRtInhTop` in the register-bus variant) compiles with no thunker; the `infPortBad` fixture
+   still rejects at db; every SystemVerilog artefact in the suite byte-identical; model and VL
+   runs green across base, pro and the product.
 
 ---
 

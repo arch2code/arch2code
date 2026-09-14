@@ -6,8 +6,8 @@ the label belongs to the container supplying its Config. Two containers declarin
 the same label leave that label naming two different Configs of the same block,
 and the HDL wrapper, the Config selection and the factory registration each
 resolve it independently: `getStandaloneVariants` keeps whichever container it
-visits last, `getDeclaredVariantConfigs` returns both, and the tandem constructor
-emits two `registerBlock` calls under one factory key.
+visits last, and the tandem constructor emits two `registerBlock` calls under
+one factory key.
 `validateVariantSourceLabelCollision` (`pysrc/processYaml.py`, run right after
 `calcVariantSourceBlocks`) rejects the ambiguity instead, naming the leaf, the
 label and both declaring containers.

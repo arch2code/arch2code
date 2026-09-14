@@ -1,32 +1,29 @@
 #!/usr/bin/env python3
 """Unit tests for the post-database orphan sweep (pysrc/migrateOrphans.py).
 
-The sweep DISPATCHES ON the embedded legacy fileMap's per-entry `migrate:`
+The sweep dispatches on the embedded legacy fileMap's per-entry `migrate:`
 disposition (there is no L\\C set-difference):
   - `delete`  purely-generated legacy artifacts, expanded over the current DB and
               swept (plus the explicit LEGACY_LITERAL_DELETE aggregates);
-  - `port`    user code a later porter phase converts; only IDENTIFIED and
-              REPORTED here when the current map now produces a different form;
+  - `port`    user code a later porter phase converts; only identified and
+              reported here when the current map now produces a different form;
   - `edit`    user code a later phase rewrites in place (no file move, so no legacy
               path to sweep); never expanded, never touched by the sweep.
 There is no disposition meaning "untouched by the migration": an unaffected file is
 omitted from the map entirely.
 
-To exercise it without standing up a full projectCreate database, each test
-stages a small synthetic project on disk and drives sweepOrphans against a
-lightweight fake `prj` exposing exactly the attributes the enumerator reads
-(projectLayout, contextOwningProject, includeName, filemap, data['blocks'/
-'blocksparams'], and config.getConfig('INCLUDEFILES'/'PROJECTNAME')). The files on
-disk are real; only the DB access surface is faked.
+Each test stages a synthetic project on disk and drives sweepOrphans against
+_FakePrj, which exposes the projectOpen attributes artifactRows and the sweep
+read. Files on disk are real; only the DB access surface is faked.
 
 Coverage (the required assertions):
   (a) every `delete`-disposition entry + the explicit vl_wrap.{cpp,h,sv} aggregate
       is deleted (Includes.{h,cpp}, Base.h, _package.sv, the HDL wrappers,
       Tandem.{h,cpp}, vl_wrap.*);
   (b) `port`/`edit`-entry files (a block .cpp/.h/.sv, the tb top and External pairs
-      and the tb Config, WITH generated markers) are NEVER deleted — and are
+      and the tb Config, with generated markers) are never deleted, and are
       unreachable for deletion by construction;
-  (c) a delete-target-named file WITHOUT the generated marker is REPORTED, not
+  (c) a delete-target-named file without the generated marker is reported, not
       deleted;
   (d) a `port` file whose current form differs (a parameterized block, the tb top
       and External pairs -> .cppm) is reported TODO_PORT while a same-form
@@ -181,7 +178,12 @@ class _FakePrj:
             "vlWrapDirs": [os.path.join(root, "verif", "vl_wrap")],
         }
         self.config = _FakeConfig({"INCLUDEFILES": includeFiles, "PROJECTNAME": "t",
-                                   "BUILDMANIFEST": manifest})
+                                   "BUILDMANIFEST": manifest, "TOPCONTEXT": "top.yaml",
+                                   "REGISTRARPAIRS": {}, "CONFIGMODULES": {},
+                                   "FOREIGNCONFIGHEADERS": {},
+                                   # Real shapes for two blocks that declare no variant.
+                                   "VARIANTCONFIGDESCRIPTORS": {"myblk": [], "paramblk": []},
+                                   "VARIANTSOURCEBLOCKS": {"myblk": ["myblk"], "paramblk": ["paramblk"]}})
 
         def block(key, hasMdl, hasTb, hasRtl, hasVl):
             return {"blockKey": key, "_context": "top.yaml", "dir": "", "block": key,
@@ -194,7 +196,16 @@ class _FakePrj:
         # list-mode subtable); each row carries its owning blockKey.
         blocksparams = OrderedDict()
         blocksparams["top.yaml"] = [{"blockKey": "paramblk"}]
-        self.data = {"blocks": blocks, "blocksparams": blocksparams}
+        self.data = {"blocks": blocks, "blocksparams": blocksparams, "instances": {}}
+
+    def getBlockCondRow(self, qualBlock):
+        # Mirrors projectOpen.getBlockCondRow: the block row plus its own
+        # params: relationship as the cond scalar `hasOwnParams`.
+        paramBlocks = {row["blockKey"] for rows in self.data["blocksparams"].values()
+                       for row in rows}
+        row = dict(self.data["blocks"][qualBlock])
+        row["hasOwnParams"] = int(qualBlock in paramBlocks)
+        return row
 
 
 def _write(path, marker):

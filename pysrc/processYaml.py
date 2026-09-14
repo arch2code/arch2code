@@ -375,10 +375,12 @@ def generateHierarchy(inputInstances, inputBlocks, withContext = False ):
             # the two calling use cases are slightly different
             blockKey = row.get('blockKey', qualBlock)
             if block in blocks:
-                if not isinstance(blocks[block], dict):
-                    blocks[block] = {blocks[block]: None}
-                blocks[block][blockKey] = None
-            blocks[block] = blockKey
+                if blocks[block] != blockKey:
+                    if not isinstance(blocks[block], dict):
+                        blocks[block] = {blocks[block]: None}
+                    blocks[block][blockKey] = None
+            else:
+                blocks[block] = blockKey
     return (hier, hierKey, instances, instanceContainer, blocks)
 
 # Storage buckets ordered by ascending maxSize: the platform container an emitted
@@ -458,6 +460,8 @@ class projectOpen:
         # contextOwningProject). Consumers select PROJECTLAYOUT[owner] to resolve
         # an object's path under the segments of the project that owns it.
         self.projectLayout = self.config.getConfig('PROJECTLAYOUT')
+        self.compileContexts = self.config.getConfig('COMPILECONTEXTS')
+        self.contextRtlDir = self._contextRtlDirs(self.compileContexts)
         printIfDebug("Data Loaded")
         self.loadData()
         self.generateHierarchy()
@@ -1030,6 +1034,7 @@ class projectOpen:
         ret = dict()
         enums = dict()
         ret['includeContext'] = dict()
+        ret['compileContexts'] = self.compileContexts
         includes = self.config.getConfig('INCLUDEFILES')
         ret['includeFiles'] = includes
         # Canonicalize each context name (as it may appear on a
@@ -1130,13 +1135,10 @@ class projectOpen:
         # existing file-basename source.
         ret['contextModuleIdentity'] = self.contextModuleIdentity[context]
         ret['contextStem'] = os.path.splitext(os.path.basename(context))[0]
-        # Per-context RTL output directory, expressed relative to the project's
-        # rtl.f location, keyed by include-chain context. The RTL filelist
-        # template emits these for +incdir/-y and package lines. A context owned
-        # by a referenced child project roots under THAT child's rtl segment
-        # (via contextOwningProject + projectLayout), so a cross-project package
-        # resolves to the child's rtl/ output rather than its yaml source tree.
-        ret['contextRtlDir'] = self._contextRtlDirs(ret['includeContext'])
+        # RTL directory per compile-closure context, relative to rtl.f. A
+        # context another project owns resolves under that project's rtl
+        # segment.
+        ret['contextRtlDir'] = self.contextRtlDir
         # True when a type reachable from this context derives its width from a
         # log2, which makes the generated width expressions call clog2(). The
         # SystemC emitters use it to decide whether the artifact needs
@@ -1159,19 +1161,11 @@ class projectOpen:
                 merged.setdefault(key, constants[key])
         return merged
 
-    def _contextRtlDirs(self, includeContext):
-        # Resolve each include-chain context to the directory holding its
-        # generated RTL artifacts (package + library modules), relative to the
-        # root project's rtl.f location. The RTL package files land in the
-        # `package` fileType's basePath segment. The two layouts resolve this
-        # differently (branch below): functional segments are $root-absolute, so
-        # a context's rtl subdir mirrors its yaml subdir within the OWNING
-        # project's tree (yaml-relative arithmetic); hierarchical segments are
-        # bare node-relative names joined onto a node dir at emit time, so both
-        # rtl.f and each package are resolved through the emit seam
-        # (expandNewModulePath) against their node dirs. Path composition mirrors
-        # the newModule/saveIncludeFiles seam (contextOwningProject +
-        # projectLayout[owner]).
+    def _contextRtlDirs(self, contexts):
+        # Directory of each context's generated RTL, relative to the root
+        # rtl.f. Functional layouts mirror the yaml subdir inside the owning
+        # project's rtl segment; hierarchical layouts resolve rtl.f and each
+        # package through expandNewModulePath against their node dirs.
         fileMap = self.config.getConfig('FILEMAP')
         rootName = self.config.getConfig('PROJECTNAME')
         rootLayout = self.projectLayout[rootName]
@@ -1183,17 +1177,6 @@ class projectOpen:
         rootYaml = rootLayout['yaml']
         ret = dict()
         if rootLayout['mode'] == 'hierarchical':
-            # Under hierarchical the rtl segment is a bare node-relative name
-            # joined onto a node directory at emit time, so both rtl.f and every
-            # context package land at <node>/<rtlSeg>/. Resolve each endpoint
-            # through the same seam (expandNewModulePath) that placed the files:
-            # rtl.f anchors to the top context's node (mirrors newModule), each
-            # context package to its own node (mirrors saveIncludeFiles). The
-            # yaml-relative arithmetic used for functional cannot apply here
-            # because the segment path is a bare node-relative name, not a
-            # $root-absolute directory. Each context's node dir comes from the
-            # persisted per-context map (CONTEXTNODEDIR), which covers types-only
-            # contexts that emit an RTL package but define no block.
             topContext = self.config.getConfig('TOPCONTEXT')
             if topContext is None:
                 # A definitions-only project (no topInstance) emits no rtl.f, so
@@ -1203,7 +1186,7 @@ class projectOpen:
             rtlDotFdir = os.path.dirname(artifactPaths.expandNewModulePath(
                 fileMap['rtlDotF'], self.contextNodeDir[topContext], '', '',
                 rootLayout, missingDirOk=True))
-            for context in includeContext:
+            for context in contexts:
                 ownerLayout = self.projectLayout[self.contextOwningProject[context]]
                 includeName = self.includeName[context]
                 pkgDir = os.path.dirname(artifactPaths.expandNewModulePath(
@@ -1212,7 +1195,7 @@ class projectOpen:
                 ret[context] = os.path.relpath(pkgDir, rtlDotFdir)
             return ret
         rtlDotFdir = rootLayout['segments'][rtlSegKey]['path']
-        for context in includeContext:
+        for context in contexts:
             owner = self.contextOwningProject[context]
             ownerLayout = self.projectLayout[owner]
             absYaml = os.path.normpath(os.path.join(rootYaml, context))
@@ -1231,7 +1214,7 @@ class projectOpen:
                         'registerPorts', 'connectionMapPorts', 'ports', 'connectDouble', 'connectSingle', 'subBlocks', 'includeContext',
                         'classIncludeContext', 'configModules',
                         'containerTypedChildModules',
-                        'addressDecode', 'standaloneVariants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
+                        'addressDecode', 'standaloneVariants', 'standaloneVariantConfigs', 'foreignVariants', 'interfaceTypes', 'prunedConnections', 'interface_defs', 'interface_type_mappings',
                         'interface_type_mappings_qualified'}
         ret = dict()
         # create some of the simple returns
@@ -1328,16 +1311,9 @@ class projectOpen:
 
     def getBDSvWrapperNames(self, ret):
         # Verilated wrapper design-unit names, plus the SC wrapper's class shape.
-        # The names are single-sourced from the fileMap so a wrapper's emitted
-        # module name and its scaffolded filename share one tail/ext:
-        # expandNewModulePath builds the filename as moduleFileStub +
-        # fileMap 'name', and the module name is the SAME composition, never
-        # re-spelled as a code literal and never derived back from the filename.
-        # The body module name is the block stub + wrapper tail; the per-variant
-        # tops name-qualify the same tail with persisted identity tokens (block,
-        # variant, and — for a parent-owned foreign top — the declaring project,
-        # sanitized the same way as the foreign-Config stub). The `.svh` include
-        # name adds the body entry's ext.
+        # Each name composes the fileMap tail expandNewModulePath uses for the
+        # scaffold filename. A foreign top carries the sanitized declaring
+        # project.
         wrapTail = self.filemap['vlSvWrap']['name']
         bodyExt = self.filemap['vlSvWrapBody']['ext']['svh']
         foreignTail = self.filemap['vlSvWrapForeign']['name']
@@ -1346,12 +1322,13 @@ class projectOpen:
         blockName = ret['blockName']
         project = self.config.getConfig('PROJECTNAME')
         bodyModule = f'{blockName}{wrapTail}'
-        # One standalone SV top per wrapper variant, which is the .sv scaffold set
-        # and the set Verilator elaborates a fixed-width model for.
+        # One standalone SV top per label, each scaffolded and verilated as a
+        # fixed-width model: bare for the owner's declarations, owner-qualified
+        # for the labels this build declares of a block another project owns.
         variantTops = {v: f'{blockName}_{v}{wrapTail}' for v in ret['standaloneVariants']}
         foreignVariantTops = {
             v: f'{sanitizeIdentifierToken(project)}_{blockName}_{v}{foreignTail}'
-            for v in ret['standaloneVariants']}
+            for v in ret['foreignVariants']}
         ret['svWrapper'] = {
             'bodyModule': bodyModule,
             'bodyInclude': f'{bodyModule}.{bodyExt}',
@@ -1377,8 +1354,6 @@ class projectOpen:
             'dutHeader': f'V{bodyModule}.h',
             'variantDutClasses': {v: f'V{t}' for v, t in variantTops.items()},
             'variantDutHeaders': {v: f'V{t}.h' for v, t in variantTops.items()},
-            'foreignVariantDutClasses': {v: f'V{t}' for v, t in foreignVariantTops.items()},
-            'foreignVariantDutHeaders': {v: f'V{t}.h' for v, t in foreignVariantTops.items()},
         }
 
     def getBDConfigInfo(self, ret):
@@ -1390,9 +1365,6 @@ class projectOpen:
         ret['hasOwnParams'] = bundle['hasOwnParams']
         ret['defaultConfig'] = bundle['defaultConfig']
         ret['variantConfigs'] = bundle['variantConfigs']
-        ret['declaredVariantConfigs'] = self.getDeclaredVariantConfigs(
-            qualBlock
-        ) if bundle['isParameterizable'] else []
         # The own-Config import exists exactly when the fileMap scaffolds the
         # owner-qualified Config module for this block.
         condData = self.getBlockCondRow(qualBlock)
@@ -1436,19 +1408,6 @@ class projectOpen:
                          if d['variant'] == variant and d['declaringProject'] == declaringProject]
         return descriptor
 
-    def _declaredDescriptorsByLabel(self, blockKey):
-        grouped = dict()
-        for descriptor in self.variantConfigDescriptors[blockKey]:
-            grouped.setdefault(descriptor['variant'], []).append(descriptor)
-        return grouped
-
-    def _selectDeclaredDescriptor(self, descriptors, consumerProject):
-        # validateVariantLabelBuildOwnership leaves a label the build does not
-        # declare with exactly one declarer.
-        own = [d for d in descriptors if d['declaringProject'] == consumerProject]
-        (descriptor,) = own or descriptors
-        return descriptor
-
     def _resolveInstanceConfigFields(self, instanceData, bundle=None):
         # Neutral per-instance Config selection for a child instance: the
         # selected per-variant descriptor (or None), the child block's config
@@ -1490,7 +1449,7 @@ class projectOpen:
                 'hasOwnParams':        has_own_params,
                 'defaultConfig':       default_config,
                 'descriptor':          None,
-                'foreignConfigModule': None,
+                'configModule':        None,
                 'inheritContainer':    True,
                 'containerTyped':      True,
                 # This site names the child at its container's active Config, so
@@ -1499,13 +1458,13 @@ class projectOpen:
             }
 
         descriptor = None
-        foreign_config_module = None
+        config_module = None
         # A block parameterizable only through a contained child has no concrete
         # Config type and needs no import.
         if is_parameterizable and has_own_params:
             descriptor = self._instanceVariantDescriptor(instanceData)
-            foreign_config_module = {'project': descriptor['declaringProject'],
-                                     'block': descriptor['block']}
+            config_module = {'project': descriptor['declaringProject'],
+                             'block': descriptor['block']}
 
         # The child's Config is a function of the CONTAINER's, making the child a
         # family of C++ types the factory key cannot select from; the container
@@ -1517,7 +1476,7 @@ class projectOpen:
             'hasOwnParams':      has_own_params,
             'defaultConfig':     default_config,
             'descriptor':        descriptor,
-            'foreignConfigModule': foreign_config_module,
+            'configModule':      config_module,
             'inheritContainer':  False,
             'containerTyped':    container_typed,
             'forwardsContainerVariant': container_typed,
@@ -1536,50 +1495,38 @@ class projectOpen:
         return ('variant', descriptor['declaringProject'],
                 descriptor['block'], descriptor['variant'])
 
-    def getStandaloneVariants(self, qualBlock):
-        # Per variant this block resolves its own parameter values at, the
-        # resolved value of each of the block's declared parameters. Where every
-        # instance inherits, the variants come from the container's binding,
-        # narrowed to this block's own parameters. Container-sourced variants are
-        # excluded; their values come from the parent-child pair contract.
-        #
-        # Two projects may bind one variant label at different values, so the
-        # values come from the descriptor this project selects, never from the
-        # project-blind nested binding rows.
+    def _narrowVariantValues(self, qualBlock, descriptorsByVariant):
+        # A descriptor from a container source carries the container's params;
+        # keep this block's own.
         blockParams = self.data['blocks'][qualBlock]['params']
         ownParams = [row['param'] for row in blockParams] if blockParams else []
-        descriptorsByVariant = variantSelection.standaloneVariantDescriptors(self.config, qualBlock)
         return {
             variant: {param: descriptor['values'][param] for param in ownParams}
             for variant, descriptor in descriptorsByVariant.items()
         }
 
-    def _declaredVariantConfigEntries(self, sourceBlocks):
-        # Resolved for the build's own project, so two projects binding one
-        # label each get their own values.
-        consumerProject = self.config.getConfig('PROJECTNAME')
-        entries = list()
-        for sourceBlock in sourceBlocks:
-            bundle = self.getBlockConfigView(sourceBlock)
-            for variant, descriptors in self._declaredDescriptorsByLabel(sourceBlock).items():
-                descriptor = self._selectDeclaredDescriptor(descriptors, consumerProject)
-                entries.append({
-                    'variant': variant,
-                    'descriptor': descriptor,
-                    'defaultConfig': bundle['defaultConfig']})
-        return entries
+    def getStandaloneVariants(self, qualBlock):
+        # {variant: {param: value}} for the labels the bare per-label artefacts
+        # are built at; see variantSelection.standaloneVariantDescriptors.
+        descriptorsByVariant = variantSelection.standaloneVariantDescriptors(self.config, qualBlock)
+        return self._narrowVariantValues(qualBlock, descriptorsByVariant)
 
-    def getDeclaredVariantConfigs(self, qualBlock):
-        # Per-variant Config selection for every variant a generated wrapper of
-        # this block can be asked for by name, whether or not this build's tree
-        # instantiates it. A block whose Config comes from its container declares
-        # no variant of its own, so the CONTAINER's declared variants answer: the
-        # container forwards its own label down at its createInstance site.
-        #
-        # A container-sourced variant is left out of the block-owned set. Its
-        # concrete wrappers come from the persisted parent-child pair contract.
-        entries = self._declaredVariantConfigEntries(self.variantSourceBlocks[qualBlock])
-        return [entry for entry in entries if not entry['descriptor']['containerSourced']]
+    def getForeignVariants(self, qualBlock):
+        # {variant: {param: value}} for the labels this build declares of a
+        # block another project owns; the owner-qualified top and Config serve them.
+        key = (self.config.getConfig('PROJECTNAME'), qualBlock)
+        headers = self.config.getConfig('FOREIGNCONFIGHEADERS')
+        if key not in headers:
+            return dict()
+        vlVariants = headers[key]['vlVariants']
+        descriptorsByVariant = {
+            descriptor['variant']: descriptor
+            for sourceBlock in self.variantSourceBlocks[qualBlock]
+            for descriptor in self.variantConfigDescriptors[sourceBlock]
+            if descriptor['declaringProject'] == key[0]
+            and descriptor['variant'] in vlVariants
+        }
+        return self._narrowVariantValues(qualBlock, descriptorsByVariant)
 
     def declaredVariantRows(self, qualBlock):
         # The block's declared variant rows, empty for the usual block that
@@ -1832,9 +1779,14 @@ class projectOpen:
                 containerBlocks[inst_data['containerKey']] = 0
                 if inst_data['variant'] != '':
                     ret['variants'].add(inst_data['variant'])
-        # Per-parameter values, independent of what an instance selects; see
-        # getStandaloneVariants.
-        ret['standaloneVariants'] = self.getStandaloneVariants(qualBlock)
+        # Per-label values and Config struct, independent of what an instance
+        # selects; see variantSelection.standaloneVariantDescriptors.
+        standalone = variantSelection.standaloneVariantDescriptors(self.config, qualBlock)
+        ret['standaloneVariants'] = self._narrowVariantValues(qualBlock, standalone)
+        ret['standaloneVariantConfigs'] = {v: d['structName'] for v, d in standalone.items()}
+        # Labels this build declares for a block it does not own; see
+        # getForeignVariants.
+        ret['foreignVariants'] = self.getForeignVariants(qualBlock)
         # A block with zero instances is a valid render target for an exported /
         # library leaf that its owning project never instantiates (projectCreate
         # gates which blocks are allowed to be uninstantiated). The rest of this
@@ -1896,10 +1848,10 @@ class projectOpen:
             # owner-qualified Config lives in a registrar-domain module the
             # container TU must import; aggregate the neutral (project, child)
             # identities for this block (deduped, one module per owning project).
-            foreignConfigModule = configFields['foreignConfigModule']
-            if foreignConfigModule:
-                key = (foreignConfigModule['project'], foreignConfigModule['block'])
-                ret['configModules'][key] = foreignConfigModule
+            configModule = configFields['configModule']
+            if configModule:
+                key = (configModule['project'], configModule['block'])
+                ret['configModules'][key] = configModule
             # A child typed by this container's Config has no concrete C++ type
             # until this container is instantiated, so the container names its
             # implementation class at the createInstance site rather than reaching
@@ -1937,10 +1889,10 @@ class projectOpen:
             instInfo['instanceTypeIsParameterizable'] = configFields['isParameterizable']
             instInfo['instanceTypeHasOwnParams']      = configFields['hasOwnParams']
             instInfo['instanceTypeDefaultConfig']     = configFields['defaultConfig']
-            foreignConfigModule = configFields['foreignConfigModule']
-            if foreignConfigModule:
-                key = (foreignConfigModule['project'], foreignConfigModule['block'])
-                ret['configModules'][key] = foreignConfigModule
+            configModule = configFields['configModule']
+            if configModule:
+                key = (configModule['project'], configModule['block'])
+                ret['configModules'][key] = configModule
             if configFields['containerTyped']:
                 ret['containerTypedChildModules'][instInfo['instanceTypeKey']] = \
                     self.blockModuleName[instInfo['instanceTypeKey']]
@@ -3334,25 +3286,22 @@ class projectOpen:
                 variants.append(data['variant'])
         return(variants)
 
-# Where a block's parameters resolve: the block, its variant label ('' when it
-# names none), and whether it takes its container's whole configuration.
-Site = namedtuple('Site', ['blockKey', 'variant', 'inheritsContainer'])
+# Where a block's parameters resolve: the block, the project and variant label
+# of the declaration binding it (both '' when the instance names no variant or
+# inherits its container), and whether it takes the container's whole configuration.
+Site = namedtuple('Site', ['blockKey', 'declaringProject', 'variant', 'inheritsContainer'])
 
 # No parameterizable endpoint: resolved at the declared constant defaults.
-DEFAULTS_SITE = Site('', '', False)
-
-
-def instanceSite(instRow):
-    """The Site an instance's parameters resolve at."""
-    return Site(instRow['instanceTypeKey'], instRow['variant'],
-                instRow['inheritContainerParam'])
+DEFAULTS_SITE = Site('', '', '', False)
 
 
 class SiteBindingIndex:
     """What a block's parameters resolve to in each place the design uses it.
 
     A parameter can inherit its value from the containing block, so a payload
-    field sized by one has no width until you know where the block sits.
+    field sized by one has no width until you know where the block sits. A
+    site also carries the project whose declaration binds it, since two
+    projects may each declare their own value for the same (block, variant).
 
     Valid for one pass: post-parse scripts synthesise instances and connections,
     which makes an earlier index stale.
@@ -3362,6 +3311,7 @@ class SiteBindingIndex:
         self.project = project
         self.blocks = project.flatData['blocks']
         instances = project.flatData['instances']
+        self.declarers = project.config.getConfig('INSTANCEVARIANTDECLARERS')
         # Backing constant per (block, param): a payload's width symbol resolves
         # against the constant, not against the block-scoped parameter name.
         self.paramSource = dict()
@@ -3375,11 +3325,12 @@ class SiteBindingIndex:
         for contextRows in project.data['parametersvariantsparams'].values():
             for row in contextRows.values():
                 self.paramRows.setdefault(
-                    (row['blockKey'], row['variant']), list()).append(row)
+                    (row['blockKey'], row['projectName'], row['variant']),
+                    list()).append(row)
         self.instanceSitesByType = dict()
         for instRow in instances.values():
             self.instanceSitesByType.setdefault(
-                instRow['instanceTypeKey'], set()).add(instanceSite(instRow))
+                instRow['instanceTypeKey'], set()).add(self.siteOf(instRow))
         # Each Site paired with the Sites of its container. Spans the whole
         # database deliberately: a composed child project's own connections
         # are adjudicated in this same pass and must see that child's own
@@ -3389,17 +3340,25 @@ class SiteBindingIndex:
             containerBlockKey = instRow['containerKey']
             if containerBlockKey not in self.blocks:
                 continue
-            site = instanceSite(instRow)
+            site = self.siteOf(instRow)
             for containerSite in self.sitesOf(containerBlockKey):
                 self.containerSites.setdefault(site, set()).add(containerSite)
         self._valueMapMemo = dict()
+
+    def siteOf(self, instRow):
+        """The Site an instance's parameters resolve at."""
+        declaringProject = ''
+        if instRow['variant'] and not instRow['inheritContainerParam']:
+            declaringProject = self.declarers[instRow['instanceKey']]
+        return Site(instRow['instanceTypeKey'], declaringProject,
+                    instRow['variant'], instRow['inheritContainerParam'])
 
     def sitesOf(self, blockKey):
         """The Sites a block is instantiated at; one never instantiated sits at
         its declared defaults."""
         sites = self.instanceSitesByType.get(blockKey)
         if sites is None:
-            return {Site(blockKey, '', False)}
+            return {Site(blockKey, '', '', False)}
         return sites
 
     def inheritsParams(self, site):
@@ -3412,7 +3371,8 @@ class SiteBindingIndex:
         """This site's own parameter names whose value comes from a container."""
         return sorted(
             row['param']
-            for row in self.paramRows.get((site.blockKey, site.variant), ())
+            for row in self.paramRows.get(
+                (site.blockKey, site.declaringProject, site.variant), ())
             if row['containerParam'])
 
     def paramValues(self, site, containerValues):
@@ -3427,7 +3387,8 @@ class SiteBindingIndex:
                     for param in self.blockParams[site.blockKey]}
         resolver = ValueResolver(self.project)
         values = dict()
-        for row in self.paramRows.get((site.blockKey, site.variant), ()):
+        for row in self.paramRows.get(
+                (site.blockKey, site.declaringProject, site.variant), ()):
             if row['containerParam']:
                 values[row['param']] = containerValues[row['containerParam']]
                 continue
@@ -3446,31 +3407,17 @@ class SiteBindingIndex:
 
     def foreignDeclaredBindings(self, site, bindings):
         """Params of this site whose value is authored outside the block's own
-        project, as {param: (value, declaring project, declaring file)}.
-
-        Two projects may declare one (block, variant), and their rows share a
-        single list here with the last writer winning. So the file holding the
-        number a junction was checked at need not be one the block's own project
-        mentions.
-        """
+        project, as {param: (value, declaring project, declaring file)}."""
         blockProject = self.project.contextOwningProject[
             self.blocks[site.blockKey]['_context']]
-        winners = {row['param']: row
-                   for row in self.paramRows.get((site.blockKey, site.variant), ())
-                   if not row['containerParam']}
-        resolver = ValueResolver(self.project)
-        foreign = dict()
-        for param, row in winners.items():
-            if row['projectName'] == blockProject:
-                continue
-            value = resolver.value(row['valueKey'] or row['value'])
-            # A container-sourced row later in the list can have overridden this
-            # one. Matching the value is the closest this can get to naming the
-            # winner: an override to a different number drops the attribution,
-            # and an override to the same number keeps it.
-            if bindings[self.paramSource[(site.blockKey, param)]] == value:
-                foreign[param] = (value, row['projectName'], row['_context'])
-        return foreign
+        if site.declaringProject == blockProject:
+            return dict()
+        return {
+            row['param']: (bindings[self.paramSource[(site.blockKey, row['param'])]],
+                           site.declaringProject, row['_context'])
+            for row in self.paramRows.get(
+                (site.blockKey, site.declaringProject, site.variant), ())
+            if not row['containerParam']}
 
     def bindingsAt(self, site, containerValues):
         """One end's bindings at one container configuration."""
@@ -3809,7 +3756,6 @@ class projectCreate:
         self.config.setConfig('REACHABLEINSTANCES', self.reachableInstanceKeys(), bin=True)
         self.deriveModuleIdentities()
         self.calcVariantConfigDescriptors()
-        self.validateVariantLabelBuildOwnership()
         self.calcVariantSourceBlocks()
         # reject a testbench on a block whose Config comes from its container
         self.validateContainerSourcedTestbench()
@@ -3838,6 +3784,7 @@ class projectCreate:
                     topContext = blockByKey[instRow['instanceTypeKey']]['_context']
                     break
         self.config.setConfig('TOPCONTEXT', topContext, bin=True)
+        self.calcCompileContexts()
         # run late artifact creators that consume the completed project state
         self.runCreateArtifacts()
         # save the schema as well to the config
@@ -3995,30 +3942,6 @@ class projectCreate:
         self.variantConfigDescriptors = descriptors
         self.config.setConfig('VARIANTCONFIGDESCRIPTORS', descriptors, bin=True)
         self.config.setConfig('DEFAULTCONFIGDESCRIPTORS', defaultDescriptors, bin=True)
-
-    def validateVariantLabelBuildOwnership(self):
-        """A build can carry only one declaration of a variant label, since the
-        per-label Config module and registration are named by label alone.
-        Reject a label two or more foreign projects declare when the build's own
-        project declares none."""
-        buildProject = self.config.getConfig('PROJECTNAME')
-        for blockKey, blockDescriptors in self.variantConfigDescriptors.items():
-            declarersByLabel = dict()
-            for descriptor in blockDescriptors:
-                declarersByLabel.setdefault(
-                    descriptor['variant'], set()).add(descriptor['declaringProject'])
-            for variant, declarers in declarersByLabel.items():
-                if len(declarers) > 1 and buildProject not in declarers:
-                    printError(
-                        f"Variant '{variant}' of block "
-                        f"'{self.flatData['blocks'][blockKey]['block']}' is declared by "
-                        f"projects {', '.join(sorted(declarers))}, and this build's own "
-                        f"project ('{buildProject}') declares none of them. The per-label "
-                        f"Config module and registration are named by label alone, so one "
-                        f"build can carry only one declaration of '{variant}'. Have this "
-                        f"build's project declare '{variant}' itself, or reference only "
-                        f"one of the declaring projects.")
-                    exit(warningAndErrorReport())
 
     def calcRegistrarPairs(self):
         """Persist the complete registration and VL-top contract per block pair."""
@@ -4784,6 +4707,30 @@ class projectCreate:
                 reachable.add(childInstanceKey)
                 blockQueue.append(childRow['instanceTypeKey'])
         return reachable
+
+    def calcCompileContexts(self):
+        """The contexts whose generated artefacts this build compiles: every
+        reachable block's context, closed under include scope. The top scope is
+        seeded first so rtl.f keeps its +incdir order."""
+        ret = dict()
+        topContext = self.config.getConfig('TOPCONTEXT')
+        if topContext is not None:
+            ret.update(dict.fromkeys(self.yamlContext[topContext], 0))
+        blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
+        reachableInstances = self.config.getConfig('REACHABLEINSTANCES')
+        for instanceKey, instRow in self.flatData['instances'].items():
+            if instanceKey not in reachableInstances:
+                continue
+            ret[blockByKey[instRow['instanceTypeKey']]['_context']] = 0
+        changed = True
+        while changed:
+            changed = False
+            for context in list(ret):
+                for included in self.yamlContext[context]:
+                    if included not in ret:
+                        ret[included] = 0
+                        changed = True
+        self.config.setConfig('COMPILECONTEXTS', ret, bin=True)
 
     def getFileList(self, data, basePath, dependencies=None):
         todoNorm = list()
@@ -6297,7 +6244,7 @@ class projectCreate:
                         expandedType = fileType + "_" + ext
                         if not (os.path.exists(fileNameExt)):
                             printWarning(f"File {fileNameExt} does not exist. run arch2code.py with --newmodule option")
-                        entry = {'baseName': baseName, 'fileName': fileNameExt}
+                        entry = {'baseName': baseName, 'fileName': fileNameExt, 'stem': fileName}
                         if ext == 'src' and siblingHeaderName is not None:
                             entry['siblingHeaderName'] = siblingHeaderName
                         includeFiles.setdefault(expandedType, {})[include] = entry
@@ -6952,7 +6899,7 @@ class projectCreate:
         def _connectionBindings(elected, containerBlockKey):
             """The Sites the connection-side packed form resolves under."""
             if elected is not None:
-                return [instanceSite(elected)]
+                return [siteIndex.siteOf(elected)]
             return _containerBindings(containerBlockKey)
 
         # ------------------------------------------------------------
@@ -6996,7 +6943,7 @@ class projectCreate:
                 childIfaceKey = portEntry['interfaceKey']
                 childContext = interfaces_flat[childIfaceKey]['_context']
                 parentContext = parentIfaceRow['_context']
-                childSite = instanceSite(instRow)
+                childSite = siteIndex.siteOf(instRow)
                 if isRegisterBus:
                     # The synthesised register-bus connection links a router
                     # to the routed leaf. Name both instances and the
@@ -7007,7 +6954,7 @@ class projectCreate:
                          if e['instanceKey'] != instanceKey), None)
                     if otherEnd is not None:
                         otherInst = instances_flat[otherEnd['instanceKey']]
-                        parentBindings = [instanceSite(otherInst)]
+                        parentBindings = [siteIndex.siteOf(otherInst)]
                         srcInstance = otherEnd['instance']
                     else:
                         # Degenerate: no router end to resolve the parent side
@@ -7075,7 +7022,7 @@ class projectCreate:
             childIfaceKey = portEntry['interfaceKey']
             childContext = interfaces_flat[childIfaceKey]['_context']
             parentContext = parentIfaceRow['_context']
-            childSite = instanceSite(instRow)
+            childSite = siteIndex.siteOf(instRow)
             locationStr = (
                 f"Block {cm['block']} connectionMap '{cmName}' "
                 f"(file {cmContext}) binds external interface "

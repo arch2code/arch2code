@@ -768,7 +768,7 @@ Each entry declares:
   (`hasMdl`, `hasRtl`, `hasVl`, `hasTb`, `isParameterizable`, `hasOwnParams`,
   `smartInclude`).
 - Modifiers — `blockDir`, `variant` (one file per declared variant),
-  `foreignConfig` (owner-qualified; only the declaring assembler emits),
+  `ownerQualified` (only the declaring assembler emits),
   `requiresRegistrations` (suppress an empty trampoline).
 
 Layout is either `functional` (`$root/<segment>/<decomp>`) or `hierarchical`

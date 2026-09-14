@@ -49,8 +49,8 @@ def render(args, prj, data):
             return(blockRegistrar_cppm(args, prj, data))
         case 'blockVlRegistrar_src':
             return(blockVlRegistrar_src(args, prj, data))
-        case 'foreignConfig_cppm':
-            return(foreignConfig_cppm(args, prj, data))
+        case 'configModule_cppm':
+            return(configModule_cppm(args, prj, data))
         case 'vlSvWrapForeign_sv':
             return(vlSvWrapForeign_sv(args, prj, data))
         case 'vlSvWrapPair_sv':
@@ -270,14 +270,10 @@ def blockVlRegistrar_src(args, prj, data):
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 
-# Owner-qualified foreign per-variant Config module interface unit for a reused
-# child. The whole module body (global module fragment #includes, `export module
-# <project>.<child>.config;`, and the exported per-variant Config structs) is
-# emitted by templates/systemc/config.py (foreign mode, keyed off --parent) into
-# the single generated region, mirroring how blockRegistrar_cppm delegates its
-# module body. The file basename is owner-qualified
-# (<project>_<child>VariantConfig.cppm).
-def foreignConfig_cppm(args, prj, data):
+# Owner-qualified per-variant Config module interface unit,
+# <project>_<child>VariantConfig.cppm. templates/systemc/config.py emits the whole
+# module body into the single generated region, as blockRegistrar_cppm does.
+def configModule_cppm(args, prj, data):
     out = list()
     out.append(f'//{data["fileGeneration"]["fileCopyrightStatement"]}\n\n')
     out.append(f'// GENERATED_CODE_PARAM --block={data["block"]} --parent={data["parent"]}\n')
@@ -285,12 +281,8 @@ def foreignConfig_cppm(args, prj, data):
     out.append('// GENERATED_CODE_END\n')
     return("".join(out))
 
-# Parent-owned owner-qualified foreign per-variant SV verilated wrapper top for a
-# reused child. The whole trampoline (the `include of the child's canonical .svh
-# body and the owner-qualified top module binding the variant's resolved literals)
-# is emitted by templates/systemVerilog/module_hdl_wrapper.py (foreign branch,
-# keyed off --parent) into the single generated region. The file basename and the
-# top module name are owner-qualified (<project>_<child>_<variant>_hdl_sv_wrapper).
+# Owner-qualified per-variant SV top for a reused child; module_hdl_wrapper.py's
+# --parent branch emits the whole trampoline into the generated region.
 def vlSvWrapForeign_sv(args, prj, data):
     guard = f'{data["headerName"].replace(".", "_").upper()}_GUARD_'
     out = list()
@@ -703,12 +695,8 @@ def package_sv(args, prj, data):
                                     contextParamMode(data["target"])),
         'copyright':data["fileGeneration"]["fileCopyrightStatement"]}))
 
-# Per-project verilator file list (rtl.f). The +libext line and the
-# owning-project GENERATED_CODE_PARAM are the create-only skeleton; the rtlDotF
-# template fills the generated region with the +incdir lines and the ordered
-# package list for every context on the top context's include chain. The
-# --project stamp names the owning project directly, so owner resolution needs no
-# context/basename round-trip.
+# Per-project verilator file list. The +libext line and --project stamp are
+# the create-only skeleton; rtlDotF fills the region from COMPILECONTEXTS.
 def rtlDotF_f(args, prj, data):
     out = list()
     out.append('+libext+.sv\n')

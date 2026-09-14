@@ -17,8 +17,9 @@
   upgrade. They are recorded under "Release-blocking defects found 2026-08-04" in
   [`plan-116-status-report.md`](./plan-116-status-report.md), which is the single
   place they are tracked.
-- **Review pass 2026-09-04: item 9 added, seven sub-items. 9A is LANDED; 9B
-  through 9G stay OPEN.** Items 1 through 8 stay CLOSED and none of the new
+- **Review pass 2026-09-04: item 9 added, seven sub-items. 9A, 9B, 9F and 9G are LANDED
+  (9B, 9F and 9G on 2026-09-13); 9C, 9D and 9E carry
+  one-line proposals and stay OPEN.** Items 1 through 8 stay CLOSED and none of the new
   findings reopens one. 9A was the one that made the generator emit RTL
   contradicting the SystemC Config in the same build; the shape that triggers it
   is deliberate design intent rather than bad authoring, so it was fixed by
@@ -845,7 +846,22 @@ is recorded as W5 of
 
 #### 9B. `SiteBindingIndex` has the same project-blind shape
 
-- **Disposition:** OPEN, not started. Tracked by no plan before this entry.
+- **Disposition:** LANDED 2026-09-13. Ruled the same day (user): fix now. `paramRows` is keyed
+  by (block, declaring project, variant); `Site` gained a `declaringProject` field, which
+  `SiteBindingIndex.siteOf` fills from `INSTANCEVARIANTDECLARERS`; `paramValues` and
+  `foreignDeclaredBindings` read the site's own project's rows, and the dead value-match guard
+  in the latter went. Proof: new fixture `param-variant-two-declarers-legal` (projIp and projWrap
+  each declare `leafIp v0`, at LEAF_W 12 and 8, each visible only in its own scope) with two
+  cells in `test_variant_scope_resolution.py`. The composition builds and each instance's
+  persisted declarer is its own project; changing projWrap's binding to 9 is rejected naming
+  uLeafB and not uLeafA. The accept cell failed on the pre-fix tree. Reviewed categorically and
+  the review applied (dead guard, docstrings, premise checks, `flatData` in place of SQL). Gates,
+  VERIFIED BY EXECUTION 2026-09-13, shared with 9F: unit suite 129 of 129; base pipeline after
+  `make clean` exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale; pro pipeline 14 "No error",
+  0 warnings; product regenerates with only the `builder`, `isp_shared` and deleted
+  `model/debayerVariantConfig.h` rows, model run and `VL_DUT=1` run two "No error" each. The
+  fixture top still carries an inert `leafIp: v0` binding that only satisfies
+  `validateVariantLabelBuildOwnership`; the owner-axis step removes both. Previously: OPEN, not started. Tracked by no plan before this entry.
   **Re-measured 2026-09-04: this is a defect, not a safety net.** It rejects a
   legal composition and passes a real cross-project width divergence. The
   "load-bearing, do not fix it naively" framing below is withdrawn.
@@ -924,7 +940,10 @@ is recorded as W5 of
 
 #### 9C. Foreign Config `childKey` host fallback can name a file no project creates
 
-- **Disposition:** OPEN, not started. Inert today.
+- **Disposition:** OPEN, not started. Inert today. PROPOSED 2026-09-13: take the second
+  surviving option, derive `FOREIGNCONFIGHEADERS` from the descriptors a registrar pair
+  selects rather than from every declared binding row; the unselectable third-party
+  declaration then produces no header and no silent default-Config fallback.
 - **What happens.** `pysrc/processYaml.py:5804` reads
   `parentKey = parentKeys.get(key, childKey)`. When the declaring project
   assembles the child nowhere in the build, the host block becomes the child
@@ -962,7 +981,9 @@ is recorded as W5 of
 
 #### 9D. Two regression-harness defects
 
-- **Disposition:** OPEN, not started. Neither is tracked elsewhere.
+- **Disposition:** OPEN, not started. Neither is tracked elsewhere. PROPOSED 2026-09-13:
+  change the `strftime` to `%Y-%m-%d-%H%M%S`, and have the scaffolded `regr` recipe pass
+  `$(MAKEFLAGS)`-derived `-jN` through to `regrLauncher.py` instead of hardcoding `-j8`.
 - **Session directory names carry a transposed date.**
   `regrLauncher/__main__.py:49` formats the session directory with
   `strftime("%Y-%d-%m-%H%M%S")`, swapping day and month. Every session directory
@@ -978,7 +999,10 @@ is recorded as W5 of
 
 #### 9E. The unit suite has no written test-invocation contract
 
-- **Disposition:** OPEN, not started. Nothing is broken today.
+- **Disposition:** OPEN, not started. Nothing is broken today. PROPOSED 2026-09-13: write the
+  contract into `unittest/README.md` (each file is a script whose `run_all_tests()` maps
+  booleans to the exit code; pytest is not a supported runner) and reference it from the
+  Makefile `unittest` target comment.
 - `unittest/run_all_tests.sh`, invoked from `Makefile:464-465`, runs each unit file
   as a script, and each file's `run_all_tests()` turns boolean returns into the
   exit code. 25 of the 42 files that name `test_*` functions return booleans rather
@@ -990,8 +1014,12 @@ is recorded as W5 of
 
 #### 9F. Dead ambiguity branch in the block-name map
 
-- **Disposition:** OPEN, not started. Lowest priority, no user-visible defect.
-- `pysrc/processYaml.py:453` assigns `blocks[block] = blockKey` unconditionally and
+- **Disposition:** LANDED 2026-09-13. The block loop now mirrors the instance loop's if/else,
+  with one extra guard: the instance loop seeds `blocks[container]` first, so the same key
+  arriving again from the block loop is not an ambiguity. Any instantiated duplicate block name
+  is already rejected by the `scope: global` lookup, so valid designs are unchanged. Gated
+  together with 9B (the runs recorded there).
+- `pysrc/processYaml.py:453` assigned `blocks[block] = blockKey` unconditionally and
   overwrites the ambiguity dict built at `:449-452`, so `getQualBlock()`'s
   `isinstance(..., dict)` branch at `:810-814` cannot be reached for blocks. The
   instance-side equivalent at `:419-427` is written correctly, with an if/else.
@@ -1000,7 +1028,9 @@ is recorded as W5 of
 
 #### 9G. Authoring documentation still shows the retired flat `parameters:` form
 
-- **Disposition:** OPEN, not started. Documentation only.
+- **Disposition:** LANDED 2026-09-13. Both examples rewritten to the nested mapping and each
+  gains one sentence saying a `parameters:` section may sit in any file whose scope reaches
+  the block.
 - `ARCH2CODE_AI_RULES.md:594-601` and `rules/architecture-yaml.md:83-84` both show
   `parameters:` as a flat list of `{variant, param, value}` rows. The current
   schema declares the nested mapping (`config/schema.yaml:311-320`) and rejects

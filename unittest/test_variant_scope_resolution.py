@@ -26,6 +26,8 @@ from pysrc.processYaml import projectOpen
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 TWO_DECLARERS_FIXTURE = os.path.join(test_dir, 'fixtures', 'param-variant-two-declarers')
+TWO_DECLARERS_LEGAL_FIXTURE = os.path.join(
+    test_dir, 'fixtures', 'param-variant-two-declarers-legal')
 OUT_OF_RANGE_FIXTURE = os.path.join(test_dir, 'fixtures', 'variant-scope-out-of-range')
 
 
@@ -270,6 +272,109 @@ def test_in_scope_declaration_resolves_to_its_own_project():
         shutil.rmtree(work, ignore_errors=True)
 
 
+def test_two_projects_each_declare_one_label_builds():
+    """Two projects each declare leafIp v0 at different widths, each in its own
+    scope; each instance resolves to its own project's value."""
+    _header("two projects each declaring one label of a reused block build, "
+            "each instance keeping its own project's values")
+    work = _copy_fixture(TWO_DECLARERS_LEGAL_FIXTURE, 'variant_scope_two_legal_')
+    try:
+        ip = yaml.safe_load(_read(os.path.join(work, 'projIp', 'yaml', 'ipTop.yaml')))
+        wrap = yaml.safe_load(_read(os.path.join(work, 'projWrap', 'yaml', 'wrapTop.yaml')))
+        ipW = ip['parameters']['leafIp']['v0']['LEAF_W']
+        wrapW = wrap['parameters']['leafIp']['v0']['LEAF_W']
+        if ipW == wrapW:
+            print("  FAIL: premise not met - the two leafIp v0 declarations must differ")
+            return False
+        if any('ipTop.yaml' in inc for inc in wrap['include']):
+            print("  FAIL: premise not met - wrapTop.yaml must not include ipTop.yaml")
+            return False
+        db = os.path.join(work, 'twoDeclarersLegal.db')
+        project = os.path.join(work, 'top', 'yaml', 'twoDeclarersLegalProject.yaml')
+        out, rc = _build_db(project, db)
+        if 'Traceback (most recent call last)' in out:
+            print("  FAIL: got a Python stack trace instead of a clean error")
+            print('  ' + '\n  '.join(out.split('\n')[:20]))
+            return False
+        if rc != 0:
+            print("  FAIL: expected success, build failed")
+            print('  ' + '\n  '.join(out.split('\n')[:20]))
+            return False
+        prj = projectOpen(db)
+        leafA = {k: v for k, v in prj.instanceVariantDeclarers.items()
+                 if prj.data['instances'][k]['instance'] == 'uLeafA'}
+        leafB = {k: v for k, v in prj.instanceVariantDeclarers.items()
+                 if prj.data['instances'][k]['instance'] == 'uLeafB'}
+        if list(leafA.values()) != ['projIp']:
+            print(f"  FAIL: expected uLeafA's persisted declarer to be "
+                  f"'projIp', got {leafA}")
+            return False
+        if list(leafB.values()) != ['projWrap']:
+            print(f"  FAIL: expected uLeafB's persisted declarer to be "
+                  f"'projWrap', got {leafB}")
+            return False
+        leafAKey = next(iter(leafA))
+        leafBKey = next(iter(leafB))
+        ipValues = prj._instanceVariantDescriptor(prj.data['instances'][leafAKey])['values']
+        wrapValues = prj._instanceVariantDescriptor(prj.data['instances'][leafBKey])['values']
+        if ipValues['LEAF_W'] != 12:
+            print(f"  FAIL: expected uLeafA's resolved LEAF_W to be 12, got {ipValues['LEAF_W']}")
+            return False
+        if wrapValues['LEAF_W'] != 8:
+            print(f"  FAIL: expected uLeafB's resolved LEAF_W to be 8, got {wrapValues['LEAF_W']}")
+            return False
+        print("  PASS: build succeeded, uLeafA resolves to projIp and "
+              "uLeafB resolves to projWrap")
+        return True
+    finally:
+        _close_db()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_two_projects_each_declare_one_label_mismatch_rejected():
+    """Same fixture, with projWrap's own LEAF_W changed so it disagrees with
+    wrapBlk's boundary width. The diagnostic must name uLeafB, the site whose
+    project authored the mismatching value, not uLeafA."""
+    _header("a mismatch inside one project's own declaration is rejected, "
+            "naming that project's site only")
+    work = _copy_fixture(TWO_DECLARERS_LEGAL_FIXTURE, 'variant_scope_two_legal_mismatch_')
+    try:
+        wrap = os.path.join(work, 'projWrap', 'yaml', 'wrapTop.yaml')
+        text = _read(wrap)
+        anchor = ("parameters:\n"
+                  "    leafIp:\n"
+                  "        v0:\n"
+                  "            LEAF_W: 8\n")
+        if anchor not in text:
+            raise AssertionError("wrapTop.yaml's leafIp v0 LEAF_W: 8 anchor is missing")
+        _write(wrap, text.replace(
+            anchor, anchor.replace("LEAF_W: 8", "LEAF_W: 9"), 1))
+
+        db = os.path.join(work, 'twoDeclarersLegal.db')
+        project = os.path.join(work, 'top', 'yaml', 'twoDeclarersLegalProject.yaml')
+        out, rc = _build_db(project, db)
+        if rc == 0:
+            print("  FAIL: expected rejection, build succeeded")
+            return False
+        if 'Traceback (most recent call last)' in out:
+            print("  FAIL: got a Python stack trace instead of a clean error")
+            print('  ' + '\n  '.join(out.split('\n')[:20]))
+            return False
+        if 'uLeafB' not in out:
+            print("  FAIL: diagnostic does not name uLeafB")
+            print('  ' + '\n  '.join(out.split('\n')[:20]))
+            return False
+        if 'uLeafA' in out:
+            print("  FAIL: diagnostic names uLeafA, which does not mismatch")
+            print('  ' + '\n  '.join(out.split('\n')[:20]))
+            return False
+        print("  PASS: rejected, naming uLeafB and not uLeafA")
+        return True
+    finally:
+        _close_db()
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def run_all_tests():
     print("\n" + "="*70)
     print("VARIANT SCOPE RESOLUTION TESTS")
@@ -280,6 +385,8 @@ def run_all_tests():
         test_out_of_scope_declaration_rejected,
         test_two_out_of_scope_declarers_both_named,
         test_in_scope_declaration_resolves_to_its_own_project,
+        test_two_projects_each_declare_one_label_builds,
+        test_two_projects_each_declare_one_label_mismatch_rejected,
     ]
     results = []
     for test_func in tests:

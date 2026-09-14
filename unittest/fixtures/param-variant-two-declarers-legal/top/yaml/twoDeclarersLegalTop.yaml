@@ -1,0 +1,39 @@
+# The consuming assembler. Includes both wrapTop.yaml and ipTop.yaml, but each
+# of uLeafA and uLeafB still resolves its v0 through its own scope only.
+include:
+    - ../../projWrap/yaml/wrapTop.yaml
+    - ../../projIp/yaml/ipTop.yaml
+
+blocks:
+    top:
+        desc: "assembler top"
+        hasRtl: false
+    drvW:
+        desc: "stimulus source on the wrapper's boundary interface"
+        params: [WRAP_W]
+        ports:
+            out: { interface: wrapIf, direction: src }
+    drvI:
+        desc: "stimulus source on projIp's boundary interface"
+        params: [IPW_W]
+        ports:
+            out: { interface: ipwIf, direction: src }
+
+instances:
+    uTop:  { container: top, instanceType: top }
+    uDrvW: { container: top, instanceType: drvW,    variant: v0 }
+    uDrvI: { container: top, instanceType: drvI,    variant: v0 }
+    uWrap: { container: top, instanceType: wrapBlk, variant: v0 }
+    uIpW:  { container: top, instanceType: ipWrap,  variant: v0 }
+
+connections:
+    - { interface: wrapIf, src: uDrvW, srcport: out, dst: uWrap, dstport: in }
+    - { interface: ipwIf,  src: uDrvI, srcport: out, dst: uIpW,  dstport: in }
+
+parameters:
+    drvW:
+        v0:
+            WRAP_W: 8
+    drvI:
+        v0:
+            IPW_W: 12

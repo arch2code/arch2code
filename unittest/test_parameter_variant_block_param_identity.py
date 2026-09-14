@@ -13,7 +13,7 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 import pysrc.arch2codeGlobals as g
-from pysrc.processYaml import Site, SiteBindingIndex, projectCreate
+from pysrc.processYaml import SiteBindingIndex, projectCreate
 
 
 def _write_temp(content, suffix, prefix):
@@ -141,11 +141,14 @@ projectFiles:
             print("FAIL: variant row resolved to the other block's WIDTH")
             return False
 
+        (targetInst,) = [row for row in creator.flatData['instances'].values()
+                         if row['variant'] == 'wide']
+
         # Bindings are seeded under the backing constant's own key, which is how
         # a payload width symbol reaches them. Two same-named params backed by
         # different constants must stay distinguishable.
-        bindings = SiteBindingIndex(creator).bindingsAt(
-            Site(target_block_key, 'wide', False), dict())
+        siteIndex = SiteBindingIndex(creator)
+        bindings = siteIndex.bindingsAt(siteIndex.siteOf(targetInst), dict())
         if bindings.get(target_source_key) != 13:
             print(f"FAIL: binding {target_source_key} expected 13, "
                   f"got {bindings.get(target_source_key)}")

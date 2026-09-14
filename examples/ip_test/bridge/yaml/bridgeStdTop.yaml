@@ -10,9 +10,6 @@
 # map into bridgeApbDecode is synthesized intrinsically by the IP.
 include:
     - ipBridge.yaml
-    # Included directly (not only via ipBridge.yaml) to keep ip.yaml within
-    # the two-hop include visibility rtl.f is built from.
-    - ../../ip/yaml/ipVariants.yaml
     # cpu is the generic APB master owned by the 'common' sub-project. Reached via
     # the same real-tree convention the bridge uses for shared_types (see
     # ipBridge.yaml), so in composition its context path is lexically identical to

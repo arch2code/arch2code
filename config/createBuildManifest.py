@@ -59,8 +59,8 @@ def _writeBuildManifestMk(rootDir, manifest):
 
 def create(prj):
     # Derive the per-project build directory/file set from the same emission
-    # decisions the file generator makes. The manifest uses the persisted layout
-    # so artifact placement and build grouping share one project-create contract.
+    # decisions the file generator makes, reading the same artifactRows() view
+    # newModule and the orphan/stale-segment sweeps consume.
     fileMap = prj.proj['fileGeneration']['fileMap']
     # Per-owning-project layouts. Object placement is resolved under the layout
     # of the project that owns the object's defining context, so a child-owned
@@ -82,21 +82,14 @@ def create(prj):
     scGenFiles = set()
     svGenFiles = set()
 
-    blocksParams = {row['blockKey'] for row in prj.flatData['blocksparams'].values()}
     blockByKey = {row['blockKey']: row for row in prj.flatData['blocks'].values()}
+    blocksParams = {row['blockKey'] for row in prj.flatData['blocksparams'].values()}
+    blockCondData = {k: artifactPaths.blockCondRow(r, blocksParams) for k, r in blockByKey.items()}
+    rows = artifactPaths.artifactRows(prj, blockCondData, prj.flatData['instances'], fileMap)
 
-    # Restrict the managed SV compile set to this build's design hierarchy. A
-    # referenced child project's standalone harness (e.g. a reusable IP's own
-    # ipStdTop verification top) is parsed into the same database but is not
-    # contained by this build's topInstance; its modules import that harness
-    # context's package, which the reachability-scoped rtl.f (correctly) does not
-    # list, so verilating them here fails with an unresolved package import.
-    # Scoping svModuleFiles to reachable blocks keeps A2C_SV_FILES aligned with
-    # rtl.f. For a single-project build every block is reachable and this is a
-    # no-op.
-    #
-    # Project creation persists the active instance set before artifact
-    # derivation. Convert that set to blocks without repeating containment.
+    # Only blocks reachable from topInstance compile, so A2C_SV_FILES matches
+    # rtl.f; a referenced child's standalone harness is in the database but
+    # outside the compile closure.
     reachableInstances = prj.config.getConfig('REACHABLEINSTANCES')
     reachableBlockKeys = set()
     for instanceKey, instRow in prj.flatData['instances'].items():
@@ -106,20 +99,14 @@ def create(prj):
         if instRow['containerKey'] in blockByKey:
             reachableBlockKeys.add(instRow['containerKey'])
 
-    def layoutForContext(context):
-        return projectLayout[prj.contextOwningProject[context]]
-
     def record(fileDef, filePath, objLayout, rootOwnedGen, svCompile=True):
         role = objLayout['segments'][fileDef['basePath']]['buildGroup']
         if role is None:
             return
         dirs[role].add(os.path.dirname(filePath))
-        # Gen targets are owned-only: only artifacts whose generation this
-        # build-root project owns are enumerated for (re)generation, so a build
-        # never spawns no-op arch2code --file invocations against a foreign
-        # sub-project's sources. The module/compile sets below (moduleFiles,
-        # svModuleFiles) and dirs stay foreign-inclusive so foreign artifacts
-        # still COMPILE without being regenerated here.
+        # Gen targets are owned-only; the module, compile and dir sets stay
+        # foreign-inclusive so foreign artifacts compile without being
+        # regenerated here.
         if rootOwnedGen:
             for extVal in fileDef['ext'].values():
                 genFile = filePath + '.' + extVal
@@ -129,105 +116,53 @@ def create(prj):
                     svGenFiles.add(genFile)
         if 'cppm' in fileDef['ext']:
             moduleFiles.add(filePath + '.' + fileDef['ext']['cppm'])
-        # Explicit managed SV module files. role=='sv' selects rtlModule and
-        # excludes the vl_wrap wrappers (buildGroup vl); packages (context mode)
-        # are listed separately by the rtl.f template, not here. svCompile gates
-        # out blocks outside this build's design hierarchy (a referenced child's
-        # standalone harness) so the compile set matches the reachability-scoped
-        # rtl.f.
+        # Managed SV modules: role 'sv' selects rtlModule (vl wrappers and
+        # packages are listed elsewhere); svCompile drops blocks outside this
+        # build's hierarchy.
         if svCompile and 'sv' in fileDef['ext'] and role == 'sv':
             svModuleFiles.add(filePath + '.' + fileDef['ext']['sv'])
         if role == 'vl' and 'svh' in fileDef['ext']:
             svWrapBodies.add(filePath + '.' + fileDef['ext']['svh'])
 
-    # block mode: one artifact per block per matching block-mode entry.
-    for blockRow in blockByKey.values():
-        condData = artifactPaths.blockCondRow(blockRow, blocksParams)
-        objLayout = layoutForContext(blockRow['_context'])
-        rootOwnedGen = prj.contextOwningProject[blockRow['_context']] == rootProject
-        for fileDef in fileMap.values():
-            if fileDef.get('mode', 'block') != 'block':
-                continue
-            if not artifactPaths.fileMapCondMatch(fileDef, condData):
-                continue
-            filePath = artifactPaths.expandNewModulePath(fileDef, blockRow['dir'],
-                                                         blockRow['block'], blockRow['block'],
-                                                         objLayout, missingDirOk=True)
-            record(fileDef, filePath, objLayout, rootOwnedGen,
-                   svCompile=blockRow['blockKey'] in reachableBlockKeys)
+    # block mode: one artifact per block per matching block-mode entry, one
+    # per variant stem when the entry varies per variant.
+    for row in rows:
+        if row['mode'] != 'block':
+            continue
+        record(row['fileDef'], row['stem'], row['layout'], row['owner'] == rootProject,
+               svCompile=row['blockKey'] in reachableBlockKeys)
 
-    # registrar mode: one trampoline per assembler per distinct matching child it
-    # instantiates, under the assembler's directory.
-    registrarMap = {k: v for k, v in fileMap.items()
-                    if v.get('mode', 'block') == 'registrar'}
-    blockRegistrarMap = {k: v for k, v in registrarMap.items()
-                         if not v.get('foreignConfig', False)
-                         and not v.get('pairVlTop', False)}
-    foreignRegistrarMap = {k: v for k, v in registrarMap.items()
-                           if v.get('foreignConfig', False)}
-    # foreignConfig: true marks two artifact families; the variant: flag tells them apart.
-    configModuleRegistrarMap = {k: v for k, v in foreignRegistrarMap.items()
-                               if not v.get('variant', False)}
-    pairVlRegistrarMap = {k: v for k, v in registrarMap.items()
-                          if v.get('pairVlTop', False)}
-    if registrarMap:
-        registrarPairs = prj.config.getConfig('REGISTRARPAIRS')
-        for assemblerKey, childKey in sorted(registrarPairs):
-            assemblerDir = blockByKey[assemblerKey]['dir']
-            # The trampoline is parent-owned: it lands under the assembler's
-            # directory, so it resolves under the assembler project layout.
-            objLayout = layoutForContext(blockByKey[assemblerKey]['_context'])
-            childRow = blockByKey[childKey]
-            childCond = artifactPaths.blockCondRow(childRow, blocksParams)
-            pair = registrarPairs[(assemblerKey, childKey)]
-            for fileDef in blockRegistrarMap.values():
-                if not artifactPaths.fileMapCondMatch(fileDef, childCond):
-                    continue
-                if fileDef.get('requiresRegistrations', False) \
-                        and not pair['aggregateHasModelRegistrations']:
-                    continue
-                filePath = artifactPaths.expandNewModulePath(
-                    fileDef, assemblerDir, childRow['block'],
-                    pair['artifactStem'], objLayout, missingDirOk=True)
-                # Registrar trampolines are generated by the owning assembler's
-                # project (here, the build root), so they stay in the gen set
-                # even though they reference a foreign child.
-                record(fileDef, filePath, objLayout, True)
+    # registrar mode: trampolines and Config modules are gen targets; the SV
+    # wrapper tops (pairVlTop, owner-qualified variant) are recorded by the
+    # vlTops pass.
+    for row in rows:
+        if row['mode'] != 'registrar':
+            continue
+        fileDef = row['fileDef']
+        if fileDef.get('pairVlTop', False):
+            continue
+        if fileDef.get('ownerQualified', False) and fileDef.get('variant', False):
+            continue
+        # Generated by the project that owns the assembler, as newModule scaffolds it.
+        record(fileDef, row['stem'], row['layout'], row['owner'] == rootProject)
 
-        # CONFIGMODULES is computed under the same emit gate the config emitter
-        # uses, so manifest and emitter agree.
-        for (owner, childKey), entry in sorted(prj.config.getConfig('CONFIGMODULES').items()):
-            childRow = blockByKey[childKey]
-            childCond = artifactPaths.blockCondRow(childRow, blocksParams)
-            parentRow = blockByKey[entry['parentKey']]
-            objLayout = layoutForContext(parentRow['_context'])
-            for fileDef in configModuleRegistrarMap.values():
-                if not artifactPaths.fileMapCondMatch(fileDef, childCond):
-                    continue
-                filePath = artifactPaths.expandNewModulePath(fileDef, parentRow['dir'],
-                                                             childRow['block'], entry['stub'],
-                                                             objLayout, missingDirOk=True)
-                record(fileDef, filePath, objLayout, owner == rootProject)
-
-        # A generated file in an owned registrar directory that the contract does
-        # not name is stale. Warn here; newmodule performs the deletion.
-        registrarFiles, registrarDirs = artifactPaths.getStaleSegmentFiles(
-            prj, {blockKey: artifactPaths.blockCondRow(row, blocksParams) for blockKey, row in blockByKey.items()},
-            fileMap, 'registrar')
-        generatedInDirs, _ = migrateCommon.classifyGeneratedDir(registrarDirs)
-        staleRegistrarFiles = sorted(set(generatedInDirs) - registrarFiles)
-        for staleFile in staleRegistrarFiles:
-            printWarning(f"stale registrar file {staleFile} is not part of "
-                        f"this project's current registrar contract")
-        if staleRegistrarFiles:
-            printWarning("run 'make newmodule' to remove stale registrar files")
+    # A generated file in an owned registrar directory that the contract does
+    # not name is stale. Warn here; newmodule performs the deletion.
+    registrarFiles, registrarDirs = artifactPaths.getStaleSegmentFiles(
+        prj, rows, blockCondData, fileMap, 'registrar')
+    generatedInDirs, _ = migrateCommon.classifyGeneratedDir(registrarDirs)
+    staleRegistrarFiles = sorted(set(generatedInDirs) - registrarFiles)
+    for staleFile in staleRegistrarFiles:
+        printWarning(f"stale registrar file {staleFile} is not part of "
+                    f"this project's current registrar contract")
+    if staleRegistrarFiles:
+        printWarning("run 'make newmodule' to remove stale registrar files")
 
     # A generated file in an owned vl_wrap directory that the contract does not
     # name is stale (left behind by a block/variant rename). Warn here;
     # newmodule performs the deletion.
     vlWrapFiles, vlWrapDirs = artifactPaths.getStaleSegmentFiles(
-        prj, {blockKey: artifactPaths.blockCondRow(row, blocksParams) for blockKey, row in blockByKey.items()},
-        fileMap, 'vl_wrap')
+        prj, rows, blockCondData, fileMap, 'vl_wrap')
     generatedInDirs, _ = migrateCommon.classifyGeneratedDir(vlWrapDirs)
     staleVlWrapFiles = sorted(set(generatedInDirs) - vlWrapFiles)
     for staleFile in staleVlWrapFiles:
@@ -236,84 +171,34 @@ def create(prj):
     if staleVlWrapFiles:
         printWarning("run 'make newmodule' to remove stale verification-wrapper files")
 
-    # context mode: reuse the paths saveIncludeFiles already resolved through
-    # the path seam, with validity/smartInclude already applied.
-    includeFiles = prj.config.getConfig('INCLUDEFILES')
-    for fileType, fileDef in fileMap.items():
-        if fileDef.get('mode', 'block') != 'context':
+    # context mode: reuse the paths saveIncludeFiles resolved through the path seam.
+    for row in rows:
+        if row['mode'] != 'context':
             continue
-        for ext in fileDef['ext']:
-            expandedType = f"{fileType}_{ext}"
-            if expandedType not in includeFiles:
-                continue
-            # Each include entry is keyed by its context file; resolve its build
-            # role under the owning project's layout (path already resolved
-            # through that layout in saveIncludeFiles).
-            for context, entry in includeFiles[expandedType].items():
-                role = layoutForContext(context)['segments'][fileDef['basePath']]['buildGroup']
-                if role is None:
-                    continue
-                dirs[role].add(os.path.dirname(entry['fileName']))
-                extVal = fileDef['ext'][ext]
-                # Owned-only gen: refresh a context's generated source only when
-                # this build-root project owns the context. Foreign contexts still
-                # land in moduleFiles/dirs so they COMPILE but are never
-                # regenerated by this project's gen.
-                if prj.contextOwningProject[context] == rootProject:
-                    if extVal in _CPP_GEN_EXTS:
-                        scGenFiles.add(entry['fileName'])
-                    elif extVal in _SV_GEN_EXTS:
-                        svGenFiles.add(entry['fileName'])
-                if ext == 'cppm':
-                    moduleFiles.add(entry['fileName'])
+        record(row['fileDef'], row['stem'], row['layout'], row['owner'] == rootProject,
+               svCompile=False)
 
-    # project mode: exactly one artifact per project at its basePath segment
-    # root, keyed to the top context (mirrors the newModule project scaffold).
-    # A definitions-only project (no top context) emits none; the ownership gate
-    # keeps a composed build from recording a referenced child project's copy.
-    # Layout-correct path of the per-project rtl.f verilator file list. Published
-    # so the shared VL/lint makefiles consume it instead of assuming the
-    # functional $root/rtl/rtl.f, which is wrong for a hierarchical multi-node
-    # top whose rtl segment lives under <topNode>/rtl. Empty for a definitions-
-    # only project (no top context, emits no rtl.f).
+    # project mode: one artifact per project at the top context; rtl.f's path
+    # is published so the VL and lint makefiles read it instead of assuming
+    # $root/rtl/rtl.f.
     rtlDotFPath = ''
-    topContext = prj.config.getConfig('TOPCONTEXT')
-    if topContext is not None and prj.contextOwningProject[topContext] == prj.config.getConfig('PROJECTNAME'):
-        objLayout = layoutForContext(topContext)
-        # In hierarchical layout the per-project artifact anchors to the top
-        # context's node directory (the top block's persisted node dir) so its
-        # node-relative segment resolves inside the project tree, matching where
-        # the newModule scaffold writes it. Functional layout uses $root-
-        # absolute segments and needs no node anchor.
-        if objLayout['mode'] == 'hierarchical':
-            topBlockKey = next(inst['instanceTypeKey']
-                               for inst in prj.flatData['instances'].values()
-                               if inst['container'] == '_topInstance')
-            nodeDir = blockByKey[topBlockKey]['dir']
-        else:
-            nodeDir = ''
-        for fileType, fileDef in fileMap.items():
-            if fileDef.get('mode', 'block') != 'project':
-                continue
-            filePath = artifactPaths.expandNewModulePath(fileDef, nodeDir, '', '', objLayout, missingDirOk=True)
-            # Project-mode artifacts are reached only when the root owns the top
-            # context (gated above), so they are always root-owned gen targets.
-            record(fileDef, filePath, objLayout, True)
-            # The rtl.f file list is resolved through the same emit seam as every
-            # other project-mode artifact, so its path is layout-correct in both
-            # functional ($root/rtl/rtl.f) and hierarchical (<topNode>/rtl/rtl.f).
-            if fileType == 'rtlDotF':
-                rtlDotFPath = filePath + '.' + fileDef['ext']['f']
+    for row in rows:
+        if row['mode'] != 'project':
+            continue
+        if row['owner'] != rootProject:
+            continue
+        record(row['fileDef'], row['stem'], row['layout'], True)
+        # The rtl.f file list is resolved through the same emit seam as every
+        # other project-mode artifact, so its path is layout-correct in both
+        # functional ($root/rtl/rtl.f) and hierarchical (<topNode>/rtl/rtl.f).
+        if row['fileType'] == 'rtlDotF':
+            rtlDotFPath = row['files']['f']
 
-    # Per-top verilated-wrapper records: the explicit (physical .sv -> design
-    # unit) set the verilator wrap build consumes, so a2c-vl-wrap.mk names each
-    # --top and its physical wrapper directly rather than deriving them from
-    # filenames or globbing. The set mirrors the emitted vl-role .sv wrappers:
-    # block-mode vlSvWrap (one per variant for a parameterizable block, one bare
-    # otherwise; the .svh body is never a top) and registrar-mode vlSvWrapForeign
-    # (one owner-qualified top per foreign variant). The design-unit name is the
-    # file basename (moduleFileStub + fileMap 'name') -- the same composition the
-    # SV wrapper view emits -- so the record and the emitted module name agree.
+    # One record per vl-buildGroup .sv wrapper: block-mode vlSvWrap per
+    # variant, registrar-mode vlSvWrapForeign per foreign variant,
+    # vlSvWrapPair per pairSpecific registration. The design unit is the file
+    # basename, the same composition the SV wrapper view emits; a pair top
+    # uses its registration's topModule.
     vlTops = list()
 
     def recordVlTop(fileDef, filePath, qualifiedTop=None):
@@ -328,17 +213,6 @@ def create(prj):
         if 'sv' not in fileDef['ext']:
             return False
         return objLayout['segments'][fileDef['basePath']]['buildGroup'] == 'vl'
-
-    # Same-project variant labels per block. A foreign variant (declaring project
-    # != the block's config-context owner) is emitted as a registrar-mode
-    # owner-qualified top (vlSvWrapForeign), not a block-mode wrapper, so it is
-    # excluded here -- mirroring the config emit gate in calcForeignConfigHeaders.
-    blockVariants = {
-        blockKey: {descriptor['variant'] for descriptor in descriptors
-                   if not descriptor['isForeign']
-                   and not descriptor['containerSourced']}
-        for blockKey, descriptors
-        in prj.config.getConfig('VARIANTCONFIGDESCRIPTORS').items()}
 
     # DUT-top candidates: the HDL top the lint/vl build drives is named by
     # HDL_TOP_MODULE, which is either the design top block itself (when
@@ -365,89 +239,20 @@ def create(prj):
             dutTopVariantByBlock[inst['instanceTypeKey']] = inst['variant'] or ''
 
     dutTops = dict()
-    for blockRow in blockByKey.values():
-        condData = artifactPaths.blockCondRow(blockRow, blocksParams)
-        objLayout = layoutForContext(blockRow['_context'])
-        for fileDef in fileMap.values():
-            if fileDef.get('mode', 'block') != 'block':
-                continue
-            if not isVlSvTop(fileDef, objLayout):
-                continue
-            if not artifactPaths.fileMapCondMatch(fileDef, condData):
-                continue
-            block = blockRow['block']
-            # A block reached only through inheritContainerParam declares no
-            # variant anything selects; its tops are built at its container's.
-            variants = sorted({v for source in prj.variantSourceBlocks[blockRow['blockKey']]
-                               for v in blockVariants.get(source, set())})
-            if condData['hasOwnParams'] and not variants:
-                # Every declared variant is container-sourced, so this block has
-                # no standalone top; the pair loop below records its verilated
-                # top against the same physical file.
-                continue
-            variantStubs = [(v, f'{block}_{v}') for v in variants] \
-                if (fileDef.get('variant', False) and variants) else [('', block)]
-            for variant, stub in variantStubs:
-                filePath = artifactPaths.expandNewModulePath(fileDef, blockRow['dir'],
-                                                             block, stub, objLayout,
-                                                             missingDirOk=True)
-                recordVlTop(fileDef, filePath)
-                # Capture a DUT-top wrapper name from the same emission that
-                # records it (so the map and A2C_VL_TOPS agree exactly), keyed by
-                # block name for the makefile's HDL_TOP_MODULE lookup.
-                if dutTopVariantByBlock.get(blockRow['blockKey']) == variant:
-                    dutTops[block] = os.path.basename(filePath)
-
-    if foreignRegistrarMap:
-        # A foreign owner-qualified top is a build artifact the reused child's
-        # VlRegistrar (in the declaring project) instantiates. A composed build
-        # runs ONE vl_wrap build for the whole assembled tree, so it must
-        # verilate every foreign top present -- including one owned by a
-        # sub-project (its .sv is scaffolded under that sub-project by its own
-        # newmodule). The pair set is already owner-qualified and deduped.
-        for (owner, childKey), entry in sorted(prj.config.getConfig('FOREIGNCONFIGHEADERS').items()):
-            childRow = blockByKey[childKey]
-            childCond = artifactPaths.blockCondRow(childRow, blocksParams)
-            parentRow = blockByKey[entry['parentKey']]
-            objLayout = layoutForContext(parentRow['_context'])
-            for fileDef in foreignRegistrarMap.values():
-                if not isVlSvTop(fileDef, objLayout):
-                    continue
-                if not artifactPaths.fileMapCondMatch(fileDef, childCond):
-                    continue
-                for variant in entry['vlVariants']:
-                    filePath = artifactPaths.expandNewModulePath(
-                        fileDef, parentRow['dir'], childRow['block'],
-                        f"{entry['stub']}_{variant}", objLayout, missingDirOk=True)
-                    recordVlTop(fileDef, filePath)
-
-    if pairVlRegistrarMap:
-        registrarPairs = prj.config.getConfig('REGISTRARPAIRS')
-        for (parentKey, childKey), pair in sorted(registrarPairs.items()):
-            childRow = blockByKey[childKey]
-            childCond = artifactPaths.blockCondRow(childRow, blocksParams)
-            parentRow = blockByKey[parentKey]
-            objLayout = layoutForContext(parentRow['_context'])
-            for fileDef in pairVlRegistrarMap.values():
-                if not isVlSvTop(fileDef, objLayout):
-                    continue
-                if not artifactPaths.fileMapCondMatch(fileDef, childCond):
-                    continue
-                for registration in pair['verifRegistrations']:
-                    if not registration['pairSpecific']:
-                        continue
-                    filePath = artifactPaths.expandNewModulePath(
-                        fileDef, parentRow['dir'], childRow['block'],
-                        registration['physicalFileStub'], objLayout,
-                        missingDirOk=True)
-                    recordVlTop(fileDef, filePath, registration['topModule'])
-
-    # Per-variant and foreign .sv wrapper tops are enumerated authoritatively by
-    # the vlTops pass (the block/registrar record only sees the bare stub, which
-    # for a parameterizable block is never emitted). Fold them into the SV set so
-    # their generated regions are refreshed like every other generated source.
-    for top in vlTops:
-        svGenFiles.add(top['physicalSv'])
+    for row in rows:
+        if row['mode'] not in ('block', 'registrar'):
+            continue
+        if not isVlSvTop(row['fileDef'], row['layout']):
+            continue
+        recordVlTop(row['fileDef'], row['stem'], row['topModule'])
+        # Every top here is verilated; only an owned one is regenerated here.
+        if row['owner'] == rootProject:
+            svGenFiles.add(row['files']['sv'])
+        # Capture a DUT-top wrapper name from the same emission that records
+        # it (so the map and A2C_VL_TOPS agree exactly), keyed by block name
+        # for the makefile's HDL_TOP_MODULE lookup.
+        if row['mode'] == 'block' and dutTopVariantByBlock.get(row['blockKey']) == row['variant']:
+            dutTops[blockByKey[row['blockKey']]['block']] = os.path.basename(row['stem'])
 
     # The SV a verilate run reads, as distinct from the modules named on its
     # command line. Project-wide: every top is verilated against the same rtl.f
@@ -457,8 +262,9 @@ def create(prj):
     svDepFiles = set(svModuleFiles) | svWrapBodies | {t['physicalSv'] for t in vlTops}
     if rtlDotFPath:
         svDepFiles.add(rtlDotFPath)
-    if topContext is not None and 'package_sv' in includeFiles:
-        for context in prj.yamlContext[topContext]:
+    includeFiles = prj.config.getConfig('INCLUDEFILES')
+    if 'package_sv' in includeFiles:
+        for context in prj.config.getConfig('COMPILECONTEXTS'):
             if context in includeFiles['package_sv']:
                 svDepFiles.add(includeFiles['package_sv'][context]['fileName'])
 

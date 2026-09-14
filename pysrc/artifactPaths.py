@@ -74,140 +74,218 @@ def blockCondRow(blockRow, blocksWithParams):
     return row
 
 def configModuleFileDef(fileMap):
-    # The owner-qualified Config module entry. foreignConfig marks both
+    # The owner-qualified Config module entry. ownerQualified marks both
     # owner-qualified registrar entries; the variant-bearing one is the SV wrapper top.
     (fileDef,) = [fd for fd in fileMap.values()
-                  if fd.get('foreignConfig', False) and not fd.get('variant', False)]
+                  if fd.get('ownerQualified', False) and not fd.get('variant', False)]
     return fileDef
 
-def blockModeStems(fileDef, blockRow, variants):
-    """File stems a block-mode fileMap entry scaffolds or expects for one
-    block: one `<block>_<variant>` per declared variant when the entry
-    varies per variant, none when every variant is container-sourced (the
-    registrar pair shapes cover this block's tops instead), else `[block]`."""
-    hasVariant = fileDef.get('variant', False)
-    if hasVariant and variants:
-        return [f"{blockRow['block']}_{variant}" for variant in variants]
-    if hasVariant and blockRow['hasOwnParams']:
-        return []
-    return [blockRow['block']]
+def artifactRows(prj, blockCondData, instances, fileMap):
+    """One row per generated artifact the fileMap names, over every project in
+    the database. Fields: fileType/fileDef, mode, stem (the expandNewModulePath
+    result), files {extKey: path}, owner, layout, blockKey/anchorKey, variant
+    ('' when none), topModule (pairVlTop rows), context/includeEntries (context
+    rows). The caller supplies blockCondData and instances so projectCreate
+    (flatData) and projectOpen (data) both use it."""
+    projectLayout = prj.projectLayout
+    contextOwningProject = prj.contextOwningProject
 
-def getStaleSegmentFiles(prj, blockCondData, filemap, basePath):
+    def layoutForContext(context):
+        return projectLayout[contextOwningProject[context]]
+
+    def row(fileType, fileDef, mode, stem, owner, layout, blockKey=None,
+            anchorKey=None, variant='', topModule=None, context=None,
+            includeEntries=None):
+        return {
+            'fileType': fileType, 'fileDef': fileDef, 'mode': mode,
+            'stem': stem,
+            'files': rowFiles(stem, fileDef),
+            'owner': owner, 'layout': layout,
+            'blockKey': blockKey, 'anchorKey': anchorKey,
+            'variant': variant, 'topModule': topModule,
+            'context': context, 'includeEntries': includeEntries,
+        }
+
+    def rowFiles(stem, fileDef):
+        return {ext: stem + '.' + val for ext, val in fileDef['ext'].items()}
+
+    rows = list()
+
+    # Block mode: one row per block per matching block-mode entry, one row
+    # per variant stem when the entry varies per variant.
+    for blockRow in blockCondData.values():
+        anchorLayout = layoutForContext(blockRow['_context'])
+        owner = contextOwningProject[blockRow['_context']]
+        for fileType, fileDef in fileMap.items():
+            if fileDef.get('mode', 'block') != 'block':
+                continue
+            if not fileMapCondMatch(fileDef, blockRow):
+                continue
+            hasVariant = fileDef.get('variant', False)
+            variants = sorted(standaloneVariantDescriptors(prj.config, blockRow['blockKey'])) \
+                if hasVariant else []
+            if hasVariant and variants:
+                stemVariants = [(f"{blockRow['block']}_{v}", v) for v in variants]
+            elif hasVariant and blockRow['hasOwnParams']:
+                # Every variant is container-sourced; the pair rows cover this block's tops.
+                continue
+            else:
+                stemVariants = [(blockRow['block'], '')]
+            for stem, variant in stemVariants:
+                stemPath = expandNewModulePath(fileDef, blockRow['dir'],
+                                               blockRow['block'], stem,
+                                               anchorLayout, missingDirOk=True)
+                rows.append(row(fileType, fileDef, 'block', stemPath, owner, anchorLayout,
+                                blockKey=blockRow['blockKey'], anchorKey=blockRow['blockKey'],
+                                variant=variant))
+
+    # Registrar mode: four shapes told apart by ownerQualified, variant and pairVlTop.
+    registrarMap = {k: v for k, v in fileMap.items()
+                    if v.get('mode', 'block') == 'registrar'}
+    if registrarMap:
+        registrarPairs = prj.config.getConfig('REGISTRARPAIRS')
+        for (assemblerKey, childKey), pair in registrarPairs.items():
+            assemblerRow = blockCondData[assemblerKey]
+            childRow = blockCondData[childKey]
+            anchorLayout = layoutForContext(assemblerRow['_context'])
+            owner = contextOwningProject[assemblerRow['_context']]
+            for fileType, fileDef in registrarMap.items():
+                if fileDef.get('ownerQualified', False) or fileDef.get('pairVlTop', False):
+                    continue
+                if not fileMapCondMatch(fileDef, childRow):
+                    continue
+                if fileDef.get('requiresRegistrations', False) \
+                        and not pair['aggregateHasModelRegistrations']:
+                    continue
+                stemPath = expandNewModulePath(fileDef, assemblerRow['dir'],
+                                               childRow['block'], pair['artifactStem'],
+                                               anchorLayout, missingDirOk=True)
+                rows.append(row(fileType, fileDef, 'registrar', stemPath, owner, anchorLayout,
+                                blockKey=childKey, anchorKey=assemblerKey))
+            for fileType, fileDef in registrarMap.items():
+                if not fileDef.get('pairVlTop', False):
+                    continue
+                if not fileMapCondMatch(fileDef, childRow):
+                    continue
+                for registration in pair['verifRegistrations']:
+                    if not registration['pairSpecific']:
+                        continue
+                    stemPath = expandNewModulePath(fileDef, assemblerRow['dir'],
+                                                   childRow['block'],
+                                                   registration['physicalFileStub'],
+                                                   anchorLayout, missingDirOk=True)
+                    rows.append(row(fileType, fileDef, 'registrar', stemPath, owner, anchorLayout,
+                                    blockKey=childKey, anchorKey=assemblerKey,
+                                    variant=registration['variant'],
+                                    topModule=registration['topModule']))
+
+        for (owner, childKey), entry in prj.config.getConfig('CONFIGMODULES').items():
+            childRow = blockCondData[childKey]
+            parentRow = blockCondData[entry['parentKey']]
+            anchorLayout = layoutForContext(parentRow['_context'])
+            for fileType, fileDef in registrarMap.items():
+                if not fileDef.get('ownerQualified', False) or fileDef.get('variant', False):
+                    continue
+                if not fileMapCondMatch(fileDef, childRow):
+                    continue
+                stemPath = expandNewModulePath(fileDef, parentRow['dir'],
+                                               childRow['block'], entry['stub'],
+                                               anchorLayout, missingDirOk=True)
+                rows.append(row(fileType, fileDef, 'registrar', stemPath, owner, anchorLayout,
+                                blockKey=childKey, anchorKey=entry['parentKey']))
+
+        for (owner, childKey), entry in prj.config.getConfig('FOREIGNCONFIGHEADERS').items():
+            childRow = blockCondData[childKey]
+            parentRow = blockCondData[entry['parentKey']]
+            anchorLayout = layoutForContext(parentRow['_context'])
+            for fileType, fileDef in registrarMap.items():
+                if not (fileDef.get('ownerQualified', False) and fileDef.get('variant', False)):
+                    continue
+                if not fileMapCondMatch(fileDef, childRow):
+                    continue
+                for variant in entry['vlVariants']:
+                    stemPath = expandNewModulePath(fileDef, parentRow['dir'],
+                                                   childRow['block'],
+                                                   f"{entry['stub']}_{variant}",
+                                                   anchorLayout, missingDirOk=True)
+                    rows.append(row(fileType, fileDef, 'registrar', stemPath, owner, anchorLayout,
+                                    blockKey=childKey, anchorKey=entry['parentKey'],
+                                    variant=variant))
+
+    # Context mode: one row per (fileType, context), all its exts in `files`.
+    includeFiles = prj.config.getConfig('INCLUDEFILES')
+    for fileType, fileDef in fileMap.items():
+        if fileDef.get('mode', 'block') != 'context':
+            continue
+        entriesByContext = dict()
+        for ext in fileDef['ext']:
+            expandedType = f"{fileType}_{ext}"
+            if expandedType not in includeFiles:
+                continue
+            for context, entry in includeFiles[expandedType].items():
+                entriesByContext.setdefault(context, dict())[ext] = entry
+        for context, extEntries in entriesByContext.items():
+            stem = next(iter(extEntries.values()))['stem']
+            rows.append(row(fileType, fileDef, 'context', stem,
+                            contextOwningProject[context], layoutForContext(context),
+                            context=context, includeEntries=extEntries))
+
+    # Project mode: exactly one artifact per project-mode entry, at the top
+    # context's node (hierarchical) or $root (functional). A definitions-only
+    # project (no topInstance) has no top context and emits none.
+    topContext = prj.config.getConfig('TOPCONTEXT')
+    if topContext is not None:
+        anchorLayout = layoutForContext(topContext)
+        if anchorLayout['mode'] == 'hierarchical':
+            topBlockKey = next(inst['instanceTypeKey']
+                               for inst in instances.values()
+                               if inst['container'] == '_topInstance')
+            nodeDir = blockCondData[topBlockKey]['dir']
+        else:
+            nodeDir = ''
+        for fileType, fileDef in fileMap.items():
+            if fileDef.get('mode', 'block') != 'project':
+                continue
+            stemPath = expandNewModulePath(fileDef, nodeDir, '', '', anchorLayout,
+                                           missingDirOk=True)
+            rows.append(row(fileType, fileDef, 'project', stemPath,
+                            contextOwningProject[topContext], anchorLayout))
+
+    return rows
+
+
+def getStaleSegmentFiles(prj, rows, blockCondData, fileMap, basePath):
     """The files fileMap says should exist under one project's own basePath
     segment, in the shapes newModule scaffolds; a generated file there
     outside this set is stale (left by a block, variant or instance rename).
     Returns (files, dirs) as absolute paths."""
-    registrarPairs = prj.config.getConfig('REGISTRARPAIRS')
-    configModules = prj.config.getConfig('CONFIGMODULES')
-    foreignConfigHeaders = prj.config.getConfig('FOREIGNCONFIGHEADERS')
     projectName = prj.config.getConfig('PROJECTNAME')
     layout = prj.projectLayout[projectName]
 
-    segmentMap = {k: v for k, v in filemap.items() if v['basePath'] == basePath}
-    blockMap = {k: v for k, v in segmentMap.items() if v.get('mode', 'block') == 'block'}
-    registrarSegmentMap = {k: v for k, v in segmentMap.items()
-                           if v.get('mode', 'block') == 'registrar'}
-    # Registrar-mode entries come in four shapes, told apart by foreignConfig,
-    # variant and pairVlTop.
-    blockPairMap = {k: v for k, v in registrarSegmentMap.items()
-                    if not v.get('foreignConfig', False) and not v.get('pairVlTop', False)}
-    configModuleMap = {k: v for k, v in registrarSegmentMap.items()
-                       if v.get('foreignConfig', False) and not v.get('variant', False)}
-    foreignVariantMap = {k: v for k, v in registrarSegmentMap.items()
-                        if v.get('foreignConfig', False) and v.get('variant', False)}
-    pairVlMap = {k: v for k, v in registrarSegmentMap.items()
-                if v.get('pairVlTop', False)}
-
     dirs = set()
     files = set()
-    # Every entry in a segment resolves to the same per-block directory, so
-    # one expands it; an assembler's registrar-mode artifacts land in that
-    # assembler's own directory, so the owned-block walk covers them too.
-    segmentDef = next(iter(segmentMap.values()), None)
+    segmentDef = next((fileDef for fileDef in fileMap.values()
+                       if fileDef['basePath'] == basePath), None)
     if segmentDef is None:
         return files, dirs
 
-    for qualBlock, blockRow in blockCondData.items():
-        if prj.contextOwningProject[blockRow['_context']] != projectName:
+    # Every owned block reserves its directory in the segment whether or not it
+    # has an artifact, so a stale file in an emptied directory is still found.
+    for condRow in blockCondData.values():
+        if prj.contextOwningProject[condRow['_context']] != projectName:
             continue
-        anyPath = expandNewModulePath(segmentDef, blockRow['dir'],
-                                      blockRow['block'], '', layout,
+        anyPath = expandNewModulePath(segmentDef, condRow['dir'],
+                                      condRow['block'], '', layout,
                                       missingDirOk=True)
         dirs.add(os.path.dirname(anyPath))
-        for fileDef in blockMap.values():
-            if not fileMapCondMatch(fileDef, blockRow):
-                continue
-            hasVariant = fileDef.get('variant', False)
-            variants = set(standaloneVariantDescriptors(prj.config, qualBlock)) if hasVariant else set()
-            stems = blockModeStems(fileDef, blockRow, variants)
-            if not stems:
-                # Every variant is container-sourced: the pair shapes below
-                # cover this block's tops instead.
-                continue
-            for stem in stems:
-                filePath = expandNewModulePath(fileDef, blockRow['dir'],
-                                               blockRow['block'], stem, layout,
-                                               missingDirOk=True)
-                for ext in fileDef['ext'].values():
-                    files.add(filePath + '.' + ext)
 
-    for (assemblerKey, childKey), pair in registrarPairs.items():
-        assemblerRow = blockCondData[assemblerKey]
-        if prj.contextOwningProject[assemblerRow['_context']] != projectName:
+    for row in rows:
+        if row['fileDef']['basePath'] != basePath:
             continue
-        childRow = blockCondData[childKey]
-        for fileDef in blockPairMap.values():
-            if not fileMapCondMatch(fileDef, childRow):
-                continue
-            if fileDef.get('requiresRegistrations', False) \
-                    and not pair['aggregateHasModelRegistrations']:
-                continue
-            filePath = expandNewModulePath(fileDef, assemblerRow['dir'],
-                                           childRow['block'], pair['artifactStem'],
-                                           layout, missingDirOk=True)
-            for ext in fileDef['ext'].values():
-                files.add(filePath + '.' + ext)
-        for fileDef in pairVlMap.values():
-            if not fileMapCondMatch(fileDef, childRow):
-                continue
-            for registration in pair['verifRegistrations']:
-                if not registration['pairSpecific']:
-                    continue
-                filePath = expandNewModulePath(fileDef, assemblerRow['dir'],
-                                               childRow['block'],
-                                               registration['physicalFileStub'],
-                                               layout, missingDirOk=True)
-                for ext in fileDef['ext'].values():
-                    files.add(filePath + '.' + ext)
-
-    for (owner, childKey), entry in configModules.items():
-        if owner != projectName:
+        if row['mode'] not in ('block', 'registrar'):
             continue
-        childRow = blockCondData[childKey]
-        parentRow = blockCondData[entry['parentKey']]
-        for fileDef in configModuleMap.values():
-            if not fileMapCondMatch(fileDef, childRow):
-                continue
-            filePath = expandNewModulePath(fileDef, parentRow['dir'],
-                                           childRow['block'], entry['stub'],
-                                           layout, missingDirOk=True)
-            for ext in fileDef['ext'].values():
-                files.add(filePath + '.' + ext)
-
-    for (owner, childKey), entry in foreignConfigHeaders.items():
-        if owner != projectName:
+        if row['owner'] != projectName:
             continue
-        childRow = blockCondData[childKey]
-        parentRow = blockCondData[entry['parentKey']]
-        for fileDef in foreignVariantMap.values():
-            if not fileMapCondMatch(fileDef, childRow):
-                continue
-            for variant in entry['vlVariants']:
-                filePath = expandNewModulePath(fileDef, parentRow['dir'],
-                                               childRow['block'],
-                                               f"{entry['stub']}_{variant}",
-                                               layout, missingDirOk=True)
-                for ext in fileDef['ext'].values():
-                    files.add(filePath + '.' + ext)
+        files.update(row['files'].values())
 
     return files, dirs

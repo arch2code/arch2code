@@ -223,7 +223,7 @@ around it.
   connection's is the source port name**, and the two share one namespace with a
   connectSingle/connectDouble type check. Hence `midIn` / `midOut` rather than
   `in` / `out`.
-- **The testbench External omits `foreignConfigModules`** (plan-parameter-sharing
+- **The testbench External omits `configModules`** (plan-parameter-sharing
   B3). For this family the wrapper is load-bearing anyway, since it owns the
   customer's `CUST_ALGO`, so it is not a B3 workaround here.
 - **The External must be retargeted at the `_tb` container**

@@ -46,7 +46,7 @@ class newModule:
             blockCondData[qualBlock] = prj.getBlockCondRow(qualBlock)
         someBlock = next(iter(blockCondData), None) # any block row, or None when definitions-only
         for fileKey, fileDefinition in fileGenerationConfig['fileMap'].items():
-            mode = fileDefinition.get('mode', 'block') 
+            mode = fileDefinition.get('mode', 'block')
             for key in ['basePath', 'name', 'ext']:
                 if key not in fileDefinition:
                     printError(f"fileGeneration section of project file for file definition:{fileKey} in fileMap: must contain entry for {key}: ")
@@ -74,53 +74,18 @@ class newModule:
         templateProg = processYaml.expandDirMacros(fileGenerationConfig['template'])
         templateDefinition = { 'templates': { 'fileGen': templateProg } }
         self.renderer = renderer(prj, docType='', directTemplate=templateDefinition)
-        blockFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'block'}
-        for block, blockData in prj.blocks.items():
-            data = dict()
-            qualBlock = prj.getQualBlock(block)
-            data['variants'] = list(prj.getStandaloneVariants(qualBlock))
-            data['block'] = block
-            data['qualBlock'] = qualBlock
-            # Project-qualified module name for the scaffold's user-owned
-            # `endmodule: <label>` so a freshly created block matches its
-            # generator-emitted (qualified) module begin-label.
-            data['blockModuleName'] = prj.blockModuleName[qualBlock]
-            for fileKey, fileDefinition in blockFileGenerationConfig.items():
-                if self._condMatch(fileDefinition, blockCondData[qualBlock]):
-                    hasVariant = fileDefinition.get('variant', False)
-                    stems = artifactPaths.blockModeStems(
-                        fileDefinition, blockCondData[qualBlock], data['variants'])
-                    if hasVariant and data['variants']:
-                        for variant in data['variants']:
-                            self.create_from_template(fileGenerationConfig, fileKey, fileDefinition, variant, True, prj, data, args)
-                    elif not stems:
-                        # Every variant is container-sourced: the registrar pass
-                        # scaffolds the pair-qualified tops into this file instead.
-                        continue
-                    else:
-                        # Single-emission artifacts are created once per block. A
-                        # dutVariant artifact's variant is seeded from the block's
-                        # own declarations, which keeps `make newmodule`
-                        # project-wide: many testbenches in one pass with no
-                        # global variant argument.
-                        selectedVariant = self._selectSingleVariant(
-                            fileDefinition, prj, qualBlock, blockCondData[qualBlock])
-                        self.create_from_template(
-                            fileGenerationConfig, fileKey, fileDefinition,
-                            selectedVariant, False, prj, data, args)
 
-        registrarFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'registrar'}
-        if registrarFileGenerationConfig:
-            self.registrar_create_from_templates(fileGenerationConfig, registrarFileGenerationConfig, blockCondData, prj, args)
-        self.cleanup_stale_segment_files(blockCondData, prj, 'registrar')
-        self.cleanup_stale_segment_files(blockCondData, prj, 'vl_wrap')
+        fileMap = fileGenerationConfig['fileMap']
+        rows = artifactPaths.artifactRows(prj, blockCondData, prj.data['instances'], fileMap)
 
-        projectFileGenerationConfig = {k: v for k, v in fileGenerationConfig['fileMap'].items() if v.get('mode', 'block') == 'project'}
-        if projectFileGenerationConfig:
-            self.project_create_from_templates(fileGenerationConfig, projectFileGenerationConfig, prj, args)
+        self.block_create_from_rows(fileGenerationConfig, rows, blockCondData, prj, args)
+        self.registrar_create_from_rows(fileGenerationConfig, rows, prj, args)
 
-        includeFiles = prj.config.getConfig('INCLUDEFILES')
-        self.context_create_from_template(includeFiles, fileGenerationConfig, prj, args)
+        self.cleanup_stale_segment_files(prj, rows, blockCondData, fileMap, 'registrar')
+        self.cleanup_stale_segment_files(prj, rows, blockCondData, fileMap, 'vl_wrap')
+
+        self.project_create_from_rows(fileGenerationConfig, rows, prj, args)
+        self.context_create_from_rows(fileGenerationConfig, rows, prj, args)
 
         # Create-once user-owned build makefiles. Distinct from the fileMap
         # passes above: these carry no generated regions, are written only when
@@ -130,9 +95,6 @@ class newModule:
     # Layout keys that name a project-scope convention directory rather than a
     # fileMap segment (see processYaml._buildLayoutFor).
     _LAYOUT_CONVENTION_KEYS = ('root', 'include', 'rundir', 'prj', 'yaml')
-
-    def _condMatch(self, fileDefinition, condData):
-        return artifactPaths.fileMapCondMatch(fileDefinition, condData)
 
     def _selectSingleVariant(self, fileDefinition, prj, qualBlock, blockCond):
         # The variant bound into a single-emission artifact's generated-code
@@ -151,258 +113,97 @@ class newModule:
             return None
         return ownVariants[0]
 
-    def create_from_template(self, fileGenerationConfig, fileKey, fileDefinition, variant, variantFile, prj, data, args):
-        # for each file target we need to build a path and filename to perform file template creation
-        # the filename itself is based on the module name with prefix and suffixes applied
-        module = data['block']
-        moduleFileStub = module
-        qualModule = data['qualBlock']
-        moduleDir = prj.data['blocks'][qualModule]['dir']
-        if variant:
-            data['variant'] = variant
-        else:
-            data['variant'] = None
-        if variantFile:
-            moduleFileStub += '_' + data['variant']
-        # Resolve under the layout of the project that owns this block (the
-        # project that owns the block's defining context).
-        owner = prj.contextOwningProject[prj.data['blocks'][qualModule]['_context']]
-        # Ownership gate (mirrors the systemcGen/systemVerilog generation gates):
-        # skip a block owned by a different project so a build never scaffolds
-        # across the ownership boundary. The owner comes from the block context ->
-        # contextOwningProject, keyed absolutely, so it is stable regardless of
-        # the current build root.
+    def block_create_from_rows(self, fileGenerationConfig, rows, blockCondData, prj, args):
         projectName = prj.config.getConfig('PROJECTNAME')
-        if owner != projectName:
-            print(f"{module} owned by project '{owner}', skipping (scaffold it from that project's rundir)")
-            return
-        layout = prj.projectLayout[owner]
-        filePath = artifactPaths.expandNewModulePath(fileDefinition, moduleDir, module, moduleFileStub, layout, missingDirOk=True)
-        moduleDirAbs = os.path.dirname(filePath)
-        for ext in fileDefinition['ext']:
-            filePathExt = filePath + "." + fileDefinition['ext'][ext]
-            fileName = os.path.basename(filePathExt)
+        for row in rows:
+            if row['mode'] != 'block':
+                continue
+            qualBlock = row['blockKey']
+            block = prj.data['blocks'][qualBlock]['block']
+            if row['owner'] != projectName:
+                print(f"{block} owned by project '{row['owner']}', skipping (scaffold it from that project's rundir)")
+                continue
+            blockCond = blockCondData[qualBlock]
+            data = dict()
+            data['block'] = block
+            data['qualBlock'] = qualBlock
+            data['variants'] = list(prj.getStandaloneVariants(qualBlock))
+            # Project-qualified module name for the scaffold's user-owned
+            # `endmodule: <label>` so a freshly created block matches its
+            # generator-emitted (qualified) module begin-label.
+            data['blockModuleName'] = prj.blockModuleName[qualBlock]
+            # A dutVariant artifact has no per-variant row; seed it with the
+            # block's first declared variant so one pass scaffolds every
+            # testbench.
+            variant = row['variant'] or self._selectSingleVariant(row['fileDef'], prj, qualBlock, blockCond)
+            data['variant'] = variant if variant else None
+            self._writeRowFiles(fileGenerationConfig, row, data, prj, args)
+
+    def _writeRowFiles(self, fileGenerationConfig, row, data, prj, args):
+        for ext, filePathExt in row['files'].items():
+            moduleDirAbs, fileName = os.path.split(filePathExt)
             if not os.path.exists(moduleDirAbs):
                 os.makedirs(moduleDirAbs)
             if os.path.exists(filePathExt) and not args.overwrite:
                 print(f"{filePathExt} exists so skipping, use --overwrite to overwrite")
             else:
                 print(f"Making {fileName} at {moduleDirAbs} ")
-                # make the file contents
-                data['target'] = fileKey + "_" + ext
-                data['targetDetails'] = fileDefinition
+                data['headerName'] = fileName
+                data['target'] = row['fileType'] + "_" + ext
+                data['targetDetails'] = row['fileDef']
                 data['fileGeneration'] = fileGenerationConfig
                 vars = {'prj': prj.data, 'block': data, 'args': args}
                 newFileContents = self.renderer.render('fileGen', vars)
                 with open(filePathExt, "w") as f:
                     f.write(newFileContents)
 
-    def registrar_create_from_templates(self, fileGenerationConfig, registrarFileConfig, blockCondData, prj, args):
-        # Registrar artifacts belong to a qualified parent-child pair. Their
-        # persisted stems remain distinct when one directory hosts several
-        # parents using the same child.
-        blockFileConfig = {k: v for k, v in registrarFileConfig.items()
-                           if not v.get('foreignConfig', False)
-                           and not v.get('pairVlTop', False)}
-        for parentKey, childKey in sorted(prj.registrarPairs):
-            parentDir = prj.data['blocks'][parentKey]['dir']
-            childBlock = prj.data['blocks'][childKey]['block']
-            pair = prj.registrarPairs[(parentKey, childKey)]
-            for fileKey, fileDefinition in blockFileConfig.items():
-                if not self._condMatch(fileDefinition, blockCondData[childKey]):
-                    continue
-                if fileDefinition.get('requiresRegistrations', False) \
-                        and not pair['aggregateHasModelRegistrations']:
-                    continue
-                self.create_registrar_file(
-                    fileGenerationConfig, fileKey, fileDefinition,
-                    parentDir, childBlock, childKey, parentKey, prj, args)
-        pairVlConfig = {k: v for k, v in registrarFileConfig.items()
-                        if v.get('pairVlTop', False)}
-        for parentKey, childKey in sorted(prj.registrarPairs):
-            pair = prj.registrarPairs[(parentKey, childKey)]
-            childBlock = prj.data['blocks'][childKey]['block']
-            parentDir = prj.data['blocks'][parentKey]['dir']
-            for fileKey, fileDefinition in pairVlConfig.items():
-                if not self._condMatch(fileDefinition, blockCondData[childKey]):
-                    continue
-                for registration in pair['verifRegistrations']:
-                    if not registration['pairSpecific']:
-                        continue
-                    self.create_registrar_file(
-                        fileGenerationConfig, fileKey, fileDefinition,
-                        parentDir, childBlock, childKey, parentKey, prj, args,
-                        variant=registration['variant'])
-        self.config_create_from_templates(
-            fileGenerationConfig, registrarFileConfig, blockCondData, prj, args)
+    def registrar_create_from_rows(self, fileGenerationConfig, rows, prj, args):
+        for row in rows:
+            if row['mode'] != 'registrar':
+                continue
+            data = dict()
+            childBlock = prj.data['blocks'][row['blockKey']]['block']
+            data['block'] = childBlock
+            data['qualBlock'] = row['blockKey']
+            data['variant'] = row['variant'] if row['variant'] else None
+            data['parent'] = row['anchorKey']
+            projectName = prj.config.getConfig('PROJECTNAME')
+            if row['owner'] != projectName:
+                fileDef = row['fileDef']
+                # Skip-print label for a registrar row another project owns.
+                if fileDef.get('ownerQualified', False):
+                    label = 'Config module' if not fileDef.get('variant', False) else 'foreign registrar artifact'
+                else:
+                    label = 'registrar'
+                print(f"{childBlock} {label} owned by project '{row['owner']}', skipping (scaffold it from that project's rundir)")
+                continue
+            self._writeRowFiles(fileGenerationConfig, row, data, prj, args)
 
-    def cleanup_stale_segment_files(self, blockCondData, prj, basePath):
+    def cleanup_stale_segment_files(self, prj, rows, blockCondData, fileMap, basePath):
         # newmodule owns segment scaffolding, so it also deletes the generated
         # files in owned segment directories the current contract no longer
         # names.
         expectedFiles, segmentDirs = artifactPaths.getStaleSegmentFiles(
-            prj, blockCondData, prj.filemap, basePath)
+            prj, rows, blockCondData, fileMap, basePath)
         generatedInDirs, _ = migrateCommon.classifyGeneratedDir(segmentDirs)
         for staleFile in sorted(set(generatedInDirs) - expectedFiles):
             print(f"Removing stale {basePath} file {staleFile}")
             os.remove(staleFile)
 
-    def config_create_from_templates(self, fileGenerationConfig, registrarFileConfig,
-                                     blockCondData, prj, args):
-        # foreignConfig: true marks two artifact families; the variant: flag tells them apart.
-        foreignFileConfig = {k: v for k, v in registrarFileConfig.items()
-                             if v.get('foreignConfig', False)}
-        configModuleFileConfig = {k: v for k, v in foreignFileConfig.items()
-                                  if not v.get('variant', False)}
-        vlWrapFileConfig = {k: v for k, v in foreignFileConfig.items()
-                           if v.get('variant', False)}
+    def project_create_from_rows(self, fileGenerationConfig, rows, prj, args):
+        # One artifact per project, anchored at the top context; only the
+        # project that owns the top context scaffolds it.
         projectName = prj.config.getConfig('PROJECTNAME')
-
-        def scaffoldPairs(fileConfig, headers, artifactLabel):
-            for (owner, childKey), entry in sorted(headers.items()):
-                childBlock = prj.data['blocks'][childKey]['block']
-                if owner != projectName:
-                    print(f"{childBlock} {artifactLabel} owned by project '{owner}', skipping (scaffold it from that project's rundir)")
-                    continue
-                parentKey = entry['parentKey']
-                parentDir = prj.data['blocks'][parentKey]['dir']
-                for fileKey, fileDefinition in fileConfig.items():
-                    if not self._condMatch(fileDefinition, blockCondData[childKey]):
-                        continue
-                    variants = entry['vlVariants'] \
-                        if fileDefinition.get('variant', False) else [None]
-                    for variant in variants:
-                        self.create_registrar_file(
-                            fileGenerationConfig, fileKey, fileDefinition,
-                            parentDir, childBlock, childKey, parentKey, prj, args,
-                            variant=variant, configEntry=entry)
-
-        scaffoldPairs(configModuleFileConfig, prj.config.getConfig('CONFIGMODULES'),
-                     'Config module')
-        scaffoldPairs(vlWrapFileConfig, prj.config.getConfig('FOREIGNCONFIGHEADERS'),
-                     'foreign registrar artifact')
-
-    def create_registrar_file(self, fileGenerationConfig, fileKey, fileDefinition, parentDir, childBlock, childQualBlock, parentKey, prj, args, variant=None, configEntry=None):
-        # Build the registrar path: the child-named trampoline lands under the
-        # parent's directory within the registrar root.
-        data = dict()
-        data['block'] = childBlock
-        data['qualBlock'] = childQualBlock
-        data['variant'] = variant
-        data['parent'] = parentKey
-        # The trampoline is parent-owned: it lands under the assembler's
-        # directory, so it resolves under the parent (assembler) project layout.
-        owner = prj.contextOwningProject[prj.data['blocks'][parentKey]['_context']]
-        # Ownership gate: skip a parent-owned registrar file when the assembler
-        # is owned by a different project so a build never scaffolds across the
-        # ownership boundary (mirrors the generation gates).
-        projectName = prj.config.getConfig('PROJECTNAME')
-        if owner != projectName:
-            print(f"{childBlock} registrar owned by project '{owner}', skipping (scaffold it from that project's rundir)")
-            return
-        layout = prj.projectLayout[owner]
-        if fileDefinition.get('foreignConfig', False):
-            fileStub = configEntry['stub']
-        elif fileDefinition.get('pairVlTop', False):
-            registrations = prj.registrarPairs[
-                (parentKey, childQualBlock)]['verifRegistrations']
-            registration = next(
-                entry for entry in registrations if entry['variant'] == variant)
-            fileStub = registration['physicalFileStub']
-        else:
-            fileStub = prj.registrarPairs[
-                (parentKey, childQualBlock)]['artifactStem']
-        # A variant:true foreign artifact (per-variant SV verilated wrapper top)
-        # appends the variant to its owner-qualified stub, mirroring the block
-        # mode variant-file stub, so each foreign variant is a distinct file/top.
-        if variant and not fileDefinition.get('pairVlTop', False):
-            fileStub += '_' + variant
-        filePath = artifactPaths.expandNewModulePath(fileDefinition, parentDir, childBlock, fileStub, layout, missingDirOk=True)
-        moduleDirAbs = os.path.dirname(filePath)
-        for ext in fileDefinition['ext']:
-            filePathExt = filePath + "." + fileDefinition['ext'][ext]
-            fileName = os.path.basename(filePathExt)
-            if not os.path.exists(moduleDirAbs):
-                os.makedirs(moduleDirAbs)
-            if os.path.exists(filePathExt) and not args.overwrite:
-                print(f"{filePathExt} exists so skipping, use --overwrite to overwrite")
-            else:
-                print(f"Making {fileName} at {moduleDirAbs} ")
-                data['headerName'] = fileName
-                data['target'] = fileKey + "_" + ext
-                data['targetDetails'] = fileDefinition
-                data['fileGeneration'] = fileGenerationConfig
-                vars = {'prj': prj.data, 'block': data, 'args': args}
-                newFileContents = self.renderer.render('fileGen', vars)
-                with open(filePathExt, "w") as f:
-                    f.write(newFileContents)
-
-    def project_create_from_templates(self, fileGenerationConfig, projectFileConfig, prj, args):
-        # Project mode: exactly one artifact per project, placed at its basePath
-        # segment root and keyed to the project's top context (the design's root
-        # context whose include chain spans the whole build). A definitions-only
-        # project (no topInstance) has no top context and emits nothing.
-        topContext = prj.config.getConfig('TOPCONTEXT')
-        if topContext is None:
-            return
-        # Ownership gate (mirrors the block/registrar scaffolds): only the project
-        # that owns the top context scaffolds its per-project artifact, so a
-        # composed build never creates a referenced child project's copy.
-        owner = prj.contextOwningProject[topContext]
-        projectName = prj.config.getConfig('PROJECTNAME')
-        if owner != projectName:
-            return
-        layout = prj.projectLayout[owner]
-        # In hierarchical layout the single per-project artifact anchors to the
-        # top context's node directory: the persisted node dir of the top block
-        # (the block topInstance instantiates), whose defining context is the
-        # top context, so this is the same node dir block mode derives for a
-        # block in that context. Anchoring here keeps the artifact's node-
-        # relative functional segment inside the project tree rather than
-        # resolving against the process cwd. Functional layout uses $root-
-        # absolute segments, so it needs no node anchor (empty moduleDir).
-        if layout['mode'] == 'hierarchical':
-            topBlockKey = next(row['instanceTypeKey']
-                               for row in prj.data['instances'].values()
-                               if row['container'] == '_topInstance')
-            nodeDir = prj.data['blocks'][topBlockKey]['dir']
-        else:
-            nodeDir = ''
-        # The per-project artifact stamps its owning projectName directly on the
-        # GENERATED_CODE_PARAM line (--project). Owner resolution then reads that
-        # name without a context/basename round-trip. projectName is the owner
-        # resolved above (the project that owns the top context).
-        for fileKey, fileDefinition in projectFileConfig.items():
-            self.create_project_file(fileGenerationConfig, fileKey, fileDefinition, projectName, nodeDir, layout, prj, args)
-
-    def create_project_file(self, fileGenerationConfig, fileKey, fileDefinition, projectName, nodeDir, layout, prj, args):
-        # The single per-project artifact lands at its segment root with no
-        # module file stub, so the filename is composed purely from the fileMap
-        # name + ext (e.g. rtl + f -> rtl.f). nodeDir is the top context's node
-        # directory in hierarchical layout (so the segment resolves inside the
-        # project tree) and empty in functional layout (segments are $root-
-        # absolute).
-        data = dict()
-        data['project'] = projectName
-        filePath = artifactPaths.expandNewModulePath(fileDefinition, nodeDir, '', '', layout, missingDirOk=True)
-        moduleDirAbs = os.path.dirname(filePath)
-        for ext in fileDefinition['ext']:
-            filePathExt = filePath + "." + fileDefinition['ext'][ext]
-            fileName = os.path.basename(filePathExt)
-            if not os.path.exists(moduleDirAbs):
-                os.makedirs(moduleDirAbs)
-            if os.path.exists(filePathExt) and not args.overwrite:
-                print(f"{filePathExt} exists so skipping, use --overwrite to overwrite")
-            else:
-                print(f"Making {fileName} at {moduleDirAbs} ")
-                data['headerName'] = fileName
-                data['target'] = fileKey + "_" + ext
-                data['targetDetails'] = fileDefinition
-                data['fileGeneration'] = fileGenerationConfig
-                vars = {'prj': prj.data, 'block': data, 'args': args}
-                newFileContents = self.renderer.render('fileGen', vars)
-                with open(filePathExt, "w") as f:
-                    f.write(newFileContents)
+        for row in rows:
+            if row['mode'] != 'project':
+                continue
+            if row['owner'] != projectName:
+                continue
+            # The per-project artifact stamps its owning projectName as
+            # --project; resolveFileOwner reads it directly.
+            data = dict()
+            data['project'] = projectName
+            self._writeRowFiles(fileGenerationConfig, row, data, prj, args)
 
     def _deriveTopModules(self, prj):
         # Best-effort scaffold defaults for the shared.mk identity variables.
@@ -476,22 +277,18 @@ class newModule:
             with open(filePath, "w") as f:
                 f.write(newFileContents)
 
-    def context_create_from_template(self, files, fileGeneration, prj, args):
-        # for each file target we need to build a path and filename to perform file template creation
-        # the filename itself is based on the module name with prefix and suffixes applied
-
+    def context_create_from_rows(self, fileGenerationConfig, rows, prj, args):
         projectName = prj.config.getConfig('PROJECTNAME')
-        for fileKey, fileKeyData in files.items():
-            for context, fileDefinition in fileKeyData.items():
-                # Ownership gate (mirrors restampContextParam/_contextModeFiles and
-                # the render gate): only scaffold contexts this project owns, so a
-                # composed build never lays down a child's context file stamped with
-                # a parent-relative --context the child's own build cannot resolve.
-                # INCLUDEFILES is keyed identically to contextOwningProject.
-                if prj.contextOwningProject[context] != projectName:
-                    continue
-                baseName = fileDefinition['baseName']
-                fileName = fileDefinition['fileName']
+        for row in rows:
+            if row['mode'] != 'context':
+                continue
+            # Only the owning project scaffolds a context file, so its
+            # --context stamp resolves in that project's own build.
+            if row['owner'] != projectName:
+                continue
+            for ext, fileName in row['files'].items():
+                entry = row['includeEntries'][ext]
+                baseName = entry['baseName']
                 moduleDirAbs = os.path.dirname(fileName)
                 if not os.path.exists(moduleDirAbs):
                     os.makedirs(moduleDirAbs)
@@ -499,22 +296,19 @@ class newModule:
                     print(f"{fileName} exists so skipping, use --overwrite to overwrite")
                 else:
                     print(f"Making {baseName} at {moduleDirAbs} ")
-                    # make the file contents
                     data = dict()
-                    data['target'] = fileKey
-                    data['context'] = context
-                    # Context files carry BOTH --context (canonical yamlContext
-                    # key, used for rendering) and --project (the context's
-                    # owning project, used directly by resolveFileOwner). context
-                    # is the INCLUDEFILES key, keyed identically to
-                    # contextOwningProject.
-                    data['project'] = prj.contextOwningProject[context]
+                    data['target'] = f"{row['fileType']}_{ext}"
+                    data['context'] = row['context']
+                    # Context files carry --context (yamlContext key, for
+                    # rendering) and --project (owning project, read by
+                    # resolveFileOwner).
+                    data['project'] = row['owner']
                     data['headerName'] = baseName
                     # Paired header basename for source artifacts, derived from
                     # the file type's ext map in saveIncludeFiles (filespec).
-                    if 'siblingHeaderName' in fileDefinition:
-                        data['siblingHeaderName'] = fileDefinition['siblingHeaderName']
-                    data['fileGeneration'] = fileGeneration
+                    if 'siblingHeaderName' in entry:
+                        data['siblingHeaderName'] = entry['siblingHeaderName']
+                    data['fileGeneration'] = fileGenerationConfig
                     vars = {'prj': prj.data, 'block': data, 'args': args}
                     newFileContents = self.renderer.render('fileGen', vars)
                     with open(fileName, "w") as f:

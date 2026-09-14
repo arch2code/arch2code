@@ -61,7 +61,7 @@ from dataclasses import dataclass, field
 from pysrc.migrateCommon import (_isGenerated, classifyGeneratedDir,
                                  extraVarRefs, SKIP_DIRS)
 from pysrc.migrateIncludes import _userIncludeSites
-from pysrc.artifactPaths import blockCondRow, expandNewModulePath, fileMapCondMatch
+from pysrc.artifactPaths import artifactRows, expandNewModulePath
 
 
 # ---------------------------------------------------------------------------
@@ -338,42 +338,31 @@ def expandFileMap(prj, fileMap, report, contexts):
     opens candidate files), so rebuilding it per map re-reads the same files once
     per expansion.
 
-    Reuses the map-agnostic primitives expandNewModulePath + fileMapCondMatch and
-    iterates the same DB collections createBuildManifest.create iterates for block
-    mode (prj.data['blocks']) and, for context mode, the reconstructed valid-
-    context set (modelled on saveIncludeFiles). registrar- and project-mode
-    entries are intentionally not enumerated: they emit only into the registrar /
-    vl_wrap / project-root segments under names no legacy block/context entry
-    produces, so they can neither appear in the legacy set nor match a legacy
-    path, and thus are never delete targets. `report` collects missing-basePath
-    guard notes.
+    Block mode reads the shared `artifactRows` view once per owner, since a
+    legacy artifact anywhere in the tree is a delete target. Context mode keeps
+    its own walk: `_reconstructContexts` recovers a legacy context's placement
+    from the current artifact's directory, which the view has no source for.
+    Registrar and project entries emit into segments no legacy entry names, so
+    they are never expanded here. `report` collects missing-basePath notes.
     """
-    # blocksparams is a list-mode subtable of blocks, so projectOpen groups it as
-    # {blockKey: [paramRow, ...]}; flatten the per-block lists to read each row's
-    # blockKey (blocks itself is a flat {blockKey: row} dict).
-    blocksParams = {row["blockKey"]
-                    for rows in prj.data["blocksparams"].values()
-                    for row in rows}
-    blockByKey = {row["blockKey"]: row for row in prj.data["blocks"].values()}
     paths = set()
 
-    # block mode: one artifact per block per matching block-mode entry.
-    for blockRow in blockByKey.values():
-        condData = blockCondRow(blockRow, blocksParams)
-        layout = _layoutForContext(prj, blockRow["_context"])
+    # block mode: one artifact per block per matching block-mode entry, one
+    # per variant stem when the entry varies per variant.
+    blockCondData = {k: prj.getBlockCondRow(k) for k in prj.data["blocks"]}
+    for owner, layout in prj.projectLayout.items():
+        ownerBlocks = {k: v for k, v in blockCondData.items()
+                       if prj.contextOwningProject[v["_context"]] == owner}
+        ownerMap = dict()
         for fileType, fileDef in fileMap.items():
             if fileDef.get("mode", "block") != "block":
                 continue
             if fileDef["basePath"] not in layout["segments"]:
                 _reportMissingBasePath(report, fileType, fileDef["basePath"])
                 continue
-            if not fileMapCondMatch(fileDef, condData):
-                continue
-            filePath = expandNewModulePath(fileDef, blockRow["dir"],
-                                           blockRow["block"], blockRow["block"],
-                                           layout, missingDirOk=True)
-            for ext in fileDef["ext"]:
-                paths.add(filePath + "." + fileDef["ext"][ext])
+            ownerMap[fileType] = fileDef
+        for row in artifactRows(prj, ownerBlocks, prj.data["instances"], ownerMap):
+            paths.update(row["files"].values())
 
     # context mode: expand each context entry over its valid contexts, mirroring
     # saveIncludeFiles (iterate valid contexts, resolve through expandNewModulePath).

@@ -27,7 +27,7 @@ None.
 """
 
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.processYaml import SiteBindingIndex, camelCase, instanceSite, qualifiedKeyContext
+from pysrc.processYaml import SiteBindingIndex, camelCase, qualifiedKeyContext
 
 
 def regHandlerNaming(prj):
@@ -710,9 +710,9 @@ def postProcess(prj):
                     f"'{parentRouter['containerKey']}'."
                 )
 
-            childSite = instanceSite(instRow)
-            parentSite = instanceSite(parentRouter)
-            siblingSite = instanceSite(containerSiblingInst)
+            childSite = siteIndex.siteOf(instRow)
+            parentSite = siteIndex.siteOf(parentRouter)
+            siblingSite = siteIndex.siteOf(containerSiblingInst)
             for (parentBindingMap, childBindingMap, parentContainerSite,
                  childContainerSite) in siteIndex.nestedRouterBindings(
                         parentSite, siblingSite, childSite):
