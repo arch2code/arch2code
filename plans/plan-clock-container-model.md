@@ -1,0 +1,469 @@
+# Plan: clocks and resets on the container model
+
+- **Status:** PROPOSED. Nothing here is scheduled or started.
+- **Specification:** [`spec-clock-reset-requirements.md`](./spec-clock-reset-requirements.md).
+  R and V numbers below refer to it. Where this plan and the specification
+  disagree, the specification is right and this plan is stale.
+- **Baseline:** the implementation recorded in
+  [`plan-multi-clock-reset.md`](./plan-multi-clock-reset.md), which realises
+  project-scoped clock nets with per-block derivation. That model is not
+  released to users; this plan replaces it. Only the single implicit `clk` and
+  `rst_n` behaviour is preserved (spec §4.2, R5, R10).
+- **Source:** issue #129.
+
+---
+
+## 1. What changes, in one page
+
+| Aspect | Baseline | Target (spec) | Where |
+| :--- | :--- | :--- | :--- |
+| A block's clocks | Derived from connections and an additive `clocks:` list of project references (`deriveBlockClocksResets`) | Declared completely on the block, or implicit `clk`/`rst_n`; nothing derived (R5) | §3.1 |
+| Meaning of a block `clocks:` entry | A project clock the block carries | A module port with `direction`, `default`, `period` (§4.2) | §2.1 |
+| Instance binding | Implied: child port name = project net name | `clocks:`/`resets:` maps on the instance; name match; default fallback for `clk`/`rst_n`; outputs explicit (§4.4) | §3.2 |
+| Project `clocks:`/`resets:` | Nets of the design, referenced everywhere with `scope: project` | Testbench clocks bound to the top block; not used to bind a child instance, though a block's own `period`/`releaseCycles` for standalone simulation still come from it (§4.1, R3, V21) | §2.1, §3.5 |
+| Output clocks and resets | Deferred (baseline §1 D5) | `direction: output`, local nets, export by declaration (§4.5) | §3.3 |
+| Connection `clock:` | Project reference; also on maps, memory and register connections | Container clock; on `connections:` only (§4.3) | §2.2 |
+| Memory domain | `memoryClocks` from connections | `clock:`/`reset:` on the memory declaration (§4.3, R19) | §2.3, §3.4 |
+| Handler and router reset | `resets[0]` | Selected reset of the bus clock (R6, V19) | §5.3 |
+| Wrapper clocks | One `sc_clock` per derived clock, from project attributes | Testbench view for the top; resolved or declared attributes for a standalone block (§4.8, R24, V21) | §5.5 |
+| Flop macros, alias, reset styles | `_DOM` family, `wire clk`/`rst_n` aliases, three styles | Unchanged in shape; alias sources change to default clock and selected reset (§4.10) | §5.2 |
+
+Things that do not change: the `_DOM` macro family and style selector in
+`common/systemVerilog/flops.sv`; the `instanceClockResetBinds` view shape
+`{port, signal}` consumed by `moduleInterfacesInstances.py`; per-port
+`domainClock`/`domainReset` on port rows consumed by the wrapper's BFM binding;
+the DB as the sole channel between `projectCreate` and `projectOpen`.
+
+## 2. Schema (`config/schema.yaml`)
+
+Follow `config/SCHEMA_SPECIFICATION.md` for every edit. The data contract
+changes below need the schema owner's confirmation before implementation.
+
+### 2.1 Declarations
+
+- **Project `clocks:` / `resets:`** (lines 732–763). Fields unchanged: `desc`,
+  `default`, `period`, `timeUnit`; `desc`, `default`, `clock`, `releaseCycles`.
+  Keep `projectScope` and `flat`. Semantics change only in what consumes them
+  (§3.5). `default` is implied for a single entry (§4.1).
+- **Block `clocks:`** (lines 283–290). From `list` of project references to a
+  keyed mapping: `clock` (key), `desc` optional, `direction` optional
+  `input|output`, `default` optional bool, `period`/`timeUnit` optional. Drop
+  `scope: project` from the validator: the key is a new name, not a reference.
+  Accept the list short form with the single-entry limit of §4.2 in a
+  pre-parse normaliser, not as a second schema shape.
+- **Block `resets:`** (lines 291–298). Same change: `reset` (key), `desc`,
+  `direction`, `default`, `clock` referencing the same block's `clocks:` (a
+  block-local reference, `scope: block`, or validated in post), `async` bool.
+- **Instances.** New optional `clocks:` and `resets:` mappings, key = child
+  block clock, value = string or null (`~`). Both sides are validated in
+  `projectCreate`, not by the schema, because the value set includes local nets
+  that exist only after binding resolution (§3.2).
+- **Memories.** New optional `clock:` and `reset:`, block-local references to
+  the owning block's declarations, default block default clock and its
+  selected reset.
+- **`registerPorts:`, `addressBlock:` and `ports:`.** New optional `clock:`,
+  block-local; `registerPorts:` and `addressBlock:` also get optional `reset:`
+  (spec §4.3 "Routers").
+- **Empty `resets: {}`** on a block declares no reset (spec §4.2); the
+  normaliser distinguishes absent from empty.
+
+### 2.2 Removals
+
+- `clock:` on `connectionMaps:` (518–523), `memoryConnections:` (652–657),
+  `registerConnections:` (687–692): delete the field and the
+  `_post_resolveConnectionClock` post-parser attachments at schema lines 488,
+  622 and 666. A row that still carries it fails schema validation with the
+  standard unknown-field diagnostic.
+- `clock:` on `connections:` (420–425, 465–470): keep the field, drop
+  `scope: project`; validate in `projectCreate` against the container's nets
+  (V13, V14). Drop the `_post_resolveConnectionClock` fill-in of the project
+  default, called directly from `_process_connections`
+  (`processYaml.py:8632`) rather than through a schema `post()` attachment:
+  an unstated connection clock means rule 3 of §4.3, not a project reference.
+
+### 2.3 Post-parsers
+
+- `_post_resolveClockPeriod` (schema 733, `processYaml.py` 8899–8901): keep
+  for the project section; add the same period validation for block clock
+  `period`.
+- `_post_resolveReset` (schema 747): keep; it fills a testbench reset's
+  `clock` with the project default.
+
+## 3. `projectCreate` (`pysrc/processYaml.py`)
+
+All new validation lives here (builder-base-development skill: validate
+user-authored YAML in `projectCreate`). Every diagnostic goes through
+`diagnosticLocation`; row positions for instance maps come from the instance
+row's `lc`.
+
+### 3.1 Block declaration normalisation
+
+Replaces the block-derivation body of `deriveBlockClocksResets` (5655–5934).
+Phase 1 keeps its two callees, `_persistInstanceClockResetBinds` (5935) and
+`_persistMemoryClocks` (6024), running on this section's output instead of
+the deleted derivation, since
+`templates/systemVerilog/moduleInterfacesInstances.py` (124, 146) reads
+their tables in every phase; §3.2 replaces the first callee and §3.4 the
+second, both in phase 2.
+
+- Materialise implicit declarations: a block with no `clocks:` gets
+  `clk` input; a block with no `resets:` and a default clock gets `rst_n` on
+  it; a block with no input clock gets no resets (R5, V15).
+- Compute the block default clock (V18) and the selected reset per block clock
+  (R6, V18, V19). Candidates include local reset nets of a container (§3.3),
+  excluding a net consumed only by asynchronous inputs, so the final selection
+  runs after binding resolution; the declared-only part runs here.
+- Project file: exactly one default clock and reset, default reset on the
+  default clock (V23); the selected reset of a testbench clock.
+- Checks: V1, V2 (`ports:`/`registerPorts:` `clock:`), V7 (names pairwise
+  distinct including `clk`/`rst_n` aliases, interface ports, memories), V15,
+  V18 (`default`/`period` never on an output).
+- Persist into `blockClocksResets` with additional columns `direction`,
+  `isDefault`, `period`, `timeUnit`, `clock` (reset membership), `async`,
+  `selectedReset` (per clock). Keep `orderIndex` = declaration order (R18).
+
+### 3.2 Instance binding resolution
+
+New. Runs per container after §3.1, replacing `_persistInstanceClockResetBinds`
+(5935, called from `deriveBlockClocksResets` at 5931).
+
+- Container net set: the container's declared clocks and resets (or implicit),
+  plus local nets discovered in this pass.
+- Per child instance, per block clock and reset of the child, in this order:
+  map entry; name match for inputs; default fallback for names `clk`/`rst_n`
+  (R10, §4.4); else V3. Outputs: map entry required (V3); value is a declared
+  `output` of the container (export), a new local net name, or `~`. A clock
+  entry binds a clock net, a reset a reset net (V4). V12 for `count`.
+- Drivers: one per net (V5); an output bound to a container input is an error;
+  an instance never binds two entries to a net one of them drives.
+- Local net membership: a local reset net belongs to the clock the driving
+  child's output reset belongs to, mapped through that child (V6). Export
+  membership is checked against the container's declaration (V6).
+- Reset membership for every input binding (V6); async inputs exempt.
+- V22: every local net has a child input consumer.
+- V11: the fallback for `rst_n` uses the selected reset of the clock `clk`
+  bound to; a clock with no selected reset makes the fallback an error.
+- Persist `instanceClockResetBinds` unchanged in shape (`childPort`,
+  `parentSignal`, `orderIndex`) so `moduleInterfacesInstances.py:120–124`
+  keeps working; add `direction`. New table `containerLocalNets` (`blockKey`,
+  `kind`, `netName`, `driverInstance`, `memberClock`).
+
+### 3.3 Selected reset, second pass
+
+After §3.2, complete the selected reset of each container clock with local
+reset nets as candidates (R6, V19) and persist it. Routers and register
+handlers read it (§5.3).
+
+### 3.4 Port domains, memories, register trees
+
+Replaces `getBDPortDomain` (3081) inputs and `_validateSingleDomainObjects`
+(6071–6143).
+
+- Port domain per connection end, rules 1–3 of §4.3, in the container's net
+  names: declared port `clock:` mapped through the instance; connection
+  `clock:` with reverse lookup (V13); block default mapped through the
+  instance. Both present and different is V14.
+- `connectionMaps:` boundary port: inner derived domain; must be a container
+  block clock, not an unexported local net (V16); outer connection end must
+  agree mapped through the container's instance (V16).
+- Memories: domain from the declaration (`clock:`, default block default),
+  `reset:` membership (V19); `memoryConnections:` accessors must derive to the
+  same container clock as the memory through its owning instance (V8). Persist
+  in `memoryClocks` with the reset added.
+- Register trees: the feed's domain propagates down the decode tree through
+  the bindings at each level; every router, handler and register is in it
+  (V8). The router single-clock rule of the baseline is kept and becomes a
+  consequence of this check.
+- Register handler domain: for a reusable IP leaf, the block clock of its
+  `registerPorts:` entry, else the block default; its reset is the entry's
+  `reset:` else the selected reset of that clock (V19). For a top-down leaf,
+  which authors no `registerPorts:`, the block clock and reset are the R25
+  selection: the leaf's declared clock port that the instance's `clocks:`
+  map binds to the bus clock, and independently the leaf's declared reset
+  port its `resets:` map binds to that clock's selected reset; two ports
+  bound to the same net break the tie by declaration order, and every
+  instance of the block must resolve to the same pair (V8, V25, V26).
+- Router domain: the `addressBlock:` entry's `clock:`, else the feed
+  connection's, else the block default; reset likewise (spec §4.3 "Routers").
+  A nested router's synthesised feed carries no clock.
+- `config/postParseRegisterPorts.py`: its register-bus synthesis stamps a
+  project-scoped clock via `resolveProjectScopedName('clocks', ...)`
+  (811–822) onto every synthesised `connections` and `connectionMaps` row,
+  read through `_registerBusFeedClock` (291–332). Once §2.2 drops `clock:`
+  from `connectionMaps:` and `scope: project` from `connections:`, this
+  stamp must stop touching `connectionMaps` rows and switch the
+  `connections` stamp to a block-local reference, or every synthesised
+  `addressBlock:` project (`apbDecode`, `mixed`) fails schema validation.
+  A top-down leaf's register clock and reset selection (R25) does not move
+  with it. `_leafRegisterBinding` (206–238) runs in this pass, before §3.2's
+  instance binds exist, so it resolves only the reusable-IP case: the leaf's
+  declared `registerPorts:` entry, else the block default.
+  The R25 selection for a top-down leaf runs after §3.2, per leaf instance:
+  map match of the leaf's declared clock port to the container clock, in the
+  leaf's own container, of the far end of its synthesised feed (the router's
+  `addressBlock` port when the router is in the immediate parent, else the
+  parent's own synthesised register-bus port), and of its declared reset port
+  to that clock's selected reset; two ports bound to the same net resolve by
+  declaration order (tie); every instance of the block must resolve to the
+  same pair.
+  No clock match is V8, no reset match is V25, and disagreement is V26.
+- Blocks with `hasVl`: every clock timing a port has a selected
+  reset, for the BFM (V19).
+
+### 3.5 Testbench binding and resolution
+
+New.
+
+- Bind the `topInstance` block to the project file's clocks and resets by the
+  §4.4 rules (R3, V9, V10), with the testbench as the top's container for reset
+  membership (V6) and `count` 1. A child project's file is not used to bind
+  the child instance (R14), though the child block's own `period`/`releaseCycles`
+  for standalone simulation still come from it (V21);
+  `IMPLICIT_PROJECT_DECLARATIONS` (3782–3787) stays as the source of the
+  implicit testbench `clk`/`rst_n`.
+- Resolved clock per block clock per instance path (§2 "Resolved clock"):
+  follow bindings upward through inputs; at a net driven by a child output
+  that is an export, continue through the exporting container's own binding;
+  stop at a testbench clock, a local net, a top-block output, or `~`. Persist
+  per block: for each input clock, the set of resolved nets across instances.
+- Supply graph over resolved nets (V20): edges at every instance of a block
+  for each output no child drives, from the block's inputs to that output; a
+  block with no inputs is a root. Cycle and root check, hierarchical instance
+  spelling in the diagnostic.
+- V21 for blocks with `hasVl`, evaluated in the declaring project
+  only: declared `period`, or exactly one resolved testbench clock through at
+  least one instance; resets likewise for `releaseCycles`.
+- Persist a `standaloneClockAttrs` view source: per block input clock, the
+  `period`/`timeUnit` to use; per input reset, the `releaseCycles`.
+
+### 3.6 Deletions
+
+- `deriveBlockClocksResets` body and its "reset follows clock" invariant; the
+  default floor for disconnected leaves (baseline §3); the additive semantics
+  of block `clocks:`.
+- `_post_resolveConnectionClock` default fill (8923–8938).
+- Any `scope: project` lookup of clocks from blocks, connections, memory or
+  register connection rows.
+
+## 4. `projectOpen` views
+
+Language-neutral, DB-backed; templates consume fields, never `prj.data` walks.
+
+- `getBDClocksResets` (1559–1575): rows gain `direction`, `isDefault`,
+  `selectedReset`, `async`, `period`, `timeUnit`. Order is declaration order.
+  Add `defaultClock` and `defaultReset` (the selected reset of the default
+  clock, possibly absent) on the block for the alias helper.
+- `getBDInstanceClockResetBinds` (1577–1590): unchanged shape; add
+  `direction` so the SV template can emit an output binding.
+- New `getBDLocalNets(blockKey)`: `[{kind, name, memberClock}]` for the
+  container's wire declarations (R18).
+- `getBDMemoryClock` (1592–1599): return clock and reset.
+- `getBDPortDomain` / `getBDPortDomainReset` (3081, 3112): source from the
+  §3.4 results; unchanged field names `domainClock`, `domainReset`.
+- New `getTestbenchClocksResets()`: for the top block, the testbench entries
+  with the top port each binds, with `period`, `timeUnit`, `releaseCycles`.
+- New `getBDStandaloneClocks(blockKey)`: per input clock and reset, the
+  attributes from §3.5, and whether each reset is `async`.
+- Register handler and router views expose `busClock` and `busReset` (§3.4)
+  in place of the `clocks[0]`/`resets[0]` convention.
+
+## 5. Templates
+
+### 5.1 SystemVerilog module (`templates/systemVerilog/moduleInterfacesInstances.py`)
+
+- Ports: declared clocks then resets in declaration order, `input` or `output`
+  per `direction` (R18). `clock_reset_port_names` and
+  `sv_clock_reset_input_lines` in `intf_gen_utils.py` (222–243) gain
+  direction.
+- Container body: `wire` per local net from `getBDLocalNets` (R18); child
+  instance binds from `getBDInstanceClockResetBinds` including outputs; a `~`
+  output left unconnected.
+- Memory instantiation (line 146): clock from the memory's declared domain;
+  reset passed where the bridge exists (§7, deferred).
+- `templates/systemVerilog/module_hdl_wrapper.py` (84, 118, 242) also emits
+  clock/reset ports and binds, through the same
+  `sv_clock_reset_input_lines`/`sv_clock_reset_binds` helpers in
+  `intf_gen_utils.py`; give it the same direction handling so an output
+  clock on a `hasVl` top is not declared `input`.
+
+### 5.2 Default-domain aliases (`intf_gen_utils.sv_default_domain_aliases`, 257–263)
+
+- `wire clk = <defaultClock>` only when the block has a default clock and does
+  not declare `clk`; `wire rst_n = <selectedReset of defaultClock>` only when
+  that exists and the block does not declare `rst_n` (§4.2, §4.10). Never the
+  first entry.
+
+### 5.3 Register handler and router (`moduleRegs.py` 26–35, `apbDecodeModule.py` 43–50)
+
+- `regs_clk`/`regs_rst` and `decode_clk`/`decode_rst` from the `busClock` and
+  `busReset` view fields, not index 0. The `_DOM` emission is otherwise
+  unchanged. `pslverr` propagation through routers is part of the bridge (§7).
+
+### 5.4 Flop macros (`common/systemVerilog/flops.sv`)
+
+- No change. The style selector and `_DOM` bodies already carry the spec's
+  §4.9 obligations; the alias change in §5.2 is what the bare macros need.
+
+### 5.5 SystemC wrapper (`templates/systemc/module_hdl_wrapper.py`)
+
+- Top: construct one `sc_clock` per testbench clock and one reset driver per
+  testbench reset from `getTestbenchClocksResets` (lines 128–160, 393–430),
+  bound to the top ports they bind. Output clocks and resets of the top are
+  bound to `sc_signal`s and observed, not driven; today the wrapper drives
+  every entry of `data['clocks']` (121–143), so output entries must be
+  excluded from `clock_gen`.
+- Standalone block: the same from `getBDStandaloneClocks`; an async reset
+  input counts `releaseCycles` on the block default clock (§4.8).
+- Lockstep (416–434): `reset_driver`'s existing behaviour is unchanged. The
+  reset is copied at the partner's event and never waits on a clock (§4.8).
+- BFM binding (195–196): unchanged in mechanism, from `domainClock` and the
+  selected reset of that clock as `domainReset`; a port on an observed output
+  clock binds to the observed signal.
+- End-of-run report (R23): count edges on every clock net the wrapper can see
+  that is not testbench-generated, and observe release of every non-testbench
+  reset; report at `sc_stop`. Scope for the first drop: the top's exported
+  outputs and, where the wrapper has visibility, internal supplied nets;
+  record what is not visible.
+- Phase randomisation is not planned (§7, Q7).
+
+### 5.6 SystemC block module and testbench templates
+
+- Models carry no clock or reset ports (R26); the block module template does
+  not change. The SystemC wrapper (§5.5) drives clocks and resets to the RTL
+  side only; co-simulation compares data ports only.
+
+## 6. Fixtures, tests, documentation
+
+### 6.1 Examples
+
+- `examples/twoClk`: rewrite to the new syntax. The container declares
+  `clk` and `clkSlow` with resets; `twoClkSlowTick` declares its clock as a
+  block port; the connection `clock: clkSlow` names the container clock; the
+  child project `twoClkIp` keeps its own project file for standalone use and
+  is bound by instance maps in the assembler. This fixture is the composition
+  and renaming test.
+- New `examples/clkGen` (or extend `twoClk`): a divider with an `output`
+  clock, a synchroniser with an async input and an `output` reset, consumers on
+  the local nets, one export to the parent, a `~` binding. Covers §4.5, V5,
+  V6 membership of local nets, V20, V22, R23 in simulation.
+- The divider and synchroniser blocks need `.sv` and `.cppm` implementation
+  files. Scaffold both with `make newmodule`, then `make gen`, per
+  `rules/skills/manage-build.md`'s rule that an implementation file arch2code
+  scaffolds is never created by hand. Do not write either file directly.
+- The examples' churn gate needs `make clean` first (memory:
+  `a2c-make-clean-after-infra-change`). Example builds and the unit suite are
+  never run concurrently (memory: `a2c-build-serialization`).
+
+### 6.2 Unit tests (`unittest/`)
+
+- `test_clock_domains.py`: replace derivation assertions with declaration and
+  binding assertions; one test per V entry with a minimal failing fixture and
+  a diagnostic-substring assertion, V1–V23.
+- `test_clock_reset_emission.py`: today asserts additive block `clocks:`
+  lists, canonical order, an alias onto the block's first clock, and the
+  feed-clock decode tree. Rewrite the additive-list, canonical-order and
+  first-clock-alias assertions for §2.1's declared clock mapping and §5.2's
+  default-clock alias in phase 1; rewrite the feed-clock decode-tree
+  assertions for §3.4's router and handler domain rules in phase 2.
+- `test_register_decode_clock.py`: router and handler domain from the feed
+  through container bindings; selected reset selection with two resets; the
+  respelling case becomes an explicit-map case; a top-down leaf's
+  register-port selection (R25): no leaf clock bound to the bus clock (V8),
+  no leaf reset bound to the bus reset (V25), instances that disagree on the
+  resolved pair (V26), and two leaf clock ports bound to one container clock
+  accepted as a tie.
+- `test_project_scope.py`: two projects with same-named clocks bound to
+  different assembler clocks; child project file not used to bind the child
+  instance in composition (R14), though its `period`/`releaseCycles` for
+  standalone simulation still come from it (V21).
+- New: testbench binding (V9, V10), fallback (R10, V11), resolved clock and
+  V21 with `hasVl` on a twice-instantiated child block, local nets and V22,
+  supply graph cycles (V20), alias emission with and without a selected reset.
+- Generation gate is insufficient on its own (baseline §13.1): the clkGen
+  fixture runs under `make VL_DUT=1` and the end-of-run report is asserted.
+
+### 6.3 Documentation
+
+- `rules/skills/design-architecture.md` lines 99–107 (the "Clocks and
+  Resets" bullets, including "Emitted ports" at 102), `rules/skills/setup-project.md`
+  lines 89–101 ("Design YAML must not declare them"), and
+  `rules/skills/rtl-core.md` line 138 ("wire clk = <first clock>") all
+  describe the baseline; rewrite each for the declared-port model and add
+  the instance map.
+- Add a clocks and resets section to the RTL core and SystemC core skills:
+  declaring block clocks, the bare macros and their aliases, output clocks.
+- `plan-multi-clock-reset.md`: insert this sentence at the front of its
+  `- **Status:**` line: "Superseded by
+  [`plan-clock-container-model.md`](./plan-clock-container-model.md) and
+  [`spec-clock-reset-requirements.md`](./spec-clock-reset-requirements.md);
+  kept as the record of the landed `_DOM` macro, alias and reset-style work
+  described below." The rest of the header stays; it records work that
+  survives. When this sentence is inserted, also correct lines 9-10 of that
+  file, which still list §6.4's reset-style selector as remaining Phase 1
+  work even though §6.4's body is marked LANDED, so the selector is no
+  longer listed as remaining.
+  - Retired along with it: the CDC primitive library (its §6.3, the
+    `cdcSync2`/`cdcPulse`/`cdcHandshake`/`cdcAsyncFifo` item at line 1306);
+    its §8 Phase 2 candidates (`suppliesClocks:`/`suppliesResets:`,
+    dual-clock memory primitives, a generated SDC skeleton, hoisting clock
+    generation into one project module, exposing duty cycle/start
+    delay/first edge, a per-assembler `period:` override); and, from its §1
+    decisions table, D4 (project-scoped visibility) and D5 (clock/reset
+    suppliers deferred to phase 2), together with item 7 of its §10 open
+    decisions (boundary binding, deferred to phase 3). This plan's declared
+    ports and instance maps replace all of them; none carries forward.
+  - Survives as the record of landed work: its §6.1-6.4, §6.6 and §6.7,
+    which describe the `_DOM` macro family, the default-domain alias, the
+    reset-style selector, and the clock-parameterized flops already shipped
+    in `flops.sv`, `moduleRegs.py` and `apbDecodeModule.py`.
+
+## 7. Phasing
+
+Each phase ends with, in order and from `/work/ws/test/builder/base`:
+`make clean`, then `make -j8 unittest`, then separately `make -j8 two-clk`,
+never run concurrently (memory: `a2c-build-serialization`). Both must be green
+before the next phase starts.
+
+1. **Declarations.** §2.1 block schema, §3.1, §4 `getBDClocksResets`, §5.1
+   ports, §5.2 aliases. Inputs only; instance binding by name match and
+   fallback only (no maps yet); connections keep `clock:` as a container
+   clock. Also land the top and standalone attribute source of §3.5/§4/§5.5
+   here: `templates/systemc/module_hdl_wrapper.py`'s `row["period"]`/
+   `row["timeUnit"]` (132–133) and `row["releaseCycles"]` (160) reads lose
+   their source the moment `deriveBlockClocksResets`'s derivation body is
+   gone, and `twoClk`'s `run-vl` build fails without it. Deletes only that
+   derivation body; `_persistInstanceClockResetBinds` and
+   `_persistMemoryClocks` keep running until §3.2 and §3.4 replace them in
+   phase 2. Fixture: `twoClk` rewritten.
+2. **Instance maps.** §2.1 instance maps, §3.2 for inputs, §3.4 port domains
+   and memory/register rules, including the top-down leaf register-port
+   selection (R25, V8, V25, V26), §5.3 handler and router domains, §2.2
+   removals. Fixture: `twoClk` composition with explicit maps and renaming.
+3. **Outputs and local nets.** `direction: output`, local nets, export, `~`,
+   V5, V6 for local nets and exports, V20, V22, §3.3, §5.1 wires and output
+   binds. Fixture: `clkGen`.
+4. **Testbench and standalone.** The rest of §3.5 binding and resolution
+   (V9, V10, V21, resolved clock, supply graph) and the rest of §5.5 wrapper
+   behaviour (R26); attribute sourcing moved to phase 1. End-of-run report.
+5. **Documentation and skills.** §6.3.
+6. **Register handler bridge (R20, V24).** Separate plan once phases 1–4
+   are in: handshake bridge in `moduleRegs.py`, memory-side reset from
+   `reset:`, `pslverr` generation and router propagation, bridge behaviour
+   with the memory side in reset. Until then a memory with `regAccess` whose
+   clock differs from its handler's bus clock is rejected (§3.4, V24).
+
+## 8. Open items for the implementer
+
+- **Containers with own logic on local nets.** V22 requires a child consumer;
+  a container whose hand-written body is the only consumer of a local net is
+  rejected. Confirm with the owner whether that is acceptable for the first
+  drop or whether an authored statement is needed.
+- **End-of-run visibility.** Which internal nets the wrapper can observe for
+  R23 depends on the co-simulation topology; record the reachable set when
+  phase 4 starts.
+- **Pro library.** `../pro/common/systemVerilog` blocks (memArb, LMMI BFM)
+  use the bare macros; they need no change unless a block declares a clock
+  other than `clk`. Check at phase 1.
+- **Downstream flops fork.** The debayer reference design's `flops.sv` fork is
+  replaced by base's (memory: `a2c-flops-debayer-fork`); nothing in this plan
+  changes `flops.sv`, so that replacement is independent.

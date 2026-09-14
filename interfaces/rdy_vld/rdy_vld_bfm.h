@@ -37,6 +37,7 @@ public:
     void bfm_driver_thread() {
         DATA_T data;
         wait(SC_ZERO_TIME);
+        do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             hdl_if_p->rdy = if_p->get_rdy();
             while (!(hdl_if_p->vld && hdl_if_p->rdy)) {
@@ -83,6 +84,7 @@ public:
     void bfm_driver_thread() {
         DATA_T data;
         wait(SC_ZERO_TIME);
+        do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             hdl_if_p->vld = 0;
             hdl_if_p->data = VL_DATA_T(0);

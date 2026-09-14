@@ -31,6 +31,7 @@ public:
     }
 
     void bfm_driver_thread() {
+        do { wait(clk.posedge_event()); } while (!rst_n);
         RDATA_T rdata;
         while (true) {
             hdl_if_p->ack = false;
@@ -65,6 +66,7 @@ public:
     }
 
     void bfm_driver_thread() {
+        do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             RDATA_T rdata;
             if_p->popReceive();

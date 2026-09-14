@@ -7,7 +7,7 @@ The rules.
 . Interfaces must be abbreviated to 3 letters, eg RdyVld. Interfaces classes must be appended with If, eg RdyVldIf.
 . Instances of interfaces should be descriptive as possible, and the same as port name (if possible)
 . globals must be abbreviated to `g` once instanced or imported.
-. Clocks and resets will be abbreviated to `clk` and `rst`, `rstN` for active low.
+. Clocks and resets will be abbreviated to `clk` and `rst`, `rst_n` for active low.
 . Class / Block / Modules names are unique accross the entire design
 . Instance names of Classes / Block / Modules must be `camelCase` prepended with `u`
 . `camelCase` handling of acronyms should be handled as intelligently as possible. eg `PCIe` with lowercase `e` is preferred instead of `pCIE`. 
@@ -113,7 +113,7 @@ g.filename = 'inputFile.yaml'
 
 Globals should be reserved for system wide parameters.
 
-. Another abbreviation that will always be present are the signals for clock and reset. They will be `clk` and `rstN`. This is the main clock and active low reset.
+. Another abbreviation that will always be present are the signals for clock and reset. They will be `clk` and `rst_n`. This is the main clock and active low reset.
 
 === General rules for abbreviations
 
@@ -178,7 +178,7 @@ module command (
 ...
 commandProcessor uCommandProcessor (
     ...
-    input clk, rstN
+    input clk, rst_n
 );
 ...
 endmodule
@@ -210,11 +210,11 @@ module command (
 ...
 commandProcessor uCommandProcessor0 (
     ...
-    input clk, rstN
+    input clk, rst_n
 );
 commandProcessor uCommandProcessor1 (
     ...
-    input clk, rstN
+    input clk, rst_n
 ...
 endmodule
 ----

@@ -54,6 +54,7 @@ public:
     void bfm_driver_thread() {
         axi4StreamInfoSt<TDATA_T, TID_T, TDEST_T, TUSER_T> tinfo;
         wait(SC_ZERO_TIME);
+        do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             hdl_if_p->tready = m_chnl->m_tx_out->get_rdy();
             while (!(hdl_if_p->tvalid && hdl_if_p->tready)) {
@@ -105,6 +106,7 @@ public:
     void bfm_driver_thread() {
         axi4StreamInfoSt<TDATA_T, TID_T, TDEST_T, TUSER_T> tinfo;
         wait(SC_ZERO_TIME);
+        do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             hdl_if_p->tvalid = 0;
             hdl_if_p->tdata = VL_TDATA_T(0);

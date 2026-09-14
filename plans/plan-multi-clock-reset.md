@@ -175,8 +175,32 @@
     `sc_clock` start delay, so a 1 ns clock's third posedge is now at 3 ns
     where upstream's absolute release was 5 ns. Upstream accepted that shift
     for its own examples; the gates below measure it for ours.
-  - **Still to do in Phase 1:** §6.4's reset-style selector and the CDC primitive
-    library of §6.3. D6 now holds for hand-written RTL in any domain: the bare
+  - **Landed next: §6.4's reset-style selector, on the follow-up branch.** The
+    dead `ifdef ASIC` split is replaced by a file-scope selector with exactly
+    one of `A2C_RESET_SYNC`, `A2C_RESET_ASYNC`, `A2C_RESET_NONE` active; `ASIC`
+    aliases to sync and `FPGA_INIT_FLOPS` to none; two styles at once is a
+    compile error through a deliberately undefined macro reference. The bodies
+    moved to a `_DOM(clkSig, rstSig, ...)` family, one per family per branch,
+    with `_CLK` a one-line alias passing `rst_n` and bare passing `clk`, so no
+    call site changed; the `<block>_regs` and `apbDecode` generators now emit
+    `_DOM` with their own reset, which closes the multi-reset gap §6.6 recorded.
+    `` `RST `` and `rstN` are gone. **The shipped default is sync reset on
+    `rst_n`** because this file replaces a downstream fork (the debayer
+    reference design) whose only style is exactly that, and which also
+    contributed `DFF_KEEP_INST` (Synplify keep/preserve). Two `verilator -E`
+    identity tests pin the two compatibility claims: under `A2C_RESET_NONE`
+    the bare macros expand to the pre-change FPGA branch byte for byte, and
+    under the default they expand to the fork's default byte for byte, against
+    a golden copy of the fork in `unittest/fixtures/`. Switching the default
+    exposed that six handshake BFMs never read their `rst_n` port and would
+    complete a handshake with a DUT held in reset, and that the APB and memory
+    BFMs' existing gate, `while(!rst_n) wait(posedge)` at thread start, had
+    been a no-op since the wrapper began constructing `rst_n` released and
+    asserting it a delta later. Every gated BFM now samples the reset at clock
+    edges (`do wait(posedge) while(!rst_n)`), which cannot be satisfied at
+    time zero. That is what let the firmware model write registers before the
+    handler left reset in `simple_ip` and `ip_test`. See §13.6.
+  - **Still to do in Phase 1:** the CDC primitive library of §6.3. D6 now holds for hand-written RTL in any domain: the bare
     macro family targets the block's first clock and reset through the alias,
     and the `_CLK` family is needed only to place a flop on a non-first clock of
     a multi-clock block. §10 item 9's `postParseRegisterPorts` clock propagation
@@ -1302,6 +1326,14 @@ and whether to emit `initial` for bitstream power-up — and they compose legall
 in one `always_ff`. **Co-simulation should compile with a real reset style
 enabled**, so that tandem exercises the reset path at all. Today it does not.
 
+**LANDED (follow-up branch).** As above, with sync as the default rather than
+today's no-reset behaviour, by the user's decision that `base`'s file replaces
+the downstream fork. The three branches are `` `ifdef `` / `` `elsif `` /
+`` `elsif `` at file scope; the reset is the `_DOM` family's second argument,
+so a flop on a second domain names its own reset and the asynchronous branch
+puts `negedge rstSig` on a real net. `A2C_RESET_NONE` keeps the `initial`
+statements and is the FPGA-image opt-in, spelled either way.
+
 ### 6.5 Reset polarity — the `active:` field is removed
 
 Nothing consumes reset polarity. On the FPGA branch there is no reset term at
@@ -1358,8 +1390,9 @@ load-bearing and each is pinned by a mutation in
   lines differ, from the added `define` lines themselves. That is what the
   compatibility obligation to out-of-tree customer RTL (§6.1) rests on.
 
-**The ASIC branch still cannot express two resets**, and that is a consequence of
-scoping this to the clock rather than an oversight: its reset comes from the
+**The ASIC branch still cannot express two resets** (closed by §6.4's `_DOM`
+family, which takes the reset as an argument), and that was a consequence of
+scoping this step to the clock rather than an oversight: its reset comes from the
 overridable `` `RST ``, which is per compilation unit, not per call site. A design
 needing two synchronous reset domains needs §6.4's selector or a reset argument,
 neither of which is here. The FPGA branch has no reset at all, so the question does
@@ -2451,6 +2484,21 @@ run is the first in-flow observation of a BFM bound to a non-default clock.
 in the file set. The unit suite is green at 98 suites, zero `FAIL`, with no
 suite added or removed, and its regeneration of `examples/twoClk` matches `make
 gen`'s output byte for byte.
+
+**Re-established after the §6.4 reset-style selector (follow-up branch).** This
+is the first time any co-simulation here runs with a functioning reset. `make
+two-clk` exits 0 with six simulations at `No error` and three lint passes (the
+sync default, `A2C_RESET_NONE`, `A2C_RESET_ASYNC`) at zero warnings; the slow
+sink now sees ticks at 24, 36, 48 and 60 ns, later than before because the tick
+counter is genuinely held until its reset releases, with the same 12 ns cadence.
+`simple-ip`, `ip-test`, `hello-world`, `nested`, `mixed` and `apbDecode` all
+exit 0 under the new default. Two defects surfaced on the way and are fixed above
+rather than worked around: six handshake BFMs never read `rst_n`, and the
+thread-start reset gate in the APB and memory BFMs had been a no-op since the
+wrapper began constructing `rst_n` released. Every generated `<block>Regs` and
+router file changes once, from `_CLK(` to `_DOM(` with the handler's own reset
+added, and nothing else in them moves. Unit-suite and `pipeline-test` figures
+for the merged tree are recorded in the follow-up pull request.
 
 **Two things this step's gates surfaced that are worth recording as they are.**
 

@@ -136,13 +136,17 @@ Guide the user in writing core RTL modules in SystemVerilog, focusing on module 
     Every macro above has a `_CLK` variant taking the clock signal as its FIRST argument: `` `DFF_CLK(clkSig, q, d) ``, `` `DFFREN_CLK(clkSig, q, d, en, rval) ``, `` `SCFF_CLK(clkSig, q, s, c) ``, `` `DFF_INST_CLK(clkSig, type, name) ``, and so on. The `_CLK` form holds the only flop body; each bare macro is a one-line alias onto it passing the literal `clk`, so the two can never describe different hardware.
 
     *   Use the bare macro for a flop on the block's first clock. That is the normal case in every block: when a block's ports carry no clock named `clk` (or no reset named `rst_n`), the generated region of its module declares `wire clk = <first clock>;` (and `wire rst_n = <first reset>;`), so the bare macros expand to a real net whatever the domain is called.
-    *   Use the `_CLK` form only to place a flop on a clock other than the block's first one, in a block that carries more than one clock. Generated modules (`<block>_regs`, `apbDecode`) always emit the `_CLK` form because they name their own resolved clock.
-    *   The reset is deliberately not an argument; on the ASIC branch it comes from the per-compilation `` `RST ``.
+    *   Use the `_CLK` form for a flop on another clock of a multi-clock block only when that clock shares the block's `rst_n`; otherwise use the `_DOM` form below, which names both the clock and the reset. Generated modules (`<block>_regs`, `apbDecode`) emit `_DOM` with their own resolved clock and reset.
+    *   `_CLK` resets on `rst_n`, the block's own reset domain (a port or the generated default-domain alias). Every `_CLK` macro is one line onto its `_DOM` form, and every bare macro one line onto its `_CLK` form.
 
-    **FPGA vs ASIC Behavior:**
-    *   **FPGA** (default): Uses `initial` for reset values, `always_ff` without reset.
-    *   **ASIC** (`ASIC` define): Uses synchronous reset in `always_ff`.
+    **Reset Style:**
+    *   Exactly one of `A2C_RESET_SYNC` (default), `A2C_RESET_ASYNC`, `A2C_RESET_NONE` is active per compilation, selected at the top of `flops.sv`. `ASIC` aliases to `A2C_RESET_SYNC` and `FPGA_INIT_FLOPS` aliases to `A2C_RESET_NONE`, for compatibility with existing defines. Defining more than one style is a compile error.
+    *   **A2C_RESET_SYNC** (default): synchronous, active-low reset in the clocked `always_ff`.
+    *   **A2C_RESET_ASYNC**: asynchronous, active-low reset on the flop's own `posedge clkSig or negedge rstSig` sensitivity list.
+    *   **A2C_RESET_NONE**: no reset; an `initial` statement sets the FPGA image start value instead.
     *   Write code the same way; the macros handle the difference.
+    *   For a flop on a second domain of a multi-clock block, use the `_DOM(clkSig, rstSig, ...)` form, which takes both the clock and the reset signal explicitly: `` `DFF_DOM(clkSig, rstSig, q, d) ``, and so on. `_CLK` and bare are one-line aliases onto `_DOM`.
+    *   `` `DFF_KEEP_INST(type, name) ``: same as `DFF_INST`, but marks the register keep/preserve so synthesis does not merge it with an apparently-equivalent register.
 
     **Pattern: Declare then Drive:**
 

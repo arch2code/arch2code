@@ -32,6 +32,7 @@ public:
     }
 
     void bfm_driver_thread() {
+        do { wait(clk.posedge_event()); } while (!rst_n);
         DATA_T data;
         RDATA_T rdata;
         while (true) {
@@ -68,6 +69,7 @@ public:
     }
 
     void bfm_driver_thread() {
+        do { wait(clk.posedge_event()); } while (!rst_n);
         while (true) {
             DATA_T data;
             RDATA_T rdata;

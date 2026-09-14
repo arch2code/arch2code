@@ -74,6 +74,12 @@ from _addrctl_helpers import (APB_PREAMBLE, render_leaf, render_plain_block,
 
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 FLOPS_SV = os.path.join(base_dir, 'common', 'systemVerilog', 'flops.sv')
+# The downstream fork this file is a drop-in replacement for: default sync
+# reset on `~rst_n`, no `_CLK`/`_DOM`, `FPGA_INIT_FLOPS` for the initial-only
+# branch, and `DFF_KEEP_INST`.
+FORK_SV = os.path.join(test_dir, 'fixtures', 'debayer_flops.sv')
+# flops.sv as it was before the reset-style selector: FPGA `initial` default, ASIC opt-in.
+PRE_SELECTOR_SV = os.path.join(test_dir, 'fixtures', 'flops_pre_selector.sv')
 
 # Three clocks whose periods and units all differ, and one reset per clock, two of
 # them with different release counts. A reset in every domain is now required of
@@ -1274,40 +1280,59 @@ def check_time_unit_map_covers_schema():
 
 
 _DEFINE = re.compile(r'^`define (\w+)\((.*?)\)\s*(.*)$')
-_BRANCH_OPEN = re.compile(r'^`ifn?def\s+(\w+)')
+_DIRECTIVE = re.compile(r'^`(ifdef|ifndef|elsif|else|endif)\b\s*(\w+)?')
+_RESET_STYLE_CHAIN = ['A2C_RESET_SYNC', 'A2C_RESET_ASYNC', 'A2C_RESET_NONE']
 
 
 def _flops_sections():
-    """flops.sv split into its ASIC branch, its FPGA (`else`) branch, and the
-    text outside both.
+    """flops.sv split into its three reset-style branches (A2C_RESET_SYNC,
+    A2C_RESET_ASYNC, A2C_RESET_NONE) and the text outside all three.
 
-    Split by tracking `ifdef nesting rather than by line number, so the inner
-    `ifndef RST does not end the branch and a moved branch is still found."""
+    Found structurally: the one `ifdef/`elsif/`elsif/`endif chain whose three
+    conditions are exactly the three reset-style macros, in order. Not by a
+    name search alone, because the alias, default-selection, and
+    duplicate-definition guard blocks all reference the same three macro names
+    without ever being that chain, and not by line number, so a moved chain is
+    still found."""
     with open(FLOPS_SV) as f:
         lines = f.read().splitlines()
-    sections = {'ASIC': [], 'FPGA': [], 'outer': []}
-    depth, asicDepth, current = 0, None, 'outer'
+    stack = []  # open `ifdef/`ifndef frames; each is a list of (name, lines)
+    outer = []
+    style_frame = None
+
+    def sink():
+        return stack[-1][-1][1] if stack else outer
+
     for line in lines:
-        opened = _BRANCH_OPEN.match(line)
-        if opened:
-            depth += 1
-            if opened.group(1) == 'ASIC':
-                asicDepth, current = depth, 'ASIC'
+        found = _DIRECTIVE.match(line)
+        if found:
+            kind, name = found.group(1), found.group(2)
+            if kind in ('ifdef', 'ifndef'):
+                stack.append([(name, [])])
                 continue
-        elif line.startswith('`else') and depth == asicDepth:
-            current = 'FPGA'
-            continue
-        elif line.startswith('`endif'):
-            if depth == asicDepth:
-                asicDepth, current = None, 'outer'
-            depth -= 1
-            if current == 'outer':
+            if kind == 'elsif':
+                stack[-1].append((name, []))
                 continue
-        sections[current].append(line)
-    if not sections['ASIC'] or not sections['FPGA']:
+            if kind == 'else':
+                stack[-1].append((None, []))
+                continue
+            if kind == 'endif':
+                frame = stack.pop()
+                if [name for name, _ in frame] == _RESET_STYLE_CHAIN:
+                    style_frame = frame
+                else:
+                    for _, body in frame:
+                        sink().extend(body)
+                continue
+        sink().append(line)
+    if style_frame is None:
         raise AssertionError(
-            f"{FLOPS_SV} has no `ifdef ASIC / `else pair; the two reset flows are "
-            f"what the branch split exists to hold")
+            f"{FLOPS_SV} has no single `ifdef A2C_RESET_SYNC / `elsif "
+            f"A2C_RESET_ASYNC / `elsif A2C_RESET_NONE chain; the three reset "
+            f"styles are what the branch split exists to hold")
+    sections = {'outer': outer}
+    for name, body in style_frame:
+        sections[name[len('A2C_RESET_'):]] = body
     return sections
 
 
@@ -1328,93 +1353,259 @@ def _flops_defines(lines):
 
 
 def check_flops_clk_variant_per_family():
-    """Every flop family defined in a branch is the clock-parameterized variant,
-    and every family exists in BOTH branches.
+    """Every flop family defined in a branch is the clock+reset-parameterized
+    _DOM variant, and every family exists in ALL THREE reset-style branches.
 
-    The families are discovered from the file, not listed here: a family added to
-    one branch only, or added without a _CLK form, fails without this case being
-    edited. The two branches are the two reset flows, and a design that compiles
-    the other one must find the same macro set."""
+    The families are discovered from the file, not listed here: a family added
+    to one branch only, or added without a _DOM form, fails without this case
+    being edited. The three branches are the three reset styles, and a design
+    that compiles any of the other two must find the same macro set."""
     sections = _flops_sections()
-    asic = _flops_defines(sections['ASIC'])
-    fpga = _flops_defines(sections['FPGA'])
-    bare = sorted(name for name in list(asic) + list(fpga)
-                  if not name.endswith('_CLK'))
+    styles = {style: _flops_defines(sections[style])
+              for style in ('SYNC', 'ASYNC', 'NONE')}
+    bare = sorted(name for defines in styles.values() for name in defines
+                  if not name.endswith('_DOM'))
     if bare:
         raise AssertionError(
-            f"{bare} are defined inside a reset-flow branch without a _CLK form; "
-            f"a branch holds the parameterized bodies only")
-    onlyOne = sorted(set(asic) ^ set(fpga))
-    if onlyOne:
+            f"{bare} are defined inside a reset-style branch without a _DOM "
+            f"form; a branch holds the parameterized bodies only")
+    names = {style: set(defines) for style, defines in styles.items()}
+    allNames = names['SYNC'] | names['ASYNC'] | names['NONE']
+    commonNames = names['SYNC'] & names['ASYNC'] & names['NONE']
+    onlySome = sorted(allNames - commonNames)
+    if onlySome:
         raise AssertionError(
-            f"{onlyOne} exist in only one reset-flow branch, so a design "
-            f"compiling the other one has no such flop")
-    if not asic:
+            f"{onlySome} do not exist in all three reset-style branches, so a "
+            f"design compiling one of the other styles has no such flop")
+    if not commonNames:
         raise AssertionError("flops.sv defines no flop family at all")
-    differ = sorted(name for name in asic if asic[name][0] != fpga[name][0])
+    sync, async_, none_ = styles['SYNC'], styles['ASYNC'], styles['NONE']
+    differ = sorted(name for name in commonNames
+                     if sync[name][0] != async_[name][0]
+                     or sync[name][0] != none_[name][0])
     if differ:
         raise AssertionError(
-            f"{differ} take different arguments in the two reset-flow branches, "
-            f"so one call site cannot serve both")
-    # Every parameterized macro takes the clock first, wherever it is defined:
-    # the bodies in the branches and the _INST wrappers outside them.
-    everywhere = dict(asic, **_flops_defines(sections['outer']))
-    everywhere.update(fpga)
+            f"{differ} take different arguments across reset-style branches, "
+            f"so one call site cannot serve all three")
+    # Every parameterized macro takes the clock then the reset, wherever it is
+    # defined: the bodies in the branches and the _INST wrappers outside them.
+    everywhere = dict(sync, **_flops_defines(sections['outer']))
+    everywhere.update(async_)
+    everywhere.update(none_)
     wrong = sorted(f"{name}{tuple(args)}" for name, (args, _) in everywhere.items()
-                   if name.endswith('_CLK') and args[0] != 'clkSig')
+                   if name.endswith('_DOM') and (args[0] != 'clkSig' or args[1] != 'rstSig'))
     if wrong:
         raise AssertionError(
-            f"{wrong} do not take the clock 'clkSig' as their first argument")
+            f"{wrong} do not take the clock 'clkSig' and the reset 'rstSig' as "
+            f"their first two arguments")
     return True
 
 
-def check_flops_bare_macro_is_an_alias():
-    """Each bare macro is a one-line alias onto its _CLK form passing `clk`.
+def _normalize(body):
+    """A `define body, joined to one line: backslash continuations and
+    incidental whitespace carry no meaning for an exact-text comparison."""
+    return ' '.join(body.replace('\\', ' ').split())
 
-    This is what keeps one body per family. A bare macro carrying its own
-    always_ff is a second definition of what a flop is, and the two can then
-    silently diverge; the argument-for-argument comparison also kills an alias
-    that reorders or drops one."""
+
+def check_flops_bare_macro_is_an_alias():
+    """Each `_CLK` macro is a one-line alias onto its `_DOM` form passing
+    `rst_n`, and each bare macro a one-line alias onto its `_CLK` form passing
+    `clk`.
+
+    This is what keeps one body per family per reset style. A `_CLK` or bare
+    macro carrying its own always_ff is a second definition of what a flop is,
+    and the two can then silently diverge; the argument-for-argument
+    comparison also kills an alias that reorders or drops one. The `_INST`
+    and `KEEP_INST` wrappers are not walked here; the expansion identity
+    cases cover them end to end."""
     sections = _flops_sections()
     outer = _flops_defines(sections['outer'])
-    # Every _CLK macro anywhere is expected to have a bare alias: the flop bodies
-    # live in the branches, the _INST wrappers outside them. The ASIC branch
-    # stands for both; check_flops_clk_variant_per_family pins that they agree.
-    everything = dict(outer, **_flops_defines(sections['ASIC']))
-    variants = {name for name in everything if name.endswith('_CLK')}
-    # The pairing is a bijection, checked in both directions: a variant with no
-    # alias breaks an existing single-clock call site, and an alias with no
+    # The SYNC branch stands for all three; check_flops_clk_variant_per_family
+    # pins that they agree.
+    doms = {name for name in _flops_defines(sections['SYNC']) if name.endswith('_DOM')
+            and not name.endswith(('INST_DOM', 'KEEP_INST_DOM'))}
+    clks = {name for name in outer if name.endswith('_CLK')
+            and not name.endswith(('INST_CLK', 'KEEP_INST_CLK'))}
+    bares = {name for name in outer if name in
+             {c[:-len('_CLK')] for c in clks}}
+    # Each pairing is a bijection, checked in both directions: a _DOM or _CLK
+    # with no alias breaks an existing call site, and an alias with no
     # variant is a macro that expands to an undefined one.
-    unpaired = sorted({f"{name}_CLK" for name in outer
-                       if not name.endswith('_CLK')} ^ variants)
+    domFamilies = {name[:-len('_DOM')] for name in doms}
+    clkFamilies = {name[:-len('_CLK')] for name in clks}
+    unpaired = sorted(domFamilies ^ clkFamilies)
+    if unpaired:
+        raise AssertionError(
+            f"{unpaired} has no counterpart; every _DOM flop body must have a "
+            f"_CLK alias and every _CLK alias a _DOM body")
+    unpaired = sorted({f"{name}_CLK" for name in bares} ^ clks)
     if unpaired:
         raise AssertionError(
             f"{unpaired} has no counterpart; every flop macro exists both as a "
             f"bare alias and as a _CLK variant")
-    for variant in sorted(variants):
-        family = variant[:-len('_CLK')]
-        args, body = outer[family]
-        expected = f"`{variant}(clk, {', '.join(args)})"
-        if ' '.join(body.split()) != expected:
+    for clk in sorted(clks):
+        args, body = outer[clk]
+        expected = f"`{clk[:-len('_CLK')]}_DOM({args[0]}, rst_n, {', '.join(args[1:])})"
+        if _normalize(body) != expected:
             raise AssertionError(
-                f"`{family}` expands to {body!r}, expected exactly {expected!r}; "
-                f"a bare macro that is not a pure alias is a second flop body")
-    # One body per family per branch: counted, so a duplicated body fails even if
-    # it is spelled somewhere this case does not read.
+                f"`{clk}` expands to {body!r}, expected exactly {expected!r}; "
+                f"a _CLK macro that is not a pure alias onto _DOM is a second "
+                f"flop body")
+    for bare in sorted(bares):
+        args, body = outer[bare]
+        expected = f"`{bare}_CLK(clk, {', '.join(args)})"
+        if _normalize(body) != expected:
+            raise AssertionError(
+                f"`{bare}` expands to {body!r}, expected exactly {expected!r}; "
+                f"a bare macro that is not a pure alias onto _CLK is a second "
+                f"flop body")
+    # One body per family per reset style: counted, so a duplicated body fails
+    # even if it is spelled somewhere this case does not read.
     with open(FLOPS_SV) as f:
-        bodies = f.read().count('always_ff @(posedge')
-    expected = len(_flops_defines(sections['ASIC'])) + len(_flops_defines(sections['FPGA']))
+        text = f.read()
+    bodies = text.count('always_ff @(posedge')
+    expected = sum(len(_flops_defines(sections[style]))
+                   for style in ('SYNC', 'ASYNC', 'NONE'))
     if bodies != expected:
         raise AssertionError(
             f"flops.sv holds {bodies} always_ff bodies for {expected} "
             f"clock-parameterized macros; each family has exactly one body per "
-            f"reset-flow branch")
+            f"reset-style branch")
+    # No flop body may leak outside all three branches: only the alias layers
+    # and the _INST/_KEEP wrappers are allowed there.
+    strayBodies = sorted(name for name, (_, body) in outer.items()
+                          if 'always_ff' in body)
+    if strayBodies:
+        raise AssertionError(
+            f"{strayBodies} are defined outside every reset-style branch but "
+            f"hold an always_ff body; only a branch may define a flop body")
+    for needle in ('`RST', 'rstN'):
+        if needle in text:
+            raise AssertionError(
+                f"{FLOPS_SV} still contains {needle!r}; the reset is an "
+                f"explicit _DOM argument now, not the old per-compilation macro")
+    return True
+
+
+# ------------------------------------------- flops.sv expansion identity --
+
+# One module exercising every bare macro once, plus every _INST wrapper the
+# pre-change file also defined. No _CLK/_DOM: the fork this proves
+# compatibility with declares neither.
+_IDENTITY_MODULE_CORE = """\
+`include "flops.sv"
+
+module flopsIdentity (
+    input logic clk,
+    input logic rst_n,
+    input logic d,
+    input logic en,
+    input logic s,
+    input logic c,
+    output logic dff_q,
+    output logic dffr_q,
+    output logic dffnr_q,
+    output logic dffen_q,
+    output logic dffren_q,
+    output logic scff_q
+);
+
+    logic nxt_dff_q, nxt_dffr_q, nxt_dffnr_q, nxt_dffen_q, nxt_dffren_q;
+    assign nxt_dff_q = d;
+    assign nxt_dffr_q = d;
+    assign nxt_dffnr_q = d;
+    assign nxt_dffen_q = d;
+    assign nxt_dffren_q = d;
+
+    `DFF(dff_q, nxt_dff_q)
+    `DFFR(dffr_q, nxt_dffr_q, 1'b0)
+    `DFFNR(dffnr_q, nxt_dffnr_q)
+    `DFFEN(dffen_q, nxt_dffen_q, en)
+    `DFFREN(dffren_q, nxt_dffren_q, en, 1'b0)
+    `SCFF(scff_q, s, c)
+
+    `DFF_INST(logic, instDff)
+    `DFFR_INST(logic, instDffr, 1'b0)
+    `DFFNR_INST(logic, instDffnr)
+    `DFFEN_INST(logic, instDffen, en)
+{keep_inst}
+endmodule : flopsIdentity
+"""
+
+
+def _identity_module(with_keep_inst):
+    """The identity module text, with `DFF_KEEP_INST` only when the flops.sv
+    under test defines it (the pre-change file this proves compatibility with
+    does not)."""
+    keep = "    `DFF_KEEP_INST(logic, instDffKeep)\n" if with_keep_inst else ""
+    return _IDENTITY_MODULE_CORE.format(keep_inst=keep)
+
+
+def _verilator_preprocess(flops_dir, module_text, defines, where):
+    """The `module flopsIdentity ... endmodule` text verilator's preprocessor
+    expands the identity module to, with `line directives and blank lines
+    dropped so only the macro expansion itself is compared."""
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, 'identity.sv'), 'w') as f:
+            f.write(module_text)
+        cmd = ['verilator', '-E', f'-I{flops_dir}'] + \
+              [f'+define+{d}' for d in defines] + ['identity.sv']
+        result = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise AssertionError(
+            f"verilator -E failed for {where}:\n{result.stdout}{result.stderr}")
+    lines = [line.rstrip() for line in result.stdout.splitlines()
+             if line.strip() and not line.startswith('`line')]
+    return '\n'.join(lines)
+
+
+def check_flops_none_matches_pre_change_fpga_default():
+    """A2C_RESET_NONE on the new file expands identically to no-define on the
+    pre-selector file, kept as a fixture: the compatibility proof for existing
+    FPGA flows, which relied on that being the unconditional default.
+
+    DFF_KEEP_INST is left out of this module: the pre-selector file predates it,
+    so it would pass through unexpanded rather than diverge, and the mismatch
+    would be meaningless."""
+    with tempfile.TemporaryDirectory() as tmp:
+        shutil.copy(PRE_SELECTOR_SV, os.path.join(tmp, 'flops.sv'))
+        module_text = _identity_module(with_keep_inst=False)
+        pre_change = _verilator_preprocess(tmp, module_text, ['A2C_RESET_NONE'],
+                                           'the pre-selector file')
+    new = _verilator_preprocess(os.path.dirname(FLOPS_SV), module_text,
+                                ['A2C_RESET_NONE'], 'the new file')
+    if pre_change != new:
+        raise AssertionError(
+            f"A2C_RESET_NONE on the new flops.sv does not expand identically "
+            f"to the pre-change file's default:\n--- pre-change ---\n"
+            f"{pre_change}\n--- new (A2C_RESET_NONE) ---\n{new}")
+    return True
+
+
+def check_flops_default_matches_fork():
+    """No define on the new file expands identically to no define on the
+    fork: the drop-in proof. DFF_KEEP_INST is included, since the fork defines
+    it and this is the shape that motivated bringing it into this file."""
+    module_text = _identity_module(with_keep_inst=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        shutil.copy(FORK_SV, os.path.join(tmp, 'flops.sv'))
+        fork = _verilator_preprocess(tmp, module_text, [], 'the fork file')
+    new = _verilator_preprocess(os.path.dirname(FLOPS_SV), module_text, [],
+                                'the new file')
+    if fork != new:
+        raise AssertionError(
+            f"no define on the new flops.sv does not expand identically to "
+            f"no define on the fork:\n--- fork ---\n{fork}\n--- new "
+            f"(no define) ---\n{new}")
     return True
 
 
 # --------------------------------------------------- <block>_regs handler --
 
 _FLOP_CALL = re.compile(r'`(\w+)\s*\(\s*([^,)]*)')
+
+
+_FLOP_CALL_DOM = re.compile(r'`(\w+)\s*\(\s*([^,)]*)\s*,\s*([^,)]*)')
 
 
 def _flop_calls(text):
@@ -1424,32 +1615,42 @@ def _flop_calls(text):
             if m.group(1).startswith(('DFF', 'SCFF'))]
 
 
-def _flops_clk_families():
-    """Every clock-parameterized macro flops.sv defines, discovered not listed.
+def _flop_dom_calls(text):
+    """Every flop-macro invocation in emitted RTL, as (macro name, clock, reset)."""
+    return [(m.group(1), m.group(2).strip(), m.group(3).strip())
+            for m in _FLOP_CALL_DOM.finditer(text)
+            if m.group(1).startswith(('DFF', 'SCFF'))]
+
+
+def _flops_dom_families():
+    """Every clock+reset-parameterized macro flops.sv defines, discovered not
+    listed.
 
     An emitter naming a family the library does not define produces RTL that does
     not preprocess, and a family renamed in flops.sv has to move its call sites
     with it; both are caught by comparing against the file instead of a literal."""
     sections = _flops_sections()
     defined = dict(_flops_defines(sections['outer']),
-                   **_flops_defines(sections['ASIC']))
-    return {name for name in defined if name.endswith('_CLK')}
+                   **_flops_defines(sections['SYNC']))
+    return {name for name in defined if name.endswith('_DOM')}
 
 
-def _assert_flops_clocked_by(text, clock, where):
-    """Every flop uses the parameterized macro with `clock` as its first argument."""
-    calls = _flop_calls(text)
+def _assert_flops_clocked_by(text, clock, reset, where):
+    """Every flop uses the _DOM macro naming `clock` and `reset` as its first
+    two arguments."""
+    calls = _flop_dom_calls(text)
     if not calls:
         raise AssertionError(f"{where} emits no flop macro at all")
-    wrong = sorted({(name, arg) for name, arg in calls
-                    if not name.endswith('_CLK') or arg != clock})
+    wrong = sorted({(name, c, r) for name, c, r in calls
+                    if not name.endswith('_DOM') or c != clock or r != reset})
     if wrong:
         raise AssertionError(
-            f"{where} emits {wrong}; every flop must use the clock-parameterized "
-            f"macro naming {clock!r}. A bare macro captures the identifier `clk`, "
-            f"which is not a port of a module in another domain")
-    families = {name for name, _ in calls}
-    undefined = sorted(families - _flops_clk_families())
+            f"{where} emits {wrong}; every flop must use the _DOM macro naming "
+            f"{clock!r} and {reset!r}. A `_CLK` or bare macro captures the "
+            f"identifier `rst_n`/`clk`, which is not a port of a module in "
+            f"another domain")
+    families = {name for name, _, _ in calls}
+    undefined = sorted(families - _flops_dom_families())
     if undefined:
         raise AssertionError(
             f"{where} emits {undefined}, which {FLOPS_SV} does not define; the "
@@ -1469,8 +1670,8 @@ def check_regs_handler_non_default_domain(emitted):
     if lines != ['input clkSlow,', 'input rstBus_n']:
         raise AssertionError(f"leafA_regs declares {lines}, expected "
                              f"['input clkSlow,', 'input rstBus_n']")
-    families = _assert_flops_clocked_by(text, 'clkSlow', 'leafA_regs')
-    for family in ('DFFREN_CLK', 'DFF_CLK', 'DFFEN_CLK', 'DFFR_CLK'):
+    families = _assert_flops_clocked_by(text, 'clkSlow', 'rstBus_n', 'leafA_regs')
+    for family in ('DFFREN_DOM', 'DFF_DOM', 'DFFEN_DOM', 'DFFR_DOM'):
         if family not in families:
             raise AssertionError(
                 f"leafA_regs emits no {family}; the fixture's registers, memories "
@@ -1479,12 +1680,12 @@ def check_regs_handler_non_default_domain(emitted):
     # each is pinned by a shape only that path produces. Without this the fixture
     # could quietly stop reaching one and the case would still pass.
     for why, pattern in (
-            ('the per-segment register flop', r"`DFFREN_CLK\(clkSlow, cfgA_reg\[\d+:\d+\]"),
+            ('the per-segment register flop', r"`DFFREN_DOM\(clkSlow, rstBus_n, cfgA_reg\[\d+:\d+\]"),
             ('the generate-guarded parameterizable register word',
-             r"`DFFREN_CLK\(clkSlow, cfgWide_reg\[32\*gi"),
-            ('the parameterizable memory word', r"`DFFEN_CLK\(clkSlow, tbl_reg\[32\*gi"),
-            ('the fixed-width memory word', r"`DFFEN_CLK\(clkSlow, tblFixed_data\["),
-            ('the memory access sequence', r"`DFF_CLK\(clkSlow, tbl_addr,")):
+             r"`DFFREN_DOM\(clkSlow, rstBus_n, cfgWide_reg\[32\*gi"),
+            ('the parameterizable memory word', r"`DFFEN_DOM\(clkSlow, rstBus_n, tbl_reg\[32\*gi"),
+            ('the fixed-width memory word', r"`DFFEN_DOM\(clkSlow, rstBus_n, tblFixed_data\["),
+            ('the memory access sequence', r"`DFF_DOM\(clkSlow, rstBus_n, tbl_addr,")):
         if not re.search(pattern, text):
             raise AssertionError(
                 f"leafA_regs emits nothing matching {pattern!r}, so {why} is not "
@@ -1598,7 +1799,7 @@ def check_regs_handler_default_domain(emitted):
     if lines != ['input clk,', 'input rstMain_n']:
         raise AssertionError(f"leafA_regs declares {lines}, expected "
                              f"['input clk,', 'input rstMain_n']")
-    _assert_flops_clocked_by(text, 'clk', 'default-domain leafA_regs')
+    _assert_flops_clocked_by(text, 'clk', 'rstMain_n', 'default-domain leafA_regs')
     return True
 
 
@@ -1617,20 +1818,20 @@ def check_router_non_default_domain(emitted):
     if line != 'input clkSlow, rstBus_n':
         raise AssertionError(f"apbDecode port list is {line!r}, expected "
                              f"'input clkSlow, rstBus_n'")
-    _assert_flops_clocked_by(text, 'clkSlow', 'apbDecode')
+    _assert_flops_clocked_by(text, 'clkSlow', 'rstBus_n', 'apbDecode')
     # The generator has three flop-emitting sites in separate code - the parent
     # request capture template, the per-child select template, and the response
     # path appended by hand - so each is pinned by a shape only that site
     # produces. Without this the fixture could quietly stop reaching one.
     for why, pattern in (
             ('the parent request capture',
-             r"`DFF_CLK\(clkSlow, paddr_q, apbReg\.paddr\)"),
+             r"`DFF_DOM\(clkSlow, rstBus_n, paddr_q, apbReg\.paddr\)"),
             ('the transaction-active flop',
-             r"`SCFF_CLK\(clkSlow, trans_active, set_trans_active, pready\)"),
+             r"`SCFF_DOM\(clkSlow, rstBus_n, trans_active, set_trans_active, pready\)"),
             ('the per-child select flop',
-             r"`SCFF_CLK\(clkSlow, apbReg_uLeafA_psel, apbReg_uLeafA_next_psel,"),
+             r"`SCFF_DOM\(clkSlow, rstBus_n, apbReg_uLeafA_psel, apbReg_uLeafA_next_psel,"),
             ('the parent response path',
-             r"`DFF_CLK\(clkSlow, pready, apbReg_next_pready\)")):
+             r"`DFF_DOM\(clkSlow, rstBus_n, pready, apbReg_next_pready\)")):
         if not re.search(pattern, text):
             raise AssertionError(
                 f"apbDecode emits nothing matching {pattern!r}, so {why} is not "
@@ -1666,7 +1867,7 @@ def check_router_default_domain(emitted):
     if line != 'input clk, rstMain_n':
         raise AssertionError(f"apbDecode port list is {line!r}, expected "
                              f"'input clk, rstMain_n'")
-    _assert_flops_clocked_by(text, 'clk', 'default-domain apbDecode')
+    _assert_flops_clocked_by(text, 'clk', 'rstMain_n', 'default-domain apbDecode')
     return True
 
 
@@ -1741,10 +1942,14 @@ def main():
                     check_time_unit_map_covers_schema),
           _run_case('resets.releaseCycles defaults to 3',
                     check_release_cycles_default),
-          _run_case('every flop family has a _CLK variant in both reset branches',
+          _run_case('every flop family has a _DOM variant in all three reset styles',
                     check_flops_clk_variant_per_family),
           _run_case('every bare flop macro is an alias, not a second body',
                     check_flops_bare_macro_is_an_alias),
+          _run_case('A2C_RESET_NONE matches the pre-change file\'s FPGA default',
+                    check_flops_none_matches_pre_change_fpga_default),
+          _run_case('the default reset style matches the fork, unconditionally',
+                    check_flops_default_matches_fork),
           _run_case('a router with an authored extra clock is rejected',
                     check_router_extra_clock_rejected),
           _run_case('a router with an extra clock is rejected on cardinality',

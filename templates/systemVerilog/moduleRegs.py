@@ -23,7 +23,7 @@ def getParentStructures(prj, d):
 # prj object
 # data set dict
 def render(args, prj, data):
-    global regs_intf, regs_addr_t, regs_data_t, regs_clk
+    global regs_intf, regs_addr_t, regs_data_t, regs_clk, regs_rst
 
     # <block>_regs is a register-bus endpoint, so its domain is the bus feed's,
     # and it is its own block in the database: the clock and reset sets reaching
@@ -32,6 +32,7 @@ def render(args, prj, data):
     # each set is that domain and is what the flops and the reset term use. The
     # port list still declares the whole set.
     regs_clk = data['clocks'][0]['clock']
+    regs_rst = data['resets'][0]['reset']
 
     regs_intf = data['addressDecode'].get('registerBusPort', None)
     if not regs_intf:
@@ -107,7 +108,7 @@ def render(args, prj, data):
         interfaces_ports=section_intf_ports(prj, data),
         clock_reset_ports=intf_gen_utils.sv_clock_reset_input_lines(data),
         regs_clk=regs_clk,
-        regs_rst=data['resets'][0]['reset'],
+        regs_rst=regs_rst,
         address_mask=section_address_mask(prj, data),
         address_constants=section_address_constants(data),
         regs_intf=regs_intf,
@@ -235,11 +236,11 @@ def param_word_generate(reg_intf, struct, width_lp, max_words, flop_macro, flop_
     s += [ f"        if ({width_lp} > 32*gi) begin : present" ]
     s += [ f"            if ({width_lp} >= 32*(gi+1)) begin : full" ]
     if flop_macro:
-        s += [ f"                `{flop_macro}_CLK({regs_clk}, {reg_local}[32*gi +: 32], {flop_src}[31:0], {reg_intf}_update[gi]{full_reset_arg})" ]
+        s += [ f"                `{flop_macro}_DOM({regs_clk}, {regs_rst}, {reg_local}[32*gi +: 32], {flop_src}[31:0], {reg_intf}_update[gi]{full_reset_arg})" ]
     s += [ f"                assign {reg_intf}_rword[gi] = {rword_src}[32*gi +: 32];" ]
     s += [ f"            end else begin : partial" ]
     if flop_macro:
-        s += [ f"                `{flop_macro}_CLK({regs_clk}, {reg_local}[32*gi +: ({width_lp}-32*gi)], {flop_src}[{width_lp}-32*gi-1:0], {reg_intf}_update[gi]{partial_reset_arg})" ]
+        s += [ f"                `{flop_macro}_DOM({regs_clk}, {regs_rst}, {reg_local}[32*gi +: ({width_lp}-32*gi)], {flop_src}[{width_lp}-32*gi-1:0], {reg_intf}_update[gi]{partial_reset_arg})" ]
     s += [ f"                assign {reg_intf}_rword[gi] = 32'({rword_src}[32*gi +: ({width_lp}-32*gi)]);" ]
     s += [ f"            end" ]
     s += [ f"        end else begin : absent" ]
@@ -300,7 +301,7 @@ def section_01_regs(reg_data):
         update_sig = f"{reg_local}_update_{n}"
         if reg_data['regType'] == 'rw':
             s_3 += [ f"logic {update_sig};" ]
-            s_4 += [ f"`DFFREN_CLK({regs_clk}, {reg_local}[{u}:{l}], {regs_intf}.pwdata[{w-1}:0], {update_sig}, {w}'h{d:08x})" ]
+            s_4 += [ f"`DFFREN_DOM({regs_clk}, {regs_rst}, {reg_local}[{u}:{l}], {regs_intf}.pwdata[{w-1}:0], {update_sig}, {w}'h{d:08x})" ]
 
     return string_joiner(s_1 + s_3 + s_2 + s_4, '\n')
 
@@ -326,10 +327,10 @@ def section_01_mem_param(mem_intf, mem_data):
     s += [ f"logic nxt_{mem_intf}_rd_enable, {mem_intf}_rd_enable, {mem_intf}_rd_capture;" ]
     s += [ f"logic {mem_intf}_wr_enable;" ]
     s += [ "" ]
-    s += [ f"`DFF_CLK({regs_clk}, {mem_intf}_addr, {addr_struct}'(apb_addr[31:{rowwidth}]))" ]
-    s += [ f"`DFF_CLK({regs_clk}, {mem_intf}_wr_enable, {mem_intf}_update[{top_lp}])" ]
-    s += [ f"`DFF_CLK({regs_clk}, {mem_intf}_rd_enable, nxt_{mem_intf}_rd_enable)" ]
-    s += [ f"`DFF_CLK({regs_clk}, {mem_intf}_rd_capture, {mem_intf}_rd_enable)" ]
+    s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_addr, {addr_struct}'(apb_addr[31:{rowwidth}]))" ]
+    s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_wr_enable, {mem_intf}_update[{top_lp}])" ]
+    s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_rd_enable, nxt_{mem_intf}_rd_enable)" ]
+    s += [ f"`DFF_DOM({regs_clk}, {regs_rst}, {mem_intf}_rd_capture, {mem_intf}_rd_enable)" ]
     s += [ "" ]
     s += param_word_generate(mem_intf, struct, width_lp, max_words, 'DFFEN',
                              f"{regs_intf}.pwdata", f"{mem_intf}.read_data")
@@ -356,7 +357,8 @@ def section_01_memregs(reg_data):
         segments=reg_data['segments'],
         paddr_l = reg_data['rowwidth'],
         seg_last = len(reg_data['segments']) - 1,
-        regs_clk=regs_clk
+        regs_clk=regs_clk,
+        regs_rst=regs_rst
     ))
 
 def section_01_mems(mem_data):
@@ -372,7 +374,8 @@ def section_01_mems(mem_data):
         segments=mem_data['segments'],
         paddr_l = mem_data['rowwidth'],
         seg_last = len(mem_data['segments']) - 1,
-        regs_clk=regs_clk
+        regs_clk=regs_clk,
+        regs_rst=regs_rst
     ))
 
 # write comb case init
@@ -849,9 +852,9 @@ module {{ modulename }}
     // error is never asserted: every access ACKs, unmapped reads return 0.
     generate if (APB_READY_1WS)
         begin
-            `DFFR_CLK({{regs_clk}}, wr_ready,   nxt_wr_ready,   '0)
-            `DFFR_CLK({{regs_clk}}, rd_ready,   nxt_rd_ready,   '0)
-            `DFFR_CLK({{regs_clk}}, rd_data,    nxt_rd_data,    '0)
+            `DFFR_DOM({{regs_clk}}, {{regs_rst}}, wr_ready,   nxt_wr_ready,   '0)
+            `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_ready,   nxt_rd_ready,   '0)
+            `DFFR_DOM({{regs_clk}}, {{regs_rst}}, rd_data,    nxt_rd_data,    '0)
         end else begin
             assign wr_ready   = nxt_wr_ready;
             assign rd_ready   = nxt_rd_ready;
@@ -879,13 +882,13 @@ logic {{mem_intf}}_update_{{loop.index0}};
 logic nxt_{{mem_intf}}_rd_enable, {{mem_intf}}_rd_enable, {{mem_intf}}_rd_capture;
 logic {{mem_intf}}_wr_enable;
 
-`DFF_CLK({{regs_clk}}, {{mem_intf}}_addr, {{mem_addrtype}}'(apb_addr[31:{{paddr_l}}]))
-`DFF_CLK({{regs_clk}}, {{mem_intf}}_wr_enable, {{mem_intf}}_update_{{seg_last}})
-`DFF_CLK({{regs_clk}}, {{mem_intf}}_rd_enable, nxt_{{mem_intf}}_rd_enable)
-`DFF_CLK({{regs_clk}}, {{mem_intf}}_rd_capture, {{mem_intf}}_rd_enable)
+`DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_addr, {{mem_addrtype}}'(apb_addr[31:{{paddr_l}}]))
+`DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_wr_enable, {{mem_intf}}_update_{{seg_last}})
+`DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_rd_enable, nxt_{{mem_intf}}_rd_enable)
+`DFF_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_rd_capture, {{mem_intf}}_rd_enable)
 
 {% for seg in segments -%}{% set ul %}[{{seg[1]}}:{{seg[2]}}]{% endset -%}
-`DFFEN_CLK({{regs_clk}}, {{mem_intf}}_data{{ul}}, nxt_{{mem_intf}}_data{{ul}}, {{mem_intf}}_update_{{loop.index0}})
+`DFFEN_DOM({{regs_clk}}, {{regs_rst}}, {{mem_intf}}_data{{ul}}, nxt_{{mem_intf}}_data{{ul}}, {{mem_intf}}_update_{{loop.index0}})
 {% endfor %}
 assign {{mem_intf}}.enable      = {{mem_intf}}_rd_enable | {{mem_intf}}_wr_enable;
 assign {{mem_intf}}.wr_en       = {{mem_intf}}_wr_enable;

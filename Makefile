@@ -134,6 +134,8 @@ two-clk:
 	make -C $(TWO_CLK_DIR)/ip gen
 	make -C $(TWO_CLK_DIR)/rundir -j run
 	make -C $(TWO_CLK_DIR)/rundir -j run-vl
+	make -C $(TWO_CLK_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_NONE
+	make -C $(TWO_CLK_DIR)/rtl lint VERILATOR_USER_OPTS=+define+A2C_RESET_ASYNC
 
 .PHONY : hello-world
 hello-world:
