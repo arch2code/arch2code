@@ -395,6 +395,12 @@ python3 test_type_struct_field.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: arbitration trio compile-contract coverage"
+echo "------------------------------------------------------------------------"
+python3 test_arbitration_trio_coverage.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then
     echo "✅ ALL TEST SUITES PASSED!"

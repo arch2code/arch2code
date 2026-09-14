@@ -26,6 +26,7 @@ Handling CPU register access.
 Thread servicing multiple inputs.
 *   **Mechanism:** `setExternalEvent` + `wait(event)` + `isActive()`.
 *   **Flow:** Wait for shared event -> Check all ports for activity -> Process active ones (Arbitrate if needed).
+*   **Family support:** available on every base family's receive side (`rdy_vld`, `apb`, `memory`, `req_ack`, `push_ack`, `pop_ack`, `notify_ack`), and on `axi_read`/`axi_write` dst ports (address sub-channel) and `axi4_stream`. Not on `external_reg`/`raw`/`status`, which predate this pattern.
 *   **Ref:** `systemc-synchronization.md`
 
 ## 4. Multi-Cycle Burst

@@ -41,6 +41,7 @@ public:
     void consumerInReqAck(void);
     void consumerInPushAck(void);
     void consumerInPopAck(void);
+    void consumerInRdyVldArb(void);
 };
 
 // GENERATED_CODE_BEGIN --template=constructor --section=init
@@ -69,6 +70,7 @@ consumer::consumer(sc_module_name blockName, const char * variant, blockBaseMode
     SC_THREAD(consumerInReqAck);
     SC_THREAD(consumerInPushAck);
     SC_THREAD(consumerInPopAck);
+    SC_THREAD(consumerInRdyVldArb);
 };
 
 void consumer::consumerInRdyVld(void)
@@ -93,6 +95,46 @@ void consumer::consumerInRdyVld(void)
     controller.test_complete(test_name);
 
 }
+// Single consumer thread arbitrating between two rdy_vld producers with the
+// documented pattern: bind both ports to one shared sc_event, scan isActive()
+// under a wait loop, and service whichever port(s) woke the thread. Asserts
+// each port's stream arrives in order (no lost wakeup, no misrouting) even
+// though the two producers' first sends race in the same delta.
+// ARB_TEST_COUNT must match the value used in producer.cppm.
+#define ARB_TEST_COUNT 20
+void consumer::consumerInRdyVldArb(void)
+{
+    std::string test_name = "test_rdy_vld_arb";
+    testController &controller = testController::GetInstance();
+    controller.register_test_name(test_name);
+    controller.wait_test(test_name);
+
+    sc_event arbEvent;
+    test_rdy_vld_arb0->setExternalEvent(&arbEvent);
+    test_rdy_vld_arb1->setExternalEvent(&arbEvent);
+
+    int received0 = 0;
+    int received1 = 0;
+    data_st data;
+    while (received0 < ARB_TEST_COUNT || received1 < ARB_TEST_COUNT) {
+        while (test_rdy_vld_arb0->isNotActive() && test_rdy_vld_arb1->isNotActive()) {
+            wait(arbEvent);
+        }
+        if (test_rdy_vld_arb0->isActive()) {
+            test_rdy_vld_arb0->read(data);
+            Q_ASSERT(data.b == (uint64_t)(1000 + received0), "arb0 data out of order or misrouted");
+            received0++;
+        }
+        if (test_rdy_vld_arb1->isActive()) {
+            test_rdy_vld_arb1->read(data);
+            Q_ASSERT(data.b == (uint64_t)(2000 + received1), "arb1 data out of order or misrouted");
+            received1++;
+        }
+    }
+    log_.logPrint(std::format("test_rdy_vld_arb: received {} on arb0, {} on arb1", received0, received1), LOG_ALWAYS);
+    controller.test_complete(test_name);
+}
+
 void consumer::consumerInReqAck(void)
 {
     std::string test_name = "test_req_ack";

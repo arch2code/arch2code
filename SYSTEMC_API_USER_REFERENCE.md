@@ -486,6 +486,8 @@ void producer::producerOutRdyVld(void)
 - `myPort->readClocked(data)` - Multi-cycle burst read (one beat per call)
 - `myPort->push_context(size)` - Set transaction size for multi-cycle
 - `myPort->getReadPtr()` - Get buffer pointer for multi-cycle reads
+- `myPort->isActive()` / `myPort->isNotActive()` - Check whether a value is pending
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*` for multi-interface arbitration (see `rules/skills/systemc-synchronization.md` Section 1)
 
 **Important - Ready Signaling:**
 - Calling `read()` on a destination (sink) interface **signals the module is ready**
@@ -548,6 +550,8 @@ void myModule::apbMaster() {
 - `myPort->reqReceive(isWrite, addr, data)` - Wait for and receive request
   - Returns `isWrite` flag and request data
 - `myPort->complete(data)` - Send read response data
+- `myPort->isActive()` / `myPort->isNotActive()` - Check whether a request is pending
+- `myPort->setExternalEvent(event)` - Bind an external `sc_event*` for multi-interface arbitration (see `rules/skills/systemc-synchronization.md` Section 1)
 
 **Example - APB Slave / Register Handler:**
 
@@ -587,7 +591,7 @@ void myModule::customHandler() {
 
 **API:** Same as `apb_channel`
 - `request()`, `requestNonBlocking()`, `waitComplete()` on requester side
-- `reqReceive()`, `complete()` on completer side
+- `reqReceive()`, `complete()`, `isActive()`/`isNotActive()`, `setExternalEvent(event)` on completer side
 
 **Example:**
 
