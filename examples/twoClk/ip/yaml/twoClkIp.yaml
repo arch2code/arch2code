@@ -30,5 +30,7 @@ blocks:
         hasMdl: true
         hasTb: false
         hasRtl: true
+        clocks:
+            clk: { period: 3, timeUnit: ns }
         ports:
             out: { interface: twoClkDataIf, direction: src }

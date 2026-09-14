@@ -220,28 +220,43 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     return out
 
 def clock_reset_port_names(block_data):
-    # The block's clock and reset port names, clocks then resets, each set in the
-    # persisted canonical domain order (the declaring project's declaration order
-    # with the default first). Clocks and resets share one module port namespace,
-    # so one order serves every emission site: a module port list, its
-    # instantiation, and the verilated wrapper that reconstructs it must agree
-    # name for name and position for position.
+    # The block's clock and reset port names, clocks then resets, each set in
+    # the persisted declaration order (R18). Clocks and resets share one
+    # module port namespace, so one order serves every emission site: a module
+    # port list, its instantiation, and the verilated wrapper that
+    # reconstructs it must agree name for name and position for position.
     return ([row['clock'] for row in block_data['clocks']]
             + [row['reset'] for row in block_data['resets']])
 
+def clock_reset_ports(block_data):
+    # (name, direction) pairs in the same order as clock_reset_port_names, so
+    # a port list generator can spell each entry's SystemVerilog port
+    # direction (input/output map directly onto the spec's own field values).
+    return ([(row['clock'], row['direction']) for row in block_data['clocks']]
+            + [(row['reset'], row['direction']) for row in block_data['resets']])
+
 # Two spellings of the same list. The ORDER is global, which is why both are
-# built on clock_reset_port_names rather than each assembling its own. The
+# built on clock_reset_ports rather than each assembling its own. The
 # spelling belongs to the GENERATOR, not to the kind of module it emits: the
-# block module port list joins clocks and resets onto one `input`, the verilated
+# block module port list joins clocks and resets onto one line, the verilated
 # SV wrapper declares one per line, and <block>_regs is a third generator that
 # also declares one per line in an RTL module
 # (templates/systemVerilog/moduleRegs.py), so it shares the wrapper's spelling
 # rather than the block module's.
 def sv_clock_reset_input(block_data):
-    return f"input {', '.join(clock_reset_port_names(block_data))}"
+    # Grouped by consecutive direction, so an all-input block still emits the
+    # single joined 'input clk, rst_n' the block module generator always has.
+    groups = []
+    for name, direction in clock_reset_ports(block_data):
+        if groups and groups[-1][0] == direction:
+            groups[-1][1].append(name)
+        else:
+            groups.append((direction, [name]))
+    return ', '.join(f"{direction} {', '.join(names)}" for direction, names in groups)
 
 def sv_clock_reset_input_lines(block_data):
-    return ',\n'.join(f"input {name}" for name in clock_reset_port_names(block_data))
+    return ',\n'.join(f"{direction} {name}"
+                      for name, direction in clock_reset_ports(block_data))
 
 def sv_clock_reset_binds(block_data):
     return [f".{name}({name})" for name in clock_reset_port_names(block_data)]
@@ -249,17 +264,20 @@ def sv_clock_reset_binds(block_data):
 # The bare flop macros (`DFF`, `DFF_INST`, ...) expand to the literal
 # identifier `clk`, and hand-written RTL names `rst_n` directly. A block whose
 # own clock or reset port carries some other name still needs those two
-# identifiers to resolve, so the generated region aliases them onto the block's
-# own default-domain clock/reset (clocks[0]/resets[0], canonical order puts the
-# default first). The rule is "no member is named clk/rst_n", not "the first
-# entry isn't clk/rst_n": a project may declare a non-default clock literally
-# named `clk`, and the alias must not shadow that port.
+# identifiers to resolve, so the generated region aliases them onto the
+# block's default clock and its selected reset (spec §4.2/§5.2), only when
+# each exists and the block does not already declare a port of that name: a
+# block whose declared clocks are all direction: output has no default clock
+# and gets no clk alias, and a clock the block does declare - wherever it
+# sits in the order - must not be shadowed.
 def sv_default_domain_aliases(block_data):
     out = []
-    if not any(row['clock'] == 'clk' for row in block_data['clocks']):
-        out.append(f"wire clk = {block_data['clocks'][0]['clock']};")
-    if not any(row['reset'] == 'rst_n' for row in block_data['resets']):
-        out.append(f"wire rst_n = {block_data['resets'][0]['reset']};")
+    defaultClock = block_data['defaultClock']
+    if defaultClock and not any(row['clock'] == 'clk' for row in block_data['clocks']):
+        out.append(f"wire clk = {defaultClock};")
+    defaultReset = block_data['defaultReset']
+    if defaultReset and not any(row['reset'] == 'rst_n' for row in block_data['resets']):
+        out.append(f"wire rst_n = {defaultReset};")
     return out
 
 def sv_gen_ports(data, prj, indent, block_data):

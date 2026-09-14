@@ -276,26 +276,63 @@ blocks:
   params:
     _attribs: [optional, list, flat, post(validateBlockParamBacking)]
     param: key
-  # Domains the block needs beyond what its connections imply. clocks: is
-  # ADDITIVE to the connection-implied set; resets: is the block's own complete
-  # reset set, replacing the per-clock derivation it would otherwise get, and
-  # every entry must lie in a domain the block carries.
+  # The clocks and resets the block's implementation uses, named for its own
+  # module ports (spec-clock-reset-requirements.md R4/R5). The declaration is
+  # complete: a block's clocks and resets are exactly these entries, for a
+  # container as for a leaf, and nothing is inferred from its children,
+  # connections or ports. A block declaring no clocks: has one clock, `clk`,
+  # input; a block declaring no resets: and having a default clock has one
+  # reset, `rst_n`, on it (materialised in projectCreate.deriveBlockClocksResets).
+  # A single-name list ('clocks: [clkSlow]') is accepted as the mapping form
+  # with every field defaulted; normalised before schema processing (see
+  # processYaml.py::_normalizeClockResetShortForm).
   clocks:
-    _attribs: [optional, list, flat]
-    clock:
-      _type: key
+    _attribs: [optional, multiple, post(resolveBlockClockPeriod)]
+    clock: key
+    desc: optional
+    direction:
+      _type: optional(input)
       _validate:
-        section: clocks
-        field: clock
-        scope: project
+        values:
+          - input
+          - output
+    default: optional(false)
+    # Unset means undeclared, distinct from an authored value (spec §4.8,
+    # V21 need that distinction); an undeclared clock's simulated rate is
+    # supplied by getBDClocksResets. The testbench's own clocks: keeps its
+    # 1 ns schema default (spec §4.1); only a block clock's is removed.
+    period: optional
+    timeUnit:
+      _type: optional(ns)
+      _validate:
+        values:
+          - ps
+          - ns
+          - us
   resets:
-    _attribs: [optional, list, flat]
-    reset:
-      _type: key
+    _attribs: [optional, multiple]
+    reset: key
+    desc: optional
+    direction:
+      _type: optional(input)
       _validate:
-        section: resets
-        field: reset
-        scope: project
+        values:
+          - input
+          - output
+    default: optional(false)
+    # The block-local clock this reset belongs to; validated against the
+    # block's own clocks: in projectCreate (V1), not by a schema foreign key -
+    # scope: project does not apply, since this is a block-local reference,
+    # not a project-scoped one.
+    clock: optional
+    async: optional(false)
+  # A block authoring an empty `resets: {}` or `resets: []` has no reset at
+  # all, distinct from omitting resets: entirely (which takes the implicit
+  # rst_n). That distinction is parse-time state
+  # (processYaml.py::_normalizeClockResetShortForm), not a schema field: the
+  # generic optional-subtable field processing does not keep it, since an
+  # empty collection and an absent key are both falsy, but nothing past
+  # parsing needs it as a row field either.
   ports:
     _attribs: [optional, multiple]
     port: key
@@ -310,6 +347,11 @@ blocks:
         values:
           - src
           - dst
+    # The block clock this port is timed by; block-local, unstated means the
+    # block default clock (spec §4.3). Validated against the block's own
+    # clocks: in projectCreate (V2); the port-domain derivation that reads it
+    # is a separate concern (getBDPortDomain).
+    clock: optional
   # leaf-owned register-bus ingress ports; direction is implicitly dst,
   # and interface.interfaceType must resolve to an interface_defs entry
   # with addressBus: true
@@ -321,6 +363,8 @@ blocks:
       _validate:
         section: interfaces
         field: interface
+    clock: optional
+    reset: optional
   # per-router address-group attributes; mutually exclusive with
   # registerPorts on the same block
   addressBlock:
@@ -332,6 +376,8 @@ blocks:
     enumPrefix: required
     upstreamPort: optional(apbReg)
     registerDecoderPort: optional(apbReg)
+    clock: optional
+    reset: optional
 
 # Variants are authored as a nested mapping: the variant label is stated once
 # and its parameters are listed underneath it as `<param>: <value>`.
@@ -552,6 +598,13 @@ memories:
   regAccess: optional(false)
   local: optional(false) # for memories that need to be in flops with fast array access
   isParameterizable: auto(memIsParameterizable)
+  # The owning block's clock this memory is on, and the reset for the R20
+  # bridge's memory side; both block-local, default the block default clock
+  # and its selected reset. The memory-clock derivation that reads these is
+  # a separate concern (§3.4); _persistMemoryClocks takes the owning block's
+  # default clock outright.
+  clock: optional
+  reset: optional
   memoryBlock:
     _key:
       memory: required

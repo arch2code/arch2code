@@ -145,6 +145,10 @@ done
 
 echo "------------------------------------------------------------------------"
 echo "Ran ${#ALL[@]} suites: ${PASS_COUNT} passed, ${FAIL_COUNT} failed"
+# Cases printed SKIP: (a case this build does not implement yet), aggregated
+# across every suite's own log.
+SKIPPED_COUNT="$(cat "$LOGDIR"/*.log | grep -c '^SKIP: ')"
+echo "Skipped cases: ${SKIPPED_COUNT}"
 echo "Total wall-clock: ${ELAPSED}s"
 
 if [[ ${#FAILED_SUITES[@]} -gt 0 ]]; then

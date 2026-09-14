@@ -3,6 +3,13 @@
 
 FAILED=0
 
+# Tee the whole run to a temp log so the final banner can report how many
+# cases a suite printed as SKIP: (a case this build does not implement yet),
+# without changing every individual test invocation below.
+RUN_LOG="$(mktemp "${TMPDIR:-/tmp}/a2c_unittest_run.XXXXXX")"
+trap 'rm -f "$RUN_LOG"' EXIT
+exec > >(tee "$RUN_LOG") 2>&1
+
 echo "========================================================================"
 echo "Running All Unit Tests"
 echo "========================================================================"
@@ -429,8 +436,10 @@ echo "Test Suite ${idx}: Q_ASSERT exit path per context"
 echo "------------------------------------------------------------------------"
 python3 test_assert_exit_path.py || FAILED=1
 
+SKIPPED_COUNT="$(grep -c '^SKIP: ' "$RUN_LOG")"
 echo ""
 echo "========================================================================"
+echo "Skipped cases: ${SKIPPED_COUNT}"
 if [ $FAILED -eq 0 ]; then
     echo "✅ ALL TEST SUITES PASSED!"
     echo "========================================================================"

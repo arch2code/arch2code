@@ -5,8 +5,16 @@
 # wholly in clkSlow over the same twoClkDataIf; its connection's clock: puts
 # the BFM on clkSlow, so the slow domain is checked in flow, not just elaborated.
 #
-# clocks: and resets: are projectScope sections, so both projects' declarations
-# live in their project files, not here.
+# Every block below declares its own clocks:/resets: completely (spec R5,
+# spec-clock-reset-requirements.md): nothing is inferred from connections or
+# from a block's children. An instance binds to its container purely by name
+# match and the clk/rst_n default fallback, so a clock name other than
+# clk/rst_n binds only by every container up to the root declaring a clock of
+# that same name - which is why twoClk_tb, the design root, also declares
+# clkSlow even though it has no RTL of its own. clocks:/resets: at the
+# PROJECT level (prj/yaml/project.yaml) describe the testbench and are not
+# bound to the design; they exist here only to validate connections' clock:
+# references.
 
 include:
     # The include edge puts the child's definitions on this context's resolution
@@ -20,17 +28,29 @@ constants:
 
 blocks:
     twoClk_tb:
-        desc: "Testbench container for twoClk (root container)"
+        desc: "Testbench container for twoClk (root container); declares clk and clkSlow purely to pass them down to u_twoClk by name match"
         hasVl: false
         hasMdl: false
         hasTb: false
         hasRtl: false
+        clocks:
+            clk:     { default: true }
+            clkSlow: { }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
     twoClk:
         desc: "DUT: the reused twoClkIpSrc producer, the assembler's sink, and the clkSlow tick/sink pair"
         hasVl: true
         hasMdl: true
         hasTb: true
         hasRtl: true
+        clocks:
+            clk:     { default: true, period: 1, timeUnit: ns }
+            clkSlow: { period: 3, timeUnit: ns }
+        resets:
+            rst_n:     { clock: clk }
+            rstSlow_n: { clock: clkSlow }
     twoClkSink:
         desc: "Assembler-owned consumer of the reused IP's twoClkDataIf stream"
         hasVl: true
@@ -40,21 +60,27 @@ blocks:
         ports:
             in: { interface: twoClkDataIf, direction: dst }
     twoClkSlowTick:
-        desc: "clkSlow tick counter streaming its count out; its explicit clocks:/resets: lists cover the block-own-list derivation path, the sink covers the connection path"
+        desc: "clkSlow tick counter streaming its count out; declares its own clock as a block port, bound to the container's clkSlow by name match"
         hasVl: true
         hasMdl: true
         hasTb: false
         hasRtl: true
-        clocks: [clkSlow]
-        resets: [rstSlow_n]
+        clocks:
+            clkSlow: { period: 3, timeUnit: ns }
+        resets:
+            rstSlow_n: { clock: clkSlow }
         ports:
             out: { interface: twoClkDataIf, direction: src }
     twoClkSlowSink:
-        desc: "Slow-domain consumer: checks tick values and their clkSlow cadence"
+        desc: "Slow-domain consumer: checks tick values and their clkSlow cadence; declares the same clkSlow/rstSlow_n block port names so its ports (block default clock) sit in the slow domain without a connection clock: override"
         hasVl: true
         hasMdl: true
         hasTb: false
         hasRtl: true
+        clocks:
+            clkSlow: { period: 3, timeUnit: ns }
+        resets:
+            rstSlow_n: { clock: clkSlow }
         ports:
             in: { interface: twoClkDataIf, direction: dst }
 
