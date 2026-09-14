@@ -138,7 +138,7 @@ def structBitWidthExpression_cpp(value, prj, useConfig=False):
 def cppArraySize(vardata, prj, useConfig=False):
     arraySizeKey = vardata.get('arraySizeKey', '')
     if useConfig and arraySizeKey and prj.data['constants'][arraySizeKey].get('isParameterizable', False):
-        return constReference_cpp(arraySizeKey, prj, useConfig=True)
+        return constReference_cpp(arraySizeKey, prj, 'Config')
     return vardata.get('arraySize', vardata.get('arraySizeValue', 1))
 
 

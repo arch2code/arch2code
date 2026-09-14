@@ -97,9 +97,10 @@ def typeWidthExpression_cpp(value, prj, useConfig=False):
     emissionUtils.typeWidthExpr, binding C++ constant spelling
     (emissionUtils.constReference_cpp, Config::-aware) and the C++
     literal-width fallback (prj.resolveTypeWidth)."""
+    configScope = 'Config' if useConfig else None
     return emissionUtils.typeWidthExpr(
         value, emissionUtils.C,
-        constSpelling=lambda key: emissionUtils.constReference_cpp(key, prj, useConfig),
+        constSpelling=lambda key: emissionUtils.constReference_cpp(key, prj, configScope),
         literalWidth=lambda v: str(prj.resolveTypeWidth(v)))
 
 

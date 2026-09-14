@@ -335,21 +335,24 @@ def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_ov
 def sc_structure_field_type(row, field_name, key_field_name, prj, use_config=True, config_override=None):
     return sc_struct_type_name(row[field_name], row.get(key_field_name, ''), prj, use_config, config_override)
 
-def _type_width_expr_cpp(type_row, prj):
+def _type_width_expr_cpp(type_row, prj, config_scope):
     # A type's width column holds the literal author wrote (a plain number)
     # only when it was declared as a bare literal; a `width:`/`widthLog2:`/
     # `widthLog2minus1:` naming a constant leaves the symbolic name there
     # instead, resolved through the constant's own qualified key. This is the
-    # same decision tree and the same Config::-qualified spelling (for a
-    # parameterizable backing constant) that a structure field of this type
-    # uses (templates/systemc/includes.py:typeWidthExpression_cpp). A
-    # parameterizable type's C++ spelling is a `using` alias to a fixed-size
-    # container (templates/systemc/includes.py:includeTypes), not a struct
-    # template with its own `::_bitWidth`, so its actual width is always this
-    # expression, never a `::_bitWidth` reference.
+    # same decision tree that a structure field of this type uses
+    # (templates/systemc/includes.py:typeWidthExpression_cpp), qualified by
+    # whatever config_scope the caller is spelling the payload's own name
+    # against (see sc_type_payload_name/sc_hdl_bridge_type), not always
+    # 'Config': a non-templated parent spells a connected child's payload
+    # against that child's own per-variant Config. A parameterizable type's
+    # C++ spelling is a `using` alias to a fixed-size container
+    # (templates/systemc/includes.py:includeTypes), not a struct template with
+    # its own `::_bitWidth`, so its actual width is always this expression,
+    # never a `::_bitWidth` reference.
     return emissionUtils.typeWidthExpr(
         type_row, emissionUtils.C,
-        constSpelling=lambda key: emissionUtils.constReference_cpp(key, prj, useConfig=True),
+        constSpelling=lambda key: emissionUtils.constReference_cpp(key, prj, config_scope),
         literalWidth=lambda v: str(prj.resolveTypeWidth(v)))
 
 def sc_type_payload_name(payload, prj, config_override=None):
@@ -363,7 +366,11 @@ def sc_type_payload_name(payload, prj, config_override=None):
     ref = prj.datatypeRef(kind, payload['structureKey'])
     name = _config_qualified_name(ref['name'], ref['isParameterizable'], config_override)
     if kind == 'types':
-        width = _type_width_expr_cpp(ref['row'], prj)
+        # Mirror _config_qualified_name's own suffix choice: the connected
+        # child's per-variant Config when supplied, else the bare `Config`
+        # template parameter of a parameterizable parent.
+        config_scope = config_override if config_override else 'Config'
+        width = _type_width_expr_cpp(ref['row'], prj, config_scope)
     elif ref['isParameterizable']:
         width = f"{name}::_bitWidth"
     else:
@@ -405,7 +412,7 @@ def sc_hdl_bridge_type(struct_param, prj):
         return 'bool' if w == 1 else f"sc_bv<{w}>"
     ref = prj.datatypeRef(struct_param['kind'], struct_param['structureKey'])
     if struct_param['kind'] == 'types':
-        w_expr = _type_width_expr_cpp(ref['row'], prj)
+        w_expr = _type_width_expr_cpp(ref['row'], prj, 'Config')
         return 'bool' if _is_one(w_expr) else f"sc_bv<{w_expr}>"
     if ref['isParameterizable']:
         struct_name = sc_struct_type_name(struct_param['structure'], struct_param['structureKey'], prj)

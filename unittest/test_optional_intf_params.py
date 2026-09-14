@@ -1084,6 +1084,141 @@ def test_param_type_payload_builds_and_generates():
               "the SC modport declaration threads the backing parameter through")
 
 
+PARAM_TYPE_VARIANT_ARCH_YAML = """interface_defs:
+  ts_proto_variant:
+    parameters:
+      p_ts: {datatype: typeStruct}
+      p_ty: {datatype: type, optional: true, defaultWidth: 4}
+    signals:
+      valid: bool
+      ready: bool
+      sig_ts: p_ts
+      sig_ty: p_ty
+    modports:
+      src:
+        inputs: ['ready']
+        outputs: ['valid', 'sig_ts', 'sig_ty']
+      dst:
+        inputs: ['valid', 'sig_ts', 'sig_ty']
+        outputs: ['ready']
+    sc_channel:
+      type: 'ts_proto_variant'
+      multicycle_types: []
+
+constants:
+  PW: {value: 6, isParameterizable: true, maxValue: 12, desc: "backing width"}
+
+types:
+  lT: {widthLog2: 40, desc: "log2 type"}
+  pT: {width: PW, isParameterizable: true, desc: "parameterizable type"}
+
+interfaces:
+  ifAVariant:
+    interfaceType: ts_proto_variant
+    desc: "parameterizable type payload carried point-to-point at a variant"
+    structures:
+      - {structure: lT, structureType: p_ts}
+      - {structure: pT, structureType: p_ty}
+
+blocks:
+  top: {desc: "Top block"}
+  producer:
+    desc: "Producer block"
+    params: [PW]
+    ports:
+      outA: {interface: ifAVariant, direction: src}
+  consumer:
+    desc: "Consumer block"
+    params: [PW]
+    ports:
+      inA: {interface: ifAVariant, direction: dst}
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uProducer: {container: top, instanceType: producer, variant: v0}
+  uConsumer: {container: top, instanceType: consumer, variant: v0}
+
+connections:
+  - {interface: ifAVariant, src: uProducer, srcport: outA, dst: uConsumer, dstport: inA}
+
+parameters:
+  producer:
+    v0: {PW: 9}
+  consumer:
+    v0: {PW: 9}
+"""
+
+
+def _build_param_type_variant_project(tmpdir):
+    projDir = os.path.join(tmpdir, 'proj')
+    os.makedirs(projDir)
+    with open(os.path.join(projDir, 'arch.yaml'), 'w') as f:
+        f.write(PARAM_TYPE_VARIANT_ARCH_YAML)
+    projectPath = os.path.join(projDir, 'paramTypeVariantProject.yaml')
+    with open(projectPath, 'w') as f:
+        f.write("""projectName: paramTypeVariant
+yamlFormat: 2
+topInstance: uTop
+
+dirs:
+  root: ..
+
+projectFiles:
+  - arch.yaml
+""")
+    dbPath = os.path.join(tmpdir, 'paramTypeVariant.db')
+    env = os.environ.copy()
+    env['NO_COLOR'] = '1'
+    result = subprocess.run(
+        [sys.executable, os.path.join(base_dir, 'arch2code.py'),
+         '--yaml', projectPath, '--db', dbPath],
+        capture_output=True, text=True, timeout=120, cwd=base_dir, env=env)
+    return result, projectPath, dbPath
+
+
+def test_param_type_variant_channel_width():
+    """A parameterizable `type` payload's channel width, in a non-templated
+    parent (`top`) whose two children are each instantiated at a declared
+    variant (`v0`).
+
+    Regression for the sc_type_payload_name / _type_width_expr_cpp defect: the
+    payload's own name was already qualified against the connected child's
+    per-variant Config (`pT<consumerV0Config>`), via config_override, but its
+    width always spelled the bare `Config::PW` scope regardless, through
+    `_type_width_expr_cpp`'s hard-coded `useConfig=True`. `Config` is
+    undeclared in a non-templated `top`, so the generated channel referenced
+    an unknown type."""
+    print("\n[positive] a parameterizable type payload's channel width follows "
+          "the same per-variant Config as its own name")
+    with tempfile.TemporaryDirectory(
+            prefix='optional_params_param_type_variant_') as tmpdir:
+        result, _projectPath, dbPath = _build_param_type_variant_project(tmpdir)
+        if result.returncode != 0:
+            check(False, "parameterizable type payload variant build must "
+                          f"succeed:\nSTDOUT: {result.stdout}\n"
+                          f"STDERR: {result.stderr}")
+            return
+        check(True, "parameterizable type payload variant build succeeds")
+
+        proj = projectOpen(dbPath)
+        top = proj.getBlockData(proj.getQualBlock('top'))
+        conns = [conn for conns in top['connectDouble'].values()
+                 for conn in conns.values()]
+        check_equal(len(conns), 1, "the fixture wires exactly one channel")
+        channel = intf_gen_utils.sc_gen_block_channels(conns[0], proj, top)
+        check_equal(
+            channel['channel_decl'],
+            'ts_proto_variant_channel<lT, clog2(40+1), pT<consumerV0Config>, '
+            'consumerV0Config::PW> outA;',
+            "the channel spells the payload's width against the same "
+            "per-variant Config as its own name, not the unqualified Config "
+            "scope of the non-templated top")
+        check('Config::PW' not in
+              channel['channel_decl'].replace('consumerV0Config::PW', ''),
+              "the width never falls back to the bare, undeclared Config "
+              "scope")
+
+
 def test_param_type_payload_missing_backing_param():
     """The same parameterizable type payload, but the consumer endpoint
     declares an unrelated param instead of the payload's actual backing
@@ -1310,6 +1445,7 @@ def main():
 
     test_typestruct_datatype_rejects_mismatched_kind()
     test_param_type_payload_builds_and_generates()
+    test_param_type_variant_channel_width()
     test_param_type_payload_missing_backing_param()
     test_cross_interface_bind_kind_mismatch()
 
