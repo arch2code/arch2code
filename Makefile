@@ -369,6 +369,36 @@ xproj-inherit-layout:
 	    rm -f $(XPROJ_PARAM_DIR)/inhLayoutBad/db.log; \
 	fi
 
+.PHONY : xproj-inferred-port
+# An undeclared port binds its channel directly, so its instance must resolve
+# at the channel's Config. infPort (both undeclared ends inherit) must pass;
+# infPortBad's uLeaf is reached by a connection and a connectionMap that both
+# disagree with it and must be rejected at db, once for each.
+# Adjudicated at db and never built. Shares no sub-project, so needs no ordering.
+xproj-inferred-port:
+	make -C $(XPROJ_PARAM_DIR)/infPort clean
+	make -C $(XPROJ_PARAM_DIR)/infPort -j db
+	# A rejected run still writes the db file, which would satisfy the db target; clean it first.
+	make -C $(XPROJ_PARAM_DIR)/infPortBad clean
+	@if make -C $(XPROJ_PARAM_DIR)/infPortBad -j db > $(XPROJ_PARAM_DIR)/infPortBad/db.log 2>&1; then \
+	    echo "ERROR: infPortBad db build succeeded; an undeclared port binding a mismatched Config is no longer adjudicated"; \
+	    rm -f $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
+	    exit 1; \
+	elif ! grep -qF "instance 'uLeaf' of block 'xpIpbLeaf' declares no ports: entry for port 'out'" $(XPROJ_PARAM_DIR)/infPortBad/db.log; then \
+	    echo "ERROR: infPortBad was rejected, but not for uLeaf's connection to uSnk"; \
+	    cat $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
+	    rm -f $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
+	    exit 1; \
+	elif ! grep -qF "instance 'uLeaf' of block 'xpIpbLeaf' declares no ports: entry for port 'in'" $(XPROJ_PARAM_DIR)/infPortBad/db.log; then \
+	    echo "ERROR: infPortBad was rejected, but not for uLeaf's connectionMap boundary port"; \
+	    cat $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
+	    rm -f $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
+	    exit 1; \
+	else \
+	    echo "OK: infPortBad rejected at db: undeclared ports bind a channel typed at another Config"; \
+	    rm -f $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
+	fi
+
 .PHONY : xproj-variant-unique
 # One block's variant declared in two files of ONE project: both declarations
 # key on the same (block, variant, project), so one Config survives and the
@@ -542,7 +572,7 @@ unittest:
 	cd unittest && ./run_all_tests.sh
 
 .PHONY : push-test pipeline-test
-pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-nested-router xproj-variant-unique xif
+pipeline-test: diagram-and-doc nested hello-world mixed pySocket in-and-out lint-axi lint-hier apbDecode axiDemo axi4sDemo hierVlDemo ip-test simple-ip xproj-param xproj-matrix xproj-reuse xproj-const xproj-depth xproj-twoctx xproj-inherit xproj-container-layout xproj-inherit-layout xproj-inferred-port xproj-nested-router xproj-variant-unique xif
 push-test: clean unittest pipeline-test
 
 # AI agent rule/skill install targets (agents-setup, cursor-setup, agent-dev-setup, ...).

@@ -71,6 +71,17 @@
   failing at `make db` with its asserted diagnostic. New untracked files for the user to commit:
   those three plus `examples/simple_ip/ip/registrar/ip_ipRegsVariantConfig.cppm` and
   `examples/ip_test/ip/registrar/ip_ipRegsVariantConfig.cppm`.
+- **Step 13 inferred-port gate LANDED 2026-09-11 (user ruling: valid shape, db stopgap).** An
+  undeclared port of a `params:`-declaring end on a parameterizable channel must resolve at the
+  channel's Config; `make db` rejects the mismatch naming both sides and the two fixes. Fixtures
+  `infPort`/`infPortBad`, gate `xproj-inferred-port` in `pipeline-test` (baseline now 4 `OK:`).
+  Value-keyed payload types lift the rejection. Full gate set green on the final tree; the step 15
+  (a) migrate proof also ran (§6, step 13, "Inferred-port Config gate"). Uncommitted, ready to stage.
+- **Step 12a (d) follow-ups (ii) and (iii) LANDED 2026-09-11.** The create-side cond-row copies
+  and the hardcoded `foreignConfig` fileMap key lookup collapse into `artifactPaths.blockCondRow`
+  and `artifactPaths.configModuleFileDef`. Behaviour-preserving; build manifests byte-identical on
+  five examples, full gate set at baseline (§6, step 12a follow-up (d), "Follow-ups (ii) and
+  (iii)"). Follow-up (i) stays open. Uncommitted, ready to stage.
 - **artifactPaths extraction, LANDED 2026-09-10.** `expandNewModulePath`, `fileMapCondMatch` and
   `getRegistrarFiles` moved verbatim from `pysrc/processYaml.py` into the new `pysrc/artifactPaths.py`;
   ten callers repointed, no re-export. Behaviour-preserving; reviewed categorically, review applied.
@@ -1595,11 +1606,27 @@ Rule 7 is split out as step 12b, below, and untouched by this entry.
   `No error`, 0 `ERROR:`, 3 `OK:`, 0 stale-registrar warnings; pro 14 `No error`, 0 warnings;
   product gen diff-stat builder and isp_shared only, 0 warnings, model and `VL_DUT=1` runs two
   `No error` each; `.gen/build.mk` byte-identical on simple_ip and dpTop.
-  **Follow-ups opened here, OPEN:** (i) the manifest still derives its compile set itself; sharing
+  **Follow-ups opened here ((ii) and (iii) LANDED 2026-09-11, next bullet; (i) OPEN):** (i) the manifest still derives its compile set itself; sharing
   needs the view to return per-artifact rows (`fileDef`, path, layout, owner). (ii) The create-side
   cond-row copies (`createBuildManifest.condRow`, `migrateOrphans.py` ~322) should read one helper
   like `getBlockCondRow`. (iii) `processYaml.py` ~5685 still hardcodes `fileMap['foreignConfig']`
   by key name.
+- **Follow-ups (ii) and (iii) LANDED 2026-09-11.** One cond-row builder,
+  `artifactPaths.blockCondRow(blockRow, blocksWithParams)`, replaces the three create-side copies:
+  `createBuildManifest.condRow`, `migrateOrphans._condRow`, and a third the review found in
+  `projectCreate`'s testbench-variant validator (`processYaml.py` ~4297). One selector,
+  `artifactPaths.configModuleFileDef(fileMap)`, picks the Config-module fileMap entry by its flags
+  (`foreignConfig` set, `variant` not set, one-element unpack so zero or several matches raise) for
+  both `projectOpen.__init__` and `projectCreate.calcConfigModules`, which had hardcoded the
+  `foreignConfig` key. `projectOpen.getBlockCondRow` stays on the block config view: the reviewer
+  confirmed `blockKey in data['blocksparams']` equals `bool(row.get('params'))` on the open side
+  (blocks.params is a list subtable keyed by the parent) but judged a second open-side source of
+  the flag the worse shape. Behaviour-preserving, VERIFIED BY EXECUTION on the final tree:
+  `.gen/build.mk` byte-identical before and after on simple_ip, dpTop, rtInh, xif and ip_test;
+  unit 129/129; base pipeline exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale; pro 14 "No
+  error", 0 warnings; product `make clean && make gen -j` diff-stat builder, isp_shared and the
+  deleted header only, model run and `VL_DUT=1` run (`--vlInst=tb.debayer`) two "No error" each.
+  (i) stays OPEN. Uncommitted, ready to stage.
 - **artifactPaths extraction, LANDED 2026-09-10.** The three path-resolution functions the stale
   registrar work made shared (`expandNewModulePath`, `fileMapCondMatch`, `getRegistrarFiles`, 122
   lines) moved out of `pysrc/processYaml.py` into `pysrc/artifactPaths.py`, whose only imports are
@@ -1796,7 +1823,57 @@ A step planned as YAML-only needed three generator fixes on the way, each found 
 2. **Partial-ports completeness rejected an undeclarable register-connection port.** Adding explicit `ports:` to `interpolate` made `validateDeclaredPorts` demand a `ports:` entry for `bayer_pattern`, a plain `registerConnections:` row, but the schema requires `ports:`'s `interface:` field to name a real `interfaces:` entry, and a register connection is never declared through that mechanism, so no legal entry exists. Fixed in the generator: `validateDeclaredPorts` (`pysrc/processYaml.py`, the completeness loop) now exempts an inferred port whose `sourceType` is `'registers'` or `'memories'`, the same way it already exempts `registerPorts:` names and connectionMap-declared boundary ports. Fixture: `unittest/test_ports_register_memory_connections_independent.py`.
 3. **The VL build manifest and the wrapper renderer both assumed a container-sourced variant is never a block's ONLY variant.** `templates/systemVerilog/module_hdl_wrapper.py::render_sv` rendered pair-specific concrete registrations only inside the standalone arm, so a variant that is fully container-sourced (excluded from `standaloneVariants`) fell to `render_non_parameterizable`, discarding the pair-specific module the parent-child pair contract already computed. `config/createBuildManifest.py`'s block-mode verilated-top loop recorded a bare `<block>_hdl_sv_wrapper` top whenever a `hasOwnParams` block's every declared variant is container-sourced, because its variant list was empty and it fell back to the un-suffixed stub, even though the pair loop already records the real top against the same physical file. Both fixed in the generator. Fixture: `unittest/test_container_param_vl_wrapper_migration.py`, which reproduces the exact migration (scaffold the wrapper while the variant still looks standalone, then edit it to `containerParam:` in place, without re-scaffolding) that made the defect reachable only once a design does exactly what this step does.
 
-- **Defect found on the way, OPEN.** A params-declaring child whose ports are top-down inferred receives no cross-interface annotation (`annotate()` returns `None` when `declaredChildInterfaceKey()` is empty), so when its Config type differs from the channel's the container binds the port directly and the failure surfaces as a C++ compile error, not a db diagnostic. Either emit the thunker for inferred ports too, or reject the shape at db naming the block and the skill rule. No fixture; the product tree before this step was the only instance.
+- **Defect found on the way, RULED 2026-09-11 (user): valid shape, db stopgap.** A params-declaring child whose ports are top-down inferred receives no cross-interface annotation (`annotate()` returns `None` when `declaredChildInterfaceKey()` is empty), so when its Config type differs from the channel's the container binds the port directly and the failure surfaces as a C++ compile error, not a db diagnostic. Either emit the thunker for inferred ports too, or reject the shape at db naming the block and the skill rule. No fixture; the product tree before this step was the only instance.
+  **Ruling.** The shape is valid under the principle that SystemVerilog guides SystemC: the
+  container instantiates the child with the variant's literals and the wire carries the
+  container's struct, so SV accepts it whenever the values agree, which rule 9 already checks.
+  SystemC fails only because a payload type is one C++ type per Config. The fix of record is the
+  value-keyed payload type direction; until it lands `make db` rejects an undeclared port of a
+  params-declaring end whose Config identity differs from the channel's (its container's for a
+  connectionMap boundary, the elected end's for a connection; election as `_connectionBindings`
+  already mirrors from the view's `resolveConnectionConfig`), only when the payload is
+  parameterizable, since a fixed payload binds directly regardless. The three alternatives
+  weighed and not taken: emit the same-interface thunker for inferred ports (adds SystemC-only
+  adapters the direction retires), rule the shape invalid (forbids equal-value designs SV
+  accepts), start the value-keyed step now (larger change). Corpus scan 2026-09-11, verified by
+  the supervisor: no in-tree instance of the failing shape; the portless params blocks bound to
+  a variant are containers whose own ports are never connected (`xpDpWrap`, `xpCpWrap`,
+  `xpRtWrap`) and one fixture leaf reached only over a register connection. Fixtures
+  `examples/xprojParam/infPort` and `infPortBad`, gate `xproj-inferred-port`.
+- **Inferred-port Config gate LANDED 2026-09-11, uncommitted.** `validatePorts` checks an undeclared
+  port at the two points that used to skip it: the connection arm and the connectionMap arm. The
+  check fires only for a `params:`-declaring end whose connection or connectionMap row carries
+  `isParameterizable` (the schema auto field, read directly). The end's identity comes from
+  `_endConfigIdentity`, a two-arm create-side mirror of `configTypeIdentity`: an inheriting end is
+  `('container',)`, otherwise `('variant', declarer, block, variant)` with the declarer read by
+  direct subscript from `INSTANCEVARIANTDECLARERS` (`_resolveInstanceConfigFields` and
+  `configTypeIdentity` are `projectOpen` methods; the review judged hoisting a worse shape than the
+  two-arm mirror because each side derives from different inputs, and confirmed arm-by-arm
+  equality including the other-project declarer and the container-sourced variant). The channel's
+  identity is the elected end's for a connection (`_electConnectionEnd`, hoisted once per connection
+  out of `_connectionBindings`, Site behaviour unchanged) and `('container',)` for a connectionMap,
+  which matches the view: a connectionMap row carries no `ends`, so `resolveConnectionConfig` returns
+  None and `configTypeIdentity(None)` is `('container',)`. The diagnostic names the instance, block,
+  port, both identities in words and the two fixes (`inheritContainerParam: true` on every
+  undeclared end of the channel, or `ports:` on reusable IP so an adapter is generated). Fixtures
+  `examples/xprojParam/infPort` (both undeclared ends inherit, db accepts) and `infPortBad` (uLeaf at
+  its own variant, rejected twice: the boundary map at the container's Config, the inner connection
+  at uSnk's variant `snk`, every value 16 so only this check fires). Pre-fix measurement: `infPortBad`
+  `make db` exit 0. Review applied: dead None and `'default'` arms removed, `_interfaceIsParameterizable`
+  deleted in favour of the row field, a wrong remedy sentence (inherit on one end, which leaves a
+  connection unequal to the other end's variant) corrected, three prose claims that uWrap has no
+  rival corrected (uDrv is one; uWrap wins as dst), the README claim that db rejects only unequal
+  values corrected. Found on the way: the gate's first accepting arm reused `inhVar`, which
+  `xproj-inherit` builds in parallel under `-j`; the shared clean deleted its db mid-run and the
+  pipeline exited 2. Replaced by the dedicated `infPort` twin. Gates on the final tree, VERIFIED BY
+  EXECUTION 2026-09-11: unit 129 of 129; base `make clean && make pipeline-test -j` exit 0, 70 "No
+  error", 0 `ERROR:`, 4 `OK:`, 0 stale registrar, 0 stale vl_wrap; pro 14 "No error", 0 warnings;
+  product `make clean && make gen -j` diff-stat builder, isp_shared and the deleted header only,
+  model run and `VL_DUT=1` run two "No error" each; `make agents-setup` run in the product. Design
+  doc §4/§5 and the skill source carry the rule. Also this session: the step 15 (a) migrate proof on
+  disposable copies of `examples/xif` (the header survives `make migrate-hierarchical` and the
+  finishing `make migrate` deletes it, converging; the relocation half is not exercisable in-tree
+  since no functional example has a decomposition subdirectory).
 - **What it buys.** The templated-Config shape of step 7c on the product tree, and the product tree's independence from the whole-Config shorthand. Layout adjudication on the two connections is no longer at stake: step 14 adjudicates them on inheritContainerParam already.
 - **The YAML, as landed.** `u_preprocess`/`u_interpolate` on `variant: default`, every `preprocess`/`interpolate` parameter row rebound to `{ containerParam: <same name> }`. `preprocess` and `interpolate` each gained an explicit `ports:` map (rule 5): `video_raw_stream`/`bayer_preprocess_stream` for `preprocess`, `bayer_preprocess_stream`/`video_rgb_stream` for `interpolate`; `interpolate`'s `bayer_pattern` register connection stays out of that map (fix 2 exempts it). The two block-level comments and the comment above `parameters:` were reworded to state the standing behaviour.
 - **What changed in the emitted product.** The children's Config becomes `debayer_<child>DefaultConfig<Config>` (a template over the container's Config, step 7c) instead of the container's bare `Config`; the VL registrar binds the forwarded container label to that nested Config (step 10). `model/debayer.cppm` gained three `rdy_vld_port_thunker` members (`thunker_bayer_preprocess_stream_u_preprocess`, `thunker_u_preprocess`, `thunker_u_interpolate`) bridging the previously-direct binds. User code in `model/preprocess.cppm` and `model/interpolate.cppm` reads `Config::<param>` and did not move, because the member names are the same; both files are untouched (0 diff).

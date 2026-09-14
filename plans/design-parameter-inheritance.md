@@ -541,6 +541,18 @@ Two containers backed by the same constant, and two backed by different constant
 same `maxValue`, are both accepted; only a container whose accepted range exceeds the child's
 is rejected, and only at the site where that happens.
 
+- **An undeclared port of a params-declaring block binding a channel typed at another Config**
+  (ruled 2026-09-11, a stopgap). A port the block does not declare in `ports:` is inferred
+  top-down and binds the channel directly, so its payload type is the channel's. When that
+  payload is parameterizable and the instance resolves at a Config other than the one the
+  channel is typed at (its container's for a boundary port, the elected end's for a
+  connection), `make db` rejects it naming the block, the instance, the port and both Configs.
+  The shape is valid in principle: SystemVerilog accepts it whenever the values agree, and the
+  value-keyed payload types recorded under "Direction, not a rule" give equal values one C++
+  type, at which point this rejection is lifted. Until then, inherit the container's
+  configuration, or declare the port in `ports:` if the block is reusable IP so an adapter is
+  generated. Fixtures: `examples/xprojParam/infPort` (accepts) and `infPortBad` (rejects).
+
 ### What is not checked
 
 `maxValue` is the whole of the compatibility relation. It bounds the magnitude the container
@@ -580,10 +592,13 @@ fixed-width by rule (§4): since 2026-09-11 a parameterizable structure on an ad
 interface is rejected at `make db`, so the parameter goes in the register payload, as
 `examples/xprojParam/rtInh` does with its leaf's `cfg` register.
 
-One thing is not covered, and an author has to know it:
+Two things are not covered, and an author has to know them:
 
 - **`valueType` is not compared** between the container's parameter and the child's; see
   "What is not checked" in §4.
+- **A top-down port at a Config other than the channel's is rejected, not bound** (§4, ruled
+  2026-09-11). SystemVerilog accepts the shape at equal values; SystemC binds one payload type
+  per Config today. The value-keyed payload type direction lifts the rejection.
 
 A third item stood here until 2026-09-07: that a block's Config could carry parameters
 declared in the same file that the block does not name. Since 2026-09-05 a block's Config

@@ -171,6 +171,8 @@ Two sibling instances that bind a `Config`-templated channel between them need t
 
 A register-bus router block (one with `addressBlock:`) may declare `params:` and inherit like any other block; the generator checks its junction with the parent router at the configuration the container binds. The register bus itself stays fixed-width: `make db` rejects an `addressBus` interface that carries a parameterizable structure, so size a register's payload by a parameter, never the bus structure. `make db` also rejects a `hasRtl: true` container that declares no `params:` yet wires two children over a parameterizable interface, because its SystemVerilog module would name a struct type no package declares; give the container `params:` and inherit or bind the children, make the structure fixed-width, or drop `hasRtl`.
 
+A block that declares `params:` but no `ports:` binds each inferred port to the channel directly, so its instance must resolve at the Config the channel is typed at. `make db` rejects an inferred port on a parameterizable payload whose instance selects another Config, naming both. Inherit the container's configuration, or declare the port in `ports:` if the block is reusable IP so an adapter is generated.
+
 Use the shorthand only where its conditions hold, all checked at `make db`:
 
 *   The child's `params:` must be a by-name subset of the container's.

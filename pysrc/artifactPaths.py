@@ -66,6 +66,20 @@ def fileMapCondMatch(fileDefinition, condData):
                 break
     return makeFile
 
+def blockCondRow(blockRow, blocksWithParams):
+    # fileMap cond fields are block columns plus hasOwnParams, which is the block's
+    # own params: relationship rather than a column.
+    row = dict(blockRow)
+    row['hasOwnParams'] = int(blockRow['blockKey'] in blocksWithParams)
+    return row
+
+def configModuleFileDef(fileMap):
+    # The owner-qualified Config module entry. foreignConfig marks both
+    # owner-qualified registrar entries; the variant-bearing one is the SV wrapper top.
+    (fileDef,) = [fd for fd in fileMap.values()
+                  if fd.get('foreignConfig', False) and not fd.get('variant', False)]
+    return fileDef
+
 def blockModeStems(fileDef, blockRow, variants):
     """File stems a block-mode fileMap entry scaffolds or expects for one
     block: one `<block>_<variant>` per declared variant when the entry

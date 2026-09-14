@@ -61,7 +61,7 @@ from dataclasses import dataclass, field
 from pysrc.migrateCommon import (_isGenerated, classifyGeneratedDir,
                                  extraVarRefs, SKIP_DIRS)
 from pysrc.migrateIncludes import _userIncludeSites
-from pysrc.artifactPaths import expandNewModulePath, fileMapCondMatch
+from pysrc.artifactPaths import blockCondRow, expandNewModulePath, fileMapCondMatch
 
 
 # ---------------------------------------------------------------------------
@@ -328,14 +328,6 @@ def _reportUnsupportedLayout(report, context, mode):
         f"are not swept (functional layout only)"))
 
 
-def _condRow(prj, blockRow, blocksParams):
-    # hasOwnParams (the block declares its own params:) is the one cond field not
-    # stored on the block row; it is the block's own params: relationship.
-    condData = dict(blockRow)
-    condData["hasOwnParams"] = int(blockRow["blockKey"] in blocksParams)
-    return condData
-
-
 def expandFileMap(prj, fileMap, report, contexts):
     """Expand `fileMap` over the current DB to the concrete set of generated file
     paths (each expanded path with each declared extension).
@@ -367,7 +359,7 @@ def expandFileMap(prj, fileMap, report, contexts):
 
     # block mode: one artifact per block per matching block-mode entry.
     for blockRow in blockByKey.values():
-        condData = _condRow(prj, blockRow, blocksParams)
+        condData = blockCondRow(blockRow, blocksParams)
         layout = _layoutForContext(prj, blockRow["_context"])
         for fileType, fileDef in fileMap.items():
             if fileDef.get("mode", "block") != "block":

@@ -109,13 +109,6 @@ def create(prj):
     def layoutForContext(context):
         return projectLayout[prj.contextOwningProject[context]]
 
-    def condRow(blockRow):
-        # hasOwnParams is the block's own params: relationship, the one cond
-        # field not stored on the block row.
-        condData = dict(blockRow)
-        condData['hasOwnParams'] = int(blockRow['blockKey'] in blocksParams)
-        return condData
-
     def record(fileDef, filePath, objLayout, rootOwnedGen, svCompile=True):
         role = objLayout['segments'][fileDef['basePath']]['buildGroup']
         if role is None:
@@ -149,7 +142,7 @@ def create(prj):
 
     # block mode: one artifact per block per matching block-mode entry.
     for blockRow in blockByKey.values():
-        condData = condRow(blockRow)
+        condData = artifactPaths.blockCondRow(blockRow, blocksParams)
         objLayout = layoutForContext(blockRow['_context'])
         rootOwnedGen = prj.contextOwningProject[blockRow['_context']] == rootProject
         for fileDef in fileMap.values():
@@ -185,7 +178,7 @@ def create(prj):
             # directory, so it resolves under the assembler project layout.
             objLayout = layoutForContext(blockByKey[assemblerKey]['_context'])
             childRow = blockByKey[childKey]
-            childCond = condRow(childRow)
+            childCond = artifactPaths.blockCondRow(childRow, blocksParams)
             pair = registrarPairs[(assemblerKey, childKey)]
             for fileDef in blockRegistrarMap.values():
                 if not artifactPaths.fileMapCondMatch(fileDef, childCond):
@@ -205,7 +198,7 @@ def create(prj):
         # uses, so manifest and emitter agree.
         for (owner, childKey), entry in sorted(prj.config.getConfig('CONFIGMODULES').items()):
             childRow = blockByKey[childKey]
-            childCond = condRow(childRow)
+            childCond = artifactPaths.blockCondRow(childRow, blocksParams)
             parentRow = blockByKey[entry['parentKey']]
             objLayout = layoutForContext(parentRow['_context'])
             for fileDef in configModuleRegistrarMap.values():
@@ -219,7 +212,7 @@ def create(prj):
         # A generated file in an owned registrar directory that the contract does
         # not name is stale. Warn here; newmodule performs the deletion.
         registrarFiles, registrarDirs = artifactPaths.getStaleSegmentFiles(
-            prj, {blockKey: condRow(row) for blockKey, row in blockByKey.items()},
+            prj, {blockKey: artifactPaths.blockCondRow(row, blocksParams) for blockKey, row in blockByKey.items()},
             fileMap, 'registrar')
         generatedInDirs, _ = migrateCommon.classifyGeneratedDir(registrarDirs)
         staleRegistrarFiles = sorted(set(generatedInDirs) - registrarFiles)
@@ -233,7 +226,7 @@ def create(prj):
     # name is stale (left behind by a block/variant rename). Warn here;
     # newmodule performs the deletion.
     vlWrapFiles, vlWrapDirs = artifactPaths.getStaleSegmentFiles(
-        prj, {blockKey: condRow(row) for blockKey, row in blockByKey.items()},
+        prj, {blockKey: artifactPaths.blockCondRow(row, blocksParams) for blockKey, row in blockByKey.items()},
         fileMap, 'vl_wrap')
     generatedInDirs, _ = migrateCommon.classifyGeneratedDir(vlWrapDirs)
     staleVlWrapFiles = sorted(set(generatedInDirs) - vlWrapFiles)
@@ -373,7 +366,7 @@ def create(prj):
 
     dutTops = dict()
     for blockRow in blockByKey.values():
-        condData = condRow(blockRow)
+        condData = artifactPaths.blockCondRow(blockRow, blocksParams)
         objLayout = layoutForContext(blockRow['_context'])
         for fileDef in fileMap.values():
             if fileDef.get('mode', 'block') != 'block':
@@ -414,7 +407,7 @@ def create(prj):
         # newmodule). The pair set is already owner-qualified and deduped.
         for (owner, childKey), entry in sorted(prj.config.getConfig('FOREIGNCONFIGHEADERS').items()):
             childRow = blockByKey[childKey]
-            childCond = condRow(childRow)
+            childCond = artifactPaths.blockCondRow(childRow, blocksParams)
             parentRow = blockByKey[entry['parentKey']]
             objLayout = layoutForContext(parentRow['_context'])
             for fileDef in foreignRegistrarMap.values():
@@ -432,7 +425,7 @@ def create(prj):
         registrarPairs = prj.config.getConfig('REGISTRARPAIRS')
         for (parentKey, childKey), pair in sorted(registrarPairs.items()):
             childRow = blockByKey[childKey]
-            childCond = condRow(childRow)
+            childCond = artifactPaths.blockCondRow(childRow, blocksParams)
             parentRow = blockByKey[parentKey]
             objLayout = layoutForContext(parentRow['_context'])
             for fileDef in pairVlRegistrarMap.values():

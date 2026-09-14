@@ -953,6 +953,44 @@ make xproj-inherit-layout   # inhLayout accepts, inhLayoutBad rejects at db nami
 and never built. Shares no sub-project with any other target, so it needs no
 ordering.
 
+## The inferred-port Config gate (`infPort` / `infPortBad`)
+
+A block that declares `params:` but no `ports:` entry for a port has that port
+inferred top-down: its SystemC port binds the connection's or connectionMap's
+channel directly, with no adapter to reconcile a mismatched Config. The check
+is on Config identity, not on the bound values: SystemVerilog accepts the
+shape whenever the values agree, while SystemC binds one payload type per
+Config, so `make db` rejects an undeclared port whose instance resolves at a
+different Config than the channel even at equal values, until payload types
+are keyed on values. `infPortBad` binds every parameter to 16 and is rejected
+regardless.
+
+`infPortBad` is db-only. `xpIpbWrap`, `xpIpbLeaf` and `xpIpbSnk` declare no
+`ports:` at all; `xpIpbDrv` does, so its own junction runs the ordinary
+cross-interface check instead. `uLeaf` is reached two ways that both disagree
+with it:
+
+- A connectionMap forwards `xpIpbWrap`'s boundary port to `uLeaf`, so the
+  channel is typed at the container's own configuration while `uLeaf` carries
+  its own variant `own`.
+- A connection elects the dst end, `uSnk` at variant `snk`, to type the
+  channel, leaving `uLeaf`'s own variant `own` unequal to it.
+
+`uWrap` is never rejected: it is the dst end of `topLink`, so it wins the
+election against `uDrv` and types the channel itself.
+
+`infPort` is `infPortBad`'s twin, db-only as well: `uLeaf` and `uSnk` inherit
+their container's Config instead of naming their own variant, so both
+undeclared ends always resolve at the channel's Config and `make db` accepts.
+
+```
+make xproj-inferred-port   # infPort accepts, infPortBad rejects at db naming uLeaf twice
+```
+
+`make xproj-inferred-port` is part of `pipeline-test`. Adjudicated at `make db`
+and never built. Shares no sub-project with any other target, so it needs no
+ordering.
+
 ## The two-context block (`twoCtx`)
 
 One block, `xpTwoCtxDut`, whose `params:` names one parameterizable constant

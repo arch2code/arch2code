@@ -1,0 +1,96 @@
+# The Config gate on an undeclared (top-down inferred) port: the rejecting arm.
+#
+# xpIpbWrap, xpIpbLeaf and xpIpbSnk declare no ports, so each port binds its
+# channel directly. uLeaf is reached two ways that both type the channel at
+# another Config: the connectionMap at xpIpbWrap's own Config, and wrapLink at
+# uSnk's variant 'snk', because dst wins the election. Both must name uLeaf.
+
+ipParameters:
+    constants:
+        IPB_W: { value: 8, maxValue: 32, desc: "Pixel width" }
+    types:
+        ipbDataT: { width: IPB_W, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+structures:
+    ipbDataSt:
+        data: { varType: ipbDataT, desc: "Parameterizable pixel payload" }
+
+interfaces:
+    ipbIf:
+        desc: "Parameterized pixel ready/valid stream carrying the width under test"
+        interfaceType: rdy_vld
+        structures:
+            - { structure: ipbDataSt, structureType: data_t }
+
+blocks:
+    xpIpbTop_tb:
+        desc: "Testbench container for xpIpbTop"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpIpbTop:
+        desc: "Probe top; adjudicated at make db and never built"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpIpbDrv:
+        desc: "Driver declaring its own port; its junction is never in question"
+        params: [IPB_W]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: ipbIf, direction: src }
+    xpIpbWrap:
+        desc: "Container whose boundary port is inferred top-down; wins its connection's election as dst"
+        params: [IPB_W]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpIpbLeaf:
+        desc: "The instance under test: an undeclared port reached two ways, both rejected"
+        params: [IPB_W]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpIpbSnk:
+        desc: "Sink; the dst end of its connection, so it elects its own channel and is never rejected"
+        params: [IPB_W]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+
+instances:
+    xpIpbTop_tb: { container: xpIpbTop_tb, instanceType: xpIpbTop_tb, instGroup: top }
+    u_xpIpbTop:  { container: xpIpbTop_tb, instanceType: xpIpbTop,    instGroup: top }
+    uDrv:  { container: xpIpbTop,  instanceType: xpIpbDrv,  instGroup: top, variant: drv }
+    uWrap: { container: xpIpbTop,  instanceType: xpIpbWrap, instGroup: top, variant: use }
+    uLeaf: { container: xpIpbWrap, instanceType: xpIpbLeaf, instGroup: top, variant: own }
+    uSnk:  { container: xpIpbWrap, instanceType: xpIpbSnk,  instGroup: top, variant: snk }
+
+connections:
+    - { interface: ipbIf, src: uDrv,  srcport: out, dst: uWrap, dstport: in, name: topLink }
+    - { interface: ipbIf, src: uLeaf, srcport: out, dst: uSnk,  dstport: in, name: wrapLink }
+
+connectionMaps:
+    - { interface: ipbIf, block: xpIpbWrap, port: in, direction: dst, instance: uLeaf, instancePort: in }
+
+parameters:
+    xpIpbDrv:
+        drv:
+            IPB_W: 16
+    xpIpbWrap:
+        use:
+            IPB_W: 16
+    xpIpbLeaf:
+        own:
+            IPB_W: 16
+    xpIpbSnk:
+        snk:
+            IPB_W: 16

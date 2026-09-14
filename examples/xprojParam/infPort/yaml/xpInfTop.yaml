@@ -1,0 +1,89 @@
+# The Config gate on an undeclared (top-down inferred) port: the accepting arm.
+#
+# uLeaf and uSnk are reached the same two ways as infPortBad's uLeaf, but both
+# inherit their container's Config instead of naming their own variant, so
+# both ends always resolve at the channel's Config and make db must accept.
+
+ipParameters:
+    constants:
+        INF_W: { value: 8, maxValue: 32, desc: "Pixel width" }
+    types:
+        infDataT: { width: INF_W, maxBitwidth: 32, desc: "Parameterizable pixel word" }
+
+structures:
+    infDataSt:
+        data: { varType: infDataT, desc: "Parameterizable pixel payload" }
+
+interfaces:
+    infIf:
+        desc: "Parameterized pixel ready/valid stream carrying the width under test"
+        interfaceType: rdy_vld
+        structures:
+            - { structure: infDataSt, structureType: data_t }
+
+blocks:
+    xpInfTop_tb:
+        desc: "Testbench container for xpInfTop"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpInfTop:
+        desc: "Probe top; adjudicated at make db and never built"
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpInfDrv:
+        desc: "Driver declaring its own port; its junction is never in question"
+        params: [INF_W]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+        ports:
+            out: { interface: infIf, direction: src }
+    xpInfWrap:
+        desc: "Container whose own boundary port is inferred top-down; always elects its own channel"
+        params: [INF_W]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpInfLeaf:
+        desc: "The instance under test: an undeclared port reached two ways, both inherited and accepted"
+        params: [INF_W]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+    xpInfSnk:
+        desc: "Sink; the dst end of its connection, so it elects its own channel and is never rejected"
+        params: [INF_W]
+        hasMdl: false
+        hasVl: false
+        hasTb: false
+        hasRtl: false
+
+instances:
+    xpInfTop_tb: { container: xpInfTop_tb, instanceType: xpInfTop_tb, instGroup: top }
+    u_xpInfTop:  { container: xpInfTop_tb, instanceType: xpInfTop,    instGroup: top }
+    uDrv:  { container: xpInfTop,  instanceType: xpInfDrv,  instGroup: top, variant: drv }
+    uWrap: { container: xpInfTop,  instanceType: xpInfWrap, instGroup: top, variant: use }
+    uLeaf: { container: xpInfWrap, instanceType: xpInfLeaf, instGroup: top, inheritContainerParam: true }
+    uSnk:  { container: xpInfWrap, instanceType: xpInfSnk,  instGroup: top, inheritContainerParam: true }
+
+connections:
+    - { interface: infIf, src: uDrv,  srcport: out, dst: uWrap, dstport: in, name: topLink }
+    - { interface: infIf, src: uLeaf, srcport: out, dst: uSnk,  dstport: in, name: wrapLink }
+
+connectionMaps:
+    - { interface: infIf, block: xpInfWrap, port: in, direction: dst, instance: uLeaf, instancePort: in }
+
+parameters:
+    xpInfDrv:
+        drv:
+            INF_W: 16
+    xpInfWrap:
+        use:
+            INF_W: 16

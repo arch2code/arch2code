@@ -449,9 +449,7 @@ class projectOpen:
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
         self.blockModuleName = self.config.getConfig('BLOCKMODULENAME')
         self.filemap = self.config.getConfig('FILEMAP')
-        (self.configModuleFileDef,) = [fileDef for fileDef in self.filemap.values()
-                                       if fileDef.get('foreignConfig', False)
-                                       and not fileDef.get('variant', False)]
+        self.configModuleFileDef = artifactPaths.configModuleFileDef(self.filemap)
         global dirMacros
         dirMacros = self.config.getConfig('DIRS')
         global layoutConfig
@@ -4296,8 +4294,7 @@ class projectCreate:
             sourceBlocks = [b for b in self.variantSourceBlocks[qualBlock] if b != qualBlock]
             if not sourceBlocks:
                 continue
-            condData = dict(blockRow)
-            condData['hasOwnParams'] = int(qualBlock in blocksWithParams)
+            condData = artifactPaths.blockCondRow(blockRow, blocksWithParams)
             selected = [key for key, fileDefinition in fileMap.items()
                         if fileDefinition.get('dutVariant', False)
                         and artifactPaths.fileMapCondMatch(fileDefinition, condData)]
@@ -5720,7 +5717,7 @@ class projectCreate:
             current = parentKeys.get(anchorKey)
             if current is None or containerKey < current:
                 parentKeys[anchorKey] = containerKey
-        configDef = self.proj['fileGeneration']['fileMap']['foreignConfig']
+        configDef = artifactPaths.configModuleFileDef(self.proj['fileGeneration']['fileMap'])
 
         def newEntry(childKey, declaringProject):
             childBlock = blockByKey[childKey]['block']
@@ -6852,6 +6849,39 @@ class projectCreate:
             portEntry = blockRow.get('registerPorts', dict()).get(portName)
         return portEntry['interfaceKey'] if portEntry is not None else ''
 
+    def _endConfigIdentity(self, instRow):
+        # Mirrors configTypeIdentity for the ends validatePorts checks: an
+        # own-params instance either inherits or names a variant.
+        if instRow['inheritContainerParam']:
+            return ('container',)
+        blockRow = self.flatData['blocks'][instRow['instanceTypeKey']]
+        declarer = self.config.getConfig('INSTANCEVARIANTDECLARERS')[instRow['instanceKey']]
+        return ('variant', declarer, blockRow['block'], instRow['variant'])
+
+    def _configIdentityWords(self, identity):
+        if identity[0] == 'variant':
+            _, _project, block, variant = identity
+            return f"variant '{variant}' of block '{block}'"
+        return "its container's configuration"
+
+    def _checkInferredPortConfig(self, blockRow, instRow, portName,
+                                  channelIdentity, locationStr):
+        # An undeclared port binds the channel directly, so both must resolve at one Config.
+        endIdentity = self._endConfigIdentity(instRow)
+        if endIdentity == channelIdentity:
+            return
+        printError(
+            f"{locationStr}: instance '{instRow['instance']}' of block "
+            f"'{blockRow['block']}' declares no ports: entry for port "
+            f"'{portName}'. A top-down port binds the channel directly, but "
+            f"the instance resolves at {self._configIdentityWords(endIdentity)} "
+            f"while the channel is typed at "
+            f"{self._configIdentityWords(channelIdentity)}. "
+            f"Fixes: inheritContainerParam: true on every undeclared end of "
+            f"this channel, so all resolve at the container's Config; or, if "
+            f"'{blockRow['block']}' is reusable IP, declare port "
+            f"'{portName}' in its ports: so an adapter is generated.")
+
     def validatePorts(self):
         # Interface compatibility barrier: each connection end or connectionMap
         # carrying a bottom-up ports:/registerPorts: declaration is checked for
@@ -6897,12 +6927,12 @@ class projectCreate:
                 return [DEFAULTS_SITE]
             return sorted(siteIndex.sitesOf(containerBlockKey))
 
-        def _connectionBindings(conn, parentIfaceKey, containerBlockKey):
-            """The Sites the connection-side packed form resolves under.
-
-            An end declaring a different interface from the connection's is
-            bridged by an adapter and so cannot type the channel; only the
-            remaining ends are eligible to.
+        def _electConnectionEnd(conn, parentIfaceKey):
+            """The end instance whose Config types the connection's channel: a
+            leaf-parameterizable end wins over a transit one, dst wins a tie
+            between leaf ends, and an end declaring a different interface from
+            the connection's is bridged by an adapter and so cannot type it.
+            None means no end is eligible.
             """
             leaf_choice = None
             transit_choice = None
@@ -6912,15 +6942,17 @@ class projectCreate:
                 declaredKey = self._declaredPortInterfaceKey(blockRow, endRow['portName'])
                 if declaredKey and declaredKey != parentIfaceKey:
                     continue
-                choice = instanceSite(instRow)
                 if _blockHasOwnParams(blockRow):
                     if leaf_choice is None or endRow['direction'] == 'dst':
-                        leaf_choice = choice
+                        leaf_choice = instRow
                 elif blockRow['isParameterizable'] and transit_choice is None:
-                    transit_choice = choice
-            elected = leaf_choice or transit_choice
-            if elected:
-                return [elected]
+                    transit_choice = instRow
+            return leaf_choice or transit_choice
+
+        def _connectionBindings(elected, containerBlockKey):
+            """The Sites the connection-side packed form resolves under."""
+            if elected is not None:
+                return [instanceSite(elected)]
             return _containerBindings(containerBlockKey)
 
         # ------------------------------------------------------------
@@ -6933,6 +6965,7 @@ class projectCreate:
             if connContext == '_global':
                 continue
             parentIfaceKey = conn['interfaceKey']
+            elected = _electConnectionEnd(conn, parentIfaceKey)
             for _endDir, endRow in conn['ends'].items():
                 instanceKey = endRow['instanceKey']
                 instRow = instances_flat[instanceKey]
@@ -6949,9 +6982,13 @@ class projectCreate:
                     portEntry = blockRow.get('registerPorts', dict()).get(portName)
                     isRegisterBus = portEntry is not None
                 if not portEntry:
-                    # No bottom-up declaration; top-down inference governs, so
-                    # the port's interface IS the connection interface and
-                    # there are not two payloads to compare.
+                    # Top-down inference: the port takes the connection's interface and
+                    # binds its channel directly.
+                    if blockRow.get('params') and conn['isParameterizable']:
+                        self._checkInferredPortConfig(
+                            blockRow, instRow, portName, self._endConfigIdentity(elected),
+                            f"Block {blockRow['block']} instance '{instRow['instance']}', "
+                            f"connection '{connName}' (file {connContext})")
                     continue
                 portIface = portEntry['interface']
                 parentIfaceRow = interfaces_flat[parentIfaceKey]
@@ -6989,7 +7026,7 @@ class projectCreate:
                     # that block and never the _topInstance sentinel a root
                     # instance carries.
                     parentBindings = _connectionBindings(
-                        conn, parentIfaceKey, instRow['containerKey'])
+                        elected, instRow['containerKey'])
                     locationStr = (
                         f"Block {blockRow['block']} connection "
                         f"'{connName}' (file {connContext}) binds external "
@@ -7025,6 +7062,12 @@ class projectCreate:
             instPortName = cm['instancePortName']
             portEntry = declaredPorts.get(instPortName)
             if not portEntry:
+                # The up side is the container's own boundary port, typed on its Config.
+                if blockRow.get('params') and cm['isParameterizable']:
+                    self._checkInferredPortConfig(
+                        blockRow, instRow, instPortName, ('container',),
+                        f"Block {blockRow['block']} instance '{instRow['instance']}', "
+                        f"connectionMap '{cmName}' (file {cmContext})")
                 continue
             portIface = portEntry['interface']
             parentIfaceRow = interfaces_flat[parentIfaceKey]
