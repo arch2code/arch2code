@@ -56,9 +56,11 @@
 // during SystemC elaboration; that bind is performed in the constructor
 // body (which is only reached when the thunker is held as a container
 // member).
-// UpID/UpIDW and DownID/DownIDW are not convertible across widths, so both
-// ends of a bind must carry the same id_t: a transaction ID has to round-trip
-// unchanged. Template argument order matches the generator
+// The thunker moves each transaction as packed bits, and the ID occupies
+// exactly IDW of them, so both ends must agree on UpIDW == DownIDW for the
+// ID to round-trip unchanged. The C++ spelling of the ID type may differ
+// (project validation pairs type payloads by width, and a parameterizable
+// type spells as a 64-bit alias). Template argument order matches the generator
 // (pysrc/intf_gen_utils.py _thunker_member_type): up-required, down-required,
 // up-optional (in interface_defs order: ARU, RU, ID/IDW), down-optional
 // (ARU, RU, ID/IDW).
@@ -67,7 +69,7 @@ template <class UpA, class UpD, class DownA, class DownD,
           class DownARU = std::monostate, class DownRU = std::monostate, class DownID = _axiIdT, unsigned DownIDW = 4>
 class axi_read_port_thunker
 {
-    static_assert(std::is_same_v<UpID, DownID> && UpIDW == DownIDW, "a cross-interface bind must carry the same id_t on both ends");
+    static_assert(UpIDW == DownIDW, "a cross-interface bind must carry the same id_t width on both ends");
 public:
     // connectionMap shape: parent port reference.
     axi_read_port_thunker( const char* name_,
