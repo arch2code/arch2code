@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "push_ack_port_thunker.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -38,9 +37,6 @@ public:
     std::shared_ptr<xpCstSharedSrcBase<xpCstShared_xpCstSharedSrcUseConfig>> uSrc;
     std::shared_ptr<xpCstSharedChkBase<xpCstShared_xpCstSharedChkUseConfig>> uChk;
 
-    // cross-interface thunkers
-    push_ack_port_thunker<cshSt<xpCstShared_xpCstSharedChkUseConfig>, cshSt<xpCstShared_xpCstSharedSrcUseConfig>, true> thunker_out_uSrc;
-
     xpCstSharedWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpCstSharedWrap() override = default;
 
@@ -69,11 +65,11 @@ xpCstSharedWrap::xpCstSharedWrap(sc_module_name blockName, const char * variant,
         ,out("xpCstSharedChk_out", "xpCstSharedSrc")
         ,uSrc(std::dynamic_pointer_cast<xpCstSharedSrcBase<xpCstShared_xpCstSharedSrcUseConfig>>(instanceFactory::createInstance(name(), "uSrc", "xpCstSharedSrc", "use", "xpCstShared.xpCstShared_xpCstSharedWrap.xpCstShared_xpCstSharedSrc")))
         ,uChk(std::dynamic_pointer_cast<xpCstSharedChkBase<xpCstShared_xpCstSharedChkUseConfig>>(instanceFactory::createInstance(name(), "uChk", "xpCstSharedChk", "use", "xpCstShared.xpCstShared_xpCstSharedWrap.xpCstShared_xpCstSharedChk")))
-        ,thunker_out_uSrc("thunker_out_uSrc", out, uSrc->out, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // instance to instance connections via channel
+    uSrc->out(out);
     uChk->in(out);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

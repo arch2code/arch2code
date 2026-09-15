@@ -26,7 +26,8 @@ export namespace xpCppAxis_xpCppWrap_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpCppAxis_xpCppWrap_ns {
 // types
-template<typename Config> using wrapPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t WRAP_PIXEL_WIDTH> using wrapPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using wrapPixelT = wrapPixelT_v<Config::WRAP_PIXEL_WIDTH>;
 typedef uint8_t wrapTagT; // [8] Sample sequence tag
 typedef uint32_t wrapWordT; // [32] 32-bit header word
 typedef uint8_t wrapFlagT; // [8] 8-bit header flag
@@ -42,27 +43,27 @@ export namespace xpCppAxis_xpCppWrap_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpCppAxis_xpCppWrap_ns {
 // structures
-template<typename Config>
-struct wrapEqSt {
-    wrapPixelT<Config> data; //Pixel payload
+template<uint32_t WRAP_PIXEL_WIDTH>
+struct wrapEqSt_v {
+    wrapPixelT_v<WRAP_PIXEL_WIDTH> data; //Pixel payload
     wrapTagT tag; //Sample sequence tag
 
-    wrapEqSt() {}
+    wrapEqSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::WRAP_PIXEL_WIDTH + 8;
+    static constexpr uint16_t _bitWidth = WRAP_PIXEL_WIDTH + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const wrapEqSt<Config> & rhs) const {
+    inline bool operator == (const wrapEqSt_v<WRAP_PIXEL_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const wrapEqSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const wrapEqSt_v<WRAP_PIXEL_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
     }
-    inline friend ostream& operator << ( ostream& os,  wrapEqSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  wrapEqSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -77,69 +78,70 @@ struct wrapEqSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, wrapEqSt<Config>::_byteWidth);
+        memset(&_ret, 0, wrapEqSt_v<WRAP_PIXEL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::WRAP_PIXEL_WIDTH);
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, WRAP_PIXEL_WIDTH);
+        _pos += WRAP_PIXEL_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
         _pos += 8;
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (wrapPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::WRAP_PIXEL_WIDTH)) - 1));
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (WRAP_PIXEL_WIDTH)) - 1));
+        _pos += WRAP_PIXEL_WIDTH;
         tag = (wrapTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<wrapEqSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<wrapEqSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<wrapEqSt<Config>::_bitWidth> packed_data;
+        sc_bv<wrapEqSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::WRAP_PIXEL_WIDTH-1, _pos) = data;
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        packed_data.range(_pos+WRAP_PIXEL_WIDTH-1, _pos) = data;
+        _pos += WRAP_PIXEL_WIDTH;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<wrapEqSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<wrapEqSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (wrapPixelT<Config>) packed_data.range(_pos+Config::WRAP_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>) packed_data.range(_pos+WRAP_PIXEL_WIDTH-1, _pos).to_uint64();
+        _pos += WRAP_PIXEL_WIDTH;
         tag = (wrapTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit wrapEqSt(sc_bv<wrapEqSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit wrapEqSt(
-        wrapPixelT<Config> data_,
+    explicit wrapEqSt_v(sc_bv<wrapEqSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit wrapEqSt_v(
+        wrapPixelT_v<WRAP_PIXEL_WIDTH> data_,
         wrapTagT tag_) :
         data(data_),
         tag(tag_)
     {}
-    explicit wrapEqSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit wrapEqSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-template<typename Config>
-struct wrapOrderSt {
+template<typename Config> using wrapEqSt = wrapEqSt_v<Config::WRAP_PIXEL_WIDTH>;
+template<uint32_t WRAP_PIXEL_WIDTH>
+struct wrapOrderSt_v {
     wrapFlagT second; //Literal member at the high packed position
-    wrapPixelT<Config> first; //Parameterizable member at the low packed position
+    wrapPixelT_v<WRAP_PIXEL_WIDTH> first; //Parameterizable member at the low packed position
 
-    wrapOrderSt() {}
+    wrapOrderSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::WRAP_PIXEL_WIDTH;
+    static constexpr uint16_t _bitWidth = 8 + WRAP_PIXEL_WIDTH;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const wrapOrderSt<Config> & rhs) const {
+    inline bool operator == (const wrapOrderSt_v<WRAP_PIXEL_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (first == rhs.first);
         ret = ret && (second == rhs.second);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const wrapOrderSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const wrapOrderSt_v<WRAP_PIXEL_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.first, NAME + ".first");
         sc_trace(tf,v.second, NAME + ".second");
     }
-    inline friend ostream& operator << ( ostream& os,  wrapOrderSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  wrapOrderSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -154,66 +156,67 @@ struct wrapOrderSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, wrapOrderSt<Config>::_byteWidth);
+        memset(&_ret, 0, wrapOrderSt_v<WRAP_PIXEL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, second, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, first, Config::WRAP_PIXEL_WIDTH);
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, first, WRAP_PIXEL_WIDTH);
+        _pos += WRAP_PIXEL_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
         second = (wrapFlagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
-        first = (wrapPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::WRAP_PIXEL_WIDTH)) - 1));
+        first = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (WRAP_PIXEL_WIDTH)) - 1));
     }
-    inline sc_bv<wrapOrderSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<wrapOrderSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<wrapOrderSt<Config>::_bitWidth> packed_data;
+        sc_bv<wrapOrderSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = second;
         _pos += 8;
-        packed_data.range(_pos+Config::WRAP_PIXEL_WIDTH-1, _pos) = first;
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        packed_data.range(_pos+WRAP_PIXEL_WIDTH-1, _pos) = first;
+        _pos += WRAP_PIXEL_WIDTH;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<wrapOrderSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<wrapOrderSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         second = (wrapFlagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        first = (wrapPixelT<Config>) packed_data.range(_pos+Config::WRAP_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        first = (wrapPixelT_v<WRAP_PIXEL_WIDTH>) packed_data.range(_pos+WRAP_PIXEL_WIDTH-1, _pos).to_uint64();
+        _pos += WRAP_PIXEL_WIDTH;
     }
-    explicit wrapOrderSt(sc_bv<wrapOrderSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit wrapOrderSt(
+    explicit wrapOrderSt_v(sc_bv<wrapOrderSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit wrapOrderSt_v(
         wrapFlagT second_,
-        wrapPixelT<Config> first_) :
+        wrapPixelT_v<WRAP_PIXEL_WIDTH> first_) :
         second(second_),
         first(first_)
     {}
-    explicit wrapOrderSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit wrapOrderSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-template<typename Config>
-struct wrapSignSt {
-    wrapPixelT<Config> data; //Pixel payload
+template<typename Config> using wrapOrderSt = wrapOrderSt_v<Config::WRAP_PIXEL_WIDTH>;
+template<uint32_t WRAP_PIXEL_WIDTH>
+struct wrapSignSt_v {
+    wrapPixelT_v<WRAP_PIXEL_WIDTH> data; //Pixel payload
 
-    wrapSignSt() {}
+    wrapSignSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::WRAP_PIXEL_WIDTH;
+    static constexpr uint16_t _bitWidth = WRAP_PIXEL_WIDTH;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const wrapSignSt<Config> & rhs) const {
+    inline bool operator == (const wrapSignSt_v<WRAP_PIXEL_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (data == rhs.data);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const wrapSignSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const wrapSignSt_v<WRAP_PIXEL_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.data, NAME + ".data");
     }
-    inline friend ostream& operator << ( ostream& os,  wrapSignSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  wrapSignSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -227,37 +230,38 @@ struct wrapSignSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, wrapSignSt<Config>::_byteWidth);
+        memset(&_ret, 0, wrapSignSt_v<WRAP_PIXEL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::WRAP_PIXEL_WIDTH);
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, WRAP_PIXEL_WIDTH);
+        _pos += WRAP_PIXEL_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (wrapPixelT<Config>)((_src) & ((1ULL << (Config::WRAP_PIXEL_WIDTH)) - 1));
+        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src) & ((1ULL << (WRAP_PIXEL_WIDTH)) - 1));
     }
-    inline sc_bv<wrapSignSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<wrapSignSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<wrapSignSt<Config>::_bitWidth> packed_data;
+        sc_bv<wrapSignSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::WRAP_PIXEL_WIDTH-1, _pos) = data;
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        packed_data.range(_pos+WRAP_PIXEL_WIDTH-1, _pos) = data;
+        _pos += WRAP_PIXEL_WIDTH;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<wrapSignSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<wrapSignSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (wrapPixelT<Config>) packed_data.range(_pos+Config::WRAP_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>) packed_data.range(_pos+WRAP_PIXEL_WIDTH-1, _pos).to_uint64();
+        _pos += WRAP_PIXEL_WIDTH;
     }
-    explicit wrapSignSt(sc_bv<wrapSignSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit wrapSignSt(
-        wrapPixelT<Config> data_) :
+    explicit wrapSignSt_v(sc_bv<wrapSignSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit wrapSignSt_v(
+        wrapPixelT_v<WRAP_PIXEL_WIDTH> data_) :
         data(data_)
     {}
-    explicit wrapSignSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit wrapSignSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using wrapSignSt = wrapSignSt_v<Config::WRAP_PIXEL_WIDTH>;
 struct wrapNestHdrSt {
     wrapFlagT flag; //Header flag
     wrapWordT word; //Header word
@@ -325,30 +329,30 @@ struct wrapNestHdrSt {
     explicit wrapNestHdrSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-template<typename Config>
-struct wrapNestSt {
-    wrapPixelT<Config> data; //Pixel payload
+template<uint32_t WRAP_PIXEL_WIDTH>
+struct wrapNestSt_v {
+    wrapPixelT_v<WRAP_PIXEL_WIDTH> data; //Pixel payload
     wrapFlagT tail; //Trailing flag
     wrapNestHdrSt hdr; //Nested header
 
-    wrapNestSt() {}
+    wrapNestSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::WRAP_PIXEL_WIDTH + 8 + wrapNestHdrSt::_bitWidth;
+    static constexpr uint16_t _bitWidth = WRAP_PIXEL_WIDTH + 8 + wrapNestHdrSt::_bitWidth;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[2];
-    inline bool operator == (const wrapNestSt<Config> & rhs) const {
+    inline bool operator == (const wrapNestSt_v<WRAP_PIXEL_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (hdr == rhs.hdr);
         ret = ret && (tail == rhs.tail);
         ret = ret && (data == rhs.data);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const wrapNestSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const wrapNestSt_v<WRAP_PIXEL_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.hdr, NAME + ".hdr");
         sc_trace(tf,v.tail, NAME + ".tail");
         sc_trace(tf,v.data, NAME + ".data");
     }
-    inline friend ostream& operator << ( ostream& os,  wrapNestSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  wrapNestSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -364,10 +368,10 @@ struct wrapNestSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, wrapNestSt<Config>::_byteWidth);
+        memset(&_ret, 0, wrapNestSt_v<WRAP_PIXEL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::WRAP_PIXEL_WIDTH);
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, WRAP_PIXEL_WIDTH);
+        _pos += WRAP_PIXEL_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tail, 8);
         _pos += 8;
         {
@@ -380,8 +384,8 @@ struct wrapNestSt {
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (wrapPixelT<Config>)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (Config::WRAP_PIXEL_WIDTH)) - 1));
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (WRAP_PIXEL_WIDTH)) - 1));
+        _pos += WRAP_PIXEL_WIDTH;
         tail = (wrapFlagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
         {
@@ -390,40 +394,41 @@ struct wrapNestSt {
             hdr.unpack(_tmp);
         }
     }
-    inline sc_bv<wrapNestSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<wrapNestSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<wrapNestSt<Config>::_bitWidth> packed_data;
+        sc_bv<wrapNestSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::WRAP_PIXEL_WIDTH-1, _pos) = data;
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        packed_data.range(_pos+WRAP_PIXEL_WIDTH-1, _pos) = data;
+        _pos += WRAP_PIXEL_WIDTH;
         packed_data.range(_pos+8-1, _pos) = tail;
         _pos += 8;
         packed_data.range(_pos+wrapNestHdrSt::_bitWidth-1, _pos) = hdr.sc_pack();
         _pos += wrapNestHdrSt::_bitWidth;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<wrapNestSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<wrapNestSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (wrapPixelT<Config>) packed_data.range(_pos+Config::WRAP_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += Config::WRAP_PIXEL_WIDTH;
+        data = (wrapPixelT_v<WRAP_PIXEL_WIDTH>) packed_data.range(_pos+WRAP_PIXEL_WIDTH-1, _pos).to_uint64();
+        _pos += WRAP_PIXEL_WIDTH;
         tail = (wrapFlagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
         hdr.sc_unpack(packed_data.range(_pos+wrapNestHdrSt::_bitWidth-1, _pos));
         _pos += wrapNestHdrSt::_bitWidth;
     }
-    explicit wrapNestSt(sc_bv<wrapNestSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit wrapNestSt(
-        wrapPixelT<Config> data_,
+    explicit wrapNestSt_v(sc_bv<wrapNestSt_v<WRAP_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit wrapNestSt_v(
+        wrapPixelT_v<WRAP_PIXEL_WIDTH> data_,
         wrapFlagT tail_,
         wrapNestHdrSt hdr_) :
         data(data_),
         tail(tail_),
         hdr(hdr_)
     {}
-    explicit wrapNestSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit wrapNestSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using wrapNestSt = wrapNestSt_v<Config::WRAP_PIXEL_WIDTH>;
 } // namespace xpCppAxis_xpCppWrap_ns
 
 // GENERATED_CODE_END

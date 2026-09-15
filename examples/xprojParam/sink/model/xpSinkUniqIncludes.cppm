@@ -24,7 +24,8 @@ export namespace xpSink_xpSinkUniq_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpSink_xpSinkUniq_ns {
 // types
-template<typename Config> using skPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t SK_PIXEL_WIDTH> using skPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using skPixelT = skPixelT_v<Config::SK_PIXEL_WIDTH>;
 typedef uint8_t skTagT; // [4] Sample sequence tag
 
 } // namespace xpSink_xpSinkUniq_ns
@@ -38,27 +39,27 @@ export namespace xpSink_xpSinkUniq_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpSink_xpSinkUniq_ns {
 // structures
-template<typename Config>
-struct skVideoSt {
-    skPixelT<Config> data; //Pixel payload
+template<uint32_t SK_PIXEL_WIDTH>
+struct skVideoSt_v {
+    skPixelT_v<SK_PIXEL_WIDTH> data; //Pixel payload
     skTagT tag; //Sample sequence tag
 
-    skVideoSt() {}
+    skVideoSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::SK_PIXEL_WIDTH + 4;
+    static constexpr uint16_t _bitWidth = SK_PIXEL_WIDTH + 4;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const skVideoSt<Config> & rhs) const {
+    inline bool operator == (const skVideoSt_v<SK_PIXEL_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const skVideoSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const skVideoSt_v<SK_PIXEL_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
     }
-    inline friend ostream& operator << ( ostream& os,  skVideoSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  skVideoSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -73,48 +74,49 @@ struct skVideoSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, skVideoSt<Config>::_byteWidth);
+        memset(&_ret, 0, skVideoSt_v<SK_PIXEL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::SK_PIXEL_WIDTH);
-        _pos += Config::SK_PIXEL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, SK_PIXEL_WIDTH);
+        _pos += SK_PIXEL_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 4);
         _pos += 4;
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (skPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::SK_PIXEL_WIDTH)) - 1));
-        _pos += Config::SK_PIXEL_WIDTH;
+        data = (skPixelT_v<SK_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (SK_PIXEL_WIDTH)) - 1));
+        _pos += SK_PIXEL_WIDTH;
         tag = (skTagT)((_src >> (_pos & 63)) & ((1ULL << (4)) - 1));
     }
-    inline sc_bv<skVideoSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<skVideoSt_v<SK_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<skVideoSt<Config>::_bitWidth> packed_data;
+        sc_bv<skVideoSt_v<SK_PIXEL_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::SK_PIXEL_WIDTH-1, _pos) = data;
-        _pos += Config::SK_PIXEL_WIDTH;
+        packed_data.range(_pos+SK_PIXEL_WIDTH-1, _pos) = data;
+        _pos += SK_PIXEL_WIDTH;
         packed_data.range(_pos+4-1, _pos) = tag;
         _pos += 4;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<skVideoSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<skVideoSt_v<SK_PIXEL_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (skPixelT<Config>) packed_data.range(_pos+Config::SK_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += Config::SK_PIXEL_WIDTH;
+        data = (skPixelT_v<SK_PIXEL_WIDTH>) packed_data.range(_pos+SK_PIXEL_WIDTH-1, _pos).to_uint64();
+        _pos += SK_PIXEL_WIDTH;
         tag = (skTagT) packed_data.range(_pos+4-1, _pos).to_uint64();
         _pos += 4;
     }
-    explicit skVideoSt(sc_bv<skVideoSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit skVideoSt(
-        skPixelT<Config> data_,
+    explicit skVideoSt_v(sc_bv<skVideoSt_v<SK_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit skVideoSt_v(
+        skPixelT_v<SK_PIXEL_WIDTH> data_,
         skTagT tag_) :
         data(data_),
         tag(tag_)
     {}
-    explicit skVideoSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit skVideoSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using skVideoSt = skVideoSt_v<Config::SK_PIXEL_WIDTH>;
 } // namespace xpSink_xpSinkUniq_ns
 
 // GENERATED_CODE_END

@@ -24,8 +24,10 @@ export namespace xpMtxIp_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpMtxIp_ns {
 // types
-template<typename Config> using miSrcPixelT = uint64_t; // [max:32] Producer parameterizable pixel word
-template<typename Config> using miDstPixelT = uint64_t; // [max:64] Consumer parameterizable pixel word
+template<uint32_t MI_SRC_WIDTH> using miSrcPixelT_v = uint64_t; // [max:32] Producer parameterizable pixel word
+template<typename Config> using miSrcPixelT = miSrcPixelT_v<Config::MI_SRC_WIDTH>;
+template<uint32_t MI_DST_WIDTH> using miDstPixelT_v = uint64_t; // [max:64] Consumer parameterizable pixel word
+template<typename Config> using miDstPixelT = miDstPixelT_v<Config::MI_DST_WIDTH>;
 typedef uint8_t miTagT; // [8] Sample sequence tag; low packed position
 typedef uint8_t miMarkT; // [8] Trailing marker; sits above the pixel so a wrong-width pixel shifts it
 typedef uint16_t miLitPixelT; // [12] Literal pixel word at the same resolved width as the parameterized ones
@@ -119,30 +121,30 @@ struct miSrcLitSt {
     explicit miSrcLitSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-template<typename Config>
-struct miSrcParSt {
+template<uint32_t MI_SRC_WIDTH>
+struct miSrcParSt_v {
     miMarkT mark; //Trailing marker
-    miSrcPixelT<Config> data; //Parameterizable pixel payload
+    miSrcPixelT_v<MI_SRC_WIDTH> data; //Parameterizable pixel payload
     miTagT tag; //Sample sequence tag
 
-    miSrcParSt() {}
+    miSrcParSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::MI_SRC_WIDTH + 8;
+    static constexpr uint16_t _bitWidth = 8 + MI_SRC_WIDTH + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const miSrcParSt<Config> & rhs) const {
+    inline bool operator == (const miSrcParSt_v<MI_SRC_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         ret = ret && (mark == rhs.mark);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const miSrcParSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const miSrcParSt_v<MI_SRC_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
         sc_trace(tf,v.mark, NAME + ".mark");
     }
-    inline friend ostream& operator << ( ostream& os,  miSrcParSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  miSrcParSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -158,12 +160,12 @@ struct miSrcParSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, miSrcParSt<Config>::_byteWidth);
+        memset(&_ret, 0, miSrcParSt_v<MI_SRC_WIDTH>::_byteWidth);
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::MI_SRC_WIDTH);
-        _pos += Config::MI_SRC_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, MI_SRC_WIDTH);
+        _pos += MI_SRC_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
         _pos += 8;
     }
@@ -172,44 +174,45 @@ struct miSrcParSt {
         uint16_t _pos{0};
         mark = (miMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
-        data = (miSrcPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::MI_SRC_WIDTH)) - 1));
-        _pos += Config::MI_SRC_WIDTH;
+        data = (miSrcPixelT_v<MI_SRC_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (MI_SRC_WIDTH)) - 1));
+        _pos += MI_SRC_WIDTH;
         tag = (miTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<miSrcParSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<miSrcParSt_v<MI_SRC_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<miSrcParSt<Config>::_bitWidth> packed_data;
+        sc_bv<miSrcParSt_v<MI_SRC_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = mark;
         _pos += 8;
-        packed_data.range(_pos+Config::MI_SRC_WIDTH-1, _pos) = data;
-        _pos += Config::MI_SRC_WIDTH;
+        packed_data.range(_pos+MI_SRC_WIDTH-1, _pos) = data;
+        _pos += MI_SRC_WIDTH;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<miSrcParSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<miSrcParSt_v<MI_SRC_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         mark = (miMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        data = (miSrcPixelT<Config>) packed_data.range(_pos+Config::MI_SRC_WIDTH-1, _pos).to_uint64();
-        _pos += Config::MI_SRC_WIDTH;
+        data = (miSrcPixelT_v<MI_SRC_WIDTH>) packed_data.range(_pos+MI_SRC_WIDTH-1, _pos).to_uint64();
+        _pos += MI_SRC_WIDTH;
         tag = (miTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit miSrcParSt(sc_bv<miSrcParSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit miSrcParSt(
+    explicit miSrcParSt_v(sc_bv<miSrcParSt_v<MI_SRC_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit miSrcParSt_v(
         miMarkT mark_,
-        miSrcPixelT<Config> data_,
+        miSrcPixelT_v<MI_SRC_WIDTH> data_,
         miTagT tag_) :
         mark(mark_),
         data(data_),
         tag(tag_)
     {}
-    explicit miSrcParSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit miSrcParSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using miSrcParSt = miSrcParSt_v<Config::MI_SRC_WIDTH>;
 struct miDstLitSt {
     miMarkT mark; //Trailing marker
     miLitPixelT data; //Literal pixel payload
@@ -288,30 +291,30 @@ struct miDstLitSt {
     explicit miDstLitSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-template<typename Config>
-struct miDstParSt {
+template<uint32_t MI_DST_WIDTH>
+struct miDstParSt_v {
     miMarkT mark; //Trailing marker
-    miDstPixelT<Config> data; //Parameterizable pixel payload
+    miDstPixelT_v<MI_DST_WIDTH> data; //Parameterizable pixel payload
     miTagT tag; //Sample sequence tag
 
-    miDstParSt() {}
+    miDstParSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::MI_DST_WIDTH + 8;
+    static constexpr uint16_t _bitWidth = 8 + MI_DST_WIDTH + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt[2];
-    inline bool operator == (const miDstParSt<Config> & rhs) const {
+    inline bool operator == (const miDstParSt_v<MI_DST_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         ret = ret && (mark == rhs.mark);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const miDstParSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const miDstParSt_v<MI_DST_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
         sc_trace(tf,v.mark, NAME + ".mark");
     }
-    inline friend ostream& operator << ( ostream& os,  miDstParSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  miDstParSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -327,12 +330,12 @@ struct miDstParSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, miDstParSt<Config>::_byteWidth);
+        memset(&_ret, 0, miDstParSt_v<MI_DST_WIDTH>::_byteWidth);
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::MI_DST_WIDTH);
-        _pos += Config::MI_DST_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, MI_DST_WIDTH);
+        _pos += MI_DST_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
         _pos += 8;
     }
@@ -341,44 +344,45 @@ struct miDstParSt {
         uint16_t _pos{0};
         mark = (miMarkT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
-        data = (miDstPixelT<Config>)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (Config::MI_DST_WIDTH)) - 1));
-        _pos += Config::MI_DST_WIDTH;
+        data = (miDstPixelT_v<MI_DST_WIDTH>)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (MI_DST_WIDTH)) - 1));
+        _pos += MI_DST_WIDTH;
         tag = (miTagT)((_src[ _pos >> 6 ] >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<miDstParSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<miDstParSt_v<MI_DST_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<miDstParSt<Config>::_bitWidth> packed_data;
+        sc_bv<miDstParSt_v<MI_DST_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = mark;
         _pos += 8;
-        packed_data.range(_pos+Config::MI_DST_WIDTH-1, _pos) = data;
-        _pos += Config::MI_DST_WIDTH;
+        packed_data.range(_pos+MI_DST_WIDTH-1, _pos) = data;
+        _pos += MI_DST_WIDTH;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<miDstParSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<miDstParSt_v<MI_DST_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         mark = (miMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        data = (miDstPixelT<Config>) packed_data.range(_pos+Config::MI_DST_WIDTH-1, _pos).to_uint64();
-        _pos += Config::MI_DST_WIDTH;
+        data = (miDstPixelT_v<MI_DST_WIDTH>) packed_data.range(_pos+MI_DST_WIDTH-1, _pos).to_uint64();
+        _pos += MI_DST_WIDTH;
         tag = (miTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit miDstParSt(sc_bv<miDstParSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit miDstParSt(
+    explicit miDstParSt_v(sc_bv<miDstParSt_v<MI_DST_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit miDstParSt_v(
         miMarkT mark_,
-        miDstPixelT<Config> data_,
+        miDstPixelT_v<MI_DST_WIDTH> data_,
         miTagT tag_) :
         mark(mark_),
         data(data_),
         tag(tag_)
     {}
-    explicit miDstParSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit miDstParSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using miDstParSt = miDstParSt_v<Config::MI_DST_WIDTH>;
 } // namespace xpMtxIp_ns
 
 // GENERATED_CODE_END

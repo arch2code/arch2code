@@ -24,7 +24,8 @@ export namespace xif_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xif_ns {
 // types
-template<typename Config> using streamDataT = uint64_t; // [max:32] Parameterized stream payload word
+template<uint32_t DATA_WIDTH> using streamDataT_v = uint64_t; // [max:32] Parameterized stream payload word
+template<typename Config> using streamDataT = streamDataT_v<Config::DATA_WIDTH>;
 typedef uint16_t streamBndryDataT; // [16] Non-parameterized boundary payload word (matches DATA_WIDTH=16)
 
 } // namespace xif_ns
@@ -38,24 +39,24 @@ export namespace xif_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xif_ns {
 // structures
-template<typename Config>
-struct streamSt {
-    streamDataT<Config> data; //Parameterized stream payload
+template<uint32_t DATA_WIDTH>
+struct streamSt_v {
+    streamDataT_v<DATA_WIDTH> data; //Parameterized stream payload
 
-    streamSt() {}
+    streamSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::DATA_WIDTH;
+    static constexpr uint16_t _bitWidth = DATA_WIDTH;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const streamSt<Config> & rhs) const {
+    inline bool operator == (const streamSt_v<DATA_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (data == rhs.data);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const streamSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const streamSt_v<DATA_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.data, NAME + ".data");
     }
-    inline friend ostream& operator << ( ostream& os,  streamSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  streamSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -69,37 +70,38 @@ struct streamSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, streamSt<Config>::_byteWidth);
+        memset(&_ret, 0, streamSt_v<DATA_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::DATA_WIDTH);
-        _pos += Config::DATA_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, DATA_WIDTH);
+        _pos += DATA_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (streamDataT<Config>)((_src) & ((1ULL << (Config::DATA_WIDTH)) - 1));
+        data = (streamDataT_v<DATA_WIDTH>)((_src) & ((1ULL << (DATA_WIDTH)) - 1));
     }
-    inline sc_bv<streamSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<streamSt_v<DATA_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<streamSt<Config>::_bitWidth> packed_data;
+        sc_bv<streamSt_v<DATA_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::DATA_WIDTH-1, _pos) = data;
-        _pos += Config::DATA_WIDTH;
+        packed_data.range(_pos+DATA_WIDTH-1, _pos) = data;
+        _pos += DATA_WIDTH;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<streamSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<streamSt_v<DATA_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (streamDataT<Config>) packed_data.range(_pos+Config::DATA_WIDTH-1, _pos).to_uint64();
-        _pos += Config::DATA_WIDTH;
+        data = (streamDataT_v<DATA_WIDTH>) packed_data.range(_pos+DATA_WIDTH-1, _pos).to_uint64();
+        _pos += DATA_WIDTH;
     }
-    explicit streamSt(sc_bv<streamSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit streamSt(
-        streamDataT<Config> data_) :
+    explicit streamSt_v(sc_bv<streamSt_v<DATA_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit streamSt_v(
+        streamDataT_v<DATA_WIDTH> data_) :
         data(data_)
     {}
-    explicit streamSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit streamSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using streamSt = streamSt_v<Config::DATA_WIDTH>;
 struct streamBndrySt {
     streamBndryDataT data; //Boundary payload; packed layout matches streamSt<dutV0>
 

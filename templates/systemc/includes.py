@@ -1,4 +1,4 @@
-from pysrc.intf_gen_utils import wrap_module_namespace, wrap_fw_namespace
+from pysrc.intf_gen_utils import wrap_module_namespace, wrap_fw_namespace, configType
 import pysrc.emissionUtils as emissionUtils
 
 # args from generator line
@@ -110,15 +110,32 @@ def constReference_cpp(constKey, prj, useConfig=False):
     return f"Config::{row['constant']}"
 
 
+def constReferenceValueKeyed_cpp(constKey, prj):
+    """Spell a constant reference inside a value-keyed declaration. A root
+    parameter is one of the declaration's own template value parameters, so it
+    spells bare; a derived (eval) constant still spells its canonical
+    expression, recursing over the same bare root parameters."""
+    row = prj.data['constants'][constKey]
+    if not row['isParameterizable']:
+        return row['constant']
+    if row['evalCanonical']:
+        return '(' + emissionUtils.emitExpr(
+            row['evalCanonical'],
+            lambda symKey: constReferenceValueKeyed_cpp(symKey, prj),
+            emissionUtils.C) + ')'
+    return row['constant']
+
+
 def typeWidthExpression_cpp(value, prj, useConfig=False):
     """Build a C++ constexpr-compatible bit-width expression for a type.
     Delegates the language-neutral width decision tree to
-    emissionUtils.typeWidthExpr, binding C++ constant spelling
-    (constReference_cpp, Config::-aware) and the C++ literal-width fallback
+    emissionUtils.typeWidthExpr, binding C++ constant spelling (a root
+    parameter spells bare, value-keyed) and the C++ literal-width fallback
     (prj.resolveTypeWidth)."""
     return emissionUtils.typeWidthExpr(
         value, emissionUtils.C,
-        constSpelling=lambda key: constReference_cpp(key, prj, useConfig),
+        constSpelling=lambda key: constReferenceValueKeyed_cpp(key, prj) if useConfig
+        else constReference_cpp(key, prj),
         literalWidth=lambda v: str(prj.resolveTypeWidth(v)))
 
 
@@ -130,6 +147,9 @@ def includeTypes(args, prj, data):
         # Comments show resolved integer bit width, not symbolic expression
         widthComment = str(value['realwidth'])
         if value['isParameterizable']:
+            templateArgs = prj.paramTemplateArgs('type', type)
+            argList = ', '.join(f"{configType(row)} {row['constant']}" for row in templateArgs)
+            configArgs = ', '.join(f"Config::{row['constant']}" for row in templateArgs)
             if value['maxBitwidth'] <= 64:
                 # The container is fixed 64-bit because a parameterizable type must
                 # hold its worst case across variants (maxBitwidth), not its width at
@@ -138,13 +158,16 @@ def includeTypes(args, prj, data):
                 # matches the declared type.
                 containerType = 'int64_t' if value['isSigned'] else 'uint64_t'
                 out.append(
-                    f"template<typename Config> using { value['type'] } = {containerType}; // [max:{value['maxBitwidth']}] {value['desc']}"
+                    f"template<{argList}> using { value['type'] }_v = {containerType}; // [max:{value['maxBitwidth']}] {value['desc']}"
                 )
             else:
                 typeArraySize = (value['maxBitwidth'] + 63) // 64
                 out.append(
-                    f"template<typename Config> struct { value['type'] } {{ uint64_t word[ {typeArraySize} ]; }}; // [max:{value['maxBitwidth']}] {value['desc']}"
+                    f"template<{argList}> struct { value['type'] }_v {{ uint64_t word[ {typeArraySize} ]; }}; // [max:{value['maxBitwidth']}] {value['desc']}"
                 )
+            out.append(
+                f"template<typename Config> using { value['type'] } = { value['type'] }_v<{configArgs}>;"
+            )
             continue
         if value['typeArraySize'] == 1:
             out.append(

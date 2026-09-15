@@ -1,0 +1,8 @@
+# projIp: declares its own v0 of leafIp, at LEAF_W 12.
+include:
+    - leafIp.yaml
+
+parameters:
+    leafIp:
+        v0:
+            LEAF_W: 12

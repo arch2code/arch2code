@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "push_ack_port_thunker.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -47,10 +46,6 @@ public:
     std::shared_ptr<xpDpLeafBase<xpDpMid_xpDpLeafCustomerConfig<Config>>> uLeafA;
     std::shared_ptr<xpDpLeafBase<xpDpMid_xpDpLeafCustomerConfig<Config>>> uLeafB;
 
-    // cross-interface thunkers
-    push_ack_port_thunker<dpSt<Config>, dpSt<xpDpMid_xpDpLeafCustomerConfig<Config>>, true> thunker_uLeafA;
-    push_ack_port_thunker<dpSt<Config>, dpSt<xpDpMid_xpDpLeafCustomerConfig<Config>>, true> thunker_uLeafB;
-
     // inherited parameterized types usable unqualified (no <Config>)
     using typename xpDpMidBase<Config>::dpPixelT;
     using typename xpDpMidBase<Config>::dpSt;
@@ -72,12 +67,12 @@ xpDpMid<Config>::xpDpMid(sc_module_name blockName, const char * variant, blockBa
         ,out("xpDpLeaf_out", "xpDpLeaf")
         ,uLeafA(std::dynamic_pointer_cast<xpDpLeafBase<xpDpMid_xpDpLeafCustomerConfig<Config>>>(instanceFactory::createInstance<xpDpLeaf<xpDpMid_xpDpLeafCustomerConfig<Config>>>(name(), "uLeafA", "xpDpLeaf", variant, "xpDpMid.xpDpMid.xpDpLeaf")))
         ,uLeafB(std::dynamic_pointer_cast<xpDpLeafBase<xpDpMid_xpDpLeafCustomerConfig<Config>>>(instanceFactory::createInstance<xpDpLeaf<xpDpMid_xpDpLeafCustomerConfig<Config>>>(name(), "uLeafB", "xpDpLeaf", variant, "xpDpMid.xpDpMid.xpDpLeaf")))
-        ,thunker_uLeafA("thunker_uLeafA", this->midIn, uLeafA->in, name())
-        ,thunker_uLeafB("thunker_uLeafB", this->midOut, uLeafB->out, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
 // hierarchical connections: instance port->parent port (dst->dst, src-src without channels)
+    uLeafA->in(this->midIn);
+    uLeafB->out(this->midOut);
     // instance to instance connections via channel
     uLeafA->out(out);
     uLeafB->in(out);

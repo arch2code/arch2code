@@ -1,9 +1,8 @@
-# The Config gate on an undeclared (top-down inferred) port: the rejecting arm.
-#
-# xpIpbWrap, xpIpbLeaf and xpIpbSnk declare no ports, so each port binds its
-# channel directly. uLeaf is reached two ways that both type the channel at
-# another Config: the connectionMap at xpIpbWrap's own Config, and wrapLink at
-# uSnk's variant 'snk', because dst wins the election. Both must name uLeaf.
+# An undeclared (top-down inferred) port binds its channel directly, with no
+# adapter available to bridge a mismatch. uLeaf's own variant (IPB_W 8)
+# disagrees in value with uSnk's variant (IPB_W 16) over connection wrapLink,
+# and with xpIpbWrap's own Config (IPB_W 16) over the connectionMap into it.
+# The same-interface payload check rejects both junctions.
 
 ipParameters:
     constants:
@@ -90,7 +89,7 @@ parameters:
             IPB_W: 16
     xpIpbLeaf:
         own:
-            IPB_W: 16
+            IPB_W: 8
     xpIpbSnk:
         snk:
             IPB_W: 16

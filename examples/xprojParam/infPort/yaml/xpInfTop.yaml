@@ -1,8 +1,7 @@
-# The Config gate on an undeclared (top-down inferred) port: the accepting arm.
-#
-# uLeaf and uSnk are reached the same two ways as infPortBad's uLeaf, but both
-# inherit their container's Config instead of naming their own variant, so
-# both ends always resolve at the channel's Config and make db must accept.
+# An undeclared (top-down inferred) port binds its channel directly. uLeaf
+# inherits its container's Config, while uSnk declares its own distinct variant
+# 'snk'; both carry the same INF_W value, so the two Configs are one C++ type
+# and make db must accept the connection with no thunker at either end.
 
 ipParameters:
     constants:
@@ -51,7 +50,7 @@ blocks:
         hasTb: false
         hasRtl: false
     xpInfLeaf:
-        desc: "The instance under test: an undeclared port reached two ways, both inherited and accepted"
+        desc: "The instance under test: an undeclared port reached two ways, inherited and a declared variant, equal in value and accepted at db"
         params: [INF_W]
         hasMdl: false
         hasVl: false
@@ -71,7 +70,7 @@ instances:
     uDrv:  { container: xpInfTop,  instanceType: xpInfDrv,  instGroup: top, variant: drv }
     uWrap: { container: xpInfTop,  instanceType: xpInfWrap, instGroup: top, variant: use }
     uLeaf: { container: xpInfWrap, instanceType: xpInfLeaf, instGroup: top, inheritContainerParam: true }
-    uSnk:  { container: xpInfWrap, instanceType: xpInfSnk,  instGroup: top, inheritContainerParam: true }
+    uSnk:  { container: xpInfWrap, instanceType: xpInfSnk,  instGroup: top, variant: snk }
 
 connections:
     - { interface: infIf, src: uDrv,  srcport: out, dst: uWrap, dstport: in, name: topLink }
@@ -86,4 +85,7 @@ parameters:
             INF_W: 16
     xpInfWrap:
         use:
+            INF_W: 16
+    xpInfSnk:
+        snk:
             INF_W: 16

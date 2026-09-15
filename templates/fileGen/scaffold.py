@@ -85,6 +85,8 @@ def rundirMk(data):
         "\n"
         "include $(A2C_ROOT)/include/make/a2c-systemc.mk\n"
         "\n"
+        "REGR_JOBS ?= 8\n"
+        "\n"
         ".PHONY : run regr\n"
         "\n"
         "run: $(BIN_DIR)/$(BIN)\n"
@@ -95,7 +97,7 @@ def rundirMk(data):
         "endif\n"
         "\n"
         "regr:\n"
-        f"\t$(A2C_ROOT)/regrLauncher.py --build -j8 regr_{data['projectName']}.json $(REGR_USER_OPTS)\n"
+        f"\t$(A2C_ROOT)/regrLauncher.py --build -j$(REGR_JOBS) regr_{data['projectName']}.json $(REGR_USER_OPTS)\n"
     )
 
 

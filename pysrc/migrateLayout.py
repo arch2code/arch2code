@@ -99,7 +99,7 @@ MOVE_SOURCE = "SOURCE"                 # user-editable generated source (carries
 # user-editable and moved intact.
 FULLY_GENERATED_FILEMAP_KEYS = frozenset({
     "blockBase", "blockRegistrar", "include", "package",
-    "vlSvWrap", "vlSvWrapBody", "vlScWrap",
+    "vlSvWrap", "vlSvWrapBody",
     "tandem", "blockVlRegistrar", "configModule", "vlSvWrapForeign",
 })
 
@@ -342,10 +342,10 @@ def _buildRelocationMap(projectYamlPath, projectData, report):
 
     # 2c + 4. Sweep the merged functional segments (the same base/pro/user merge
     # processYaml runs at create). A FULLY-GENERATED segment (every fileMap entry
-    # whole-file generated: base, registrar, vl_wrap) is cleared by DIRECTORY —
+    # whole-file generated: base, registrar) is cleared by DIRECTORY —
     # every marker-carrying file deleted, so alternate-extension / renamed orphans
     # a per-file name+ext match would miss go too. A MIXED/user segment (model,
-    # rtl, tb, fwInc) is classified per file: project-scope orphans move into prj/;
+    # rtl, vl_wrap, tb, fwInc) is classified per file: project-scope orphans move into prj/;
     # its recognized generated files (include/package) are deleted (marker-guarded)
     # and recreated by make gen/newmodule; a name-matched file lacking the marker
     # is reported, never deleted; every other (user-editable / unrecognized) source
@@ -516,8 +516,9 @@ def _fullyGeneratedSegments(fileMap):
     whole-file generated artifacts, so the migration clears it by directory rather
     than classifying per file. A segment with any non-fully-generated entry
     (`model`'s block, `rtl`'s rtlModule/rtlDotF, `tb`'s testbench, a custom key)
-    is MIXED/user and stays on the per-file path. Against the current merged
-    fileMap this resolves to {base, registrar, vl_wrap}."""
+    is MIXED/user and stays on the per-file path. `vl_wrap` is mixed because
+    `<block>_hdl_sc_wrapper.h` hosts user code. Against the current merged
+    fileMap this resolves to {base, registrar}."""
     bySegment = dict()
     for key, fileDef in fileMap.items():
         bySegment.setdefault(fileDef["basePath"], []).append(

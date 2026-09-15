@@ -24,7 +24,8 @@ namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 namespace fw_ns {
 // types
-template<typename Config> using cfgDataT = uint64_t; // [max:32] xpRtLeaf configuration payload
+template<uint32_t RT_WIDTH> using cfgDataT_v = uint64_t; // [max:32] xpRtLeaf configuration payload
+template<typename Config> using cfgDataT = cfgDataT_v<Config::RT_WIDTH>;
 
 } // namespace fw_ns
 // GENERATED_CODE_END
@@ -57,32 +58,33 @@ inline const char* addr_id_xpRtWrap_prt( addr_id_xpRtWrap val )
 // GENERATED_CODE_BEGIN --template=structures
 namespace fw_ns {
 // structures
-template<typename Config>
-struct cfgSt {
-    cfgDataT<Config> value; //xpRtLeaf configuration value
+template<uint32_t RT_WIDTH>
+struct cfgSt_v {
+    cfgDataT_v<RT_WIDTH> value; //xpRtLeaf configuration value
 
-    cfgSt() { memset(this, 0, sizeof(cfgSt)); }
+    cfgSt_v() { memset(this, 0, sizeof(cfgSt_v)); }
 
-    static constexpr uint16_t _bitWidth = Config::RT_WIDTH;
+    static constexpr uint16_t _bitWidth = RT_WIDTH;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, cfgSt<Config>::_byteWidth);
+        memset(&_ret, 0, cfgSt_v<RT_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, value, Config::RT_WIDTH);
-        _pos += Config::RT_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, value, RT_WIDTH);
+        _pos += RT_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        value = (cfgDataT<Config>)((_src) & ((1ULL << (Config::RT_WIDTH)) - 1));
+        value = (cfgDataT_v<RT_WIDTH>)((_src) & ((1ULL << (RT_WIDTH)) - 1));
     }
-    explicit cfgSt(
-        cfgDataT<Config> value_) :
+    explicit cfgSt_v(
+        cfgDataT_v<RT_WIDTH> value_) :
         value(value_)
     {}
 
 };
+template<typename Config> using cfgSt = cfgSt_v<Config::RT_WIDTH>;
 } // namespace fw_ns
 
 // GENERATED_CODE_END

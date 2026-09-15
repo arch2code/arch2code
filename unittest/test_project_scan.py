@@ -52,6 +52,13 @@ NESTED = os.path.join(test_dir, 'fixtures', 'nested-ownership')
 BARE_INCLUDE = os.path.join(test_dir, 'fixtures', 'bare-include')
 CROSS_BRANCH = os.path.join(test_dir, 'fixtures', 'cross-branch-override')
 CONFLICT = os.path.join(test_dir, 'fixtures', 'conflict-override')
+TWO_DECLARERS = os.path.join(test_dir, 'fixtures',
+                              'param-variant-two-declarers-legal')
+SCAN_TIE = os.path.join(test_dir, 'fixtures', 'scan-ownership-tie')
+ADDRGROUP_QUALIFICATION = os.path.join(test_dir, 'fixtures',
+                                        'addrgroup-qualification')
+PARAM_CROSS_PROJECT = os.path.join(test_dir, 'fixtures', 'param-cross-project')
+IP_TEST = os.path.join(base_dir, 'examples', 'ip_test')
 ARCH2CODE = os.path.join(base_dir, 'arch2code.py')
 
 SHARED = 'shared'
@@ -462,6 +469,281 @@ def test_conflicting_sibling_overrides_fail_loud():
         shutil.rmtree(work, ignore_errors=True)
 
 
+def test_two_declarers_longest_path_ownership():
+    """A root that lists both a wrapper project and the IP project the
+    wrapper itself lists is a diamond: the IP's leaf is reachable directly
+    from the root AND, one level deeper, through the wrapper. Ownership must
+    follow the LONGEST path, so the leaf's own author (projIp) owns it, not
+    whichever provider the walk reaches first."""
+    result = ProjectScanner(
+        os.path.join(TWO_DECLARERS, 'top', 'yaml',
+                     'twoDeclarersLegalProject.yaml')).scan()
+    leaf = '../../projIp/yaml/leafIp.yaml'
+    assert result.ownership[leaf] == 'projIp', \
+        f"leafIp.yaml owned by '{result.ownership[leaf]}', expected 'projIp'"
+    wrapTop = '../../projWrap/yaml/wrapTop.yaml'
+    assert result.ownership[wrapTop] == 'projWrap', \
+        f"wrapTop.yaml owned by '{result.ownership[wrapTop]}', expected 'projWrap'"
+    print("PASS: two-declarers longest-path ownership (leaf owned by its "
+          "deeper author, not the shallower co-declarer)")
+
+
+def test_addrgroup_qualification_shared_types_direct_listing():
+    """Shipped shape: the root lists `common` and its sibling consumers
+    (childA, childB) directly; common lists sharedTypes.yaml directly in its
+    own projectFiles:, so rule 1 gives it to common outright even though the
+    consumers reach it only through include:."""
+    result = ProjectScanner(
+        os.path.join(ADDRGROUP_QUALIFICATION, 'root', 'yaml',
+                     'rootProject.yaml')).scan()
+    sharedTypes = '../../common/yaml/sharedTypes.yaml'
+    assert result.ownership[sharedTypes] == 'commonProj', \
+        (f"sharedTypes.yaml owned by '{result.ownership[sharedTypes]}', "
+         f"expected 'commonProj'")
+    print("PASS: addrgroup-qualification shared types ownership (direct "
+          "projectFiles: listing wins over include:-only siblings)")
+
+
+def test_param_cross_project_shared_owner_direct_listing():
+    """Shipped shape: the root lists projA and its sibling consumers
+    (projBShared, projCShared) directly; projA lists aTop.yaml directly in
+    its own projectFiles:, so rule 1 gives it to projA outright even though
+    the consumers reach it only through include:."""
+    result = ProjectScanner(
+        os.path.join(PARAM_CROSS_PROJECT, 'top', 'yaml',
+                     'sharedProject.yaml')).scan()
+    aTop = '../../projA/yaml/aTop.yaml'
+    assert result.ownership[aTop] == 'projA', \
+        f"aTop.yaml owned by '{result.ownership[aTop]}', expected 'projA'"
+    print("PASS: param-cross-project shared owner ownership (direct "
+          "projectFiles: listing wins over include:-only siblings)")
+
+
+def test_ownership_tie_fails_loud():
+    """Two unrelated projects (projA, projB) both include one shared
+    definitions file that neither owns and neither lists the other: both
+    reach it at the same depth, so there is no way to rank one above the
+    other. Must raise, naming the file, both providers, and projectFiles: as
+    the way to resolve it."""
+    try:
+        ProjectScanner(
+            os.path.join(SCAN_TIE, 'top', 'yaml', 'tieProject.yaml')).scan()
+    except ValueError as e:
+        msg = str(e)
+        assert 'sharedDefs.yaml' in msg, \
+            f"tie diagnostic omits the shared file: {msg}"
+        assert 'projAProject.yaml' in msg and 'projBProject.yaml' in msg, \
+            f"tie diagnostic did not name both tied providers: {msg}"
+        assert 'projectFiles' in msg, \
+            f"tie diagnostic omits the projectFiles: resolution: {msg}"
+        print("PASS: ownership tie fails loud (names the file, both "
+              "providers, and the projectFiles: resolution)")
+        return
+    assert False, "ownership tie did not raise a diagnostic"
+
+
+def test_ownership_tie_resolved_by_direct_listing():
+    """Rule 1's own resolution: projA lists the shared file directly in its
+    own projectFiles: (no dependency on projB, no separate shared project
+    needed). The file then belongs to projA outright and the scan
+    succeeds."""
+    work = tempfile.mkdtemp(prefix='project_scan_tie_resolved_', dir=test_dir)
+    try:
+        shutil.copytree(SCAN_TIE, work, dirs_exist_ok=True)
+        projA = os.path.join(work, 'projA', 'yaml', 'projAProject.yaml')
+        with open(projA) as f:
+            text = f.read()
+        text = text.replace(
+            'projectFiles:\n    - projALeaf.yaml',
+            'projectFiles:\n    - projALeaf.yaml\n'
+            '    - ../../shared/yaml/sharedDefs.yaml')
+        with open(projA, 'w') as f:
+            f.write(text)
+
+        proj = os.path.join(work, 'top', 'yaml', 'tieProject.yaml')
+        result = ProjectScanner(proj).scan()
+
+        sharedDefs = '../../shared/yaml/sharedDefs.yaml'
+        assert result.ownership[sharedDefs] == 'projA', \
+            (f"sharedDefs.yaml owned by '{result.ownership[sharedDefs]}', "
+             f"expected 'projA'")
+        print("PASS: ownership tie resolved (direct projectFiles: listing "
+              "gives the file one owner outright)")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_ownership_direct_listing_conflict_fails_loud():
+    """Rule 1's own conflict: BOTH projA and projB list the shared file
+    directly in their own projectFiles:. Two owners claiming one file
+    directly is unresolvable and must raise, naming the file and both
+    provider files."""
+    work = tempfile.mkdtemp(prefix='project_scan_direct_conflict_',
+                             dir=test_dir)
+    try:
+        shutil.copytree(SCAN_TIE, work, dirs_exist_ok=True)
+        for leaf in ('projAProject.yaml', 'projBProject.yaml'):
+            path = os.path.join(work, leaf.replace('Project.yaml', ''),
+                                 'yaml', leaf)
+            with open(path) as f:
+                text = f.read()
+            text = text.replace(
+                'projectFiles:\n    -',
+                'projectFiles:\n    - ../../shared/yaml/sharedDefs.yaml\n    -',
+                1)
+            with open(path, 'w') as f:
+                f.write(text)
+
+        proj = os.path.join(work, 'top', 'yaml', 'tieProject.yaml')
+        try:
+            ProjectScanner(proj).scan()
+        except ValueError as e:
+            msg = str(e)
+            assert 'sharedDefs.yaml' in msg, \
+                f"direct-listing conflict omits the shared file: {msg}"
+            assert 'projAProject.yaml' in msg and 'projBProject.yaml' in msg, \
+                f"direct-listing conflict did not name both providers: {msg}"
+            print("PASS: direct-listing conflict fails loud (names the "
+                  "file and both providers)")
+            return
+        assert False, "direct-listing conflict did not raise a diagnostic"
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_ownership_cycle_fails_loud():
+    """projA listing projB's project file and projB listing projA's back is a
+    projectFiles: reference cycle, an authoring error. Must raise, naming
+    both provider files and the word 'cycle'."""
+    work = tempfile.mkdtemp(prefix='project_scan_cycle_', dir=test_dir)
+    try:
+        shutil.copytree(SCAN_TIE, work, dirs_exist_ok=True)
+        projA = os.path.join(work, 'projA', 'yaml', 'projAProject.yaml')
+        projB = os.path.join(work, 'projB', 'yaml', 'projBProject.yaml')
+        with open(projA) as f:
+            text = f.read()
+        text = text.replace(
+            'projectFiles:\n    - projALeaf.yaml',
+            'projectFiles:\n    - projALeaf.yaml\n'
+            '    - ../../projB/yaml/projBProject.yaml')
+        with open(projA, 'w') as f:
+            f.write(text)
+        with open(projB) as f:
+            text = f.read()
+        text = text.replace(
+            'projectFiles:\n    - projBLeaf.yaml',
+            'projectFiles:\n    - projBLeaf.yaml\n'
+            '    - ../../projA/yaml/projAProject.yaml')
+        with open(projB, 'w') as f:
+            f.write(text)
+
+        proj = os.path.join(work, 'top', 'yaml', 'tieProject.yaml')
+        try:
+            ProjectScanner(proj).scan()
+        except ValueError as e:
+            msg = str(e)
+            assert 'cycle' in msg, f"cycle diagnostic omits 'cycle': {msg}"
+            assert 'projAProject.yaml' in msg and 'projBProject.yaml' in msg, \
+                f"cycle diagnostic did not name both provider files: {msg}"
+            print("PASS: projectFiles: reference cycle fails loud (names "
+                  "both provider files)")
+            return
+        assert False, "projectFiles: reference cycle did not raise a diagnostic"
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_ip_test_composed_scan():
+    """The remaining tie, ruled 2026-09-14: the composed ip_test root reaches
+    real ip.yaml/ipVariants.yaml both directly (root's own ip provider) and
+    through ipBridge's vendored ip' copy, redirected onto the root's
+    projectOverride master. Ranking a dependency on ip' as a dependency on
+    its master too gives ip depth 2 through ipBridge, so ip ranks below
+    ipBridge and owns its own files instead of tying with it. The two
+    standalone sub-project roots must still scan cleanly on their own."""
+    result = ProjectScanner(
+        os.path.join(IP_TEST, 'prj', 'yaml', 'ip_testProject.yaml')).scan()
+    ip = '../../ip/yaml/ip.yaml'
+    ipVariants = '../../ip/yaml/ipVariants.yaml'
+    cpu = '../../common/cpu/yaml/cpu.yaml'
+    assert result.ownership[ip] == 'ip', \
+        f"ip.yaml owned by '{result.ownership[ip]}', expected 'ip'"
+    assert result.ownership[ipVariants] == 'ip', \
+        (f"ipVariants.yaml owned by '{result.ownership[ipVariants]}', "
+         f"expected 'ip'")
+    assert result.ownership[cpu] == 'common', \
+        f"cpu.yaml owned by '{result.ownership[cpu]}', expected 'common'"
+
+    ProjectScanner(
+        os.path.join(IP_TEST, 'ip', 'prj', 'yaml', 'ipProject.yaml')).scan()
+    ProjectScanner(
+        os.path.join(IP_TEST, 'bridge', 'prj', 'yaml',
+                     'ipBridgeProject.yaml')).scan()
+    print("PASS: composed ip_test scan succeeds (ip ranks below ipBridge "
+          "through the master edge, both standalone roots scan too)")
+
+
+def test_master_edge_ranking_cycle_fails_loud():
+    """A dependency on any copy of a project also ranks that project's
+    override-selected master, so relax() walks that rank-augmented edge too.
+    A master edge can close a cycle the reference graph alone did not have:
+    projA lists projB, projB lists a second copy of projA, and the root's
+    projectOverrides selects the real projA as that copy's master, so the
+    master edge redirects back onto projA itself. Must raise, naming
+    'cycle', not hang. The second copy is a plain file rather than a symlink
+    onto projA (as ip_test vendors ip): symlinking the whole projA directory
+    would share projA's real content, including the new projA -> projB
+    entry, which would then resolve from the copy's nested depth and 404."""
+    work = tempfile.mkdtemp(prefix='project_scan_rankcycle_', dir=test_dir)
+    try:
+        shutil.copytree(SCAN_TIE, work, dirs_exist_ok=True)
+        top = os.path.join(work, 'top', 'yaml', 'tieProject.yaml')
+        with open(top, 'a') as f:
+            f.write('\nprojectOverrides:\n'
+                    '    projA: ../../projA/yaml/projAProject.yaml\n')
+
+        projA = os.path.join(work, 'projA', 'yaml', 'projAProject.yaml')
+        with open(projA) as f:
+            text = f.read()
+        text = text.replace(
+            'projectFiles:\n    - projALeaf.yaml',
+            'projectFiles:\n    - projALeaf.yaml\n'
+            '    - ../../projB/yaml/projBProject.yaml')
+        with open(projA, 'w') as f:
+            f.write(text)
+
+        projB = os.path.join(work, 'projB', 'yaml', 'projBProject.yaml')
+        with open(projB) as f:
+            text = f.read()
+        text = text.replace(
+            'projectFiles:\n    - projBLeaf.yaml',
+            'projectFiles:\n    - projBLeaf.yaml\n'
+            '    - ../vendored/yaml/projAProject.yaml')
+        with open(projB, 'w') as f:
+            f.write(text)
+
+        vendoredDir = os.path.join(work, 'projB', 'vendored', 'yaml')
+        os.makedirs(vendoredDir)
+        with open(os.path.join(vendoredDir, 'projAProject.yaml'), 'w') as f:
+            f.write('projectName: projA\n'
+                    'dirs:\n    root: ..\n'
+                    'fileGeneration:\n    template: none\n')
+
+        proj = os.path.join(work, 'top', 'yaml', 'tieProject.yaml')
+        try:
+            ProjectScanner(proj).scan()
+        except ValueError as e:
+            msg = str(e)
+            assert 'cycle' in msg, \
+                f"rank-cycle diagnostic omits 'cycle': {msg}"
+            print("PASS: master-edge ranking cycle fails loud (names "
+                  "'cycle', does not hang)")
+            return
+        assert False, "master-edge ranking cycle did not raise a diagnostic"
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def run_all_tests():
     test_multi_copy_reconcile()
     test_divergence_detected()
@@ -471,6 +753,15 @@ def run_all_tests():
     test_bare_basename_include_key_parity()
     test_cross_branch_override_master_discovered()
     test_conflicting_sibling_overrides_fail_loud()
+    test_two_declarers_longest_path_ownership()
+    test_addrgroup_qualification_shared_types_direct_listing()
+    test_param_cross_project_shared_owner_direct_listing()
+    test_ownership_tie_fails_loud()
+    test_ownership_tie_resolved_by_direct_listing()
+    test_ownership_direct_listing_conflict_fails_loud()
+    test_ownership_cycle_fails_loud()
+    test_ip_test_composed_scan()
+    test_master_edge_ranking_cycle_fails_loud()
     return 0
 
 

@@ -24,7 +24,8 @@ export namespace xpCstShared_xpCstSharedDefs_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpCstShared_xpCstSharedDefs_ns {
 // types
-template<typename Config> using cshPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t CSH_WIDTH> using cshPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using cshPixelT = cshPixelT_v<Config::CSH_WIDTH>;
 typedef uint8_t cshTagT; // [8] Sample sequence tag
 typedef uint8_t cshMarkT; // [8] Trailing marker
 
@@ -39,30 +40,30 @@ export namespace xpCstShared_xpCstSharedDefs_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpCstShared_xpCstSharedDefs_ns {
 // structures
-template<typename Config>
-struct cshSt {
+template<uint32_t CSH_WIDTH>
+struct cshSt_v {
     cshMarkT mark; //Trailing marker
-    cshPixelT<Config> data; //Parameterizable pixel payload
+    cshPixelT_v<CSH_WIDTH> data; //Parameterizable pixel payload
     cshTagT tag; //Sample sequence tag
 
-    cshSt() {}
+    cshSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::CSH_WIDTH + 8;
+    static constexpr uint16_t _bitWidth = 8 + CSH_WIDTH + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const cshSt<Config> & rhs) const {
+    inline bool operator == (const cshSt_v<CSH_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         ret = ret && (mark == rhs.mark);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const cshSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const cshSt_v<CSH_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
         sc_trace(tf,v.mark, NAME + ".mark");
     }
-    inline friend ostream& operator << ( ostream& os,  cshSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  cshSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -78,12 +79,12 @@ struct cshSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, cshSt<Config>::_byteWidth);
+        memset(&_ret, 0, cshSt_v<CSH_WIDTH>::_byteWidth);
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::CSH_WIDTH);
-        _pos += Config::CSH_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, CSH_WIDTH);
+        _pos += CSH_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
         _pos += 8;
     }
@@ -92,44 +93,45 @@ struct cshSt {
         uint16_t _pos{0};
         mark = (cshMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
-        data = (cshPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::CSH_WIDTH)) - 1));
-        _pos += Config::CSH_WIDTH;
+        data = (cshPixelT_v<CSH_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (CSH_WIDTH)) - 1));
+        _pos += CSH_WIDTH;
         tag = (cshTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<cshSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<cshSt_v<CSH_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<cshSt<Config>::_bitWidth> packed_data;
+        sc_bv<cshSt_v<CSH_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = mark;
         _pos += 8;
-        packed_data.range(_pos+Config::CSH_WIDTH-1, _pos) = data;
-        _pos += Config::CSH_WIDTH;
+        packed_data.range(_pos+CSH_WIDTH-1, _pos) = data;
+        _pos += CSH_WIDTH;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<cshSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<cshSt_v<CSH_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         mark = (cshMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        data = (cshPixelT<Config>) packed_data.range(_pos+Config::CSH_WIDTH-1, _pos).to_uint64();
-        _pos += Config::CSH_WIDTH;
+        data = (cshPixelT_v<CSH_WIDTH>) packed_data.range(_pos+CSH_WIDTH-1, _pos).to_uint64();
+        _pos += CSH_WIDTH;
         tag = (cshTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit cshSt(sc_bv<cshSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit cshSt(
+    explicit cshSt_v(sc_bv<cshSt_v<CSH_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit cshSt_v(
         cshMarkT mark_,
-        cshPixelT<Config> data_,
+        cshPixelT_v<CSH_WIDTH> data_,
         cshTagT tag_) :
         mark(mark_),
         data(data_),
         tag(tag_)
     {}
-    explicit cshSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit cshSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using cshSt = cshSt_v<Config::CSH_WIDTH>;
 } // namespace xpCstShared_xpCstSharedDefs_ns
 
 // GENERATED_CODE_END

@@ -26,7 +26,8 @@ export namespace xpMtxTpl_xpMtxTplTop_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpMtxTpl_xpMtxTplTop_ns {
 // types
-template<typename Config> using mtChPixelT = uint64_t; // [max:16] Parameterizable channel pixel word
+template<uint32_t MTX_CH_WIDTH> using mtChPixelT_v = uint64_t; // [max:16] Parameterizable channel pixel word
+template<typename Config> using mtChPixelT = mtChPixelT_v<Config::MTX_CH_WIDTH>;
 typedef uint8_t mtChTagT; // [8] Channel tag; low packed position
 typedef uint8_t mtChMarkT; // [8] Channel trailing marker
 
@@ -41,30 +42,30 @@ export namespace xpMtxTpl_xpMtxTplTop_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpMtxTpl_xpMtxTplTop_ns {
 // structures
-template<typename Config>
-struct mtChSt {
+template<uint32_t MTX_CH_WIDTH>
+struct mtChSt_v {
     mtChMarkT mark; //Trailing marker
-    mtChPixelT<Config> data; //Pixel payload
+    mtChPixelT_v<MTX_CH_WIDTH> data; //Pixel payload
     mtChTagT tag; //Sample sequence tag
 
-    mtChSt() {}
+    mtChSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::MTX_CH_WIDTH + 8;
+    static constexpr uint16_t _bitWidth = 8 + MTX_CH_WIDTH + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const mtChSt<Config> & rhs) const {
+    inline bool operator == (const mtChSt_v<MTX_CH_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         ret = ret && (mark == rhs.mark);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const mtChSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const mtChSt_v<MTX_CH_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
         sc_trace(tf,v.mark, NAME + ".mark");
     }
-    inline friend ostream& operator << ( ostream& os,  mtChSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  mtChSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -80,12 +81,12 @@ struct mtChSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, mtChSt<Config>::_byteWidth);
+        memset(&_ret, 0, mtChSt_v<MTX_CH_WIDTH>::_byteWidth);
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::MTX_CH_WIDTH);
-        _pos += Config::MTX_CH_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, MTX_CH_WIDTH);
+        _pos += MTX_CH_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
         _pos += 8;
     }
@@ -94,44 +95,45 @@ struct mtChSt {
         uint16_t _pos{0};
         mark = (mtChMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
-        data = (mtChPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::MTX_CH_WIDTH)) - 1));
-        _pos += Config::MTX_CH_WIDTH;
+        data = (mtChPixelT_v<MTX_CH_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (MTX_CH_WIDTH)) - 1));
+        _pos += MTX_CH_WIDTH;
         tag = (mtChTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<mtChSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<mtChSt_v<MTX_CH_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<mtChSt<Config>::_bitWidth> packed_data;
+        sc_bv<mtChSt_v<MTX_CH_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = mark;
         _pos += 8;
-        packed_data.range(_pos+Config::MTX_CH_WIDTH-1, _pos) = data;
-        _pos += Config::MTX_CH_WIDTH;
+        packed_data.range(_pos+MTX_CH_WIDTH-1, _pos) = data;
+        _pos += MTX_CH_WIDTH;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<mtChSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<mtChSt_v<MTX_CH_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         mark = (mtChMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        data = (mtChPixelT<Config>) packed_data.range(_pos+Config::MTX_CH_WIDTH-1, _pos).to_uint64();
-        _pos += Config::MTX_CH_WIDTH;
+        data = (mtChPixelT_v<MTX_CH_WIDTH>) packed_data.range(_pos+MTX_CH_WIDTH-1, _pos).to_uint64();
+        _pos += MTX_CH_WIDTH;
         tag = (mtChTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit mtChSt(sc_bv<mtChSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit mtChSt(
+    explicit mtChSt_v(sc_bv<mtChSt_v<MTX_CH_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit mtChSt_v(
         mtChMarkT mark_,
-        mtChPixelT<Config> data_,
+        mtChPixelT_v<MTX_CH_WIDTH> data_,
         mtChTagT tag_) :
         mark(mark_),
         data(data_),
         tag(tag_)
     {}
-    explicit mtChSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit mtChSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using mtChSt = mtChSt_v<Config::MTX_CH_WIDTH>;
 } // namespace xpMtxTpl_xpMtxTplTop_ns
 
 // GENERATED_CODE_END

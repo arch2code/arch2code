@@ -26,7 +26,8 @@ export namespace xpRtInh_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpRtInh_ns {
 // types
-template<typename Config> using cfgDataT = uint64_t; // [max:32] xpRtLeaf configuration payload
+template<uint32_t RT_WIDTH> using cfgDataT_v = uint64_t; // [max:32] xpRtLeaf configuration payload
+template<typename Config> using cfgDataT = cfgDataT_v<Config::RT_WIDTH>;
 
 } // namespace xpRtInh_ns
 // GENERATED_CODE_END
@@ -59,24 +60,24 @@ inline const char* addr_id_xpRtWrap_prt( addr_id_xpRtWrap val )
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpRtInh_ns {
 // structures
-template<typename Config>
-struct cfgSt {
-    cfgDataT<Config> value; //xpRtLeaf configuration value
+template<uint32_t RT_WIDTH>
+struct cfgSt_v {
+    cfgDataT_v<RT_WIDTH> value; //xpRtLeaf configuration value
 
-    cfgSt() {}
+    cfgSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::RT_WIDTH;
+    static constexpr uint16_t _bitWidth = RT_WIDTH;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const cfgSt<Config> & rhs) const {
+    inline bool operator == (const cfgSt_v<RT_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (value == rhs.value);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const cfgSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const cfgSt_v<RT_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.value, NAME + ".value");
     }
-    inline friend ostream& operator << ( ostream& os,  cfgSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  cfgSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -90,49 +91,50 @@ struct cfgSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, cfgSt<Config>::_byteWidth);
+        memset(&_ret, 0, cfgSt_v<RT_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, value, Config::RT_WIDTH);
-        _pos += Config::RT_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, value, RT_WIDTH);
+        _pos += RT_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        value = (cfgDataT<Config>)((_src) & ((1ULL << (Config::RT_WIDTH)) - 1));
+        value = (cfgDataT_v<RT_WIDTH>)((_src) & ((1ULL << (RT_WIDTH)) - 1));
     }
     // register functions
     inline int _size(void) {return( (_bitWidth + 7) >> 4 ); }
     uint64_t _getValue(void)
     {
         uint64_t ret =
-        (( value & ((1ULL<<Config::RT_WIDTH)-1) ) << 0);
+        (( value & ((1ULL<<RT_WIDTH)-1) ) << 0);
         return( ret );
     }
     void _setValue(uint64_t packedValue)
     {
-        value = ( cfgDataT<Config> ) (( packedValue >> 0 ) & (( (uint64_t)1 << Config::RT_WIDTH ) - 1)) ;
+        value = ( cfgDataT_v<RT_WIDTH> ) (( packedValue >> 0 ) & (( (uint64_t)1 << RT_WIDTH ) - 1)) ;
         }
-    inline sc_bv<cfgSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<cfgSt_v<RT_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<cfgSt<Config>::_bitWidth> packed_data;
+        sc_bv<cfgSt_v<RT_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::RT_WIDTH-1, _pos) = value;
-        _pos += Config::RT_WIDTH;
+        packed_data.range(_pos+RT_WIDTH-1, _pos) = value;
+        _pos += RT_WIDTH;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<cfgSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<cfgSt_v<RT_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        value = (cfgDataT<Config>) packed_data.range(_pos+Config::RT_WIDTH-1, _pos).to_uint64();
-        _pos += Config::RT_WIDTH;
+        value = (cfgDataT_v<RT_WIDTH>) packed_data.range(_pos+RT_WIDTH-1, _pos).to_uint64();
+        _pos += RT_WIDTH;
     }
-    explicit cfgSt(sc_bv<cfgSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit cfgSt(
-        cfgDataT<Config> value_) :
+    explicit cfgSt_v(sc_bv<cfgSt_v<RT_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit cfgSt_v(
+        cfgDataT_v<RT_WIDTH> value_) :
         value(value_)
     {}
-    explicit cfgSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit cfgSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using cfgSt = cfgSt_v<Config::RT_WIDTH>;
 } // namespace xpRtInh_ns
 
 // GENERATED_CODE_END

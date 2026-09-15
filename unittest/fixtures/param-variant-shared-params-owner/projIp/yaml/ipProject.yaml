@@ -1,0 +1,14 @@
+# projIp PROJECT file. Owns ipTop.yaml and everything declared there, including
+# the leafIp block and this project's own binding of variant v0. References
+# projParams, which owns leafIp's LEAF_W declaration.
+projectName: projIp
+
+projectFiles:
+    - ../../projParams/yaml/paramsProject.yaml
+    - ipTop.yaml
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

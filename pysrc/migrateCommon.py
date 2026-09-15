@@ -97,14 +97,16 @@ def classifyGeneratedDir(dirs):
     """Partition the SOURCE files found under each directory in `dirs` into
     `(generated, ungenerated)` by the GENERATED_CODE marker.
 
-    Fully-generated segment directories (base, registrar, vl_wrap) hold only
-    generated artifacts, so a migration sweep clears them by directory rather
-    than by fileMap expansion — the marker (not a cond/ext/name gate) is the
-    decider, so alternate-extension or renamed orphans a per-file expansion would
-    miss (pre-`.cppm` `<block>Base.h`, model-only `<block>Tandem.*`, stale
-    `*_hdl_sc_wrapper.h`) are still caught. `generated` files are safe to
-    delete-and-regenerate; `ungenerated` files are surfaced for review and never
-    deleted (a hand-authored file dropped into a generated segment is preserved).
+    Fully-generated segment directories (base, registrar) hold only generated
+    artifacts, so a migration sweep clears them by directory rather than by
+    fileMap expansion — the marker (not a cond/ext/name gate) is the decider, so
+    alternate-extension or renamed orphans a per-file expansion would miss
+    (pre-`.cppm` `<block>Base.h`, model-only `<block>Tandem.*`) are still caught.
+    `vl_wrap` is NOT fully-generated: its SC HDL wrapper header (`vlScWrap`)
+    hosts user code, so that segment is swept per file instead. `generated`
+    files are safe to delete-and-regenerate; `ungenerated` files are surfaced
+    for review and never deleted (a hand-authored file dropped into a
+    generated segment is preserved).
     Non-source files (build scaffolding) are ignored. Missing directories are
     skipped."""
     generated = list()

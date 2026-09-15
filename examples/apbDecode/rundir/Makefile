@@ -12,10 +12,12 @@ EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 include $(A2C_ROOT)/include/make/a2c-systemc.mk
 include $(A2C_ROOT)/include/make/a2c-agents.mk
 
+REGR_JOBS ?= 8
+
 .PHONY : run run-vl run-vl-blockA run-vl-blockB run-vl-apbDecode run-vl-someRapper regr
 
 regr:
-	$(A2C_ROOT)/regrLauncher.py --build -j8 regr_apbDecode.json $(REGR_USER_OPTS)
+	$(A2C_ROOT)/regrLauncher.py --build -j$(REGR_JOBS) regr_apbDecode.json $(REGR_USER_OPTS)
 
 run: $(BIN_DIR)/$(BIN)
 ifndef VL_DUT

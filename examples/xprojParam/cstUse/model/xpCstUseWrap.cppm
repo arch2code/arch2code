@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "push_ack_port_thunker.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -45,10 +44,6 @@ public:
     std::shared_ptr<xpCstDutBase<xpCstUse_xpCstDutUseConfig>> uDut;
     std::shared_ptr<xpCstUseChkBase<xpCstUse_xpCstUseChkUseConfig>> uChk;
 
-    // cross-interface thunkers
-    push_ack_port_thunker<csDutSt<xpCstUse_xpCstDutUseConfig>, csDutSt<xpCstUse_xpCstUseSrcUseConfig>, true> thunker_out_0_uSrc;
-    push_ack_port_thunker<csDutSt<xpCstUse_xpCstUseChkUseConfig>, csDutSt<xpCstUse_xpCstDutUseConfig>, true> thunker_out_1_uDut;
-
     xpCstUseWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpCstUseWrap() override = default;
 
@@ -79,13 +74,13 @@ xpCstUseWrap::xpCstUseWrap(sc_module_name blockName, const char * variant, block
         ,uSrc(std::dynamic_pointer_cast<xpCstUseSrcBase<xpCstUse_xpCstUseSrcUseConfig>>(instanceFactory::createInstance(name(), "uSrc", "xpCstUseSrc", "use", "xpCstUse.xpCstUse_xpCstUseWrap.xpCstUse_xpCstUseSrc")))
         ,uDut(std::dynamic_pointer_cast<xpCstDutBase<xpCstUse_xpCstDutUseConfig>>(instanceFactory::createInstance(name(), "uDut", "xpCstDut", "use", "xpCstUse.xpCstUse_xpCstUseWrap.xpCstIp_xpCstDut")))
         ,uChk(std::dynamic_pointer_cast<xpCstUseChkBase<xpCstUse_xpCstUseChkUseConfig>>(instanceFactory::createInstance(name(), "uChk", "xpCstUseChk", "use", "xpCstUse.xpCstUse_xpCstUseWrap.xpCstUse_xpCstUseChk")))
-        ,thunker_out_0_uSrc("thunker_out_0_uSrc", out_0, uSrc->out, name())
-        ,thunker_out_1_uDut("thunker_out_1_uDut", out_1, uDut->out, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // instance to instance connections via channel
+    uSrc->out(out_0);
     uDut->in(out_0);
+    uDut->out(out_1);
     uChk->in(out_1);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

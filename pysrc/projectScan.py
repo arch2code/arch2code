@@ -87,6 +87,10 @@ class ProjectScanner:
         # Per read file, its projectFiles:+include: reference edges - the
         # ownership graph _referenceClosure walks (systemFiles excluded).
         self.yamlReferences = {}
+        # Per read file, its own direct projectFiles: entries (a subset of
+        # yamlReferences): a file listed here belongs to this file's owner
+        # outright, ahead of the reference-depth ranking.
+        self.yamlProjectSlot = {}
         # Every discovered child-project copy aliases to ITSELF: the scanner
         # never redirects a copy onto its master, so all copies of one
         # projectName remain distinct providers/boundaries.
@@ -105,6 +109,8 @@ class ProjectScanner:
         # Root project's own projectFiles:+include: closure (seeds the ownership
         # root walk); the root project file is not itself a graph node.
         self.rootReferences = set()
+        # Root's own direct projectFiles: entries (subset of rootReferences).
+        self.rootProjectSlot = set()
         self._seen = set()
         # projectName -> BFS depth at which its winning override was folded
         # (root project = 0). Lets _foldEffective tell a legitimate
@@ -159,6 +165,7 @@ class ProjectScanner:
             (userTodo, userInclude, userProjectSlot) = self.getFileList(
                 rootRaw, g.yamlBasePath)
             self.rootReferences = set(userProjectSlot) | set(userInclude)
+            self.rootProjectSlot = set(userProjectSlot)
             # Walk references in declaration order (todoNorm: projectFiles then
             # include, systemFiles excluded from the scan), mirroring the live
             # readRaw walk order, so the include-dependency map accumulates in the
@@ -243,6 +250,7 @@ class ProjectScanner:
                     raw, os.path.dirname(f), self.yamlDependancies)
                 refs = set(projectSlot) | set(include)
                 self.yamlReferences[f] = refs
+                self.yamlProjectSlot[f] = projectSlot
                 if f in self.yamlDependancies:
                     self.yamlDependancies[f].update(include)
                 else:
@@ -316,62 +324,175 @@ class ProjectScanner:
         return owned, childBoundaries
 
     def _assignOwnership(self):
-        # Deepest-provider ownership by reference closure, multi-copy tolerant:
-        # provider -> name is file-keyed (self.providerName) so distinct copies of
-        # one projectName each own their own closure, and each copy's files are
-        # reattributed to the copy's declaring projectName. The root reference
-        # closure is owned by the root project; every child provider's closure is
-        # walked shallow-to-deep and the deepest closure reaching a shared file
-        # wins (equal-depth ties break lexically on the provider path). Also
-        # records the winning provider file per context so the logical key can
-        # anchor on that copy's own $root. Returns (ownership, owningProvider).
+        # Ownership by reference closure, multi-copy tolerant: provider -> name
+        # is file-keyed (self.providerName) so each copy of a projectName owns
+        # its own closure. The root closure is owned by the root project. A
+        # file listed directly in an owner's own projectFiles: belongs to that
+        # owner outright; otherwise a provider ranks by its LONGEST path from
+        # the root over the provider graph, so a dependee the root also lists
+        # directly still sits below the provider that depends on it and owns
+        # the files they share. Two owners directly listing one file, a file
+        # tied under the depth ranking, or a reference cycle, is an error. An
+        # override master reached only by the override sits below the whole
+        # reference wave. A dependency on any copy of a project ranks that
+        # project's override-selected master too, so a chain through a copy
+        # still deepens the master's rank. Returns (ownership, owningProvider).
         ownership = {}
         owningProvider = {}
         _, rootChildren = self._referenceClosure(self.rootReferences, None)
-        depth = {}
+
         providerOwned = {}
-        frontier = list(rootChildren)
-        curDepth = 1
+        providerChildren = {}
+        onStack = []
+
+        def discoverClosure(b):
+            # Depth-first, memoised discovery of one provider's owned-file
+            # closure and its child-provider boundaries. The on-stack check
+            # runs before the memo check, so re-entering a provider still on
+            # the current recursion path is caught as a cycle rather than
+            # short-circuited as already-known.
+            if b in onStack:
+                cycle = onStack[onStack.index(b):] + [b]
+                raise ValueError(
+                    "projectFiles:/include: reference cycle: " +
+                    " -> ".join(cycle))
+            if b in providerChildren:
+                return
+            onStack.append(b)
+            owned, children = self._referenceClosure(self.yamlReferences[b], b)
+            providerOwned[b] = owned
+            providerChildren[b] = children
+            for c in children:
+                discoverClosure(c)
+            onStack.pop()
+
+        for b in rootChildren:
+            discoverClosure(b)
+
+        # Ranking edges also reach each child's override-selected master, so a
+        # chain through a copy deepens the master's rank.
+        masterProviderByName = self._selectMasters()
+        master = {}
+        for providerFile, name in self.providerName.items():
+            masterProvider = masterProviderByName.get(name)
+            if masterProvider is not None and masterProvider != providerFile:
+                master[providerFile] = masterProvider
+
+        def rankChildren(b):
+            children = providerChildren.get(b, set())
+            return children | {master[c] for c in children if c in master}
+
+        # Longest path from the root, relaxed to a fixed point.
+        depth = {b: 1 for b in rootChildren}
+
+        def relax():
+            changed = True
+            while changed:
+                changed = False
+                for b in providerChildren:
+                    d = depth.get(b)
+                    if d is None:
+                        continue
+                    for c in rankChildren(b):
+                        if depth.get(c, 0) < d + 1:
+                            depth[c] = d + 1
+                            changed = True
+
+        def checkNoRankCycle(seeds):
+            # The rank edges can close a cycle the reference walk did not see;
+            # relax() would never converge on one, so it is rejected first.
+            stack = []
+            visited = set()
+
+            def dfs(b):
+                if b in stack:
+                    cycle = stack[stack.index(b):] + [b]
+                    raise ValueError(
+                        "projectFiles:/include: reference cycle: " +
+                        " -> ".join(cycle))
+                if b in visited:
+                    return
+                stack.append(b)
+                for c in rankChildren(b):
+                    dfs(c)
+                stack.pop()
+                visited.add(b)
+
+            for s in seeds:
+                dfs(s)
+
+        checkNoRankCycle(rootChildren)
+        relax()
+        # A provider named only by an override (never by a reference edge) is
+        # seeded one past the deepest rank, then its closure is discovered and
+        # relaxed like any other. Discovery, not depth, decides who is still
+        # pending: a rank edge may have given a master its depth already.
         while True:
-            nextLevel = []
-            for b in frontier:
-                if b in depth:
-                    continue
-                depth[b] = curDepth
-                owned, children = self._referenceClosure(
-                    self.yamlReferences[b], b)
-                providerOwned[b] = owned
-                nextLevel.extend(children)
-            if nextLevel:
-                frontier = nextLevel
-                curDepth += 1
-                continue
-            # The reference-graph wave has drained. Seed any provider discovered
-            # in scan() but not reached through a projectFiles:/include: edge - an
-            # override target enqueued as the master copy is such an orphan (only
-            # the override, not a reference edge, names it). Attribute its closure
-            # too, matching the live parse where the _selectProvider redirect wires
-            # the master target into the reference graph. Continue until every
-            # discovered provider is walked (an orphan's closure may reach more).
-            orphans = [p for p in self.providerName if p not in depth]
+            orphans = [p for p in self.providerName if p not in providerChildren]
             if not orphans:
                 break
-            # An override master reached only by the override sits below the
-            # whole reference wave (curDepth = max+1), so its closure out-ranks
-            # any reference-reached provider for a file they share - the master
-            # owns its own closure.
-            frontier = orphans
-            curDepth += 1
+            floor = max(depth.values(), default=0) + 1
+            for p in orphans:
+                discoverClosure(p)
+                if p not in depth:
+                    depth[p] = floor
+            checkNoRankCycle(orphans)
+            relax()
+
         for f in sorted(self._seen):
             ownership[f] = self.rootName
             owningProvider[f] = None
-        # Shallow-to-deep so the deepest closure that reaches a shared file wins;
-        # equal-depth ties break lexically on the provider path.
-        for b in sorted(providerOwned, key=lambda x: (depth[x], x)):
-            name = self.providerName[b]
-            for f in providerOwned[b]:
-                ownership[f] = name
-                owningProvider[f] = b
+
+        # Rule 1: a file listed directly in an owner's own projectFiles:
+        # belongs to that owner outright, ahead of the depth ranking below;
+        # more than one owner directly listing one file is a conflict.
+        directOwners = {}
+        for f in self.rootProjectSlot:
+            if f not in self.providerName:
+                directOwners.setdefault(f, []).append(None)
+        for b in self.providerName:
+            for f in self.yamlProjectSlot[b]:
+                if f not in self.providerName:
+                    directOwners.setdefault(f, []).append(b)
+
+        def directLabel(owner):
+            return self.rootName if owner is None else owner
+
+        for f in sorted(directOwners):
+            owners = directOwners[f]
+            if len(owners) > 1:
+                raise ValueError(
+                    f"'{f}' is listed directly in projectFiles: by more than "
+                    f"one project: "
+                    f"{', '.join(sorted(directLabel(o) for o in owners))}; "
+                    f"only one project may claim a file directly.")
+            owner = owners[0]
+            ownership[f] = self.rootName if owner is None else self.providerName[owner]
+            owningProvider[f] = owner
+
+        # Rule 2: otherwise, a file is owned by the provider whose closure
+        # reaches it at the greatest depth; two or more providers tied at that
+        # depth cannot be resolved automatically and fail loud instead of
+        # picking one.
+        fileProviders = {}
+        for b, owned in providerOwned.items():
+            for f in owned:
+                if f in directOwners:
+                    continue
+                fileProviders.setdefault(f, []).append(b)
+        for f in sorted(fileProviders):
+            providers = fileProviders[f]
+            maxDepth = max(depth[b] for b in providers)
+            winners = sorted(b for b in providers if depth[b] == maxDepth)
+            if len(winners) > 1:
+                raise ValueError(
+                    f"'{f}' has no single owner: it is reached at the same "
+                    f"depth by {', '.join(winners)}. List the file directly "
+                    f"in the owning project's projectFiles: to resolve the "
+                    f"tie.")
+            winner = winners[0]
+            ownership[f] = self.providerName[winner]
+            owningProvider[f] = winner
         return ownership, owningProvider
 
     def _selectMasters(self):

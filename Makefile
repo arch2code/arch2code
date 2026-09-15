@@ -370,33 +370,29 @@ xproj-inherit-layout:
 	fi
 
 .PHONY : xproj-inferred-port
-# An undeclared port binds its channel directly, so its instance must resolve
-# at the channel's Config. infPort (both undeclared ends inherit) must pass;
-# infPortBad's uLeaf is reached by a connection and a connectionMap that both
-# disagree with it and must be rejected at db, once for each.
-# Adjudicated at db and never built. Shares no sub-project, so needs no ordering.
+# infPort (a declared variant end plus an inheriting end, equal values) passes
+# db and gen with no thunker; infPortBad (undeclared ends, unequal values) is
+# rejected at db at both junctions. Adjudicated at db and never built. Shares
+# no sub-project, so needs no ordering.
 xproj-inferred-port:
 	make -C $(XPROJ_PARAM_DIR)/infPort clean
 	make -C $(XPROJ_PARAM_DIR)/infPort -j db
-	# A rejected run still writes the db file, which would satisfy the db target; clean it first.
+	make -C $(XPROJ_PARAM_DIR)/infPort -j gen
 	make -C $(XPROJ_PARAM_DIR)/infPortBad clean
 	@if make -C $(XPROJ_PARAM_DIR)/infPortBad -j db > $(XPROJ_PARAM_DIR)/infPortBad/db.log 2>&1; then \
-	    echo "ERROR: infPortBad db build succeeded; an undeclared port binding a mismatched Config is no longer adjudicated"; \
+	    echo "ERROR: infPortBad db build succeeded; the undeclared-end value disagreement is no longer rejected"; \
 	    rm -f $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
 	    exit 1; \
-	elif ! grep -qF "instance 'uLeaf' of block 'xpIpbLeaf' declares no ports: entry for port 'out'" $(XPROJ_PARAM_DIR)/infPortBad/db.log; then \
-	    echo "ERROR: infPortBad was rejected, but not for uLeaf's connection to uSnk"; \
-	    cat $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
+	elif grep -q "undeclared and inferred from the connection" $(XPROJ_PARAM_DIR)/infPortBad/db.log \
+	     && grep -q uLeaf $(XPROJ_PARAM_DIR)/infPortBad/db.log \
+	     && grep -q xpIpbSnk $(XPROJ_PARAM_DIR)/infPortBad/db.log; then \
+	    echo "OK: infPortBad rejected at db naming both ends of the disagreeing junction"; \
 	    rm -f $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
-	    exit 1; \
-	elif ! grep -qF "instance 'uLeaf' of block 'xpIpbLeaf' declares no ports: entry for port 'in'" $(XPROJ_PARAM_DIR)/infPortBad/db.log; then \
-	    echo "ERROR: infPortBad was rejected, but not for uLeaf's connectionMap boundary port"; \
-	    cat $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
-	    rm -f $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
-	    exit 1; \
 	else \
-	    echo "OK: infPortBad rejected at db: undeclared ports bind a channel typed at another Config"; \
+	    echo "ERROR: infPortBad was rejected, but not by the undeclared-end value check"; \
+	    cat $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
 	    rm -f $(XPROJ_PARAM_DIR)/infPortBad/db.log; \
+	    exit 1; \
 	fi
 
 .PHONY : xproj-variant-unique
@@ -567,6 +563,7 @@ clean :
 		make -C $$d clean || exit $$?; \
 	done
 
+# Invocation contract: see unittest/README.md, "Invocation contract".
 .PHONY : unittest
 unittest:
 	cd unittest && ./run_all_tests.sh

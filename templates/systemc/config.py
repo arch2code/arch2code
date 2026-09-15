@@ -1,5 +1,5 @@
 import pysrc.emissionUtils as emissionUtils
-from pysrc.intf_gen_utils import cpp_config_module_name, CONTAINER_CONFIG_PARAM
+from pysrc.intf_gen_utils import cpp_config_module_name, CONTAINER_CONFIG_PARAM, configType
 
 # args from generator line
 # prj object
@@ -61,7 +61,7 @@ def _descriptorMemberLines(prj, desc):
             rhs = f'{CONTAINER_CONFIG_PARAM}::{containerParam}'
         else:
             rhs = _configMemberRhs(constData, resolved, variantSpelling)
-        out.append(f"    static constexpr {_config_type(constData)} {constName} = {rhs};")
+        out.append(f"    static constexpr {configType(constData)} {constName} = {rhs};")
     return out
 
 
@@ -81,7 +81,7 @@ def configStructLines(prj, data, structName, baseValues):
     spelling = _configSymSpelling(prj, {value['constant'] for value in params})
     out = [f"struct {structName} {{"]
     for value in params:
-        type_str = _config_type(value)
+        type_str = configType(value)
         rhs = _configMemberRhs(value, baseValues.get(value['constant'], value['value']), spelling)
         out.append(f"    static constexpr {type_str} {value['constant']} = {rhs};")
     out.append("};")
@@ -112,16 +112,3 @@ def _configMemberRhs(constData, resolved, symSpelling):
     if constData['evalCanonical']:
         return emitCStyleCanonical(constData['evalCanonical'], symSpelling)
     return resolved
-
-
-def _config_type(value):
-    valueType = value['valueType']
-    if valueType == 'uint':
-        maxValue = max(value['value'], value['maxValue'])
-        return 'uint32_t' if maxValue <= 0xFFFFFFFF else 'uint64_t'
-    if valueType == 'int':
-        maxAbs = max(abs(value['value']), abs(value['maxValue']))
-        return 'int32_t' if maxAbs <= 0x7FFFFFFF else 'int64_t'
-    if valueType == 'real':
-        return 'double'
-    return valueType

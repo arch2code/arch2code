@@ -24,8 +24,10 @@ export namespace ip_test_ipLeaf_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace ip_test_ipLeaf_ns {
 // types
-template<typename Config> using ipLeafMemAddrT = uint64_t; // [max:3] Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)
-template<typename Config> using ipLeafDataT = uint64_t; // [max:16] ipLeaf data word, parameterizable
+template<uint32_t LEAF_MEM_DEPTH> using ipLeafMemAddrT_v = uint64_t; // [max:3] Index into ipLeaf's private memory (0..LEAF_MEM_DEPTH-1)
+template<typename Config> using ipLeafMemAddrT = ipLeafMemAddrT_v<Config::LEAF_MEM_DEPTH>;
+template<uint32_t LEAF_DATA_WIDTH> using ipLeafDataT_v = uint64_t; // [max:16] ipLeaf data word, parameterizable
+template<typename Config> using ipLeafDataT = ipLeafDataT_v<Config::LEAF_DATA_WIDTH>;
 
 } // namespace ip_test_ipLeaf_ns
 // GENERATED_CODE_END
@@ -38,24 +40,24 @@ export namespace ip_test_ipLeaf_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace ip_test_ipLeaf_ns {
 // structures
-template<typename Config>
-struct ipLeafMemSt {
-    ipLeafDataT<Config> data; //Leaf memory word
+template<uint32_t LEAF_DATA_WIDTH>
+struct ipLeafMemSt_v {
+    ipLeafDataT_v<LEAF_DATA_WIDTH> data; //Leaf memory word
 
-    ipLeafMemSt() {}
+    ipLeafMemSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::LEAF_DATA_WIDTH;
+    static constexpr uint16_t _bitWidth = LEAF_DATA_WIDTH;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const ipLeafMemSt<Config> & rhs) const {
+    inline bool operator == (const ipLeafMemSt_v<LEAF_DATA_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (data == rhs.data);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const ipLeafMemSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const ipLeafMemSt_v<LEAF_DATA_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.data, NAME + ".data");
     }
-    inline friend ostream& operator << ( ostream& os,  ipLeafMemSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  ipLeafMemSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -69,55 +71,56 @@ struct ipLeafMemSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipLeafMemSt<Config>::_byteWidth);
+        memset(&_ret, 0, ipLeafMemSt_v<LEAF_DATA_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::LEAF_DATA_WIDTH);
-        _pos += Config::LEAF_DATA_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, LEAF_DATA_WIDTH);
+        _pos += LEAF_DATA_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (ipLeafDataT<Config>)((_src) & ((1ULL << (Config::LEAF_DATA_WIDTH)) - 1));
+        data = (ipLeafDataT_v<LEAF_DATA_WIDTH>)((_src) & ((1ULL << (LEAF_DATA_WIDTH)) - 1));
     }
-    inline sc_bv<ipLeafMemSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<ipLeafMemSt_v<LEAF_DATA_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<ipLeafMemSt<Config>::_bitWidth> packed_data;
+        sc_bv<ipLeafMemSt_v<LEAF_DATA_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::LEAF_DATA_WIDTH-1, _pos) = data;
-        _pos += Config::LEAF_DATA_WIDTH;
+        packed_data.range(_pos+LEAF_DATA_WIDTH-1, _pos) = data;
+        _pos += LEAF_DATA_WIDTH;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<ipLeafMemSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<ipLeafMemSt_v<LEAF_DATA_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (ipLeafDataT<Config>) packed_data.range(_pos+Config::LEAF_DATA_WIDTH-1, _pos).to_uint64();
-        _pos += Config::LEAF_DATA_WIDTH;
+        data = (ipLeafDataT_v<LEAF_DATA_WIDTH>) packed_data.range(_pos+LEAF_DATA_WIDTH-1, _pos).to_uint64();
+        _pos += LEAF_DATA_WIDTH;
     }
-    explicit ipLeafMemSt(sc_bv<ipLeafMemSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit ipLeafMemSt(
-        ipLeafDataT<Config> data_) :
+    explicit ipLeafMemSt_v(sc_bv<ipLeafMemSt_v<LEAF_DATA_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit ipLeafMemSt_v(
+        ipLeafDataT_v<LEAF_DATA_WIDTH> data_) :
         data(data_)
     {}
-    explicit ipLeafMemSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit ipLeafMemSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-template<typename Config>
-struct ipLeafMemAddrSt {
-    ipLeafMemAddrT<Config> address; //Leaf memory address
+template<typename Config> using ipLeafMemSt = ipLeafMemSt_v<Config::LEAF_DATA_WIDTH>;
+template<uint32_t LEAF_MEM_DEPTH>
+struct ipLeafMemAddrSt_v {
+    ipLeafMemAddrT_v<LEAF_MEM_DEPTH> address; //Leaf memory address
 
-    ipLeafMemAddrSt() {}
+    ipLeafMemAddrSt_v() {}
 
-    static constexpr uint16_t _bitWidth = clog2(Config::LEAF_MEM_DEPTH);
+    static constexpr uint16_t _bitWidth = clog2(LEAF_MEM_DEPTH);
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const ipLeafMemAddrSt<Config> & rhs) const {
+    inline bool operator == (const ipLeafMemAddrSt_v<LEAF_MEM_DEPTH> & rhs) const {
         bool ret = true;
         ret = ret && (address == rhs.address);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const ipLeafMemAddrSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const ipLeafMemAddrSt_v<LEAF_MEM_DEPTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.address, NAME + ".address");
     }
-    inline friend ostream& operator << ( ostream& os,  ipLeafMemAddrSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  ipLeafMemAddrSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -131,37 +134,38 @@ struct ipLeafMemAddrSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, ipLeafMemAddrSt<Config>::_byteWidth);
+        memset(&_ret, 0, ipLeafMemAddrSt_v<LEAF_MEM_DEPTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, address, clog2(Config::LEAF_MEM_DEPTH));
-        _pos += clog2(Config::LEAF_MEM_DEPTH);
+        pack_bits((uint64_t *)&_ret, _pos, address, clog2(LEAF_MEM_DEPTH));
+        _pos += clog2(LEAF_MEM_DEPTH);
     }
     inline void unpack(const _packedSt &_src)
     {
-        address = (ipLeafMemAddrT<Config>)((_src) & ((1ULL << (clog2(Config::LEAF_MEM_DEPTH))) - 1));
+        address = (ipLeafMemAddrT_v<LEAF_MEM_DEPTH>)((_src) & ((1ULL << (clog2(LEAF_MEM_DEPTH))) - 1));
     }
-    inline sc_bv<ipLeafMemAddrSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<ipLeafMemAddrSt_v<LEAF_MEM_DEPTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<ipLeafMemAddrSt<Config>::_bitWidth> packed_data;
+        sc_bv<ipLeafMemAddrSt_v<LEAF_MEM_DEPTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+clog2(Config::LEAF_MEM_DEPTH)-1, _pos) = address;
-        _pos += clog2(Config::LEAF_MEM_DEPTH);
+        packed_data.range(_pos+clog2(LEAF_MEM_DEPTH)-1, _pos) = address;
+        _pos += clog2(LEAF_MEM_DEPTH);
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<ipLeafMemAddrSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<ipLeafMemAddrSt_v<LEAF_MEM_DEPTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        address = (ipLeafMemAddrT<Config>) packed_data.range(_pos+clog2(Config::LEAF_MEM_DEPTH)-1, _pos).to_uint64();
-        _pos += clog2(Config::LEAF_MEM_DEPTH);
+        address = (ipLeafMemAddrT_v<LEAF_MEM_DEPTH>) packed_data.range(_pos+clog2(LEAF_MEM_DEPTH)-1, _pos).to_uint64();
+        _pos += clog2(LEAF_MEM_DEPTH);
     }
-    explicit ipLeafMemAddrSt(sc_bv<ipLeafMemAddrSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit ipLeafMemAddrSt(
-        ipLeafMemAddrT<Config> address_) :
+    explicit ipLeafMemAddrSt_v(sc_bv<ipLeafMemAddrSt_v<LEAF_MEM_DEPTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit ipLeafMemAddrSt_v(
+        ipLeafMemAddrT_v<LEAF_MEM_DEPTH> address_) :
         address(address_)
     {}
-    explicit ipLeafMemAddrSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit ipLeafMemAddrSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using ipLeafMemAddrSt = ipLeafMemAddrSt_v<Config::LEAF_MEM_DEPTH>;
 } // namespace ip_test_ipLeaf_ns
 
 // GENERATED_CODE_END

@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "push_ack_port_thunker.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -73,16 +72,6 @@ public:
     std::shared_ptr<xpDpMidBase<xpDpTop_xpDpMidCustomer3Config>> uMid3;
     std::shared_ptr<xpDpChkBase<xpDpTop_xpDpChkCustomer3Config>> uChk3;
 
-    // cross-interface thunkers
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpMidCustomerConfig<Config>>, dpSt<xpDpTop_xpDpSrcCustomerConfig>, true> thunker_out_0_uSrc;
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpChkCustomerConfig>, dpSt<xpDpTop_xpDpMidCustomerConfig<Config>>, true> thunker_midOut_0_uMid;
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpLeafLeafXConfig<Config>>, dpSt<xpDpTop_xpDpSrcCustomerConfig>, true> thunker_out2_uSrc;
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpChkLeafXConfig>, dpSt<xpDpTop_xpDpLeafLeafXConfig<Config>>, true> thunker_out_1_uLeafX;
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpMidCustomer2Config>, dpSt<xpDpTop_xpDpSrcCustomerConfig>, true> thunker_out4_uSrc;
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpChkCustomer2Config>, dpSt<xpDpTop_xpDpMidCustomer2Config>, true> thunker_midOut_1_uMid2;
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpMidCustomer3Config>, dpSt<xpDpTop_xpDpSrcCustomerConfig>, true> thunker_out3_uSrc;
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpChkCustomer3Config>, dpSt<xpDpTop_xpDpMidCustomer3Config>, true> thunker_midOut_2_uMid3;
-
     // inherited parameterized types usable unqualified (no <Config>)
     using typename xpDpWrapBase<Config>::dpPixelT;
     using typename xpDpWrapBase<Config>::dpSt;
@@ -118,25 +107,25 @@ xpDpWrap<Config>::xpDpWrap(sc_module_name blockName, const char * variant, block
         ,uChk2(std::dynamic_pointer_cast<xpDpChkBase<xpDpTop_xpDpChkCustomer2Config>>(instanceFactory::createInstance(name(), "uChk2", "xpDpChk", "customer2", "xpDpTop.xpDpTop_xpDpWrap.xpDpTop_xpDpChk")))
         ,uMid3(std::dynamic_pointer_cast<xpDpMidBase<xpDpTop_xpDpMidCustomer3Config>>(instanceFactory::createInstance(name(), "uMid3", "xpDpMid", "customer3", "xpDpTop.xpDpTop_xpDpWrap.xpDpMid")))
         ,uChk3(std::dynamic_pointer_cast<xpDpChkBase<xpDpTop_xpDpChkCustomer3Config>>(instanceFactory::createInstance(name(), "uChk3", "xpDpChk", "customer3", "xpDpTop.xpDpTop_xpDpWrap.xpDpTop_xpDpChk")))
-        ,thunker_out_0_uSrc("thunker_out_0_uSrc", out_0, uSrc->out, name())
-        ,thunker_midOut_0_uMid("thunker_midOut_0_uMid", midOut_0, uMid->midOut, name())
-        ,thunker_out2_uSrc("thunker_out2_uSrc", out2, uSrc->out2, name())
-        ,thunker_out_1_uLeafX("thunker_out_1_uLeafX", out_1, uLeafX->out, name())
-        ,thunker_out4_uSrc("thunker_out4_uSrc", out4, uSrc->out4, name())
-        ,thunker_midOut_1_uMid2("thunker_midOut_1_uMid2", midOut_1, uMid2->midOut, name())
-        ,thunker_out3_uSrc("thunker_out3_uSrc", out3, uSrc->out3, name())
-        ,thunker_midOut_2_uMid3("thunker_midOut_2_uMid3", midOut_2, uMid3->midOut, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // instance to instance connections via channel
+    uSrc->out(out_0);
     uMid->midIn(out_0);
+    uMid->midOut(midOut_0);
     uChk->in(midOut_0);
+    uSrc->out2(out2);
     uLeafX->in(out2);
+    uLeafX->out(out_1);
     uChkX->in(out_1);
+    uSrc->out4(out4);
     uMid2->midIn(out4);
+    uMid2->midOut(midOut_1);
     uChk2->in(midOut_1);
+    uSrc->out3(out3);
     uMid3->midIn(out3);
+    uMid3->midOut(midOut_2);
     uChk3->in(midOut_2);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

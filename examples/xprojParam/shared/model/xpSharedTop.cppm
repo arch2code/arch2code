@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "push_ack_port_thunker.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -43,10 +42,6 @@ public:
     std::shared_ptr<xpFilterSharedBase<xpFilterShared_xpFilterSharedV0Config>> uFilter;
     std::shared_ptr<xpSinkSharedBase<xpSinkShared_xpSinkSharedV0Config>> uSink;
 
-    // cross-interface thunkers
-    push_ack_port_thunker<videoSt<xpFilterShared_xpFilterSharedV0Config>, videoSt<xpGain_xpGainV0Config>, true> thunker_videoOut_0_uGain;
-    push_ack_port_thunker<videoSt<xpSinkShared_xpSinkSharedV0Config>, videoSt<xpFilterShared_xpFilterSharedV0Config>, true> thunker_videoOut_1_uFilter;
-
     xpSharedTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpSharedTop() override = default;
 
@@ -77,13 +72,13 @@ xpSharedTop::xpSharedTop(sc_module_name blockName, const char * variant, blockBa
         ,uGain(std::dynamic_pointer_cast<xpGainBase<xpGain_xpGainV0Config>>(instanceFactory::createInstance(name(), "uGain", "xpGain", "v0", "xpShared.xpShared_xpSharedTop.xpGain")))
         ,uFilter(std::dynamic_pointer_cast<xpFilterSharedBase<xpFilterShared_xpFilterSharedV0Config>>(instanceFactory::createInstance(name(), "uFilter", "xpFilterShared", "v0", "xpShared.xpShared_xpSharedTop.xpFilterShared")))
         ,uSink(std::dynamic_pointer_cast<xpSinkSharedBase<xpSinkShared_xpSinkSharedV0Config>>(instanceFactory::createInstance(name(), "uSink", "xpSinkShared", "v0", "xpShared.xpShared_xpSharedTop.xpSinkShared")))
-        ,thunker_videoOut_0_uGain("thunker_videoOut_0_uGain", videoOut_0, uGain->videoOut, name())
-        ,thunker_videoOut_1_uFilter("thunker_videoOut_1_uFilter", videoOut_1, uFilter->videoOut, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // instance to instance connections via channel
+    uGain->videoOut(videoOut_0);
     uFilter->videoIn(videoOut_0);
+    uFilter->videoOut(videoOut_1);
     uSink->videoIn(videoOut_1);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

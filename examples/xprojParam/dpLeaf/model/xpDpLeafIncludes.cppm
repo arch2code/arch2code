@@ -24,7 +24,8 @@ export namespace xpDpLeaf_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpDpLeaf_ns {
 // types
-template<typename Config> using dpPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t DP_WIDTH> using dpPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using dpPixelT = dpPixelT_v<Config::DP_WIDTH>;
 typedef uint8_t dpTagT; // [8] Sample sequence tag; lowest packed position
 typedef uint8_t dpAlgoT; // [8] Algorithm the leaf instance resolved, stamped into the payload
 typedef uint8_t dpMarkT; // [8] Trailing marker
@@ -40,19 +41,19 @@ export namespace xpDpLeaf_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpDpLeaf_ns {
 // structures
-template<typename Config>
-struct dpSt {
+template<uint32_t DP_WIDTH>
+struct dpSt_v {
     dpMarkT mark; //Trailing marker
-    dpPixelT<Config> data; //Parameterizable pixel payload
+    dpPixelT_v<DP_WIDTH> data; //Parameterizable pixel payload
     dpAlgoT algo; //DP_ALGO the leaf instance resolved
     dpTagT tag; //Sample sequence tag
 
-    dpSt() {}
+    dpSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::DP_WIDTH + 8 + 8;
+    static constexpr uint16_t _bitWidth = 8 + DP_WIDTH + 8 + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const dpSt<Config> & rhs) const {
+    inline bool operator == (const dpSt_v<DP_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (algo == rhs.algo);
@@ -60,13 +61,13 @@ struct dpSt {
         ret = ret && (mark == rhs.mark);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const dpSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const dpSt_v<DP_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.algo, NAME + ".algo");
         sc_trace(tf,v.data, NAME + ".data");
         sc_trace(tf,v.mark, NAME + ".mark");
     }
-    inline friend ostream& operator << ( ostream& os,  dpSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  dpSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -83,12 +84,12 @@ struct dpSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, dpSt<Config>::_byteWidth);
+        memset(&_ret, 0, dpSt_v<DP_WIDTH>::_byteWidth);
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::DP_WIDTH);
-        _pos += Config::DP_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, DP_WIDTH);
+        _pos += DP_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, algo, 8);
         _pos += 8;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
@@ -99,42 +100,42 @@ struct dpSt {
         uint16_t _pos{0};
         mark = (dpMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
-        data = (dpPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::DP_WIDTH)) - 1));
-        _pos += Config::DP_WIDTH;
+        data = (dpPixelT_v<DP_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (DP_WIDTH)) - 1));
+        _pos += DP_WIDTH;
         algo = (dpAlgoT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
         tag = (dpTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<dpSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<dpSt_v<DP_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<dpSt<Config>::_bitWidth> packed_data;
+        sc_bv<dpSt_v<DP_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = mark;
         _pos += 8;
-        packed_data.range(_pos+Config::DP_WIDTH-1, _pos) = data;
-        _pos += Config::DP_WIDTH;
+        packed_data.range(_pos+DP_WIDTH-1, _pos) = data;
+        _pos += DP_WIDTH;
         packed_data.range(_pos+8-1, _pos) = algo;
         _pos += 8;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<dpSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<dpSt_v<DP_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         mark = (dpMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        data = (dpPixelT<Config>) packed_data.range(_pos+Config::DP_WIDTH-1, _pos).to_uint64();
-        _pos += Config::DP_WIDTH;
+        data = (dpPixelT_v<DP_WIDTH>) packed_data.range(_pos+DP_WIDTH-1, _pos).to_uint64();
+        _pos += DP_WIDTH;
         algo = (dpAlgoT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
         tag = (dpTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit dpSt(sc_bv<dpSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit dpSt(
+    explicit dpSt_v(sc_bv<dpSt_v<DP_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit dpSt_v(
         dpMarkT mark_,
-        dpPixelT<Config> data_,
+        dpPixelT_v<DP_WIDTH> data_,
         dpAlgoT algo_,
         dpTagT tag_) :
         mark(mark_),
@@ -142,9 +143,10 @@ struct dpSt {
         algo(algo_),
         tag(tag_)
     {}
-    explicit dpSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit dpSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using dpSt = dpSt_v<Config::DP_WIDTH>;
 } // namespace xpDpLeaf_ns
 
 // GENERATED_CODE_END

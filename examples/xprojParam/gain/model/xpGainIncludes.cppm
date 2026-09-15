@@ -24,7 +24,8 @@ export namespace xpGain_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpGain_ns {
 // types
-template<typename Config> using pixel_t = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t PIXEL_WIDTH> using pixel_t_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using pixel_t = pixel_t_v<Config::PIXEL_WIDTH>;
 typedef uint8_t tag_t; // [4] Sample sequence tag
 
 } // namespace xpGain_ns
@@ -38,27 +39,27 @@ export namespace xpGain_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpGain_ns {
 // structures
-template<typename Config>
-struct videoSt {
-    pixel_t<Config> data; //Pixel payload
+template<uint32_t PIXEL_WIDTH>
+struct videoSt_v {
+    pixel_t_v<PIXEL_WIDTH> data; //Pixel payload
     tag_t tag; //Sample sequence tag
 
-    videoSt() {}
+    videoSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::PIXEL_WIDTH + 4;
+    static constexpr uint16_t _bitWidth = PIXEL_WIDTH + 4;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const videoSt<Config> & rhs) const {
+    inline bool operator == (const videoSt_v<PIXEL_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const videoSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const videoSt_v<PIXEL_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
     }
-    inline friend ostream& operator << ( ostream& os,  videoSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  videoSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -73,48 +74,49 @@ struct videoSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, videoSt<Config>::_byteWidth);
+        memset(&_ret, 0, videoSt_v<PIXEL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::PIXEL_WIDTH);
-        _pos += Config::PIXEL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, PIXEL_WIDTH);
+        _pos += PIXEL_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 4);
         _pos += 4;
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (pixel_t<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::PIXEL_WIDTH)) - 1));
-        _pos += Config::PIXEL_WIDTH;
+        data = (pixel_t_v<PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (PIXEL_WIDTH)) - 1));
+        _pos += PIXEL_WIDTH;
         tag = (tag_t)((_src >> (_pos & 63)) & ((1ULL << (4)) - 1));
     }
-    inline sc_bv<videoSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<videoSt_v<PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<videoSt<Config>::_bitWidth> packed_data;
+        sc_bv<videoSt_v<PIXEL_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::PIXEL_WIDTH-1, _pos) = data;
-        _pos += Config::PIXEL_WIDTH;
+        packed_data.range(_pos+PIXEL_WIDTH-1, _pos) = data;
+        _pos += PIXEL_WIDTH;
         packed_data.range(_pos+4-1, _pos) = tag;
         _pos += 4;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<videoSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<videoSt_v<PIXEL_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (pixel_t<Config>) packed_data.range(_pos+Config::PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += Config::PIXEL_WIDTH;
+        data = (pixel_t_v<PIXEL_WIDTH>) packed_data.range(_pos+PIXEL_WIDTH-1, _pos).to_uint64();
+        _pos += PIXEL_WIDTH;
         tag = (tag_t) packed_data.range(_pos+4-1, _pos).to_uint64();
         _pos += 4;
     }
-    explicit videoSt(sc_bv<videoSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit videoSt(
-        pixel_t<Config> data_,
+    explicit videoSt_v(sc_bv<videoSt_v<PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit videoSt_v(
+        pixel_t_v<PIXEL_WIDTH> data_,
         tag_t tag_) :
         data(data_),
         tag(tag_)
     {}
-    explicit videoSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit videoSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using videoSt = videoSt_v<Config::PIXEL_WIDTH>;
 } // namespace xpGain_ns
 
 // GENERATED_CODE_END

@@ -76,7 +76,9 @@ Value.
    declaring project), its name carries the project, and the declaring project emits it without
    touching another project's artefacts. (Confirmed 2026-09-07; landed as plan step 15 the same day.)
 6. Any project may declare a variant of any block visible to it, whether or not it owns the block.
-   (Confirmed 2026-09-07.)
+   (Confirmed 2026-09-07.) "Owns the block" means the project owning the block's declaring file, not the file
+   holding its `ipParameters`; a declaration by the block's owner is native wherever the parameters
+   are declared. (Ruled 2026-09-14.)
 
 Selection.
 
@@ -117,9 +119,35 @@ Recorded so the iteration argues about facts. Dated 2026-09-07; delete each line
   `<block>_<label>` artefacts and the standalone-variant map hold the owner's declarations only;
   every non-owner declaration is served by the qualified top and Config that already exist, the two
   label-keyed view fallbacks and the db rejection go. LANDED 2026-09-13 (plan-parameter-sharing §6
-  step 12b, "Label-keyed view fallbacks"); the deviation is closed. One question stays open there
-  for the architect: the descriptors' `isForeign` keys on the owner of the `ipParameters` context,
-  which equals the block's owner except when a definitions-only project holds the parameters.
+  step 12b, "Label-keyed view fallbacks"); the deviation is closed. The descriptors' `isForeign` keyed on the
+  owner of the `ipParameters` context; RULED 2026-09-14 (user): the block's owner (rule 6). A
+  definitions-only project may itself declare a variant; it is an ordinary non-owner declaration.
+- Rule 6, file ownership when two providers tie: the scanner ranked providers by first-reach depth
+  and broke equal-depth ties on path spelling, so a root that lists both a wrapper and the IP the
+  wrapper depends on handed the IP's own block file to the wrapper. RULED 2026-09-14 (user): rank
+  providers by their longest path from the root (the dependee sits below the dependent and owns the
+  shared file); a tie that survives is rejected at scan time naming the file and the providers; a
+  `projectFiles:` cycle is rejected. REFINED 2026-09-14 (user) after the full unit suite showed the
+  shipped shape (root lists a shared project and its consumers as siblings, the consumers `include:`
+  the shared file for scope) ties under longest path: a file listed DIRECTLY in a provider's
+  `projectFiles:` belongs to that provider (two direct listings is an error); only unlisted files fall
+  to the longest-path rank; the author resolves a rejected tie by listing the file in the owner's
+  `projectFiles:`. No directory information anywhere. IN TREE 2026-09-14, gates not yet run: the
+  refinement passes the scanner suite and the two shipped shapes it named, but `examples/ip_test`
+  still ties on `ip/yaml/ip.yaml` and `ipVariants.yaml` (real-tree `ip` and `ipBridge` both at depth
+  one; `ipBridge` reaches the real `ip` project only through its symlink copy, and nobody lists the
+  two files directly). RULED 2026-09-14 (user: both resolutions are valid; supervisor's recommendation taken): rule 2
+  ranks an edge to a copy of a project as an edge to that project's override-selected master too, so
+  the override decides the ranking and ip_test needs no YAML change; rule 1 stays the author's manual
+  resolution for unrelated projects. Brief: scratchpad `brief-ownership-override-rank.md`. IN TREE
+  2026-09-14: rank edges reach each child's override-selected master, a DFS over the rank edges rejects
+  a master-closed cycle (proved to hang `relax()` without it), orphan seeding keys on closure discovery
+  rather than depth; 17/17 scanner cells including composed ip_test (`ip.yaml`, `ipVariants.yaml` ->
+  ip; `cpu.yaml` -> common) and both standalone roots; `test_eval_sv_emit` 6/6 again. Comments
+  trimmed to the four short blocks in `brief-projectscan-comments.md`, scanner suite still 17/17.
+  LANDED 2026-09-14, uncommitted: unit suite 130/130, base 70/0/4/0, pro 14/0/0, product gen/model/VL
+  green.
+  (plan-parameter-sharing §6 step 12a, "Ownership tiebreak")
 - Rule 9: the layout index collapses cross-project bindings into one slot (item 9B of
   [`plan-116-review-feedback.md`](./plan-116-review-feedback.md)). RULED 2026-09-13 (user): fix now; rows keyed by
   (block, declaring project, variant), the site carrying its declarer from the persisted
@@ -135,6 +163,107 @@ design step first; the emitted-shape design is written here for review before an
 after the step 15 (c) rename and the step 12a (d) (i) artifact-row view land.
 
 ### Design step: value-keyed payload types (written 2026-09-13, for review)
+
+Review 2026-09-14 (user): the shape is understood and looks right; before any generator change, a
+hand-edited prototype on a disposable copy of `examples/xprojParam/shared` (the one example that
+carries same-interface direct-copy thunkers on one struct, `videoSt`, emitted once in module
+`xpGain`) must compile and run with the two thunkers removed, and fail to compile when one Config's
+`PIXEL_WIDTH` is changed. Brief: scratchpad `brief-proto-value-keyed.md`. **PROTOTYPE PASSED
+2026-09-14**, verified by the supervisor against the copy's diffs and logs (scratchpad
+`proto-valuekeyed/`, pristine copy `pristine-valuekeyed/`, `baseline.log`, `proto.log`,
+`negative_check.log`). `videoSt` rewritten by hand as `template<uint32_t PIXEL_WIDTH> struct
+videoSt_v` plus `template<typename Config> using videoSt = videoSt_v<Config::PIXEL_WIDTH>;` and a
+value-keyed `pixel_t_v` alias beside `pixel_t`; the two thunkers, their initialiser entries and the
+thunker include deleted from `xpSharedTop.cppm`; each channel bound directly to the child port. The
+compiler forced no other edit: no block, base, channel or testbench file changed. Run output matches
+the baseline in every data value and both "No error" lines; the only differences are event
+ordering, because the retired thunker was a spawned process with its own intermediate channel and
+added one handshake stage of latency per hop. Negative check: `PIXEL_WIDTH` 8 to 12 on the filter
+Config fails the direct bind with `videoSt_v<8>` against `videoSt_v<12>`; restored, it builds and
+runs again. What is lost with the thunker: its intermediate channel's logging, timing and trace
+hooks. **RULED 2026-09-14 (user): proceed with the generator implementation.** Decisions taken by the
+supervisor for open points 1-3: value-keyed spelling `<name>_v` for structures and types, one template
+value parameter per root parameter in the dependency set (sorted, named as the constant, typed as its
+Config member); an empty dependency set stays a plain declaration; the cross-interface thunker and its
+`directCopy` flag are untouched. The 2026-09-11 inferred-port stopgap is removed; `infPortBad` moves to
+unequal values and `infPort` gains a distinct-Config equal-value end. Brief: scratchpad
+`brief-valuekeyed-impl.md`. SV byte-identity baseline: scratchpad `sv-before-valuekeyed.sha` (225
+files). IN TREE 2026-09-14, under review: emitters value-keyed (`structures.py`, `includes.py`,
+`config.py`'s type spelling moved to `intf_gen_utils.configType`), `TYPEPARAMDEPS` persisted beside
+`STRUCTUREPARAMDEPS`, `paramTemplateArgs` view, `bindsDirectly` promoted to a method comparing
+`_paramValueAtEnd` per root parameter (an inheriting end resolves to a still-generic container value
+and binds directly only with another inheriting end), `configTypeIdentity` and the inferred-port
+stopgap removed. `xpSharedTop.cppm` lost both thunkers; regenerated `xpGainIncludes.cppm` matches the
+prototype. Findings so far: FW headers are value-keyed too (they always carried the Config template);
+two UNDECLARED ends with unequal values are not rejected at db (the declared-port payload check never
+reaches them), so `infPortBad` currently passes db against its own comment. Supervisor decision: the
+stopgap is replaced, not dropped, by a value comparison at the same two `validatePorts` sites, and the
+gate reasserts the rejection. Reviewer report 2026-09-14 (eight findings) accepted: undeclared ends
+compared through `checkInterfacePair` at the two `validatePorts` skip sites; the `checkAgreement`
+downgrade reverted to the generator-bug failure (nothing in the corpus reaches it, and a downgrade would
+leave the type and connection flags disagreeing); `paramTemplateArgs` returns constant rows and the
+templates spell the C++ type; `_paramValueAtEnd` subscripts the parameter name directly and
+`_validateParameterizedConnectionEndpoints` extends to connectionMaps. **Accepted shape:** an inheriting
+end against a literal-variant end with equal values keeps its same-interface thunker. The container
+class is generic where it is rendered, the render-time view has no per-site values, and the registrar
+instantiates a container at every declared variant, not only at connected sites, so equality cannot be
+proven from the view; the thunker compiles everywhere. The closing survey classifies such sites as this
+accepted class, not as defects. Fix brief: scratchpad `brief-valuekeyed-fixes.md`. Fix round IN TREE
+2026-09-14; `_validateParameterizedConnectionEndpoints` then folded its two loop bodies into one
+`checkEndpoint` (brief `brief-endpoint-dedup.md`). Post-fix, `test_param_cross_project_linkage.py`'s cell
+`test_one_interface_at_differing_configs_is_adapted` failed for the designed reason: its three Configs
+all bind WIDTH 8, so the ends bind directly and no producer-end adapter exists. The cell asserted the
+retired shape; it is now `test_one_interface_at_equal_valued_configs_binds_directly`: no adapter on
+either hop, `bindsDirectly` true for both, and a WIDTH 16 edit on the middle block rejected at db by the
+per-field `_bitWidth` check (fault-injected, 10/10; brief `brief-linkage-cell-rework.md`). The same file's
+`test_registrar_requirements_exclude_unreachable_child_harnesses` left an empty temp directory per run
+since August (156 accumulated); fixed by closing the db before removing the tree (an NFS silly-rename of
+the open db file kept the directory), deletion of the leftovers awaits a ruling. Unit suite gate 129/130:
+`test_param_type_signedness.py` expected the retired `<Config>` struct for a wide parameterizable type; it
+now checks signedness on the `_v` declaration and pins each alias (fault-injected). Base pipeline
+70/0/4/0 and pro pipeline 14/0/0 green on the combined tree; every regenerated file is SystemC or C++
+(31 `.cppm`, 6 FW `.h` in base; `inhTandem` includes and wrapper in pro) and `sv-compare.sh` proves all
+225 SystemVerilog files byte-identical to the pre-change hashes. Seven base containers and the pro
+`xpInhWrap` lost every same-interface thunker and bind their ports directly. Product `make gen` clean
+(the debayer includes module and FW header regenerate, nothing else beyond the baseline), but the model
+build FAILED: `structures.py::constructor` closed its parameter list by replacing the first comma of the
+last parameter with `) :`, and `bayer_pixels_per_clock_t_v<BITS_PER_PIXEL_COLOR, PIXELS_PER_CLOCK>` puts a
+comma inside the template arguments (`debayerIncludes.cppm:432`, `expected '>'`). No base or pro example
+carries a payload sub-type on two root parameters, so the pipelines could not see it; the fix joins the
+lists without string replacement and adds a two-parameter cell compiled with clang (brief
+`brief-constructor-comma.md`). Fix IN TREE: `constructor` joins parameters and initializers with
+`',\n'` and appends the terminator; `test_payload_direct_copy.py` gained
+`test_two_param_field_constructor_avoids_comma_splice` (exact emitted line `pixels_st_v<A_W, N> pixels_) :`,
+no `) :` inside any template argument list, whole rendered module compiles under `clang++ -fsyntax-only`;
+fault-injected against the old code). ip_test and xprojParam/shared regenerate byte-identical. Product
+gen, model and Verilator gates rerun green after it (two "No error" each); `sv-compare.sh` still identical.
+
+**Closing survey, 2026-09-14 (scratchpad `thunker-survey.sh`, baseline `thunker-before-valuekeyed.txt`,
+result `thunker-after-valuekeyed-final.txt`).** 93 `*_port_thunker<` members before, 62 after, 31 retired
+and none added. Retired: every same-interface adapter between two literal-valued Configs with equal
+values, in `xprojParam` `cstShared`, `cstUse`, `dpMid` (both wrappers, including the
+`dpSt<Config>` against `dpSt<xpDpLeafCustomerConfig<Config>>` pair), `dpTop` (wrapper and tb External),
+`inhVar`, `shared`, `twoCtx`, and pro `inhTandem`. The 62 survivors, classified by the two payload types
+each adapter names:
+- 52 cross-interface (different structure names, the adapter converts representation): `ip_test`
+  `ipBridge` (4), `ipStdTop` (1), `ip_top` (2); `simple_ip` (3); `xif` `dutExternal` (2); `xprojParam`
+  `cppAxis` (8), `cstBind` (4), `deparam` (4), `mtxElect` (2), `mtxLit` (8), `mtxTpl` (8), `uniq` (4);
+  product `tb/debayer/debayerExternal.cppm` lines 60-61 (2). Unchanged from the baseline.
+- 8 tb/DUT boundary (`*BoundarySt` against a variant payload): `ip_test/top/model/ip_top.cppm` lines
+  67-74. Unchanged.
+- 2 accepted container-sourced against literal, same interface: `xif/tb/dut/dutExternal.cppm` lines
+  57-58, `streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>` against `streamSt<xif_tbPeerPv0Config>`;
+  `pvSourced` takes every parameter by `containerParam:`, so its end resolves to the container token and the
+  view cannot prove equality. Same reasoning as the accepted inheriting-vs-literal shape.
+- 0 same-interface adapters between two literal-valued ends. No defect.
+Ownership rule 6 gates: the same runs cover it (scanner in the unit suite, composed ip_test in both
+pipelines). That suite was outside the implementation brief's check list; the
+unit-suite gate is what catches such cells, so it runs first. **Closing step (user, 2026-09-14): once the change is gated, survey every
+thunker that survives.** After the base, pro and product trees are regenerated, list every
+`*_port_thunker<` member in every generated file across the three trees, classify each site by why
+it still needs an adapter (different interfaces, tb/DUT boundary, storage-layout difference, or
+anything unexpected) and record the classification here with the file and site names. A same-interface
+equal-value thunker surviving is a defect in this change.
 
 **The problem.** A parameterizable structure is emitted once as `template<typename Config>
 struct dpSt`, and its width expressions read `Config::DP_WIDTH`. Two Configs that resolve to the

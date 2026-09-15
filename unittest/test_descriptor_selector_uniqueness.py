@@ -2,7 +2,7 @@
 """The descriptor selector in pysrc/processYaml.py unpacks a single element,
 so a producer emitting zero or several matches fails at the selector.
 
-projectOpen._instanceVariantDescriptor: resolveInstanceVariantDeclarers
+projectOpen.instanceVariantDescriptor: resolveInstanceVariantDeclarers
 persists one declaring project per labelled instance and
 calcVariantConfigDescriptors emits one descriptor per (project, label), so
 the (variant, declaringProject) filter lands on one row.
@@ -27,10 +27,10 @@ def test_instanceVariantDescriptor_single_match():
         variantConfigDescriptors={'blk': [{'variant': 'v0', 'declaringProject': 'pA',
                                             'block': 'blk'}]})
     instanceData = {'instanceKey': 'i1', 'instanceTypeKey': 'blk', 'variant': 'v0'}
-    descriptor = processYaml.projectOpen._instanceVariantDescriptor(fake, instanceData)
+    descriptor = processYaml.projectOpen.instanceVariantDescriptor(fake, instanceData)
     assert descriptor['declaringProject'] == 'pA', \
         f"expected the single matching descriptor, got {descriptor!r}"
-    print("PASS: _instanceVariantDescriptor returns the single matching descriptor")
+    print("PASS: instanceVariantDescriptor returns the single matching descriptor")
 
 
 def test_instanceVariantDescriptor_no_match_raises():
@@ -41,9 +41,9 @@ def test_instanceVariantDescriptor_no_match_raises():
                                             'block': 'blk'}]})
     instanceData = {'instanceKey': 'i1', 'instanceTypeKey': 'blk', 'variant': 'v0'}
     try:
-        processYaml.projectOpen._instanceVariantDescriptor(fake, instanceData)
+        processYaml.projectOpen.instanceVariantDescriptor(fake, instanceData)
     except ValueError:
-        print("PASS: _instanceVariantDescriptor raises when nothing matches")
+        print("PASS: instanceVariantDescriptor raises when nothing matches")
         return
     assert False, "no matching descriptor must raise ValueError"
 
@@ -59,9 +59,9 @@ def test_instanceVariantDescriptor_two_matches_raises():
         ]})
     instanceData = {'instanceKey': 'i1', 'instanceTypeKey': 'blk', 'variant': 'v0'}
     try:
-        processYaml.projectOpen._instanceVariantDescriptor(fake, instanceData)
+        processYaml.projectOpen.instanceVariantDescriptor(fake, instanceData)
     except ValueError:
-        print("PASS: _instanceVariantDescriptor raises on two matching descriptors")
+        print("PASS: instanceVariantDescriptor raises on two matching descriptors")
         return
     assert False, "two matching descriptors must raise ValueError"
 
@@ -71,9 +71,9 @@ def test_instanceVariantDescriptor_no_variant_returns_none():
     either declarer or descriptor lookup."""
     fake = SimpleNamespace(instanceVariantDeclarers={}, variantConfigDescriptors={})
     instanceData = {'instanceKey': 'i1', 'instanceTypeKey': 'blk', 'variant': ''}
-    descriptor = processYaml.projectOpen._instanceVariantDescriptor(fake, instanceData)
+    descriptor = processYaml.projectOpen.instanceVariantDescriptor(fake, instanceData)
     assert descriptor is None, f"expected None for an unlabelled instance, got {descriptor!r}"
-    print("PASS: _instanceVariantDescriptor returns None when the instance names no variant")
+    print("PASS: instanceVariantDescriptor returns None when the instance names no variant")
 
 
 def run_all_tests():

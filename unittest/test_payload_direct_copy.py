@@ -31,6 +31,9 @@ Three things are pinned here:
 """
 
 import os
+import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import types
@@ -43,9 +46,10 @@ if base_dir not in sys.path:
 from pysrc.processYaml import projectOpen
 import pysrc.intf_gen_utils as intf_gen_utils
 from pysrc.systemcGen import genSystemC
+from templates.systemc import includes, moduleScaffold, structures
 from templates.systemc.includes import includeTypes
 
-from _addrctl_helpers import cleanup, run_arch2code
+from _addrctl_helpers import build_database, cleanup, run_arch2code
 
 CPP_AXIS_PROJECT = os.path.join(
     base_dir, 'examples', 'xprojParam', 'cppAxis', 'prj', 'yaml',
@@ -153,15 +157,22 @@ def _multi_slot_ends(blockData):
     return [end for end in ends if len(end['thunker']['payloadPairs']) > 1]
 
 
-def _declaration_from_descriptor(typeRow, storage):
-    """Spell the C++ declaration includeTypes must emit for this storage."""
+def _declaration_from_descriptor(prj, typeKey, typeRow, storage):
+    """Spell the C++ declaration includeTypes must emit for this storage.
+
+    A parameterizable type's primary declaration is value-keyed (`name_v`,
+    one template value parameter per root parameter), with the `<Config>`
+    spelling emitted as an alias derived from it.
+    """
     _kind, storageBits, isSigned, wordCount = storage
     container = f"{'int' if isSigned else 'uint'}{storageBits}_t"
     name = typeRow['type']
     if typeRow['isParameterizable']:
+        args = prj.paramTemplateArgs('type', typeKey)
+        argList = ', '.join(f"{intf_gen_utils.configType(row)} {row['constant']}" for row in args)
         if wordCount == 1:
-            return f"template<typename Config> using { name } = {container};"
-        return (f"template<typename Config> struct { name } "
+            return f"template<{argList}> using { name }_v = {container};"
+        return (f"template<{argList}> struct { name }_v "
                 f"{{ uint64_t word[ {wordCount} ]; }};")
     if wordCount == 1:
         return f"typedef { container } { name };"
@@ -204,10 +215,10 @@ def test_storage_descriptor_matches_emitted_declaration():
                     continue
                 data = prj.getContextData([context], genSystemC.dataTypeMappings)
                 rendered = includeTypes(args, prj, data)
-                for typeRow in data['types'].values():
+                for typeKey, typeRow in data['types'].items():
                     storage = prj.typeStorage(typeRow)
                     seenArms.add(_storage_arm(typeRow, storage))
-                    expected = _declaration_from_descriptor(typeRow, storage)
+                    expected = _declaration_from_descriptor(prj, typeKey, typeRow, storage)
                     if expected not in rendered:
                         ok = False
                         print(f"  FAIL: {label} type '{typeRow['type']}' "
@@ -351,6 +362,139 @@ def test_multi_slot_flag_slot_correspondence():
     return ok
 
 
+# `constructor()` closes its emitted parameter list by appending a terminator
+# (") :" or ")") after the last param/initializer, never by searching the
+# emitted text for a comma. A field parameterized on two root parameters - a
+# value-keyed template argument list such as `pixels_st_v<A_W, N>` - carries a
+# comma inside its own spelling, so a search-based terminator can splice the
+# wrong one. Mirrors the product shape that hit this (`debayer.yaml`'s
+# `bayer_pixels_per_clock_t`): a structure with one array field over a
+# parameterizable type, nested as the lone field of a second structure.
+TWO_PARAM_FIELD_ARCH_YAML = """ipParameters:
+  constants:
+    A_W: {value: 8, maxValue: 16, desc: "Pixel width"}
+    N:   {value: 4, maxValue: 8,  desc: "Pixel count"}
+  types:
+    pix_t: {width: A_W, desc: "Pixel"}
+
+structures:
+  pixels_st:
+    data: {varType: pix_t, arraySize: N, desc: "Pixel row"}
+  frame_st:
+    pixels: {subStruct: pixels_st, desc: "Frame"}
+
+blocks:
+  top: {desc: "Top block"}
+  ip:
+    desc: "Two-root-parameter payload IP"
+    params: [A_W, N]
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uIp:  {container: top, instanceType: ip, variant: variant0}
+
+parameters:
+  ip:
+    variant0:
+      A_W: 8
+      N: 4
+"""
+
+EXPECTED_CONSTRUCTOR_LINE = 'pixels_st_v<A_W, N> pixels_) :'
+
+CXX = 'clang++'
+STD = '-std=c++23'
+COMMON_SC = os.path.join(base_dir, 'common', 'systemc')
+
+
+def _render_two_param_module(prj):
+    """Render the whole includes module - moduleScaffold preamble, types,
+    structures - the way the generator assembles `<context>Includes.cppm`, so
+    the rendered text carries every #include it needs to compile standalone."""
+    ipCtx = prj.data['blocks'][prj.getQualBlock('ip')]['_context']
+    data = prj.getContextData([ipCtx], genSystemC.dataTypeMappings)
+    genSystemC.calcStructure(genSystemC, data, prj)
+
+    moduleArgs = types.SimpleNamespace(mode='module', section='moduleHeader',
+                                       template='moduleScaffold', namespace='')
+    typesArgs = types.SimpleNamespace(mode='module', section='types',
+                                      template='includes', namespace='')
+    structArgs = types.SimpleNamespace(mode='module', section='header',
+                                       template='structures', namespace='')
+    moduleHeader = moduleScaffold.render(moduleArgs, prj, data)
+    typesSection = includes.render(typesArgs, prj, data)
+    structSection = structures.render(structArgs, prj, data)
+    fullModule = moduleHeader + "\n" + typesSection + "\n" + structSection + "\n"
+    return fullModule, structSection
+
+
+def test_two_param_field_constructor_avoids_comma_splice():
+    """A field parameterized on two root parameters must not splice its own
+    template-argument comma into the constructor's parameter terminator.
+
+    `frame_st`'s constructor takes one parameter, `pixels_st_v<A_W, N> pixels_`,
+    whose own spelling carries a comma - the exact shape a first-comma text
+    search corrupts. Checked three ways: the exact emitted line, that no ') :'
+    lands inside a template argument list anywhere in the section, and that the
+    whole rendered module actually compiles.
+    """
+    _header("two-root-parameter field constructor: no comma-splice, real clang++ compile")
+    ok = True
+    db_path, project_path, arch_paths = build_database(TWO_PARAM_FIELD_ARCH_YAML)
+    try:
+        prj = projectOpen(db_path)
+        fullModule, structSection = _render_two_param_module(prj)
+
+        lines = [line.strip() for line in structSection.splitlines()]
+        if EXPECTED_CONSTRUCTOR_LINE in lines:
+            print(f"  PASS: constructor parameter line reads "
+                  f"'{EXPECTED_CONSTRUCTOR_LINE}'")
+        else:
+            ok = False
+            print(f"  FAIL: expected constructor line '{EXPECTED_CONSTRUCTOR_LINE}' "
+                  f"not found verbatim in the rendered structures section")
+
+        splicedSpans = [m.group(0) for m in re.finditer(r'<([^<>]*)>', structSection)
+                        if ') :' in m.group(1)]
+        if splicedSpans:
+            ok = False
+            print(f"  FAIL: ') :' spliced inside a template argument list: {splicedSpans}")
+        else:
+            print("  PASS: no ') :' appears between '<' and '>' anywhere in the "
+                  "rendered section")
+
+        if shutil.which(CXX) is None:
+            raise RuntimeError(f"{CXX} is not on PATH; it is the compiler this "
+                                f"proof relies on to check the rendered module")
+        env = os.environ.copy()
+        missing = [name for name in ('SYSTEMC_INCLUDE', 'BOOST_INCLUDE') if not env.get(name)]
+        if missing:
+            raise RuntimeError(f"{', '.join(missing)} not set; required to compile "
+                                f"the rendered module against real SystemC/Boost headers")
+
+        workDir = tempfile.mkdtemp(dir=test_dir)
+        try:
+            source = os.path.join(workDir, 'two_param_field.cppm')
+            with open(source, 'w') as f:
+                f.write(fullModule)
+            compiled = subprocess.run(
+                [CXX, STD, '-fsyntax-only',
+                 '-I' + env['BOOST_INCLUDE'], '-I' + env['SYSTEMC_INCLUDE'], '-I' + COMMON_SC,
+                 '-DSC_CPLUSPLUS=201703L', '-DSC_INCLUDE_DYNAMIC_PROCESSES',
+                 '-DBOOST_STACKTRACE_LINK', source],
+                capture_output=True, text=True, timeout=60)
+            if compiled.returncode != 0:
+                ok = False
+                print(f"  FAIL: rendered module did not compile:\n{compiled.stderr}")
+            else:
+                print("  PASS: rendered module compiles clean under clang++ -fsyntax-only")
+        finally:
+            shutil.rmtree(workDir, ignore_errors=True)
+    finally:
+        cleanup([project_path, db_path] + arch_paths)
+    return ok
+
+
 def run_all_tests():
     print("=" * 70)
     print("TESTING: C++ definition compatibility at a thunked junction")
@@ -360,6 +504,7 @@ def run_all_tests():
         test_cpp_axis_pair_verdicts,
         test_cpp_axis_member_flag_emission,
         test_multi_slot_flag_slot_correspondence,
+        test_two_param_field_constructor_avoids_comma_splice,
     ]
     results = []
     for test_func in tests:

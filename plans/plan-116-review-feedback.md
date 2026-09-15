@@ -17,9 +17,8 @@
   upgrade. They are recorded under "Release-blocking defects found 2026-08-04" in
   [`plan-116-status-report.md`](./plan-116-status-report.md), which is the single
   place they are tracked.
-- **Review pass 2026-09-04: item 9 added, seven sub-items. 9A, 9B, 9F and 9G are LANDED
-  (9B, 9F and 9G on 2026-09-13); 9C, 9D and 9E carry
-  one-line proposals and stay OPEN.** Items 1 through 8 stay CLOSED and none of the new
+- **Review pass 2026-09-04: item 9 added, seven sub-items. all seven sub-items are LANDED or CLOSED
+  (9B, 9F and 9G on 2026-09-13, 9E on 2026-09-14); 9C CLOSED and 9D LANDED 2026-09-14; item 9 is complete.** Items 1 through 8 stay CLOSED and none of the new
   findings reopens one. 9A was the one that made the generator emit RTL
   contradicting the SystemC Config in the same build; the shape that triggers it
   is deliberate design intent rather than bad authoring, so it was fixed by
@@ -940,7 +939,19 @@ is recorded as W5 of
 
 #### 9C. Foreign Config `childKey` host fallback can name a file no project creates
 
-- **Disposition:** OPEN, not started. Inert today. PROPOSED 2026-09-13: take the second
+- **Disposition:** CLOSED 2026-09-14, by construction and by measurement. Both halves of the
+  defect were removed by later work. The manifest/newModule mismatch: since 2026-09-14 every
+  manifest gen target and every newModule scaffold decision read the same artifact-row view and the
+  same predicate (`row['owner'] == rootProject` / `PROJECTNAME`), so the manifest cannot name a
+  registrar file the owning project does not create; measured after the 2026-09-14 pipeline, every
+  `A2C_SC_GEN_FILES`/`A2C_SV_GEN_FILES` path in every pipeline-generated example manifest exists on
+  disk (the only absent paths belong to examples the pipeline does not generate: `hierInclude`,
+  `inAndOut`, and the deliberate `*Bad` and `infPort` db-only fixtures). The silent default-Config
+  fallback for an unselectable third-party declaration: `selectVariantDescriptor` is gone (steps
+  12a/12b, 2026-09-08); a label with zero visible declarations in the instance's scope is a db error
+  naming the out-of-scope declarers (`test_variant_scope_resolution.py`). The `parentKeys` host
+  fallback to the child itself stays, and is now harmless: the row it produces is owned by the
+  declaring project and is scaffolded and generated only there. Previously: OPEN, not started. Inert today. PROPOSED 2026-09-13: take the second
   surviving option, derive `FOREIGNCONFIGHEADERS` from the descriptors a registrar pair
   selects rather than from every declared binding row; the unselectable third-party
   declaration then produces no header and no silent default-Config fallback.
@@ -981,7 +992,13 @@ is recorded as W5 of
 
 #### 9D. Two regression-harness defects
 
-- **Disposition:** OPEN, not started. Neither is tracked elsewhere. PROPOSED 2026-09-13:
+- **Disposition:** date-format half WITHDRAWN 2026-09-14 (user ruling: other software relies on
+  the launcher's output, so `regrLauncher/__main__.py` is not to be changed; the session directory
+  keeps `%Y-%d-%m-%H%M%S` and the file is back to HEAD). Identify sessions by directory mtime, not by
+  name. Concurrency half LANDED 2026-09-14: the scaffolded `regr` recipe reads
+  `REGR_JOBS ?= 8` and passes `-j$(REGR_JOBS)`, so `make regr REGR_JOBS=N` controls the runner,
+  and the 18 scaffolded copies under `examples/` carry the same recipe (`make -jN` itself still
+  reaches only the build, since a recipe cannot read make's job count portably). Previously: OPEN. PROPOSED 2026-09-13:
   change the `strftime` to `%Y-%m-%d-%H%M%S`, and have the scaffolded `regr` recipe pass
   `$(MAKEFLAGS)`-derived `-jN` through to `regrLauncher.py` instead of hardcoding `-j8`.
 - **Session directory names carry a transposed date.**
@@ -999,7 +1016,11 @@ is recorded as W5 of
 
 #### 9E. The unit suite has no written test-invocation contract
 
-- **Disposition:** OPEN, not started. Nothing is broken today. PROPOSED 2026-09-13: write the
+- **Disposition:** LANDED 2026-09-14. `unittest/README.md` gained an "Invocation contract"
+  section (standalone scripts; `run_all_tests()` maps booleans to the exit code; pytest is not a
+  supported runner; new files are glob-discovered and the parallel runner's suite-count constant
+  is bumped), and the `Makefile` `unittest` target comment points at it. Measured on the day: 105
+  of 130 files return booleans from test functions. Previously: OPEN. PROPOSED 2026-09-13: write the
   contract into `unittest/README.md` (each file is a script whose `run_all_tests()` maps
   booleans to the exit code; pytest is not a supported runner) and reference it from the
   Makefile `unittest` target comment.

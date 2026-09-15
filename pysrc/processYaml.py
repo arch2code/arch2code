@@ -448,6 +448,7 @@ class projectOpen:
         self.instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
         self.registrarPairs = self.config.getConfig('REGISTRARPAIRS')
         self.structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
+        self.typeParamDeps = self.config.getConfig('TYPEPARAMDEPS')
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
         self.blockModuleName = self.config.getConfig('BLOCKMODULENAME')
         self.filemap = self.config.getConfig('FILEMAP')
@@ -1161,6 +1162,13 @@ class projectOpen:
                 merged.setdefault(key, constants[key])
         return merged
 
+    def paramTemplateArgs(self, declKind, declKey):
+        """Ordered template value-parameter list for a value-keyed structure or
+        type: one constant row per root parameter in its dependency set."""
+        deps = self.structureParamDeps[declKey] if declKind == 'structure' else self.typeParamDeps[declKey]
+        constants = self.data['constants']
+        return [constants[key] for key in deps]
+
     def _contextRtlDirs(self, contexts):
         # Directory of each context's generated RTL, relative to the root
         # rtl.f. Functional layouts mirror the yaml subdir inside the owning
@@ -1398,7 +1406,7 @@ class projectOpen:
         row['hasOwnParams'] = int(self.getBlockConfigView(qualBlock)['hasOwnParams'])
         return row
 
-    def _instanceVariantDescriptor(self, instanceData):
+    def instanceVariantDescriptor(self, instanceData):
         # One descriptor per (project, label); resolveInstanceVariantDeclarers chose the project.
         variant = instanceData['variant']
         if not variant:
@@ -1462,7 +1470,7 @@ class projectOpen:
         # A block parameterizable only through a contained child has no concrete
         # Config type and needs no import.
         if is_parameterizable and has_own_params:
-            descriptor = self._instanceVariantDescriptor(instanceData)
+            descriptor = self.instanceVariantDescriptor(instanceData)
             config_module = {'project': descriptor['declaringProject'],
                              'block': descriptor['block']}
 
@@ -1481,19 +1489,6 @@ class projectOpen:
             'containerTyped':    container_typed,
             'forwardsContainerVariant': container_typed,
         }
-
-    def configTypeIdentity(self, configSelection):
-        # Equality of identity means one emitted Config type, so a payload
-        # declaration reached under two selections is one C++ type. Mirrors the
-        # arms the template layer spells through cpp_config_struct_name.
-        if configSelection is None or configSelection['inheritContainer'] \
-                or not configSelection['isParameterizable']:
-            return ('container',)
-        descriptor = configSelection['descriptor']
-        if descriptor is None:
-            return ('default', configSelection['defaultConfig'])
-        return ('variant', descriptor['declaringProject'],
-                descriptor['block'], descriptor['variant'])
 
     def _narrowVariantValues(self, qualBlock, descriptorsByVariant):
         # A descriptor from a container source carries the container's params;
@@ -1739,7 +1734,7 @@ class projectOpen:
             # each is spelled as that same-named parent parameter.
             return [{'param': paramRow['param'], 'spelling': paramRow['param']}
                    for paramRow in childBlock['params']]
-        descriptor = self._instanceVariantDescriptor(instanceData)
+        descriptor = self.instanceVariantDescriptor(instanceData)
         containerSourced = descriptor['containerSourced']
         valueSymbols = descriptor['valueSymbols']
         values = descriptor['values']
@@ -2305,26 +2300,61 @@ class projectOpen:
             }
             self.getBDGetIntfStructs(ret, intfKey=interfaceKey)
 
+    def _structureMap(self, interfaceRow):
+        structs = dict()
+        structures = interfaceRow.get('structures', []) or []
+        if isinstance(structures, dict):
+            structures = structures.values()
+        for item in structures:
+            structureType = item.get('structureType')
+            if structureType is None:
+                continue
+            structs[structureType] = {
+                'structure': item.get('structure', ''),
+                'structureKey': item.get('structureKey', ''),
+            }
+        return structs
+
+    def _paramValueAtEnd(self, configSelection, constantKey):
+        # Resolved value of one root parameter at one connection end: a
+        # resolved literal, or a ('container', key) token for a value still
+        # generic where the container is rendered. Equal returns, literal or
+        # token, mean the two ends share one emitted type.
+        if configSelection is None or configSelection['inheritContainer'] \
+                or not configSelection['isParameterizable']:
+            return ('container', constantKey)
+        descriptor = configSelection['descriptor']
+        if descriptor is None:
+            return self.data['constants'][constantKey]['value']
+        nameByKey = {key: name for name, key in descriptor['paramSourceKeys'].items()}
+        name = nameByKey[constantKey]
+        if name in descriptor['containerSourced']:
+            return ('container', constantKey)
+        return descriptor['values'][name]
+
+    def bindsDirectly(self, parentInterface, childInterfaceKey,
+                       parentConfigSelection, childConfigSelection):
+        # Whether the two sides resolve to one emitted payload type, so the
+        # child port binds the channel with no adapter. Equal interfaceKeys are
+        # one declaration reached twice; a parameterizable payload is one C++
+        # type once every root parameter it depends on agrees in value.
+        if parentInterface['interfaceKey'] != childInterfaceKey:
+            return False
+        paramKeys = set()
+        for payload in self._structureMap(parentInterface).values():
+            if self.data['structures'][payload['structureKey']]['isParameterizable']:
+                paramKeys |= set(self.structureParamDeps[payload['structureKey']])
+        if not paramKeys:
+            return True
+        return all(self._paramValueAtEnd(parentConfigSelection, key)
+                   == self._paramValueAtEnd(childConfigSelection, key)
+                   for key in paramKeys)
+
     def getBDCrossInterfaceBinds(self, ret):
         # projectCreate.validatePorts() performs the expensive structural
         # compatibility checks. This view pass only records already-valid
         # semantic facts so language templates do not need to re-walk raw
         # project tables to discover cross-interface binds.
-        def structureMap(interfaceRow):
-            structs = dict()
-            structures = interfaceRow.get('structures', []) or []
-            if isinstance(structures, dict):
-                structures = structures.values()
-            for item in structures:
-                structureType = item.get('structureType')
-                if structureType is None:
-                    continue
-                structs[structureType] = {
-                    'structure': item.get('structure', ''),
-                    'structureKey': item.get('structureKey', ''),
-                }
-            return structs
-
         def blockHasOwnParams(typeKey):
             return bool(self.data['blocks'][typeKey].get('params'))
 
@@ -2382,8 +2412,8 @@ class projectOpen:
             return None
 
         def buildThunkerView(parentInterface, childInterface, parentConfigSelection, childConfigSelection):
-            parentStructures = structureMap(parentInterface)
-            childStructures = structureMap(childInterface)
+            parentStructures = self._structureMap(parentInterface)
+            childStructures = self._structureMap(childInterface)
             interfaceType = parentInterface.get('interfaceType', '')
             interfaceDef = resolveInterfaceDef(parentInterface)
             if not interfaceDef:
@@ -2485,20 +2515,6 @@ class projectOpen:
                     adapted.add(endKey)
             return resolveConnectionConfig(connVal, adapted)
 
-        def bindsDirectly(parentInterface, childInterfaceKey,
-                          parentConfigSelection, childConfigSelection):
-            # Whether the two sides resolve to one emitted payload type, so the
-            # child port binds the channel with no adapter. Equal interfaceKeys are
-            # one declaration reached twice; a parameterizable payload is one C++
-            # type per Config on top of that.
-            if parentInterface['interfaceKey'] != childInterfaceKey:
-                return False
-            if not any(self.data['structures'][payload['structureKey']]['isParameterizable']
-                       for payload in structureMap(parentInterface).values()):
-                return True
-            return (self.configTypeIdentity(parentConfigSelection)
-                    == self.configTypeIdentity(childConfigSelection))
-
         def annotate(connVal, endKey, instanceKey, portName, instanceName, inferredDirection,
                      parentConfigOverride=None):
             if connVal['_context'] == '_global':
@@ -2529,8 +2545,8 @@ class projectOpen:
                 parentConfigSelection = parentConfigOverride
             else:
                 parentConfigSelection = channelParentConfig(connVal, parentInterfaceKey)
-            if bindsDirectly(parentInterface, childInterfaceKey,
-                             parentConfigSelection, childConfigSelection):
+            if self.bindsDirectly(parentInterface, childInterfaceKey,
+                                  parentConfigSelection, childConfigSelection):
                 return None
             thunkerView = buildThunkerView(
                 parentInterface, childInterface, parentConfigSelection, childConfigSelection)
@@ -2554,11 +2570,11 @@ class projectOpen:
                 'parentInterfaceKey': parentInterfaceKey,
                 'parentInterface': parentInterfaceName,
                 'parentInterfaceType': parentInterface['interfaceType'],
-                'parentStructures': structureMap(parentInterface),
+                'parentStructures': self._structureMap(parentInterface),
                 'childInterfaceKey': childInterfaceKey,
                 'childInterface': childInterfaceName,
                 'childInterfaceType': childInterface['interfaceType'],
-                'childStructures': structureMap(childInterface),
+                'childStructures': self._structureMap(childInterface),
                 'childVariant': instanceData['variant'],
                 'thunker': thunkerView,
             }
@@ -3177,7 +3193,7 @@ class projectOpen:
         ret['instanceType']  = self.data['instances'][inst]['instanceType']
         ret['instanceTypeKey']  = self.data['instances'][inst]['instanceTypeKey']
         ret['color']         = self.data['instances'][inst]['color']
-        ret['desc']          = self.data['blocks'][self.blocks[ret['instanceType']]]['desc']
+        ret['desc']          = self.data['blocks'][ret['instanceTypeKey']]['desc']
         segment = self.hierNodeName(inst)
         if len(parentName)>0:
             ret['hierarchyName'] = parentName+'.'+segment
@@ -3874,21 +3890,19 @@ class projectCreate:
                 descriptors[blockKey] = []
                 continue
             configContext = block['configContext']
-            ownerProject = self.contextOwningProject[configContext]
+            # Foreignness keys on the block's owner, wherever its ipParameters are declared.
+            blockOwnerProject = self.contextOwningProject[block['_context']]
             blockParams = paramsByBlock[blockKey]
             paramConstants = [constants[row['paramSourceKey']] for row in blockParams]
             # Keyed by identity so a consumer reaches this block's own constant,
             # not a same-spelled one another block names in the same context.
             paramSourceKeys = {row['constant']: row['constantKey'] for row in paramConstants}
-            # The block's own owner, not the config context's (ownerProject);
-            # calcBlockConfigInfo and calcConfigModules key by the same project.
-            blockOwnerProject = self.contextOwningProject[block['_context']]
 
             rowsByProject = dict()
             for row in rowsByBlock.get(blockKey, ()):
                 rowsByProject.setdefault(row['projectName'], []).append(row)
-            projectOrder = ([ownerProject] if ownerProject in rowsByProject else []) + \
-                sorted(project for project in rowsByProject if project != ownerProject)
+            projectOrder = ([blockOwnerProject] if blockOwnerProject in rowsByProject else []) + \
+                sorted(project for project in rowsByProject if project != blockOwnerProject)
             blockDescriptors = list()
             ownerDefault = None
             for project in projectOrder:
@@ -3906,7 +3920,7 @@ class projectCreate:
                         'declaringProject': project,
                         'block': block['block'],
                         'configContext': configContext,
-                        'isForeign': project != ownerProject,
+                        'isForeign': project != blockOwnerProject,
                         'structName': configStructName(project, block['block'], variant),
                         'values': values,
                         'paramSourceKeys': paramSourceKeys,
@@ -5697,7 +5711,7 @@ class projectCreate:
         self.config.setConfig('CONFIGMODULES', modules, bin=True)
 
     def calcForeignConfigHeaders(self):
-        # CONFIGMODULES entries declared by a project other than the child's owner;
+        # CONFIGMODULES entries declared by a project other than the block's owner;
         # the Verilated SV wrapper family scaffolds a standalone top for each.
         blockByKey = {row['blockKey']: row for row in self.flatData['blocks'].values()}
         blocksWithParams = {row['blockKey'] for row in self.flatData['blocksparams'].values()}
@@ -5707,9 +5721,9 @@ class projectCreate:
         for (declaringProject, childKey), entry in self.config.getConfig('CONFIGMODULES').items():
             if not entry['variants']:
                 continue
-            configContext = blockByKey[childKey]['configContext']
-            if not configContext or declaringProject == self.contextOwningProject[configContext]:
+            if declaringProject == self.contextOwningProject[blockByKey[childKey]['_context']]:
                 continue
+            configContext = blockByKey[childKey]['configContext']
             if childKey not in blocksWithParams and configContext not in paramConstantContexts:
                 continue
             headers[(declaringProject, childKey)] = entry
@@ -5867,8 +5881,10 @@ class projectCreate:
                 'paramDeps': deps['paramDeps'],
                 'localDeps': deps['localDeps'],
             }
+        typeParamDeps = dict()
         for typeKey, row in types.items():
             deps = typeInfo(typeKey)
+            typeParamDeps[typeKey] = sorted(deps['paramDeps'])
             if checkAgreement('type', typeKey, row['isParameterizable'], deps):
                 declInfo[('type', typeKey)] = {
                     'declKind': 'type',
@@ -5889,8 +5905,10 @@ class projectCreate:
                     'paramDeps': deps['paramDeps'],
                     'localDeps': deps['localDeps'],
                 }
-        # Persisted per structure for projectOpen._sampleConfigConstants.
+        # Persisted per structure/type for projectOpen._sampleConfigConstants
+        # and paramTemplateArgs.
         self.config.setConfig('STRUCTUREPARAMDEPS', structureParamDeps, bin=True)
+        self.config.setConfig('TYPEPARAMDEPS', typeParamDeps, bin=True)
 
         # Per-block selection. A declaration can be emitted only when it is
         # visible from the block and its full backing-parameter closure is
@@ -5961,9 +5979,9 @@ class projectCreate:
         # parameters, so an endpoint block that does not itself declare a required
         # backing parameter cannot declare the payload type - the parameter would
         # have to come from a level the block does not own. For every
-        # parameterizable connection, each endpoint instance's block must supply
-        # the union of backing parameters of the interface's parameterizable
-        # payload structures; a shortfall is a fatal error.
+        # parameterizable connection or connectionMap, each endpoint instance's
+        # block must supply the union of backing parameters of the interface's
+        # parameterizable payload structures; a shortfall is a fatal error.
         #
         # Scoped to endpoints that reach the connection's OWN interface: an
         # endpoint declaring a different one is bridged by an adapter and sizes
@@ -5981,6 +5999,40 @@ class projectCreate:
             for end in fileRows.values():
                 connEnds.setdefault(end['connectionKey'], list()).append(end)
 
+        def checkEndpoint(intf, needed, instRow, portName, whereWords):
+            blockKey = instRow['instanceTypeKey']
+            childIfaceKey = self._declaredPortInterfaceKey(blocks[blockKey], portName)
+            if childIfaceKey and childIfaceKey != intf['interfaceKey']:
+                return False
+            declared = blockParams.get(blockKey, set())
+            missing = needed - declared
+            if not missing:
+                return False
+            # Parameter identity is the declaring file, so name the file on
+            # both sides: the required parameter's, and - when the block
+            # declares parameters of the same bare name from somewhere else
+            # - those, which are the actual disagreement.
+            missingNames = ', '.join(
+                f"{constants[key]['constant']} (declared in {constants[key]['_context']})"
+                for key in sorted(missing))
+            missingBareNames = {constants[key]['constant'] for key in missing}
+            sameNamed = sorted(
+                f"{constants[key]['constant']} (declared in {constants[key]['_context']})"
+                for key in declared if constants[key]['constant'] in missingBareNames)
+            reason = ('is not parameterized' if not blockIsParameterizable[blockKey]
+                      else 'does not declare the required parameter(s)')
+            sameNamedNote = (
+                f" The block declares same-named parameter(s) from other file(s): "
+                f"{', '.join(sameNamed)}; a parameter is identified by the file that "
+                f"declares it, so those are different parameters." if sameNamed else '')
+            printError(f"Parameterized interface '{intf['interface']}' (declared in "
+                       f"{intf['_context']}) {whereWords}, which "
+                       f"{reason}: missing {missingNames}. A block reached through a "
+                       f"parameterized interface must itself carry the backing "
+                       f"parameter(s) so the payload is sized in its own module "
+                       f"scope.{sameNamedNote}")
+            return True
+
         errors = False
         for conn in self.flatData['connections'].values():
             if not conn['isParameterizable']:
@@ -5994,40 +6046,27 @@ class projectCreate:
             if not needed:
                 continue
             for end in connEnds.get(conn['connectionKey'], list()):
-                blockKey = end['instanceTypeKey']
-                childIfaceKey = self._declaredPortInterfaceKey(blocks[blockKey],
-                                                               end['portName'])
-                if childIfaceKey and childIfaceKey != conn['interfaceKey']:
-                    continue
-                declared = blockParams.get(blockKey, set())
-                missing = needed - declared
-                if not missing:
-                    continue
-                # Parameter identity is the declaring file, so name the file on
-                # both sides: the required parameter's, and - when the block
-                # declares parameters of the same bare name from somewhere else
-                # - those, which are the actual disagreement.
-                missingNames = ', '.join(
-                    f"{constants[key]['constant']} (declared in {constants[key]['_context']})"
-                    for key in sorted(missing))
-                missingBareNames = {constants[key]['constant'] for key in missing}
-                sameNamed = sorted(
-                    f"{constants[key]['constant']} (declared in {constants[key]['_context']})"
-                    for key in declared if constants[key]['constant'] in missingBareNames)
-                reason = ('is not parameterized' if not blockIsParameterizable[blockKey]
-                          else 'does not declare the required parameter(s)')
-                sameNamedNote = (
-                    f" The block declares same-named parameter(s) from other file(s): "
-                    f"{', '.join(sameNamed)}; a parameter is identified by the file that "
-                    f"declares it, so those are different parameters." if sameNamed else '')
-                printError(f"Parameterized interface '{intf['interface']}' (declared in "
-                           f"{intf['_context']}) on the connection "
-                           f"'{conn['src']}' -> '{conn['dst']}' connects endpoint instance "
-                           f"'{end['instance']}' (block '{end['instanceType']}'), which "
-                           f"{reason}: missing {missingNames}. A block reached through a "
-                           f"parameterized interface must itself carry the backing "
-                           f"parameter(s) so the payload is sized in its own module "
-                           f"scope.{sameNamedNote}")
+                whereWords = (f"on the connection '{conn['src']}' -> '{conn['dst']}' connects "
+                              f"endpoint instance '{end['instance']}' (block '{end['instanceType']}')")
+                if checkEndpoint(intf, needed, end, end['portName'], whereWords):
+                    errors = True
+
+        instances = self.flatData['instances']
+        for cmKey, cm in self.flatData['connectionMaps'].items():
+            if not cm['isParameterizable']:
+                continue
+            intf = interfaces[cm['interfaceKey']]
+            needed = set()
+            for structRow in intf.get('structures', dict()).values():
+                info = declInfo.get(('structure', structRow['structureKey']))
+                if info is not None:
+                    needed |= info['paramDeps']
+            if not needed:
+                continue
+            instRow = instances[cm['instanceKey']]
+            whereWords = (f"on connectionMap '{cmKey}' in block '{cm['block']}' connects "
+                          f"instance '{instRow['instance']}' (block '{instRow['instanceType']}')")
+            if checkEndpoint(intf, needed, instRow, cm['instancePortName'], whereWords):
                 errors = True
         if errors:
             exit(warningAndErrorReport())
@@ -6796,39 +6835,6 @@ class projectCreate:
             portEntry = blockRow.get('registerPorts', dict()).get(portName)
         return portEntry['interfaceKey'] if portEntry is not None else ''
 
-    def _endConfigIdentity(self, instRow):
-        # Mirrors configTypeIdentity for the ends validatePorts checks: an
-        # own-params instance either inherits or names a variant.
-        if instRow['inheritContainerParam']:
-            return ('container',)
-        blockRow = self.flatData['blocks'][instRow['instanceTypeKey']]
-        declarer = self.config.getConfig('INSTANCEVARIANTDECLARERS')[instRow['instanceKey']]
-        return ('variant', declarer, blockRow['block'], instRow['variant'])
-
-    def _configIdentityWords(self, identity):
-        if identity[0] == 'variant':
-            _, _project, block, variant = identity
-            return f"variant '{variant}' of block '{block}'"
-        return "its container's configuration"
-
-    def _checkInferredPortConfig(self, blockRow, instRow, portName,
-                                  channelIdentity, locationStr):
-        # An undeclared port binds the channel directly, so both must resolve at one Config.
-        endIdentity = self._endConfigIdentity(instRow)
-        if endIdentity == channelIdentity:
-            return
-        printError(
-            f"{locationStr}: instance '{instRow['instance']}' of block "
-            f"'{blockRow['block']}' declares no ports: entry for port "
-            f"'{portName}'. A top-down port binds the channel directly, but "
-            f"the instance resolves at {self._configIdentityWords(endIdentity)} "
-            f"while the channel is typed at "
-            f"{self._configIdentityWords(channelIdentity)}. "
-            f"Fixes: inheritContainerParam: true on every undeclared end of "
-            f"this channel, so all resolve at the container's Config; or, if "
-            f"'{blockRow['block']}' is reusable IP, declare port "
-            f"'{portName}' in its ports: so an adapter is generated.")
-
     def validatePorts(self):
         # Interface compatibility barrier: each connection end or connectionMap
         # carrying a bottom-up ports:/registerPorts: declaration is checked for
@@ -6930,12 +6936,34 @@ class projectCreate:
                     isRegisterBus = portEntry is not None
                 if not portEntry:
                     # Top-down inference: the port takes the connection's interface and
-                    # binds its channel directly.
+                    # binds its channel directly. A parameterizable end can still
+                    # resolve the connection's own interface at differing
+                    # configurations, so that payload is compared across sites.
                     if blockRow.get('params') and conn['isParameterizable']:
-                        self._checkInferredPortConfig(
-                            blockRow, instRow, portName, self._endConfigIdentity(elected),
-                            f"Block {blockRow['block']} instance '{instRow['instance']}', "
-                            f"connection '{connName}' (file {connContext})")
+                        parentIfaceRow = interfaces_flat[parentIfaceKey]
+                        parentContext = parentIfaceRow['_context']
+                        childSite = siteIndex.siteOf(instRow)
+                        parentBindings = _connectionBindings(
+                            elected, instRow['containerKey'])
+                        locationStr = (
+                            f"Block {blockRow['block']} connection "
+                            f"'{connName}' (file {connContext}) binds external "
+                            f"interface {parentIfaceRow['interface']} to child "
+                            f"{instRow['instance']}.{portName}, undeclared and "
+                            f"inferred from the connection")
+                        for parentSite in parentBindings:
+                            for (parentBindingMap, childBindingMap,
+                                 parentContainerSite, childContainerSite) in \
+                                    siteIndex.junctionBindings(
+                                        parentSite, childSite,
+                                        instRow['containerKey']):
+                                self.checkInterfacePair(
+                                    parentIfaceRow, parentIfaceRow,
+                                    childSite, locationStr, parentContext,
+                                    parentContext, parentSite,
+                                    parentBindingMap, childBindingMap,
+                                    siteIndex, parentContainerSite,
+                                    childContainerSite)
                     continue
                 portIface = portEntry['interface']
                 parentIfaceRow = interfaces_flat[parentIfaceKey]
@@ -7009,12 +7037,31 @@ class projectCreate:
             instPortName = cm['instancePortName']
             portEntry = declaredPorts.get(instPortName)
             if not portEntry:
-                # The up side is the container's own boundary port, typed on its Config.
+                # The up side is the container's own boundary port, typed on its
+                # Config. A parameterizable map can still resolve that Config at
+                # differing sites, so that payload is compared across them.
                 if blockRow.get('params') and cm['isParameterizable']:
-                    self._checkInferredPortConfig(
-                        blockRow, instRow, instPortName, ('container',),
-                        f"Block {blockRow['block']} instance '{instRow['instance']}', "
-                        f"connectionMap '{cmName}' (file {cmContext})")
+                    parentIfaceRow = interfaces_flat[parentIfaceKey]
+                    parentContext = parentIfaceRow['_context']
+                    childSite = siteIndex.siteOf(instRow)
+                    locationStr = (
+                        f"Block {cm['block']} connectionMap '{cmName}' "
+                        f"(file {cmContext}) binds external interface "
+                        f"{parentIfaceRow['interface']} to child "
+                        f"{instRow['instance']}.{instPortName}, undeclared and "
+                        f"inferred from the connectionMap")
+                    for parentSite in _containerBindings(cm['blockKey']):
+                        for (parentBindingMap, childBindingMap,
+                             parentContainerSite, childContainerSite) in \
+                                siteIndex.junctionBindings(
+                                    parentSite, childSite, cm['blockKey']):
+                            self.checkInterfacePair(
+                                parentIfaceRow, parentIfaceRow,
+                                childSite, locationStr, parentContext,
+                                parentContext, parentSite,
+                                parentBindingMap, childBindingMap,
+                                siteIndex, parentContainerSite,
+                                childContainerSite)
                 continue
             portIface = portEntry['interface']
             parentIfaceRow = interfaces_flat[parentIfaceKey]

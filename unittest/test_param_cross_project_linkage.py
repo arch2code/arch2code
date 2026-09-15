@@ -21,7 +21,6 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 import pysrc.arch2codeGlobals as g
-from pysrc.intf_gen_utils import cpp_config_struct_name
 from pysrc.processYaml import projectOpen
 
 FIXTURE = os.path.join(test_dir, 'fixtures', 'param-cross-project')
@@ -340,56 +339,68 @@ def test_shared_ipparameter_include_across_projects():
         shutil.rmtree(work, ignore_errors=True)
 
 
-def test_one_interface_at_differing_configs_is_adapted():
-    _header("one shared interface declaration reached at three Configs is "
-            "adapted where the Configs differ")
-    work = _copy_fixture('param_xproj_config_')
+def test_one_interface_at_equal_valued_configs_binds_directly():
+    _header("one shared interface declaration reached at equal-valued Configs "
+            "binds directly; unequal values are rejected at db")
+    work = _copy_fixture('param_xproj_equalconfig_')
     try:
-        # The accepted straight-through chain of the cell above, read for what it
-        # emits rather than for what it accepts. All four endpoint ports are the
-        # one upstream dataIf declaration, so no interface difference exists at
-        # any of them; but each block owns its params and so carries its own
-        # Config, which makes the payload a different C++ type per endpoint.
         db, out, rc = _build_db(work, 'sharedProject.yaml')
         if rc != 0:
             print("  FAIL: the shared-include composition did not build")
             print('  ' + '\n  '.join(out.split('\n')[:25]))
             return False
-        _prj, ends = _cross_interface_ends(db)
-        # The channel takes the dst endpoint's Config, so the dst end of each hop
-        # binds it unadapted and only the src end is adapted. Adapting both would
-        # leave the channel with no end to take its typing from.
-        if sorted(ends) != [('uA', 'out'), ('uB', 'out')]:
-            print(f"  FAIL: adapted ends {sorted(ends)}, expected the two "
-                  f"producer ends only")
+        prj, ends = _cross_interface_ends(db)
+        if ends:
+            print(f"  FAIL: expected no adapter on either hop, got {sorted(ends)}")
             return False
-        # Each adapter's up side must spell the Config of the endpoint that types
-        # the channel and its down side the adapted endpoint's own, so this pins
-        # the emitted C++ names rather than restating the predicate that chose
-        # them. Every variant here is declared by the assembler, so each name is
-        # owner-qualified with its project.
-        expected = {
-            ('uA', 'out'): ('sharedTopProj_bSharedIpV0Config',
-                            'sharedTopProj_aIpV0Config'),
-            ('uB', 'out'): ('sharedTopProj_cSharedIpV0Config',
-                            'sharedTopProj_bSharedIpV0Config'),
-        }
-        for key, end in ends.items():
-            if end['parentInterfaceKey'] != f'dataIf/{A_CONTEXT}' \
-                    or end['childInterfaceKey'] != f'dataIf/{A_CONTEXT}':
+        # Premise: all four port ends are the one upstream dataIf declaration,
+        # so the direct bind below is a consequence of equal WIDTH values, not
+        # of any interface difference having been missed.
+        for blockName, portName in (('aIp', 'out'), ('bSharedIp', 'in'),
+                                     ('bSharedIp', 'out'), ('cSharedIp', 'in')):
+            blockRow = next(row for row in prj.data['blocks'].values()
+                            if row['block'] == blockName)
+            interfaceKey = blockRow['ports'][portName]['interfaceKey']
+            if interfaceKey != f'dataIf/{A_CONTEXT}':
                 print(f"  FAIL: fixture no longer states the premise this cell "
-                      f"tests; end {key} binds {end['parentInterfaceKey']} to "
-                      f"{end['childInterfaceKey']} rather than one declaration")
+                      f"tests; {blockName}.{portName} binds {interfaceKey} "
+                      f"rather than the one upstream dataIf declaration")
                 return False
-            configs = [(cpp_config_struct_name(pair['parent']['configSelection']),
-                        cpp_config_struct_name(pair['child']['configSelection']))
-                       for pair in end['thunker']['payloadPairs']]
-            if configs != [expected[key]]:
-                print(f"  FAIL: end {key} adapter Configs {configs}, expected "
-                      f"{[expected[key]]}")
+        interfaceRow = next(row for row in prj.data['interfaces'].values()
+                            if row['interfaceKey'] == f'dataIf/{A_CONTEXT}')
+        instances = {name: next(row for row in prj.data['instances'].values()
+                                if row['instance'] == name)
+                     for name in ('uA', 'uB', 'uC')}
+        selections = {name: prj._resolveInstanceConfigFields(row)
+                      for name, row in instances.items()}
+        for parentName, childName in (('uA', 'uB'), ('uB', 'uC')):
+            if not prj.bindsDirectly(interfaceRow, interfaceRow['interfaceKey'],
+                                      selections[parentName],
+                                      selections[childName]):
+                print(f"  FAIL: {parentName}->{childName} did not bind "
+                      f"directly at equal WIDTH values")
                 return False
-        print("  PASS: one declaration at differing Configs adapted on the "
-              "producer end of each hop")
+        _close_db()
+
+        _edit_fixture_yaml(
+            work, os.path.join('top', 'yaml', 'sharedTop.yaml'),
+            "    bSharedIp:\n        v0:\n            WIDTH: 8",
+            "    bSharedIp:\n        v0:\n            WIDTH: 16")
+        os.remove(db)
+        _db2, out2, rc2 = _build_db(work, 'sharedProject.yaml')
+        if rc2 == 0:
+            print("  FAIL: unequal WIDTH values on the one shared dataIf "
+                  "declaration built cleanly; the value mismatch was never "
+                  "checked at db")
+            print('  ' + '\n  '.join(out2.split('\n')[:25]))
+            return False
+        if '_bitWidth' not in out2:
+            print("  FAIL: build failed but not with the per-field _bitWidth "
+                  "reconciliation diagnostic")
+            print('  ' + '\n  '.join(out2.split('\n')[:25]))
+            return False
+        print("  PASS: equal values bind directly with no adapter; unequal "
+              "values rejected at db")
         return True
     finally:
         _close_db()
@@ -588,6 +599,7 @@ parameters:
         print(f"  PASS: excluded {len(unreachable)} unreachable pair(s)")
         return True
     finally:
+        _close_db()
         shutil.rmtree(work, ignore_errors=True)
 
 
@@ -601,7 +613,7 @@ def run_all_tests():
         test_deparameterized_boundary_across_three_projects,
         test_same_named_cross_project_interfaces_are_adapted,
         test_shared_ipparameter_include_across_projects,
-        test_one_interface_at_differing_configs_is_adapted,
+        test_one_interface_at_equal_valued_configs_binds_directly,
         test_cross_project_width_mismatch_rejected,
         test_port_binds_its_own_project_interface,
         test_shared_include_binding_sizing_enforced,

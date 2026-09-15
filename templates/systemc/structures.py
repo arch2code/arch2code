@@ -1,6 +1,6 @@
-from pysrc.intf_gen_utils import FW_NAMESPACE, get_const, wrap_module_namespace, wrap_fw_namespace, wrap_module_test_namespace, cpp_namespace_name
+from pysrc.intf_gen_utils import FW_NAMESPACE, get_const, wrap_module_namespace, wrap_fw_namespace, wrap_module_test_namespace, cpp_namespace_name, configType
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from templates.systemc.includes import constReference_cpp, typeWidthExpression_cpp
+from templates.systemc.includes import constReference_cpp, constReferenceValueKeyed_cpp, typeWidthExpression_cpp
 dataTypeMappings = [
     {'maxSize': 1, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
     {'maxSize': 8, 'unsignedType': 'uint8_t', 'signedType': 'int8_t'},
@@ -119,6 +119,14 @@ def convertToType(bitwidth, name="_packedSt", isSigned=False):
             break
     return retType, rowType, baseSize
 
+def valueKeyedTypeRef(declKind, declKey, name, prj):
+    """Spell a value-keyed reference to a parameterizable structure or type:
+    its own template value parameters, applied in the same order its
+    declaration takes them."""
+    args = prj.paramTemplateArgs(declKind, declKey)
+    return f"{name}_v<{', '.join(row['constant'] for row in args)}>"
+
+
 def structBitWidthExpression_cpp(value, prj, useConfig=False):
     """Build a C++ constexpr expression for a structure's _bitWidth.
 
@@ -140,7 +148,7 @@ def structBitWidthExpression_cpp(value, prj, useConfig=False):
         elif vardata['entryType'] == 'NamedStruct':
             subStructInfo = prj.data['structures'][vardata['subStructKey']]
             if useConfig and subStructInfo['isParameterizable']:
-                expr = f"{vardata['subStruct']}<Config>::_bitWidth"
+                expr = f"{valueKeyedTypeRef('structure', vardata['subStructKey'], vardata['subStruct'], prj)}::_bitWidth"
             else:
                 expr = f"{vardata['subStruct']}::_bitWidth"
         elif vardata['entryType'] == 'Reserved':
@@ -165,7 +173,7 @@ def cppArraySize(vardata, prj, useConfig=False):
     # arraySizeKey is empty when arraySize is a literal rather than a constant reference
     arraySizeKey = vardata['arraySizeKey']
     if useConfig and arraySizeKey and prj.data['constants'][arraySizeKey]['isParameterizable']:
-        return constReference_cpp(arraySizeKey, prj, useConfig=True)
+        return constReferenceValueKeyed_cpp(arraySizeKey, prj)
     return vardata['arraySize']
 
 
@@ -175,7 +183,7 @@ def cppVarBitwidth(vardata, prj, useConfig=False):
     if vardata['entryType'] == 'NamedStruct':
         subStructInfo = prj.data['structures'][vardata['subStructKey']]
         if useConfig and subStructInfo['isParameterizable']:
-            return f"{vardata['subStruct']}<Config>::_bitWidth"
+            return f"{valueKeyedTypeRef('structure', vardata['subStructKey'], vardata['subStruct'], prj)}::_bitWidth"
         return f"{vardata['subStruct']}::_bitWidth"
     return str(vardata['bitwidth'])
 
@@ -184,14 +192,14 @@ def cppTypeName(vardata, prj, useConfig=False):
     if vardata['entryType'] == 'NamedStruct':
         subStructInfo = prj.data['structures'][vardata['subStructKey']]
         if useConfig and subStructInfo['isParameterizable']:
-            return f"{vardata['subStruct']}<Config>"
+            return valueKeyedTypeRef('structure', vardata['subStructKey'], vardata['subStruct'], prj)
         return vardata['subStruct']
     varType = vardata['varType']
     # varTypeKey is empty for fields that name no type - Reserved, and a subStruct
     # field rewritten to NamedType by the datapath backdoor - so it keys no types row
     typeKey = vardata['varTypeKey']
     if useConfig and typeKey and prj.data['types'][typeKey]['isParameterizable']:
-        return f"{varType}<Config>"
+        return valueKeyedTypeRef('type', typeKey, varType, prj)
     return varType
 
 
@@ -374,18 +382,23 @@ def oneStruct(args, prj, data, struct, value):
 
     out = list()
     structName = value['structure']
+    # Parameterizable structures are declared as `<name>_v` over their
+    # root-parameter values; `<name>` is the `<Config>` alias.
+    declStructName = f"{structName}_v" if isParam else structName
     indent = '' if isCpp else ' '*4
     if not isCpp:
         # first few things are not optinal and always in the header
         if isParam:
-            out.append("template<typename Config>")
-        out.append(f"struct {structName} {{")
+            templateArgs = prj.paramTemplateArgs('structure', struct)
+            argList = ', '.join(f"{configType(row)} {row['constant']}" for row in templateArgs)
+            out.append(f"template<{argList}>")
+        out.append(f"struct {declStructName} {{")
         # declare vars
         out.extend(declareVars(value, indent, prj, isParam))
         if args.mode == 'fw':
-            out.append(f"\n{indent}{structName}() {{ memset(this, 0, sizeof({ value['structure'] })); }}\n")
+            out.append(f"\n{indent}{declStructName}() {{ memset(this, 0, sizeof({ declStructName })); }}\n")
         else:
-            out.append(f"\n{indent}{structName}() {{}}\n")
+            out.append(f"\n{indent}{declStructName}() {{}}\n")
         # consts
         bitWidthExpr = structBitWidthExpression_cpp(value, prj, isParam)
         prefix = f"{indent}static constexpr uint16_t _bitWidth = "
@@ -432,7 +445,7 @@ def oneStruct(args, prj, data, struct, value):
                 args._prj = prj
                 out.extend(scTrace(handle, args, structName, value, indent))
             case 'operatorStream': # operator <<
-                out.extend(operatorStream(structName, indent)) if not isCpp else None
+                out.extend(operatorStream(structName, indent, isParam)) if not isCpp else None
             case 'prt':
                 out.extend(prt(handle, args, value, indent, prj))
             case 'prtFmt':
@@ -455,10 +468,11 @@ def oneStruct(args, prj, data, struct, value):
             case 'sc_unpack':
                 if value['width'] == 1:
                     out.extend(sc_unpack(handle, args, "bool", value, indent, prj, isParam))
-                structTypeName = f"{structName}<Config>" if isParam else structName
+                structTypeName = (valueKeyedTypeRef('structure', value['structureKey'], structName, prj)
+                                 if isParam else structName)
                 out.extend(sc_unpack(handle, args, f"sc_bv<{structTypeName}::_bitWidth>", value, indent, prj, isParam))
             case 'constuctor_bv':
-                out.extend(constuctor_bv(structName, value, indent)) if not isCpp else None
+                out.extend(constuctor_bv(structName, value, indent, prj)) if not isCpp else None
             case 'constructor':
                 out.extend(constructor(structName, value, indent, prj, isParam)) if not isCpp else None
             case 'constructor_packed':
@@ -477,6 +491,9 @@ def oneStruct(args, prj, data, struct, value):
 
     if not isCpp:
         out.append(f'\n}};')
+        if isParam:
+            configArgs = ', '.join(f"Config::{row['constant']}" for row in templateArgs)
+            out.append(f"template<typename Config> using {structName} = {declStructName}<{configArgs}>;")
     return out
 
 def declareVars(vars, indent, prj, useConfig=False):
@@ -497,7 +514,8 @@ def declareVars(vars, indent, prj, useConfig=False):
 def equalTest(handle, args, structName, vars, indent):
     out = list()
     isParam = vars['isParameterizable']
-    qualifiedStructName = f"{structName}<Config>" if isParam else structName
+    qualifiedStructName = (valueKeyedTypeRef('structure', vars['structureKey'], structName, args._prj)
+                           if isParam else structName)
     if args.section == 'header' and handle == 'inline':
         out.append(f"{indent}inline bool operator == (const { qualifiedStructName } & rhs) const {{")
     elif args.section == 'header' and handle == 'split':
@@ -538,7 +556,8 @@ def equalTest(handle, args, structName, vars, indent):
 def scTrace(handle, args, structName, vars, indent):
     out = list()
     isParam = vars['isParameterizable']
-    qualifiedStructName = f"{structName}<Config>" if isParam else structName
+    qualifiedStructName = (valueKeyedTypeRef('structure', vars['structureKey'], structName, args._prj)
+                           if isParam else structName)
     if args.section == 'header' and handle == 'inline':
         out.append(f"{indent}inline friend void sc_trace(sc_trace_file *tf, const {qualifiedStructName} & v, const std::string & NAME ) {{")
     elif args.section == 'header' and handle == 'split':
@@ -574,9 +593,10 @@ def scTrace(handle, args, structName, vars, indent):
     out.append(f"    }}")
     return out
 
-def operatorStream(structName, indent):
+def operatorStream(structName, indent, isParam):
     out = list()
-    out.append(f"{indent}inline friend ostream& operator << ( ostream& os,  {structName} const & v ) {{")
+    declStructName = f"{structName}_v" if isParam else structName
+    out.append(f"{indent}inline friend ostream& operator << ( ostream& os,  {declStructName} const & v ) {{")
     out.append(f'{indent}    os << v.prt();')
     out.append(f"{indent}    return os;")
     out.append(f"{indent}}}")
@@ -706,7 +726,7 @@ def getSet(vars, indent, prj=None, useConfig=False):
     for var, vardata in vars['vars'].items():
         generator = vardata['generator']
         # Route through cppTypeName so parameterizable field types keep their
-        # <Config> template argument; non-parameterizable types emit bare name.
+        # value-keyed template arguments; non-parameterizable types emit bare name.
         varType = cppTypeName(vardata, prj, useConfig) if prj else vardata['varType']
         # next features
         if generator == 'next':
@@ -781,7 +801,8 @@ def sc_pack(handle, args, vars, indent, prj=None):
     out = list()
     structName = vars['structure']
     isParam = vars['isParameterizable']
-    qualifiedStructName = f"{structName}<Config>" if isParam else structName
+    qualifiedStructName = (valueKeyedTypeRef('structure', vars['structureKey'], structName, prj)
+                           if isParam else structName)
     if vars['width'] > 1:
         structType = f"sc_bv<{qualifiedStructName}::_bitWidth>"
     else:
@@ -991,20 +1012,24 @@ def sc_unpack(handle, args, structType, vars, indent, prj=None, useConfig=False)
     return out
 
     # constructor
-def constuctor_bv(structName, vars, indent):
+def constuctor_bv(structName, vars, indent, prj):
     out = list()
-    qualifiedStructName = f"{structName}<Config>" if vars['isParameterizable'] else structName
+    isParam = vars['isParameterizable']
+    qualifiedStructName = (valueKeyedTypeRef('structure', vars['structureKey'], structName, prj)
+                           if isParam else structName)
+    declStructName = f"{structName}_v" if isParam else structName
     if vars['width'] > 1:
         structType = f"sc_bv<{qualifiedStructName}::_bitWidth>"
     else:
         structType = 'bool'
-    out.append(f"{indent}explicit {structName}({structType} packed_data) {{ sc_unpack(packed_data); }}")
+    out.append(f"{indent}explicit {declStructName}({structType} packed_data) {{ sc_unpack(packed_data); }}")
     return out
 
 def constructor(structName, vars, indent, prj=None, useConfig=False):
     out = list()
     indent = ' '*4
-    out.append(f"{indent}explicit {structName}(")
+    declStructName = f"{structName}_v" if useConfig else structName
+    out.append(f"{indent}explicit {declStructName}(")
     indent = ' '*8
     params = list()
     initializers = list()
@@ -1018,23 +1043,21 @@ def constructor(structName, vars, indent, prj=None, useConfig=False):
             myArrayLoopIndex= ''
         if vardata['entryType'] == 'NamedVar' or vardata['entryType'] == 'NamedType' or vardata['entryType'] == 'Reserved':
             varType = cppTypeName(vardata, prj, useConfig) if prj else vardata['varType']
-            params.append(f"{indent}{varType} {vardata['variable'] + '_' + myArray},")
+            params.append(f"{indent}{varType} {vardata['variable'] + '_' + myArray}")
         elif vardata['entryType'] == 'NamedStruct':
             varType = cppTypeName(vardata, prj, useConfig) if prj else vardata['subStruct']
-            params.append(f"{indent}{varType} {vardata['variable'] + '_' + myArray},")
+            params.append(f"{indent}{varType} {vardata['variable'] + '_' + myArray}")
         if myArray == '':
-            initializers.append(f"{indent}{vardata['variable']}({vardata['variable'] + '_'}),")
+            initializers.append(f"{indent}{vardata['variable']}({vardata['variable'] + '_'})")
         else:
             memcpys.append(f"{indent}memcpy(&{vardata['variable']}, &{vardata['variable'] + '_'}, sizeof({vardata['variable']}));")
 
+    # A field type can carry commas (value-keyed template arguments), so the
+    # terminator is appended to the joined text.
+    paramsTerminator = ') :' if len(initializers) > 0 else ')'
+    out.append(',\n'.join(params) + paramsTerminator)
     if len(initializers) > 0:
-        params[-1] = params[-1].replace(',', ') :')
-    else:
-        params[-1] = params[-1].replace(',', ')')
-    out.extend(params)
-    if len(initializers) > 0:
-        initializers[-1] = initializers[-1].replace(',', '')
-        out.extend(initializers)
+        out.append(',\n'.join(initializers))
     indent = ' '*4
     if len(memcpys) > 0:
         out.append(f"{indent}{{")
@@ -1047,7 +1070,8 @@ def constructor(structName, vars, indent, prj=None, useConfig=False):
 
 def constructor_packed(structName, vars, indent):
     out = list()
-    out.append(f"{indent}explicit {structName}(const _packedSt &packed_data) {{ unpack(const_cast<_packedSt&>(packed_data)); }}")
+    declStructName = f"{structName}_v" if vars['isParameterizable'] else structName
+    out.append(f"{indent}explicit {declStructName}(const _packedSt &packed_data) {{ unpack(const_cast<_packedSt&>(packed_data)); }}")
     return out
 
 def get_unpack_mask_str(needBits, baseSize):
@@ -1265,12 +1289,13 @@ def fw_unpack(handle, args, vars, indent, prj=None, useConfig=False):
 
     return out
 
-def fw_pack_setup(args, vars, indent):
+def fw_pack_setup(args, vars, indent, prj):
     out = list()
     fw_pack_vars = dict()
     useConfig = vars['isParameterizable']
     bitwidth = vars['maxBitwidth'] if useConfig else vars['width']
-    structName = f"{vars['structure']}<Config>" if useConfig else vars['structure']
+    structName = (valueKeyedTypeRef('structure', vars['structureKey'], vars['structure'], prj)
+                 if useConfig else vars['structure'])
     out.append(f"{indent}memset(&_ret, 0, {structName}::_byteWidth);")
     retType, rowType, baseSize = convertToType(bitwidth)
     if useConfig:
@@ -1448,7 +1473,7 @@ def processPackUnpack(fname, handle, args, vars, indent, prj=None, useConfig=Fal
 
     # perform any setup
     setupFn = p['functions'].get('setup', None)
-    setupOut, setupVars = setupFn(args, vars, indent) if setupFn else ([], {})
+    setupOut, setupVars = setupFn(args, vars, indent, prj) if setupFn else ([], {})
     setupVars['prj'] = prj
     setupVars['useConfig'] = useConfig
     out.extend(setupOut)

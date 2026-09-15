@@ -10,6 +10,8 @@ EXTRA_O3_CPP_SRC   = $(filter %Includes.cpp %IncludesFW.cpp, $(SC_GEN_FILES))
 
 include $(A2C_ROOT)/include/make/a2c-systemc.mk
 
+REGR_JOBS ?= 8
+
 .PHONY : run regr
 
 run: $(BIN_DIR)/$(BIN)
@@ -20,4 +22,4 @@ else
 endif
 
 regr:
-	$(A2C_ROOT)/regrLauncher.py --build -j8 regr_xpDpLeaf.json $(REGR_USER_OPTS)
+	$(A2C_ROOT)/regrLauncher.py --build -j$(REGR_JOBS) regr_xpDpLeaf.json $(REGR_USER_OPTS)

@@ -76,7 +76,7 @@
   channel's Config; `make db` rejects the mismatch naming both sides and the two fixes. Fixtures
   `infPort`/`infPortBad`, gate `xproj-inferred-port` in `pipeline-test` (baseline now 4 `OK:`).
   Value-keyed payload types lift the rejection. Full gate set green on the final tree; the step 15
-  (a) migrate proof also ran (§6, step 13, "Inferred-port Config gate"). Uncommitted, ready to stage.
+  (a) migrate proof also ran (§6, step 13, "Inferred-port Config gate"). Committed in f00e39c.
 - **Autonomous session 2026-09-13, six rulings executed in sequence.** rtl.f compile-closure
   fix LANDED (§6 step 12b "rtl.f package-list derivation defect"); the two rules documents'
   retired flat `parameters:` form fixed (plan-116 9G LANDED); one-line proposals recorded for
@@ -93,7 +93,7 @@
   and the hardcoded `foreignConfig` fileMap key lookup collapse into `artifactPaths.blockCondRow`
   and `artifactPaths.configModuleFileDef`. Behaviour-preserving; build manifests byte-identical on
   five examples, full gate set at baseline (§6, step 12a follow-up (d), "Follow-ups (ii) and
-  (iii)"). Follow-up (i) stays open. Uncommitted, ready to stage.
+  (iii)"). Follow-up (i) landed as the artifact-row view (step 12a (d) (i)). Committed in f00e39c.
 - **artifactPaths extraction, LANDED 2026-09-10.** `expandNewModulePath`, `fileMapCondMatch` and
   `getRegistrarFiles` moved verbatim from `pysrc/processYaml.py` into the new `pysrc/artifactPaths.py`;
   ten callers repointed, no re-export. Behaviour-preserving; reviewed categorically, review applied.
@@ -324,7 +324,7 @@ The question re-put after step 1 landed: should a block in project X be permitte
 - **A hard gate would be self-contradictory.** A verbatim-asserted diagnostic requires a block sitting on a foreign parameterized interface to name that interface's backing parameter. A ban on naming a foreign project's parameter and that requirement cannot both be satisfied.
 - **`inheritContainerParam`'s same-project rule is not a counter-precedent.** It was judged scaffolding around a bare-name comparison (`pysrc/processYaml.py:4942-4943`, and the container/child owning-project check at `:5063`) rather than a policy about parameter ownership. It is filed as a gap, not as a ruling that cross-project naming is disallowed.
 
-**NOT DECIDED by the architect:** whether to document a **CONVENTION** — prefer sharing *values* across a project boundary, and declarations only within one — as distinct from a gate. A convention constrains authoring guidance only and would not be enforced. **OPEN.**
+**CLOSED 2026-09-14 (user): no convention.** The question was whether to document a **CONVENTION** — prefer sharing *values* across a project boundary, and declarations only within one — as distinct from a gate. Ruled against: rules 1 and 7 and the shipped `xprojParam` shared examples state that a declaration may cross a project boundary, and a convention preferring value sharing would contradict them. Rule 1 and the `param-variant-two-declarers-legal` and `shared-params-owner` fixtures state that a declaration may cross a project boundary, and the user ruled 2026-09-14 that even a definitions-only project may declare a variant. A convention preferring value sharing would contradict the shipped `xprojParam` examples and add guidance the rules document does not need.
 
 ### Case 2 — a higher-level assembler exposing a sub-block's parameter
 
@@ -774,13 +774,13 @@ Product tree, against `/work/ws/debayer` HEAD `70ec235`: the working tree also c
 - **Proves it.** Give `cstBind`'s Inc blocks a payload of their own, which the fixture cannot do today, and require the build to succeed.
 - **Blast radius. MEASURED 2026-09-05: zero in the product tree.** A query for a struct field whose width-backing constant is declared in a different file than the structure returns 0 rows in both `debayer.db` and `isp_shared.db`, and 0 rows again for `arraySizeKey`. `isp_shared` has no parameterizable types at all. The defect is confined to the `testStructsCPP` section, which is reachable only from `structTest()` (`templates/systemc/structures.py:1615-1667`) and has no other call site, and its only live instance is the deliberately-constructed `xprojParam` fixture.
 
-### Step 6 — Promote the probe and close the RTL coverage gap. HALF LANDED; DEPENDS ON step 1
+### Step 6 — Promote the probe and close the RTL coverage gap. LANDED 2026-09-07 (the `twoCtx` gate); CLOSED 2026-09-14
 
 - **Changes.** ~~Move `cstUse` from `xproj-const-probes` into `xproj-const`~~ **DONE with step 1**; `xproj-const-probes` is deleted, having no cells left. Still to do: add an **RTL-bearing** cell to the family, because the SystemVerilog consequence of B1 is the most serious and is covered by nothing: all eight affected blocks in both trees are `hasRtl: 0` (measured, §5 B1), and the `cst` family declares `hasRtl: false` throughout.
 - **Proves it.** The new cell's generated package or module-local declaration must spell the **module parameter name**, not the constant's default literal; fault-inject by reverting step 1's change to `templates/systemVerilog/package.py:46` and confirm the cell fails.
 - **Redirected 2026-09-07, after the dpMid attempt below did not discriminate.** A type width is spelled by `typeWidthExpression_sv`, which goes through `emissionUtils.typeWidthExpr` (`pysrc/emissionUtils.py:124-126`) and returns the constant's bare declared name; it never consults `paramNameByKey`. Only two emissions do: an eval-derived `localparam` right-hand side (`emitSvCanonical`, `templates/systemVerilog/package.py:88`) and a structure member's `arraySizeKey` (`:66-67`). So the B1 SystemVerilog consequence is confined to those two, and `dpMid`'s `typedef logic[DP_WIDTH-1:0]` is right by the same-name rule, not by step 1. **Fault-injected and observed**: with `paramNameByKey` keyed on `paramKey`, `xproj-depth` still exits 0 and the typedef is byte-identical. The dpMid grep added to `xproj-depth` is kept as a pin of the type-width path, but it is not the step 6 gate. **The gate is `twoCtx`**: `xpTwoCtxDut` and `xpTwoCtxBare` are `hasRtl: true` and name the include-reached `DP_WIDTH`; a derived constant `DP_WIDTH_X2` over it, declared in `xpTwoCtx.yaml`, lands in both blocks' `localparam` sets, and `xproj-twoctx` greps for `localparam DP_WIDTH_X2 = DP_WIDTH * 2`. The `paramKey` injection must turn that into the literal `8 * 2`.
 - **LANDED 2026-09-07. VERIFIED BY EXECUTION.** `examples/xprojParam/twoCtx/yaml/xpTwoCtx.yaml` declares `DP_WIDTH_X2: { eval: "$DP_WIDTH * 2" }`; with no other YAML change `rtl/xpTwoCtxDut.sv:22` and `rtl/xpTwoCtxBare.sv:21` carry `localparam DP_WIDTH_X2 = DP_WIDTH * 2;`, and `xpTwoCtxBare` asserts `DP_WIDTH_X2 == 24` at run time beside its existing asserts. `xproj-twoctx` greps both files for the symbolic line and fails otherwise. **Fault-injected**: with `paramNameByKey` keyed on `paramKey`, the target exits 2 at `ERROR: xpTwoCtxDut.sv did not spell the include-reached parameter DP_WIDTH on localparam DP_WIDTH_X2` (the emitted line read `8 * 2`, reported by the implementer; the ERROR line is in the retained log); the run-time assert changed to 25 fails on `xpTwoCtxBare DP_WIDTH_X2 did not derive from the bound DP_WIDTH`. Both restored; `git diff templates/systemVerilog/package.py` empty; `make xproj-twoctx -j` exit 0 with four "No error" (two from the depth family it runs first, two from twoCtx). The "No error" expectation of `pipeline-test` stays 64: the gate adds greps, not simulations. The `dpMid` typedef grep in `xproj-depth` stays as a pin of the type-width path. **This closes step 6.** The `cst` family stays `hasRtl: false`.
-- **The premise is partly stale, found 2026-09-07.** "Covered by nothing" was true of the `cst` family and the product tree, but `examples/xprojParam/dpMid/yaml/xpDpMid.yaml:33` declares `params: [DP_WIDTH, MID_ALGO]` with `hasRtl: true`, and `DP_WIDTH` is reached by `include:` from `dpLeaf`. Its emitted `rtl/xpDpMid.sv:20` reads `typedef logic[DP_WIDTH-1:0] dpPixelT;`, the module parameter, which is exactly the artefact this step asks a new cell to produce. Two gaps keep the step open: `xproj-depth` runs `make gen` on `dpMid` and asserts nothing about the spelling, and no target elaborates that RTL (every `dpTop` block is `hasVl: false`, and `make lint` is unusable, §8). **Recommended, not decided:** close the step with a grep gate on `dpMid`'s emitted RTL inside `xproj-depth`, plus the `paramKey` fault injection, rather than authoring a new RTL cell in the `cst` family.
+- **The premise is partly stale, found 2026-09-07.** "Covered by nothing" was true of the `cst` family and the product tree, but `examples/xprojParam/dpMid/yaml/xpDpMid.yaml:33` declares `params: [DP_WIDTH, MID_ALGO]` with `hasRtl: true`, and `DP_WIDTH` is reached by `include:` from `dpLeaf`. Its emitted `rtl/xpDpMid.sv:20` reads `typedef logic[DP_WIDTH-1:0] dpPixelT;`, the module parameter, which is exactly the artefact this step asks a new cell to produce. Two gaps keep the step open: `xproj-depth` runs `make gen` on `dpMid` and asserts nothing about the spelling, and no target elaborates that RTL (every `dpTop` block is `hasVl: false`, and `make lint` is unusable, §8). **Resolved 2026-09-14:** both halves of that recommendation exist. `xproj-depth` greps `dpMid`'s emitted typedef (Makefile, `xpDpMid.sv did not spell...`), and the `paramKey` fault injection was run against the `twoCtx` gate above, which is the discriminating one. No new RTL cell is needed; the step is closed.
 
 ### Step 7 — D7: parameter-scoped inheritance expressed in the variant. DECIDED 2026-08-13; HALF BUILT 2026-08-14
 
@@ -1397,7 +1397,7 @@ the label, and both source blocks. Disjoint source labels remain legal.
   values as `debayer`'s, so the wrapper variant set is the same set under either
   source.
 
-### Step 11, testbench variant ownership and Config-source validation. COMPLETE IN WORKING TREE 2026-08-31; COMMIT PREPARATION OPEN
+### Step 11, testbench variant ownership and Config-source validation. COMPLETE 2026-08-31; COMMITTED in 657efcbc
 
 A generated testbench builds one DUT at one named Config. It now requires that
 variant to be declared by the DUT block itself. A container label is not a DUT
@@ -1618,7 +1618,7 @@ Rule 7 is split out as step 12b, below, and untouched by this entry.
   `No error`, 0 `ERROR:`, 3 `OK:`, 0 stale-registrar warnings; pro 14 `No error`, 0 warnings;
   product gen diff-stat builder and isp_shared only, 0 warnings, model and `VL_DUT=1` runs two
   `No error` each; `.gen/build.mk` byte-identical on simple_ip and dpTop.
-  **Follow-ups opened here ((ii) and (iii) LANDED 2026-09-11, next bullet; (i) OPEN):** (i) the manifest still derives its compile set itself; sharing
+  **Follow-ups opened here ((ii) and (iii) LANDED 2026-09-11, next bullet; (i) LANDED as the artifact-row view, 45b147a):** (i) the manifest still derives its compile set itself; sharing
   needs the view to return per-artifact rows (`fileDef`, path, layout, owner). (ii) The create-side
   cond-row copies (`createBuildManifest.condRow`, `migrateOrphans.py` ~322) should read one helper
   like `getBlockCondRow`. (iii) `processYaml.py` ~5685 still hardcodes `fileMap['foreignConfig']`
@@ -1662,7 +1662,7 @@ Rule 7 is split out as step 12b, below, and untouched by this entry.
   all 46 example databases; all 49 `.gen/build.mk` identical except the five above; unit 129/129;
   base pipeline exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale; pro 14 "No error", 0
   warnings; product gen diff-stat builder, isp_shared and the deleted header only, model run and
-  `VL_DUT=1` run two "No error" each. Uncommitted, ready to stage.
+  `VL_DUT=1` run two "No error" each. Committed in 45b147a.
   **Review pass 2026-09-14 (categorical, three reviewers; user: "fix"), applied.** Code: the
   view takes explicit tables (no duck-typing), `blockModeStems` inlined, context rows read the
   new `stem` field `saveIncludeFiles` persists in `INCLUDEFILES` (an existing database needs
@@ -1692,8 +1692,19 @@ Rule 7 is split out as step 12b, below, and untouched by this entry.
   project's `make gen`, which the pipeline runs. Notes for the architect: the plan-116 9F readers
   at `processYaml.py` `generateHierarchy` (~3231) and `displayInstance.py` (~62) do not route
   through `getQualBlock`; `module_hdl_wrapper.py`'s bare-file `pair_registrations` path may be
-  dead or duplicate the `pair` mode (one generated pair should be checked); `_instanceVariantDescriptor`
-  is read by a test as a private helper. Proof: stale-segment sets identical on all 46
+  dead or duplicate the `pair` mode (one generated pair should be checked; MEASURED 2026-09-14: BOTH paths
+  are live. A from-scratch scaffold of a container-sourced child with no standalone variant creates
+  `<child>_<variant>_hdl_sv_wrapper.sv` through the `vlSvWrapPair` registrar row with `--mode=pair`, and
+  three unit suites (`test_container_param_vl_wrapper_migration`, `test_inherit_vl_child`,
+  `test_container_param_cross_project_vl`) build that way; the existing product and example trees carry
+  bare `--variant=default` stamps because their files were scaffolded before and newmodule is create-once,
+  so the bare path renders their pair tops. An attempt to retire the pair scaffold on the "dead" premise
+  failed those three suites and was withdrawn the same day. OPEN for the architect: one stamp for the
+  child-variant wrapper, and the `--overwrite` hazard where the registrar pass re-stamps a bare
+  standalone-variant wrapper (rtInh `xpRtLeaf_use`) to `--mode=pair` and its ordinary top disappears,
+  reproduced on a disposable copy); `_instanceVariantDescriptor`
+  is read by a test as a private helper (RESOLVED 2026-09-14: renamed public `instanceVariantDescriptor`). The two bare-label readers
+  (`addHierEntry`, `displayInstance.getSubGraph`) now index blocks by the instance row's `instanceTypeKey` (2026-09-14). Proof: stale-segment sets identical on all 46
   databases; 45 of 49 manifests identical, the four above differ only by the listed gen-set
   removals; unit 129/129; base pipeline exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale,
   examples tree clean apart from the two known edits; pro 14 "No error", 0 warnings.
@@ -1742,8 +1753,68 @@ Rule 7 is split out as step 12b, below, and untouched by this entry.
   a definitions-only project another project's block reaches (allowed since rule 1 changed on
   2026-09-08). In that shape the block owner's own declaration counts as foreign: its bare top
   and standalone map are empty, its labels render as `<owner>_<block>_<label>` tops, and the pro
-  tandem registrar falls back to the default Config. No example or fixture has the shape. Decide
-  which owner the axis should key on before such a project appears.
+  tandem registrar falls back to the default Config. No example or fixture had the shape.
+  **RULED 2026-09-14 (user): the block's owner.** Where `ipParameters` live is a declaration
+  convenience (rule 1) and must not change which artefacts the block's project emits. **RULED
+  2026-09-14 (user): a definitions-only project may declare a variant.** Nothing forbids it; it is
+  a non-owner declaration served by the qualified top and its own Config module, like any other
+  foreign declarer. Rarely useful, so no fixture exercises it; a Config module with no segment to
+  land in would be a layout defect to fix, not a rule.
+  **LANDED 2026-09-14.** `calcVariantConfigDescriptors` orders projects and sets `isForeign` by
+  `contextOwningProject[block['_context']]`; `calcForeignConfigHeaders` compares the declaring
+  project to the same owner (its dead empty-`configContext` guard removed: every CONFIGMODULES key
+  is a `params:` block, whose `configContext` is always set). New fixture
+  `unittest/fixtures/param-variant-shared-params-owner` (definitions-only `projParams` owns
+  `LEAF_W`; `projIp` owns `leafIp`; `projIp` and `projWrap` each declare `v0`) and
+  `unittest/test_variant_shared_params_owner.py`, which first proves the premise (params owner
+  `projParams`, block owner `projIp`) and then asserts `projIp`'s `v0` is not foreign, `projWrap`'s
+  is, `FOREIGNCONFIGHEADERS` holds `projWrap` only, and the artifact rows carry a block-mode
+  `vlSvWrap` for `v0` owned by `projIp` and no `vlSvWrapForeign` owned by `projIp`. Fault-injected:
+  on the old axis the premise passes and the four other cells fail. Gates: unit 130/130 (runner
+  count raised to 130); base pipeline exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale;
+  stale-segment sets and all `.gen/build.mk` identical to the pre-change dump; pro 14 "No error",
+  0 warnings; product `make gen` diff-stat unchanged, model and `VL_DUT=1` runs two "No error" each.
+  **Found on the way 2026-09-14, OPEN for the architect: equal-depth ownership ties.**
+  `projectScan._assignOwnership` gives a file reached by two sibling providers at the same depth
+  to the lexically last provider path. In `unittest/fixtures/param-variant-two-declarers-legal`
+  the root lists `wrapProject.yaml` and `ipProject.yaml` as siblings, both reach
+  `projIp/yaml/leafIp.yaml` through an include, and `contextOwningProject` records `projWrap` as
+  the leaf's owner although the file sits under `projIp/`. Nothing in that fixture's tests reads
+  the owner, so they pass; but block ownership now decides which project emits a block's bare
+  wrapper tops, standalone map and Config module, so a tie resolved by spelling moves artefacts
+  between projects. The new `param-variant-shared-params-owner` fixture avoids the tie by reaching
+  `ipProject.yaml` only through `wrapProject.yaml`. Options: (a) break equal-depth ties toward the
+  provider the other tied providers reference (the dependee, here `projIp`, which `projWrap` lists
+  in its `projectFiles`); (b) reject the tie at scan time and require the root to list the
+  providers so depths differ; (c) keep the lexical rule and document it. Recommended: (a).
+  **RULED 2026-09-14 (user): (a) plus (b), with cycle rejection.** (a) is implemented as ranking by
+  longest path from the root over the provider graph, so a provider listed both by the root and by a
+  sibling that depends on it sits below that sibling. A tie that survives ranking is a `ValueError`
+  naming the file and the tied provider files; a `projectFiles:` cycle (nothing rejected one before)
+  is a `ValueError` listing the cycle. Author's resolution, stated in the diagnostic: make the shared
+  file's declaring project a definitions-only project both providers list in `projectFiles:`, or have
+  one provider list the other. Proof: new `test_project_scan.py` cells on `param-variant-two-declarers-legal`
+  (fault-injected), a new `scan-ownership-tie` fixture (rejection, then resolution by a shared project),
+  a cycle variant, and the existing scanner/live parity cell. Brief: scratchpad
+  `brief-ownership-tiebreak.md`. First implementation failed 13 unit suites: `examples/ip_test`
+  (`common/cpu/yaml/cpu.yaml`, common vs bridge), `addrgroup-qualification` (`sharedTypes.yaml`,
+  common vs childA/childB) and `param-cross-project` (`aTop.yaml`, projA vs projBShared/projCShared)
+  all tie at depth one because the consumers only `include:` the file and the owner lists it directly
+  in `projectFiles:`; the old lexical rule got two of the three right by spelling and gave `aTop.yaml`
+  to projCShared. **REFINED 2026-09-14 (user):** a direct `projectFiles:` listing owns the file (two
+  direct listings is an error); longest path ranks only unlisted files; a surviving tie is resolved by
+  listing the file in the owner's `projectFiles:`. The definitions-only-project resolution is
+  withdrawn. Follow-up brief `brief-ownership-tiebreak-refinement.md`. IN TREE 2026-09-14: rule 1
+  via per-file `yamlProjectSlot` and `rootProjectSlot`, rule 2 unchanged, 15/15 scanner cells
+  (direct-listing resolution and conflict, tie, cycle, addrgroup-qualification, param-cross-project,
+  two-declarers). BLOCKED on a ruling: `examples/ip_test` ties on `ip/yaml/ip.yaml` and
+  `ipVariants.yaml` (real-tree `ip` vs `ipBridge`, both depth one, neither file listed directly;
+  `ipBridge` deepens only its symlink copy of `ip`). Live-build failure, since `projectCreate` runs
+  the scanner: `test_addrctl_ip_test_view` and 5 of 6 `test_eval_sv_emit` cases red. RULED 2026-09-14
+  (user): rank an edge to a copy as an edge to its override-selected master (rule 2 addition); listing
+  the files in `ipProject.yaml` remains valid as the rule 1 manual resolution. Brief
+  `brief-ownership-override-rank.md`. LANDED 2026-09-14, uncommitted: 17/17 scanner cells, ip_test scans
+  again; gated with the value-keyed change (base 70/0/4/0, pro 14/0/0, product gen/model/VL green).
 - **artifactPaths extraction, LANDED 2026-09-10.** The three path-resolution functions the stale
   registrar work made shared (`expandNewModulePath`, `fileMapCondMatch`, `getRegistrarFiles`, 122
   lines) moved out of `pysrc/processYaml.py` into `pysrc/artifactPaths.py`, whose only imports are
@@ -1989,7 +2060,14 @@ A step planned as YAML-only needed three generator fixes on the way, each found 
   `examples/xprojParam/infPort` and `infPortBad`, gate `xproj-inferred-port`.
   The fix of record now has a design write-up: "Design step: value-keyed payload types" in
   [`design-parameter-inheritance.md`](./design-parameter-inheritance.md), written 2026-09-13 and
-  awaiting the user's review. No code has changed for it; the db stopgap stands until it lands.
+  reviewed 2026-09-14. The user asked for a hand-edited prototype before any generator change;
+  it PASSED the same day (record under the design step in that document). No generator code has
+  changed for it at review time. **Implementation RULED 2026-09-14 (user), IN TREE the same day**, review
+  findings applied, endpoint-check loops deduplicated, one linkage-suite cell reworked for the new
+  shape; the db stopgap is removed by that change (record under the design step). LANDED 2026-09-14,
+  uncommitted: base 70/0/4/0, pro 14/0/0, SystemVerilog byte-identical (225 files), product gen/model/VL
+  green after the constructor comma fix the product exposed; closing thunker survey 93 -> 62, no defect
+  (design doc).
 - **Inferred-port Config gate LANDED 2026-09-11, uncommitted.** `validatePorts` checks an undeclared
   port at the two points that used to skip it: the connection arm and the connectionMap arm. The
   check fires only for a `params:`-declaring end whose connection or connectionMap row carries
@@ -2102,7 +2180,7 @@ Step 10 found the connectionMap sizing arm rejecting an `inheritContainerParam` 
 - **Outside `builder/base`, awaiting the user's acceptance.** `builder/pro/templates/systemc/classDeclTandem.py` read a base view field this step removed; it now imports the block's own Config module or the pair's `verifConfigModules`, following `constructorTandem.py`. `builder/pro/unittest/test_constructor_tandem.py` gained the `structName` field on its hand-built descriptor stubs.
 - **Gates, VERIFIED BY EXECUTION 2026-09-07 after the review repairs.** `make clean && make pipeline-test -j` exit 0, 64 "No error", zero `ERROR:`, both OK lines. Unit suite 117 of 117. Product: `make clean && make gen -j && cd rundir && make -j && ./build/run debayer --verbosity=medium && make -j all VL_DUT=1` exit 0, two "No error", `test_debayer_structs` executed, `verif/preprocess_hdl_sc_wrapper.h` byte-identical, product status count unchanged. Pro: `make -C builder/pro pipeline-test -j` exit 0, 14 "No error", `test_constructor_tandem.py` passing. All four re-run once more after the last edit (a direct read of the contracted `ownConfigModule` view field replacing a `.get`): unit 117 of 117, pipeline-test exit 0 at 64, product exit 0, pro exit 0 at 14. Two earlier product and pro gate failures were tree collisions with a gate chain the repair agent left running detached, not defects; both passed alone.
 - **Emitted-output delta.** NOT MEASURED as a before/after hash: the implementer worked iteratively from no clean snapshot. Verified by content inspection (`twoCtx`, `ip`, the product tree) and by the gates. The review repairs' own delta was measured at zero.
-- **Follow-ups this step opened.** (a) Retire the empty `<context>VariantConfig.h`: fileMap `config` entry, `_configHeaderContexts`, `saveIncludeFiles`'s `config_hdr`, `templates/fileGen/fileGen.py` scaffold, `genFileParam.py`, `config.py`'s empty renderer, plus a per-file orphan-sweep entry for `make migrate`; `unittest/test_container_param_cross_project_vl.py` already deletes the stale header by hand and `dpMid` gained a new empty one. (b) The implementer's `make newmodule` sweep scaffolded `model/`, `rtl/`, `rundir/` and three Config modules into `examples/xprojParam/cpLayout`, a db-only fixture; nine untracked files with no user content, deletion referred to the user. Resolved: the user committed the files; they are tracked. (c) The `foreignConfig` fileMap key now names native Config modules too; renaming it is a migrate item. **RULED 2026-09-13 (user): rename key and flag.** Key `foreignConfig` becomes `configModule`; the `foreignConfig: true` flag on both registrar entries becomes `ownerQualified: true`; view fields `foreignConfigModule`/`foreignConfigModules` become `configModule`/`configModules`. Census 2026-09-13: no user project, the product or `builder/pro` references the key or flag, and PARAM lines do not carry the key, so the rename is generator-internal (config/project.yaml, `migrateLayout.FULLY_GENERATED_FILEMAP_KEYS`, newModule, artifactPaths, manifest, views, templates, GENERATOR_ARCHITECTURE.md) with byte-identical output. **LANDED 2026-09-13.** Key `configModule`, flag `ownerQualified` on both registrar entries, per-instance view field `configModule` (with its builder local `config_module`), dispatch `configModule_cppm`; `migrateLayout.FULLY_GENERATED_FILEMAP_KEYS` renamed in step so `make migrate` classifies the same segments. The persisted `FOREIGNCONFIGHEADERS` table and `calcForeignConfigHeaders` keep their names: they are the SV-wrapper-family filter over `CONFIGMODULES`, a different contract. Census after the edit: no reader of the old names outside `plans/`. Reviewed categorically; three text findings applied. Gates, VERIFIED BY EXECUTION 2026-09-13: unit suite 129 of 129; base pipeline after `make clean` 70 "No error", 0 `ERROR:`, 4 `OK:`, no stale removals, example trees byte-identical apart from the `dpTop/README.md` word; pro pipeline 14 "No error", examples byte-identical; product `make clean && make gen -j` diff rows unchanged, model run and `VL_DUT=1` run two "No error" each. Found on the way, not fixed under this ruling: `FULLY_GENERATED_FILEMAP_KEYS` (pysrc/migrateLayout.py ~110) omits `vlSvWrapPair`, so `_fullyGeneratedSegments` classifies `vl_wrap` as mixed and `make migrate` no longer clears it at directory level as its docstring (~531) says; the list's comment (~106) still names the retired `config` key; `examples/xprojParam/README.md:420` cites `getForeignConfigData`, which no longer exists. Inventory for (a), 2026-09-10 (VERIFIED BY CODE READING): touchpoints are the `config` entry in `config/project.yaml` ~161, `genFileParam.py` `_CONTEXT_FILE_MODE['config_hdr']`, `fileGen.py` `config_hdr`, `processYaml.py` `saveIncludeFiles`/`_configHeaderContexts`, `migrateLayout.py` `FULLY_GENERATED_FILEMAP_KEYS`, and `templates/systemc/config.py::includeConfig` returning `""`. `migrateOrphans.py` `LEGACY_FILEMAP` omits `config` because it never existed at `main`, so a retirement needs a delete-only sweep of its own for trees that carry the header. Zero tracked `*VariantConfig.h` in `examples/`, `pro/examples/` or the product; only unit fixtures include it. Awaiting the architect's go-ahead, since the sweep deletes generated files in user trees.
+- **Follow-ups this step opened.** (a) Retire the empty `<context>VariantConfig.h`: fileMap `config` entry, `_configHeaderContexts`, `saveIncludeFiles`'s `config_hdr`, `templates/fileGen/fileGen.py` scaffold, `genFileParam.py`, `config.py`'s empty renderer, plus a per-file orphan-sweep entry for `make migrate`; `unittest/test_container_param_cross_project_vl.py` already deletes the stale header by hand and `dpMid` gained a new empty one. (b) The implementer's `make newmodule` sweep scaffolded `model/`, `rtl/`, `rundir/` and three Config modules into `examples/xprojParam/cpLayout`, a db-only fixture; nine untracked files with no user content, deletion referred to the user. Resolved: the user committed the files; they are tracked. (c) The `foreignConfig` fileMap key now names native Config modules too; renaming it is a migrate item. **RULED 2026-09-13 (user): rename key and flag.** Key `foreignConfig` becomes `configModule`; the `foreignConfig: true` flag on both registrar entries becomes `ownerQualified: true`; view fields `foreignConfigModule`/`foreignConfigModules` become `configModule`/`configModules`. Census 2026-09-13: no user project, the product or `builder/pro` references the key or flag, and PARAM lines do not carry the key, so the rename is generator-internal (config/project.yaml, `migrateLayout.FULLY_GENERATED_FILEMAP_KEYS`, newModule, artifactPaths, manifest, views, templates, GENERATOR_ARCHITECTURE.md) with byte-identical output. **LANDED 2026-09-13.** Key `configModule`, flag `ownerQualified` on both registrar entries, per-instance view field `configModule` (with its builder local `config_module`), dispatch `configModule_cppm`; `migrateLayout.FULLY_GENERATED_FILEMAP_KEYS` renamed in step so `make migrate` classifies the same segments. The persisted `FOREIGNCONFIGHEADERS` table and `calcForeignConfigHeaders` keep their names: they are the SV-wrapper-family filter over `CONFIGMODULES`, a different contract. Census after the edit: no reader of the old names outside `plans/`. Reviewed categorically; three text findings applied. Gates, VERIFIED BY EXECUTION 2026-09-13: unit suite 129 of 129; base pipeline after `make clean` 70 "No error", 0 `ERROR:`, 4 `OK:`, no stale removals, example trees byte-identical apart from the `dpTop/README.md` word; pro pipeline 14 "No error", examples byte-identical; product `make clean && make gen -j` diff rows unchanged, model run and `VL_DUT=1` run two "No error" each. Found on the way, not fixed under this ruling: `FULLY_GENERATED_FILEMAP_KEYS` (pysrc/migrateLayout.py ~110) omits `vlSvWrapPair`, so `_fullyGeneratedSegments` classifies `vl_wrap` as mixed and `make migrate` no longer clears it at directory level as its docstring (~531) says (RESOLVED 2026-09-14 the other way: `vl_wrap` IS mixed because `vlScWrap` hosts user code; `vlScWrap` left the set and became `MIGRATE_PORT` in the orphan sweep, the docstrings now say so, and `vlSvWrapPair` stays out because its rows name the child-variant wrapper's path; W5 of `plan-file-ownership-classification.md`); the list's comment (~106) still names the retired `config` key; `examples/xprojParam/README.md:420` cites `getForeignConfigData`, which no longer exists. Inventory for (a), 2026-09-10 (VERIFIED BY CODE READING): touchpoints are the `config` entry in `config/project.yaml` ~161, `genFileParam.py` `_CONTEXT_FILE_MODE['config_hdr']`, `fileGen.py` `config_hdr`, `processYaml.py` `saveIncludeFiles`/`_configHeaderContexts`, `migrateLayout.py` `FULLY_GENERATED_FILEMAP_KEYS`, and `templates/systemc/config.py::includeConfig` returning `""`. `migrateOrphans.py` `LEGACY_FILEMAP` omits `config` because it never existed at `main`, so a retirement needs a delete-only sweep of its own for trees that carry the header. Zero tracked `*VariantConfig.h` in `examples/`, `pro/examples/` or the product; only unit fixtures include it. Awaiting the architect's go-ahead, since the sweep deletes generated files in user trees.
 - **Follow-up (a) LANDED 2026-09-11.** Retired the `config` fileMap entry, `_CONTEXT_FILE_MODE['config_hdr']`, the `fileGen.py` scaffold, `config.py::includeConfig`, `_configHeaderContexts`, and the `config`/`VariantConfig` mentions in `FULLY_GENERATED_FILEMAP_KEYS`. The sweep gained `RETIRED_CONTEXT_SIBLINGS`: a retired artifact's delete target, anchored on its still-current `include` sibling's directory so it resolves in either layout, owner-guarded, reporting a hand `#include` as `TODO_USER_INCLUDE`. The 2026-09-10 inventory's "zero tracked `*VariantConfig.h`" claim was wrong: the true, now-deleted count is 27 under `examples/`, 2 under `unittest/fixtures/`, 1 in `builder/pro`, 1 in the product. Two `make migrate` proofs, VERIFIED BY EXECUTION: `examples/mixed` (functional) reports `deleted legacy orphan mixedVariantConfig.h`; `examples/simple_ip/ip` (hierarchical) reports `deleted legacy orphan ipVariantConfig.h`, exit 0 clean. The one hand `#include` (`mixed.cppm`) is removed and `verify-testbench.md` no longer claims the region emits the header. Gates: unit suite 129 of 129; product `make clean && make gen -j` exit 0, `git status --short` shows only `D model/debayerVariantConfig.h`; product model and `VL_DUT=1` runs two "No error" each.
 - **Found on the way, RULED 2026-09-11 (user): the Config module follows `hasOwnParams`, the superset rule.** The `make migrate` proof on `examples/simple_ip/ip` re-scaffolded `registrar/ip_ipRegsVariantConfig.cppm`, one of the two files the 2026-09-10 cleanup had deleted as orphans. Both facts were right in their moment: the deletion ran under the old `foreignConfig` condition (hasMdl or hasTb), and the same commit then widened it to `hasOwnParams` alone for `xif_tb`, whose Config a child's External spells although the block has no artifact of its own. The synthesised register handler `ipRegs` (hasMdl 0, hasTb 0, hasVl 0, hasRtl 1) declares the three inherited parameters, so the contract names its module, and nothing imports it because it has no C++ artifact and sources no child. Two rules were on the table: keep the superset, or scaffold only when the block has a C++ artifact or a child sources its Config, a derived condition needing a new block-row field mirrored in the manifest and the sweep. The user chose the superset for its simplicity and low cost (one unused module per RTL-only parameterized block that sources no child). Consequence applied: `ip_ipRegsVariantConfig.cppm` stands in `examples/simple_ip/ip` and, after `make newmodule` and `make gen` there, in `examples/ip_test/ip`, both untracked for the user to commit; `make ip-test -j` re-run with the file present (result recorded in Current Status).
 
@@ -2238,7 +2316,7 @@ router. Rejection at db was the cheaper alternative and was not taken.
   parameterized leaves), reverted-and-rerun to prove it catches the crash; runner count 124.
   Emitted-output delta on apbDecode, mixed, simple_ip and ip_test: none (`git diff --stat examples/`
   empty after clean regeneration).
-- **Found on the way, OPEN (gap F).** A transit container with no own params, `hasRtl`, over a
+- **Found on the way, gap F, CLOSED (verified 2026-09-14): `make db` rejects the shape** (`pysrc/processYaml.py` ~5525, "has hasRtl: true and no params:, but assembles channel ... on parameterizable interface"; fixture `unittest/fixtures/transit-vl-wrapper`, test `test_transit_container_vl_wrapper.py`). Original note: a transit container with no own params, `hasRtl`, over a
   parameter-typed internal channel emits `<if> #(.data_t(<paramStruct>))` interface instances in
   its own SystemVerilog module with no `<paramStruct>` typedef in scope (`parameterizedDecls` is
   empty for a block without params), so `xpRtInhTop.sv` at its first shape failed lint with
@@ -2283,7 +2361,7 @@ router. Rejection at db was the cheaper alternative and was not taken.
   `apbReg` meeting `rtApbReg` only at the DUT boundary, where the testbench-boundary thunker exists.
   Rule this pins for authors: a router serves one register-bus type; inside a block, every router
   and register leaf on one path uses that one interface.
-- **Found on the way, OPEN (gap H, db diagnostic).** A container's `registerPorts:` key must equal
+- **Found on the way, gap H, CLOSED (verified 2026-09-14): `make db` rejects the mismatch** (`config/postParseRegisterPorts.py` ~793-806, "The registerPorts: key must match the served router's upstreamPort"; test `test_nested_router_registerports_mismatch.py`). Original note: a container's `registerPorts:` key must equal
   the served router's `addressBlock.upstreamPort`: `postParseRegisterPorts.py` ~754-774 synthesises
   the boundary connectionMap with `port` and `instancePort` both set to the router's upstreamPort
   name, and the base class declares the boundary port from `registerPorts:`. With
@@ -2292,7 +2370,7 @@ router. Rejection at db was the cheaper alternative and was not taken.
   declares (measured 2026-09-10 on rtInh's third shape). `ipBridge.yaml` and `isp_top.yaml` state
   the pairing in comments; nothing enforces it. Needs a ruling: reject the mismatch at db, or let
   the `registerPorts:` key name the boundary port and have the synthesised map use it.
-- **Fourth measurement and scope finding, 2026-09-10 (gap I, OPEN).** With `registerPorts:
+- **Fourth measurement and scope finding, 2026-09-10 (gap I, CLOSED, verified 2026-09-14): `make db` rejects a parameterizable structure on an address-bus interface** (`config/postParseRegisterPorts.py` `_validateAddressBusFixedWidth`; test `test_addressbus_not_parameterizable.py`). Original note: with `registerPorts:
   rtApbReg` (key equal to the router's upstreamPort) and the cpu connection landing on it
   (`dstport: rtApbReg`, interface `apbReg`), db and gen pass and the boundary classes are
   consistent, but the testbench External binds `uCPU->cpu_main(rtApbReg)`, an
@@ -2337,17 +2415,17 @@ router. Rejection at db was the cheaper alternative and was not taken.
   docstring paragraph that said a parameterizable register payload cannot be generated is gone;
   the one-off `xproj-nested-router-clean` target removed (the example sits in the clean glob).
   Deferred to the user:
-  (i) `vlSvWrapBody`'s fileMap `cond: {isParameterizable: true}` scaffolds the `.svh` body for a
+  (i) RESOLVED, landed in a9267f7 (`vlSvWrapBody` cond is `{hasOwnParams: true}`; verified 2026-09-14, the eight `.svh` bodies in the base and pro trees all belong to blocks with own `params:`). Original note: `vlSvWrapBody`'s fileMap `cond: {isParameterizable: true}` scaffolds the `.svh` body for a
   transit container that also gets the bare `.sv`; both now render the ordinary body, a dead
   duplicate the manifest never compiles. Producer-side fix is `cond: {hasOwnParams: true}`,
   matching `vlSvWrapPair`; that is a fileMap contract change, so the template dispatch stays until
   ruled.
-  (ii) `_getValue` in `registerFeatures` is mis-emitted for multi-field register structures
+  (ii) RESOLVED 2026-09-14 by inspection: the emitted `_getValue`/`_setValue` for `apbDecode`'s `un0ARegSt` (`model/apbDecodeIncludes.cppm`) is a correctly parenthesised sum of masked, shifted fields for all three fields; the defect described here is not in the current tree. Original note: `_getValue` in `registerFeatures` is mis-emitted for multi-field register structures
   (pre-existing: the `isArray` block sits outside the `for`, so only the last field survives, and
   its mask binds by precedence to the shifted mask, returning 0; `apbDecode`'s `un0ARegSt` shows
   it). Neither `_getValue` nor `_setValue` has a consumer under `common/systemc/`, `templates/`,
   `pysrc/` or `pro/`. Ruling: fix the loop or stop emitting the pair.
-  (iii) The four stale `verif/*_hdl_sv_wrapper.*` files earlier fixture shapes left behind were
+  (iii) CLOSED: `newModule.cleanup_stale_segment_files` sweeps the `vl_wrap` segment as well as `registrar` (pysrc/newModule.py ~84-85, a9267f7). Original note: the four stale `verif/*_hdl_sv_wrapper.*` files earlier fixture shapes left behind were
   not swept by `make newmodule` (registrar files were) and had to be deleted by hand; the orphan
   sweep should own verif wrappers a shape change orphans.
 - **Step 17 LANDED 2026-09-10; gates VERIFIED BY EXECUTION on the final tree.** Unit suite 124 of
@@ -2515,7 +2593,7 @@ Steps 2 and 5 depend on nothing in this plan and may be taken in any order; step
 - Whether shape (ii)'s mapping form has a schema-framework wrinkle beyond the one traced here. The `list` branch was read (`pysrc/processYaml.py:8430-8466`) and the `_singular` precedent was read (`config/schema.yaml:322-326`), but the mapping form was **not** exercised for `blocks.params` specifically.
 - The interaction between Q3's rename and tandem / Verilated registration. Not investigated.
 - ~~**Whether D7's child parameter and the named container parameter must share a backing constant, or need only be compatible.** OPEN (§2, D7).~~ **RESOLVED 2026-08-14 as COMPATIBILITY, not identity, on the `maxValue` relation** — decided by the implementation and the fixture, and measured on three reuse cases (§2, D7.1).
-- **Whether a cross-project CONVENTION — prefer sharing values, not declarations — should be documented as distinct from a gate.** Not decided by the architect (§3).
+- ~~**Whether a cross-project CONVENTION — prefer sharing values, not declarations — should be documented as distinct from a gate.**~~ **CLOSED 2026-09-14 (user): no convention** (§3, Case 1).
 - ~~The blast radius of step 7 (D7). Not measured, for either half.~~ **MEASURED 2026-08-14 for the C++ shape (step 7c)**: cold `make pipeline-test -j` and the product tree cold regenerate/build/link, with the emitted-output delta enumerated (§6, step 7c). The site-keyed layout gate (§6, step 7b) has since been built and guarded, 2026-08-17.
 - ~~Whether steps 7a and 7c survive a regression gate, because there is none.~~ **ANSWERED: they do.** `xproj-depth`, `xproj-inherit` and `xproj-container-layout` have been in `pipeline-test` since 2026-08-17, and the unit cell landed 2026-08-18 (§6, step 7a).
 - **The whole-variant inheritance form.** NOT BUILT and not specified; it exists in neither the schema nor the fixture (§2, D7).

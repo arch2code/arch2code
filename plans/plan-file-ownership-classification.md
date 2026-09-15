@@ -236,7 +236,7 @@ Citations: `L##` = line in `builder/base/config/project.yaml`; marker counts are
 | `model` | `$root/model` (L66) | `model` (L97) | `block`, `blockModule`, `include`, `config` | **USER-PRESERVE — in-place (user code + generated regions)** | `simple/model` 7/7 carry markers; user body lives *outside* the markers |
 | `rtl` | `$root/rtl` (L66-area) | `rtl` (L98) | `rtlModule`, `package`, `rtlDotF` | **USER-PRESERVE — in-place** | `simple/rtl` 5/7 carry markers (the 2 without are `Makefile` + `.gitignore`) |
 | `tb` | `$root/tb` (L68) | `tb` (L99) | `testBench`, `tbConfig`, `tbExternal` | **USER-PRESERVE — in-place** | `simple/tb` 5/5 carry markers; user body outside markers |
-| `vl_wrap` | `$root/verif/vl_wrap` (L67) | `verif` (flattened, L100) | `vlSvWrap`, `vlSvWrapBody`, `vlScWrap`, `vlSvWrapForeign` | **GENERATED source (wrappers), safe to delete + regenerate** | in `simple/verif`, only 2/74 files carry markers — the 2 generated wrappers; the rest is build output (see below) |
+| `vl_wrap` | `$root/verif/vl_wrap` (L67) | `verif` (flattened, L100) | `vlSvWrap`, `vlSvWrapBody`, `vlScWrap`, `vlSvWrapForeign` | **GENERATED source (wrappers), safe to delete + regenerate** (SUPERSEDED 2026-09-14 by W5: `vlScWrap` hosts user code, so the segment is MIXED) | in `simple/verif`, only 2/74 files carry markers — the 2 generated wrappers; the rest is build output (see below) |
 | `fwInc` | `$root/fw/include` (L69) | `fw` (flattened, L101) | `includeFW` (disabled in base project.yaml; active in newProject template) | **GENERATED — pure** | all `fw/include/*` carry markers (IncludesFW + RegAddresses) |
 
 ### Exceptions and additional categories the two-group rule misses
@@ -441,7 +441,25 @@ chosen — they add machinery for a body that seldom changes.
 - **W4 — OPEN / design only. Clean-start recovery target.** A "delete GENERATED-deletable +
   build-output, preserve the rest, regenerate" operation built on W1 (+ W2 so
   makefiles survive/re-scaffold).
-- **W5 (OPEN, not started). `vlScWrap` is classified two ways, and deletion needs
+- **W5 LANDED 2026-09-14 (reclassification; the content guard below stays a proposal).**
+  `vlScWrap` is `MIGRATE_PORT` in `pysrc/migrateOrphans.py` (a legacy copy is reported
+  `TODO_PORT`, never deleted, and a same-path copy is left alone) and is out of
+  `migrateLayout.FULLY_GENERATED_FILEMAP_KEYS` (it moves intact as `MOVE_SOURCE`).
+  `vl_wrap` therefore classifies mixed on both paths and is no longer cleared by
+  directory; only `base` (plus `registrar` on the hierarchical path) is. Proof:
+  `unittest/test_migrate_orphans.py::test_vl_wrap_segment_not_wholesale_cleared`
+  (fault-injected against `MIGRATE_DELETE`), and `make migrate` on a disposable
+  `examples/apbDecode` copy keeping a user line appended after the wrapper's last
+  `GENERATED_CODE_END`. Docs corrected: `rules/skills/migrate-project.md` (sections 1,
+  2 and 7) and the `migrateLayout`/`migrateCommon` docstrings. Gates 2026-09-14: unit
+  130/130; base pipeline from clean exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale;
+  pro 14/0; product `make clean && make gen -j` diff-stat unchanged (no generation change). The `delete` list at
+  :79 and the `vl_wrap` row of the segment table at :239 record the superseded
+  2026-07-22 decision; read them with this entry. `vlSvWrapPair` was deliberately not
+  added to the layout key set: its rows name the child-variant wrapper's own path (the same
+  `<child>_<variant>_hdl_sv_wrapper.sv` the `vlSvWrap` row names), so listing it would name one
+  path twice.
+  Original finding: `vlScWrap` is classified two ways, and deletion needs
   a no-loss guard.** `pysrc/migrateOrphans.py:143` dispositions `vlScWrap` as
   `MIGRATE_DELETE`, and this plan calls it purely generated at :79 and in the
   segment table at :239.

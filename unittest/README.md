@@ -9,6 +9,16 @@ All tests are **self-contained** within the `unittest/` directory. Tests do not 
 - Mock objects for isolated unit testing
 - System-level interface definitions from `builder/interfaces/` (framework resources)
 
+## Invocation contract
+
+Every `test_*.py` file is a standalone script, run through `./run_all_tests.sh`, `./run_all_tests_parallel.sh`, or `make unittest` (each also works when invoked directly with `python3 test_name.py`).
+
+Each file's `run_all_tests()` (or equivalent `main`) maps its boolean results to the process exit code, so a test function that returns `False` fails the file.
+
+pytest is not a supported runner. It discards return values, so a file that reports failure by returning `False` from a test function would pass vacuously under pytest.
+
+A new `test_*.py` file must follow the same shape. It is discovered automatically by glob, but the expected-suite-count constant in `run_all_tests_parallel.sh` must be bumped whenever a file is added or removed.
+
 ## Test Files
 
 ### Core Schema Tests

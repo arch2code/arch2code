@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "push_ack_port_thunker.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -52,10 +51,6 @@ public:
     std::shared_ptr<xpTwoCtxLitSrcBase> uLitSrc;
     std::shared_ptr<xpTwoCtxBareBase<xpTwoCtx_xpTwoCtxBareTwoctxConfig>> uBare;
 
-    // cross-interface thunkers
-    push_ack_port_thunker<dpSt<xpTwoCtx_xpTwoCtxDutTwoctxConfig>, dpSt<xpTwoCtx_xpTwoCtxSrcTwoctxConfig>, true> thunker_out_uSrc;
-    push_ack_port_thunker<tcSt<xpTwoCtx_xpTwoCtxSnkTwoctxConfig>, tcSt<xpTwoCtx_xpTwoCtxDutTwoctxConfig>, true> thunker_valOut_uDut;
-
     xpTwoCtxWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpTwoCtxWrap() override = default;
 
@@ -89,13 +84,13 @@ xpTwoCtxWrap::xpTwoCtxWrap(sc_module_name blockName, const char * variant, block
         ,uSnk(std::dynamic_pointer_cast<xpTwoCtxSnkBase<xpTwoCtx_xpTwoCtxSnkTwoctxConfig>>(instanceFactory::createInstance(name(), "uSnk", "xpTwoCtxSnk", "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxSnk")))
         ,uLitSrc(std::dynamic_pointer_cast<xpTwoCtxLitSrcBase>(instanceFactory::createInstance(name(), "uLitSrc", "xpTwoCtxLitSrc", "", "xpTwoCtx")))
         ,uBare(std::dynamic_pointer_cast<xpTwoCtxBareBase<xpTwoCtx_xpTwoCtxBareTwoctxConfig>>(instanceFactory::createInstance(name(), "uBare", "xpTwoCtxBare", "twoctx", "xpTwoCtx.xpTwoCtx_xpTwoCtxWrap.xpTwoCtx_xpTwoCtxBare")))
-        ,thunker_out_uSrc("thunker_out_uSrc", out, uSrc->out, name())
-        ,thunker_valOut_uDut("thunker_valOut_uDut", valOut, uDut->valOut, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // instance to instance connections via channel
+    uSrc->out(out);
     uDut->in(out);
+    uDut->valOut(valOut);
     uSnk->in(valOut);
     uLitSrc->litOut(litOut);
     uBare->litIn(litOut);

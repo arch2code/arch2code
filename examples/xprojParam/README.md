@@ -417,9 +417,10 @@ gets its module the same way even absent any declared variant. That same
 record names the block whose registrar domain hosts the artifact, which is the
 declaring project's lowest-keyed assembler of the child, or the child itself
 when that project assembles nothing. Hence the stamp here reads
-`--block=xpFilterShared --parent=xpFilterShared`, and `getForeignConfigData`
-still derives the owner from the parent. Regeneration belongs to the declaring
-project; `shared` compiles both modules without regenerating either.
+`--block=xpFilterShared --parent=xpFilterShared`, and `getRegistrarConfigView`
+still derives the owner project from that `--parent` stamp's context.
+Regeneration belongs to the declaring project; `shared` compiles both modules
+without regenerating either.
 
 ## The three-party parameterization matrix (`mtxIp` + `mtx*`)
 

@@ -24,7 +24,8 @@ export namespace xpFilter_xpFilterUniq_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpFilter_xpFilterUniq_ns {
 // types
-template<typename Config> using flPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t FL_PIXEL_WIDTH> using flPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using flPixelT = flPixelT_v<Config::FL_PIXEL_WIDTH>;
 typedef uint8_t flTagT; // [4] Sample sequence tag
 
 } // namespace xpFilter_xpFilterUniq_ns
@@ -38,27 +39,27 @@ export namespace xpFilter_xpFilterUniq_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpFilter_xpFilterUniq_ns {
 // structures
-template<typename Config>
-struct flVideoSt {
-    flPixelT<Config> data; //Pixel payload
+template<uint32_t FL_PIXEL_WIDTH>
+struct flVideoSt_v {
+    flPixelT_v<FL_PIXEL_WIDTH> data; //Pixel payload
     flTagT tag; //Sample sequence tag
 
-    flVideoSt() {}
+    flVideoSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::FL_PIXEL_WIDTH + 4;
+    static constexpr uint16_t _bitWidth = FL_PIXEL_WIDTH + 4;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const flVideoSt<Config> & rhs) const {
+    inline bool operator == (const flVideoSt_v<FL_PIXEL_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const flVideoSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const flVideoSt_v<FL_PIXEL_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
     }
-    inline friend ostream& operator << ( ostream& os,  flVideoSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  flVideoSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -73,48 +74,49 @@ struct flVideoSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, flVideoSt<Config>::_byteWidth);
+        memset(&_ret, 0, flVideoSt_v<FL_PIXEL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::FL_PIXEL_WIDTH);
-        _pos += Config::FL_PIXEL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, FL_PIXEL_WIDTH);
+        _pos += FL_PIXEL_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 4);
         _pos += 4;
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (flPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::FL_PIXEL_WIDTH)) - 1));
-        _pos += Config::FL_PIXEL_WIDTH;
+        data = (flPixelT_v<FL_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (FL_PIXEL_WIDTH)) - 1));
+        _pos += FL_PIXEL_WIDTH;
         tag = (flTagT)((_src >> (_pos & 63)) & ((1ULL << (4)) - 1));
     }
-    inline sc_bv<flVideoSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<flVideoSt_v<FL_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<flVideoSt<Config>::_bitWidth> packed_data;
+        sc_bv<flVideoSt_v<FL_PIXEL_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::FL_PIXEL_WIDTH-1, _pos) = data;
-        _pos += Config::FL_PIXEL_WIDTH;
+        packed_data.range(_pos+FL_PIXEL_WIDTH-1, _pos) = data;
+        _pos += FL_PIXEL_WIDTH;
         packed_data.range(_pos+4-1, _pos) = tag;
         _pos += 4;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<flVideoSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<flVideoSt_v<FL_PIXEL_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (flPixelT<Config>) packed_data.range(_pos+Config::FL_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += Config::FL_PIXEL_WIDTH;
+        data = (flPixelT_v<FL_PIXEL_WIDTH>) packed_data.range(_pos+FL_PIXEL_WIDTH-1, _pos).to_uint64();
+        _pos += FL_PIXEL_WIDTH;
         tag = (flTagT) packed_data.range(_pos+4-1, _pos).to_uint64();
         _pos += 4;
     }
-    explicit flVideoSt(sc_bv<flVideoSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit flVideoSt(
-        flPixelT<Config> data_,
+    explicit flVideoSt_v(sc_bv<flVideoSt_v<FL_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit flVideoSt_v(
+        flPixelT_v<FL_PIXEL_WIDTH> data_,
         flTagT tag_) :
         data(data_),
         tag(tag_)
     {}
-    explicit flVideoSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit flVideoSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using flVideoSt = flVideoSt_v<Config::FL_PIXEL_WIDTH>;
 } // namespace xpFilter_xpFilterUniq_ns
 
 // GENERATED_CODE_END

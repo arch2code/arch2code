@@ -1,0 +1,14 @@
+# The consuming assembler. Includes both wrapTop.yaml and ipTop.yaml so both
+# v0 declarations of leafIp are in scope. leafIp is never instantiated here;
+# only its declared descriptors matter to this fixture.
+include:
+    - ../../projWrap/yaml/wrapTop.yaml
+    - ../../projIp/yaml/ipTop.yaml
+
+blocks:
+    top:
+        desc: "assembler top"
+        hasRtl: false
+
+instances:
+    uTop: { container: top, instanceType: top }

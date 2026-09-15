@@ -1,0 +1,20 @@
+yamlFormat: 2
+
+# Two projects each declare their own v0 of a shared leaf at different
+# widths; the leaf itself is owned by projIp, but its LEAF_W parameter is
+# declared by projParams, a definitions-only project projIp includes.
+# ipProject.yaml is reached only through wrapProject.yaml's own projectFiles
+# entry (not listed again here), so leafIp.yaml resolves to a single owner.
+projectName: sharedParamsOwnerProj
+
+projectFiles:
+    - ../../projWrap/yaml/wrapProject.yaml
+    - sharedParamsOwnerTop.yaml
+
+topInstance: uTop
+
+dirs:
+    root: ..
+
+fileGeneration:
+    template: none

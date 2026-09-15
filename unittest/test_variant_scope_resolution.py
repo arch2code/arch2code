@@ -315,8 +315,8 @@ def test_two_projects_each_declare_one_label_builds():
             return False
         leafAKey = next(iter(leafA))
         leafBKey = next(iter(leafB))
-        ipValues = prj._instanceVariantDescriptor(prj.data['instances'][leafAKey])['values']
-        wrapValues = prj._instanceVariantDescriptor(prj.data['instances'][leafBKey])['values']
+        ipValues = prj.instanceVariantDescriptor(prj.data['instances'][leafAKey])['values']
+        wrapValues = prj.instanceVariantDescriptor(prj.data['instances'][leafBKey])['values']
         if ipValues['LEAF_W'] != 12:
             print(f"  FAIL: expected uLeafA's resolved LEAF_W to be 12, got {ipValues['LEAF_W']}")
             return False

@@ -23,7 +23,8 @@ namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 namespace fw_ns {
 // types
-template<typename Config> using streamDataT = uint64_t; // [max:32] Parameterized stream payload word
+template<uint32_t DATA_WIDTH> using streamDataT_v = uint64_t; // [max:32] Parameterized stream payload word
+template<typename Config> using streamDataT = streamDataT_v<Config::DATA_WIDTH>;
 typedef uint16_t streamBndryDataT; // [16] Non-parameterized boundary payload word (matches DATA_WIDTH=16)
 
 } // namespace fw_ns
@@ -37,32 +38,33 @@ namespace fw_ns {
 // GENERATED_CODE_BEGIN --template=structures
 namespace fw_ns {
 // structures
-template<typename Config>
-struct streamSt {
-    streamDataT<Config> data; //Parameterized stream payload
+template<uint32_t DATA_WIDTH>
+struct streamSt_v {
+    streamDataT_v<DATA_WIDTH> data; //Parameterized stream payload
 
-    streamSt() { memset(this, 0, sizeof(streamSt)); }
+    streamSt_v() { memset(this, 0, sizeof(streamSt_v)); }
 
-    static constexpr uint16_t _bitWidth = Config::DATA_WIDTH;
+    static constexpr uint16_t _bitWidth = DATA_WIDTH;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, streamSt<Config>::_byteWidth);
+        memset(&_ret, 0, streamSt_v<DATA_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::DATA_WIDTH);
-        _pos += Config::DATA_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, DATA_WIDTH);
+        _pos += DATA_WIDTH;
     }
     inline void unpack(const _packedSt &_src)
     {
-        data = (streamDataT<Config>)((_src) & ((1ULL << (Config::DATA_WIDTH)) - 1));
+        data = (streamDataT_v<DATA_WIDTH>)((_src) & ((1ULL << (DATA_WIDTH)) - 1));
     }
-    explicit streamSt(
-        streamDataT<Config> data_) :
+    explicit streamSt_v(
+        streamDataT_v<DATA_WIDTH> data_) :
         data(data_)
     {}
 
 };
+template<typename Config> using streamSt = streamSt_v<Config::DATA_WIDTH>;
 struct streamBndrySt {
     streamBndryDataT data; //Boundary payload; packed layout matches streamSt<dutV0>
 

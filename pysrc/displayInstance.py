@@ -59,7 +59,7 @@ def getSubGraph(prj, key, value):
     label = value['instanceType']
     key = value['hierarchyName'] # rename key to the entire hierarchy path before usage
     color, style = getInstancesColorAndStyle(value, True)
-    desc = prj.data['blocks'][prj.blocks[label]]['desc']
+    desc = prj.data['blocks'][value['instanceTypeKey']]['desc']
     subGraph = Digraph('cluster_{}'.format(key), '{} subgraph'.format(key), graph_attr={'label': '{}'.format(label), 'style': '{}'.format(style), 'color': '{}'.format(color), 'tooltip': '{}'.format(desc)})
     # give the subGraph an invisible node to reference, this allows interfaces to be drawn if no subnodes exist
     #  in graphviz terms an invisible node is made to reference later just in case edges attach to it on one side

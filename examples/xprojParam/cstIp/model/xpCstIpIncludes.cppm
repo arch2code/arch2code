@@ -24,7 +24,8 @@ export namespace xpCstIp_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpCstIp_ns {
 // types
-template<typename Config> using csPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t CS_PIXEL_WIDTH> using csPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using csPixelT = csPixelT_v<Config::CS_PIXEL_WIDTH>;
 typedef uint8_t csTagT; // [8] Sample sequence tag; lowest packed position
 typedef uint8_t csCfgT; // [8] Producer's OWN resolved CS_PIXEL_WIDTH, carried in the payload
 typedef uint8_t csMarkT; // [8] Trailing marker; sits above the pixel so a wrong-width pixel shifts it
@@ -40,19 +41,19 @@ export namespace xpCstIp_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpCstIp_ns {
 // structures
-template<typename Config>
-struct csDutSt {
+template<uint32_t CS_PIXEL_WIDTH>
+struct csDutSt_v {
     csMarkT mark; //Trailing marker
-    csPixelT<Config> data; //Parameterizable pixel payload
+    csPixelT_v<CS_PIXEL_WIDTH> data; //Parameterizable pixel payload
     csCfgT cfg; //Width the producing block resolved CS_PIXEL_WIDTH to
     csTagT tag; //Sample sequence tag
 
-    csDutSt() {}
+    csDutSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::CS_PIXEL_WIDTH + 8 + 8;
+    static constexpr uint16_t _bitWidth = 8 + CS_PIXEL_WIDTH + 8 + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const csDutSt<Config> & rhs) const {
+    inline bool operator == (const csDutSt_v<CS_PIXEL_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (cfg == rhs.cfg);
@@ -60,13 +61,13 @@ struct csDutSt {
         ret = ret && (mark == rhs.mark);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const csDutSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const csDutSt_v<CS_PIXEL_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.cfg, NAME + ".cfg");
         sc_trace(tf,v.data, NAME + ".data");
         sc_trace(tf,v.mark, NAME + ".mark");
     }
-    inline friend ostream& operator << ( ostream& os,  csDutSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  csDutSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -83,12 +84,12 @@ struct csDutSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, csDutSt<Config>::_byteWidth);
+        memset(&_ret, 0, csDutSt_v<CS_PIXEL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::CS_PIXEL_WIDTH);
-        _pos += Config::CS_PIXEL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, CS_PIXEL_WIDTH);
+        _pos += CS_PIXEL_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, cfg, 8);
         _pos += 8;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
@@ -99,42 +100,42 @@ struct csDutSt {
         uint16_t _pos{0};
         mark = (csMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
-        data = (csPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::CS_PIXEL_WIDTH)) - 1));
-        _pos += Config::CS_PIXEL_WIDTH;
+        data = (csPixelT_v<CS_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (CS_PIXEL_WIDTH)) - 1));
+        _pos += CS_PIXEL_WIDTH;
         cfg = (csCfgT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
         tag = (csTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<csDutSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<csDutSt_v<CS_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<csDutSt<Config>::_bitWidth> packed_data;
+        sc_bv<csDutSt_v<CS_PIXEL_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = mark;
         _pos += 8;
-        packed_data.range(_pos+Config::CS_PIXEL_WIDTH-1, _pos) = data;
-        _pos += Config::CS_PIXEL_WIDTH;
+        packed_data.range(_pos+CS_PIXEL_WIDTH-1, _pos) = data;
+        _pos += CS_PIXEL_WIDTH;
         packed_data.range(_pos+8-1, _pos) = cfg;
         _pos += 8;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<csDutSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<csDutSt_v<CS_PIXEL_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         mark = (csMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        data = (csPixelT<Config>) packed_data.range(_pos+Config::CS_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += Config::CS_PIXEL_WIDTH;
+        data = (csPixelT_v<CS_PIXEL_WIDTH>) packed_data.range(_pos+CS_PIXEL_WIDTH-1, _pos).to_uint64();
+        _pos += CS_PIXEL_WIDTH;
         cfg = (csCfgT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
         tag = (csTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit csDutSt(sc_bv<csDutSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit csDutSt(
+    explicit csDutSt_v(sc_bv<csDutSt_v<CS_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit csDutSt_v(
         csMarkT mark_,
-        csPixelT<Config> data_,
+        csPixelT_v<CS_PIXEL_WIDTH> data_,
         csCfgT cfg_,
         csTagT tag_) :
         mark(mark_),
@@ -142,9 +143,10 @@ struct csDutSt {
         cfg(cfg_),
         tag(tag_)
     {}
-    explicit csDutSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit csDutSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using csDutSt = csDutSt_v<Config::CS_PIXEL_WIDTH>;
 } // namespace xpCstIp_ns
 
 // GENERATED_CODE_END

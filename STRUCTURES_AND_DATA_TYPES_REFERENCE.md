@@ -218,6 +218,12 @@ incompatible at the language boundary:
 * a templated structure's storage is sized from the max definition, while an
   untemplated structure's storage is sized from its fixed definition.
 
+Two specializations of one parameterizable structure are not on that list. The
+structure is declared on its root-parameter values (`ipDataSt_v<8>`) and
+`ipDataSt<Config>` is an alias onto it, so two Configs that bind equal values
+name one type and bind without a thunker; unequal values on one interface are
+rejected at `make db`.
+
 The thunker therefore does not cast one struct to the other and does not assign
 one channel payload type directly. It asks the upstream struct to produce its
 active packed representation, copies exactly the downstream active bit count

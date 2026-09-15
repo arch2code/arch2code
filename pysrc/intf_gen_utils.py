@@ -419,6 +419,21 @@ def cpp_child_registrar_module_name(projectName, childBlock):
 # from its container: the Config of the block the instance sits in.
 CONTAINER_CONFIG_PARAM = 'ContainerConfig'
 
+def configType(value):
+    # C++ type for a constant's Config struct member (and, value-keyed, its
+    # template value-parameter): the narrowest fixed-width int that covers both
+    # the constant's default and its declared worst case.
+    valueType = value['valueType']
+    if valueType == 'uint':
+        maxValue = max(value['value'], value['maxValue'])
+        return 'uint32_t' if maxValue <= 0xFFFFFFFF else 'uint64_t'
+    if valueType == 'int':
+        maxAbs = max(abs(value['value']), abs(value['maxValue']))
+        return 'int32_t' if maxAbs <= 0x7FFFFFFF else 'int64_t'
+    if valueType == 'real':
+        return 'double'
+    return valueType
+
 def cpp_container_typed_instance_arg(instance):
     # Explicit template argument for `instanceFactory::createInstance<Impl>` when
     # the child is typed by the CONTAINER's Config, empty otherwise. Such a child

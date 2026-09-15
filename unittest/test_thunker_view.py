@@ -199,6 +199,145 @@ def test_no_struct_parameter_not_thunked():
         cleanup((db_path, project_path, arch_path))
 
 
+BINDS_DIRECTLY_YAML = """ipParameters:
+  constants:
+    WIDTH: {value: 8, maxValue: 16, desc: "Data width"}
+  types:
+    data_t: {width: WIDTH, desc: "Data type"}
+
+structures:
+  data_st:
+    data: {varType: data_t, desc: "Data payload"}
+
+interfaces:
+  dataIf:
+    interfaceType: rdy_vld
+    desc: "Data stream"
+    structures:
+      - {structure: data_st, structureType: data_t}
+
+blocks:
+  top: {desc: "Top block", hasRtl: false}
+  producer:
+    desc: "Producer block"
+    params: [WIDTH]
+    hasRtl: false
+    ports:
+      outData: {interface: dataIf, direction: src}
+  consumer:
+    desc: "Consumer block"
+    params: [WIDTH]
+    hasRtl: false
+    ports:
+      inData: {interface: dataIf, direction: dst}
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uProducer: {container: top, instanceType: producer, variant: prodVar}
+  uConsumer: {container: top, instanceType: consumer, variant: consVar}
+
+connections:
+  - {interface: dataIf, src: uProducer, srcport: outData, dst: uConsumer, dstport: inData}
+
+parameters:
+  producer:
+    prodVar:
+      WIDTH: 8
+  consumer:
+    consVar:
+      WIDTH: 8
+"""
+
+
+def test_binds_directly_reflects_param_values():
+    print("\nTesting bindsDirectly compares resolved root-parameter values")
+    # producer and consumer each carry their own Config for the same
+    # interface. Equal WIDTH values make the two Configs one payload type;
+    # a value that no longer agrees stops the two sides binding directly.
+    db_path, project_path, arch_path = build_database(BINDS_DIRECTLY_YAML)
+    try:
+        prj = projectOpen(db_path)
+        interfaceRow = next(
+            value for value in prj.data['interfaces'].values()
+            if value['interface'] == 'dataIf')
+        producerInst = next(
+            value for value in prj.data['instances'].values()
+            if value['instance'] == 'uProducer')
+        consumerInst = next(
+            value for value in prj.data['instances'].values()
+            if value['instance'] == 'uConsumer')
+        parentSelection = prj._resolveInstanceConfigFields(producerInst)
+        childSelection = prj._resolveInstanceConfigFields(consumerInst)
+
+        if not prj.bindsDirectly(interfaceRow, interfaceRow['interfaceKey'],
+                                  parentSelection, childSelection):
+            print("FAIL: equal-value ends should bind directly")
+            return False
+
+        disagreeing = dict(childSelection)
+        disagreeing['descriptor'] = dict(childSelection['descriptor'])
+        disagreeing['descriptor']['values'] = dict(childSelection['descriptor']['values'])
+        disagreeing['descriptor']['values']['WIDTH'] = 16
+        if prj.bindsDirectly(interfaceRow, interfaceRow['interfaceKey'],
+                              parentSelection, disagreeing):
+            print("FAIL: disagreeing values should not bind directly")
+            return False
+
+        print("PASS")
+        return True
+    finally:
+        cleanup((db_path, project_path, arch_path))
+
+
+CONNMAP_MISSING_PARAM_YAML = """ipParameters:
+  constants:
+    WIDTH: {value: 8, maxValue: 16, desc: "Data width"}
+    OTHER_W: {value: 4, maxValue: 8, desc: "Unrelated width"}
+  types:
+    data_t: {width: WIDTH, desc: "Data type"}
+
+structures:
+  data_st: {data: {varType: data_t, desc: "Data payload"}}
+
+interfaces:
+  dataIf: {interfaceType: rdy_vld, desc: "Data stream", structures: [{structure: data_st, structureType: data_t}]}
+
+blocks:
+  top: {desc: "Top block", hasRtl: false}
+  mid: {desc: "Boundary port undeclared, top-down inferred", params: [WIDTH], hasRtl: false}
+  leaf: {desc: "Declares an unrelated param, still missing WIDTH", params: [OTHER_W], hasRtl: false}
+
+instances:
+  uTop: {container: top, instanceType: top}
+  uMid: {container: top, instanceType: mid, variant: midVar}
+  uLeaf: {container: mid, instanceType: leaf, variant: leafVar}
+
+connectionMaps:
+  - {interface: dataIf, block: mid, port: inData, direction: dst, instance: uLeaf, instancePort: inData}
+
+parameters:
+  mid: {midVar: {WIDTH: 8}}
+  leaf: {leafVar: {OTHER_W: 4}}
+"""
+
+
+def test_connectionmap_child_missing_param_rejected():
+    print("\nTesting connectionMap child whose block lacks a required parameter")
+    # mid's own boundary Config needs WIDTH, but leaf declares no params: at
+    # all, so it cannot supply the payload's backing parameter in its own
+    # module scope.
+    db_path, project_path, arch_path, result = build_database(
+        CONNMAP_MISSING_PARAM_YAML, expect_success=False)
+    try:
+        if 'does not declare the required parameter' not in result.stdout:
+            print(f"FAIL: expected the missing-parameter diagnostic, got:\n{result.stdout}")
+            return False
+        print("PASS")
+        return True
+    finally:
+        cleanup((db_path, project_path, arch_path))
+
+
 def run_all_tests():
     tests = [
         lambda: test_parameter_order('rdy_vld', ['data_t', 'data_t']),
@@ -206,6 +345,8 @@ def run_all_tests():
         lambda: test_parameter_order('push_ack', ['data_t', 'data_t']),
         lambda: test_parameter_order('apb', ['addr_t', 'data_t', 'addr_t', 'data_t']),
         test_no_struct_parameter_not_thunked,
+        test_binds_directly_reflects_param_values,
+        test_connectionmap_child_missing_param_rejected,
     ]
     return 0 if all(test() for test in tests) else 1
 

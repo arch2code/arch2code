@@ -24,7 +24,8 @@ export namespace xpInhVar_xpInhCont_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpInhVar_xpInhCont_ns {
 // types
-template<typename Config> using inhPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t INH_WIDTH> using inhPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using inhPixelT = inhPixelT_v<Config::INH_WIDTH>;
 typedef uint8_t inhTagT; // [8] Sample sequence tag; lowest packed position
 typedef uint8_t inhAlgoT; // [8] Algorithm the leaf instance resolved, stamped into the payload
 typedef uint8_t inhMarkT; // [8] Trailing marker
@@ -40,19 +41,19 @@ export namespace xpInhVar_xpInhCont_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpInhVar_xpInhCont_ns {
 // structures
-template<typename Config>
-struct inhSt {
+template<uint32_t INH_WIDTH>
+struct inhSt_v {
     inhMarkT mark; //Trailing marker
-    inhPixelT<Config> data; //Parameterizable pixel payload
+    inhPixelT_v<INH_WIDTH> data; //Parameterizable pixel payload
     inhAlgoT algo; //INH_ALGO the leaf instance resolved
     inhTagT tag; //Sample sequence tag
 
-    inhSt() {}
+    inhSt_v() {}
 
-    static constexpr uint16_t _bitWidth = 8 + Config::INH_WIDTH + 8 + 8;
+    static constexpr uint16_t _bitWidth = 8 + INH_WIDTH + 8 + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const inhSt<Config> & rhs) const {
+    inline bool operator == (const inhSt_v<INH_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (algo == rhs.algo);
@@ -60,13 +61,13 @@ struct inhSt {
         ret = ret && (mark == rhs.mark);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const inhSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const inhSt_v<INH_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.algo, NAME + ".algo");
         sc_trace(tf,v.data, NAME + ".data");
         sc_trace(tf,v.mark, NAME + ".mark");
     }
-    inline friend ostream& operator << ( ostream& os,  inhSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  inhSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -83,12 +84,12 @@ struct inhSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, inhSt<Config>::_byteWidth);
+        memset(&_ret, 0, inhSt_v<INH_WIDTH>::_byteWidth);
         uint16_t _pos{0};
         pack_bits((uint64_t *)&_ret, _pos, mark, 8);
         _pos += 8;
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::INH_WIDTH);
-        _pos += Config::INH_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, INH_WIDTH);
+        _pos += INH_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, algo, 8);
         _pos += 8;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
@@ -99,42 +100,42 @@ struct inhSt {
         uint16_t _pos{0};
         mark = (inhMarkT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
-        data = (inhPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::INH_WIDTH)) - 1));
-        _pos += Config::INH_WIDTH;
+        data = (inhPixelT_v<INH_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (INH_WIDTH)) - 1));
+        _pos += INH_WIDTH;
         algo = (inhAlgoT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
         _pos += 8;
         tag = (inhTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<inhSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<inhSt_v<INH_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<inhSt<Config>::_bitWidth> packed_data;
+        sc_bv<inhSt_v<INH_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
         packed_data.range(_pos+8-1, _pos) = mark;
         _pos += 8;
-        packed_data.range(_pos+Config::INH_WIDTH-1, _pos) = data;
-        _pos += Config::INH_WIDTH;
+        packed_data.range(_pos+INH_WIDTH-1, _pos) = data;
+        _pos += INH_WIDTH;
         packed_data.range(_pos+8-1, _pos) = algo;
         _pos += 8;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<inhSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<inhSt_v<INH_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
         mark = (inhMarkT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
-        data = (inhPixelT<Config>) packed_data.range(_pos+Config::INH_WIDTH-1, _pos).to_uint64();
-        _pos += Config::INH_WIDTH;
+        data = (inhPixelT_v<INH_WIDTH>) packed_data.range(_pos+INH_WIDTH-1, _pos).to_uint64();
+        _pos += INH_WIDTH;
         algo = (inhAlgoT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
         tag = (inhTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit inhSt(sc_bv<inhSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit inhSt(
+    explicit inhSt_v(sc_bv<inhSt_v<INH_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit inhSt_v(
         inhMarkT mark_,
-        inhPixelT<Config> data_,
+        inhPixelT_v<INH_WIDTH> data_,
         inhAlgoT algo_,
         inhTagT tag_) :
         mark(mark_),
@@ -142,9 +143,10 @@ struct inhSt {
         algo(algo_),
         tag(tag_)
     {}
-    explicit inhSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit inhSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using inhSt = inhSt_v<Config::INH_WIDTH>;
 } // namespace xpInhVar_xpInhCont_ns
 
 // GENERATED_CODE_END

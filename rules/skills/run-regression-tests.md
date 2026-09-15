@@ -31,6 +31,8 @@ Guide creation and execution of Arch2Code regression tests using the regression 
    make regr REGR_USER_OPTS="hdl_tests/default --labels hdl --attr session.lrp=1"
    ```
 
+   The runner's concurrency is `REGR_JOBS` (default 8), not make's own `-j`: `make regr REGR_JOBS=4`.
+
 4. If invoking the launcher directly, use the builder copy and include `--build` when the regression build step should run:
 
    ```text

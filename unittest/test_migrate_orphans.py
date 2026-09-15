@@ -18,17 +18,21 @@ read. Files on disk are real; only the DB access surface is faked.
 
 Coverage (the required assertions):
   (a) every `delete`-disposition entry + the explicit vl_wrap.{cpp,h,sv} aggregate
-      is deleted (Includes.{h,cpp}, Base.h, _package.sv, the HDL wrappers,
+      is deleted (Includes.{h,cpp}, Base.h, _package.sv, the SV HDL wrapper,
       Tandem.{h,cpp}, vl_wrap.*);
-  (b) `port`/`edit`-entry files (a block .cpp/.h/.sv, the tb top and External pairs
-      and the tb Config, with generated markers) are never deleted, and are
-      unreachable for deletion by construction;
+  (b) `port`/`edit`-entry files (a block .cpp/.h/.sv, the SC HDL wrapper header,
+      the tb top and External pairs and the tb Config, with generated markers)
+      are never deleted, and are unreachable for deletion by construction;
   (c) a delete-target-named file without the generated marker is reported, not
       deleted;
   (d) a `port` file whose current form differs (a parameterized block, the tb top
       and External pairs -> .cppm) is reported TODO_PORT while a same-form
-      (non-parameterized) block is a no-op;
-  (e) user `#include` sites of a deleted header are reported.
+      (non-parameterized block, or the SC HDL wrapper header, which never
+      diverges) is a no-op;
+  (e) user `#include` sites of a deleted header are reported;
+  (f) the `vl_wrap` segment is no longer wholesale-cleared: a stale legacy SV
+      wrapper is still swept by its per-file path, and the SC wrapper header's
+      user content past its GENERATED_CODE_END region survives the sweep.
 """
 
 import os
@@ -101,8 +105,11 @@ class _FakePrj:
 
     Two blocks: `myblk` (non-parameterized) and `paramblk` (parameterized). The
     current merged map keeps `block` as .h/.cpp for non-param blocks and emits a
-    `.cppm` (`blockModule`) for param blocks; `rtlModule` stays .sv. Two contexts:
-    `top` (genuine generated context) and `usr` (hand-authored look-alike).
+    `.cppm` (`blockModule`) for param blocks; `rtlModule` stays .sv; `vlScWrap`
+    (the SC HDL wrapper header) names the same path in both the legacy and
+    current map, matching production, where the two never diverge. Two
+    contexts: `top` (genuine generated context) and `usr` (hand-authored
+    look-alike).
     """
 
     def __init__(self, root):
@@ -147,6 +154,9 @@ class _FakePrj:
             "rtlModule":   {"name": "", "ext": {"sv": "sv"},
                             "cond": {"hasRtl": True}, "mode": "block",
                             "basePath": "rtl"},
+            "vlScWrap":    {"name": "_hdl_sc_wrapper", "ext": {"hdr": "h"},
+                            "cond": {"hasVl": True}, "mode": "block",
+                            "basePath": "vl_wrap"},
             "testBench":   {"name": "Testbench", "ext": {"cppm": "cppm"},
                             "cond": {"hasTb": True}, "blockDir": True,
                             "mode": "block", "basePath": "tb"},
@@ -181,9 +191,16 @@ class _FakePrj:
                                    "BUILDMANIFEST": manifest, "TOPCONTEXT": "top.yaml",
                                    "REGISTRARPAIRS": {}, "CONFIGMODULES": {},
                                    "FOREIGNCONFIGHEADERS": {},
-                                   # Real shapes for two blocks that declare no variant.
-                                   "VARIANTCONFIGDESCRIPTORS": {"myblk": [], "paramblk": []},
-                                   "VARIANTSOURCEBLOCKS": {"myblk": ["myblk"], "paramblk": ["paramblk"]}})
+                                   # Real shapes for two blocks that declare no
+                                   # variant, and one (`wrapblk`) that declares a
+                                   # standalone variant `v0`, so its per-variant
+                                   # `vlSvWrap` stem is `wrapblk_v0`.
+                                   "VARIANTCONFIGDESCRIPTORS": {
+                                       "myblk": [], "paramblk": [],
+                                       "wrapblk": [{"variant": "v0", "isForeign": False,
+                                                    "containerSourced": False}]},
+                                   "VARIANTSOURCEBLOCKS": {"myblk": ["myblk"], "paramblk": ["paramblk"],
+                                                           "wrapblk": ["wrapblk"]}})
 
         def block(key, hasMdl, hasTb, hasRtl, hasVl):
             return {"blockKey": key, "_context": "top.yaml", "dir": "", "block": key,
@@ -192,6 +209,7 @@ class _FakePrj:
         blocks = OrderedDict()
         blocks["myblk"] = block("myblk", 1, 1, 1, 1)      # non-param, full surface
         blocks["paramblk"] = block("paramblk", 1, 0, 0, 0)  # parameterized (cppm)
+        blocks["wrapblk"] = block("wrapblk", 0, 0, 0, 1)  # vl-only, declares variant v0
         # projectOpen groups blocksparams as {yamlFile: [paramRow, ...]} (a
         # list-mode subtable); each row carries its owning blockKey.
         blocksparams = OrderedDict()
@@ -258,7 +276,7 @@ def _stage(root):
 
 
 DELETE_BASENAMES = {
-    "myblkBase.h", "myblk_hdl_sv_wrapper.sv", "myblk_hdl_sc_wrapper.h",
+    "myblkBase.h", "myblk_hdl_sv_wrapper.sv",
     "myblkTandem.h", "myblkTandem.cpp", "topIncludes.h", "topIncludes.cpp",
     "top_package.sv", "vl_wrap.cpp", "vl_wrap.h", "vl_wrap.sv",
 }
@@ -274,12 +292,18 @@ def test_delete_dispatch_sweeps_delete_entries_and_literals():
         deleted = {i.location for i in report.applied if i.kind == ORPHAN_DELETE}
         # (a) exactly the marker-bearing delete-disposition entries + vl_wrap.* are
         # deleted (usrIncludes.{h,cpp} lack the marker so are not in this set).
+        # myblk_hdl_sc_wrapper.h is `port`, not `delete` (b) and survives.
         check(deleted == DELETE_BASENAMES,
               "delete-disposition entries + vl_wrap.* aggregate are swept")
-        gone = ["base", "svWrap", "scWrap", "tandemH", "tandemCpp", "incH",
+        gone = ["base", "svWrap", "tandemH", "tandemCpp", "incH",
                 "incCpp", "pkg", "vlwCpp", "vlwH", "vlwSv"]
         check(all(not os.path.exists(paths[k]) for k in gone),
               "every swept delete target is removed from disk")
+        # (f) the vl_wrap segment is a MIXED segment now: the SV wrapper is still
+        # swept by its per-file path (not a directory-wide clear), while the SC
+        # wrapper header (`port`) is left in place beside it.
+        check(os.path.exists(paths["scWrap"]),
+              "the SC HDL wrapper header is not deleted; vl_wrap sweeps per file")
         # the current-format .cppm siblings are never delete targets
         check(os.path.exists(paths["topCppm"]) and os.path.exists(paths["usrCppm"]),
               "current-format .cppm siblings left on disk")
@@ -292,14 +316,15 @@ def test_port_and_edit_never_deleted():
         prj = _FakePrj(root)
         report = sweepOrphans(prj, write=True)
 
-        # (b) port (block .cpp/.h, rtl .sv, tb External pair) and edit (tb Config)
-        # files survive the sweep.
-        survivors = ["myH", "myCpp", "mySv", "paramH", "paramCpp",
+        # (b) port (block .cpp/.h, rtl .sv, the SC HDL wrapper header, tb External
+        # pair) and edit (tb Config) files survive the sweep.
+        survivors = ["myH", "myCpp", "mySv", "scWrap", "paramH", "paramCpp",
                      "tbTopH", "tbTopCpp", "tbExtH", "tbExtCpp", "tbConfig"]
         check(all(os.path.exists(paths[k]) for k in survivors),
               "port/edit user files are left on disk")
         deleted = {i.location for i in report.applied if i.kind == ORPHAN_DELETE}
         check(deleted.isdisjoint({"myblk.h", "myblk.cpp", "myblk.sv",
+                                  "myblk_hdl_sc_wrapper.h",
                                   "paramblk.h", "paramblk.cpp",
                                   "myblkTestbench.h", "myblkTestbench.cpp",
                                   "myblkExternal.h", "myblkExternal.cpp",
@@ -352,6 +377,48 @@ def test_port_todo_only_for_changed_form():
         check("myblk.h" not in ports and "myblk.cpp" not in ports
               and "myblk.sv" not in ports,
               "same-form (non-parameterized) block yields no TODO_PORT")
+
+
+def test_vl_wrap_segment_not_wholesale_cleared():
+    """The vl_wrap segment defect: `vlScWrap` (the SC HDL wrapper header) hosts
+    user code past its generated regions, so it must survive the sweep instead
+    of being swept by a directory-wide `vl_wrap` clear, and the segment's
+    remaining `delete`-disposition entry (`vlSvWrap`) must still be found and
+    swept by its PER-FILE path now that the directory is no longer wiped
+    wholesale.
+
+    `wrapblk` declares a standalone variant `v0` (see _FakePrj), so its
+    `vlSvWrap` stem is `wrapblk_v0` in both the legacy and current map — this
+    exercises the per-file (not per-directory) delete path.
+
+    `myblk`'s `vlScWrap` legacy and current forms are identical (see
+    _FakePrj.filemap), the same as production (config/project.yaml never
+    changed the wrapper's name/ext/basePath), so this exercises the
+    same-form/no-TODO_PORT case, not the changed-form one.
+    """
+    print("test_vl_wrap_segment_not_wholesale_cleared")
+    with tempfile.TemporaryDirectory() as root:
+        vlWrap = os.path.join(root, "verif", "vl_wrap")
+        scWrapPath = os.path.join(vlWrap, "myblk_hdl_sc_wrapper.h")
+        os.makedirs(vlWrap, exist_ok=True)
+        with open(scWrapPath, "w") as fh:
+            fh.write("// GENERATED_CODE_BEGIN\n// GENERATED_CODE_END\n"
+                     "void end_ctor_init() override { setTimedLocal(true); }\n")
+        svWrapPath = _write(os.path.join(vlWrap, "wrapblk_v0_hdl_sv_wrapper.sv"), True)
+
+        prj = _FakePrj(root)
+        report = sweepOrphans(prj, write=True)
+
+        check(os.path.exists(scWrapPath),
+              "the SC HDL wrapper header is not deleted by a wholesale vl_wrap clear")
+        with open(scWrapPath) as fh:
+            check("setTimedLocal" in fh.read(),
+                  "the user override past GENERATED_CODE_END survives the sweep")
+        check(not os.path.exists(svWrapPath),
+              "the legacy SV wrapper is still swept, by its per-file path")
+        ports = {i.location for i in report.manual if i.kind == TODO_PORT}
+        check("myblk_hdl_sc_wrapper.h" not in ports,
+              "same-form wrapper (legacy path equals current) is a no-op, not TODO_PORT")
 
 
 def test_user_include_site_handoff():
@@ -551,6 +618,7 @@ if __name__ == "__main__":
     test_port_and_edit_never_deleted()
     test_ungenerated_delete_target_reported_not_deleted()
     test_port_todo_only_for_changed_form()
+    test_vl_wrap_segment_not_wholesale_cleared()
     test_user_include_site_handoff()
     test_dry_run_changes_nothing()
     test_literal_delete_resolves_against_layout()

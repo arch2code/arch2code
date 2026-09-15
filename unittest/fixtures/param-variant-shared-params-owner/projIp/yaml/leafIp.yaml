@@ -1,0 +1,30 @@
+# projIp: the reusable leaf IP's own definitions, no variant binding here.
+# LEAF_W itself is declared in projParams/leafParams.yaml; leafT and leafSt
+# stay here since referencing a parameter does not require moving with it.
+# Never instantiated in this fixture, so its own params: registration is the
+# only parameterizable touch on the block, and its config context resolves to
+# wherever LEAF_W itself is declared.
+include:
+    - ../../projParams/yaml/leafParams.yaml
+
+types:
+    leafT: { width: LEAF_W, maxBitwidth: 32, desc: "leaf parameterizable payload word" }
+
+structures:
+    leafSt:
+        data: { varType: leafT, desc: "leaf payload" }
+
+interfaces:
+    leafIf:
+        desc: "leaf parameterized push/ack stream"
+        interfaceType: push_ack
+        structures:
+            - { structure: leafSt, structureType: data_t }
+
+blocks:
+    leafIp:
+        desc: "reusable parameterized leaf IP"
+        params: [LEAF_W]
+        hasVl: true
+        ports:
+            in: { interface: leafIf, direction: dst }

@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "push_ack_port_thunker.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -49,12 +48,6 @@ public:
     std::shared_ptr<xpInhChkBase<xpInhVar_xpInhChkChkDefConfig>> uChkDef;
     std::shared_ptr<xpInhChkBase<xpInhVar_xpInhChkChkAltConfig>> uChkAlt;
 
-    // cross-interface thunkers
-    push_ack_port_thunker<inhSt<xpInhVar_xpInhContDefaultConfig>, inhSt<xpInhVar_xpInhDrvDrvConfig>, true> thunker_out_uDrv;
-    push_ack_port_thunker<inhSt<xpInhVar_xpInhChkChkDefConfig>, inhSt<xpInhVar_xpInhContDefaultConfig>, true> thunker_contOut_0_uContDef;
-    push_ack_port_thunker<inhSt<xpInhVar_xpInhContAltConfig>, inhSt<xpInhVar_xpInhDrvDrvConfig>, true> thunker_out2_uDrv;
-    push_ack_port_thunker<inhSt<xpInhVar_xpInhChkChkAltConfig>, inhSt<xpInhVar_xpInhContAltConfig>, true> thunker_contOut_1_uContAlt;
-
     xpInhWrap(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~xpInhWrap() override = default;
 
@@ -89,17 +82,17 @@ xpInhWrap::xpInhWrap(sc_module_name blockName, const char * variant, blockBaseMo
         ,uContAlt(std::dynamic_pointer_cast<xpInhContBase<xpInhVar_xpInhContAltConfig>>(instanceFactory::createInstance(name(), "uContAlt", "xpInhCont", "alt", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhCont")))
         ,uChkDef(std::dynamic_pointer_cast<xpInhChkBase<xpInhVar_xpInhChkChkDefConfig>>(instanceFactory::createInstance(name(), "uChkDef", "xpInhChk", "chkDef", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhChk")))
         ,uChkAlt(std::dynamic_pointer_cast<xpInhChkBase<xpInhVar_xpInhChkChkAltConfig>>(instanceFactory::createInstance(name(), "uChkAlt", "xpInhChk", "chkAlt", "xpInhVar.xpInhVar_xpInhWrap.xpInhVar_xpInhChk")))
-        ,thunker_out_uDrv("thunker_out_uDrv", out, uDrv->out, name())
-        ,thunker_contOut_0_uContDef("thunker_contOut_0_uContDef", contOut_0, uContDef->contOut, name())
-        ,thunker_out2_uDrv("thunker_out2_uDrv", out2, uDrv->out2, name())
-        ,thunker_contOut_1_uContAlt("thunker_contOut_1_uContAlt", contOut_1, uContAlt->contOut, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=constructor --section=body
 {
     // instance to instance connections via channel
+    uDrv->out(out);
     uContDef->contIn(out);
+    uContDef->contOut(contOut_0);
     uChkDef->in(contOut_0);
+    uDrv->out2(out2);
     uContAlt->contIn(out2);
+    uContAlt->contOut(contOut_1);
     uChkAlt->in(contOut_1);
     log_.logPrint(std::format("Instance {} initialized.", this->name()), LOG_IMPORTANT );
     // GENERATED_CODE_END

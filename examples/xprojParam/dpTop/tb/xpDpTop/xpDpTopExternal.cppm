@@ -7,7 +7,6 @@ module;
 #include "logging.h"
 #include "instanceFactory.h"
 #include "push_ack_channel.h"
-#include "push_ack_port_thunker.h"
 // GENERATED_CODE_END
 // user #includes here (global module fragment - attaches to the global module)
 // Plain non-modular headers, including any whose definitions live in a .cpp.
@@ -44,10 +43,6 @@ public:
     // The leaf IP's own parameterized pixel push/ack stream
     push_ack_channel< dpSt<xpDpTop_xpDpTbPeerPeerConfig> > out_1;
 
-    // cross-interface thunkers
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpTbPeerPeer2Config>, dpSt<xpDpTop_xpDpTbPeerPeerConfig>, true> thunker_out_0_uTbPeerA;
-    push_ack_port_thunker<dpSt<xpDpTop_xpDpTbPeerPeerConfig>, dpSt<xpDpTop_xpDpTbPeerPeer2Config>, true> thunker_out_1_uTbPeerB;
-
     // Thread monitoring the end of test event to stop simulation
     void eotThread(void) {
         wait((endOfTestState::GetInstance().eotEvent));
@@ -68,14 +63,14 @@ xpDpTopExternal::xpDpTopExternal(sc_module_name modulename) :
    ,uTbPeerA(std::dynamic_pointer_cast<xpDpTbPeerBase<xpDpTop_xpDpTbPeerPeerConfig>>(instanceFactory::createInstance(name(), "uTbPeerA", "xpDpTbPeer", "peer", "xpDpTop.xpDpTop_tb.xpDpTop_xpDpTbPeer")))
    ,uTbPeerB(std::dynamic_pointer_cast<xpDpTbPeerBase<xpDpTop_xpDpTbPeerPeer2Config>>(instanceFactory::createInstance(name(), "uTbPeerB", "xpDpTbPeer", "peer2", "xpDpTop.xpDpTop_tb.xpDpTop_xpDpTbPeer")))
    ,out_0("out_0", "uTbPeerA")
-   ,thunker_out_0_uTbPeerA("thunker_out_0_uTbPeerA", out_0, uTbPeerA->out, name())
    ,out_1("out_1", "uTbPeerB")
-   ,thunker_out_1_uTbPeerB("thunker_out_1_uTbPeerB", out_1, uTbPeerB->out, name())
 // GENERATED_CODE_END
 // GENERATED_CODE_BEGIN --template=tbExternal --section=body
 {
     // instance to instance connections via channel
+    uTbPeerA->out(out_0);
     uTbPeerB->in(out_0);
+    uTbPeerB->out(out_1);
     uTbPeerA->in(out_1);
 
     SC_THREAD(eotThread);

@@ -28,7 +28,8 @@ export namespace xpTwoCtx_ns {
 // types
 typedef uint16_t litT; // [16] Literal, non-parameterizable payload word
 typedef uint8_t tcTagT; // [8] Sample tag
-template<typename Config> using tcValT = uint64_t; // [max:15] Parameterizable value word sized by this file's knob
+template<uint32_t TC_GAIN> using tcValT_v = uint64_t; // [max:15] Parameterizable value word sized by this file's knob
+template<typename Config> using tcValT = tcValT_v<Config::TC_GAIN>;
 
 } // namespace xpTwoCtx_ns
 // GENERATED_CODE_END
@@ -96,27 +97,27 @@ struct litSt {
     explicit litSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
-template<typename Config>
-struct tcSt {
-    tcValT<Config> val; //Parameterizable payload sized by TC_GAIN
+template<uint32_t TC_GAIN>
+struct tcSt_v {
+    tcValT_v<TC_GAIN> val; //Parameterizable payload sized by TC_GAIN
     tcTagT tag; //Sample tag
 
-    tcSt() {}
+    tcSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::TC_GAIN + 8;
+    static constexpr uint16_t _bitWidth = TC_GAIN + 8;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const tcSt<Config> & rhs) const {
+    inline bool operator == (const tcSt_v<TC_GAIN> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (val == rhs.val);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const tcSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const tcSt_v<TC_GAIN> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.val, NAME + ".val");
     }
-    inline friend ostream& operator << ( ostream& os,  tcSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  tcSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -131,48 +132,49 @@ struct tcSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, tcSt<Config>::_byteWidth);
+        memset(&_ret, 0, tcSt_v<TC_GAIN>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, val, Config::TC_GAIN);
-        _pos += Config::TC_GAIN;
+        pack_bits((uint64_t *)&_ret, _pos, val, TC_GAIN);
+        _pos += TC_GAIN;
         pack_bits((uint64_t *)&_ret, _pos, tag, 8);
         _pos += 8;
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        val = (tcValT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::TC_GAIN)) - 1));
-        _pos += Config::TC_GAIN;
+        val = (tcValT_v<TC_GAIN>)((_src >> (_pos & 63)) & ((1ULL << (TC_GAIN)) - 1));
+        _pos += TC_GAIN;
         tag = (tcTagT)((_src >> (_pos & 63)) & ((1ULL << (8)) - 1));
     }
-    inline sc_bv<tcSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<tcSt_v<TC_GAIN>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<tcSt<Config>::_bitWidth> packed_data;
+        sc_bv<tcSt_v<TC_GAIN>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::TC_GAIN-1, _pos) = val;
-        _pos += Config::TC_GAIN;
+        packed_data.range(_pos+TC_GAIN-1, _pos) = val;
+        _pos += TC_GAIN;
         packed_data.range(_pos+8-1, _pos) = tag;
         _pos += 8;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<tcSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<tcSt_v<TC_GAIN>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        val = (tcValT<Config>) packed_data.range(_pos+Config::TC_GAIN-1, _pos).to_uint64();
-        _pos += Config::TC_GAIN;
+        val = (tcValT_v<TC_GAIN>) packed_data.range(_pos+TC_GAIN-1, _pos).to_uint64();
+        _pos += TC_GAIN;
         tag = (tcTagT) packed_data.range(_pos+8-1, _pos).to_uint64();
         _pos += 8;
     }
-    explicit tcSt(sc_bv<tcSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit tcSt(
-        tcValT<Config> val_,
+    explicit tcSt_v(sc_bv<tcSt_v<TC_GAIN>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit tcSt_v(
+        tcValT_v<TC_GAIN> val_,
         tcTagT tag_) :
         val(val_),
         tag(tag_)
     {}
-    explicit tcSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit tcSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using tcSt = tcSt_v<Config::TC_GAIN>;
 } // namespace xpTwoCtx_ns
 
 // GENERATED_CODE_END

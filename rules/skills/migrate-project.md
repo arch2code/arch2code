@@ -19,10 +19,10 @@ make migrate
 **converges**: a fully migrated, orphan-free project re-runs clean (exit zero,
 including an already-migrated hierarchical project) and makes no further
 *migration* changes, but it is **not a literal no-op**. The orphan sweep (step 3)
-unconditionally clears and regenerates the fully-generated segments (`base`,
-`vl_wrap`) at the directory level on every run — this is intended wholesale
-cleanup, not a defect — so the generated tree is deterministically re-created each
-pass. Non-source stray files (anything without a `GENERATED_CODE_BEGIN` marker
+unconditionally clears and regenerates the fully-generated segment (`base`) at
+the directory level on every run — this is intended wholesale cleanup, not a
+defect — so the generated tree is deterministically re-created each pass.
+Non-source stray files (anything without a `GENERATED_CODE_BEGIN` marker
 that is not a delete-target) are left untouched and are not reported. The target
 is a seven-step pipeline. The first two steps halt the target on a non-zero exit, so an
 unresolved yaml-stage item stops the run before the database is built. The sweep
@@ -47,15 +47,19 @@ bury the migrator's report under a template traceback and half-regenerate the tr
    never `git`), and reports the files it cannot touch (`TODO_PORT`,
    `TODO_USER_INCLUDE`, `TODO_UNGENERATED_FILE`). It sweeps two ways, keyed on the
    embedded legacy file map. A **fully-generated segment** — one whose every legacy
-   entry is `delete`, i.e. `base` and `vl_wrap` (and `registrar` on the
+   entry is `delete`, i.e. `base` (and `registrar` on the
    hierarchical path, Section 7) — is cleared at the **directory** level: every
    marker-carrying source file found there is deleted, so alternate-extension or
    renamed orphans a per-file map expansion would miss (a pre-`.cppm`
-   `<block>Base.h`, a model-only `<block>Tandem.*`, a stale `*_hdl_sc_wrapper.h`)
-   are caught too. A **mixed segment** that also holds user code (`model`, `rtl`)
-   keeps the per-file delete-by-map-expansion for its generated context files
-   (`<context>Includes.{h,cpp}`, `<context>_package.sv`) and preserves the user
-   code beside them. The `tb` segment is mixed too: the legacy
+   `<block>Base.h`, a model-only `<block>Tandem.*`) are caught too. A **mixed
+   segment** that also holds user code (`model`, `rtl`, `vl_wrap`) keeps the
+   per-file delete-by-map-expansion for its generated files
+   (`<context>Includes.{h,cpp}`, `<context>_package.sv`, the legacy
+   `<block>_hdl_sv_wrapper.sv`) and preserves the user code beside them. `vl_wrap`
+   mixes because the legacy `<block>_hdl_sc_wrapper.h` hosts a hand-written
+   `end_ctor_init()` override outside its generated regions, so it is only
+   reported (`TODO_PORT`), never deleted, the same as `<block>External.{h,cpp}`.
+   The `tb` segment is mixed too: the legacy
    `<block>Testbench.{h,cpp}` pair is only reported (`TODO_PORT`): it holds no user
    code, but its `GENERATED_CODE_PARAM` line selects the DUT `--variant=` this
    testbench drives, so step 5 carries that value onto the new `.cppm` and deletes
@@ -258,7 +262,7 @@ clean report.
 | `TODO_PORT_TAIL_UNPLACED` | testbench port | A legacy `<block>Testbench`'s `GENERATED_CODE_PARAM` line holds an argument beyond the `--block=<dut>` a fresh scaffold writes and the `--variant=<name>` the port carries — a retargeted `--block`, an `--excludeInst`, or a space-spelled `--variant v`. Carrying only the variant would drop it silently, so nothing is stamped and the legacy pair is left on disk. | Put the reported argument(s) on the `GENERATED_CODE_PARAM` line of `<block>Testbench.cppm` by hand, then delete the legacy pair. |
 | `TODO_PORT_STALE_VARIANT` | testbench port | A legacy `<block>Testbench` **or** `<block>External` names a DUT `--variant=` the block no longer declares (migration renamed or removed it). The tb top has that value carried onto its `.cppm` and the External carries its whole tail verbatim, so either way it would land on the target and make `gen` resolve the wrong config or fail. Nothing is stamped and the legacy pair is left on disk. The check mirrors the generator: it applies only when the file's own `--block=` names the block being ported **and** that block owns `params:` — a `_tb`-retargeted External and a block without own params are not validated by `gen` either, so they are not refused here. | Decide which variant the testbench drives. For the tb top, set `--variant=<name>` on the `GENERATED_CODE_PARAM` line of `<block>Testbench.cppm`; for the External, correct it on both legacy files and re-run. The message lists the variants the block does declare. |
 | `TODO_USER_INCLUDE` | orphan sweep | Hand-written user code `#include`s a generated header the sweep deleted. Same fix as `TODO_USER_IMPORT`. | Section 4 below |
-| `TODO_UNGENERATED_FILE` | orphan sweep, includes phase, or layout migration | A file that carries no `GENERATED_CODE_BEGIN` marker and either matches a per-file delete-target name **or** sits inside a wholesale-cleared fully-generated segment (`base`, `vl_wrap`). Skipped and reported, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
+| `TODO_UNGENERATED_FILE` | orphan sweep, includes phase, or layout migration | A file that carries no `GENERATED_CODE_BEGIN` marker and either matches a per-file delete-target name **or** sits inside a wholesale-cleared fully-generated segment (`base`, and `registrar` on the layout migration's hierarchical path). Skipped and reported, **never deleted**. | Inspect it: it is user-owned (hand-move/keep) or a generated file whose marker was lost (regenerate). |
 | `TODO_MISSING_BASEPATH` | orphan sweep | A legacy file-map `basePath` is absent from the current layout, so that entry is skipped. | Rare; confirm the layout is expected. No file action is needed if the path genuinely no longer exists, but the item keeps the sweep's report non-clean, so `make migrate` still exits non-zero until the stale entry no longer applies. |
 | `TODO_UNSUPPORTED_LAYOUT` | orphan sweep | A context owner uses the hierarchical layout, which the sweep does not walk, **and** a legacy header-mode artifact is still sitting next to that context's current generated file — i.e. hierarchical was opted into before the format migration finished. A cleanly hierarchical context with nothing left to migrate is silent. | Complete the format migration in functional layout, then migrate to hierarchical (Section 7). |
 | `TODO_MISSING_PARAM_LINE` | param phase | A generated artifact carries a `GENERATED_CODE_BEGIN` marker but no `GENERATED_CODE_PARAM` line, so there is no line to re-stamp with `--project`. | Add the `GENERATED_CODE_PARAM` line the report quotes verbatim at the top of the file's generated preamble, then re-run. |
@@ -828,15 +832,19 @@ byte-for-byte:
   hierarchical layout, so keeping them would mis-place artifacts.
 - **Source.** The same directory-level wholesale clear applies here. A
   **fully-generated segment** — one whose every fileMap entry is whole-file
-  generated: `base`, `registrar`, `vl_wrap` — is cleared at the **directory**
+  generated: `base`, `registrar` — is cleared at the **directory**
   level: every marker-carrying file is **deleted** (guarded by
   `GENERATED_CODE_BEGIN`), so alternate-extension or renamed orphans a per-file
   name match would miss go with it, and all are recreated at the hierarchical
   location by `make newmodule` / `make gen`. A **mixed/user segment** (`model`,
-  `rtl`, `tb`, `fwInc`) is classified per file: its recognized generated source
-  (`Includes`, `_package`) is deleted the same marker-guarded way, while every
-  other source (user-editable, or an unrecognized/custom fileMap type) **moves**
-  byte-preserving so its user regions are never lost. A project-scope orphan
+  `rtl`, `vl_wrap`, `tb`, `fwInc`) is classified per file: its recognized
+  generated source (`Includes`, `_package`, the legacy `_hdl_sv_wrapper.sv`) is
+  deleted the same marker-guarded way, while every other source (user-editable,
+  or an unrecognized/custom fileMap type) **moves** byte-preserving so its user
+  regions are never lost. `vl_wrap` mixes because the legacy
+  `_hdl_sc_wrapper.h` hosts a hand-written `end_ctor_init()` override outside its
+  generated regions, so it moves intact rather than being deleted and
+  regenerated. A project-scope orphan
   (`sc_main`, `vl_dummy`, the retired `vl_wrap.*` aggregator) is moved into `prj/`
   regardless of segment. A non-marker file inside a fully-generated segment is
   reported (`TODO_UNGENERATED_FILE`) and left in place — never deleted, never

@@ -24,7 +24,8 @@ export namespace xpGain_xpGainUniq_ns {
 // GENERATED_CODE_BEGIN --template=includes --section=types
 export namespace xpGain_xpGainUniq_ns {
 // types
-template<typename Config> using gnPixelT = uint64_t; // [max:32] Parameterizable pixel word
+template<uint32_t GN_PIXEL_WIDTH> using gnPixelT_v = uint64_t; // [max:32] Parameterizable pixel word
+template<typename Config> using gnPixelT = gnPixelT_v<Config::GN_PIXEL_WIDTH>;
 typedef uint8_t gnTagT; // [4] Sample sequence tag
 
 } // namespace xpGain_xpGainUniq_ns
@@ -38,27 +39,27 @@ export namespace xpGain_xpGainUniq_ns {
 // GENERATED_CODE_BEGIN --template=structures
 export namespace xpGain_xpGainUniq_ns {
 // structures
-template<typename Config>
-struct gnVideoSt {
-    gnPixelT<Config> data; //Pixel payload
+template<uint32_t GN_PIXEL_WIDTH>
+struct gnVideoSt_v {
+    gnPixelT_v<GN_PIXEL_WIDTH> data; //Pixel payload
     gnTagT tag; //Sample sequence tag
 
-    gnVideoSt() {}
+    gnVideoSt_v() {}
 
-    static constexpr uint16_t _bitWidth = Config::GN_PIXEL_WIDTH + 4;
+    static constexpr uint16_t _bitWidth = GN_PIXEL_WIDTH + 4;
     static constexpr uint16_t _byteWidth = (_bitWidth + 7) >> 3;
     typedef uint64_t _packedSt;
-    inline bool operator == (const gnVideoSt<Config> & rhs) const {
+    inline bool operator == (const gnVideoSt_v<GN_PIXEL_WIDTH> & rhs) const {
         bool ret = true;
         ret = ret && (tag == rhs.tag);
         ret = ret && (data == rhs.data);
         return ( ret );
         }
-    inline friend void sc_trace(sc_trace_file *tf, const gnVideoSt<Config> & v, const std::string & NAME ) {
+    inline friend void sc_trace(sc_trace_file *tf, const gnVideoSt_v<GN_PIXEL_WIDTH> & v, const std::string & NAME ) {
         sc_trace(tf,v.tag, NAME + ".tag");
         sc_trace(tf,v.data, NAME + ".data");
     }
-    inline friend ostream& operator << ( ostream& os,  gnVideoSt const & v ) {
+    inline friend ostream& operator << ( ostream& os,  gnVideoSt_v const & v ) {
         os << v.prt();
         return os;
     }
@@ -73,48 +74,49 @@ struct gnVideoSt {
     inline uint64_t getStructValue(void) const { return( -1 );}
     inline void pack(_packedSt &_ret) const
     {
-        memset(&_ret, 0, gnVideoSt<Config>::_byteWidth);
+        memset(&_ret, 0, gnVideoSt_v<GN_PIXEL_WIDTH>::_byteWidth);
         uint16_t _pos{0};
-        pack_bits((uint64_t *)&_ret, _pos, data, Config::GN_PIXEL_WIDTH);
-        _pos += Config::GN_PIXEL_WIDTH;
+        pack_bits((uint64_t *)&_ret, _pos, data, GN_PIXEL_WIDTH);
+        _pos += GN_PIXEL_WIDTH;
         pack_bits((uint64_t *)&_ret, _pos, tag, 4);
         _pos += 4;
     }
     inline void unpack(const _packedSt &_src)
     {
         uint16_t _pos{0};
-        data = (gnPixelT<Config>)((_src >> (_pos & 63)) & ((1ULL << (Config::GN_PIXEL_WIDTH)) - 1));
-        _pos += Config::GN_PIXEL_WIDTH;
+        data = (gnPixelT_v<GN_PIXEL_WIDTH>)((_src >> (_pos & 63)) & ((1ULL << (GN_PIXEL_WIDTH)) - 1));
+        _pos += GN_PIXEL_WIDTH;
         tag = (gnTagT)((_src >> (_pos & 63)) & ((1ULL << (4)) - 1));
     }
-    inline sc_bv<gnVideoSt<Config>::_bitWidth> sc_pack(void) const
+    inline sc_bv<gnVideoSt_v<GN_PIXEL_WIDTH>::_bitWidth> sc_pack(void) const
     {
-        sc_bv<gnVideoSt<Config>::_bitWidth> packed_data;
+        sc_bv<gnVideoSt_v<GN_PIXEL_WIDTH>::_bitWidth> packed_data;
         uint16_t _pos{0};
-        packed_data.range(_pos+Config::GN_PIXEL_WIDTH-1, _pos) = data;
-        _pos += Config::GN_PIXEL_WIDTH;
+        packed_data.range(_pos+GN_PIXEL_WIDTH-1, _pos) = data;
+        _pos += GN_PIXEL_WIDTH;
         packed_data.range(_pos+4-1, _pos) = tag;
         _pos += 4;
         return packed_data;
     }
-    inline void sc_unpack(sc_bv<gnVideoSt<Config>::_bitWidth> packed_data)
+    inline void sc_unpack(sc_bv<gnVideoSt_v<GN_PIXEL_WIDTH>::_bitWidth> packed_data)
     {
     uint16_t _pos{0};
-        data = (gnPixelT<Config>) packed_data.range(_pos+Config::GN_PIXEL_WIDTH-1, _pos).to_uint64();
-        _pos += Config::GN_PIXEL_WIDTH;
+        data = (gnPixelT_v<GN_PIXEL_WIDTH>) packed_data.range(_pos+GN_PIXEL_WIDTH-1, _pos).to_uint64();
+        _pos += GN_PIXEL_WIDTH;
         tag = (gnTagT) packed_data.range(_pos+4-1, _pos).to_uint64();
         _pos += 4;
     }
-    explicit gnVideoSt(sc_bv<gnVideoSt<Config>::_bitWidth> packed_data) { sc_unpack(packed_data); }
-    explicit gnVideoSt(
-        gnPixelT<Config> data_,
+    explicit gnVideoSt_v(sc_bv<gnVideoSt_v<GN_PIXEL_WIDTH>::_bitWidth> packed_data) { sc_unpack(packed_data); }
+    explicit gnVideoSt_v(
+        gnPixelT_v<GN_PIXEL_WIDTH> data_,
         gnTagT tag_) :
         data(data_),
         tag(tag_)
     {}
-    explicit gnVideoSt(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
+    explicit gnVideoSt_v(const _packedSt &packed_data) { unpack(const_cast<_packedSt&>(packed_data)); }
 
 };
+template<typename Config> using gnVideoSt = gnVideoSt_v<Config::GN_PIXEL_WIDTH>;
 } // namespace xpGain_xpGainUniq_ns
 
 // GENERATED_CODE_END
