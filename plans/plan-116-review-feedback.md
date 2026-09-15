@@ -1635,3 +1635,48 @@ surface.
   `VTopConfig` at 9. The default-fill is the documented `BLOCKPARAMDEFAULTS` fallback behaving as
   specified, so it is latent rather than wrong, but it is the same shape as the defect this item
   exists for and deserves a decision.
+  **MEASURED 2026-09-14: reproduces on today's builder.** On a scratchpad copy of
+  `unittest/fixtures/variant-two-integrators`, after `db`/`newmodule`/`gen` in `ipLeaf`, `mid` and
+  `top` in that order (every rc 0, no wrapper or Config file created, moved or removed), `top/.gen/build.mk`
+  names `ipLeaf/verif/xviMid_xviLeaf_v0_hdl_sv_wrapper.sv`, `ipLeaf/verif/xviMid_xviLeaf_vMid_hdl_sv_wrapper.sv`
+  and `ipLeaf/registrar/xviMid_xviLeafVariantConfig.cppm`, none of which exist; `mid`'s scaffolds sit
+  under `mid/verif` and `mid/registrar`, and `mid/.gen/build.mk` names them there. `top`'s
+  `A2C_VL_TOPS` lists `xviMid_xviLeaf_vMid_hdl_sv_wrapper`, which is the manifest's documented
+  ownership-inclusive top set (foreign tops are verilated, not regenerated), so that half is by
+  design. `make -C top/rundir all VL_DUT=1` exits 2 with Verilator `Cannot find file containing
+  module` on exactly the two misresolved wrapper paths, on a first run and again after a clean
+  rebuild. Mechanism, by code reading: `calcConfigModules` anchors a `(declaring project, child)`
+  Config-module entry at the smallest reachable container owned by the declaring project and falls
+  back to the child's own directory when it finds none (`parentKeys.get(..., childKey)`); the
+  registrar rows for the pair wrappers and the foreign headers anchor at that same `parentKey`. In
+  `top`'s build the `(xviMid, xviLeaf)` lookup missed and the fallback fired. Why it misses is under
+  database diagnosis (scratchpad `brief-xvitop-parentkey-diagnosis.md`). 9C's 2026-09-14 closure
+  said the fallback "stays, and is now harmless"; this measurement shows the composed manifest
+  still consumes the fallback path, so 9C's second sentence is withdrawn and this item stays OPEN.
+  Measurement artefacts: scratchpad `xvi-measure/` (`before.txt`, `after.txt`, `top_vl_build.log`,
+  `top_vl_build_retry.log`, the two `build.mk`). Side observation from the run, not a defect: a
+  copy placed outside `builder/base` is merged with `pro/config` by `mergeProjectConfig`'s path
+  rule, so the `mid` control build failed on a pro-only Tandem header; measure inside
+  `builder/base/unittest` as the unit test does.
+  **DIAGNOSED 2026-09-14, database evidence on the measured copy.** In `xviTop`'s db
+  `CONTEXTOWNINGPROJECT` is correct (`xviMid.yaml` -> xviMid, `xviLeaf.yaml` -> xviLeaf) and every
+  key spelling matches across the two dbs; both of those candidate causes are ruled out. The cause:
+  `calcConfigModules` walks `REACHABLEINSTANCES` only, and `xviTop`'s reachable hierarchy (eight
+  instances, all containered by `xviTop` blocks) never descends into `xviMid`'s design, because
+  `xviTopProject.yaml` lists `xviMidProject.yaml` in `projectFiles:` for its declarations without
+  instantiating `xviMid`. So `parentKeys` gets one entry, `(xviTop, xviLeaf) -> xviTop`, and the
+  `(xviMid, xviLeaf)` entry (created from `xviMid`'s `parametersvariantsparams` rows, which the
+  composed db carries) takes the `childKey` fallback; `FOREIGNCONFIGHEADERS` inherits the same
+  `parentKey`, and `REGISTRARPAIRS` has no `(xviMid, xviLeaf)` pair at all. In `xviMid`'s own db the
+  same key anchors at `xviMid`. The defect is therefore that a declaring project's registrar home is
+  computed from the consuming build's reachability rather than from the declaring project's own
+  YAML, so two builds disagree about one file's path. PROPOSED for the architect: anchor over every
+  instance in the db whose container context the declaring project owns (drop the reachable filter
+  in this one walk; the composed db parses the declaring project's instances even when nothing
+  reaches them), which makes the anchor a property of the declaring project and identical in every
+  build that parses it, and then delete the `childKey` fallback so a declaring project that
+  assembles the child nowhere fails loud instead of anchoring at the child. Open with it: whether a
+  composed manifest should compile and verilate a declaring project's Config module and tops at all
+  when nothing reachable resolves to that project's labels (today it does, ownership-inclusive); a
+  reachability filter on the manifest's foreign rows would be the efficiency half, separate from the
+  path fix. Diagnostic script: scratchpad `diag.py`.

@@ -145,8 +145,8 @@ Recorded so the iteration argues about facts. Dated 2026-09-07; delete each line
   rather than depth; 17/17 scanner cells including composed ip_test (`ip.yaml`, `ipVariants.yaml` ->
   ip; `cpu.yaml` -> common) and both standalone roots; `test_eval_sv_emit` 6/6 again. Comments
   trimmed to the four short blocks in `brief-projectscan-comments.md`, scanner suite still 17/17.
-  LANDED 2026-09-14, uncommitted: unit suite 130/130, base 70/0/4/0, pro 14/0/0, product gen/model/VL
-  green.
+  LANDED 2026-09-14, committed in builder/base ab3dc65: unit suite 130/130, base 70/0/4/0, pro 14/0/0,
+  product gen/model/VL green.
   (plan-parameter-sharing §6 step 12a, "Ownership tiebreak")
 - Rule 9: the layout index collapses cross-project bindings into one slot (item 9B of
   [`plan-116-review-feedback.md`](./plan-116-review-feedback.md)). RULED 2026-09-13 (user): fix now; rows keyed by
@@ -728,17 +728,14 @@ Two containers backed by the same constant, and two backed by different constant
 same `maxValue`, are both accepted; only a container whose accepted range exceeds the child's
 is rejected, and only at the site where that happens.
 
-- **An undeclared port of a params-declaring block binding a channel typed at another Config**
-  (ruled 2026-09-11, a stopgap). A port the block does not declare in `ports:` is inferred
-  top-down and binds the channel directly, so its payload type is the channel's. When that
-  payload is parameterizable and the instance resolves at a Config other than the one the
-  channel is typed at (its container's for a boundary port, the elected end's for a
-  connection), `make db` rejects it naming the block, the instance, the port and both Configs.
-  The shape is valid in principle: SystemVerilog accepts it whenever the values agree, and the
-  value-keyed payload types recorded under "Direction, not a rule" give equal values one C++
-  type, at which point this rejection is lifted. Until then, inherit the container's
-  configuration, or declare the port in `ports:` if the block is reusable IP so an adapter is
-  generated. Fixtures: `examples/xprojParam/infPort` (accepts) and `infPortBad` (rejects).
+- **An undeclared port of a params-declaring block binding a channel whose parameter values
+  differ** (ruled 2026-09-11 as a Config-identity stopgap; superseded 2026-09-14 by value-keyed
+  payload types). A port the block does not declare in `ports:` is inferred top-down and binds the
+  channel directly. Payload types are keyed on the parameter values they use, so equal values are
+  one C++ type and bind with no adapter whatever Config each end resolves at. `make db` rejects the
+  bind only when a value the payload uses differs between the two ends, naming the block, the
+  instance, the port and the differing values. Fixtures: `examples/xprojParam/infPort` (equal
+  values at distinct Configs, accepts) and `infPortBad` (differing values, rejects).
 
 ### What is not checked
 
@@ -779,13 +776,15 @@ fixed-width by rule (§4): since 2026-09-11 a parameterizable structure on an ad
 interface is rejected at `make db`, so the parameter goes in the register payload, as
 `examples/xprojParam/rtInh` does with its leaf's `cfg` register.
 
-Two things are not covered, and an author has to know them:
+One thing is not covered, and an author has to know it:
 
 - **`valueType` is not compared** between the container's parameter and the child's; see
   "What is not checked" in §4.
-- **A top-down port at a Config other than the channel's is rejected, not bound** (§4, ruled
-  2026-09-11). SystemVerilog accepts the shape at equal values; SystemC binds one payload type
-  per Config today. The value-keyed payload type direction lifts the rejection.
+
+A second item stood here until 2026-09-14: that a top-down port at a Config other than the
+channel's was rejected rather than bound. Payload types are now keyed on parameter values (the
+design step under "Direction, not a rule"), so equal values bind directly and only a differing
+value is rejected (§4).
 
 A third item stood here until 2026-09-07: that a block's Config could carry parameters
 declared in the same file that the block does not name. Since 2026-09-05 a block's Config

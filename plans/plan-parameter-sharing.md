@@ -4,6 +4,20 @@
 
 - **Classification (2026-08-31): SETTLED DESIGN WITH THE STEP 7 THROUGH STEP 11 FOLLOW-UP IMPLEMENTED AND VERIFIED IN THE WORKING TREE.** Step 1 landed and was independently reviewed. D7's parameter-scoped inheritance, its site-keyed layout gate, the registrar-pair work, and the testbench Config-source checks are complete locally. **Step 3 landed 2026-09-05** on an architect ruling that a block's Config carries only the parameters that block declares, with derived constants computed in the implementation as SystemVerilog already does (§6, step 3). **Step 3's fixture half closed 2026-09-06**: `twoCtx` is retargeted, asserts its bound values at run time, and is the `xproj-twoctx` gate in `pipeline-test`. Steps 2 and 5 and the RTL-bearing half of step 6 remain open; **step 4 landed on 2026-08-14 and is gated, and the "steps 2 through 5" phrasing this bullet carried until 2026-09-04 was wrong** (§6, step 4). Decisions D1 through D5 are the plan of record. D6 is resolved by the explicit link from a block parameter to its parameter source (§3), independently of Q3, which stays rejected (§4.3). Implementation is complete for this follow-up, but commit preparation is not: the final change set is not yet fully staged, committed, or pushed.
 - **Plan review 2026-09-07.** The decisions of record and the end goal hold; steps 1, 3 and 7 through 11 deliver §1. Corrected in place: three lines that still listed step 3 as open, the "Q3's rename waits on step 3" dependency (Q3 is rejected), done criterion 2 (rewritten to §4.0), and the design document's claim that a Config may carry unnamed same-file parameters. Added: step 3's emitted-output delta (§6, step 3), the finding that `twoCtx` makes the §7 Config name and home flip live, and the finding that done criterion 6 is unmet for direct instantiation (`uLeafX`). Step 6's RTL half was redirected onto `twoCtx` after the dpMid attempt proved non-discriminating (§6, step 6). The skill rewrite landed (§6, step 7). Steps 12, 13 and 14 were opened on the user's ruling for Case 1 with the duplicate-in-scope diagnostic, the product tree's move off `inheritContainerParam`, and connectionMap adjudication of an inheriting child. Step 6 then closed the same day on `twoCtx`. The user ruled that Config ownership follows the project that declares the variant and that Config names always carry that project (step 15), and judged this plan contaminated with implementation detail: the guiding rules are now a draft section at the top of [`design-parameter-inheritance.md`](./design-parameter-inheritance.md), iterated there, with a dated list of where the tree deviates. Rules 2 and 7 (scope-based resolution, collision is an error) are the open part of that iteration; the user's expectation is that the parser already resolves by scope, and the deviation list records the evidence that it selects by project instead. Later the same day steps 2 and 5 landed (§6), each fault-injected and reviewed, and the rules iteration with the architect confirmed rules 1 through 3 and redrafted rule 4 around the two container-sourced forms (rule 1 now permits a definitions-only shared declaring file; rule 2 rejects shadowing; step 12's lexical proposal is withdrawn). The iteration then confirmed rules 5 through 10 (rule 4 ruled: `inheritContainerParam` stays same-project, cross-project goes through a `containerParam` variant), settled rule 7's scope resolution with its fixture consequences (step 12), and step 15 LANDED with the always-qualified Config names and the owner-declared `default` rule (§6, step 15). Open: steps 12, 13, 14; three follow-ups under step 15.
+- **2026-09-14, committed in builder/base ab3dc65, builder/pro 4ad44a4 and product 7a3ddfb.**
+  Ownership rule 6 (direct `projectFiles:` listing owns; longest path with override-master ranking
+  for unlisted files; ties and cycles rejected) and value-keyed payload types (`X_v<values>` plus
+  the `<Config>` alias; equal values bind directly and the same-interface thunker is retired; the
+  2026-09-11 inferred-port stopgap goes) both LANDED (§6 step 12a "Ownership tiebreak"; §6 step 13
+  "Defect found on the way"; the design step in `design-parameter-inheritance.md`). Found on the
+  way: `structures.py::constructor` closed its parameter list with a comma splice once a field type
+  carried template arguments, fixed with a clang-compiled cell. Closing thunker survey 93 -> 62, no
+  defect. Gates on the final tree: unit 130/130, base 70/0/4/0, pro 14/0/0, SystemVerilog
+  byte-identical on 225 files, product gen/model/VL green, debayer regression 44 of 44. The
+  regrLauncher date-format change from plan-116 9D was backed out on a user ruling (its output is a
+  contract); the scaffold `REGR_JOBS` half stays. Still OPEN for the architect: the child-variant
+  wrapper stamp and the `--overwrite` re-stamp hazard (§6 step 12b, the standalone-map bullet), and
+  the step 1 coverage fixture for an unqualified width reference (§6 step 1).
 - **Step 12 split into 12a and 12b, 2026-09-08. Both LANDED.** Step 12a (rules 1 and 2); step 12b
   (rule 7, scope resolution of a variant label) moved `ip_test`'s bridge instance's declaration
   into `ipBridge.yaml` itself, the one shape the blast radius scan found needing a fixture move.
@@ -1708,6 +1722,40 @@ Rule 7 is split out as step 12b, below, and untouched by this entry.
   databases; 45 of 49 manifests identical, the four above differ only by the listed gen-set
   removals; unit 129/129; base pipeline exit 0, 70 "No error", 0 `ERROR:`, 4 `OK:`, 0 stale,
   examples tree clean apart from the two known edits; pro 14 "No error", 0 warnings.
+- **Child-variant wrapper stamp, PROPOSED 2026-09-14 for the architect's ruling.** Facts, verified
+  by code reading 2026-09-14: `vlSvWrap` (block mode, anchored at the child's `dir`, owned by the
+  child's project, stamp `--variant=<label>`) and `vlSvWrapPair` (registrar mode, anchored at the
+  assembler's `dir`, owned by the assembler's project, stamp `--parent= --variant= --mode=pair`,
+  not owner-qualified) both spell the stem `<child>_<variant>` (`physicalFileStub`,
+  `processYaml.py` ~4126). The bare renderer (`module_hdl_wrapper.py::render_sv`, the last three
+  branches) already covers every case: ordinary plus concrete tops for a standalone variant,
+  concrete tops alone for a container-sourced one, one module for a non-parameterizable block; the
+  `--mode=pair` branch renders the concrete tops only, a strict subset. `artifactRows` emits no
+  block row for a block whose every variant is container-sourced (`continue` at
+  `artifactPaths.py` ~131), which is the only reason the pair row scaffolds. Consequences: in a flat
+  layout of one project the two rows name one path, so `--overwrite` lets the later registrar pass
+  re-stamp a standalone variant's wrapper to `--mode=pair` and its ordinary top disappears (rtInh
+  `xpRtLeaf_use`); in a hierarchical layout, or across projects, they name two paths. On disk today
+  every wrapper in `examples/` and `unittest/fixtures/` carries a bare stamp (35 + 6 files, zero
+  `--mode=pair`); the pair stamp appears only in the three from-scratch unit suites. Options:
+  (A) one bare stamp: the block row also covers a block's pair-specific variants (owner and dir
+  the child's), `vlSvWrapPair` and the `--mode=pair` branch retire; cost: a pair-specific top of a
+  child another project owns would then be generated only by the child's own build, which does not
+  see the assembler's registrations, so the cross-project pair (`test_container_param_cross_project_vl`)
+  needs the foreign row (`vlSvWrapForeign`, owner-qualified) to carry container-sourced labels too.
+  (B) one pair stamp for concrete tops: `vlSvWrapPair` becomes owner-qualified like
+  `vlSvWrapForeign`, so its path never collides with the bare file; the bare renderer drops its two
+  concrete arms and emits the ordinary standalone top only; cost: every tree rendering concrete
+  tops through a bare stamp today (the product's inheriting `preprocess`/`interpolate` included)
+  needs a migrate phase that scaffolds the owner-qualified file and deletes a bare file left with
+  nothing to render, and the manifest's `A2C_VL_TOP_<block>` map follows the new physical file.
+  (C) keep both rows, dedupe by path in `artifactRows` (the block row wins) and refuse an
+  `--overwrite` that would change a wrapper's stamp mode; smallest change, two stamps remain.
+  Recommended: (A), because the bare renderer is already the complete one and the corpus already
+  carries only bare stamps, provided the cross-project pair goes through the existing foreign row.
+  Whichever is chosen, the anchoring defect plan-116 records at its 2026-09-04 composed-build entry
+  (Config-module host fallback to the child's directory) is a separate fix and comes first, since
+  (A) and (B) both anchor the concrete tops through the same `parentKey`.
 - **rtl.f package list derived from the top file's scope, not the design's, RULED 2026-09-13 (user):
   fix.** Emitted modules import their own context's scope; rtl.f and the manifest dependency list
   walk only the top context's scope, so a reachable module can import a package the list omits
@@ -1813,7 +1861,7 @@ Rule 7 is split out as step 12b, below, and untouched by this entry.
   the scanner: `test_addrctl_ip_test_view` and 5 of 6 `test_eval_sv_emit` cases red. RULED 2026-09-14
   (user): rank an edge to a copy as an edge to its override-selected master (rule 2 addition); listing
   the files in `ipProject.yaml` remains valid as the rule 1 manual resolution. Brief
-  `brief-ownership-override-rank.md`. LANDED 2026-09-14, uncommitted: 17/17 scanner cells, ip_test scans
+  `brief-ownership-override-rank.md`. LANDED 2026-09-14, committed in ab3dc65: 17/17 scanner cells, ip_test scans
   again; gated with the value-keyed change (base 70/0/4/0, pro 14/0/0, product gen/model/VL green).
 - **artifactPaths extraction, LANDED 2026-09-10.** The three path-resolution functions the stale
   registrar work made shared (`expandNewModulePath`, `fileMapCondMatch`, `getRegistrarFiles`, 122
@@ -2065,8 +2113,9 @@ A step planned as YAML-only needed three generator fixes on the way, each found 
   changed for it at review time. **Implementation RULED 2026-09-14 (user), IN TREE the same day**, review
   findings applied, endpoint-check loops deduplicated, one linkage-suite cell reworked for the new
   shape; the db stopgap is removed by that change (record under the design step). LANDED 2026-09-14,
-  uncommitted: base 70/0/4/0, pro 14/0/0, SystemVerilog byte-identical (225 files), product gen/model/VL
-  green after the constructor comma fix the product exposed; closing thunker survey 93 -> 62, no defect
+  committed in builder/base ab3dc65, builder/pro 4ad44a4 and product 7a3ddfb: base 70/0/4/0, pro 14/0/0,
+  SystemVerilog byte-identical (225 files), product gen/model/VL green after the constructor comma fix the
+  product exposed, debayer regression 44 of 44 with no E549; closing thunker survey 93 -> 62, no defect
   (design doc).
 - **Inferred-port Config gate LANDED 2026-09-11, uncommitted.** `validatePorts` checks an undeclared
   port at the two points that used to skip it: the connection arm and the connectionMap arm. The
