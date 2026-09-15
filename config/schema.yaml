@@ -282,7 +282,7 @@ blocks:
   # container as for a leaf, and nothing is inferred from its children,
   # connections or ports. A block declaring no clocks: has one clock, `clk`,
   # input; a block declaring no resets: and having a default clock has one
-  # reset, `rst_n`, on it (materialised in projectCreate.deriveBlockClocksResets).
+  # reset, `rst_n`, on it (materialised in clockTree.BlockDomains.build()).
   # A single-name list ('clocks: [clkSlow]') is accepted as the mapping form
   # with every field defaulted; normalised before schema processing (see
   # processYaml.py::_normalizeClockResetShortForm).
@@ -601,8 +601,8 @@ memories:
   # The owning block's clock this memory is on, and the reset for the R20
   # bridge's memory side; both block-local, default the block default clock
   # and its selected reset. The memory-clock derivation that reads these is
-  # a separate concern (§3.4); _persistMemoryClocks takes the owning block's
-  # default clock outright.
+  # a separate concern (§3.4); clockTree.ClockTree.rows() takes the owning
+  # block's default clock outright.
   clock: optional
   reset: optional
   memoryBlock:

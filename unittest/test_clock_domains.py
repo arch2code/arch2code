@@ -26,6 +26,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from collections import OrderedDict
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 base_dir = os.path.dirname(test_dir)
@@ -33,7 +34,8 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 import pysrc.arch2codeGlobals as g
-from pysrc.processYaml import projectCreate, projectOpen
+import pysrc.clockTree as clockTree
+from pysrc.processYaml import projectOpen
 
 g.disableColors = True
 
@@ -680,16 +682,46 @@ instances:
 
 # --------------------------------------------- single-domain object rules --
 
+class _StubDiag:
+    """The diag protocol clockTree needs: `logError` collects rather than
+    exits, unlike the real one - `continueOnError` is a module-level False
+    with no setter anywhere in the tree, so a production build reports at
+    most ONE of these diagnostics. The message counts below are properties
+    of this harness, and what they assert is that a given shape produces
+    exactly one diagnostic and not a second spurious one.
+    `diagnosticLocation` is part of the protocol; no test here builds
+    through BlockDomains.build()/clockTree.build(), the only callers, so it
+    is never actually invoked.
+    """
+
+    def __init__(self):
+        self.messages = []
+
+    def logError(self, msg):
+        self.messages.append(msg)
+
+    def diagnosticLocation(self, yamlFile, lc):
+        return yamlFile
+
+
+def _orderedUniqueClocks(rows):
+    """The distinct clocks of a set of connection rows, first-seen order -
+    matches clockTree.build()'s own grouping so a message's clock order
+    here matches what production would emit."""
+    seen = OrderedDict()
+    for row in rows:
+        seen[row['clock']] = None
+    return tuple(seen.keys())
+
+
 def _validateSingleDomain(memories, memoryConnections, registerConnections,
                           routerClocks=None):
-    """Run projectCreate._validateSingleDomainObjects over synthetic rows.
+    """Run ClockTree.check() over synthetic BlockDomains.
 
-    THIS EXERCISES THE VALIDATOR IN ISOLATION, not a build. `logError` is replaced
-    by a collector that does not exit, while the real one exits on the first
-    diagnostic (`continueOnError` is a module-level False with no setter anywhere
-    in the tree). So a production build reports at most ONE of these; the message
-    counts below are properties of this harness, and what they assert is that a
-    given shape produces exactly one diagnostic and not a second spurious one.
+    THIS EXERCISES THE CHECK IN ISOLATION, not a build: BlockDomains built by
+    hand, not by BlockDomains.build(), so a multi-clock router needs no
+    default-clock marking of its own (V18, irrelevant to this rule) to reach
+    the check.
 
     Driven directly rather than through a built fixture: the memory and register
     rules read only the RESOLVED clock of each connection row, and authoring a
@@ -704,34 +736,39 @@ def _validateSingleDomain(memories, memoryConnections, registerConnections,
     enters. Every synthetic block is instantiated at the top so it is reachable;
     the pruning of unreachable routers is what the end-to-end cases cover.
     """
-    pc = object.__new__(projectCreate)
-    pc.errorState = False
-    blocks = {'blockA/top.yaml': {'block': 'blockA', 'blockKey': 'blockA/top.yaml'}}
-    # deriveBlockClocksResets() returns {blockKey: [clock name, ...]} - plain
-    # block-local names, not qualified clock keys - so the synthetic rows here
-    # match that shape rather than the project-scoped one it replaced.
-    blockClocks = {'blockA/top.yaml': ['clk']}
-    if routerClocks is not None:
-        blocks['router/top.yaml'] = {'block': 'router', 'blockKey': 'router/top.yaml',
-                                     'addressBlock': {'addressGroup': 'top'}}
-        blockClocks['router/top.yaml'] = list(routerClocks)
-    pc.flatData = {
-        'memories': memories,
-        'memoryConnections': memoryConnections,
-        'registerConnections': registerConnections,
-        'blocks': blocks,
-        'instances': {f'u_{row["block"]}/top.yaml':
-                      {'container': '_topInstance', 'instanceTypeKey': blockKey}
-                      for blockKey, row in blocks.items()},
+    memoryDomains = [
+        clockTree.MemoryDomain(
+            memoryBlockKey, memRow['memory'], memRow['memoryType'],
+            _orderedUniqueClocks(row for row in memoryConnections.values()
+                                if row['memoryBlockKey'] == memoryBlockKey))
+        for memoryBlockKey, memRow in memories.items()]
+    registerConnectionClocks = _orderedUniqueClocks(
+        row for row in registerConnections.values() if row['blockKey'] == 'blockA/top.yaml')
+    domains = {
+        'blockA/top.yaml': clockTree.BlockDomains(
+            'blockA/top.yaml', 'blockA',
+            OrderedDict([('clk', clockTree.ClockDecl(desc='', direction='input',
+                                                     default=True, period='', timeUnit='ns'))]),
+            OrderedDict(), 'clk', {}, False, memoryDomains, registerConnectionClocks),
     }
-    pc.hierKey = dict()
-    messages = []
-    pc.logError = lambda msg: (messages.append(msg), setattr(pc, 'errorState', True))
-    try:
-        pc._validateSingleDomainObjects(blockClocks)
-    except SystemExit:
-        pass
-    return messages
+    if routerClocks is not None:
+        clocks = OrderedDict(
+            (name, clockTree.ClockDecl(desc='', direction='input',
+                                       default=(index == 0), period='', timeUnit='ns'))
+            for index, name in enumerate(routerClocks))
+        domains['router/top.yaml'] = clockTree.BlockDomains(
+            'router/top.yaml', 'router', clocks, OrderedDict(), routerClocks[0], {},
+            True, [], ())
+    # Every synthetic block is instantiated directly at the top (spec §4.8),
+    # recorded on the root container exactly as clockTree.build() records a
+    # topInstance.
+    root = clockTree.Container(clockTree.ClockTree.ROOT_KEY)
+    for blockKey, domain in domains.items():
+        root.instances[f'u_{domain.block}/top.yaml'] = blockKey
+    diag = _StubDiag()
+    tree = clockTree.ClockTree(domains, {}, root, diag)
+    tree.check()
+    return diag.messages
 
 
 def _memoryConnection(clock, port):
@@ -902,6 +939,162 @@ def run_collision_cases():
         projectDomains=COLLIDING_NAMES)
 
 
+# --------------------------------------------------------- graph shape --
+
+def run_clock_tree_shape_cases():
+    """The clockTree.py graph (Net.kind/.isReset/.clockNet/.driver,
+    Driver.kind, Consumer.binding, BlockDomains.blockKey/Container.blockKey)
+    is read here, not just written: a two-level design, container 'soc'
+    with two declared clocks and resets, and three children - one bound by
+    name match, one by the clk/rst_n fallback, and one asynchronous reset
+    input bound by an explicit name.
+
+    Built directly through the constructors, the way _validateSingleDomain
+    builds its fixtures, rather than through BlockDomains.build()/
+    clockTree.build(): an asynchronous reset input's own declaration is
+    itself rejected in phase 1 (run_unsupported_direction_cases), so a
+    design authoring one can never reach a real build without a diagnostic.
+    The bound shape a later phase gives such a reset - a Consumer like any
+    other, 'name' or 'map', never 'fallback' - is dead code today, reachable
+    only under continueOnError; asserting its shape here is what keeps that
+    dead code honest until phase 4 makes it reachable for real.
+    """
+    def clockDecl(default=False):
+        return clockTree.ClockDecl(desc='', direction='input', default=default,
+                                   period='', timeUnit='ns')
+
+    def resetDecl(clock='', default=False, isAsync=False):
+        return clockTree.ResetDecl(desc='', direction='input', default=default,
+                                   clock=clock, isAsync=isAsync)
+
+    soc = clockTree.BlockDomains(
+        'soc/top.yaml', 'soc',
+        OrderedDict([('clkSys', clockDecl(default=True)), ('clkPeripheral', clockDecl())]),
+        OrderedDict([('rstSys_n', resetDecl(clock='clkSys', default=True)),
+                    ('rstPeripheral_n', resetDecl(clock='clkPeripheral', default=True))]),
+        'clkSys', {'clkSys': 'rstSys_n', 'clkPeripheral': 'rstPeripheral_n'},
+        False, [], ())
+    uartA = clockTree.BlockDomains(
+        'uartA/top.yaml', 'uartA', OrderedDict([('clkPeripheral', clockDecl(default=True))]),
+        OrderedDict(), 'clkPeripheral', {}, False, [], ())
+    plainDut = clockTree.BlockDomains(
+        'plainDut/top.yaml', 'plainDut', OrderedDict([('clk', clockDecl(default=True))]),
+        OrderedDict([('rst_n', resetDecl(clock='clk', default=True))]),
+        'clk', {'clk': 'rst_n'}, False, [], ())
+    asyncBlock = clockTree.BlockDomains(
+        'asyncBlock/top.yaml', 'asyncBlock', OrderedDict([('clk', clockDecl(default=True))]),
+        OrderedDict([('rstPeripheral_n', resetDecl(isAsync=True))]),
+        'clk', {}, False, [], ())
+
+    container = clockTree.Container('soc/top.yaml')
+    for name, isReset, clockNet in (('clkSys', False, None), ('clkPeripheral', False, None),
+                                    ('rstSys_n', True, 'clkSys'),
+                                    ('rstPeripheral_n', True, 'clkPeripheral')):
+        container.nets[name] = clockTree.Net(name, 'declared', isReset, clockNet,
+                                             clockTree.Driver('input'))
+    container.nets['clkPeripheral'].consumers.append(
+        clockTree.Consumer('uUartA', 'clkPeripheral', 'name'))
+    container.nets['clkSys'].consumers.append(clockTree.Consumer('uDut', 'clk', 'fallback'))
+    container.nets['rstSys_n'].consumers.append(clockTree.Consumer('uDut', 'rst_n', 'fallback'))
+    container.nets['clkSys'].consumers.append(clockTree.Consumer('uAsync', 'clk', 'fallback'))
+    container.nets['rstPeripheral_n'].consumers.append(
+        clockTree.Consumer('uAsync', 'rstPeripheral_n', 'name'))
+    container.instances['uUartA'] = 'uartA/top.yaml'
+    container.instances['uDut'] = 'plainDut/top.yaml'
+    container.instances['uAsync'] = 'asyncBlock/top.yaml'
+
+    root = clockTree.Container(clockTree.ClockTree.ROOT_KEY)
+    root.nets['clkTb'] = clockTree.Net('clkTb', 'testbench', False, None,
+                                       clockTree.Driver('environment'))
+    root.nets['rstTb_n'] = clockTree.Net('rstTb_n', 'testbench', True, 'clkTb',
+                                        clockTree.Driver('environment'))
+    root.instances['uSoc'] = 'soc/top.yaml'
+
+    domains = {domain.blockKey: domain for domain in (soc, uartA, plainDut, asyncBlock)}
+    diag = _StubDiag()
+    tree = clockTree.ClockTree(domains, {'soc/top.yaml': container}, root, diag)
+
+    def net_shape():
+        if set(container.nets) != {'clkSys', 'clkPeripheral', 'rstSys_n', 'rstPeripheral_n'}:
+            raise AssertionError(f"container nets by name: {list(container.nets)}")
+        if any(net.kind != 'declared' for net in container.nets.values()):
+            raise AssertionError("a container's own nets must be kind 'declared'")
+        if any(net.driver.kind != 'input' for net in container.nets.values()):
+            raise AssertionError("a container's own nets are driven by its own input port")
+        if container.nets['rstSys_n'].clockNet != 'clkSys':
+            raise AssertionError(f"rstSys_n.clockNet: {container.nets['rstSys_n'].clockNet!r}")
+        return True
+
+    def root_net_shape():
+        if set(root.nets) != {'clkTb', 'rstTb_n'}:
+            raise AssertionError(f"root nets by name: {list(root.nets)}")
+        for net in root.nets.values():
+            if net.kind != 'testbench' or net.driver.kind != 'environment':
+                raise AssertionError(
+                    f"a root net must be kind 'testbench' with an 'environment' "
+                    f"driver, got {net.kind}/{net.driver.kind}")
+        return True
+
+    def consumerOf(netName, instanceKey):
+        for consumer in container.nets[netName].consumers:
+            if consumer.instanceKey == instanceKey:
+                return consumer
+        return None
+
+    def name_match_consumer():
+        consumer = consumerOf('clkPeripheral', 'uUartA')
+        if consumer is None or consumer.blockPort != 'clkPeripheral' or consumer.binding != 'name':
+            raise AssertionError(f"uUartA's clock should be a name-match consumer: {consumer}")
+        return True
+
+    def fallback_consumers():
+        clockConsumer = consumerOf('clkSys', 'uDut')
+        resetConsumer = consumerOf('rstSys_n', 'uDut')
+        if clockConsumer is None or clockConsumer.binding != 'fallback':
+            raise AssertionError(f"uDut's clock should fall back to clkSys: {clockConsumer}")
+        if resetConsumer is None or resetConsumer.binding != 'fallback':
+            raise AssertionError(f"uDut's reset should fall back to rstSys_n: {resetConsumer}")
+        return True
+
+    def async_reset_bound_by_name():
+        consumer = consumerOf('rstPeripheral_n', 'uAsync')
+        if consumer is None or consumer.binding != 'name':
+            raise AssertionError(
+                f"an asynchronous reset input bound by explicit name is still a "
+                f"'name' consumer, never 'fallback': {consumer}")
+        return True
+
+    def block_domains_fields():
+        if soc.defaultClock != 'clkSys':
+            raise AssertionError(f"soc's default clock: {soc.defaultClock!r}")
+        if soc.selectedReset != {'clkSys': 'rstSys_n', 'clkPeripheral': 'rstPeripheral_n'}:
+            raise AssertionError(f"soc's selected resets: {soc.selectedReset!r}")
+        if tree.blocks['asyncBlock/top.yaml'].resets['rstPeripheral_n'].isAsync is not True:
+            raise AssertionError("asyncBlock's own reset declaration should read back as async")
+        return True
+
+    def no_diagnostics():
+        if diag.messages:
+            raise AssertionError(f"building the fixture itself raised diagnostics: {diag.messages}")
+        return True
+
+    results = [_run_case(label, fn) for label, fn in (
+        ("building the fixture raises no diagnostics", no_diagnostics),
+        ("a container's own declared clocks/resets are 'declared' nets driven by its own input port",
+         net_shape),
+        ("the root's testbench clocks/resets are 'testbench' nets driven by the environment",
+         root_net_shape),
+        ("a child clock bound by name match is a 'name' consumer",
+         name_match_consumer),
+        ("a child clock/reset named clk/rst_n falls back to the container default",
+         fallback_consumers),
+        ("an asynchronous reset input bound by an explicit name is a 'name' consumer",
+         async_reset_bound_by_name),
+        ("BlockDomains.defaultClock/selectedReset read back what was built",
+         block_domains_fields))]
+    return all(results)
+
+
 def _run():
     print("=" * 72)
     print("TESTING PER-BLOCK CLOCK AND RESET DERIVATION")
@@ -918,6 +1111,7 @@ def _run():
         ("Instance bind pairs", (run_bind_pair_cases,)),
         ("Single-domain objects", (run_single_domain_cases,)),
         ("Name collisions", (run_collision_cases,)),
+        ("Graph shape", (run_clock_tree_shape_cases,)),
     )
     results = []
     for title, runners in groups:

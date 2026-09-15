@@ -17,6 +17,7 @@ from pysrc.merge_utils import merge_with_spec
 from pysrc.valueResolver import ValueResolver
 import pysrc.evalExpr as evalExpr
 import pysrc.yamlReadCache as yamlReadCache
+import pysrc.clockTree as clockTree
 
 continueOnError = False
 
@@ -1557,9 +1558,9 @@ class projectOpen:
         ret['parameterizedDecls'] = decls
 
     def getBDClocksResets(self, ret):
-        # The block's own declared clock and reset sets, materialised and
-        # persisted by projectCreate.deriveBlockClocksResets() into the
-        # non-schema blockClocksResets table. Read in the persisted canonical
+        # The block's own declared clock and reset sets, materialised by
+        # clockTree.build() and persisted by projectCreate._persistClockTree()
+        # into the non-schema blockClocksResets table. Read in the persisted canonical
         # order - declaration order, clocks before resets (R18) - so a consumer
         # never re-walks the block's declarations. Each row carries every field
         # a consumer needs (period / timeUnit / the reset's own clock / async)
@@ -1601,7 +1602,8 @@ class projectOpen:
 
     def getBDInstanceClockResetBinds(self, instanceKey):
         # The clock and reset binds a container emits for one child instance,
-        # derived and persisted by projectCreate.deriveBlockClocksResets() into the
+        # derived by clockTree.build() and persisted by
+        # projectCreate._persistClockTree() into the
         # non-schema instanceClockResetBinds table. 'port' is the child module's own
         # port name and 'signal' is the container's signal for the same clock or
         # reset; the two differ whenever the child's project and the container's
@@ -1615,10 +1617,11 @@ class projectOpen:
                 for row in g.cur.fetchall()]
 
     def getBDMemoryClock(self, memoryBlockKey):
-        # The clock the memory primitive is instantiated on, derived and persisted
-        # by projectCreate.deriveBlockClocksResets() into the non-schema
-        # memoryClocks table. Always a clock the owning block declares, so the
-        # emitted bind names a port of the module the memory sits in.
+        # The clock the memory primitive is instantiated on, derived by
+        # clockTree.build() and persisted by projectCreate._persistClockTree()
+        # into the non-schema memoryClocks table. Always a clock the owning
+        # block declares, so the emitted bind names a port of the module the
+        # memory sits in.
         g.cur.execute("SELECT clock FROM memoryClocks WHERE memoryBlockKey = ?",
                       (memoryBlockKey,))
         return g.cur.fetchone()['clock']
@@ -3121,7 +3124,7 @@ class projectOpen:
         row. Those also take the block default clock.
 
         A connection naming a clock: this block does not declare is rejected
-        at build time (V13, projectCreate.deriveBlockClocksResets), so that
+        at build time (V13, clockTree.build()), so that
         case never reaches this view; reaching it here is an internal error,
         not a user-input one.
         """
@@ -3142,7 +3145,7 @@ class projectOpen:
         one clock, so the reset a port's BFM uses is the SELECTED reset of the
         port's own clock (R6) - the block's declared default on that clock, or
         its sole candidate - computed once by
-        projectCreate.deriveBlockClocksResets() and carried on the clock row
+        clockTree.build() and carried on the clock row
         itself (getBDClocksResets). clockName is a member of the block's own
         clock set, because getBDPortDomain returns one; that clock may have no
         selected reset (a domain with no reset at all, spec §4.2), in which
@@ -3841,14 +3844,14 @@ class projectCreate:
         # Blocks whose resets: was authored as an explicitly empty {} or [],
         # keyed by (yamlFile, block name) the same way _evalNodes is.
         # Populated by _normalizeClockResetShortForm and consumed by
-        # deriveBlockClocksResets, which is the only reader of "no resets at
+        # clockTree.build(), which is the only reader of "no resets at
         # all" versus "resets: omitted" (spec §4.2); transient to this
         # projectCreate.
         self._blocksDeclaringNoResets = set()
         # Connections whose clock: was authored (not filled in from the
         # project default by _post_resolveConnectionClock), keyed by
         # (yamlFile, connection key). Populated by _process_connections and
-        # consumed by deriveBlockClocksResets's V13 check, which applies only
+        # consumed by clockTree.build()'s V13 check, which applies only
         # to an authored clock: (spec §4.3 rule 3: unstated means each
         # endpoint's own block default, not a shared name). Transient to this
         # projectCreate.
@@ -4002,12 +4005,22 @@ class projectCreate:
         # derive the per-block module-local parameterized declaration set and
         # persist it into the non-schema blockParameterizedDecls table
         self.deriveParameterizedDeclSets()
-        # derive each block's ordered clock and reset set from the connectivity
-        # post-parse synthesis has finished building, and persist it along with the
-        # per-instance and per-memory binds the containers of those blocks emit
-        blockClocks = self.deriveBlockClocksResets()
+        # build the in-memory clock/reset container model (clockTree.py) from the
+        # connectivity post-parse synthesis has finished building, then persist the
+        # block declarations and the per-instance and per-memory binds its
+        # containers emit
+        rootProjectName = self.config.getConfig('PROJECTNAME')
+        tree = clockTree.build(
+            self.flatData['blocks'], self.flatData['instances'], self.flatData['connections'],
+            self.flatData['memories'], self.flatData['memoryConnections'],
+            self.flatData['registerConnections'], self._blocksDeclaringNoResets,
+            self._connectionsWithAuthoredClock,
+            self.data['clocks'][rootProjectName], self.data['resets'][rootProjectName], self)
         # objects that are one module in one domain must have connections that agree
-        self._validateSingleDomainObjects(blockClocks)
+        tree.check()
+        if self.errorState:
+            exit(warningAndErrorReport())
+        self._persistClockTree(tree)
         # generate address enums and types
         self.generateAddressEnums()
         # check include files are valid
@@ -5655,289 +5668,13 @@ class projectCreate:
             return rows[name]
         return next(row for row in rows.values() if row['default'])
 
-    def deriveBlockClocksResets(self):
-        """Materialise each block's declared clock and reset set and persist it.
-
-        Spec R5 (spec-clock-reset-requirements.md): a block's clocks and resets
-        are exactly its own clocks:/resets: entries, for a container as for a
-        leaf, or the implicit clk/rst_n when it declares neither. Nothing is
-        inferred from a block's children, connections or ports, so each block
-        is materialised independently; there is no instance-tree union to
-        compute here.
-
-        Persists the per-block declaration order (R18), the block default
-        clock, and the selected reset of each clock the block carries (R6):
-        the block's own declared resets only; a container's local reset nets
-        are not yet part of the candidate set (no instance binds an output
-        yet). Returns {blockKey: [clock name, ...]} for
-        _validateSingleDomainObjects.
-
-        `direction: output` and `async: true` are accepted by the schema (the
-        declared shape spec §4.2 admits) but rejected here: nothing binds an
-        output clock/reset yet, and nothing releases an async reset yet, so
-        accepting either silently would leave a port nothing binds or a
-        reset nothing drives.
+    def _persistClockTree(self, tree):
+        """Persist the clockTree's three tables: blockClocksResets,
+        instanceClockResetBinds, memoryClocks. The derivation and the
+        checks live in clockTree.py; this is the SQL boundary that module
+        never crosses (it does not touch g.cur).
         """
-        blockRows = self.flatData['blocks']
-        memoryNames = dict()
-        for memRow in self.flatData['memories'].values():
-            memoryNames.setdefault(memRow['blockKey'], list()).append(memRow['memory'])
-
-        blockClocks = dict()          # blockKey -> OrderedDict(clock name -> row)
-        blockResets = dict()          # blockKey -> OrderedDict(reset name -> row)
-        blockDefaultClock = dict()    # blockKey -> clock name or None
-        selectedResetByClock = dict() # blockKey -> {clock name: reset name or None}
-
-        for blockKey, blockRow in blockRows.items():
-            block = blockRow['block']
-
-            def diag(row):
-                return self.diagnosticLocation(row['_context'], row.get('lc'))
-
-            declaredClocks = blockRow.get('clocks')
-            if declaredClocks:
-                clocks = OrderedDict(declaredClocks)
-            else:
-                clocks = OrderedDict()
-                clocks['clk'] = {'clock': 'clk', 'desc': '', 'direction': 'input',
-                                 'default': False, 'period': '', 'timeUnit': 'ns',
-                                 '_context': blockRow['_context'], 'lc': blockRow.get('lc')}
-            clockNames = list(clocks.keys())
-            inputClocks = [name for name in clockNames if clocks[name]['direction'] == 'input']
-            outputClocks = [name for name in clockNames if clocks[name]['direction'] == 'output']
-
-            for name in outputClocks:
-                self.logError(
-                    f"Block '{block}' clock '{name}' declares direction: "
-                    f"output. An output clock is not yet bindable (an "
-                    # TODO phase 3: instance clocks:/resets: maps
-                    f"instance clocks:/resets: map does not exist yet): "
-                    f"declare it direction: input, or drop the block's own "
-                    f"clocks: entry until instance maps land. "
-                    f"{diag(clocks[name])}")
-
-            if not inputClocks:
-                defaultClock = None
-            elif len(inputClocks) == 1:
-                defaultClock = inputClocks[0]
-            else:
-                marked = [name for name in inputClocks if clocks[name]['default']]
-                if len(marked) != 1:
-                    self.logError(
-                        f"Block '{block}' declares {len(inputClocks)} input clocks "
-                        f"({', '.join(inputClocks)}) and marks {len(marked)} of "
-                        f"them default: true. A block declaring more than one "
-                        f"input clock must mark exactly one default: true (spec "
-                        f"§4.2): the block default clock is what an unstated "
-                        f"port's, reset's, or fallback binding's clock means "
-                        f"(R6, R7), declaration order does not decide it, and "
-                        f"marking none or several leaves that meaning undefined "
-                        f"(V18). {diag(blockRow)}")
-                    # No default clock is knowable from an ambiguous marking;
-                    # leave it unset rather than guess one under
-                    # continueOnError, the same as the "no candidate" case
-                    # below leaves a clock's selected reset unset.
-                    defaultClock = None
-                else:
-                    defaultClock = marked[0]
-            blockDefaultClock[blockKey] = defaultClock
-            # Normalise: the default clock's own row always reads default:
-            # true, whether the block marked it (required with several input
-            # clocks) or it is simply the block's only one (implied, V18).
-            # getBDPortDomain and the alias helper both key off this field.
-            if defaultClock is not None:
-                clocks[defaultClock]['default'] = True
-
-            # V2/V15: a declared port's (ports:, registerPorts:, addressBlock:)
-            # clock: names a block clock of the same block; unstated means the
-            # block default clock, which a block with no default clock (every
-            # declared clock direction: output) does not have, so such a
-            # block must name every port's clock explicitly.
-            def checkPortClock(label, name, row):
-                clockName = row['clock']
-                if clockName:
-                    if clockName not in clocks:
-                        self.logError(
-                            f"Block '{block}' {label} '{name}' names clock: "
-                            f"'{clockName}', which is not one of the block's "
-                            f"own declared clocks ({', '.join(clockNames)}) "
-                            f"(V2). {diag(row)}")
-                elif defaultClock is None:
-                    cause = ("every declared clock is direction: output"
-                            if not inputClocks else
-                            "no single input clock is marked default: true (V18)")
-                    self.logError(
-                        f"Block '{block}' has no default clock ({cause}) "
-                        f"and {label} '{name}' names no clock:; such a block "
-                        f"must name every port's clock explicitly (V15). "
-                        f"{diag(row)}")
-
-            for portName, portRow in (blockRow.get('ports') or {}).items():
-                checkPortClock('ports', portName, portRow)
-            for portName, portRow in (blockRow.get('registerPorts') or {}).items():
-                checkPortClock('registerPorts', portName, portRow)
-            addressBlockRow = blockRow.get('addressBlock')
-            if addressBlockRow:
-                checkPortClock('addressBlock', 'addressBlock', addressBlockRow)
-
-            resetsDeclaredEmpty = (blockRow['_context'], block) in self._blocksDeclaringNoResets
-            declaredResets = blockRow.get('resets')
-            if declaredResets:
-                resets = OrderedDict(declaredResets)
-            elif resetsDeclaredEmpty or defaultClock is None:
-                resets = OrderedDict()
-            else:
-                resets = OrderedDict()
-                resets['rst_n'] = {'reset': 'rst_n', 'desc': '', 'direction': 'input',
-                                   'default': False, 'clock': defaultClock, 'async': False,
-                                   '_context': blockRow['_context'], 'lc': blockRow.get('lc')}
-
-            for resetName, resetRow in resets.items():
-                if resetRow['async']:
-                    self.logError(
-                        f"Block '{block}' reset '{resetName}' declares async: "
-                        f"true. An asynchronous reset input is not yet "
-                        f"released (the supplier contract does not exist "
-                        f"yet; TODO phase 4): declare it a plain input reset, "
-                        f"or drop it until then. {diag(resetRow)}")
-                    continue
-                statedClock = resetRow['clock']
-                clockName = statedClock or defaultClock
-                if not clockName:
-                    self.logError(
-                        f"Block '{block}' reset '{resetName}' names no clock: and "
-                        f"the block has no default clock; a block with no "
-                        f"default clock must name every reset's clock explicitly "
-                        f"(V15). {diag(resetRow)}")
-                    continue
-                if clockName not in clocks:
-                    self.logError(
-                        f"Block '{block}' reset '{resetName}' names clock: "
-                        f"'{clockName}', which is not one of the block's own "
-                        f"declared clocks ({', '.join(clockNames)}) (V1). "
-                        f"{diag(resetRow)}")
-                    continue
-                resetRow['clock'] = clockName
-
-            # R6/V18/V19, declared-only part: the selected reset of each clock
-            # the block carries, among its own declared resets. A container's
-            # local reset nets are not yet part of the candidate set.
-            byClock = dict()
-            for resetName, resetRow in resets.items():
-                if resetRow['async']:
-                    continue
-                byClock.setdefault(resetRow['clock'], list()).append(resetName)
-            selected = dict()
-            for clockName, names in byClock.items():
-                marked = [name for name in names if resets[name]['default']]
-                if len(marked) > 1:
-                    self.logError(
-                        f"Block '{block}' clock '{clockName}' has more than one "
-                        f"reset marked default: true ({', '.join(marked)}); at "
-                        f"most one reset per clock may be the default (V18). "
-                        f"{diag(blockRow)}")
-                    # No selected reset is knowable from an ambiguous marking;
-                    # leave it unset rather than guess one under
-                    # continueOnError, the same as the no-candidate case below.
-                    selected[clockName] = None
-                elif marked:
-                    selected[clockName] = marked[0]
-                elif len(names) == 1:
-                    selected[clockName] = names[0]
-                elif clockName == defaultClock:
-                    self.logError(
-                        f"Block '{block}' default clock '{clockName}' has "
-                        f"{len(names)} declared resets ({', '.join(names)}) and "
-                        f"none is marked default: true; a block with several "
-                        f"resets on its default clock must mark exactly one "
-                        f"(V18). {diag(blockRow)}")
-                    selected[clockName] = None
-                else:
-                    selected[clockName] = None
-            selectedResetByClock[blockKey] = selected
-
-            # V7: clocks, resets, interface ports, memories and, when the block
-            # does not declare them, the reserved names clk/rst_n, are pairwise
-            # distinct. Local nets are not yet part of this set.
-            names = dict()
-            collisions = list()
-
-            def addName(name, kind):
-                if name in names:
-                    collisions.append((name, names[name], kind))
-                else:
-                    names[name] = kind
-
-            for name in clocks:
-                addName(name, 'clock')
-            for name in resets:
-                addName(name, 'reset')
-            for name in (blockRow.get('ports') or {}):
-                addName(name, 'port')
-            for name in (blockRow.get('registerPorts') or {}):
-                addName(name, 'registerPort')
-            for name in memoryNames.get(blockKey, []):
-                addName(name, 'memory')
-            # The reserved names are aliases onto the default clock and its
-            # selected reset (intf_gen_utils.sv_default_domain_aliases), so
-            # each is reserved only where that alias actually fires: a block
-            # with no default clock (every declared clock direction: output)
-            # gets no clk alias, and a default clock with no selected reset
-            # (resets: {} or empty resets: [] make one, or the block has no
-            # default clock at all) gets no rst_n alias.
-            if 'clk' not in clocks and defaultClock is not None:
-                addName('clk', 'implicit clock')
-            if 'rst_n' not in resets and defaultClock is not None and selected.get(defaultClock):
-                addName('rst_n', 'implicit reset')
-            for name, firstKind, secondKind in collisions:
-                self.logError(
-                    f"Block '{block}' uses the name '{name}' for both a "
-                    f"{firstKind} and a {secondKind}; clocks, resets, interface "
-                    f"ports, memories and, when the block does not declare "
-                    f"them, the reserved names clk/rst_n, must be pairwise "
-                    f"distinct within a block (V7). {diag(blockRow)}")
-
-            blockClocks[blockKey] = clocks
-            blockResets[blockKey] = resets
-
-        # V13, phase 1 form: an AUTHORED connection clock: names a container
-        # clock, which - absent an instance map (phase 2) - can only be a
-        # name both endpoint blocks declare themselves (a block declaring
-        # nothing has only clk). An unstated clock: is exempt: spec §4.3
-        # rule 3 gives it to each endpoint's own block default independently,
-        # with no requirement that the two names agree. Without this check
-        # an authored name the connection's own project resolves but an
-        # endpoint block does not declare is silently discarded
-        # (getBDPortDomain falls back to the block default), so the
-        # author's stated domain would not be the one emitted.
-        for connRow in self.flatData['connections'].values():
-            if (connRow['_context'], connRow['connection']) not in self._connectionsWithAuthoredClock:
-                continue
-            clockName = connRow['clock']
-            for end in connRow['ends'].values():
-                blockKey = end['instanceTypeKey']
-                if clockName not in blockClocks[blockKey]:
-                    block = self.flatData['blocks'][blockKey]['block']
-                    declared = ', '.join(f"'{name}'" for name in blockClocks[blockKey])
-                    self.logError(
-                        f"Connection '{connRow['connection']}' names clock: "
-                        f"'{clockName}', but its endpoint block '{block}' "
-                        f"declares no clock of that name ({declared}) (V13). "
-                        f"A connection's clock: must name a clock every "
-                        f"endpoint block declares.")
-
-        rows = list()
-        for blockKey, clocks in blockClocks.items():
-            for orderIndex, (name, row) in enumerate(clocks.items()):
-                rows.append((blockKey, 'clock', name, orderIndex, row['desc'],
-                            row['direction'], int(bool(row['default'])),
-                            row['period'], row['timeUnit'], '', 0,
-                            selectedResetByClock[blockKey].get(name)))
-        for blockKey, resets in blockResets.items():
-            for orderIndex, (name, row) in enumerate(resets.items()):
-                rows.append((blockKey, 'reset', name, orderIndex, row['desc'],
-                            row['direction'], int(bool(row['default'])), None, None,
-                            row['clock'], int(bool(row['async'])), ''))
+        blockClocksResetsRows, instanceClockResetBindsRows, memoryClocksRows = tree.rows()
 
         # Explicit non-schema table, in the manner of blockParameterizedDecls:
         # bulk insert then index on the block access path. getBDClocksResets()
@@ -5950,243 +5687,26 @@ class projectCreate:
         g.cur.executemany("INSERT INTO blockClocksResets (blockKey, kind, itemKey, "
                           "orderIndex, desc, direction, isDefault, period, timeUnit, "
                           "clock, async, selectedReset) "
-                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", blockClocksResetsRows)
         g.cur.execute("CREATE INDEX idx_blockClocksResets_blockKey "
                       "ON blockClocksResets (blockKey)")
 
-        self._persistInstanceClockResetBinds(blockClocks, blockResets,
-                                             blockDefaultClock, selectedResetByClock)
-        self._persistMemoryClocks(blockClocks, blockDefaultClock)
-        return {blockKey: list(clocks.keys()) for blockKey, clocks in blockClocks.items()}
-
-    def _persistInstanceClockResetBinds(self, blockClocks, blockResets,
-                                        blockDefaultClock, selectedResetByClock):
-        """Persist, per instance, the clock/reset binds its container emits.
-
-        Automatic binding only (spec R10): name match for an `input`, and the
-        default-clock/selected-reset fallback for a block clock or reset
-        named literally `clk`/`rst_n`. Instance `clocks:`/`resets:` maps and
-        `output` binding need the container's local-net tracking, which does
-        not exist yet, so an `output` entry is skipped here rather than
-        bound; deriveBlockClocksResets already rejects a declared output
-        clock/reset before this runs, so the skip is reachable only under
-        continueOnError.
-        """
-        rows = list()
-        for instanceKey, instRow in self.flatData['instances'].items():
-            containerKey = instRow['containerKey']
-            # A container that is not a block has no signals to bind: the
-            # topInstance's own container is the design root, not a module.
-            if containerKey not in blockClocks:
-                continue
-            childKey = instRow['instanceTypeKey']
-            containerBlock = self.flatData['blocks'][containerKey]['block']
-            childBlock = self.flatData['blocks'][childKey]['block']
-            containerClocks = blockClocks[containerKey]
-            containerResets = blockResets[containerKey]
-            containerDefaultClock = blockDefaultClock[containerKey]
-            containerSelectedReset = selectedResetByClock[containerKey]
-
-            binds = list()
-            clockBindNet = dict()
-            for clockName, clockRow in blockClocks[childKey].items():
-                if clockRow['direction'] != 'input':
-                    continue
-                if clockName in containerClocks:
-                    net = clockName
-                elif clockName == 'clk' and containerDefaultClock:
-                    net = containerDefaultClock
-                else:
-                    self.logError(
-                        f"Instance '{instRow['instance']}' of block '{childBlock}' "
-                        f"in container '{containerBlock}' has no binding for its "
-                        f"clock '{clockName}': '{containerBlock}' declares no "
-                        f"clock of that name, and only 'clk' falls back to the "
-                        f"container's default clock (V3). Declared clocks of "
-                        f"'{containerBlock}': ({', '.join(containerClocks)}).")
-                    continue
-                clockBindNet[clockName] = net
-                binds.append((clockName, net))
-
-            for resetName, resetRow in blockResets[childKey].items():
-                if resetRow['direction'] != 'input':
-                    continue
-                isAsync = resetRow['async']
-                if resetName in containerResets:
-                    net = resetName
-                elif isAsync:
-                    self.logError(
-                        f"Instance '{instRow['instance']}' of block '{childBlock}' "
-                        f"in container '{containerBlock}' has no binding for its "
-                        f"asynchronous reset '{resetName}': '{containerBlock}' "
-                        f"declares no reset of that name, and an asynchronous "
-                        f"reset input takes no default fallback (V4).")
-                    continue
-                elif resetName == 'rst_n':
-                    childClockOfReset = resetRow['clock']
-                    boundClockNet = clockBindNet.get(childClockOfReset)
-                    if boundClockNet is None:
-                        # The reset's own clock already failed to bind (V3
-                        # reported it); do not also report a fallback failure
-                        # against a clock that was never resolved.
-                        continue
-                    net = containerSelectedReset.get(boundClockNet)
-                    if not net:
-                        self.logError(
-                            f"Instance '{instRow['instance']}' of block "
-                            f"'{childBlock}' in container '{containerBlock}' "
-                            f"falls back to the selected reset of container "
-                            f"clock '{boundClockNet}' for its reset 'rst_n', but "
-                            f"that clock has none (V11).")
-                        continue
-                else:
-                    self.logError(
-                        f"Instance '{instRow['instance']}' of block '{childBlock}' "
-                        f"in container '{containerBlock}' has no binding for its "
-                        f"reset '{resetName}': '{containerBlock}' declares no "
-                        f"reset of that name, and only 'rst_n' falls back to a "
-                        f"selected reset (V3). Declared resets of "
-                        f"'{containerBlock}': ({', '.join(containerResets)}).")
-                    continue
-                if not isAsync:
-                    # V6: the reset's own clock, mapped through this instance,
-                    # must be the clock the bound container reset belongs to.
-                    # A container reset that is itself async belongs to no
-                    # clock (''), which never equals a real bound clock name,
-                    # so a synchronous child reset name-matched onto it fails
-                    # here rather than passing unchecked.
-                    childClockOfReset = resetRow['clock']
-                    boundClockNet = clockBindNet.get(childClockOfReset)
-                    netMembership = containerResets[net]['clock']
-                    if boundClockNet and netMembership != boundClockNet:
-                        self.logError(
-                            f"Instance '{instRow['instance']}' of block "
-                            f"'{childBlock}' in container '{containerBlock}' "
-                            f"would bind clock '{childClockOfReset}' to "
-                            f"'{boundClockNet}' and reset '{resetName}' to "
-                            f"'{net}', but '{containerBlock}' releases '{net}' "
-                            f"on clock '{netMembership}', not on "
-                            f"'{boundClockNet}' (V6).")
-                        continue
-                binds.append((resetName, net))
-
-            for orderIndex, (childPort, parentSignal) in enumerate(binds):
-                rows.append((instanceKey, childPort, parentSignal, orderIndex))
         g.cur.execute("DROP TABLE IF EXISTS instanceClockResetBinds")
         g.cur.execute("CREATE TABLE instanceClockResetBinds "
                       "(instanceKey TEXT, childPort TEXT, parentSignal TEXT, "
                       "orderIndex INTEGER)")
         g.cur.executemany("INSERT INTO instanceClockResetBinds "
                           "(instanceKey, childPort, parentSignal, orderIndex) "
-                          "VALUES (?, ?, ?, ?)", rows)
+                          "VALUES (?, ?, ?, ?)", instanceClockResetBindsRows)
         g.cur.execute("CREATE INDEX idx_instanceClockResetBinds_instanceKey "
                       "ON instanceClockResetBinds (instanceKey)")
 
-    def _persistMemoryClocks(self, blockClocks, blockDefaultClock):
-        """Persist the clock each memory primitive is instantiated on.
-
-        The owning block's default clock (spec §4.3): a memory's own
-        declared `clock:` and its accessors' domains are a separate concern
-        (§3.4's memory domain derivation). A block with no default clock has
-        none to fall back to, and a memory's own `clock:` is not read here,
-        so that block owning a memory is an error.
-        """
-        rows = list()
-        for memoryBlockKey, memRow in self.flatData['memories'].items():
-            blockKey = memRow['blockKey']
-            clock = blockDefaultClock[blockKey]
-            if clock is None:
-                hasInputClock = any(row['direction'] == 'input'
-                                    for row in blockClocks[blockKey].values())
-                cause = ("no single input clock is marked default: true (V18)"
-                         if hasInputClock else
-                         "every declared clock is direction: output")
-                self.logError(
-                    f"Memory '{memRow['memory']}' of block '{memRow['block']}' "
-                    f"has no clock: its owning block has no default clock "
-                    f"({cause}). A memory defaults to the owning block's "
-                    f"default clock (spec §4.3); give the owning block one.")
-                continue
-            rows.append((memoryBlockKey, clock))
         g.cur.execute("DROP TABLE IF EXISTS memoryClocks")
         g.cur.execute("CREATE TABLE memoryClocks (memoryBlockKey TEXT, clock TEXT)")
         g.cur.executemany("INSERT INTO memoryClocks (memoryBlockKey, clock) "
-                          "VALUES (?, ?)", rows)
+                          "VALUES (?, ?)", memoryClocksRows)
         g.cur.execute("CREATE INDEX idx_memoryClocks_memoryBlockKey "
                       "ON memoryClocks (memoryBlockKey)")
-
-    def _validateSingleDomainObjects(self, blockClocks):
-        # A memory primitive and a generated <block>_regs decoder are each one
-        # module in one domain, so their connections must agree on a clock. Both
-        # checks read the resolved clock, so an unstated clock: cannot hide a
-        # disagreement.
-        memoryClocks = dict()
-        for row in self.flatData['memoryConnections'].values():
-            memoryClocks.setdefault(row['memoryBlockKey'], dict())[row['clock']] = None
-        for memoryBlockKey, clocks in memoryClocks.items():
-            if len(clocks) < 2:
-                continue
-            memory = self.flatData['memories'][memoryBlockKey]
-            names = ', '.join(f"'{clock}'" for clock in clocks)
-            if memory['memoryType'] == 'dualPort':
-                # The shipped dual-port primitive writes one array from two
-                # always @(posedge clk) blocks, so two independent clocks turn a
-                # same-address race into a race at every coincident edge, and the
-                # reference model has no clock domains to verify it against.
-                self.logError(f"Memory '{memory['memory']}' of block '{memory['block']}' is "
-                              f"dualPort and its ports resolve to different clocks ({names}). "
-                              f"Dual-clock memory is not supported: put both ports in one "
-                              f"clock domain.")
-            else:
-                self.logError(f"Memory '{memory['memory']}' of block '{memory['block']}' has "
-                              f"connections in more than one clock domain ({names}). A memory "
-                              f"is a single-domain primitive.")
-        registerClocks = dict()
-        for row in self.flatData['registerConnections'].values():
-            registerClocks.setdefault(row['blockKey'], dict())[row['clock']] = None
-        for blockKey, clocks in registerClocks.items():
-            if len(clocks) < 2:
-                continue
-            names = ', '.join(f"'{clock}'" for clock in clocks)
-            self.logError(f"Block '{self.flatData['blocks'][blockKey]['block']}' has register "
-                          f"connections in more than one clock domain ({names}). The generated "
-                          f"register decoder is a single-domain module.")
-        # A generated apbDecode router is one module clocked by the register bus
-        # it routes, and its emitter reads the FIRST entry of the block's own
-        # declared clock set (moduleRegs.py, apbDecodeModule.py). A router
-        # declaring more than one clock puts a clock other than the bus in
-        # front of that set - a crossing on the APB handshake between the
-        # router and its own handler, emitted as a real port so it still
-        # elaborates. Multi-domain routers are rejected rather than ordered.
-        # Scoped to the routers this build routes. The register-decode pass drops a
-        # router whose every instance lies outside this build's topInstance - a
-        # referenced child project's standalone-harness router - so this build
-        # neither routes nor emits it, and failing on it would fail a root build on
-        # a block only the child's own build is responsible for. Same
-        # reachableInstanceKeys() the pass calls, over the same hierarchy state, so
-        # the two cannot drift.
-        # The candidates are selected FIRST and reachability computed only if one
-        # exists. reachableInstanceKeys() does not cache, and projectCreate already
-        # performs one full walk of its own after generateHierarchy(), so computing
-        # it here unconditionally would walk the whole design twice on every build
-        # to serve a rule that almost no design triggers.
-        multiClockRouters = {blockKey: row for blockKey, row in self.flatData['blocks'].items()
-                             if row.get('addressBlock') and len(blockClocks[blockKey]) > 1}
-        if multiClockRouters:
-            reachableBlockKeys = {self.flatData['instances'][instanceKey]['instanceTypeKey']
-                                  for instanceKey in self.reachableInstanceKeys()}
-            for blockKey, row in multiClockRouters.items():
-                if blockKey not in reachableBlockKeys:
-                    continue
-                names = ', '.join(f"'{clockName}'" for clockName in blockClocks[blockKey])
-                self.logError(f"Register-decode router block '{row['block']}' resolves to more "
-                              f"than one clock ({names}). A router is a single-domain module "
-                              f"clocked by the register bus it routes, so its set must hold one "
-                              f"clock. Commonly a 'clocks:' entry on the block widened it, but a "
-                              f"contained instance, a non-register connection carrying clock:, or "
-                              f"a second register-bus connection into the router widens it too.")
-        if self.errorState:
-            exit(warningAndErrorReport())
 
     def _validateParameterizedConnectionEndpoints(self, declInfo, blockParams, blockIsParameterizable):
         # A parameterized interface implies both connected endpoints are
@@ -8708,7 +8228,7 @@ class projectCreate:
             # Recorded before _post_resolveConnectionClock fills an unstated
             # clock: with the project default (spec §4.3 rule 3: unstated
             # means each endpoint's OWN block default, not a name both
-            # endpoints must share) - deriveBlockClocksResets's V13 check
+            # endpoints must share) - clockTree.build()'s V13 check
             # reads this to tell "authored" from "defaulted".
             if row['clock']:
                 self._connectionsWithAuthoredClock.add((yamlFile, row['connection']))

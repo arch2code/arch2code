@@ -245,20 +245,191 @@ New.
 - Any `scope: project` lookup of clocks from blocks, connections, memory or
   register connection rows.
 
+### 3.7 Container net model
+
+The model phases 2-4 build. Five entities, no more:
+
+- **Container.** A block that instantiates others, and the testbench project
+  acting as the root container.
+- **Net.** One per clock or reset within a container. Kinds: declared (a
+  container clock or reset), local (a net a child output drives inside the
+  container), testbench (at the root). A reset net belongs to one clock net,
+  except an asynchronous reset input's net, which belongs to none.
+- **Driver.** Exactly one per net: the container's own input port, a child
+  instance's output port, the container's own implementation behind a
+  declared `output` no child drives, or the environment at the root. This is
+  the spec §4.6 table (`Net inside container B` / `Driver`) expressed as a
+  field; V20's root case is a block with no driving input, this driver kind
+  among them.
+- **Consumer.** A child instance's block clock or reset bound to the net by
+  map, name match or fallback (§4.4, R10). The consumer edge records how it
+  was bound.
+- **Block declaration.** The per-block clocks, resets, default clock and
+  selected reset phase 1 already derives: the `blockClocks`, `blockResets`,
+  `blockDefaultClock` and `selectedResetByClock` maps `deriveBlockClocksResets`
+  builds (`pysrc/processYaml.py:5686-5689`), persisted into `blockClocksResets`
+  and read back by `getBDClocksResets` (`pysrc/processYaml.py:1559`).
+
+Each verification item checks one invariant of this model:
+
+| Check | Model invariant |
+| :--- | :--- |
+| V3 | Every input block clock/reset of an instance has a consumer edge; every output appears in the map. |
+| V4 | A map key names a block clock or reset of the child; an `input` map value names a declared net or a driven local net; an `output` map value names a declared `output` of the container, a local net name, or `~`; a clock entry binds a clock net and a reset entry a reset net. An unmapped asynchronous reset input with no same-name net is an error. |
+| V6 | A consumer reset's net belongs to the net its own clock's consumer edge resolves to: for a declared net, the container's `clock` field; for a local net, the clock its driving output's block reset belongs to, mapped through the supplier's instance. The same check applies to an `output` reset bound onto a declared `output` reset. An asynchronous reset input's consumer edge is exempt. |
+| V13 | A connection `clock:` names a net exactly one input block clock of the instance's consumer edges resolves to. |
+| V8 | A memory node's clock is a block clock of its owning block; every `memoryConnections:` consumer edge resolves to the same net as the memory's, mapped through the memory's instance, and a memory with such consumers has no driver of `~`. A register-bus tree is one net throughout, from the feed to every router, handler and register in it. |
+| V20, V22 | V20: the supply graph, an edge at every instance from each of a block's input nets (asynchronous reset inputs included) to each output net the block itself drives (not a child's export), is acyclic and rooted; a block with no input clock or reset is a root, and every supplied net reaches a testbench net or a root. V22: every local net has at least one consumer edge. |
+| V21 | Per instance of a `hasVl` block in its declaring project, the input clock's consumer chain resolves to one testbench net across every instance, of which there is at least one, or the clock declares its own `period`; disagreement across instances is the error. Each input reset resolves to one testbench reset the same way, else takes the default `releaseCycles`. An asynchronous reset input's release count needs the block default clock to be an input clock. |
+| V25, V26 (R25) | Register-port selection for a top-down leaf: the consumer, among the instance's block clocks, of the bus net; and, independently, the consumer among its reset nets of the bus net's selected reset. Every instance of the leaf block must agree (unanimity). |
+| crossings (R16) | Two connection ends cross when their block clocks bind to different nets of the same container; two container clocks bound to one parent net remain distinct nets, so binding through a parent does not by itself remove a crossing. |
+
+Boundaries: the model is built inside `projectCreate` during derivation
+(§3.2-§3.5) and flattened into the tables the `projectOpen` views already
+read: `blockClocksResets` (`getBDClocksResets`), `instanceClockResetBinds`
+(`getBDInstanceClockResetBinds`), `containerLocalNets` (`getBDLocalNets`,
+new in phase 3, not present at HEAD), and `memoryClocks`
+(`getBDMemoryClock`). Templates never see the model; they consume the
+`projectOpen` view fields as today. No general graph library, visitor
+framework or plugin layer is introduced. The implementation is the four
+classes of §3.8, `BlockDomains`, `Net`, `Container` and `ClockTree`; a driver
+and a consumer are records `Net` holds, not separate classes.
+
+### 3.8 Implementation module: the clock tree model
+
+The model exists to make checking and using clocks and resets simple. It is an
+in-memory structure built during `projectCreate`, not persisted. The three
+existing tables, `blockClocksResets`, `instanceClockResetBinds` and
+`memoryClocks` (CREATE at `pysrc/processYaml.py:5946-5949`, `:6076-6078`,
+`:6112`), remain the persisted form and are produced from the model. The model
+does not replace parser functionality: `processSimple` normalisation,
+`_normalizeClockResetShortForm` (`pysrc/processYaml.py:7328`), the three
+surviving schema `post(...)` hooks (`pysrc/processYaml.py:8985, 8995, 9001`)
+and the row shapes in `flatData` stay as they are; the model consumes parsed
+rows.
+
+`pysrc/clockTree.py` holds four plain classes, dataclasses or plain classes
+with no base class and no framework:
+
+- `BlockDomains`. One per block: clocks and resets in declaration order, the
+  default clock, and the selected reset per clock. Built from a
+  `flatData['blocks']` row (fields per `config/schema.yaml:258-380`: the
+  `clocks` subtable rows `clock, desc, direction, default, period, timeUnit`;
+  the `resets` rows `reset, desc, direction, default, clock, async`), applying
+  the implicit `clk`/`rst_n` rules (R5) and the empty-`resets:` flag the parser
+  records. Owns V1, V2, V7, V15, V18. Replaces the phase 1 dictionaries
+  `blockClocks`, `blockResets`, `blockDefaultClock` and `selectedResetByClock`
+  (`pysrc/processYaml.py:5686-5689`), and the per-container alias
+  `containerSelectedReset` (`pysrc/processYaml.py:5988`, itself
+  `selectedResetByClock[containerKey]`, a block fact).
+- `Net`. One per clock or reset in a container: name, `isReset`, kind
+  (declared, local, testbench), for a reset the clock net it belongs to (none
+  for an asynchronous input), exactly one driver (kinds per §3.7: own input
+  port, child output, own implementation behind an undriven output,
+  environment at root), and consumers as an (instanceKey, block clock or
+  reset, binding kind) tuple, where binding kind is map, name match or
+  fallback. Replaces `clockBindNet` (`pysrc/processYaml.py:5991`).
+- `Container`. A block that instantiates children, or the testbench root; holds
+  nets by name and child instances.
+- `ClockTree`. Blocks by key, containers by key, and the root. `build()` takes
+  explicit arguments only: the `flatData` sub-dicts the phase 1 derivation
+  reads today (`blocks`, `instances`, `connections`, `memories` at
+  `pysrc/processYaml.py:5683, 6095`, `memoryConnections` at `:6124`,
+  `registerConnections` at `:6145`), the testbench clocks and resets from
+  project `data`, the two parser-recorded sets `_blocksDeclaringNoResets`
+  (`:3847`, read at `:5783`) and `_connectionsWithAuthoredClock` (`:3855`,
+  read at `:5914`), and `diag`. The exact signature is fixed by the
+  implementation; `build()` reaches into no `projectCreate` attribute other
+  than `diag`'s two methods, `logError(msg)` and `diagnosticLocation(yamlFile,
+  lc)` (signatures at `pysrc/processYaml.py:4463` and `:7244`); in production
+  `diag` is the `projectCreate` instance, in tests a stub. `check()` runs the
+  invariants of §3.7. `rows()` returns the three row lists in the exact column
+  order of the existing INSERTs (`pysrc/processYaml.py:5950-5953`,
+  `:6079-6081`, `:6113-6114`).
+
+Decisions recorded:
+
+- Block declarations live inside the tree (`ClockTree.blocks`).
+- Resolution (phase 4, `Net.resolve()`) is computed on demand, not stored.
+- Persistence stays in `processYaml.py`: the tree returns rows and the existing
+  SQL writes them; the module-level cursor (`g.cur`) never enters the model.
+  The module does not import `processYaml`.
+
+`processYaml.py` keeps `_normalizeClockResetShortForm`, the three
+`_post_resolve*` hooks, the `getBD*` views (`pysrc/processYaml.py:1559, 1602,
+1617, 3106, 3138`), and the CREATE/INSERT SQL. `_validateClockResetNames`
+(`pysrc/processYaml.py:8944`) also stays: it checks a name collision between a
+project's own `clocks:` and `resets:` sections
+(`self.data['clocks'][projectName]` against `self.data['resets'][projectName]`)
+before any tree exists, so it is parser-side, not model-side.
+
+The four call sites at `pysrc/processYaml.py:4008, 4010, 4403, 7384` reduce to
+three. `deriveBlockClocksResets()` at 4008 and
+`_validateSingleDomainObjects(blockClocks)` at 4010 become `build()` then
+`check()` at that same site, followed by persisting `rows()`.
+`_normalizeClockResetShortForm` at 7384 is unchanged: it runs inline from
+`processSimple`'s per-item dispatch, before a tree exists to build.
+`_validateClockResetNames` at 4403 is unchanged, for the reason above.
+
+Phase mapping: phase 2 adds the map binding kind and the R25 selection as a
+lookup on the bus net's consumers. Phase 3 adds the local net kind and the
+child-output and own-implementation drivers; V20 and V22 become one loop over
+nets. Phase 4 adds `Net.resolve()`, V21 and the end-of-run report.
+
+Tests: `unittest/test_clock_domains.py` builds a `ClockTree` from dict inputs
+and a stub `diag`. The `object.__new__(projectCreate)` construction
+(`unittest/test_clock_domains.py:707`) is removed in this step, since
+`build()`'s explicit inputs make it unnecessary. Existing cases keep their
+assertions.
+
+Introducing the model changes no output. Verification, sequential (memory:
+`a2c-build-serialization`): `make clean`, `make -j8 unittest`, `make -j8
+two-clk`. A `diff -r` of `examples/twoClk`'s `rtl` and `verif` (and `ip/rtl`,
+`ip/verif`) captured before and after must be empty. The four `TODO phase`
+markers move with their code; `grep -rn 'TODO phase' pysrc` returns the same
+count before and after. This step lands as its own commit, before any phase 2
+behaviour.
+
 ## 4. `projectOpen` views
 
 Language-neutral, DB-backed; templates consume fields, never `prj.data` walks.
 
-- `getBDClocksResets` (1559–1575): rows gain `direction`, `isDefault`,
+- **Derived tables load at open.** `loadData()` (`pysrc/processYaml.py:499`)
+  gains a loader for the four non-schema tables, run from `loadData()` itself
+  or from `__init__` beside the `self.loadData()` call (`:479`):
+  `blockClocksResets` grouped by `blockKey`, `instanceClockResetBinds` grouped
+  by `instanceKey`, `memoryClocks` grouped by `memoryBlockKey`, and
+  `blockParameterizedDecls` grouped by `blockKey`, included so one loader
+  pattern covers all four derived tables rather than three plus an exception.
+  Each becomes a `SELECT * FROM <table>` grouped into `self.data[table]`; none
+  of the four names collides with a schema table name (checked against
+  `self.schema.tables` and against `self.data`'s existing keys), so
+  `self.data` is the right home, not a second sibling dict. `getBDClocksResets`
+  (1560), `getBDInstanceClockResetBinds` (1603), `getBDMemoryClock` (1619) and
+  `getBDParameterizedDecls` (1537) read `self.data[table][key]` in place of
+  their `g.cur.execute` call; return shapes are unchanged. The four `CREATE
+  INDEX` statements in `_persistClockTree` and `deriveParameterizedDeclSets`'s
+  persist step (`idx_blockClocksResets_blockKey`,
+  `idx_instanceClockResetBinds_instanceKey`, `idx_memoryClocks_memoryBlockKey`,
+  `idx_blockParameterizedDecls_blockKey`) are dropped; a per-key index only
+  earned its keep when the query ran per key, and the loader replaces that
+  with one scan. `projectOpen` keeps exactly one SELECT per table, in the
+  loader; no `g.cur.execute` remains in any `getBD*` helper. Gate: `make
+  clean`, `make -j8 unittest`, `make -j8 two-clk` run sequentially (memory:
+  `a2c-build-serialization`); `diff -r` of `twoClk`'s generated artifacts
+  before and after is empty; a unit test asserts the loaded dicts equal the
+  four tables' contents for a small project, or equivalently that each of the
+  four helpers' output is unchanged against a direct SELECT.
+- `getBDClocksResets` (1559): rows gain `direction`, `isDefault`,
   `selectedReset`, `async`, `period`, `timeUnit`. Order is declaration order.
   Add `defaultClock` and `defaultReset` (the selected reset of the default
   clock, possibly absent) on the block for the alias helper.
-- `getBDInstanceClockResetBinds` (1577–1590): unchanged shape; add
+- `getBDInstanceClockResetBinds` (1602): unchanged shape; add
   `direction` so the SV template can emit an output binding.
-- New `getBDLocalNets(blockKey)`: `[{kind, name, memberClock}]` for the
-  container's wire declarations (R18).
-- `getBDMemoryClock` (1592–1599): return clock and reset.
-- `getBDPortDomain` / `getBDPortDomainReset` (3081, 3112): source from the
+- New `getBDLocalNets(blockKey)` (new in phase 3, not present at HEAD):
+  `[{kind, name, memberClock}]` for the container's wire declarations (R18).
+- `getBDMemoryClock` (1617): return clock and reset.
+- `getBDPortDomain` (3106) / `getBDPortDomainReset` (3138): source from the
   §3.4 results; unchanged field names `domainClock`, `domainReset`.
 - New `getTestbenchClocksResets()`: for the top block, the testbench entries
   with the top port each binds, with `period`, `timeUnit`, `releaseCycles`.
@@ -356,9 +527,20 @@ Language-neutral, DB-backed; templates consume fields, never `prj.data` walks.
 
 ### 6.2 Unit tests (`unittest/`)
 
-- `test_clock_domains.py`: replace derivation assertions with declaration and
-  binding assertions; one test per V entry with a minimal failing fixture and
-  a diagnostic-substring assertion, V1–V23.
+- New: the derived-tables loader (§4, "Derived tables load at open") on a
+  small project, asserting `self.data['blockClocksResets']`,
+  `self.data['instanceClockResetBinds']`, `self.data['memoryClocks']` and
+  `self.data['blockParameterizedDecls']` equal the four tables' contents, or
+  equivalently that `getBDClocksResets`, `getBDInstanceClockResetBinds`,
+  `getBDMemoryClock` and `getBDParameterizedDecls` return the same values as
+  before the loader replaced their per-key SELECT.
+- `test_clock_domains.py`: phase 2's first step (§3.8) removes its
+  `object.__new__` construction of an empty `projectCreate`
+  (`unittest/test_clock_domains.py:707`); tests build a `ClockTree` from a
+  declaration set and `flatData` instead. Beyond that, replace derivation
+  assertions with declaration and binding assertions; one test per V entry
+  with a minimal failing fixture and a diagnostic-substring assertion,
+  V1–V23.
 - `test_clock_reset_emission.py`: today asserts additive block `clocks:`
   lists, canonical order, an alias onto the block's first clock, and the
   feed-clock decode tree. Rewrite the additive-list, canonical-order and
@@ -435,9 +617,13 @@ before the next phase starts.
    derivation body; `_persistInstanceClockResetBinds` and
    `_persistMemoryClocks` keep running until §3.2 and §3.4 replace them in
    phase 2. Fixture: `twoClk` rewritten.
-2. **Instance maps.** §2.1 instance maps, §3.2 for inputs, §3.4 port domains
-   and memory/register rules, including the top-down leaf register-port
-   selection (R25, V8, V25, V26), §5.3 handler and router domains, §2.2
+2. **Instance maps.** First step: introduce the clock tree model (§3.8), its
+   own commit, before any behaviour in this phase lands. Second step: the
+   derived-tables loader (§4, "Derived tables load at open"), its own commit.
+   Then §2.1 instance maps, §3.2 for inputs, §3.4 port domains and
+   memory/register rules,
+   including the top-down leaf register-port selection (R25, V8, V25, V26),
+   the §3.7 container net model, §5.3 handler and router domains, §2.2
    removals. Fixture: `twoClk` composition with explicit maps and renaming.
 3. **Outputs and local nets.** `direction: output`, local nets, export, `~`,
    V5, V6 for local nets and exports, V20, V22, §3.3, §5.1 wires and output
@@ -451,6 +637,49 @@ before the next phase starts.
    `reset:`, `pslverr` generation and router propagation, bridge behaviour
    with the memory side in reset. Until then a memory with `regAccess` whose
    clock differs from its handler's bus clock is rejected (§3.4, V24).
+7. **Cleanup.** Once phases 1-5 are in, remove every plan-specific artefact
+   phases 1-5 left in the tree; these markers are kept deliberately during
+   development, so intermediate commits carry them, and removing them is the
+   last step before this plan is marked done. This phase does not wait on
+   phase 6, which is tracked as its own plan.
+   - The `TODO phase N` markers: exactly four today, all in
+     `pysrc/processYaml.py` (lines 1577, 1592, 5713, 5801; `grep -rn 'TODO
+     phase' pysrc config templates unittest`), each replaced by the
+     behaviour it deferred or deleted along with the placeholder it marks.
+   - The `SKIPPED` registries and their phase-naming reason strings, in
+     `unittest/test_clock_reset_emission.py` (from line 2029) and
+     `unittest/test_register_decode_clock.py` (from line 478): every skipped
+     case is either rewritten to pass against the final behaviour or deleted
+     as retired, so the skipped count returns to zero. Remove the `Skipped
+     cases:` reporting in `unittest/run_all_tests.sh` (lines 439, 442) and
+     `unittest/run_all_tests_parallel.sh` (lines 150-151) if nothing else
+     populates `SKIPPED_COUNT`.
+   - Any comment, docstring or diagnostic text that names a plan phase or a
+     section of this plan as bookkeeping rather than a durable reference, in
+     the files this plan touches: `pysrc/processYaml.py`, the new
+     `pysrc/clockTree.py`, `pysrc/intf_gen_utils.py`, `config/schema.yaml`,
+     `templates/systemc/module_hdl_wrapper.py`,
+     `templates/systemVerilog/moduleInterfacesInstances.py`,
+     `templates/systemVerilog/module_hdl_wrapper.py`,
+     `templates/systemVerilog/moduleRegs.py`,
+     `templates/systemVerilog/apbDecodeModule.py`, `unittest/test_clock_*.py`
+     and `unittest/test_register_decode_clock.py`. The check is `grep -rn -i
+     'phase [0-9]\|plan-clock' <those files>`, restricted to them: it must
+     return nothing but a V or R number in a user-facing diagnostic (a
+     durable reference, which stays). `spec §` citations are exempt
+     throughout and are not swept: they cite the normative specification, not
+     this plan, and are durable wherever they appear (for example
+     `pysrc/processYaml.py:3148`, `pysrc/intf_gen_utils.py:268`,
+     `config/schema.yaml:300`, `config/postParseRegisterPorts.py:510`).
+     Hits outside the listed files, such as
+     `unittest/test_migrate_layout.py:3` or
+     `unittest/test_nested_ownership.py:307`, belong to other plans and are
+     out of scope for this sweep.
+   - This plan's own status line moves from PROPOSED to the tree's convention
+     for a finished plan, `IMPLEMENTED` with a date (`plan-new-project-onboarding.md`,
+     `bug7-crossinterface-boundary-thunker-proposal.md`).
+   - Verified by the same `make clean`, `make -j8 unittest`, `make -j8
+     two-clk` sequence as every other phase.
 
 ## 8. Open items for the implementer
 
