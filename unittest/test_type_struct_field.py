@@ -108,6 +108,16 @@ typeStructTest:
   dynBad: typeStruct(field, ModeWord)
 """
 
+# typeStruct(field, <sibling>) naming a sibling whose field type is ignore.
+# An ignore field is skipped by processSimple and never stored in the row, so
+# it can never supply a mode word: this must fail at schema time.
+BAD_SIBLING_IGNORE_SECTION = """
+typeStructTest:
+  probe: key
+  modeWord: ignore
+  dynBad: typeStruct(field, modeWord)
+"""
+
 # A list sub-table (anchor is None; the row's identity comes from its own
 # key field, itemKey) with a typeStruct field, used to prove a missing-field
 # diagnostic on such a row names the row via its recorded key field instead
@@ -537,6 +547,30 @@ def _run():
                     and 'modeWord' in output \
                     and 'must be a scalar' in output
 
+            def dynamic_sibling_absent_errors():
+                # The sibling is declared earlier but its field type stores
+                # nothing for an omitted value (here: const, missing from the
+                # row under continueOnError), so it is absent from the row.
+                # This must log a clean error, not raise KeyError.
+                before = g.errorCount
+                processYaml_module.continueOnError = True
+                buf = io.StringIO()
+                try:
+                    with contextlib.redirect_stdout(buf):
+                        ret = _direct_probe_row(
+                            creator, arch_context, 'probeSiblingAbsent',
+                            {'dynamicTarget': 'probeType_t'},
+                            {'modeWord': 'const', 'dynamicTarget': 'typeStruct'})
+                finally:
+                    processYaml_module.continueOnError = False
+                output = buf.getvalue()
+                return g.errorCount > before \
+                    and 'modeWord' not in ret \
+                    and ret['dynamicTargetKey'] == 'InvalidValueInYaml' \
+                    and ret['dynamicTargetKind'] == 'InvalidValueInYaml' \
+                    and 'modeWord' in output \
+                    and 'has no value' in output
+
             def dynamic_field_non_scalar_errors():
                 # The typeStruct field's own value (dynamicTarget) is a YAML
                 # list, not a name: this must log a clean error, not raise
@@ -646,6 +680,9 @@ def _run():
                 "typeStruct(field, modeWord) non-scalar field value errors",
                 dynamic_field_non_scalar_errors))
             results.append(_run_case(
+                "typeStruct(field, modeWord) absent sibling value errors",
+                dynamic_sibling_absent_errors))
+            results.append(_run_case(
                 "typeStruct(field, modeWord) literal sentinel sibling value errors",
                 sentinel_sibling_value_errors))
             results.append(_run_case(
@@ -742,6 +779,16 @@ def _run():
                 and 'dynBad' in output \
                 and 'noSuchSibling' in output
 
+        def sibling_ignore_rejected():
+            # typeStruct(field, modeWord) with modeWord declared as ignore.
+            raised, output = _schema_validation_error(
+                BAD_SIBLING_IGNORE_SECTION,
+                'type_struct_bad_sibling_ignore_test')
+            return raised \
+                and 'dynBad' in output \
+                and 'modeWord' in output \
+                and 'stores no value' in output
+
         def sibling_case_mismatch_rejected():
             # typeStruct(field, ModeWord) with the sibling declared as
             # modeWord: the sibling check is an exact-name match (schema.py
@@ -793,6 +840,9 @@ def _run():
         results.append(_run_case(
             "typeStruct(field, sibling) missing sibling fails schema validation",
             sibling_missing_rejected))
+        results.append(_run_case(
+            "typeStruct(field, sibling) ignore sibling fails schema validation",
+            sibling_ignore_rejected))
         results.append(_run_case(
             "typeStruct(field, sibling) case mismatch fails schema validation",
             sibling_case_mismatch_rejected))

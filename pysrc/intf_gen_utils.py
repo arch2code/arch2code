@@ -329,7 +329,10 @@ def _config_qualified_name(name, is_parameterizable, config_override=None):
     return f"{name}<{suffix}>"
 
 def sc_struct_type_name(struct_name, struct_key, prj, use_config=True, config_override=None):
-    is_parameterizable = use_config and prj.datatypeRef('structures', struct_key)['isParameterizable']
+    # An unbound field reaches here with struct_key '' (sc_structure_field_type
+    # passes row.get(key_field_name, '')); it names no row to dereference and
+    # is never parameterizable.
+    is_parameterizable = use_config and struct_key and prj.datatypeRef('structures', struct_key)['isParameterizable']
     return _config_qualified_name(struct_name, is_parameterizable, config_override)
 
 def sc_structure_field_type(row, field_name, key_field_name, prj, use_config=True, config_override=None):

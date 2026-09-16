@@ -155,7 +155,7 @@ struct axiReadRespSt
 template <typename A, typename U = std::monostate, typename ID = _axiIdT, unsigned IDW = 4>
 struct axiReadAddressSt
 {
-    ID          arid;    // Master Read address ID. This signal is the identification tag for the read address group of signals (4bits)
+    ID          arid;    // Master Read address ID. This signal is the identification tag for the read address group of signals
     A           araddr;  // Master Read address. The read address gives the address of the first transfer in a read burst transaction
     uint8_t     arlen;   // Master Burst length. This signal indicates the exact number of transfers in a burst.
     _axiSizeT   arsize;  // Master Burst size. This signal indicates the size of each transfer in the burst.

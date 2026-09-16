@@ -8201,9 +8201,15 @@ class projectCreate:
         """The sections a typeStruct field may resolve against: the tuple
         the schema recorded for a constant spelling, or the tuple selected by
         the sibling field's value for typeStruct(field, <sibling>). Returns
-        None after logging when the sibling's value is not a mode word."""
+        None after logging when the sibling's value is absent or not a mode word."""
         if isinstance(recorded, tuple):
             return recorded
+        if recorded not in ret or ret[recorded] is None:
+            # The sibling is declared earlier, but an omitted optional
+            # sub-table, and const/param/eval under continueOnError, store
+            # nothing for an absent value.
+            self.logError(f"{where}'s mode field '{recorded}' has no value, so the field cannot be resolved.")
+            return None
         word = ret[recorded]
         if isinstance(word, (list, dict)):
             self.logError(f"{where}'s mode field '{recorded}' must be a scalar, but got {word!r}.")

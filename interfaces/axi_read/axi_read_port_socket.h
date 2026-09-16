@@ -23,8 +23,8 @@
 
 #pragma pack(push, 1)
 struct socket_axi_rd_req_st {
-    uint8_t arid;
-    uint8_t pad0[3];
+    uint16_t arid;
+    uint8_t pad0[2];
     uint32_t araddr;
     uint8_t arlen;
     uint8_t arsize;
@@ -32,23 +32,24 @@ struct socket_axi_rd_req_st {
     uint8_t pad1;
 };
 struct socket_axi_rd_resp_st {
-    uint8_t rid;
+    uint16_t rid;
     uint8_t rresp;
-    uint8_t pad[2];
+    uint8_t pad;
     uint8_t data[SOCKET_AXI_BURST_BYTES];
 };
 #pragma pack(pop)
 
 static_assert(sizeof(socket_axi_rd_req_st) == 12, "socket_axi_rd_req_st wire layout");
 static_assert(sizeof(socket_axi_rd_resp_st) == 4100, "socket_axi_rd_resp_st wire layout");
-// The wire structs above carry the AXI id as uint8_t; widen them (and their
-// Python ctypes mirrors) before binding an id_t wider than 8 bits.
+// The wire structs above carry the AXI id as uint16_t, supporting id_t up to
+// 16 bits; widen them (and their Python ctypes mirrors) before binding an
+// id_t wider than 16 bits.
 
 // axi_read_in: Python is AXI read slave; shell forwards DMA read bursts to Python memory.
 template <class A, class D, class ID = _axiIdT, unsigned IDW = 4>
 void port_socket(axi_read_in<A, D, std::monostate, std::monostate, ID, IDW> &port, const std::string &interface_name)
 {
-    static_assert(IDW <= 8, "the socket wire format carries AXI ids as uint8_t; widen the wire structs and their Python ctypes mirrors before binding an id_t wider than 8 bits");
+    static_assert(IDW <= 16, "the socket wire format carries AXI ids as uint16_t; widen the wire structs and their Python ctypes mirrors before binding an id_t wider than 16 bits");
     const int fd = socketFactory::getFd(interface_name);
     if (fd < 0) {
         return;
@@ -158,7 +159,7 @@ void port_socket(axi_read_in<A, D, std::monostate, std::monostate, ID, IDW> &por
         }
 
         socket_axi_rd_req_st wire_req{};
-        wire_req.arid = static_cast<uint8_t>(addr.arid);
+        wire_req.arid = static_cast<uint16_t>(addr.arid);
         wire_req.araddr = static_cast<uint32_t>(addr.araddr.addr);
         wire_req.arlen = addr.arlen;
         wire_req.arsize = static_cast<uint8_t>(addr.arsize);
@@ -262,7 +263,7 @@ void port_socket(axi_read_in<A, D, std::monostate, std::monostate, ID, IDW> &por
 template <class A, class D, class ID = _axiIdT, unsigned IDW = 4>
 void port_socket(axi_read_out<A, D, std::monostate, std::monostate, ID, IDW> &port, const std::string &interface_name)
 {
-    static_assert(IDW <= 8, "the socket wire format carries AXI ids as uint8_t; widen the wire structs and their Python ctypes mirrors before binding an id_t wider than 8 bits");
+    static_assert(IDW <= 16, "the socket wire format carries AXI ids as uint16_t; widen the wire structs and their Python ctypes mirrors before binding an id_t wider than 16 bits");
     const int fd = socketFactory::getFd(interface_name);
     if (fd < 0) {
         return;
@@ -372,7 +373,7 @@ void port_socket(axi_read_out<A, D, std::monostate, std::monostate, ID, IDW> &po
             axiReadRespSt<D, std::monostate, ID, IDW> resp{};
             port->receiveDataCycle(resp);
             if (i == 0) {
-                wire_resp.rid = static_cast<uint8_t>(resp.rid);
+                wire_resp.rid = static_cast<uint16_t>(resp.rid);
                 wire_resp.rresp = static_cast<uint8_t>(resp.rresp);
             }
             std::memcpy(&wire_resp.data[i * beat_bytes], &resp.rdata, beat_bytes);

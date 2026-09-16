@@ -1058,6 +1058,9 @@ class Schema:
                         if sibling not in node.fields:
                             printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} typeStruct(field, {sibling}) requires sibling field '{sibling}' to be declared earlier in the same section; it is not.")
                             exit(warningAndErrorReport())
+                        if node.fields[sibling].field_type in ('ignore', '_ignore'):
+                            printError(f"Bad schema detected in {schema_file}:{line_number}. Field {field_name} typeStruct(field, {sibling}) names sibling field '{sibling}', whose type '{node.fields[sibling].field_type}' stores no value in the row, so it can never supply a mode word.")
+                            exit(warningAndErrorReport())
                         field.type_struct_sibling = sibling
                     else:
                         kinds = self.typeStructKindsForMode(arg)
