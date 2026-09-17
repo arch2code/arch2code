@@ -16,7 +16,7 @@ def _cm_synth_conn(value, prj, data):
     synth_conn = dict(value)
     synth_conn['interfaceType'] = intfInfo['interfaceType']
     synth_conn['interfaceName'] = intfInfo['interface']
-    synth_conn['maxTransferSize'] = intfInfo.get('maxTransferSize', '0')
+    synth_conn['maxTransferSize'] = intfInfo['maxTransferSize']
     # Neutral Config selection of the contained instance whose port this
     # local-only channel serves; sc_gen_block_channels spells the struct
     # name. None when the instance is absent or not parameterizable.

@@ -401,6 +401,12 @@ python3 test_arbitration_trio_coverage.py || FAILED=1
 idx=$((idx+1))
 
 echo ""
+echo "Test Suite ${idx}: multicycle channel constructor arguments"
+echo "------------------------------------------------------------------------"
+python3 test_multicycle_ctor_args.py || FAILED=1
+idx=$((idx+1))
+
+echo ""
 echo "========================================================================"
 if [ $FAILED -eq 0 ]; then
     echo "✅ ALL TEST SUITES PASSED!"
