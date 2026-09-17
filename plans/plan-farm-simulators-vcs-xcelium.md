@@ -86,6 +86,14 @@
 
 - Combined tree verified (VCS 93.9 s, Xcelium 70.1 s on the whole-design verif test). Rule: one VCS build or regression at a time
   per rundir, because concurrent VCS builds share the compile database.
+- Deployment dependency (2026-09-17): the committed tree requires setup-scripts revision 3, staged under
+  `/ldc/projects/qistor/users/atomlin/setup-proposed/` (README.txt there). The installed `/ldc/projects/qistor/setup/` is
+  owned by another account and is not group-writable, so the install (copy the eight files) and the later removal of
+  `libboost_program_options.a`, `libboost_system.a` and `libboost_stacktrace_basic.a` under `A2C_TOOLS_LOCAL/lib` are requests to
+  that owner. Until then a farm build stops at `a2cProEnv: A2C_TOOLS_LOCAL is not set` unless the staged scripts are sourced directly.
+- The plain (non-simulator) farm flow still selects `g++` (`USE_GCC := 1` in `a2cProEnv.mk`) and fails on GCC 13.2's
+  `recursive lazy load` module defect; the recipe's `USE_GCC= CXX=<Clang 18 wrapper>` override is the workaround. Honour
+  `A2C_CLANG` there too (already in the section 5 follow-ups).
 - Xcelium elaborates the HDL wrappers a topology does not use as idle top-levels; harmless for debayer, a memory concern at
   SoC scale. Candidate fix: compile only the topology's wrapper from an instance-to-top mapping in the build manifest.
 - SystemC 3.0.1 convergence; pro RTL library items (`rdyVldBurstFifo.sv`,
