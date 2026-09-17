@@ -401,6 +401,16 @@ storageBuckets = [
 # it is used by the generators to access the data
 # it additionaly provides some helper functions to make the generators easier to write
 # the database contents are stored in the data dict in manner similar to the schema
+class intfEvalDSL:
+    # Receiver of an interface hdlparam `eval` expression (`<struct param>.<method>`),
+    # evaluated against the width of the structure bound to that parameter.
+
+    def __init__(self, width):
+        self.width = width
+
+    def to_bytes(self):
+        return self.width // 8 + (1 if self.width % 8 != 0 else 0)
+
 class projectOpen:
     data = dict() # all database derived data lives here. key = table name. Format corresponds to the schema
     data_by_parent = dict() # nested tables indexed by parent storage key for efficient child lookup
@@ -447,6 +457,7 @@ class projectOpen:
         self.defaultConfigDescriptors = self.config.getConfig('DEFAULTCONFIGDESCRIPTORS')
         self.instanceVariantDeclarers = self.config.getConfig('INSTANCEVARIANTDECLARERS')
         self.registrarPairs = self.config.getConfig('REGISTRARPAIRS')
+        self.vlTops = self.config.getConfig('VLTOPS')
         self.structureParamDeps = self.config.getConfig('STRUCTUREPARAMDEPS')
         self.typeParamDeps = self.config.getConfig('TYPEPARAMDEPS')
         self.contextModuleIdentity = self.config.getConfig('CONTEXTMODULEIDENTITY')
@@ -1362,6 +1373,14 @@ class projectOpen:
             'dutHeader': f'V{bodyModule}.h',
             'variantDutClasses': {v: f'V{t}' for v, t in variantTops.items()},
             'variantDutHeaders': {v: f'V{t}.h' for v, t in variantTops.items()},
+            # VCS `vlogan -sc_model <top>` names the SystemC shell class and its
+            # header after the SV top itself.
+            'vcsDutHeader': f'{bodyModule}.h',
+            'variantVcsDutHeaders': {v: f'{t}.h' for v, t in variantTops.items()},
+            # Xcelium foreign-module shell: class named after the SV top, header
+            # <top>_xcelium.h (a2c-owned name; Xcelium generates nothing here).
+            'xceliumDutHeader': f'{bodyModule}_xcelium.h',
+            'variantXceliumDutHeaders': {v: f'{t}_xcelium.h' for v, t in variantTops.items()},
         }
 
     def getBDConfigInfo(self, ret):
@@ -3042,6 +3061,68 @@ class projectOpen:
         for intf_type, qual_key in ret['interfaceTypes'].items():
             ret['interface_defs'][intf_type] = all_interface_defs[qual_key]
 
+    def hdlParamWidths(self, intfDef, structParams, structWidths):
+        # Integer widths of an interface's eval-derived hdlparams (e.g. a memory
+        # byte-enable width from its data structure), keyed by hdlparam name.
+        # structParams maps the interface's struct parameters to the bound
+        # structure rows of one connection. structWidths overrides a
+        # parameterizable structure's width with the caller's resolved value
+        # (a selected top's evaluated width); a structure absent from it falls
+        # back to its stored nominal width.
+        widths = dict()
+        for param, paramDef in (intfDef.get('hdlparams') or {}).items():
+            assert paramDef['datatype'] == 'integer'
+            if not paramDef['isEval']:
+                continue
+            key, expr = paramDef['value'].split('.')
+            if key in structParams:
+                structKey = structParams[key]['structureKey']
+                width = structWidths.get(structKey, self.data['structures'][structKey]['width'])
+                data_obj = intfEvalDSL(width)
+                widths[param] = eval(f'data_obj.{expr}')
+                assert isinstance(widths[param], int)
+        return widths
+
+    def getVlTopBoundaryPins(self, ret, topModule):
+        # Flattened pin list of the block's HDL verification wrapper with every
+        # width bound at the given top's parameter values: one pin per interface
+        # signal of each port, in port then signal order, then clk and rst_n.
+        import pysrc.intf_gen_utils as intf_gen_utils
+        structWidths = self.vlTops[topModule]['structWidths']
+        pins = list()
+        for portType in ret['ports']:
+            for portData in ret['ports'][portType].values():
+                intfData = intf_gen_utils.get_intf_data(portData['connection'], self)
+                intfDef = ret['interface_defs'][intf_gen_utils.get_intf_type(intfData['interfaceType'], ret)]
+                params = intfDef.get('parameters') or {}
+                structParams = {
+                    param: next(entry for entry in intfData['structures']
+                                if entry['structureType'] == param)
+                    for param in params if params[param]['datatype'] == 'struct'}
+                hdlWidths = self.hdlParamWidths(intfDef, structParams, structWidths)
+                inputs = intfDef['modports'][portData['direction']]['modportGroups'] \
+                    .get('inputs', {}).get('groups', {}) or {}
+                for signal, signalDef in intfDef['signals'].items():
+                    signalType = signalDef['signalType']
+                    pin = {'pin': f"{portData['name']}_{signal}",
+                           'direction': 'input' if signal in inputs else 'output',
+                           'structure': '', 'structureKey': '', 'width': 1}
+                    if signalType in structParams:
+                        structKey = structParams[signalType]['structureKey']
+                        structRow = self.data['structures'][structKey]
+                        pin['structure'] = structParams[signalType]['structure']
+                        if structRow['isParameterizable']:
+                            pin['structureKey'] = structKey
+                            pin['width'] = structWidths[structKey]
+                        else:
+                            pin['width'] = int(structRow['width'])
+                    elif signalType in hdlWidths:
+                        pin['width'] = hdlWidths[signalType]
+                    pins.append(pin)
+        pins.append({'pin': 'clk', 'direction': 'input', 'structure': '', 'structureKey': '', 'width': 1})
+        pins.append({'pin': 'rst_n', 'direction': 'input', 'structure': '', 'structureKey': '', 'width': 1})
+        return pins
+
     def extractContext(self, structs, consts):
         ret = dict()
         todo = structs
@@ -4150,6 +4231,10 @@ class projectCreate:
                                 'topModule': topModule,
                                 'dutClass': f'V{topModule}',
                                 'dutHeader': f'V{topModule}.h',
+                                'vcsDutClass': topModule,
+                                'vcsDutHeader': f'{topModule}.h',
+                                'xceliumDutClass': topModule,
+                                'xceliumDutHeader': f'{topModule}_xcelium.h',
                             }, parent['block'], child['block'])
         for pair in pairs.values():
             pair['modelRegistrations'].sort(key=lambda entry: entry['variant'])
@@ -4174,6 +4259,77 @@ class projectCreate:
                         f"{owner} and {current}")
                 topOwners[top] = current
         self.config.setConfig('REGISTRARPAIRS', pairs, bin=True)
+        self.calcVlTops(pairs, blocks, descriptors, paramsByBlock, foreignHeaders, wrapperTail)
+
+    def calcVlTops(self, pairs, blocks, descriptors, paramsByBlock, foreignHeaders, wrapperTail):
+        # Every HDL verification-wrapper top with the widths of its block's
+        # module-local parameterizable structures evaluated at that top's
+        # parameter values. The simulator boundary files (VCS port map, Xcelium
+        # foreign-module shell) need integer pin widths, which only the create-time
+        # resolver can produce; the read-only view pairs them with the pin list.
+        # The top set mirrors artifactPaths.artifactRows: pair registrations,
+        # the bare per-label tops, the owner-qualified foreign tops, and the
+        # single top of a block without params.
+        vlTops = dict()
+        project = self.config.getConfig('PROJECTNAME')
+        foreignTail = self.proj['fileGeneration']['fileMap']['vlSvWrapForeign']['name']
+
+        def record(topModule, blockKey, values):
+            if topModule in vlTops:
+                return
+            # The resolver overrides constants by qualified key; registrations
+            # and descriptors carry values by the block's parameter name.
+            bindings = {row['paramSourceKey']: values[row['param']]
+                        for row in paramsByBlock.get(blockKey, [])}
+            resolver = ValueResolver(self, values=bindings, context=blocks[blockKey]['_context'])
+            g.cur.execute("SELECT declKey FROM blockParameterizedDecls "
+                          "WHERE blockKey = ? AND declKind = 'structure' ORDER BY orderIndex",
+                          (blockKey,))
+            structKeys = {row['declKey'] for row in g.cur.fetchall()}
+            # A block's own port can carry a parameterizable payload structure
+            # it neither owns nor locally declares: an uninstantiated block
+            # (no design connection ever ties an instance to it, so
+            # calcBlockConfigInfo never flags it isParameterizable) still
+            # renders a wrapper boundary pin for each declared port, sized at
+            # the structure's default value. getVlTopBoundaryPins walks every
+            # declared port regardless of ownership, so structWidths must
+            # cover the same set.
+            for portRow in (blocks[blockKey].get('ports') or {}).values():
+                for structRow in (self.flatData['interfaces'][portRow['interfaceKey']].get('structures') or {}).values():
+                    structKey = structRow['structureKey']
+                    if self.flatData['structures'][structKey]['isParameterizable']:
+                        structKeys.add(structKey)
+            structWidths = {structKey: resolver.structureWidth(structKey)
+                            for structKey in structKeys}
+            vlTops[topModule] = {'blockKey': blockKey, 'structWidths': structWidths}
+
+        def ownValues(blockKey, descriptor):
+            return {row['param']: descriptor['values'][row['param']]
+                    for row in paramsByBlock[blockKey]}
+
+        for pair in pairs.values():
+            for registration in pair['verifRegistrations']:
+                record(registration['topModule'], pair['childKey'], registration['values'])
+        for blockKey, block in blocks.items():
+            if not block['hasVl']:
+                continue
+            if not paramsByBlock.get(blockKey):
+                record(f"{block['block']}{wrapperTail}", blockKey, {})
+                continue
+            standalone = variantSelection.standaloneVariantDescriptors(self.config, blockKey)
+            for variant, descriptor in standalone.items():
+                record(f"{block['block']}_{variant}{wrapperTail}", blockKey,
+                       ownValues(blockKey, descriptor))
+            foreign = foreignHeaders.get((project, blockKey))
+            if foreign is None:
+                continue
+            for sourceBlock in self.variantSourceBlocks[blockKey]:
+                for descriptor in descriptors[sourceBlock]:
+                    if descriptor['declaringProject'] == project \
+                            and descriptor['variant'] in foreign['vlVariants']:
+                        record(f"{foreign['stub']}_{descriptor['variant']}{foreignTail}",
+                               blockKey, ownValues(blockKey, descriptor))
+        self.config.setConfig('VLTOPS', vlTops, bin=True)
 
     def declaredVariantLabels(self):
         # Per block, the variant labels the block itself declares, in the order

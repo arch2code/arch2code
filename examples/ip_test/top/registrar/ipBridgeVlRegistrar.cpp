@@ -2,13 +2,26 @@
 
 // GENERATED_CODE_PARAM --block=ipBridge --parent=ip_top
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#ifdef VERILATOR
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "ipBridge_hdl_sc_wrapper.h"
+#if defined(VERILATOR)
 #include "VipBridge_hdl_sv_wrapper.h"
+#elif defined(VCS_DUT)
+#include "ipBridge_hdl_sv_wrapper.h"
+#else
+#include "ipBridge_hdl_sv_wrapper_xcelium.h"
+#endif
 
 namespace {
+#if defined(VERILATOR)
+using ipBridge_hdl_sv_wrapper_dut_t = VipBridge_hdl_sv_wrapper;
+#elif defined(VCS_DUT)
+using ipBridge_hdl_sv_wrapper_dut_t = ipBridge_hdl_sv_wrapper;
+#else
+using ipBridge_hdl_sv_wrapper_dut_t = ipBridge_hdl_sv_wrapper;
+#endif
 struct _ipBridge_vl_registrar {
     _ipBridge_vl_registrar() {
         instanceFactory::registerBlock(
@@ -27,5 +40,5 @@ struct _ipBridge_vl_registrar {
 };
 static _ipBridge_vl_registrar _ipBridge_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
 // GENERATED_CODE_END

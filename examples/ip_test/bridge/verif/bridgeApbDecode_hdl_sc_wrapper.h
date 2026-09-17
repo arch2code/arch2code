@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import ipBridge_bridgeApbDecode.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "bridgeApbDecode_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "bridgeApbDecode_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VbridgeApbDecode_hdl_sv_wrapper.h"
 #endif
@@ -29,7 +31,7 @@ class bridgeApbDecode_hdl_sc_wrapper: public sc_module, public blockBase, public
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     bridgeApbDecode_hdl_sv_wrapper *dut_hdl;
 #else
     VbridgeApbDecode_hdl_sv_wrapper *dut_hdl;
@@ -53,7 +55,7 @@ public:
         apbReg_bfm("apbReg_bfm"),
         rst_n(0)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new bridgeApbDecode_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VbridgeApbDecode_hdl_sv_wrapper("dut_hdl");

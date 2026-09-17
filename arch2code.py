@@ -9,6 +9,7 @@ from colorama import init, Fore, Back, Style
 import pysrc.arch2codeGlobals as globals
 from pysrc.arch2codeHelper import makeFlows, printError, printIfDebug, printWarning, warningAndErrorReport
 from pysrc.processYaml import projectCreate, projectOpen
+from pysrc.vlBoundaryGen import vlBoundaryGen
 from pysrc.displayInstance import displayInstancesDiagram
 from pysrc.drawStructure import drawStructure
 from pysrc.docgen import makeDoc
@@ -47,6 +48,7 @@ parser.add_argument('--initialSystemVerilogPackagesGenerator', '-isvp', action='
                         indicated by --moduledir then a/aPackage.sv.')
 parser.add_argument('--systemc', '-sc', action='store_true', help='runs SystemC generator')
 parser.add_argument('--newmodule', action='store_true', help='create all the base files for a new module')
+parser.add_argument('--vlBoundary', action='store_true', help='write the per-top HDL boundary files (VCS port map, Xcelium shell) under .gen/vl')
 parser.add_argument('--newproject', action='store_true', help='create a new project')
 
 # diagram options
@@ -149,6 +151,8 @@ if (args.systemVerilogGenerator):
     systemVerilogGenerator(prj, args)
 if (args.newmodule):
     newModule(prj, args)
+if (args.vlBoundary):
+    vlBoundaryGen(prj, args)
 if (args.instancesWithBlockType):
     for k, v in prj.instances.items():
         c = []

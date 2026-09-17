@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import axiDemo.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "axiDemo_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "axiDemo_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VaxiDemo_hdl_sv_wrapper.h"
 #endif
@@ -31,7 +33,7 @@ class axiDemo_hdl_sc_wrapper: public sc_module, public blockBase, public axiDemo
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     axiDemo_hdl_sv_wrapper *dut_hdl;
 #else
     VaxiDemo_hdl_sv_wrapper *dut_hdl;
@@ -51,7 +53,7 @@ public:
         
         rst_n(0)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new axiDemo_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VaxiDemo_hdl_sv_wrapper("dut_hdl");

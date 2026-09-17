@@ -58,16 +58,6 @@ def get_channel_name(data):
         channel_base = f"{channel_base}_{data['index']}"
     return channel_base
 
-class intfEvalDSL:
-
-    def __init__(self, prj_data, struct_key):
-        self.prj_data = prj_data
-        self.struct_key = struct_key
-
-    def to_bytes(self):
-        w = get_struct_width(self.struct_key, self.prj_data['structures'])
-        return w // 8 + (1 if w % 8 != 0 else 0)
-
 def sv_type_width_expression(type_info, prj):
     is_signed = type_info['isSigned']
     signed_extra = '+1' if is_signed else ''
@@ -127,14 +117,12 @@ def sv_packed_bit_type(width_expr):
 
 def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     out = {}
-    prj_data = prj.data
     connectionData = port_data.get('connection', {})
     intf_data = get_intf_data(connectionData, prj)
     intf_type = get_intf_type(intf_data['interfaceType'], block_data)
     intf_name = port_data['name']
     intf_modp = port_data['direction']
     intf_param = dict()
-    hdl_param = dict()
 
     interface_defs = block_data['interface_defs']
     assert(intf_type in interface_defs and
@@ -154,16 +142,7 @@ def sv_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
         assert(len(struct_data) == 1); # expecting one exact match
         intf_param[param] = struct_data[0]
 
-    hdl_params = intf_def.get('hdlparams', {}) or {}
-    for param in hdl_params:
-        assert(hdl_params[param]['datatype'] in ['integer'])
-        if hdl_params[param]['isEval']:
-            key, data = hdl_params[param]['value'].split('.')
-            if key in intf_param:
-                data_obj = intfEvalDSL(prj_data, intf_param[key]['structureKey'])
-                eval_str = 'data_obj{}'.format('.' + data)
-                hdl_param[param] = eval(eval_str)
-                assert(isinstance(hdl_param[param], int))
+    hdl_param = prj.hdlParamWidths(intf_def, intf_param, {})
 
     # Interface parameters declaration
     parameters_decl = ', '.join([".{}({})".format(param, intf_param[param]['structure']) for param in params])
@@ -739,18 +718,8 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
     hdl_if_bv_types = []
     for param in filter(lambda item: params[item]['datatype'] == 'struct', params):
         hdl_if_bv_types.append(sc_hdl_bridge_type(intf_param[param], prj))
-    hdl_params = intf_def.get('hdlparams', {}) or {}
-    for param in hdl_params:
-        assert(hdl_params[param]['datatype'] in ['integer'])
-        if hdl_params[param]['isEval']:
-            key, data = hdl_params[param]['value'].split('.')
-            if key in intf_param:
-                data_obj = intfEvalDSL(prj.data, intf_param[key]['structureKey'])
-                eval_str = 'data_obj{}'.format('.' + data)
-                w = eval(eval_str)
-                assert(isinstance(w, int))
-                sc_bv_type = 'bool' if w == 1 else f"sc_bv<{w}>"
-                hdl_if_bv_types.append(sc_bv_type)
+    for w in prj.hdlParamWidths(intf_def, intf_param, {}).values():
+        hdl_if_bv_types.append('bool' if w == 1 else f"sc_bv<{w}>")
 
     hdl_if_params = ', '.join(hdl_if_bv_types)
 
@@ -979,11 +948,15 @@ def sc_concrete_dut(sv_wrapper, standalone_variants):
             'svModule':  sv_wrapper['variantTops'][v],
             'dutClass':  sv_wrapper['variantDutClasses'][v],
             'dutHeader': sv_wrapper['variantDutHeaders'][v],
+            'vcsDutHeader': sv_wrapper['variantVcsDutHeaders'][v],
+            'xceliumDutHeader': sv_wrapper['variantXceliumDutHeaders'][v],
         }
     return {
         'svModule':  sv_wrapper['bodyModule'],
         'dutClass':  sv_wrapper['dutClass'],
         'dutHeader': sv_wrapper['dutHeader'],
+        'vcsDutHeader': sv_wrapper['vcsDutHeader'],
+        'xceliumDutHeader': sv_wrapper['xceliumDutHeader'],
     }
 
 def get_intf_defs(intf_type, block_data):

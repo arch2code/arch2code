@@ -23,7 +23,7 @@ import a2c.endOfTest;
 #ifdef VCS
 extern "C" void VcsSetExitFunc(int (*)(int));
 
-int exit_handler(int flag) {
+[[noreturn]] int exit_handler(int flag) {
     exit(errorCode::getExitCode());
 }
 #endif
@@ -64,13 +64,8 @@ int sc_main(int argc, char* argv[])
     std::filesystem::path execPath{argv[0]};
     std::string execName = execPath.filename().string();
 #ifdef VCS
-    #define STR(s) #s
-    #define XSTR(s) STR(s)
-    simController::vlInst = XSTR(VL_INST);
-    simController::vlType = XSTR(VL_TYPE);
-    simController::vlTandem = VL_TANDEM ? true : false;
-
     VcsSetExitFunc(exit_handler);
+    // VCS roots every SystemC instance under sc_main.
     synchLockFactoryRegistery::getInstance().setHierarchyPrefix("sc_main");
 #endif
 
@@ -102,9 +97,6 @@ int sc_main(int argc, char* argv[])
         po::store(parsed1, vm);
         po::notify(vm);
 
-#ifdef VCS
-        testBenchName = XSTR(TESTBENCH);
-#endif
         std::cout << "TestBench Selected: " << testBenchName << "\n";
         testBench = testBenchConfigFactory::createTestBench(testBenchName);
         if (!testBench) {
@@ -396,6 +388,11 @@ int try_sc_start(bool noLimit, const sc_time scMaxRunTime)
             exit_code = (isEnumeration) ? 0 : errorCode::getExitCode();
         }
         std::cout << simEnd << endl;
+#ifdef XCELIUM
+    // xmelab ends the elaboration-time run of sc_main with this exception.
+    } catch (xmsc_elab_exception&) {
+        throw;
+#endif
     } catch (std::exception& e) {
         std::cout << std::string("Caught exception ")+e.what() << endl;
         errorCode::fail("Caught exception during simulation.");

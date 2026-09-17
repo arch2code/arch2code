@@ -7,10 +7,12 @@
 #include "blockBase.h"
 import mixed.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "mixed_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "mixed_hdl_sv_wrapper_xcelium.h"
 #else
 #include "Vmixed_hdl_sv_wrapper.h"
 #endif
@@ -31,7 +33,7 @@ class mixed_hdl_sc_wrapper: public sc_module, public blockBase, public mixedBase
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     mixed_hdl_sv_wrapper *dut_hdl;
 #else
     Vmixed_hdl_sv_wrapper *dut_hdl;
@@ -51,7 +53,7 @@ public:
         cpu_main_bfm("cpu_main_bfm"),
         rst_n(0)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new mixed_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new Vmixed_hdl_sv_wrapper("dut_hdl");

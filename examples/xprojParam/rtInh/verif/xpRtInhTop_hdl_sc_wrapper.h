@@ -7,10 +7,12 @@
 #include "blockBase.h"
 import xpRtInh_xpRtInhTop.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "xpRtInhTop_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "xpRtInhTop_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VxpRtInhTop_hdl_sv_wrapper.h"
 #endif
@@ -28,7 +30,7 @@ class xpRtInhTop_hdl_sc_wrapper: public sc_module, public blockBase, public xpRt
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     xpRtInhTop_hdl_sv_wrapper *dut_hdl;
 #else
     VxpRtInhTop_hdl_sv_wrapper *dut_hdl;
@@ -48,7 +50,7 @@ public:
         cpu_main_bfm("cpu_main_bfm"),
         rst_n(0)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new xpRtInhTop_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VxpRtInhTop_hdl_sv_wrapper("dut_hdl");

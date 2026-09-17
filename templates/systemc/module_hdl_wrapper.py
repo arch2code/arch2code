@@ -161,7 +161,8 @@ def render_sc(args, prj, data):
         return(t.render(is_template=data['svWrapper']['scWrapperConfigTemplated'],
                         basemodule=basemodule,
                         dut_header=concrete['dutHeader'],
-                        sv_wrapper_header=f"{concrete['svModule']}.h"))
+                        vcs_dut_header=concrete['vcsDutHeader'],
+                        xcelium_dut_header=concrete['xceliumDutHeader']))
 
     # ports blaster
     mp_sig = dict()
@@ -196,10 +197,12 @@ sec_preamble_template = """\
 import {{basemodule}};
 {%- if not is_template %}
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
-#include "{{sv_wrapper_header}}"
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
+#include "{{vcs_dut_header}}"
+#elif defined(XCELIUM_DUT)
+#include "{{xcelium_dut_header}}"
 #else
 #include "{{dut_header}}"
 #endif
@@ -218,7 +221,7 @@ class {{blockname}}_hdl_sc_wrapper: public sc_module, public blockBase, public {
 public:
 {%- if not is_template %}
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     {{concrete_sv_module}} *dut_hdl;
 #else
     {{concrete_dut_class}} *dut_hdl;
@@ -250,7 +253,7 @@ public:
         rst_n(0)
     {
 {%- if not is_template %}
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new {{concrete_sv_module}}("dut_hdl");
 #else
         dut_hdl = new {{concrete_dut_class}}("dut_hdl");

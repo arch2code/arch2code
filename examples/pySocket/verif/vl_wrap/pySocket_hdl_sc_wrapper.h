@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import pySocket.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "pySocket_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "pySocket_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VpySocket_hdl_sv_wrapper.h"
 #endif
@@ -29,7 +31,7 @@ class pySocket_hdl_sc_wrapper: public sc_module, public blockBase, public pySock
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     pySocket_hdl_sv_wrapper *dut_hdl;
 #else
     VpySocket_hdl_sv_wrapper *dut_hdl;
@@ -53,7 +55,7 @@ public:
         dut2Python_req_ack_bfm("dut2Python_req_ack_bfm"),
         rst_n(0)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new pySocket_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VpySocket_hdl_sv_wrapper("dut_hdl");

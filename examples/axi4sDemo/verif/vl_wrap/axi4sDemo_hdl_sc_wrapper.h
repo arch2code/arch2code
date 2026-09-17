@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import axi4sDemo.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "axi4sDemo_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "axi4sDemo_hdl_sv_wrapper_xcelium.h"
 #else
 #include "Vaxi4sDemo_hdl_sv_wrapper.h"
 #endif
@@ -29,7 +31,7 @@ class axi4sDemo_hdl_sc_wrapper: public sc_module, public blockBase, public axi4s
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     axi4sDemo_hdl_sv_wrapper *dut_hdl;
 #else
     Vaxi4sDemo_hdl_sv_wrapper *dut_hdl;
@@ -51,7 +53,7 @@ public:
         axis4_t2_bfm("axis4_t2_bfm"),
         rst_n(0)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new axi4sDemo_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new Vaxi4sDemo_hdl_sv_wrapper("dut_hdl");

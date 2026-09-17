@@ -1,16 +1,11 @@
-# Per-block Verilated-wrapper registrar template.
-#
-# Emits the body of a generated `<child>VlRegistrar.cpp`: the `_verif` factory
-# registrations for a reused child's Verilated SystemC wrapper. One child-named
-# TU aggregates all parent-child factory domains in the project.
-#
-# The whole TU is guarded by `#ifdef VERILATOR`, so outside a verilated build it
-# is empty. It is an ordinary (non-module) registration TU discovered as a
-# registrar/ source, so it #includes the reusable `<child>_hdl_sc_wrapper.h`
-# template and the verilated `V<top>.h` DUT headers. It imports the same
-# owner-qualified config module the container and SC registrar import, so the
-# container's `dynamic_pointer_cast<<child>Base<Config>>` finds a wrapper built
-# on that exact Config type.
+# Per-block HDL-wrapper registrar template: the `_verif` factory registrations of
+# a reused child's `<child>_hdl_sc_wrapper`, one TU per child aggregating every
+# parent-child factory domain. Empty unless an HDL DUT build (VERILATOR, VCS_DUT
+# or XCELIUM_DUT) is selected; the DUT class per top is `V<top>` (Verilator), the
+# vlogan shell `<top>` (VCS) or the foreign-module shell `<top>` (Xcelium), hidden
+# behind a `<top>_dut_t` alias so the registrations are spelled once. The config
+# module import must be the one the container imports, or the container's
+# `dynamic_pointer_cast<<child>Base<Config>>` sees mismatched RTTI.
 
 import pysrc.intf_gen_utils as intf_gen_utils
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
@@ -41,19 +36,24 @@ def render(args, prj, data):
     # project; a child owned by another project but only transiting parameterized
     # types registers under its owner.
     childOwner = prj.contextOwningProject[data['blockInfo']['_context']]
-    out.append('#ifdef VERILATOR')
+    out.append('#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)')
     out.append('#include "instanceFactory.h"')
     out.append('#include "blockBase.h"')
     out.append(f'#include "{sv["scWrapperInclude"]}"')
 
-    # Verilated DUT header(s): one per persisted concrete registration.
-    dutHeaders = [reg['dutHeader'] for reg in verifRegistrations]
-    seenHdr = set()
-    for hdr in dutHeaders:
-        if hdr in seenHdr:
-            continue
-        seenHdr.add(hdr)
-        out.append(f'#include "{hdr}"')
+    # One DUT header per distinct top, in the simulator's spelling.
+    tops = list(dict.fromkeys(reg['topModule'] for reg in verifRegistrations))
+    byTop = {reg['topModule']: reg for reg in verifRegistrations}
+    out.append('#if defined(VERILATOR)')
+    for top in tops:
+        out.append(f'#include "{byTop[top]["dutHeader"]}"')
+    out.append('#elif defined(VCS_DUT)')
+    for top in tops:
+        out.append(f'#include "{byTop[top]["vcsDutHeader"]}"')
+    out.append('#else')
+    for top in tops:
+        out.append(f'#include "{byTop[top]["xceliumDutHeader"]}"')
+    out.append('#endif')
 
     # Imported from the same module the container imports; a second declaration
     # would give the container's dynamic_pointer_cast mismatched RTTI.
@@ -62,6 +62,28 @@ def render(args, prj, data):
 
     out.append('')
     out.append(f'namespace {{')
+    out.append('#if defined(VERILATOR)')
+    for top in tops:
+        out.append(f'using {top}_dut_t = {byTop[top]["dutClass"]};')
+    out.append('#elif defined(VCS_DUT)')
+    for top in tops:
+        out.append(f'using {top}_dut_t = {byTop[top]["vcsDutClass"]};')
+    out.append('#else')
+    for top in tops:
+        out.append(f'using {top}_dut_t = {byTop[top]["xceliumDutClass"]};')
+    out.append('#endif')
+    # The boundary files bind each payload pin to a width evaluated at database
+    # creation; the SC wrapper sizes the same pin from the Config's structure.
+    if sv['scWrapperConfigTemplated']:
+        for top in tops:
+            config = intf_gen_utils.cpp_config_expression_name(byTop[top]['config'])
+            for pin in prj.getVlTopBoundaryPins(data, top):
+                if not pin['structureKey']:
+                    continue
+                structType = intf_gen_utils.sc_struct_type_name(
+                    pin['structure'], pin['structureKey'], prj, config_override=config)
+                out.append(f'static_assert({structType}::_bitWidth == {pin["width"]}, '
+                           f'"{top}: {pin["pin"]} width differs from the generated boundary");')
     out.append(f'struct _{blockName}_vl_registrar {{')
     out.append(f'    _{blockName}_vl_registrar() {{')
 
@@ -71,7 +93,7 @@ def render(args, prj, data):
     for reg in verifRegistrations:
         perVariantConfig = intf_gen_utils.cpp_config_expression_name(reg['config']) \
             if reg['config'] is not None else ''
-        targetClass = f'{scWrapper}<{reg["dutClass"]}, {perVariantConfig}>' \
+        targetClass = f'{scWrapper}<{reg["topModule"]}_dut_t, {perVariantConfig}>' \
             if sv['scWrapperConfigTemplated'] else scWrapper
         out.extend(_emit_register_call(
             blockName=blockName,
@@ -84,7 +106,7 @@ def render(args, prj, data):
     out.append('};')
     out.append(f'static _{blockName}_vl_registrar _{blockName}_vl_registrar_instance;')
     out.append(f'}} // namespace')
-    out.append('#endif // VERILATOR')
+    out.append('#endif // VERILATOR || VCS_DUT || XCELIUM_DUT')
     return '\n'.join(out)
 
 

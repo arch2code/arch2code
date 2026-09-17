@@ -285,11 +285,12 @@ def check_emitted(project):
     }
     for registration in inheritedView['verifRegistrations']:
         variant = registration['variant']
+        alias = f'using {registration["topModule"]}_dut_t = {registration["dutClass"]};'
         target = (
-            f'vliLeaf_hdl_sc_wrapper<{registration["dutClass"]}, '
+            f'vliLeaf_hdl_sc_wrapper<{registration["topModule"]}_dut_t, '
             f'{configs[variant]}>')
         key = f'"{variant}", "{registration["factoryProject"]}"'
-        if target in registrar and key in registrar:
+        if alias in registrar and target in registrar and key in registrar:
             print(f"  PASS: the aggregate trampoline registers '{variant}' as {target}")
         else:
             print(f"  FAIL: the aggregate trampoline has no '{variant}' registration "

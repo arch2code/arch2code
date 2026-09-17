@@ -253,6 +253,9 @@ class ValueResolver:
     def typeWidth(self, typeRef):
         return self._typeWidth(typeRef)
 
+    def structureWidth(self, structRef):
+        return self._structureWidth(structRef)
+
     def typeMaxWidth(self, typeRef):
         if isinstance(typeRef, str):
             typeRow = self._lookupQualified('types', typeRef, 'type')

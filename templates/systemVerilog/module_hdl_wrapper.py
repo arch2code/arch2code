@@ -157,7 +157,7 @@ def dut_instantiation(prj, data, blk_name, blk_param):
     s += s_1 + ');'
 
     s += '''\n
-`ifdef VCS
+`ifdef VCS_DEBUG
 initial if ($test$plusargs("fsdbTrace")) begin
     $fsdbDumpvars($sformatf("%m"), "+all");
 end

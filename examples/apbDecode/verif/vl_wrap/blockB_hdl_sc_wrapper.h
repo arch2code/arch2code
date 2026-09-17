@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import apbDecode_blockB.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "blockB_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "blockB_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VblockB_hdl_sv_wrapper.h"
 #endif
@@ -29,7 +31,7 @@ class blockB_hdl_sc_wrapper: public sc_module, public blockBase, public blockBBa
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     blockB_hdl_sv_wrapper *dut_hdl;
 #else
     VblockB_hdl_sv_wrapper *dut_hdl;
@@ -49,7 +51,7 @@ public:
         apbReg_bfm("apbReg_bfm"),
         rst_n(0)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new blockB_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VblockB_hdl_sv_wrapper("dut_hdl");

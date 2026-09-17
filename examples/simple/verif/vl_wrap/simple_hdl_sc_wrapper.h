@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import simple.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "simple_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "simple_hdl_sv_wrapper_xcelium.h"
 #else
 #include "Vsimple_hdl_sv_wrapper.h"
 #endif
@@ -29,7 +31,7 @@ class simple_hdl_sc_wrapper: public sc_module, public blockBase, public simpleBa
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     simple_hdl_sv_wrapper *dut_hdl;
 #else
     Vsimple_hdl_sv_wrapper *dut_hdl;
@@ -49,7 +51,7 @@ public:
         
         rst_n(0)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new simple_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new Vsimple_hdl_sv_wrapper("dut_hdl");

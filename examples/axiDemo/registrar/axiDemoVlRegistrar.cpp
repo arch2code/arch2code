@@ -2,13 +2,26 @@
 
 // GENERATED_CODE_PARAM --block=axiDemo --parent=axiDemo_tb
 // GENERATED_CODE_BEGIN --template=vlRegistrar
-#ifdef VERILATOR
+#if defined(VERILATOR) || defined(VCS_DUT) || defined(XCELIUM_DUT)
 #include "instanceFactory.h"
 #include "blockBase.h"
 #include "axiDemo_hdl_sc_wrapper.h"
+#if defined(VERILATOR)
 #include "VaxiDemo_hdl_sv_wrapper.h"
+#elif defined(VCS_DUT)
+#include "axiDemo_hdl_sv_wrapper.h"
+#else
+#include "axiDemo_hdl_sv_wrapper_xcelium.h"
+#endif
 
 namespace {
+#if defined(VERILATOR)
+using axiDemo_hdl_sv_wrapper_dut_t = VaxiDemo_hdl_sv_wrapper;
+#elif defined(VCS_DUT)
+using axiDemo_hdl_sv_wrapper_dut_t = axiDemo_hdl_sv_wrapper;
+#else
+using axiDemo_hdl_sv_wrapper_dut_t = axiDemo_hdl_sv_wrapper;
+#endif
 struct _axiDemo_vl_registrar {
     _axiDemo_vl_registrar() {
         instanceFactory::registerBlock(
@@ -27,5 +40,5 @@ struct _axiDemo_vl_registrar {
 };
 static _axiDemo_vl_registrar _axiDemo_vl_registrar_instance;
 } // namespace
-#endif // VERILATOR
+#endif // VERILATOR || VCS_DUT || XCELIUM_DUT
 // GENERATED_CODE_END

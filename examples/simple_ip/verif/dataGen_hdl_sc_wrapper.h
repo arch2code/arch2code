@@ -10,10 +10,12 @@
 #include "blockBase.h"
 import simple_ip_dataGen.base;
 
-// A non-templated wrapper names its Verilated RTL top concretely, so it
-// includes the DUT header directly.
-#if !defined(VERILATOR) && defined(VCS)
+// A non-templated wrapper names its RTL top concretely, so it includes the
+// simulator's DUT header directly.
+#if defined(VCS_DUT)
 #include "dataGen_hdl_sv_wrapper.h"
+#elif defined(XCELIUM_DUT)
+#include "dataGen_hdl_sv_wrapper_xcelium.h"
 #else
 #include "VdataGen_hdl_sv_wrapper.h"
 #endif
@@ -29,7 +31,7 @@ class dataGen_hdl_sc_wrapper: public sc_module, public blockBase, public dataGen
 
 public:
 
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
     dataGen_hdl_sv_wrapper *dut_hdl;
 #else
     VdataGen_hdl_sv_wrapper *dut_hdl;
@@ -49,7 +51,7 @@ public:
         out_bfm("out_bfm"),
         rst_n(0)
     {
-#if !defined(VERILATOR) && defined(VCS)
+#if defined(VCS_DUT) || defined(XCELIUM_DUT)
         dut_hdl = new dataGen_hdl_sv_wrapper("dut_hdl");
 #else
         dut_hdl = new VdataGen_hdl_sv_wrapper("dut_hdl");

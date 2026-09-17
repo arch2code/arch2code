@@ -66,12 +66,22 @@ A2C_SQLDB_FILE = $(REPO_ROOT)/$(PROJECTNAME).db
 A2C_SQLDB_DOTFILE = $(REPO_ROOT)/.$(PROJECTNAME).db
 
 PROJECT_RUNDIR = $(REPO_ROOT)/rundir
+# VCS (vlogan, vcs) and Xcelium (xrun) run in these directories and leave their
+# analysis, snapshot and log files there; `clean` removes them from either the
+# project root or the rundir, whichever simulator switch is set.
+VCS_RUNDIR ?= $(PROJECT_RUNDIR)
+XRUN_RUNDIR ?= $(PROJECT_RUNDIR)
 
 # Binary/object/dependency tree of the rundir build. Defined here rather than in
 # a2c-systemc.mk so `clean` from the project root removes it too: dependency
 # files left behind name sources that a later release may have deleted, and the
 # next build then fails with "No rule to make target".
-BIN_DIR = $(PROJECT_RUNDIR)/build
+# The Xcelium build has its own tree so its snapshots coexist with a VCS or
+# Verilator build of the same rundir; `clean` removes both trees whichever
+# flow is selected.
+DEFAULT_BIN_DIR = $(PROJECT_RUNDIR)/build
+XRUN_BIN_DIR = $(PROJECT_RUNDIR)/build_xrun
+BIN_DIR = $(if $(USE_XCELIUM),$(XRUN_BIN_DIR),$(DEFAULT_BIN_DIR))
 
 GEN_BUILD_DIR = $(REPO_ROOT)/.gen
 
@@ -108,8 +118,17 @@ SC_GEN_DOT_FILES = $(SC_GEN_FILES:%=$(GEN_BUILD_DIR)/%.scgen)
 SV_GEN_FILES =  $(wildcard $(A2C_SV_GEN_FILES)) $(wildcard $(A2C_RTL_DOT_F)) $(wildcard $(EXTRA_SV_GEN_FILES))
 SV_GEN_DOT_FILES = $(SV_GEN_FILES:%=$(GEN_BUILD_DIR)/%.svgen)
 
+# Per-top HDL boundary files (VCS port map, Xcelium shell) under .gen/vl, derived
+# from the database for every top the manifest lists.
+VL_BOUNDARY_STAMP = $(GEN_BUILD_DIR)/vl/.boundary
 ifndef SKIP_GEN
 GEN_DEPS = $(SC_GEN_DOT_FILES) $(SV_GEN_DOT_FILES)
+# The per-top boundary files serve only the VCS and Xcelium flows.
+ifneq ($(USE_VCS)$(USE_XCELIUM),)
+ifneq ($(strip $(A2C_VL_TOPS)),)
+GEN_DEPS += $(VL_BOUNDARY_STAMP)
+endif
+endif
 else
 $(warning "Forced skipping generation step (SKIP_GEN=1)")
 endif
@@ -149,6 +168,10 @@ $(GEN_BUILD_DIR)/%.scgen: % $(A2C_SQLDB_FILE)
 
 $(GEN_BUILD_DIR)/%.svgen: % $(A2C_SQLDB_FILE)
 	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --systemVerilog --file $<
+	@mkdir -p $(@D) && touch $@
+
+$(VL_BOUNDARY_STAMP): $(A2C_SQLDB_FILE)
+	$(A2C_ROOT)/arch2code.py --db $(A2C_SQLDB_FILE) -r --vlBoundary
 	@mkdir -p $(@D) && touch $@
 
 #------------------------------------------------------------------------
@@ -201,8 +224,10 @@ newmodule: $(A2C_SQLDB_FILE)
 	@$(MAKE) -C $(PROJECT_RUNDIR) compdb >/dev/null 2>&1 || true
 
 clean::
-	rm -rf $(GEN_BUILD_DIR) $(BIN_DIR)
+	rm -rf $(GEN_BUILD_DIR) $(DEFAULT_BIN_DIR) $(XRUN_BIN_DIR)
 	rm -f $(A2C_SQLDB_FILE) $(A2C_SQLDB_DOTFILE)
+	rm -rf $(VCS_RUNDIR)/AN.DB $(VCS_RUNDIR)/csrc $(BIN_DIR)/run*.daidir $(VCS_RUNDIR)/vc_hdrs.h $(VCS_RUNDIR)/vcs.log $(VCS_RUNDIR)/vlogan_*.log
+	rm -rf $(XRUN_RUNDIR)/xcelium*.d $(XRUN_RUNDIR)/xrun*.log $(XRUN_RUNDIR)/xrun*.history
 
 
 help::

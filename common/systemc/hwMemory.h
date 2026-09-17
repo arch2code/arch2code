@@ -184,9 +184,9 @@ public:
     // Binds a channel (passed by reference) to a new service thread
     template <class ADDR>
     void bindPort(memory_in_if<ADDR, MEM_DATA>& port) {
-        // sc_bind creates a callback to serviceThread, passing '&port' as the argument.
-        // sc_spawn creates a new SystemC process to run that callback.
-        sc_core::sc_spawn(sc_core::sc_bind(&hwMemory::serviceThread<ADDR>, this, &port));
+        // A lambda rather than sc_bind: Cadence's SystemC spells sc_bind as a
+        // macro, so the qualified form does not compile there.
+        sc_core::sc_spawn([this, &port]() { this->serviceThread<ADDR>(&port); });
     }
 
     // The thread loop that services the specific channel

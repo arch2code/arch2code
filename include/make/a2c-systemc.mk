@@ -14,17 +14,25 @@ endif
 ifndef PROJECT_RUNDIR
 $(error PROJECT_RUNDIR is not set - please set to the root of your project run directory)
 endif
+# SYSTEMC_INCLUDE/SYSTEMC_LIBDIR/LD_BOOST are the plain and VCS flows' own
+# SystemC and Boost link inputs. Xcelium compiles against its own SystemC
+# (XCELIUM_TOOLS, below) and links through XRUN_LD_LIBS instead of LD_FLAGS, so
+# it never reads any of the three; only its own USE_XCELIUM checks apply.
+ifndef USE_XCELIUM
 ifndef SYSTEMC_INCLUDE
 $(error SYSTEMC_INCLUDE is not set - please set to systemc-2.3.4 <install directory>/include)
 endif
 ifndef SYSTEMC_LIBDIR
 $(error SYSTEMC_LIBDIR is not set - please set to systemc-2.3.4 <install directory>/lib)
 endif
+endif
 ifndef BOOST_INCLUDE
 $(error BOOST_INCLUDE is not set - please set to boost library <install directory>/include)
 endif
+ifndef USE_XCELIUM
 ifndef LD_BOOST
 $(error LD_BOOST is not set - please set to boost library (.so) path)
+endif
 endif
 
 ifndef VERILATOR_ROOT
@@ -41,8 +49,28 @@ endif
 # also gates the std::format fmt shim below.
 CPP_STD ?= $(C_STD_VER)
 
-CXX_FLAGS = -m64 -std=$(CPP_STD) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DBOOST_STACKTRACE_LINK -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
+# The simulator flows exist to elaborate the RTL DUT; VL_DUT= on the command
+# line still selects a model-only snapshot.
+ifneq ($(USE_VCS)$(USE_XCELIUM),)
+ifneq ($(and $(USE_VCS),$(USE_XCELIUM)),)
+$(error USE_VCS and USE_XCELIUM are exclusive)
+endif
+VL_DUT ?= 1
+endif
+
+CXX_FLAGS = -m64 -std=$(CPP_STD) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
 LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
+# Xcelium (USE_XCELIUM) compiles against its own SystemC and links every object
+# into a shared library, where the static Boost stacktrace archive cannot go; the
+# header-only stacktrace backend produces the same output.
+ifdef USE_XCELIUM
+ifndef XCELIUM_TOOLS
+$(error XCELIUM_TOOLS is not set - point it at the Xcelium install's tools directory to build with USE_XCELIUM)
+endif
+SYSTEMC_INCLUDE = $(XCELIUM_TOOLS)/systemc/include
+else
+CXX_FLAGS += -DBOOST_STACKTRACE_LINK
+endif
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
 A2C_SRC_DIRS = $(A2C_ROOT)/common/systemc $(A2C_ROOT)/common/scmain $(wildcard $(A2C_ROOT)/interfaces/*) $(wildcard $(A2C_ROOT)/pro/interfaces/*)
@@ -144,11 +172,24 @@ ifdef VL_DUT
 # the per-assembler VlRegistrar.cpp files discovered under A2C_SC_SRC_DIRS, so
 # there is no vl_wrap aggregator entry to compile here.
 CPP_INCLUDES += $(foreach dir, $(A2C_VL_WRAP_DIRS), -I$(dir))
+ifdef USE_VCS
+# The `-sc_model` shell headers the VlRegistrar #includes land under csrc in VCS_RUNDIR.
+CPP_INCLUDES += -I$(VCS_RUNDIR)/csrc/sysc/include -I$(VCS_HOME)/include
+else ifdef USE_XCELIUM
+# The foreign-module shells the VlRegistrar #includes are generated under .gen/vl.
+CPP_INCLUDES += -I$(A2C_VL_GEN_INC)
+else
 # Each Verilated top is built into its own --Mdir (A2C_VL_BUILD_DIR/obj_dir/<top>)
 # by a2c-vl-wrap.mk; its V<top>.h is a build output the VlRegistrar #includes.
 # Add each per-top Mdir to the include path, records-driven from A2C_VL_TOPS.
 CPP_INCLUDES += $(foreach top, $(A2C_VL_TOPS), -I$(A2C_VL_BUILD_DIR)/obj_dir/$(top))
 CPP_INCLUDES += -I$(VERILATOR_ROOT)/include -I$(VERILATOR_ROOT)/include/vltstd
+endif
+endif
+
+ifdef USE_XCELIUM
+CPP_INCLUDES += -I$(XCELIUM_TOOLS)/systemc/include/cci -I$(XCELIUM_TOOLS)/systemc/include/factory \
+	-I$(XCELIUM_TOOLS)/systemc/include/tlm2 -I$(XCELIUM_TOOLS)/include -I$(XCELIUM_TOOLS)/inca/include
 endif
 
 # All include directories.
@@ -158,6 +199,29 @@ CPP_INCLUDES += $(foreach dir, $(PRJ_SRC_DIRS), -I$(dir))
 # Put all auto generated stuff to this build dir. BIN_DIR comes from a2c-common.mk
 # so that `clean` owns it from either directory.
 BIN = run
+ifneq ($(USE_VCS)$(USE_XCELIUM),)
+# VCS and Xcelium elaborate the SystemC/HDL topology into the snapshot, so each
+# DUT topology (see a2c-vcs.mk, a2c-xrun.mk) is its own snapshot and binary:
+# run_<inst>_<type>[_tandem], or run_model when no RTL instance is elaborated
+# (VL_INST= on the command line keeps the compiled objects of a VL_DUT build).
+ifdef VL_DUT
+VL_INST ?= $(HDL_TOP_MODULE)
+endif
+VL_TYPE ?= verif
+VL_TANDEM ?= 0
+DUT_TOPOLOGY ?= $(if $(VL_INST),$(VL_INST)_$(VL_TYPE)$(if $(filter 1,$(VL_TANDEM)),_tandem),model)
+BIN = run_$(DUT_TOPOLOGY)
+# Both simulators run sc_main up to its first sc_start to elaborate the
+# topology, so the snapshot build needs the testbench command line the
+# snapshot is later run with.
+DUT_TESTBENCH ?= $(HDL_TOP_MODULE)
+DUT_ELAB_ARGS ?= $(DUT_TESTBENCH) $(if $(VL_INST),--vlInst $(VL_INST) --vlType $(VL_TYPE)) $(if $(filter 1,$(VL_TANDEM)),--vlTandem)
+# Regression snapshots, <inst>:verif[:tandem] per entry; every test that
+# instantiates no RTL runs on run_model. See vcs_snapshots and xrun_snapshots.
+DUT_TOPOLOGIES ?= $(HDL_TOP_MODULE):verif $(HDL_TOP_MODULE):verif:tandem
+dut_topology_words = $(subst :, ,$(1))
+dut_topology_make = $(MAKE) VL_INST=$(word 1,$(call dut_topology_words,$(1))) VL_TYPE=$(word 2,$(call dut_topology_words,$(1))) VL_TANDEM=$(if $(word 3,$(call dut_topology_words,$(1))),1,0)
+endif
 BUILD_DIR = $(BIN_DIR)/$(PROJECTNAME).build
 # Whole-design verilation build-output dir: holds the per-top obj_dir/<top> Mdirs
 # and the single lib<proj>vl_s_wrap.a. A fixed tooling location under the build
@@ -167,8 +231,30 @@ A2C_VL_BUILD_DIR = $(BIN_DIR)/vl
 # Add to compiler dependencies
 CXX_FLAGS += $(CPP_INCLUDES)
 
+# VCS selects the simulator glue in main.cpp; VCS_DUT additionally selects the
+# vlogan shell class as the `_verif` DUT in the VlRegistrar and SC wrapper.
+ifdef USE_VCS
+CXX_FLAGS += -DVCS
+ifdef VL_DUT
+CXX_FLAGS += -DVCS_DUT
+endif
+endif
+
+# XCELIUM selects the simulator glue in main.cpp; XCELIUM_DUT selects the
+# foreign-module shell as the `_verif` DUT in the VlRegistrar. The Cadence
+# defines are what xmsc passes to its own compiler; -fPIC because xrun links
+# the objects into a shared library.
+ifdef USE_XCELIUM
+CXX_FLAGS += -DXCELIUM -DNCSC -DCADENCE -DLNX86 -DXMSC -D_GLIBCXX_USE_CXX11_ABI=1 -fPIC \
+	-Wno-undefined-var-template -Wno-deprecated-declarations -Wno-mismatched-tags
+ifdef VL_DUT
+CXX_FLAGS += -DXCELIUM_DUT
+endif
+endif
+
 ifdef VL_DUT
 ifndef USE_VCS
+ifndef USE_XCELIUM
 CXX_FLAGS += -DVERILATOR
 LD_FLAGS += -L$(A2C_VL_BUILD_DIR) -l$(PROJECTNAME)vl_s_wrap -latomic
 # The linked-in verilated library is a build output of the vl sub-make, so name it
@@ -179,6 +265,7 @@ LD_FLAGS += -L$(A2C_VL_BUILD_DIR) -l$(PROJECTNAME)vl_s_wrap -latomic
 VL_WRAP_LIB = $(wildcard $(A2C_VL_BUILD_DIR)/lib$(PROJECTNAME)vl_s_wrap.a)
 # https://github.com/verilator/verilator/issues/5672
 CXX_FLAGS += -Wno-sign-compare
+endif
 endif
 endif
 
@@ -201,7 +288,7 @@ CPP_MODULE_OBJ_FLAGS := $(filter-out -I%,$(CXX_FLAGS))
 # prerequisite of every flag-carrying compile rule forces just the affected
 # objects to recompile (and the binary to relink) on a flip, without changing any
 # output path that downstream consumers of build/run depend on.
-BUILD_FLAVOR := $(if $(VL_DUT),vl,model)
+BUILD_FLAVOR := $(if $(USE_VCS),vcs-,)$(if $(USE_XCELIUM),xrun-,)$(if $(VL_DUT),vl,model)
 FLAVOR_STAMP := $(BUILD_DIR)/.build_flavor
 $(shell mkdir -p $(BUILD_DIR); [ "$$(cat $(FLAVOR_STAMP) 2>/dev/null)" = "$(BUILD_FLAVOR)" ] || printf '%s\n' "$(BUILD_FLAVOR)" > $(FLAVOR_STAMP))
 
@@ -227,22 +314,26 @@ endif
 # line; the library reaches the link through -l.
 $(BIN_DIR)/$(BIN) : $(OBJ) $(VL_WRAP_LIB)
 ifndef USE_VCS
+ifndef USE_XCELIUM
     # Create build directories - same structure as sources.
 	mkdir -p $(@D)
     # Just link all the object files.
 	$(CXX) -o $@ $(OBJ) $(LD_FLAGS)
 endif
+endif
 
 # Rule to compile files in O3_CPP_SRC to add -o3 optimization
 $(O3_CPP_SRC:%.cpp=$(BUILD_DIR)/%.o): $(BUILD_DIR)/%.o: %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
 	mkdir -p $(@D)
-	$(CXX) -O3 $(CXX_FLAGS) -MMD -c $< -o $@
+	$(CXX) -O3 $(CXX_FLAGS) -MMD -MP -c $< -o $@
 
 # Rule to compile all other .cpp files
-# The -MMD flags additionaly creates a .d file with the same name as the .o file.
+# -MMD writes a .d file beside the .o; -MP adds a phony target per header it
+# names, so a header that a later build no longer produces (a simulator shell
+# after `clean`, a deleted source) does not stop the build.
 $(BUILD_DIR)/%.o : %.cpp $(CPP_MODULE_DEPS) $(FLAVOR_STAMP)
 	mkdir -p $(@D)
-	$(CXX) $(CXX_FLAGS) -MMD -c $< -o $@
+	$(CXX) $(CXX_FLAGS) -MMD -MP -c $< -o $@
 
 # Rules to build generated C++20 module interfaces to linkable objects. Clang
 # precompiles each interface to a PCM and then compiles that PCM to an object;
@@ -256,7 +347,7 @@ ifndef USE_GCC
 # import another generated interface.
 $(BUILD_DIR)/%.pcm : %.cppm $(FLAVOR_STAMP)
 	mkdir -p $(@D)
-	$(CXX) $(CXX_FLAGS) -MMD --precompile -x c++-module $< -o $@
+	$(CXX) $(CXX_FLAGS) -MMD -MP --precompile -x c++-module $< -o $@
 
 $(foreach module,$(CPP_MODULE_NAMES),$(eval $(call cpp_module_pcm,$(call cpp_module_src_for,$(module))): $(call cpp_module_import_pcms,$(module))))
 
@@ -282,7 +373,7 @@ else
 # interface's global module fragment includes headers (e.g. `<block>Base.h`).
 $(BUILD_DIR)/%.module.o : %.cppm $(FLAVOR_STAMP)
 	mkdir -p $(@D)
-	$(CXX) $(CXX_FLAGS) -MMD -x c++ -c $< -o $@
+	$(CXX) $(CXX_FLAGS) -MMD -MP -x c++ -c $< -o $@
 
 # Same ordering as the Clang path, expressed over the .module.o targets since
 # GCC produces the CMI as a side effect of the object compile.
@@ -295,6 +386,13 @@ endif
 # Include all .d files
 -include $(DEP)
 
+ifdef USE_VCS
+include $(A2C_ROOT)/include/make/a2c-vcs.mk
+endif
+ifdef USE_XCELIUM
+include $(A2C_ROOT)/include/make/a2c-xrun.mk
+endif
+
 #------------------------------------------------------------------------
 # Systemc build phony targets
 #------------------------------------------------------------------------
@@ -304,7 +402,11 @@ endif
 
 all: gen
 ifdef VL_DUT
+ifndef USE_VCS
+ifndef USE_XCELIUM
 	mkdir -p $(A2C_VL_BUILD_DIR) && $(MAKE) -C $(A2C_VL_BUILD_DIR) -f $(A2C_ROOT)/include/make/a2c-vl-build-entry.mk vlwrap REPO_ROOT=$(REPO_ROOT)
+endif
+endif
 endif
 	$(MAKE) $(BIN_DIR)/$(BIN)
 
@@ -319,6 +421,8 @@ help::
 	@echo "  clangd  	- Generate .clangd configuration for IDE"
 	@echo "Makefile Runtime Variables:"
 	@echo "  VL_DUT=1	- Build verilator wrapper for the DUT instances"
+	@echo "  USE_VCS=1	- Compile for VCS and link with vcs (with VL_DUT=1: RTL DUT elaborated by VCS)"
+	@echo "  USE_XCELIUM=1	- Compile for Xcelium and build its snapshot with xrun (with VL_DUT=1: RTL DUT elaborated by Xcelium)"
 
 #------------------------------------------------------------------------
 # Generate compile_commands.json for clangd/OpenCode
