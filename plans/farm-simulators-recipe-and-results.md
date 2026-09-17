@@ -1,6 +1,6 @@
 # Recipe and results: the debayer SystemC/RTL regression under Verilator, VCS and Xcelium on the farm host
 
-Standalone extract of `plan-farm-simulators-vcs-xcelium.md` (state of 2026-09-16: both simulator regressions pass 44 of 44; compile-switch review fixes applied, plan 3.27 and 3.28). It holds only what is needed to
+Standalone extract of `plan-farm-simulators-vcs-xcelium.md` (state of 2026-09-17: both simulator regressions pass 44 of 44 on RHEL 9.6 and the flows are verified on RHEL 8.10; Clang 18 in the shared tools area; no farm defaults in the pro makefile; OS shared Boost in every flow; plan sections 3.27 to 3.40). It holds only what is needed to
 reproduce the flows and the measurements taken; the experiment history and open design discussion stay in the plan.
 
 ## 1. Environment
@@ -36,9 +36,15 @@ Only the driver and its resource directory are needed: Clang is used with the GC
   not yet adopted.
 - Xcelium: `/tools/dist/cadence/XCELIUM/XCELIUMMAIN26.03.002` (bundled cdsgcc 9.3 and 12.4). The `xrun` on `PATH` is an LSF-submitting
   wrapper; the flow calls `tools/bin/xrun` directly and exports the site `LM_LICENSE_FILE`.
-- Boost: the site static Boost in `/ldc/projects/qistor/tools/local/lib` is non-PIC. The plain and VCS flows link it with `-no-pie`;
-  the Xcelium flow uses the OS's shared Boost (`a2cProEnv.mk` picks 1.75 on RHEL 9, 1.66 on RHEL 8 from `/etc/os-release`) and header-only stacktrace.
-- Farm setup scripts: `source /ldc/projects/qistor/setup/setup.bash` (installed 2026-09-17: exports `A2C_CLANG`, the Xcelium variables and licence servers as well as the VCS/SystemC/GCC 13 environment; verified in a clean shell with both simulator flows).
+- Boost: every flow links the OS shared `program_options` library named by `BOOST_LIBS` (setup script, per OS: 1.75 on RHEL 9, 1.66 on
+  RHEL 8) with header-only stacktrace; headers are the site Boost 1.74 (`BOOST_INCLUDE`). The static site Boost is unused. `-fno-pie -no-pie`
+  remains in the plain-flow recipe because the VCS_GNU gcc 13.2 toolchain produces non-PIC Verilator objects.
+- Farm setup scripts: `source /ldc/projects/qistor/setup/setup.bash` is the single source of every farm value (Clang, site tools prefix,
+  Verilator, patched SystemC headers, Xcelium install and compiler version, licence servers, per-OS Boost). The pro makefile has no farm
+  defaults and errors naming the script when a variable is missing; defaults describing the standard container stay in base.
+  Revision 3 of the scripts (adds `A2C_TOOLS_LOCAL`, `VERILATOR_ROOT`, `BOOST_LIBS`, patched `SYSTEMC_INCLUDE`; drops `LD_BOOST`) is
+  staged for the tools owner in `/ldc/projects/qistor/users/atomlin/setup-proposed/` with a revision report; the installed revision 1
+  lacks them, so builds of the current tree need revision 3 installed (or the staged scripts sourced directly).
 - LSF: this Claude session is an interactive LSF job on an RHEL 9 node; simulators run as direct processes on that node. To reach RHEL 8.10 nodes use `lshosts -o "hname ostype"` and `bsub -m <host>` (resource selects do not filter here).
 - Licences (`/lsc/ldp/bin/lmstat`, 2026-09-15): `VCSRuntime_Net` 3 issued at `1725@ldc-virtlic01`; `Xcelium_Single_Core` 651 issued,
   617 in use at query time, at `5280@lrd-virtlic-ha-01b`. Every VCS binary, including the model-only one, is a `simv` and takes a seat.
@@ -64,6 +70,10 @@ make clean && make db && make gen
 make -j8 USE_GCC= CXX="$CLANG18 --gcc-install-dir=$GCC13 -fno-pie -no-pie"
 ./build/run debayer --verbosity=medium
 ```
+
+Boost comes from `BOOST_LIBS`, exported by the setup script (OS shared `program_options`, header-only stacktrace); `LD_BOOST` is not
+used on the farm. `-fno-pie -no-pie` is needed because the VCS_GNU g++ 13.2 on `PATH` emits non-PIC code and compiles the Verilator
+runtime objects, so Clang's default PIE link fails on them; it is unrelated to Boost.
 
 ### 2.2 Verilator on the host (reference flow)
 
@@ -271,11 +281,15 @@ Each cell: synthetic data; 1920x1080 data, minutes:seconds as reported by the la
 - `builder/base/include/make/a2c-vcs.mk`: VCS analysis, per-top `-sc_model` shells, `-syscelab` topology stamp, per-topology link,
   `VCS_TOPOLOGIES` and `vcs_snapshots`, `VCS_DEBUG`, `clean::`.
 - `builder/base/include/make/a2c-xrun.mk`: Xcelium equivalent with `xcelium_<topology>.d` snapshots and generated run scripts.
-- `builder/base/include/make/a2c-systemc.mk`: `USE_VCS` and `USE_XCELIUM` blocks, `BIN = run_<topology>` under `VL_DUT`, build flavour stamp.
+- `builder/base/include/make/a2c-systemc.mk`: `USE_VCS` and `USE_XCELIUM` blocks, `BIN = run_<topology>` under `VL_DUT`, build flavour stamp,
+  `BOOST_LIBS` link input (container default `-lboost_program_options -L$(LD_BOOST)`, overridden from the environment on the farm),
+  header-only Boost stacktrace in every flow.
 - `builder/base/dutRun.py` (plus `builder/dutRun.py` symlink): the snapshot dispatcher for both simulators (`<base>_<topology>` from the test's `--vlInst/--vlType/--vlTandem`; the instance path is kept verbatim so distinct paths never share a snapshot).
 - Generator: boundary pin widths persisted at `make db`; `.gen/vl/<top>.portmap` (VCS) and `.gen/vl/<top>_xcelium.h` (Xcelium) written by
   `make gen` only under `USE_VCS=1` or `USE_XCELIUM=1`; registrars carry `static_assert`s on the persisted widths under every flow.
-- `builder/pro/include/make/a2cProEnv.mk`: Clang 18 path, GCC 13 headers, `-gdwarf-4`, Xcelium install and licence variables.
+- `builder/pro/include/make/a2cProEnv.mk`: requires the farm variables from the setup scripts (`A2C_TOOLS_LOCAL`, `VERILATOR_ROOT`,
+  `BOOST_LIBS`, `A2C_CLANG`, Xcelium variables, `LM_LICENSE_FILE`) with no defaults; GCC 13 header wiring for Clang, `-gdwarf-4` under VCS,
+  the VCS link with make's jobserver cleared.
 - debayer: `rundir/Makefile` (`VCS_TOPOLOGIES`, `regr_vcs`), `rundir/regr_debayer_vcs.json`, `rundir/vcs.json`.
 
 ## 5. Known items

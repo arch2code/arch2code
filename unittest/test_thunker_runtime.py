@@ -38,6 +38,7 @@ here too.
 
 import concurrent.futures
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -60,9 +61,8 @@ STD = '-std=c++23'
 # format and have no bearing on what compiles.
 WARNINGS = ['-Wall', '-Wextra', '-Wpedantic', '-Wshadow', '-Wno-unused-variable',
             '-Wno-unused-parameter', '-Wfatal-errors']
-DEFINES = ['-DSC_CPLUSPLUS=201703L', '-DSC_INCLUDE_DYNAMIC_PROCESSES', '-DBOOST_STACKTRACE_LINK']
-LIBS = ['-lboost_system', '-lboost_program_options', '-lboost_stacktrace_basic',
-        '-ldl', '-lrt', '-lsystemc', '-pthread']
+DEFINES = ['-DSC_CPLUSPLUS=201703L', '-DSC_INCLUDE_DYNAMIC_PROCESSES']
+LIBS = ['-ldl', '-lrt', '-lsystemc', '-pthread']
 
 # Twelve consumer-shape, twelve producer-shape and two port-shape harnesses.
 # Pinned so a harness that stopped being constructed fails here rather than
@@ -72,12 +72,17 @@ EXPECTED_CHECKS = 388
 
 def toolchain_env():
     env = {}
-    for var in ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE', 'LD_BOOST'):
+    # Boost is linked from BOOST_LIBS when the environment sets it, else from
+    # the LD_BOOST default the makefiles apply.
+    required = ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE') + (() if os.environ.get('BOOST_LIBS') else ('LD_BOOST',))
+    for var in required:
         value = os.environ.get(var)
         if not value:
             raise RuntimeError(f"{var} is not set; the SystemC toolchain variables the "
                                f"arch2code makefiles require must be set to run this suite")
         env[var] = value
+    env['BOOST_LIBS'] = shlex.split(os.environ['BOOST_LIBS']) if os.environ.get('BOOST_LIBS') \
+        else ['-lboost_program_options', '-L' + env['LD_BOOST']]
     return env
 
 
@@ -125,7 +130,7 @@ def build_and_run(build_dir, env):
 
     binary = os.path.join(build_dir, 'thunker_runtime')
     run([CXX, STD, '-o', binary] + objects +
-        ['-L' + env['LD_BOOST'], '-L' + env['SYSTEMC_LIBDIR']] + LIBS, 'link')
+        env['BOOST_LIBS'] + ['-L' + env['SYSTEMC_LIBDIR']] + LIBS, 'link')
 
     return subprocess.run([binary], capture_output=True, text=True, timeout=300)
 

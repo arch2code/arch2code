@@ -32,7 +32,10 @@ SELECTED = {
 
 def toolchain_env():
     env = os.environ.copy()
-    for var in ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE', 'LD_BOOST'):
+    # Boost is linked from BOOST_LIBS when the environment sets it, else from
+    # the LD_BOOST default the makefiles apply.
+    required = ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE') + (() if env.get('BOOST_LIBS') else ('LD_BOOST',))
+    for var in required:
         if not env.get(var):
             raise RuntimeError(f"{var} is not set")
     if shutil.which('verilator') is None:

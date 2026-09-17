@@ -63,7 +63,10 @@ CFG_VALUE = 0xabc
 def toolchain_env():
     """The SystemC toolchain variables the arch2code makefiles require."""
     env = os.environ.copy()
-    for var in ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE', 'LD_BOOST'):
+    # Boost is linked from BOOST_LIBS when the environment sets it, else from
+    # the LD_BOOST default the makefiles apply.
+    required = ('SYSTEMC_INCLUDE', 'SYSTEMC_LIBDIR', 'BOOST_INCLUDE') + (() if env.get('BOOST_LIBS') else ('LD_BOOST',))
+    for var in required:
         if not env.get(var):
             raise RuntimeError(f"{var} is not set; the SystemC toolchain variables "
                                f"the arch2code makefiles require must be set to run "

@@ -36,7 +36,7 @@
   on both farm releases: RHEL 9.6 and RHEL 8.10 (Clang 20.1.8, used in the container, needs glibc 2.34 and cannot start on RHEL 8.10; it
   was tested and passes both regressions on RHEL 9, so the flows are compiler-version agnostic). The GCC 13.2 library is mandatory:
   VCS's SystemC library requires its symbol versions, and Xcelium's bundled runtime accepts them but would reject GCC 14's. Both
-  simulator flows are verified on an RHEL 8.10 node as well (the pro layer picks the OS's shared Boost for Xcelium, and the VCS link
+  simulator flows are verified on an RHEL 8.10 node as well (every flow links the OS's shared Boost named by the setup script, and the VCS link
   keeps make's jobserver away from VCS's internal make).
 - **VCS, automated:** `make USE_VCS=1 VL_DUT=1` builds the model once and links one short VCS snapshot per DUT topology
   (whole design, sub-block, tandem). VCS elaborates the generated HDL wrapper as the design and the SystemC testbench
@@ -78,7 +78,8 @@
   With eight VCS jobs, five tests queued for a licence for the full 900 s timeout, so the VCS session file is fixed at three jobs.
 - **Design decisions:** both simulators fix the SystemC topology in the snapshot, so "runtime DUT selection" is delivered as one
   snapshot per topology chosen at run time by the dispatcher. Generic controls live in the builder makefiles, Lattice farm specifics
-  (Clang 18 path, VCS GCC, Xcelium install, licence servers, site Boost) in the pro layer. SystemC 3.0.1 remains an acceptable
+  (Clang 18 path, tools prefix, Xcelium install, licence servers, OS Boost library) come from the farm setup scripts; the pro layer
+  requires them without defaults, and defaults describing the container stay in base. SystemC 3.0.1 remains an acceptable
   later target for both simulators.
 
 **Open items**
@@ -108,9 +109,10 @@ Key constraints that fall out of this:
 - The standard library must be GCC 13.2's libstdc++ (VCS_GNU `gcc-13.2.0_64-shared`) because VCS's
   `libsystemc.so` (`systemc234-gcc13`) requires `GLIBCXX_3.4.32` and `GLIBCXX_3.4.30` symbols. Linking against the
   gcc-toolset-14 libstdc++ (system RHEL9 `libstdc++.so.6` plus nonshared archive) fails on those symbol versions.
-- The site's static Boost (`/ldc/projects/qistor/tools/local/lib/libboost_program_options.a`) is non-PIC, so a
-  Clang-driven link needs `-no-pie` (Clang 18 defaults to PIE; the VCS_GNU g++ does not). This only matters for the
-  plain model flow; in the VCS flow VCS links with its own g++.
+- Boost: every farm flow links the OS shared `program_options` library named by `BOOST_LIBS` (setup script, per OS: RHEL 9 1.75,
+  RHEL 8 1.66) with header-only stacktrace; the site headers (Boost 1.74) stay, the static site libraries are unused (3.40). The
+  Clang-driven plain-flow link still needs `-fno-pie -no-pie`: the VCS_GNU g++ 13.2 defaults to non-PIC code and compiles the
+  Verilator runtime and verilated library, so a PIE final link fails on those objects.
 
 ---
 
@@ -1292,6 +1294,62 @@ variables): `make -j8 USE_XCELIUM=1 all` + debayer verif run `No error` (69.8 s 
 (93.4 s CPU); the VCS compile line uses the shared Clang path. The scripts are now the site's single source for the farm settings, with
 the pro makefiles keeping the same values as `?=` defaults.
 
+### 3.38 Pro makefile carries no farm defaults; setup scripts v2 proposed (agent implementation, 2026-09-17)
+
+Owner rule: checked-in makefiles must not default to site paths, licence servers or tool versions; defaults describing the standard
+container stay in base. `a2cProEnv.mk` now requires, with an `$(error)` naming the setup script: always (under `LDC_RHEL_ENV`)
+`A2C_TOOLS_LOCAL` and `VERILATOR_ROOT`; under `USE_VCS`/`USE_XCELIUM` `A2C_CLANG`; under `USE_XCELIUM` `LM_LICENSE_FILE` and
+`XRUN_BOOST_LIBS` (`XCELIUM_TOOLS` and `XRUN_GCC_VERS` already error in base). Derived, kept: `XRUN = $(XCELIUM_TOOLS)/bin/xrun`, the
+OpenCV include/lib flags from `A2C_TOOLS_LOCAL`, `-lstdc++fs`, the gcc-on-PATH detection and Clang header wiring, `-gdwarf-4` under VCS,
+the `USE_GCC` exclusivity error. The makefile no longer overrides `SYSTEMC_INCLUDE`; the setup script exports the patched-header path.
+`grep -nE "/ldc|/tools/dist|virtlic|1725@|5280@|12\.4|1\.66|1\.75" pro/include/make/*.mk` matches only `$(error ...)` text.
+
+Setup scripts v2 (staged in `/ldc/projects/qistor/users/atomlin/setup-proposed/`, README rewritten): `a2c_rhel_setup.*` add
+`A2C_TOOLS_LOCAL=/ldc/projects/qistor/tools/local` and `VERILATOR_ROOT=/ldc/projects/qistor/tools/share/verilator`;
+`vcs_systemc_gcc13.*` export `SYSTEMC_INCLUDE=$A2C_TOOLS_LOCAL/include/vcs/systemc234` (OpenCV-safe patched headers) instead of the stock
+VCS path; `xcelium.*` choose `XRUN_BOOST_LIBS` from `/etc/os-release` `VERSION_ID` major (8: 1.66, else 1.75). **Until v2 is installed,
+farm builds of this tree fail at the new `A2C_TOOLS_LOCAL`/`VERILATOR_ROOT`/`XRUN_BOOST_LIBS` errors when only the installed v1 scripts
+are sourced.**
+
+Verification with the v2 scripts sourced in a clean shell: missing-variable errors fire for each of the four required variables;
+RHEL 9.6: VCS build 1 min 22 s, run `No error` 91.4 s CPU; Xcelium build 1 min 58 s, run `No error` 70.9 s; plain Verilator flow
+`No error` 32 s. RHEL 8.10 (`ldc-farm06`, LSF job 4933225): VCS and Xcelium build and run `No error`, Boost `.so.1.66.0` chosen by the
+script. Farm tree resynced afterwards. Logs: scratchpad `nodefaults/`, `rundir/rh8probe/nodefaults.*`.
+
+### 3.39 Session restart note (2026-09-17, 14:54)
+
+The Claude Code process restarted; the node-local scratch directory referenced as "scratchpad `<name>/`" in sections 3.13 to 3.38 was
+wiped, so those logs are gone (the results recorded here stand; the NFS logs under `rundir/rh8probe/` and the regression session
+directories under `rundir/regr/` remain). The Boost consolidation task (OS shared Boost for every farm flow, header-only stacktrace,
+`A2C_BOOST_LIBS`, setup scripts revision 3) had not landed any edit before the restart and was restarted from scratch (3.40).
+
+### 3.40 OS shared Boost for every farm flow; static site Boost unused (agent implementation plus coordinator follow-up, 2026-09-17)
+
+Owner decision: link Boost from the OS shared library in every flow so the static Boost under `/ldc/projects/qistor/tools/local/lib`
+can be dropped. Headers stay the site Boost 1.74.
+
+Changes (unstaged): base `a2c-systemc.mk` uses header-only stacktrace everywhere (`-DBOOST_STACKTRACE_LINK`, `-lboost_stacktrace_basic`
+and `-lboost_system` gone; `-ldl` stays), `BOOST_LIBS ?= -lboost_program_options -L$(LD_BOOST)` is the container default link input and
+the `LD_BOOST` check fires only when that default is in use; `a2c-xrun.mk` builds `XRUN_LD_LIBS` from `BOOST_LIBS` (`XRUN_BOOST_LIBS`
+gone). Pro requires `BOOST_LIBS` from the environment under `LDC_RHEL_ENV` (no `A2C_` alias: the setup scripts export base variable names,
+as they do for `SYSTEMC_INCLUDE` and `VERILATOR_ROOT`), so non-pro builds such as the unit-test fixtures pick it up too. Setup scripts
+revision 3: `a2c_rhel_setup.*` export `BOOST_LIBS` chosen per OS (RHEL 8 `-L/usr/lib64 -l:libboost_program_options.so.1.66.0`, else
+`.so.1.75.0`); `vcs_systemc_gcc13.*` drop `LD_BOOST`; `xcelium.*` drop the Boost choice. Two tokens with the `-l:` exact-soname form are
+needed because `vcs` parses a bare `.so` path on its command line as a Verilog source (`Error-[SE]`). Four unit tests
+(`test_thunker_runtime`, `test_inherit_vl_child`, `test_regs_handler_container_config`, `test_container_param_cross_project_vl`)
+honour `BOOST_LIBS` and require `LD_BOOST` only when it is absent; `test_thunker_runtime` mirrors the makefile link (header-only stacktrace).
+
+`-fno-pie -no-pie` stays in the plain-flow recipe and the Clang wrapper, for a reason unrelated to Boost: the VCS_GNU gcc 13.2 toolchain
+defaults to non-PIC code (`-fPIC`/`-fPIE` disabled), and Verilator's runtime and the verilated library are always compiled with it, so a
+position-independent final link fails on those objects. Reproduced with a fully shared-Boost link.
+
+Verification with `LD_BOOST` unset and the revision 3 scripts sourced in a clean shell: RHEL 9.6 plain + Verilator `No error`; VCS
+`No error` 87.0 s CPU, `ldd` resolves `/lib64/libboost_program_options.so.1.75.0`; Xcelium `No error`, link `-Wld,-l:libboost_program_options.so.1.75.0`;
+error path (`--vlInst nosuch`) exits 1 with the assertion and a backtrace as before; unit tests **131 of 131**; RHEL 8.10 (`ldc-farm06`,
+LSF job 4955253) clean/db/gen, VCS, Xcelium and plain Verilator all `No error` resolving `.so.1.66.0`. Owner action after installing
+revision 3: remove `libboost_program_options.a`, `libboost_system.a`, `libboost_stacktrace_basic.a` from `/ldc/projects/qistor/tools/local/lib`
+(headers stay). Logs: scratchpad `boost/`, `rundir/rh8probe/boostprobe/`.
+
 ## 4. Installed artifacts
 
 - `/ldc/projects/qistor/tools/share/llvm-18.1.8/` (258 MB, trimmed; final shared location since 2026-09-16 15:28, copied by the tools
@@ -1398,7 +1456,7 @@ cd debayer/rundir
 make clean && make db && make gen                    # required after switching container <-> host
 
 # plain SystemC model (no simulator); add VL_DUT=1 for the Verilator RTL DUT (Verilator 5.038 is on the host)
-make -j8 USE_GCC= CXX="$CLANG18 --gcc-install-dir=$GCC13 -fno-pie -no-pie" [VL_DUT=1]
+make -j8 USE_GCC= CXX="$CLANG18 --gcc-install-dir=$GCC13 -fno-pie -no-pie" [VL_DUT=1]   # -no-pie: VCS_GNU g++ builds non-PIC Verilator objects; Boost comes from BOOST_LIBS (setup.bash)
 ./build/run debayer --verbosity=medium [--vlInst debayer --vlType verif [--vlTandem]]
 
 # VCS flow (pro sets Clang 18; USE_VCS implies VL_DUT). One snapshot per DUT topology.

@@ -18,14 +18,15 @@ XRUN_OPTS += -gcc_vers $(XRUN_GCC_VERS) $(XRUN_USER_OPTS)
 # Per-simulation options; -nolog so concurrent runs do not fight over xrun.log.
 XRUN_R_OPTS ?= -64bit -nolog
 
-# Boost enters the shared-library link, so it must be a shared or PIC library.
-# Boost.System is header-only and the header-only stacktrace needs only -ldl.
-XRUN_BOOST_LIBS ?= -lboost_program_options
+# Boost enters the shared-library link, so it must be a shared or PIC library
+# (BOOST_LIBS, shared with the plain/VCS flows in a2c-systemc.mk). Boost.System
+# is header-only and the header-only stacktrace needs only -ldl.
 # xrun forwards each -Wld,<arg> to the linker as one argument, so a
-# comma-carrying -Wl,-rpath,<dir> cannot be expressed; runtime library paths
-# come from LD_LIBRARY_PATH.
+# comma-carrying -Wl,-rpath,<dir> cannot be expressed (each BOOST_LIBS token
+# must therefore carry no embedded space, e.g. -L$(dir) not -L $(dir));
+# runtime library paths come from LD_LIBRARY_PATH.
 comma := ,
-XRUN_LD_LIBS = $(addprefix -Wld$(comma),$(XRUN_BOOST_LIBS) -ldl -lrt -lpthread $(EXTRA_LD_FLAGS))
+XRUN_LD_LIBS = $(addprefix -Wld$(comma),$(BOOST_LIBS) -ldl -lrt -lpthread $(EXTRA_LD_FLAGS))
 
 XRUN_INCDIRS = $(addprefix +incdir+,$(A2C_VL_WRAP_DIRS))
 XRUN_TOP_SV = $(sort $(foreach t,$(A2C_VL_TOPS),$(A2C_VL_SV_$(t))))

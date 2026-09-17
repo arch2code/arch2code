@@ -14,7 +14,7 @@ endif
 ifndef PROJECT_RUNDIR
 $(error PROJECT_RUNDIR is not set - please set to the root of your project run directory)
 endif
-# SYSTEMC_INCLUDE/SYSTEMC_LIBDIR/LD_BOOST are the plain and VCS flows' own
+# SYSTEMC_INCLUDE/SYSTEMC_LIBDIR/BOOST_LIBS are the plain and VCS flows' own
 # SystemC and Boost link inputs. Xcelium compiles against its own SystemC
 # (XCELIUM_TOOLS, below) and links through XRUN_LD_LIBS instead of LD_FLAGS, so
 # it never reads any of the three; only its own USE_XCELIUM checks apply.
@@ -29,9 +29,14 @@ endif
 ifndef BOOST_INCLUDE
 $(error BOOST_INCLUDE is not set - please set to boost library <install directory>/include)
 endif
+# LD_BOOST is only needed by the BOOST_LIBS default below (the static site
+# Boost's directory); a caller that sets BOOST_LIBS itself (linking a shared
+# Boost) does not need it.
 ifndef USE_XCELIUM
+ifeq ($(origin BOOST_LIBS),undefined)
 ifndef LD_BOOST
 $(error LD_BOOST is not set - please set to boost library (.so) path)
+endif
 endif
 endif
 
@@ -59,17 +64,20 @@ VL_DUT ?= 1
 endif
 
 CXX_FLAGS = -m64 -std=$(CPP_STD) -g -Wfatal-errors -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-variable -Wno-unused-parameter -pthread -DSC_CPLUSPLUS=201703L -DSC_INCLUDE_DYNAMIC_PROCESSES
-LD_FLAGS = -lboost_system -lboost_program_options -lboost_stacktrace_basic -L$(LD_BOOST) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
-# Xcelium (USE_XCELIUM) compiles against its own SystemC and links every object
-# into a shared library, where the static Boost stacktrace archive cannot go; the
-# header-only stacktrace backend produces the same output.
+# Boost.System is header-only since 1.69, and a2c's stacktrace use
+# (q_assert.cpp) runs on the header-only backend (no BOOST_STACKTRACE_LINK)
+# with identical output, needing only -ldl (already in LD_FLAGS below); Boost
+# program_options is therefore the only Boost library actually linked.
+# BOOST_LIBS names that link input; the container default below links the
+# static site Boost in LD_BOOST, and a farm/pro layer can set BOOST_LIBS to
+# link a shared Boost instead (see the LD_BOOST check above).
+BOOST_LIBS ?= -lboost_program_options -L$(LD_BOOST)
+LD_FLAGS = $(BOOST_LIBS) -L$(SYSTEMC_LIBDIR) -ldl -lrt -lsystemc
 ifdef USE_XCELIUM
 ifndef XCELIUM_TOOLS
 $(error XCELIUM_TOOLS is not set - point it at the Xcelium install's tools directory to build with USE_XCELIUM)
 endif
 SYSTEMC_INCLUDE = $(XCELIUM_TOOLS)/systemc/include
-else
-CXX_FLAGS += -DBOOST_STACKTRACE_LINK
 endif
 CPP_INCLUDES = -I$(BOOST_INCLUDE) -I$(SYSTEMC_INCLUDE) -I/usr/local/include
 
