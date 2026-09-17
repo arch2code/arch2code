@@ -1595,10 +1595,10 @@ def _roundTripHelperLines(indent):
 
 
 def _sampleConfigs(prj, data):
-    """Deterministic Default/Mid/Max sample points for the base parameterizable
-    constants a round-trip test needs (projectOpen._sampleConfigConstants),
-    taken from each constant's own declaration."""
-    baseParams = [v for v in data['sampleConfigConstants'].values() if not v['evalCanonical']]
+    """Deterministic Default/Mid/Max sample points for the root parameters a
+    round-trip test needs (projectOpen._sampleConfigConstants), taken from each
+    constant's own declaration."""
+    baseParams = list(data['sampleConfigConstants'].values())
     if not baseParams:
         return []
     defaultVals = {v['constant']: v['value'] for v in baseParams}
@@ -1648,7 +1648,7 @@ def structTest(args, prj, data):
     # in module mode (no Config in a non-module TU).
     samples = _sampleConfigs(prj, data) if useConfig else []
     for _, configName, baseValues in samples:
-        out.extend(config.configStructLines(prj, data, configName, baseValues))
+        out.extend(config.configStructLines(data, configName, baseValues))
 
     out.append(f'std::string test_{fn}::name(void) {{ return "test_{fn}"; }}')
     out.append(f'void test_{fn}::test(void) {{')

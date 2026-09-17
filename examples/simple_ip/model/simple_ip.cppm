@@ -45,8 +45,8 @@ public:
     std::shared_ptr<ipBase<ip_ipVariant0Config>> uIp;
 
     // cross-interface thunkers
-    push_ack_port_thunker<simpleData8St, ipDataSt<ip_ipVariant0Config>, false> thunker_out_uIp;
-    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uIp_uIp;
+    push_ack_port_thunker<simple_ip_ns::simpleData8St, ip_ns::ipDataSt<ip_ipVariant0Config>, false> thunker_out_uIp;
+    apb_port_thunker<common_shared_types_ns::apbAddrSt, common_shared_types_ns::apbDataSt, ip_ns::ipRegAddrSt, ip_ns::ipRegDataSt, true, true> thunker_apbReg_uIp_uIp;
 
     simple_ip(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~simple_ip() override = default;

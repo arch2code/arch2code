@@ -416,14 +416,15 @@ def test_teststructs_parameterizable_sample_points():
                     print(f"  FAIL: {structName}.{constName} = {members.get(constName)!r}, "
                           f"expected {expVal!r}")
                     ok = False
-            # Eval-derived members stay symbolic in the struct's own members so
-            # the C++ constexpr recomputes them from this sample point.
-            if members.get('IP_DATA_WIDTH_X2') != 'IP_DATA_WIDTH * 2':
-                print(f"  FAIL: {structName}.IP_DATA_WIDTH_X2 not symbolic: "
-                      f"{members.get('IP_DATA_WIDTH_X2')!r}")
+            # Eval-derived constants are not sample-struct members: the struct
+            # templates read only root knobs through Config, and the Base class
+            # computes derived values (test_config_struct_derived_members_move_to_base).
+            if 'IP_DATA_WIDTH_X2' in members:
+                print(f"  FAIL: {structName}.IP_DATA_WIDTH_X2 emitted: "
+                      f"{members['IP_DATA_WIDTH_X2']!r}")
                 ok = False
             if ok:
-                print(f"  PASS: {structName} base values + symbolic derived members")
+                print(f"  PASS: {structName} root-knob literals only, no derived members")
 
         # Call list: a parameterizable struct is exercised once per sample point;
         # a concrete struct exactly once (no Config).

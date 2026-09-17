@@ -289,3 +289,33 @@ def getStaleSegmentFiles(prj, rows, blockCondData, fileMap, basePath):
         files.update(row['files'].values())
 
     return files, dirs
+
+
+def getRetiredContextFiles(prj, rows):
+    """Generated `<contextStem>VariantConfig.h` files in this project's owned
+    include directories, one candidate per owned context; no fileMap entry
+    names them. Only a file carrying the retired `--template=config` region is
+    reported, so a user file of that name is never touched. Returns absolute
+    paths, sorted."""
+    projectName = prj.config.getConfig('PROJECTNAME')
+    includeDirs = set()
+    for row in rows:
+        if row['mode'] != 'context' or row['owner'] != projectName:
+            continue
+        if row['fileType'] != 'include':
+            continue
+        includeDirs.update(os.path.dirname(f) for f in row['files'].values())
+    contextStems = {os.path.splitext(os.path.basename(context))[0]
+                    for context, owner in prj.contextOwningProject.items()
+                    if owner == projectName}
+    stale = set()
+    for directory in includeDirs:
+        for stem in contextStems:
+            candidate = os.path.join(directory, f"{stem}VariantConfig.h")
+            if not os.path.isfile(candidate):
+                continue
+            with open(candidate, 'r', errors='replace') as f:
+                text = f.read()
+            if 'GENERATED_CODE_BEGIN --template=config' in text:
+                stale.add(os.path.abspath(candidate))
+    return sorted(stale)

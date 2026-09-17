@@ -51,7 +51,7 @@ class genSystemC:
             else:
                 exclude = set()
             # get a block based view of the database. This is used for block definitions
-            qualBlock = prj.getQualBlock( self.code.block)
+            qualBlock = prj.getQualBlock( self.code.block, project=self.code.params.project, filePath=fileName)
             block = prj.data['blocks'][qualBlock]['block']
             data = prj.getBlockData(qualBlock, trimRegLeafInstance=True, excludeInstances=exclude)
             if not data:

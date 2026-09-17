@@ -55,7 +55,7 @@ class systemVerilogGenerator:
             importPackages = self.code.params.importPackages
         if self.code.params.block and self.code.params.context:
             # get a block based view of the database. This is used for block definitions
-            qualBlock = prj.getQualBlock( self.code.block )
+            qualBlock = prj.getQualBlock( self.code.block, project=self.code.params.project, filePath=fileName )
             data = prj.getBlockData(qualBlock, trimRegLeafInstance=False)
             if not data:
                 printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
@@ -63,7 +63,7 @@ class systemVerilogGenerator:
             context = self.code.params.context
             data.update(prj.getContextData(context, self.dataTypeMappings))
         elif self.code.params.block:
-            qualBlock = prj.getQualBlock( self.code.block )
+            qualBlock = prj.getQualBlock( self.code.block, project=self.code.params.project, filePath=fileName )
             data = prj.getBlockData(qualBlock, trimRegLeafInstance=False)
             if not data:
                 printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
@@ -114,7 +114,7 @@ class systemVerilogGenerator:
             return
         if not any(self._sectionTemplate(s) in _MODULE_BODY_TEMPLATES for s in self.code.sections):
             return
-        blockName = prj.data['blocks'][prj.getQualBlock(self.code.block)]['block']
+        blockName = prj.data['blocks'][prj.getQualBlock(self.code.block, project=self.code.params.project, filePath=fileName)]['block']
         stem = Path(fileName).resolve().stem
         if stem != blockName:
             printWarning(f'The file name {stem} does not match the block name {blockName}')

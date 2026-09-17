@@ -46,7 +46,7 @@ public:
     std::shared_ptr<ipBase<ip_ipVariant0Config>> uIp;
 
     // cross-interface thunkers
-    push_ack_port_thunker<ipStdData8St, ipDataSt<ip_ipVariant0Config>, false> thunker_out0_uIp;
+    push_ack_port_thunker<ip_ipTop_ns::ipStdData8St, ip_ns::ipDataSt<ip_ipVariant0Config>, false> thunker_out0_uIp;
 
     ipStdTop(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ipStdTop() override = default;

@@ -77,17 +77,19 @@ EXPECTED_VERDICTS = {
     'uLeafNest':  False,
 }
 
-# The thunker member declarations the four junctions must emit. push_ack carries
+# The thunker member declarations the four junctions must emit. Payload types are
+# spelled qualified by their owning context's namespace (a composed container may
+# import several same-named payloads from different projects). push_ack carries
 # one payload pair, so each declaration carries exactly one trailing verdict flag,
 # and only the eligible junction's is true.
 EXPECTED_MEMBERS = [
-    'push_ack_port_thunker<wrapEqSt<Config>, leafEqSt<xpCppAxis_xpCppLeafEqV0Config>, true>'
+    'push_ack_port_thunker<xpCppAxis_xpCppWrap_ns::wrapEqSt<Config>, xpCppLeaf_ns::leafEqSt<xpCppAxis_xpCppLeafEqV0Config>, true>'
     ' thunker_uLeafEq;',
-    'push_ack_port_thunker<wrapOrderSt<Config>, leafOrderSt<xpCppAxis_xpCppLeafOrderV0Config>,'
+    'push_ack_port_thunker<xpCppAxis_xpCppWrap_ns::wrapOrderSt<Config>, xpCppLeaf_ns::leafOrderSt<xpCppAxis_xpCppLeafOrderV0Config>,'
     ' false> thunker_uLeafOrder;',
-    'push_ack_port_thunker<wrapSignSt<Config>, leafSignSt<xpCppAxis_xpCppLeafSignV0Config>,'
+    'push_ack_port_thunker<xpCppAxis_xpCppWrap_ns::wrapSignSt<Config>, xpCppLeaf_ns::leafSignSt<xpCppAxis_xpCppLeafSignV0Config>,'
     ' false> thunker_uLeafSign;',
-    'push_ack_port_thunker<wrapNestSt<Config>, leafNestSt<xpCppAxis_xpCppLeafNestV0Config>,'
+    'push_ack_port_thunker<xpCppAxis_xpCppWrap_ns::wrapNestSt<Config>, xpCppLeaf_ns::leafNestSt<xpCppAxis_xpCppLeafNestV0Config>,'
     ' false> thunker_uLeafNest;',
 ]
 
@@ -103,16 +105,16 @@ MULTI_SLOT_MEMBER = 'thunker_apbReg_uIp_uIp'
 # correct flag order from a swapped one.
 EXPECTED_MULTI_SLOT = {
     (True, True):
-        'apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, '
+        'apb_port_thunker<common_shared_types_ns::apbAddrSt, common_shared_types_ns::apbDataSt, ip_ns::ipRegAddrSt, ip_ns::ipRegDataSt, '
         'true, true> thunker_apbReg_uIp_uIp;',
     (True, False):
-        'apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, '
+        'apb_port_thunker<common_shared_types_ns::apbAddrSt, common_shared_types_ns::apbDataSt, ip_ns::ipRegAddrSt, ip_ns::ipRegDataSt, '
         'true, false> thunker_apbReg_uIp_uIp;',
     (False, True):
-        'apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, '
+        'apb_port_thunker<common_shared_types_ns::apbAddrSt, common_shared_types_ns::apbDataSt, ip_ns::ipRegAddrSt, ip_ns::ipRegDataSt, '
         'false, true> thunker_apbReg_uIp_uIp;',
     (False, False):
-        'apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, '
+        'apb_port_thunker<common_shared_types_ns::apbAddrSt, common_shared_types_ns::apbDataSt, ip_ns::ipRegAddrSt, ip_ns::ipRegDataSt, '
         'false, false> thunker_apbReg_uIp_uIp;',
 }
 

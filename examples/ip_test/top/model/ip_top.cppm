@@ -64,16 +64,16 @@ public:
     std::shared_ptr<ipBridgeBase> uBridge;
 
     // cross-interface thunkers
-    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<ip_test_srcVariantSrc0Config>, false> thunker_out0_uSrc;
-    push_ack_port_thunker<srcOut0BoundarySt, ipDataSt<ip_ipVariant0Config>, false> thunker_out0_uIp0;
-    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<ip_test_srcVariantSrc0Config>, true> thunker_out1_uSrc;
-    push_ack_port_thunker<srcOut1BoundarySt, ipDataSt<ipBridge_ipVariant1Config>, true> thunker_out1_uIp1;
-    push_ack_port_thunker<srcOut0BoundarySt, srcOut0St<ip_test_srcVariantSrc0Config>, false> thunker_out2_uSrc;
-    push_ack_port_thunker<srcOut0BoundarySt, data8St, true> thunker_out2_uBridge;
-    push_ack_port_thunker<srcOut1BoundarySt, srcOut1St<ip_test_srcVariantSrc0Config>, true> thunker_out3_uSrc;
-    push_ack_port_thunker<srcOut1BoundarySt, data70St, true> thunker_out3_uBridge;
-    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uIp0_uIp0;
-    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uIp1_uIp1;
+    push_ack_port_thunker<ip_test_ip_top_ns::srcOut0BoundarySt, ip_test_src_ns::srcOut0St<ip_test_srcVariantSrc0Config>, false> thunker_out0_uSrc;
+    push_ack_port_thunker<ip_test_ip_top_ns::srcOut0BoundarySt, ip_ns::ipDataSt<ip_ipVariant0Config>, false> thunker_out0_uIp0;
+    push_ack_port_thunker<ip_test_ip_top_ns::srcOut1BoundarySt, ip_test_src_ns::srcOut1St<ip_test_srcVariantSrc0Config>, true> thunker_out1_uSrc;
+    push_ack_port_thunker<ip_test_ip_top_ns::srcOut1BoundarySt, ip_ns::ipDataSt<ipBridge_ipVariant1Config>, true> thunker_out1_uIp1;
+    push_ack_port_thunker<ip_test_ip_top_ns::srcOut0BoundarySt, ip_test_src_ns::srcOut0St<ip_test_srcVariantSrc0Config>, false> thunker_out2_uSrc;
+    push_ack_port_thunker<ip_test_ip_top_ns::srcOut0BoundarySt, ipBridge_ns::data8St, true> thunker_out2_uBridge;
+    push_ack_port_thunker<ip_test_ip_top_ns::srcOut1BoundarySt, ip_test_src_ns::srcOut1St<ip_test_srcVariantSrc0Config>, true> thunker_out3_uSrc;
+    push_ack_port_thunker<ip_test_ip_top_ns::srcOut1BoundarySt, ipBridge_ns::data70St, true> thunker_out3_uBridge;
+    apb_port_thunker<common_shared_types_ns::apbAddrSt, common_shared_types_ns::apbDataSt, ip_ns::ipRegAddrSt, ip_ns::ipRegDataSt, true, true> thunker_apbReg_uIp0_uIp0;
+    apb_port_thunker<common_shared_types_ns::apbAddrSt, common_shared_types_ns::apbDataSt, ip_ns::ipRegAddrSt, ip_ns::ipRegDataSt, true, true> thunker_apbReg_uIp1_uIp1;
 
     ip_top(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ip_top() override = default;

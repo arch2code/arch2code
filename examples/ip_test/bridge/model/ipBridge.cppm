@@ -45,10 +45,10 @@ public:
     std::shared_ptr<ipBase<ipBridge_ipVariant1Config>> uBridgeIp1;
 
     // cross-interface thunkers
-    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uBridgeIp0_uBridgeIp0;
-    apb_port_thunker<apbAddrSt, apbDataSt, ipRegAddrSt, ipRegDataSt, true, true> thunker_apbReg_uBridgeIp1_uBridgeIp1;
-    push_ack_port_thunker<data8St, ipDataSt<ip_ipVariant0Config>, false> thunker_uBridgeIp0;
-    push_ack_port_thunker<data70St, ipDataSt<ipBridge_ipVariant1Config>, true> thunker_uBridgeIp1;
+    apb_port_thunker<common_shared_types_ns::apbAddrSt, common_shared_types_ns::apbDataSt, ip_ns::ipRegAddrSt, ip_ns::ipRegDataSt, true, true> thunker_apbReg_uBridgeIp0_uBridgeIp0;
+    apb_port_thunker<common_shared_types_ns::apbAddrSt, common_shared_types_ns::apbDataSt, ip_ns::ipRegAddrSt, ip_ns::ipRegDataSt, true, true> thunker_apbReg_uBridgeIp1_uBridgeIp1;
+    push_ack_port_thunker<ipBridge_ns::data8St, ip_ns::ipDataSt<ip_ipVariant0Config>, false> thunker_uBridgeIp0;
+    push_ack_port_thunker<ipBridge_ns::data70St, ip_ns::ipDataSt<ipBridge_ipVariant1Config>, true> thunker_uBridgeIp1;
 
     ipBridge(sc_module_name blockName, const char * variant, blockBaseMode bbMode);
     ~ipBridge() override = default;

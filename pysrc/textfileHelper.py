@@ -114,7 +114,7 @@ class codeText:
         parser.add_argument('--scope', type=str, help='hierarchy scope eg top' )
         parser.add_argument('--variant', type=str, help='Block variant name' )
         parser.add_argument('--parent', type=str, help='Parent (assembling) block name for registrar identity')
-        parser.add_argument('--project', type=str, help='Owning projectName for project-mode artifacts')
+        parser.add_argument('--project', type=str, help='Owning projectName; names the owner of a project-mode artifact or of a block whose bare name several projects declare')
         parser.add_argument('--importPackages', default=[], nargs='+', action='append', help='SystemVerilog only, this is a list that defines all packages to import')
         parser.add_argument('--mode', type=str, default='', help='File level mode option' )
         parser.add_argument('--hierarchy', action='store_true', help='generate in hierarchy mode' )

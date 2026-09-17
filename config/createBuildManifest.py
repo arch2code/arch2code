@@ -171,6 +171,16 @@ def create(prj):
     if staleVlWrapFiles:
         printWarning("run 'make newmodule' to remove stale verification-wrapper files")
 
+    # A `<context>VariantConfig.h` in an owned include directory is a generated
+    # file no fileMap entry names. Warn here; newmodule performs the deletion.
+    retiredFiles = artifactPaths.getRetiredContextFiles(prj, rows)
+    for staleFile in retiredFiles:
+        printWarning(f"stale retired file {staleFile} is no longer generated "
+                     f"(Config now lives in the per-block registrar Config modules)")
+    if retiredFiles:
+        printWarning("run 'make newmodule' to remove stale retired files; replace any "
+                     "#include of them with `import <project>.<block>.config;`")
+
     # context mode: reuse the paths saveIncludeFiles resolved through the path seam.
     for row in rows:
         if row['mode'] != 'context':

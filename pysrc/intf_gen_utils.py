@@ -616,6 +616,10 @@ def sc_class_dependency_includes(prj, data):
                 break
     if needsHwMemory:
         out.append(('include', '#include "hwMemory.h"'))
+    # The constructor sizes each memory with the block's word-lines expression
+    # inline (wordLinesExpr -> constReference_cpp), which may call clog2.
+    if needsHwMemory and data['blockUsesClog2']:
+        out.append(('include', '#include "clog2.h"'))
     thunker_protocols = sc_thunker_protocols(data, prj)
     for proto in sorted(thunker_protocols):
         out.append(('include', f'#include "{proto}_port_thunker.h"'))
@@ -873,6 +877,18 @@ def _payload_config_name(payload):
     return cpp_config_struct_name(configSelection) if configSelection else ''
 
 
+def _qualified_struct_type_name(payload, prj):
+    """Payload type qualified by its owning context's namespace. A composed
+    container imports every child project's types module, and two projects may
+    declare same-named payloads, so the bare name can be ambiguous there."""
+    name = sc_struct_type_name(payload['structure'],
+                               payload['structureKey'],
+                               prj,
+                               config_override=(_payload_config_name(payload) or None))
+    context = prj.data['structures'][payload['structureKey']]['_context']
+    return f"{cpp_namespace_name(prj.contextModuleIdentity[context])}::{name}"
+
+
 def _thunker_member_type(flagged, prj):
     # The payload types in view order, then one trailing bool per payload pair in
     # the same order. Each bool tells the thunker's copy
@@ -882,11 +898,7 @@ def _thunker_member_type(flagged, prj):
     # a false verdict is spelled explicitly only to keep the slots positional.
     thunker = flagged['thunker']
     channel_type = thunker['channelType']
-    args = [sc_struct_type_name(payload['structure'],
-                                payload['structureKey'],
-                                prj,
-                                config_override=(_payload_config_name(payload) or None))
-            for payload in thunker['payloads']]
+    args = [_qualified_struct_type_name(payload, prj) for payload in thunker['payloads']]
     args += ['true' if pair['directCopy'] else 'false'
              for pair in thunker['payloadPairs']]
     return f"{channel_type}_port_thunker<{', '.join(args)}>"

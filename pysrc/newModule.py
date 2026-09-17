@@ -83,6 +83,7 @@ class newModule:
 
         self.cleanup_stale_segment_files(prj, rows, blockCondData, fileMap, 'registrar')
         self.cleanup_stale_segment_files(prj, rows, blockCondData, fileMap, 'vl_wrap')
+        self.cleanup_retired_context_files(prj, rows)
 
         self.project_create_from_rows(fileGenerationConfig, rows, prj, args)
         self.context_create_from_rows(fileGenerationConfig, rows, prj, args)
@@ -188,6 +189,11 @@ class newModule:
         generatedInDirs, _ = migrateCommon.classifyGeneratedDir(segmentDirs)
         for staleFile in sorted(set(generatedInDirs) - expectedFiles):
             print(f"Removing stale {basePath} file {staleFile}")
+            os.remove(staleFile)
+
+    def cleanup_retired_context_files(self, prj, rows):
+        for staleFile in artifactPaths.getRetiredContextFiles(prj, rows):
+            print(f"Removing stale retired file {staleFile}")
             os.remove(staleFile)
 
     def project_create_from_rows(self, fileGenerationConfig, rows, prj, args):

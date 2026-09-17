@@ -53,14 +53,10 @@ def _descriptorMemberLines(prj, desc):
     """Member lines of one Config struct. Backing constants are looked up by
     paramSourceKeys, so a same-spelled param in another block cannot supply the type."""
     out = []
-    variantSpelling = _configSymSpelling(prj, set(desc['values'].keys()))
     for constName, resolved in desc['values'].items():
         containerParam = desc['containerSourced'].get(constName)
         constData = prj.data['constants'][desc['paramSourceKeys'][constName]]
-        if containerParam:
-            rhs = f'{CONTAINER_CONFIG_PARAM}::{containerParam}'
-        else:
-            rhs = _configMemberRhs(constData, resolved, variantSpelling)
+        rhs = f'{CONTAINER_CONFIG_PARAM}::{containerParam}' if containerParam else resolved
         out.append(f"    static constexpr {configType(constData)} {constName} = {rhs};")
     return out
 
@@ -72,43 +68,12 @@ def emitCStyleCanonical(evalCanonical, symSpelling):
     return emissionUtils.emitExpr(evalCanonical, symSpelling, emissionUtils.C)
 
 
-def configStructLines(prj, data, structName, baseValues):
-    """Emit lines for one Config struct given base-value overrides. Covers
-    every parameterizable constant this context's structures need for
-    round-trip testing (projectOpen._sampleConfigConstants), not the
-    narrower per-block set the real build emits."""
-    params = list(data['sampleConfigConstants'].values())
-    spelling = _configSymSpelling(prj, {value['constant'] for value in params})
+def configStructLines(data, structName, baseValues):
+    """Lines for one sample Config struct, one literal member per root
+    parameter the context's structures need (projectOpen._sampleConfigConstants)
+    at this sample point's values."""
     out = [f"struct {structName} {{"]
-    for value in params:
-        type_str = configType(value)
-        rhs = _configMemberRhs(value, baseValues.get(value['constant'], value['value']), spelling)
-        out.append(f"    static constexpr {type_str} {value['constant']} = {rhs};")
+    for value in data['sampleConfigConstants'].values():
+        out.append(f"    static constexpr {configType(value)} {value['constant']} = {baseValues[value['constant']]};")
     out.append("};")
     return out
-
-
-def _configSymSpelling(prj, memberNames):
-    """Per-symbol speller for an eval-derived constant emitted inside a Config
-    struct. A referent that is itself a struct member (a parameterizable sibling,
-    declared earlier in dependency order) stays symbolic as its bare member name,
-    so the variant's own value drives the computation; any other referent is a
-    non-parameterizable constant spelled from its persisted value as a literal."""
-    def symSpelling(symKey):
-        if symKey in prj.data['constants']:
-            row = prj.data['constants'][symKey]
-            name = row['constant']
-            if name in memberNames:
-                return name
-        return str(prj.getConst(symKey))
-    return symSpelling
-
-
-def _configMemberRhs(constData, resolved, symSpelling):
-    """RHS for one Config struct member. An eval-derived parameterizable constant
-    (non-empty evalCanonical) is emitted symbolically from its canonical
-    expression so each variant recomputes it from that struct's own members; a
-    backing block-param constant emits its per-variant resolved value."""
-    if constData['evalCanonical']:
-        return emitCStyleCanonical(constData['evalCanonical'], symSpelling)
-    return resolved

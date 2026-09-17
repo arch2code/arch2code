@@ -27,7 +27,7 @@ class documentGenerator:
                 printError(f"In {fileName}, the block ({self.code.block}) specified in GENERATED_CODE_PARAM is either wrong or out of scope. Check the block is listed in your instances list")
                 exit(warningAndErrorReport())
         else:
-            qualBlock = prj.getQualBlock( self.code.block )
+            qualBlock = prj.getQualBlock( self.code.block, project=self.code.params.project, filePath=args.file )
             if self.code.template == 'blockSpecification':
                 # Check if this is a register-handler block
                 if prj.data['blocks'][qualBlock]['isRegHandler']:

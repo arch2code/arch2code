@@ -54,10 +54,10 @@ public:
     push_ack_channel< streamSt<xif_tbPeerPv0Config> > out_1;
 
     // cross-interface thunkers
-    push_ack_port_thunker<streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>, streamSt<xif_tbPeerPv0Config>, true> thunker_out_0_uTbPeerA;
-    push_ack_port_thunker<streamSt<xif_tbPeerPv0Config>, streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>, true> thunker_out_1_uTbPeerB;
-    push_ack_port_thunker<streamSt<xif_dutDutV0Config>, streamBndrySt, false> thunker_out_uSrc;
-    push_ack_port_thunker<streamSt<xif_dutDutV0Config>, streamBndrySt, false> thunker_streamOut_uSink;
+    push_ack_port_thunker<xif_ns::streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>, xif_ns::streamSt<xif_tbPeerPv0Config>, true> thunker_out_0_uTbPeerA;
+    push_ack_port_thunker<xif_ns::streamSt<xif_tbPeerPv0Config>, xif_ns::streamSt<xif_tbPeerPvSourcedConfig<xif_xif_tbTbV0Config>>, true> thunker_out_1_uTbPeerB;
+    push_ack_port_thunker<xif_ns::streamSt<xif_dutDutV0Config>, xif_ns::streamBndrySt, false> thunker_out_uSrc;
+    push_ack_port_thunker<xif_ns::streamSt<xif_dutDutV0Config>, xif_ns::streamBndrySt, false> thunker_streamOut_uSink;
 
     // Thread monitoring the end of test event to stop simulation
     void eotThread(void) {

@@ -735,22 +735,47 @@ class projectOpen:
         return ret
 
     # instance maybe qualified or not, make sure it is
-    def getQualBlock(self, block):
+    def getQualBlock(self, block, project=None, filePath=None):
         # top instance may be a fully qualified name already - check
         if block in self.data['blocks']:
-            qual = block
-        else:
-            if block not in self.blocks:
-                printError(f"The block specified: {block} does not exist in the design")
-                exit(warningAndErrorReport())
-            #its not a fully qualified name so lets try and convert
-            if isinstance(self.blocks[block], dict):
-                printError(f"The block specified: {block} is not a unique instance in the design.\nPlease use a unique or a fully qualified block name instead. Possible fully qualified names are:")
-                for myBlock in self.blocks[block]:
-                    printWarning(myBlock)
-                exit(warningAndErrorReport())
-            qual = self.blocks[block]
-        return qual
+            return block
+        if block not in self.blocks:
+            printError(f"The block specified: {block} does not exist in the design")
+            exit(warningAndErrorReport())
+        #its not a fully qualified name so lets try and convert
+        if not isinstance(self.blocks[block], dict):
+            return self.blocks[block]
+        # A composed database parses every child project's blocks, so a bare
+        # name such as `cpu` may be declared by several projects while unique
+        # within each. Block-mode stamps carry the bare name, so resolve by
+        # owner: a build renders only files it owns, so the candidate owned by
+        # PROJECTNAME, or by `--project` when the stamp names one, is the block meant.
+        candidates = list(self.blocks[block])
+        wanted = project or self.config.getConfig('PROJECTNAME')
+        ownerOf = {key: self.contextOwningProject[self.data['blocks'][key]['_context']]
+                   for key in candidates}
+        owned = [key for key in candidates if ownerOf[key] == wanted]
+        if len(owned) == 1:
+            qual = owned[0]
+            root = self.projectLayout[wanted]['root']
+            if filePath and os.path.isabs(filePath):
+                # The derived owner must also own the file's location, so a
+                # foreign file hosted through EXTRA_*_GEN_FILES cannot bind to
+                # this project's same-named block silently.
+                realRoot = os.path.realpath(root)
+                if not os.path.realpath(filePath).startswith(realRoot + os.sep):
+                    printError(f"In {filePath}, the block {block} resolved to {qual} (owned by project "
+                               f"'{wanted}') but the file is not under that project's root {root}. "
+                               f"Add --project=<owner> to its GENERATED_CODE_PARAM line to name the owner.")
+                    exit(warningAndErrorReport())
+            return qual
+        printError(f"The block specified: {block} is not a unique instance in the design and "
+                   f"{len(owned)} of its declarations are owned by project '{wanted}'.\n"
+                   f"Please use a fully qualified block name, or add --project=<owner> to the "
+                   f"GENERATED_CODE_PARAM line of the file. Possible fully qualified names are:")
+        for myBlock in candidates:
+            printWarning(f"{myBlock}  (project {ownerOf[myBlock]})")
+        exit(warningAndErrorReport())
 
     def resolveFileOwner(self, params):
         # Absolute ownership resolution for the generator gate. A generated file's
@@ -1152,11 +1177,14 @@ class projectOpen:
         return ret
 
     def _sampleConfigConstants(self, ownConstants, structures):
-        """The parameterizable constants a sample Config for this context needs:
-        its own, plus any a structure here reaches through a field width or
-        array size declared in an included file."""
+        """The root parameters a sample Config for this context needs: its own
+        parameterizable base constants plus every root parameter its structures
+        depend on. Eval-derived constants are left out because the struct
+        templates read only root knobs through Config; the block Base class
+        computes derived values."""
         constants = self.data['constants']
-        merged = {key: row for key, row in ownConstants.items() if row['isParameterizable']}
+        merged = {key: row for key, row in ownConstants.items()
+                  if row['isParameterizable'] and not row['evalCanonical']}
         for structKey in structures:
             for key in self.structureParamDeps[structKey]:
                 merged.setdefault(key, constants[key])
