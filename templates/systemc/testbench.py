@@ -3,7 +3,29 @@ import textwrap
 
 from pysrc.processYaml import getPortChannelName
 from pysrc.arch2codeHelper import printError, warningAndErrorReport
-from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_context_include_lines, cpp_config_arg, sc_channel_header_includes
+from pysrc.intf_gen_utils import sc_gen_block_channels, sc_connect_channels, sc_instance_includes, sc_declare_channels, get_intf_type, get_intf_defs, inverse_portdir, resolve_dut_variant_selection, sc_declare_thunkers, sc_thunker_protocols, _resolve_cross_interface_ends, _thunker_member_name, cpp_base_module_name, cpp_context_include_lines, cpp_config_arg, sc_channel_header_includes, sc_multicycle_ctor_args
+
+
+def _cm_synth_conn(value, prj, data):
+    # A connectionMap entry is not a connection: spell the fields that
+    # sc_gen_block_channels and sc_multicycle_ctor_args expect. Returns None
+    # when the interface cannot be resolved.
+    intfInfo = prj.data['interfaces'].get(value.get('interfaceKey', ''))
+    if not intfInfo:
+        return None
+    synth_conn = dict(value)
+    synth_conn['interfaceType'] = intfInfo['interfaceType']
+    synth_conn['interfaceName'] = intfInfo['interface']
+    synth_conn['maxTransferSize'] = intfInfo.get('maxTransferSize', '0')
+    # Neutral Config selection of the contained instance whose port this
+    # local-only channel serves; sc_gen_block_channels spells the struct
+    # name. None when the instance is absent or not parameterizable.
+    synth_conn['configOverride'] = (
+        data.get('subBlockInstances', {})
+            .get(value.get('instanceKey', ''), {})
+            .get('instanceConfigSelection')
+    )
+    return synth_conn
 
 
 def _tb_context_import_lines(prj, data):
@@ -163,8 +185,15 @@ def ext_sec_init(args, prj, data):
                 exit(warningAndErrorReport())
             srcInst = srcInstances[0]
             chnlData = sc_gen_block_channels(data_, prj, data)
-            s = '   ,{chnlName}("{chnlName}", "{instName}")'
-            out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst))
+            # The external pseudo-block re-creates the DUT's channels, so it must
+            # repeat the DUT's multicycle arguments. A channel constructed
+            # without them has a null multicycle buffer and any burst access
+            # segfaults.
+            extra, autoMode = sc_multicycle_ctor_args(
+                data_, chnlData['multicycle_types'], prj, warn=False)
+            s = '   ,{chnlName}("{chnlName}", "{instName}"{extra}{autoMode})'
+            out.append(s.format(chnlName=chnlData['chnl_name'], instName=srcInst,
+                                 extra=extra, autoMode=autoMode))
             # Mirror the DUT's cross-interface thunker emission inside the
             # external pseudo-block. Without these entries the consumer-side
             # port whose interface is bridged by a thunker in the DUT would
@@ -187,9 +216,17 @@ def ext_sec_init(args, prj, data):
             continue
         instName = value.get('instance', '')
         instPort = value.get('instancePortName', '')
+        # This local channel needs the interface's multicycle arguments like
+        # any other channel of its interface.
+        extra = autoMode = ''
+        synth_conn = _cm_synth_conn(value, prj, data)
+        if synth_conn is not None:
+            chnlData = sc_gen_block_channels(synth_conn, prj, data)
+            extra, autoMode = sc_multicycle_ctor_args(
+                synth_conn, chnlData['multicycle_types'], prj, warn=False)
         out.append(
             f'   ,_ext_cm_{instName}_{instPort}('
-            f'"_ext_cm_{instName}_{instPort}", "{instName}")'
+            f'"_ext_cm_{instName}_{instPort}", "{instName}"{extra}{autoMode})'
         )
 
     # DUT-boundary thunkers: for each connection pruned to the excluded DUT
@@ -324,21 +361,9 @@ def ext_sec_header(args, prj, data):
             continue
         instName = value.get('instance', '')
         instPort = value.get('instancePortName', '')
-        intfInfo = prj.data['interfaces'].get(value.get('interfaceKey', ''))
-        if not intfInfo:
+        synth_conn = _cm_synth_conn(value, prj, data)
+        if synth_conn is None:
             continue
-        synth_conn = dict(value)
-        synth_conn['interfaceType'] = intfInfo['interfaceType']
-        synth_conn['interfaceName'] = intfInfo['interface']
-        synth_conn['maxTransferSize'] = intfInfo.get('maxTransferSize', '0')
-        # Neutral Config selection of the contained instance whose port this
-        # local-only channel serves; sc_gen_block_channels spells the struct
-        # name. None when the instance is absent or not parameterizable.
-        synth_conn['configOverride'] = (
-            data.get('subBlockInstances', {})
-                .get(value.get('instanceKey', ''), {})
-                .get('instanceConfigSelection')
-        )
         chnlData = sc_gen_block_channels(synth_conn, prj, data)
         chnl_decl = chnlData["channel_decl"]
         # channel_decl is "<type><params> <name>;"; replace the

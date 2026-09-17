@@ -870,6 +870,75 @@ def sc_gen_modport_signal_blast(port_data, prj, block_data, swap_dir=False):
 
     return out
 
+def sc_multicycle_ctor_args(conn_data, multicycle_types, prj, warn=True):
+    """Trailing multicycle/tracker arguments for a channel constructor.
+
+    Every emitter that constructs a channel must use this, otherwise the
+    channel falls back to the constructor overload that leaves its multicycle
+    buffer null and the first burst access segfaults.
+
+    Args:
+        conn_data: the connection row naming the interface. Either a
+            connectDouble connection row (`maxTransferSize` and `tracker`
+            schema-guaranteed), a testbench-synthesized connectionMaps row
+            (`_cm_synth_conn` in templates/systemc/testbench.py; carries
+            `maxTransferSize` but no `tracker` field, that schema having no
+            alloc/dealloc concept for a local-only channel), or a register
+            connection row (no `interfaceKey`; contributes no arguments).
+        multicycle_types: the interface definition's
+            `sc_channel.multicycle_types` flag; when false the channel type
+            has no multicycle constructor overload and `extra` stays empty.
+        warn: cleared by secondary emitters so a misconfigured interface is
+            reported once rather than once per generated hierarchy.
+
+    Returns:
+        (extra, autoMode) pair of literal C++ argument text, each already
+        carrying its leading comma when non-empty so callers can append both
+        unconditionally.
+    """
+    extra = ''
+    # we may have a multicycle interface
+    if 'interfaceKey' in conn_data:
+        interfaceInfo = prj.data['interfaces'][conn_data['interfaceKey']]
+        interfaceSize = interfaceInfo['maxTransferSize']
+        # did the connection specify an interface maxTransferSize
+        if conn_data['maxTransferSize'] != "0": # check for override
+            interfaceSize = conn_data['maxTransferSize'] # override interface setting from connection
+        trackerType = interfaceInfo['trackerType']
+        multiCycleMode = interfaceInfo['multiCycleMode']
+        autoModeMapping = {
+            "": "",
+            "alloc": ", INTERFACE_AUTO_ALLOC",
+            "dealloc": ", INTERFACE_AUTO_DEALLOC",
+            "allocReq": ", INTERFACE_AUTO_ALLOC, INTERFACE_AUTO_OFF",
+            "deallocReq": ", INTERFACE_AUTO_DEALLOC, INTERFACE_AUTO_OFF",
+            "allocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_ALLOC",
+            "deallocAck": ", INTERFACE_AUTO_OFF, INTERFACE_AUTO_DEALLOC"
+        }
+        autoMode = autoModeMapping.get(conn_data.get('tracker', ""), "")
+    else:
+        # register interface
+        interfaceSize = 0
+        trackerType = ''
+        multiCycleMode = ''
+        autoMode = ''
+
+    if multicycle_types:
+        #- fixed_size        #
+        #- header_tracker    # for rdyVldBurst tracker tag comes from field in the header (based on field with "generator: tracker(xxx)"" in structures where xxx is the tracker name)
+        #- header_size       # for rdyVldBurst size comes from field in the header (based on field with "generator: tracker(length)"" in structures)
+        #- api_list_tracker  # tracker tag comes from write api and push_context
+        #- api_list_size     # size comes from write api and push_context
+
+        if multiCycleMode != "":
+            if trackerType != "":
+                trackerType = f'tracker:{trackerType}'
+            extra = f', "{multiCycleMode}", {interfaceSize}, "{trackerType}"'
+        elif warn and (interfaceSize != "0" or trackerType):
+            print(f"warning: interface {conn_data['interfaceKey']} has a maxTransferSize or trackerType but no multiCycleMode")
+
+    return extra, autoMode
+
 def sc_gen_block_channels(conn_data, prj, block_data):
 
     out = {}

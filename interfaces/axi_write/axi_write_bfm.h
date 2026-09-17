@@ -268,7 +268,7 @@ public:
             if constexpr (hasOptionalPayload<WU>) { hdl_if_p->wuser = w_data.user.sc_pack(); }
             do {
                 wait(clk.posedge_event());
-            } while (!hdl_if_p->awready);
+            } while (!hdl_if_p->wready);
         }
     }
 
